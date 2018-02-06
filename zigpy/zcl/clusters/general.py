@@ -348,7 +348,6 @@ class Time(Cluster):
                 elif attr == 2:
                     diff = datetime.fromtimestamp(0) - datetime.utcfromtimestamp(0)
                     data[attr] = diff.total_seconds()
-            print('write_attributes %s' % data)
             self.write_attributes(data, True)
 
 

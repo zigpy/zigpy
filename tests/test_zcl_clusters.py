@@ -24,7 +24,6 @@ def test_attributes():
 
 def _test_commands(cmdattr):
     for cluster_id, cluster in zcl.Cluster._registry.items():
-        print(cluster.cluster_id)
         for cmdid, cmdspec in getattr(cluster, cmdattr).items():
             assert 0 <= cmdid <= 0xff
             assert isinstance(cmdspec, tuple), "Cluster %s" % (cluster_id, )
