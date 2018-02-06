@@ -130,7 +130,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             manufacturer = manufacturer.to_bytes(2, 'little')
         else:
             manufacturer = b''
-        data = bytes([frame_control]) + manufacturer + bytes([aps.sequence, command_id])
+        data = bytes([frame_control]) + manufacturer + bytes([sequence, command_id])
         data += t.serialize(args, schema)
 
         return self._endpoint.request(self.cluster_id, sequence, data)
@@ -149,7 +149,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             manufacturer = manufacturer.to_bytes(2, 'little')
         else:
             manufacturer = b''
-        data = bytes([frame_control]) + manufacturer + bytes([aps.sequence, command_id])
+        data = bytes([frame_control]) + manufacturer + bytes([sequence, command_id])
         data += t.serialize(args, schema)
 
         return self._endpoint.reply(self.cluster_id, sequence, data)
