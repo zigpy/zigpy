@@ -1,4 +1,4 @@
-"""Setup module for bellows"""
+"""Setup module for zigpy"""
 
 from setuptools import find_packages, setup
 
