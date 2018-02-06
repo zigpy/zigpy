@@ -85,14 +85,14 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         dstaddr = types.MultiAddress()
         dstaddr.addrmode = 3
         dstaddr.ieee = self._device.application.ieee
-        dstaddr.endpoint = 1
+        dstaddr.endpoint = endpoint
         return self.request(0x0021, self._device.ieee, endpoint, cluster, dstaddr)
 
     def unbind(self, endpoint, cluster):
         dstaddr = types.MultiAddress()
         dstaddr.addrmode = 3
         dstaddr.ieee = self._device.application.ieee
-        dstaddr.endpoint = 1
+        dstaddr.endpoint = endpoint
         return self.request(0x0022, self._device.ieee, endpoint, cluster, dstaddr)
 
     def leave(self):
