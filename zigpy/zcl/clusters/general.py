@@ -335,7 +335,7 @@ class Time(Cluster):
     server_commands = {}
     client_commands = {}
 
-    def handle_cluster_request(self, tsn, command_id, *args):
+    def handle_cluster_general_request(self, tsn, command_id, *args):
         if command_id == 0:
             data = {}
             for attr in args[0][0]:
