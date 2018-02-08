@@ -62,21 +62,21 @@ def test_time_cluster():
 
     tsn = 0
 
-    t.handle_cluster_request(tsn, 1, [[0]])
+    t.handle_cluster_general_request(tsn, 1, [[0]])
     assert ep.reply.call_count == 0
 
-    t.handle_cluster_request(tsn, 0, [[0]])
+    t.handle_cluster_general_request(tsn, 0, [[0]])
     assert ep.reply.call_count == 1
     assert ep.reply.call_args[0][2][3] == 0
 
-    t.handle_cluster_request(tsn, 0, [[1]])
+    t.handle_cluster_general_request(tsn, 0, [[1]])
     assert ep.reply.call_count == 2
     assert ep.reply.call_args[0][2][3] == 1
 
-    t.handle_cluster_request(tsn, 0, [[2]])
+    t.handle_cluster_general_request(tsn, 0, [[2]])
     assert ep.reply.call_count == 3
     assert ep.reply.call_args[0][2][3] == 2
 
-    t.handle_cluster_request(tsn, 0, [[0, 1, 2]])
+    t.handle_cluster_general_request(tsn, 0, [[0, 1, 2]])
     assert ep.reply.call_count == 4
     assert ep.reply.call_args[0][2][3] == 0
