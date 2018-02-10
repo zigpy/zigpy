@@ -123,7 +123,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._endpoint_id,
             sequence,
             data,
-            **kwargs,
+            **kwargs
         )
 
     def reply(self, cluster, sequence, data):
