@@ -116,8 +116,8 @@ class Fan(Cluster):
     ep_attribute = 'fan'
     attributes = {
         # Fan Control Status
-        0x0000: ('fan_mode', t.uint8_t),  # enum8
-        0x0001: ('fan_mode_sequence', t.uint8_t),  # enum8
+        0x0000: ('fan_mode', t.enum8),  # enum8
+        0x0001: ('fan_mode_sequence', t.enum8),  # enum8
     }
     server_commands = {}
     client_commands = {}
