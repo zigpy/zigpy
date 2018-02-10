@@ -115,7 +115,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         handler(is_reply, tsn, command_id, args)
 
-    def request(self, cluster, sequence, data):
+    def request(self, cluster, sequence, data, **kwargs):
         return self.device.request(
             self.profile_id,
             cluster,
@@ -123,6 +123,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._endpoint_id,
             sequence,
             data,
+            **kwargs,
         )
 
     def reply(self, cluster, sequence, data):

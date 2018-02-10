@@ -113,7 +113,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         return c
 
     @util.retryable_request
-    def request(self, general, command_id, schema, *args):
+    def request(self, general, command_id, schema, *args, **kwargs):
         if len(schema) != len(args):
             self.error("Schema and args lengths do not match in request")
             error = asyncio.Future()
@@ -128,7 +128,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         data = bytes([frame_control, sequence, command_id])
         data += t.serialize(args, schema)
 
-        return self._endpoint.request(self.cluster_id, sequence, data)
+        return self._endpoint.request(self.cluster_id, sequence, data, **kwargs)
 
     def reply(self, command_id, schema, *args):
         if len(schema) != len(args):
@@ -285,7 +285,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
     def command(self, command, *args):
         schema = self.server_commands[command][1]
-        return self.request(False, command, schema, *args)
+        return self.request(False, command, schema, *args, expect_reply=False)
 
     def client_command(self, command, *args):
         schema = self.client_commands[command][1]

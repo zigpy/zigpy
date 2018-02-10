@@ -77,8 +77,8 @@ class Device(zigpy.util.LocalLogMixin):
         self.endpoints[endpoint_id] = ep
         return ep
 
-    def request(self, profile, cluster, src_ep, dst_ep, sequence, data):
-        return self._application.request(self.nwk, profile, cluster, src_ep, dst_ep, sequence, data)
+    def request(self, profile, cluster, src_ep, dst_ep, sequence, data, **kwargs):
+        return self._application.request(self.nwk, profile, cluster, src_ep, dst_ep, sequence, data, **kwargs)
 
     def handle_message(self, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
         try:
