@@ -95,7 +95,7 @@ def test_request_manufacturer(cluster):
 
 
 def test_reply_general(cluster):
-    cluster.reply(0, [])
+    cluster.reply(False, 0, [])
     assert cluster._endpoint.reply.call_count == 1
 
 

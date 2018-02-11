@@ -135,7 +135,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
         return self._endpoint.request(self.cluster_id, sequence, data)
 
-    def reply(self, command_id, schema, *args, manufacturer=None):
+    def reply(self, general, command_id, schema, *args, manufacturer=None):
         if len(schema) != len(args):
             self.error("Schema and args lengths do not match in reply")
             error = asyncio.Future()
@@ -143,7 +143,9 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             return error
 
         sequence = self._endpoint._device.application.get_sequence()
-        frame_control = 0b1001  # Cluster reply command
+        frame_control = 0b1000  # Cluster reply command
+        if not general:
+            frame_control |= 0x01
         if manufacturer is not None:
             frame_control |= 0b0100
             manufacturer = manufacturer.to_bytes(2, 'little')
@@ -177,10 +179,13 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             for attr in args[0]:
                 self._update_attribute(attr.attrid, attr.value.value)
         else:
-            self.debug("No handler for general command %s", command_id)
+            self.handle_cluster_general_request(tsn, command_id, args)
 
     def handle_cluster_request(self, tsn, command_id, args):
         self.debug("No handler for cluster command %s", command_id)
+
+    def handle_cluster_general_request(self, tsn, command_id, args):
+        self.debug("No handler for general command %s", command_id)
 
     @asyncio.coroutine
     def read_attributes_raw(self, attributes, manufacturer=None):
@@ -266,7 +271,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
         if is_report:
             schema = foundation.COMMANDS[0x01][1]
-            return self.reply(0x01, schema, args, manufacturer=manufacturer)
+            return self.reply(True, 0x01, schema, args, manufacturer=manufacturer)
         else:
             schema = foundation.COMMANDS[0x02][1]
             return self.request(True, 0x02, schema, args, manufacturer=manufacturer)
@@ -296,7 +301,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
     def client_command(self, command, *args):
         schema = self.client_commands[command][1]
-        return self.reply(command, schema, *args)
+        return self.reply(False, command, schema, *args)
 
     @property
     def name(self):
