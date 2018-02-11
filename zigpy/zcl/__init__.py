@@ -130,7 +130,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
         return self._endpoint.request(self.cluster_id, sequence, data)
 
-    def reply(self, command_id, schema, *args):
+    def reply(self, general, command_id, schema, *args):
         if len(schema) != len(args):
             self.error("Schema and args lengths do not match in reply")
             error = asyncio.Future()
@@ -138,7 +138,9 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             return error
 
         sequence = self._endpoint._device.application.get_sequence()
-        frame_control = 0b1001  # Cluster reply command
+        frame_control = 0b1000  # Cluster reply command
+        if not general:
+            frame_control |= 0x01
         data = bytes([frame_control, sequence, command_id])
         data += t.serialize(args, schema)
 
@@ -259,7 +261,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
         if is_report:
             schema = foundation.COMMANDS[0x01][1]
-            return self.reply(0x01, schema, args)
+            return self.reply(True, 0x01, schema, args)
         else:
             schema = foundation.COMMANDS[0x02][1]
             return self.request(True, 0x02, schema, args)
@@ -289,7 +291,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
     def client_command(self, command, *args):
         schema = self.client_commands[command][1]
-        return self.reply(command, schema, *args)
+        return self.reply(False, command, schema, *args)
 
     @property
     def name(self):
