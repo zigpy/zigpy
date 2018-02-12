@@ -100,10 +100,10 @@ def test_reply_general(cluster):
 
 
 def test_reply_manufacturer(cluster):
-    cluster.reply(0, [t.uint8_t], 1)
+    cluster.reply(False, 0, [t.uint8_t], 1)
     assert cluster._endpoint.reply.call_count == 1
     org_size = len(cluster._endpoint.reply.call_args[0][2])
-    cluster.reply(0, [t.uint8_t], 1, manufacturer=1)
+    cluster.reply(False, 0, [t.uint8_t], 1, manufacturer=1)
     assert cluster._endpoint.reply.call_count == 2
     assert org_size + 2 == len(cluster._endpoint.reply.call_args[0][2])
 
