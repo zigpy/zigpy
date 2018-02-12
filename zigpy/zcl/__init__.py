@@ -301,7 +301,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
     def client_command(self, command, *args):
         schema = self.client_commands[command][1]
-        return self.reply(False, command, schema, *args, expect_reply=expect_reply)
+        return self.reply(False, command, schema, *args)
 
     @property
     def name(self):
