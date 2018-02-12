@@ -26,16 +26,16 @@ class Pump(Cluster):
         0x000c: ('max_const_temp', t.int16s),
         # Pump Dynamic Information
         0x0010: ('pump_status', t.uint16_t),  # bitmap16
-        0x0011: ('effective_operation_mode', t.uint8_t),  # enum8
-        0x0012: ('effective_control_mode', t.uint8_t),  # enum8
+        0x0011: ('effective_operation_mode', t.enum8),
+        0x0012: ('effective_control_mode', t.enum8),
         0x0013: ('capacity', t.int16s),
         0x0014: ('speed', t.uint16_t),
         0x0015: ('lifetime_running_hours', t.uint24_t),
         0x0016: ('power', t.uint24_t),
         0x0017: ('lifetime_energy_consumed', t.uint32_t),
         # Pump Settings
-        0x0020: ('operation_mode', t.uint8_t),  # enum8
-        0x0021: ('control_mode', t.uint8_t),  # enum8
+        0x0020: ('operation_mode', t.enum8),
+        0x0021: ('control_mode', t.enum8),
         0x0022: ('alarm_mask', t.uint16_t),  # bitmap16
     }
     server_commands = {}
@@ -71,29 +71,29 @@ class Thermostat(Cluster):
         0x0018: ('max_cool_setpoint_limit', t.int16s),
         0x0019: ('min_setpoint_dead_band', t.int8s),
         0x001a: ('remote_sensing', t.uint8_t),  # bitmap8
-        0x001b: ('ctrl_seqe_of_oper', t.uint8_t),  # enum8
-        0x001c: ('system_mode', t.uint8_t),  # enum8
+        0x001b: ('ctrl_seqe_of_oper', t.enum8),
+        0x001c: ('system_mode', t.enum8),
         0x001d: ('alarm_mask', t.uint8_t),  # bitmap8
-        0x001e: ('running_mode', t.uint8_t),  # enum8
+        0x001e: ('running_mode', t.enum8),
         # ...
-        0x0020: ('start_of_week', t.uint8_t),  # enum8
+        0x0020: ('start_of_week', t.enum8),
         0x0021: ('number_of_weekly_trans', t.uint8_t),
         0x0022: ('number_of_daily_trans', t.uint8_t),
-        0x0023: ('temp_setpoint_hold', t.uint8_t),  # enum8
+        0x0023: ('temp_setpoint_hold', t.enum8),
         0x0024: ('temp_setpoint_hold_duration', t.uint16_t),
         0x0025: ('programing_oper_mode', t.uint8_t),  # bitmap8
         0x0029: ('running_state', t.uint16_t),  # bitmap16
-        0x0030: ('setpoint_change_source', t.uint8_t),  # enum8
+        0x0030: ('setpoint_change_source', t.enum8),
         0x0031: ('setpoint_change_amount', t.int16s),
         0x0032: ('setpoint_change_source_time_stamp', t.uint32_t),
-        0x0040: ('ac_type', t.uint8_t),  # enum8
+        0x0040: ('ac_type', t.enum8),
         0x0041: ('ac_capacity', t.uint16_t),
-        0x0042: ('ac_refrigerant_type', t.uint8_t),  # enum8
-        0x0043: ('ac_conpressor_type', t.uint8_t),  # enum8
+        0x0042: ('ac_refrigerant_type', t.enum8),
+        0x0043: ('ac_conpressor_type', t.enum8),
         0x0044: ('ac_error_code', t.uint32_t),  # bitmap32
-        0x0045: ('ac_louver_position', t.uint8_t),  # enum8
+        0x0045: ('ac_louver_position', t.enum8),
         0x0046: ('ac_coll_temp', t.int16s),
-        0x0047: ('ac_capacity_format', t.uint8_t),  # enum8
+        0x0047: ('ac_capacity_format', t.enum8),
     }
     server_commands = {
         0x0000: ('setpoint_raise_lower', (), False),
@@ -133,11 +133,11 @@ class Dehumidification(Cluster):
         0x0001: ('dehumid_cooling', t.uint8_t),
         # Dehumidification Settings
         0x0010: ('rh_dehumid_setpoint', t.uint8_t),
-        0x0011: ('relative_humidity_mode', t.uint8_t),  # enum8
-        0x0012: ('dehumid_lockout', t.uint8_t),  # enum8
+        0x0011: ('relative_humidity_mode', t.enum8),
+        0x0012: ('dehumid_lockout', t.enum8),
         0x0013: ('dehumid_hysteresis', t.uint8_t),
         0x0014: ('dehumid_max_cool', t.uint8_t),
-        0x0015: ('relative_humid_display', t.uint8_t),  # enum8
+        0x0015: ('relative_humid_display', t.enum8),
     }
     server_commands = {}
     client_commands = {}
@@ -151,9 +151,9 @@ class UserInterface(Cluster):
     name = 'Thermostat User Interface Configuration'
     ep_attribute = 'thermostat_ui'
     attributes = {
-        0x0000: ('temp_display_mode', t.uint8_t),  # enum8
-        0x0001: ('keypad_lockout', t.uint8_t),  # enum8
-        0x0002: ('programming_visibility', t.uint8_t),  # enum8
+        0x0000: ('temp_display_mode', t.enum8),
+        0x0001: ('keypad_lockout', t.enum8),
+        0x0002: ('programming_visibility', t.enum8),
     }
     server_commands = {}
     client_commands = {}

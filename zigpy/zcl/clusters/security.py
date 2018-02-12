@@ -10,8 +10,8 @@ class IasZone(Cluster):
     ep_attribute = 'ias_zone'
     attributes = {
         # Zone Information
-        0x0000: ('zone_state', t.uint8_t),  # enum8
-        0x0001: ('zone_type', t.uint16_t),  # enum16
+        0x0000: ('zone_state', t.enum8),
+        0x0001: ('zone_type', t.enum16),
         0x0002: ('zone_status', t.uint16_t),  # bitmap16
         # Zone Settings
         0x0010: ('cie_addr', t.EUI64),
