@@ -3,6 +3,7 @@ from unittest import mock
 
 import pytest
 
+import zigpy.types as t
 import zigpy.zcl as zcl
 
 
@@ -84,9 +85,27 @@ def test_request_general(cluster):
     assert cluster._endpoint.request.call_count == 1
 
 
+def test_request_manufacturer(cluster):
+    cluster.request(True, 0, [t.uint8_t], 1)
+    assert cluster._endpoint.request.call_count == 1
+    org_size = len(cluster._endpoint.request.call_args[0][2])
+    cluster.request(True, 0, [t.uint8_t], 1, manufacturer=1)
+    assert cluster._endpoint.request.call_count == 2
+    assert org_size + 2 == len(cluster._endpoint.request.call_args[0][2])
+
+
 def test_reply_general(cluster):
-    cluster.reply(0, [])
+    cluster.reply(False, 0, [])
     assert cluster._endpoint.reply.call_count == 1
+
+
+def test_reply_manufacturer(cluster):
+    cluster.reply(False, 0, [t.uint8_t], 1)
+    assert cluster._endpoint.reply.call_count == 1
+    org_size = len(cluster._endpoint.reply.call_args[0][2])
+    cluster.reply(False, 0, [t.uint8_t], 1, manufacturer=1)
+    assert cluster._endpoint.reply.call_count == 2
+    assert org_size + 2 == len(cluster._endpoint.reply.call_args[0][2])
 
 
 def test_attribute_report(cluster):
@@ -121,7 +140,7 @@ def _mk_rar(attrid, value, status=0):
 
 def test_read_attributes_uncached(cluster):
     @asyncio.coroutine
-    def mockrequest(foundation, command, schema, args):
+    def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
         rar0 = _mk_rar(0, 99)
@@ -155,7 +174,7 @@ def test_read_attributes_cached(cluster):
 
 def test_read_attributes_mixed_cached(cluster):
     @asyncio.coroutine
-    def mockrequest(foundation, command, schema, args):
+    def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
         rar5 = _mk_rar(5, b'Model')
@@ -177,7 +196,7 @@ def test_read_attributes_mixed_cached(cluster):
 
 def test_read_attributes_default_response(cluster):
     @asyncio.coroutine
-    def mockrequest(foundation, command, schema, args):
+    def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
         return [0xc1]
@@ -194,7 +213,7 @@ def test_read_attributes_default_response(cluster):
 
 def test_item_access_attributes(cluster):
     @asyncio.coroutine
-    def mockrequest(foundation, command, schema, args):
+    def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
         rar5 = _mk_rar(5, b'Model')
