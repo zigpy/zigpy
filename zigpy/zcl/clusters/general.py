@@ -23,11 +23,11 @@ class Basic(Cluster):
         0x0004: ('manufacturer', t.LVBytes),
         0x0005: ('model', t.LVBytes),
         0x0006: ('date_code', t.LVBytes),
-        0x0007: ('power_source', t.uint8_t),  # enum8
-        0x0008: ('app_profile_version', t.uint8_t),  # enum8
+        0x0007: ('power_source', t.enum8),
+        0x0008: ('app_profile_version', t.enum8),
         # Basic Device Settings
         0x0010: ('location_desc', t.LVBytes),
-        0x0011: ('physical_env', t.uint8_t),  # enum8
+        0x0011: ('physical_env', t.enum8),
         0x0012: ('device_enabled', t.Bool),
         0x0013: ('alarm_mask', t.uint8_t),  # bitmap8
         0x0014: ('disable_local_config', t.uint8_t),  # bitmap8
@@ -60,7 +60,7 @@ class PowerConfiguration(Cluster):
         0x0021: ('battery_percentage_remaining', t.uint8_t),
         # Battery Settings
         0x0030: ('battery_volt', t.LVBytes),
-        0x0031: ('battery_size', t.uint8_t),  # enum8
+        0x0031: ('battery_size', t.enum8),
         0x0032: ('battery_a_hr_rating', t.uint16_t),
         0x0033: ('battery_quantity', t.uint8_t),
         0x0034: ('battery_rated_voltage', t.uint8_t),
@@ -79,7 +79,7 @@ class PowerConfiguration(Cluster):
         0x0041: ('battery_2_percentage_remaining', t.uint8_t),
         # Battery 2 Settings
         0x0050: ('battery_2_volt', t.LVBytes),
-        0x0051: ('battery_2_size', t.uint8_t),  # enum8
+        0x0051: ('battery_2_size', t.enum8),
         0x0052: ('battery_2_a_hr_rating', t.uint16_t),
         0x0053: ('battery_2_quantity', t.uint8_t),
         0x0054: ('battery_2_rated_voltage', t.uint8_t),
@@ -98,7 +98,7 @@ class PowerConfiguration(Cluster):
         0x0061: ('battery_3_percentage_remaining', t.uint8_t),
         # Battery 3 Settings
         0x0070: ('battery_3_volt', t.LVBytes),
-        0x0071: ('battery_3_size', t.uint8_t),  # enum8
+        0x0071: ('battery_3_size', t.enum8),
         0x0072: ('battery_3_a_hr_rating', t.uint16_t),
         0x0073: ('battery_3_quantity', t.uint8_t),
         0x0074: ('battery_3_rated_voltage', t.uint8_t),
@@ -256,9 +256,9 @@ class OnOffConfiguration(Cluster):
     ep_attribute = 'on_off_config'
     attributes = {
         # Switch Information
-        0x0000: ('switch_type', t.uint8_t),  # enum8
+        0x0000: ('switch_type', t.enum8),
         # Switch Settings
-        0x0010: ('switch_actions', t.uint8_t),  # enum8
+        0x0010: ('switch_actions', t.enum8),
     }
     server_commands = {}
     client_commands = {}
@@ -360,7 +360,7 @@ class RSSILocation(Cluster):
     attributes = {
         # Location Information
         0x0000: ('type', t.uint8_t),
-        0x0001: ('method', t.uint8_t),  # enum8
+        0x0001: ('method', t.enum8),
         0x0002: ('age', t.uint16_t),
         0x0003: ('quality_measure', t.uint8_t),
         0x0004: ('num_of_devices', t.uint8_t),
@@ -415,10 +415,10 @@ class AnalogInput(Cluster):
         0x0045: ('min_present_value', t.Single),
         0x0051: ('out_of_service', t.Bool),
         0x0055: ('present_value', t.Single),
-        0x0067: ('reliability', t.uint8_t),  # enum8
+        0x0067: ('reliability', t.enum8),
         0x006a: ('resolution', t.Single),
         0x006f: ('status_flags', t.uint8_t),  # bitmap8
-        0x0075: ('engineering_units', t.uint16_t),  # enum16
+        0x0075: ('engineering_units', t.enum16),
         0x0100: ('application_type', t.uint32_t),
     }
     server_commands = {}
@@ -435,11 +435,11 @@ class AnalogOutput(Cluster):
         0x0051: ('out_of_service', t.Bool),
         0x0055: ('present_value', t.Single),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
-        0x0067: ('reliability', t.uint8_t),  # enum8
+        0x0067: ('reliability', t.enum8),
         0x0068: ('relinquish_default', t.Single),
         0x006a: ('resolution', t.Single),
         0x006f: ('status_flags', t.uint8_t),  # bitmap8
-        0x0075: ('engineering_units', t.uint16_t),  # enum16
+        0x0075: ('engineering_units', t.enum16),
         0x0100: ('application_type', t.uint32_t),
     }
     server_commands = {}
@@ -454,10 +454,10 @@ class AnalogValue(Cluster):
         0x0051: ('out_of_service', t.Bool),
         0x0055: ('present_value', t.Single),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
-        0x0067: ('reliability', t.uint8_t),  # enum8
+        0x0067: ('reliability', t.enum8),
         0x0068: ('relinquish_default', t.Single),
         0x006f: ('status_flags', t.uint8_t),  # bitmap8
-        0x0075: ('engineering_units', t.uint16_t),  # enum16
+        0x0075: ('engineering_units', t.enum16),
         0x0100: ('application_type', t.uint32_t),
     }
     server_commands = {}
@@ -473,9 +473,9 @@ class BinaryInput(Cluster):
         0x001c: ('description', t.LVBytes),
         0x002e: ('inactive_text', t.LVBytes),
         0x0051: ('out_of_service', t.Bool),
-        0x0054: ('polarity', t.uint8_t),  # enum8
+        0x0054: ('polarity', t.enum8),
         0x0055: ('present_value', t.Single),
-        0x0067: ('reliability', t.uint8_t),  # enum8
+        0x0067: ('reliability', t.enum8),
         0x006f: ('status_flags', t.uint8_t),  # bitmap8
         0x0100: ('application_type', t.uint32_t),
     }
@@ -493,10 +493,10 @@ class BinaryOutput(Cluster):
         0x0042: ('minimum_off_time', t.uint32_t),
         0x0043: ('minimum_on_time', t.uint32_t),
         0x0051: ('out_of_service', t.Bool),
-        0x0054: ('polarity', t.uint8_t),  # enum8
+        0x0054: ('polarity', t.enum8),
         0x0055: ('present_value', t.Single),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
-        0x0067: ('reliability', t.uint8_t),  # enum8
+        0x0067: ('reliability', t.enum8),
         0x0068: ('relinquish_default', t.Single),
         0x006f: ('status_flags', t.uint8_t),  # bitmap8
         0x0100: ('application_type', t.uint32_t),
@@ -517,7 +517,7 @@ class BinaryValue(Cluster):
         0x0051: ('out_of_service', t.Bool),
         0x0055: ('present_value', t.Single),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
-        0x0067: ('reliability', t.uint8_t),  # enum8
+        0x0067: ('reliability', t.enum8),
         0x0068: ('relinquish_default', t.Single),
         0x006f: ('status_flags', t.uint8_t),  # bitmap8
         0x0100: ('application_type', t.uint32_t),
@@ -536,7 +536,7 @@ class MultistateInput(Cluster):
         0x0051: ('out_of_service', t.Bool),
         0x0055: ('present_value', t.Single),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
-        0x0067: ('reliability', t.uint8_t),  # enum8
+        0x0067: ('reliability', t.enum8),
         0x006f: ('status_flags', t.uint8_t),  # bitmap8
         0x0100: ('application_type', t.uint32_t),
     }
@@ -554,7 +554,7 @@ class MultistateOutput(Cluster):
         0x0051: ('out_of_service', t.Bool),
         0x0055: ('present_value', t.Single),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
-        0x0067: ('reliability', t.uint8_t),  # enum8
+        0x0067: ('reliability', t.enum8),
         0x0068: ('relinquish_default', t.Single),
         0x006f: ('status_flags', t.uint8_t),  # bitmap8
         0x0100: ('application_type', t.uint32_t),
@@ -573,7 +573,7 @@ class MultistateValue(Cluster):
         0x0051: ('out_of_service', t.Bool),
         0x0055: ('present_value', t.Single),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
-        0x0067: ('reliability', t.uint8_t),  # enum8
+        0x0067: ('reliability', t.enum8),
         0x0068: ('relinquish_default', t.Single),
         0x006f: ('status_flags', t.uint8_t),  # bitmap8
         0x0100: ('application_type', t.uint32_t),
@@ -595,14 +595,14 @@ class Commissioning(Cluster):
         0x0003: ('channelmask', t.uint32_t),  # bitmap32
         0x0004: ('protocol_version', t.uint8_t),
         0x0005: ('stack_profile', t.uint8_t),
-        0x0006: ('startup_control', t.uint8_t),  # enum8
+        0x0006: ('startup_control', t.enum8),
         0x0010: ('trust_center_address', t.EUI64),
         0x0011: ('trust_center_master_key', t.fixed_list(16, t.uint8_t)),
         0x0012: ('network_key', t.fixed_list(16, t.uint8_t)),
         0x0013: ('use_insecure_join', t.Bool),
         0x0014: ('preconfigured_link_key', t.fixed_list(16, t.uint8_t)),
         0x0015: ('network_key_seq_num', t.uint8_t),
-        0x0016: ('network_key_type', t.uint8_t),  # enum8
+        0x0016: ('network_key_type', t.enum8),
         0x0017: ('network_manager_address', t.uint16_t),
         # Join Parameters
         0x0020: ('scan_attempts', t.uint8_t),
@@ -649,7 +649,7 @@ class Ota(Cluster):
         0x0003: ('current_zigbee_stack_version', t.uint16_t),
         0x0004: ('downloaded_file_version', t.uint32_t),
         0x0005: ('downloaded_zigbee_stack_version', t.uint16_t),
-        0x0006: ('image_upgrade_status', t.uint8_t),  # enum8
+        0x0006: ('image_upgrade_status', t.enum8),
         0x0007: ('manufacturer_id', t.uint16_t),
         0x0008: ('image_type_id', t.uint16_t),
         0x0009: ('minimum_block_req_delay', t.uint16_t),

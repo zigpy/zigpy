@@ -36,13 +36,13 @@ class Metering(Cluster):
         0x000b: ('fast_poll_update_period', t.uint8_t),
         0x000c: ('current_block_period_consump_delivered', t.uint48_t),
         0x000d: ('daily_consump_target', t.uint24_t),
-        0x000e: ('current_block', t.uint8_t),  # enum8
-        0x000f: ('profile_interval_period', t.uint8_t),  # enum8
+        0x000e: ('current_block', t.enum8),
+        0x000f: ('profile_interval_period', t.enum8),
         # 0x0010: ('interval_read_reporting_period', UNKNOWN),
         0x0011: ('preset_reading_time', t.uint16_t),
         0x0012: ('volume_per_report', t.uint16_t),
         0x0013: ('flow_restriction', t.uint8_t),
-        0x0014: ('supply_status', t.uint8_t),  # enum8
+        0x0014: ('supply_status', t.enum8),
         0x0015: ('current_in_energy_carrier_summ', t.uint48_t),
         0x0016: ('current_out_energy_carrier_summ', t.uint48_t),
         0x0017: ('inlet_tempreature', t.int24s),
@@ -88,7 +88,7 @@ class Metering(Cluster):
         0x0202: ('hours_in_operation', t.uint24_t),
         0x0203: ('hours_in_fault', t.uint24_t),
         0x0204: ('extended_status', t.uint64_t),  # bitmap64
-        0x0300: ('unit_of_measure', t.uint8_t),  # enum8
+        0x0300: ('unit_of_measure', t.enum8),
         0x0301: ('multiplier', t.uint24_t),
         0x0302: ('divisor', t.uint24_t),
         0x0303: ('summa_formatting', t.uint8_t),  # bitmap8
@@ -97,10 +97,10 @@ class Metering(Cluster):
         0x0306: ('metering_device_type', t.uint8_t),  # bitmap8
         0x0307: ('site_id', t.LVBytes),
         0x0308: ('meter_serial_number', t.LVBytes),
-        0x0309: ('energy_carrier_unit_of_meas', t.uint8_t),  # enum8
+        0x0309: ('energy_carrier_unit_of_meas', t.enum8),
         0x030a: ('energy_carrier_summ_formatting', t.uint8_t),  # bitmap8
         0x030b: ('energy_carrier_demand_formatting', t.uint8_t),  # bitmap8
-        0x030c: ('temperature_unit_of_meas', t.uint8_t),  # enum8
+        0x030c: ('temperature_unit_of_meas', t.enum8),
         0x030d: ('temperature_formatting', t.uint8_t),  # bitmap8
         0x030e: ('module_serial_number', t.LVBytes),
         0x030f: ('operating_tariff_level', t.LVBytes),
