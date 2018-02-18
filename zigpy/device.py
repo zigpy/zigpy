@@ -82,11 +82,11 @@ class Device(zigpy.util.LocalLogMixin):
 
     def handle_message(self, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
         try:
-            endpoint = self.endpoints[dst_ep]
+            endpoint = self.endpoints[src_ep]
         except KeyError:
             self.warn(
                 "Message on unknown endpoint %s",
-                dst_ep,
+                src_ep,
             )
             return
 

@@ -17,10 +17,10 @@ class Color(Cluster):
         0x0002: ('remaining_time', t.uint16_t),
         0x0003: ('current_x', t.uint16_t),
         0x0004: ('current_y', t.uint16_t),
-        0x0005: ('drift_compensation', t.uint8_t),  # enum8
+        0x0005: ('drift_compensation', t.enum8),
         0x0006: ('compensation_text', t.LVBytes),
         0x0007: ('color_temperature', t.uint16_t),
-        0x0008: ('color_mode', t.uint8_t),  # enum8
+        0x0008: ('color_mode', t.enum8),
         # Defined Primaries Information
         0x0010: ('num_primaries', t.uint8_t),
         0x0011: ('primary1_x', t.uint16_t),
@@ -56,7 +56,7 @@ class Color(Cluster):
         0x003c: ('color_point_b_intensity', t.uint8_t),
         # ...
         0x4000: ('enhanced_current_hue', t.uint16_t),
-        0x4001: ('enhanced_color_mode', t.uint8_t),  # enum8
+        0x4001: ('enhanced_color_mode', t.enum8),
         0x4002: ('color_loop_active', t.uint8_t),
         0x4003: ('color_loop_direction', t.uint8_t),
         0x4004: ('color_loop_time', t.uint16_t),

@@ -14,7 +14,7 @@ class IlluminanceMeasurement(Cluster):
         0x0001: ('min_measured_value', t.uint16_t),
         0x0002: ('max_measured_value', t.uint16_t),
         0x0003: ('tolerance', t.uint16_t),
-        0x0004: ('light_sensor_type', t.uint8_t),  # enum8
+        0x0004: ('light_sensor_type', t.enum8),
     }
     server_commands = {}
     client_commands = {}
@@ -26,8 +26,8 @@ class IlluminanceLevelSensing(Cluster):
     ep_attribute = 'illuminance_level'
     attributes = {
         # Illuminance Level Sensing Information
-        0x0000: ('level_status', t.uint8_t),  # enum8
-        0x0001: ('light_sensor_type', t.uint8_t),  # enum8
+        0x0000: ('level_status', t.enum8),
+        0x0001: ('light_sensor_type', t.enum8),
         # Illuminance Level Sensing Settings
         0x0010: ('illuminance_target_level', t.uint16_t),
     }
@@ -104,7 +104,7 @@ class OccupancySensing(Cluster):
     attributes = {
         # Occupancy Sensor Information
         0x0000: ('occupancy', t.uint8_t),  # bitmap8
-        0x0001: ('occupancy_sensor_type', t.uint8_t),  # enum8
+        0x0001: ('occupancy_sensor_type', t.enum8),
         # PIR Configuration
         0x0010: ('pir_o_to_u_delay', t.uint16_t),
         0x0011: ('pir_u_to_o_delay', t.uint16_t),

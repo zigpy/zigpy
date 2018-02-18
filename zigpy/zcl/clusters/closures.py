@@ -16,7 +16,7 @@ class Shade(Cluster):
         0x0002: ('status', t.uint8_t),  # bitmap8
         # Shade Settings
         0x0010: ('losed_limit', t.uint16_t),
-        0x0012: ('mode', t.uint8_t),  # enum8
+        0x0012: ('mode', t.enum8),
     }
     server_commands = {}
     client_commands = {}
@@ -27,9 +27,9 @@ class DoorLock(Cluster):
     name = 'Door Lock'
     ep_attribute = 'door_lock'
     attributes = {
-        0x0000: ('lock_state', t.uint8_t),  # enum8
+        0x0000: ('lock_state', t.enum8),
         0x0002: ('actuator_enabled', t.Bool),
-        0x0003: ('door_state', t.uint8_t),  # enum8
+        0x0003: ('door_state', t.enum8),
         0x0004: ('door_open_events', t.uint32_t),
         0x0005: ('door_closed_events', t.uint32_t),
         0x0006: ('open_period', t.uint16_t),
@@ -136,7 +136,7 @@ class WindowCovering(Cluster):
     ep_attribute = 'window_covering'
     attributes = {
         # Window Covering Information
-        0x0000: ('window_covering_type', t.uint8_t),  # enum8
+        0x0000: ('window_covering_type', t.enum8),
         0x0001: ('physical_close_limit_lift_cm', t.uint16_t),
         0x0002: ('physical_close_limit_tilt_ddegree', t.uint16_t),
         0x0003: ('current_position_lift_cm', t.uint16_t),
