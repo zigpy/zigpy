@@ -62,3 +62,17 @@ def test_attribute_reporting_config_1():
     assert data == b''
     assert arc2.direction == arc.direction
     assert arc2.timeout == arc.timeout
+
+
+def test_typed_collection():
+    tc = foundation.TypedCollection()
+    tc.type = 0x20
+    tc.value = t.LVList(t.uint8_t)([t.uint8_t(i) for i in range(100)])
+    ser = tc.serialize()
+
+    assert len(ser) == 1 + 1 + 100  # type, length, values
+
+    tc2, data = foundation.TypedCollection.deserialize(ser)
+
+    assert tc2.type == 0x20
+    assert tc2.value == list(range(100))
