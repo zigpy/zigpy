@@ -139,15 +139,18 @@ class _List(list):
 
 
 class _LVList(_List):
+    _prefix_length = 1
+
     def serialize(self):
-        head = len(self).to_bytes(1, 'little')
+        head = len(self).to_bytes(self._prefix_length, 'little')
         data = super().serialize()
         return head + data
 
     @classmethod
     def deserialize(cls, data):
         r = cls()
-        length, data = data[0], data[1:]
+        length = int.from_bytes(data[:cls._prefix_length], 'little')
+        data = data[cls._prefix_length:]
         for i in range(length):
             item, data = r._itemtype.deserialize(data)
             r.append(item)
@@ -160,9 +163,10 @@ def List(itemtype):  # noqa: N802
     return List
 
 
-def LVList(itemtype):  # noqa: N802
+def LVList(itemtype, prefix_length=1):  # noqa: N802
     class LVList(_LVList):
         _itemtype = itemtype
+        _prefix_length = prefix_length
     return LVList
 
 

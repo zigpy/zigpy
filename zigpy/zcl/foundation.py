@@ -49,6 +49,30 @@ class Discrete:
     pass
 
 
+class TypeValue:
+    def serialize(self):
+        return self.type.to_bytes(1, 'little') + self.value.serialize()
+
+    @classmethod
+    def deserialize(cls, data):
+        self = cls()
+        self.type, data = data[0], data[1:]
+        python_type = DATA_TYPES[self.type][1]
+        self.value, data = python_type.deserialize(data)
+        return self, data
+
+
+class TypedCollection(TypeValue):
+    @classmethod
+    def deserialize(cls, data):
+        self = cls()
+        self.type, data = data[0], data[1:]
+        python_item_type = DATA_TYPES[self.type][1]
+        python_type = t.LVList(python_item_type)
+        self.value, data = python_type.deserialize(data)
+        return self, data
+
+
 DATA_TYPES = {
     0x00: ('No data', None, None),
     0x08: ('General', t.fixed_list(1, t.uint8_t), Discrete),
@@ -93,10 +117,10 @@ DATA_TYPES = {
     0x42: ('Character string', t.LVBytes, Discrete),
     # 0x43: ('Long octet string', ),
     # 0x44: ('Long character string', ),
-    # 0x48: ('Array', ),
-    # 0x4c: ('Structure', ),
-    # 0x50: ('Set', ),
-    # 0x51: ('Bag', ),
+    0x48: ('Array', TypedCollection, Discrete),
+    0x4c: ('Structure', t.LVList(TypeValue, 2), Discrete),
+    0x50: ('Set', TypedCollection, Discrete),
+    0x51: ('Bag', TypedCollection, Discrete),
     0xe0: ('Time of day', t.uint32_t, Analog),
     0xe1: ('Date', t.uint32_t, Analog),
     0xe2: ('UTCTime', t.uint32_t, Analog),
@@ -116,19 +140,6 @@ DATA_TYPE_IDX = {
 DATA_TYPE_IDX[t.uint32_t] = 0x23
 DATA_TYPE_IDX[t.EUI64] = 0xf0
 DATA_TYPE_IDX[t.Bool] = 0x10
-
-
-class TypeValue():
-    def serialize(self):
-        return self.type.to_bytes(1, 'little') + self.value.serialize()
-
-    @classmethod
-    def deserialize(cls, data):
-        self = cls()
-        self.type, data = data[0], data[1:]
-        actual_type = DATA_TYPES[self.type][1]
-        self.value, data = actual_type.deserialize(data)
-        return self, data
 
 
 class ReadAttributeRecord():
