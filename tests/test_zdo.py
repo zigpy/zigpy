@@ -1,3 +1,4 @@
+import asyncio
 from unittest import mock
 
 import pytest
@@ -124,5 +125,15 @@ def test_device_accessor(zdo_f):
 
 
 def test_reply(zdo_f):
+    call_count = 0
+
+    @asyncio.coroutine
+    def mock_request(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+
+    zdo_f.device._application.request = mock_request
     zdo_f.reply(0x0005)
-    assert zdo_f._device._application.request.call_count == 1
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(asyncio.sleep(0))
+    assert call_count == 1
