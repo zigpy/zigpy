@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import zigpy.types as t
@@ -47,7 +48,8 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def reply(self, command, *args):
         sequence, data = self._serialize(command, *args)
-        return self._device.reply(0, command, 0, 0, sequence, data)
+        loop = asyncio.get_event_loop()
+        loop.create_task(self._device.reply(0, command, 0, 0, sequence, data))
 
     def handle_message(self, is_reply, profile, cluster, tsn, command_id, args):
         if is_reply:
