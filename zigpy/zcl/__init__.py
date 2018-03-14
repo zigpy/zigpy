@@ -162,7 +162,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             return
 
         self.debug("ZCL request 0x%04x: %s", command_id, args)
-        if command_id >= 0xff: # zcl cluster command
+        if command_id > 0xff: # zcl cluster command
             # Unencapsulate bad hack
             command_id -= 256
             self.listener_event('cluster_command', tsn, command_id, args)
