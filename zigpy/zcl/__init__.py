@@ -162,15 +162,13 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             return
 
         self.debug("ZCL request 0x%04x: %s", command_id, args)
-        if command_id <= 0xff:
-            self.listener_event('zdo_command', tsn, command_id, args)
-        else:
+        if command_id >= 0xff: # zcl cluster command
             # Unencapsulate bad hack
             command_id -= 256
             self.listener_event('cluster_command', tsn, command_id, args)
             self.handle_cluster_request(tsn, command_id, args)
             return
-
+        # zcl global commands
         if command_id == 0x0a:  # Report attributes
             valuestr = ", ".join([
                 "%s=%s" % (a.attrid, a.value.value) for a in args[0]
@@ -182,7 +180,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             self.handle_cluster_general_request(tsn, command_id, args)
 
     def handle_cluster_request(self, tsn, command_id, args):
-        self.debug("No handler for cluster command %s", command_id)
+        pass
+        #self.debug("No handler for cluster command %s", command_id)
 
     def handle_cluster_general_request(self, tsn, command_id, args):
         self.debug("No handler for general command %s", command_id)
