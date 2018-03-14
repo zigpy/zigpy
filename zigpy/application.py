@@ -109,8 +109,12 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         raise NotImplementedError
 
     def get_sequence(self):
-        self._send_sequence = (self._send_sequence + 1) % 256
+        while True:    
+            self._send_sequence = (self._send_sequence + 1) % 256
+            if not self._send_sequence in self._pending:
+                break
         return self._send_sequence
+
 
     def get_device(self, ieee=None, nwk=None):
         if ieee is not None:
