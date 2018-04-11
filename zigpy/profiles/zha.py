@@ -73,4 +73,6 @@ CLUSTERS = {
     DeviceType.COLOR_DIMMER_SWITCH: ([0x0007], [0x0004, 0x0005, 0x0006, 0x0008, 0x0300]),
     DeviceType.LIGHT_SENSOR: ([0x0400], []),
     DeviceType.OCCUPANCY_SENSOR: ([0x0406], []),
+    # HVAC
+    DeviceType.THERMOSTAT: ([0x0004, 0x0005, 0x0200, 0x0201, 0x0202, 0x0203, 0x0204], []),
 }
