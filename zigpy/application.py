@@ -18,6 +18,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self._listeners = {}
         self._ieee = None
         self._nwk = None
+        self._multicast_table = {}
 
         if database_file is not None:
             self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
