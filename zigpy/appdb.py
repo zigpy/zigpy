@@ -55,6 +55,9 @@ class PersistingListener:
 
     def device_removed(self, device):
         self._remove_device(device)
+        
+    def subscribe_group(self, group_id):
+        pass
 
     def attribute_updated(self, cluster, attrid, value):
         self._save_attribute(
