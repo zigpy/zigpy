@@ -18,7 +18,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self._listeners = {}
         self._ieee = None
         self._nwk = None
-        self._multicast_table = {}
+
 
         if database_file is not None:
             self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
@@ -135,3 +135,8 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     @property
     def nwk(self):
         return self._nwk
+
+    async def subscribe_group(self, group_id):
+        raise NotImplementedError
+    async def unsubscribe_group(self,  group_id):
+        raise NotImplementedError
