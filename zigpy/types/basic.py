@@ -9,10 +9,8 @@ class int_t(int):  # noqa: N801
 
     @classmethod
     def deserialize(cls, data):
-        # Work around https://bugs.python.org/issue23640
-        r = cls(int.from_bytes(data[:cls._size], 'little', signed=cls._signed))
-        data = data[cls._size:]
-        return r, data
+        r = cls.from_bytes(data[:cls._size], 'little', signed=cls._signed)
+        return r, data[cls._size:]
 
 
 class int8s(int_t):  # noqa: N801
