@@ -286,6 +286,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         schema = foundation.COMMANDS[0x06][1]
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = 0
+        if isinstance(attribute,str):
+            attribute = self._attridx[attribute]
         cfg.attrid = attribute
         cfg.datatype = foundation.DATA_TYPE_IDX.get(
             self.attributes.get(attribute, (None, None))[1],
