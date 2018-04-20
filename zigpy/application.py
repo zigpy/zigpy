@@ -19,6 +19,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self._ieee = None
         self._nwk = None
 
+
         if database_file is not None:
             self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
             self.add_listener(self._dblistener)
@@ -109,8 +110,12 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         raise NotImplementedError
 
     def get_sequence(self):
-        self._send_sequence = (self._send_sequence + 1) % 256
+        while True:    
+            self._send_sequence = (self._send_sequence + 1) % 256
+            if not self._send_sequence in self._pending:
+                break
         return self._send_sequence
+
 
     def get_device(self, ieee=None, nwk=None):
         if ieee is not None:
@@ -130,3 +135,8 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     @property
     def nwk(self):
         return self._nwk
+
+    async def subscribe_group(self, group_id):
+        raise NotImplementedError
+    async def unsubscribe_group(self,  group_id):
+        raise NotImplementedError

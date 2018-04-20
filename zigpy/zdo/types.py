@@ -157,6 +157,7 @@ CLUSTERS = {
     # ... TODO optional stuff ...
     0x8034: ('Mgmt_Leave_rsp', (STATUS, )),
     0x8036: ('Mgmt_Permit_Joining_rsp', (STATUS, )),
+    0x8038: ('Mgmt_Nwk_update_notify', (STATUS, ('ScanChan', t.uint32_t), ('TransTotal', t.uint16_t), ('TransFail', t.uint16_t), ('ScanList', t.List(t.uint8_t)))),
     # ... TODO optional stuff ...
 }
 
