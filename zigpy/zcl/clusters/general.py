@@ -474,7 +474,7 @@ class BinaryInput(Cluster):
         0x002e: ('inactive_text', t.LVBytes),
         0x0051: ('out_of_service', t.Bool),
         0x0054: ('polarity', t.enum8),
-        0x0055: ('present_value', t.Single),
+        0x0055: ('present_value', t.Bool),
         0x0067: ('reliability', t.enum8),
         0x006f: ('status_flags', t.uint8_t),  # bitmap8
         0x0100: ('application_type', t.uint32_t),
@@ -494,10 +494,10 @@ class BinaryOutput(Cluster):
         0x0043: ('minimum_on_time', t.uint32_t),
         0x0051: ('out_of_service', t.Bool),
         0x0054: ('polarity', t.enum8),
-        0x0055: ('present_value', t.Single),
+        0x0055: ('present_value', t.Bool),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
         0x0067: ('reliability', t.enum8),
-        0x0068: ('relinquish_default', t.Single),
+        0x0068: ('relinquish_default', t.Bool),
         0x006f: ('status_flags', t.uint8_t),  # bitmap8
         0x0100: ('application_type', t.uint32_t),
     }
