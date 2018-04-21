@@ -122,6 +122,16 @@ def test_request(ep):
     assert ep._device.request.call_count == 1
 
 
+def test_request_change_profileid(ep):
+    ep.profile_id = 49246
+    ep.request(7, 9, b'')
+    ep.profile_id = 49246
+    ep.request(0x1000, 10, b'')
+    ep.profile_id = 260
+    ep.request(0x1000, 11, b'')
+    assert ep._device.request.call_count == 3
+
+
 def test_reply(ep):
     ep.profile_id = 260
     ep.reply(7, 8, b'')
