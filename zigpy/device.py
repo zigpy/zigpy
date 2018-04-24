@@ -43,12 +43,11 @@ class Device(zigpy.util.LocalLogMixin):
         loop = asyncio.get_event_loop()
         self._init_handle = loop.call_soon(asyncio.async, self._initialize())
 
-    @asyncio.coroutine
-    def _initialize(self):
+    async def _initialize(self):
         if self.status == Status.NEW:
             self.info("Discovering endpoints")
             try:
-                epr = yield from self.zdo.request(0x0005, self.nwk, tries=3, delay=2)
+                epr = await self.zdo.request(0x0005, self.nwk, tries=3, delay=2)
                 if epr[0] != 0:
                     raise Exception("Endpoint request failed: %s", epr)
             except Exception as exc:
@@ -66,7 +65,7 @@ class Device(zigpy.util.LocalLogMixin):
         for endpoint_id in self.endpoints.keys():
             if endpoint_id == 0:  # ZDO
                 continue
-            yield from self.endpoints[endpoint_id].initialize()
+            await self.endpoints[endpoint_id].initialize()
 
         self.status = Status.ENDPOINTS_INIT
         self.initializing = False

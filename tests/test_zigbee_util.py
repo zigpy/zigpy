@@ -41,8 +41,7 @@ def test_log():
 def _test_retry(exception, retry_exceptions, n):
     counter = 0
 
-    @asyncio.coroutine
-    def count():
+    async def count():
         nonlocal counter
         counter += 1
         if counter <= n:
@@ -75,8 +74,7 @@ def _test_retryable(exception, retry_exceptions, n, tries=3, delay=0.001):
     counter = 0
 
     @util.retryable(retry_exceptions)
-    @asyncio.coroutine
-    def count(x, y, z):
+    async def count(x, y, z):
         assert x == y == z == 9
         nonlocal counter
         counter += 1

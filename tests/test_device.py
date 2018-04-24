@@ -17,12 +17,10 @@ def dev():
 def test_initialize(monkeypatch, dev):
     loop = asyncio.get_event_loop()
 
-    @asyncio.coroutine
-    def mockrequest(req, nwk, tries=None, delay=None):
+    async def mockrequest(req, nwk, tries=None, delay=None):
         return [0, None, [1, 2]]
 
-    @asyncio.coroutine
-    def mockepinit(self):
+    async def mockepinit(self):
         return
 
     monkeypatch.setattr(endpoint.Endpoint, 'initialize', mockepinit)
@@ -38,8 +36,7 @@ def test_initialize(monkeypatch, dev):
 def test_initialize_fail(dev):
     loop = asyncio.get_event_loop()
 
-    @asyncio.coroutine
-    def mockrequest(req, nwk, tries=None, delay=None):
+    async def mockrequest(req, nwk, tries=None, delay=None):
         return [1]
 
     dev.zdo.request = mockrequest
