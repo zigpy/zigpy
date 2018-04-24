@@ -41,21 +41,20 @@ class LocalLogMixin:
         return self.log(logging.ERROR, msg, *args)
 
 
-@asyncio.coroutine
-def retry(func, retry_exceptions, tries=3, delay=0.1):
+async def retry(func, retry_exceptions, tries=3, delay=0.1):
     """Retry a function in case of exception
 
     Only exceptions in `retry_exceptions` will be retried.
     """
     while True:
         try:
-            r = yield from func()
+            r = await func()
             return r
         except retry_exceptions:
             if tries <= 1:
                 raise
             tries -= 1
-            yield from asyncio.sleep(delay)
+            await asyncio.sleep(delay)
 
 
 def retryable(retry_exceptions, tries=1, delay=0.1):

@@ -16,8 +16,7 @@ def ep():
 def _test_initialize(ep, profile):
     loop = asyncio.get_event_loop()
 
-    @asyncio.coroutine
-    def mockrequest(req, nwk, epid, tries=None, delay=None):
+    async def mockrequest(req, nwk, epid, tries=None, delay=None):
         sd = types.SimpleDescriptor()
         sd.endpoint = 1
         sd.profile = profile
@@ -45,8 +44,7 @@ def test_initialize_zll(ep):
 def test_initialize_fail(ep):
     loop = asyncio.get_event_loop()
 
-    @asyncio.coroutine
-    def mockrequest(req, nwk, epid, tries=None, delay=None):
+    async def mockrequest(req, nwk, epid, tries=None, delay=None):
         return [1, None, None]
 
     ep._device.zdo.request = mockrequest

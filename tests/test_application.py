@@ -69,8 +69,7 @@ def test_join_handler_change_id(app, ieee):
 def _remove(app, ieee, retval):
     app.devices[ieee] = mock.MagicMock()
 
-    @asyncio.coroutine
-    def leave():
+    async def leave():
         return retval
 
     app.devices[ieee].zdo.leave.side_effect = leave
@@ -80,13 +79,13 @@ def _remove(app, ieee, retval):
 
 
 def test_remove(app, ieee):
-    app.force_remove = mock.MagicMock()
+    app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
     _remove(app, ieee, [0])
     assert app.force_remove.call_count == 0
 
 
-def test_remove_failed_zdo(app, ieee):
-    app.force_remove = mock.MagicMock()
+def test_remove_with_failed_zdo(app, ieee):
+    app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
     _remove(app, ieee, 1)
     assert app.force_remove.call_count == 1
 

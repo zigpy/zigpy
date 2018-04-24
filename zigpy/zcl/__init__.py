@@ -187,15 +187,13 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def handle_cluster_general_request(self, tsn, command_id, args):
         self.debug("No handler for general command %s", command_id)
 
-    @asyncio.coroutine
-    def read_attributes_raw(self, attributes, manufacturer=None):
+    async def read_attributes_raw(self, attributes, manufacturer=None):
         schema = foundation.COMMANDS[0x00][1]
         attributes = [t.uint16_t(a) for a in attributes]
-        v = yield from self.request(True, 0x00, schema, attributes, manufacturer=manufacturer)
+        v = await self.request(True, 0x00, schema, attributes, manufacturer=manufacturer)
         return v
 
-    @asyncio.coroutine
-    def read_attributes(self, attributes, allow_cache=False, raw=False, manufacturer=None):
+    async def read_attributes(self, attributes, allow_cache=False, raw=False, manufacturer=None):
         if raw:
             assert len(attributes) == 1
         success, failure = {}, {}
@@ -224,7 +222,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 return success[attributes[0]]
             return success, failure
 
-        result = yield from self.read_attributes_raw(to_read, manufacturer=manufacturer)
+        result = await self.read_attributes_raw(to_read, manufacturer=manufacturer)
         if not isinstance(result[0], list):
             for attrid in to_read:
                 orig_attribute = orig_attributes[attrid]

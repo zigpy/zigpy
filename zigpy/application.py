@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 import zigpy.appdb
@@ -24,13 +23,11 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             self.add_listener(self._dblistener)
             self._dblistener.load()
 
-    @asyncio.coroutine
-    def startup(self, auto_form=False):
+    async def startup(self, auto_form=False):
         """Perform a complete application startup"""
         raise NotImplementedError
 
-    @asyncio.coroutine
-    def form_network(self, channel=15, pan_id=None, extended_pan_id=None):
+    async def form_network(self, channel=15, pan_id=None, extended_pan_id=None):
         """Form a new network"""
         raise NotImplementedError
 
@@ -42,8 +39,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self.devices[ieee] = dev
         return dev
 
-    @asyncio.coroutine
-    def remove(self, ieee):
+    async def remove(self, ieee):
         assert isinstance(ieee, t.EUI64)
         dev = self.devices.pop(ieee, None)
         if not dev:
@@ -52,18 +48,17 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
         zdo_worked = False
         try:
-            resp = yield from dev.zdo.leave()
+            resp = await dev.zdo.leave()
             zdo_worked = resp[0] == 0
         except Exception as exc:
             pass
 
         if not zdo_worked:
-            yield from self.force_remove(dev)
+            await self.force_remove(dev)
 
         self.listener_event('device_removed', dev)
 
-    @asyncio.coroutine
-    def force_remove(self, dev):
+    async def force_remove(self, dev):
         raise NotImplementedError
 
     def handle_message(self, is_reply, sender, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
@@ -98,8 +93,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             self.listener_event('device_left', dev)
 
     @zigpy.util.retryable_request
-    @asyncio.coroutine
-    def request(self, nwk, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True, timeout=10):
+    async def request(self, nwk, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True, timeout=10):
         raise NotImplementedError
 
     def permit(self, time_s=60):

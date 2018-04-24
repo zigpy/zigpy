@@ -55,8 +55,7 @@ def test_database(tmpdir, ieee):
     app2 = make_app(db)
     assert ieee in app2.devices
 
-    @asyncio.coroutine
-    def mockleave(*args, **kwargs):
+    async def mockleave(*args, **kwargs):
         return [0]
 
     app2.devices[ieee].zdo.leave = mockleave

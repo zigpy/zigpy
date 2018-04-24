@@ -1,4 +1,3 @@
-import asyncio
 import enum
 import logging
 
@@ -29,14 +28,13 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status = Status.NEW
         self._listeners = {}
 
-    @asyncio.coroutine
-    def initialize(self):
+    async def initialize(self):
         if self.status == Status.ZDO_INIT:
             return
 
         self.info("Discovering endpoint information")
         try:
-            sdr = yield from self._device.zdo.request(
+            sdr = await self._device.zdo.request(
                 0x0004,
                 self._device.nwk,
                 self._endpoint_id,
