@@ -265,7 +265,7 @@ def test_unbind(cluster):
 
 def test_configure_reporting(cluster):
     cluster.configure_reporting(0, 10, 20, 1)
-    cluster.configure_reporting('basic', 10, 20, 1)
+    cluster.configure_reporting('zcl_version', 10, 20, 1)
 
 
 def test_command(cluster):
