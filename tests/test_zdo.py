@@ -124,7 +124,8 @@ def test_device_accessor(zdo_f):
     assert zdo_f.device.nwk == 65535
 
 
-def test_reply(zdo_f):
+@pytest.mark.asyncio
+async def test_reply(zdo_f):
     call_count = 0
 
     async def mock_request(*args, **kwargs):
@@ -133,6 +134,5 @@ def test_reply(zdo_f):
 
     zdo_f.device._application.request = mock_request
     zdo_f.reply(0x0005)
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(asyncio.sleep(0))
+    await asyncio.sleep(0)
     assert call_count == 1

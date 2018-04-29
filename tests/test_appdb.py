@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 import pytest
@@ -17,7 +16,8 @@ def ieee(init=0):
     return t.EUI64(map(t.uint8_t, range(init, init + 8)))
 
 
-def test_database(tmpdir, ieee):
+@pytest.mark.asyncio
+async def test_database(tmpdir, ieee):
     db = os.path.join(str(tmpdir), 'test.db')
     app = make_app(db)
     # TODO: Leaks a task on dev.initialize, I think?
@@ -59,8 +59,7 @@ def test_database(tmpdir, ieee):
         return [0]
 
     app2.devices[ieee].zdo.leave = mockleave
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(app2.remove(ieee))
+    await app2.remove(ieee)
     assert ieee not in app2.devices
 
     app3 = make_app(db)
