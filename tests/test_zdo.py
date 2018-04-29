@@ -36,35 +36,40 @@ def test_deserialize_unknown():
 def zdo_f():
     app = mock.MagicMock()
     app.ieee = t.EUI64(map(t.uint8_t, [8, 9, 10, 11, 12, 13, 14, 15]))
-    app.get_sequence = mock.MagicMock(return_value=123)
+    app.get_sequence.return_value = 123
+    app.request.side_effect = asyncio.coroutine(mock.MagicMock())
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     dev = zigpy.device.Device(app, ieee, 65535)
     return zdo.ZDO(dev)
 
 
-def test_request(zdo_f):
-    zdo_f.request(2, 65535)
+@pytest.mark.asyncio
+async def test_request(zdo_f):
+    await zdo_f.request(2, 65535)
     app_mock = zdo_f._device._application
     assert app_mock.request.call_count == 1
     assert app_mock.get_sequence.call_count == 1
 
 
-def test_bind(zdo_f):
-    zdo_f.bind(1, 1026)
+@pytest.mark.asyncio
+async def test_bind(zdo_f):
+    await zdo_f.bind(1, 1026)
     app_mock = zdo_f._device._application
     assert app_mock.request.call_count == 1
     assert app_mock.request.call_args[0][2] == 0x0021
 
 
-def test_unbind(zdo_f):
-    zdo_f.unbind(1, 1026)
+@pytest.mark.asyncio
+async def test_unbind(zdo_f):
+    await zdo_f.unbind(1, 1026)
     app_mock = zdo_f._device._application
     assert app_mock.request.call_count == 1
     assert app_mock.request.call_args[0][2] == 0x0022
 
 
-def test_leave(zdo_f):
-    zdo_f.leave()
+@pytest.mark.asyncio
+async def test_leave(zdo_f):
+    await zdo_f.leave()
     app_mock = zdo_f._device._application
     assert app_mock.request.call_count == 1
     assert app_mock.request.call_args[0][2] == 0x0034
