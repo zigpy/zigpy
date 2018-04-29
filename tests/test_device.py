@@ -1,3 +1,4 @@
+import asyncio
 from unittest import mock
 
 import pytest
@@ -9,6 +10,7 @@ from zigpy import device, endpoint
 @pytest.fixture
 def dev():
     app_mock = mock.MagicMock()
+    app_mock.request.side_effect = asyncio.coroutine(mock.MagicMock())
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     return device.Device(app_mock, ieee, 65535)
 
@@ -42,11 +44,11 @@ async def test_initialize_fail(dev):
     assert dev.status == device.Status.NEW
 
 
-def test_request(dev):
-    dev.request(1, 2, 3, 3, 4, b'')
-    app_mock = dev._application
-    assert app_mock.request.call_count == 1
-    assert app_mock.get_sequence.call_count == 0
+@pytest.mark.asyncio
+async def test_request(dev):
+    await dev.request(1, 2, 3, 3, 4, b'')
+    assert dev._application.request.call_count == 1
+    assert dev._application.get_sequence.call_count == 0
 
 
 def test_radio_details(dev):
