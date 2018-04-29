@@ -46,9 +46,20 @@ async def test_initialize_fail(dev):
 
 @pytest.mark.asyncio
 async def test_request(dev):
+    assert dev.last_seen is None
     await dev.request(1, 2, 3, 3, 4, b'')
     assert dev._application.request.call_count == 1
     assert dev._application.get_sequence.call_count == 0
+    assert dev.last_seen is not None
+
+
+@pytest.mark.asyncio
+async def test_failed_request(dev):
+    assert dev.last_seen is None
+    dev._application.request.side_effect = Exception
+    with pytest.raises(Exception):
+        await dev.request(1, 2, 3, 4, b'')
+    assert dev.last_seen is None
 
 
 def test_radio_details(dev):
