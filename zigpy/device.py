@@ -69,7 +69,7 @@ class Device(zigpy.util.LocalLogMixin):
 
         self.status = Status.ENDPOINTS_INIT
         self.initializing = False
-        self._application.listener_event('device_initialized', self)
+        self._application.device_initialized(self)
 
     def add_endpoint(self, endpoint_id):
         ep = zigpy.endpoint.Endpoint(self, endpoint_id)
