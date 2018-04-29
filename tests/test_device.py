@@ -68,11 +68,18 @@ def test_radio_details(dev):
     assert dev.rssi == 2
 
 
-def test_handle_request_no_endpoint(dev):
+def test_deserialize(dev):
+    ep = dev.add_endpoint(3)
+    ep.deserialize = mock.MagicMock()
+    dev.deserialize(3, 1, b'')
+    assert ep.deserialize.call_count == 1
+
+
+def test_handle_message_no_endpoint(dev):
     dev.handle_message(False, 99, 98, 97, 97, 1, 0, [])
 
 
-def test_handle_request(dev):
+def test_handle_message(dev):
     ep = dev.add_endpoint(3)
     ep.handle_message = mock.MagicMock()
     dev.handle_message(False, 99, 98, 3, 3, 1, 0, [])

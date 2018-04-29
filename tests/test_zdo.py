@@ -19,19 +19,6 @@ def test_commands():
             assert hasattr(paramtype, 'deserialize')
 
 
-def test_deserialize():
-    tsn, command_id, is_reply, args = zdo.deserialize(2, b'\x01\x02\x03xx')
-    assert tsn == 1
-    assert is_reply is False
-    assert args == [0x0302]
-
-
-def test_deserialize_unknown():
-    tsn, command_id, is_reply, args = zdo.deserialize(0x0100, b'\x01')
-    assert tsn == 1
-    assert is_reply is False
-
-
 @pytest.fixture
 def zdo_f():
     app = mock.MagicMock()
@@ -41,6 +28,19 @@ def zdo_f():
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     dev = zigpy.device.Device(app, ieee, 65535)
     return zdo.ZDO(dev)
+
+
+def test_deserialize(zdo_f):
+    tsn, command_id, is_reply, args = zdo_f.deserialize(2, b'\x01\x02\x03xx')
+    assert tsn == 1
+    assert is_reply is False
+    assert args == [0x0302]
+
+
+def test_deserialize_unknown(zdo_f):
+    tsn, command_id, is_reply, args = zdo_f.deserialize(0x0100, b'\x01')
+    assert tsn == 1
+    assert is_reply is False
 
 
 @pytest.mark.asyncio

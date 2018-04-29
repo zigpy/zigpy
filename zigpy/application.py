@@ -65,14 +65,11 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     async def force_remove(self, dev):
         raise NotImplementedError
 
-    def handle_message(self, is_reply, sender, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
-        try:
-            device = self.get_device(nwk=sender)
-        except KeyError:
-            LOGGER.warning("Message on unknown device 0x%04x", sender)
-            return
+    def deserialize(self, sender, endpoint_id, cluster_id, data):
+        return sender.deserialize(endpoint_id, cluster_id, data)
 
-        return device.handle_message(is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args)
+    def handle_message(self, sender, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
+        return sender.handle_message(is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args)
 
     def handle_join(self, nwk, ieee, parent_nwk):
         LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
