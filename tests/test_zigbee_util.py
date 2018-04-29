@@ -1,4 +1,3 @@
-import asyncio
 from unittest import mock
 
 import pytest
@@ -38,7 +37,7 @@ def test_log():
     log.error("Test error")
 
 
-def _test_retry(exception, retry_exceptions, n):
+async def _test_retry(exception, retry_exceptions, n):
     counter = 0
 
     async def count():
@@ -49,28 +48,30 @@ def _test_retry(exception, retry_exceptions, n):
             exc._counter = counter
             raise exc
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(util.retry(count, retry_exceptions))
+    await util.retry(count, retry_exceptions)
     return counter
 
 
-def test_retry_no_retries():
-    counter = _test_retry(Exception, Exception, 0)
+@pytest.mark.asyncio
+async def test_retry_no_retries():
+    counter = await _test_retry(Exception, Exception, 0)
     assert counter == 1
 
 
-def test_retry_always():
+@pytest.mark.asyncio
+async def test_retry_always():
     with pytest.raises(ValueError) as exc_info:
-        _test_retry(ValueError, (IndexError, ValueError), 999)
+        await _test_retry(ValueError, (IndexError, ValueError), 999)
     assert exc_info.value._counter == 3
 
 
-def test_retry_once():
-    counter = _test_retry(ValueError, ValueError, 1)
+@pytest.mark.asyncio
+async def test_retry_once():
+    counter = await _test_retry(ValueError, ValueError, 1)
     assert counter == 2
 
 
-def _test_retryable(exception, retry_exceptions, n, tries=3, delay=0.001):
+async def _test_retryable(exception, retry_exceptions, n, tries=3, delay=0.001):
     counter = 0
 
     @util.retryable(retry_exceptions)
@@ -83,35 +84,39 @@ def _test_retryable(exception, retry_exceptions, n, tries=3, delay=0.001):
             exc._counter = counter
             raise exc
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(count(9, 9, 9, tries=tries, delay=delay))
+    await count(9, 9, 9, tries=tries, delay=delay)
     return counter
 
 
-def test_retryable_no_retry():
-    counter = _test_retryable(Exception, Exception, 0, 0, 0)
+@pytest.mark.asyncio
+async def test_retryable_no_retry():
+    counter = await _test_retryable(Exception, Exception, 0, 0, 0)
     assert counter == 1
 
 
-def test_retryable_exception_no_retry():
+@pytest.mark.asyncio
+async def test_retryable_exception_no_retry():
     with pytest.raises(Exception) as exc_info:
-        _test_retryable(Exception, Exception, 1, 0, 0)
+        await _test_retryable(Exception, Exception, 1, 0, 0)
     assert exc_info.value._counter == 1
 
 
-def test_retryable_no_retries():
-    counter = _test_retryable(Exception, Exception, 0)
+@pytest.mark.asyncio
+async def test_retryable_no_retries():
+    counter = await _test_retryable(Exception, Exception, 0)
     assert counter == 1
 
 
-def test_retryable_always():
+@pytest.mark.asyncio
+async def test_retryable_always():
     with pytest.raises(ValueError) as exc_info:
-        _test_retryable(ValueError, (IndexError, ValueError), 999)
+        await _test_retryable(ValueError, (IndexError, ValueError), 999)
     assert exc_info.value._counter == 3
 
 
-def test_retryable_once():
-    counter = _test_retryable(ValueError, ValueError, 1)
+@pytest.mark.asyncio
+async def test_retryable_once():
+    counter = await _test_retryable(ValueError, ValueError, 1)
     assert counter == 2
 
 

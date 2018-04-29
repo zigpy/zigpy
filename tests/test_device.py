@@ -1,4 +1,3 @@
-import asyncio
 from unittest import mock
 
 import pytest
@@ -14,9 +13,8 @@ def dev():
     return device.Device(app_mock, ieee, 65535)
 
 
-def test_initialize(monkeypatch, dev):
-    loop = asyncio.get_event_loop()
-
+@pytest.mark.asyncio
+async def test_initialize(monkeypatch, dev):
     async def mockrequest(req, nwk, tries=None, delay=None):
         return [0, None, [1, 2]]
 
@@ -26,21 +24,20 @@ def test_initialize(monkeypatch, dev):
     monkeypatch.setattr(endpoint.Endpoint, 'initialize', mockepinit)
 
     dev.zdo.request = mockrequest
-    loop.run_until_complete(dev._initialize())
+    await dev._initialize()
 
     assert dev.status > device.Status.NEW
     assert 1 in dev.endpoints
     assert 2 in dev.endpoints
 
 
-def test_initialize_fail(dev):
-    loop = asyncio.get_event_loop()
-
+@pytest.mark.asyncio
+async def test_initialize_fail(dev):
     async def mockrequest(req, nwk, tries=None, delay=None):
         return [1]
 
     dev.zdo.request = mockrequest
-    loop.run_until_complete(dev._initialize())
+    await dev._initialize()
 
     assert dev.status == device.Status.NEW
 

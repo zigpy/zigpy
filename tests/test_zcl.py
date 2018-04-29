@@ -1,4 +1,3 @@
-import asyncio
 from unittest import mock
 
 import pytest
@@ -138,7 +137,8 @@ def _mk_rar(attrid, value, status=0):
         return r
 
 
-def test_read_attributes_uncached(cluster):
+@pytest.mark.asyncio
+async def test_read_attributes_uncached(cluster):
     async def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
@@ -147,31 +147,31 @@ def test_read_attributes_uncached(cluster):
         rar99 = _mk_rar(99, None, 1)
         return [[rar0, rar4, rar99]]
     cluster.request = mockrequest
-    loop = asyncio.get_event_loop()
-    success, failure = loop.run_until_complete(cluster.read_attributes(
+    success, failure = await cluster.read_attributes(
         [0, "manufacturer", 99],
-    ))
+    )
     assert success[0] == 99
     assert success["manufacturer"] == b'Manufacturer'
     assert failure[99] == 1
 
 
-def test_read_attributes_cached(cluster):
+@pytest.mark.asyncio
+async def test_read_attributes_cached(cluster):
     cluster.request = mock.MagicMock()
     cluster._attr_cache[0] = 99
     cluster._attr_cache[4] = b'Manufacturer'
-    loop = asyncio.get_event_loop()
-    success, failure = loop.run_until_complete(cluster.read_attributes(
+    success, failure = await cluster.read_attributes(
         [0, "manufacturer"],
         allow_cache=True,
-    ))
+    )
     assert cluster.request.call_count == 0
     assert success[0] == 99
     assert success["manufacturer"] == b'Manufacturer'
     assert failure == {}
 
 
-def test_read_attributes_mixed_cached(cluster):
+@pytest.mark.asyncio
+async def test_read_attributes_mixed_cached(cluster):
     async def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
@@ -181,34 +181,34 @@ def test_read_attributes_mixed_cached(cluster):
     cluster.request = mockrequest
     cluster._attr_cache[0] = 99
     cluster._attr_cache[4] = b'Manufacturer'
-    loop = asyncio.get_event_loop()
-    success, failure = loop.run_until_complete(cluster.read_attributes(
+    success, failure = await cluster.read_attributes(
         [0, "manufacturer", "model"],
         allow_cache=True,
-    ))
+    )
     assert success[0] == 99
     assert success["manufacturer"] == b'Manufacturer'
     assert success["model"] == b'Model'
     assert failure == {}
 
 
-def test_read_attributes_default_response(cluster):
+@pytest.mark.asyncio
+async def test_read_attributes_default_response(cluster):
     async def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
         return [0xc1]
 
     cluster.request = mockrequest
-    loop = asyncio.get_event_loop()
-    success, failure = loop.run_until_complete(cluster.read_attributes(
+    success, failure = await cluster.read_attributes(
         [0, 5, 23],
         allow_cache=False,
-    ))
+    )
     assert success == {}
     assert failure == {0: 0xc1, 5: 0xc1, 23: 0xc1}
 
 
-def test_item_access_attributes(cluster):
+@pytest.mark.asyncio
+async def test_item_access_attributes(cluster):
     async def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
@@ -218,16 +218,12 @@ def test_item_access_attributes(cluster):
     cluster.request = mockrequest
     cluster._attr_cache[0] = 99
 
-    async def inner():
-        v = await cluster['model']
-        assert v == b'Model'
-        v = await cluster['zcl_version']
-        assert v == 99
-        with pytest.raises(KeyError):
-            v = await cluster[99]
-
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(inner())
+    v = await cluster['model']
+    assert v == b'Model'
+    v = await cluster['zcl_version']
+    assert v == 99
+    with pytest.raises(KeyError):
+        v = await cluster[99]
 
 
 def test_write_attributes(cluster):

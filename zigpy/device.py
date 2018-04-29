@@ -40,8 +40,7 @@ class Device(zigpy.util.LocalLogMixin):
             self._init_handle.cancel()
         else:
             self.initializing = True
-        loop = asyncio.get_event_loop()
-        self._init_handle = loop.call_soon(asyncio.async, self._initialize())
+        self._init_handle = asyncio.ensure_future(self._initialize())
 
     async def _initialize(self):
         if self.status == Status.NEW:
