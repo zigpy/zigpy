@@ -1,6 +1,7 @@
 import asyncio
 import enum
 import logging
+import time
 
 import zigpy.endpoint
 import zigpy.util
@@ -31,6 +32,7 @@ class Device(zigpy.util.LocalLogMixin):
         self.endpoints = {0: self.zdo}
         self.lqi = None
         self.rssi = None
+        self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
 
@@ -76,7 +78,7 @@ class Device(zigpy.util.LocalLogMixin):
         return ep
 
     async def request(self, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True):
-        return await self._application.request(
+        result = await self._application.request(
             self.nwk,
             profile,
             cluster,
@@ -86,8 +88,13 @@ class Device(zigpy.util.LocalLogMixin):
             data,
             expect_reply=expect_reply,
         )
+        # If application.request raises an exception, we won't get here, so
+        # won't update last_seen, as expected
+        self.last_seen = time.time()
+        return result
 
     def handle_message(self, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
+        self.last_seen = time.time()
         try:
             endpoint = self.endpoints[src_ep]
         except KeyError:
