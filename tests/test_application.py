@@ -131,12 +131,13 @@ def test_nwk(app):
     assert app.nwk == app._nwk
 
 
+def test_deserialize(app, ieee):
+    dev = mock.MagicMock()
+    app.deserialize(dev, 1, 1, b'')
+    assert dev.deserialize.call_count == 1
+
+
 def test_handle_message(app, ieee):
-    dev = app.devices[ieee] = mock.MagicMock()
-    dev.nwk = 8
-    app.handle_message(False, 8, 260, 1, 1, 1, 1, 1, [])
+    dev = mock.MagicMock()
+    app.handle_message(dev, False, 260, 1, 1, 1, 1, 1, [])
     assert dev.handle_message.call_count == 1
-
-
-def test_handle_message_unknown(app, ieee):
-    app.handle_message(False, 8, 260, 1, 1, 1, 1, 1, [])

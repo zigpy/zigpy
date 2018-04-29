@@ -2,48 +2,57 @@ from unittest import mock
 
 import pytest
 
+import zigpy.endpoint
 import zigpy.types as t
 import zigpy.zcl as zcl
 
 
-def test_deserialize_general():
-    tsn, command_id, is_reply, args = zcl.deserialize(0, b'\x00\x01\x00')
+@pytest.fixture
+def endpoint():
+    ep = zigpy.endpoint.Endpoint(mock.MagicMock(), 1)
+    ep.add_input_cluster(0)
+    ep.add_input_cluster(3)
+    return ep
+
+
+def test_deserialize_general(endpoint):
+    tsn, command_id, is_reply, args = endpoint.deserialize(0, b'\x00\x01\x00')
     assert tsn == 1
     assert command_id == 0
     assert is_reply is False
 
 
-def test_deserialize_general_unknown():
-    tsn, command_id, is_reply, args = zcl.deserialize(0, b'\x00\x01\xff')
+def test_deserialize_general_unknown(endpoint):
+    tsn, command_id, is_reply, args = endpoint.deserialize(0, b'\x00\x01\xff')
     assert tsn == 1
     assert command_id == 255
     assert is_reply is False
 
 
-def test_deserialize_cluster():
-    tsn, command_id, is_reply, args = zcl.deserialize(0, b'\x01\x01\x00xxx')
+def test_deserialize_cluster(endpoint):
+    tsn, command_id, is_reply, args = endpoint.deserialize(0, b'\x01\x01\x00xxx')
     assert tsn == 1
     assert command_id == 256
     assert is_reply is False
 
 
-def test_deserialize_cluster_client():
-    tsn, command_id, is_reply, args = zcl.deserialize(3, b'\x09\x01\x00AB')
+def test_deserialize_cluster_client(endpoint):
+    tsn, command_id, is_reply, args = endpoint.deserialize(3, b'\x09\x01\x00AB')
     assert tsn == 1
     assert command_id == 256
     assert is_reply is True
     assert args == [0x4241]
 
 
-def test_deserialize_cluster_unknown():
-    tsn, command_id, is_reply, args = zcl.deserialize(0xff00, b'\x05\x00\x00\x01\x00')
+def test_deserialize_cluster_unknown(endpoint):
+    tsn, command_id, is_reply, args = endpoint.deserialize(0xff00, b'\x05\x00\x00\x01\x00')
     assert tsn == 1
     assert command_id == 256
     assert is_reply is False
 
 
-def test_deserialize_cluster_command_unknown():
-    tsn, command_id, is_reply, args = zcl.deserialize(0, b'\x01\x01\xff')
+def test_deserialize_cluster_command_unknown(endpoint):
+    tsn, command_id, is_reply, args = endpoint.deserialize(0, b'\x01\x01\xff')
     assert tsn == 1
     assert command_id == 255 + 256
     assert is_reply is False

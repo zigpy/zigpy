@@ -93,6 +93,9 @@ class Device(zigpy.util.LocalLogMixin):
         self.last_seen = time.time()
         return result
 
+    def deserialize(self, endpoint_id, cluster_id, data):
+        return self.endpoints[endpoint_id].deserialize(cluster_id, data)
+
     def handle_message(self, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
         self.last_seen = time.time()
         try:
