@@ -39,6 +39,10 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self.devices[ieee] = dev
         return dev
 
+    def device_initialized(self, device):
+        """Used by a device to signal that it is initialized"""
+        self.listener_event('device_initialized', device)
+
     async def remove(self, ieee):
         assert isinstance(ieee, t.EUI64)
         dev = self.devices.pop(ieee, None)
