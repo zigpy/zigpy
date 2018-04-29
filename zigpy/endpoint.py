@@ -66,15 +66,16 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.status = Status.ZDO_INIT
 
-    def add_input_cluster(self, cluster_id):
+    def add_input_cluster(self, cluster_id, cluster=None):
         """Adds an endpoint's input cluster
 
         (a server cluster supported by the device)
         """
-        if cluster_id in self.in_clusters:
+        if cluster_id in self.in_clusters and cluster is None:
             return self.in_clusters[cluster_id]
 
-        cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
+        if cluster is None:
+            cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
         self.in_clusters[cluster_id] = cluster
         if hasattr(cluster, 'ep_attribute'):
             self._cluster_attr[cluster.ep_attribute] = cluster
@@ -87,15 +88,16 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return cluster
 
-    def add_output_cluster(self, cluster_id):
+    def add_output_cluster(self, cluster_id, cluster=None):
         """Adds an endpoint's output cluster
 
         (a client cluster supported by the device)
         """
-        if cluster_id in self.out_clusters:
+        if cluster_id in self.out_clusters and cluster is None:
             return self.out_clusters[cluster_id]
 
-        cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
+        if cluster is None:
+            cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
         self.out_clusters[cluster_id] = cluster
         return cluster
 

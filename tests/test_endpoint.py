@@ -66,9 +66,23 @@ def test_add_input_cluster(ep):
     assert 0 in ep.in_clusters
 
 
+def test_add_custom_input_cluster(ep):
+    mock_cluster = mock.MagicMock()
+    ep.add_input_cluster(0, mock_cluster)
+    assert 0 in ep.in_clusters
+    assert ep.in_clusters[0] is mock_cluster
+
+
 def test_add_output_cluster(ep):
     ep.add_output_cluster(0)
     assert 0 in ep.out_clusters
+
+
+def test_add_custom_output_cluster(ep):
+    mock_cluster = mock.MagicMock()
+    ep.add_output_cluster(0, mock_cluster)
+    assert 0 in ep.out_clusters
+    assert ep.out_clusters[0] is mock_cluster
 
 
 def test_multiple_add_input_cluster(ep):
