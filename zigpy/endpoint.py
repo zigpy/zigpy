@@ -80,11 +80,12 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if hasattr(cluster, 'ep_attribute'):
             self._cluster_attr[cluster.ep_attribute] = cluster
 
-        listener = zigpy.appdb.ClusterPersistingListener(
-            self._device.application._dblistener,
-            cluster,
-        )
-        cluster.add_listener(listener)
+        if hasattr(self._device.application, '_dblistener'):
+            listener = zigpy.appdb.ClusterPersistingListener(
+                self._device.application._dblistener,
+                cluster,
+            )
+            cluster.add_listener(listener)
 
         return cluster
 
