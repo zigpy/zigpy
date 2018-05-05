@@ -2,6 +2,7 @@ import logging
 
 import zigpy.appdb
 import zigpy.device
+import zigpy.quirks
 import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
@@ -41,6 +42,9 @@ class ControllerApplication(zigpy.util.ListenableMixin):
 
     def device_initialized(self, device):
         """Used by a device to signal that it is initialized"""
+        self.listener_event('raw_device_initialized', device)
+        device = zigpy.quirks.get_device(device)
+        self.devices[device.ieee] = device
         self.listener_event('device_initialized', device)
 
     async def remove(self, ieee):
