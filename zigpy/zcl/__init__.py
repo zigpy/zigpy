@@ -10,57 +10,6 @@ from zigpy.zcl import foundation
 LOGGER = logging.getLogger(__name__)
 
 
-def deserialize(cluster_id, data):
-    frame_control, data = data[0], data[1:]
-    frame_type = frame_control & 0b0011
-    direction = (frame_control & 0b1000) >> 3
-    if frame_control & 0b0100:
-        # Manufacturer specific value present
-        data = data[2:]
-    tsn, command_id, data = data[0], data[1], data[2:]
-
-    is_reply = bool(direction)
-
-    if frame_type == 1:
-        # Cluster command
-        if cluster_id not in Cluster._registry:
-            LOGGER.debug("Ignoring unknown cluster ID 0x%04x",
-                         cluster_id)
-            return tsn, command_id + 256, is_reply, data
-        cluster = Cluster._registry[cluster_id]
-        # Cluster-specific command
-
-        if direction:
-            commands = cluster.client_commands
-        else:
-            commands = cluster.server_commands
-
-        try:
-            schema = commands[command_id][1]
-            is_reply = commands[command_id][2]
-        except KeyError:
-            LOGGER.warning("Unknown cluster-specific command %s", command_id)
-            return tsn, command_id + 256, is_reply, data
-
-        # Bad hack to differentiate foundation vs cluster
-        command_id = command_id + 256
-    else:
-        # General command
-        try:
-            schema = foundation.COMMANDS[command_id][1]
-            is_reply = foundation.COMMANDS[command_id][2]
-        except KeyError:
-            LOGGER.warning("Unknown foundation command %s", command_id)
-            return tsn, command_id, is_reply, data
-
-    value, data = t.deserialize(data, schema)
-    if data != b'':
-        # TODO: Seems sane to check, but what should we do?
-        LOGGER.warning("Data remains after deserializing ZCL frame")
-
-    return tsn, command_id, is_reply, value
-
-
 class Registry(type):
     def __init__(cls, name, bases, nmspc):  # noqa: N805
         super(Registry, cls).__init__(name, bases, nmspc)
@@ -112,6 +61,38 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         c.cluster_id = cluster_id
         return c
 
+    def deserialize(self, tsn, frame_type, is_reply, command_id, data):
+        if frame_type == 1:
+            # Cluster command
+            if is_reply:
+                commands = self.client_commands
+            else:
+                commands = self.server_commands
+
+            try:
+                schema = commands[command_id][1]
+                is_reply = commands[command_id][2]
+            except KeyError:
+                LOGGER.warning("Unknown cluster-specific command %s", command_id)
+                return tsn, command_id + 256, is_reply, data
+
+            # Bad hack to differentiate foundation vs cluster
+            command_id = command_id + 256
+        else:
+            # General command
+            try:
+                schema = foundation.COMMANDS[command_id][1]
+                is_reply = foundation.COMMANDS[command_id][2]
+            except KeyError:
+                LOGGER.warning("Unknown foundation command %s", command_id)
+                return tsn, command_id, is_reply, data
+
+        value, data = t.deserialize(data, schema)
+        if data != b'':
+            LOGGER.warning("Data remains after deserializing ZCL frame")
+
+        return tsn, command_id, is_reply, value
+
     @util.retryable_request
     def request(self, general, command_id, schema, *args, manufacturer=None, expect_reply=True):
         if len(schema) != len(args):
@@ -162,15 +143,13 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             return
 
         self.debug("ZCL request 0x%04x: %s", command_id, args)
-        if command_id <= 0xff:
-            self.listener_event('zdo_command', tsn, command_id, args)
-        else:
+        if command_id > 0xff:        # zcl cluster command
             # Unencapsulate bad hack
             command_id -= 256
             self.listener_event('cluster_command', tsn, command_id, args)
             self.handle_cluster_request(tsn, command_id, args)
             return
-
+        # zcl global commands
         if command_id == 0x0a:  # Report attributes
             valuestr = ", ".join([
                 "%s=%s" % (a.attrid, a.value.value) for a in args[0]
@@ -182,20 +161,18 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             self.handle_cluster_general_request(tsn, command_id, args)
 
     def handle_cluster_request(self, tsn, command_id, args):
-        self.debug("No handler for cluster command %s", command_id)
+        pass
 
     def handle_cluster_general_request(self, tsn, command_id, args):
         self.debug("No handler for general command %s", command_id)
 
-    @asyncio.coroutine
-    def read_attributes_raw(self, attributes, manufacturer=None):
+    async def read_attributes_raw(self, attributes, manufacturer=None):
         schema = foundation.COMMANDS[0x00][1]
         attributes = [t.uint16_t(a) for a in attributes]
-        v = yield from self.request(True, 0x00, schema, attributes, manufacturer=manufacturer)
+        v = await self.request(True, 0x00, schema, attributes, manufacturer=manufacturer)
         return v
 
-    @asyncio.coroutine
-    def read_attributes(self, attributes, allow_cache=False, raw=False, manufacturer=None):
+    async def read_attributes(self, attributes, allow_cache=False, raw=False, manufacturer=None):
         if raw:
             assert len(attributes) == 1
         success, failure = {}, {}
@@ -224,7 +201,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 return success[attributes[0]]
             return success, failure
 
-        result = yield from self.read_attributes_raw(to_read, manufacturer=manufacturer)
+        result = await self.read_attributes_raw(to_read, manufacturer=manufacturer)
         if not isinstance(result[0], list):
             for attrid in to_read:
                 orig_attribute = orig_attributes[attrid]

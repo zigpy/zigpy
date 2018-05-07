@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 import zigpy.appdb
@@ -24,13 +23,11 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             self.add_listener(self._dblistener)
             self._dblistener.load()
 
-    @asyncio.coroutine
-    def startup(self, auto_form=False):
+    async def startup(self, auto_form=False):
         """Perform a complete application startup"""
         raise NotImplementedError
 
-    @asyncio.coroutine
-    def form_network(self, channel=15, pan_id=None, extended_pan_id=None):
+    async def form_network(self, channel=15, pan_id=None, extended_pan_id=None):
         """Form a new network"""
         raise NotImplementedError
 
@@ -42,8 +39,11 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self.devices[ieee] = dev
         return dev
 
-    @asyncio.coroutine
-    def remove(self, ieee):
+    def device_initialized(self, device):
+        """Used by a device to signal that it is initialized"""
+        self.listener_event('device_initialized', device)
+
+    async def remove(self, ieee):
         assert isinstance(ieee, t.EUI64)
         dev = self.devices.pop(ieee, None)
         if not dev:
@@ -52,28 +52,24 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
         zdo_worked = False
         try:
-            resp = yield from dev.zdo.leave()
+            resp = await dev.zdo.leave()
             zdo_worked = resp[0] == 0
         except Exception as exc:
             pass
 
         if not zdo_worked:
-            yield from self.force_remove(dev)
+            await self.force_remove(dev)
 
         self.listener_event('device_removed', dev)
 
-    @asyncio.coroutine
-    def force_remove(self, dev):
+    async def force_remove(self, dev):
         raise NotImplementedError
 
-    def handle_message(self, is_reply, sender, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
-        try:
-            device = self.get_device(nwk=sender)
-        except KeyError:
-            LOGGER.warning("Message on unknown device 0x%04x", sender)
-            return
+    def deserialize(self, sender, endpoint_id, cluster_id, data):
+        return sender.deserialize(endpoint_id, cluster_id, data)
 
-        return device.handle_message(is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args)
+    def handle_message(self, sender, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
+        return sender.handle_message(is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args)
 
     def handle_join(self, nwk, ieee, parent_nwk):
         LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
@@ -96,10 +92,11 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         dev = self.devices.get(ieee, None)
         if dev is not None:
             self.listener_event('device_left', dev)
+            if dev.initializing:
+                dev._init_handle.cancel()
 
     @zigpy.util.retryable_request
-    @asyncio.coroutine
-    def request(self, nwk, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True, timeout=10):
+    async def request(self, nwk, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True, timeout=10):
         raise NotImplementedError
 
     def permit(self, time_s=60):
@@ -109,7 +106,10 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         raise NotImplementedError
 
     def get_sequence(self):
-        self._send_sequence = (self._send_sequence + 1) % 256
+        while True:
+            self._send_sequence = (self._send_sequence + 1) % 256
+            if self._send_sequence not in self._pending:
+                break
         return self._send_sequence
 
     def get_device(self, ieee=None, nwk=None):
@@ -130,3 +130,9 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     @property
     def nwk(self):
         return self._nwk
+
+    async def subscribe_group(self, group_id):
+        raise NotImplementedError
+
+    async def unsubscribe_group(self, group_id):
+        raise NotImplementedError

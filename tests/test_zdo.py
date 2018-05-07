@@ -19,52 +19,57 @@ def test_commands():
             assert hasattr(paramtype, 'deserialize')
 
 
-def test_deserialize():
-    tsn, command_id, is_reply, args = zdo.deserialize(2, b'\x01\x02\x03xx')
-    assert tsn == 1
-    assert is_reply is False
-    assert args == [0x0302]
-
-
-def test_deserialize_unknown():
-    tsn, command_id, is_reply, args = zdo.deserialize(0x0100, b'\x01')
-    assert tsn == 1
-    assert is_reply is False
-
-
 @pytest.fixture
 def zdo_f():
     app = mock.MagicMock()
     app.ieee = t.EUI64(map(t.uint8_t, [8, 9, 10, 11, 12, 13, 14, 15]))
-    app.get_sequence = mock.MagicMock(return_value=123)
+    app.get_sequence.return_value = 123
+    app.request.side_effect = asyncio.coroutine(mock.MagicMock())
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     dev = zigpy.device.Device(app, ieee, 65535)
     return zdo.ZDO(dev)
 
 
-def test_request(zdo_f):
-    zdo_f.request(2, 65535)
+def test_deserialize(zdo_f):
+    tsn, command_id, is_reply, args = zdo_f.deserialize(2, b'\x01\x02\x03xx')
+    assert tsn == 1
+    assert is_reply is False
+    assert args == [0x0302]
+
+
+def test_deserialize_unknown(zdo_f):
+    tsn, command_id, is_reply, args = zdo_f.deserialize(0x0100, b'\x01')
+    assert tsn == 1
+    assert is_reply is False
+
+
+@pytest.mark.asyncio
+async def test_request(zdo_f):
+    await zdo_f.request(2, 65535)
     app_mock = zdo_f._device._application
     assert app_mock.request.call_count == 1
     assert app_mock.get_sequence.call_count == 1
 
 
-def test_bind(zdo_f):
-    zdo_f.bind(1, 1026)
+@pytest.mark.asyncio
+async def test_bind(zdo_f):
+    await zdo_f.bind(1, 1026)
     app_mock = zdo_f._device._application
     assert app_mock.request.call_count == 1
     assert app_mock.request.call_args[0][2] == 0x0021
 
 
-def test_unbind(zdo_f):
-    zdo_f.unbind(1, 1026)
+@pytest.mark.asyncio
+async def test_unbind(zdo_f):
+    await zdo_f.unbind(1, 1026)
     app_mock = zdo_f._device._application
     assert app_mock.request.call_count == 1
     assert app_mock.request.call_args[0][2] == 0x0022
 
 
-def test_leave(zdo_f):
-    zdo_f.leave()
+@pytest.mark.asyncio
+async def test_leave(zdo_f):
+    await zdo_f.leave()
     app_mock = zdo_f._device._application
     assert app_mock.request.call_count == 1
     assert app_mock.request.call_args[0][2] == 0x0034
@@ -124,16 +129,15 @@ def test_device_accessor(zdo_f):
     assert zdo_f.device.nwk == 65535
 
 
-def test_reply(zdo_f):
+@pytest.mark.asyncio
+async def test_reply(zdo_f):
     call_count = 0
 
-    @asyncio.coroutine
-    def mock_request(*args, **kwargs):
+    async def mock_request(*args, **kwargs):
         nonlocal call_count
         call_count += 1
 
     zdo_f.device._application.request = mock_request
     zdo_f.reply(0x0005)
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(asyncio.sleep(0))
+    await asyncio.sleep(0)
     assert call_count == 1

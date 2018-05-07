@@ -1,50 +1,58 @@
-import asyncio
 from unittest import mock
 
 import pytest
 
+import zigpy.endpoint
 import zigpy.types as t
 import zigpy.zcl as zcl
 
 
-def test_deserialize_general():
-    tsn, command_id, is_reply, args = zcl.deserialize(0, b'\x00\x01\x00')
+@pytest.fixture
+def endpoint():
+    ep = zigpy.endpoint.Endpoint(mock.MagicMock(), 1)
+    ep.add_input_cluster(0)
+    ep.add_input_cluster(3)
+    return ep
+
+
+def test_deserialize_general(endpoint):
+    tsn, command_id, is_reply, args = endpoint.deserialize(0, b'\x00\x01\x00')
     assert tsn == 1
     assert command_id == 0
     assert is_reply is False
 
 
-def test_deserialize_general_unknown():
-    tsn, command_id, is_reply, args = zcl.deserialize(0, b'\x00\x01\xff')
+def test_deserialize_general_unknown(endpoint):
+    tsn, command_id, is_reply, args = endpoint.deserialize(0, b'\x00\x01\xff')
     assert tsn == 1
     assert command_id == 255
     assert is_reply is False
 
 
-def test_deserialize_cluster():
-    tsn, command_id, is_reply, args = zcl.deserialize(0, b'\x01\x01\x00xxx')
+def test_deserialize_cluster(endpoint):
+    tsn, command_id, is_reply, args = endpoint.deserialize(0, b'\x01\x01\x00xxx')
     assert tsn == 1
     assert command_id == 256
     assert is_reply is False
 
 
-def test_deserialize_cluster_client():
-    tsn, command_id, is_reply, args = zcl.deserialize(3, b'\x09\x01\x00AB')
+def test_deserialize_cluster_client(endpoint):
+    tsn, command_id, is_reply, args = endpoint.deserialize(3, b'\x09\x01\x00AB')
     assert tsn == 1
     assert command_id == 256
     assert is_reply is True
     assert args == [0x4241]
 
 
-def test_deserialize_cluster_unknown():
-    tsn, command_id, is_reply, args = zcl.deserialize(0xff00, b'\x05\x00\x00\x01\x00')
+def test_deserialize_cluster_unknown(endpoint):
+    tsn, command_id, is_reply, args = endpoint.deserialize(0xff00, b'\x05\x00\x00\x01\x00')
     assert tsn == 1
     assert command_id == 256
     assert is_reply is False
 
 
-def test_deserialize_cluster_command_unknown():
-    tsn, command_id, is_reply, args = zcl.deserialize(0, b'\x01\x01\xff')
+def test_deserialize_cluster_command_unknown(endpoint):
+    tsn, command_id, is_reply, args = endpoint.deserialize(0, b'\x01\x01\xff')
     assert tsn == 1
     assert command_id == 255 + 256
     assert is_reply is False
@@ -138,9 +146,9 @@ def _mk_rar(attrid, value, status=0):
         return r
 
 
-def test_read_attributes_uncached(cluster):
-    @asyncio.coroutine
-    def mockrequest(foundation, command, schema, args, manufacturer=None):
+@pytest.mark.asyncio
+async def test_read_attributes_uncached(cluster):
+    async def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
         rar0 = _mk_rar(0, 99)
@@ -148,33 +156,32 @@ def test_read_attributes_uncached(cluster):
         rar99 = _mk_rar(99, None, 1)
         return [[rar0, rar4, rar99]]
     cluster.request = mockrequest
-    loop = asyncio.get_event_loop()
-    success, failure = loop.run_until_complete(cluster.read_attributes(
+    success, failure = await cluster.read_attributes(
         [0, "manufacturer", 99],
-    ))
+    )
     assert success[0] == 99
     assert success["manufacturer"] == b'Manufacturer'
     assert failure[99] == 1
 
 
-def test_read_attributes_cached(cluster):
+@pytest.mark.asyncio
+async def test_read_attributes_cached(cluster):
     cluster.request = mock.MagicMock()
     cluster._attr_cache[0] = 99
     cluster._attr_cache[4] = b'Manufacturer'
-    loop = asyncio.get_event_loop()
-    success, failure = loop.run_until_complete(cluster.read_attributes(
+    success, failure = await cluster.read_attributes(
         [0, "manufacturer"],
         allow_cache=True,
-    ))
+    )
     assert cluster.request.call_count == 0
     assert success[0] == 99
     assert success["manufacturer"] == b'Manufacturer'
     assert failure == {}
 
 
-def test_read_attributes_mixed_cached(cluster):
-    @asyncio.coroutine
-    def mockrequest(foundation, command, schema, args, manufacturer=None):
+@pytest.mark.asyncio
+async def test_read_attributes_mixed_cached(cluster):
+    async def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
         rar5 = _mk_rar(5, b'Model')
@@ -183,37 +190,35 @@ def test_read_attributes_mixed_cached(cluster):
     cluster.request = mockrequest
     cluster._attr_cache[0] = 99
     cluster._attr_cache[4] = b'Manufacturer'
-    loop = asyncio.get_event_loop()
-    success, failure = loop.run_until_complete(cluster.read_attributes(
+    success, failure = await cluster.read_attributes(
         [0, "manufacturer", "model"],
         allow_cache=True,
-    ))
+    )
     assert success[0] == 99
     assert success["manufacturer"] == b'Manufacturer'
     assert success["model"] == b'Model'
     assert failure == {}
 
 
-def test_read_attributes_default_response(cluster):
-    @asyncio.coroutine
-    def mockrequest(foundation, command, schema, args, manufacturer=None):
+@pytest.mark.asyncio
+async def test_read_attributes_default_response(cluster):
+    async def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
         return [0xc1]
 
     cluster.request = mockrequest
-    loop = asyncio.get_event_loop()
-    success, failure = loop.run_until_complete(cluster.read_attributes(
+    success, failure = await cluster.read_attributes(
         [0, 5, 23],
         allow_cache=False,
-    ))
+    )
     assert success == {}
     assert failure == {0: 0xc1, 5: 0xc1, 23: 0xc1}
 
 
-def test_item_access_attributes(cluster):
-    @asyncio.coroutine
-    def mockrequest(foundation, command, schema, args, manufacturer=None):
+@pytest.mark.asyncio
+async def test_item_access_attributes(cluster):
+    async def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
         rar5 = _mk_rar(5, b'Model')
@@ -222,17 +227,12 @@ def test_item_access_attributes(cluster):
     cluster.request = mockrequest
     cluster._attr_cache[0] = 99
 
-    @asyncio.coroutine
-    def inner():
-        v = yield from cluster['model']
-        assert v == b'Model'
-        v = yield from cluster['zcl_version']
-        assert v == 99
-        with pytest.raises(KeyError):
-            v = yield from cluster[99]
-
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(inner())
+    v = await cluster['model']
+    assert v == b'Model'
+    v = await cluster['zcl_version']
+    assert v == 99
+    with pytest.raises(KeyError):
+        v = await cluster[99]
 
 
 def test_write_attributes(cluster):

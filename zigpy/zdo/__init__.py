@@ -10,24 +10,6 @@ from . import types
 LOGGER = logging.getLogger(__name__)
 
 
-def deserialize(cluster_id, data):
-    tsn, data = data[0], data[1:]
-
-    is_reply = bool(cluster_id & 0x8000)
-    try:
-        cluster_details = types.CLUSTERS[cluster_id]
-    except KeyError:
-        LOGGER.warning("Unknown ZDO cluster 0x%02x", cluster_id)
-        return tsn, cluster_id, is_reply, data
-
-    args, data = t.deserialize(data, cluster_details[2])
-    if data != b'':
-        # TODO: Seems sane to check, but what should we do?
-        LOGGER.warning("Data remains after deserializing ZDO frame")
-
-    return tsn, cluster_id, is_reply, args
-
-
 class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """The ZDO endpoint of a device"""
     def __init__(self, device):
@@ -40,6 +22,23 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         schema = types.CLUSTERS[command][2]
         data += t.serialize(args, schema)
         return sequence, data
+
+    def deserialize(self, cluster_id, data):
+        tsn, data = data[0], data[1:]
+
+        is_reply = bool(cluster_id & 0x8000)
+        try:
+            cluster_details = types.CLUSTERS[cluster_id]
+        except KeyError:
+            LOGGER.warning("Unknown ZDO cluster 0x%02x", cluster_id)
+            return tsn, cluster_id, is_reply, data
+
+        args, data = t.deserialize(data, cluster_details[2])
+        if data != b'':
+            # TODO: Seems sane to check, but what should we do?
+            LOGGER.warning("Data remains after deserializing ZDO frame")
+
+        return tsn, cluster_id, is_reply, args
 
     @zigpy.util.retryable_request
     def request(self, command, *args):

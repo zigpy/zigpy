@@ -18,34 +18,34 @@ def ieee(init=0):
     return t.EUI64(map(t.uint8_t, range(init, init + 8)))
 
 
-def test_startup(app):
+@pytest.mark.asyncio
+async def test_startup(app):
     with pytest.raises(NotImplementedError):
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(app.startup())
+        await app.startup()
 
 
-def test_form_network(app):
+@pytest.mark.asyncio
+async def test_form_network(app):
     with pytest.raises(NotImplementedError):
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(app.form_network())
+        await app.form_network()
 
 
-def test_force_remove(app):
+@pytest.mark.asyncio
+async def test_force_remove(app):
     with pytest.raises(NotImplementedError):
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(app.force_remove(None))
+        await app.force_remove(None)
 
 
-def test_request(app):
+@pytest.mark.asyncio
+async def test_request(app):
     with pytest.raises(NotImplementedError):
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(app.request(None, None, None, None, None, None, None))
+        await app.request(None, None, None, None, None, None, None)
 
 
-def test_permit(app):
+@pytest.mark.asyncio
+async def test_permit(app):
     with pytest.raises(NotImplementedError):
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(app.permit())
+        await app.permit()
 
 
 def test_permit_with_key(app):
@@ -66,34 +66,34 @@ def test_join_handler_change_id(app, ieee):
     assert app.devices[ieee].nwk == 2
 
 
-def _remove(app, ieee, retval):
+async def _remove(app, ieee, retval):
     app.devices[ieee] = mock.MagicMock()
 
-    @asyncio.coroutine
-    def leave():
+    async def leave():
         return retval
 
     app.devices[ieee].zdo.leave.side_effect = leave
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(app.remove(ieee))
+    await app.remove(ieee)
     assert ieee not in app.devices
 
 
-def test_remove(app, ieee):
-    app.force_remove = mock.MagicMock()
-    _remove(app, ieee, [0])
+@pytest.mark.asyncio
+async def test_remove(app, ieee):
+    app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    await _remove(app, ieee, [0])
     assert app.force_remove.call_count == 0
 
 
-def test_remove_failed_zdo(app, ieee):
-    app.force_remove = mock.MagicMock()
-    _remove(app, ieee, 1)
+@pytest.mark.asyncio
+async def test_remove_with_failed_zdo(app, ieee):
+    app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    await _remove(app, ieee, 1)
     assert app.force_remove.call_count == 1
 
 
-def test_remove_nonexistent(app, ieee):
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(app.remove(ieee))
+@pytest.mark.asyncio
+async def test_remove_nonexistent(app, ieee):
+    await app.remove(ieee)
     assert ieee not in app.devices
 
 
@@ -131,12 +131,13 @@ def test_nwk(app):
     assert app.nwk == app._nwk
 
 
+def test_deserialize(app, ieee):
+    dev = mock.MagicMock()
+    app.deserialize(dev, 1, 1, b'')
+    assert dev.deserialize.call_count == 1
+
+
 def test_handle_message(app, ieee):
-    dev = app.devices[ieee] = mock.MagicMock()
-    dev.nwk = 8
-    app.handle_message(False, 8, 260, 1, 1, 1, 1, 1, [])
+    dev = mock.MagicMock()
+    app.handle_message(dev, False, 260, 1, 1, 1, 1, 1, [])
     assert dev.handle_message.call_count == 1
-
-
-def test_handle_message_unknown(app, ieee):
-    app.handle_message(False, 8, 260, 1, 1, 1, 1, 1, [])

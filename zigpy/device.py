@@ -1,6 +1,7 @@
 import asyncio
 import enum
 import logging
+import time
 
 import zigpy.endpoint
 import zigpy.util
@@ -31,6 +32,7 @@ class Device(zigpy.util.LocalLogMixin):
         self.endpoints = {0: self.zdo}
         self.lqi = None
         self.rssi = None
+        self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
 
@@ -40,15 +42,13 @@ class Device(zigpy.util.LocalLogMixin):
             self._init_handle.cancel()
         else:
             self.initializing = True
-        loop = asyncio.get_event_loop()
-        self._init_handle = loop.call_soon(asyncio.async, self._initialize())
+        self._init_handle = asyncio.ensure_future(self._initialize())
 
-    @asyncio.coroutine
-    def _initialize(self):
+    async def _initialize(self):
         if self.status == Status.NEW:
             self.info("Discovering endpoints")
             try:
-                epr = yield from self.zdo.request(0x0005, self.nwk, tries=3, delay=2)
+                epr = await self.zdo.request(0x0005, self.nwk, tries=3, delay=2)
                 if epr[0] != 0:
                     raise Exception("Endpoint request failed: %s", epr)
             except Exception as exc:
@@ -66,21 +66,38 @@ class Device(zigpy.util.LocalLogMixin):
         for endpoint_id in self.endpoints.keys():
             if endpoint_id == 0:  # ZDO
                 continue
-            yield from self.endpoints[endpoint_id].initialize()
+            await self.endpoints[endpoint_id].initialize()
 
         self.status = Status.ENDPOINTS_INIT
         self.initializing = False
-        self._application.listener_event('device_initialized', self)
+        self._application.device_initialized(self)
 
     def add_endpoint(self, endpoint_id):
         ep = zigpy.endpoint.Endpoint(self, endpoint_id)
         self.endpoints[endpoint_id] = ep
         return ep
 
-    def request(self, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True):
-        return self._application.request(self.nwk, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=expect_reply)
+    async def request(self, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True):
+        result = await self._application.request(
+            self.nwk,
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            sequence,
+            data,
+            expect_reply=expect_reply,
+        )
+        # If application.request raises an exception, we won't get here, so
+        # won't update last_seen, as expected
+        self.last_seen = time.time()
+        return result
+
+    def deserialize(self, endpoint_id, cluster_id, data):
+        return self.endpoints[endpoint_id].deserialize(cluster_id, data)
 
     def handle_message(self, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
+        self.last_seen = time.time()
         try:
             endpoint = self.endpoints[src_ep]
         except KeyError:

@@ -10,49 +10,56 @@ from zigpy import device, endpoint
 @pytest.fixture
 def dev():
     app_mock = mock.MagicMock()
+    app_mock.request.side_effect = asyncio.coroutine(mock.MagicMock())
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     return device.Device(app_mock, ieee, 65535)
 
 
-def test_initialize(monkeypatch, dev):
-    loop = asyncio.get_event_loop()
-
-    @asyncio.coroutine
-    def mockrequest(req, nwk, tries=None, delay=None):
+@pytest.mark.asyncio
+async def test_initialize(monkeypatch, dev):
+    async def mockrequest(req, nwk, tries=None, delay=None):
         return [0, None, [1, 2]]
 
-    @asyncio.coroutine
-    def mockepinit(self):
+    async def mockepinit(self):
         return
 
     monkeypatch.setattr(endpoint.Endpoint, 'initialize', mockepinit)
 
     dev.zdo.request = mockrequest
-    loop.run_until_complete(dev._initialize())
+    await dev._initialize()
 
     assert dev.status > device.Status.NEW
     assert 1 in dev.endpoints
     assert 2 in dev.endpoints
 
 
-def test_initialize_fail(dev):
-    loop = asyncio.get_event_loop()
-
-    @asyncio.coroutine
-    def mockrequest(req, nwk, tries=None, delay=None):
+@pytest.mark.asyncio
+async def test_initialize_fail(dev):
+    async def mockrequest(req, nwk, tries=None, delay=None):
         return [1]
 
     dev.zdo.request = mockrequest
-    loop.run_until_complete(dev._initialize())
+    await dev._initialize()
 
     assert dev.status == device.Status.NEW
 
 
-def test_request(dev):
-    dev.request(1, 2, 3, 3, 4, b'')
-    app_mock = dev._application
-    assert app_mock.request.call_count == 1
-    assert app_mock.get_sequence.call_count == 0
+@pytest.mark.asyncio
+async def test_request(dev):
+    assert dev.last_seen is None
+    await dev.request(1, 2, 3, 3, 4, b'')
+    assert dev._application.request.call_count == 1
+    assert dev._application.get_sequence.call_count == 0
+    assert dev.last_seen is not None
+
+
+@pytest.mark.asyncio
+async def test_failed_request(dev):
+    assert dev.last_seen is None
+    dev._application.request.side_effect = Exception
+    with pytest.raises(Exception):
+        await dev.request(1, 2, 3, 4, b'')
+    assert dev.last_seen is None
 
 
 def test_radio_details(dev):
@@ -61,11 +68,18 @@ def test_radio_details(dev):
     assert dev.rssi == 2
 
 
-def test_handle_request_no_endpoint(dev):
+def test_deserialize(dev):
+    ep = dev.add_endpoint(3)
+    ep.deserialize = mock.MagicMock()
+    dev.deserialize(3, 1, b'')
+    assert ep.deserialize.call_count == 1
+
+
+def test_handle_message_no_endpoint(dev):
     dev.handle_message(False, 99, 98, 97, 97, 1, 0, [])
 
 
-def test_handle_request(dev):
+def test_handle_message(dev):
     ep = dev.add_endpoint(3)
     ep.handle_message = mock.MagicMock()
     dev.handle_message(False, 99, 98, 3, 3, 1, 0, [])

@@ -1,4 +1,3 @@
-import asyncio
 import enum
 import logging
 
@@ -29,14 +28,13 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status = Status.NEW
         self._listeners = {}
 
-    @asyncio.coroutine
-    def initialize(self):
+    async def initialize(self):
         if self.status == Status.ZDO_INIT:
             return
 
         self.info("Discovering endpoint information")
         try:
-            sdr = yield from self._device.zdo.request(
+            sdr = await self._device.zdo.request(
                 0x0004,
                 self._device.nwk,
                 self._endpoint_id,
@@ -68,15 +66,16 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.status = Status.ZDO_INIT
 
-    def add_input_cluster(self, cluster_id):
+    def add_input_cluster(self, cluster_id, cluster=None):
         """Adds an endpoint's input cluster
 
         (a server cluster supported by the device)
         """
-        if cluster_id in self.in_clusters:
+        if cluster_id in self.in_clusters and cluster is None:
             return self.in_clusters[cluster_id]
 
-        cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
+        if cluster is None:
+            cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
         self.in_clusters[cluster_id] = cluster
         if hasattr(cluster, 'ep_attribute'):
             self._cluster_attr[cluster.ep_attribute] = cluster
@@ -89,17 +88,37 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return cluster
 
-    def add_output_cluster(self, cluster_id):
+    def add_output_cluster(self, cluster_id, cluster=None):
         """Adds an endpoint's output cluster
 
         (a client cluster supported by the device)
         """
-        if cluster_id in self.out_clusters:
+        if cluster_id in self.out_clusters and cluster is None:
             return self.out_clusters[cluster_id]
 
-        cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
+        if cluster is None:
+            cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
         self.out_clusters[cluster_id] = cluster
         return cluster
+
+    def deserialize(self, cluster_id, data):
+        """Deserialize data for ZCL"""
+        frame_control, data = data[0], data[1:]
+        frame_type = frame_control & 0b0011
+        direction = (frame_control & 0b1000) >> 3
+        is_reply = bool(direction)
+        if frame_control & 0b0100:
+            # Manufacturer specific value present
+            data = data[2:]
+        tsn, command_id, data = data[0], data[1], data[2:]
+
+        if cluster_id not in self.in_clusters and cluster_id not in self.out_clusters:
+            LOGGER.debug("Ignoring unknown cluster ID 0x%04x",
+                         cluster_id)
+            return tsn, command_id + 256, is_reply, data
+
+        cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id, None))
+        return cluster.deserialize(tsn, frame_type, is_reply, command_id, data)
 
     def handle_message(self, is_reply, profile, cluster, tsn, command_id, args):
         handler = None

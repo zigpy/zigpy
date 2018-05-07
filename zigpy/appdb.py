@@ -46,8 +46,8 @@ class PersistingListener:
     def device_initialized(self, device):
         self._save_device(device)
 
-    """ event to update device information during normal device life time"""     
     def device_updated(self, device):
+        """ event to update device information during normal device life time."""
         self._save_device(device)
 
     def device_left(self, device):
@@ -55,6 +55,9 @@ class PersistingListener:
 
     def device_removed(self, device):
         self._remove_device(device)
+
+    def subscribe_group(self, group_id):
+        pass
 
     def attribute_updated(self, cluster, attrid, value):
         self._save_attribute(
