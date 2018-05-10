@@ -69,7 +69,8 @@ class AqaraOpenCloseSensor(CustomDevice):
     replacement = {
         'endpoints': {
             1: {
-                'input_clusters': [0x0000, 0x0003, 0x0006],
+                'input_clusters': [0x0000, 0x0003],
+                'output_clusters': [0x0000, 0x0004, 0x0006],
             }
         },
     }
