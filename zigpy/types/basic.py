@@ -89,6 +89,38 @@ class enum16(uint16_t):  # noqa: N801
     pass
 
 
+class bitmap8(uint8_t):  # noqa: N801
+    pass
+
+
+class bitmap16(uint16_t):  # noqa: N801
+    pass
+
+
+class bitmap24(uint24_t):  # noqa: N801
+    pass
+
+
+class bitmap32(uint32_t):  # noqa: N801
+    pass
+
+
+class bitmap40(uint40_t):  # noqa: N801
+    pass
+
+
+class bitmap48(uint48_t):  # noqa: N801
+    pass
+
+
+class bitmap56(uint56_t):  # noqa: N801
+    pass
+
+
+class bitmap64(uint64_t):  # noqa: N801
+    pass
+
+
 class Single(float):
     def serialize(self):
         return struct.pack('<f', self)
