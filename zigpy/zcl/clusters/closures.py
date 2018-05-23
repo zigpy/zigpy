@@ -13,7 +13,7 @@ class Shade(Cluster):
         # Shade Information
         0x0000: ('physical_closed_limit', t.uint16_t),
         0x0001: ('motor_step_size', t.uint8_t),
-        0x0002: ('status', t.uint8_t),  # bitmap8
+        0x0002: ('status', t.bitmap8),
         # Shade Settings
         0x0010: ('closed_limit', t.uint16_t),
         0x0012: ('mode', t.enum8),
@@ -50,8 +50,8 @@ class DoorLock(Cluster):
         0x0023: ('auto_relock_time', t.uint32_t),
         0x0024: ('sound_volume', t.uint8_t),
         0x0025: ('operating_mode', t.uint32_t),
-        0x0026: ('lock_type', t.uint16_t),  # bitmap16
-        0x0027: ('default_configuration_register', t.uint16_t),  # bitmap16
+        0x0026: ('lock_type', t.bitmap16),
+        0x0027: ('default_configuration_register', t.bitmap16),
         0x0028: ('enable_local_programming', t.Bool),
         0x0029: ('enable_one_touch_locking', t.Bool),
         0x002a: ('enable_inside_status_led', t.Bool),
@@ -61,14 +61,14 @@ class DoorLock(Cluster):
         0x0032: ('send_pin_ota', t.Bool),
         0x0033: ('require_pin_for_rf_operation', t.Bool),
         0x0034: ('zigbee_security_level', t.uint8_t),
-        0x0040: ('alarm_mask', t.uint16_t),  # bitmap16
-        0x0041: ('keypad_operation_event_mask', t.uint16_t),  # bitmap16
-        0x0042: ('rf_operation_event_mask', t.uint16_t),  # bitmap16
-        0x0043: ('manual_operation_event_mask', t.uint16_t),  # bitmap16
-        0x0044: ('rfid_operation_event_mask', t.uint16_t),  # bitmap16
-        0x0045: ('keypad_programming_event_mask', t.uint16_t),  # bitmap16
-        0x0046: ('rf_programming_event_mask', t.uint16_t),  # bitmap16
-        0x0047: ('rfid_programming_event_mask', t.uint16_t),  # bitmap16
+        0x0040: ('alarm_mask', t.bitmap16),
+        0x0041: ('keypad_operation_event_mask', t.bitmap16),
+        0x0042: ('rf_operation_event_mask', t.bitmap16),
+        0x0043: ('manual_operation_event_mask', t.bitmap16),
+        0x0044: ('rfid_operation_event_mask', t.bitmap16),
+        0x0045: ('keypad_programming_event_mask', t.bitmap16),
+        0x0046: ('rf_programming_event_mask', t.bitmap16),
+        0x0047: ('rfid_programming_event_mask', t.bitmap16),
     }
     server_commands = {
         0x0000: ('lock_door', (), False),
@@ -142,7 +142,7 @@ class WindowCovering(Cluster):
         0x0003: ('current_position_lift_cm', t.uint16_t),
         0x0004: ('current_position_tilt_ddegree', t.uint16_t),
         0x0005: ('num_of_actuation_lift', t.uint16_t),
-        0x0007: ('config_status', t.uint8_t),  # bitmap8
+        0x0007: ('config_status', t.bitmap8),
         0x0008: ('current_position_lift_percentage', t.uint8_t),
         0x0009: ('current_position_tilt_percentage', t.uint8_t),
         # Window Covering Settings
@@ -153,7 +153,7 @@ class WindowCovering(Cluster):
         0x0014: ('velocity_lift', t.uint16_t),
         0x0015: ('acceleration_time_lift', t.uint16_t),
         0x0016: ('num_of_actuation_tilt', t.uint16_t),
-        0x0017: ('window_covering_mode', t.uint8_t),  # bitmap8
+        0x0017: ('window_covering_mode', t.uint8_t),
         0x0018: ('intermediate_setpoints_lift', t.LVBytes),
         0x0019: ('intermediate_setpoints_tilt', t.LVBytes),
     }

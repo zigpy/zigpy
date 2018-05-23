@@ -29,8 +29,8 @@ class Basic(Cluster):
         0x0010: ('location_desc', t.LVBytes),
         0x0011: ('physical_env', t.enum8),
         0x0012: ('device_enabled', t.Bool),
-        0x0013: ('alarm_mask', t.uint8_t),  # bitmap8
-        0x0014: ('disable_local_config', t.uint8_t),  # bitmap8
+        0x0013: ('alarm_mask', t.bitmap8),
+        0x0014: ('disable_local_config', t.bitmap8),
         0x4000: ('sw_build_id', t.LVBytes),
     }
     server_commands = {
@@ -51,7 +51,7 @@ class PowerConfiguration(Cluster):
         0x0000: ('mains_voltage', t.uint16_t),
         0x0001: ('mains_frequency', t.uint8_t),
         # Mains Settings
-        0x0010: ('mains_alarm_mask', t.uint8_t),  # bitmap8
+        0x0010: ('mains_alarm_mask', t.bitmap8),
         0x0011: ('mains_volt_min_thres', t.uint16_t),
         0x0012: ('mains_volt_max_thres', t.uint16_t),
         0x0013: ('mains_voltage_dwell_trip_point', t.uint16_t),
@@ -64,7 +64,7 @@ class PowerConfiguration(Cluster):
         0x0032: ('battery_a_hr_rating', t.uint16_t),
         0x0033: ('battery_quantity', t.uint8_t),
         0x0034: ('battery_rated_voltage', t.uint8_t),
-        0x0035: ('battery_alarm_mask', t.uint8_t),  # bitmap8
+        0x0035: ('battery_alarm_mask', t.bitmap8),
         0x0036: ('battery_volt_min_thres', t.uint8_t),
         0x0037: ('battery_volt_thres1', t.uint16_t),
         0x0038: ('battery_volt_thres2', t.uint16_t),
@@ -73,7 +73,7 @@ class PowerConfiguration(Cluster):
         0x003b: ('battery_percent_thres1', t.uint8_t),
         0x003c: ('battery_percent_thres2', t.uint8_t),
         0x003d: ('battery_percent_thres3', t.uint8_t),
-        0x003e: ('battery_alarm_state', t.uint32_t),  # bitmap32
+        0x003e: ('battery_alarm_state', t.bitmap32),
         # Battery 2 Information
         0x0040: ('battery_2_voltage', t.uint8_t),
         0x0041: ('battery_2_percentage_remaining', t.uint8_t),
@@ -83,7 +83,7 @@ class PowerConfiguration(Cluster):
         0x0052: ('battery_2_a_hr_rating', t.uint16_t),
         0x0053: ('battery_2_quantity', t.uint8_t),
         0x0054: ('battery_2_rated_voltage', t.uint8_t),
-        0x0055: ('battery_2_alarm_mask', t.uint8_t),  # bitmap8
+        0x0055: ('battery_2_alarm_mask', t.bitmap8),
         0x0056: ('battery_2_volt_min_thres', t.uint8_t),
         0x0057: ('battery_2_volt_thres1', t.uint16_t),
         0x0058: ('battery_2_volt_thres2', t.uint16_t),
@@ -92,7 +92,7 @@ class PowerConfiguration(Cluster):
         0x005b: ('battery_2_percent_thres1', t.uint8_t),
         0x005c: ('battery_2_percent_thres2', t.uint8_t),
         0x005d: ('battery_2_percent_thres3', t.uint8_t),
-        0x005e: ('battery_2_alarm_state', t.uint32_t),  # bitmap32
+        0x005e: ('battery_2_alarm_state', t.bitmap32),
         # Battery 3 Information
         0x0060: ('battery_3_voltage', t.uint8_t),
         0x0061: ('battery_3_percentage_remaining', t.uint8_t),
@@ -102,7 +102,7 @@ class PowerConfiguration(Cluster):
         0x0072: ('battery_3_a_hr_rating', t.uint16_t),
         0x0073: ('battery_3_quantity', t.uint8_t),
         0x0074: ('battery_3_rated_voltage', t.uint8_t),
-        0x0075: ('battery_3_alarm_mask', t.uint8_t),  # bitmap8
+        0x0075: ('battery_3_alarm_mask', t.bitmap8),
         0x0076: ('battery_3_volt_min_thres', t.uint8_t),
         0x0077: ('battery_3_volt_thres1', t.uint16_t),
         0x0078: ('battery_3_volt_thres2', t.uint16_t),
@@ -111,7 +111,7 @@ class PowerConfiguration(Cluster):
         0x007b: ('battery_3_percent_thres1', t.uint8_t),
         0x007c: ('battery_3_percent_thres2', t.uint8_t),
         0x007d: ('battery_3_percent_thres3', t.uint8_t),
-        0x007e: ('battery_3_alarm_state', t.uint32_t),  # bitmap32
+        0x007e: ('battery_3_alarm_state', t.bitmap32),
     }
     server_commands = {}
     client_commands = {}
@@ -131,7 +131,7 @@ class DeviceTemperature(Cluster):
         0x0002: ('max_temp_experienced', t.int16s),
         0x0003: ('over_temp_total_dwell', t.uint16_t),
         # Device Temperature Settings
-        0x0010: ('dev_temp_alarm_mask', t.uint8_t),  # bitmap8
+        0x0010: ('dev_temp_alarm_mask', t.bitmap8),
         0x0011: ('low_temp_thres', t.int16s),
         0x0012: ('high_temp_thres', t.int16s),
         0x0013: ('low_temp_dwell_trip_point', t.uint24_t),
@@ -148,13 +148,13 @@ class Identify(Cluster):
     ep_attribute = 'identify'
     attributes = {
         0x0000: ('identify_time', t.uint16_t),
-        0x0001: ('identify_commission_state', t.uint8_t),  # bitmap8
+        0x0001: ('identify_commission_state', t.bitmap8),
     }
     server_commands = {
         0x0000: ('identify', (t.uint16_t, ), False),
         0x0001: ('identify_query', (), False),
-        0x0002: ('ezmode_invoke', (t.uint8_t, ), False),  # bitmap8
-        0x0003: ('update_commission_state', (t.uint8_t, ), False),  # bitmap8
+        0x0002: ('ezmode_invoke', (t.bitmap8, ), False),
+        0x0003: ('update_commission_state', (t.bitmap8, ), False),
         0x0040: ('trigger_effect', (), False),
     }
     client_commands = {
@@ -168,7 +168,7 @@ class Groups(Cluster):
     cluster_id = 0x0004
     ep_attribute = 'groups'
     attributes = {
-        0x0000: ('name_support', t.uint8_t),  # bitmap8
+        0x0000: ('name_support', t.bitmap8),
     }
     server_commands = {
         0x0000: ('add', (t.uint16_t, t.LVBytes), False),
@@ -197,7 +197,7 @@ class Scenes(Cluster):
         0x0001: ('current_scene', t.uint8_t),
         0x0002: ('current_group', t.uint16_t),
         0x0003: ('scene_valid', t.Bool),
-        0x0004: ('name_support', t.uint8_t),  # bitmap8
+        0x0004: ('name_support', t.bitmap8),
         0x0005: ('last_configured_by', t.EUI64),
     }
     server_commands = {
@@ -322,7 +322,7 @@ class Time(Cluster):
     ep_attribute = 'time'
     attributes = {
         0x0000: ('time', t.uint32_t),
-        0x0001: ('time_status', t.uint8_t),  # bitmap8
+        0x0001: ('time_status', t.bitmap8),
         0x0002: ('time_zone', t.int32s),
         0x0003: ('dst_start', t.uint32_t),
         0x0004: ('dst_end', t.uint32_t),
@@ -378,7 +378,7 @@ class RSSILocation(Cluster):
         0x0000: ('set_absolute_location', (t.int16s, t.int16s, t.int16s, t.int8s, t.uint16_t), False),
         0x0001: ('set_dev_config', (t.int16s, t.uint16_t, t.uint16_t, t.uint8_t, t.uint16_t), False),
         0x0002: ('get_dev_config', (t.EUI64, ), False),
-        0x0003: ('get_location_data', (t.uint8_t, t.uint64_t, t.EUI64), False),
+        0x0003: ('get_location_data', (t.bitmap8, t.uint8_t, t.EUI64), False),
         0x0004: ('rssi_response', (t.EUI64, t.int16s, t.int16s, t.int16s, t.int8s, t.uint8_t), True),
         0x0005: ('send_pings', (t.EUI64, t.uint8_t, t.uint16_t), False),
         0x0006: ('anchor_node_announce', (t.EUI64, t.int16s, t.int16s, t.int16s), False),
@@ -417,7 +417,7 @@ class AnalogInput(Cluster):
         0x0055: ('present_value', t.Single),
         0x0067: ('reliability', t.enum8),
         0x006a: ('resolution', t.Single),
-        0x006f: ('status_flags', t.uint8_t),  # bitmap8
+        0x006f: ('status_flags', t.bitmap8),
         0x0075: ('engineering_units', t.enum16),
         0x0100: ('application_type', t.uint32_t),
     }
@@ -438,7 +438,7 @@ class AnalogOutput(Cluster):
         0x0067: ('reliability', t.enum8),
         0x0068: ('relinquish_default', t.Single),
         0x006a: ('resolution', t.Single),
-        0x006f: ('status_flags', t.uint8_t),  # bitmap8
+        0x006f: ('status_flags', t.bitmap8),
         0x0075: ('engineering_units', t.enum16),
         0x0100: ('application_type', t.uint32_t),
     }
@@ -456,7 +456,7 @@ class AnalogValue(Cluster):
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
         0x0067: ('reliability', t.enum8),
         0x0068: ('relinquish_default', t.Single),
-        0x006f: ('status_flags', t.uint8_t),  # bitmap8
+        0x006f: ('status_flags', t.bitmap8),
         0x0075: ('engineering_units', t.enum16),
         0x0100: ('application_type', t.uint32_t),
     }
@@ -476,7 +476,7 @@ class BinaryInput(Cluster):
         0x0054: ('polarity', t.enum8),
         0x0055: ('present_value', t.Bool),
         0x0067: ('reliability', t.enum8),
-        0x006f: ('status_flags', t.uint8_t),  # bitmap8
+        0x006f: ('status_flags', t.bitmap8),
         0x0100: ('application_type', t.uint32_t),
     }
     server_commands = {}
@@ -498,7 +498,7 @@ class BinaryOutput(Cluster):
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
         0x0067: ('reliability', t.enum8),
         0x0068: ('relinquish_default', t.Bool),
-        0x006f: ('status_flags', t.uint8_t),  # bitmap8
+        0x006f: ('status_flags', t.bitmap8),
         0x0100: ('application_type', t.uint32_t),
     }
     server_commands = {}
@@ -519,7 +519,7 @@ class BinaryValue(Cluster):
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
         0x0067: ('reliability', t.enum8),
         0x0068: ('relinquish_default', t.Single),
-        0x006f: ('status_flags', t.uint8_t),  # bitmap8
+        0x006f: ('status_flags', t.bitmap8),
         0x0100: ('application_type', t.uint32_t),
     }
     server_commands = {}
@@ -537,7 +537,7 @@ class MultistateInput(Cluster):
         0x0055: ('present_value', t.Single),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
         0x0067: ('reliability', t.enum8),
-        0x006f: ('status_flags', t.uint8_t),  # bitmap8
+        0x006f: ('status_flags', t.bitmap8),
         0x0100: ('application_type', t.uint32_t),
     }
     server_commands = {}
@@ -556,7 +556,7 @@ class MultistateOutput(Cluster):
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
         0x0067: ('reliability', t.enum8),
         0x0068: ('relinquish_default', t.Single),
-        0x006f: ('status_flags', t.uint8_t),  # bitmap8
+        0x006f: ('status_flags', t.bitmap8),
         0x0100: ('application_type', t.uint32_t),
     }
     server_commands = {}
@@ -575,7 +575,7 @@ class MultistateValue(Cluster):
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
         0x0067: ('reliability', t.enum8),
         0x0068: ('relinquish_default', t.Single),
-        0x006f: ('status_flags', t.uint8_t),  # bitmap8
+        0x006f: ('status_flags', t.bitmap8),
         0x0100: ('application_type', t.uint32_t),
     }
     server_commands = {}
@@ -592,7 +592,7 @@ class Commissioning(Cluster):
         0x0000: ('short_address', t.uint16_t),
         0x0001: ('extended_pan_id', t.EUI64),
         0x0002: ('pan_id', t.uint16_t),
-        0x0003: ('channelmask', t.uint32_t),  # bitmap32
+        0x0003: ('channelmask', t.bitmap32),
         0x0004: ('protocol_version', t.uint8_t),
         0x0005: ('stack_profile', t.uint8_t),
         0x0006: ('startup_control', t.enum8),
@@ -677,9 +677,9 @@ class PowerProfile(Cluster):
     attributes = {
         0x0000: ('total_profile_num', t.uint8_t),
         0x0001: ('multiple_scheduling', t.uint8_t),
-        0x0002: ('energy_formatting', t.uint8_t),  # bitmap8
+        0x0002: ('energy_formatting', t.bitmap8),
         0x0003: ('energy_remote', t.Bool),
-        0x0004: ('schedule_mode', t.uint8_t),  # bitmap8
+        0x0004: ('schedule_mode', t.bitmap8),
     }
 
     class ScheduleRecord(t.Struct):
@@ -728,7 +728,7 @@ class PowerProfile(Cluster):
         0x0008: ('energy_phases_schedule_state_notification', (t.uint8_t, t.uint8_t), False),
         0x0009: ('power_profile_schedule_constraints_notification', (t.uint8_t, t.uint16_t, t.uint16_t), False),
         0x000a: ('power_profile_schedule_constraints_response', (t.uint8_t, t.uint16_t, t.uint16_t), True),
-        0x000b: ('get_power_profile_price_extended', (t.uint8_t, t.uint8_t, t.uint16_t), False),
+        0x000b: ('get_power_profile_price_extended', (t.bitmap8, t.uint8_t, t.uint16_t), False),
     }
 
 
