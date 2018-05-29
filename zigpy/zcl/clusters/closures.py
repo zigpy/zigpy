@@ -15,7 +15,7 @@ class Shade(Cluster):
         0x0001: ('motor_step_size', t.uint8_t),
         0x0002: ('status', t.uint8_t),  # bitmap8
         # Shade Settings
-        0x0010: ('losed_limit', t.uint16_t),
+        0x0010: ('closed_limit', t.uint16_t),
         0x0012: ('mode', t.enum8),
     }
     server_commands = {}
@@ -161,9 +161,9 @@ class WindowCovering(Cluster):
         0x0000: ('up_open', (), False),
         0x0001: ('down_close', (), False),
         0x0002: ('stop', (), False),
-        0x0004: ('go_to_lift_value', (), False),
-        0x0005: ('go_to_lift_percentage', (), False),
-        0x0007: ('go_to_tilt_value', (), False),
-        0x0008: ('go_to_tilt_percentage', (), False),
+        0x0004: ('go_to_lift_value', (t.uint16_t), False),
+        0x0005: ('go_to_lift_percentage', (t.uint8_t), False),
+        0x0007: ('go_to_tilt_value', (t.uint16_t), False),
+        0x0008: ('go_to_tilt_percentage', (t.uint8_t), False),
     }
     client_commands = {}
