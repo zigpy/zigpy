@@ -87,6 +87,12 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
             cluster.add_listener(listener)
 
+        attributeNames = []
+        for attrid, (attrname, datatype) in cluster.attributes.items():
+            attributeNames.append(attrname)
+
+        await cluster.read_attributes(attributeNames, allow_cache=True,)
+
         return cluster
 
     def add_output_cluster(self, cluster_id, cluster=None):
