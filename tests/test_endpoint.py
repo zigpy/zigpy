@@ -161,18 +161,17 @@ def _mk_rar(attrid, value, status=0):
 
 
 def test_cluster_init(ep):
-    cluster = ep.add_input_cluster(1024)
-    assert 1024 in ep.in_clusters
-    assert ep.in_clusters[1024] is cluster
-    cluster._attr_cache[0] = 0
+    _test_initialize(ep, 260)
+    cluster = ep.in_clusters[5]
+    cluster._attr_cache[0] = 7
 
     async def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
         rar0 = _mk_rar(0, 1)
-        return [[rar0]]
+        rar1 = _mk_rar(1, 1)
+        return [[rar0, rar1]]
     cluster.request = mockrequest
-
-    test_initialize_zha(ep)
-
+    asyncio.ensure_future(cluster.read_attributes(['count'], allow_cache=False,))
+    _test_initialize(ep, 260)
     assert cluster._attr_cache[0] == 1
