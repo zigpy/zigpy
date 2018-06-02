@@ -5,6 +5,7 @@ import pytest
 
 from zigpy import endpoint
 from zigpy.zdo import types
+import zigpy.zcl as zcl
 
 
 @pytest.fixture
@@ -173,3 +174,5 @@ def test_cluster_init(ep):
     cluster.request = mockrequest
 
     test_initialize_zha(ep)
+
+    assert cluster._attr_cache[0] == 1
