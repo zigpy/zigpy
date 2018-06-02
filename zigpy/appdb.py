@@ -216,6 +216,11 @@ class PersistingListener:
                 if cluster in ep.in_clusters:
                     clus = ep.in_clusters[cluster]
                     clus._attr_cache[attrid] = value
+                    LOGGER.debug("Attribute id: %s value: %s", attrid, value)
+                    if cluster == 0 and attrid == 4:
+                        ep.manufacturer = value.decode('ascii').strip()
+                    if cluster == 0 and attrid == 5:
+                        ep.model = value.decode('ascii').strip()
 
 
 class ClusterPersistingListener:

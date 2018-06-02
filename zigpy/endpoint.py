@@ -27,6 +27,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._cluster_attr = {}
         self.status = Status.NEW
         self._listeners = {}
+        self.manufacturer = None
+        self.model = None
 
     async def initialize(self):
         if self.status == Status.ZDO_INIT:
@@ -63,6 +65,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.add_input_cluster(cluster)
         for cluster in sd.output_clusters:
             self.add_output_cluster(cluster)
+
+        if 0 in self.in_clusters:
+            await self.initialize_endpoint_info()
 
         self.status = Status.ZDO_INIT
 
@@ -101,6 +106,41 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
         self.out_clusters[cluster_id] = cluster
         return cluster
+
+    async def initialize_endpoint_info(self):
+        attributes = {
+            'manufacturer': None,
+            'model': None,
+        }
+
+        async def read(attribute_names):
+            """Read attributes and update extra_info convenience function."""
+            result, _ = await self.in_clusters[0].read_attributes(
+                attribute_names,
+                allow_cache=True,
+            )
+            attributes.update(result)
+
+        await read(['manufacturer', 'model'])
+
+        if attributes['manufacturer'] is None or attributes['model'] is None:
+            # Some devices fail at returning multiple results. Attempt separately.
+            await read(['manufacturer'])
+            await read(['model'])
+
+        for key, value in attributes.items():
+            if isinstance(value, bytes):
+                try:
+                    attributes[key] = value.decode('ascii').strip()
+                except UnicodeDecodeError:
+                    # Unsure what the best behaviour here is. Unset the key?
+                    pass
+
+        self.manufacturer = attributes['manufacturer']
+        self.model = attributes['model']
+
+        self.debug("Manufacturer: %s", self.manufacturer)
+        self.debug("Model: %s", self.model)
 
     def deserialize(self, cluster_id, data):
         """Deserialize data for ZCL"""

@@ -49,6 +49,8 @@ async def test_database(tmpdir):
     ep.device_type = profiles.zll.DeviceType.COLOR_LIGHT
     app.device_initialized(dev)
     clus._update_attribute(0, 99)
+    clus._update_attribute(4, bytes('Custom', 'ascii'))
+    clus._update_attribute(5, bytes('Model', 'ascii'))
     clus.listener_event('cluster_command', 0)
     clus.listener_event('zdo_command')
 
@@ -69,6 +71,10 @@ async def test_database(tmpdir):
     assert dev.endpoints[1].device_type == profiles.zha.DeviceType.PUMP
     assert dev.endpoints[2].device_type == 0xfffd
     assert dev.endpoints[2].in_clusters[0]._attr_cache[0] == 99
+    assert dev.endpoints[2].in_clusters[0]._attr_cache[4] == bytes('Custom', 'ascii')
+    assert dev.endpoints[2].in_clusters[0]._attr_cache[5] == bytes('Model', 'ascii')
+    assert dev.endpoints[2].manufacturer == 'Custom'
+    assert dev.endpoints[2].model == 'Model'
     assert dev.endpoints[2].out_clusters[1].cluster_id == 1
     assert dev.endpoints[3].device_type == profiles.zll.DeviceType.COLOR_LIGHT
     dev = app2.get_device(custom_ieee)
