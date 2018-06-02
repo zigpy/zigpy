@@ -173,5 +173,3 @@ def test_cluster_init(ep):
     cluster.request = mockrequest
 
     test_initialize_zha(ep)
-
-    assert cluster._attr_cache[0] == 1
