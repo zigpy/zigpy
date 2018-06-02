@@ -1,3 +1,4 @@
+import asyncio
 import enum
 import logging
 
@@ -87,11 +88,13 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
             cluster.add_listener(listener)
 
-        attributeNames = []
-        for attrid, (attrname, datatype) in cluster.attributes.items():
-            attributeNames.append(attrname)
-
-        await cluster.read_attributes(attributeNames, allow_cache=True,)
+        if cluster_id != 0:
+            attributeNames = []
+            for attrid, (attrname, datatype) in cluster.attributes.items():
+                if attrid in cluster._attr_cache:
+                    attributeNames.append(attrname)
+    
+            asyncio.ensure_future(cluster.read_attributes(attributeNames, allow_cache=False,))
 
         return cluster
 
