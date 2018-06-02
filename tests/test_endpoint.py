@@ -148,3 +148,30 @@ def test_reply(ep):
     ep.profile_id = 260
     ep.reply(7, 8, b'')
     assert ep._device.reply.call_count == 1
+
+
+def _mk_rar(attrid, value, status=0):
+        r = zcl.foundation.ReadAttributeRecord()
+        r.attrid = attrid
+        r.status = status
+        r.value = zcl.foundation.TypeValue()
+        r.value.value = value
+        return r
+
+
+def test_cluster_init(ep):
+    cluster = ep.add_input_cluster(1024)
+    assert 1024 in ep.in_clusters
+    assert ep.in_clusters[1024] is cluster
+    cluster._attr_cache[0] = 0
+
+    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+        assert foundation is True
+        assert command == 0
+        rar0 = _mk_rar(0, 1)
+        return [[rar0]]
+    cluster.request = mockrequest
+
+    test_initialize_zha(ep)
+
+    assert cluster._attr_cache[0] == 1
