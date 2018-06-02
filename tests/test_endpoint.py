@@ -5,6 +5,8 @@ import pytest
 
 from zigpy import endpoint
 from zigpy.zdo import types
+import zigpy.zcl as zcl
+import zigpy.types as t
 
 
 @pytest.fixture
@@ -148,3 +150,30 @@ def test_reply(ep):
     ep.profile_id = 260
     ep.reply(7, 8, b'')
     assert ep._device.reply.call_count == 1
+
+
+def _mk_rar(attrid, value, status=0):
+        r = zcl.foundation.ReadAttributeRecord()
+        r.attrid = attrid
+        r.status = status
+        r.value = zcl.foundation.TypeValue()
+        r.value.value = value
+        return r
+
+
+def test_cluster_init(ep):
+    _test_initialize(ep, 260)
+    cluster = ep.in_clusters[5]
+    cluster._attr_cache[0] = 5
+    cluster.attributes = {0: ('count', t.uint8_t), }
+
+    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+        assert foundation is True
+        assert command == 0
+        rar0 = _mk_rar(0, 1)
+        rar1 = _mk_rar(1, 1)
+        return [[rar0, rar1]]
+    cluster.request = mockrequest
+    ep.add_input_cluster(5, cluster)
+    _test_initialize(ep, 260)
+    assert cluster._attr_cache[0] == 1
