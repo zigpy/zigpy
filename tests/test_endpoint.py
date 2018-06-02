@@ -6,6 +6,7 @@ import pytest
 from zigpy import endpoint
 from zigpy.zdo import types
 import zigpy.zcl as zcl
+import zigpy.types as t
 
 
 @pytest.fixture
@@ -163,7 +164,8 @@ def _mk_rar(attrid, value, status=0):
 def test_cluster_init(ep):
     _test_initialize(ep, 260)
     cluster = ep.in_clusters[5]
-    cluster._attr_cache[0] = 7
+    cluster._attr_cache[0] = 5
+    cluster.attributes = {0: ('count', t.uint8_t), }
 
     async def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
@@ -172,6 +174,6 @@ def test_cluster_init(ep):
         rar1 = _mk_rar(1, 1)
         return [[rar0, rar1]]
     cluster.request = mockrequest
-    asyncio.ensure_future(cluster.read_attributes(['count'], allow_cache=False,))
+    ep.add_input_cluster(5, cluster)
     _test_initialize(ep, 260)
     assert cluster._attr_cache[0] == 1
