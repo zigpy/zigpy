@@ -88,12 +88,12 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
             cluster.add_listener(listener)
 
-        if cluster_id != 0:
+        if cluster_id != 0 and hasattr(cluster, 'attributes'):
             attributeNames = []
             for attrid, (attrname, datatype) in cluster.attributes.items():
                 if attrid in cluster._attr_cache:
                     attributeNames.append(attrname)
-    
+
             asyncio.ensure_future(cluster.read_attributes(attributeNames, allow_cache=False,))
 
         return cluster
