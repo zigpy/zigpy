@@ -216,6 +216,9 @@ class PersistingListener:
                 if cluster in ep.in_clusters:
                     clus = ep.in_clusters[cluster]
                     clus._attr_cache[attrid] = value
+                if cluster in ep.out_clusters:
+                    clus = ep.out_clusters[cluster]
+                    clus._attr_cache[attrid] = value
 
 
 class ClusterPersistingListener:

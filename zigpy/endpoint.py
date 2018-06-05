@@ -100,6 +100,15 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if cluster is None:
             cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
         self.out_clusters[cluster_id] = cluster
+        if hasattr(cluster, 'ep_attribute'):
+            self._cluster_attr[cluster.ep_attribute] = cluster
+
+        if hasattr(self._device.application, '_dblistener'):
+            listener = zigpy.appdb.ClusterPersistingListener(
+                self._device.application._dblistener,
+                cluster,
+            )
+            cluster.add_listener(listener)
         return cluster
 
     def deserialize(self, cluster_id, data):
