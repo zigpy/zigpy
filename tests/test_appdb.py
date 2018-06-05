@@ -43,12 +43,13 @@ async def test_database(tmpdir):
     ep.profile_id = 260
     ep.device_type = 0xfffd  # Invalid
     clus = ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
+    out_clus = ep.add_output_cluster(1)
     ep = dev.add_endpoint(3)
     ep.profile_id = 49246
     ep.device_type = profiles.zll.DeviceType.COLOR_LIGHT
     app.device_initialized(dev)
     clus._update_attribute(0, 99)
+    out_clus._update_attribute(0, 99)
     clus.listener_event('cluster_command', 0)
     clus.listener_event('zdo_command')
 
