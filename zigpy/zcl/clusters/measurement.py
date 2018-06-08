@@ -103,7 +103,7 @@ class OccupancySensing(Cluster):
     ep_attribute = 'occupancy'
     attributes = {
         # Occupancy Sensor Information
-        0x0000: ('occupancy', t.uint8_t),  # bitmap8
+        0x0000: ('occupancy', t.bitmap8),
         0x0001: ('occupancy_sensor_type', t.enum8),
         # PIR Configuration
         0x0010: ('pir_o_to_u_delay', t.uint16_t),
