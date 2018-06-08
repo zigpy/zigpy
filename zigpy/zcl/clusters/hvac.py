@@ -51,7 +51,7 @@ class Thermostat(Cluster):
         # Thermostat Information
         0x0000: ('local_temp', t.int16s),
         0x0001: ('outdoor_temp', t.int16s),
-        0x0002: ('ocupancy', t.uint8_t),  # bitmap8
+        0x0002: ('occupancy', t.uint8_t),  # bitmap8
         0x0003: ('abs_min_heat_setpoint_limit', t.int16s),
         0x0004: ('abs_max_heat_setpoint_limit', t.int16s),
         0x0005: ('abs_min_cool_setpoint_limit', t.int16s),
