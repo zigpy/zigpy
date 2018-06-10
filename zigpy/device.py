@@ -35,6 +35,7 @@ class Device(zigpy.util.LocalLogMixin):
         self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
+        self.refreshed = False
 
     def schedule_initialize(self):
         if self.initializing:
@@ -43,6 +44,10 @@ class Device(zigpy.util.LocalLogMixin):
         else:
             self.initializing = True
         self._init_handle = asyncio.ensure_future(self._initialize())
+
+    def schedule_refresh(self):
+        if self.refreshed is not True:
+            asyncio.ensure_future(self._refresh())
 
     async def _initialize(self):
         if self.status == Status.NEW:
@@ -71,6 +76,15 @@ class Device(zigpy.util.LocalLogMixin):
         self.status = Status.ENDPOINTS_INIT
         self.initializing = False
         self._application.device_initialized(self)
+
+    async def _refresh(self):
+        if self.status != Status.ENDPOINTS_INIT:
+            return
+        for endpoint_id in self.endpoints.keys():
+            if endpoint_id == 0:  # ZDO
+                continue
+            await self.endpoints[endpoint_id].refresh()
+        self.refreshed = True
 
     def add_endpoint(self, endpoint_id):
         ep = zigpy.endpoint.Endpoint(self, endpoint_id)
@@ -107,7 +121,10 @@ class Device(zigpy.util.LocalLogMixin):
             )
             return
 
-        return endpoint.handle_message(is_reply, profile, cluster, tsn, command_id, args)
+        result = endpoint.handle_message(is_reply, profile, cluster, tsn, command_id, args)
+        if self.refreshed is not True:
+            asyncio.ensure_future(self._refresh())
+        return result
 
     def reply(self, profile, cluster, src_ep, dst_ep, sequence, data):
         return self._application.request(self.nwk, profile, cluster, src_ep, dst_ep, sequence, data, False)

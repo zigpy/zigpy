@@ -83,7 +83,8 @@ class ControllerApplication(zigpy.util.ListenableMixin):
                 LOGGER.debug("Device %s changed id (0x%04x => 0x%04x)", ieee, dev.nwk, nwk)
                 dev.nwk = nwk
             elif dev.initializing or dev.status == zigpy.device.Status.ENDPOINTS_INIT:
-                LOGGER.debug("Skip initialization for existing device %s", ieee)
+                LOGGER.debug("Refreshing state for existing device %s", ieee)
+                dev.schedule_refresh()
                 return
         else:
             dev = self.add_device(ieee, nwk)

@@ -66,6 +66,14 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.status = Status.ZDO_INIT
 
+    async def refresh(self):
+        if self.status != Status.ZDO_INIT:
+            return
+        for cluster_id in self.in_clusters:
+            await self.in_clusters[cluster_id].update_cached_attributes()
+        for cluster_id in self.out_clusters:
+            await self.out_clusters[cluster_id].update_cached_attributes()
+
     def add_input_cluster(self, cluster_id, cluster=None):
         """Adds an endpoint's input cluster
 

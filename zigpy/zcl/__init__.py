@@ -258,6 +258,26 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             schema = foundation.COMMANDS[0x02][1]
             return self.request(True, 0x02, schema, args, manufacturer=manufacturer)
 
+    def read_attributes_from_cache(self, attributes):
+        success = {}
+        attribute_ids = []
+        for attribute in attributes:
+            if isinstance(attribute, str):
+                attrid = self._attridx[attribute]
+            else:
+                attrid = attribute
+            attribute_ids.append(attrid)
+        for idx, attribute in enumerate(attribute_ids):
+            if attribute in self._attr_cache:
+                success[attributes[idx]] = self._attr_cache[attribute]
+        return success
+
+    async def update_cached_attributes(self):
+        to_read = []
+        for attribute in self._attr_cache:
+            to_read.append(attribute)
+        await self.read_attributes(to_read)
+
     def bind(self):
         return self._endpoint.device.zdo.bind(self._endpoint.endpoint_id, self.cluster_id)
 
