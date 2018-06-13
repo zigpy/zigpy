@@ -25,7 +25,7 @@ class Pump(Cluster):
         0x000b: ('min_const_temp', t.int16s),
         0x000c: ('max_const_temp', t.int16s),
         # Pump Dynamic Information
-        0x0010: ('pump_status', t.uint16_t),  # bitmap16
+        0x0010: ('pump_status', t.bitmap16),
         0x0011: ('effective_operation_mode', t.enum8),
         0x0012: ('effective_control_mode', t.enum8),
         0x0013: ('capacity', t.int16s),
@@ -36,7 +36,7 @@ class Pump(Cluster):
         # Pump Settings
         0x0020: ('operation_mode', t.enum8),
         0x0021: ('control_mode', t.enum8),
-        0x0022: ('alarm_mask', t.uint16_t),  # bitmap16
+        0x0022: ('alarm_mask', t.bitmap16),
     }
     server_commands = {}
     client_commands = {}
@@ -51,14 +51,14 @@ class Thermostat(Cluster):
         # Thermostat Information
         0x0000: ('local_temp', t.int16s),
         0x0001: ('outdoor_temp', t.int16s),
-        0x0002: ('ocupancy', t.uint8_t),  # bitmap8
+        0x0002: ('occupancy', t.bitmap8),
         0x0003: ('abs_min_heat_setpoint_limit', t.int16s),
         0x0004: ('abs_max_heat_setpoint_limit', t.int16s),
         0x0005: ('abs_min_cool_setpoint_limit', t.int16s),
         0x0006: ('abs_max_cool_setpoint_limit', t.int16s),
         0x0007: ('pi_cooling_demand', t.uint8_t),
         0x0008: ('pi_heating_demand', t.uint8_t),
-        0x0009: ('system_type_config', t.uint8_t),  # bitmap8
+        0x0009: ('system_type_config', t.bitmap8),
         # Thermostat Settings
         0x0010: ('local_temperature_calibration', t.int8s),
         0x0011: ('occupied_cooling_setpoint', t.int16s),
@@ -70,10 +70,10 @@ class Thermostat(Cluster):
         0x0017: ('min_cool_setpoint_limit', t.int16s),
         0x0018: ('max_cool_setpoint_limit', t.int16s),
         0x0019: ('min_setpoint_dead_band', t.int8s),
-        0x001a: ('remote_sensing', t.uint8_t),  # bitmap8
+        0x001a: ('remote_sensing', t.bitmap8),
         0x001b: ('ctrl_seqe_of_oper', t.enum8),
         0x001c: ('system_mode', t.enum8),
-        0x001d: ('alarm_mask', t.uint8_t),  # bitmap8
+        0x001d: ('alarm_mask', t.bitmap8),
         0x001e: ('running_mode', t.enum8),
         # ...
         0x0020: ('start_of_week', t.enum8),
@@ -81,8 +81,8 @@ class Thermostat(Cluster):
         0x0022: ('number_of_daily_trans', t.uint8_t),
         0x0023: ('temp_setpoint_hold', t.enum8),
         0x0024: ('temp_setpoint_hold_duration', t.uint16_t),
-        0x0025: ('programing_oper_mode', t.uint8_t),  # bitmap8
-        0x0029: ('running_state', t.uint16_t),  # bitmap16
+        0x0025: ('programing_oper_mode', t.bitmap8),
+        0x0029: ('running_state', t.bitmap16),
         0x0030: ('setpoint_change_source', t.enum8),
         0x0031: ('setpoint_change_amount', t.int16s),
         0x0032: ('setpoint_change_source_time_stamp', t.uint32_t),
@@ -90,7 +90,7 @@ class Thermostat(Cluster):
         0x0041: ('ac_capacity', t.uint16_t),
         0x0042: ('ac_refrigerant_type', t.enum8),
         0x0043: ('ac_conpressor_type', t.enum8),
-        0x0044: ('ac_error_code', t.uint32_t),  # bitmap32
+        0x0044: ('ac_error_code', t.bitmap32),
         0x0045: ('ac_louver_position', t.enum8),
         0x0046: ('ac_coll_temp', t.int16s),
         0x0047: ('ac_capacity_format', t.enum8),

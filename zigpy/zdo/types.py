@@ -121,7 +121,7 @@ CLUSTERS = {
     0x0022: ('Unind_req', (('SrcAddress', t.EUI64), ('SrcEndpoint', t.uint8_t), ('ClusterID', t.uint16_t), ('DstAddress', MultiAddress))),
     # Network Management Server Services Requests
     # ... TODO optional stuff ...
-    0x0034: ('Mgmt_Leave_req', (('DeviceAddress', t.EUI64), ('Options', t.uint8_t))),  # bitmap8
+    0x0034: ('Mgmt_Leave_req', (('DeviceAddress', t.EUI64), ('Options', t.bitmap8))),
     0x0036: ('Mgmt_Permit_Joining_req', (('PermitDuration', t.uint8_t), ('TC_Significant', t.Bool))),
     # ... TODO optional stuff ...
 

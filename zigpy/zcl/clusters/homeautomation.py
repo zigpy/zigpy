@@ -87,7 +87,7 @@ class ElectricalMeasurement(Cluster):
     ep_attribute = 'electrical_measurement'
     attributes = {
         # Basic Information
-        0x0000: ('measurement_type', t.uint32_t),  # bitmap32
+        0x0000: ('measurement_type', t.bitmap32),
         # DC Measurement
         0x0100: ('dc_voltage', t.int16s),
         0x0101: ('dc_voltage_min', t.int16s),
@@ -165,11 +165,11 @@ class ElectricalMeasurement(Cluster):
         0x0604: ('ac_power_multiplier', t.uint16_t),
         0x0605: ('ac_power_divisor', t.uint16_t),
         # DC Manufacturer Threshold Alarms
-        0x0700: ('dc_overload_alarms_mask', t.uint8_t),  # bitmap8
+        0x0700: ('dc_overload_alarms_mask', t.bitmap8),
         0x0701: ('dc_voltage_overload', t.int16s),
         0x0702: ('dc_current_overload', t.int16s),
         # AC Manufacturer Threshold Alarms
-        0x0800: ('ac_alarms_mask', t.uint16_t),  # bitmap16
+        0x0800: ('ac_alarms_mask', t.bitmap16),
         0x0801: ('ac_voltage_overload', t.int16s),
         0x0802: ('ac_current_overload', t.int16s),
         0x0803: ('ac_active_power_overload', t.int16s),

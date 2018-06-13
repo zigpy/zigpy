@@ -62,7 +62,7 @@ class Color(Cluster):
         0x4004: ('color_loop_time', t.uint16_t),
         0x4005: ('color_loop_start_enhanced_hue', t.uint16_t),
         0x4006: ('color_loop_stored_enhanced_hue', t.uint16_t),
-        0x400a: ('color_capabilities', t.uint16_t),
+        0x400a: ('color_capabilities', t.bitmap16),
         0x400b: ('color_temp_physical_min', t.uint16_t),
         0x400c: ('color_temp_physical_max', t.uint16_t),
     }
@@ -82,7 +82,7 @@ class Color(Cluster):
         0x0041: ('enhanced_move_hue', (), False),
         0x0042: ('enhanced_step_hue', (), False),
         0x0043: ('enhanced_move_to_hue_and_saturation', (), False),
-        0x0044: ('color_loop_set', (), False),
+        0x0044: ('color_loop_set', (t.bitmap8, t.enum8, t.enum8, t.uint16_t, t.uint16_t), False),
         0x0047: ('stop_move_step', (), False),
     }
     client_commands = {}
@@ -97,7 +97,7 @@ class Ballast(Cluster):
         # Ballast Information
         0x0000: ('physical_min_level', t.uint8_t),
         0x0001: ('physical_max_level', t.uint8_t),
-        0x0002: ('ballast_status', t.uint8_t),  # bitmap8
+        0x0002: ('ballast_status', t.bitmap8),
         # Ballast Settings
         0x0010: ('min_level', t.uint8_t),
         0x0011: ('max_level', t.uint8_t),
@@ -112,7 +112,7 @@ class Ballast(Cluster):
         0x0031: ('lamp_manufacturer', t.LVBytes),
         0x0032: ('lamp_rated_hours', t.uint24_t),
         0x0033: ('lamp_burn_hours', t.uint24_t),
-        0x0034: ('lamp_alarm_mode', t.uint8_t),  # bitmap8
+        0x0034: ('lamp_alarm_mode', t.bitmap8),
         0x0035: ('lamp_burn_hours_trip_point', t.uint24_t),
     }
     server_commands = {}

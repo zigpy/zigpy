@@ -83,25 +83,25 @@ class Metering(Cluster):
         0x011b: ('current_tier14_summ_received', t.uint48_t),
         0x011c: ('current_tier15_summ_delivered', t.uint48_t),
         0x011d: ('current_tier15_summ_received', t.uint48_t),
-        0x0200: ('status', t.uint8_t),  # bitmap8
+        0x0200: ('status', t.bitmap8),
         0x0201: ('remaining_batt_life', t.uint8_t),
         0x0202: ('hours_in_operation', t.uint24_t),
         0x0203: ('hours_in_fault', t.uint24_t),
-        0x0204: ('extended_status', t.uint64_t),  # bitmap64
+        0x0204: ('extended_status', t.bitmap64),
         0x0300: ('unit_of_measure', t.enum8),
         0x0301: ('multiplier', t.uint24_t),
         0x0302: ('divisor', t.uint24_t),
-        0x0303: ('summa_formatting', t.uint8_t),  # bitmap8
-        0x0304: ('demand_formatting', t.uint8_t),  # bitmap8
-        0x0305: ('historical_consump_formatting', t.uint8_t),  # bitmap8
-        0x0306: ('metering_device_type', t.uint8_t),  # bitmap8
+        0x0303: ('summa_formatting', t.bitmap8),
+        0x0304: ('demand_formatting', t.bitmap8),
+        0x0305: ('historical_consump_formatting', t.bitmap8),
+        0x0306: ('metering_device_type', t.bitmap8),
         0x0307: ('site_id', t.LVBytes),
         0x0308: ('meter_serial_number', t.LVBytes),
         0x0309: ('energy_carrier_unit_of_meas', t.enum8),
-        0x030a: ('energy_carrier_summ_formatting', t.uint8_t),  # bitmap8
-        0x030b: ('energy_carrier_demand_formatting', t.uint8_t),  # bitmap8
+        0x030a: ('energy_carrier_summ_formatting', t.bitmap8),
+        0x030b: ('energy_carrier_demand_formatting', t.bitmap8),
         0x030c: ('temperature_unit_of_meas', t.enum8),
-        0x030d: ('temperature_formatting', t.uint8_t),  # bitmap8
+        0x030d: ('temperature_formatting', t.bitmap8),
         0x030e: ('module_serial_number', t.LVBytes),
         0x030f: ('operating_tariff_level', t.LVBytes),
         0x0400: ('instantaneous_demand', t.int24s),
@@ -133,14 +133,14 @@ class Metering(Cluster):
         0x0602: ('demand_integration_period', t.uint8_t),
         0x0603: ('number_of_demand_subintervals', t.uint8_t),
         0x0604: ('demand_limit_arm_duration', t.uint16_t),
-        0x0800: ('generic_alarm_mask', t.uint16_t),  # bitmap16
-        0x0801: ('electricity_alarm_mask', t.uint32_t),  # bitmap32
-        0x0802: ('gen_flow_pressure_alarm_mask', t.uint16_t),  # bitmap16
-        0x0803: ('water_specific_alarm_mask', t.uint16_t),  # bitmap16
-        0x0804: ('heat_cool_specific_alarm_mask', t.uint16_t),  # bitmap16
-        0x0805: ('gas_specific_alarm_mask', t.uint16_t),  # bitmap16
-        0x0806: ('extended_generic_alarm_mask', t.uint48_t),  # bitmap48
-        0x0807: ('manufacture_alarm_mask', t.uint16_t),  # bitmap16
+        0x0800: ('generic_alarm_mask', t.bitmap16),
+        0x0801: ('electricity_alarm_mask', t.bitmap32),
+        0x0802: ('gen_flow_pressure_alarm_mask', t.bitmap16),
+        0x0803: ('water_specific_alarm_mask', t.bitmap16),
+        0x0804: ('heat_cool_specific_alarm_mask', t.bitmap16),
+        0x0805: ('gas_specific_alarm_mask', t.bitmap16),
+        0x0806: ('extended_generic_alarm_mask', t.bitmap48),
+        0x0807: ('manufacture_alarm_mask', t.bitmap16),
         0x0a00: ('bill_to_date', t.uint32_t),
         0x0a01: ('bill_to_date_time_stamp', t.uint32_t),
         0x0a02: ('projected_bill', t.uint32_t),

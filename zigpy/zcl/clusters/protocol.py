@@ -58,13 +58,13 @@ class AnalogInputExtended(Cluster):
     cluster_id = 0x0603
     ep_attribute = 'bacnet_extended_analog_input'
     attributes = {
-        0x0000: ('acked_transitions', t.uint8_t),  # bitmap8
+        0x0000: ('acked_transitions', t.bitmap8),
         0x0011: ('notification_class', t.uint16_t),
         0x0019: ('deadband', t.Single),
-        0x0023: ('event_enable', t.uint8_t),  # bitmap8
+        0x0023: ('event_enable', t.bitmap8),
         0x0024: ('event_state', t.enum8),
         0x002d: ('high_limit', t.Single),
-        0x0034: ('limit_enable', t.uint8_t),  # bitmap8
+        0x0034: ('limit_enable', t.bitmap8),
         0x003b: ('low_limit', t.Single),
         0x0048: ('notify_type', t.enum8),
         0x0071: ('time_delay', t.uint8_t),
@@ -99,13 +99,13 @@ class AnalogOutputExtended(Cluster):
     cluster_id = 0x0605
     ep_attribute = 'bacnet_extended_analog_output'
     attributes = {
-        0x0000: ('acked_transitions', t.uint8_t),  # bitmap8
+        0x0000: ('acked_transitions', t.bitmap8),
         0x0011: ('notification_class', t.uint16_t),
         0x0019: ('deadband', t.Single),
-        0x0023: ('event_enable', t.uint8_t),  # bitmap8
+        0x0023: ('event_enable', t.bitmap8),
         0x0024: ('event_state', t.enum8),
         0x002d: ('high_limit', t.Single),
-        0x0034: ('limit_enable', t.uint8_t),  # bitmap8
+        0x0034: ('limit_enable', t.bitmap8),
         0x003b: ('low_limit', t.Single),
         0x0048: ('notify_type', t.enum8),
         0x0071: ('time_delay', t.uint8_t),
@@ -133,13 +133,13 @@ class AnalogValueExtended(Cluster):
     cluster_id = 0x0607
     ep_attribute = 'bacnet_extended_analog_value'
     attributes = {
-        0x0000: ('acked_transitions', t.uint8_t),  # bitmap8
+        0x0000: ('acked_transitions', t.bitmap8),
         0x0011: ('notification_class', t.uint16_t),
         0x0019: ('deadband', t.Single),
-        0x0023: ('event_enable', t.uint8_t),  # bitmap8
+        0x0023: ('event_enable', t.bitmap8),
         0x0024: ('event_state', t.enum8),
         0x002d: ('high_limit', t.Single),
-        0x0034: ('limit_enable', t.uint8_t),  # bitmap8
+        0x0034: ('limit_enable', t.bitmap8),
         0x003b: ('low_limit', t.Single),
         0x0048: ('notify_type', t.enum8),
         0x0071: ('time_delay', t.uint8_t),
@@ -172,10 +172,10 @@ class BinaryInputExtended(Cluster):
     cluster_id = 0x0609
     ep_attribute = 'bacnet_extended_binary_input'
     attributes = {
-        0x0000: ('acked_transitions', t.uint8_t),  # bitmap8
+        0x0000: ('acked_transitions', t.bitmap8),
         0x0006: ('alarm_value', t.Bool),
         0x0011: ('notification_class', t.uint16_t),
-        0x0023: ('event_enable', t.uint8_t),  # bitmap8
+        0x0023: ('event_enable', t.bitmap8),
         0x0024: ('event_state', t.enum8),
         0x0048: ('notify_type', t.enum8),
         0x0071: ('time_delay', t.uint8_t),
@@ -209,9 +209,9 @@ class BinaryOutputExtended(Cluster):
     cluster_id = 0x060b
     ep_attribute = 'bacnet_extended_binary_output'
     attributes = {
-        0x0000: ('acked_transitions', t.uint8_t),  # bitmap8
+        0x0000: ('acked_transitions', t.bitmap8),
         0x0011: ('notification_class', t.uint16_t),
-        0x0023: ('event_enable', t.uint8_t),  # bitmap8
+        0x0023: ('event_enable', t.bitmap8),
         0x0024: ('event_state', t.enum8),
         0x0048: ('notify_type', t.enum8),
         0x0071: ('time_delay', t.uint8_t),
@@ -243,10 +243,10 @@ class BinaryValueExtended(Cluster):
     cluster_id = 0x060d
     ep_attribute = 'bacnet_extended_binary_value'
     attributes = {
-        0x0000: ('acked_transitions', t.uint8_t),  # bitmap8
+        0x0000: ('acked_transitions', t.bitmap8),
         0x0006: ('alarm_value', t.Bool),
         0x0011: ('notification_class', t.uint16_t),
-        0x0023: ('event_enable', t.uint8_t),  # bitmap8
+        0x0023: ('event_enable', t.bitmap8),
         0x0024: ('event_state', t.enum8),
         0x0048: ('notify_type', t.enum8),
         0x0071: ('time_delay', t.uint8_t),
@@ -274,10 +274,10 @@ class MultistateInputExtended(Cluster):
     cluster_id = 0x060f
     ep_attribute = 'bacnet_extended_multistate_input'
     attributes = {
-        0x0000: ('acked_transitions', t.uint8_t),  # bitmap8
+        0x0000: ('acked_transitions', t.bitmap8),
         0x0006: ('alarm_value', t.uint16_t),
         0x0011: ('notification_class', t.uint16_t),
-        0x0023: ('event_enable', t.uint8_t),  # bitmap8
+        0x0023: ('event_enable', t.bitmap8),
         0x0024: ('event_state', t.enum8),
         0x0025: ('fault_values', t.uint16_t),
         0x0048: ('notify_type', t.enum8),
@@ -307,9 +307,9 @@ class MultistateOutputExtended(Cluster):
     cluster_id = 0x0611
     ep_attribute = 'bacnet_extended_multistate_output'
     attributes = {
-        0x0000: ('acked_transitions', t.uint8_t),  # bitmap8
+        0x0000: ('acked_transitions', t.bitmap8),
         0x0011: ('notification_class', t.uint16_t),
-        0x0023: ('event_enable', t.uint8_t),  # bitmap8
+        0x0023: ('event_enable', t.bitmap8),
         0x0024: ('event_state', t.enum8),
         0x0048: ('notify_type', t.enum8),
         0x0071: ('time_delay', t.uint8_t),
@@ -336,10 +336,10 @@ class MultistateValueExtended(Cluster):
     cluster_id = 0x0613
     ep_attribute = 'bacnet_extended_multistate_value'
     attributes = {
-        0x0000: ('acked_transitions', t.uint8_t),  # bitmap8
+        0x0000: ('acked_transitions', t.bitmap8),
         0x0006: ('alarm_value', t.uint16_t),
         0x0011: ('notification_class', t.uint16_t),
-        0x0023: ('event_enable', t.uint8_t),  # bitmap8
+        0x0023: ('event_enable', t.bitmap8),
         0x0024: ('event_state', t.enum8),
         0x0025: ('fault_values', t.uint16_t),
         0x0048: ('notify_type', t.enum8),
