@@ -35,6 +35,7 @@ class PersistingListener:
         self._create_table_clusters()
         self._create_table_output_clusters()
         self._create_table_attributes()
+        self._create_table_output_cluster_attributes()
 
         self._application = application
 
@@ -57,13 +58,23 @@ class PersistingListener:
         self._remove_device(device)
 
     def attribute_updated(self, cluster, attrid, value):
-        self._save_attribute(
-            cluster.endpoint.device.ieee,
-            cluster.endpoint.endpoint_id,
-            cluster.cluster_id,
-            attrid,
-            value,
-        )
+        if cluster.cluster_id in cluster.endpoint.in_clusters and \
+                cluster.endpoint.in_clusters[cluster.cluster_id] == cluster:
+            self._save_attribute(
+                cluster.endpoint.device.ieee,
+                cluster.endpoint.endpoint_id,
+                cluster.cluster_id,
+                attrid,
+                value,
+            )
+        else:
+            self._save_output_cluster_attribute(
+                cluster.endpoint.device.ieee,
+                cluster.endpoint.endpoint_id,
+                cluster.cluster_id,
+                attrid,
+                value,
+            )
 
     def _create_table(self, table_name, spec):
         self.execute("CREATE TABLE IF NOT EXISTS %s %s" % (table_name, spec))
@@ -111,8 +122,20 @@ class PersistingListener:
             "ieee, endpoint_id, cluster, attrid"
         )
 
+    def _create_table_output_cluster_attributes(self):
+        self._create_table(
+            "output_cluster_attributes",
+            "(ieee ieee, endpoint_id, cluster, attrid, value)",
+        )
+        self._create_index(
+            "oc_attribute_idx",
+            "output_cluster_attributes",
+            "ieee, endpoint_id, cluster, attrid"
+        )
+
     def _remove_device(self, device):
         self.execute("DELETE FROM attributes WHERE ieee = ?", (device.ieee, ))
+        self.execute("DELETE FROM output_cluster_attributes WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM clusters WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM output_clusters WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM endpoints WHERE ieee = ?", (device.ieee, ))
@@ -172,6 +195,11 @@ class PersistingListener:
         self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         self._db.commit()
 
+    def _save_output_cluster_attribute(self, ieee, endpoint_id, cluster_id, attrid, value):
+        q = "INSERT OR REPLACE INTO output_cluster_attributes VALUES (?, ?, ?, ?, ?)"
+        self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
+        self._db.commit()
+
     def _scan(self, table):
         return self.execute("SELECT * FROM %s" % (table, ))
 
@@ -215,6 +243,14 @@ class PersistingListener:
                 ep = dev.endpoints[endpoint_id]
                 if cluster in ep.in_clusters:
                     clus = ep.in_clusters[cluster]
+                    clus._attr_cache[attrid] = value
+
+        for (ieee, endpoint_id, cluster, attrid, value) in self._scan("output_cluster_attributes"):
+            dev = self._application.get_device(ieee)
+            if endpoint_id in dev.endpoints:
+                ep = dev.endpoints[endpoint_id]
+                if cluster in ep.out_clusters:
+                    clus = ep.out_clusters[cluster]
                     clus._attr_cache[attrid] = value
 
 
