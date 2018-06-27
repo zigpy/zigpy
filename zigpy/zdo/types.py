@@ -108,6 +108,23 @@ class Neighbors(t.Struct):
     ]
 
 
+class Route(t.Struct):
+    """Route Descriptor"""
+    _fields = [
+        ('DstNWK', t.uint16_t),
+        ('RouteStatus', t.uint8_t),
+        ('NextHop', t.uint16_t)
+    ]
+
+
+class Routes(t.Struct):
+    _fields = [
+        ('Entries', t.uint8_t),
+        ('StartIndex', t.uint8_t),
+        ('RoutingTableList', t.LVList(Route))
+    ]
+
+
 class Status(t.uint8_t, enum.Enum):
     # The requested operation or transmission was completed successfully.
     SUCCESS = 0x00
@@ -181,6 +198,7 @@ CLUSTERS = {
     # Network Management Server Services Requests
     # ... TODO optional stuff ...
     0x0031: ('Mgmt_Lqi_req', (('StartIndex', t.uint8_t), )),
+    0x0032: ('Mgmt_Rtg_req', (('StartIndex', t.uint8_t), )),
     # ... TODO optional stuff ...
     0x0034: ('Mgmt_Leave_req', (('DeviceAddress', t.EUI64), ('Options', t.bitmap8))),
     0x0036: ('Mgmt_Permit_Joining_req', (('PermitDuration', t.uint8_t), ('TC_Significant', t.Bool))),
@@ -216,6 +234,7 @@ CLUSTERS = {
     # ... TODO optional stuff ...
     # Network Management Server Services Responses
     0x8031: ('Mgmt_Lqi_rsp', (STATUS, ('Neighbors', Neighbors))),
+    0x8032: ('Mgmt_Rtg_rsp', (STATUS, ('Routes', Routes))),
     # ... TODO optional stuff ...
     0x8034: ('Mgmt_Leave_rsp', (STATUS, )),
     0x8036: ('Mgmt_Permit_Joining_rsp', (STATUS, )),
