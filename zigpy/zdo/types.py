@@ -86,6 +86,28 @@ class MultiAddress:
             raise ValueError("Invalid value for addrmode")
 
 
+class Neighbor(t.Struct):
+    """Neighbor Descriptor"""
+    _fields = [
+        ('PanId', t.EUI64),
+        ('IEEEAddr', t.EUI64),
+        ('NWKAddr', t.uint16_t),
+        ('NeighborType', t.uint8_t),
+        ('PermitJoining', t.uint8_t),
+        ('Depth', t.uint8_t),
+        ('LQI', t.uint8_t)
+    ]
+
+
+class Neighbors(t.Struct):
+    """Mgmt_Lqi_rsp"""
+    _fields = [
+        ('Entries', t.uint8_t),
+        ('StartIndex', t.uint8_t),
+        ('NeighborTableList', t.LVList(Neighbor))
+    ]
+
+
 class Status(t.uint8_t, enum.Enum):
     # The requested operation or transmission was completed successfully.
     SUCCESS = 0x00
@@ -158,6 +180,8 @@ CLUSTERS = {
     0x0022: ('Unind_req', (('SrcAddress', t.EUI64), ('SrcEndpoint', t.uint8_t), ('ClusterID', t.uint16_t), ('DstAddress', MultiAddress))),
     # Network Management Server Services Requests
     # ... TODO optional stuff ...
+    0x0031: ('Mgmt_Lqi_req', (('StartIndex', t.uint8_t), )),
+    # ... TODO optional stuff ...
     0x0034: ('Mgmt_Leave_req', (('DeviceAddress', t.EUI64), ('Options', t.bitmap8))),
     0x0036: ('Mgmt_Permit_Joining_req', (('PermitDuration', t.uint8_t), ('TC_Significant', t.Bool))),
     # ... TODO optional stuff ...
@@ -191,6 +215,7 @@ CLUSTERS = {
     0x8022: ('Unbind_rsp', (STATUS, )),
     # ... TODO optional stuff ...
     # Network Management Server Services Responses
+    0x8031: ('Mgmt_Lqi_rsp', (STATUS, ('Neighbors', Neighbors))),
     # ... TODO optional stuff ...
     0x8034: ('Mgmt_Leave_rsp', (STATUS, )),
     0x8036: ('Mgmt_Permit_Joining_rsp', (STATUS, )),
