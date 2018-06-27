@@ -168,7 +168,7 @@ for command_id, c in CLUSTERS.items():
     CLUSTERS[command_id] = (c[0], param_names, param_types)
 
 
-class Status(enum.Enum):
+class Status(t.uint8_t, enum.Enum):
     # The requested operation or transmission was completed successfully.
     SUCCESS = 0x00
     # The supplied request type was invalid.
