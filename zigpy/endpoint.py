@@ -5,6 +5,7 @@ import zigpy.appdb
 import zigpy.profiles
 import zigpy.util
 import zigpy.zcl
+from zigpy.zcl.clusters.general import Basic
 
 LOGGER = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         for cluster in sd.output_clusters:
             self.add_output_cluster(cluster)
 
-        if 0 in self.in_clusters:
+        if Basic.cluster_id in self.in_clusters:
             await self.initialize_endpoint_info()
 
         self.status = Status.ZDO_INIT

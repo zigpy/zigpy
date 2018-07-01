@@ -6,6 +6,7 @@ import zigpy.endpoint
 import zigpy.profiles
 import zigpy.quirks
 import zigpy.types as t
+from zigpy.zcl.clusters.general import Basic
 
 
 LOGGER = logging.getLogger(__name__)
@@ -217,9 +218,9 @@ class PersistingListener:
                     clus = ep.in_clusters[cluster]
                     clus._attr_cache[attrid] = value
                     LOGGER.debug("Attribute id: %s value: %s", attrid, value)
-                    if cluster == 0 and attrid == 4:
+                    if cluster == Basic.cluster_id and attrid == 4:
                         ep.manufacturer = value.decode('ascii').strip()
-                    if cluster == 0 and attrid == 5:
+                    if cluster == Basic.cluster_id and attrid == 5:
                         ep.model = value.decode('ascii').strip()
 
 
