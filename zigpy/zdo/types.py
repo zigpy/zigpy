@@ -86,89 +86,46 @@ class MultiAddress:
             raise ValueError("Invalid value for addrmode")
 
 
-NWK = ('NWKAddr', t.uint16_t)
-NWKI = ('NWKAddrOfInterest', t.uint16_t)
-IEEE = ('IEEEAddr', t.EUI64)
-STATUS = ('Status', t.uint8_t)
+class Neighbor(t.Struct):
+    """Neighbor Descriptor"""
+    _fields = [
+        ('PanId', t.EUI64),
+        ('IEEEAddr', t.EUI64),
+        ('NWKAddr', t.uint16_t),
+        ('NeighborType', t.uint8_t),
+        ('PermitJoining', t.uint8_t),
+        ('Depth', t.uint8_t),
+        ('LQI', t.uint8_t)
+    ]
 
 
-CLUSTERS = {
-    # Device and Service Discovery Server Requests
-    0x0000: ('NWK_addr_req', (IEEE, ('RequestType', t.uint8_t), ('StartIndex', t.uint8_t))),
-    0x0001: ('IEEE_addr_req', (NWKI, ('RequestType', t.uint8_t), ('StartIndex', t.uint8_t))),
-    0x0002: ('Node_Desc_req', (NWKI, )),
-    0x0003: ('Power_Desc_req', (NWKI, )),
-    0x0004: ('Simple_Desc_req', (NWKI, ('EndPoint', t.uint8_t))),
-    0x0005: ('Active_EP_req', (NWKI, )),
-    0x0006: ('Match_Desc_req', (NWKI, ('ProfileID', t.uint16_t), ('InClusterList', t.LVList(t.uint16_t)), ('OutClusterList', t.LVList(t.uint16_t)))),
-    # 0x0010: ('Complex_Desc_req', (NWKI, )),
-    0x0011: ('User_Desc_req', (NWKI, )),
-    0x0012: ('Discovery_Cache_req', (NWK, IEEE)),
-    0x0013: ('Device_annce', (NWK, IEEE, ('Capability', t.uint8_t))),
-    0x0014: ('User_Desc_set', (NWKI, ('UserDescriptor', t.fixed_list(16, t.uint8_t)))),  # Really a string
-    0x0015: ('System_Server_Discovery_req', (('ServerMask', t.uint16_t), )),
-    0x0016: ('Discovery_store_req', (NWK, IEEE, ('NodeDescSize', t.uint8_t), ('PowerDescSize', t.uint8_t), ('ActiveEPSize', t.uint8_t), ('SimpleDescSizeList', t.LVList(t.uint8_t)))),
-    0x0017: ('Node_Desc_store_req', (NWK, IEEE, ('NodeDescriptor', NodeDescriptor))),
-    0x0019: ('Active_EP_store_req', (NWK, IEEE, ('ActiveEPList', t.LVList(t.uint8_t)))),
-    0x001a: ('Simple_Desc_store_req', (NWK, IEEE, ('SimpleDescriptor', SizePrefixedSimpleDescriptor))),
-    0x001b: ('Remove_node_cache_req', (NWK, IEEE)),
-    0x001c: ('Find_node_cache_req', (NWK, IEEE)),
-    0x001d: ('Extended_Simple_Desc_req', (NWKI, ('EndPoint', t.uint8_t), ('StartIndex', t.uint8_t))),
-    0x001e: ('Extended_Active_EP_req', (NWKI, ('StartIndex', t.uint8_t))),
-    #  Bind Management Server Services Responses
-    0x0020: ('End_Device_Bind_req', (('BindingTarget', t.uint16_t), ('SrcAddress', t.EUI64), ('SrcEndpoint', t.uint8_t), ('ProfileID', t.uint8_t), ('InClusterList', t.LVList(t.uint8_t)), ('OutClusterList', t.LVList(t.uint8_t)))),
-    0x0021: ('Bind_req', (('SrcAddress', t.EUI64), ('SrcEndpoint', t.uint8_t), ('ClusterID', t.uint16_t), ('DstAddress', MultiAddress))),
-    0x0022: ('Unind_req', (('SrcAddress', t.EUI64), ('SrcEndpoint', t.uint8_t), ('ClusterID', t.uint16_t), ('DstAddress', MultiAddress))),
-    # Network Management Server Services Requests
-    # ... TODO optional stuff ...
-    0x0034: ('Mgmt_Leave_req', (('DeviceAddress', t.EUI64), ('Options', t.bitmap8))),
-    0x0036: ('Mgmt_Permit_Joining_req', (('PermitDuration', t.uint8_t), ('TC_Significant', t.Bool))),
-    # ... TODO optional stuff ...
-
-    # Responses
-    # Device and Service Discovery Server Responses
-    0x8000: ('NWK_addr_rsp', (STATUS, IEEE, NWK, ('NumAssocDev', t.uint8_t), ('StartIndex', t.uint8_t), ('NWKAddressAssocDevList', t.List(t.uint16_t)))),
-    0x8001: ('IEEE_addr_rsp', (STATUS, IEEE, NWK, ('NumAssocDev', t.uint8_t), ('StartIndex', t.uint8_t), ('NWKAddrAssocDevList', t.List(t.uint16_t)))),
-    0x8002: ('Node_Desc_rsp', (STATUS, NWKI, ('NodeDescriptor', NodeDescriptor))),
-    0x8003: ('Power_Desc_rsp', (STATUS, NWKI, ('PowerDescriptor', PowerDescriptor))),
-    0x8004: ('Simple_Desc_rsp', (STATUS, NWKI, ('SimpleDescriptor', SizePrefixedSimpleDescriptor))),
-    0x8005: ('Active_EP_rsp', (STATUS, NWKI, ('ActiveEPList', t.LVList(t.uint8_t)))),
-    0x8006: ('Match_Desc_rsp', (STATUS, NWKI, ('MatchList', t.LVList(t.uint8_t)))),
-    # 0x8010: ('Complex_Desc_rsp', (STATUS, NWKI, ('Length', t.uint8_t), ('ComplexDescriptor', ComplexDescriptor))),
-    0x8011: ('User_Desc_rsp', (STATUS, NWKI, ('Length', t.uint8_t), ('UserDescriptor', t.fixed_list(16, t.uint8_t)))),
-    0x8012: ('Discovery_Cache_rsp', (STATUS, )),
-    0x8014: ('User_Desc_conf', (STATUS, NWKI)),
-    0x8015: ('System_Server_Discovery_rsp', (STATUS, ('ServerMask', t.uint16_t))),
-    0x8016: ('Discovery_Store_rsp', (STATUS, )),
-    0x8017: ('Node_Desc_store_rsp', (STATUS, )),
-    0x8018: ('Power_Desc_store_rsp', (STATUS, IEEE, ('PowerDescriptor', PowerDescriptor))),
-    0x8019: ('Active_EP_store_rsp', (STATUS, )),
-    0x801a: ('Simple_Desc_store_rsp', (STATUS, )),
-    0x801b: ('Remove_node_cache_rsp', (STATUS, )),
-    0x801c: ('Find_node_cache_rsp', (('CacheNWKAddr', t.EUI64), NWK, IEEE)),
-    0x801d: ('Extended_Simple_Desc_rsp', (STATUS, NWK, ('Endpoint', t.uint8_t), ('AppInputClusterCount', t.uint8_t), ('AppOutputClusterCount', t.uint8_t), ('StartIndex', t.uint8_t), ('AppClusterList', t.List(t.uint16_t)))),
-    0x801e: ('Extended_Active_EP_rsp', (STATUS, NWKI, ('ActiveEPCount', t.uint8_t), ('StartIndex', t.uint8_t), ('ActiveEPList', t.List(t.uint8_t)))),
-    #  Bind Management Server Services Responses
-    0x8020: ('End_Device_Bind_rsp', (STATUS, )),
-    0x8021: ('Bind_rsp', (STATUS, )),
-    0x8022: ('Unbind_rsp', (STATUS, )),
-    # ... TODO optional stuff ...
-    # Network Management Server Services Responses
-    # ... TODO optional stuff ...
-    0x8034: ('Mgmt_Leave_rsp', (STATUS, )),
-    0x8036: ('Mgmt_Permit_Joining_rsp', (STATUS, )),
-    # ... TODO optional stuff ...
-}
+class Neighbors(t.Struct):
+    """Mgmt_Lqi_rsp"""
+    _fields = [
+        ('Entries', t.uint8_t),
+        ('StartIndex', t.uint8_t),
+        ('NeighborTableList', t.LVList(Neighbor))
+    ]
 
 
-# Rewrite to (name, param_names, param_types)
-for command_id, c in CLUSTERS.items():
-    param_names = [p[0] for p in c[1]]
-    param_types = [p[1] for p in c[1]]
-    CLUSTERS[command_id] = (c[0], param_names, param_types)
+class Route(t.Struct):
+    """Route Descriptor"""
+    _fields = [
+        ('DstNWK', t.uint16_t),
+        ('RouteStatus', t.uint8_t),
+        ('NextHop', t.uint16_t)
+    ]
 
 
-class Status(enum.Enum):
+class Routes(t.Struct):
+    _fields = [
+        ('Entries', t.uint8_t),
+        ('StartIndex', t.uint8_t),
+        ('RoutingTableList', t.LVList(Route))
+    ]
+
+
+class Status(t.uint8_t, enum.Enum):
     # The requested operation or transmission was completed successfully.
     SUCCESS = 0x00
     # The supplied request type was invalid.
@@ -203,3 +160,90 @@ class Status(enum.Enum):
     # The permissions configuration table on the target indicates that the
     # request is not authorized from this device.
     NOT_AUTHORIZED = 0x8d
+
+
+NWK = ('NWKAddr', t.uint16_t)
+NWKI = ('NWKAddrOfInterest', t.uint16_t)
+IEEE = ('IEEEAddr', t.EUI64)
+STATUS = ('Status', Status)
+
+
+CLUSTERS = {
+    # Device and Service Discovery Server Requests
+    0x0000: ('NWK_addr_req', (IEEE, ('RequestType', t.uint8_t), ('StartIndex', t.uint8_t))),
+    0x0001: ('IEEE_addr_req', (NWKI, ('RequestType', t.uint8_t), ('StartIndex', t.uint8_t))),
+    0x0002: ('Node_Desc_req', (NWKI, )),
+    0x0003: ('Power_Desc_req', (NWKI, )),
+    0x0004: ('Simple_Desc_req', (NWKI, ('EndPoint', t.uint8_t))),
+    0x0005: ('Active_EP_req', (NWKI, )),
+    0x0006: ('Match_Desc_req', (NWKI, ('ProfileID', t.uint16_t), ('InClusterList', t.LVList(t.uint16_t)), ('OutClusterList', t.LVList(t.uint16_t)))),
+    # 0x0010: ('Complex_Desc_req', (NWKI, )),
+    0x0011: ('User_Desc_req', (NWKI, )),
+    0x0012: ('Discovery_Cache_req', (NWK, IEEE)),
+    0x0013: ('Device_annce', (NWK, IEEE, ('Capability', t.uint8_t))),
+    0x0014: ('User_Desc_set', (NWKI, ('UserDescriptor', t.fixed_list(16, t.uint8_t)))),  # Really a string
+    0x0015: ('System_Server_Discovery_req', (('ServerMask', t.uint16_t), )),
+    0x0016: ('Discovery_store_req', (NWK, IEEE, ('NodeDescSize', t.uint8_t), ('PowerDescSize', t.uint8_t), ('ActiveEPSize', t.uint8_t), ('SimpleDescSizeList', t.LVList(t.uint8_t)))),
+    0x0017: ('Node_Desc_store_req', (NWK, IEEE, ('NodeDescriptor', NodeDescriptor))),
+    0x0019: ('Active_EP_store_req', (NWK, IEEE, ('ActiveEPList', t.LVList(t.uint8_t)))),
+    0x001a: ('Simple_Desc_store_req', (NWK, IEEE, ('SimpleDescriptor', SizePrefixedSimpleDescriptor))),
+    0x001b: ('Remove_node_cache_req', (NWK, IEEE)),
+    0x001c: ('Find_node_cache_req', (NWK, IEEE)),
+    0x001d: ('Extended_Simple_Desc_req', (NWKI, ('EndPoint', t.uint8_t), ('StartIndex', t.uint8_t))),
+    0x001e: ('Extended_Active_EP_req', (NWKI, ('StartIndex', t.uint8_t))),
+    #  Bind Management Server Services Responses
+    0x0020: ('End_Device_Bind_req', (('BindingTarget', t.uint16_t), ('SrcAddress', t.EUI64), ('SrcEndpoint', t.uint8_t), ('ProfileID', t.uint8_t), ('InClusterList', t.LVList(t.uint8_t)), ('OutClusterList', t.LVList(t.uint8_t)))),
+    0x0021: ('Bind_req', (('SrcAddress', t.EUI64), ('SrcEndpoint', t.uint8_t), ('ClusterID', t.uint16_t), ('DstAddress', MultiAddress))),
+    0x0022: ('Unind_req', (('SrcAddress', t.EUI64), ('SrcEndpoint', t.uint8_t), ('ClusterID', t.uint16_t), ('DstAddress', MultiAddress))),
+    # Network Management Server Services Requests
+    # ... TODO optional stuff ...
+    0x0031: ('Mgmt_Lqi_req', (('StartIndex', t.uint8_t), )),
+    0x0032: ('Mgmt_Rtg_req', (('StartIndex', t.uint8_t), )),
+    # ... TODO optional stuff ...
+    0x0034: ('Mgmt_Leave_req', (('DeviceAddress', t.EUI64), ('Options', t.bitmap8))),
+    0x0036: ('Mgmt_Permit_Joining_req', (('PermitDuration', t.uint8_t), ('TC_Significant', t.Bool))),
+    # ... TODO optional stuff ...
+
+    # Responses
+    # Device and Service Discovery Server Responses
+    0x8000: ('NWK_addr_rsp', (STATUS, IEEE, NWK, ('NumAssocDev', t.uint8_t), ('StartIndex', t.uint8_t), ('NWKAddressAssocDevList', t.List(t.uint16_t)))),
+    0x8001: ('IEEE_addr_rsp', (STATUS, IEEE, NWK, ('NumAssocDev', t.uint8_t), ('StartIndex', t.uint8_t), ('NWKAddrAssocDevList', t.List(t.uint16_t)))),
+    0x8002: ('Node_Desc_rsp', (STATUS, NWKI, ('NodeDescriptor', NodeDescriptor))),
+    0x8003: ('Power_Desc_rsp', (STATUS, NWKI, ('PowerDescriptor', PowerDescriptor))),
+    0x8004: ('Simple_Desc_rsp', (STATUS, NWKI, ('SimpleDescriptor', SizePrefixedSimpleDescriptor))),
+    0x8005: ('Active_EP_rsp', (STATUS, NWKI, ('ActiveEPList', t.LVList(t.uint8_t)))),
+    0x8006: ('Match_Desc_rsp', (STATUS, NWKI, ('MatchList', t.LVList(t.uint8_t)))),
+    # 0x8010: ('Complex_Desc_rsp', (STATUS, NWKI, ('Length', t.uint8_t), ('ComplexDescriptor', ComplexDescriptor))),
+    0x8011: ('User_Desc_rsp', (STATUS, NWKI, ('Length', t.uint8_t), ('UserDescriptor', t.fixed_list(16, t.uint8_t)))),
+    0x8012: ('Discovery_Cache_rsp', (STATUS, )),
+    0x8014: ('User_Desc_conf', (STATUS, NWKI)),
+    0x8015: ('System_Server_Discovery_rsp', (STATUS, ('ServerMask', t.uint16_t))),
+    0x8016: ('Discovery_Store_rsp', (STATUS, )),
+    0x8017: ('Node_Desc_store_rsp', (STATUS, )),
+    0x8018: ('Power_Desc_store_rsp', (STATUS, IEEE, ('PowerDescriptor', PowerDescriptor))),
+    0x8019: ('Active_EP_store_rsp', (STATUS, )),
+    0x801a: ('Simple_Desc_store_rsp', (STATUS, )),
+    0x801b: ('Remove_node_cache_rsp', (STATUS, )),
+    0x801c: ('Find_node_cache_rsp', (('CacheNWKAddr', t.EUI64), NWK, IEEE)),
+    0x801d: ('Extended_Simple_Desc_rsp', (STATUS, NWK, ('Endpoint', t.uint8_t), ('AppInputClusterCount', t.uint8_t), ('AppOutputClusterCount', t.uint8_t), ('StartIndex', t.uint8_t), ('AppClusterList', t.List(t.uint16_t)))),
+    0x801e: ('Extended_Active_EP_rsp', (STATUS, NWKI, ('ActiveEPCount', t.uint8_t), ('StartIndex', t.uint8_t), ('ActiveEPList', t.List(t.uint8_t)))),
+    #  Bind Management Server Services Responses
+    0x8020: ('End_Device_Bind_rsp', (STATUS, )),
+    0x8021: ('Bind_rsp', (STATUS, )),
+    0x8022: ('Unbind_rsp', (STATUS, )),
+    # ... TODO optional stuff ...
+    # Network Management Server Services Responses
+    0x8031: ('Mgmt_Lqi_rsp', (STATUS, ('Neighbors', Neighbors))),
+    0x8032: ('Mgmt_Rtg_rsp', (STATUS, ('Routes', Routes))),
+    # ... TODO optional stuff ...
+    0x8034: ('Mgmt_Leave_rsp', (STATUS, )),
+    0x8036: ('Mgmt_Permit_Joining_rsp', (STATUS, )),
+    # ... TODO optional stuff ...
+}
+
+
+# Rewrite to (name, param_names, param_types)
+for command_id, c in CLUSTERS.items():
+    param_names = [p[0] for p in c[1]]
+    param_types = [p[1] for p in c[1]]
+    CLUSTERS[command_id] = (c[0], param_names, param_types)
