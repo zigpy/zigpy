@@ -177,7 +177,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         v = await self.request(True, 0x00, schema, attributes, manufacturer=manufacturer)
         return v
 
-    async def read_attributes(self, attributes, allow_cache=False, raw=False, manufacturer=None):
+    async def read_attributes(self, attributes, allow_cache=False, only_cache=False, raw=False, manufacturer=None):
         if raw:
             assert len(attributes) == 1
         success, failure = {}, {}
@@ -192,7 +192,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             orig_attributes[attrid] = attribute
 
         to_read = []
-        if allow_cache:
+        if allow_cache or only_cache:
             for idx, attribute in enumerate(attribute_ids):
                 if attribute in self._attr_cache:
                     success[attributes[idx]] = self._attr_cache[attribute]
@@ -201,7 +201,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         else:
             to_read = attribute_ids
 
-        if not to_read:
+        if not to_read or only_cache:
             if raw:
                 return success[attributes[0]]
             return success, failure
