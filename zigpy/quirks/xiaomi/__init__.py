@@ -1,4 +1,7 @@
-from zigpy.quirks import CustomDevice
+import asyncio
+
+from zigpy.zcl.clusters.measurement import OccupancySensing
+from zigpy.quirks import CustomDevice, CustomCluster
 
 
 class TemperatureHumiditySensor(CustomDevice):
@@ -69,8 +72,48 @@ class AqaraOpenCloseSensor(CustomDevice):
     replacement = {
         'endpoints': {
             1: {
-                'input_clusters': [0x0000, 0x0003],
-                'output_clusters': [0x0000, 0x0004, 0x0006],
+                'device_type': 0x0002,
+                'input_clusters': [0x0000, 0x0003, 0x0006],
+            }
+        },
+    }
+
+
+class AqaraBodySensor(CustomDevice):
+    class OccupancyCluster(CustomCluster, OccupancySensing):
+        cluster_id = 0x0406
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._timer_handle = None
+
+        def _update_attribute(self, attrid, value):
+            super()._update_attribute(attrid, value)
+            if attrid == 0 and value == 1:
+                if self._timer_handle:
+                    self._timer_handle.cancel()
+
+                loop = asyncio.get_event_loop()
+                self._timer_handle = loop.call_later(60, self._turn_off)
+
+        def _turn_off(self):
+            self._timer_handle = None
+            self._update_attribute(0, 0)
+
+    signature = {
+        #  <SimpleDescriptor endpoint=1 profile=260 device_type=263 device_version=1 input_clusters=[0, 65535, 1030, 1024, 1280, 1, 3] output_clusters=[0, 25]>
+        1: {
+            'profile_id': 0x0104,
+            'device_type': 0x0107,
+            'input_clusters': [0, 65535, 1030, 1024, 1280, 1, 3],
+            'output_clusters': [0, 25],
+        },
+    }
+
+    replacement = {
+        'endpoints': {
+            1: {
+                'input_clusters': [0x0000, 0x0001, 0x0003, 0x0400, OccupancyCluster],
             }
         },
     }
