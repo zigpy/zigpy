@@ -1,4 +1,4 @@
-import asyncio
+import threading
 
 from zigpy.zcl.clusters.measurement import OccupancySensing
 from zigpy.quirks import CustomDevice, CustomCluster
@@ -94,8 +94,8 @@ class AqaraBodySensor(CustomDevice):
                 if self._timer_handle:
                     self._timer_handle.cancel()
 
-                loop = asyncio.get_event_loop()
-                self._timer_handle = loop.call_later(60, self._turn_off)
+                self._timer_handle = threading.Timer(60, self._turn_off)
+                self._timer_handle.start()
 
         def _turn_off(self):
             self._timer_handle = None
