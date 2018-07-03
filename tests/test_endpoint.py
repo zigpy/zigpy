@@ -2,6 +2,7 @@ import asyncio
 from unittest import mock
 
 import pytest
+import zigpy.zcl as zcl
 
 from zigpy import endpoint
 from zigpy.zdo import types
@@ -148,3 +149,62 @@ def test_reply(ep):
     ep.profile_id = 260
     ep.reply(7, 8, b'')
     assert ep._device.reply.call_count == 1
+
+
+def _mk_rar(attrid, value, status=0):
+        r = zcl.foundation.ReadAttributeRecord()
+        r.attrid = attrid
+        r.status = status
+        r.value = zcl.foundation.TypeValue()
+        r.value.value = value
+        return r
+
+
+def test_init_endpoint_info(ep):
+    clus = ep.add_input_cluster(0)
+    assert 0 in ep.in_clusters
+    assert ep.in_clusters[0] is clus
+
+    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+        assert foundation is True
+        assert command == 0
+        rar4 = _mk_rar(4, b'Custom')
+        rar5 = _mk_rar(5, b'Model')
+        return [[rar4, rar5]]
+    clus.request = mockrequest
+
+    test_initialize_zha(ep)
+    assert ep.manufacturer == 'Custom'
+    assert ep.model == 'Model'
+
+
+def test_init_endpoint_info_none(ep):
+    clus = ep.add_input_cluster(0)
+    assert 0 in ep.in_clusters
+    assert ep.in_clusters[0] is clus
+
+    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+        assert foundation is True
+        assert command == 0
+        rar4 = _mk_rar(4, None)
+        rar5 = _mk_rar(5, None)
+        return [[rar4, rar5]]
+    clus.request = mockrequest
+
+    test_initialize_zha(ep)
+
+
+def test_init_endpoint_info_unicode(ep):
+    clus = ep.add_input_cluster(0)
+    assert 0 in ep.in_clusters
+    assert ep.in_clusters[0] is clus
+
+    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+        assert foundation is True
+        assert command == 0
+        rar4 = _mk_rar(4, b'\x81')
+        rar5 = _mk_rar(5, b'\x81')
+        return [[rar4, rar5]]
+    clus.request = mockrequest
+
+    test_initialize_zha(ep)
