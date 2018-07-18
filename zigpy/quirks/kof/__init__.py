@@ -6,7 +6,7 @@ module overrides all server commands that do not have a mandatory reply to not
  expect replies at all.
 """
 from zigpy.quirks import CustomDevice, CustomCluster
-from zigpy.zcl.clusters.general import Basic, Identify, Groups, Scenes, OnOff, LevelControl
+from zigpy.zcl.clusters.general import Basic, Identify, Groups, Scenes, OnOff, LevelControl, Ota
 from zigpy.zcl.clusters.hvac import Fan
 
 
@@ -21,12 +21,10 @@ class NoReplyMixin(object):
         """
         Overrides Cluster#command to configure expect_reply behavior based on
         void_input_commands. Note that this method changes the default value of
-        expect_reply to None. This allows allows the caller to explicitly force
+        expect_reply to None. This allows the caller to explicitly force
         expect_reply to true.
         """
-        if expect_reply is not None:
-            pass
-        else:
+        if expect_reply is None:
             expect_reply = command not in self.void_input_commands
 
         return super(NoReplyMixin, self).command(command, *args, manufacturer=manufacturer, expect_reply=expect_reply)
@@ -66,8 +64,19 @@ class CeilingFan(CustomDevice):
         1: {
             'profile_id': 0x0104,
             'device_type': 14,
-            'input_clusters': [0, 3, 4, 5, 6, 8, 514],
-            'output_clusters': [3, 25],
+            'input_clusters': [
+                Basic.cluster_id,
+                Identify.cluster_id,
+                Groups.cluster_id,
+                Scenes.cluster_id,
+                OnOff.cluster_id,
+                LevelControl.cluster_id,
+                Fan.cluster_id,
+            ],
+            'output_clusters': [
+                Identify.cluster_id,
+                Ota.cluster_id,
+            ],
         },
     }
 
@@ -81,8 +90,12 @@ class CeilingFan(CustomDevice):
                     KofScenes,
                     KofOnOff,
                     KofLevelControl,
-                    Fan
+                    Fan,
                 ],
+                'output_clusters': [
+                    Identify,
+                    Ota,
+                ]
             }
         },
     }
