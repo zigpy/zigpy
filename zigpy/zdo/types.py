@@ -92,6 +92,18 @@ IEEE = ('IEEEAddr', t.EUI64)
 STATUS = ('Status', t.uint8_t)
 
 
+class LQIEntry(t.Struct):
+    _fields = [
+        ('extpanid', t.EUI64),
+        IEEE,
+        NWK,
+        ('something', t.uint8_t),
+        ('permit_join', t.uint8_t),
+        ('depth', t.uint8_t),
+        ('lqi', t.uint8_t),
+    ]
+
+
 CLUSTERS = {
     # Device and Service Discovery Server Requests
     0x0000: ('NWK_addr_req', (IEEE, ('RequestType', t.uint8_t), ('StartIndex', t.uint8_t))),
@@ -121,6 +133,7 @@ CLUSTERS = {
     0x0022: ('Unind_req', (('SrcAddress', t.EUI64), ('SrcEndpoint', t.uint8_t), ('ClusterID', t.uint16_t), ('DstAddress', MultiAddress))),
     # Network Management Server Services Requests
     # ... TODO optional stuff ...
+    0x0031: ('Mgmt_LQI_req', (('StartIdx', t.uint8_t),)),
     0x0034: ('Mgmt_Leave_req', (('DeviceAddress', t.EUI64), ('Options', t.uint8_t))),  # bitmap8
     0x0036: ('Mgmt_Permit_Joining_req', (('PermitDuration', t.uint8_t), ('TC_Significant', t.Bool))),
     # ... TODO optional stuff ...
@@ -155,6 +168,7 @@ CLUSTERS = {
     # ... TODO optional stuff ...
     # Network Management Server Services Responses
     # ... TODO optional stuff ...
+    0x8031: ('Mgmt_LQI_req', (STATUS, ('Count', t.uint8_t), ('StartIdx', t.uint8_t), ('ListCount', t.uint8_t), ('items', t.List(LQIEntry)))),
     0x8034: ('Mgmt_Leave_rsp', (STATUS, )),
     0x8036: ('Mgmt_Permit_Joining_rsp', (STATUS, )),
     # ... TODO optional stuff ...
