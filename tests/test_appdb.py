@@ -96,3 +96,62 @@ async def test_database(tmpdir):
     assert ieee not in app3.devices
 
     os.unlink(db)
+
+
+def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
+    db = os.path.join(str(tmpdir), 'test.db')
+    app = make_app(db)
+    # TODO: Leaks a task on dev.initialize, I think?
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(3)
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    app.device_initialized(dev)
+    clus._update_attribute(4, test_manufacturer)
+    clus._update_attribute(5, test_model)
+    clus.listener_event('cluster_command', 0)
+    clus.listener_event('zdo_command')
+
+    # Everything should've been saved - check that it re-loads
+    app2 = make_app(db)
+    dev = app2.get_device(ieee)
+    assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
+    assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
+    assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
+
+    os.unlink(db)
+
+    return dev
+
+
+def test_appdb_load_null_padded_manuf(tmpdir):
+    manufacturer = b'Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07'
+    model = b'Mock Model'
+    dev = _test_null_padded(tmpdir, manufacturer, model)
+
+    assert dev.endpoints[3].manufacturer == 'Mock Manufacturer'
+    assert dev.endpoints[3].model == 'Mock Model'
+
+
+def test_appdb_load_null_padded_model(tmpdir):
+    manufacturer = b'Mock Manufacturer'
+    model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+    dev = _test_null_padded(tmpdir, manufacturer, model)
+
+    assert dev.endpoints[3].manufacturer == 'Mock Manufacturer'
+    assert dev.endpoints[3].model == 'Mock Model'
+
+
+def test_appdb_load_null_padded_manuf_model(tmpdir):
+    manufacturer = b'Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07'
+    model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+    dev = _test_null_padded(tmpdir, manufacturer, model)
+
+    assert dev.endpoints[3].manufacturer == 'Mock Manufacturer'
+    assert dev.endpoints[3].model == 'Mock Model'
