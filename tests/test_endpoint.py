@@ -208,3 +208,46 @@ def test_init_endpoint_info_unicode(ep):
     clus.request = mockrequest
 
     test_initialize_zha(ep)
+
+
+def _init_endpoint_info(ep, test_manuf=None, test_model=None):
+    clus = ep.add_input_cluster(0)
+    assert 0 in ep.in_clusters
+    assert ep.in_clusters[0] is clus
+
+    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+        assert foundation is True
+        assert command == 0
+        rar4 = _mk_rar(4, test_manuf)
+        rar5 = _mk_rar(5, test_model)
+        return [[rar4, rar5]]
+    clus.request = mockrequest
+
+    return test_initialize_zha(ep)
+
+
+def test_init_endpoint_info_null_padded_manuf(ep):
+    manufacturer = b'Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07'
+    model = b'Mock Model'
+    _init_endpoint_info(ep, manufacturer, model)
+
+    assert ep.manufacturer == 'Mock Manufacturer'
+    assert ep.model == 'Mock Model'
+
+
+def test_init_endpoint_info_null_padded_model(ep):
+    manufacturer = b'Mock Manufacturer'
+    model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+    _init_endpoint_info(ep, manufacturer, model)
+
+    assert ep.manufacturer == 'Mock Manufacturer'
+    assert ep.model == 'Mock Model'
+
+
+def test_init_endpoint_info_null_padded_manuf_model(ep):
+    manufacturer = b'Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07'
+    model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+    _init_endpoint_info(ep, manufacturer, model)
+
+    assert ep.manufacturer == 'Mock Manufacturer'
+    assert ep.model == 'Mock Model'
