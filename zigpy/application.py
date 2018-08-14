@@ -24,11 +24,11 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             self._dblistener.load()
 
     async def startup(self, auto_form=False):
-        """Perform a complete application startup"""
+        """Perform a complete application startup."""
         raise NotImplementedError
 
     async def form_network(self, channel=15, pan_id=None, extended_pan_id=None):
-        """Form a new network"""
+        """Form a new network."""
         raise NotImplementedError
 
     def add_device(self, ieee, nwk):
@@ -40,7 +40,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         return dev
 
     def device_initialized(self, device):
-        """Used by a device to signal that it is initialized"""
+        """Used by a device to signal that it is initialized."""
         self.listener_event('device_initialized', device)
 
     async def remove(self, ieee):
@@ -70,6 +70,20 @@ class ControllerApplication(zigpy.util.ListenableMixin):
 
     def handle_message(self, sender, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
         return sender.handle_message(is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args)
+
+    def handle_RouteRecord(self, sender, record):
+        LOGGER.debug("Route Record from <%s>: %s", sender, record)
+        record.insert(0, sender)
+        sender = record[-1]
+        path = record[0:-1]
+        if path == []:
+            path = "direct*"
+        try:
+            device = self.get_device(nwk=sender)
+        except KeyError:
+            LOGGER.debug("No such device %s", sender)
+            return
+        device.handle_RouteRecord(path)
 
     def handle_join(self, nwk, ieee, parent_nwk):
         LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)

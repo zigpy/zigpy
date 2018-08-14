@@ -12,7 +12,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 class Status(enum.IntEnum):
-    """The status of a Device"""
+
+    """The status of a Device."""
+
     # No initialization done
     NEW = 0
     # ZDO endpoint discovery done
@@ -22,12 +24,14 @@ class Status(enum.IntEnum):
 
 
 class Device(zigpy.util.LocalLogMixin):
-    """A device on the network"""
+
+    """A device on the network."""
 
     def __init__(self, application, ieee, nwk):
         self._application = application
         self._ieee = ieee
         self.nwk = nwk
+        self.path = 'direct'
         self.zdo = zdo.ZDO(self)
         self.endpoints = {0: self.zdo}
         self.lqi = None
@@ -88,9 +92,8 @@ class Device(zigpy.util.LocalLogMixin):
             data,
             expect_reply=expect_reply,
         )
-        # If application.request raises an exception, we won't get here, so
-        # won't update last_seen, as expected
-        self.last_seen = time.time()
+        if result:
+            self.last_seen = time.time()
         return result
 
     def deserialize(self, endpoint_id, cluster_id, data):
@@ -108,6 +111,9 @@ class Device(zigpy.util.LocalLogMixin):
             return
 
         return endpoint.handle_message(is_reply, profile, cluster, tsn, command_id, args)
+
+    def handle_RouteRecord(self, path):
+        self.path = path
 
     def reply(self, profile, cluster, src_ep, dst_ep, sequence, data):
         return self._application.request(self.nwk, profile, cluster, src_ep, dst_ep, sequence, data, False)
