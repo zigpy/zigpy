@@ -29,11 +29,13 @@ class Registry(type):
                 command_name, schema, is_reply = details
                 cls._client_command_idx[command_name] = command_id
 
-        if not getattr(cls, '_skip_registry', False):
-            if hasattr(cls, 'cluster_id'):
-                cls._registry[cls.cluster_id] = cls
-            if hasattr(cls, 'cluster_id_range'):
-                cls._registry_range[cls.cluster_id_range] = cls
+        if getattr(cls, '_skip_registry', False):
+            return
+
+        if hasattr(cls, 'cluster_id'):
+            cls._registry[cls.cluster_id] = cls
+        if hasattr(cls, 'cluster_id_range'):
+            cls._registry_range[cls.cluster_id_range] = cls
 
 
 class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
