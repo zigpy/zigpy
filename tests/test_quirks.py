@@ -3,6 +3,7 @@ from unittest import mock
 import zigpy.device
 import zigpy.endpoint
 import zigpy.quirks
+import zigpy.types as t
 from zigpy.zcl import Cluster
 
 ALLOWED_SIGNATURE = set([
@@ -178,3 +179,38 @@ def test_kof_no_reply():
     cluster.command(0x0002, expect_reply=True)
     ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=True)
     ep.reset_mock()
+
+
+def test_custom_cluster_idx():
+    class TestClusterIdx(zigpy.quirks.CustomCluster):
+        cluster_Id = 0x1234
+        attributes = {
+            0x0000: ('first_attribute', t.uint8_t),
+            0x00ff: ('2nd_attribute', t.enum8)
+        }
+        server_commands = {
+            0x00: ('server_cmd_0', (t.uint8_t, t.uint8_t), False),
+            0x01: ('server_cmd_2', (t.uint8_t, t.uint8_t), False),
+        }
+        client_commands = {
+            0x00: ('client_cmd_0', (t.uint8_t, ), True),
+            0x01: ('client_cmd_1', (t.uint8_t, ), True),
+        }
+
+    def _test_cmd(cmd_set, cmd_set_idx):
+        assert hasattr(TestClusterIdx, cmd_set_idx)
+        idx_len = len(getattr(TestClusterIdx, cmd_set_idx))
+        cmd_set_len = len(getattr(TestClusterIdx, cmd_set))
+        assert idx_len == cmd_set_len
+        for cmd_name, cmd_id in getattr(TestClusterIdx, cmd_set_idx).items():
+            assert getattr(TestClusterIdx, cmd_set)[cmd_id][0] == cmd_name
+
+    assert hasattr(TestClusterIdx, '_attridx')
+    attr_idx_len = len(TestClusterIdx._attridx)
+    attrs_len = len(TestClusterIdx.attributes)
+    assert attr_idx_len == attrs_len
+    for attr_name, attr_id in TestClusterIdx._attridx.items():
+        assert TestClusterIdx.attributes[attr_id][0] == attr_name
+
+    _test_cmd('server_commands', '_server_command_idx')
+    _test_cmd('client_commands', '_client_command_idx')

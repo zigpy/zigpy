@@ -13,13 +13,7 @@ LOGGER = logging.getLogger(__name__)
 class Registry(type):
     def __init__(cls, name, bases, nmspc):  # noqa: N805
         super(Registry, cls).__init__(name, bases, nmspc)
-        if getattr(cls, '_skip_registry', False):
-            return
 
-        if hasattr(cls, 'cluster_id'):
-            cls._registry[cls.cluster_id] = cls
-        if hasattr(cls, 'cluster_id_range'):
-            cls._registry_range[cls.cluster_id_range] = cls
         if hasattr(cls, 'attributes'):
             cls._attridx = {}
             for attrid, (attrname, datatype) in cls.attributes.items():
@@ -34,6 +28,12 @@ class Registry(type):
             for command_id, details in cls.client_commands.items():
                 command_name, schema, is_reply = details
                 cls._client_command_idx[command_name] = command_id
+
+        if not getattr(cls, '_skip_registry', False):
+            if hasattr(cls, 'cluster_id'):
+                cls._registry[cls.cluster_id] = cls
+            if hasattr(cls, 'cluster_id_range'):
+                cls._registry_range[cls.cluster_id_range] = cls
 
 
 class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
