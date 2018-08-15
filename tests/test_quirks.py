@@ -69,6 +69,12 @@ def test_get_device():
 
 
 def test_custom_devices():
+    def _check_range(cluster):
+        for range in Cluster._registry_range.keys():
+            if range[0] <= cluster <= range[1]:
+                return True
+        return False
+
     # Validate that all CustomDevices look sane
     for device in zigpy.quirks._DEVICE_REGISTRY:
         # Check that the signature data is OK
@@ -93,6 +99,7 @@ def test_custom_devices():
             for cluster in all_clusters:
                 assert (
                     (isinstance(cluster, int) and cluster in Cluster._registry) or
+                    (isinstance(cluster, int) and _check_range(cluster)) or
                     issubclass(cluster, Cluster)
                 )
 
