@@ -267,6 +267,21 @@ def test_configure_reporting(cluster):
     cluster.configure_reporting(0, 10, 20, 1)
 
 
+def test_configure_reporting_named(cluster):
+    cluster.configure_reporting('zcl_version', 10, 20, 1)
+    assert cluster._endpoint.request.call_count == 1
+
+
+def test_configure_reporting_wrong_named(cluster):
+    cluster.configure_reporting('wrong_attr_name', 10, 20, 1)
+    assert cluster._endpoint.request.call_count == 0
+
+
+def test_configure_reporting_wrong_attrid(cluster):
+    cluster.configure_reporting(0xfffe, 10, 20, 1)
+    assert cluster._endpoint.request.call_count == 0
+
+
 def test_command(cluster):
     cluster.command(0x00)
     assert cluster._endpoint.request.call_count == 1

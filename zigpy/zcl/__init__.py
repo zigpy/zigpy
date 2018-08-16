@@ -267,12 +267,20 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         return self._endpoint.device.zdo.unbind(self._endpoint.endpoint_id, self.cluster_id)
 
     def configure_reporting(self, attribute, min_interval, max_interval, reportable_change):
+        if isinstance(attribute, str):
+            attrid = self._attridx.get(attribute, None)
+        else:
+            attrid = attribute
+        if attrid not in self.attributes or attrid is None:
+            self.error("{} is not a valid attribute id".format(attribute))
+            return
+
         schema = foundation.COMMANDS[0x06][1]
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = 0
-        cfg.attrid = attribute
+        cfg.attrid = attrid
         cfg.datatype = foundation.DATA_TYPE_IDX.get(
-            self.attributes.get(attribute, (None, None))[1],
+            self.attributes.get(attrid, (None, None))[1],
             None)
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
