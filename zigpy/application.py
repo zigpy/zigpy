@@ -104,6 +104,18 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     def permit(self, time_s=60):
         raise NotImplementedError
 
+    async def permit_targeted(self, node, time_s=60):
+        assert 0 <= time_s <= 254
+        if not isinstance(node, t.EUI64):
+            node = t.EUI64([t.uint8_t(p) for p in node])
+        dev = self.devices.get(node, None)
+        if not dev:
+            LOGGER.warning("Device to permit join not found: %s", node)
+            return
+        r = await dev.zdo.request(0x0036, time_s)
+        if r[0] != 0:
+            LOGGER.warning("Targeted permit failed: %s", r)
+
     def permit_with_key(self, node, code, time_s=60):
         raise NotImplementedError
 
