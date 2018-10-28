@@ -1,4 +1,6 @@
 from zigpy.quirks import CustomDevice
+from zigpy.zcl.clusters.general import Basic, Identify, Groups, Scenes, \
+    MultistateInput, AnalogInput, Ota
 
 
 class TemperatureHumiditySensor(CustomDevice):
@@ -92,5 +94,59 @@ class AqaraWaterSensor(CustomDevice):
             1: {
                 'input_clusters': [0x0000, 0x0003, 0x0001, 0x0500],
             }
+        },
+    }
+
+
+class AqaraMagicCubeSensor(CustomDevice):
+    signature = {
+        1: {
+            'profile_id': 0x0104,
+            'device_type': 0x5f01,
+            'input_clusters': [Basic.cluster_id,
+                               Identify.cluster_id,
+                               MultistateInput.cluster_id,
+                               Ota.cluster_id],
+            'output_clusters': [Basic.cluster_id,
+                                Identify.cluster_id,
+                                Groups.cluster_id,
+                                Scenes.cluster_id,
+                                MultistateInput.cluster_id,
+                                Ota.cluster_id],
+        },
+        2: {
+            'profile_id': 0x0104,
+            'device_type': 0x5f02,
+            'input_clusters': [Identify.cluster_id,
+                               MultistateInput.cluster_id],
+            'output_clusters': [Identify.cluster_id,
+                                Groups.cluster_id,
+                                Scenes.cluster_id,
+                                MultistateInput.cluster_id],
+        },
+        3: {
+            'profile_id': 0x0104,
+            'device_type': 0x5f03,
+            'input_clusters': [Identify.cluster_id,
+                               AnalogInput.cluster_id],
+            'output_clusters': [Identify.cluster_id,
+                                Groups.cluster_id,
+                                Scenes.cluster_id,
+                                AnalogInput.cluster_id],
+        }
+
+    }
+
+    replacement = {
+        'endpoints': {
+            1: {
+                'input_clusters': [Basic.cluster_id, Identify.cluster_id],
+            },
+            2: {
+                'input_clusters': [MultistateInput.cluster_id],
+            },
+            3: {
+                'input_clusters': [AnalogInput.cluster_id],
+            },
         },
     }
