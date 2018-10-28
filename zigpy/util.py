@@ -22,9 +22,10 @@ class ListenableMixin:
         for listener in self._listeners.values():
             try:
                 method = getattr(listener, method_name)
-                method(*args)
             except Exception as e:
                 LOGGER.warning("Error calling listener.%s: %s", method_name, e)
+           # try:
+            method(*args)
 
 
 class LocalLogMixin:

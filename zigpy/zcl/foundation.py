@@ -84,14 +84,14 @@ DATA_TYPES = {
     0x0e: ('General', t.fixed_list(7, t.uint8_t), Discrete),
     0x0f: ('General', t.fixed_list(8, t.uint8_t), Discrete),
     0x10: ('Boolean', t.Bool, Discrete),
-    0x18: ('Bitmap', t.uint8_t, Discrete),
-    0x19: ('Bitmap', t.uint16_t, Discrete),
-    0x1a: ('Bitmap', t.uint24_t, Discrete),
-    0x1b: ('Bitmap', t.uint32_t, Discrete),
-    0x1c: ('Bitmap', t.uint40_t, Discrete),
-    0x1d: ('Bitmap', t.uint48_t, Discrete),
-    0x1e: ('Bitmap', t.uint56_t, Discrete),
-    0x1f: ('Bitmap', t.uint64_t, Discrete),
+    0x18: ('Bitmap', t.bitmap8, Discrete),
+    0x19: ('Bitmap', t.bitmap16, Discrete),
+    0x1a: ('Bitmap', t.bitmap24, Discrete),
+    0x1b: ('Bitmap', t.bitmap32, Discrete),
+    0x1c: ('Bitmap', t.bitmap40, Discrete),
+    0x1d: ('Bitmap', t.bitmap48, Discrete),
+    0x1e: ('Bitmap', t.bitmap56, Discrete),
+    0x1f: ('Bitmap', t.bitmap64, Discrete),
     0x20: ('Unsigned Integer', t.uint8_t, Analog),
     0x21: ('Unsigned Integer', t.uint16_t, Analog),
     0x22: ('Unsigned Integer', t.uint24_t, Analog),
@@ -135,7 +135,7 @@ DATA_TYPES = {
 DATA_TYPE_IDX = {
     t: tidx
     for tidx, (tname, t, ad) in DATA_TYPES.items()
-    if ad is Analog or tname == 'Enumeration'
+    if ad is Analog or tname == 'Enumeration' or tname == 'Bitmap'
 }
 DATA_TYPE_IDX[t.uint32_t] = 0x23
 DATA_TYPE_IDX[t.EUI64] = 0xf0
@@ -242,6 +242,13 @@ class DiscoverAttributesResponseRecord(t.Struct):
         ('datatype', t.uint8_t),
     ]
 
+class DiscoverAttributesExtResponseRecord(t.Struct):
+    _fields = [
+        ('attrid', t.uint16_t),
+        ('datatype', t.uint8_t),
+        ('accessctl',t.uint8_t),
+    ]
+
 
 COMMANDS = {
     # id: (name, params, is_response)
@@ -258,8 +265,12 @@ COMMANDS = {
     0x0a: ('Report attributes', (t.List(Attribute), ), False),
     0x0b: ('Default response', (t.uint8_t, Status), True),
     0x0c: ('Discover attributes', (t.uint16_t, t.uint8_t), False),
-    0x0d: ('Discover attributes response', (t.List(DiscoverAttributesResponseRecord), ), True),
+    0x0d: ('Discover attributes response', (t.uint8_t, t.List(DiscoverAttributesResponseRecord), ), True),
     # 0x0e: ('Read attributes structured', (, ), False),
     # 0x0f: ('Write attributes structured', (, ), False),
     # 0x10: ('Write attributes structured response', (, ), True),
+    0x15: ('Discover attributes extended', (t.uint16_t, t.uint8_t), False),
+    0x16: ('Discover attributes extented response', (t.uint8_t, t.List(DiscoverAttributesExtResponseRecord), ), True),
+    0x11: ('Discover commands received', (t.uint8_t, t.uint8_t), False),
+    0x12: ('Discover commands received response', (t.uint8_t, t.List(t.uint8_t), ), True),
 }

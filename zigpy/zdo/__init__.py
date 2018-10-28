@@ -11,7 +11,8 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
-    """The ZDO endpoint of a device"""
+    """The ZDO endpoint of a device."""
+
     def __init__(self, device):
         self._device = device
         self._listeners = {}
@@ -113,3 +114,51 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def device(self):
         return self._device
+
+    async def get_Mgmt_Lqi(self):
+        index = 0
+        table=list()
+        while True:
+            result = await self.request(0x0031, index)
+            if not result:
+                return
+
+#            LOGGER.debug("get_LQI_table for %s:%s", self._device.nwk, result)
+            if result[0] != 0:
+                return
+            for i in range(len(result[1].NeighborTableList)):
+                NeighborType = result[1].NeighborTableList[i].NeighborType
+                NT_table = list()
+                NT_table.append(NeighborType & 3)
+                NT_table.append((NeighborType >>2) & 3)
+                NT_table.append((NeighborType >>4) & 7)
+                result[1].NeighborTableList[i].NeighborType = NT_table
+                table.append(result[1].NeighborTableList[i])
+#                LOGGER.debug("get_LQI_table for %s:%s", self._device.nwk, result[1].NeighborTableList[i])
+            index = index + i + 1
+            if index >= result[1].Entries:
+                break
+        return table
+
+    async def get_Mgmt_Rtg(self):
+        index = 0
+        table=list()
+        while True:
+            result = await self.request(0x0032, index)
+            if not result or result[0] != 0:
+                return
+            for i in range(len(result[1].RoutingTableList)):
+                RouteType = result[1].RoutingTableList[i].RouteStatus
+                RT_table = list()
+                RT_table.append(RouteType & 7)
+                RT_table.append((RouteType >>3) & 1)
+                RT_table.append((RouteType >>1) & 1)
+                RT_table.append((RouteType >>1) & 1)
+                result[1].RoutingTableList[i].RouteStatus = RT_table
+                table.append(result[1].RoutingTableList[i])
+                LOGGER.debug("get_Rtg_table for %s:%s", self._device.nwk, result[1].RoutingTableList[i])
+            index = index + i +1
+            if index >= result[1].Entries:
+                break
+        return table
+

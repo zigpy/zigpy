@@ -34,7 +34,7 @@ class PersistingListener:
         self._create_table_clusters()
         self._create_table_output_clusters()
         self._create_table_attributes()
-
+        self._create_table_topology()
         self._application = application
 
     def execute(self, *args, **kwargs):
@@ -114,6 +114,24 @@ class PersistingListener:
             "ieee, endpoint_id, cluster, attrid"
         )
 
+    def _create_table_topology(self):
+        self._create_table(
+            "topology",
+            "(src, dst, lqi, cost, depth, PRIMARY KEY(src, dst))",
+        )
+        self.execute("DELETE FROM topology")
+
+
+    def write_topology(self, **args):
+        q = "INSERT OR REPLACE INTO topology VALUES (?, ?, ?, ?, ?)"
+        self.execute(
+                    q, ((args["src"], args["dst"],
+                         args.get("lqi", None),
+                         args.get("cost", None),
+                         args.get("depth", None),
+                         )))
+        self._db.commit()
+
     def _remove_device(self, device):
         self.execute("DELETE FROM attributes WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM clusters WHERE ieee = ?", (device.ieee, ))
@@ -171,9 +189,12 @@ class PersistingListener:
         self._db.commit()
 
     def _save_attribute(self, ieee, endpoint_id, cluster_id, attrid, value):
-        q = "INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?, ?)"
-        self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
-        self._db.commit()
+        try:
+            q = "INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?, ?)"
+            self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
+            self._db.commit()
+        except:
+            LOGGER.info("Database error writing attribute")
 
     def _scan(self, table):
         return self.execute("SELECT * FROM %s" % (table, ))
@@ -209,11 +230,13 @@ class PersistingListener:
             ep.add_output_cluster(cluster)
 
         for (ieee, endpoint_id, cluster, attrid, value) in self._scan("attributes"):
-            dev = self._application.get_device(ieee)
-            ep = dev.endpoints[endpoint_id]
-            clus = ep.in_clusters[cluster]
-            clus._attr_cache[attrid] = value
-
+            try:
+                dev = self._application.get_device(ieee)
+                ep = dev.endpoints[endpoint_id]
+                clus = ep.in_clusters[cluster]
+                clus._attr_cache[attrid] = value
+            except:
+                pass
 
 class ClusterPersistingListener:
     def __init__(self, applistener, cluster):

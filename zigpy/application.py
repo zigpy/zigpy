@@ -6,6 +6,7 @@ import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
+import asyncio
 
 LOGGER = logging.getLogger(__name__)
 
@@ -14,6 +15,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     def __init__(self, database_file=None):
         self._send_sequence = 0
         self.devices = {}
+        self.nwk2devices = dict()
         self._listeners = {}
         self._ieee = None
         self._nwk = None
@@ -22,6 +24,8 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
             self.add_listener(self._dblistener)
             self._dblistener.load()
+
+        asyncio.ensure_future(self.run_topology())
 
     async def startup(self, auto_form=False):
         """Perform a complete application startup."""
@@ -37,6 +41,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
 
         dev = zigpy.device.Device(self, ieee, nwk)
         self.devices[ieee] = dev
+        self.nwk2devices[nwk] = dev
         return dev
 
     def device_initialized(self, device):
@@ -50,6 +55,11 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             LOGGER.debug("Device not found for removal: %s", ieee)
             return
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
+        LOGGER.debug("length devices before removal: %s", len(self.devices))
+        self.nwk2devices.pop(dev.nwk, None)
+        dev.cleanup()
+        LOGGER.debug("length devices after removal: %s", len(self.devices))
+
         zdo_worked = False
         try:
             resp = await dev.zdo.leave()
@@ -72,7 +82,6 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         return sender.handle_message(is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args)
 
     def handle_RouteRecord(self, sender, record):
-        LOGGER.debug("Route Record from <%s>: %s", sender, record)
         record.insert(0, sender)
         sender = record[-1]
         path = record[0:-1]
@@ -91,8 +100,11 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             dev = self.get_device(ieee)
             if dev.nwk != nwk:
                 LOGGER.debug("Device %s changed id (0x%04x => 0x%04x)", ieee, dev.nwk, nwk)
-                dev.nwk = nwk
-            elif dev.initializing or dev.status == zigpy.device.Status.ENDPOINTS_INIT:
+                self.nwk2devices.pop(dev.nwk, None)
+                self.nwk2devices[nwk] = dev
+                dev.nwk = nwk                
+#            elif dev.initializing or dev.status == zigpy.device.Status.ENDPOINTS_INIT:
+            elif dev.status == zigpy.device.Status.ENDPOINTS_INIT:
                 LOGGER.debug("Skip initialization for existing device %s", ieee)
                 return
         else:
@@ -129,11 +141,12 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     def get_device(self, ieee=None, nwk=None):
         if ieee is not None:
             return self.devices[ieee]
-
-        for dev in self.devices.values():
-            # TODO: Make this not terrible
-            if dev.nwk == nwk:
-                return dev
+        if nwk is not None:
+            return self.nwk2devices[nwk]
+#        for dev in self.devices.values():
+#            # TODO: Make this not terrible
+#            if dev.nwk == nwk:
+#                return dev
 
         raise KeyError
 
@@ -150,3 +163,36 @@ class ControllerApplication(zigpy.util.ListenableMixin):
 
     async def unsubscribe_group(self, group_id):
         raise NotImplementedError
+
+    async def run_topology(self, wakemeup=60):
+        while True:
+            await asyncio.sleep(wakemeup)
+            await self.update_topology()
+
+    async def update_topology(self):
+        """ gather information for topology and write it to zigbee.db."""
+        result = await self.read_neighbor_table()
+        LOGGER.debug("neighbors: %s", result)
+        for index in self._neighbor_table["index"]:
+            neighbor = self._neighbor_table[index]
+            self._dblistener.write_topology(
+                                     src=neighbor.shortId,
+                                     dst=0,
+                                     lqi=neighbor.averageLqi,
+                                     cost=neighbor.inCost)
+            self._dblistener.write_topology(src=0, dst=neighbor.shortId, cost=neighbor.outCost)
+
+            device = self.get_device(nwk=index)
+            try:
+                result = await device.zdo.get_Mgmt_Lqi()
+            except:
+                continue
+            for neighbor in result:
+                if not neighbor.NeighborType[2] == 4:
+                    self._dblistener.write_topology(src=neighbor.NWKAddr, dst=index, lqi=neighbor.LQI, depth=neighbor.Depth)
+        LOGGER.debug("Topology updated")
+
+#        await device.zdo.get_Mgmt_Rtg()
+#        await asyncio.wait_for(self.read_child_table(),15)
+#        await self.read_route_table()
+ 

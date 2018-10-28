@@ -52,7 +52,7 @@ class Device(zigpy.util.LocalLogMixin):
         if self.status == Status.NEW:
             self.info("Discovering endpoints")
             try:
-                epr = await self.zdo.request(0x0005, self.nwk, tries=3, delay=2)
+                epr = await self.zdo.request(0x0005, self.nwk, tries=3, delay=3)
                 if epr[0] != 0:
                     raise Exception("Endpoint request failed: %s", epr)
             except Exception as exc:
@@ -92,7 +92,9 @@ class Device(zigpy.util.LocalLogMixin):
             data,
             expect_reply=expect_reply,
         )
-        if result:
+        if not result:
+            result=[1,]
+        else:
             self.last_seen = time.time()
         return result
 
@@ -137,3 +139,13 @@ class Device(zigpy.util.LocalLogMixin):
 
     def __getitem__(self, key):
         return self.endpoints[key]
+
+    def cleanup(self):
+        """ do some cleanup to remove cyclic relations."""
+        for ep in self.endpoints.values():
+            ep._device = None
+            ep._status = None
+        self.endpoints = None
+        if hasattr(self, '_init_handle'):
+            if not self._init_handle.done():
+                self._init_handle.cancel()

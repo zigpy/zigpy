@@ -4,11 +4,12 @@ from setuptools import find_packages, setup
 
 setup(
     name="zigpy",
-    version="0.1.2-Y",
+    version="0.1.4-Y",
+
     description="Library implementing a ZigBee stack",
     url="http://github.com/zigpy/zigpy",
-    author="Russell Cloran",
-    author_email="rcloran@gmail.com",
+    author="orig byRussell Cloran",
+#    author_email="rcloran@gmail.com",
     license="GPL-3.0",
     packages=find_packages(exclude=['*.tests']),
     install_requires=[

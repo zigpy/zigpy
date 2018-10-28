@@ -34,7 +34,9 @@ class Registry(type):
 
 
 class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
-    """A cluster on an endpoint"""
+
+    """A cluster on an endpoint."""
+
     _registry = {}
     _registry_range = {}
     _server_command_idx = {}
@@ -259,7 +261,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def unbind(self):
         return self._endpoint.device.zdo.unbind(self._endpoint.endpoint_id, self.cluster_id)
 
-    def configure_reporting(self, attribute, min_interval, max_interval, reportable_change):
+    def configure_reporting(self, attribute, min_interval, max_interval, reportable_change, 
+                            manufacturer=None):
         schema = foundation.COMMANDS[0x06][1]
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = 0
@@ -270,7 +273,26 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change
-        return self.request(True, 0x06, schema, [cfg])
+        return self.request(True, 0x06, schema, [cfg], manufacturer=manufacturer)
+
+    async def discover_attributes(self, start_attr, no_attr):
+        u"""disover cluster attribute ids: start_attr: first attr, no_attr: number of attributes to pull."""
+        schema = foundation.COMMANDS[0x0c][1]
+        v = await self.request(True, 0x0c,  schema, start_attr, no_attr)
+        return v
+
+    async def discover_attributes_ext(self, start_attr, no_attr):
+        u"""disover cluster attribute ext ids: start_attr: first attr, no_attr: number of attributes to pull."""
+        schema = foundation.COMMANDS[0x15][1]
+        v = await self.request(True, 0x15,  schema, start_attr, no_attr)
+        return v
+
+    async def discover_command_rec(self, start_attr, no_attr):
+        u"""disover commands server accept: start_attr: first attr, no_attr: number of attributes to pull."""
+        schema = foundation.COMMANDS[0x11][1]
+        v = await self.request(True, 0x11,  schema, start_attr, no_attr)
+        return v
+
 
     def command(self, command, *args, manufacturer=None, expect_reply=True):
         schema = self.server_commands[command][1]

@@ -73,6 +73,7 @@ CLUSTERS = {
     DeviceType.ON_OFF_LIGHT_SWITCH: ([0x0007], [0x0004, 0x0005, 0x0006]),
     DeviceType.DIMMER_SWITCH: ([0x0007], [0x0004, 0x0005, 0x0006, 0x0008]),
     DeviceType.COLOR_DIMMER_SWITCH: ([0x0007], [0x0004, 0x0005, 0x0006, 0x0008, 0x0300]),
+    DeviceType.IAS_ZONE: ([0x0000,0x0500], [0x0500]),
     # Non standard
     DeviceType.COLOR_SCENE_CONTROLLER: ([], [0x0004, 0x0005, 0x0006, 0x0008, 0x0300]),
     DeviceType.LIGHT_SENSOR: ([0x0400], []),
