@@ -276,19 +276,19 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         return self.request(True, 0x06, schema, [cfg], manufacturer=manufacturer)
 
     async def discover_attributes(self, start_attr, no_attr):
-        u"""disover cluster attribute ids: start_attr: first attr, no_attr: number of attributes to pull."""
+        """disover cluster attribute ids: start_attr: first attr, no_attr: number of attributes to pull."""
         schema = foundation.COMMANDS[0x0c][1]
         v = await self.request(True, 0x0c,  schema, start_attr, no_attr)
         return v
 
     async def discover_attributes_ext(self, start_attr, no_attr):
-        u"""disover cluster attribute ext ids: start_attr: first attr, no_attr: number of attributes to pull."""
+        """disover cluster attribute ext ids: start_attr: first attr, no_attr: number of attributes to pull."""
         schema = foundation.COMMANDS[0x15][1]
         v = await self.request(True, 0x15,  schema, start_attr, no_attr)
         return v
 
     async def discover_command_rec(self, start_attr, no_attr):
-        u"""disover commands server accept: start_attr: first attr, no_attr: number of attributes to pull."""
+        """disover commands server accept: start_attr: first attr, no_attr: number of attributes to pull."""
         schema = foundation.COMMANDS[0x11][1]
         v = await self.request(True, 0x11,  schema, start_attr, no_attr)
         return v
