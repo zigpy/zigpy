@@ -101,20 +101,40 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     async def request(self, nwk, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True, timeout=10):
         raise NotImplementedError
 
-    def permit(self, time_s=60):
+    async def broadcast(self, profile, cluster, src_ep, dst_ep, grpid, radius,
+                        sequence, data, broadcast_address):
         raise NotImplementedError
 
-    async def permit_targeted(self, node, time_s=60):
+    async def permit_ncp(self, time_s=60):
+        """Permit joining on NCP."""
+        raise NotImplementedError
+
+    async def permit(self, time_s=60, node=None):
+        """Permit joining on a specific node or all router nodes."""
         assert 0 <= time_s <= 254
-        if not isinstance(node, t.EUI64):
-            node = t.EUI64([t.uint8_t(p) for p in node])
-        dev = self.devices.get(node, None)
-        if not dev:
-            LOGGER.warning("Device to permit join not found: %s", node)
+        if node is not None:
+            if not isinstance(node, t.EUI64):
+                node = t.EUI64([t.uint8_t(p) for p in node])
+            if node != self._ieee:
+                try:
+                    dev = self.get_device(ieee=node)
+                    r = await dev.zdo.permit(time_s)
+                    LOGGER.debug("Sent 'mgmt_permit_joining_req' to %s: %s",
+                                 node, r)
+                except KeyError:
+                    LOGGER.warning("Device '%s' not found", node)
+                except zigpy.exceptions.DeliveryError as ex:
+                    LOGGER.warning(
+                        "Couldn't open '%s' for joining: %s", node, ex)
+            else:
+                await self.permit_ncp(time_s)
             return
-        r = await dev.zdo.request(0x0036, time_s)
-        if r[0] != 0:
-            LOGGER.warning("Targeted permit failed: %s", r)
+
+        await zigpy.zdo.broadcast(
+            self, 0x0036, 0x0000, 0x00, time_s, 0,
+            broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR
+        )
+        return await self.permit_ncp(time_s)
 
     def permit_with_key(self, node, code, time_s=60):
         raise NotImplementedError

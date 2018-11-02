@@ -99,6 +99,9 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def leave(self):
         return self.request(0x0034, self._device.ieee, 0x02)
 
+    def permit(self, duration=60, tc_significance=0):
+        return self.request(0x0036, duration, tc_significance)
+
     def log(self, lvl, msg, *args):
         msg = '[0x%04x:zdo] ' + msg
         args = (
@@ -109,3 +112,15 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def device(self):
         return self._device
+
+
+def broadcast(app, command, grpid, radius, *args,
+              broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE):
+    sequence = app.get_sequence()
+    data = sequence.to_bytes(1, 'little')
+    schema = types.CLUSTERS[command][2]
+    data += t.serialize(args, schema)
+    return zigpy.device.broadcast(
+        app, 0, command, 0, 0, grpid, radius, sequence, data,
+        broadcast_address=broadcast_address
+    )

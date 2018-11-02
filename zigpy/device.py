@@ -6,6 +6,7 @@ import time
 import zigpy.endpoint
 import zigpy.util
 import zigpy.zdo as zdo
+from zigpy.types import BroadcastAddress
 
 
 LOGGER = logging.getLogger(__name__)
@@ -131,3 +132,13 @@ class Device(zigpy.util.LocalLogMixin):
 
     def __getitem__(self, key):
         return self.endpoints[key]
+
+
+async def broadcast(app, profile, cluster, src_ep, dst_ep, grpid, radius,
+                    sequence, data,
+                    broadcast_address=BroadcastAddress.RX_ON_WHEN_IDLE):
+    result = await app.broadcast(
+        profile, cluster, src_ep, dst_ep, grpid, radius, sequence, data,
+        broadcast_address=broadcast_address
+    )
+    return result

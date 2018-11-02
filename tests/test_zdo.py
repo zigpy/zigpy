@@ -20,11 +20,16 @@ def test_commands():
 
 
 @pytest.fixture
-def zdo_f():
+def app():
     app = mock.MagicMock()
     app.ieee = t.EUI64(map(t.uint8_t, [8, 9, 10, 11, 12, 13, 14, 15]))
     app.get_sequence.return_value = 123
     app.request.side_effect = asyncio.coroutine(mock.MagicMock())
+    return app
+
+
+@pytest.fixture
+def zdo_f(app):
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     dev = zigpy.device.Device(app, ieee, 65535)
     return zdo.ZDO(dev)
@@ -73,6 +78,22 @@ async def test_leave(zdo_f):
     app_mock = zdo_f._device._application
     assert app_mock.request.call_count == 1
     assert app_mock.request.call_args[0][2] == 0x0034
+
+
+@pytest.mark.asyncio
+async def test_permit(zdo_f):
+    await zdo_f.permit()
+    app_mock = zdo_f._device._application
+    assert app_mock.request.call_count == 1
+    assert app_mock.request.call_args[0][2] == 0x0036
+
+
+def test_broadcast(app):
+    zigpy.device.broadcast = mock.MagicMock()
+    zigpy.zdo.broadcast(app, 0x0036, 0, 0, 60, 0)
+
+    assert zigpy.device.broadcast.call_count == 1
+    assert zigpy.device.broadcast.call_args[0][2] == 0x0036
 
 
 def _handle_match_desc(zdo_f, profile):

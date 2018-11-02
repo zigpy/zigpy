@@ -13,6 +13,7 @@ class BroadcastAddress(basic.uint16_t, enum.Enum):
     RESERVED_FFF9 = 0xfff9
     RESERVED_FFF8 = 0xfff8
 
+
 class EUI64(basic.fixed_list(8, basic.uint8_t)):
     # EUI 64-bit ID (an IEEE address).
     @classmethod
