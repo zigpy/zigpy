@@ -15,6 +15,7 @@ class KeenTemperatureHumiditySensor(CustomDevice):
         'endpoints': {
             1: {
                 'input_clusters': [0x0000, 0x0003, 0x0402, 0x0405],
+                'output_clusters': [0x0403],
             }
         },
     }
