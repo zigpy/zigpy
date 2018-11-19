@@ -266,7 +266,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def unbind(self):
         return self._endpoint.device.zdo.unbind(self._endpoint.endpoint_id, self.cluster_id)
 
-    def configure_reporting(self, attribute, min_interval, max_interval, reportable_change):
+    def configure_reporting(self, attribute, min_interval, max_interval,
+                            reportable_change, manufacturer=None):
         if isinstance(attribute, str):
             attrid = self._attridx.get(attribute, None)
         else:
@@ -285,7 +286,9 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change
-        return self.request(True, 0x06, schema, [cfg])
+        return self.request(
+            True, 0x06, schema, [cfg], manufacturer=manufacturer
+        )
 
     def command(self, command, *args, manufacturer=None, expect_reply=True):
         schema = self.server_commands[command][1]
