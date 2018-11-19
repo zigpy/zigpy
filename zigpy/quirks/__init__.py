@@ -137,3 +137,4 @@ from . import xiaomi  # noqa: F401, F402
 from . import smartthings  # noqa: F401, F402
 from . import kof  # noqa: F401, F402
 from . import keen  # noqa: F401, F402
+from . import ikea  # noqa: F401, F402
