@@ -282,6 +282,24 @@ def test_configure_reporting_wrong_attrid(cluster):
     assert cluster._endpoint.request.call_count == 0
 
 
+def test_configure_reporting_manuf():
+    ep = mock.MagicMock()
+    cluster = zcl.Cluster.from_id(ep, 6)
+    cluster.request = mock.MagicMock(name='request')
+    cluster.configure_reporting(0, 10, 20, 1)
+    cluster.request.assert_called_with(
+        mock.ANY, mock.ANY, mock.ANY, mock.ANY, manufacturer=None
+    )
+
+    cluster.request.reset_mock()
+    manufacturer_id = 0xfcfc
+    cluster.configure_reporting(0, 10, 20, 1, manufacturer=manufacturer_id)
+    cluster.request.assert_called_with(
+        mock.ANY, mock.ANY, mock.ANY, mock.ANY, manufacturer=manufacturer_id
+    )
+    assert cluster.request.call_count == 1
+
+
 def test_command(cluster):
     cluster.command(0x00)
     assert cluster._endpoint.request.call_count == 1
