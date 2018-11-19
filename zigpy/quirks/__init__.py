@@ -102,6 +102,8 @@ class CustomEndpoint(Endpoint):
 
         set_device_attr('profile_id')
         set_device_attr('device_type')
+        set_device_attr('manufacturer')
+        set_device_attr('model')
         self.status = EndpointStatus.ZDO_INIT
 
         for c in replacement_data.get('input_clusters', []):
@@ -133,3 +135,6 @@ def _match(a, b):
 
 from . import xiaomi  # noqa: F401, F402
 from . import smartthings  # noqa: F401, F402
+from . import kof  # noqa: F401, F402
+from . import keen  # noqa: F401, F402
+from . import ikea  # noqa: F401, F402

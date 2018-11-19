@@ -58,7 +58,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         try:
             resp = await dev.zdo.leave()
             zdo_worked = resp[0] == 0
-        except Exception as exc:
+        except Exception:
             pass
 
         if not zdo_worked:

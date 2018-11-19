@@ -13,13 +13,7 @@ LOGGER = logging.getLogger(__name__)
 class Registry(type):
     def __init__(cls, name, bases, nmspc):  # noqa: N805
         super(Registry, cls).__init__(name, bases, nmspc)
-        if getattr(cls, '_skip_registry', False):
-            return
 
-        if hasattr(cls, 'cluster_id'):
-            cls._registry[cls.cluster_id] = cls
-        if hasattr(cls, 'cluster_id_range'):
-            cls._registry_range[cls.cluster_id_range] = cls
         if hasattr(cls, 'attributes'):
             cls._attridx = {}
             for attrid, (attrname, datatype) in cls.attributes.items():
@@ -34,6 +28,14 @@ class Registry(type):
             for command_id, details in cls.client_commands.items():
                 command_name, schema, is_reply = details
                 cls._client_command_idx[command_name] = command_id
+
+        if getattr(cls, '_skip_registry', False):
+            return
+
+        if hasattr(cls, 'cluster_id'):
+            cls._registry[cls.cluster_id] = cls
+        if hasattr(cls, 'cluster_id_range'):
+            cls._registry_range[cls.cluster_id_range] = cls
 
 
 class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
@@ -177,7 +179,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         v = await self.request(True, 0x00, schema, attributes, manufacturer=manufacturer)
         return v
 
-    async def read_attributes(self, attributes, allow_cache=False, raw=False, manufacturer=None):
+    async def read_attributes(self, attributes, allow_cache=False, only_cache=False, raw=False, manufacturer=None):
         if raw:
             assert len(attributes) == 1
         success, failure = {}, {}
@@ -192,7 +194,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             orig_attributes[attrid] = attribute
 
         to_read = []
-        if allow_cache:
+        if allow_cache or only_cache:
             for idx, attribute in enumerate(attribute_ids):
                 if attribute in self._attr_cache:
                     success[attributes[idx]] = self._attr_cache[attribute]
@@ -201,7 +203,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         else:
             to_read = attribute_ids
 
-        if not to_read:
+        if not to_read or only_cache:
             if raw:
                 return success[attributes[0]]
             return success, failure
@@ -284,18 +286,29 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def unbind(self):
         return self._endpoint.device.zdo.unbind(self._endpoint.endpoint_id, self.cluster_id)
 
-    def configure_reporting(self, attribute, min_interval, max_interval, reportable_change):
+    def configure_reporting(self, attribute, min_interval, max_interval,
+                            reportable_change, manufacturer=None):
+        if isinstance(attribute, str):
+            attrid = self._attridx.get(attribute, None)
+        else:
+            attrid = attribute
+        if attrid not in self.attributes or attrid is None:
+            self.error("{} is not a valid attribute id".format(attribute))
+            return
+
         schema = foundation.COMMANDS[0x06][1]
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = 0
-        cfg.attrid = attribute
+        cfg.attrid = attrid
         cfg.datatype = foundation.DATA_TYPE_IDX.get(
-            self.attributes.get(attribute, (None, None))[1],
+            self.attributes.get(attrid, (None, None))[1],
             None)
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change
-        return self.request(True, 0x06, schema, [cfg])
+        return self.request(
+            True, 0x06, schema, [cfg], manufacturer=manufacturer
+        )
 
     def command(self, command, *args, manufacturer=None, expect_reply=True):
         schema = self.server_commands[command][1]
