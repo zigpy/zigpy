@@ -19,6 +19,19 @@ def get_device(device, registry=_DEVICE_REGISTRY):
     for candidate in registry:
         _LOGGER.debug("Considering %s", candidate)
         sig = candidate.signature
+        manufacturer = None
+        model = None
+
+        if hasattr(candidate, 'manufacturer'):
+            manufacturer =  candidate.manufacturer
+
+        if hasattr(candidate, 'model'):
+            model = candidate.model
+
+        if not (model == None) and not any([device[eid].model == model for eid in sig.keys()]):
+            _LOGGER.debug("Fail because model mismatch")
+            continue
+
         if not _match(sig.keys(), dev_ep):
             _LOGGER.debug("Fail because endpoint list mismatch: %s %s", sig.keys(), dev_ep)
             continue

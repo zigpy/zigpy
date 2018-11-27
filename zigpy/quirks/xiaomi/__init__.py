@@ -4,6 +4,7 @@ from zigpy.zcl.clusters.general import Basic, Identify, Groups, Scenes, \
 
 
 class TemperatureHumiditySensor(CustomDevice):
+    model = 'lumi.sensor_ht'
     signature = {
         # <SimpleDescriptor endpoint=1 profile=260 device_type=24321 device_version=1 input_clusters=[0, 3, 25, 65535, 18] output_clusters=[0, 4, 3, 5, 25, 65535, 18]>
         1: {
