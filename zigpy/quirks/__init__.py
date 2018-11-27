@@ -23,12 +23,16 @@ def get_device(device, registry=_DEVICE_REGISTRY):
         model = None
 
         if hasattr(candidate, 'manufacturer'):
-            manufacturer =  candidate.manufacturer
+            manufacturer = candidate.manufacturer
 
         if hasattr(candidate, 'model'):
             model = candidate.model
 
-        if not (model == None) and not any([device[eid].model == model for eid in sig.keys()]):
+        if not (manufacturer is None) and not any([device[eid].manufacturer == manufacturer for eid in sig.keys()]):
+            _LOGGER.debug("Fail because manufacturer mismatch")
+            continue
+
+        if not (model is None) and not any([device[eid].model == model for eid in sig.keys()]):
             _LOGGER.debug("Fail because model mismatch")
             continue
 
