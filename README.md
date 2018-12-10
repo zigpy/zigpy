@@ -3,7 +3,7 @@
 [![Build Status](https://travis-ci.org/zigpy/zigpy.svg?branch=master)](https://travis-ci.org/zigpy/zigpy)
 [![Coverage](https://coveralls.io/repos/github/zigpy/zigpy/badge.svg?branch=master)](https://coveralls.io/github/zigpy/zigpy?branch=master)
 
-**[zigpy](https://github.com/zigpy/zigpy)** is a Python 3 project to implement **[Zigbee Home Automation](https://www.zigbee.org/)** integration. 
+**[zigpy](https://github.com/zigpy/zigpy)** is **[Zigbee protocol stack](https://en.wikipedia.org/wiki/Zigbee)** integration project to implement the **[Zigbee Home Automation](https://www.zigbee.org/)** standard as a Python 3 library. 
 
 zigpy works with separate radio libraries which can each interface with multiple USB and GPIO radio adapters/modules over different native UART serial UART protocols.
 
