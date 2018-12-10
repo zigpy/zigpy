@@ -9,4 +9,4 @@ zigpy works with separate radio libraries which can each interface with multiple
 
 Such radio libraries includes **[bellows](https://github.com/zigpy/bellows)** (which communicates with EZSP/EmberZNet based radios) and **[zigpy-xbee](https://github.com/zigpy/zigpy-xbee)** (which communicates with XBee based Zigbee radios). 
 
-There is also an experimental radio library called **[pyconz](https://github.com/Equidamoid/pyconz/)** available for deCONZ serial protocol (for communicating with ConBee and RaspBee USB and GPIO radios from Dresden-Elektronik).
+There is also experimental radio libraries called **[pyconz](https://github.com/Equidamoid/pyconz/)** and **[zigpy-deconz](https://github.com/damarco/zigpy-deconz)** available for deCONZ serial protocol (for communicating with ConBee and RaspBee USB and GPIO radios from Dresden-Elektronik).
