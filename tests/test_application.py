@@ -48,6 +48,16 @@ async def test_permit(app):
         await app.permit()
 
 
+@pytest.mark.asyncio
+async def test_permit_targeted(app, ieee):
+    app.devices[ieee] = mock.MagicMock()
+    app.devices[ieee].zdo.request = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    await app.permit_targeted((1, 1, 1, 1, 1, 1, 1, 1))
+    assert app.devices[ieee].zdo.request.call_count == 0
+    await app.permit_targeted(ieee)
+    assert app.devices[ieee].zdo.request.call_count == 1
+
+
 def test_permit_with_key(app):
     with pytest.raises(NotImplementedError):
         app.permit_with_key(None, None)
