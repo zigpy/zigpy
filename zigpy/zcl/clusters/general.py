@@ -241,9 +241,9 @@ class OnOff(Cluster):
         0x0000: ('off', (), False),
         0x0001: ('on', (), False),
         0x0002: ('toggle', (), False),
-        0x0040: ('off_with_effect', (), False),
+        0x0040: ('off_with_effect', (t.uint8_t, t.uint8_t), False),
         0x0041: ('on_with_recall_global_scene', (), False),
-        0x0042: ('on_with_timed_off', (), False),
+        0x0042: ('on_with_timed_off', (t.uint8_t, t.uint16_t, t.uint16_t), False),
     }
     client_commands = {}
 
