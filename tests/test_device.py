@@ -92,3 +92,24 @@ def test_endpoint_getitem(dev):
 
     with pytest.raises(KeyError):
         dev[1]
+
+
+@pytest.mark.asyncio
+async def test_broadcast():
+    from zigpy.profiles import zha
+
+    app = mock.MagicMock()
+    app.broadcast.side_effect = asyncio.coroutine(mock.MagicMock())
+    app.ieee = t.EUI64(map(t.uint8_t, [8, 9, 10, 11, 12, 13, 14, 15]))
+
+    (profile, cluster, src_ep, dst_ep, data) = (
+        zha.PROFILE_ID, 1, 2, 3, b'\x02\x01\x00'
+    )
+    await device.broadcast(app, profile, cluster, src_ep, dst_ep, 0, 0, 123, data)
+
+    assert app.broadcast.call_count == 1
+    assert app.broadcast.call_args[0][0] == profile
+    assert app.broadcast.call_args[0][1] == cluster
+    assert app.broadcast.call_args[0][2] == src_ep
+    assert app.broadcast.call_args[0][3] == dst_ep
+    assert app.broadcast.call_args[0][7] == data

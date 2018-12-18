@@ -3,6 +3,17 @@ import enum
 from . import basic
 
 
+class BroadcastAddress(basic.uint16_t, enum.Enum):
+    ALL_DEVICES = 0xffff
+    RESERVED_FFFE = 0xfffe
+    RX_ON_WHEN_IDLE = 0xfffd
+    ALL_ROUTERS_AND_COORDINATOR = 0xfffc
+    LOW_POWER_ROUTER = 0xfffb
+    RESERVED_FFFA = 0xfffa
+    RESERVED_FFF9 = 0xfff9
+    RESERVED_FFF8 = 0xfff8
+
+
 class EUI64(basic.fixed_list(8, basic.uint8_t)):
     # EUI 64-bit ID (an IEEE address).
     @classmethod

@@ -43,19 +43,50 @@ async def test_request(app):
 
 
 @pytest.mark.asyncio
-async def test_permit(app):
+async def test_permit_ncp(app):
     with pytest.raises(NotImplementedError):
-        await app.permit()
+        await app.permit_ncp()
 
 
 @pytest.mark.asyncio
-async def test_permit_targeted(app, ieee):
+async def test_permit(app, ieee):
+    ncp_ieee = t.EUI64(map(t.uint8_t, range(8, 16)))
+    app._ieee = ncp_ieee
     app.devices[ieee] = mock.MagicMock()
-    app.devices[ieee].zdo.request = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
-    await app.permit_targeted((1, 1, 1, 1, 1, 1, 1, 1))
-    assert app.devices[ieee].zdo.request.call_count == 0
-    await app.permit_targeted(ieee)
-    assert app.devices[ieee].zdo.request.call_count == 1
+    app.devices[ieee].zdo.permit = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    app.permit_ncp = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    await app.permit(node=(1, 1, 1, 1, 1, 1, 1, 1))
+    assert app.devices[ieee].zdo.permit.call_count == 0
+    assert app.permit_ncp.call_count == 0
+    await app.permit(node=ieee)
+    assert app.devices[ieee].zdo.permit.call_count == 1
+    assert app.permit_ncp.call_count == 0
+    await app.permit(node=ncp_ieee)
+    assert app.devices[ieee].zdo.permit.call_count == 1
+    assert app.permit_ncp.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_permit_delivery_failure(app, ieee):
+    from zigpy.exceptions import DeliveryError
+
+    def zdo_permit(*args, **kwargs):
+        raise DeliveryError
+
+    app.devices[ieee] = mock.MagicMock()
+    app.devices[ieee].zdo.permit = zdo_permit
+    app.permit_ncp = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    await app.permit(node=ieee)
+    assert app.permit_ncp.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_permit_broadcast(app):
+    app.broadcast = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    app.permit_ncp = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    await app.permit(time_s=30)
+    assert app.broadcast.call_count == 1
+    assert app.permit_ncp.call_count == 1
 
 
 def test_permit_with_key(app):
@@ -151,3 +182,14 @@ def test_handle_message(app, ieee):
     dev = mock.MagicMock()
     app.handle_message(dev, False, 260, 1, 1, 1, 1, 1, [])
     assert dev.handle_message.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_broadcast(app):
+    from zigpy.profiles import zha
+    with pytest.raises(NotImplementedError):
+        (profile, cluster, src_ep, dst_ep, grp, radius, tsn, data) = (
+            zha.PROFILE_ID, 1, 2, 3, 0, 4, 212, b'\x02\x01\x00'
+        )
+        await app.broadcast(app, profile, cluster, src_ep, dst_ep,
+                            grp, radius, tsn, data)
