@@ -123,6 +123,8 @@ class PersistingListener:
     def _save_device(self, device):
         q = "INSERT OR REPLACE INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
         self.execute(q, (device.ieee, device.nwk, device.status))
+        if device.quirk_applied:
+            return
         self._save_endpoints(device)
         for epid, ep in device.endpoints.items():
             if epid == 0:
