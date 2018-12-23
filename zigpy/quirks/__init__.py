@@ -15,6 +15,7 @@ def add_to_registry(device):
 
 def get_device(device, registry=_DEVICE_REGISTRY):
     """Get a CustomDevice object, if one is available"""
+    device.signature = device.get_signature()
     dev_ep = set(device.endpoints.keys()) - set([0])
     for candidate in registry:
         _LOGGER.debug("Considering %s", candidate)
@@ -47,7 +48,9 @@ def get_device(device, registry=_DEVICE_REGISTRY):
                       device.ieee, candidate)
         device = candidate(device._application, device.ieee, device.nwk, device)
         device.quirk_applied = True
+        device.quirk_class_module = device.__class__.__module__
         device.quirk_class_name = device.__class__.__name__
+        device.quirk_signature = device.get_signature()
         break
 
     return device
@@ -65,6 +68,7 @@ class CustomDevice(Device, metaclass=Registry):
 
     def __init__(self, application, ieee, nwk, replaces):
         super().__init__(application, ieee, nwk)
+        self.signature = replaces.signature
         self.status = DeviceStatus.ENDPOINTS_INIT
         for endpoint_id, endpoint in self.replacement.get('endpoints', {}).items():
             self.add_endpoint(endpoint_id, replace_device=replaces)
