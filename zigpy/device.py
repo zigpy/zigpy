@@ -38,7 +38,6 @@ class Device(zigpy.util.LocalLogMixin):
         self.initializing = False
         self.quirk_applied = False
         self.quirk_class_name = None
-        self.original_signature = {}
 
     def schedule_initialize(self):
         if self.initializing:

@@ -52,7 +52,6 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.info("Discovered endpoint information: %s", sdr[2])
         sd = sdr[2]
-        self.device.original_signature[self._endpoint_id] = sd
         self.profile_id = sd.profile
         self.device_type = sd.device_type
         try:

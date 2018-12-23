@@ -47,7 +47,7 @@ def get_device(device, registry=_DEVICE_REGISTRY):
                       device.ieee, candidate)
         device = candidate(device._application, device.ieee, device.nwk, device)
         device.quirk_applied = True
-        device.quirk_class_name = candidate.__class__.__name__
+        device.quirk_class_name = device.__class__.__name__
         break
 
     return device
