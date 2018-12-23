@@ -39,7 +39,7 @@ class Device(zigpy.util.LocalLogMixin):
         self.quirk_applied = False
         self.quirk_class_module = None
         self.quirk_class_name = None
-        self.signature = None
+        self.original_signature = None
         self.quirk_signature = None
 
     def schedule_initialize(self):
@@ -150,6 +150,7 @@ class Device(zigpy.util.LocalLogMixin):
                 'out_clusters': out_clusters
             }
         return signature
+
 
 async def broadcast(app, profile, cluster, src_ep, dst_ep, grpid, radius,
                     sequence, data,

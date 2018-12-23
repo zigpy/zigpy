@@ -46,6 +46,9 @@ def test_get_device():
         def __init__(*args, **kwargs):
             pass
 
+        def get_signature(self):
+            pass
+
     registry = [TestDevice]
 
     get_device = zigpy.quirks.get_device
