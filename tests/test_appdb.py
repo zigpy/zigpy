@@ -18,11 +18,21 @@ def make_ieee(init=0):
 
 class FakeCustomDevice:
     ieee = make_ieee(1)
+    nwk = 199
+    quirk_applied = False
+
+    def schedule_initialize(self):
+        pass
 
 
 def fake_get_device(device):
     if device[1].profile_id == 65535:
         return FakeCustomDevice()
+    return device
+
+
+def fake_get_existing_device(device):
+    device.quirk_applied = True
     return device
 
 
@@ -64,6 +74,9 @@ async def test_database(tmpdir):
         app.device_initialized(dev)
     assert isinstance(app.get_device(custom_ieee), FakeCustomDevice)
 
+    # Simulate rejoin with different nwk value
+    with mock.patch('zigpy.quirks.get_device', fake_get_existing_device):
+        app.device_initialized(dev)
     # Everything should've been saved - check that it re-loads
     with mock.patch('zigpy.quirks.get_device', fake_get_device):
         app2 = make_app(db)
