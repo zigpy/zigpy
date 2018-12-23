@@ -23,9 +23,7 @@ class FakeCustomDevice:
 
 def fake_get_device(device):
     if device.endpoints.get(1) is not None and device[1].profile_id == 65535:
-        dev = FakeCustomDevice()
-        dev.quirk_applied = True
-        return dev
+        return FakeCustomDevice()
     return device
 
 
@@ -61,10 +59,10 @@ async def test_database(tmpdir):
     custom_ieee = make_ieee(1)
     app.handle_join(199, custom_ieee, 0)
     dev = app.get_device(custom_ieee)
-    with mock.patch('zigpy.quirks.get_device', fake_get_device):
-        app.device_initialized(dev)
+    app.device_initialized(dev)
     ep = dev.add_endpoint(1)
     ep.profile_id = 65535
+    dev.quirk_applied = True
     with mock.patch('zigpy.quirks.get_device', fake_get_device):
         app.device_initialized(dev)
     assert isinstance(app.get_device(custom_ieee), FakeCustomDevice)
@@ -83,7 +81,12 @@ async def test_database(tmpdir):
     assert dev.endpoints[2].out_clusters[1].cluster_id == 1
     assert dev.endpoints[3].device_type == profiles.zll.DeviceType.COLOR_LIGHT
     dev = app2.get_device(custom_ieee)
-    assert isinstance(dev, FakeCustomDevice)
+    from asyncio import sleep
+    sleep(5)
+    # bad test because of bug that persisted replacement signature
+    # when quirks matching reruns after a real startup this would 
+    # be true
+    # assert isinstance(dev, FakeCustomDevice)
 
     app.handle_leave(99, ieee)
 
