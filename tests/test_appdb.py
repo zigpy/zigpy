@@ -84,7 +84,7 @@ async def test_database(tmpdir):
     from asyncio import sleep
     sleep(5)
     # bad test because of bug that persisted replacement signature
-    # when quirks matching reruns after a real startup this would 
+    # when quirks matching reruns after a real startup this would
     # be true
     # assert isinstance(dev, FakeCustomDevice)
 
