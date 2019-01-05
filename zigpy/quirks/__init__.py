@@ -16,13 +16,10 @@ def add_to_registry(device):
 def get_device(device, registry=_DEVICE_REGISTRY):
     """Get a CustomDevice object, if one is available"""
     dev_ep = set(device.endpoints.keys()) - set([0])
+
     for candidate in registry:
         _LOGGER.debug("Considering %s", candidate)
         sig = candidate.signature
-
-        if not _match(sig.keys(), dev_ep):
-            _LOGGER.debug("Fail because endpoint list mismatch: %s %s", sig.keys(), dev_ep)
-            continue
 
         if hasattr(candidate, 'manufacturer') and not any([device[eid].manufacturer in candidate.manufacturer for eid in sig.keys()]):
             _LOGGER.debug("Fail because manufacturer mismatch")
@@ -30,6 +27,19 @@ def get_device(device, registry=_DEVICE_REGISTRY):
 
         if hasattr(candidate, 'model') and not any([device[eid].model in candidate.model for eid in sig.keys()]):
             _LOGGER.debug("Fail because model mismatch")
+            continue
+
+        _LOGGER.debug("Found custom device replacement for %s: %s",
+                      device.ieee, candidate)
+        device = candidate(device._application, device.ieee, device.nwk, device)
+        return device
+
+    for candidate in registry:
+        _LOGGER.debug("Considering %s", candidate)
+        sig = candidate.signature
+
+        if not _match(sig.keys(), dev_ep):
+            _LOGGER.debug("Fail because endpoint list mismatch: %s %s", sig.keys(), dev_ep)
             continue
 
         if not all([device[eid].profile_id == sig[eid].get('profile_id', device[eid].profile_id) for eid in sig.keys()]):
