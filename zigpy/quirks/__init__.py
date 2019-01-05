@@ -24,11 +24,11 @@ def get_device(device, registry=_DEVICE_REGISTRY):
             _LOGGER.debug("Fail because endpoint list mismatch: %s %s", sig.keys(), dev_ep)
             continue
 
-        if hasattr(candidate, 'manufacturer') and not any([device[eid].manufacturer == candidate.manufacturer for eid in sig.keys()]):
+        if hasattr(candidate, 'manufacturer') and not any([candidate.manufacturer in device[eid].manufacturer for eid in sig.keys()]):
             _LOGGER.debug("Fail because manufacturer mismatch")
             continue
 
-        if hasattr(candidate, 'model') and not any([device[eid].model == candidate.model for eid in sig.keys()]):
+        if hasattr(candidate, 'model') and not any([candidate.model in device[eid].model for eid in sig.keys()]):
             _LOGGER.debug("Fail because model mismatch")
             continue
 
