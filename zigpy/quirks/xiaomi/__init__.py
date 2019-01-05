@@ -2,51 +2,10 @@ from zigpy.quirks import CustomDevice
 from zigpy.zcl.clusters.general import Basic, Identify, Groups, Scenes, \
     MultistateInput, AnalogInput, Ota
 
-class AqaraDualButtonSwitch(CustomDevice):
-    manufacturer = ['LUMI', 'Ikea']
-    model = ['lumi.remote.b286acn01']
-    signature = {
-        # <SimpleDescriptor endpoint=1 profile=260 device_type=24321 device_version=1 input_clusters=[0, 3, 25, 65535, 18] output_clusters=[0, 4, 3, 5, 25, 65535, 18]>
-        1: {
-            'profile_id': 0x0104,
-            'device_type': 0x5f01,
-            'input_clusters': [Basic.cluster_id, Identify.cluster_id, Ota.cluster_id, 65535, MultistateInput.cluster_id],
-            'output_clusters': [Basic.cluster_id, Groups.cluster_id, Identify.cluster_id, Scenes.cluster_id, Ota.cluster_id, 65535, MultistateInput.cluster_id],
-        },
-        # <SimpleDescriptor endpoint=2 profile=260 device_type=24322 device_version=1 input_clusters=[3, 18] output_clusters=[4, 3, 5, 18]>
-        2: {
-            'profile_id': 0x0104,
-            'device_type': 0x5f02,
-            'input_clusters': [Identify.cluster_id, MultistateInput.cluster_id],
-            'output_clusters': [Groups.cluster_id, Identify.cluster_id, Scenes.cluster_id, MultistateInput.cluster_id],
-        },
-        # <SimpleDescriptor endpoint=3 profile=260 device_type=24323 device_version=1 input_clusters=[3, 12] output_clusters=[4, 3, 5, 12]>
-        3: {
-            'profile_id': 0x0104,
-            'device_type': 0x5f03,
-            'input_clusters': [Identify.cluster_id, AnalogInput.cluster_id],
-            'output_clusters': [Groups.cluster_id, Identify.cluster_id, Scenes.cluster_id, AnalogInput.cluster_id],
-        },
-    }
-
-    replacement = {
-        'endpoints': {
-            1: {
-                'input_clusters': [Basic.cluster_id, Identify.cluster_id],
-            },
-            2: {
-                'input_clusters': [MultistateInput.cluster_id],
-            },
-            3: {
-                'input_clusters': [AnalogInput.cluster_id],
-            },
-        },
-    }
-
 
 class TemperatureHumiditySensor(CustomDevice):
-    manufacturer = ['LUMI', 'Test']
-    model = ['lumi.sensor_ht', 'test_model']
+    manufacturer = ['LUMI']
+    model = ['lumi.sensor_ht']
     signature = {
         # <SimpleDescriptor endpoint=1 profile=260 device_type=24321 device_version=1 input_clusters=[0, 3, 25, 65535, 18] output_clusters=[0, 4, 3, 5, 25, 65535, 18]>
         1: {
