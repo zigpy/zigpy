@@ -34,12 +34,16 @@ def test_get_device():
     real_device = zigpy.device.Device(application, ieee, nwk)
 
     real_device.add_endpoint(1)
+    real_device[1].manufacturer = 'test'
+    real_device[1].model = 'test_model'
     real_device[1].profile_id = 255
     real_device[1].device_type = 255
     real_device[1].add_input_cluster(3)
     real_device[1].add_output_cluster(6)
 
     class TestDevice:
+        manufacturer = ['']
+        model = ['']
         signature = {
         }
 
@@ -66,6 +70,10 @@ def test_get_device():
     assert get_device(real_device, registry) is real_device
 
     TestDevice.signature[1]['output_clusters'] = [6]
+    assert isinstance(get_device(real_device, registry), TestDevice)
+
+    TestDevice.manufacturer = ['test']
+    TestDevice.model = ['test_model']
     assert isinstance(get_device(real_device, registry), TestDevice)
 
 
