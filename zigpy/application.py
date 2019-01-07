@@ -49,13 +49,13 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self.listener_event('device_initialized', device)
 
     async def remove(self, ieee):
+        LOGGER.debug("length devices before removal: %s", len(self.devices))
         assert isinstance(ieee, t.EUI64)
         dev = self.devices.pop(ieee, None)
         if not dev:
             LOGGER.debug("Device not found for removal: %s", ieee)
             return
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
-        LOGGER.debug("length devices before removal: %s", len(self.devices))
         self.nwk2devices.pop(dev.nwk, None)
         dev.cleanup()
         LOGGER.debug("length devices after removal: %s", len(self.devices))
@@ -94,21 +94,22 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             return
         device.handle_RouteRecord(path)
 
-    def handle_join(self, nwk, ieee, parent_nwk):
-        LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
+    def handle_join(self, nwk, ieee, parent):
+        LOGGER.info("Device 0x%04x (%s) joined the network via %s", nwk, ieee, parent)
         if ieee in self.devices:
             dev = self.get_device(ieee)
             if dev.nwk != nwk:
                 LOGGER.debug("Device %s changed id (0x%04x => 0x%04x)", ieee, dev.nwk, nwk)
                 self.nwk2devices.pop(dev.nwk, None)
                 self.nwk2devices[nwk] = dev
-                dev.nwk = nwk                
+                dev.nwk = nwk 
 #            elif dev.initializing or dev.status == zigpy.device.Status.ENDPOINTS_INIT:
             elif dev.status == zigpy.device.Status.ENDPOINTS_INIT:
                 LOGGER.debug("Skip initialization for existing device %s", ieee)
                 return
         else:
             dev = self.add_device(ieee, nwk)
+            dev.path = parent
 
         self.listener_event('device_joined', dev)
         dev.schedule_initialize()
@@ -143,11 +144,6 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             return self.devices[ieee]
         if nwk is not None:
             return self.nwk2devices[nwk]
-#        for dev in self.devices.values():
-#            # TODO: Make this not terrible
-#            if dev.nwk == nwk:
-#                return dev
-
         raise KeyError
 
     @property
@@ -164,7 +160,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     async def unsubscribe_group(self, group_id):
         raise NotImplementedError
 
-    async def run_topology(self, wakemeup=60):
+    async def run_topology(self, wakemeup=300):
         while True:
             await asyncio.sleep(wakemeup)
             await self.update_topology()

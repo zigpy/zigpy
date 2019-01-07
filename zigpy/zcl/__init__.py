@@ -76,7 +76,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 is_reply = commands[command_id][2]
             except KeyError:
                 LOGGER.warning("Unknown cluster-specific command %s", command_id)
-                return tsn, command_id + 256, is_reply, data
+                return tsn, command_id, is_reply, data
+#                return tsn, command_id + 256, is_reply, data
 
             # Bad hack to differentiate foundation vs cluster
             command_id = command_id + 256
@@ -91,7 +92,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
         value, data = t.deserialize(data, schema)
         if data != b'':
-            LOGGER.warning("Data remains after deserializing ZCL frame")
+            LOGGER.warning("Data remains after deserializing ZCL frame:%s", data)
 
         return tsn, command_id, is_reply, value
 
@@ -140,9 +141,9 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         return self._endpoint.reply(self.cluster_id, sequence, data)
 
     def handle_message(self, is_reply, tsn, command_id, args):
-        if is_reply:
-            self.debug("Unexpected ZCL reply 0x%04x: %s", command_id, args)
-            return
+#        if is_reply:
+#            self.debug("Unexpected ZCL reply 0x%04x: %s", command_id, args)
+#            return
 
         self.debug("ZCL request 0x%04x: %s", command_id, args)
         if command_id > 0xff:        # zcl cluster command
@@ -261,7 +262,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def unbind(self):
         return self._endpoint.device.zdo.unbind(self._endpoint.endpoint_id, self.cluster_id)
 
-    def configure_reporting(self, attribute, min_interval, max_interval, reportable_change, 
+    def configure_reporting(self, attribute, min_interval, max_interval, reportable_change,
                             manufacturer=None):
         schema = foundation.COMMANDS[0x06][1]
         cfg = foundation.AttributeReportingConfig()
@@ -293,7 +294,6 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         v = await self.request(True, 0x11,  schema, start_attr, no_attr)
         return v
 
-
     def command(self, command, *args, manufacturer=None, expect_reply=True):
         schema = self.server_commands[command][1]
         return self.request(False, command, schema, *args, manufacturer=manufacturer, expect_reply=expect_reply)
@@ -317,6 +317,11 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def _update_attribute(self, attrid, value):
         self._attr_cache[attrid] = value
         self.listener_event('attribute_updated', attrid, value)
+        if self.cluster_id == 0:
+            if attrid == 5:
+                self._endpoint._device.model = value.decode('ascii').strip()
+            elif attrid == 4: 
+                self._endpoint._device.manufacturer = value.decode('ascii').strip()
 
     def log(self, lvl, msg, *args):
         msg = '[0x%04x:%s:0x%04x] ' + msg

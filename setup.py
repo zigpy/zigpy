@@ -4,7 +4,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="zigpy",
-    version="0.1.4-Y",
+    version="100.1.4.2",
 
     description="Library implementing a ZigBee stack",
     url="http://github.com/zigpy/zigpy",

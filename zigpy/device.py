@@ -39,6 +39,9 @@ class Device(zigpy.util.LocalLogMixin):
         self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
+        self.model = None
+        self.manufacturer = None
+        self.type = None
 
     def schedule_initialize(self):
         if self.initializing:
@@ -50,17 +53,17 @@ class Device(zigpy.util.LocalLogMixin):
 
     async def _initialize(self):
         if self.status == Status.NEW:
-            self.info("Discovering endpoints")
+            self.info("[0x%04x] Discovering endpoints", self.nwk)
             try:
-                epr = await self.zdo.request(0x0005, self.nwk, tries=3, delay=3)
+                epr = await self.zdo.request(0x0005, self.nwk, tries=3)
                 if epr[0] != 0:
-                    raise Exception("Endpoint request failed: %s", epr)
+                    raise Exception("[0x%04x] Endpoint request failed: %s", self.nwk, epr)
             except Exception as exc:
                 self.initializing = False
-                LOGGER.exception("Failed ZDO request during device initialization: %s", exc)
+                LOGGER.exception("[0x%04x] Failed ZDO request during device initialization: %s", self.nwk, exc)
                 return
 
-            self.info("Discovered endpoints: %s", epr[2])
+            self.info("[0x%04x] Discovered endpoints: %s", self.nwk, epr[2])
 
             for endpoint_id in epr[2]:
                 self.add_endpoint(endpoint_id)
@@ -107,8 +110,8 @@ class Device(zigpy.util.LocalLogMixin):
             endpoint = self.endpoints[src_ep]
         except KeyError:
             self.warn(
-                "Message on unknown endpoint %s",
-                src_ep,
+                "[0x%04x] Message on unknown endpoint %s",
+                self.nwk, src_ep,
             )
             return
 

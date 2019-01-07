@@ -22,6 +22,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __init__(self, device, endpoint_id):
         self._device = device
         self._endpoint_id = endpoint_id
+        self.model = device.model
+        self.manufacturer = device.manufacturer
         self.in_clusters = {}
         self.out_clusters = {}
         self._cluster_attr = {}
@@ -39,7 +41,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 self._device.nwk,
                 self._endpoint_id,
                 tries=3,
-                delay=2,
+                delay=0.1,
             )
             if sdr[0] != 0:
                 raise Exception("Failed to retrieve service descriptor: %s", sdr)
@@ -117,7 +119,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                          cluster_id)
             return tsn, command_id + 256, is_reply, data
 
-        cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id, None))
+#        cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id, None))
+        cluster = self.in_clusters.get(cluster_id, None) if is_reply else self.out_clusters.get(cluster_id, None) 
         return cluster.deserialize(tsn, frame_type, is_reply, command_id, data)
 
     def handle_message(self, is_reply, profile, cluster, tsn, command_id, args):
