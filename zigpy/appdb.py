@@ -246,7 +246,8 @@ class PersistingListener:
                     result = self._cursor.fetchone()['value']
                     LOGGER.debug("get info from attributes %s - %s",  type(result ),  result)
                     if result:
-                        dev.model   = result.decode('utf-8',  'ignore').strip()
+                        dev.model   = ''.join([x for x in result if x in string.printable])
+#                        dev.model   = result.decode('utf-8',  'ignore').strip()
                 except TypeError:
                     pass
             if not dev.manufacturer:
@@ -256,6 +257,7 @@ class PersistingListener:
                     result = self._cursor.fetchone()['value']
                     if result:
                        dev.manufacturer  = result.decode('utf-8',  'ignore').strip()
+                       dev.manufacturer  = ''.join([x for x in result if x in string.printable])
                 except TypeError:
                     pass
             LOGGER.debug("Loading model state from %s: %s,%s", dev.ieee, dev.model, dev.manufacturer)
