@@ -340,6 +340,19 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def __getitem__(self, key):
         return self.read_attributes([key], allow_cache=True, raw=True)
 
+    @util.retryable_request
+    def _discover(self, cmd_id, start_item, num_of_items,
+                  manufacturer=None, tries=3):
+        schema = foundation.COMMANDS[cmd_id][1]
+        return self.request(
+            True, cmd_id, schema, start_item, num_of_items,
+            manufacturer=manufacturer)
+
+    discover_attributes = functools.partialmethod(_discover, 0x0c)
+    discover_attributes_extended = functools.partialmethod(_discover, 0x15)
+    discover_commands_received = functools.partialmethod(_discover, 0x11)
+    discover_commands_generated = functools.partialmethod(_discover, 0x13)
+
 
 # Import to populate the registry
 from . import clusters  # noqa: F401, F402

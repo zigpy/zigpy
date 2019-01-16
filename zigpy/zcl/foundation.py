@@ -243,6 +243,25 @@ class DiscoverAttributesResponseRecord(t.Struct):
     ]
 
 
+class AttributeAccessControl(t.uint8_t, enum.Enum):
+    NO_ACCESS = 0b000
+    REPORT = 0b001
+    WRITE = 0b010
+    WRITE_REPORT = 0b011
+    READ = 0b100
+    READ_REPORT = 0b101
+    READ_WRITE = 0b110
+    READ_WRITE_REPORT = 0b111
+
+
+class DiscoverAttributesExtendedResponseRecord(t.Struct):
+    _fields = [
+        ('attrid', t.uint16_t),
+        ('datatype', t.uint8_t),
+        ('acl', AttributeAccessControl),
+    ]
+
+
 COMMANDS = {
     # id: (name, params, is_response)
     0x00: ('Read attributes', (t.List(t.uint16_t), ), False),
@@ -258,8 +277,14 @@ COMMANDS = {
     0x0a: ('Report attributes', (t.List(Attribute), ), False),
     0x0b: ('Default response', (t.uint8_t, Status), True),
     0x0c: ('Discover attributes', (t.uint16_t, t.uint8_t), False),
-    0x0d: ('Discover attributes response', (t.List(DiscoverAttributesResponseRecord), ), True),
+    0x0d: ('Discover attributes response', (t.Bool, t.List(DiscoverAttributesResponseRecord), ), True),
     # 0x0e: ('Read attributes structured', (, ), False),
     # 0x0f: ('Write attributes structured', (, ), False),
     # 0x10: ('Write attributes structured response', (, ), True),
+    0x11: ('Discover commands received', (t.uint8_t, t.uint8_t), False),
+    0x12: ('Discover commands received response', (t.Bool, t.List(t.uint8_t)), True),
+    0x13: ('Discover commands generated', (t.uint8_t, t.uint8_t), False),
+    0x14: ('Discover commands generated response', (t.Bool, t.List(t.uint8_t)), True),
+    0x15: ('Discover attributes extended', (t.uint16_t, t.uint8_t), False),
+    0x16: ('Discover attributes extended response', (t.Bool, t.List(DiscoverAttributesExtendedResponseRecord)), True),
 }
