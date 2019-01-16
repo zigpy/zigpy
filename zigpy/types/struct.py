@@ -1,5 +1,6 @@
 from . import basic
 
+
 class Struct:
     def __init__(self, *args, **kwargs):
         if len(args) == 1 and isinstance(args[0], self.__class__):
@@ -29,6 +30,8 @@ class Struct:
         r += '>'
         return r
 
+
+
 class EndpointInformationRecord(Struct):
     _fields = [
         ('NwkId', basic.uint16_t),
@@ -37,6 +40,8 @@ class EndpointInformationRecord(Struct):
         ('DevideId', basic.uint16_t),
         ('Version', basic.uint8_t),
     ]
+
+
 class GroupInformationRecord(Struct):
     _fields = [
         ('GroupId', basic.uint16_t),
