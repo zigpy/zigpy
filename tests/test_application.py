@@ -143,7 +143,7 @@ async def test_remove_nonexistent(app, ieee):
 
 
 @pytest.mark.asyncio
-async def test_remove_with_undreachable_device(app, ieee):
+async def test_remove_with_unreachable_device(app, ieee):
     app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
     await _remove(app, ieee, [0], zdo_reply=False)
     assert app.force_remove.call_count == 1
