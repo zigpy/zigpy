@@ -49,7 +49,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
 
     async def remove(self, ieee):
         assert isinstance(ieee, t.EUI64)
-        dev = self.devices.pop(ieee, None)
+        dev = self.devices.get(ieee)
         if not dev:
             LOGGER.debug("Device not found for removal: %s", ieee)
             return
@@ -58,11 +58,12 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         try:
             resp = await dev.zdo.leave()
             zdo_worked = resp[0] == 0
-        except Exception:
-            pass
+        except zigpy.exceptions.DeliveryError as ex:
+            LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
         if not zdo_worked:
             await self.force_remove(dev)
+        self.devices.pop(ieee, None)
 
         self.listener_event('device_removed', dev)
 
