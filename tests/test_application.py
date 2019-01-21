@@ -4,6 +4,7 @@ from unittest import mock
 import pytest
 
 from zigpy.application import ControllerApplication
+from zigpy.exceptions import DeliveryError
 from zigpy import device
 import zigpy.types as t
 
@@ -107,11 +108,14 @@ def test_join_handler_change_id(app, ieee):
     assert app.devices[ieee].nwk == 2
 
 
-async def _remove(app, ieee, retval):
+async def _remove(app, ieee, retval, zdo_reply=True):
     app.devices[ieee] = mock.MagicMock()
 
     async def leave():
-        return retval
+        if zdo_reply:
+            return retval
+        else:
+            raise DeliveryError
 
     app.devices[ieee].zdo.leave.side_effect = leave
     await app.remove(ieee)
@@ -128,7 +132,7 @@ async def test_remove(app, ieee):
 @pytest.mark.asyncio
 async def test_remove_with_failed_zdo(app, ieee):
     app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
-    await _remove(app, ieee, 1)
+    await _remove(app, ieee, [1])
     assert app.force_remove.call_count == 1
 
 
@@ -136,6 +140,13 @@ async def test_remove_with_failed_zdo(app, ieee):
 async def test_remove_nonexistent(app, ieee):
     await app.remove(ieee)
     assert ieee not in app.devices
+
+
+@pytest.mark.asyncio
+async def test_remove_with_unreachable_device(app, ieee):
+    app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    await _remove(app, ieee, [0], zdo_reply=False)
+    assert app.force_remove.call_count == 1
 
 
 def test_add_device(app, ieee):
