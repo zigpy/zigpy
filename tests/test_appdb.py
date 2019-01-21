@@ -92,10 +92,6 @@ async def test_database(tmpdir):
     assert dev.endpoints[2].out_clusters[1].cluster_id == 1
     assert dev.endpoints[3].device_type == profiles.zll.DeviceType.COLOR_LIGHT
     dev = app2.get_device(custom_ieee)
-    # bad test because of bug #107 that persisted replacement signature
-    # when quirks matching reruns after a real startup this would
-    # be true
-    # assert isinstance(dev, FakeCustomDevice)
 
     app.handle_leave(99, ieee)
 
