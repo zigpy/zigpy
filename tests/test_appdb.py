@@ -67,6 +67,7 @@ async def test_database(tmpdir):
         app.device_initialized(dev)
     assert isinstance(app.get_device(custom_ieee), FakeCustomDevice)
     assert ep.endpoint_id in dev.get_signature()
+    app.handle_join(12345, custom_ieee, 123456)
 
     # Everything should've been saved - check that it re-loads
     with mock.patch('zigpy.quirks.get_device', fake_get_device):
