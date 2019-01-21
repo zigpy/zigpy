@@ -7,7 +7,7 @@
 
 Zigbee Home Automation integration with zigpy allows you to connect one of many off-the-shelf Zigbee adapters using one of the available Zigbee radio library modules compatible with zigpy to control Zigbee based devices. There is currently support for controlling Zigbee device types such as binary sensors (e.g., motion and door sensors), sensors (e.g., temperature sensors), lightbulbs, switches, and fans. A working implementation of zigbe exist in **[Home Assistant](https://www.home-assistant.io)** (Python based open source home automation software) as part of its **[ZHA component](https://www.home-assistant.io/components/zha/)**
 
-zigpy works with separate radio libraries which can each interface with multiple USB and GPIO radio adapters/modules over different native UART serial protocols. Such radio libraries includes **[bellows](https://github.com/zigpy/bellows)** (which communicates with EZSP/EmberZNet based radios) and **[zigpy-xbee](https://github.com/zigpy/zigpy-xbee)** (which communicates with XBee based Zigbee radios). There are also experimental radio libraries called **[zigpy-deconz](https://github.com/zigpy/zigpy-deconz)** and **[pyconz](https://github.com/Equidamoid/pyconz/)** available for deCONZ serial protocol (for communicating with ConBee and RaspBee USB and GPIO radios from Dresden-Elektronik).
+zigpy works with separate radio libraries which can each interface with multiple USB and GPIO radio adapters/modules over different native UART serial protocols. Such radio libraries includes **[bellows](https://github.com/zigpy/bellows)** (which communicates with EZSP/EmberZNet based radios), **[zigpy-xbee](https://github.com/zigpy/zigpy-xbee)** (which communicates with XBee based Zigbee radios), and **[zigpy-deconz](https://github.com/zigpy/zigpy-deconz)** (which communicates with ConBee and RaspBee USB and GPIO radios from Dresden-Elektronik). There are also an experimental radio library called **[zigpy-zigate](https://github.com/doudz/zigpy-zigate)** available for ZiGate protocol (for communicating with [ZiGate](https://www.zigate.fr/) open source hardware adapter from [Fairesoimeme](https://github.com/fairecasoimeme/ZiGate)).
 
 **Known working Zigbee radio modules:**
 - EmberZNet based radios using the EZSP protocol (via the [bellows](https://github.com/zigpy/bellows) library for zigpy)
@@ -19,3 +19,7 @@ zigpy works with separate radio libraries which can each interface with multiple
 - deCONZ based radios (via the [zigpy-deconz](https://github.com/zigpy/zigpy-deconz) library for zigpy)
   - [ConBee](https://www.dresden-elektronik.de/conbee/) USB adio adapter from [Dresden-Elektronik](https://www.dresden-elektronik.de)
   - [RaspBee](https://www.dresden-elektronik.de/raspbee/) GPIO radio adapter from [Dresden-Elektronik](https://www.dresden-elektronik.de)
+
+**Not yet working Zigbee radio modules:**
+- ZiGate based radios (work in progress in the [zigpy-zigate](https://github.com/doudz/zigpy-zigate) library for zigpy)
+  - [ZiGate](https://www.zigate.fr/) open source hardware adapter from [Fairesoimeme]
