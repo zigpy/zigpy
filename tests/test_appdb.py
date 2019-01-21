@@ -6,6 +6,7 @@ import pytest
 import zigpy.types as t
 from zigpy.application import ControllerApplication
 from zigpy import profiles
+from zigpy.quirks import CustomDevice
 
 
 def make_app(database_file):
@@ -16,14 +17,14 @@ def make_ieee(init=0):
     return t.EUI64(map(t.uint8_t, range(init, init + 8)))
 
 
-class FakeCustomDevice:
-    ieee = make_ieee(1)
-    quirk_applied = False
+class FakeCustomDevice(CustomDevice):
+    def __init__(self, application, ieee, nwk, replaces):
+        super().__init__(application, ieee, nwk, replaces)
 
 
 def fake_get_device(device):
     if device.endpoints.get(1) is not None and device[1].profile_id == 65535:
-        return FakeCustomDevice()
+        return FakeCustomDevice(None, make_ieee(1), None, None)
     return device
 
 
@@ -62,10 +63,10 @@ async def test_database(tmpdir):
     app.device_initialized(dev)
     ep = dev.add_endpoint(1)
     ep.profile_id = 65535
-    dev.quirk_applied = True
     with mock.patch('zigpy.quirks.get_device', fake_get_device):
         app.device_initialized(dev)
     assert isinstance(app.get_device(custom_ieee), FakeCustomDevice)
+    assert ep.endpoint_id in dev.get_signature()
 
     # Everything should've been saved - check that it re-loads
     with mock.patch('zigpy.quirks.get_device', fake_get_device):
