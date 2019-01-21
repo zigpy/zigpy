@@ -24,7 +24,7 @@ class FakeCustomDevice(CustomDevice):
 
 def fake_get_device(device):
     if device.endpoints.get(1) is not None and device[1].profile_id == 65535:
-        return FakeCustomDevice(None, make_ieee(1), None, None)
+        return FakeCustomDevice(device.application, make_ieee(1), None, None)
     return device
 
 
@@ -66,9 +66,9 @@ async def test_database(tmpdir):
     with mock.patch('zigpy.quirks.get_device', fake_get_device):
         app.device_initialized(dev)
     assert isinstance(app.get_device(custom_ieee), FakeCustomDevice)
+    assert isinstance(app.get_device(custom_ieee), CustomDevice)
     assert ep.endpoint_id in dev.get_signature()
-    with mock.patch('zigpy.quirks.get_device', fake_get_device):
-        app.device_initialized(dev)
+    app.listener_event('device_initialized', dev)
 
     # Everything should've been saved - check that it re-loads
     with mock.patch('zigpy.quirks.get_device', fake_get_device):
