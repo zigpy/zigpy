@@ -31,7 +31,7 @@ class TradfriPlug(CustomDevice):
             1: {
                 'profile_id': 0x0104,
                 'device_type': 0x010A,
-                'input_clusters': [0, 3, 4, 5, 6, 8, 64636],
+                'input_clusters': [0, 3, 4, 5, 6, 64636],
                 'output_clusters': [5, 25, 32],
             }
         },
