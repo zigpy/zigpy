@@ -133,6 +133,19 @@ class Device(zigpy.util.LocalLogMixin):
     def __getitem__(self, key):
         return self.endpoints[key]
 
+    def get_signature(self):
+        signature = {}
+        for endpoint_id, endpoint in self.endpoints.items():
+            if endpoint_id == 0:  # ZDO
+                continue
+            in_clusters = [c for c in endpoint.in_clusters]
+            out_clusters = [c for c in endpoint.out_clusters]
+            signature[endpoint_id] = {
+                'in_clusters': in_clusters,
+                'out_clusters': out_clusters
+            }
+        return signature
+
 
 async def broadcast(app, profile, cluster, src_ep, dst_ep, grpid, radius,
                     sequence, data,
