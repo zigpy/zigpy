@@ -117,6 +117,7 @@ class PersistingListener:
         self._db.commit()
 
     def _save_device(self, device):
+        import zigpy.quirks
         q = "INSERT OR REPLACE INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
         self.execute(q, (device.ieee, device.nwk, device.status))
         if isinstance(device, zigpy.quirks.CustomDevice):
@@ -176,6 +177,10 @@ class PersistingListener:
         return self.execute("SELECT * FROM %s" % (table, ))
 
     def load(self):
+        import zigpy.profiles
+        import zigpy.device
+        import zigpy.endpoint
+        import zigpy.quirks
         LOGGER.debug("Loading application state from %s", self._database_file)
         for (ieee, nwk, status) in self._scan("devices"):
             dev = self._application.add_device(ieee, nwk)
