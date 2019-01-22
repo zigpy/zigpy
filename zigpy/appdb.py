@@ -1,10 +1,6 @@
 import logging
 import sqlite3
 
-import zigpy.device
-import zigpy.endpoint
-import zigpy.profiles
-import zigpy.quirks
 import zigpy.types as t
 from zigpy.zcl.clusters.general import Basic
 
