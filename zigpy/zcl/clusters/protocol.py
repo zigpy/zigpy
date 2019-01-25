@@ -1,4 +1,4 @@
-"""Protocol Interfaces Functional Domain"""
+"""Protocol Interfaces Functional Domain."""
 
 import zigpy.types as t
 from zigpy.zcl import Cluster

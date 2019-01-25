@@ -64,7 +64,7 @@ class DeviceType(enum.IntEnum):
     IAS_ANCILLARY_CONTROL = 0x0401  # IAS Ancillary Control Equipment
     IAS_ZONE = 0x0402
     IAS_WARNING_DEVICE = 0x0403
- 
+
 
 CLUSTERS = {
     # Generic
@@ -83,13 +83,13 @@ CLUSTERS = {
     DeviceType.ON_OFF_LIGHT_SWITCH: ([0x0007], [0x0004, 0x0005, 0x0006]),
     DeviceType.DIMMER_SWITCH: ([0x0007], [0x0004, 0x0005, 0x0006, 0x0008]),
     DeviceType.COLOR_DIMMER_SWITCH: ([0x0007], [0x0004, 0x0005, 0x0006, 0x0008, 0x0300]),
-    DeviceType.IAS_ZONE: ([0x0000,0x0500], [0x0500]),
+    DeviceType.IAS_ZONE: ([0x0000, 0x0500], [0x0500]),
     # Non standard
     DeviceType.COLOR_SCENE_CONTROLLER: ([], [0x0004, 0x0005, 0x0006, 0x0008, 0x0300]),
     DeviceType.LIGHT_SENSOR: ([0x0400], []),
-    DeviceType.OCCUPANCY_SENSOR: ([0x0406,], []),
+    DeviceType.OCCUPANCY_SENSOR: ([0x0406, ], []),
     DeviceType.LIGHT_SENSOR: ([0x0007], [0x0004, 0x0005, 0x0006, 0x0008, 0x0300]),
-    DeviceType.ON_OFF_BALLAST: ([0x0003,  0x0004, 0x0005, 0x0006, 0x0008, 0x0300], []), 
+    DeviceType.ON_OFF_BALLAST: ([0x0003,  0x0004, 0x0005, 0x0006, 0x0008, 0x0300], []),
     DeviceType.ON_OFF_PLUG_IN_UNIT:  ([0x0003,  0x0004, 0x0005, 0x0006, 0x0008, 0x0300], []),
     DeviceType.DIMMABLE_PLUG_IN_UNIT:   ([0x0003,  0x0004, 0x0005, 0x0006, 0x0008, 0x0300], []),
     DeviceType.COLOR_TEMPERATURE_LIGHT:  ([0x0003,  0x0004, 0x0005, 0x0006, 0x0008, 0x0300], []),

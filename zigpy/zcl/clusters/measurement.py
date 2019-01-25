@@ -1,4 +1,4 @@
-"""Measurement & Sensing Functional Domain"""
+"""Measurement & Sensing Functional Domain."""
 
 import zigpy.types as t
 from zigpy.zcl import Cluster

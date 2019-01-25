@@ -1,11 +1,13 @@
-"""Closures Functional Domain"""
+"""Closures Functional Domain."""
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
 
 
 class Shade(Cluster):
-    """Attributes and commands for configuring a shade"""
+
+    """Attributes and commands for configuring a shade."""
+
     cluster_id = 0x0100
     name = 'Shade Configuration'
     ep_attribute = 'shade'

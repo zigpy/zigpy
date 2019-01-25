@@ -1,4 +1,4 @@
-"""General Functional Domain"""
+"""General Functional Domain."""
 
 from datetime import datetime
 
@@ -8,10 +8,13 @@ from zigpy.zcl import foundation
 
 
 class Basic(Cluster):
+
     """ Attributes for determining basic information about a
     device, setting user device information such as location,
     and enabling a device.
+
     """
+
     cluster_id = 0x0000
     ep_attribute = 'basic'
     attributes = {
@@ -40,9 +43,11 @@ class Basic(Cluster):
 
 
 class PowerConfiguration(Cluster):
-    """ Attributes for determining more detailed information
+
+    u""" Attributes for determining more detailed information
     about a device’s power source(s), and for configuring
     under/over voltage alarms."""
+
     cluster_id = 0x0001
     name = 'Power Configuration'
     ep_attribute = 'power'
@@ -118,9 +123,11 @@ class PowerConfiguration(Cluster):
 
 
 class DeviceTemperature(Cluster):
-    """Attributes for determining information about a device’s
+
+    u"""Attributes for determining information about a device’s
     internal temperature, and for configuring under/over
     temperature alarms."""
+
     cluster_id = 0x0002
     name = 'Device Temperature'
     ep_attribute = 'device_temperature'
@@ -142,8 +149,10 @@ class DeviceTemperature(Cluster):
 
 
 class Identify(Cluster):
+
     """Attributes and commands for putting a device into
     Identification mode (e.g. flashing a light)"""
+
     cluster_id = 0x0003
     ep_attribute = 'identify'
     attributes = {
@@ -163,8 +172,10 @@ class Identify(Cluster):
 
 
 class Groups(Cluster):
+
     """Attributes and commands for group configuration and
     manipulation."""
+
     cluster_id = 0x0004
     ep_attribute = 'groups'
     attributes = {
@@ -187,8 +198,10 @@ class Groups(Cluster):
 
 
 class Scenes(Cluster):
+
     """Attributes and commands for scene configuration and
     manipulation."""
+
     cluster_id = 0x0005
     ep_attribute = 'scenes'
     attributes = {
@@ -229,8 +242,10 @@ class Scenes(Cluster):
 
 
 class OnOff(Cluster):
-    """Attributes and commands for switching devices between
+
+    u"""Attributes and commands for switching devices between
     ‘On’ and ‘Off’ states. """
+
     cluster_id = 0x0006
     name = 'On/Off'
     ep_attribute = 'on_off'
@@ -252,8 +267,10 @@ class OnOff(Cluster):
 
 
 class OnOffConfiguration(Cluster):
+
     """Attributes and commands for configuring On/Off
     switching devices"""
+
     cluster_id = 0x0007
     name = 'On/Off Switch Configuration'
     ep_attribute = 'on_off_config'
@@ -268,8 +285,10 @@ class OnOffConfiguration(Cluster):
 
 
 class LevelControl(Cluster):
-    """Attributes and commands for controlling devices that
+
+    u"""Attributes and commands for controlling devices that
     can be set to a level between fully ‘On’ and fully ‘Off’."""
+
     cluster_id = 0x0008
     name = 'Level control'
     ep_attribute = 'level'
@@ -296,8 +315,10 @@ class LevelControl(Cluster):
 
 
 class Alarms(Cluster):
+
     """ Attributes and commands for sending notifications and
     configuring alarm functionality."""
+
     cluster_id = 0x0009
     ep_attribute = 'alarms'
     attributes = {
@@ -319,8 +340,10 @@ class Alarms(Cluster):
 
 
 class Time(Cluster):
+
     """ Attributes and commands that provide a basic interface
     to a real-time clock."""
+
     cluster_id = 0x000a
     ep_attribute = 'time'
     attributes = {
@@ -355,9 +378,11 @@ class Time(Cluster):
 
 
 class RSSILocation(Cluster):
+
     """Attributes and commands that provide a means for
     exchanging location information and channel parameters
     among devices."""
+
     cluster_id = 0x000b
     ep_attribute = 'rssi_location'
     attributes = {
@@ -586,8 +611,10 @@ class MultistateValue(Cluster):
 
 
 class Commissioning(Cluster):
+
     """Attributes and commands for commissioning and
     managing a ZigBee device."""
+
     cluster_id = 0x0015
     ep_attribute = 'commissioning'
     attributes = {

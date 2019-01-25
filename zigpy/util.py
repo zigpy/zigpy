@@ -59,10 +59,11 @@ async def retry(func, retry_exceptions, tries=3, delay=0.1):
 
 
 def retryable(retry_exceptions, tries=1, delay=0.1):
-    """Return a decorator which makes a function able to be retried
+    """Return a decorator which makes a function able to be retried.
 
     This adds "tries" and "delay" keyword arguments to the function. Only
     exceptions in `retry_exceptions` will be retried.
+
     """
     def decorator(func):
         nonlocal tries, delay

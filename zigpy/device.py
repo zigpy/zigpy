@@ -96,7 +96,7 @@ class Device(zigpy.util.LocalLogMixin):
             expect_reply=expect_reply,
         )
         if not result:
-            result=[1,]
+            result = [1, ]
         else:
             self.last_seen = time.time()
         return result

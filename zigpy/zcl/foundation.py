@@ -242,11 +242,12 @@ class DiscoverAttributesResponseRecord(t.Struct):
         ('datatype', t.uint8_t),
     ]
 
+
 class DiscoverAttributesExtResponseRecord(t.Struct):
     _fields = [
         ('attrid', t.uint16_t),
         ('datatype', t.uint8_t),
-        ('accessctl',t.uint8_t),
+        ('accessctl', t.uint8_t),
     ]
 
 

@@ -320,9 +320,9 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         self.listener_event('attribute_updated', attrid, value)
         if self.cluster_id == 0:
             if attrid == 5:
-                self._endpoint._device.model = ''.join([x for x in value.decode('ascii').strip() if x in string.printable]) 
-            elif attrid == 4: 
-                self._endpoint._device.manufacturer =  ''.join([x for x in value.decode('ascii').strip() if x in string.printable]) 
+                self._endpoint._device.model = ''.join([x for x in value.decode('ascii').strip() if x in string.printable])
+            elif attrid == 4:
+                self._endpoint._device.manufacturer = ''.join([x for x in value.decode('ascii').strip() if x in string.printable])
 
     def log(self, lvl, msg, *args):
         msg = '[0x%04x:%s:0x%04x] ' + msg

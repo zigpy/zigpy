@@ -31,7 +31,6 @@ class Struct:
         return r
 
 
-
 class EndpointInformationRecord(Struct):
     _fields = [
         ('NwkId', basic.uint16_t),

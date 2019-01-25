@@ -1,4 +1,4 @@
-"""Security and Safety Functional Domain"""
+"""Security and Safety Functional Domain."""
 
 import zigpy.types as t
 from zigpy.zcl import Cluster

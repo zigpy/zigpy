@@ -7,8 +7,11 @@ import zigpy.zcl
 
 LOGGER = logging.getLogger(__name__)
 
+
 class Status(enum.IntEnum):
-    """The status of an Endpoint"""
+
+    """The status of an Endpoint."""
+
     # No initialization is done
     NEW = 0
     # Endpoint information (device type, clusters, etc) init done
@@ -16,7 +19,9 @@ class Status(enum.IntEnum):
 
 
 class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
-    """An endpoint on a device on the network"""
+
+    """An endpoint on a device on the network."""
+
     def __init__(self, device, endpoint_id):
         self._device = device
         self._endpoint_id = endpoint_id
@@ -68,11 +73,12 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.add_output_cluster(cluster)
 
         self.status = Status.ZDO_INIT
-        
+
     def add_input_cluster(self, cluster_id, cluster=None):
-        """Adds an endpoint's input cluster
+        """Adds an endpoint's input cluster.
 
         (a server cluster supported by the device)
+
         """
         if cluster_id in self.in_clusters and cluster is None:
             return self.in_clusters[cluster_id]
@@ -92,9 +98,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return cluster
 
     def add_output_cluster(self, cluster_id, cluster=None):
-        """Adds an endpoint's output cluster
+        """Adds an endpoint's output cluster.
 
         (a client cluster supported by the device)
+
         """
         if cluster_id in self.out_clusters and cluster is None:
             return self.out_clusters[cluster_id]
@@ -105,7 +112,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return cluster
 
     def deserialize(self, cluster_id, data):
-        """Deserialize data for ZCL"""
+        """Deserialize data for ZCL."""
         frame_control, data = data[0], data[1:]
         frame_type = frame_control & 0b0011
         direction = (frame_control & 0b1000) >> 3
@@ -121,7 +128,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return tsn, command_id + 256, is_reply, data
 
 #        cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id, None))
-        cluster = self.in_clusters.get(cluster_id, None) if is_reply else self.out_clusters.get(cluster_id, None) 
+        cluster = self.in_clusters.get(cluster_id, None) if is_reply else self.out_clusters.get(cluster_id, None)
         return cluster.deserialize(tsn, frame_type, is_reply, command_id, data)
 
     def handle_message(self, is_reply, profile, cluster, tsn, command_id, args):
@@ -139,9 +146,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         handler(is_reply, tsn, command_id, args)
 
     def request(self, cluster, sequence, data, expect_reply=True,  command_id=None):
-        if (self.profile_id == zigpy.profiles.zll.PROFILE_ID and 
+        if (self.profile_id == zigpy.profiles.zll.PROFILE_ID and
             not (cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id and
-                command_id <= 0x3f)):
+            command_id <= 0x3f)):
             profile_id = zigpy.profiles.zha.PROFILE_ID
         else:
             profile_id = self.profile_id

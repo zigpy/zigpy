@@ -102,7 +102,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
                 LOGGER.debug("Device %s changed id (0x%04x => 0x%04x)", ieee, dev.nwk, nwk)
                 self.nwk2devices.pop(dev.nwk, None)
                 self.nwk2devices[nwk] = dev
-                dev.nwk = nwk 
+                dev.nwk = nwk
 #            elif dev.initializing or dev.status == zigpy.device.Status.ENDPOINTS_INIT:
             elif dev.status == zigpy.device.Status.ENDPOINTS_INIT:
                 LOGGER.debug("Skip initialization for existing device %s", ieee)
@@ -191,4 +191,3 @@ class ControllerApplication(zigpy.util.ListenableMixin):
 #        await device.zdo.get_Mgmt_Rtg()
 #        await asyncio.wait_for(self.read_child_table(),15)
 #        await self.read_route_table()
- 

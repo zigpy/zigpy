@@ -1,12 +1,14 @@
-"""Lighting Functional Domain"""
+"""Lighting Functional Domain."""
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
 
 
 class Color(Cluster):
+
     """Attributes and commands for controlling the color
     properties of a color-capable light"""
+
     cluster_id = 0x0300
     name = 'Color Control'
     ep_attribute = 'light_color'
@@ -89,8 +91,10 @@ class Color(Cluster):
 
 
 class Ballast(Cluster):
+
     """Attributes and commands for configuring a lighting
     ballast"""
+
     cluster_id = 0x0301
     ep_attribute = 'light_ballast'
     attributes = {

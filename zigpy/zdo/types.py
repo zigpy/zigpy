@@ -169,6 +169,7 @@ class Status(t.uint8_t, enum.Enum):
     # request is not authorized from this device.
     NOT_AUTHORIZED = 0x8d
 
+
 NWK = ('NWKAddr', t.uint16_t)
 NWKI = ('NWKAddrOfInterest', t.uint16_t)
 IEEE = ('IEEEAddr', t.EUI64)

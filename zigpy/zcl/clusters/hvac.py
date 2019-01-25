@@ -1,11 +1,13 @@
-"""HVAC Functional Domain"""
+"""HVAC Functional Domain."""
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
 
 
 class Pump(Cluster):
+
     """An interface for configuring and controlling pumps."""
+
     cluster_id = 0x0200
     name = 'Pump Configuration and Control'
     ep_attribute = 'pump'
@@ -43,8 +45,10 @@ class Pump(Cluster):
 
 
 class Thermostat(Cluster):
+
     """An interface for configuring and controlling the
     functionality of a thermostat."""
+
     cluster_id = 0x0201
     ep_attribute = 'thermostat'
     attributes = {
@@ -109,8 +113,10 @@ class Thermostat(Cluster):
 
 
 class Fan(Cluster):
+
     """ An interface for controlling a fan in a heating /
     cooling system."""
+
     cluster_id = 0x0202
     name = 'Fan Control'
     ep_attribute = 'fan'
@@ -124,7 +130,9 @@ class Fan(Cluster):
 
 
 class Dehumidification(Cluster):
+
     """An interface for controlling dehumidification."""
+
     cluster_id = 0x0203
     ep_attribute = 'dehumidification'
     attributes = {
@@ -144,9 +152,11 @@ class Dehumidification(Cluster):
 
 
 class UserInterface(Cluster):
+
     """An interface for configuring the user interface of a
     thermostat (which may be remote from the
     thermostat)."""
+
     cluster_id = 0x0204
     name = 'Thermostat User Interface Configuration'
     ep_attribute = 'thermostat_ui'

@@ -36,7 +36,6 @@ class PersistingListener:
         self._create_table_output_clusters()
         self._create_table_attributes()
         self._create_table_topology()
-#        self._create_table_response()
         self._db.commit()
         self._application = application
 
@@ -79,10 +78,6 @@ class PersistingListener:
             index_name, table, columns
         ))
 
-#    def _create_table_response(self):
-#        self._create_table("response", "(ieee ieee, endpoint, cluster, command, response text")
-#        self._create_index("ieee_idx", "response",  "ieee")
-#        
     def _create_table_devices(self):
         self._create_table("devices", "(ieee ieee, nwk, status, model, manufacturer, type)")
         self._create_index("ieee_idx", "devices", "ieee")
@@ -136,7 +131,6 @@ class PersistingListener:
             "(src, dst, lqi, cost, depth, PRIMARY KEY(src, dst))",
         )
         self.execute("DELETE FROM topology")
-
 
     def write_topology(self, **args):
         q = "INSERT OR REPLACE INTO topology VALUES (?, ?, ?, ?, ?)"
@@ -217,15 +211,15 @@ class PersistingListener:
         return self.execute("SELECT * FROM %s" % (table, ))
 
     def load(self):
-        ieee_list= dict()
+        ieee_list = dict()
         LOGGER.debug("Loading application state from %s", self._database_file)
-        for row  in self._scan("devices"):
+        for row in self._scan("devices"):
             LOGGER.debug("load model: %s - %s",  type(row['model']),  row['model'])
             #(ieee, nwk, status) = row[0:3]
             ieee = row['ieee']
             nwk = row['nwk']
             status = row['status']
-            if 'type' in row.keys():            
+            if 'type' in row.keys():
                 dev_type = row['type']
             else:
                 dev_type = None
@@ -233,35 +227,33 @@ class PersistingListener:
             dev.status = zigpy.device.Status(status)
             dev.type = dev_type
             if 'model' in row.keys() and row['model']:
-                dev.model   = ''.join([x for x in row['model'] if x in string.printable])
-#                dev.model   = row['model'].decode('utf-8',  'ignore').strip()
+                dev.model = ''.join([x for x in row['model'] if x in string.printable])
             else:
-                dev.model=None
+                dev.model = None
             if 'manufacturer' in row.keys() and row['manufacturer']:
-                    dev.manufacturer  = ''.join([x for x in row['manufacturer'] if x in string.printable])
+                    dev.manufacturer = ''.join([x for x in row['manufacturer'] if x in string.printable])
             else:
                 dev.manufacturer = None
             ieee_list[ieee] = dev
         for ieee, dev in ieee_list.items():
-            if  not dev.model:
-                q='SELECT value FROM attributes WHERE ieee LIKE ? AND attrid == 5'
+            if not dev.model:
+                q = 'SELECT value FROM attributes WHERE ieee LIKE ? AND attrid == 5'
                 self.execute(q, (str(ieee),))
                 try:
                     result = self._cursor.fetchone()['value']
-                    LOGGER.debug("get info from attributes %s - %s",  type(result ),  result)
+                    LOGGER.debug("get info from attributes %s - %s",  type(result),  result)
                     if result:
-                        dev.model   = ''.join([x for x in result if x in string.printable])
-#                        dev.model   = result.decode('utf-8',  'ignore').strip()
+                        dev.model = ''.join([x for x in result if x in string.printable])
                 except TypeError:
                     pass
             if not dev.manufacturer:
-                q="select value from attributes where ieee like ? and attrid == 4"
+                q = "select value from attributes where ieee like ? and attrid == 4"
                 self.execute(q, (ieee,))
                 try:
                     result = self._cursor.fetchone()['value']
                     if result:
-                       dev.manufacturer  = result.decode('utf-8',  'ignore').strip()
-                       dev.manufacturer  = ''.join([x for x in result if x in string.printable])
+                        dev.manufacturer = result.decode('utf-8',  'ignore').strip()
+                        dev.manufacturer = ''.join([x for x in result if x in string.printable])
                 except TypeError:
                     pass
             LOGGER.debug("Loading model state from %s: %s,%s", dev.ieee, dev.model, dev.manufacturer)
@@ -303,29 +295,6 @@ class PersistingListener:
             except:
                 pass
 
-#    def write_persistent(self, ieee, endpoint, cluster, command, value):
-#        try:
-#            q = "INSERT OR REPLACE INTO response VALUES (?, ?, ?, ?, ?)"
-#            value = json.dumps(value)
-#            self.execute(q, (ieee, endpoint, cluster, command, value))
-#            self._db.commit()
-#        except Exception:
-#            LOGGER.info("Database error writing response")
-#        
-#    def read_persistent(self,  ieee,  endpoint,  cluster,  command):
-#        try:
-#            q = "SELECT response from response where ieee like ? "
-#            q = q + "and endpoint == ? and cluster == ? "
-#            q = q+ "and command == ?"
-#            self.execute(q, (ieee, endpoint, cluster, command))
-#            result = self._cursor.fetchone()['response']
-#            if result:
-#                result=json.loads(result)
-#        except Exception:
-#            LOGGER.info("Database error writing response")
-#        return result
-#            
-#        
 
 class ClusterPersistingListener:
     def __init__(self, applistener, cluster):
