@@ -1,13 +1,11 @@
 import enum
 import logging
-
 import zigpy.appdb
 import zigpy.profiles
 import zigpy.util
 import zigpy.zcl
 
 LOGGER = logging.getLogger(__name__)
-
 
 class Status(enum.IntEnum):
     """The status of an Endpoint"""
@@ -24,11 +22,12 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._endpoint_id = endpoint_id
         self.model = device.model
         self.manufacturer = device.manufacturer
-        self.in_clusters = {}
-        self.out_clusters = {}
-        self._cluster_attr = {}
+        self.groups = list()
+        self.in_clusters = dict()
+        self.out_clusters = dict()
+        self._cluster_attr = dict()
         self.status = Status.NEW
-        self._listeners = {}
+        self._listeners = dict()
 
     async def initialize(self):
         if self.status == Status.ZDO_INIT:
@@ -58,6 +57,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
             elif self.profile_id == 49246:
                 self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
+            else:
+                self.warn("unhandled profle: %s",  self.profile_id)
         except ValueError:
             pass
 
@@ -67,7 +68,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.add_output_cluster(cluster)
 
         self.status = Status.ZDO_INIT
-
+        
     def add_input_cluster(self, cluster_id, cluster=None):
         """Adds an endpoint's input cluster
 
@@ -137,9 +138,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         handler(is_reply, tsn, command_id, args)
 
-    def request(self, cluster, sequence, data, expect_reply=True):
-        if (self.profile_id == zigpy.profiles.zll.PROFILE_ID and
-                cluster != zigpy.zcl.clusters.lightlink.LightLink.cluster_id):
+    def request(self, cluster, sequence, data, expect_reply=True,  command_id=None):
+        if (self.profile_id == zigpy.profiles.zll.PROFILE_ID and 
+            not (cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id and
+                command_id <= 0x3f)):
             profile_id = zigpy.profiles.zha.PROFILE_ID
         else:
             profile_id = self.profile_id

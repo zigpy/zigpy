@@ -118,7 +118,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         data = bytes([frame_control]) + manufacturer + bytes([sequence, command_id])
         data += t.serialize(args, schema)
 
-        return self._endpoint.request(self.cluster_id, sequence, data, expect_reply=expect_reply)
+        return self._endpoint.request(self.cluster_id, sequence, data, expect_reply=expect_reply,  command_id=command_id)
 
     def reply(self, general, command_id, schema, *args, manufacturer=None):
         if len(schema) != len(args):
