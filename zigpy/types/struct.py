@@ -35,7 +35,7 @@ class Struct:
 class EndpointInformationRecord(Struct):
     _fields = [
         ('NwkId', basic.uint16_t),
-        ('Endpoint_Id', basic.uint8_t),
+        ('EndpointId', basic.uint8_t),
         ('ProfileId', basic.uint16_t),
         ('DevideId', basic.uint16_t),
         ('Version', basic.uint8_t),

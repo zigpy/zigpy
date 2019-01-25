@@ -1,8 +1,6 @@
 import logging
 import sqlite3
 import string
-import json
-
 import zigpy.device
 import zigpy.endpoint
 import zigpy.profiles
@@ -38,7 +36,7 @@ class PersistingListener:
         self._create_table_output_clusters()
         self._create_table_attributes()
         self._create_table_topology()
-        self._create_table_response()
+#        self._create_table_response()
         self._db.commit()
         self._application = application
 
@@ -81,10 +79,10 @@ class PersistingListener:
             index_name, table, columns
         ))
 
-    def _create_table_response(self):
-        self._create_table("response", "(ieee ieee, endpoint, cluster, command, response text")
-        self._create_index("ieee_idx", "response",  "ieee")
-        
+#    def _create_table_response(self):
+#        self._create_table("response", "(ieee ieee, endpoint, cluster, command, response text")
+#        self._create_index("ieee_idx", "response",  "ieee")
+#        
     def _create_table_devices(self):
         self._create_table("devices", "(ieee ieee, nwk, status, model, manufacturer, type)")
         self._create_index("ieee_idx", "devices", "ieee")
@@ -305,29 +303,29 @@ class PersistingListener:
             except:
                 pass
 
-    def write_persistent(self, ieee, endpoint, cluster, command, value):
-        try:
-            q = "INSERT OR REPLACE INTO response VALUES (?, ?, ?, ?, ?)"
-            value = json.dumps(value)
-            self.execute(q, (ieee, endpoint, cluster, command, value))
-            self._db.commit()
-        except Exception:
-            LOGGER.info("Database error writing response")
-        
-    def read_persistent(self,  ieee,  endpoint,  cluster,  command):
-        try:
-            q = "SELECT response from response where ieee like ? "
-            q = q + "and endpoint == ? and cluster == ? "
-            q = q+ "and command == ?"
-            self.execute(q, (ieee, endpoint, cluster, command))
-            result = self._cursor.fetchone()['response']
-            if result:
-                result=json.loads(result)
-        except Exception:
-            LOGGER.info("Database error writing response")
-        return result
-            
-        
+#    def write_persistent(self, ieee, endpoint, cluster, command, value):
+#        try:
+#            q = "INSERT OR REPLACE INTO response VALUES (?, ?, ?, ?, ?)"
+#            value = json.dumps(value)
+#            self.execute(q, (ieee, endpoint, cluster, command, value))
+#            self._db.commit()
+#        except Exception:
+#            LOGGER.info("Database error writing response")
+#        
+#    def read_persistent(self,  ieee,  endpoint,  cluster,  command):
+#        try:
+#            q = "SELECT response from response where ieee like ? "
+#            q = q + "and endpoint == ? and cluster == ? "
+#            q = q+ "and command == ?"
+#            self.execute(q, (ieee, endpoint, cluster, command))
+#            result = self._cursor.fetchone()['response']
+#            if result:
+#                result=json.loads(result)
+#        except Exception:
+#            LOGGER.info("Database error writing response")
+#        return result
+#            
+#        
 
 class ClusterPersistingListener:
     def __init__(self, applistener, cluster):
