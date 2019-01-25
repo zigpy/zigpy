@@ -9,6 +9,8 @@ class TemperatureHumiditySensor(CustomDevice):
         1: {
             'profile_id': 0x0104,
             'device_type': 0x5f01,
+            'model': 'lumi.sensor_ht',
+            'manufacturer': 'LUMI',
             'input_clusters': [0, 3, 25, 65535, 18],
             'output_clusters': [0, 4, 3, 5, 25, 65535, 18],
         },

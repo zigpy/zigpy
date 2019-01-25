@@ -209,10 +209,6 @@ class PersistingListener:
             ep = dev.endpoints[endpoint_id]
             ep.add_output_cluster(cluster)
 
-        for device in self._application.devices.values():
-            device = zigpy.quirks.get_device(device)
-            self._application.devices[device.ieee] = device
-
         for (ieee, endpoint_id, cluster, attrid, value) in self._scan("attributes"):
             dev = self._application.get_device(ieee)
             if endpoint_id in dev.endpoints:
@@ -227,6 +223,10 @@ class PersistingListener:
                     if cluster == Basic.cluster_id and attrid == 5:
                         value = value.split(b'\x00')[0]
                         ep.model = value.decode().strip()
+
+        for device in self._application.devices.values():
+            device = zigpy.quirks.get_device(device)
+            self._application.devices[device.ieee] = device
 
 
 class ClusterPersistingListener:

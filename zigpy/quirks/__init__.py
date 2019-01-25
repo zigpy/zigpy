@@ -31,6 +31,14 @@ def get_device(device, registry=_DEVICE_REGISTRY):
             _LOGGER.debug("Fail because device_type mismatch on at least one endpoint")
             continue
 
+        if not all([device[eid].model == sig[eid].get('model', device[eid].model) for eid in sig.keys()]):
+            _LOGGER.debug("Fail because model mismatch on at least one endpoint")
+            continue
+
+        if not all([device[eid].manufacturer == sig[eid].get('manufacturer', device[eid].manufacturer) for eid in sig.keys()]):
+            _LOGGER.debug("Fail because manufacturer mismatch on at least one endpoint")
+            continue
+
         if not all([_match(device[eid].in_clusters.keys(),
                            ep.get('input_clusters', []))
                     for eid, ep in sig.items()]):
