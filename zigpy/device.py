@@ -41,7 +41,7 @@ class Device(zigpy.util.LocalLogMixin):
         self.initializing = False
         self.model = None
         self.manufacturer = None
-        self.type = None
+        self.type = 0
 
     def schedule_initialize(self):
         if self.initializing:
@@ -84,7 +84,9 @@ class Device(zigpy.util.LocalLogMixin):
         self.endpoints[endpoint_id] = ep
         return ep
 
-    async def request(self, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True):
+    async def request(self, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True,  timeout = 15):
+        if self.type & 8:
+            timeout = 5
         result = await self._application.request(
             self.nwk,
             profile,
@@ -94,6 +96,7 @@ class Device(zigpy.util.LocalLogMixin):
             sequence,
             data,
             expect_reply=expect_reply,
+            timeout=timeout
         )
         if not result:
             result = [1, ]
