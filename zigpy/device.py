@@ -94,8 +94,9 @@ class Device(zigpy.util.LocalLogMixin):
 
     async def request(self, profile, cluster, src_ep, dst_ep, sequence, data,
                       expect_reply=True,  timeout=15):
-        if self.type & 8:
-            timeout = 5
+        if (self.type != None):
+            if self.type  & 8:
+                timeout = 5
         result = await self._application.request(
             self.nwk,
             profile,
