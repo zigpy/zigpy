@@ -88,20 +88,20 @@ def test_add_custom_output_cluster(ep):
 
 def test_multiple_add_input_cluster(ep):
     ep.add_input_cluster(0)
-    assert ep.in_clusters[0].cluster_id is 0
+    assert ep.in_clusters[0].cluster_id == 0
     ep.in_clusters[0].cluster_id = 1
-    assert ep.in_clusters[0].cluster_id is 1
+    assert ep.in_clusters[0].cluster_id == 1
     ep.add_input_cluster(0)
-    assert ep.in_clusters[0].cluster_id is 1
+    assert ep.in_clusters[0].cluster_id == 1
 
 
 def test_multiple_add_output_cluster(ep):
     ep.add_output_cluster(0)
-    assert ep.out_clusters[0].cluster_id is 0
+    assert ep.out_clusters[0].cluster_id == 0
     ep.out_clusters[0].cluster_id = 1
-    assert ep.out_clusters[0].cluster_id is 1
+    assert ep.out_clusters[0].cluster_id == 1
     ep.add_output_cluster(0)
-    assert ep.out_clusters[0].cluster_id is 1
+    assert ep.out_clusters[0].cluster_id == 1
 
 
 def test_handle_message(ep):
@@ -152,12 +152,12 @@ def test_reply(ep):
 
 
 def _mk_rar(attrid, value, status=0):
-        r = zcl.foundation.ReadAttributeRecord()
-        r.attrid = attrid
-        r.status = status
-        r.value = zcl.foundation.TypeValue()
-        r.value.value = value
-        return r
+    r = zcl.foundation.ReadAttributeRecord()
+    r.attrid = attrid
+    r.status = status
+    r.value = zcl.foundation.TypeValue()
+    r.value.value = value
+    return r
 
 
 def test_init_endpoint_info(ep):
