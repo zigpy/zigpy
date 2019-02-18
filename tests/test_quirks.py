@@ -7,15 +7,15 @@ import zigpy.types as t
 from zigpy.zcl import Cluster
 
 ALLOWED_SIGNATURE = set([
+    'profile_id',
     'device_type',
+    'model',
+    'manufacturer',
     'input_clusters',
     'output_clusters',
-    'profile_id',
 ])
 ALLOWED_REPLACEMENT = set([
-    'device_type',
     'endpoints',
-    'profile_id',
 ])
 
 
@@ -36,6 +36,8 @@ def test_get_device():
     real_device.add_endpoint(1)
     real_device[1].profile_id = 255
     real_device[1].device_type = 255
+    real_device[1].model = 'model'
+    real_device[1].manufacturer = 'manufacturer'
     real_device[1].add_input_cluster(3)
     real_device[1].add_output_cluster(6)
 
@@ -63,9 +65,19 @@ def test_get_device():
     assert get_device(real_device, registry) is real_device
 
     TestDevice.signature[1]['device_type'] = 255
+    TestDevice.signature[1]['model'] = 'x'
+    assert get_device(real_device, registry) is real_device
+
+    TestDevice.signature[1]['model'] = 'model'
+    TestDevice.signature[1]['manufacturer'] = 'x'
+    assert get_device(real_device, registry) is real_device
+
+    TestDevice.signature[1]['manufacturer'] = 'manufacturer'
+    TestDevice.signature[1]['input_clusters'] = [1]
     assert get_device(real_device, registry) is real_device
 
     TestDevice.signature[1]['input_clusters'] = [3]
+    TestDevice.signature[1]['output_clusters'] = [1]
     assert get_device(real_device, registry) is real_device
 
     TestDevice.signature[1]['output_clusters'] = [6]

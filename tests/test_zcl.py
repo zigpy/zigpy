@@ -138,12 +138,12 @@ def test_handle_unexpected_reply(cluster):
 
 
 def _mk_rar(attrid, value, status=0):
-        r = zcl.foundation.ReadAttributeRecord()
-        r.attrid = attrid
-        r.status = status
-        r.value = zcl.foundation.TypeValue()
-        r.value.value = value
-        return r
+    r = zcl.foundation.ReadAttributeRecord()
+    r.attrid = attrid
+    r.status = status
+    r.value = zcl.foundation.TypeValue()
+    r.value.value = value
+    return r
 
 
 @pytest.mark.asyncio
