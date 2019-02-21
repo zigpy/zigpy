@@ -133,7 +133,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             if isinstance(value, bytes):
                 try:
                     value = value.split(b'\x00')[0]
-                    attributes[key] = value.decode('ascii').strip()
+                    attributes[key] = value.decode().strip()
                 except UnicodeDecodeError:
                     # Unsure what the best behaviour here is. Unset the key?
                     pass
