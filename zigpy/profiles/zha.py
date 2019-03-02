@@ -75,4 +75,6 @@ CLUSTERS = {
     DeviceType.OCCUPANCY_SENSOR: ([0x0406], []),
     # Closures
     DeviceType.WINDOW_COVERING_DEVICE: ([0x0004, 0x0005, 0x0102], []),
+    # HVAC
+    DeviceType.THERMOSTAT: ([0x0201, 0x0204], [0x0200, 0x0202, 0x0203]),
 }
