@@ -55,7 +55,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.info("Discovered endpoint information: %s", sdr[2])
         sd = sdr[2]
-        self.profile_id = sd.profile
+        self. _id = sd.profile
         self.device_type = sd.device_type
         try:
             if self.profile_id == 260:
@@ -148,7 +148,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def request(self, cluster, sequence, data, expect_reply=True,  command_id=None):
         if (self.profile_id == zigpy.profiles.zll.PROFILE_ID and
             not (cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id and
-            command_id <= 0x3f)):
+                     command_id <= 0x3f)):
             profile_id = zigpy.profiles.zha.PROFILE_ID
         else:
             profile_id = self.profile_id

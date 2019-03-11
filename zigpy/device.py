@@ -1,7 +1,7 @@
 import asyncio
 import enum
 import logging
-import time
+import datetime as dt
 
 import zigpy.endpoint
 import zigpy.util
@@ -94,9 +94,9 @@ class Device(zigpy.util.LocalLogMixin):
 
     async def request(self, profile, cluster, src_ep, dst_ep, sequence, data,
                       expect_reply=True,  timeout=15):
-        if (self.type != None):
-            if self.type  & 8:
-                timeout = 5
+        if (self.type is not None):
+            if self.type & 8:
+                timeout = 2
         result = await self._application.request(
             self.nwk,
             profile,
@@ -111,15 +111,15 @@ class Device(zigpy.util.LocalLogMixin):
         if not result:
             result = [1, ]
         else:
-            self.last_seen = time.time()
+            self.last_seen = dt.datetime.now()
         return result
 
     def deserialize(self, endpoint_id, cluster_id, data):
         return self.endpoints[endpoint_id].deserialize(cluster_id, data)
 
     def handle_message(self, is_reply, profile, cluster, src_ep, dst_ep, tsn,
-                           command_id, args):
-        self.last_seen = time.time()
+                       command_id, args):
+        self.last_seen = dt.datetime.now()
         try:
             endpoint = self.endpoints[src_ep]
         except KeyError:

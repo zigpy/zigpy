@@ -86,6 +86,9 @@ class Color(Cluster):
         0x0043: ('enhanced_move_to_hue_and_saturation', (), False),
         0x0044: ('color_loop_set', (), False),
         0x0047: ('stop_move_step', (), False),
+        0x004b: ('move_color_temp', (), False),
+        0x004c: ('step_color_temp', (t.uint8_t, t.uint16_t, t.uint16_t, t.uint16_t, t.uint16_t), False),
+
     }
     client_commands = {}
 

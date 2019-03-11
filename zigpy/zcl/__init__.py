@@ -173,10 +173,13 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     async def read_attributes_raw(self, attributes, manufacturer=None):
         schema = foundation.COMMANDS[0x00][1]
         attributes = [t.uint16_t(a) for a in attributes]
-        v = await self.request(True, 0x00, schema, attributes, manufacturer=manufacturer)
+        v = await self.request(True, 0x00, schema, attributes,
+                               manufacturer=manufacturer)
+        LOGGER.debug("read attribute: %s", v)
         return v
 
-    async def read_attributes(self, attributes, allow_cache=False, raw=False, manufacturer=None):
+    async def read_attributes(self, attributes, allow_cache=False, raw=False,
+                              manufacturer=None):
         if raw:
             assert len(attributes) == 1
         success, failure = {}, {}
