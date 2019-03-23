@@ -204,3 +204,8 @@ async def test_broadcast(app):
         )
         await app.broadcast(app, profile, cluster, src_ep, dst_ep,
                             grp, radius, tsn, data)
+
+
+@pytest.mark.asyncio
+async def test_shutdown(app):
+    await app.shutdown()
