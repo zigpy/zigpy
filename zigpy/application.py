@@ -24,6 +24,10 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             self.add_listener(self._dblistener)
             self._dblistener.load()
 
+    async def shutdown(self):
+        """Perform a complete application shutdown."""
+        pass
+
     async def startup(self, auto_form=False):
         """Perform a complete application startup"""
         raise NotImplementedError
