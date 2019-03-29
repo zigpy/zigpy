@@ -3,8 +3,8 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="zigpy",
-    version="0.3.0",
+    name="zigpy-homeassistant",
+    version="0.3.1",
     description="Library implementing a ZigBee stack",
     url="http://github.com/zigpy/zigpy",
     author="Russell Cloran",
