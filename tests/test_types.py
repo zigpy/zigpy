@@ -50,3 +50,11 @@ def test_struct():
 
     s = ts2.serialize()
     assert s == b'\xaa\xbb'
+
+
+def test_hex_repr():
+    class NwkAsHex(t.HexRepr, t.uint16_t):
+        _hex_len = 4
+    nwk = NwkAsHex(0x1234)
+    assert str(nwk) == '0x1234'
+    assert repr(nwk) == '0x1234'

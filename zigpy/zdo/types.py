@@ -270,8 +270,8 @@ class Status(t.uint8_t, enum.Enum):
     NOT_AUTHORIZED = 0x8d
 
 
-NWK = ('NWKAddr', t.uint16_t)
-NWKI = ('NWKAddrOfInterest', t.uint16_t)
+NWK = ('NWKAddr', t.NWK)
+NWKI = ('NWKAddrOfInterest', t.NWK)
 IEEE = ('IEEEAddr', t.EUI64)
 STATUS = ('Status', Status)
 
