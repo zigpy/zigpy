@@ -6,6 +6,7 @@ import time
 import zigpy.endpoint
 import zigpy.util
 import zigpy.zdo as zdo
+from zigpy.zdo.types import ZDOCmd
 from zigpy.types import BroadcastAddress
 
 
@@ -52,7 +53,7 @@ class Device(zigpy.util.LocalLogMixin):
         self.info("Requesting 'Node Descriptor'")
         try:
             status, _, node_desc = await self.zdo.request(
-                0x0002, self.nwk, tries=2, delay=1)
+                ZDOCmd.Node_Desc_req, self.nwk, tries=2, delay=1)
             if status == zdo.types.Status.SUCCESS:
                 self.node_desc = node_desc
                 self.info("Node Descriptor: %s", node_desc)
@@ -73,7 +74,7 @@ class Device(zigpy.util.LocalLogMixin):
             await self._node_handle
             self.info("Discovering endpoints")
             try:
-                epr = await self.zdo.request(0x0005, self.nwk, tries=3, delay=2)
+                epr = await self.zdo.request(ZDOCmd.Active_EP_req, self.nwk, tries=3, delay=2)
                 if epr[0] != 0:
                     raise Exception("Endpoint request failed: %s", epr)
             except Exception as exc:
