@@ -170,7 +170,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         elif cluster in self.out_clusters:
             handler = self.out_clusters[cluster].handle_message
         else:
-            self.warn("Message on unknown cluster 0x%04x", cluster)
+            self.debug("Message on unknown cluster 0x%04x", cluster)
             self.listener_event("unknown_cluster_message", is_reply,
                                 command_id, args)
             return
