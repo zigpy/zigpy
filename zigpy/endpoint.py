@@ -23,11 +23,13 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __init__(self, device, endpoint_id):
         self._device = device
         self._endpoint_id = endpoint_id
+        self.device_type = None
         self.in_clusters = {}
         self.out_clusters = {}
         self._cluster_attr = {}
         self.status = Status.NEW
         self._listeners = {}
+        self.profile_id = None
         self.manufacturer = None
         self.model = None
 
@@ -47,7 +49,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             if sdr[0] != 0:
                 raise Exception("Failed to retrieve service descriptor: %s", sdr)
         except Exception as exc:
-            self.warn("Failed ZDO request during device initialization: %s", exc)
+            self.warn("Failed ZDO request during endpoint initialization: %s", exc)
             return
 
         self.info("Discovered endpoint information: %s", sdr[2])

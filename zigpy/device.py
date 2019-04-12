@@ -28,6 +28,7 @@ class Device(zigpy.util.LocalLogMixin):
     def __init__(self, application, ieee, nwk):
         self._application = application
         self._ieee = ieee
+        self._init_handle = None
         self.nwk = nwk
         self.zdo = zdo.ZDO(self)
         self.endpoints = {0: self.zdo}
@@ -67,7 +68,22 @@ class Device(zigpy.util.LocalLogMixin):
         for endpoint_id in self.endpoints.keys():
             if endpoint_id == 0:  # ZDO
                 continue
-            await self.endpoints[endpoint_id].initialize()
+            try:
+                await self.endpoints[endpoint_id].initialize()
+            except Exception as exc:
+                self.debug("Endpoint %s initialization failure: %s",
+                           endpoint_id, exc)
+                break
+
+        ep_failed_init = [
+            ep.status == zigpy.endpoint.Status.NEW
+            for epid, ep in self.endpoints.items() if epid
+        ]
+        if any(ep_failed_init):
+            self.initializing = False
+            self.application.listener_event('device_init_failure', self)
+            await self.application.remove(self.ieee)
+            return
 
         self.status = Status.ENDPOINTS_INIT
         self.initializing = False
