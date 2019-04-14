@@ -204,37 +204,10 @@ class PersistingListener:
 
     def load(self):
         LOGGER.debug("Loading application state from %s", self._database_file)
-        for (ieee, nwk, status) in self._scan("devices"):
-            dev = self._application.add_device(ieee, nwk)
-            dev.status = zigpy.device.Status(status)
-
-        for (ieee, value) in self._scan("node_descriptors"):
-            dev = self._application.get_device(ieee)
-            dev.node_desc, _ = zdo_t.NodeDescriptor.deserialize(value)
-
-        for (ieee, epid, profile_id, device_type, status) in self._scan("endpoints"):
-            dev = self._application.get_device(ieee)
-            ep = dev.add_endpoint(epid)
-            ep.profile_id = profile_id
-            try:
-                if profile_id == 260:
-                    device_type = zigpy.profiles.zha.DeviceType(device_type)
-                elif profile_id == 49246:
-                    device_type = zigpy.profiles.zll.DeviceType(device_type)
-            except ValueError:
-                pass
-            ep.device_type = device_type
-            ep.status = zigpy.endpoint.Status(status)
-
-        for (ieee, endpoint_id, cluster) in self._scan("clusters"):
-            dev = self._application.get_device(ieee)
-            ep = dev.endpoints[endpoint_id]
-            ep.add_input_cluster(cluster)
-
-        for (ieee, endpoint_id, cluster) in self._scan("output_clusters"):
-            dev = self._application.get_device(ieee)
-            ep = dev.endpoints[endpoint_id]
-            ep.add_output_cluster(cluster)
+        self._load_devices()
+        self._load_node_descriptors()
+        self._load_endpoints()
+        self._load_clusters()
 
         def _load_attributes():
             for (ieee, endpoint_id, cluster, attrid, value) in self._scan("attributes"):
@@ -259,6 +232,42 @@ class PersistingListener:
             self._application.devices[device.ieee] = device
 
         _load_attributes()
+
+    def _load_devices(self):
+        for (ieee, nwk, status) in self._scan("devices"):
+            dev = self._application.add_device(ieee, nwk)
+            dev.status = zigpy.device.Status(status)
+
+    def _load_node_descriptors(self):
+        for (ieee, value) in self._scan("node_descriptors"):
+            dev = self._application.get_device(ieee)
+            dev.node_desc = zdo_t.NodeDescriptor.deserialize(value)[0]
+
+    def _load_endpoints(self):
+        for (ieee, epid, profile_id, device_type, status) in self._scan("endpoints"):
+            dev = self._application.get_device(ieee)
+            ep = dev.add_endpoint(epid)
+            ep.profile_id = profile_id
+            try:
+                if profile_id == 260:
+                    device_type = zigpy.profiles.zha.DeviceType(device_type)
+                elif profile_id == 49246:
+                    device_type = zigpy.profiles.zll.DeviceType(device_type)
+            except ValueError:
+                pass
+            ep.device_type = device_type
+            ep.status = zigpy.endpoint.Status(status)
+
+    def _load_clusters(self):
+        for (ieee, endpoint_id, cluster) in self._scan("clusters"):
+            dev = self._application.get_device(ieee)
+            ep = dev.endpoints[endpoint_id]
+            ep.add_input_cluster(cluster)
+
+        for (ieee, endpoint_id, cluster) in self._scan("output_clusters"):
+            dev = self._application.get_device(ieee)
+            ep = dev.endpoints[endpoint_id]
+            ep.add_output_cluster(cluster)
 
 
 class ClusterPersistingListener:
