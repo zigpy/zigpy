@@ -7,9 +7,12 @@ import zigpy.profiles
 import zigpy.quirks
 import zigpy.types as t
 from zigpy.zcl.clusters.general import Basic
+from zigpy.zdo import types as zdo_t
 
 
 LOGGER = logging.getLogger(__name__)
+
+DB_VERSION = 0x0001
 
 
 def _sqlite_adapters():
@@ -31,9 +34,11 @@ class PersistingListener:
                                    detect_types=sqlite3.PARSE_DECLTYPES)
         self._cursor = self._db.cursor()
 
+        self._enable_foreign_keys()
         self._create_table_devices()
         self._create_table_endpoints()
         self._create_table_clusters()
+        self._create_table_node_descriptors()
         self._create_table_output_clusters()
         self._create_table_attributes()
 
@@ -68,6 +73,7 @@ class PersistingListener:
 
     def _create_table(self, table_name, spec):
         self.execute("CREATE TABLE IF NOT EXISTS %s %s" % (table_name, spec))
+        self.execute("PRAGMA user_version = %s" % (DB_VERSION, ))
 
     def _create_index(self, index_name, table, columns):
         self.execute("CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(%s)" % (
@@ -93,6 +99,12 @@ class PersistingListener:
             "ieee, endpoint_id, cluster",
         )
 
+    def _create_table_node_descriptors(self):
+        self._create_table(
+            "node_descriptors",
+            "(ieee ieee, value, FOREIGN KEY(ieee) REFERENCES devices(ieee))")
+        self._create_index("node_descriptors_idx", "node_descriptors", "ieee")
+
     def _create_table_output_clusters(self):
         self._create_table("output_clusters", "(ieee ieee, endpoint_id, cluster)")
         self._create_index(
@@ -112,8 +124,12 @@ class PersistingListener:
             "ieee, endpoint_id, cluster, attrid"
         )
 
+    def _enable_foreign_keys(self):
+        self.execute("PRAGMA foreign_keys = ON")
+
     def _remove_device(self, device):
         self.execute("DELETE FROM attributes WHERE ieee = ?", (device.ieee, ))
+        self.execute("DELETE FROM node_descriptors WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM clusters WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM output_clusters WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM endpoints WHERE ieee = ?", (device.ieee, ))
@@ -127,6 +143,7 @@ class PersistingListener:
             self._db.commit()
             return
         self._save_endpoints(device)
+        self._save_node_descriptor(device)
         for epid, ep in device.endpoints.items():
             if epid == 0:
                 # ZDO
@@ -152,6 +169,12 @@ class PersistingListener:
             endpoints.append(eprow)
         self._cursor.executemany(q, endpoints)
         self._db.commit()
+
+    def _save_node_descriptor(self, device):
+        if device.node_desc is None:
+            return
+        q = "INSERT OR REPLACE INTO node_descriptors VALUES (?, ?)"
+        self.execute(q, (device.ieee, device.node_desc.serialize()))
 
     def _save_input_clusters(self, endpoint):
         q = "INSERT OR REPLACE INTO clusters VALUES (?, ?, ?)"
@@ -184,6 +207,10 @@ class PersistingListener:
         for (ieee, nwk, status) in self._scan("devices"):
             dev = self._application.add_device(ieee, nwk)
             dev.status = zigpy.device.Status(status)
+
+        for (ieee, value) in self._scan("node_descriptors"):
+            dev = self._application.get_device(ieee)
+            dev.node_desc, _ = zdo_t.NodeDescriptor.deserialize(value)
 
         for (ieee, epid, profile_id, device_type, status) in self._scan("endpoints"):
             dev = self._application.get_device(ieee)

@@ -37,6 +37,7 @@ class Device(zigpy.util.LocalLogMixin):
         self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
+        self.node_desc = None
 
     def schedule_initialize(self):
         if self.initializing:

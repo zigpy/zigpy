@@ -8,6 +8,7 @@ from zigpy.application import ControllerApplication
 from zigpy import profiles
 from zigpy.quirks import CustomDevice
 from zigpy.device import Status
+from zigpy.zdo import types as zdo_t
 
 
 def make_app(database_file):
@@ -45,6 +46,7 @@ async def test_database(tmpdir):
     app.handle_join(99, ieee, 0)
 
     dev = app.get_device(ieee)
+    dev.node_desc, _ = zdo_t.NodeDescriptor.deserialize(b'1234567890')
     ep = dev.add_endpoint(1)
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
