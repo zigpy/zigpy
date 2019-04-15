@@ -175,7 +175,7 @@ class PersistingListener:
         self._db.commit()
 
     def _save_node_descriptor(self, device):
-        if device.node_desc is None:
+        if not device.node_desc.is_valid:
             return
         q = "INSERT OR REPLACE INTO node_descriptors VALUES (?, ?)"
         self.execute(q, (device.ieee, device.node_desc.serialize()))

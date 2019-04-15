@@ -37,7 +37,7 @@ class Device(zigpy.util.LocalLogMixin):
         self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
-        self.node_desc = None
+        self.node_desc = zdo.types.NodeDescriptor()
         self._node_handle = None
 
     def schedule_initialize(self):
@@ -61,16 +61,6 @@ class Device(zigpy.util.LocalLogMixin):
                 self.warn("Requesting Node Descriptor failed: %s", status)
         except Exception as exc:
             self.warn("Requesting Node Descriptor failed: %s", exc)
-            self.node_desc = zdo.types.NodeDescriptor()
-            self.node_desc.byte1 = 2
-            self.node_desc.byte2 = 64
-            self.node_desc.mac_capability_flags = 142
-            self.node_desc.manufacturer_code = 0
-            self.node_desc.maximum_buffer_size = 82
-            self.node_desc.maximum_incoming_transfer_size = 82
-            self.node_desc.server_mask = 0
-            self.node_desc.maximum_outgoing_transfer_size = 82
-            self.node_desc.descriptor_capability_field = 0
 
     async def refresh_node_descriptor(self):
         if await self.get_node_descriptor():
@@ -148,7 +138,7 @@ class Device(zigpy.util.LocalLogMixin):
 
     def handle_message(self, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
         self.last_seen = time.time()
-        if self.node_desc is None and \
+        if not self.node_desc.is_valid and \
                 (self._node_handle is None or self._node_handle.done()):
             self._node_handle = asyncio.ensure_future(
                 self.refresh_node_descriptor())
