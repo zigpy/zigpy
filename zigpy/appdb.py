@@ -71,6 +71,10 @@ class PersistingListener:
             value,
         )
 
+    def node_descriptor_updated(self, device):
+        self._save_node_descriptor(device)
+        self._db.commit()
+
     def _create_table(self, table_name, spec):
         self.execute("CREATE TABLE IF NOT EXISTS %s %s" % (table_name, spec))
         self.execute("PRAGMA user_version = %s" % (DB_VERSION, ))
@@ -139,11 +143,11 @@ class PersistingListener:
     def _save_device(self, device):
         q = "INSERT OR REPLACE INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
         self.execute(q, (device.ieee, device.nwk, device.status))
+        self._save_node_descriptor(device)
         if isinstance(device, zigpy.quirks.CustomDevice):
             self._db.commit()
             return
         self._save_endpoints(device)
-        self._save_node_descriptor(device)
         for epid, ep in device.endpoints.items():
             if epid == 0:
                 # ZDO
