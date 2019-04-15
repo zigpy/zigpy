@@ -47,8 +47,33 @@ class Device(zigpy.util.LocalLogMixin):
             self.initializing = True
         self._init_handle = asyncio.ensure_future(self._initialize())
 
+    async def get_node_descriptor(self):
+        self.info("Requesting 'Node Descriptor'")
+        try:
+            status, _, node_desc = await self.zdo.request(
+                0x0002, self.nwk, tries=2, delay=1)
+            if status == zdo.types.Status.SUCCESS:
+                self.node_desc = node_desc
+                self.info("Node Descriptor: %s", node_desc)
+                return node_desc
+            else:
+                self.warn("Requesting Node Descriptor failed: %s", status)
+        except Exception as exc:
+            self.warn("Requesting Node Descriptor failed: %s", exc)
+            self.node_desc = zdo.types.NodeDescriptor()
+            self.node_desc.byte1 = 2
+            self.node_desc.byte2 = 64
+            self.node_desc.mac_capability_flags = 142
+            self.node_desc.manufacturer_code = 0
+            self.node_desc.maximum_buffer_size = 82
+            self.node_desc.maximum_incoming_transfer_size = 82
+            self.node_desc.server_mask = 0
+            self.node_desc.maximum_outgoing_transfer_size = 82
+            self.node_desc.descriptor_capability_field = 0
+
     async def _initialize(self):
         if self.status == Status.NEW:
+            await self.get_node_descriptor()
             self.info("Discovering endpoints")
             try:
                 epr = await self.zdo.request(0x0005, self.nwk, tries=3, delay=2)
