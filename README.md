@@ -16,6 +16,9 @@ zigpy works with separate radio libraries which can each interface with multiple
   - [Elelabs Zigbee Raspberry Pi Shield](https://elelabs.com/products/elelabs_zigbee_shield.html)
 - XBee Zigbee based radios (via the [zigpy-xbee](https://github.com/zigpy/zigpy-xbee) library for zigpy)
   - Digi XBee Series 2C (S2C) modules
+  - Digi XBee Series 2 (S2) modules. Note: These will need to be manually flashed with the Zigbee Coordinator API firmware via XCTU.
+  - Digi XBee Series 3 (xbee3-24) modules
 - deCONZ based radios (via the [zigpy-deconz](https://github.com/zigpy/zigpy-deconz) library for zigpy)
+  - [ConBee II (a.k.a. ConBee 2) USB adapter from Dresden-Elektronik](https://shop.dresden-elektronik.de/conbee-2.html)
   - [ConBee](https://www.dresden-elektronik.de/conbee/) USB adio adapter from [Dresden-Elektronik](https://www.dresden-elektronik.de)
   - [RaspBee](https://www.dresden-elektronik.de/raspbee/) GPIO radio adapter from [Dresden-Elektronik](https://www.dresden-elektronik.de)
