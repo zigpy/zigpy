@@ -209,24 +209,29 @@ class PersistingListener:
             ep = dev.endpoints[endpoint_id]
             ep.add_output_cluster(cluster)
 
+        def _load_attributes():
+            for (ieee, endpoint_id, cluster, attrid, value) in self._scan("attributes"):
+                dev = self._application.get_device(ieee)
+                if endpoint_id in dev.endpoints:
+                    ep = dev.endpoints[endpoint_id]
+                    if cluster in ep.in_clusters:
+                        clus = ep.in_clusters[cluster]
+                        clus._attr_cache[attrid] = value
+                        LOGGER.debug("Attribute id: %s value: %s", attrid, value)
+                        if cluster == Basic.cluster_id and attrid == 4:
+                            value = value.split(b'\x00')[0]
+                            ep.manufacturer = value.decode().strip()
+                        if cluster == Basic.cluster_id and attrid == 5:
+                            value = value.split(b'\x00')[0]
+                            ep.model = value.decode().strip()
+
+        _load_attributes()
+
         for device in self._application.devices.values():
             device = zigpy.quirks.get_device(device)
             self._application.devices[device.ieee] = device
 
-        for (ieee, endpoint_id, cluster, attrid, value) in self._scan("attributes"):
-            dev = self._application.get_device(ieee)
-            if endpoint_id in dev.endpoints:
-                ep = dev.endpoints[endpoint_id]
-                if cluster in ep.in_clusters:
-                    clus = ep.in_clusters[cluster]
-                    clus._attr_cache[attrid] = value
-                    LOGGER.debug("Attribute id: %s value: %s", attrid, value)
-                    if cluster == Basic.cluster_id and attrid == 4:
-                        value = value.split(b'\x00')[0]
-                        ep.manufacturer = value.decode().strip()
-                    if cluster == Basic.cluster_id and attrid == 5:
-                        value = value.split(b'\x00')[0]
-                        ep.model = value.decode().strip()
+        _load_attributes()
 
 
 class ClusterPersistingListener:

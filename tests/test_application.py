@@ -108,14 +108,16 @@ def test_join_handler_change_id(app, ieee):
     assert app.devices[ieee].nwk == 2
 
 
-async def _remove(app, ieee, retval, zdo_reply=True):
+async def _remove(app, ieee, retval, zdo_reply=True, delivery_failure=True):
     app.devices[ieee] = mock.MagicMock()
 
     async def leave():
         if zdo_reply:
             return retval
-        else:
+        elif delivery_failure:
             raise DeliveryError
+        else:
+            raise asyncio.TimeoutError
 
     app.devices[ieee].zdo.leave.side_effect = leave
     await app.remove(ieee)
@@ -146,6 +148,13 @@ async def test_remove_nonexistent(app, ieee):
 async def test_remove_with_unreachable_device(app, ieee):
     app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
     await _remove(app, ieee, [0], zdo_reply=False)
+    assert app.force_remove.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_remove_with_reply_timeout(app, ieee):
+    app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    await _remove(app, ieee, [0], zdo_reply=False, delivery_failure=False)
     assert app.force_remove.call_count == 1
 
 
@@ -204,3 +213,8 @@ async def test_broadcast(app):
         )
         await app.broadcast(app, profile, cluster, src_ep, dst_ep,
                             grp, radius, tsn, data)
+
+
+@pytest.mark.asyncio
+async def test_shutdown(app):
+    await app.shutdown()

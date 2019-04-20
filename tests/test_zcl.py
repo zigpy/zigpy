@@ -138,12 +138,12 @@ def test_handle_unexpected_reply(cluster):
 
 
 def _mk_rar(attrid, value, status=0):
-        r = zcl.foundation.ReadAttributeRecord()
-        r.attrid = attrid
-        r.status = status
-        r.value = zcl.foundation.TypeValue()
-        r.value.value = value
-        return r
+    r = zcl.foundation.ReadAttributeRecord()
+    r.attrid = attrid
+    r.status = status
+    r.value = zcl.foundation.TypeValue()
+    r.value.value = value
+    return r
 
 
 @pytest.mark.asyncio
@@ -336,3 +336,14 @@ def test_name(cluster):
 
 def test_commands(cluster):
     assert cluster.commands == ["reset_fact_default"]
+
+
+def test_discover(cluster):
+    cluster.request = mock.MagicMock()
+    s = mock.sentinel
+    cmd_id = 0x0c
+    cluster._discover(cmd_id, s.start, s.items, s.manuf)
+
+    assert cluster.request.call_count == 1
+    cluster.request.assert_called_with(
+        True, cmd_id, mock.ANY, s.start, s.items, manufacturer=s.manuf)

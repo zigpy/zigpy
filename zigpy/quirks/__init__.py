@@ -1,8 +1,8 @@
 import logging
 
-from zigpy.device import Device, Status as DeviceStatus
-from zigpy.endpoint import Endpoint, Status as EndpointStatus
-from zigpy.zcl import Cluster
+import zigpy.device
+import zigpy.endpoint
+import zigpy.zcl
 
 _DEVICE_REGISTRY = []
 _LOGGER = logging.getLogger(__name__)
@@ -29,6 +29,14 @@ def get_device(device, registry=_DEVICE_REGISTRY):
 
         if not all([device[eid].device_type == sig[eid].get('device_type', device[eid].device_type) for eid in sig.keys()]):
             _LOGGER.debug("Fail because device_type mismatch on at least one endpoint")
+            continue
+
+        if not all([device[eid].model == sig[eid].get('model', device[eid].model) for eid in sig.keys()]):
+            _LOGGER.debug("Fail because model mismatch on at least one endpoint")
+            continue
+
+        if not all([device[eid].manufacturer == sig[eid].get('manufacturer', device[eid].manufacturer) for eid in sig.keys()]):
+            _LOGGER.debug("Fail because manufacturer mismatch on at least one endpoint")
             continue
 
         if not all([_match(device[eid].in_clusters.keys(),
@@ -58,12 +66,12 @@ class Registry(type):
             add_to_registry(cls)
 
 
-class CustomDevice(Device, metaclass=Registry):
+class CustomDevice(zigpy.device.Device, metaclass=Registry):
     replacement = {}
 
     def __init__(self, application, ieee, nwk, replaces):
         super().__init__(application, ieee, nwk)
-        self.status = DeviceStatus.ENDPOINTS_INIT
+        self.status = zigpy.device.Status.ENDPOINTS_INIT
         for endpoint_id, endpoint in self.replacement.get('endpoints', {}).items():
             self.add_endpoint(endpoint_id, replace_device=replaces)
 
@@ -90,7 +98,7 @@ class CustomDevice(Device, metaclass=Registry):
         return ep
 
 
-class CustomEndpoint(Endpoint):
+class CustomEndpoint(zigpy.endpoint.Endpoint):
     def __init__(self, device, endpoint_id, replacement_data, replace_device):
         super().__init__(device, endpoint_id)
 
@@ -104,7 +112,7 @@ class CustomEndpoint(Endpoint):
         set_device_attr('device_type')
         set_device_attr('manufacturer')
         set_device_attr('model')
-        self.status = EndpointStatus.ZDO_INIT
+        self.status = zigpy.endpoint.Status.ZDO_INIT
 
         for c in replacement_data.get('input_clusters', []):
             if isinstance(c, int):
@@ -125,7 +133,7 @@ class CustomEndpoint(Endpoint):
             self.add_output_cluster(cluster_id, cluster)
 
 
-class CustomCluster(Cluster):
+class CustomCluster(zigpy.zcl.Cluster):
     _skip_registry = True
 
 
