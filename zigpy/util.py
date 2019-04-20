@@ -21,8 +21,9 @@ class ListenableMixin:
     def listener_event(self, method_name, *args):
         for listener in self._listeners.values():
             try:
-                method = getattr(listener, method_name)
-                method(*args)
+                method = getattr(listener, method_name, None)
+                if method:
+                    method(*args)
             except Exception as e:
                 LOGGER.warning("Error calling listener.%s: %s", method_name, e)
 

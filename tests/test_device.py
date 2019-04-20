@@ -4,12 +4,14 @@ from unittest import mock
 import pytest
 
 import zigpy.types as t
+from zigpy.application import ControllerApplication
 from zigpy import device, endpoint
 
 
 @pytest.fixture
 def dev():
-    app_mock = mock.MagicMock()
+    app_mock = mock.MagicMock(spec_set=ControllerApplication)
+    app_mock.remove.side_effect = asyncio.coroutine(mock.MagicMock())
     app_mock.request.side_effect = asyncio.coroutine(mock.MagicMock())
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     return device.Device(app_mock, ieee, 65535)
@@ -42,6 +44,25 @@ async def test_initialize_fail(dev):
     await dev._initialize()
 
     assert dev.status == device.Status.NEW
+
+
+@pytest.mark.asyncio
+async def test_initialize_ep_failed(monkeypatch, dev):
+    async def mockrequest(req, nwk, tries=None, delay=None):
+        return [0, None, [1, 2]]
+
+    async def mockepinit(self):
+        raise AttributeError
+
+    monkeypatch.setattr(endpoint.Endpoint, 'initialize', mockepinit)
+
+    dev.zdo.request = mockrequest
+    await dev._initialize()
+
+    assert dev.status == device.Status.ZDO_INIT
+    assert dev.application.listener_event.call_count == 1
+    assert dev.application.listener_event.call_args[0][0] == 'device_init_failure'
+    assert dev.application.remove.call_count == 1
 
 
 @pytest.mark.asyncio

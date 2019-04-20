@@ -12,7 +12,7 @@ class Listenable(util.ListenableMixin):
 
 def test_listenable():
     listen = Listenable()
-    listener = mock.MagicMock()
+    listener = mock.MagicMock(spec_set=['event'])
     listen.add_listener(listener)
     listen.add_listener(listener)
 
@@ -21,6 +21,10 @@ def test_listenable():
     listen.add_listener(broken_listener)
 
     listen.listener_event('event')
+    assert listener.event.call_count == 2
+    assert broken_listener.event.call_count == 1
+
+    listen.listener_event('non_existing_event')
     assert listener.event.call_count == 2
     assert broken_listener.event.call_count == 1
 
