@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import zigpy.appdb
@@ -62,7 +63,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         try:
             resp = await dev.zdo.leave()
             zdo_worked = resp[0] == 0
-        except zigpy.exceptions.DeliveryError as ex:
+        except (zigpy.exceptions.DeliveryError, asyncio.TimeoutError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
         if not zdo_worked:
