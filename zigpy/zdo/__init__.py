@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import logging
 
 import zigpy.types as t
@@ -121,6 +122,16 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def device(self):
         return self._device
+
+    def __getattr__(self, name):
+        try:
+            command = types.ZDOCmd[name]
+        except KeyError:
+            raise AttributeError("No such '%s' ZDO command" % (name, ))
+
+        if command & 0x8000:
+            return functools.partial(self.reply, command)
+        return functools.partial(self.request, command)
 
 
 def broadcast(app, command, grpid, radius, *args,
