@@ -6,6 +6,7 @@ import pytest
 import zigpy.types as t
 from zigpy.application import ControllerApplication
 from zigpy import device, endpoint
+from zigpy.zdo import types as zdo_t
 
 
 @pytest.fixture
@@ -26,6 +27,7 @@ async def test_initialize(monkeypatch, dev):
         return
 
     monkeypatch.setattr(endpoint.Endpoint, 'initialize', mockepinit)
+    monkeypatch.setattr(device.Device, 'get_node_descriptor', mockepinit)
 
     dev.zdo.request = mockrequest
     await dev._initialize()
@@ -134,3 +136,44 @@ async def test_broadcast():
     assert app.broadcast.call_args[0][2] == src_ep
     assert app.broadcast.call_args[0][3] == dst_ep
     assert app.broadcast.call_args[0][7] == data
+
+
+async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
+    async def mockrequest(req, nwk, tries=None, delay=None):
+        if not request_success:
+            raise asyncio.TimeoutError
+
+        status = 0 if zdo_success else 1
+        return [status, nwk,
+                zdo_t.NodeDescriptor.deserialize(b'abcdefghijklm')[0]]
+
+    dev.zdo.request = mock.MagicMock(side_effect=mockrequest)
+    return await dev.get_node_descriptor()
+
+
+@pytest.mark.asyncio
+async def test_get_node_descriptor(dev):
+    nd = await _get_node_descriptor(dev, zdo_success=True,
+                                    request_success=True)
+
+    assert nd is not None
+    assert isinstance(nd, zdo_t.NodeDescriptor)
+    assert dev.zdo.request.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_get_node_descriptor_no_reply(dev):
+    nd = await _get_node_descriptor(dev, zdo_success=True,
+                                    request_success=False)
+
+    assert nd is None
+    assert dev.zdo.request.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_get_node_descriptor_fail(dev):
+    nd = await _get_node_descriptor(dev, zdo_success=False,
+                                    request_success=True)
+
+    assert nd is None
+    assert dev.zdo.request.call_count == 1
