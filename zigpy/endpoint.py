@@ -5,7 +5,6 @@ import zigpy.profiles
 import zigpy.util
 import zigpy.zcl
 from zigpy.zcl.clusters.general import Basic
-from zigpy.zdo.types import ZDOCmd
 
 LOGGER = logging.getLogger(__name__)
 
@@ -39,8 +38,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.info("Discovering endpoint information")
         try:
-            sdr = await self._device.zdo.request(
-                ZDOCmd.Simple_Desc_req,
+            sdr = await self._device.zdo.Simple_Desc_req(
                 self._device.nwk,
                 self._endpoint_id,
                 tries=3,
