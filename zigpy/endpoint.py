@@ -178,9 +178,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         handler(is_reply, tsn, command_id, args)
 
-    def request(self, cluster, sequence, data, expect_reply=True):
-        if (self.profile_id == zigpy.profiles.zll.PROFILE_ID and
-                cluster != zigpy.zcl.clusters.lightlink.LightLink.cluster_id):
+    def request(self, cluster, sequence, data, expect_reply=True, command_id=0x00):
+        if (self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
+                cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id and command_id < 0x40)):
             profile_id = zigpy.profiles.zha.PROFILE_ID
         else:
             profile_id = self.profile_id
