@@ -161,3 +161,8 @@ async def test_reply(zdo_f):
     zdo_f.reply(0x0005)
     await asyncio.sleep(0)
     assert call_count == 1
+
+
+def test_get_attr_error(zdo_f):
+    with pytest.raises(AttributeError):
+        zdo_f.no_such_attribute()

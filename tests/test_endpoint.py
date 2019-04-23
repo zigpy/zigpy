@@ -1,4 +1,3 @@
-import asyncio
 from unittest import mock
 
 import pytest
@@ -14,10 +13,8 @@ def ep():
     return endpoint.Endpoint(dev, 1)
 
 
-def _test_initialize(ep, profile):
-    loop = asyncio.get_event_loop()
-
-    async def mockrequest(req, nwk, epid, tries=None, delay=None):
+async def _test_initialize(ep, profile):
+    async def mockrequest(nwk, epid, tries=None, delay=None):
         sd = types.SimpleDescriptor()
         sd.endpoint = 1
         sd.profile = profile
@@ -26,39 +23,41 @@ def _test_initialize(ep, profile):
         sd.output_clusters = [6]
         return [0, None, sd]
 
-    ep._device.zdo.request = mockrequest
-    loop.run_until_complete(ep.initialize())
+    ep._device.zdo.Simple_Desc_req = mockrequest
+    await ep.initialize()
 
     assert ep.status > endpoint.Status.NEW
     assert 5 in ep.in_clusters
     assert 6 in ep.out_clusters
 
 
-def test_initialize_zha(ep):
-    return _test_initialize(ep, 260)
+@pytest.mark.asyncio
+async def test_initialize_zha(ep):
+    return await _test_initialize(ep, 260)
 
 
-def test_initialize_zll(ep):
-    return _test_initialize(ep, 49246)
+@pytest.mark.asyncio
+async def test_initialize_zll(ep):
+    return await _test_initialize(ep, 49246)
 
 
-def test_initialize_fail(ep):
-    loop = asyncio.get_event_loop()
-
-    async def mockrequest(req, nwk, epid, tries=None, delay=None):
+@pytest.mark.asyncio
+async def test_initialize_fail(ep):
+    async def mockrequest(nwk, epid, tries=None, delay=None):
         return [1, None, None]
 
-    ep._device.zdo.request = mockrequest
-    loop.run_until_complete(ep.initialize())
+    ep._device.zdo.Simple_Desc_req = mockrequest
+    await ep.initialize()
 
     assert ep.status == endpoint.Status.NEW
 
 
-def test_reinitialize(ep):
-    _test_initialize(ep, 260)
+@pytest.mark.asyncio
+async def test_reinitialize(ep):
+    await _test_initialize(ep, 260)
     assert ep.profile_id == 260
     ep.profile_id = 10
-    _test_initialize(ep, 260)
+    await _test_initialize(ep, 260)
     assert ep.profile_id == 10
 
 
@@ -160,7 +159,8 @@ def _mk_rar(attrid, value, status=0):
     return r
 
 
-def test_init_endpoint_info(ep):
+@pytest.mark.asyncio
+async def test_init_endpoint_info(ep):
     clus = ep.add_input_cluster(0)
     assert 0 in ep.in_clusters
     assert ep.in_clusters[0] is clus
@@ -173,12 +173,13 @@ def test_init_endpoint_info(ep):
         return [[rar4, rar5]]
     clus.request = mockrequest
 
-    test_initialize_zha(ep)
+    await test_initialize_zha(ep)
     assert ep.manufacturer == 'Custom'
     assert ep.model == 'Model'
 
 
-def test_init_endpoint_info_none(ep):
+@pytest.mark.asyncio
+async def test_init_endpoint_info_none(ep):
     clus = ep.add_input_cluster(0)
     assert 0 in ep.in_clusters
     assert ep.in_clusters[0] is clus
@@ -191,10 +192,11 @@ def test_init_endpoint_info_none(ep):
         return [[rar4, rar5]]
     clus.request = mockrequest
 
-    test_initialize_zha(ep)
+    await test_initialize_zha(ep)
 
 
-def test_init_endpoint_info_unicode(ep):
+@pytest.mark.asyncio
+async def test_init_endpoint_info_unicode(ep):
     clus = ep.add_input_cluster(0)
     assert 0 in ep.in_clusters
     assert ep.in_clusters[0] is clus
@@ -207,7 +209,7 @@ def test_init_endpoint_info_unicode(ep):
         return [[rar4, rar5]]
     clus.request = mockrequest
 
-    test_initialize_zha(ep)
+    await test_initialize_zha(ep)
 
 
 def _init_endpoint_info(ep, test_manuf=None, test_model=None):
@@ -226,28 +228,31 @@ def _init_endpoint_info(ep, test_manuf=None, test_model=None):
     return test_initialize_zha(ep)
 
 
-def test_init_endpoint_info_null_padded_manuf(ep):
+@pytest.mark.asyncio
+async def test_init_endpoint_info_null_padded_manuf(ep):
     manufacturer = b'Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07'
     model = b'Mock Model'
-    _init_endpoint_info(ep, manufacturer, model)
+    await _init_endpoint_info(ep, manufacturer, model)
 
     assert ep.manufacturer == 'Mock Manufacturer'
     assert ep.model == 'Mock Model'
 
 
-def test_init_endpoint_info_null_padded_model(ep):
+@pytest.mark.asyncio
+async def test_init_endpoint_info_null_padded_model(ep):
     manufacturer = b'Mock Manufacturer'
     model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-    _init_endpoint_info(ep, manufacturer, model)
+    await _init_endpoint_info(ep, manufacturer, model)
 
     assert ep.manufacturer == 'Mock Manufacturer'
     assert ep.model == 'Mock Model'
 
 
-def test_init_endpoint_info_null_padded_manuf_model(ep):
+@pytest.mark.asyncio
+async def test_init_endpoint_info_null_padded_manuf_model(ep):
     manufacturer = b'Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07'
     model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-    _init_endpoint_info(ep, manufacturer, model)
+    await _init_endpoint_info(ep, manufacturer, model)
 
     assert ep.manufacturer == 'Mock Manufacturer'
     assert ep.model == 'Mock Model'
