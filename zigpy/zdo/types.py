@@ -86,6 +86,27 @@ class NodeDescriptor(t.Struct):
         return LogicalType(self.byte1 & 0x07)
 
     @property
+    def is_coordinator(self):
+        """Return True whether this is a coordinator."""
+        if self.logical_type is None:
+            return None
+        return self.logical_type == LogicalType.Coordinator
+
+    @property
+    def is_end_device(self):
+        """Return True whether this is an end device."""
+        if self.logical_type is None:
+            return None
+        return self.logical_type == LogicalType.EndDevice
+
+    @property
+    def is_router(self):
+        """Return True whether this is a router."""
+        if self.logical_type is None:
+            return None
+        return self.logical_type == LogicalType.Router
+
+    @property
     def complex_descriptor_available(self):
         if self.byte1 is None:
             return None

@@ -94,6 +94,31 @@ def test_node_descriptor_props():
         assert value is True
 
 
+def test_node_descriptor_logical_types():
+    nd = types.NodeDescriptor()
+    assert nd.is_coordinator is None
+    assert nd.is_end_device is None
+    assert nd.is_router is None
+
+    nd = types.NodeDescriptor(
+        0b11111000, 0xff, 0xff, 0xffff, 0xff, 0xffff, 0xffff, 0xffff, 0xff)
+    assert nd.is_coordinator is True
+    assert nd.is_end_device is False
+    assert nd.is_router is False
+
+    nd = types.NodeDescriptor(
+        0b11111001, 0xff, 0xff, 0xffff, 0xff, 0xffff, 0xffff, 0xffff, 0xff)
+    assert nd.is_coordinator is False
+    assert nd.is_end_device is False
+    assert nd.is_router is True
+
+    nd = types.NodeDescriptor(
+        0b11111010, 0xff, 0xff, 0xffff, 0xff, 0xffff, 0xffff, 0xffff, 0xff)
+    assert nd.is_coordinator is False
+    assert nd.is_end_device is True
+    assert nd.is_router is False
+
+
 def test_size_prefixed_simple_descriptor():
     sd = types.SizePrefixedSimpleDescriptor()
     sd.endpoint = t.uint8_t(1)
