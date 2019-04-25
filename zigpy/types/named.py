@@ -53,3 +53,7 @@ class HexRepr:
 
 class NWK(HexRepr, basic.uint16_t):
     _hex_len = 4
+
+
+class Group(HexRepr, basic.uint16_t):
+    _hex_len = 4
