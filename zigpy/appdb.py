@@ -41,6 +41,8 @@ class PersistingListener:
         self._create_table_node_descriptors()
         self._create_table_output_clusters()
         self._create_table_attributes()
+        self._create_table_groups()
+        self._create_table_group_members()
 
         self._application = application
 
@@ -127,6 +129,18 @@ class PersistingListener:
             "attributes",
             "ieee, endpoint_id, cluster, attrid"
         )
+
+    def _create_table_groups(self):
+        self._create_table("groups", "(group_id, name)")
+        self._create_index("group_idx", "groups", "group_id")
+
+    def _create_table_group_members(self):
+        self._create_table(
+            "group_members",
+            """(group_id, ieee ieee,
+                FOREIGN KEY(group_id) REFERENCES groups(group_id),
+                FOREIGN KEY(ieee) REFERENCES devices(ieee))""")
+        self._create_index("group_members_idx", "group_members", "group_id, ieee")
 
     def _enable_foreign_keys(self):
         self.execute("PRAGMA foreign_keys = ON")
@@ -242,6 +256,8 @@ class PersistingListener:
             self._application.devices[device.ieee] = device
 
         _load_attributes()
+        self._load_groups()
+        self._load_group_members()
 
     def _load_devices(self):
         for (ieee, nwk, status) in self._scan("devices"):
@@ -278,3 +294,12 @@ class PersistingListener:
             dev = self._application.get_device(ieee)
             ep = dev.endpoints[endpoint_id]
             ep.add_output_cluster(cluster)
+
+    def _load_groups(self):
+        for (group_id, name) in self._scan("groups"):
+            self._application.groups.add_group(group_id, name)
+
+    def _load_group_members(self):
+        for (group_id, ieee) in self._scan("group_members"):
+            group = self._application.groups[group_id]
+            group.add_member(self._application.get_device(ieee))
