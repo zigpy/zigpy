@@ -66,6 +66,7 @@ class TypeValue:
                                            self.value.__class__.__name__,
                                            self.value)
 
+
 class TypedCollection(TypeValue):
     @classmethod
     def deserialize(cls, data):

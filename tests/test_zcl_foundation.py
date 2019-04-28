@@ -7,6 +7,10 @@ def test_typevalue():
     tv.type = 0x20
     tv.value = t.uint8_t(99)
     ser = tv.serialize()
+    r = repr(tv)
+    assert r.startswith('<') and r.endswith('>')
+    assert 'type=uint8_t' in r
+    assert 'value=99' in r
 
     tv2, data = foundation.TypeValue.deserialize(ser)
     assert data == b''
