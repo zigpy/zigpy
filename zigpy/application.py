@@ -25,6 +25,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         if database_file is not None:
             self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
             self.add_listener(self._dblistener)
+            self.groups.add_listener(self._dblistener)
             self._dblistener.load()
 
     async def shutdown(self):
@@ -161,6 +162,10 @@ class ControllerApplication(zigpy.util.ListenableMixin):
                 return dev
 
         raise KeyError
+
+    @property
+    def groups(self):
+        return self._groups
 
     @property
     def ieee(self):

@@ -37,6 +37,7 @@ class Device(zigpy.util.LocalLogMixin):
         self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
+        self._member_of = {}
         self.node_desc = zdo.types.NodeDescriptor()
         self._node_handle = None
 
@@ -173,6 +174,10 @@ class Device(zigpy.util.LocalLogMixin):
     @property
     def ieee(self):
         return self._ieee
+
+    @property
+    def member_of(self):
+        return self._member_of
 
     def __getitem__(self, key):
         return self.endpoints[key]

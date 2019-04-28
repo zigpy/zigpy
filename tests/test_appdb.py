@@ -215,3 +215,24 @@ async def test_node_descriptor_updated(tmpdir, monkeypatch):
     assert dev.node_desc.serialize() == b'abcdefghijklm'
 
     os.unlink(db)
+
+
+@pytest.mark.asyncio
+async def test_groups(tmpdir, monkeypatch):
+    monkeypatch.setattr(Device, '_initialize', _initialize)
+    db = os.path.join(str(tmpdir), 'test.db')
+    app = make_app(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    app.device_initialized(dev)
+
+    group_id = 0x1221
+    cluster = mock.MagicMock()
+    app.groups._grp_add_rsp(cluster, 0, group_id)
+
+    # Everything should've been saved - check that it re-loads
+    app2 = make_app(db)
+    dev = app2.get_device(ieee)
+    assert group_id in app2.groups

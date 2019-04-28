@@ -77,6 +77,26 @@ class PersistingListener:
         self._save_node_descriptor(device)
         self._db.commit()
 
+    def group_added(self, group):
+        q = "INSERT OR REPLACE INTO groups VALUES (?, ?)"
+        self.execute(q, (group.group_id, group.name))
+        self._db.commit()
+
+    def group_member_added(self, group, member):
+        q = "INSERT OR REPLACE INTO group_members VALUES (?, ?)"
+        self.execute(q, (group.group_id, member.ieee))
+        self._db.commit()
+
+    def group_member_removed(self, group, member):
+        q = "DELETE FROM group_members WHERE group_id=? AND ieee=?"
+        self.execute(q, (group.group_id, member.ieee))
+        self._db.commit()
+
+    def group_removed(self, group):
+        q = "DELETE FROM groups WHERE group_id=?"
+        self.execute(q, (group.group_id, ))
+        self._db.commit()
+
     def _create_table(self, table_name, spec):
         self.execute("CREATE TABLE IF NOT EXISTS %s %s" % (table_name, spec))
         self.execute("PRAGMA user_version = %s" % (DB_VERSION, ))
@@ -297,9 +317,11 @@ class PersistingListener:
 
     def _load_groups(self):
         for (group_id, name) in self._scan("groups"):
-            self._application.groups.add_group(group_id, name)
+            self._application.groups.add_group(group_id, name,
+                                               suppress_event=True)
 
     def _load_group_members(self):
         for (group_id, ieee) in self._scan("group_members"):
             group = self._application.groups[group_id]
-            group.add_member(self._application.get_device(ieee))
+            group.add_member(self._application.get_device(ieee),
+                             suppress_event=True)
