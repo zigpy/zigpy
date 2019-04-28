@@ -159,7 +159,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
         if command_id == 0x0a:  # Report attributes
             valuestr = ", ".join([
-                "%s=%s" % (a.attrid, a.value.value) for a in args[0]
+                "%s=%s" % (self.attributes.get(a.attrid, [a.attrid])[0],
+                           a.value.value) for a in args[0]
             ])
             self.debug("Attribute report received: %s", valuestr)
             for attr in args[0]:
