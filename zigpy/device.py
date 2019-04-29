@@ -59,8 +59,7 @@ class Device(zigpy.util.LocalLogMixin):
                     epr = await self.zdo.request(0x0005, self.nwk, tries=3)
                     if epr[0] != 0:
                         raise Exception(
-                            "[0x%04x] Endpoint request failed: %s", self.nwk, epr
-                        )
+                            "[0x%04x] Endpoint request failed: %s", self.nwk, epr)
                 except Exception as exc:
                     self.initializing = False
                     LOGGER.exception(
@@ -70,12 +69,12 @@ class Device(zigpy.util.LocalLogMixin):
                     return
 
                 self.info("[0x%04x] Discovered endpoints: %s", self.nwk, epr[2])
-
+                
                 for endpoint_id in epr[2]:
                     self.add_endpoint(endpoint_id)
 
                 self.status = Status.ZDO_INIT
-
+            self.debug("[0x%04x] Endpoints: %s", self.nwk,self.endpoints.keys() )
             for endpoint_id in self.endpoints.keys():
                 if endpoint_id == 0:  # ZDO
                     continue
@@ -92,11 +91,17 @@ class Device(zigpy.util.LocalLogMixin):
         self.endpoints[endpoint_id] = ep
         return ep
 
+    @property
+    def is_sleepy(self):
+        try:
+            return not (self.type & 8)
+        except Exception:
+            return True
+
     async def request(self, profile, cluster, src_ep, dst_ep, sequence, data,
-                      expect_reply=True,  timeout=15):
-        if (self.type is not None):
-            if self.type & 8:
-                timeout = 2
+                      expect_reply=True, timeout=15):
+        if not self.is_sleepy:
+            timeout = 2
         result = await self._application.request(
             self.nwk,
             profile,
@@ -118,7 +123,8 @@ class Device(zigpy.util.LocalLogMixin):
         return self.endpoints[endpoint_id].deserialize(cluster_id, data)
 
     def handle_message(self, is_reply, profile, cluster, src_ep, dst_ep, tsn,
-                       command_id, args):
+                       command_id, args,  **kwargs):
+        message_type = kwargs.get('message_type')
         self.last_seen = dt.datetime.now()
         try:
             endpoint = self.endpoints[src_ep]
@@ -128,9 +134,16 @@ class Device(zigpy.util.LocalLogMixin):
                 self.nwk, src_ep,
             )
             return
-
-        return endpoint.handle_message(is_reply, profile, cluster, tsn,
-                                       command_id, args)
+        try:
+            return endpoint.handle_message(is_reply, profile, cluster, tsn,
+                                       command_id, args, 
+                                       message_type=message_type)
+        except Exception:
+            self.debug(
+                "[0x%04x:%s] catched Exceptionc for %s - %s",
+                self.nwk, src_ep,
+                message_type, cluster
+                )
 
     def handle_RouteRecord(self, path):
         self.path = path

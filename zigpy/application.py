@@ -78,8 +78,10 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     def deserialize(self, sender, endpoint_id, cluster_id, data):
         return sender.deserialize(endpoint_id, cluster_id, data)
 
-    def handle_message(self, sender, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
-        return sender.handle_message(is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args)
+    def handle_message(self, sender, is_reply, profile, cluster, src_ep, dst_ep,
+            tsn, command_id, args, **kwargs):
+        return sender.handle_message(is_reply, profile, cluster, src_ep, dst_ep,
+            tsn, command_id, args,  **kwargs)
 
     def handle_RouteRecord(self, sender, record):
         record.insert(0, sender)

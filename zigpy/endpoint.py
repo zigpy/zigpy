@@ -35,10 +35,13 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._listeners = dict()
 
     async def initialize(self):
+        self.info('[0x%04x:%s] Start discovering endpoint information',
+                  self._device.nwk, self._endpoint_id)
         if self.status == Status.ZDO_INIT:
             return
 
-        self.info("Discovering endpoint information")
+        self.info('[0x%04x:%s] Discovering endpoint information',
+                  self._device.nwk, self._endpoint_id)
         try:
             sdr = await self._device.zdo.request(
                 0x0004,
@@ -48,14 +51,14 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 delay=0.1,
             )
             if sdr[0] != 0:
-                raise Exception("Failed to retrieve service descriptor: %s", sdr)
+                raise Exception('Failed to retrieve service descriptor: %s', sdr)
         except Exception as exc:
-            self.warn("Failed ZDO request during device initialization: %s", exc)
+            self.info('Failed endpoint discovery during device initialization: %s', exc)
             return
 
-        self.info("Discovered endpoint information: %s", sdr[2])
+        
         sd = sdr[2]
-        self. _id = sd.profile
+        self.profile_id = sd.profile
         self.device_type = sd.device_type
         try:
             if self.profile_id == 260:
@@ -63,16 +66,23 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             elif self.profile_id == 49246:
                 self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
             else:
-                self.warn("unhandled profle: %s",  self.profile_id)
+                self.warn('unhandled profle: %s',  self.profile_id)
         except ValueError:
-            pass
-
+            self.info('unknown device type')
+        except AttributeError:
+            self.info('undefined device type')
+            self.device_type = "UNKNOWN"
+        self.info('[0x%04x:%s] Discovered endpoint information: %s',
+                  self._device.nwk, self._endpoint_id, sdr[2]
+                  )
         for cluster in sd.input_clusters:
             self.add_input_cluster(cluster)
         for cluster in sd.output_clusters:
             self.add_output_cluster(cluster)
 
         self.status = Status.ZDO_INIT
+        self.debug('[0x%04x:%s] Added endpoint information: %s',
+                   self._device.nwk, self._endpoint_id, sdr[2])
 
     def add_input_cluster(self, cluster_id, cluster=None):
         """Adds an endpoint's input cluster.
@@ -116,14 +126,14 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         frame_control, data = data[0], data[1:]
         frame_type = frame_control & 0b0011
         direction = (frame_control & 0b1000) >> 3
-        is_reply = bool(direction)
+        is_reply = bool(direction) # reply =server2client
         if frame_control & 0b0100:
             # Manufacturer specific value present
             data = data[2:]
         tsn, command_id, data = data[0], data[1], data[2:]
 
         if cluster_id not in self.in_clusters and cluster_id not in self.out_clusters:
-            LOGGER.debug("Ignoring unknown cluster ID 0x%04x",
+            LOGGER.debug('Ignoring unknown cluster ID 0x%04x',
                          cluster_id)
             return tsn, command_id + 256, is_reply, data
 
@@ -131,19 +141,27 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         cluster = self.in_clusters.get(cluster_id, None) if is_reply else self.out_clusters.get(cluster_id, None)
         return cluster.deserialize(tsn, frame_type, is_reply, command_id, data)
 
-    def handle_message(self, is_reply, profile, cluster, tsn, command_id, args):
+    def handle_message(self, is_reply, profile, cluster, tsn, command_id,
+        args, **kwargs):
         handler = None
-        if cluster in self.in_clusters:
+        # is_reply is direction bit, set -> server2client else client2server
+        if cluster in self.in_clusters and is_reply:
             handler = self.in_clusters[cluster].handle_message
-        elif cluster in self.out_clusters:
+        elif cluster in self.out_clusters and not is_reply:
             handler = self.out_clusters[cluster].handle_message
+        elif command_id == 10 and cluster in self.in_clusters:
+            handler = self.in_clusters[cluster].handle_message
         else:
-            self.warn("Message on unknown cluster 0x%04x", cluster)
-            self.listener_event("unknown_cluster_message", is_reply,
+            self.info('[0x%04x:%s] Message on unknown %s cluster 0x%04x: %s-%s-%s',
+            self._device.nwk, self._endpoint_id, 
+            "Server2Client" if is_reply else "Client2Server", 
+            cluster, command_id,  args, kwargs
+            )
+            self.listener_event('unknown_cluster_message', is_reply,
                                 command_id, args)
             return
 
-        handler(is_reply, tsn, command_id, args)
+        handler(is_reply, tsn, command_id, args, **kwargs)
 
     def request(self, cluster, sequence, data, expect_reply=True,  command_id=None):
         if (self.profile_id == zigpy.profiles.zll.PROFILE_ID and

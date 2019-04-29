@@ -52,7 +52,7 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         loop = asyncio.get_event_loop()
         loop.create_task(self._device.reply(0, command, 0, 0, sequence, data))
 
-    def handle_message(self, is_reply, profile, cluster, tsn, command_id, args):
+    def handle_message(self, is_reply, profile, cluster, tsn, command_id, args,  **kwargs):
         if is_reply:
             self.debug("Unexpected ZDO reply 0x%04x: %s", command_id, args)
             return

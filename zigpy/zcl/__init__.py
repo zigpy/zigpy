@@ -141,7 +141,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
         return self._endpoint.reply(self.cluster_id, sequence, data)
 
-    def handle_message(self, is_reply, tsn, command_id, args):
+    def handle_message(self, is_reply, tsn, command_id, args, **kwargs):
 #        if is_reply:
 #            self.debug("Unexpected ZCL reply 0x%04x: %s", command_id, args)
 #            return
@@ -151,7 +151,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             # Unencapsulate bad hack
             command_id -= 256
             self.listener_event('cluster_command', tsn, command_id, args)
-            self.handle_cluster_request(tsn, command_id, args)
+            self.handle_cluster_request(tsn, command_id, args, **kwargs)
             return
         # zcl global commands
         if command_id == 0x0a:  # Report attributes
@@ -162,13 +162,20 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             for attr in args[0]:
                 self._update_attribute(attr.attrid, attr.value.value)
         else:
-            self.handle_cluster_general_request(tsn, command_id, args)
+            self.handle_cluster_general_request(tsn, command_id, args,  **kwargs)
 
-    def handle_cluster_request(self, tsn, command_id, args):
+    def handle_cluster_request(self, tsn, command_id, args, **kwargs):
+        self.debug("Received handler for cluster command %s(%s):%s", 
+            command_id,
+            kwargs,
+            args)
         pass
 
-    def handle_cluster_general_request(self, tsn, command_id, args):
-        self.debug("No handler for general command %s", command_id)
+    def handle_cluster_general_request(self, tsn, command_id, args, **kwargs):
+        self.debug("No handler for general command %s(%s):%s", 
+            command_id,
+            kwargs,
+            args)
 
     async def read_attributes_raw(self, attributes, manufacturer=None):
         schema = foundation.COMMANDS[0x00][1]
