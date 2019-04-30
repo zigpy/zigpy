@@ -8,15 +8,15 @@ class ApplianceIdentification(Cluster):
     ep_attribute = 'appliance_id'
     attributes = {
         0x0000: ('basic_identification', t.uint56_t),
-        0x0010: ('company_name', t.LVBytes),
+        0x0010: ('company_name', t.CharacterString),
         0x0011: ('company_id', t.uint16_t),
-        0x0012: ('brand_name', t.LVBytes),
+        0x0012: ('brand_name', t.CharacterString),
         0x0013: ('brand_id', t.uint16_t),
-        0x0014: ('model', t.LVBytes),
-        0x0015: ('part_number', t.LVBytes),
-        0x0016: ('product_revision', t.LVBytes),
-        0x0017: ('software_revision', t.LVBytes),
-        0x0018: ('product_type_name', t.LVBytes),
+        0x0014: ('model', t.CharacterString),
+        0x0015: ('part_number', t.CharacterString),
+        0x0016: ('product_revision', t.CharacterString),
+        0x0017: ('software_revision', t.CharacterString),
+        0x0018: ('product_type_name', t.CharacterString),
         0x0019: ('product_type_id', t.uint16_t),
         0x001a: ('ceced_specification_version', t.uint8_t),
     }
@@ -29,16 +29,16 @@ class MeterIdentification(Cluster):
     name = 'Meter Identification'
     ep_attribute = 'meter_id'
     attributes = {
-        0x0000: ('company_name', t.LVBytes),
+        0x0000: ('company_name', t.LimitedCharString(16)),
         0x0001: ('meter_type_id', t.uint16_t),
         0x0004: ('data_quality_id', t.uint16_t),
-        0x0005: ('customer_name', t.LVBytes),
-        0x0006: ('model', t.LVBytes),
-        0x0007: ('part_number', t.LVBytes),
-        0x0008: ('product_revision', t.LVBytes),
-        0x000a: ('software_revision', t.LVBytes),
-        0x000b: ('utility_name', t.LVBytes),
-        0x000c: ('pod', t.LVBytes),
+        0x0005: ('customer_name', t.LimitedCharString(16)),
+        0x0006: ('model', t.LimitedCharString(16)),
+        0x0007: ('part_number', t.LimitedCharString(16)),
+        0x0008: ('product_revision', t.LimitedCharString(6)),
+        0x000a: ('software_revision', t.LimitedCharString(6)),
+        0x000b: ('utility_name', t.LimitedCharString(16)),
+        0x000c: ('pod', t.LimitedCharString(16)),
         0x000d: ('available_power', t.int24s),
         0x000e: ('power_threshold', t.int24s),
     }

@@ -43,12 +43,12 @@ class AnalogInputRegular(Cluster):
     ep_attribute = 'bacnet_regular_analog_input'
     attributes = {
         0x0016: ('cov_increment', t.Single),
-        0x001f: ('device_type', t.LVBytes),
+        0x001f: ('device_type', t.CharacterString),
         0x004b: ('object_id', t.fixed_list(4, t.uint8_t)),
-        0x004d: ('object_name', t.LVBytes),
+        0x004d: ('object_name', t.CharacterString),
         0x004f: ('object_type', t.enum16),
         0x0076: ('update_interval', t.uint8_t),
-        0x00a8: ('profile_name', t.LVBytes),
+        0x00a8: ('profile_name', t.CharacterString),
     }
     server_commands = {}
     client_commands = {}
@@ -84,12 +84,12 @@ class AnalogOutputRegular(Cluster):
     ep_attribute = 'bacnet_regular_analog_output'
     attributes = {
         0x0016: ('cov_increment', t.Single),
-        0x001f: ('device_type', t.LVBytes),
+        0x001f: ('device_type', t.CharacterString),
         0x004b: ('object_id', t.fixed_list(4, t.uint8_t)),
-        0x004d: ('object_name', t.LVBytes),
+        0x004d: ('object_name', t.CharacterString),
         0x004f: ('object_type', t.enum16),
         0x0076: ('update_interval', t.uint8_t),
-        0x00a8: ('profile_name', t.LVBytes),
+        0x00a8: ('profile_name', t.CharacterString),
     }
     server_commands = {}
     client_commands = {}
@@ -121,9 +121,9 @@ class AnalogValueRegular(Cluster):
     attributes = {
         0x0016: ('cov_increment', t.Single),
         0x004b: ('object_id', t.fixed_list(4, t.uint8_t)),
-        0x004d: ('object_name', t.LVBytes),
+        0x004d: ('object_name', t.CharacterString),
         0x004f: ('object_type', t.enum16),
-        0x00a8: ('profile_name', t.LVBytes),
+        0x00a8: ('profile_name', t.CharacterString),
     }
     server_commands = {}
     client_commands = {}
@@ -155,14 +155,14 @@ class BinaryInputRegular(Cluster):
     attributes = {
         0x000f: ('change_of_state_count', t.uint32_t),
         0x0010: ('change_of_state_time', DateTime),
-        0x001f: ('device_type', t.LVBytes),
+        0x001f: ('device_type', t.CharacterString),
         0x0021: ('elapsed_active_time', t.uint32_t),
         0x004b: ('object_id', t.fixed_list(4, t.uint8_t)),
-        0x004d: ('object_name', t.LVBytes),
+        0x004d: ('object_name', t.CharacterString),
         0x004f: ('object_type', t.enum16),
         0x0072: ('time_of_at_reset', DateTime),
         0x0073: ('time_of_sc_reset', DateTime),
-        0x00a8: ('profile_name', t.LVBytes),
+        0x00a8: ('profile_name', t.CharacterString),
     }
     server_commands = {}
     client_commands = {}
@@ -191,15 +191,15 @@ class BinaryOutputRegular(Cluster):
     attributes = {
         0x000f: ('change_of_state_count', t.uint32_t),
         0x0010: ('change_of_state_time', DateTime),
-        0x001f: ('device_type', t.LVBytes),
+        0x001f: ('device_type', t.CharacterString),
         0x0021: ('elapsed_active_time', t.uint32_t),
         0x0028: ('feed_back_value', t.enum8),
         0x004b: ('object_id', t.fixed_list(4, t.uint8_t)),
-        0x004d: ('object_name', t.LVBytes),
+        0x004d: ('object_name', t.CharacterString),
         0x004f: ('object_type', t.enum16),
         0x0072: ('time_of_at_reset', DateTime),
         0x0073: ('time_of_sc_reset', DateTime),
-        0x00a8: ('profile_name', t.LVBytes),
+        0x00a8: ('profile_name', t.CharacterString),
     }
     server_commands = {}
     client_commands = {}
@@ -229,11 +229,11 @@ class BinaryValueRegular(Cluster):
         0x0010: ('change_of_state_time', DateTime),
         0x0021: ('elapsed_active_time', t.uint32_t),
         0x004b: ('object_id', t.fixed_list(4, t.uint8_t)),
-        0x004d: ('object_name', t.LVBytes),
+        0x004d: ('object_name', t.CharacterString),
         0x004f: ('object_type', t.enum16),
         0x0072: ('time_of_at_reset', DateTime),
         0x0073: ('time_of_sc_reset', DateTime),
-        0x00a8: ('profile_name', t.LVBytes),
+        0x00a8: ('profile_name', t.CharacterString),
     }
     server_commands = {}
     client_commands = {}
@@ -260,11 +260,11 @@ class MultistateInputRegular(Cluster):
     cluster_id = 0x060e
     ep_attribute = 'bacnet_regular_multistate_input'
     attributes = {
-        0x001f: ('device_type', t.LVBytes),
+        0x001f: ('device_type', t.CharacterString),
         0x004b: ('object_id', t.fixed_list(4, t.uint8_t)),
-        0x004d: ('object_name', t.LVBytes),
+        0x004d: ('object_name', t.CharacterString),
         0x004f: ('object_type', t.enum16),
-        0x00a8: ('profile_name', t.LVBytes),
+        0x00a8: ('profile_name', t.CharacterString),
     }
     server_commands = {}
     client_commands = {}
@@ -292,12 +292,12 @@ class MultistateOutputRegular(Cluster):
     cluster_id = 0x0610
     ep_attribute = 'bacnet_regular_multistate_output'
     attributes = {
-        0x001f: ('device_type', t.LVBytes),
+        0x001f: ('device_type', t.CharacterString),
         0x0028: ('feed_back_value', t.enum8),
         0x004b: ('object_id', t.fixed_list(4, t.uint8_t)),
-        0x004d: ('object_name', t.LVBytes),
+        0x004d: ('object_name', t.CharacterString),
         0x004f: ('object_type', t.enum16),
-        0x00a8: ('profile_name', t.LVBytes),
+        0x00a8: ('profile_name', t.CharacterString),
     }
     server_commands = {}
     client_commands = {}
@@ -324,9 +324,9 @@ class MultistateValueRegular(Cluster):
     ep_attribute = 'bacnet_regular_multistate_value'
     attributes = {
         0x004b: ('object_id', t.fixed_list(4, t.uint8_t)),
-        0x004d: ('object_name', t.LVBytes),
+        0x004d: ('object_name', t.CharacterString),
         0x004f: ('object_type', t.enum16),
-        0x00a8: ('profile_name', t.LVBytes),
+        0x00a8: ('profile_name', t.CharacterString),
     }
     server_commands = {}
     client_commands = {}

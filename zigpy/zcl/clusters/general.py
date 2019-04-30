@@ -20,18 +20,18 @@ class Basic(Cluster):
         0x0001: ('app_version', t.uint8_t),
         0x0002: ('stack_version', t.uint8_t),
         0x0003: ('hw_version', t.uint8_t),
-        0x0004: ('manufacturer', t.LVBytes),
-        0x0005: ('model', t.LVBytes),
-        0x0006: ('date_code', t.LVBytes),
+        0x0004: ('manufacturer', t.CharacterString),
+        0x0005: ('model', t.CharacterString),
+        0x0006: ('date_code', t.CharacterString),
         0x0007: ('power_source', t.enum8),
         0x0008: ('app_profile_version', t.enum8),
         # Basic Device Settings
-        0x0010: ('location_desc', t.LVBytes),
+        0x0010: ('location_desc', t.LimitedCharString(16)),
         0x0011: ('physical_env', t.enum8),
         0x0012: ('device_enabled', t.Bool),
         0x0013: ('alarm_mask', t.bitmap8),
         0x0014: ('disable_local_config', t.bitmap8),
-        0x4000: ('sw_build_id', t.LVBytes),
+        0x4000: ('sw_build_id', t.CharacterString),
     }
     server_commands = {
         0x0000: ('reset_fact_default', (), False),
@@ -59,7 +59,7 @@ class PowerConfiguration(Cluster):
         0x0020: ('battery_voltage', t.uint8_t),
         0x0021: ('battery_percentage_remaining', t.uint8_t),
         # Battery Settings
-        0x0030: ('battery_volt', t.LVBytes),
+        0x0030: ('battery_manufacturer', t.CharacterString),
         0x0031: ('battery_size', t.enum8),
         0x0032: ('battery_a_hr_rating', t.uint16_t),
         0x0033: ('battery_quantity', t.uint8_t),
@@ -78,7 +78,7 @@ class PowerConfiguration(Cluster):
         0x0040: ('battery_2_voltage', t.uint8_t),
         0x0041: ('battery_2_percentage_remaining', t.uint8_t),
         # Battery 2 Settings
-        0x0050: ('battery_2_volt', t.LVBytes),
+        0x0050: ('battery_2_manufacturer', t.CharacterString),
         0x0051: ('battery_2_size', t.enum8),
         0x0052: ('battery_2_a_hr_rating', t.uint16_t),
         0x0053: ('battery_2_quantity', t.uint8_t),
@@ -97,7 +97,7 @@ class PowerConfiguration(Cluster):
         0x0060: ('battery_3_voltage', t.uint8_t),
         0x0061: ('battery_3_percentage_remaining', t.uint8_t),
         # Battery 3 Settings
-        0x0070: ('battery_3_volt', t.LVBytes),
+        0x0070: ('battery_3_manufacturer', t.CharacterString),
         0x0071: ('battery_3_size', t.enum8),
         0x0072: ('battery_3_a_hr_rating', t.uint16_t),
         0x0073: ('battery_3_quantity', t.uint8_t),
@@ -171,16 +171,16 @@ class Groups(Cluster):
         0x0000: ('name_support', t.bitmap8),
     }
     server_commands = {
-        0x0000: ('add', (t.uint16_t, t.LVBytes), False),
+        0x0000: ('add', (t.uint16_t, t.CharacterString), False),
         0x0001: ('view', (t.uint16_t, ), False),
         0x0002: ('get_membership', (t.LVList(t.uint16_t), ), False),
         0x0003: ('remove', (t.uint16_t, ), False),
         0x0004: ('remove_all', (), False),
-        0x0005: ('add_if_identifying', (t.uint16_t, t.LVBytes), False),
+        0x0005: ('add_if_identifying', (t.uint16_t, t.CharacterString), False),
     }
     client_commands = {
         0x0000: ('add_response', (t.uint8_t, t.uint16_t), True),
-        0x0001: ('view_response', (t.uint8_t, t.uint16_t, t.LVBytes), True),
+        0x0001: ('view_response', (t.uint8_t, t.uint16_t, t.CharacterString), True),
         0x0002: ('get_membership_response', (t.uint8_t, t.LVList(t.uint16_t)), True),
         0x0003: ('remove_response', (t.uint8_t, t.uint16_t), True),
     }
@@ -201,7 +201,7 @@ class Scenes(Cluster):
         0x0005: ('last_configured_by', t.EUI64),
     }
     server_commands = {
-        0x0000: ('add', (t.uint16_t, t.uint8_t, t.uint16_t, t.LVBytes, ), False),  # + extension field sets
+        0x0000: ('add', (t.uint16_t, t.uint8_t, t.uint16_t, t.CharacterString, ), False),  # + extension field sets
         0x0001: ('view', (t.uint16_t, t.uint8_t), False),
         0x0002: ('remove', (t.uint16_t, t.uint8_t), False),
         0x0003: ('remove_all', (t.uint16_t, ), False),
@@ -410,7 +410,7 @@ class AnalogInput(Cluster):
     cluster_id = 0x000c
     ep_attribute = 'analog_input'
     attributes = {
-        0x001c: ('description', t.LVBytes),
+        0x001c: ('description', t.CharacterString),
         0x0041: ('max_present_value', t.Single),
         0x0045: ('min_present_value', t.Single),
         0x0051: ('out_of_service', t.Bool),
@@ -429,7 +429,7 @@ class AnalogOutput(Cluster):
     cluster_id = 0x000d
     ep_attribute = 'analog_output'
     attributes = {
-        0x001c: ('description', t.LVBytes),
+        0x001c: ('description', t.CharacterString),
         0x0041: ('max_present_value', t.Single),
         0x0045: ('min_present_value', t.Single),
         0x0051: ('out_of_service', t.Bool),
@@ -450,7 +450,7 @@ class AnalogValue(Cluster):
     cluster_id = 0x000e
     ep_attribute = 'analog_value'
     attributes = {
-        0x001c: ('description', t.LVBytes),
+        0x001c: ('description', t.CharacterString),
         0x0051: ('out_of_service', t.Bool),
         0x0055: ('present_value', t.Single),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
@@ -469,9 +469,9 @@ class BinaryInput(Cluster):
     name = 'Binary Input (Basic)'
     ep_attribute = 'binary_input'
     attributes = {
-        0x0004: ('active_text', t.LVBytes),
-        0x001c: ('description', t.LVBytes),
-        0x002e: ('inactive_text', t.LVBytes),
+        0x0004: ('active_text', t.CharacterString),
+        0x001c: ('description', t.CharacterString),
+        0x002e: ('inactive_text', t.CharacterString),
         0x0051: ('out_of_service', t.Bool),
         0x0054: ('polarity', t.enum8),
         0x0055: ('present_value', t.Bool),
@@ -487,9 +487,9 @@ class BinaryOutput(Cluster):
     cluster_id = 0x0010
     ep_attribute = 'binary_output'
     attributes = {
-        0x0004: ('active_text', t.LVBytes),
-        0x001c: ('description', t.LVBytes),
-        0x002e: ('inactive_text', t.LVBytes),
+        0x0004: ('active_text', t.CharacterString),
+        0x001c: ('description', t.CharacterString),
+        0x002e: ('inactive_text', t.CharacterString),
         0x0042: ('minimum_off_time', t.uint32_t),
         0x0043: ('minimum_on_time', t.uint32_t),
         0x0051: ('out_of_service', t.Bool),
@@ -509,9 +509,9 @@ class BinaryValue(Cluster):
     cluster_id = 0x0011
     ep_attribute = 'binary_value'
     attributes = {
-        0x0004: ('active_text', t.LVBytes),
-        0x001c: ('description', t.LVBytes),
-        0x002e: ('inactive_text', t.LVBytes),
+        0x0004: ('active_text', t.CharacterString),
+        0x001c: ('description', t.CharacterString),
+        0x002e: ('inactive_text', t.CharacterString),
         0x0042: ('minimum_off_time', t.uint32_t),
         0x0043: ('minimum_on_time', t.uint32_t),
         0x0051: ('out_of_service', t.Bool),
@@ -530,8 +530,8 @@ class MultistateInput(Cluster):
     cluster_id = 0x0012
     ep_attribute = 'multistate_input'
     attributes = {
-        0x000e: ('state_text', t.List(t.LVBytes)),
-        0x001c: ('description', t.LVBytes),
+        0x000e: ('state_text', t.List(t.CharacterString)),
+        0x001c: ('description', t.CharacterString),
         0x004a: ('number_of_states', t.uint16_t),
         0x0051: ('out_of_service', t.Bool),
         0x0055: ('present_value', t.Single),
@@ -548,8 +548,8 @@ class MultistateOutput(Cluster):
     cluster_id = 0x0013
     ep_attribute = 'multistate_output'
     attributes = {
-        0x000e: ('state_text', t.List(t.LVBytes)),
-        0x001c: ('description', t.LVBytes),
+        0x000e: ('state_text', t.List(t.CharacterString)),
+        0x001c: ('description', t.CharacterString),
         0x004a: ('number_of_states', t.uint16_t),
         0x0051: ('out_of_service', t.Bool),
         0x0055: ('present_value', t.Single),
@@ -567,8 +567,8 @@ class MultistateValue(Cluster):
     cluster_id = 0x0014
     ep_attribute = 'multistate_value'
     attributes = {
-        0x000e: ('state_text', t.List(t.LVBytes)),
-        0x001c: ('description', t.LVBytes),
+        0x000e: ('state_text', t.List(t.CharacterString)),
+        0x001c: ('description', t.CharacterString),
         0x004a: ('number_of_states', t.uint16_t),
         0x0051: ('out_of_service', t.Bool),
         0x0055: ('present_value', t.Single),
