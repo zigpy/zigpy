@@ -33,6 +33,17 @@ class SizePrefixedSimpleDescriptor(SimpleDescriptor):
         return SimpleDescriptor.deserialize(data[1:])
 
 
+class LogicalType(t.uint8_t, enum.Enum):
+    Coordinator = 0b000
+    Router = 0b001
+    EndDevice = 0b010
+    Reserved3 = 0b011
+    Reserved4 = 0b100
+    Reserved5 = 0b101
+    Reserved6 = 0b110
+    Reserved7 = 0b111
+
+
 class NodeDescriptor(t.Struct):
     _fields = [
         ('byte1', t.uint8_t),
@@ -45,6 +56,103 @@ class NodeDescriptor(t.Struct):
         ('maximum_outgoing_transfer_size', t.uint16_t),
         ('descriptor_capability_field', t.uint8_t),
     ]
+
+    def __init__(self, *args, **kwargs):
+        if len(args) == 1 and isinstance(args[0], self.__class__):
+            # copy constructor
+            for field in self._fields:
+                setattr(self, field[0], getattr(args[0], field[0]))
+            self._valid = True
+        elif len(args) == len(self._fields):
+            for field, val in zip(self._fields, args):
+                setattr(self, field[0], field[1](val))
+        else:
+            for field in self._fields:
+                setattr(self, field[0], None)
+
+    @property
+    def is_valid(self):
+        """Return True if all fields were initialized."""
+        non_empty_fields = [
+            getattr(self, field[0]) is not None for field in self._fields
+        ]
+        return all(non_empty_fields)
+
+    @property
+    def logical_type(self):
+        """Return logical type of the device"""
+        if self.byte1 is None:
+            return None
+        return LogicalType(self.byte1 & 0x07)
+
+    @property
+    def is_coordinator(self):
+        """Return True whether this is a coordinator."""
+        if self.logical_type is None:
+            return None
+        return self.logical_type == LogicalType.Coordinator
+
+    @property
+    def is_end_device(self):
+        """Return True whether this is an end device."""
+        if self.logical_type is None:
+            return None
+        return self.logical_type == LogicalType.EndDevice
+
+    @property
+    def is_router(self):
+        """Return True whether this is a router."""
+        if self.logical_type is None:
+            return None
+        return self.logical_type == LogicalType.Router
+
+    @property
+    def complex_descriptor_available(self):
+        if self.byte1 is None:
+            return None
+        return bool(self.byte1 & 0b00001000)
+
+    @property
+    def user_descriptor_available(self):
+        if self.byte1 is None:
+            return None
+        return bool(self.byte1 & 0b00010000)
+
+    @property
+    def is_alternate_pan_coordinator(self):
+        if self.mac_capability_flags is None:
+            return None
+        return bool(self.mac_capability_flags & 0b00000001)
+
+    @property
+    def is_full_function_device(self):
+        if self.mac_capability_flags is None:
+            return None
+        return bool(self.mac_capability_flags & 0b00000010)
+
+    @property
+    def is_mains_powered(self):
+        if self.mac_capability_flags is None:
+            return None
+        return bool(self.mac_capability_flags & 0b00000100)
+
+    @property
+    def is_receiver_on_when_idle(self):
+        if self.mac_capability_flags is None:
+            return None
+        return bool(self.mac_capability_flags & 0b00001000)
+
+    @property
+    def is_security_capable(self):
+        if self.mac_capability_flags is None:
+            return None
+        return bool(self.mac_capability_flags & 0b01000000)
+
+    @property
+    def allocate_address(self):
+        if self.mac_capability_flags is None:
+            return None
+        return bool(self.mac_capability_flags & 0b10000000)
 
 
 class MultiAddress:

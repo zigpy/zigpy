@@ -72,6 +72,7 @@ class CustomDevice(zigpy.device.Device, metaclass=Registry):
     def __init__(self, application, ieee, nwk, replaces):
         super().__init__(application, ieee, nwk)
         self.status = zigpy.device.Status.ENDPOINTS_INIT
+        self.node_desc = replaces.node_desc
         for endpoint_id, endpoint in self.replacement.get('endpoints', {}).items():
             self.add_endpoint(endpoint_id, replace_device=replaces)
 

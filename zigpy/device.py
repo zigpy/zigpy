@@ -37,6 +37,8 @@ class Device(zigpy.util.LocalLogMixin):
         self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
+        self.node_desc = zdo.types.NodeDescriptor()
+        self._node_handle = None
 
     def schedule_initialize(self):
         if self.initializing:
@@ -46,8 +48,29 @@ class Device(zigpy.util.LocalLogMixin):
             self.initializing = True
         self._init_handle = asyncio.ensure_future(self._initialize())
 
+    async def get_node_descriptor(self):
+        self.info("Requesting 'Node Descriptor'")
+        try:
+            status, _, node_desc = await self.zdo.request(
+                0x0002, self.nwk, tries=2, delay=1)
+            if status == zdo.types.Status.SUCCESS:
+                self.node_desc = node_desc
+                self.info("Node Descriptor: %s", node_desc)
+                return node_desc
+            else:
+                self.warn("Requesting Node Descriptor failed: %s", status)
+        except Exception as exc:
+            self.warn("Requesting Node Descriptor failed: %s", exc)
+
+    async def refresh_node_descriptor(self):
+        if await self.get_node_descriptor():
+            self._application.listener_event('node_descriptor_updated', self)
+
     async def _initialize(self):
         if self.status == Status.NEW:
+            self._node_handle = asyncio.ensure_future(
+                self.get_node_descriptor())
+            await self._node_handle
             self.info("Discovering endpoints")
             try:
                 epr = await self.zdo.request(0x0005, self.nwk, tries=3, delay=2)
@@ -115,6 +138,10 @@ class Device(zigpy.util.LocalLogMixin):
 
     def handle_message(self, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
         self.last_seen = time.time()
+        if not self.node_desc.is_valid and \
+                (self._node_handle is None or self._node_handle.done()):
+            self._node_handle = asyncio.ensure_future(
+                self.refresh_node_descriptor())
         try:
             endpoint = self.endpoints[src_ep]
         except KeyError:

@@ -7,7 +7,8 @@ import zigpy.types as t
 from zigpy.application import ControllerApplication
 from zigpy import profiles
 from zigpy.quirks import CustomDevice
-from zigpy.device import Status
+from zigpy.device import Device, Status
+from zigpy.zdo import types as zdo_t
 
 
 def make_app(database_file):
@@ -31,7 +32,8 @@ async def _initialize(self):
 
 def fake_get_device(device):
     if device.endpoints.get(1) is not None and device[1].profile_id == 65535:
-        return FakeCustomDevice(device.application, make_ieee(1), 199, {})
+        return FakeCustomDevice(device.application, make_ieee(1), 199,
+                                Device(device.application, make_ieee(1), 199))
     return device
 
 
@@ -45,6 +47,7 @@ async def test_database(tmpdir):
     app.handle_join(99, ieee, 0)
 
     dev = app.get_device(ieee)
+    dev.node_desc, _ = zdo_t.NodeDescriptor.deserialize(b'1234567890')
     ep = dev.add_endpoint(1)
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
@@ -168,3 +171,37 @@ def test_appdb_load_null_padded_manuf_model(tmpdir):
 
     assert dev.endpoints[3].manufacturer == 'Mock Manufacturer'
     assert dev.endpoints[3].model == 'Mock Model'
+
+
+@pytest.mark.asyncio
+async def test_node_descriptor_updated(tmpdir):
+    db = os.path.join(str(tmpdir), 'test_nd.db')
+    app = make_app(db)
+    nd_ieee = make_ieee(2)
+    app.handle_join(299, nd_ieee, 0)
+
+    dev = app.get_device(nd_ieee)
+    ep = dev.add_endpoint(1)
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    app.device_initialized(dev)
+
+    node_desc = zdo_t.NodeDescriptor.deserialize(b'abcdefghijklm')[0]
+
+    async def mock_get_node_descriptor():
+        dev.node_desc = node_desc
+        return node_desc
+    dev.get_node_descriptor = mock.MagicMock()
+    dev.get_node_descriptor.side_effect = mock_get_node_descriptor
+    await dev.refresh_node_descriptor()
+
+    assert dev.get_node_descriptor.call_count == 1
+
+    app2 = make_app(db)
+    dev = app2.get_device(nd_ieee)
+    assert dev.node_desc.is_valid
+    assert dev.node_desc.serialize() == b'abcdefghijklm'
+
+    os.unlink(db)
