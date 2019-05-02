@@ -1,10 +1,11 @@
 """Setup module for zigpy"""
 
 from setuptools import find_packages, setup
+import zigpy
 
 setup(
     name="zigpy-homeassistant",
-    version="0.3.2",
+    version=zigpy.__version__,
     description="Library implementing a ZigBee stack",
     url="http://github.com/zigpy/zigpy",
     author="Russell Cloran",
