@@ -1,7 +1,6 @@
 import enum
 import logging
 
-import zigpy.appdb
 import zigpy.profiles
 import zigpy.util
 import zigpy.zcl
@@ -89,7 +88,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._cluster_attr[cluster.ep_attribute] = cluster
 
         if hasattr(self._device.application, '_dblistener'):
-            listener = zigpy.appdb.ClusterPersistingListener(
+            listener = zigpy.zcl.ClusterPersistingListener(
                 self._device.application._dblistener,
                 cluster,
             )

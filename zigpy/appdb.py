@@ -272,18 +272,3 @@ class PersistingListener:
             dev = self._application.get_device(ieee)
             ep = dev.endpoints[endpoint_id]
             ep.add_output_cluster(cluster)
-
-
-class ClusterPersistingListener:
-    def __init__(self, applistener, cluster):
-        self._applistener = applistener
-        self._cluster = cluster
-
-    def attribute_updated(self, attrid, value):
-        self._applistener.attribute_updated(self._cluster, attrid, value)
-
-    def cluster_command(self, *args, **kwargs):
-        pass
-
-    def zdo_command(self, *args, **kwargs):
-        pass
