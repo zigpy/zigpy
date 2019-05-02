@@ -61,6 +61,11 @@ class TypeValue:
         self.value, data = python_type.deserialize(data)
         return self, data
 
+    def __repr__(self):
+        return "<%s type=%s, value=%s>" % (self.__class__.__name__,
+                                           self.value.__class__.__name__,
+                                           self.value)
+
 
 class TypedCollection(TypeValue):
     @classmethod
