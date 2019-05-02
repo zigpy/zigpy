@@ -180,19 +180,19 @@ def test_kof_no_reply():
     cluster = TestCluster(ep)
 
     cluster.command(0x0001)
-    ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=True)
+    ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=True, command_id=mock.ANY)
     ep.reset_mock()
 
     cluster.command(0x0001, expect_reply=False)
-    ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=False)
+    ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=False, command_id=mock.ANY)
     ep.reset_mock()
 
     cluster.command(0x0002)
-    ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=False)
+    ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=False, command_id=mock.ANY)
     ep.reset_mock()
 
     cluster.command(0x0002, expect_reply=True)
-    ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=True)
+    ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=True, command_id=mock.ANY)
     ep.reset_mock()
 
 
