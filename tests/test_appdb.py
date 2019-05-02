@@ -38,7 +38,8 @@ def fake_get_device(device):
 
 
 @pytest.mark.asyncio
-async def test_database(tmpdir):
+async def test_database(tmpdir, monkeypatch):
+    monkeypatch.setattr(Device, '_initialize', _initialize)
     db = os.path.join(str(tmpdir), 'test.db')
     app = make_app(db)
     # TODO: Leaks a task on dev.initialize, I think?
@@ -73,7 +74,6 @@ async def test_database(tmpdir):
     app.device_initialized(dev)
     ep = dev.add_endpoint(1)
     ep.profile_id = 65535
-    dev._initialize = _initialize
     with mock.patch('zigpy.quirks.get_device', fake_get_device):
         app.device_initialized(dev)
     assert isinstance(app.get_device(custom_ieee), FakeCustomDevice)
@@ -174,7 +174,8 @@ def test_appdb_load_null_padded_manuf_model(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_node_descriptor_updated(tmpdir):
+async def test_node_descriptor_updated(tmpdir, monkeypatch):
+    monkeypatch.setattr(Device, '_initialize', _initialize)
     db = os.path.join(str(tmpdir), 'test_nd.db')
     app = make_app(db)
     nd_ieee = make_ieee(2)
