@@ -354,5 +354,20 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     discover_commands_generated = functools.partialmethod(_discover, 0x13)
 
 
+class ClusterPersistingListener:
+    def __init__(self, applistener, cluster):
+        self._applistener = applistener
+        self._cluster = cluster
+
+    def attribute_updated(self, attrid, value):
+        self._applistener.attribute_updated(self._cluster, attrid, value)
+
+    def cluster_command(self, *args, **kwargs):
+        pass
+
+    def zdo_command(self, *args, **kwargs):
+        pass
+
+
 # Import to populate the registry
 from . import clusters  # noqa: F401, F402
