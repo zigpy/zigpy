@@ -38,8 +38,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.info("Discovering endpoint information")
         try:
-            sdr = await self._device.zdo.request(
-                0x0004,
+            sdr = await self._device.zdo.Simple_Desc_req(
                 self._device.nwk,
                 self._endpoint_id,
                 tries=3,
