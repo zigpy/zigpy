@@ -173,6 +173,15 @@ def test_appdb_load_null_padded_manuf_model(tmpdir):
     assert dev.endpoints[3].model == 'Mock Model'
 
 
+def test_appdb_str_model(tmpdir):
+    manufacturer = 'Mock Manufacturer'
+    model = 'Mock Model'
+    dev = _test_null_padded(tmpdir, manufacturer, model)
+
+    assert dev.endpoints[3].manufacturer == 'Mock Manufacturer'
+    assert dev.endpoints[3].model == 'Mock Model'
+
+
 @pytest.mark.asyncio
 async def test_node_descriptor_updated(tmpdir, monkeypatch):
     monkeypatch.setattr(Device, '_initialize', _initialize)

@@ -140,16 +140,23 @@ class Double(float):
 
 
 class LVBytes(bytes):
+    _prefix_length = 1
+
     def serialize(self):
-        return bytes([
-            len(self),
-        ]) + self
+        if len(self) >= pow(256, self._prefix_length) - 1:
+            raise ValueError("OctetString is too long")
+        return len(self).to_bytes(self._prefix_length,
+                                  'little', signed=False) + self
 
     @classmethod
     def deserialize(cls, data):
-        bytes = int.from_bytes(data[:1], 'little')
-        s = data[1:bytes + 1]
-        return s, data[bytes + 1:]
+        bytes = int.from_bytes(data[:cls._prefix_length], 'little')
+        s = data[cls._prefix_length:bytes + 1]
+        return cls(s), data[bytes + 1:]
+
+
+class LongOctetString(LVBytes):
+    _prefix_length = 2
 
 
 class _List(list):
@@ -216,3 +223,35 @@ def fixed_list(length, itemtype):
         _itemtype = itemtype
 
     return FixedList
+
+
+class CharacterString(str):
+    _prefix_length = 1
+
+    def serialize(self):
+        if len(self) >= pow(256, self._prefix_length) - 1:
+            raise ValueError("String is too long")
+        return len(self).to_bytes(self._prefix_length,
+                                  'little', signed=False) + self.encode('utf8')
+
+    @classmethod
+    def deserialize(cls, data):
+        length = int.from_bytes(data[:cls._prefix_length], 'little')
+        bytes = data[cls._prefix_length:length + 1]
+        bytes = bytes.split(b'\x00')[0]
+        return cls(bytes.decode('utf8', errors='replace')), data[length + 1:]
+
+
+class LongCharacterString(CharacterString):
+    _prefix_length = 2
+
+
+def LimitedCharString(max_len):  # noqa: N802
+    class LimitedCharString(CharacterString):
+        _max_len = max_len
+
+        def serialize(self):
+            if len(self) > self._max_len:
+                raise ValueError("String is too long")
+            return super().serialize()
+    return LimitedCharString
