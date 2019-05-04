@@ -12,20 +12,33 @@ class Listenable(util.ListenableMixin):
 
 def test_listenable():
     listen = Listenable()
-    listener = mock.MagicMock(spec_set=['event'])
-    listen.add_listener(listener)
-    listen.add_listener(listener)
 
+    # Python 3.7 guarantees dict ordering so this will be called first to test error handling
     broken_listener = mock.MagicMock()
     broken_listener.event.side_effect = Exception()
     listen.add_listener(broken_listener)
 
-    listen.listener_event('event')
+    listener = mock.MagicMock(spec_set=['event'])
+    listen.add_listener(listener)
+    listen.add_listener(listener)
+
+    context_listener = mock.MagicMock(spec_set=['event'])
+    listen.add_listener(context_listener, context=True)
+
+    listen.listener_event('event', 'test1')
+    listener.event.assert_has_calls([mock.call('test1'), mock.call('test1')], any_order=True)
+    context_listener.event.assert_has_calls([mock.call('test1', listen)], any_order=True)
+    broken_listener.event.assert_has_calls([mock.call('test1')], any_order=True)
     assert listener.event.call_count == 2
+    assert context_listener.event.call_count == 1
     assert broken_listener.event.call_count == 1
 
-    listen.listener_event('non_existing_event')
+    listen.listener_event('non_existing_event', 'test2')
+    listener.event.assert_has_calls([mock.call('test1'), mock.call('test1')], any_order=True)
+    context_listener.event.assert_has_calls([mock.call('test1', listen)], any_order=True)
+    broken_listener.event.assert_has_calls([mock.call('test1')], any_order=True)
     assert listener.event.call_count == 2
+    assert context_listener.event.call_count == 1
     assert broken_listener.event.call_count == 1
 
 
