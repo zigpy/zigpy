@@ -11,23 +11,29 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ListenableMixin:
-    def add_listener(self, listener, context=False):
+    def _add_listener(self, listener, include_context):
         id_ = id(listener)
         while id_ in self._listeners:
             id_ += 1
-        self._listeners[id_] = (listener, context)
+        self._listeners[id_] = (listener, include_context)
         return id_
 
+    def add_listener(self, listener):
+        return self._add_listener(listener, include_context=False)
+
+    def add_context_listener(self, listener):
+        return self._add_listener(listener, include_context=True)
+
     def listener_event(self, method_name, *args):
-        for listener, context in self._listeners.values():
+        for listener, include_context in self._listeners.values():
             method = getattr(listener, method_name, None)
 
             if not method:
                 continue
 
             try:
-                if context:
-                    method(*args, self)
+                if include_context:
+                    method(self, *args)
                 else:
                     method(*args)
             except Exception as e:
