@@ -680,6 +680,63 @@ class Ota(Cluster):
         0x0009: ('query_specific_file_response', (foundation.Status, t.uint16_t, t.uint16_t, t.uint32_t, t.uint32_t), True),
     }
 
+    def handle_cluster_request(self, tsn, command_id, args):
+        asyncio.ensure_future(
+            self._handle_cluster_request(tsn, command_id, args))
+
+    async def _handle_cluster_request(self, tsn, command_id, args):
+        """Parse OTA commands."""
+        cmd_name = self.server_commands.get(command_id, [command_id])[0]
+
+        if cmd_name == 'query_next_image':
+            await self._handle_query_next_image(*args)
+        elif cmd_name == 'image_block':
+            await self._handle_image_block(*args)
+        elif cmd_name == 'upgrade_end':
+            await self._handle_upgrade_end(*args)
+        else:
+            self.debug("OTA not implemented command for '%s %s': %s",
+                       self.endpoint.manufacturer, self.endpoint.model, args)
+
+    async def _handle_query_next_image(self, field_ctrl, manufacturer_code,
+                                       image_type, current_file_version,
+                                       hardware_version):
+        self.debug(("OTA query next image handler for '%s %s': "
+                    "field_control=%s, manufacture_code=%s, image_type=%s, "
+                    "current_file_version=%s, hardware_version=%s"),
+                   self.endpoint.manufacturer, self.endpoint.model,
+                   field_ctrl, manufacturer_code, image_type,
+                   current_file_version, hardware_version)
+        key = (manufacturer_code, image_type)
+        frmw = self.endpoint.device.application.ota.get_firmware(key)
+        if frmw:
+            self.debug("found firmware vesion: %s, size: %s",
+                       frmw.file_version, frmw.file_size)
+        self.debug("No firmware found")
+        await self.query_next_image_response(
+            foundation.Status.NO_IMAGE_AVAILABLE,
+            0x0000, 0x0000, 0x00000000, 0x00000000)
+
+    async def _handle_image_block(self, field_ctr, manufacturer_code,
+                                  image_type, file_version, file_offset,
+                                  max_data_size, request_node_addr,
+                                  block_request_delay):
+        self.debug(("OTA image_block handler for '%s %s': field_control=%s, "
+                    "manufacturer_code=%s, image_type=%s, file_version=%s, "
+                    "file_offset=%s, max_data_size=%s, request_node_addr=%s"
+                    "block_request_delay=%s"),
+                   self.endpoint.manufacturer, self.endpoint.model,
+                   field_ctr, manufacturer_code, image_type, file_version,
+                   file_offset, max_data_size, request_node_addr,
+                   block_request_delay)
+
+    async def _handle_upgrade_end(self, status, manufacturer_code, image_type,
+                                  file_ver):
+        self.debug(("OTA upgrade_end handler for '%s %s': status=%s, "
+                    "manufacturer_code, image_type, file_version"),
+                   self.endpoint.manufacturer, self.endpoint.model,
+                   status, manufacturer_code, image_type, file_ver)
+
 
 class PowerProfile(Cluster):
     cluster_id = 0x001a
