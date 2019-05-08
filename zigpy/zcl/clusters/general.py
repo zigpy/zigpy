@@ -650,6 +650,7 @@ class Partition(Cluster):
 
 
 class Ota(Cluster):
+    MAXIMUM_DATA_SIZE = 40
     cluster_id = 0x0019
     ep_attribute = 'ota'
     attributes = {
@@ -698,26 +699,40 @@ class Ota(Cluster):
             self.debug("OTA not implemented command for '%s %s': %s",
                        self.endpoint.manufacturer, self.endpoint.model, args)
 
-    async def _handle_query_next_image(self, field_ctrl, manufacturer_code,
+    async def _handle_query_next_image(self, field_ctrl, manufacturer_id,
                                        image_type, current_file_version,
                                        hardware_version):
-        self.debug(("OTA query next image handler for '%s %s': "
+        self.debug(("OTA query_next_image handler for '%s %s': "
                     "field_control=%s, manufacture_code=%s, image_type=%s, "
                     "current_file_version=%s, hardware_version=%s"),
                    self.endpoint.manufacturer, self.endpoint.model,
-                   field_ctrl, manufacturer_code, image_type,
+                   field_ctrl, manufacturer_id, image_type,
                    current_file_version, hardware_version)
-        key = (manufacturer_code, image_type)
-        frmw = self.endpoint.device.application.ota.get_firmware(key)
+
+        frmw = self.endpoint.device.application.ota.get_firmware(
+            manufacturer_id, image_type)
+
         if frmw:
-            self.debug("found firmware vesion: %s, size: %s",
-                       frmw.file_version, frmw.file_size)
-        self.debug("No firmware found")
+            update_needed = frmw.upgradeable(
+                manufacturer_id, image_type, current_file_version,
+                hardware_version)
+            self.debug("Firmware version: %s, size: %s. Update needed: %s",
+                       frmw.version, frmw.size, update_needed)
+            if frmw.upgradeable(manufacturer_id, image_type,
+                                current_file_version, hardware_version):
+                self.info("Updating: %s %s",
+                          self.endpoint.manufacturer, self.endpoint.model)
+                await self.query_next_image_response(
+                    foundation.Status.SUCCESS, frmw.key.manufacturer_id,
+                    frmw.key.image_type, frmw.version, frmw.size)
+                return
+        else:
+            self.debug("No firmware available")
         await self.query_next_image_response(
             foundation.Status.NO_IMAGE_AVAILABLE,
             0x0000, 0x0000, 0x00000000, 0x00000000)
 
-    async def _handle_image_block(self, field_ctr, manufacturer_code,
+    async def _handle_image_block(self, field_ctr, manufacturer_id,
                                   image_type, file_version, file_offset,
                                   max_data_size, request_node_addr,
                                   block_request_delay):
@@ -726,16 +741,37 @@ class Ota(Cluster):
                     "file_offset=%s, max_data_size=%s, request_node_addr=%s"
                     "block_request_delay=%s"),
                    self.endpoint.manufacturer, self.endpoint.model,
-                   field_ctr, manufacturer_code, image_type, file_version,
+                   field_ctr, manufacturer_id, image_type, file_version,
                    file_offset, max_data_size, request_node_addr,
                    block_request_delay)
+        frmw = self.endpoint.device.application.ota.get_firmware(
+            manufacturer_id, image_type)
+        if frmw is None or frmw.data is None:
+            self.debug("OTA no firmware data")
+            await self.image_block_response(
+                foundation.Status.ABORT,
+                0x0000, 0x0000, 0x00000000, 0x00000000, b''
+            )
+            return
+        data = frmw.data[file_offset:file_offset + min(self.MAXIMUM_DATA_SIZE,
+                                                       max_data_size)]
+        self.debug("OTA upgrade progress: %0.1f",
+                   100.0 * file_offset / frmw.size)
+        await self.image_block_response(
+            foundation.Status.SUCCESS,
+            frmw.key.manufacturer_id, frmw.key.image_type,
+            frmw.version, file_offset, data
+        )
 
-    async def _handle_upgrade_end(self, status, manufacturer_code, image_type,
+    async def _handle_upgrade_end(self, status, manufacturer_id, image_type,
                                   file_ver):
         self.debug(("OTA upgrade_end handler for '%s %s': status=%s, "
                     "manufacturer_code, image_type, file_version"),
                    self.endpoint.manufacturer, self.endpoint.model,
-                   status, manufacturer_code, image_type, file_ver)
+                   status, manufacturer_id, image_type, file_ver)
+        await self.upgrade_end_response(
+            manufacturer_id, image_type, file_ver, 0x00000000, 0x00000000
+        )
 
 
 class PowerProfile(Cluster):

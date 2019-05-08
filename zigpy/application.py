@@ -45,6 +45,8 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     def add_device(self, ieee, nwk):
         assert isinstance(ieee, t.EUI64)
         # TODO: Shut down existing device
+        if self.ota.not_initialized:
+            self.ota.initialize()
 
         dev = zigpy.device.Device(self, ieee, nwk)
         self.devices[ieee] = dev
