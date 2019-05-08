@@ -25,6 +25,7 @@ class ListenableMixin:
         return self._add_listener(listener, include_context=True)
 
     def listener_event(self, method_name, *args):
+        result = []
         for listener, include_context in self._listeners.values():
             method = getattr(listener, method_name, None)
 
@@ -33,11 +34,12 @@ class ListenableMixin:
 
             try:
                 if include_context:
-                    method(self, *args)
+                    result.append(method(self, *args))
                 else:
-                    method(*args)
+                    result.append(method(*args))
             except Exception as e:
                 LOGGER.warning("Error calling listener.%s: %s", method_name, e)
+        return result
 
 
 class LocalLogMixin:
