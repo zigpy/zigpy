@@ -1,5 +1,7 @@
+import asyncio
 import re
 
+import pytest
 from unittest import mock
 import zigpy.endpoint
 import zigpy.zcl as zcl
@@ -56,8 +58,10 @@ def test_ep_attributes():
         assert not hasattr(ep, cluster.ep_attribute)
 
 
-def test_time_cluster():
+@pytest.mark.asyncio
+async def test_time_cluster():
     ep = mock.MagicMock()
+    ep.reply.side_effect = asyncio.coroutine(mock.MagicMock())
     t = zcl.Cluster._registry[0x000a](ep)
 
     tsn = 0

@@ -1,5 +1,6 @@
 """General Functional Domain"""
 
+import asyncio
 from datetime import datetime
 
 import zigpy.types as t
@@ -348,7 +349,7 @@ class Time(Cluster):
                 elif attr == 2:
                     diff = datetime.fromtimestamp(86400) - datetime.utcfromtimestamp(86400)
                     data[attr] = diff.total_seconds()
-            self.write_attributes(data, True)
+            asyncio.ensure_future(self.write_attributes(data, True))
 
 
 class RSSILocation(Cluster):
