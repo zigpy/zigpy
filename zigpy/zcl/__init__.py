@@ -122,7 +122,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         return self._endpoint.request(self.cluster_id, sequence, data, expect_reply=expect_reply, command_id=command_id)
 
     def reply(self, general, command_id, schema, *args, manufacturer=None):
-        if len(schema) != len(args):
+        if len(schema) != len(args) and foundation.Status not in schema:
             self.debug("Schema and args lengths do not match in reply")
 
         sequence = self._endpoint._device.application.get_sequence()
