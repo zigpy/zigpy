@@ -84,3 +84,7 @@ async def test_time_cluster():
     t.handle_cluster_general_request(tsn, 0, [[0, 1, 2]])
     assert ep.reply.call_count == 4
     assert ep.reply.call_args[0][2][3] == 0
+
+    t.handle_cluster_general_request(tsn, 0, [[7]])
+    assert ep.reply.call_count == 5
+    assert ep.reply.call_args[0][2][3] == 7

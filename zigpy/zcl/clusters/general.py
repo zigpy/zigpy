@@ -340,6 +340,7 @@ class Time(Cluster):
         if command_id == 0:
             data = {}
             for attr in args[0][0]:
+                # ToDo set status properly for unsupported attributes
                 if attr == 0:
                     epoch = datetime(2000, 1, 1, 0, 0, 0, 0)
                     diff = datetime.utcnow() - epoch
@@ -348,6 +349,10 @@ class Time(Cluster):
                     data[attr] = 7
                 elif attr == 2:
                     diff = datetime.fromtimestamp(86400) - datetime.utcfromtimestamp(86400)
+                    data[attr] = diff.total_seconds()
+                elif attr == 7:
+                    epoch = datetime(2000, 1, 1, 0, 0, 0, 0)
+                    diff = datetime.now() - epoch
                     data[attr] = diff.total_seconds()
             asyncio.ensure_future(self.write_attributes(data, True))
 
