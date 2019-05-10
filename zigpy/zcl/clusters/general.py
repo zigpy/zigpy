@@ -339,8 +339,8 @@ class Time(Cluster):
     def handle_cluster_general_request(self, tsn, command_id, *args):
         if command_id == 0:
             data = {}
+            unsupported = []
             for attr in args[0][0]:
-                # ToDo set status properly for unsupported attributes
                 if attr == 0:
                     epoch = datetime(2000, 1, 1, 0, 0, 0, 0)
                     diff = datetime.utcnow() - epoch
@@ -354,7 +354,11 @@ class Time(Cluster):
                     epoch = datetime(2000, 1, 1, 0, 0, 0, 0)
                     diff = datetime.now() - epoch
                     data[attr] = diff.total_seconds()
-            asyncio.ensure_future(self.write_attributes(data, True))
+                else:
+                    unsupported.append(attr)
+            asyncio.ensure_future(
+                self.write_attributes(data, True,
+                                      unsupported_attrs=unsupported))
 
 
 class RSSILocation(Cluster):
