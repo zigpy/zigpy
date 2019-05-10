@@ -123,10 +123,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
     def reply(self, general, command_id, schema, *args, manufacturer=None):
         if len(schema) != len(args):
-            self.error("Schema and args lengths do not match in reply")
-            error = asyncio.Future()
-            error.set_exception(ValueError("Wrong number of parameters for reply, expected %d argument(s)" % len(schema)))
-            return error
+            self.debug("Schema and args lengths do not match in reply")
 
         sequence = self._endpoint._device.application.get_sequence()
         frame_control = 0b1000  # Cluster reply command

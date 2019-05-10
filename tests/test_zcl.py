@@ -326,8 +326,8 @@ def test_invalid_arguments_cluster_command(cluster):
 
 
 def test_invalid_arguments_cluster_client_command(client_cluster):
-    res = client_cluster.client_command(0, 0, 0)
-    assert type(res.exception()) == ValueError
+    client_cluster.client_command(0, 0, 0)
+    assert client_cluster._endpoint.reply.call_count == 1
 
 
 def test_name(cluster):
