@@ -729,8 +729,7 @@ class Ota(Cluster):
         else:
             self.debug("No firmware available")
         await self.query_next_image_response(
-            foundation.Status.NO_IMAGE_AVAILABLE,
-            0x0000, 0x0000, 0x00000000, 0x00000000)
+            foundation.Status.NO_IMAGE_AVAILABLE)
 
     async def _handle_image_block(self, field_ctr, manufacturer_id,
                                   image_type, file_version, file_offset,
@@ -748,10 +747,7 @@ class Ota(Cluster):
             manufacturer_id, image_type)
         if frmw is None or frmw.data is None:
             self.debug("OTA no firmware data")
-            await self.image_block_response(
-                foundation.Status.ABORT,
-                0x0000, 0x0000, 0x00000000, 0x00000000, b''
-            )
+            await self.image_block_response(foundation.Status.ABORT)
             return
         data = frmw.data[file_offset:file_offset + min(self.MAXIMUM_DATA_SIZE,
                                                        max_data_size)]
