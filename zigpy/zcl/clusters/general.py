@@ -703,7 +703,7 @@ class Ota(Cluster):
                                        image_type, current_file_version,
                                        hardware_version):
         self.debug(("OTA query_next_image handler for '%s %s': "
-                    "field_control=%s, manufacture_code=%s, image_type=%s, "
+                    "field_control=%s, manufacture_id=%s, image_type=%s, "
                     "current_file_version=%s, hardware_version=%s"),
                    self.endpoint.manufacturer, self.endpoint.model,
                    field_ctrl, manufacturer_id, image_type,
@@ -736,7 +736,7 @@ class Ota(Cluster):
                                   max_data_size, request_node_addr,
                                   block_request_delay):
         self.debug(("OTA image_block handler for '%s %s': field_control=%s, "
-                    "manufacturer_code=%s, image_type=%s, file_version=%s, "
+                    "manufacturer_id=%s, image_type=%s, file_version=%s, "
                     "file_offset=%s, max_data_size=%s, request_node_addr=%s"
                     "block_request_delay=%s"),
                    self.endpoint.manufacturer, self.endpoint.model,
@@ -762,7 +762,7 @@ class Ota(Cluster):
     async def _handle_upgrade_end(self, status, manufacturer_id, image_type,
                                   file_ver):
         self.debug(("OTA upgrade_end handler for '%s %s': status=%s, "
-                    "manufacturer_code, image_type, file_version"),
+                    "manufacturer_id=%s, image_type=%s, file_version=%s"),
                    self.endpoint.manufacturer, self.endpoint.model,
                    status, manufacturer_id, image_type, file_ver)
         await self.upgrade_end_response(
