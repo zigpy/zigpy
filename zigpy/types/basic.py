@@ -237,9 +237,10 @@ class CharacterString(str):
     @classmethod
     def deserialize(cls, data):
         length = int.from_bytes(data[:cls._prefix_length], 'little')
-        bytes = data[cls._prefix_length:length + 1]
-        bytes = bytes.split(b'\x00')[0]
-        return cls(bytes.decode('utf8', errors='replace')), data[length + 1:]
+        raw = data[cls._prefix_length:length + 1]
+        r = cls(raw.split(b'\x00')[0].decode('utf8', errors='replace'))
+        r.raw = raw
+        return r, data[length + 1:]
 
 
 class LongCharacterString(CharacterString):
