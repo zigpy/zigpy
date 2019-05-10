@@ -228,7 +228,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             return success[attributes[0]]
         return success, failure
 
-    def write_attributes(self, attributes, is_report=False, manufacturer=None):
+    def write_attributes(self, attributes, is_report=False, manufacturer=None,
+                         unsupported_attrs=[]):
         args = []
         for attrid, value in attributes.items():
             if isinstance(attrid, str):
@@ -253,6 +254,13 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 args.append(a)
             except ValueError as e:
                 self.error(str(e))
+
+        if is_report and unsupported_attrs:
+            for attrid in unsupported_attrs:
+                a = foundation.ReadAttributeRecord()
+                a.attrid = attrid
+                a.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+                args.append(a)
 
         if is_report:
             schema = foundation.COMMANDS[0x01][1]

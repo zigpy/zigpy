@@ -253,6 +253,19 @@ def test_write_attributes_wrong_type(cluster):
 def test_write_attributes_report(cluster):
     cluster.write_attributes({0: 5}, is_report=True)
     assert cluster._endpoint.reply.call_count == 1
+    assert cluster._endpoint.request.call_count == 0
+
+
+def test_write_attributes_report_unsupported(cluster):
+    cluster.write_attributes({0: 5}, is_report=True, unsupported_attrs=[])
+    assert cluster._endpoint.reply.call_count == 1
+    assert cluster._endpoint.request.call_count == 0
+    orig_len = len(cluster._endpoint.reply.call_args[0][2])
+
+    cluster.write_attributes({0: 5}, is_report=True, unsupported_attrs=[2])
+    assert cluster._endpoint.reply.call_count == 2
+    assert cluster._endpoint.request.call_count == 0
+    assert len(cluster._endpoint.reply.call_args[0][2]) == orig_len + 3
 
 
 def test_bind(cluster):
