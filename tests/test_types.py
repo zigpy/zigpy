@@ -24,10 +24,19 @@ def test_lvbytes():
     assert t.LVBytes.serialize(d) == b'\x041234'
 
 
+def test_lvbytes_too_short():
+    with pytest.raises(ValueError):
+        t.LVBytes.deserialize(b'\x04123')
+
+
 def test_lvbytes_too_long():
     to_serialize = b''.join(itertools.repeat(b'\xbe', 255))
     with pytest.raises(ValueError):
         t.LVBytes(to_serialize).serialize()
+
+
+def test_long_octet_string():
+    assert t.LongOctetString(b'asdfoo').serialize() == b'\x06\x00asdfoo'
 
 
 def test_long_octet_string_too_long():
@@ -75,10 +84,20 @@ def test_char_string_too_long():
         t.CharacterString(to_serialize).serialize()
 
 
+def test_char_string_too_short():
+    with pytest.raises(ValueError):
+        t.CharacterString.deserialize(b'\x04123')
+
+
 def test_long_char_string_too_long():
     to_serialize = ''.join(itertools.repeat('a', 65535))
     with pytest.raises(ValueError):
         t.LongCharacterString(to_serialize).serialize()
+
+
+def test_long_char_string_too_short():
+    with pytest.raises(ValueError):
+        t.LongCharacterString.deserialize(b'\x04\x00123')
 
 
 def test_limited_char_string():

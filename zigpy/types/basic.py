@@ -9,6 +9,9 @@ class int_t(int):  # noqa: N801
 
     @classmethod
     def deserialize(cls, data):
+        if len(data) < cls._size:
+            raise ValueError('Data is too short to contain %d bytes' % cls._size)
+
         r = cls.from_bytes(data[:cls._size], 'little', signed=cls._signed)
         return r, data[cls._size:]
 
@@ -150,9 +153,17 @@ class LVBytes(bytes):
 
     @classmethod
     def deserialize(cls, data):
-        bytes = int.from_bytes(data[:cls._prefix_length], 'little')
-        s = data[cls._prefix_length:bytes + 1]
-        return cls(s), data[bytes + 1:]
+        if len(data) < cls._prefix_length:
+            raise ValueError('Data is too short')
+
+        num_bytes = int.from_bytes(data[:cls._prefix_length], 'little')
+
+        if len(data) < cls._prefix_length + num_bytes:
+            raise ValueError('Data is too short')
+
+        s = data[cls._prefix_length:cls._prefix_length + num_bytes]
+
+        return cls(s), data[cls._prefix_length + num_bytes:]
 
 
 class LongOctetString(LVBytes):
@@ -186,6 +197,10 @@ class _LVList(_List):
     @classmethod
     def deserialize(cls, data):
         r = cls()
+
+        if len(data) < cls._prefix_length:
+            raise ValueError('Data is too short')
+
         length = int.from_bytes(data[:cls._prefix_length], 'little')
         data = data[cls._prefix_length:]
         for i in range(length):
@@ -236,11 +251,20 @@ class CharacterString(str):
 
     @classmethod
     def deserialize(cls, data):
+        if len(data) < cls._prefix_length:
+            raise ValueError('Data is too short')
+
         length = int.from_bytes(data[:cls._prefix_length], 'little')
-        raw = data[cls._prefix_length:length + 1]
-        r = cls(raw.split(b'\x00')[0].decode('utf8', errors='replace'))
+
+        if len(data) < cls._prefix_length + length:
+            raise ValueError('Data is too short')
+
+        raw = data[cls._prefix_length:cls._prefix_length + length]
+        raw = bytes.split(b'\x00')[0]
+
+        r = cls(raw.decode('utf8', errors='replace'))
         r.raw = raw
-        return r, data[length + 1:]
+        return r, data[cls._prefix_length + length:]
 
 
 class LongCharacterString(CharacterString):
