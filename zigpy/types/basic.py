@@ -260,7 +260,7 @@ class CharacterString(str):
             raise ValueError('Data is too short')
 
         raw = data[cls._prefix_length:cls._prefix_length + length]
-        raw = bytes.split(b'\x00')[0]
+        raw = raw.split(b'\x00')[0]
 
         r = cls(raw.decode('utf8', errors='replace'))
         r.raw = raw
