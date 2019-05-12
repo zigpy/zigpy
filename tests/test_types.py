@@ -4,6 +4,14 @@ import pytest
 import zigpy.types as t
 
 
+def test_int_too_short():
+    with pytest.raises(ValueError):
+        t.uint8_t.deserialize(b'')
+
+    with pytest.raises(ValueError):
+        t.uint16_t.deserialize(b'\x00')
+
+
 def test_single():
     v = t.Single(1.25)
     ser = v.serialize()
@@ -25,6 +33,9 @@ def test_lvbytes():
 
 
 def test_lvbytes_too_short():
+    with pytest.raises(ValueError):
+        t.LVBytes.deserialize(b'')
+
     with pytest.raises(ValueError):
         t.LVBytes.deserialize(b'\x04123')
 
@@ -86,6 +97,9 @@ def test_char_string_too_long():
 
 def test_char_string_too_short():
     with pytest.raises(ValueError):
+        t.CharacterString.deserialize(b'')
+
+    with pytest.raises(ValueError):
         t.CharacterString.deserialize(b'\x04123')
 
 
@@ -111,6 +125,14 @@ def test_lvlist():
     assert r == b'5'
     assert d == list(map(ord, '1234'))
     assert t.LVList(t.uint8_t).serialize(d) == b'\x041234'
+
+
+def test_lvlist_too_short():
+    with pytest.raises(ValueError):
+        t.LVList(t.uint8_t).deserialize(b'')
+
+    with pytest.raises(ValueError):
+        t.LVList(t.uint8_t).deserialize(b'\x04123')
 
 
 def test_list():
