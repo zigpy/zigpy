@@ -130,9 +130,9 @@ def test_group_add_member_no_evt(group, device):
     listener = mock.MagicMock()
     group.add_listener(listener)
 
-    assert device.ieee not in group.members
+    assert device.ieee not in group
     group.add_member(device, suppress_event=True)
-    assert device.ieee in group.members
+    assert device.ieee in group
     assert FIXTURE_GRP_ID in device.member_of
     assert listener.member_added.call_count == 0
     assert listener.member_removed.call_count == 0
@@ -149,10 +149,10 @@ def test_group_remove_member(group, device):
 
     group.add_member(device, suppress_event=True)
 
-    assert device.ieee in group.members
+    assert device.ieee in group
     assert FIXTURE_GRP_ID in device.member_of
     group.remove_member(device)
-    assert device.ieee not in group.members
+    assert device.ieee not in group
     assert FIXTURE_GRP_ID not in device.member_of
     assert listener.member_added.call_count == 0
     assert listener.member_removed.call_count == 1

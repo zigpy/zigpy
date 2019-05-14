@@ -223,7 +223,7 @@ async def test_node_descriptor_updated(tmpdir, monkeypatch):
 async def test_groups(tmpdir, monkeypatch):
     monkeypatch.setattr(Device, '_initialize', _initialize)
 
-    group_id, group_name = 0x1221, "Test Group 0x1221"
+    group_id, group_name = 0x1221, "app db Test Group 0x1221"
 
     async def mock_request(*args, **kwargs):
         return [ZCLStatus.SUCCESS, group_id]
@@ -252,6 +252,11 @@ async def test_groups(tmpdir, monkeypatch):
 
     await dev.add_to_group(group_id, group_name)
     await dev_b.add_to_group(group_id, group_name)
+    assert group_id in app.groups
+    group = app.groups[group_id]
+    assert group.name == group_name
+    assert dev.ieee in group
+    assert group_id in dev.member_of
 
     # Everything should've been saved - check that it re-loads
     app2 = make_app(db)
@@ -259,11 +264,11 @@ async def test_groups(tmpdir, monkeypatch):
     assert group_id in app2.groups
     group = app2.groups[group_id]
     assert group.name == group_name
-    assert dev2.ieee in group.members
+    assert dev2.ieee in group
     assert group_id in dev2.member_of
 
     dev2_b = app2.get_device(ieee_b)
-    assert dev2_b.ieee in group.members
+    assert dev2_b.ieee in group
     assert group_id in dev2_b.member_of
 
     # check member removal
@@ -273,11 +278,11 @@ async def test_groups(tmpdir, monkeypatch):
     assert group_id in app3.groups
     group = app3.groups[group_id]
     assert group.name == group_name
-    assert dev3.ieee in group.members
+    assert dev3.ieee in group
     assert group_id in dev3.member_of
 
     dev3_b = app3.get_device(ieee_b)
-    assert dev3_b.ieee not in group.members
+    assert dev3_b.ieee not in group
     assert group_id not in dev3_b.member_of
 
     # check group removal
