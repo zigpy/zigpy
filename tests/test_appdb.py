@@ -8,6 +8,8 @@ from zigpy.application import ControllerApplication
 from zigpy import profiles
 from zigpy.quirks import CustomDevice
 from zigpy.device import Device, Status
+import zigpy.zcl
+from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
 
@@ -220,19 +222,67 @@ async def test_node_descriptor_updated(tmpdir, monkeypatch):
 @pytest.mark.asyncio
 async def test_groups(tmpdir, monkeypatch):
     monkeypatch.setattr(Device, '_initialize', _initialize)
+
+    group_id, group_name = 0x1221, "Test Group 0x1221"
+
+    async def mock_request(*args, **kwargs):
+        return [ZCLStatus.SUCCESS, group_id]
+    monkeypatch.setattr(zigpy.zcl.Cluster, 'request', mock_request)
+
     db = os.path.join(str(tmpdir), 'test.db')
     app = make_app(db)
     ieee = make_ieee()
     app.handle_join(99, ieee, 0)
 
     dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(4)
     app.device_initialized(dev)
 
-    group_id = 0x1221
-    cluster = mock.MagicMock()
-    app.groups._grp_add_rsp(cluster, 0, group_id)
+    ieee_b = make_ieee(2)
+    app.handle_join(100, ieee_b, 0)
+    dev_b = app.get_device(ieee_b)
+    ep = dev_b.add_endpoint(2)
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(4)
+    app.device_initialized(dev_b)
+
+    await dev.add_to_group(group_id, group_name)
+    await dev_b.add_to_group(group_id, group_name)
 
     # Everything should've been saved - check that it re-loads
     app2 = make_app(db)
-    dev = app2.get_device(ieee)
+    dev2 = app2.get_device(ieee)
     assert group_id in app2.groups
+    group = app2.groups[group_id]
+    assert group.name == group_name
+    assert dev2.ieee in group.members
+    assert group_id in dev2.member_of
+
+    dev2_b = app2.get_device(ieee_b)
+    assert dev2_b.ieee in group.members
+    assert group_id in dev2_b.member_of
+
+    # check member removal
+    await dev_b.remove_from_group(group_id)
+    app3 = make_app(db)
+    dev3 = app3.get_device(ieee)
+    assert group_id in app3.groups
+    group = app3.groups[group_id]
+    assert group.name == group_name
+    assert dev3.ieee in group.members
+    assert group_id in dev3.member_of
+
+    dev3_b = app3.get_device(ieee_b)
+    assert dev3_b.ieee not in group.members
+    assert group_id not in dev3_b.member_of
+
+    # check group removal
+    await dev3.remove_from_group(group_id)
+    app4 = make_app(db)
+    dev4 = app4.get_device(ieee)
+    assert group_id not in app4.groups
+    assert group_id not in dev4.member_of

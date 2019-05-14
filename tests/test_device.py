@@ -5,7 +5,8 @@ import pytest
 
 import zigpy.types as t
 from zigpy.application import ControllerApplication
-from zigpy import device, endpoint
+from zigpy import device, endpoint, group
+from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
 
@@ -182,3 +183,119 @@ async def test_get_node_descriptor_fail(dev):
 
     assert nd is None
     assert dev.zdo.Node_Desc_req.call_count == 1
+
+
+def _group_add_mock(dev, success=True,
+                    no_groups_cluster=False):
+    async def mock_req(*args, **kwargs):
+        if success:
+            return [ZCLStatus.SUCCESS, mock.sentinel.group_id]
+        return [ZCLStatus.DUPLICATE_EXISTS, mock.sentinel.group_id]
+
+    ep = dev.add_endpoint(3)
+    if not no_groups_cluster:
+        cluster = ep.add_input_cluster(4)
+        cluster.request = mock.MagicMock(side_effect=mock_req)
+
+    dev.application.groups = mock.MagicMock(spec_set=group.Groups)
+    return dev
+
+
+@pytest.mark.asyncio
+async def test_add_to_group(dev):
+    grp_id, grp_name = 0x1234, 'test group 0x1234'
+    dev = _group_add_mock(dev)
+    res = await dev.add_to_group(grp_id, grp_name)
+    assert res == ZCLStatus.SUCCESS
+    assert dev.endpoints[3].groups.request.call_count == 1
+    groups = dev.application.groups
+    assert groups.add_group.call_count == 1
+    assert groups.remove_group.call_count == 0
+    assert groups.add_group.call_args[0][0] == grp_id
+    assert groups.add_group.call_args[0][1] == grp_name
+
+
+@pytest.mark.asyncio
+async def test_add_to_group_no_groups(dev):
+    grp_id, grp_name = 0x1234, 'test group 0x1234'
+    dev = _group_add_mock(dev, no_groups_cluster=True)
+    res = await dev.add_to_group(grp_id, grp_name)
+    assert res is None
+    groups = dev.application.groups
+    assert groups.add_group.call_count == 0
+    assert groups.remove_group.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_add_to_group_fail(dev):
+    grp_id, grp_name = 0x1234, 'test group 0x1234'
+    dev = _group_add_mock(dev, success=False)
+    res = await dev.add_to_group(grp_id, grp_name)
+    assert res != ZCLStatus.SUCCESS
+    assert dev.endpoints[3].groups.request.call_count == 1
+    groups = dev.application.groups
+    assert groups.add_group.call_count == 0
+    assert groups.remove_group.call_count == 0
+
+
+def _group_remove_mock(dev, success=True,
+                       no_groups_cluster=False, not_member=False):
+    async def mock_req(*args, **kwargs):
+        if success:
+            return [ZCLStatus.SUCCESS, mock.sentinel.group_id]
+        return [ZCLStatus.FAILURE, mock.sentinel.group_id]
+
+    ep = dev.add_endpoint(3)
+    if not no_groups_cluster:
+        cluster = ep.add_input_cluster(4)
+        cluster.request = mock.MagicMock(side_effect=mock_req)
+
+    grp = mock.MagicMock(spec_set=group.Group)
+    dev.application.groups = mock.MagicMock(spec_set=group.Groups)
+    dev.application.groups.__contains__.return_value = not not_member
+    dev.application.groups.__getitem__.return_value = grp
+
+    return dev, grp
+
+
+@pytest.mark.asyncio
+async def test_remove_from_group(dev):
+    grp_id = 0x1234
+    dev, grp_mock = _group_remove_mock(dev)
+    res = await dev.remove_from_group(grp_id)
+    assert res == ZCLStatus.SUCCESS
+    assert dev.endpoints[3].groups.request.call_count == 1
+    groups = dev.application.groups
+    assert groups.add_group.call_count == 0
+    assert groups.remove_group.call_count == 0
+    assert groups.__getitem__.call_args[0][0] == grp_id
+    assert grp_mock.add_member.call_count == 0
+    assert grp_mock.remove_member.call_count == 1
+    assert grp_mock.remove_member.call_args[0][0] == dev
+
+
+@pytest.mark.asyncio
+async def test_remove_from_group_no_groups(dev):
+    grp_id = 0x1234
+    dev, grp_mock = _group_remove_mock(dev, no_groups_cluster=True)
+    res = await dev.remove_from_group(grp_id)
+    assert res is None
+    groups = dev.application.groups
+    assert groups.add_group.call_count == 0
+    assert groups.remove_group.call_count == 0
+    assert grp_mock.add_member.call_count == 0
+    assert grp_mock.remove_member.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_test_remove_group_fail(dev):
+    grp_id = 0x1234
+    dev, grp_mock = _group_remove_mock(dev, success=False)
+    res = await dev.remove_from_group(grp_id)
+    assert res != ZCLStatus.SUCCESS
+    assert dev.endpoints[3].groups.request.call_count == 1
+    groups = dev.application.groups
+    assert groups.add_group.call_count == 0
+    assert groups.remove_group.call_count == 0
+    assert grp_mock.add_member.call_count == 0
+    assert grp_mock.remove_member.call_count == 0
