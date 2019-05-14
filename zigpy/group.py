@@ -15,7 +15,7 @@ class Group(ListenableMixin):
         self._listeners = {}
         self._members = {}
         self._name = name
-        if groups:
+        if groups is not None:
             self.add_listener(groups)
 
     def add_member(self, device: Device, suppress_event=False):
@@ -62,22 +62,21 @@ class Group(ListenableMixin):
         return self._name
 
 
-class Groups(ListenableMixin):
-    def __init__(self, app):
+class Groups(ListenableMixin, dict):
+    def __init__(self, app, *args, **kwargs):
         self._application = app
         self._listeners = {}
-        self._groups = {}
-        self._pending = {}
+        super().__init__(*args, **kwargs)
 
     def add_group(self,
                   group_id: int,
                   name: str = None,
                   suppress_event: bool = False) -> Optional[Group]:
-        if group_id in self.groups:
-            return self.groups[group_id]
+        if group_id in self:
+            return self[group_id]
         LOGGER.debug("Adding group: %s, %s", group_id, name)
         group = Group(group_id, name, self)
-        self.groups[group_id] = group
+        self[group_id] = group
         if not suppress_event:
             self.listener_event('group_added', group)
         return group
@@ -92,21 +91,11 @@ class Groups(ListenableMixin):
 
     def pop(self, item, *args) -> Optional[Group]:
         if isinstance(item, Group):
-            group = self.groups.pop(item.group_id, *args)
+            group = super().pop(item.group_id, *args)
             self.listener_event('group_removed', group)
             return group
-        group = self.groups.pop(item, *args)
+        group = super().pop(item, *args)
         self.listener_event('group_removed', group)
         return group
 
     remove_group = pop
-
-    def __contains__(self, item):
-        return item in self._groups
-
-    def __getitem__(self, item):
-        return self._groups[item]
-
-    @property
-    def groups(self):
-        return self._groups
