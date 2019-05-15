@@ -4,6 +4,14 @@ import pytest
 import zigpy.types as t
 
 
+def test_int_too_short():
+    with pytest.raises(ValueError):
+        t.uint8_t.deserialize(b'')
+
+    with pytest.raises(ValueError):
+        t.uint16_t.deserialize(b'\x00')
+
+
 def test_single():
     v = t.Single(1.25)
     ser = v.serialize()
@@ -24,10 +32,30 @@ def test_lvbytes():
     assert t.LVBytes.serialize(d) == b'\x041234'
 
 
+def test_lvbytes_too_short():
+    with pytest.raises(ValueError):
+        t.LVBytes.deserialize(b'')
+
+    with pytest.raises(ValueError):
+        t.LVBytes.deserialize(b'\x04123')
+
+
 def test_lvbytes_too_long():
     to_serialize = b''.join(itertools.repeat(b'\xbe', 255))
     with pytest.raises(ValueError):
         t.LVBytes(to_serialize).serialize()
+
+
+def test_long_octet_string():
+    assert t.LongOctetString(b'asdfoo').serialize() == b'\x06\x00asdfoo'
+
+    orig_len = 65532
+    deserialize_extra = b'1234'
+    to_deserialize = orig_len.to_bytes(2, 'little') + b''.join(
+        itertools.repeat(b'b', orig_len)) + deserialize_extra
+    des, rest = t.LongOctetString.deserialize(to_deserialize)
+    assert len(des) == orig_len
+    assert rest == deserialize_extra
 
 
 def test_long_octet_string_too_long():
@@ -75,10 +103,37 @@ def test_char_string_too_long():
         t.CharacterString(to_serialize).serialize()
 
 
+def test_char_string_too_short():
+    with pytest.raises(ValueError):
+        t.CharacterString.deserialize(b'')
+
+    with pytest.raises(ValueError):
+        t.CharacterString.deserialize(b'\x04123')
+
+
+def test_long_char_string():
+    orig_len = 65532
+    to_serialize = ''.join(itertools.repeat('a', orig_len))
+    ser = t.LongCharacterString(to_serialize).serialize()
+    assert len(ser) == orig_len + len(orig_len.to_bytes(2, 'little'))
+
+    deserialize_extra = b'1234'
+    to_deserialize = orig_len.to_bytes(2, 'little') + b''.join(
+        itertools.repeat(b'b', orig_len)) + deserialize_extra
+    des, rest = t.LongCharacterString.deserialize(to_deserialize)
+    assert len(des) == orig_len
+    assert rest == deserialize_extra
+
+
 def test_long_char_string_too_long():
     to_serialize = ''.join(itertools.repeat('a', 65535))
     with pytest.raises(ValueError):
         t.LongCharacterString(to_serialize).serialize()
+
+
+def test_long_char_string_too_short():
+    with pytest.raises(ValueError):
+        t.LongCharacterString.deserialize(b'\x04\x00123')
 
 
 def test_limited_char_string():
@@ -92,6 +147,14 @@ def test_lvlist():
     assert r == b'5'
     assert d == list(map(ord, '1234'))
     assert t.LVList(t.uint8_t).serialize(d) == b'\x041234'
+
+
+def test_lvlist_too_short():
+    with pytest.raises(ValueError):
+        t.LVList(t.uint8_t).deserialize(b'')
+
+    with pytest.raises(ValueError):
+        t.LVList(t.uint8_t).deserialize(b'\x04123')
 
 
 def test_list():
