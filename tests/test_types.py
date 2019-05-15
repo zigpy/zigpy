@@ -49,6 +49,14 @@ def test_lvbytes_too_long():
 def test_long_octet_string():
     assert t.LongOctetString(b'asdfoo').serialize() == b'\x06\x00asdfoo'
 
+    orig_len = 65532
+    deserialize_extra = b'1234'
+    to_deserialize = orig_len.to_bytes(2, 'little') + b''.join(
+        itertools.repeat(b'b', orig_len)) + deserialize_extra
+    des, rest = t.LongOctetString.deserialize(to_deserialize)
+    assert len(des) == orig_len
+    assert rest == deserialize_extra
+
 
 def test_long_octet_string_too_long():
     to_serialize = b''.join(itertools.repeat(b'\xbe', 65535))
@@ -101,6 +109,20 @@ def test_char_string_too_short():
 
     with pytest.raises(ValueError):
         t.CharacterString.deserialize(b'\x04123')
+
+        
+def test_long_char_string():
+    orig_len = 65532
+    to_serialize = ''.join(itertools.repeat('a', orig_len))
+    ser = t.LongCharacterString(to_serialize).serialize()
+    assert len(ser) == orig_len + len(orig_len.to_bytes(2, 'little'))
+
+    deserialize_extra = b'1234'
+    to_deserialize = orig_len.to_bytes(2, 'little') + b''.join(
+        itertools.repeat(b'b', orig_len)) + deserialize_extra
+    des, rest = t.LongCharacterString.deserialize(to_deserialize)
+    assert len(des) == orig_len
+    assert rest == deserialize_extra
 
 
 def test_long_char_string_too_long():
