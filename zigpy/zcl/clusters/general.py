@@ -172,18 +172,18 @@ class Groups(Cluster):
         0x0000: ('name_support', t.bitmap8),
     }
     server_commands = {
-        0x0000: ('add', (t.uint16_t, t.CharacterString), False),
-        0x0001: ('view', (t.uint16_t, ), False),
-        0x0002: ('get_membership', (t.LVList(t.uint16_t), ), False),
-        0x0003: ('remove', (t.uint16_t, ), False),
+        0x0000: ('add', (t.Group, t.CharacterString), False),
+        0x0001: ('view', (t.Group, ), False),
+        0x0002: ('get_membership', (t.LVList(t.Group), ), False),
+        0x0003: ('remove', (t.Group, ), False),
         0x0004: ('remove_all', (), False),
-        0x0005: ('add_if_identifying', (t.uint16_t, t.CharacterString), False),
+        0x0005: ('add_if_identifying', (t.Group, t.CharacterString), False),
     }
     client_commands = {
-        0x0000: ('add_response', (t.uint8_t, t.uint16_t), True),
-        0x0001: ('view_response', (t.uint8_t, t.uint16_t, t.CharacterString), True),
-        0x0002: ('get_membership_response', (t.uint8_t, t.LVList(t.uint16_t)), True),
-        0x0003: ('remove_response', (t.uint8_t, t.uint16_t), True),
+        0x0000: ('add_response', (foundation.Status, t.Group), True),
+        0x0001: ('view_response', (foundation.Status, t.Group, t.CharacterString), True),
+        0x0002: ('get_membership_response', (t.uint8_t, t.LVList(t.Group)), True),
+        0x0003: ('remove_response', (foundation.Status, t.Group), True),
     }
 
 
