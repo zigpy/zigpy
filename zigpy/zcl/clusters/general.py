@@ -1,5 +1,6 @@
 """General Functional Domain"""
 
+import asyncio
 from datetime import datetime
 
 import zigpy.types as t
@@ -338,6 +339,7 @@ class Time(Cluster):
     def handle_cluster_general_request(self, tsn, command_id, *args):
         if command_id == 0:
             data = {}
+            unsupported = []
             for attr in args[0][0]:
                 if attr == 0:
                     epoch = datetime(2000, 1, 1, 0, 0, 0, 0)
@@ -348,7 +350,15 @@ class Time(Cluster):
                 elif attr == 2:
                     diff = datetime.fromtimestamp(86400) - datetime.utcfromtimestamp(86400)
                     data[attr] = diff.total_seconds()
-            self.write_attributes(data, True)
+                elif attr == 7:
+                    epoch = datetime(2000, 1, 1, 0, 0, 0, 0)
+                    diff = datetime.now() - epoch
+                    data[attr] = diff.total_seconds()
+                else:
+                    unsupported.append(attr)
+            asyncio.ensure_future(
+                self.write_attributes(data, True,
+                                      unsupported_attrs=unsupported))
 
 
 class RSSILocation(Cluster):
