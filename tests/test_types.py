@@ -110,7 +110,7 @@ def test_char_string_too_short():
     with pytest.raises(ValueError):
         t.CharacterString.deserialize(b'\x04123')
 
-        
+
 def test_long_char_string():
     orig_len = 65532
     to_serialize = ''.join(itertools.repeat('a', orig_len))
