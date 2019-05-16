@@ -5,8 +5,7 @@ import zigpy.types as t
 
 
 def test_int_too_short():
-    with pytest.raises(ValueError):
-        t.uint8_t.deserialize(b'')
+    assert t.uint8_t.deserialize(b'')[0] is None
 
     with pytest.raises(ValueError):
         t.uint16_t.deserialize(b'\x00')
@@ -33,8 +32,17 @@ def test_lvbytes():
 
 
 def test_lvbytes_too_short():
+    assert t.LVBytes.deserialize(b'')[0] is None
+
     with pytest.raises(ValueError):
-        t.LVBytes.deserialize(b'')
+        assert t.LongOctetString.deserialize(b'\x00')
+
+    with pytest.raises(ValueError):
+        assert t.LongOctetString.deserialize(b'\x01\x00')
+
+    r, rest = t.LongOctetString.deserialize(b'\x00\x00')
+    assert r == b''
+    assert rest == b''
 
     with pytest.raises(ValueError):
         t.LVBytes.deserialize(b'\x04123')
@@ -104,8 +112,11 @@ def test_char_string_too_long():
 
 
 def test_char_string_too_short():
-    with pytest.raises(ValueError):
-        t.CharacterString.deserialize(b'')
+    assert t.CharacterString.deserialize(b'')[0] is None
+
+    r, rest = t.CharacterString.deserialize(b'\x00')
+    assert r == ''
+    assert rest == b''
 
     with pytest.raises(ValueError):
         t.CharacterString.deserialize(b'\x04123')
@@ -132,6 +143,14 @@ def test_long_char_string_too_long():
 
 
 def test_long_char_string_too_short():
+    assert t.LongCharacterString.deserialize(b'\x00\x00')[0] == ''
+
+    with pytest.raises(ValueError):
+        t.LongCharacterString.deserialize(b'\x00')
+
+    with pytest.raises(ValueError):
+        t.LongCharacterString.deserialize(b'\x01\x00')
+
     with pytest.raises(ValueError):
         t.LongCharacterString.deserialize(b'\x04\x00123')
 
@@ -148,13 +167,26 @@ def test_lvlist():
     assert d == list(map(ord, '1234'))
     assert t.LVList(t.uint8_t).serialize(d) == b'\x041234'
 
+    d, r = t.LVList(t.uint8_t).deserialize(b'\x00')
+    assert r == b''
+    assert d == list()
+    assert len(d) == 0
+    assert t.LVList(t.uint8_t).serialize(d) == b'\x00'
+
 
 def test_lvlist_too_short():
-    with pytest.raises(ValueError):
-        t.LVList(t.uint8_t).deserialize(b'')
+    r, rest = t.LVList(t.uint8_t).deserialize(b'')
+    assert r is None
+    assert rest == b''
 
     with pytest.raises(ValueError):
         t.LVList(t.uint8_t).deserialize(b'\x04123')
+
+    with pytest.raises(ValueError):
+        t.LVList(t.uint8_t, prefix_length=2).deserialize(b'\x01')
+
+    with pytest.raises(ValueError):
+        t.LVList(t.uint8_t, prefix_length=2).deserialize(b'\x01\x00')
 
 
 def test_list():
