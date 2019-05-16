@@ -244,19 +244,19 @@ async def test_groups(tmpdir, monkeypatch):
     ieee_b = make_ieee(2)
     app.handle_join(100, ieee_b, 0)
     dev_b = app.get_device(ieee_b)
-    ep = dev_b.add_endpoint(2)
-    ep.profile_id = 260
-    ep.device_type = profiles.zha.DeviceType.PUMP
-    ep.add_input_cluster(4)
+    ep_b = dev_b.add_endpoint(2)
+    ep_b.profile_id = 260
+    ep_b.device_type = profiles.zha.DeviceType.PUMP
+    ep_b.add_input_cluster(4)
     app.device_initialized(dev_b)
 
-    await dev.add_to_group(group_id, group_name)
-    await dev_b.add_to_group(group_id, group_name)
+    await ep.add_to_group(group_id, group_name)
+    await ep_b.add_to_group(group_id, group_name)
     assert group_id in app.groups
     group = app.groups[group_id]
     assert group.name == group_name
-    assert dev.ieee in group
-    assert group_id in dev.member_of
+    assert (dev.ieee, ep.endpoint_id) in group
+    assert group_id in ep.member_of
 
     # Everything should've been saved - check that it re-loads
     app2 = make_app(db)
@@ -264,12 +264,12 @@ async def test_groups(tmpdir, monkeypatch):
     assert group_id in app2.groups
     group = app2.groups[group_id]
     assert group.name == group_name
-    assert dev2.ieee in group
-    assert group_id in dev2.member_of
+    assert (dev2.ieee, 1) in group
+    assert group_id in dev2.endpoints[1].member_of
 
     dev2_b = app2.get_device(ieee_b)
-    assert dev2_b.ieee in group
-    assert group_id in dev2_b.member_of
+    assert (dev2_b.ieee, 2) in group
+    assert group_id in dev2_b.endpoints[2].member_of
 
     # check member removal
     await dev_b.remove_from_group(group_id)
@@ -278,16 +278,16 @@ async def test_groups(tmpdir, monkeypatch):
     assert group_id in app3.groups
     group = app3.groups[group_id]
     assert group.name == group_name
-    assert dev3.ieee in group
-    assert group_id in dev3.member_of
+    assert (dev3.ieee, 1) in group
+    assert group_id in dev3.endpoints[1].member_of
 
     dev3_b = app3.get_device(ieee_b)
-    assert dev3_b.ieee not in group
-    assert group_id not in dev3_b.member_of
+    assert (dev3_b.ieee, 2) not in group
+    assert group_id not in dev3_b.endpoints[2].member_of
 
     # check group removal
     await dev3.remove_from_group(group_id)
     app4 = make_app(db)
     dev4 = app4.get_device(ieee)
     assert group_id not in app4.groups
-    assert group_id not in dev4.member_of
+    assert group_id not in dev4.endpoints[1].member_of

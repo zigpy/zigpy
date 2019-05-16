@@ -6,7 +6,6 @@ import time
 import zigpy.endpoint
 import zigpy.util
 import zigpy.zdo as zdo
-from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.types import BroadcastAddress
 
 
@@ -38,7 +37,6 @@ class Device(zigpy.util.LocalLogMixin):
         self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
-        self._member_of = {}
         self.node_desc = zdo.types.NodeDescriptor()
         self._node_handle = None
 
@@ -121,36 +119,14 @@ class Device(zigpy.util.LocalLogMixin):
         return ep
 
     async def add_to_group(self, grp_id: int, name: str = None):
-        group_cluster = next(
-            (ep.groups for epid, ep in self.endpoints.items() if epid and
-             4 in ep.in_clusters), None)
-        if group_cluster is None:
-            self.debug("Cannot add 0x%04x group, no groups cluster", grp_id)
-            return
-        res = await group_cluster.add(grp_id, name)
-        if res[0] != ZCLStatus.SUCCESS:
-            self.debug("Couldn't add to 0x%04x group: %s", grp_id, res[0])
-            return res[0]
-
-        group = self.application.groups.add_group(grp_id, name)
-        group.add_member(self)
-        return res[0]
+        for ep_id, ep in self.endpoints.items():
+            if ep_id:
+                await ep.add_to_group(grp_id, name)
 
     async def remove_from_group(self, grp_id: int):
-        group_cluster = next(
-            (ep.groups for epid, ep in self.endpoints.items() if epid and
-             4 in ep.in_clusters), None)
-        if group_cluster is None:
-            self.debug("Cannot remove 0x%04x group, no groups cluster", grp_id)
-            return
-        res = await group_cluster.remove(grp_id)
-        if res[0] != ZCLStatus.SUCCESS:
-            self.debug("Couldn't add to 0x%04x group: %s", grp_id, res[0])
-            return res[0]
-
-        if grp_id in self.application.groups:
-            self.application.groups[grp_id].remove_member(self)
-        return res[0]
+        for ep_id, ep in self.endpoints.items():
+            if ep_id:
+                await ep.remove_from_group(grp_id)
 
     async def request(self, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True):
         result = await self._application.request(
@@ -207,10 +183,6 @@ class Device(zigpy.util.LocalLogMixin):
     @property
     def ieee(self):
         return self._ieee
-
-    @property
-    def member_of(self):
-        return self._member_of
 
     def __getitem__(self, key):
         return self.endpoints[key]

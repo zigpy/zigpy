@@ -82,14 +82,16 @@ class PersistingListener:
         self.execute(q, (group.group_id, group.name))
         self._db.commit()
 
-    def group_member_added(self, group, member):
-        q = "INSERT OR REPLACE INTO group_members VALUES (?, ?)"
-        self.execute(q, (group.group_id, member.ieee))
+    def group_member_added(self, group, ep):
+        q = "INSERT OR REPLACE INTO group_members VALUES (?, ?, ?)"
+        self.execute(q, (group.group_id, *ep.unique_id))
         self._db.commit()
 
-    def group_member_removed(self, group, member):
-        q = "DELETE FROM group_members WHERE group_id=? AND ieee=?"
-        self.execute(q, (group.group_id, member.ieee))
+    def group_member_removed(self, group, ep):
+        q = """DELETE FROM group_members WHERE group_id=?
+                                               AND ieee=?
+                                               AND endpoint_id=?"""
+        self.execute(q, (group.group_id, *ep.unique_id))
         self._db.commit()
 
     def group_removed(self, group):
@@ -157,10 +159,12 @@ class PersistingListener:
     def _create_table_group_members(self):
         self._create_table(
             "group_members",
-            """(group_id, ieee ieee,
+            """(group_id, ieee ieee, endpoint_id,
                 FOREIGN KEY(group_id) REFERENCES groups(group_id),
-                FOREIGN KEY(ieee) REFERENCES devices(ieee))""")
-        self._create_index("group_members_idx", "group_members", "group_id, ieee")
+                FOREIGN KEY(ieee, endpoint_id)
+                REFERENCES endpoints(ieee, endpoint_id))""")
+        self._create_index(
+            "group_members_idx", "group_members", "group_id, ieee, endpoint_id")
 
     def _enable_foreign_keys(self):
         self.execute("PRAGMA foreign_keys = ON")
@@ -170,6 +174,7 @@ class PersistingListener:
         self.execute("DELETE FROM node_descriptors WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM clusters WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM output_clusters WHERE ieee = ?", (device.ieee, ))
+        self.execute("DELETE FROM group_members WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM endpoints WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM devices WHERE ieee = ?", (device.ieee, ))
         self._db.commit()
@@ -321,7 +326,9 @@ class PersistingListener:
                                                suppress_event=True)
 
     def _load_group_members(self):
-        for (group_id, ieee) in self._scan("group_members"):
+        for (group_id, ieee, ep_id) in self._scan("group_members"):
             group = self._application.groups[group_id]
-            group.add_member(self._application.get_device(ieee),
-                             suppress_event=True)
+            group.add_member(
+                self._application.get_device(ieee).endpoints[ep_id],
+                suppress_event=True
+            )
