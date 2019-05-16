@@ -1,12 +1,12 @@
-import asyncio
 from unittest import mock
 
 import pytest
 
 import zigpy.types as t
 from zigpy.application import ControllerApplication
-import zigpy.group
 import zigpy.device
+import zigpy.group
+import zigpy.endpoint
 
 
 FIXTURE_GRP_ID = 0x1001
@@ -14,12 +14,11 @@ FIXTURE_GRP_NAME = 'fixture group'
 
 
 @pytest.fixture
-def device():
+def endpoint():
     app_mock = mock.MagicMock(spec_set=ControllerApplication)
-    app_mock.remove.side_effect = asyncio.coroutine(mock.MagicMock())
-    app_mock.request.side_effect = asyncio.coroutine(mock.MagicMock())
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
-    return zigpy.device.Device(app_mock, ieee, 65535)
+    dev = zigpy.device.Device(app_mock, ieee, 65535)
+    return zigpy.endpoint.Endpoint(dev, 3)
 
 
 @pytest.fixture
@@ -71,51 +70,57 @@ def test_add_group_no_evt(groups, monkeypatch):
     assert ret is mock.sentinel.group
 
 
-def test_pop_group_id(groups):
+def test_pop_group_id(groups, endpoint):
+    group = groups[FIXTURE_GRP_ID]
+    group.add_member(endpoint)
+    group.remove_member = mock.MagicMock()
+    groups.listener_event.reset_mock()
+
     assert FIXTURE_GRP_ID in groups
     grp = groups.pop(FIXTURE_GRP_ID)
 
     assert isinstance(grp, zigpy.group.Group)
     assert FIXTURE_GRP_ID not in groups
     assert groups.listener_event.call_count == 1
+    assert group.remove_member.call_count == 1
+    assert group.remove_member.call_args[0][0] is endpoint
 
     with pytest.raises(KeyError):
         groups.pop(FIXTURE_GRP_ID)
 
-    grp = groups.pop(FIXTURE_GRP_ID, mock.sentinel.default)
-    assert grp is mock.sentinel.default
 
-
-def test_pop_group(groups):
+def test_pop_group(groups, endpoint):
     assert FIXTURE_GRP_ID in groups
     group = groups[FIXTURE_GRP_ID]
+    group.add_member(endpoint)
+    group.remove_member = mock.MagicMock()
+    groups.listener_event.reset_mock()
 
     grp = groups.pop(group)
     assert isinstance(grp, zigpy.group.Group)
     assert FIXTURE_GRP_ID not in groups
     assert groups.listener_event.call_count == 1
+    assert group.remove_member.call_count == 1
+    assert group.remove_member.call_args[0][0] is endpoint
 
     with pytest.raises(KeyError):
         groups.pop(grp)
 
-    grp = groups.pop(grp, mock.sentinel.default)
-    assert grp is mock.sentinel.default
 
-
-def test_group_add_member(group, device):
+def test_group_add_member(group, endpoint):
     listener = mock.MagicMock()
     group.add_listener(listener)
 
-    assert device.ieee not in group.members
-    assert FIXTURE_GRP_ID not in device.member_of
-    group.add_member(device)
-    assert device.ieee in group.members
-    assert FIXTURE_GRP_ID in device.member_of
+    assert endpoint.unique_id not in group.members
+    assert FIXTURE_GRP_ID not in endpoint.member_of
+    group.add_member(endpoint)
+    assert endpoint.unique_id in group.members
+    assert FIXTURE_GRP_ID in endpoint.member_of
     assert listener.member_added.call_count == 1
     assert listener.member_removed.call_count == 0
 
     listener.reset_mock()
-    group.add_member(device)
+    group.add_member(endpoint)
     assert listener.member_added.call_count == 0
     assert listener.member_removed.call_count == 0
 
@@ -123,17 +128,17 @@ def test_group_add_member(group, device):
     assert group.name == FIXTURE_GRP_NAME
 
     with pytest.raises(ValueError):
-        group.add_member(device.ieee)
+        group.add_member(endpoint.endpoint_id)
 
 
-def test_group_add_member_no_evt(group, device):
+def test_group_add_member_no_evt(group, endpoint):
     listener = mock.MagicMock()
     group.add_listener(listener)
 
-    assert device.ieee not in group
-    group.add_member(device, suppress_event=True)
-    assert device.ieee in group
-    assert FIXTURE_GRP_ID in device.member_of
+    assert endpoint.unique_id not in group
+    group.add_member(endpoint, suppress_event=True)
+    assert endpoint.unique_id in group
+    assert FIXTURE_GRP_ID in endpoint.member_of
     assert listener.member_added.call_count == 0
     assert listener.member_removed.call_count == 0
 
@@ -143,25 +148,25 @@ def test_noname_group():
     assert group.name.startswith("No name group ")
 
 
-def test_group_remove_member(group, device):
+def test_group_remove_member(group, endpoint):
     listener = mock.MagicMock()
     group.add_listener(listener)
 
-    group.add_member(device, suppress_event=True)
+    group.add_member(endpoint, suppress_event=True)
 
-    assert device.ieee in group
-    assert FIXTURE_GRP_ID in device.member_of
-    group.remove_member(device)
-    assert device.ieee not in group
-    assert FIXTURE_GRP_ID not in device.member_of
+    assert endpoint.unique_id in group
+    assert FIXTURE_GRP_ID in endpoint.member_of
+    group.remove_member(endpoint)
+    assert endpoint.unique_id not in group
+    assert FIXTURE_GRP_ID not in endpoint.member_of
     assert listener.member_added.call_count == 0
     assert listener.member_removed.call_count == 1
 
 
-def test_group_magic_methods(group, device):
+def test_group_magic_methods(group, endpoint):
 
-    group.add_member(device, suppress_event=True)
+    group.add_member(endpoint, suppress_event=True)
 
-    assert device.ieee in group.members
-    assert device.ieee in group
-    assert group[device.ieee] is device
+    assert endpoint.unique_id in group.members
+    assert endpoint.unique_id in group
+    assert group[endpoint.unique_id] is endpoint
