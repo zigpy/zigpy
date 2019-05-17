@@ -278,3 +278,14 @@ def LimitedCharString(max_len):  # noqa: N802
                 raise ValueError("String is too long")
             return super().serialize()
     return LimitedCharString
+
+
+def Optional(optional_item_type):
+    class Optional(optional_item_type):
+        @classmethod
+        def deserialize(cls, data):
+            try:
+                return super().deserialize(data)
+            except ValueError:
+                return None, b''
+    return Optional
