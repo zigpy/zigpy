@@ -89,7 +89,7 @@ class Thermostat(Cluster):
         0x0040: ('ac_type', t.enum8),
         0x0041: ('ac_capacity', t.uint16_t),
         0x0042: ('ac_refrigerant_type', t.enum8),
-        0x0043: ('ac_conpressor_type', t.enum8),
+        0x0043: ('ac_compressor_type', t.enum8),
         0x0044: ('ac_error_code', t.bitmap32),
         0x0045: ('ac_louver_position', t.enum8),
         0x0046: ('ac_coll_temp', t.int16s),
