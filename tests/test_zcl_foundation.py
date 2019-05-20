@@ -80,3 +80,36 @@ def test_typed_collection():
 
     assert tc2.type == 0x20
     assert tc2.value == list(range(100))
+
+
+def test_write_attribute_status_record():
+    attr_id = b'\x01\x00'
+    extra = b'12da-'
+    res, d = foundation.WriteAttributesStatusRecord.deserialize(
+        b'\x00' + attr_id + extra)
+    assert res.status == foundation.Status.SUCCESS
+    assert res.attrid is None
+    assert d == attr_id + extra
+    r = repr(res)
+    assert r.startswith(
+        '<' + foundation.WriteAttributesStatusRecord.__name__)
+    assert 'status' in r
+    assert 'attrid' not in r
+
+    res, d = foundation.WriteAttributesStatusRecord.deserialize(
+        b'\x87' + attr_id + extra)
+    assert res.status == foundation.Status.INVALID_VALUE
+    assert res.attrid == 0x0001
+    assert d == extra
+
+    r = repr(res)
+    assert 'status' in r
+    assert 'attrid' in r
+
+    rec = foundation.WriteAttributesStatusRecord(
+        foundation.Status.SUCCESS, 0xaabb
+    )
+    assert rec.serialize() == b'\x00'
+    rec.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+    assert rec.serialize()[0:1] == foundation.Status.UNSUPPORTED_ATTRIBUTE.serialize()
+    assert rec.serialize()[1:] == b'\xbb\xaa'

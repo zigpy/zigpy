@@ -187,6 +187,28 @@ class WriteAttributesStatusRecord(t.Struct):
         ('attrid', t.uint16_t),
     ]
 
+    @classmethod
+    def deserialize(cls, data):
+        r = cls()
+        r.status, data = Status.deserialize(data)
+        if r.status != Status.SUCCESS:
+            r.attrid, data = t.uint16_t.deserialize(data)
+
+        return r, data
+
+    def serialize(self):
+        r = Status(self.status).serialize()
+        if self.status != Status.SUCCESS:
+            r += t.uint16_t(self.attrid).serialize()
+        return r
+
+    def __repr__(self):
+        r = '<%s status=%s' % (self.__class__.__name__, self.status, )
+        if self.status != Status.SUCCESS:
+            r += ' attrid=%s' % (self.attrid, )
+        r += '>'
+        return r
+
 
 class AttributeReportingConfig:
     def serialize(self):
