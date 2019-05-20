@@ -113,3 +113,40 @@ def test_write_attribute_status_record():
     rec.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
     assert rec.serialize()[0:1] == foundation.Status.UNSUPPORTED_ATTRIBUTE.serialize()
     assert rec.serialize()[1:] == b'\xbb\xaa'
+
+
+def test_configure_reporting_response_serialization():
+    direction_attr_id = b'\x00\x01\x10'
+    extra = b'12da-'
+    res, d = foundation.ConfigureReportingResponseRecord.deserialize(
+        b'\x00' + direction_attr_id + extra)
+    assert res.status == foundation.Status.SUCCESS
+    assert res.direction is None
+    assert res.attrid is None
+    assert d == direction_attr_id + extra
+    r = repr(res)
+    assert r.startswith(
+        '<' + foundation.ConfigureReportingResponseRecord.__name__)
+    assert 'status' in r
+    assert 'direction' not in r
+    assert 'attrid' not in r
+
+    res, d = foundation.ConfigureReportingResponseRecord.deserialize(
+        b'\x8c' + direction_attr_id + extra)
+    assert res.status == foundation.Status.UNREPORTABLE_ATTRIBUTE
+    assert res.direction is not None
+    assert res.attrid == 0x1001
+    assert d == extra
+
+    r = repr(res)
+    assert 'status' in r
+    assert 'direction' in r
+    assert 'attrid' in r
+
+    rec = foundation.ConfigureReportingResponseRecord(
+        foundation.Status.SUCCESS, 0x00, 0xaabb
+    )
+    assert rec.serialize() == b'\x00'
+    rec.status = foundation.Status.UNREPORTABLE_ATTRIBUTE
+    assert rec.serialize()[0:1] == foundation.Status.UNREPORTABLE_ATTRIBUTE.serialize()
+    assert rec.serialize()[1:] == b'\x00\xbb\xaa'
