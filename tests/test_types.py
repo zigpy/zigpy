@@ -20,6 +20,9 @@ def test_single():
     assert t.Single.deserialize(ser) == (value, b'')
     assert t.Single.deserialize(ser + extra) == (value, extra)
 
+    with pytest.raises(ValueError):
+        t.Double.deserialize(ser[1:])
+
 
 def test_double():
     value = 1.25
@@ -28,6 +31,9 @@ def test_double():
     ser = v.serialize()
     assert t.Double.deserialize(ser) == (value, b'')
     assert t.Double.deserialize(ser + extra) == (value, extra)
+
+    with pytest.raises(ValueError):
+        t.Double.deserialize(ser[1:])
 
 
 def test_lvbytes():
