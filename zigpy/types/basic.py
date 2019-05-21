@@ -125,21 +125,22 @@ class bitmap64(uint64_t):  # noqa: N801
 
 
 class Single(float):
+    _fmt = '<f'
+
     def serialize(self):
-        return struct.pack('<f', self)
+        return struct.pack(self._fmt, self)
 
     @classmethod
     def deserialize(cls, data):
-        return struct.unpack('<f', data)[0], data[4:]
+        size = struct.calcsize(cls._fmt)
+        if len(data) < size:
+            raise ValueError('Data is too short to contain %s float' % cls.__name__)
+
+        return struct.unpack(cls._fmt, data[0:size])[0], data[size:]
 
 
-class Double(float):
-    def serialize(self):
-        return struct.pack('<d', self)
-
-    @classmethod
-    def deserialize(cls, data):
-        return struct.unpack('<d', data)[0], data[8:]
+class Double(Single):
+    _fmt = '<d'
 
 
 class LVBytes(bytes):
