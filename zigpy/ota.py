@@ -48,24 +48,7 @@ class OTAManager(ListenableMixin):
         self._firmwares = {}
         self._not_initialized = True
         self._listeners = {}
-        self._pending = {}
         self.add_listener(TrådfriOTAProvider())
-
-    async def fetch_firmware(self,
-                             key: FirmwareKey) -> Optional[Firmware]:
-        LOGGER.debug("Fetch firmware request for (%s %s)",
-                     key.manufacturer_id, key.image_type)
-        handlers = self.listener_event('fetch_firmware', key)
-        if not handlers:
-            return
-
-        frmws = await asyncio.gather(*handlers)
-        frmws = {f.version: f for f in frmws if f is not None}
-        if not frmws:
-            return
-
-        latest = frmws[max(frmws)]
-        self._firmwares[key] = latest
 
     async def _initialize(self) -> None:
         LOGGER.debug("Initialize OTA providers")
@@ -89,9 +72,15 @@ class OTAManager(ListenableMixin):
         key = FirmwareKey(manufacturer_id, image_type)
         if key in self._firmwares:
             return self._firmwares[key]
-        # signal to query for new firmware
-        asyncio.ensure_future(self.fetch_firmware(key))
-        return None
+
+        frmws = self.listener_event('get_firmware', key)
+        frmws = {f.version: f for f in frmws if f and f.is_valid}
+        if not frmws:
+            return None
+
+        latest_firmware = frmws[max(frmws)]
+        self._firmwares[key] = latest_firmware
+        return latest_firmware
 
     @property
     def not_initialized(self):
@@ -126,14 +115,9 @@ class TrådfriOTAProvider:
             )
             self._cache[key] = firmware
 
-    async def fetch_firmware(self,
-                             key: FirmwareKey) -> Optional[Firmware]:
-        if key.manufacturer_id != self.MANUFACTURER_ID or \
-                self._locks[key].locked() or key not in self._cache:
-            return None
-
-        if self._cache[key].data:
-            return self._cache[key]
+    async def fetch_firmware(self, key: FirmwareKey):
+        if self._locks[key].locked():
+            return
 
         frm = self._cache[key]
         async with self._locks[key]:
@@ -147,4 +131,18 @@ class TrådfriOTAProvider:
         self._cache[key] = frm
         LOGGER.debug("Finished downloading %s bytes from %s",
                      frm.size, frm.url)
-        return frm
+
+    def get_firmware(self, key: FirmwareKey) -> Optional[Firmware]:
+        if key.manufacturer_id != self.MANUFACTURER_ID:
+            return None
+
+        try:
+            frm = self._cache[key]
+            if frm.is_valid:
+                return frm
+        except KeyError:
+            pass
+
+        # signal to query for new firmware
+        asyncio.ensure_future(self.fetch_firmware(key))
+        return None
