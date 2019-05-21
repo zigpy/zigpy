@@ -33,6 +33,12 @@ class Firmware:
         # ToDo check for hardware version
         return all((self.key == key, self.version > ver, ))
 
+    @property
+    def is_valid(self):
+        """Return True if firmware validation passes."""
+        # ToDo proper validation
+        return self.data is not None
+
 
 class OTAManager(ListenableMixin):
     """OTA Manager."""

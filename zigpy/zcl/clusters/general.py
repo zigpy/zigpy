@@ -712,7 +712,7 @@ class Ota(Cluster):
         frmw = self.endpoint.device.application.ota.get_firmware(
             manufacturer_id, image_type)
 
-        if frmw:
+        if frmw and frmw.is_valid:
             update_needed = frmw.upgradeable(
                 manufacturer_id, image_type, current_file_version,
                 hardware_version)
@@ -745,8 +745,8 @@ class Ota(Cluster):
                    block_request_delay)
         frmw = self.endpoint.device.application.ota.get_firmware(
             manufacturer_id, image_type)
-        if frmw is None or frmw.data is None:
-            self.debug("OTA no firmware data")
+        if frmw is None or not frmw.is_valid:
+            self.debug("OTA invalid firmware data")
             await self.image_block_response(foundation.Status.ABORT)
             return
         data = frmw.data[file_offset:file_offset + min(self.MAXIMUM_DATA_SIZE,
