@@ -13,15 +13,21 @@ def test_int_too_short():
 
 
 def test_single():
-    v = t.Single(1.25)
+    value = 1.25
+    extra = b'ab12!'
+    v = t.Single(value)
     ser = v.serialize()
-    assert t.Single.deserialize(ser) == (1.25, b'')
+    assert t.Single.deserialize(ser) == (value, b'')
+    assert t.Single.deserialize(ser + extra) == (value, extra)
 
 
 def test_double():
-    v = t.Double(1.25)
+    value = 1.25
+    extra = b'ab12!'
+    v = t.Double(value)
     ser = v.serialize()
-    assert t.Double.deserialize(ser) == (1.25, b'')
+    assert t.Double.deserialize(ser) == (value, b'')
+    assert t.Double.deserialize(ser + extra) == (value, extra)
 
 
 def test_lvbytes():
