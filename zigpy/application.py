@@ -22,7 +22,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self._listeners = {}
         self._ieee = None
         self._nwk = None
-        self._ota = zigpy.ota.OTAManager(self)
+        self._ota = zigpy.ota.OTA(self)
 
         if database_file is not None:
             self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
