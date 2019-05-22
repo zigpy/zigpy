@@ -179,6 +179,8 @@ def test_struct():
         _fields = [('a', t.uint8_t), ('b', t.uint8_t)]
 
     ts = TestStruct()
+    assert ts.a is None
+    assert ts.b is None
     ts.a = t.uint8_t(0xaa)
     ts.b = t.uint8_t(0xbb)
     ts2 = TestStruct(ts)
@@ -191,6 +193,24 @@ def test_struct():
 
     s = ts2.serialize()
     assert s == b'\xaa\xbb'
+
+
+def test_struct_init():
+    class TestStruct(t.Struct):
+        _fields = [
+            ('a', t.uint8_t),
+            ('b', t.uint16_t),
+            ('c', t.CharacterString),
+        ]
+
+    ts = TestStruct(1, 0x0100, 'TestStruct')
+    assert repr(ts)
+    assert isinstance(ts.a, t.uint8_t)
+    assert isinstance(ts.b, t.uint16_t)
+    assert isinstance(ts.c, t.CharacterString)
+    assert ts.a == 1
+    assert ts.b == 0x100
+    assert ts.c == 'TestStruct'
 
 
 def test_hex_repr():
