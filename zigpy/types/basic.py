@@ -282,10 +282,13 @@ def LimitedCharString(max_len):  # noqa: N802
 
 def Optional(optional_item_type):
     class Optional(optional_item_type):
+        optional = True
+
         @classmethod
         def deserialize(cls, data):
             try:
                 return super().deserialize(data)
             except ValueError:
                 return None, b''
+
     return Optional
