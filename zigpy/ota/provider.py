@@ -29,6 +29,7 @@ class Trådfri:
                     fw_lst = await rsp.json(
                         content_type='application/octet-stream')
         self._cache.clear()
+        frm_to_fetch = []
         for fw in fw_lst:
             if 'fw_file_version_MSB' not in fw:
                 continue
@@ -38,7 +39,9 @@ class Trådfri:
             firmware = Firmware(
                 key, version, fw['fw_filesize'], fw['fw_binary_url'],
             )
+            frm_to_fetch.append(self.fetch_firmware(key))
             self._cache[key] = firmware
+        await asyncio.gather(*frm_to_fetch)
 
     async def fetch_firmware(self, key: FirmwareKey):
         if self._locks[key].locked():
