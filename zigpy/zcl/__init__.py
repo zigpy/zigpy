@@ -100,7 +100,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
     @util.retryable_request
     def request(self, general, command_id, schema, *args, manufacturer=None, expect_reply=True):
-        if len(schema) != len(args):
+        optional = len([s for s in schema if hasattr(s, 'optional') and s.optional])
+        if len(schema) < len(args) or len(args) < len(schema) - optional:
             self.error("Schema and args lengths do not match in request")
             error = asyncio.Future()
             error.set_exception(ValueError("Wrong number of parameters for request, expected %d argument(s)" % len(schema)))

@@ -219,7 +219,8 @@ class Scenes(Cluster):
         0x0002: ('remove_response', (t.uint8_t, t.uint16_t, t.uint8_t), True),
         0x0003: ('remove_all_response', (t.uint8_t, t.uint16_t), True),
         0x0004: ('store_response', (t.uint8_t, t.uint16_t, t.uint8_t), True),
-        0x0006: ('get_scene_membership_response', (t.uint8_t, t.uint8_t, t.uint16_t, t.LVList(t.uint8_t)), True),
+        0x0006: ('get_scene_membership_response', (t.uint8_t, t.uint8_t, t.uint16_t,
+                                                   t.Optional(t.LVList(t.uint8_t))), True),
         0x0040: ('enhanced_add_response', (), True),
         0x0041: ('enhanced_view_response', (), True),
         0x0042: ('copy_response', (), True),
@@ -311,7 +312,9 @@ class Alarms(Cluster):
     }
     client_commands = {
         0x0000: ('alarm', (t.uint8_t, t.uint16_t), False),
-        0x0001: ('get_alarm_response', (t.uint8_t, t.uint8_t, t.uint16_t, t.uint32_t), True),
+        0x0001: ('get_alarm_response', (t.uint8_t, t.Optional(t.uint8_t),
+                                        t.Optional(t.uint16_t,),
+                                        t.Optional(t.uint32_t)), True),
         0x0002: ('get_event_log', (), False),
     }
 
@@ -405,8 +408,15 @@ class RSSILocation(Cluster):
         ]
 
     client_commands = {
-        0x0000: ('dev_config_response', (t.uint8_t, t.int16s, t.uint16_t, t.uint16_t, t.uint8_t, t.uint16_t), True),
-        0x0001: ('location_data_response', (t.uint8_t, t.uint8_t, t.int16s, t.int16s, t.int16s, t.uint16_t, t.uint8_t, t.uint8_t, t.uint16_t), True),
+        0x0000: ('dev_config_response', (foundation.Status,
+                                         t.Optional(t.int16s), t.Optional(t.uint16_t),
+                                         t.Optional(t.uint16_t), t.Optional(t.uint8_t),
+                                         t.Optional(t.uint16_t)), True),
+        0x0001: ('location_data_response', (foundation.Status,
+                                            t.Optional(t.uint8_t), t.Optional(t.int16s),
+                                            t.Optional(t.int16s), t.Optional(t.int16s),
+                                            t.Optional(t.uint16_t), t.Optional(t.uint8_t),
+                                            t.Optional(t.uint8_t), t.Optional(t.uint16_t)), True),
         0x0002: ('location_data_notification', (), False),
         0x0003: ('compact_location_data_notification', (), False),
         0x0004: ('rssi_ping', (t.uint8_t, ), False),  # data8
@@ -666,18 +676,23 @@ class Ota(Cluster):
         0x000a: ('image_stamp', t.uint32_t),
     }
     server_commands = {
-        0x0001: ('query_next_image', (t.uint8_t, t.uint16_t, t.uint16_t, t.uint32_t, t.uint16_t), False),
-        0x0003: ('image_block', (t.uint8_t, t.uint16_t, t.uint16_t, t.uint32_t, t.uint32_t, t.uint8_t, t.EUI64, t.uint16_t), False),
-        0x0004: ('image_page', (t.uint8_t, t.uint16_t, t.uint16_t, t.uint32_t, t.uint32_t, t.uint8_t, t.uint16_t, t.uint16_t, t.EUI64), False),
+        0x0001: ('query_next_image', (t.uint8_t, t.uint16_t, t.uint16_t, t.uint32_t, t.Optional(t.uint16_t)), False),
+        0x0003: ('image_block', (t.uint8_t, t.uint16_t, t.uint16_t, t.uint32_t, t.uint32_t, t.uint8_t,
+                                 t.Optional(t.EUI64), t.Optional(t.uint16_t)), False),
+        0x0004: ('image_page', (t.uint8_t, t.uint16_t, t.uint16_t, t.uint32_t, t.uint32_t, t.uint8_t, t.uint16_t,
+                                t.uint16_t, t.Optional(t.EUI64)), False),
         0x0006: ('upgrade_end', (foundation.Status, t.uint16_t, t.uint16_t, t.uint32_t), False),
         0x0008: ('query_specific_file', (t.EUI64, t.uint16_t, t.uint16_t, t.uint32_t, t.uint16_t), False),
     }
     client_commands = {
-        0x0000: ('image_notify', (t.uint8_t, t.uint8_t, t.uint16_t, t.uint16_t, t.uint32_t), False),
-        0x0002: ('query_next_image_response', (foundation.Status, t.uint16_t, t.uint16_t, t.uint32_t, t.uint32_t), True),
+        0x0000: ('image_notify', (t.uint8_t, t.uint8_t, t.Optional(t.uint16_t), t.Optional(t.uint16_t),
+                                  t.Optional(t.uint32_t)), False),
+        0x0002: ('query_next_image_response', (foundation.Status, t.Optional(t.uint16_t), t.Optional(t.uint16_t),
+                                               t.Optional(t.uint32_t), t.Optional(t.uint32_t)), True),
         0x0005: ('image_block_response', (foundation.Status, t.uint16_t, t.uint16_t, t.uint32_t, t.uint32_t, t.LVBytes), True),
         0x0007: ('upgrade_end_response', (t.uint16_t, t.uint16_t, t.uint32_t, t.uint32_t, t.uint32_t), True),
-        0x0009: ('query_specific_file_response', (foundation.Status, t.uint16_t, t.uint16_t, t.uint32_t, t.uint32_t), True),
+        0x0009: ('query_specific_file_response', (foundation.Status, t.Optional(t.uint16_t), t.Optional(t.uint16_t),
+                                                  t.Optional(t.uint32_t), t.Optional(t.uint32_t)), True),
     }
 
 
@@ -738,7 +753,7 @@ class PowerProfile(Cluster):
         0x0008: ('energy_phases_schedule_state_notification', (t.uint8_t, t.uint8_t), False),
         0x0009: ('power_profile_schedule_constraints_notification', (t.uint8_t, t.uint16_t, t.uint16_t), False),
         0x000a: ('power_profile_schedule_constraints_response', (t.uint8_t, t.uint16_t, t.uint16_t), True),
-        0x000b: ('get_power_profile_price_extended', (t.bitmap8, t.uint8_t, t.uint16_t), False),
+        0x000b: ('get_power_profile_price_extended', (t.bitmap8, t.uint8_t, t.Optional(t.uint16_t)), False),
     }
 
 

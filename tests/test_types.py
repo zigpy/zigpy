@@ -219,3 +219,13 @@ def test_hex_repr():
     nwk = NwkAsHex(0x1234)
     assert str(nwk) == '0x1234'
     assert repr(nwk) == '0x1234'
+
+
+def test_optional():
+    d, r = t.Optional(t.uint8_t).deserialize(b'')
+    assert d is None
+    assert r == b''
+
+    d, r = t.Optional(t.uint8_t).deserialize(b'\x001234aaa')
+    assert d == 0
+    assert r == b'1234aaa'

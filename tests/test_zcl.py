@@ -102,6 +102,37 @@ def test_request_manufacturer(cluster):
     assert org_size + 2 == len(cluster._endpoint.request.call_args[0][2])
 
 
+def test_request_optional(cluster):
+    schema = [t.uint8_t, t.uint16_t, t.Optional(t.uint16_t), t.Optional(t.uint8_t)]
+
+    res = cluster.request(True, 0, schema)
+    assert type(res.exception()) == ValueError
+    assert cluster._endpoint.request.call_count == 0
+    cluster._endpoint.request.reset_mock()
+
+    res = cluster.request(True, 0, schema, 1)
+    assert type(res.exception()) == ValueError
+    assert cluster._endpoint.request.call_count == 0
+    cluster._endpoint.request.reset_mock()
+
+    cluster.request(True, 0, schema, 1, 2)
+    assert cluster._endpoint.request.call_count == 1
+    cluster._endpoint.request.reset_mock()
+
+    cluster.request(True, 0, schema, 1, 2, 3)
+    assert cluster._endpoint.request.call_count == 1
+    cluster._endpoint.request.reset_mock()
+
+    cluster.request(True, 0, schema, 1, 2, 3, 4)
+    assert cluster._endpoint.request.call_count == 1
+    cluster._endpoint.request.reset_mock()
+
+    res = cluster.request(True, 0, schema, 1, 2, 3, 4, 5)
+    assert type(res.exception()) == ValueError
+    assert cluster._endpoint.request.call_count == 0
+    cluster._endpoint.request.reset_mock()
+
+
 def test_reply_general(cluster):
     cluster.reply(False, 0, [])
     assert cluster._endpoint.reply.call_count == 1
