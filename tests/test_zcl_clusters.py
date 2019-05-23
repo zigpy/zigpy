@@ -1,5 +1,7 @@
+import asyncio
 import re
 
+import pytest
 from unittest import mock
 import zigpy.endpoint
 import zigpy.zcl as zcl
@@ -56,8 +58,10 @@ def test_ep_attributes():
         assert not hasattr(ep, cluster.ep_attribute)
 
 
-def test_time_cluster():
+@pytest.mark.asyncio
+async def test_time_cluster():
     ep = mock.MagicMock()
+    ep.reply.side_effect = asyncio.coroutine(mock.MagicMock())
     t = zcl.Cluster._registry[0x000a](ep)
 
     tsn = 0
@@ -80,3 +84,20 @@ def test_time_cluster():
     t.handle_cluster_general_request(tsn, 0, [[0, 1, 2]])
     assert ep.reply.call_count == 4
     assert ep.reply.call_args[0][2][3] == 0
+
+    t.handle_cluster_general_request(tsn, 0, [[7]])
+    assert ep.reply.call_count == 5
+    assert ep.reply.call_args[0][2][3] == 7
+
+
+@pytest.mark.asyncio
+async def test_time_cluster_unsupported():
+    ep = mock.MagicMock()
+    ep.reply.side_effect = asyncio.coroutine(mock.MagicMock())
+    t = zcl.Cluster._registry[0x000a](ep)
+
+    tsn = 0
+
+    t.handle_cluster_general_request(tsn, 0, [[199, 128]])
+    assert ep.reply.call_count == 1
+    assert ep.reply.call_args[0][2][-6:] == b'\xc7\x00\x86\x80\x00\x86'

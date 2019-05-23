@@ -65,6 +65,7 @@ async def test_permit(app, ieee):
     await app.permit(node=ncp_ieee)
     assert app.devices[ieee].zdo.permit.call_count == 1
     assert app.permit_ncp.call_count == 1
+    print("{}".format(asyncio.Task.all_tasks()))
 
 
 @pytest.mark.asyncio

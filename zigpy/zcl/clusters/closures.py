@@ -45,7 +45,7 @@ class DoorLock(Cluster):
         0x0019: ('max_rfid_len', t.uint8_t),
         0x001a: ('min_rfid_len', t.uint8_t),
         0x0020: ('enable__logging', t.Bool),
-        0x0021: ('language', t.LVBytes),
+        0x0021: ('language', t.LimitedCharString(3)),
         0x0022: ('led_settings', t.uint8_t),
         0x0023: ('auto_relock_time', t.uint32_t),
         0x0024: ('sound_volume', t.uint8_t),
@@ -154,8 +154,8 @@ class WindowCovering(Cluster):
         0x0015: ('acceleration_time_lift', t.uint16_t),
         0x0016: ('num_of_actuation_tilt', t.uint16_t),
         0x0017: ('window_covering_mode', t.uint8_t),
-        0x0018: ('intermediate_setpoints_lift', t.LVBytes),
-        0x0019: ('intermediate_setpoints_tilt', t.LVBytes),
+        0x0018: ('intermediate_setpoints_lift', t.CharacterString),
+        0x0019: ('intermediate_setpoints_tilt', t.CharacterString),
     }
     server_commands = {
         0x0000: ('up_open', (), False),

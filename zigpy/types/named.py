@@ -39,3 +39,21 @@ class KeyData(basic.fixed_list(16, basic.uint8_t)):
 class Bool(basic.uint8_t, enum.Enum):
     false = 0
     true = 1
+
+
+class HexRepr:
+    _hex_len = 2
+
+    def __repr__(self):
+        return ('0x{:0' + str(self._hex_len) + 'x}').format(self)
+
+    def __str__(self):
+        return ('0x{:0' + str(self._hex_len) + 'x}').format(self)
+
+
+class NWK(HexRepr, basic.uint16_t):
+    _hex_len = 4
+
+
+class Group(HexRepr, basic.uint16_t):
+    _hex_len = 4

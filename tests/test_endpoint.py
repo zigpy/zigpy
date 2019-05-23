@@ -1,10 +1,10 @@
-import asyncio
 from unittest import mock
 
 import pytest
 import zigpy.zcl as zcl
+from zigpy.zcl.foundation import Status as ZCLStatus
 
-from zigpy import endpoint
+from zigpy import endpoint, group
 from zigpy.zdo import types
 
 
@@ -14,10 +14,8 @@ def ep():
     return endpoint.Endpoint(dev, 1)
 
 
-def _test_initialize(ep, profile):
-    loop = asyncio.get_event_loop()
-
-    async def mockrequest(req, nwk, epid, tries=None, delay=None):
+async def _test_initialize(ep, profile):
+    async def mockrequest(nwk, epid, tries=None, delay=None):
         sd = types.SimpleDescriptor()
         sd.endpoint = 1
         sd.profile = profile
@@ -26,39 +24,41 @@ def _test_initialize(ep, profile):
         sd.output_clusters = [6]
         return [0, None, sd]
 
-    ep._device.zdo.request = mockrequest
-    loop.run_until_complete(ep.initialize())
+    ep._device.zdo.Simple_Desc_req = mockrequest
+    await ep.initialize()
 
     assert ep.status > endpoint.Status.NEW
     assert 5 in ep.in_clusters
     assert 6 in ep.out_clusters
 
 
-def test_initialize_zha(ep):
-    return _test_initialize(ep, 260)
+@pytest.mark.asyncio
+async def test_initialize_zha(ep):
+    return await _test_initialize(ep, 260)
 
 
-def test_initialize_zll(ep):
-    return _test_initialize(ep, 49246)
+@pytest.mark.asyncio
+async def test_initialize_zll(ep):
+    return await _test_initialize(ep, 49246)
 
 
-def test_initialize_fail(ep):
-    loop = asyncio.get_event_loop()
-
-    async def mockrequest(req, nwk, epid, tries=None, delay=None):
+@pytest.mark.asyncio
+async def test_initialize_fail(ep):
+    async def mockrequest(nwk, epid, tries=None, delay=None):
         return [1, None, None]
 
-    ep._device.zdo.request = mockrequest
-    loop.run_until_complete(ep.initialize())
+    ep._device.zdo.Simple_Desc_req = mockrequest
+    await ep.initialize()
 
     assert ep.status == endpoint.Status.NEW
 
 
-def test_reinitialize(ep):
-    _test_initialize(ep, 260)
+@pytest.mark.asyncio
+async def test_reinitialize(ep):
+    await _test_initialize(ep, 260)
     assert ep.profile_id == 260
     ep.profile_id = 10
-    _test_initialize(ep, 260)
+    await _test_initialize(ep, 260)
     assert ep.profile_id == 10
 
 
@@ -160,7 +160,8 @@ def _mk_rar(attrid, value, status=0):
     return r
 
 
-def test_init_endpoint_info(ep):
+@pytest.mark.asyncio
+async def test_init_endpoint_info(ep):
     clus = ep.add_input_cluster(0)
     assert 0 in ep.in_clusters
     assert ep.in_clusters[0] is clus
@@ -173,12 +174,13 @@ def test_init_endpoint_info(ep):
         return [[rar4, rar5]]
     clus.request = mockrequest
 
-    test_initialize_zha(ep)
+    await test_initialize_zha(ep)
     assert ep.manufacturer == 'Custom'
     assert ep.model == 'Model'
 
 
-def test_init_endpoint_info_none(ep):
+@pytest.mark.asyncio
+async def test_init_endpoint_info_none(ep):
     clus = ep.add_input_cluster(0)
     assert 0 in ep.in_clusters
     assert ep.in_clusters[0] is clus
@@ -191,10 +193,11 @@ def test_init_endpoint_info_none(ep):
         return [[rar4, rar5]]
     clus.request = mockrequest
 
-    test_initialize_zha(ep)
+    await test_initialize_zha(ep)
 
 
-def test_init_endpoint_info_unicode(ep):
+@pytest.mark.asyncio
+async def test_init_endpoint_info_unicode(ep):
     clus = ep.add_input_cluster(0)
     assert 0 in ep.in_clusters
     assert ep.in_clusters[0] is clus
@@ -207,7 +210,7 @@ def test_init_endpoint_info_unicode(ep):
         return [[rar4, rar5]]
     clus.request = mockrequest
 
-    test_initialize_zha(ep)
+    await test_initialize_zha(ep)
 
 
 def _init_endpoint_info(ep, test_manuf=None, test_model=None):
@@ -226,28 +229,149 @@ def _init_endpoint_info(ep, test_manuf=None, test_model=None):
     return test_initialize_zha(ep)
 
 
-def test_init_endpoint_info_null_padded_manuf(ep):
+@pytest.mark.asyncio
+async def test_init_endpoint_info_null_padded_manuf(ep):
     manufacturer = b'Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07'
     model = b'Mock Model'
-    _init_endpoint_info(ep, manufacturer, model)
+    await _init_endpoint_info(ep, manufacturer, model)
 
     assert ep.manufacturer == 'Mock Manufacturer'
     assert ep.model == 'Mock Model'
 
 
-def test_init_endpoint_info_null_padded_model(ep):
+@pytest.mark.asyncio
+async def test_init_endpoint_info_null_padded_model(ep):
     manufacturer = b'Mock Manufacturer'
     model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-    _init_endpoint_info(ep, manufacturer, model)
+    await _init_endpoint_info(ep, manufacturer, model)
 
     assert ep.manufacturer == 'Mock Manufacturer'
     assert ep.model == 'Mock Model'
 
 
-def test_init_endpoint_info_null_padded_manuf_model(ep):
+@pytest.mark.asyncio
+async def test_init_endpoint_info_null_padded_manuf_model(ep):
     manufacturer = b'Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07'
     model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-    _init_endpoint_info(ep, manufacturer, model)
+    await _init_endpoint_info(ep, manufacturer, model)
 
     assert ep.manufacturer == 'Mock Manufacturer'
     assert ep.model == 'Mock Model'
+
+
+def _group_add_mock(ep, success=True,
+                    no_groups_cluster=False):
+    async def mock_req(*args, **kwargs):
+        if success:
+            return [ZCLStatus.SUCCESS, mock.sentinel.group_id]
+        return [ZCLStatus.DUPLICATE_EXISTS, mock.sentinel.group_id]
+
+    if not no_groups_cluster:
+        ep.add_input_cluster(4)
+    ep.request = mock.MagicMock(side_effect=mock_req)
+
+    ep.device.application.groups = mock.MagicMock(spec_set=group.Groups)
+    return ep
+
+
+@pytest.mark.asyncio
+async def test_add_to_group(ep):
+    ep = _group_add_mock(ep)
+
+    grp_id, grp_name = 0x1234, "Group name 0x1234**"
+    res = await ep.add_to_group(grp_id, grp_name)
+    assert res == ZCLStatus.SUCCESS
+    assert ep.request.call_count == 1
+    groups = ep.device.application.groups
+    assert groups.add_group.call_count == 1
+    assert groups.remove_group.call_count == 0
+    assert groups.add_group.call_args[0][0] == grp_id
+    assert groups.add_group.call_args[0][1] == grp_name
+
+
+@pytest.mark.asyncio
+async def test_add_to_group_no_groups(ep):
+    ep = _group_add_mock(ep, no_groups_cluster=True)
+
+    grp_id, grp_name = 0x1234, "Group name 0x1234**"
+    res = await ep.add_to_group(grp_id, grp_name)
+    assert res != ZCLStatus.SUCCESS
+    assert ep.request.call_count == 0
+    groups = ep.device.application.groups
+    assert groups.add_group.call_count == 0
+    assert groups.remove_group.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_add_to_group_fail(ep):
+    ep = _group_add_mock(ep, success=False)
+
+    grp_id, grp_name = 0x1234, "Group name 0x1234**"
+    res = await ep.add_to_group(grp_id, grp_name)
+    assert res != ZCLStatus.SUCCESS
+    assert ep.request.call_count == 1
+    groups = ep.device.application.groups
+    assert groups.add_group.call_count == 0
+    assert groups.remove_group.call_count == 0
+
+
+def _group_remove_mock(ep, success=True,
+                       no_groups_cluster=False, not_member=False):
+    async def mock_req(*args, **kwargs):
+        if success:
+            return [ZCLStatus.SUCCESS, mock.sentinel.group_id]
+        return [ZCLStatus.DUPLICATE_EXISTS, mock.sentinel.group_id]
+
+    if not no_groups_cluster:
+        ep.add_input_cluster(4)
+    ep.request = mock.MagicMock(side_effect=mock_req)
+
+    ep.device.application.groups = mock.MagicMock(spec_set=group.Groups)
+    grp = mock.MagicMock(spec_set=group.Group)
+    ep.device.application.groups.__contains__.return_value = not not_member
+    ep.device.application.groups.__getitem__.return_value = grp
+    return ep, grp
+
+
+@pytest.mark.asyncio
+async def test_remove_from_group(ep):
+    grp_id = 0x1234
+    ep, grp_mock = _group_remove_mock(ep)
+    res = await ep.remove_from_group(grp_id)
+    assert res == ZCLStatus.SUCCESS
+    assert ep.request.call_count == 1
+    groups = ep.device.application.groups
+    assert groups.add_group.call_count == 0
+    assert groups.remove_group.call_count == 0
+    assert groups.__getitem__.call_args[0][0] == grp_id
+    assert grp_mock.add_member.call_count == 0
+    assert grp_mock.remove_member.call_count == 1
+    assert grp_mock.remove_member.call_args[0][0] == ep
+
+
+@pytest.mark.asyncio
+async def test_remove_from_group_no_groups_cluster(ep):
+    grp_id = 0x1234
+    ep, grp_mock = _group_remove_mock(ep, no_groups_cluster=True)
+    res = await ep.remove_from_group(grp_id)
+    assert res != ZCLStatus.SUCCESS
+    assert ep.request.call_count == 0
+    groups = ep.device.application.groups
+    assert groups.add_group.call_count == 0
+    assert groups.remove_group.call_count == 0
+    assert grp_mock.add_member.call_count == 0
+    assert grp_mock.remove_member.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_remove_from_group_fail(ep):
+    grp_id = 0x1234
+    ep, grp_mock = _group_remove_mock(ep, success=False)
+    res = await ep.remove_from_group(grp_id)
+    assert res != ZCLStatus.SUCCESS
+    assert ep.request.call_count == 1
+    groups = ep.device.application.groups
+    assert groups.add_group.call_count == 0
+    assert groups.remove_group.call_count == 0
+    assert grp_mock.add_member.call_count == 0
+    assert grp_mock.remove_member.call_count == 0

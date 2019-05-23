@@ -51,8 +51,9 @@ class Device(zigpy.util.LocalLogMixin):
     async def get_node_descriptor(self):
         self.info("Requesting 'Node Descriptor'")
         try:
-            status, _, node_desc = await self.zdo.request(
-                0x0002, self.nwk, tries=2, delay=1)
+            status, _, node_desc = await self.zdo.Node_Desc_req(self.nwk,
+                                                                tries=2,
+                                                                delay=1)
             if status == zdo.types.Status.SUCCESS:
                 self.node_desc = node_desc
                 self.info("Node Descriptor: %s", node_desc)
@@ -73,7 +74,7 @@ class Device(zigpy.util.LocalLogMixin):
             await self._node_handle
             self.info("Discovering endpoints")
             try:
-                epr = await self.zdo.request(0x0005, self.nwk, tries=3, delay=2)
+                epr = await self.zdo.Active_EP_req(self.nwk, tries=3, delay=2)
                 if epr[0] != 0:
                     raise Exception("Endpoint request failed: %s", epr)
             except Exception as exc:
@@ -116,6 +117,16 @@ class Device(zigpy.util.LocalLogMixin):
         ep = zigpy.endpoint.Endpoint(self, endpoint_id)
         self.endpoints[endpoint_id] = ep
         return ep
+
+    async def add_to_group(self, grp_id: int, name: str = None):
+        for ep_id, ep in self.endpoints.items():
+            if ep_id:
+                await ep.add_to_group(grp_id, name)
+
+    async def remove_from_group(self, grp_id: int):
+        for ep_id, ep in self.endpoints.items():
+            if ep_id:
+                await ep.remove_from_group(grp_id)
 
     async def request(self, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True):
         result = await self._application.request(

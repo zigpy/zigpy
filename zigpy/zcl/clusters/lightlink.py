@@ -54,8 +54,10 @@ class LightLink(Cluster):
         0x0042: ('get_endpoint_list', (t.uint8_t, ), False),
     }
     client_commands = {
-        # TODO: 'scan_rsp` may have dynamic argument count response
-        # 0x0001: ('scan_rsp', (t.uint32_t, t.uint8_t, t.bitmap8, t.bitmap8, t.bitmap16, t.uint32_t, t.EUI64, t.uint8_t, t.uint8_t, t.uint16_t, t.uint16_t, t.uint8_t, t.uint8_t, t.uint8_t, t.uint8_t, t.uint16_t, t.uint16_t, t.uint8_t, t.uint8_t ), True),
+        0x0001: ('scan_rsp', (t.uint32_t, t.uint8_t, t.bitmap8, t.bitmap8, t.bitmap16, t.uint32_t, t.EUI64, t.uint8_t,
+                              t.uint8_t, t.uint16_t, t.uint16_t, t.uint8_t, t.uint8_t, t.Optional(t.uint8_t),
+                              t.Optional(t.uint16_t), t.Optional(t.uint16_t), t.Optional(t.uint8_t),
+                              t.Optional(t.uint8_t)), True),
         0x0003: ('device_information_rsp', (t.uint32_t, t.uint8_t, t.uint8_t, t.LVList(DeviceInfoRecord), ), True),
         0x0011: ('network_start_rsp', (t.uint32_t, foundation.Status, t.EUI64, t.uint8_t, t.uint8_t, t.uint16_t, ), True),
         0x0013: ('network_join_router_rsp', (t.uint32_t, foundation.Status, ), True),

@@ -18,7 +18,7 @@ class Color(Cluster):
         0x0003: ('current_x', t.uint16_t),
         0x0004: ('current_y', t.uint16_t),
         0x0005: ('drift_compensation', t.enum8),
-        0x0006: ('compensation_text', t.LVBytes),
+        0x0006: ('compensation_text', t.CharacterString),
         0x0007: ('color_temperature', t.uint16_t),
         0x0008: ('color_mode', t.enum8),
         # Defined Primaries Information
@@ -108,8 +108,8 @@ class Ballast(Cluster):
         # Lamp Information
         0x0020: ('lamp_quantity', t.uint8_t),
         # Lamp Settings
-        0x0030: ('lamp_type', t.LVBytes),
-        0x0031: ('lamp_manufacturer', t.LVBytes),
+        0x0030: ('lamp_type', t.LimitedCharString(16)),
+        0x0031: ('lamp_manufacturer', t.LimitedCharString(16)),
         0x0032: ('lamp_rated_hours', t.uint24_t),
         0x0033: ('lamp_burn_hours', t.uint24_t),
         0x0034: ('lamp_alarm_mode', t.bitmap8),

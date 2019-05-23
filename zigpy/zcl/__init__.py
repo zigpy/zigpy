@@ -100,7 +100,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
     @util.retryable_request
     def request(self, general, command_id, schema, *args, manufacturer=None, expect_reply=True):
-        if len(schema) != len(args):
+        optional = len([s for s in schema if hasattr(s, 'optional') and s.optional])
+        if len(schema) < len(args) or len(args) < len(schema) - optional:
             self.error("Schema and args lengths do not match in request")
             error = asyncio.Future()
             error.set_exception(ValueError("Wrong number of parameters for request, expected %d argument(s)" % len(schema)))
@@ -122,11 +123,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         return self._endpoint.request(self.cluster_id, sequence, data, expect_reply=expect_reply, command_id=command_id)
 
     def reply(self, general, command_id, schema, *args, manufacturer=None):
-        if len(schema) != len(args):
-            self.error("Schema and args lengths do not match in reply")
-            error = asyncio.Future()
-            error.set_exception(ValueError("Wrong number of parameters for reply, expected %d argument(s)" % len(schema)))
-            return error
+        if len(schema) != len(args) and foundation.Status not in schema:
+            self.debug("Schema and args lengths do not match in reply")
 
         sequence = self._endpoint._device.application.get_sequence()
         frame_control = 0b1000  # Cluster reply command
@@ -228,7 +226,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             return success[attributes[0]]
         return success, failure
 
-    def write_attributes(self, attributes, is_report=False, manufacturer=None):
+    def write_attributes(self, attributes, is_report=False, manufacturer=None,
+                         unsupported_attrs=[]):
         args = []
         for attrid, value in attributes.items():
             if isinstance(attrid, str):
@@ -253,6 +252,13 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 args.append(a)
             except ValueError as e:
                 self.error(str(e))
+
+        if is_report and unsupported_attrs:
+            for attrid in unsupported_attrs:
+                a = foundation.ReadAttributeRecord()
+                a.attrid = attrid
+                a.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+                args.append(a)
 
         if is_report:
             schema = foundation.COMMANDS[0x01][1]
