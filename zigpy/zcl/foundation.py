@@ -61,6 +61,11 @@ class TypeValue:
         self.value, data = python_type.deserialize(data)
         return self, data
 
+    def __repr__(self):
+        return "<%s type=%s, value=%s>" % (self.__class__.__name__,
+                                           self.value.__class__.__name__,
+                                           self.value)
+
 
 class TypedCollection(TypeValue):
     @classmethod
@@ -114,9 +119,9 @@ DATA_TYPES = {
     0x39: ('Floating point', t.Single, Analog),
     0x3a: ('Floating point', t.Double, Analog),
     0x41: ('Octet string', t.LVBytes, Discrete),
-    0x42: ('Character string', t.LVBytes, Discrete),
-    # 0x43: ('Long octet string', ),
-    # 0x44: ('Long character string', ),
+    0x42: ('Character string', t.CharacterString, Discrete),
+    0x43: ('Long octet string', t.LongOctetString, Discrete),
+    0x44: ('Long character string', t.LongCharacterString, Discrete),
     0x48: ('Array', TypedCollection, Discrete),
     0x4c: ('Structure', t.LVList(TypeValue, 2), Discrete),
     0x50: ('Set', TypedCollection, Discrete),
@@ -182,6 +187,28 @@ class WriteAttributesStatusRecord(t.Struct):
         ('attrid', t.uint16_t),
     ]
 
+    @classmethod
+    def deserialize(cls, data):
+        r = cls()
+        r.status, data = Status.deserialize(data)
+        if r.status != Status.SUCCESS:
+            r.attrid, data = t.uint16_t.deserialize(data)
+
+        return r, data
+
+    def serialize(self):
+        r = Status(self.status).serialize()
+        if self.status != Status.SUCCESS:
+            r += t.uint16_t(self.attrid).serialize()
+        return r
+
+    def __repr__(self):
+        r = '<%s status=%s' % (self.__class__.__name__, self.status, )
+        if self.status != Status.SUCCESS:
+            r += ' attrid=%s' % (self.attrid, )
+        r += '>'
+        return r
+
 
 class AttributeReportingConfig:
     def serialize(self):
@@ -223,10 +250,34 @@ class AttributeReportingConfig:
 
 class ConfigureReportingResponseRecord(t.Struct):
     _fields = [
-        ('status', t.uint8_t),
+        ('status', Status),
         ('direction', t.uint8_t),
         ('attrid', t.uint16_t),
     ]
+
+    @classmethod
+    def deserialize(cls, data):
+        r = cls()
+        r.status, data = Status.deserialize(data)
+        if r.status != Status.SUCCESS:
+            r.direction, data = t.uint8_t.deserialize(data)
+            r.attrid, data = t.uint16_t.deserialize(data)
+
+        return r, data
+
+    def serialize(self):
+        r = Status(self.status).serialize()
+        if self.status != Status.SUCCESS:
+            r += t.uint8_t(self.direction).serialize()
+            r += t.uint16_t(self.attrid).serialize()
+        return r
+
+    def __repr__(self):
+        r = '<%s status=%s' % (self.__class__.__name__, self.status, )
+        if self.status != Status.SUCCESS:
+            r += ' direction=%s attrid=%s' % (self.direction, self.attrid, )
+        r += '>'
+        return r
 
 
 class ReadReportingConfigRecord(t.Struct):

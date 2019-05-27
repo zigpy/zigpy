@@ -1,11 +1,11 @@
 import enum
 import logging
 
-import zigpy.appdb
 import zigpy.profiles
 import zigpy.util
 import zigpy.zcl
-from zigpy.zcl.clusters.general import Basic
+from zigpy.zcl.clusters.general import Basic, Groups
+from zigpy.zcl.foundation import Status as ZCLStatus
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._cluster_attr = {}
         self.status = Status.NEW
         self._listeners = {}
+        self._member_of = {}
         self.profile_id = None
         self.manufacturer = None
         self.model = None
@@ -39,8 +40,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.info("Discovering endpoint information")
         try:
-            sdr = await self._device.zdo.request(
-                0x0004,
+            sdr = await self._device.zdo.Simple_Desc_req(
                 self._device.nwk,
                 self._endpoint_id,
                 tries=3,
@@ -89,7 +89,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._cluster_attr[cluster.ep_attribute] = cluster
 
         if hasattr(self._device.application, '_dblistener'):
-            listener = zigpy.appdb.ClusterPersistingListener(
+            listener = zigpy.zcl.ClusterPersistingListener(
                 self._device.application._dblistener,
                 cluster,
             )
@@ -109,6 +109,32 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
         self.out_clusters[cluster_id] = cluster
         return cluster
+
+    async def add_to_group(self, grp_id: int, name: str = None):
+        if Groups.cluster_id not in self.in_clusters:
+            self.debug("Cannot add 0x%04x group, no groups cluster", grp_id)
+            return ZCLStatus.FAILURE
+        res = await self.groups.add(grp_id, name)
+        if res[0] != ZCLStatus.SUCCESS:
+            self.debug("Couldn't add to 0x%04x group: %s", grp_id, res[0])
+            return res[0]
+
+        group = self.device.application.groups.add_group(grp_id, name)
+        group.add_member(self)
+        return res[0]
+
+    async def remove_from_group(self, grp_id: int):
+        if Groups.cluster_id not in self.in_clusters:
+            self.debug("Cannot remove 0x%04x group, no groups cluster", grp_id)
+            return ZCLStatus.FAILURE
+        res = await self.groups.remove(grp_id)
+        if res[0] != ZCLStatus.SUCCESS:
+            self.debug("Couldn't add to 0x%04x group: %s", grp_id, res[0])
+            return res[0]
+
+        if grp_id in self.device.application.groups:
+            self.device.application.groups[grp_id].remove_member(self)
+        return res[0]
 
     async def initialize_endpoint_info(self):
         attributes = {
@@ -179,9 +205,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         handler(is_reply, tsn, command_id, args)
 
-    def request(self, cluster, sequence, data, expect_reply=True):
-        if (self.profile_id == zigpy.profiles.zll.PROFILE_ID and
-                cluster != zigpy.zcl.clusters.lightlink.LightLink.cluster_id):
+    def request(self, cluster, sequence, data, expect_reply=True, command_id=0x00):
+        if (self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
+                cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id and command_id < 0x40)):
             profile_id = zigpy.profiles.zha.PROFILE_ID
         else:
             profile_id = self.profile_id
@@ -218,6 +244,14 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def endpoint_id(self):
         return self._endpoint_id
+
+    @property
+    def member_of(self):
+        return self._member_of
+
+    @property
+    def unique_id(self):
+        return self.device.ieee, self.endpoint_id
 
     def __getattr__(self, name):
         try:

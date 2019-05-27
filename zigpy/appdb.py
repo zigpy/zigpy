@@ -7,9 +7,12 @@ import zigpy.profiles
 import zigpy.quirks
 import zigpy.types as t
 from zigpy.zcl.clusters.general import Basic
+from zigpy.zdo import types as zdo_t
 
 
 LOGGER = logging.getLogger(__name__)
+
+DB_VERSION = 0x0001
 
 
 def _sqlite_adapters():
@@ -31,11 +34,15 @@ class PersistingListener:
                                    detect_types=sqlite3.PARSE_DECLTYPES)
         self._cursor = self._db.cursor()
 
+        self._enable_foreign_keys()
         self._create_table_devices()
         self._create_table_endpoints()
         self._create_table_clusters()
+        self._create_table_node_descriptors()
         self._create_table_output_clusters()
         self._create_table_attributes()
+        self._create_table_groups()
+        self._create_table_group_members()
 
         self._application = application
 
@@ -66,8 +73,35 @@ class PersistingListener:
             value,
         )
 
+    def node_descriptor_updated(self, device):
+        self._save_node_descriptor(device)
+        self._db.commit()
+
+    def group_added(self, group):
+        q = "INSERT OR REPLACE INTO groups VALUES (?, ?)"
+        self.execute(q, (group.group_id, group.name))
+        self._db.commit()
+
+    def group_member_added(self, group, ep):
+        q = "INSERT OR REPLACE INTO group_members VALUES (?, ?, ?)"
+        self.execute(q, (group.group_id, *ep.unique_id))
+        self._db.commit()
+
+    def group_member_removed(self, group, ep):
+        q = """DELETE FROM group_members WHERE group_id=?
+                                               AND ieee=?
+                                               AND endpoint_id=?"""
+        self.execute(q, (group.group_id, *ep.unique_id))
+        self._db.commit()
+
+    def group_removed(self, group):
+        q = "DELETE FROM groups WHERE group_id=?"
+        self.execute(q, (group.group_id, ))
+        self._db.commit()
+
     def _create_table(self, table_name, spec):
         self.execute("CREATE TABLE IF NOT EXISTS %s %s" % (table_name, spec))
+        self.execute("PRAGMA user_version = %s" % (DB_VERSION, ))
 
     def _create_index(self, index_name, table, columns):
         self.execute("CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(%s)" % (
@@ -93,6 +127,12 @@ class PersistingListener:
             "ieee, endpoint_id, cluster",
         )
 
+    def _create_table_node_descriptors(self):
+        self._create_table(
+            "node_descriptors",
+            "(ieee ieee, value, FOREIGN KEY(ieee) REFERENCES devices(ieee))")
+        self._create_index("node_descriptors_idx", "node_descriptors", "ieee")
+
     def _create_table_output_clusters(self):
         self._create_table("output_clusters", "(ieee ieee, endpoint_id, cluster)")
         self._create_index(
@@ -112,10 +152,29 @@ class PersistingListener:
             "ieee, endpoint_id, cluster, attrid"
         )
 
+    def _create_table_groups(self):
+        self._create_table("groups", "(group_id, name)")
+        self._create_index("group_idx", "groups", "group_id")
+
+    def _create_table_group_members(self):
+        self._create_table(
+            "group_members",
+            """(group_id, ieee ieee, endpoint_id,
+                FOREIGN KEY(group_id) REFERENCES groups(group_id),
+                FOREIGN KEY(ieee, endpoint_id)
+                REFERENCES endpoints(ieee, endpoint_id))""")
+        self._create_index(
+            "group_members_idx", "group_members", "group_id, ieee, endpoint_id")
+
+    def _enable_foreign_keys(self):
+        self.execute("PRAGMA foreign_keys = ON")
+
     def _remove_device(self, device):
         self.execute("DELETE FROM attributes WHERE ieee = ?", (device.ieee, ))
+        self.execute("DELETE FROM node_descriptors WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM clusters WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM output_clusters WHERE ieee = ?", (device.ieee, ))
+        self.execute("DELETE FROM group_members WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM endpoints WHERE ieee = ?", (device.ieee, ))
         self.execute("DELETE FROM devices WHERE ieee = ?", (device.ieee, ))
         self._db.commit()
@@ -123,6 +182,7 @@ class PersistingListener:
     def _save_device(self, device):
         q = "INSERT OR REPLACE INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
         self.execute(q, (device.ieee, device.nwk, device.status))
+        self._save_node_descriptor(device)
         if isinstance(device, zigpy.quirks.CustomDevice):
             self._db.commit()
             return
@@ -153,6 +213,12 @@ class PersistingListener:
         self._cursor.executemany(q, endpoints)
         self._db.commit()
 
+    def _save_node_descriptor(self, device):
+        if not device.node_desc.is_valid:
+            return
+        q = "INSERT OR REPLACE INTO node_descriptors VALUES (?, ?)"
+        self.execute(q, (device.ieee, device.node_desc.serialize()))
+
     def _save_input_clusters(self, endpoint):
         q = "INSERT OR REPLACE INTO clusters VALUES (?, ?, ?)"
         clusters = [
@@ -181,10 +247,54 @@ class PersistingListener:
 
     def load(self):
         LOGGER.debug("Loading application state from %s", self._database_file)
+        self._load_devices()
+        self._load_node_descriptors()
+        self._load_endpoints()
+        self._load_clusters()
+
+        def _load_attributes():
+            for (ieee, endpoint_id, cluster, attrid, value) in self._scan("attributes"):
+                dev = self._application.get_device(ieee)
+                if endpoint_id in dev.endpoints:
+                    ep = dev.endpoints[endpoint_id]
+                    if cluster in ep.in_clusters:
+                        clus = ep.in_clusters[cluster]
+                        clus._attr_cache[attrid] = value
+                        LOGGER.debug("Attribute id: %s value: %s", attrid, value)
+                        if cluster == Basic.cluster_id and attrid == 4:
+                            if isinstance(value, bytes):
+                                value = value.split(b'\x00')[0]
+                                ep.manufacturer = value.decode().strip()
+                            else:
+                                ep.manufacturer = value
+                        if cluster == Basic.cluster_id and attrid == 5:
+                            if isinstance(value, bytes):
+                                value = value.split(b'\x00')[0]
+                                ep.model = value.decode().strip()
+                            else:
+                                ep.model = value
+
+        _load_attributes()
+
+        for device in self._application.devices.values():
+            device = zigpy.quirks.get_device(device)
+            self._application.devices[device.ieee] = device
+
+        _load_attributes()
+        self._load_groups()
+        self._load_group_members()
+
+    def _load_devices(self):
         for (ieee, nwk, status) in self._scan("devices"):
             dev = self._application.add_device(ieee, nwk)
             dev.status = zigpy.device.Status(status)
 
+    def _load_node_descriptors(self):
+        for (ieee, value) in self._scan("node_descriptors"):
+            dev = self._application.get_device(ieee)
+            dev.node_desc = zdo_t.NodeDescriptor.deserialize(value)[0]
+
+    def _load_endpoints(self):
         for (ieee, epid, profile_id, device_type, status) in self._scan("endpoints"):
             dev = self._application.get_device(ieee)
             ep = dev.add_endpoint(epid)
@@ -199,6 +309,7 @@ class PersistingListener:
             ep.device_type = device_type
             ep.status = zigpy.endpoint.Status(status)
 
+    def _load_clusters(self):
         for (ieee, endpoint_id, cluster) in self._scan("clusters"):
             dev = self._application.get_device(ieee)
             ep = dev.endpoints[endpoint_id]
@@ -209,41 +320,15 @@ class PersistingListener:
             ep = dev.endpoints[endpoint_id]
             ep.add_output_cluster(cluster)
 
-        def _load_attributes():
-            for (ieee, endpoint_id, cluster, attrid, value) in self._scan("attributes"):
-                dev = self._application.get_device(ieee)
-                if endpoint_id in dev.endpoints:
-                    ep = dev.endpoints[endpoint_id]
-                    if cluster in ep.in_clusters:
-                        clus = ep.in_clusters[cluster]
-                        clus._attr_cache[attrid] = value
-                        LOGGER.debug("Attribute id: %s value: %s", attrid, value)
-                        if cluster == Basic.cluster_id and attrid == 4:
-                            value = value.split(b'\x00')[0]
-                            ep.manufacturer = value.decode().strip()
-                        if cluster == Basic.cluster_id and attrid == 5:
-                            value = value.split(b'\x00')[0]
-                            ep.model = value.decode().strip()
+    def _load_groups(self):
+        for (group_id, name) in self._scan("groups"):
+            self._application.groups.add_group(group_id, name,
+                                               suppress_event=True)
 
-        _load_attributes()
-
-        for device in self._application.devices.values():
-            device = zigpy.quirks.get_device(device)
-            self._application.devices[device.ieee] = device
-
-        _load_attributes()
-
-
-class ClusterPersistingListener:
-    def __init__(self, applistener, cluster):
-        self._applistener = applistener
-        self._cluster = cluster
-
-    def attribute_updated(self, attrid, value):
-        self._applistener.attribute_updated(self._cluster, attrid, value)
-
-    def cluster_command(self, *args, **kwargs):
-        pass
-
-    def zdo_command(self, *args, **kwargs):
-        pass
+    def _load_group_members(self):
+        for (group_id, ieee, ep_id) in self._scan("group_members"):
+            group = self._application.groups[group_id]
+            group.add_member(
+                self._application.get_device(ieee).endpoints[ep_id],
+                suppress_event=True
+            )

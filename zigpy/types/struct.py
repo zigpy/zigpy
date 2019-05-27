@@ -4,6 +4,12 @@ class Struct:
             # copy constructor
             for field in self._fields:
                 setattr(self, field[0], getattr(args[0], field[0]))
+        elif len(args) == len(self._fields):
+            for field, value in zip(self._fields, args):
+                setattr(self, field[0], field[1](value))
+        elif not args:
+            for field in self._fields:
+                setattr(self, field[0], None)
 
     def serialize(self):
         r = b''

@@ -41,10 +41,82 @@ def test_multi_address_invalid():
 
 
 def test_node_descriptor():
-    data = b'\x00\x00\x01\x02\x02\x03\x04\x04\x05\x05\x06\x06\x07\xff'
-    nd, data = types.NodeDescriptor.deserialize(data)
+    data = b'\x00\x01\x02\x03\x03\x04\x05\x05\x06\x06\x07\x07\x08\xff'
+    nd, rest = types.NodeDescriptor.deserialize(data)
 
-    assert data == b'\xff'
+    assert rest == b'\xff'
+
+    new_node_desc = types.NodeDescriptor(nd)
+    assert new_node_desc.byte1 == 0
+    assert new_node_desc.byte2 == 1
+    assert new_node_desc.mac_capability_flags == 0x02
+    assert new_node_desc.manufacturer_code == 0x0303
+    assert new_node_desc.maximum_buffer_size == 0x04
+    assert new_node_desc.maximum_incoming_transfer_size == 0x0505
+    assert new_node_desc.server_mask == 0x0606
+    assert new_node_desc.maximum_outgoing_transfer_size == 0x0707
+    assert new_node_desc.descriptor_capability_field == 0x08
+
+    nd2 = types.NodeDescriptor(
+        0, 1, 2, 0x0303, 0x04, 0x0505, 0x0606, 0x0707, 0x08)
+    assert nd2.serialize() == new_node_desc.serialize()
+
+
+def test_node_descriptor_is_valid():
+    for field in types.NodeDescriptor._fields:
+        nd = types.NodeDescriptor(
+            0, 1, 2, 0x0303, 0x04, 0x0505, 0x0606, 0x0707, 0x08)
+        assert nd.is_valid is True
+        setattr(nd, field[0], None)
+        assert nd.is_valid is False
+
+
+def test_node_descriptor_props():
+    props = (
+        'logical_type', 'complex_descriptor_available',
+        'user_descriptor_available', 'is_alternate_pan_coordinator',
+        'is_full_function_device', 'is_mains_powered',
+        'is_receiver_on_when_idle', 'is_security_capable', 'allocate_address'
+    )
+
+    empty_nd = types.NodeDescriptor()
+    for prop in props:
+        value = getattr(empty_nd, prop)
+        assert value is None
+
+    nd = types.NodeDescriptor(
+        0b11111000, 0xff, 0xff, 0xffff, 0xff, 0xffff, 0xffff, 0xffff, 0xff)
+    assert nd.logical_type is not None
+    for prop in props:
+        if prop == 'logical_type':
+            continue
+        value = getattr(nd, prop)
+        assert value is True
+
+
+def test_node_descriptor_logical_types():
+    nd = types.NodeDescriptor()
+    assert nd.is_coordinator is None
+    assert nd.is_end_device is None
+    assert nd.is_router is None
+
+    nd = types.NodeDescriptor(
+        0b11111000, 0xff, 0xff, 0xffff, 0xff, 0xffff, 0xffff, 0xffff, 0xff)
+    assert nd.is_coordinator is True
+    assert nd.is_end_device is False
+    assert nd.is_router is False
+
+    nd = types.NodeDescriptor(
+        0b11111001, 0xff, 0xff, 0xffff, 0xff, 0xffff, 0xffff, 0xffff, 0xff)
+    assert nd.is_coordinator is False
+    assert nd.is_end_device is False
+    assert nd.is_router is True
+
+    nd = types.NodeDescriptor(
+        0b11111010, 0xff, 0xff, 0xffff, 0xff, 0xffff, 0xffff, 0xffff, 0xff)
+    assert nd.is_coordinator is False
+    assert nd.is_end_device is True
+    assert nd.is_router is False
 
 
 def test_size_prefixed_simple_descriptor():

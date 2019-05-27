@@ -3,6 +3,7 @@ import logging
 
 import zigpy.appdb
 import zigpy.device
+import zigpy.group
 import zigpy.quirks
 import zigpy.types as t
 import zigpy.util
@@ -16,6 +17,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     def __init__(self, database_file=None):
         self._send_sequence = 0
         self.devices = {}
+        self._groups = zigpy.group.Groups(self)
         self._listeners = {}
         self._ieee = None
         self._nwk = None
@@ -23,6 +25,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         if database_file is not None:
             self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
             self.add_listener(self._dblistener)
+            self.groups.add_listener(self._dblistener)
             self._dblistener.load()
 
     async def shutdown(self):
@@ -159,6 +162,10 @@ class ControllerApplication(zigpy.util.ListenableMixin):
                 return dev
 
         raise KeyError
+
+    @property
+    def groups(self):
+        return self._groups
 
     @property
     def ieee(self):
