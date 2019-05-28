@@ -96,15 +96,15 @@ class Thermostat(Cluster):
         0x0047: ('ac_capacity_format', t.enum8),
     }
     server_commands = {
-        0x0000: ('setpoint_raise_lower', (), False),
-        0x0001: ('set_weekly_schedule', (), False),
-        0x0002: ('get_weekly_schedule', (), False),
+        0x0000: ('setpoint_raise_lower', (t.enum8, t.int8s), False),
+        0x0001: ('set_weekly_schedule', (t.enum8, t.bitmap8, t.bitmap8, t.List(t.int16s)), False),
+        0x0002: ('get_weekly_schedule', (t.bitmap8, t.bitmap8), False),
         0x0003: ('clear_weekly_schedule', (), False),
         0x0004: ('get_relay_status_log', (), False),
     }
     client_commands = {
-        0x0000: ('get_weekly_schedule_response', (), True),
-        0x0001: ('get_relay_status_log_response', (), True),
+        0x0000: ('get_weekly_schedule_response', (t.enum8, t.bitmap8, t.bitmap8, t.List(t.int16s)), True),
+        0x0001: ('get_relay_status_log_response', (t.uint16_t, t.bitmap8, t.int16s, t.uint8_t, t.int16s, t.uint16_t), True),
     }
 
 
