@@ -111,7 +111,7 @@ class DoorLock(Cluster):
         0x0009: ('set_user_status_response', (foundation.Status, ), True),
         0x000a: ('get_user_status_response', (t.uint16_t, t.uint8_t), True),
         0x000b: ('set_week_day_schedule_response', (foundation.Status, ), True),
-        0x000c: ('get_week_day_schedule_response', (t.uin8_t, t.uint16_t, foundation.Status, t.Optional(t.uint8_t), t.Optional(t.uint8_t), t.Optional(t.uint8_t), t.Optional(t.uint8_t)), True),
+        0x000c: ('get_week_day_schedule_response', (t.uint8_t, t.uint16_t, foundation.Status, t.Optional(t.uint8_t), t.Optional(t.uint8_t), t.Optional(t.uint8_t), t.Optional(t.uint8_t)), True),
         0x000d: ('clear_week_day_schedule_response', (foundation.Status, ), True),
         0x000e: ('set_year_day_schedule_response', (foundation.Status, ), True),
         0x000f: ('get_year_day_schedule_response', (t.uint8_t, t.uint16_t, foundation.Status, t.Optional(t.uint32_t), t.Optional(t.uint32_t)), True),
