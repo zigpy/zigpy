@@ -28,6 +28,7 @@ class DoorLock(Cluster):
     ep_attribute = 'door_lock'
     attributes = {
         0x0000: ('lock_state', t.enum8),
+        0x0001: ('lock_type', t.enum8),
         0x0002: ('actuator_enabled', t.Bool),
         0x0003: ('door_state', t.enum8),
         0x0004: ('door_open_events', t.uint32_t),
@@ -49,8 +50,8 @@ class DoorLock(Cluster):
         0x0022: ('led_settings', t.uint8_t),
         0x0023: ('auto_relock_time', t.uint32_t),
         0x0024: ('sound_volume', t.uint8_t),
-        0x0025: ('operating_mode', t.uint32_t),
-        0x0026: ('lock_type', t.bitmap16),
+        0x0025: ('operating_mode', t.enum8),
+        0x0026: ('supported_operating_modes', t.bitmap16),
         0x0027: ('default_configuration_register', t.bitmap16),
         0x0028: ('enable_local_programming', t.Bool),
         0x0029: ('enable_one_touch_locking', t.Bool),
@@ -60,7 +61,7 @@ class DoorLock(Cluster):
         0x0031: ('user_code_temporary_disable_time', t.uint8_t),
         0x0032: ('send_pin_ota', t.Bool),
         0x0033: ('require_pin_for_rf_operation', t.Bool),
-        0x0034: ('zigbee_security_level', t.uint8_t),
+        0x0034: ('zigbee_security_level', t.enum8),
         0x0040: ('alarm_mask', t.bitmap16),
         0x0041: ('keypad_operation_event_mask', t.bitmap16),
         0x0042: ('rf_operation_event_mask', t.bitmap16),
