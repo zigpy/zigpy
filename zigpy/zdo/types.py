@@ -199,7 +199,7 @@ class Neighbor(t.Struct):
     _fields = [
         ('PanId', t.EUI64),
         ('IEEEAddr', t.EUI64),
-        ('NWKAddr', t.uint16_t),
+        ('NWKAddr', t.NWK),
         ('NeighborType', t.uint8_t),
         ('PermitJoining', t.uint8_t),
         ('Depth', t.uint8_t),
@@ -219,9 +219,9 @@ class Neighbors(t.Struct):
 class Route(t.Struct):
     """Route Descriptor"""
     _fields = [
-        ('DstNWK', t.uint16_t),
+        ('DstNWK', t.NWK),
         ('RouteStatus', t.uint8_t),
-        ('NextHop', t.uint16_t)
+        ('NextHop', t.NWK)
     ]
 
 
@@ -427,8 +427,8 @@ CLUSTERS = {
     ZDOCmd.Unbind_rsp: (STATUS,),
     # ... TODO optional stuff ...
     # Network Management Server Services Responses
-    ZDOCmd.Mgmt_Lqi_rsp: (STATUS, ('Neighbors', Neighbors)),
-    ZDOCmd.Mgmt_Rtg_rsp: (STATUS, ('Routes', Routes)),
+    ZDOCmd.Mgmt_Lqi_rsp: (STATUS, ('Neighbors', t.Optional(Neighbors))),
+    ZDOCmd.Mgmt_Rtg_rsp: (STATUS, ('Routes', t.Optional(Routes))),
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Leave_rsp: (STATUS,),
     ZDOCmd.Mgmt_Permit_Joining_rsp: (STATUS,),
