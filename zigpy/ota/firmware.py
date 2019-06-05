@@ -169,3 +169,32 @@ class SubElement(bytes):
 
     def serialize(self):
         return self.tag_id.serialize() + self.length.serialize() + self
+
+
+@attr.s
+class OTAImage:
+    header = attr.ib(default=OTAImageHeader())
+    subelements = attr.ib(default=[])
+
+    @classmethod
+    def deserialize(cls, data):
+        hdr, data = OTAImageHeader.deserialize(data)
+        elements_len = hdr.image_size - hdr.header_length
+        if elements_len > len(data):
+            raise ValueError("Data is too short for {}".format(cls.__name__))
+
+        image = cls(hdr)
+        element_data, data = data[:elements_len], data[elements_len:]
+        while element_data:
+            element, element_data = SubElement.deserialize(element_data)
+            image.subelements.append(element)
+
+        return image, data
+
+    def serialize(self):
+        res = self.header.serialize()
+        for element in self.subelements:
+            res += element.serialize()
+
+        return res
+

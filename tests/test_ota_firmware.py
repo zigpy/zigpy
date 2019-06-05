@@ -190,4 +190,48 @@ def test_subelement_too_short():
     assert rest == b''
 
     with pytest.raises(ValueError):
-        firmware.SubElement.deserialize(b'\x00\x02\x02x00\x00\x00a')
+        firmware.SubElement.deserialize(b'\x00\x02\x02\x00\x00\x00a')
+
+
+@pytest.fixture
+def raw_header():
+    def data(elements_size=0):
+        d = b'\x1e\xf1\xee\x0b\x00\x018\x00\x00\x00'
+        d += b'|\x11\x01!rE!\x12\x02\x00EBL tradfri_light_basic\x00\x00\x00'
+        d += b'\x00\x00\x00\x00\x00\x00'
+        d += t.uint32_t(elements_size + 56).serialize()
+        return d
+    return data
+
+
+@pytest.fixture
+def raw_sub_element():
+    def data(tag_id, payload=b''):
+        r = t.uint16_t(tag_id).serialize()
+        r += t.uint32_t(len(payload)).serialize()
+        return r + payload
+    return data
+
+
+def test_ota_image(raw_header, raw_sub_element):
+    el1_payload = b'abcd'
+    el2_payload = b'4321'
+    el1 = raw_sub_element(0, el1_payload)
+    el2 = raw_sub_element(1, el2_payload)
+
+    extra = b'edbc321'
+    img, rest = firmware.OTAImage.deserialize(
+        raw_header(len(el1+el2)) + el1 + el2 + extra
+    )
+
+    assert rest == extra
+    assert len(img.subelements) == 2
+    assert img.subelements[0] == el1_payload
+    assert img.subelements[1] == el2_payload
+
+    assert img.serialize() == raw_header(len(el1 + el2)) + el1 + el2
+
+    with pytest.raises(ValueError):
+        firmware.OTAImage.deserialize(raw_header(len(el1 + el2))
+                                      + el1
+                                      + el2[:-1])
