@@ -162,3 +162,32 @@ def test_header_string_too_short():
 
     with pytest.raises(ValueError):
         firmware.HeaderString.deserialize(data)
+
+
+def test_subelement():
+    payload = b'\x00payload\xff'
+    data = b'\x01\x00' + t.uint32_t(len(payload)).serialize() + payload
+    extra = b'extra'
+
+    e, rest = firmware.SubElement.deserialize(data + extra)
+    assert rest == extra
+    assert e.tag_id == firmware.ElementTagId.ECDSA_SIGNATURE
+    assert e.data == payload
+    assert e == payload
+    assert e.length == len(payload)
+
+    assert e.serialize() == data
+
+
+def test_subelement_too_short():
+    for i in range(1,  5):
+        with pytest.raises(ValueError):
+            firmware.SubElement.deserialize(b''.ljust(i, b'\x00'))
+
+    e, rest = firmware.SubElement.deserialize(b'\x00\x00\x00\x00\x00\x00')
+    assert e.length == 0
+    assert e == b''
+    assert rest == b''
+
+    with pytest.raises(ValueError):
+        firmware.SubElement.deserialize(b'\x00\x02\x02x00\x00\x00a')

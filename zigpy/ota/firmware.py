@@ -1,5 +1,6 @@
 """OTA Firmware handling."""
 import attr
+import enum
 
 import zigpy.types as t
 
@@ -131,3 +132,40 @@ class OTAImageHeader(t.Struct):
             data += self.maximum_hardware_version.serialize()
         return data
 
+
+class ElementTagId(t.uint16_t, enum.Enum):
+    UPGRADE_IMAGE = 0x0000
+    ECDSA_SIGNATURE = 0x0001
+    ECDSA_SIGNING_CERTIFICATE = 0x0002
+    IMAGE_INTEGRITY_CODE = 0x0003
+
+
+class SubElement(bytes):
+    @property
+    def data(self):
+        return self
+
+    @property
+    def length(self):
+        return t.uint32_t(len(self))
+
+    @classmethod
+    def deserialize(cls, data) -> tuple:
+        if len(data) < 6:
+            raise ValueError("Data is too short for {}".format(cls.__name__))
+
+        try:
+            tag_id, rest = ElementTagId.deserialize(data)
+        except ValueError:
+            tag_id, rest = t.uint16_t.deserialize(data)
+
+        length, rest = t.uint32_t.deserialize(rest)
+        if length > len(rest):
+            raise ValueError("Data is too short for {}".format(cls.__name__))
+
+        r = cls(rest[:length])
+        r.tag_id = tag_id
+        return r, rest[length:]
+
+    def serialize(self):
+        return self.tag_id.serialize() + self.length.serialize() + self
