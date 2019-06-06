@@ -180,7 +180,7 @@ def test_subelement():
 
 
 def test_subelement_too_short():
-    for i in range(1,  5):
+    for i in range(1, 5):
         with pytest.raises(ValueError):
             firmware.SubElement.deserialize(b''.ljust(i, b'\x00'))
 
@@ -221,7 +221,7 @@ def test_ota_image(raw_header, raw_sub_element):
 
     extra = b'edbc321'
     img, rest = firmware.OTAImage.deserialize(
-        raw_header(len(el1+el2)) + el1 + el2 + extra
+        raw_header(len(el1 + el2)) + el1 + el2 + extra
     )
 
     assert rest == extra
@@ -232,9 +232,8 @@ def test_ota_image(raw_header, raw_sub_element):
     assert img.serialize() == raw_header(len(el1 + el2)) + el1 + el2
 
     with pytest.raises(ValueError):
-        firmware.OTAImage.deserialize(raw_header(len(el1 + el2))
-                                      + el1
-                                      + el2[:-1])
+        firmware.OTAImage.deserialize(raw_header(len(el1 + el2)) +
+                                      el1 + el2[:-1])
 
 
 def test_ota_img_should_upgrade():
