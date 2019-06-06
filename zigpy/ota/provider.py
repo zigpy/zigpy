@@ -6,7 +6,7 @@ from typing import Optional
 
 import aiohttp
 
-from zigpy.ota.firmware import Firmware, FirmwareKey
+from zigpy.ota.image import Firmware, FirmwareKey
 
 LOGGER = logging.getLogger(__name__)
 

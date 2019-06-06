@@ -5,7 +5,7 @@ from typing import Optional
 
 import zigpy.ota.provider
 import zigpy.util
-from zigpy.ota.firmware import Firmware, FirmwareKey
+from zigpy.ota.image import Firmware, FirmwareKey
 
 LOGGER = logging.getLogger(__name__)
 

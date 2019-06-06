@@ -5,7 +5,7 @@ import pytest
 
 import zigpy.application
 import zigpy.ota
-import zigpy.ota.firmware
+import zigpy.ota.image
 import zigpy.ota.provider
 
 MANUFACTURER_ID = mock.sentinel.manufacturer_id
@@ -15,12 +15,12 @@ IMAGE_TYPE = mock.sentinel.image_type
 @pytest.fixture
 def firmware(key):
     data = b'abcdef'
-    return zigpy.ota.firmware.Firmware(key, 100, len(data), '', data)
+    return zigpy.ota.image.Firmware(key, 100, len(data), '', data)
 
 
 @pytest.fixture
 def key():
-    return zigpy.ota.firmware.FirmwareKey(MANUFACTURER_ID, IMAGE_TYPE)
+    return zigpy.ota.image.FirmwareKey(MANUFACTURER_ID, IMAGE_TYPE)
 
 
 @pytest.fixture
@@ -81,8 +81,8 @@ def test_get_firmware_empty(ota, firmware, key):
 
 def test_get_firmware_new(ota, firmware, key):
     new_data = b'new_firmware_2'
-    newer = zigpy.ota.firmware.Firmware(key, firmware.version + 1,
-                                        len(new_data), '', new_data)
+    newer = zigpy.ota.image.Firmware(key, firmware.version + 1,
+                                     len(new_data), '', new_data)
 
     handler_mock = mock.MagicMock(return_value=[None, firmware, newer])
     ota.listener_event = mock.MagicMock(side_effect=handler_mock)
