@@ -3,6 +3,7 @@ from unittest import mock
 import pytest
 
 import zigpy.ota.image as firmware
+import zigpy.ota.provider
 import zigpy.types as t
 
 MANUFACTURER_ID = mock.sentinel.manufacturer_id
@@ -22,7 +23,7 @@ def test_firmware_key():
 
 def test_firmware(key):
     s = mock.sentinel
-    frm = firmware.Firmware(key, s.ver, s.size, s.url)
+    frm = zigpy.ota.provider.Firmware(key, s.ver, s.size, s.url)
 
     assert frm.key == key
     assert frm.version is s.ver
@@ -36,7 +37,7 @@ def test_firmware(key):
 
 def test_upgradeable(key):
     s = mock.sentinel
-    frm = firmware.Firmware(key, 100, s.size, s.url, s.data)
+    frm = zigpy.ota.provider.Firmware(key, 100, s.size, s.url, s.data)
 
     assert not frm.upgradeable(MANUFACTURER_ID, IMAGE_TYPE, 100, None)
     assert not frm.upgradeable(MANUFACTURER_ID, IMAGE_TYPE, 101, None)

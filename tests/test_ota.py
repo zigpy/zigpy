@@ -15,7 +15,7 @@ IMAGE_TYPE = mock.sentinel.image_type
 @pytest.fixture
 def firmware(key):
     data = b'abcdef'
-    return zigpy.ota.image.Firmware(key, 100, len(data), '', data)
+    return zigpy.ota.provider.Firmware(key, 100, len(data), '', data)
 
 
 @pytest.fixture
@@ -81,8 +81,8 @@ def test_get_firmware_empty(ota, firmware, key):
 
 def test_get_firmware_new(ota, firmware, key):
     new_data = b'new_firmware_2'
-    newer = zigpy.ota.image.Firmware(key, firmware.version + 1,
-                                     len(new_data), '', new_data)
+    newer = zigpy.ota.provider.Firmware(key, firmware.version + 1,
+                                        len(new_data), '', new_data)
 
     handler_mock = mock.MagicMock(return_value=[None, firmware, newer])
     ota.listener_event = mock.MagicMock(side_effect=handler_mock)
