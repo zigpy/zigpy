@@ -724,25 +724,24 @@ class Ota(Cluster):
                    field_ctrl, manufacturer_id, image_type,
                    current_file_version, hardware_version)
 
-        frmw = self.endpoint.device.application.ota.get_firmware(
+        img = self.endpoint.device.application.ota.get_ota_image(
             manufacturer_id, image_type)
 
-        if frmw and frmw.is_valid:
-            update_needed = frmw.upgradeable(
+        if img and img.is_valid:
+            update_needed = img.upgradeable(
                 manufacturer_id, image_type, current_file_version,
                 hardware_version)
-            self.debug("Firmware version: %s, size: %s. Update needed: %s",
-                       frmw.version, frmw.size, update_needed)
-            if frmw.upgradeable(manufacturer_id, image_type,
-                                current_file_version, hardware_version):
+            self.debug("OTA image version: %s, size: %s. Update needed: %s",
+                       img.version, img.header.image_size, update_needed)
+            if update_needed:
                 self.info("Updating: %s %s",
                           self.endpoint.manufacturer, self.endpoint.model)
                 await self.query_next_image_response(
-                    foundation.Status.SUCCESS, frmw.key.manufacturer_id,
-                    frmw.key.image_type, frmw.version, frmw.size)
+                    foundation.Status.SUCCESS, img.key.manufacturer_id,
+                    img.key.image_type, img.version, img.header.image_size)
                 return
         else:
-            self.debug("No firmware available")
+            self.debug("No OTA image is available")
         await self.query_next_image_response(
             foundation.Status.NO_IMAGE_AVAILABLE)
 
@@ -758,20 +757,20 @@ class Ota(Cluster):
                    field_ctr, manufacturer_id, image_type, file_version,
                    file_offset, max_data_size, request_node_addr,
                    block_request_delay)
-        frmw = self.endpoint.device.application.ota.get_firmware(
+        img = self.endpoint.device.application.ota.get_ota_image(
             manufacturer_id, image_type)
-        if frmw is None or not frmw.is_valid:
-            self.debug("OTA invalid firmware data")
+        if img is None or not img.is_valid:
+            self.debug("OTA invalid image data")
             await self.image_block_response(foundation.Status.ABORT)
             return
-        data = frmw.data[file_offset:file_offset + min(self.MAXIMUM_DATA_SIZE,
-                                                       max_data_size)]
+        data = img.data[file_offset:file_offset + min(self.MAXIMUM_DATA_SIZE,
+                                                      max_data_size)]
         self.debug("OTA upgrade progress: %0.1f",
-                   100.0 * file_offset / frmw.size)
+                   100.0 * file_offset / img.size)
         await self.image_block_response(
             foundation.Status.SUCCESS,
-            frmw.key.manufacturer_id, frmw.key.image_type,
-            frmw.version, file_offset, data
+            img.key.manufacturer_id, img.key.image_type,
+            img.version, file_offset, data
         )
 
     async def _handle_upgrade_end(self, status, manufacturer_id, image_type,

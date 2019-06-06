@@ -69,13 +69,13 @@ def test_get_firmware_empty(ota, firmware, key):
     handler_mock = mock.MagicMock(return_value=[None])
     ota.listener_event = mock.MagicMock(side_effect=handler_mock)
 
-    assert len(ota._firmwares) == 0
-    res = ota.get_firmware(MANUFACTURER_ID, IMAGE_TYPE)
+    assert len(ota._image_cache) == 0
+    res = ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
-    assert len(ota._firmwares) == 0
+    assert len(ota._image_cache) == 0
     assert res is None
     assert ota.listener_event.call_count == 1
-    assert ota.listener_event.call_args[0][0] == 'get_firmware'
+    assert ota.listener_event.call_args[0][0] == 'get_image'
     assert ota.listener_event.call_args[0][1] == key
 
 
@@ -87,19 +87,19 @@ def test_get_firmware_new(ota, firmware, key):
     handler_mock = mock.MagicMock(return_value=[None, firmware, newer])
     ota.listener_event = mock.MagicMock(side_effect=handler_mock)
 
-    assert len(ota._firmwares) == 0
-    res = ota.get_firmware(MANUFACTURER_ID, IMAGE_TYPE)
+    assert len(ota._image_cache) == 0
+    res = ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
-    assert len(ota._firmwares) == 1
+    assert len(ota._image_cache) == 1
     assert res is newer
     assert ota.listener_event.call_count == 1
-    assert ota.listener_event.call_args[0][0] == 'get_firmware'
+    assert ota.listener_event.call_args[0][0] == 'get_image'
     assert ota.listener_event.call_args[0][1] == key
 
     ota.listener_event.reset_mock()
-    assert len(ota._firmwares) == 1
-    res = ota.get_firmware(MANUFACTURER_ID, IMAGE_TYPE)
+    assert len(ota._image_cache) == 1
+    res = ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
-    assert len(ota._firmwares) == 1
+    assert len(ota._image_cache) == 1
     assert res is newer
     assert ota.listener_event.call_count == 0

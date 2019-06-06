@@ -84,7 +84,7 @@ class Trådfri:
         LOGGER.debug("Finished downloading %s bytes from %s",
                      frm.size, frm.url)
 
-    def get_firmware(self, key: ImageKey) -> Optional[Firmware]:
+    def get_image(self, key: ImageKey) -> Optional[Firmware]:
         if key.manufacturer_id != self.MANUFACTURER_ID:
             return None
 

@@ -16,7 +16,7 @@ class OTA(zigpy.util.ListenableMixin):
 
     def __init__(self, app, *args, **kwargs):
         self._app = app
-        self._firmwares = {}
+        self._image_cache = {}
         self._not_initialized = True
         self._listeners = {}
         self.add_listener(zigpy.ota.provider.Trådfri())
@@ -37,21 +37,20 @@ class OTA(zigpy.util.ListenableMixin):
         self._not_initialized = False
         asyncio.ensure_future(self._initialize())
 
-    def get_firmware(self,
-                     manufacturer_id,
-                     image_type) -> Optional[Firmware]:
+    def get_ota_image(self,
+                      manufacturer_id,
+                      image_type) -> Optional[Firmware]:
         key = ImageKey(manufacturer_id, image_type)
-        if key in self._firmwares:
-            return self._firmwares[key]
+        if key in self._image_cache:
+            return self._image_cache[key]
 
-        frmws = self.listener_event('get_firmware', key)
-        frmws = {f.version: f for f in frmws if f and f.is_valid}
-        if not frmws:
+        images = self.listener_event('get_image', key)
+        images = [img for img in images if img]
+        if not images:
             return None
 
-        latest_firmware = frmws[max(frmws)]
-        self._firmwares[key] = latest_firmware
-        return latest_firmware
+        self._image_cache[key] = max(images, key=lambda img: img.version)
+        return self._image_cache[key]
 
     @property
     def not_initialized(self):
