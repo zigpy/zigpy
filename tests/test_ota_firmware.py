@@ -235,3 +235,47 @@ def test_ota_image(raw_header, raw_sub_element):
         firmware.OTAImage.deserialize(raw_header(len(el1 + el2))
                                       + el1
                                       + el2[:-1])
+
+
+def test_ota_img_should_upgrade():
+    manufacturer_id = 0x2345
+    image_type = 0x4567
+    version = 0xabba
+
+    hdr = firmware.OTAImageHeader()
+    hdr.manufacturer_id = manufacturer_id
+    hdr.image_type = image_type
+    hdr.file_version = version
+
+    img = firmware.OTAImage(hdr)
+    assert img.should_upgrade(manufacturer_id, image_type, version) is False
+    assert img.should_upgrade(manufacturer_id, image_type, version - 1) is True
+    assert img.should_upgrade(manufacturer_id, image_type - 1, version - 1) is False
+    assert img.should_upgrade(manufacturer_id, image_type + 1, version - 1) is False
+    assert img.should_upgrade(manufacturer_id - 1, image_type, version - 1) is False
+    assert img.should_upgrade(manufacturer_id + 1, image_type, version - 1) is False
+
+
+def test_ota_img_should_upgrade_hw_ver():
+    manufacturer_id = 0x2345
+    image_type = 0x4567
+    version = 0xabba
+
+    hdr = firmware.OTAImageHeader()
+    hdr.field_control = 0x0004
+    hdr.manufacturer_id = manufacturer_id
+    hdr.image_type = image_type
+    hdr.file_version = version
+    hdr.minimum_hardware_version = 2
+    hdr.maximum_hardware_version = 4
+
+    img = firmware.OTAImage(hdr)
+    assert img.should_upgrade(manufacturer_id, image_type, version - 1) is True
+
+    for hw_ver in range(2, 4):
+        assert img.should_upgrade(
+            manufacturer_id, image_type, version - 1, hw_ver) is True
+    assert img.should_upgrade(
+        manufacturer_id, image_type, version - 1, 1) is False
+    assert img.should_upgrade(
+        manufacturer_id, image_type, version - 1, 5) is False

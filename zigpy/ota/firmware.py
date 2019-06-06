@@ -196,5 +196,27 @@ class OTAImage:
         for element in self.subelements:
             res += element.serialize()
 
+        assert len(res) == self.header.image_size
         return res
 
+    @property
+    def key(self) -> FirmwareKey:
+        return FirmwareKey(self.header.manufacturer_id, self.header.image_type)
+
+    @property
+    def version(self) -> int:
+        return self.header.file_version
+
+    def should_upgrade(self, manufacturer_id, img_type, ver, hw_ver=None) -> bool:
+        """Check if it should upgrade"""
+        key = FirmwareKey(manufacturer_id, img_type)
+        should_upgrade = [
+            key == self.key,
+            ver < self.version,
+        ]
+        if hw_ver is not None and self.header.hardware_versions_present:
+            min_ver = self.header.minimum_hardware_version
+            max_ver = self.header.maximum_hardware_version
+            should_upgrade.append(min_ver <= hw_ver <= max_ver)
+
+        return all(should_upgrade)
