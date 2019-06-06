@@ -20,7 +20,7 @@ def firmware(key):
 
 @pytest.fixture
 def key():
-    return zigpy.ota.image.FirmwareKey(MANUFACTURER_ID, IMAGE_TYPE)
+    return zigpy.ota.image.ImageKey(MANUFACTURER_ID, IMAGE_TYPE)
 
 
 @pytest.fixture

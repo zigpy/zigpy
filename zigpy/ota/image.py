@@ -6,7 +6,7 @@ import zigpy.types as t
 
 
 @attr.s(frozen=True)
-class FirmwareKey:
+class ImageKey:
     manufacturer_id = attr.ib(default=None)
     image_type = attr.ib(default=None)
 
@@ -179,8 +179,8 @@ class OTAImage:
         return res
 
     @property
-    def key(self) -> FirmwareKey:
-        return FirmwareKey(self.header.manufacturer_id, self.header.image_type)
+    def key(self) -> ImageKey:
+        return ImageKey(self.header.manufacturer_id, self.header.image_type)
 
     @property
     def version(self) -> int:
@@ -188,7 +188,7 @@ class OTAImage:
 
     def should_upgrade(self, manufacturer_id, img_type, ver, hw_ver=None) -> bool:
         """Check if it should upgrade"""
-        key = FirmwareKey(manufacturer_id, img_type)
+        key = ImageKey(manufacturer_id, img_type)
         should_upgrade = [
             key == self.key,
             ver < self.version,

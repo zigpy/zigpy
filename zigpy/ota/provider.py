@@ -9,14 +9,14 @@ import attr
 
 from zigpy import types as t
 
-from zigpy.ota.image import FirmwareKey
+from zigpy.ota.image import ImageKey
 
 LOGGER = logging.getLogger(__name__)
 
 
 @attr.s
 class Firmware:
-    key = attr.ib(default=FirmwareKey)
+    key = attr.ib(default=ImageKey)
     version = attr.ib(default=t.uint32_t(0))
     size = attr.ib(default=t.uint32_t(0))
     url = attr.ib(default=None)
@@ -24,7 +24,7 @@ class Firmware:
 
     def upgradeable(self, manufacturer_id, img_type, ver, hw_ver=None) -> bool:
         """Check if it should upgrade"""
-        key = FirmwareKey(manufacturer_id, img_type)
+        key = ImageKey(manufacturer_id, img_type)
         # ToDo check for hardware version
         return all((self.key == key, self.version > ver, self.is_valid))
 
@@ -57,7 +57,7 @@ class Trådfri:
         for fw in fw_lst:
             if 'fw_file_version_MSB' not in fw:
                 continue
-            key = FirmwareKey(fw['fw_manufacturer_id'], fw['fw_image_type'])
+            key = ImageKey(fw['fw_manufacturer_id'], fw['fw_image_type'])
             version = fw['fw_file_version_MSB'] << 16
             version |= fw['fw_file_version_LSB']
             firmware = Firmware(
@@ -67,7 +67,7 @@ class Trådfri:
             self._cache[key] = firmware
         await asyncio.gather(*frm_to_fetch)
 
-    async def fetch_firmware(self, key: FirmwareKey):
+    async def fetch_firmware(self, key: ImageKey):
         if self._locks[key].locked():
             return
 
@@ -84,7 +84,7 @@ class Trådfri:
         LOGGER.debug("Finished downloading %s bytes from %s",
                      frm.size, frm.url)
 
-    def get_firmware(self, key: FirmwareKey) -> Optional[Firmware]:
+    def get_firmware(self, key: ImageKey) -> Optional[Firmware]:
         if key.manufacturer_id != self.MANUFACTURER_ID:
             return None
 

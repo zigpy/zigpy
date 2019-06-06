@@ -12,11 +12,11 @@ IMAGE_TYPE = mock.sentinel.image_type
 
 @pytest.fixture
 def key():
-    return firmware.FirmwareKey(MANUFACTURER_ID, IMAGE_TYPE)
+    return firmware.ImageKey(MANUFACTURER_ID, IMAGE_TYPE)
 
 
 def test_firmware_key():
-    key = firmware.FirmwareKey(MANUFACTURER_ID, IMAGE_TYPE)
+    key = firmware.ImageKey(MANUFACTURER_ID, IMAGE_TYPE)
     assert key.manufacturer_id is MANUFACTURER_ID
     assert key.image_type is IMAGE_TYPE
 

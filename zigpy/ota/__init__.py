@@ -5,7 +5,7 @@ from typing import Optional
 
 import zigpy.ota.provider
 import zigpy.util
-from zigpy.ota.image import FirmwareKey
+from zigpy.ota.image import ImageKey
 from zigpy.ota.provider import Firmware
 
 LOGGER = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class OTA(zigpy.util.ListenableMixin):
     def get_firmware(self,
                      manufacturer_id,
                      image_type) -> Optional[Firmware]:
-        key = FirmwareKey(manufacturer_id, image_type)
+        key = ImageKey(manufacturer_id, image_type)
         if key in self._firmwares:
             return self._firmwares[key]
 
