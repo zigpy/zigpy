@@ -9,7 +9,7 @@ import attr
 
 from zigpy import types as t
 
-from zigpy.ota.image import ImageKey
+from zigpy.ota.image import ImageKey, OTAImage
 
 LOGGER = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ class Trådfri:
         try:
             frm = self._cache[key]
             if frm.is_valid:
-                return frm
+                return OTAImage.deserialize(frm.data)
         except KeyError:
             pass
 

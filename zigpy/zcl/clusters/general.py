@@ -727,13 +727,13 @@ class Ota(Cluster):
         img = self.endpoint.device.application.ota.get_ota_image(
             manufacturer_id, image_type)
 
-        if img and img.is_valid:
-            update_needed = img.upgradeable(
+        if img is not None:
+            should_update = img.should_update(
                 manufacturer_id, image_type, current_file_version,
                 hardware_version)
             self.debug("OTA image version: %s, size: %s. Update needed: %s",
-                       img.version, img.header.image_size, update_needed)
-            if update_needed:
+                       img.version, img.header.image_size, should_update)
+            if should_update:
                 self.info("Updating: %s %s",
                           self.endpoint.manufacturer, self.endpoint.model)
                 await self.query_next_image_response(
@@ -759,12 +759,12 @@ class Ota(Cluster):
                    block_request_delay)
         img = self.endpoint.device.application.ota.get_ota_image(
             manufacturer_id, image_type)
-        if img is None or not img.is_valid:
-            self.debug("OTA invalid image data")
+        if img is None:
+            self.debug("OTA image is not available")
             await self.image_block_response(foundation.Status.ABORT)
             return
-        data = img.data[file_offset:file_offset + min(self.MAXIMUM_DATA_SIZE,
-                                                      max_data_size)]
+        end = file_offset + min(self.MAXIMUM_DATA_SIZE, max_data_size)
+        data = img.serialize()[file_offset:end]
         self.debug("OTA upgrade progress: %0.1f",
                    100.0 * file_offset / img.size)
         await self.image_block_response(
