@@ -7,32 +7,14 @@ from typing import Optional
 import aiohttp
 import attr
 
-from zigpy import types as t
-
 from zigpy.ota.image import ImageKey, OTAImage
 
 LOGGER = logging.getLogger(__name__)
 
 
 @attr.s
-class Firmware:
-    key = attr.ib(default=ImageKey)
-    version = attr.ib(default=t.uint32_t(0))
-    size = attr.ib(default=t.uint32_t(0))
+class IKEAImage(OTAImage):
     url = attr.ib(default=None)
-    data = attr.ib(default=None)
-
-    def upgradeable(self, manufacturer_id, img_type, ver, hw_ver=None) -> bool:
-        """Check if it should upgrade"""
-        key = ImageKey(manufacturer_id, img_type)
-        # ToDo check for hardware version
-        return all((self.key == key, self.version > ver, self.is_valid))
-
-    @property
-    def is_valid(self):
-        """Return True if firmware validation passes."""
-        # ToDo proper validation
-        return self.data is not None
 
 
 class Trådfri:
@@ -57,41 +39,41 @@ class Trådfri:
         for fw in fw_lst:
             if 'fw_file_version_MSB' not in fw:
                 continue
-            key = ImageKey(fw['fw_manufacturer_id'], fw['fw_image_type'])
-            version = fw['fw_file_version_MSB'] << 16
-            version |= fw['fw_file_version_LSB']
-            firmware = Firmware(
-                key, version, fw['fw_filesize'], fw['fw_binary_url'],
-            )
-            frm_to_fetch.append(self.fetch_firmware(key))
-            self._cache[key] = firmware
+            img = IKEAImage()
+            img.header.manufacturer_id = fw['fw_manufacturer_id']
+            img.header.image_type = fw['fw_image_type']
+            img.header.file_version = fw['fw_file_version_MSB'] << 16
+            img.header.file_version |= fw['fw_file_version_LSB']
+            img.header.image_size = fw['fw_filesize']
+            img.url = fw['fw_binary_url']
+            frm_to_fetch.append(self.fetch_firmware(img.key))
+            self._cache[img.key] = img
         await asyncio.gather(*frm_to_fetch)
 
     async def fetch_firmware(self, key: ImageKey):
         if self._locks[key].locked():
             return
 
-        frm = self._cache[key]
+        img = self._cache[key]
         async with self._locks[key]:
             async with aiohttp.ClientSession() as req:
-                LOGGER.debug("Downloading %s for %s", frm.url, key)
-                async with req.get(frm.url) as rsp:
+                LOGGER.debug("Downloading %s for %s", img.url, key)
+                async with req.get(img.url) as rsp:
                     data = await rsp.read()
         offset = data.index(self.OTA_HEADER)
-        frm.data = data[offset:offset + frm.size]
-        assert len(frm.data) == frm.size
-        self._cache[key] = frm
-        LOGGER.debug("Finished downloading %s bytes from %s",
-                     frm.size, frm.url)
+        img, data = IKEAImage.deserialize(data[offset:])
+        self._cache[img.key] = img
+        LOGGER.debug("Finished downloading %s bytes for %s ver %s",
+                     img.header.image_size, img.key, img.version)
 
-    def get_image(self, key: ImageKey) -> Optional[Firmware]:
+    def get_image(self, key: ImageKey) -> Optional[IKEAImage]:
         if key.manufacturer_id != self.MANUFACTURER_ID:
             return None
 
         try:
-            frm = self._cache[key]
-            if frm.is_valid:
-                return OTAImage.deserialize(frm.data)
+            image = self._cache[key]
+            if image.subelements:
+                return image
         except KeyError:
             pass
 
