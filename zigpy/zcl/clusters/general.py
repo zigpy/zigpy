@@ -759,7 +759,7 @@ class Ota(Cluster):
                    block_request_delay)
         img = self.endpoint.device.application.ota.get_ota_image(
             manufacturer_id, image_type)
-        if img is None:
+        if img is None or img.version != file_version:
             self.debug("OTA image is not available")
             await self.image_block_response(foundation.Status.ABORT)
             return
