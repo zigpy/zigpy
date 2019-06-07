@@ -224,12 +224,12 @@ def test_ota_img_should_upgrade():
     hdr.file_version = version
 
     img = firmware.OTAImage(hdr)
-    assert img.should_upgrade(manufacturer_id, image_type, version) is False
-    assert img.should_upgrade(manufacturer_id, image_type, version - 1) is True
-    assert img.should_upgrade(manufacturer_id, image_type - 1, version - 1) is False
-    assert img.should_upgrade(manufacturer_id, image_type + 1, version - 1) is False
-    assert img.should_upgrade(manufacturer_id - 1, image_type, version - 1) is False
-    assert img.should_upgrade(manufacturer_id + 1, image_type, version - 1) is False
+    assert img.should_update(manufacturer_id, image_type, version) is False
+    assert img.should_update(manufacturer_id, image_type, version - 1) is True
+    assert img.should_update(manufacturer_id, image_type - 1, version - 1) is False
+    assert img.should_update(manufacturer_id, image_type + 1, version - 1) is False
+    assert img.should_update(manufacturer_id - 1, image_type, version - 1) is False
+    assert img.should_update(manufacturer_id + 1, image_type, version - 1) is False
 
 
 def test_ota_img_should_upgrade_hw_ver():
@@ -246,12 +246,12 @@ def test_ota_img_should_upgrade_hw_ver():
     hdr.maximum_hardware_version = 4
 
     img = firmware.OTAImage(hdr)
-    assert img.should_upgrade(manufacturer_id, image_type, version - 1) is True
+    assert img.should_update(manufacturer_id, image_type, version - 1) is True
 
     for hw_ver in range(2, 4):
-        assert img.should_upgrade(
+        assert img.should_update(
             manufacturer_id, image_type, version - 1, hw_ver) is True
-    assert img.should_upgrade(
+    assert img.should_update(
         manufacturer_id, image_type, version - 1, 1) is False
-    assert img.should_upgrade(
+    assert img.should_update(
         manufacturer_id, image_type, version - 1, 5) is False

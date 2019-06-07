@@ -186,16 +186,16 @@ class OTAImage:
     def version(self) -> int:
         return self.header.file_version
 
-    def should_upgrade(self, manufacturer_id, img_type, ver, hw_ver=None) -> bool:
+    def should_update(self, manufacturer_id, img_type, ver, hw_ver=None) -> bool:
         """Check if it should upgrade"""
         key = ImageKey(manufacturer_id, img_type)
-        should_upgrade = [
+        should_update = [
             key == self.key,
             ver < self.version,
         ]
         if hw_ver is not None and self.header.hardware_versions_present:
             min_ver = self.header.minimum_hardware_version
             max_ver = self.header.maximum_hardware_version
-            should_upgrade.append(min_ver <= hw_ver <= max_ver)
+            should_update.append(min_ver <= hw_ver <= max_ver)
 
-        return all(should_upgrade)
+        return all(should_update)
