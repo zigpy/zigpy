@@ -3,7 +3,6 @@ from unittest import mock
 import pytest
 
 import zigpy.ota.image as firmware
-import zigpy.ota.provider
 import zigpy.types as t
 
 MANUFACTURER_ID = mock.sentinel.manufacturer_id
