@@ -152,8 +152,8 @@ class SubElement(bytes):
 
 @attr.s
 class OTAImage:
-    header = attr.ib(default=OTAImageHeader())
-    subelements = attr.ib(default=[])
+    header = attr.ib(factory=OTAImageHeader)
+    subelements = attr.ib(factory=list)
 
     @classmethod
     def deserialize(cls, data):
