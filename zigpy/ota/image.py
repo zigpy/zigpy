@@ -152,6 +152,8 @@ class SubElement(bytes):
 
 @attr.s
 class OTAImage:
+    MAXIMUM_DATA_SIZE = 40
+
     header = attr.ib(factory=OTAImageHeader)
     subelements = attr.ib(factory=list)
 
@@ -199,3 +201,11 @@ class OTAImage:
             should_update.append(min_ver <= hw_ver <= max_ver)
 
         return all(should_update)
+
+    def get_image_block(self, offset: t.uint32_t, size: t.uint8_t) -> bytes:
+        data = self.serialize()
+        if offset > len(data):
+            raise ValueError("Offset exceeds image size")
+
+        return data[offset:offset + min(self.MAXIMUM_DATA_SIZE, size)]
+

@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 from unittest import mock
 
 import pytest
@@ -92,7 +93,7 @@ def test_get_image_empty(ota, image, key):
     assert ota.listener_event.call_args[0][1] == key
 
 
-def test_get_image_new(ota, image, key, image_with_version):
+def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
     newer = image_with_version(image.version + 1)
 
     handler_mock = mock.MagicMock(return_value=[None, image, newer])
@@ -102,7 +103,8 @@ def test_get_image_new(ota, image, key, image_with_version):
     res = ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
     assert len(ota._image_cache) == 1
-    assert res is newer
+    assert res.header == newer.header
+    assert res.subelements == newer.subelements
     assert ota.listener_event.call_count == 1
     assert ota.listener_event.call_args[0][0] == 'get_image'
     assert ota.listener_event.call_args[0][1] == key
@@ -112,5 +114,48 @@ def test_get_image_new(ota, image, key, image_with_version):
     res = ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
     assert len(ota._image_cache) == 1
-    assert res is newer
+    assert res.header == newer.header
+    assert res.subelements == newer.subelements
     assert ota.listener_event.call_count == 0
+
+    # on cache expiration, ping listeners
+    ota.listener_event.reset_mock()
+    delta = datetime.timedelta(seconds=-1)
+    monkeypatch.setattr(ota._image_cache[key], 'DEFAULT_EXPIRATION', delta)
+    assert len(ota._image_cache) == 1
+    res = ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
+
+    assert len(ota._image_cache) == 1
+    assert res.header == newer.header
+    assert res.subelements == newer.subelements
+    assert ota.listener_event.call_count == 1
+
+
+def test_cached_image_expiration(image, monkeypatch):
+    delta = datetime.timedelta(seconds=-1)
+
+    cached = zigpy.ota.CachedImage.new(image)
+    monkeypatch.setattr(cached, 'DEFAULT_EXPIRATION', delta)
+    assert cached.expired is True
+
+    cached = zigpy.ota.CachedImage()
+    monkeypatch.setattr(cached, 'DEFAULT_EXPIRATION', delta)
+    assert cached.expired is False
+
+    cached = zigpy.ota.CachedImage.new(image)
+    assert cached.expired is False
+
+
+def test_cached_image_expiration_delay():
+    d = b'\x1e\xf1\xee\x0b\x00\x018\x00'
+    d += b'\x00\x00'
+    d += b'|\x11\x01!rE!\x12\x02\x00EBL tradfri_light_basic\x00\x00\x00' \
+         b'\x00\x00\x00\x00\x00\x00\x38\x00\x00\x00'
+
+    img = zigpy.ota.image.OTAImage.deserialize(d)[0]
+    cached = zigpy.ota.CachedImage.new(img)
+    orig_expiration = cached.expires_on
+
+    cached.get_image_block(0, 40)
+    assert cached.expires_on > orig_expiration
+
