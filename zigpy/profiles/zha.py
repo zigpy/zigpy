@@ -88,6 +88,8 @@ CLUSTERS = {
     DeviceType.COLOR_DIMMER_SWITCH: ([0x0007], [0x0004, 0x0005, 0x0006, 0x0008, 0x0300]),
     DeviceType.LIGHT_SENSOR: ([0x0400], []),
     DeviceType.OCCUPANCY_SENSOR: ([0x0406], []),
+    DeviceType.COLOR_TEMPERATURE_LIGHT: ([0x0003, 0x0004, 0x0005, 0x0006, 0x0008, 0x0300], []),
+    DeviceType.EXTENDED_COLOR_LIGHT: ([0x0003, 0x0004, 0x0005, 0x0006, 0x0008, 0x0300], []),
     # Closures
     DeviceType.WINDOW_COVERING_DEVICE: ([0x0004, 0x0005, 0x0102], []),
     # HVAC
