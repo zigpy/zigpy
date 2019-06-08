@@ -30,6 +30,11 @@ class CachedImage(OTAImage):
             return False
         return self.expires_on - datetime.datetime.now() > self.DEFAULT_EXPIRATION
 
+    def get_image_block(self, *args, **kwargs) -> bytes:
+        if self.expires_on is not None:
+            self.expires_on += self.DELAY_EXPIRY
+        return super().get_image_block(*args, **kwargs)
+
 
 class OTA(zigpy.util.ListenableMixin):
     """OTA Manager."""

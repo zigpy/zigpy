@@ -660,7 +660,6 @@ class Partition(Cluster):
 
 
 class Ota(Cluster):
-    MAXIMUM_DATA_SIZE = 40
     cluster_id = 0x0019
     ep_attribute = 'ota'
     attributes = {
@@ -763,15 +762,17 @@ class Ota(Cluster):
             self.debug("OTA image is not available")
             await self.image_block_response(foundation.Status.ABORT)
             return
-        end = file_offset + min(self.MAXIMUM_DATA_SIZE, max_data_size)
-        data = img.serialize()[file_offset:end]
         self.debug("OTA upgrade progress: %0.1f",
-                   100.0 * file_offset / img.size)
-        await self.image_block_response(
-            foundation.Status.SUCCESS,
-            img.key.manufacturer_id, img.key.image_type,
-            img.version, file_offset, data
-        )
+                   100.0 * file_offset / img.header.image_size)
+        try:
+            await self.image_block_response(
+                foundation.Status.SUCCESS,
+                img.key.manufacturer_id, img.key.image_type,
+                img.version, file_offset,
+                img.get_image_block(file_offset, max_data_size)
+            )
+        except ValueError:
+            await self.image_block_response(foundation.Status.MALFORMED_COMMAND)
 
     async def _handle_upgrade_end(self, status, manufacturer_id, image_type,
                                   file_ver):

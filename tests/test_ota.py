@@ -144,3 +144,18 @@ def test_cached_image_expiration(image, monkeypatch):
 
     cached = zigpy.ota.CachedImage.new(image)
     assert cached.expired is False
+
+
+def test_cached_image_expiration_delay():
+    d = b'\x1e\xf1\xee\x0b\x00\x018\x00'
+    d += b'\x00\x00'
+    d += b'|\x11\x01!rE!\x12\x02\x00EBL tradfri_light_basic\x00\x00\x00' \
+         b'\x00\x00\x00\x00\x00\x00\x38\x00\x00\x00'
+
+    img = zigpy.ota.image.OTAImage.deserialize(d)[0]
+    cached = zigpy.ota.CachedImage.new(img)
+    orig_expiration = cached.expires_on
+
+    cached.get_image_block(0, 40)
+    assert cached.expires_on > orig_expiration
+

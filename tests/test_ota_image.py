@@ -255,3 +255,35 @@ def test_ota_img_should_upgrade_hw_ver():
         manufacturer_id, image_type, version - 1, 1) is False
     assert img.should_update(
         manufacturer_id, image_type, version - 1, 5) is False
+
+
+def test_get_image_block(raw_header, raw_sub_element):
+    el1_payload = b'abcd'
+    el2_payload = b'4321'
+    el1 = raw_sub_element(0, el1_payload)
+    el2 = raw_sub_element(1, el2_payload)
+
+    raw_data = raw_header(len(el1 + el2)) + el1 + el2
+    img = firmware.OTAImage.deserialize(raw_data)[0]
+
+    offset, size = 28, 20
+    block = img.get_image_block(offset, size)
+    assert block == raw_data[offset:offset + min(size, img.MAXIMUM_DATA_SIZE)]
+
+    offset, size = 30, 50
+    block = img.get_image_block(offset, size)
+    assert block == raw_data[offset:offset + min(size, img.MAXIMUM_DATA_SIZE)]
+
+
+def test_get_image_block_offset_too_large(raw_header, raw_sub_element):
+    el1_payload = b'abcd'
+    el2_payload = b'4321'
+    el1 = raw_sub_element(0, el1_payload)
+    el2 = raw_sub_element(1, el2_payload)
+
+    raw_data = raw_header(len(el1 + el2)) + el1 + el2
+    img = firmware.OTAImage.deserialize(raw_data)[0]
+
+    offset, size = len(raw_data) + 1, 44
+    with pytest.raises(ValueError):
+        img.get_image_block(offset, size)
