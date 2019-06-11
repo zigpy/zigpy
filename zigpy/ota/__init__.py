@@ -62,14 +62,14 @@ class OTA(zigpy.util.ListenableMixin):
         self._not_initialized = False
         asyncio.ensure_future(self._initialize())
 
-    def get_ota_image(self,
-                      manufacturer_id,
-                      image_type) -> Optional[OTAImage]:
+    async def get_ota_image(self,
+                            manufacturer_id,
+                            image_type) -> Optional[OTAImage]:
         key = ImageKey(manufacturer_id, image_type)
         if key in self._image_cache and not self._image_cache[key].expired:
             return self._image_cache[key]
 
-        images = self.listener_event('get_image', key)
+        images = await asyncio.gather(*self.listener_event('get_image', key))
         images = [img for img in images if img]
         if not images:
             return None

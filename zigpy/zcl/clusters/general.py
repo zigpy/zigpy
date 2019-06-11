@@ -723,7 +723,7 @@ class Ota(Cluster):
                    field_ctrl, manufacturer_id, image_type,
                    current_file_version, hardware_version)
 
-        img = self.endpoint.device.application.ota.get_ota_image(
+        img = await self.endpoint.device.application.ota.get_ota_image(
             manufacturer_id, image_type)
 
         if img is not None:
@@ -756,7 +756,7 @@ class Ota(Cluster):
                    field_ctr, manufacturer_id, image_type, file_version,
                    file_offset, max_data_size, request_node_addr,
                    block_request_delay)
-        img = self.endpoint.device.application.ota.get_ota_image(
+        img = await self.endpoint.device.application.ota.get_ota_image(
             manufacturer_id, image_type)
         if img is None or img.version != file_version:
             self.debug("OTA image is not available")
