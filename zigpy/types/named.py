@@ -178,3 +178,147 @@ class Relays(basic.LVList(NWK)):
     """Relay list for static routing."""
 
     pass
+
+
+class APSStatus(basic.enum8):
+    # A request has been executed successfully
+    APS_SUCCESS = 0x00
+
+    # A transmit request failed since the ASDU is too large and fragmentation
+    # is not supported
+    APS_ASDU_TOO_LONG = 0xa0
+
+    # A received fragmented frame could not be defragmented at the current time
+    APS_DEFRAG_DEFERRED = 0xa1
+
+    # A received fragmented frame could not be defragmented since the device
+    # does not support fragmentation
+    APS_DEFRAG_UNSUPPORTED = 0xa2
+
+    # A parameter value was out of range
+    APS_ILLEGAL_REQUEST = 0xa3
+
+    # An APSME-UNBIND.request failed due to the requested binding link not
+    # existing in the binding table
+    APS_INVALID_BINDING = 0xa4
+
+    # An APSME-REMOVE-GROUP.request has been issued with a group identifier
+    # that does not appear in the group table
+    APS_INVALID_GROUP = 0xa5
+
+    # A parameter value was invalid or out of range
+    APS_INVALID_PARAMETER = 0xa6
+
+    # An APSDE-DATA.request requesting acknowledged transmission failed due to
+    # no acknowledgement being received
+    APS_NO_ACK = 0xa7
+
+    # An APSDE-DATA.request with a destination addressing mode set to 0x00
+    # failed due to there being no devices bound to this device
+    APS_NO_BOUND_DEVICE = 0xa8
+
+    # An APSDE-DATA.request with a destination addressing mode set to 0x03
+    # failed due to no corresponding short address found in the address map
+    # table
+    APS_NO_SHORT_ADDRESS = 0xa9
+
+    # An APSDE-DATA.request with a destination addressing mode set to 0x00
+    # failed due to a binding table not being supported on the device
+    APS_NOT_SUPPORTED = 0xaa
+
+    # An ASDU was received that was secured using a link key
+    APS_SECURED_LINK_KEY = 0xab
+
+    # An ASDU was received that was secured using a network key
+    APS_SECURED_NWK_KEY = 0xac
+
+    #  An APSDE-DATA.request requesting security has resulted in an error
+    #  during the corresponding security processing
+    APS_SECURITY_FAIL = 0xad
+
+    # An APSME-BIND.request or APSME.ADDGROUP.request issued when the binding
+    # or group tables, respectively, were full
+    APS_TABLE_FULL = 0xae
+
+    # An ASDU was received without any security
+    APS_UNSECURED = 0xaf
+
+    # An APSME-GET.request or APSMESET.request has been issued with an unknown
+    # attribute identifier
+    APS_UNSUPPORTED_ATTRIBUTE = 0xb0
+
+
+class NWKStatus(basic.enum8):
+    # A request has been executed successfully
+    NWK_SUCCESS = 0x00
+
+    # An invalid or out-of-range parameter has been passed to a primitive from
+    # the next higher layer
+    NWK_INVALID_PARAMETER = 0xc1
+
+    # The next higher layer has issued a request that is invalid or cannot be
+    # executed given the current state of the NWK layer
+    NWK_INVALID_REQUEST = 0xc2
+
+    # An NLME-JOIN.request has been disallowed
+    NWK_NOT_PERMITTED = 0xc3
+
+    # An NLME-NETWORK-FORMATION.request has failed to start a network
+    NWK_STARTUP_FAILURE = 0xc4
+
+    # A device with the address supplied to the NLMEDIRECT-JOIN.request is
+    # already present in the neighbor table of the device on which the
+    # NLMEDIRECT-JOIN.request was issued
+    NWK_ALREADY_PRESENT = 0xc5
+
+    # Used to indicate that an NLME-SYNC.request has failed at the MAC layer
+    NWK_SYNC_FAILURE = 0xc6
+
+    # An NLME-JOIN-DIRECTLY.request has failed because there is no more room
+    # in the neighbor table
+    NWK_NEIGHBOR_TABLE_FULL = 0xc7
+
+    # An NLME-LEAVE.request has failed because the device addressed in the
+    # parameter list is not in the neighbor table of the issuing device
+    NWK_UNKNOWN_DEVICE = 0xc8
+
+    # An NLME-GET.request or NLME-SET.request has been issued with an unknown
+    # attribute identifier
+    NWK_UNSUPPORTED_ATTRIBUTE = 0xc9
+
+    # An NLME-JOIN.request has been issued in an environment where no networks
+    # are detectable
+    NWK_NO_NETWORKS = 0xca
+
+    NWK_RESERVED_0xCB = 0xcb
+
+    # Security processing has been attempted on an outgoing frame, and has
+    # failed because the frame counter has reached its maximum value
+    NWK_NWK_MAX_FRM_COUNTER = 0xcc
+
+    # Security processing has been attempted on an outgoing frame, and has
+    # failed because no key was available with which to process it
+    NWK_NO_KEY = 0xcd
+
+    # Security processing has been attempted on an outgoing frame, and has
+    # failed because the security engine produced erroneous output
+    NWK_BAD_CCM_OUTPUT = 0xce
+
+    NWK_RESERVED_0xCF = 0xcf
+
+    # An attempt to discover a route has failed due to a reason other than a
+    # lack of routing capacity
+    NWK_ROUTE_DISCOVERY_FAILED = 0xd0
+
+    # An NLDE-DATA.request has failed due to a routing failure on the sending
+    # device or an NLMEROUTE-DISCOVERY.request has failed due to the cause
+    # cited in the accompanying NetworkStatusCode
+    NWK_ROUTE_ERROR = 0xd1
+
+    # An attempt to send a broadcast frame or member mode multicast has failed
+    # due to the fact that there is no room in the BTT
+    NWK_BT_TABLE_FULL = 0xd2
+
+    # An NLDE-DATA.request has failed due to insufficient buffering available.
+    # A non-member mode multicast frame was discarded pending route discovery
+    NWK_FRAME_NOT_BUFFERED = 0xd3
