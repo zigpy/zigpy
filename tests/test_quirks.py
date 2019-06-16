@@ -30,7 +30,7 @@ def test_registry():
 def test_get_device():
     application = mock.sentinel.application
     ieee = mock.sentinel.ieee
-    nwk = mock.sentinel.nwk
+    nwk = 0x2233
     real_device = zigpy.device.Device(application, ieee, nwk)
 
     real_device.add_endpoint(1)
@@ -139,14 +139,20 @@ def test_custom_device():
                     'output_clusters': [0x0001, MyCluster],
                 },
                 2: (MyEndpoint, mock.sentinel.custom_endpoint_arg),
-            }
+            },
+            'model': 'Mock Model',
+            'manufacturer': 'Mock Manufacturer',
         }
 
     assert 0x8888 not in Cluster._registry
 
     replaces = mock.MagicMock()
     replaces[1].device_type = mock.sentinel.device_type
-    test_device = Device(None, None, None, replaces)
+    test_device = Device(None, None, 0x4455, replaces)
+
+    assert test_device.manufacturer == 'Mock Manufacturer'
+    assert test_device.model == 'Mock Model'
+
     assert test_device[1].profile_id == mock.sentinel.profile_id
     assert test_device[1].device_type == mock.sentinel.device_type
 
