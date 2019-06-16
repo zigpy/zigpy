@@ -213,7 +213,7 @@ async def test_init_endpoint_info_unicode(ep):
     await test_initialize_zha(ep)
 
 
-def _init_endpoint_info(ep, test_manuf=None, test_model=None):
+def _init_endpoint_info(ep, test_manuf=None, test_model=None, profile=260):
     clus = ep.add_input_cluster(0)
     assert 0 in ep.in_clusters
     assert ep.in_clusters[0] is clus
@@ -226,7 +226,7 @@ def _init_endpoint_info(ep, test_manuf=None, test_model=None):
         return [[rar4, rar5]]
     clus.request = mockrequest
 
-    return test_initialize_zha(ep)
+    return _test_initialize(ep, profile)
 
 
 @pytest.mark.asyncio
@@ -257,6 +257,17 @@ async def test_init_endpoint_info_null_padded_manuf_model(ep):
 
     assert ep.manufacturer == 'Mock Manufacturer'
     assert ep.model == 'Mock Model'
+
+
+@pytest.mark.asyncio
+async def test_init_endpoint_info_not_zha_profile(ep):
+    manufacturer = b'Mock Manufacturer'
+    model = b'Mock Model'
+    profile_id = 0xc2df
+    await _init_endpoint_info(ep, manufacturer, model, profile=profile_id)
+
+    assert ep.manufacturer is None
+    assert ep.model is None
 
 
 def _group_add_mock(ep, success=True,

@@ -141,6 +141,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return res[0]
 
     async def initialize_endpoint_info(self):
+        if self.profile_id not in (zigpy.profiles.zha.PROFILE_ID,
+                                   zigpy.profiles.zll.PROFILE_ID, ):
+            return
+
         attributes = {
             'manufacturer': None,
             'model': None,
