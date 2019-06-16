@@ -37,6 +37,8 @@ class Device(zigpy.util.LocalLogMixin):
         self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
+        self._manufacturer = None
+        self._model = None
         self.node_desc = zdo.types.NodeDescriptor()
         self._node_handle = None
 
@@ -89,15 +91,19 @@ class Device(zigpy.util.LocalLogMixin):
 
             self.status = Status.ZDO_INIT
 
-        for endpoint_id in self.endpoints.keys():
+        for endpoint_id, ep in self.endpoints.items():
             if endpoint_id == 0:  # ZDO
                 continue
             try:
-                await self.endpoints[endpoint_id].initialize()
+                await ep.initialize()
             except Exception as exc:
                 self.debug("Endpoint %s initialization failure: %s",
                            endpoint_id, exc)
                 break
+            if self.manufacturer is None or self.model is None:
+                self.model, self.manufacturer = (
+                    await ep.get_model_info()
+                )
 
         ep_failed_init = [
             ep.status == zigpy.endpoint.Status.NEW
@@ -183,6 +189,24 @@ class Device(zigpy.util.LocalLogMixin):
     @property
     def ieee(self):
         return self._ieee
+
+    @property
+    def manufacturer(self):
+        return self._manufacturer
+
+    @manufacturer.setter
+    def manufacturer(self, value):
+        if isinstance(value, str):
+            self._manufacturer = value
+
+    @property
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, value):
+        if isinstance(value, str):
+            self._model = value
 
     def __getitem__(self, key):
         return self.endpoints[key]

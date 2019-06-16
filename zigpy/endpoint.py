@@ -1,6 +1,8 @@
+import asyncio
 import enum
 import logging
 
+import zigpy.exceptions
 import zigpy.profiles
 import zigpy.util
 import zigpy.zcl
@@ -29,10 +31,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._cluster_attr = {}
         self.status = Status.NEW
         self._listeners = {}
+        self._manufacturer = None
         self._member_of = {}
+        self._model = None
         self.profile_id = None
-        self.manufacturer = None
-        self.model = None
 
     async def initialize(self):
         if self.status == Status.ZDO_INIT:
@@ -68,9 +70,6 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.add_input_cluster(cluster)
         for cluster in sd.output_clusters:
             self.add_output_cluster(cluster)
-
-        if Basic.cluster_id in self.in_clusters:
-            await self.initialize_endpoint_info()
 
         self.status = Status.ZDO_INIT
 
@@ -140,7 +139,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.device.application.groups[grp_id].remove_member(self)
         return res[0]
 
-    async def initialize_endpoint_info(self):
+    async def get_model_info(self):
+        if Basic.cluster_id not in self.in_clusters:
+            return None, None
+
         attributes = {
             'manufacturer': None,
             'model': None,
@@ -148,11 +150,14 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         async def read(attribute_names):
             """Read attributes and update extra_info convenience function."""
-            result, _ = await self.in_clusters[0].read_attributes(
-                attribute_names,
-                allow_cache=True,
-            )
-            attributes.update(result)
+            try:
+                result, _ = await self.basic.read_attributes(
+                    attribute_names,
+                    allow_cache=True,
+                )
+                attributes.update(result)
+            except (zigpy.exceptions.ZigbeeException, asyncio.TimeoutError):
+                pass
 
         await read(['manufacturer', 'model'])
 
@@ -161,20 +166,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             await read(['manufacturer'])
             await read(['model'])
 
-        for key, value in attributes.items():
-            if isinstance(value, bytes):
-                try:
-                    value = value.split(b'\x00')[0]
-                    attributes[key] = value.decode('ascii').strip()
-                except UnicodeDecodeError:
-                    # Unsure what the best behaviour here is. Unset the key?
-                    pass
-
-        self.manufacturer = attributes['manufacturer']
-        self.model = attributes['model']
-
-        self.debug("Manufacturer: %s", self.manufacturer)
-        self.debug("Model: %s", self.model)
+        self.debug("Manufacturer: %s", attributes['manufacturer'])
+        self.debug("Model: %s", attributes['model'])
+        return attributes['model'], attributes['manufacturer']
 
     def deserialize(self, cluster_id, data):
         """Deserialize data for ZCL"""
@@ -250,8 +244,32 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self._endpoint_id
 
     @property
+    def manufacturer(self):
+        if self._manufacturer is not None:
+            return self._manufacturer
+        return self.device.manufacturer
+
+    @manufacturer.setter
+    def manufacturer(self, value):
+        self.warn(("Overriding manufacturer from quirks is not supported and "
+                   "will be removed in the next zigpy version"))
+        self._manufacturer = value
+
+    @property
     def member_of(self):
         return self._member_of
+
+    @property
+    def model(self):
+        if self._model is not None:
+            return self._model
+        return self.device.model
+
+    @model.setter
+    def model(self, value):
+        self.warn(("Overriding model from quirks is not supported and "
+                   "will be removed in the next version"))
+        self._model = value
 
     @property
     def unique_id(self):

@@ -1,10 +1,14 @@
+import asyncio
 from unittest import mock
 
 import pytest
-import zigpy.zcl as zcl
-from zigpy.zcl.foundation import Status as ZCLStatus
 
+import zigpy.exceptions
+import zigpy.device
+import zigpy.types as t
+import zigpy.zcl as zcl
 from zigpy import endpoint, group
+from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types
 
 
@@ -160,8 +164,8 @@ def _mk_rar(attrid, value, status=0):
     return r
 
 
-@pytest.mark.asyncio
-async def test_init_endpoint_info(ep):
+def _get_model_info(ep, test_manuf=None, test_model=None,
+                    fail=False, timeout=False):
     clus = ep.add_input_cluster(0)
     assert 0 in ep.in_clusters
     assert ep.in_clusters[0] is clus
@@ -169,94 +173,99 @@ async def test_init_endpoint_info(ep):
     async def mockrequest(foundation, command, schema, args, manufacturer=None):
         assert foundation is True
         assert command == 0
-        rar4 = _mk_rar(4, b'Custom')
-        rar5 = _mk_rar(5, b'Model')
+        if fail:
+            if timeout:
+                raise asyncio.TimeoutError
+            else:
+                raise zigpy.exceptions.ZigbeeException
+        nonlocal test_manuf, test_model
+
+        if test_manuf is not None:
+            test_manuf = t.uint8_t(len(test_manuf)).serialize() + test_manuf
+            rar4 = _mk_rar(4, t.CharacterString.deserialize(test_manuf)[0])
+        else:
+            rar4 = _mk_rar(4, None)
+
+        if test_model is not None:
+            test_model = t.uint8_t(len(test_model)).serialize() + test_model
+            rar5 = _mk_rar(5, t.CharacterString.deserialize(test_model)[0])
+        else:
+            rar5 = _mk_rar(5, None)
+
         return [[rar4, rar5]]
     clus.request = mockrequest
 
-    await test_initialize_zha(ep)
-    assert ep.manufacturer == 'Custom'
-    assert ep.model == 'Model'
+    return ep.get_model_info()
+
+
+@pytest.mark.asyncio
+async def test_get_model_info(ep):
+    manufacturer = b'Mock Manufacturer'
+    model = b'Mock Model'
+
+    mod, man = await _get_model_info(ep, manufacturer, model)
+
+    assert man == 'Mock Manufacturer'
+    assert mod == 'Mock Model'
 
 
 @pytest.mark.asyncio
 async def test_init_endpoint_info_none(ep):
-    clus = ep.add_input_cluster(0)
-    assert 0 in ep.in_clusters
-    assert ep.in_clusters[0] is clus
+    mod, man = await _get_model_info(ep)
 
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
-        assert foundation is True
-        assert command == 0
-        rar4 = _mk_rar(4, None)
-        rar5 = _mk_rar(5, None)
-        return [[rar4, rar5]]
-    clus.request = mockrequest
-
-    await test_initialize_zha(ep)
-
-
-@pytest.mark.asyncio
-async def test_init_endpoint_info_unicode(ep):
-    clus = ep.add_input_cluster(0)
-    assert 0 in ep.in_clusters
-    assert ep.in_clusters[0] is clus
-
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
-        assert foundation is True
-        assert command == 0
-        rar4 = _mk_rar(4, b'\x81')
-        rar5 = _mk_rar(5, b'\x81')
-        return [[rar4, rar5]]
-    clus.request = mockrequest
-
-    await test_initialize_zha(ep)
-
-
-def _init_endpoint_info(ep, test_manuf=None, test_model=None):
-    clus = ep.add_input_cluster(0)
-    assert 0 in ep.in_clusters
-    assert ep.in_clusters[0] is clus
-
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
-        assert foundation is True
-        assert command == 0
-        rar4 = _mk_rar(4, test_manuf)
-        rar5 = _mk_rar(5, test_model)
-        return [[rar4, rar5]]
-    clus.request = mockrequest
-
-    return test_initialize_zha(ep)
+    assert man is None
+    assert mod is None
 
 
 @pytest.mark.asyncio
 async def test_init_endpoint_info_null_padded_manuf(ep):
     manufacturer = b'Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07'
     model = b'Mock Model'
-    await _init_endpoint_info(ep, manufacturer, model)
+    mod, man = await _get_model_info(ep, manufacturer, model)
 
-    assert ep.manufacturer == 'Mock Manufacturer'
-    assert ep.model == 'Mock Model'
+    assert man == 'Mock Manufacturer'
+    assert mod == 'Mock Model'
 
 
 @pytest.mark.asyncio
 async def test_init_endpoint_info_null_padded_model(ep):
     manufacturer = b'Mock Manufacturer'
     model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-    await _init_endpoint_info(ep, manufacturer, model)
+    mod, man = await _get_model_info(ep, manufacturer, model)
 
-    assert ep.manufacturer == 'Mock Manufacturer'
-    assert ep.model == 'Mock Model'
+    assert man == 'Mock Manufacturer'
+    assert mod == 'Mock Model'
 
 
 @pytest.mark.asyncio
 async def test_init_endpoint_info_null_padded_manuf_model(ep):
     manufacturer = b'Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07'
     model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-    await _init_endpoint_info(ep, manufacturer, model)
+    mod, man = await _get_model_info(ep, manufacturer, model)
 
-    assert ep.manufacturer == 'Mock Manufacturer'
-    assert ep.model == 'Mock Model'
+    assert man == 'Mock Manufacturer'
+    assert mod == 'Mock Model'
+
+
+@pytest.mark.asyncio
+async def test_get_model_info_delivery_error(ep):
+    manufacturer = b'Mock Manufacturer'
+    model = b'Mock Model'
+    mod, man = await _get_model_info(ep, manufacturer, model, fail=True)
+
+    assert man is None
+    assert mod is None
+
+
+@pytest.mark.asyncio
+async def test_get_model_info_timeout(ep):
+    manufacturer = b'Mock Manufacturer'
+    model = b'Mock Model'
+    mod, man = await _get_model_info(ep, manufacturer, model,
+                                     fail=True, timeout=True)
+
+    assert man is None
+    assert mod is None
 
 
 def _group_add_mock(ep, success=True,

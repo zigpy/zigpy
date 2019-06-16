@@ -264,15 +264,15 @@ class PersistingListener:
                         if cluster == Basic.cluster_id and attrid == 4:
                             if isinstance(value, bytes):
                                 value = value.split(b'\x00')[0]
-                                ep.manufacturer = value.decode().strip()
+                                dev.manufacturer = value.decode().strip()
                             else:
-                                ep.manufacturer = value
+                                dev.manufacturer = value
                         if cluster == Basic.cluster_id and attrid == 5:
                             if isinstance(value, bytes):
                                 value = value.split(b'\x00')[0]
-                                ep.model = value.decode().strip()
+                                dev.model = value.decode().strip()
                             else:
-                                ep.model = value
+                                dev.model = value
 
         _load_attributes()
 
