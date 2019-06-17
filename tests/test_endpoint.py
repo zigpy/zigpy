@@ -384,3 +384,20 @@ async def test_remove_from_group_fail(ep):
     assert groups.remove_group.call_count == 0
     assert grp_mock.add_member.call_count == 0
     assert grp_mock.remove_member.call_count == 0
+
+
+def test_ep_manufacturer(ep):
+    ep.device.manufacturer = mock.sentinel.device_manufacturer
+    assert ep.manufacturer is mock.sentinel.device_manufacturer
+
+    ep.manufacturer = mock.sentinel.ep_manufacturer
+    assert ep.manufacturer is mock.sentinel.ep_manufacturer
+
+
+def test_ep_model(ep):
+    ep.device.model = mock.sentinel.device_model
+    assert ep.model is mock.sentinel.device_model
+
+    ep.model = mock.sentinel.ep_model
+    assert ep.model is mock.sentinel.ep_model
+
