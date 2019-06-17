@@ -400,4 +400,3 @@ def test_ep_model(ep):
 
     ep.model = mock.sentinel.ep_model
     assert ep.model is mock.sentinel.ep_model
-
