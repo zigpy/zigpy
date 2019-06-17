@@ -303,6 +303,99 @@ class MACStatus(basic.enum8):
     # did not have a transmit GTS direction or was not defined
     MAC_INVALID_GTS = 0xe6
 
+    # A request to purge an MSDU from the transaction queue was made using an
+    # MSDU handle that was not found in the transaction table
+    MAC_INVALID_HANDLE = 0xe7
+
+    # A parameter in the primitive is either not supported or is out of the
+    # valid range
+    MAC_INVALID_PARAMETER = 0xe8
+
+    # No acknowledgment was received after macMaxFrameRetries
+    MAC_NO_ACK = 0xe9
+
+    # A scan operation failed to find any network beacons
+    MAC_NO_BEACON = 0xea
+
+    # No response data was available following a request
+    MAC_NO_DATA = 0xeb
+
+    # The operation failed because a 16-bit short address was not allocated
+    MAC_NO_SHORT_ADDRESS = 0xec
+
+    # A receiver enable request was unsuccessful because it could not be
+    # completed within the CAP. @note The enumeration description is not used
+    # in this standard, and it is included only to meet the backwards
+    # compatibility requirements for IEEE Std 802.15.4-2003
+    MAC_OUT_OF_CAP = 0xed
+
+    # A PAN identifier conflict has been detected and communicated to the PAN
+    # coordinator
+    MAC_PAN_ID_CONFLICT = 0xee
+
+    # A coordinator realignment command has been received
+    MAC_REALIGNMENT = 0xef
+
+    # The transaction has expired and its information was discarded
+    MAC_TRANSACTION_EXPIRED = 0xf0
+
+    # There is no capacity to store the transaction
+    MAC_TRANSACTION_OVERFLOW = 0xf1
+
+    # The transceiver was in the transmitter enabled state when the receiver
+    # was requested to be enabled. @note The enumeration description is not
+    # used in this standard, and it is included only to meet the backwards
+    # compatibility requirements for IEEE Std 802.15.4-2003
+    MAC_TX_ACTIVE = 0xf2
+
+    # The key purportedly used by the originator of the received frame is not
+    # available or, if available, the originating device is not known or is
+    # blacklisted with that particular key
+    MAC_UNAVAILABLE_KEY = 0xf3
+
+    # A SET/GET request was issued with the identifier of a PIB attribute that
+    # is not supported
+    MAC_UNSUPPORTED_ATTRIBUTE = 0xf4
+
+    # A request to send data was unsuccessful because neither the source
+    # address parameters nor the destination address parameters were present
+    MAC_INVALID_ADDRESS = 0xf5
+
+    # A receiver enable request was unsuccessful because it specified a number
+    # of symbols that was longer than the beacon interval
+    MAC_ON_TIME_TOO_LONG = 0xf6
+
+    # A receiver enable request was unsuccessful because it could not be
+    # completed within the current superframe and was not permitted to be
+    # deferred until the next superframe
+    MAC_PAST_TIME = 0xf7
+
+    # The device was instructed to start sending beacons based on the timing
+    # of the beacon transmissions of its coordinator, but the device is not
+    # currently tracking the beacon of its coordinator
+    MAC_TRACKING_OFF = 0xf8
+
+    # An attempt to write to a MAC PIB attribute that is in a table failed
+    # because the specified table index was out of range
+    MAC_INVALID_INDEX = 0xf9
+
+    # A scan operation terminated prematurely because the number of PAN
+    # descriptors stored reached an implementation specified maximum
+    MAC_LIMIT_REACHED = 0xfa
+
+    # A SET/GET request was issued with the identifier of an attribute that is
+    # read only
+    MAC_READ_ONLY = 0xfb
+
+    # A request to perform a scan operation failed because the MLME was in the
+    # process of performing a previously initiated scan operation
+    MAC_SCAN_IN_PROGRESS = 0xfc
+
+    # The device was instructed to start sending beacons based on the timing
+    # of the beacon transmissions of its coordinator, but the instructed start
+    # time overlapped the transmission time of the beacon of its coordinator
+    MAC_SUPERFRAME_OVERLAP = 0xfd
+
 
 class NWKStatus(basic.enum8):
     # A request has been executed successfully
