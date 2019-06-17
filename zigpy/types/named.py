@@ -248,6 +248,62 @@ class APSStatus(basic.enum8):
     APS_UNSUPPORTED_ATTRIBUTE = 0xb0
 
 
+class MACStatus(basic.enum8):
+    # Operation was successful
+    MAC_SUCCESS = 0x00
+
+    # Association Status field
+    MAC_PAN_AT_CAPACITY = 0x01
+    MAC_PAN_ACCESS_DENIED = 0x02
+
+    # The frame counter purportedly applied by the originator of the received
+    # frame is invalid
+    MAC_COUNTER_ERROR = 0xdb
+
+    # The key purportedly applied by the originator of the received frame is
+    # not allowed to be used with that frame type according to the key usage
+    # policy of the recipient
+    MAC_IMPROPER_KEY_TYPE = 0xdc
+
+    # The security level purportedly applied # by the originator of the
+    # received frame does not meet the minimum security level
+    # required/expected by the recipient for that frame type
+    MAC_IMPROPER_SECURITY_LEVEL = 0xdd
+
+    # The received frame was purportedly secured using security based on IEEE
+    # Std 802.15.4-2003, and such security is not supported by this standard
+    MAC_UNSUPPORTED_LEGACY = 0xde
+
+    # The security purportedly applied by the originator of the received frame
+    # is not supported
+    MAC_UNSUPPORTED_SECURITY = 0xDF
+
+    # The beacon was lost following a synchronization request
+    MAC_BEACON_LOSS = 0xe0
+
+    # A transmission could not take place due to activity on the channel, i.e.
+    # the CSMA-CA mechanism has failed
+    MACX_CHANNEL_ACCESS_FAILURE = 0xe1
+
+    # The GTS request has been denied by the PAN coordinator
+    MAC_DENIED = 0xe2
+
+    # The attempt to disable the transceiver has failed
+    MAC_DISABLE_TRX_FAILURE = 0xe3
+
+    # Cryptographic processing of the received secured frame failed
+    MAC_SECURITY_ERROR = 0xe4
+
+    # Either a frame resulting from processing has a length that is greater
+    # than aMaxPHYPacketSize or a requested transaction is too large to fit in
+    # the CAP or GTS
+    MAC_FRAME_TOO_LONG = 0xe5
+
+    # The requested GTS transmission failed because the specified GTS either
+    # did not have a transmit GTS direction or was not defined
+    MAC_INVALID_GTS = 0xe6
+
+
 class NWKStatus(basic.enum8):
     # A request has been executed successfully
     NWK_SUCCESS = 0x00
