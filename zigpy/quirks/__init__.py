@@ -18,9 +18,22 @@ def get_device(device, registry=_DEVICE_REGISTRY):
     dev_ep = set(device.endpoints) - set([0])
     for candidate in registry:
         _LOGGER.debug("Considering %s", candidate)
-        sig = candidate.signature
+        sig = {
+            eid: ep for eid, ep in candidate.signature.items() if isinstance(eid, int)
+        }
+        if not device.model == candidate.signature.get('model', device.model):
+            _LOGGER.debug("Fail, because device model mismatch: '%s'",
+                          device.model)
+            continue
+
+        if not (device.manufacturer ==
+                candidate.signature.get('manufacturer', device.manufacturer)):
+            _LOGGER.debug("Fail, because device manufacturer mismatch: '%s'",
+                          device.manufacturer)
+            continue
+
         if not _match(sig, dev_ep):
-            _LOGGER.debug("Fail because endpoint list mismatch: %s %s", sig, dev_ep)
+            _LOGGER.debug("Fail because endpoint list mismatch: %s %s", sig.keys(), dev_ep)
             continue
 
         if not all([device[eid].profile_id == sig[eid].get('profile_id', device[eid].profile_id) for eid in sig]):

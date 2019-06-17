@@ -90,6 +90,40 @@ def test_get_device(real_device):
     assert isinstance(get_device(real_device, registry), TestDevice)
 
 
+def test_get_device_model_in_sig(real_device):
+    class TestDevice:
+        signature = {}
+
+        def __init__(*args, **kwargs):
+            pass
+
+        def get_signature(self):
+            pass
+
+    registry = [TestDevice]
+
+    get_device = zigpy.quirks.get_device
+
+    assert get_device(real_device, registry) is real_device
+
+    TestDevice.signature[1] = {
+        'profile_id': 255,
+        'device_type': 255,
+        'input_clusters': [3],
+        'output_clusters': [6],
+    }
+
+    TestDevice.signature['model'] = 'x'
+    assert get_device(real_device, registry) is real_device
+
+    TestDevice.signature['model'] = 'model'
+    TestDevice.signature['manufacturer'] = 'x'
+    assert get_device(real_device, registry) is real_device
+
+    TestDevice.signature['manufacturer'] = 'manufacturer'
+    assert isinstance(get_device(real_device, registry), TestDevice)
+
+
 def test_custom_devices():
     def _check_range(cluster):
         for range in Cluster._registry_range.keys():
