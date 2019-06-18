@@ -16,11 +16,20 @@ def add_to_registry(device):
 def get_device(device, registry=_DEVICE_REGISTRY):
     """Get a CustomDevice object, if one is available"""
     dev_ep = set(device.endpoints) - set([0])
+    _LOGGER.debug("Checking quirks for %s %s (%s)",
+                  device.manufacturer, device.model, device.ieee)
     for candidate in registry:
         _LOGGER.debug("Considering %s", candidate)
-        sig = {
-            eid: ep for eid, ep in candidate.signature.items() if isinstance(eid, int)
-        }
+        sig = candidate.signature.get('endpoints', {})
+        if not sig:
+            _LOGGER.warning(
+                ("%s signature update is required. Support for `signature = {1: { replacement }}`"
+                 " will be removed in the future releases. Use "
+                 "`signature = {'endpoints': {1: { replacement }}}"), candidate
+            )
+            sig = {
+                eid: ep for eid, ep in candidate.signature.items() if isinstance(eid, int)
+            }
         if not device.model == candidate.signature.get('model', device.model):
             _LOGGER.debug("Fail, because device model mismatch: '%s'",
                           device.model)
@@ -33,7 +42,7 @@ def get_device(device, registry=_DEVICE_REGISTRY):
             continue
 
         if not _match(sig, dev_ep):
-            _LOGGER.debug("Fail because endpoint list mismatch: %s %s", sig.keys(), dev_ep)
+            _LOGGER.debug("Fail because endpoint list mismatch: %s %s", set(sig.keys()), dev_ep)
             continue
 
         if not all([device[eid].profile_id == sig[eid].get('profile_id', device[eid].profile_id) for eid in sig]):

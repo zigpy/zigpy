@@ -61,22 +61,24 @@ class KofLevelControl(NoReplyMixin, CustomCluster, LevelControl):
 
 class CeilingFan(CustomDevice):
     signature = {
-        1: {
-            'profile_id': 0x0104,
-            'device_type': 14,
-            'input_clusters': [
-                Basic.cluster_id,
-                Identify.cluster_id,
-                Groups.cluster_id,
-                Scenes.cluster_id,
-                OnOff.cluster_id,
-                LevelControl.cluster_id,
-                Fan.cluster_id,
-            ],
-            'output_clusters': [
-                Identify.cluster_id,
-                Ota.cluster_id,
-            ],
+        'endpoints': {
+            1: {
+                'profile_id': 0x0104,
+                'device_type': 14,
+                'input_clusters': [
+                    Basic.cluster_id,
+                    Identify.cluster_id,
+                    Groups.cluster_id,
+                    Scenes.cluster_id,
+                    OnOff.cluster_id,
+                    LevelControl.cluster_id,
+                    Fan.cluster_id,
+                ],
+                'output_clusters': [
+                    Identify.cluster_id,
+                    Ota.cluster_id,
+                ],
+            },
         },
     }
 
