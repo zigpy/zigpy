@@ -71,8 +71,9 @@ class Device(zigpy.util.LocalLogMixin):
 
     async def _initialize(self):
         if self.status == Status.NEW:
-            self._node_handle = asyncio.ensure_future(
-                self.get_node_descriptor())
+            if self._node_handle is None or self._node_handle.done():
+                self._node_handle = asyncio.ensure_future(
+                    self.get_node_descriptor())
             await self._node_handle
             self.info("Discovering endpoints")
             try:
