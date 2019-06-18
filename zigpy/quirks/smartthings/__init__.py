@@ -16,13 +16,15 @@ class SmartthingsRelativeHumidityCluster(CustomCluster):
 
 class SmartthingsTemperatureHumiditySensor(CustomDevice):
     signature = {
-        # <SimpleDescriptor endpoint=1 profile=260 device_type=770 device_version=0 input_clusters=[0, 1, 3, 32, 1026, 2821, 64581] output_clusters=[3, 25]>
-        1: {
-            'profile_id': 0x0104,
-            'device_type': 0x0302,
-            'input_clusters': [0, 1, 3, 32, 1026, 2821, 64581],
-            'output_clusters': [3, 25],
-        }
+        'endpoints': {
+            # <SimpleDescriptor endpoint=1 profile=260 device_type=770 device_version=0 input_clusters=[0, 1, 3, 32, 1026, 2821, 64581] output_clusters=[3, 25]>
+            1: {
+                'profile_id': 0x0104,
+                'device_type': 0x0302,
+                'input_clusters': [0, 1, 3, 32, 1026, 2821, 64581],
+                'output_clusters': [3, 25],
+            },
+        },
     }
 
     replacement = {
@@ -54,17 +56,19 @@ class SmartThingsAccelCluster(CustomCluster):
 
 class SmartthingsMultiPurposeSensor(CustomDevice):
     signature = {
-        # <SimpleDescriptor endpoint=1 profile=260 device_type=1026
-        # device_version=0 input_clusters=[0, 1, 3, 32, 1026, 1280, 64514]
-        # output_clusters=[3, 25]>
-        1: {
-            'profile_id': 0x0104,
-            'device_type': 0x0402,
-            'input_clusters': [
-                0, 1, 3, 32, 1026, 1280, SmartThingsAccelCluster.cluster_id
-            ],
-            'output_clusters': [3, 25],
-        }
+        'endpoints': {
+            # <SimpleDescriptor endpoint=1 profile=260 device_type=1026
+            # device_version=0 input_clusters=[0, 1, 3, 32, 1026, 1280, 64514]
+            # output_clusters=[3, 25]>
+            1: {
+                'profile_id': 0x0104,
+                'device_type': 0x0402,
+                'input_clusters': [
+                    0, 1, 3, 32, 1026, 1280, SmartThingsAccelCluster.cluster_id
+                ],
+                'output_clusters': [3, 25],
+            },
+        },
     }
 
     replacement = {
