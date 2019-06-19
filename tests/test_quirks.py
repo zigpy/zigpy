@@ -5,6 +5,7 @@ import pytest
 import zigpy.device
 import zigpy.endpoint
 import zigpy.quirks
+from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
 from zigpy.zcl import Cluster
 
@@ -57,37 +58,36 @@ def test_get_device(real_device):
         def get_signature(self):
             pass
 
-    registry = [TestDevice]
+    registry = DeviceRegistry()
+    registry.add_to_registry(TestDevice)
 
-    get_device = zigpy.quirks.get_device
-
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['endpoints'] = {1: {'profile_id': 1}}
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['endpoints'][1]['profile_id'] = 255
     TestDevice.signature['endpoints'][1]['device_type'] = 1
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['endpoints'][1]['device_type'] = 255
     TestDevice.signature['endpoints'][1]['input_clusters'] = [1]
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['endpoints'][1]['input_clusters'] = [3]
     TestDevice.signature['endpoints'][1]['output_clusters'] = [1]
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['endpoints'][1]['output_clusters'] = [6]
     TestDevice.signature['endpoints'][1]['model'] = 'x'
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['endpoints'][1]['model'] = 'model'
     TestDevice.signature['endpoints'][1]['manufacturer'] = 'x'
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['endpoints'][1]['manufacturer'] = 'manufacturer'
-    assert isinstance(get_device(real_device, registry), TestDevice)
+    assert isinstance(registry.get_device(real_device), TestDevice)
 
 
 def test_get_device_old_signature(real_device):
@@ -101,37 +101,36 @@ def test_get_device_old_signature(real_device):
         def get_signature(self):
             pass
 
-    registry = [TestDevice]
+    registry = DeviceRegistry()
+    registry.add_to_registry(TestDevice)
 
-    get_device = zigpy.quirks.get_device
-
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature[1] = {'profile_id': 1}
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature[1]['profile_id'] = 255
     TestDevice.signature[1]['device_type'] = 1
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature[1]['device_type'] = 255
     TestDevice.signature[1]['input_clusters'] = [1]
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature[1]['input_clusters'] = [3]
     TestDevice.signature[1]['output_clusters'] = [1]
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature[1]['output_clusters'] = [6]
     TestDevice.signature[1]['model'] = 'x'
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature[1]['model'] = 'model'
     TestDevice.signature[1]['manufacturer'] = 'x'
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature[1]['manufacturer'] = 'manufacturer'
-    assert isinstance(get_device(real_device, registry), TestDevice)
+    assert isinstance(registry.get_device(real_device), TestDevice)
 
 
 def test_get_device_model_in_sig(real_device):
@@ -144,11 +143,10 @@ def test_get_device_model_in_sig(real_device):
         def get_signature(self):
             pass
 
-    registry = [TestDevice]
+    registry = DeviceRegistry()
+    registry.add_to_registry(TestDevice)
 
-    get_device = zigpy.quirks.get_device
-
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['endpoints'] = {1: {
         'profile_id': 255,
@@ -158,14 +156,14 @@ def test_get_device_model_in_sig(real_device):
     }}
 
     TestDevice.signature['endpoints'][1]['model'] = 'x'
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['endpoints'][1]['model'] = 'model'
     TestDevice.signature['endpoints'][1]['manufacturer'] = 'x'
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['endpoints'][1]['manufacturer'] = 'manufacturer'
-    assert isinstance(get_device(real_device, registry), TestDevice)
+    assert isinstance(registry.get_device(real_device), TestDevice)
 
 
 def test_model_manuf_device_sig(real_device):
@@ -178,11 +176,10 @@ def test_model_manuf_device_sig(real_device):
         def get_signature(self):
             pass
 
-    registry = [TestDevice]
+    registry = DeviceRegistry()
+    registry.add_to_registry(TestDevice)
 
-    get_device = zigpy.quirks.get_device
-
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['endpoints'] = {1: {
         'profile_id': 255,
@@ -192,14 +189,14 @@ def test_model_manuf_device_sig(real_device):
     }}
 
     TestDevice.signature['model'] = 'x'
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['model'] = 'model'
     TestDevice.signature['manufacturer'] = 'x'
-    assert get_device(real_device, registry) is real_device
+    assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['manufacturer'] = 'manufacturer'
-    assert isinstance(get_device(real_device, registry), TestDevice)
+    assert isinstance(registry.get_device(real_device), TestDevice)
 
 
 def test_custom_devices():
