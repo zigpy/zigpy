@@ -19,7 +19,7 @@ class Registry(type):
     def __init__(cls, name, bases, nmspc):  # noqa: N805
         super(Registry, cls).__init__(name, bases, nmspc)
         if hasattr(cls, 'signature'):
-            _DEVICE_REGISTRY.append(cls)
+            _DEVICE_REGISTRY.add_to_registry(cls)
 
 
 class CustomDevice(zigpy.device.Device, metaclass=Registry):

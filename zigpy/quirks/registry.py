@@ -1,19 +1,34 @@
+import collections
+import itertools
 import logging
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class DeviceRegistry(list):
+class DeviceRegistry:
+    def __init__(self, *args, **kwargs):
+        dd = collections.defaultdict
+        self._registry = dd(lambda: dd(list))
+
     def add_to_registry(self, device):
         """Add a device to the registry"""
-        self.append(device)
+        manufacturer = self.get_manufacturer(device)
+        model = self.get_model(device)
+        self.registry[manufacturer][model].append(device)
+
+    def remove_device(self, device):
+        manufacturer = self.get_manufacturer(device)
+        model = self.get_model(device)
+        return self.registry[manufacturer][model].pop()
 
     def get_device(self, device):
         """Get a CustomDevice object, if one is available"""
         dev_ep = set(device.endpoints) - set([0])
         _LOGGER.debug("Checking quirks for %s %s (%s)",
                       device.manufacturer, device.model, device.ieee)
-        for candidate in self:
+        for candidate in itertools.chain(self.registry[device.manufacturer][device.model],
+                                         self.registry[device.manufacturer][None],
+                                         self.registry[None][None]):
             _LOGGER.debug("Considering %s", candidate)
             sig = candidate.signature.get('endpoints', {})
             if not sig:
@@ -76,5 +91,24 @@ class DeviceRegistry(list):
         return device
 
     @staticmethod
+    def get_manufacturer(device):
+        return device.signature.get('manufacturer')
+
+    @staticmethod
+    def get_model(device):
+        return device.signature.get('model')
+
+    @staticmethod
     def _match(a, b):
         return set(a) == set(b)
+
+    @property
+    def registry(self):
+        return self._registry
+
+    def __contains__(self, device):
+        manufacturer = self.get_manufacturer(device)
+        model = self.get_model(device)
+        return device in itertools.chain(self.registry[manufacturer][model],
+                                         self.registry[manufacturer][None],
+                                         self.registry[None][None],)
