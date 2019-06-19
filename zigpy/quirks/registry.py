@@ -16,10 +16,10 @@ class DeviceRegistry:
         model = self.get_model(device)
         self.registry[manufacturer][model].append(device)
 
-    def remove_device(self, device):
+    def remove(self, device):
         manufacturer = self.get_manufacturer(device)
         model = self.get_model(device)
-        return self.registry[manufacturer][model].pop()
+        return self.registry[manufacturer][model].remove(device)
 
     def get_device(self, device):
         """Get a CustomDevice object, if one is available"""

@@ -28,7 +28,8 @@ def test_registry():
         signature = {}
 
     assert TestDevice in zigpy.quirks._DEVICE_REGISTRY
-    assert zigpy.quirks._DEVICE_REGISTRY.remove_device(TestDevice) == TestDevice  # :-/
+    assert zigpy.quirks._DEVICE_REGISTRY.remove(TestDevice) is None  # :-/
+    assert TestDevice not in zigpy.quirks._DEVICE_REGISTRY
 
 
 @pytest.fixture
@@ -308,7 +309,8 @@ def test_custom_device():
     test_device.add_endpoint(3)
     assert isinstance(test_device[3], zigpy.endpoint.Endpoint)
 
-    assert zigpy.quirks._DEVICE_REGISTRY.remove_device(Device) == Device  # :-/
+    assert zigpy.quirks._DEVICE_REGISTRY.remove(Device) is None  # :-/
+    assert Device not in zigpy.quirks._DEVICE_REGISTRY
 
 
 def test_kof_no_reply():
