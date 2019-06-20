@@ -30,6 +30,7 @@ class TemperatureHumiditySensor(CustomDevice):
                 'output_clusters': [4, 3, 5, 12],
             },
         },
+        'manufacturer': 'LUMI',
     }
 
     replacement = {
@@ -52,6 +53,7 @@ class AqaraTemperatureHumiditySensor(CustomDevice):
                 'output_clusters': [0, 4, 65535],
             },
         },
+        'manufacturer': 'LUMI',
     }
 
     replacement = {
@@ -74,6 +76,7 @@ class AqaraOpenCloseSensor(CustomDevice):
                 'output_clusters': [0, 4, 65535],
             },
         },
+        'manufacturer': 'LUMI',
     }
 
     replacement = {
@@ -97,6 +100,7 @@ class AqaraWaterSensor(CustomDevice):
                 'output_clusters': [25],
             },
         },
+        'manufacturer': 'LUMI',
     }
 
     replacement = {
@@ -146,7 +150,7 @@ class AqaraMagicCubeSensor(CustomDevice):
                                     AnalogInput.cluster_id],
             },
         },
-
+        'manufacturer': 'LUMI',
     }
 
     replacement = {
