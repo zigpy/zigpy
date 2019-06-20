@@ -91,12 +91,34 @@ class DeviceRegistry:
         return device
 
     @staticmethod
-    def get_manufacturer(device):
-        return device.signature.get('manufacturer')
+    def get_manufacturer(custom_dev):
+        manuf = custom_dev.signature.get('manufacturer')
+        if manuf is None:
+            # Get manufacturer from endpoint sig
+            sig = custom_dev.signature.get('endpoints', {})
+            if not sig:
+                sig = {
+                    eid: ep for eid, ep in custom_dev.signature.items() if isinstance(eid, int)
+                }
+            manuf = next(
+                (ep['manufacturer'] for ep in sig.values() if 'manufacturer' in ep),
+                None)
+        return manuf
 
     @staticmethod
-    def get_model(device):
-        return device.signature.get('model')
+    def get_model(custom_dev):
+        model = custom_dev.signature.get('model')
+        if model is None:
+            # Get model from endpoint sig
+            sig = custom_dev.signature.get('endpoints', {})
+            if not sig:
+                sig = {
+                    eid: ep for eid, ep in custom_dev.signature.items() if isinstance(eid, int)
+                }
+            model = next(
+                (ep['model'] for ep in sig.values() if 'model' in ep),
+                None)
+        return model
 
     @staticmethod
     def _match(a, b):
