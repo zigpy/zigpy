@@ -281,5 +281,3 @@ def test_remove_models_info(fake_dev):
     assert quirk_list.remove.call_count == 2
     assert quirk_list.remove.call_args_list[0][0][0] is fake_dev
     assert quirk_list.remove.call_args_list[1][0][0] is fake_dev
-
-
