@@ -55,7 +55,7 @@ def _dev_reg(device):
     return registry
 
 
-def test_get_device(real_device):
+def test_get_device_new_sig(real_device):
     class TestDevice:
         signature = {
         }
@@ -90,16 +90,16 @@ def test_get_device(real_device):
     assert registry.get_device(real_device) is real_device
 
     TestDevice.signature['endpoints'][1]['output_clusters'] = [6]
-    TestDevice.signature['endpoints'][1]['model'] = 'x'
+    TestDevice.signature['model'] = 'x'
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature['endpoints'][1]['model'] = 'model'
-    TestDevice.signature['endpoints'][1]['manufacturer'] = 'x'
+    TestDevice.signature['model'] = 'model'
+    TestDevice.signature['manufacturer'] = 'x'
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature['endpoints'][1]['manufacturer'] = 'manufacturer'
+    TestDevice.signature['manufacturer'] = 'manufacturer'
     registry = _dev_reg(TestDevice)
     assert isinstance(registry.get_device(real_device), TestDevice)
 
@@ -144,39 +144,6 @@ def test_get_device_old_signature(real_device):
     assert registry.get_device(real_device) is real_device
 
     TestDevice.signature[1]['manufacturer'] = 'manufacturer'
-    assert isinstance(registry.get_device(real_device), TestDevice)
-
-
-def test_get_device_model_in_sig(real_device):
-    class TestDevice:
-        signature = {}
-
-        def __init__(*args, **kwargs):
-            pass
-
-        def get_signature(self):
-            pass
-
-    registry = DeviceRegistry()
-    registry.add_to_registry(TestDevice)
-
-    assert registry.get_device(real_device) is real_device
-
-    TestDevice.signature['endpoints'] = {1: {
-        'profile_id': 255,
-        'device_type': 255,
-        'input_clusters': [3],
-        'output_clusters': [6],
-    }}
-
-    TestDevice.signature['endpoints'][1]['model'] = 'x'
-    assert registry.get_device(real_device) is real_device
-
-    TestDevice.signature['endpoints'][1]['model'] = 'model'
-    TestDevice.signature['endpoints'][1]['manufacturer'] = 'x'
-    assert registry.get_device(real_device) is real_device
-
-    TestDevice.signature['endpoints'][1]['manufacturer'] = 'manufacturer'
     assert isinstance(registry.get_device(real_device), TestDevice)
 
 

@@ -94,12 +94,10 @@ class DeviceRegistry:
     def get_manufacturer(custom_dev):
         manuf = custom_dev.signature.get('manufacturer')
         if manuf is None:
-            # Get manufacturer from endpoint sig
-            sig = custom_dev.signature.get('endpoints', {})
-            if not sig:
-                sig = {
-                    eid: ep for eid, ep in custom_dev.signature.items() if isinstance(eid, int)
-                }
+            # Get manufacturer from legacy endpoint sig
+            sig = {
+                eid: ep for eid, ep in custom_dev.signature.items() if isinstance(eid, int)
+            }
             manuf = next(
                 (ep['manufacturer'] for ep in sig.values() if 'manufacturer' in ep),
                 None)
@@ -109,12 +107,10 @@ class DeviceRegistry:
     def get_model(custom_dev):
         model = custom_dev.signature.get('model')
         if model is None:
-            # Get model from endpoint sig
-            sig = custom_dev.signature.get('endpoints', {})
-            if not sig:
-                sig = {
-                    eid: ep for eid, ep in custom_dev.signature.items() if isinstance(eid, int)
-                }
+            # Get model from legacy endpoint sig
+            sig = {
+                eid: ep for eid, ep in custom_dev.signature.items() if isinstance(eid, int)
+            }
             model = next(
                 (ep['model'] for ep in sig.values() if 'model' in ep),
                 None)
