@@ -4,22 +4,34 @@ import logging
 
 _LOGGER = logging.getLogger(__name__)
 
+SIG_MODELS_INFO = 'models_info'
+
 
 class DeviceRegistry:
     def __init__(self, *args, **kwargs):
         dd = collections.defaultdict
         self._registry = dd(lambda: dd(list))
 
-    def add_to_registry(self, device):
+    def add_to_registry(self, custom_device):
         """Add a device to the registry"""
-        manufacturer = self.get_manufacturer(device)
-        model = self.get_model(device)
-        self.registry[manufacturer][model].append(device)
+        models_info = custom_device.signature.get(SIG_MODELS_INFO)
+        if models_info:
+            for manuf, model in models_info:
+                self.registry[manuf][model].append(custom_device)
+        else:
+            manufacturer = self.get_manufacturer(custom_device)
+            model = self.get_model(custom_device)
+            self.registry[manufacturer][model].append(custom_device)
 
-    def remove(self, device):
-        manufacturer = self.get_manufacturer(device)
-        model = self.get_model(device)
-        return self.registry[manufacturer][model].remove(device)
+    def remove(self, custom_device):
+        models_info = custom_device.signature.get(SIG_MODELS_INFO)
+        if models_info:
+            for manuf, model in models_info:
+                self.registry[manuf][model].remove(custom_device)
+        else:
+            manufacturer = self.get_manufacturer(custom_device)
+            model = self.get_model(custom_device)
+            self.registry[manufacturer][model].remove(custom_device)
 
     def get_device(self, device):
         """Get a CustomDevice object, if one is available"""
@@ -125,8 +137,10 @@ class DeviceRegistry:
         return self._registry
 
     def __contains__(self, device):
-        manufacturer = self.get_manufacturer(device)
-        model = self.get_model(device)
+        manufacturer, model = device.signature.get(SIG_MODELS_INFO,
+                                                   [(self.get_manufacturer(device),
+                                                     self.get_model(device))])[0]
+
         return device in itertools.chain(self.registry[manufacturer][model],
                                          self.registry[manufacturer][None],
                                          self.registry[None][None],)
