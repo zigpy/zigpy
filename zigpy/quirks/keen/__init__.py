@@ -12,6 +12,7 @@ class KeenTemperatureHumiditySensor(CustomDevice):
                 'output_clusters': [0, 4, 3, 5, 25, 1026, 1029, 1027, 32],
             },
         },
+        'manufacturer': 'Keen Home Inc',
     }
 
     replacement = {

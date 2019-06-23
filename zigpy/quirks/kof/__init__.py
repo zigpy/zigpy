@@ -80,6 +80,7 @@ class CeilingFan(CustomDevice):
                 ],
             },
         },
+        'manufacturer': 'King Of Fans,  Inc.',
     }
 
     replacement = {

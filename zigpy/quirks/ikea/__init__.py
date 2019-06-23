@@ -26,6 +26,7 @@ class TradfriPlug(CustomDevice):
                 'output_clusters': [33],
             },
         },
+        'manufacturer': 'IKEA of Sweden',
     }
 
     replacement = {
