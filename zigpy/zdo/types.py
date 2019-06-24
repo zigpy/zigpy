@@ -269,6 +269,13 @@ class Status(t.uint8_t, enum.Enum):
     # request is not authorized from this device.
     NOT_AUTHORIZED = 0x8d
 
+    @classmethod
+    def deserialize(cls, data):
+        try:
+            return super().deserialize(data)
+        except ValueError:
+            return t.uint8_t.deserialize(data)
+
 
 NWK = ('NWKAddr', t.NWK)
 NWKI = ('NWKAddrOfInterest', t.NWK)
