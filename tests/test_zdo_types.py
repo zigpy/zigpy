@@ -139,3 +139,13 @@ def test_size_prefixed_simple_descriptor():
 def test_empty_size_prefixed_simple_descriptor():
     r = types.SizePrefixedSimpleDescriptor.deserialize(b'\x00')
     assert r == (None, b'')
+
+
+def test_status_undef():
+    data = b'\xaa'
+    extra = b'extra'
+
+    status, rest = types.Status.deserialize(data + extra)
+    assert rest == extra
+    assert status == 0xaa
+    assert not isinstance(status, types.Status)
