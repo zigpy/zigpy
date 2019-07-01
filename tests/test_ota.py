@@ -158,4 +158,3 @@ def test_cached_image_expiration_delay():
 
     cached.get_image_block(0, 40)
     assert cached.expires_on > orig_expiration
-

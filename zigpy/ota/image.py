@@ -208,4 +208,3 @@ class OTAImage:
             raise ValueError("Offset exceeds image size")
 
         return data[offset:offset + min(self.MAXIMUM_DATA_SIZE, size)]
-
