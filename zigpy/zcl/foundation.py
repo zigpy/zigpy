@@ -37,8 +37,15 @@ class Status(t.uint8_t, enum.Enum):
     NOTIFICATION_PENDING = 0x9a  # The command has been received and is being processed
     HARDWARE_FAILURE = 0xc0  # An operation was unsuccessful due to a
     SOFTWARE_FAILURE = 0xc1  # An operation was unsuccessful due to a
-    CALIBRATION_ERROR = 0xc2  # An error occurred during calibratio
+    CALIBRATION_ERROR = 0xc2  # An error occurred during calibration
     UNSUPPORTED_CLUSTER = 0xc3  # The cluster is not supported
+
+    @classmethod
+    def deserialize(cls, data):
+        try:
+            return super().deserialize(data)
+        except ValueError:
+            return t.uint8_t.deserialize(data)
 
 
 class Analog:

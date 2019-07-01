@@ -2,68 +2,24 @@ import logging
 
 import zigpy.device
 import zigpy.endpoint
+from zigpy.quirks.registry import DeviceRegistry
 import zigpy.zcl
 
-_DEVICE_REGISTRY = []
 _LOGGER = logging.getLogger(__name__)
 
-
-def add_to_registry(device):
-    """Add a device to the registry"""
-    _DEVICE_REGISTRY.append(device)
+_DEVICE_REGISTRY = DeviceRegistry()
 
 
 def get_device(device, registry=_DEVICE_REGISTRY):
     """Get a CustomDevice object, if one is available"""
-    dev_ep = set(device.endpoints.keys()) - set([0])
-    for candidate in registry:
-        _LOGGER.debug("Considering %s", candidate)
-        sig = candidate.signature
-        if not _match(sig.keys(), dev_ep):
-            _LOGGER.debug("Fail because endpoint list mismatch: %s %s", sig.keys(), dev_ep)
-            continue
-
-        if not all([device[eid].profile_id == sig[eid].get('profile_id', device[eid].profile_id) for eid in sig.keys()]):
-            _LOGGER.debug("Fail because profile_id mismatch on at least one endpoint")
-            continue
-
-        if not all([device[eid].device_type == sig[eid].get('device_type', device[eid].device_type) for eid in sig.keys()]):
-            _LOGGER.debug("Fail because device_type mismatch on at least one endpoint")
-            continue
-
-        if not all([device[eid].model == sig[eid].get('model', device[eid].model) for eid in sig.keys()]):
-            _LOGGER.debug("Fail because model mismatch on at least one endpoint")
-            continue
-
-        if not all([device[eid].manufacturer == sig[eid].get('manufacturer', device[eid].manufacturer) for eid in sig.keys()]):
-            _LOGGER.debug("Fail because manufacturer mismatch on at least one endpoint")
-            continue
-
-        if not all([_match(device[eid].in_clusters.keys(),
-                           ep.get('input_clusters', []))
-                    for eid, ep in sig.items()]):
-            _LOGGER.debug("Fail because input cluster mismatch on at least one endpoint")
-            continue
-
-        if not all([_match(device[eid].out_clusters.keys(),
-                           ep.get('output_clusters', []))
-                    for eid, ep in sig.items()]):
-            _LOGGER.debug("Fail because output cluster mismatch on at least one endpoint")
-            continue
-
-        _LOGGER.debug("Found custom device replacement for %s: %s",
-                      device.ieee, candidate)
-        device = candidate(device._application, device.ieee, device.nwk, device)
-        break
-
-    return device
+    return registry.get_device(device)
 
 
 class Registry(type):
     def __init__(cls, name, bases, nmspc):  # noqa: N805
         super(Registry, cls).__init__(name, bases, nmspc)
         if hasattr(cls, 'signature'):
-            add_to_registry(cls)
+            _DEVICE_REGISTRY.add_to_registry(cls)
 
 
 class CustomDevice(zigpy.device.Device, metaclass=Registry):
@@ -71,8 +27,17 @@ class CustomDevice(zigpy.device.Device, metaclass=Registry):
 
     def __init__(self, application, ieee, nwk, replaces):
         super().__init__(application, ieee, nwk)
-        self.status = zigpy.device.Status.ENDPOINTS_INIT
-        self.node_desc = replaces.node_desc
+
+        def set_device_attr(attr):
+            if attr in self.replacement:
+                setattr(self, attr, self.replacement[attr])
+            else:
+                setattr(self, attr, getattr(replaces, attr))
+
+        set_device_attr('status')
+        set_device_attr('node_desc')
+        set_device_attr('manufacturer')
+        set_device_attr('model')
         for endpoint_id, endpoint in self.replacement.get('endpoints', {}).items():
             self.add_endpoint(endpoint_id, replace_device=replaces)
 
@@ -111,8 +76,6 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
 
         set_device_attr('profile_id')
         set_device_attr('device_type')
-        set_device_attr('manufacturer')
-        set_device_attr('model')
         self.status = zigpy.endpoint.Status.ZDO_INIT
 
         for c in replacement_data.get('input_clusters', []):
@@ -136,10 +99,6 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
 
 class CustomCluster(zigpy.zcl.Cluster):
     _skip_registry = True
-
-
-def _match(a, b):
-    return set(a) == set(b)
 
 
 from . import xiaomi  # noqa: F401, F402

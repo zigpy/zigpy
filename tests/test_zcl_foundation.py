@@ -150,3 +150,13 @@ def test_configure_reporting_response_serialization():
     rec.status = foundation.Status.UNREPORTABLE_ATTRIBUTE
     assert rec.serialize()[0:1] == foundation.Status.UNREPORTABLE_ATTRIBUTE.serialize()
     assert rec.serialize()[1:] == b'\x00\xbb\xaa'
+
+
+def test_status_undef():
+    data = b'\xaa'
+    extra = b'extra'
+
+    status, rest = foundation.Status.deserialize(data + extra)
+    assert rest == extra
+    assert status == 0xaa
+    assert not isinstance(status, foundation.Status)

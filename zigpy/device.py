@@ -6,7 +6,7 @@ import time
 import zigpy.endpoint
 import zigpy.util
 import zigpy.zdo as zdo
-from zigpy.types import BroadcastAddress
+from zigpy.types import BroadcastAddress, NWK
 
 
 LOGGER = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class Device(zigpy.util.LocalLogMixin):
         self._application = application
         self._ieee = ieee
         self._init_handle = None
-        self.nwk = nwk
+        self.nwk = NWK(nwk)
         self.zdo = zdo.ZDO(self)
         self.endpoints = {0: self.zdo}
         self.lqi = None
@@ -37,6 +37,8 @@ class Device(zigpy.util.LocalLogMixin):
         self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
+        self._manufacturer = None
+        self._model = None
         self.node_desc = zdo.types.NodeDescriptor()
         self._node_handle = None
 
@@ -69,8 +71,9 @@ class Device(zigpy.util.LocalLogMixin):
 
     async def _initialize(self):
         if self.status == Status.NEW:
-            self._node_handle = asyncio.ensure_future(
-                self.get_node_descriptor())
+            if self._node_handle is None or self._node_handle.done():
+                self._node_handle = asyncio.ensure_future(
+                    self.get_node_descriptor())
             await self._node_handle
             self.info("Discovering endpoints")
             try:
@@ -89,15 +92,19 @@ class Device(zigpy.util.LocalLogMixin):
 
             self.status = Status.ZDO_INIT
 
-        for endpoint_id in self.endpoints.keys():
+        for endpoint_id, ep in self.endpoints.items():
             if endpoint_id == 0:  # ZDO
                 continue
             try:
-                await self.endpoints[endpoint_id].initialize()
+                await ep.initialize()
             except Exception as exc:
                 self.debug("Endpoint %s initialization failure: %s",
                            endpoint_id, exc)
                 break
+            if self.manufacturer is None or self.model is None:
+                self.model, self.manufacturer = (
+                    await ep.get_model_info()
+                )
 
         ep_failed_init = [
             ep.status == zigpy.endpoint.Status.NEW
@@ -183,6 +190,24 @@ class Device(zigpy.util.LocalLogMixin):
     @property
     def ieee(self):
         return self._ieee
+
+    @property
+    def manufacturer(self):
+        return self._manufacturer
+
+    @manufacturer.setter
+    def manufacturer(self, value):
+        if isinstance(value, str):
+            self._manufacturer = value
+
+    @property
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, value):
+        if isinstance(value, str):
+            self._model = value
 
     def __getitem__(self, key):
         return self.endpoints[key]

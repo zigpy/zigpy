@@ -156,6 +156,8 @@ def test_appdb_load_null_padded_manuf(tmpdir):
     model = b'Mock Model'
     dev = _test_null_padded(tmpdir, manufacturer, model)
 
+    assert dev.manufacturer == 'Mock Manufacturer'
+    assert dev.model == 'Mock Model'
     assert dev.endpoints[3].manufacturer == 'Mock Manufacturer'
     assert dev.endpoints[3].model == 'Mock Model'
 
@@ -165,6 +167,8 @@ def test_appdb_load_null_padded_model(tmpdir):
     model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
     dev = _test_null_padded(tmpdir, manufacturer, model)
 
+    assert dev.manufacturer == 'Mock Manufacturer'
+    assert dev.model == 'Mock Model'
     assert dev.endpoints[3].manufacturer == 'Mock Manufacturer'
     assert dev.endpoints[3].model == 'Mock Model'
 
@@ -174,6 +178,8 @@ def test_appdb_load_null_padded_manuf_model(tmpdir):
     model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
     dev = _test_null_padded(tmpdir, manufacturer, model)
 
+    assert dev.manufacturer == 'Mock Manufacturer'
+    assert dev.model == 'Mock Model'
     assert dev.endpoints[3].manufacturer == 'Mock Manufacturer'
     assert dev.endpoints[3].model == 'Mock Model'
 
@@ -183,6 +189,8 @@ def test_appdb_str_model(tmpdir):
     model = 'Mock Model'
     dev = _test_null_padded(tmpdir, manufacturer, model)
 
+    assert dev.manufacturer == 'Mock Manufacturer'
+    assert dev.model == 'Mock Model'
     assert dev.endpoints[3].manufacturer == 'Mock Manufacturer'
     assert dev.endpoints[3].model == 'Mock Model'
 
