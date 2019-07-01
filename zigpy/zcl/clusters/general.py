@@ -710,7 +710,7 @@ class Ota(Cluster):
         elif cmd_name == 'upgrade_end':
             await self._handle_upgrade_end(*args)
         else:
-            self.debug("OTA not implemented command for '%s %s': %s",
+            self.debug("no '%s' OTA command handler for '%s %s': %s", cmd_name,
                        self.endpoint.manufacturer, self.endpoint.model, args)
 
     async def _handle_query_next_image(self, field_ctrl, manufacturer_id,
