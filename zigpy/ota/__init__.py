@@ -69,7 +69,7 @@ class OTA(zigpy.util.ListenableMixin):
         if key in self._image_cache and not self._image_cache[key].expired:
             return self._image_cache[key]
 
-        images = await asyncio.gather(*self.listener_event('get_image', key))
+        images = await self.async_event('get_image', key)
         images = [img for img in images if img]
         if not images:
             return None

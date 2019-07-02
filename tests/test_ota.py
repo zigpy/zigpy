@@ -2,6 +2,7 @@ import asyncio
 import datetime
 from unittest import mock
 
+from asynctest import CoroutineMock
 import pytest
 
 import zigpy.application
@@ -81,24 +82,16 @@ def test_initialize(ota):
 
 @pytest.mark.asyncio
 async def test_get_image_empty(ota, image, key):
-    def handler_mock(*args, **kwargs):
-        result = [None, None, None]
-
-        async def get_image(idx):
-            return result[idx]
-
-        return [get_image(0), get_image(1), get_image(2)]
-
-    ota.listener_event = mock.MagicMock(side_effect=handler_mock)
+    ota.async_event = CoroutineMock(return_value=[None, None])
 
     assert len(ota._image_cache) == 0
     res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
     assert len(ota._image_cache) == 0
     assert res is None
-    assert ota.listener_event.call_count == 1
-    assert ota.listener_event.call_args[0][0] == 'get_image'
-    assert ota.listener_event.call_args[0][1] == key
+    assert ota.async_event.call_count == 1
+    assert ota.async_event.call_args[0][0] == 'get_image'
+    assert ota.async_event.call_args[0][1] == key
 
 
 @pytest.mark.asyncio
@@ -109,15 +102,7 @@ async def test_get_image_new(ota,
                              monkeypatch):
     newer = image_with_version(image.version + 1)
 
-    def handler_mock(*args, **kwargs):
-        result = [None, image, newer]
-
-        async def get_image(idx):
-            return result[idx]
-
-        return [get_image(0), get_image(1), get_image(2)]
-
-    ota.listener_event = mock.MagicMock(side_effect=handler_mock)
+    ota.async_event = CoroutineMock(return_value=[None, image, newer])
 
     assert len(ota._image_cache) == 0
     res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
@@ -126,11 +111,11 @@ async def test_get_image_new(ota,
     assert len(ota._image_cache) == 1
     assert res.header == newer.header
     assert res.subelements == newer.subelements
-    assert ota.listener_event.call_count == 1
-    assert ota.listener_event.call_args[0][0] == 'get_image'
-    assert ota.listener_event.call_args[0][1] == key
+    assert ota.async_event.call_count == 1
+    assert ota.async_event.call_args[0][0] == 'get_image'
+    assert ota.async_event.call_args[0][1] == key
 
-    ota.listener_event.reset_mock()
+    ota.async_event.reset_mock()
     assert len(ota._image_cache) == 1
     res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
@@ -138,10 +123,10 @@ async def test_get_image_new(ota,
     assert len(ota._image_cache) == 1
     assert res.header == newer.header
     assert res.subelements == newer.subelements
-    assert ota.listener_event.call_count == 0
+    assert ota.async_event.call_count == 0
 
     # on cache expiration, ping listeners
-    ota.listener_event.reset_mock()
+    ota.async_event.reset_mock()
     delta = datetime.timedelta(seconds=-1)
     monkeypatch.setattr(ota._image_cache[key], 'DEFAULT_EXPIRATION', delta)
     assert len(ota._image_cache) == 1
@@ -150,7 +135,7 @@ async def test_get_image_new(ota,
     assert len(ota._image_cache) == 1
     assert res.header == newer.header
     assert res.subelements == newer.subelements
-    assert ota.listener_event.call_count == 1
+    assert ota.async_event.call_count == 1
 
 
 def test_cached_image_expiration(image, monkeypatch):
