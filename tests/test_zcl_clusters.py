@@ -179,7 +179,7 @@ async def test_ota_handle_cluster_req_wrapper(ota_cluster):
 
 
 def _ota_next_image(cluster, has_image=True, upgradeable=False):
-    def get_ota_mock(*args):
+    async def get_ota_mock(*args):
         if upgradeable:
             img = mock.MagicMock()
             img.should_update.return_value = True
@@ -255,7 +255,7 @@ def _ota_image_block(cluster,
                      has_image=True,
                      correct_version=True,
                      wrong_offset=False):
-    def get_ota_mock(*args):
+    async def get_ota_mock(*args):
         if has_image:
             img = mock.MagicMock()
             img.should_update.return_value = True
