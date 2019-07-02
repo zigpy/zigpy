@@ -79,12 +79,20 @@ def test_initialize(ota):
     assert ota._initialize.call_count == 1
 
 
-def test_get_image_empty(ota, image, key):
-    handler_mock = mock.MagicMock(return_value=[None])
+@pytest.mark.asyncio
+async def test_get_image_empty(ota, image, key):
+    def handler_mock(*args, **kwargs):
+        result = [None, None, None]
+
+        async def get_image(idx):
+            return result[idx]
+
+        return [get_image(0), get_image(1), get_image(2)]
+
     ota.listener_event = mock.MagicMock(side_effect=handler_mock)
 
     assert len(ota._image_cache) == 0
-    res = ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
+    res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
     assert len(ota._image_cache) == 0
     assert res is None
@@ -93,15 +101,28 @@ def test_get_image_empty(ota, image, key):
     assert ota.listener_event.call_args[0][1] == key
 
 
-def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
+@pytest.mark.asyncio
+async def test_get_image_new(ota,
+                             image,
+                             key,
+                             image_with_version,
+                             monkeypatch):
     newer = image_with_version(image.version + 1)
 
-    handler_mock = mock.MagicMock(return_value=[None, image, newer])
+    def handler_mock(*args, **kwargs):
+        result = [None, image, newer]
+
+        async def get_image(idx):
+            return result[idx]
+
+        return [get_image(0), get_image(1), get_image(2)]
+
     ota.listener_event = mock.MagicMock(side_effect=handler_mock)
 
     assert len(ota._image_cache) == 0
-    res = ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
+    res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
+    # got new image in the cache
     assert len(ota._image_cache) == 1
     assert res.header == newer.header
     assert res.subelements == newer.subelements
@@ -111,8 +132,9 @@ def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
 
     ota.listener_event.reset_mock()
     assert len(ota._image_cache) == 1
-    res = ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
+    res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
+    # should get just the cached image
     assert len(ota._image_cache) == 1
     assert res.header == newer.header
     assert res.subelements == newer.subelements
@@ -123,7 +145,7 @@ def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
     delta = datetime.timedelta(seconds=-1)
     monkeypatch.setattr(ota._image_cache[key], 'DEFAULT_EXPIRATION', delta)
     assert len(ota._image_cache) == 1
-    res = ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
+    res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
     assert len(ota._image_cache) == 1
     assert res.header == newer.header
