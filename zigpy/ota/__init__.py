@@ -45,6 +45,7 @@ class OTA(zigpy.util.ListenableMixin):
         self._not_initialized = True
         self._listeners = {}
         self.add_listener(zigpy.ota.provider.Trådfri())
+        self.add_listener(zigpy.ota.provider.FileStore())
 
     async def _initialize(self, ota_dir: str) -> None:
         LOGGER.debug("Initialize OTA providers")
