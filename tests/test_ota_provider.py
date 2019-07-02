@@ -28,6 +28,11 @@ def image(image_with_version):
 
 
 @pytest.fixture
+def basic_prov():
+    return ota_p.Basic()
+
+
+@pytest.fixture
 def ikea_prov():
     return ota_p.Trådfri()
 
@@ -43,8 +48,42 @@ def test_expiration(ikea_prov):
 
 
 @pytest.mark.asyncio
-async def test_initialize_provider(ikea_prov):
-    await ikea_prov.initialize_provider(mock.sentinel.ota_dir)
+async def test_initialize_provider(basic_prov):
+    await basic_prov.initialize_provider(mock.sentinel.ota_dir)
+
+
+@pytest.mark.asyncio
+async def test_basic_refresh_firmware_list(basic_prov):
+    with pytest.raises(NotImplementedError):
+        await basic_prov.refresh_firmware_list()
+
+
+@pytest.mark.asyncio
+async def test_basic_get_image(basic_prov, key):
+    image = mock.MagicMock()
+    image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
+    basic_prov._cache = mock.MagicMock()
+    basic_prov._cache.__getitem__.return_value = image
+    basic_prov.refresh_firmware_list = CoroutineMock()
+
+    await basic_prov._locks[key].acquire()
+
+    # locked image
+    r = await basic_prov.get_image(key)
+    assert r is None
+    assert basic_prov.refresh_firmware_list.call_count == 0
+    assert basic_prov._cache.__getitem__.call_count == 0
+    assert image.fetch_image.call_count == 0
+
+    # unlocked image
+    basic_prov._locks.pop(key)
+
+    r = await basic_prov.get_image(key)
+    assert r is mock.sentinel.image
+    assert basic_prov.refresh_firmware_list.call_count == 1
+    assert basic_prov._cache.__getitem__.call_count == 1
+    assert basic_prov._cache.__getitem__.call_args[0][0] == key
+    assert image.fetch_image.call_count == 1
 
 
 @pytest.mark.asyncio
