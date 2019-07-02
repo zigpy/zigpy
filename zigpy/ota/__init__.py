@@ -46,11 +46,9 @@ class OTA(zigpy.util.ListenableMixin):
         self._listeners = {}
         self.add_listener(zigpy.ota.provider.Trådfri())
 
-    async def _initialize(self) -> None:
+    async def _initialize(self, ota_dir: str) -> None:
         LOGGER.debug("Initialize OTA providers")
-        handlers = self.listener_event('initialize_provider')
-        if handlers:
-            await asyncio.gather(*handlers)
+        await self.async_event('initialize_provider', ota_dir)
 
     async def refresh_firmwares(self) -> None:
         LOGGER.debug("Refreshing OTA firmwares")
@@ -58,9 +56,9 @@ class OTA(zigpy.util.ListenableMixin):
         if handlers:
             await asyncio.gather(*handlers)
 
-    def initialize(self) -> None:
+    def initialize(self, ota_dir: str) -> None:
         self._not_initialized = False
-        asyncio.ensure_future(self._initialize())
+        asyncio.ensure_future(self._initialize(ota_dir))
 
     async def get_ota_image(self,
                             manufacturer_id,

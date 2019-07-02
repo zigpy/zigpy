@@ -44,7 +44,7 @@ def test_expiration(ikea_prov):
 
 @pytest.mark.asyncio
 async def test_initialize_provider(ikea_prov):
-    await ikea_prov.initialize_provider()
+    await ikea_prov.initialize_provider(mock.sentinel.ota_dir)
 
 
 @pytest.mark.asyncio

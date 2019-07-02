@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os.path
 
 import zigpy.appdb
 import zigpy.device
@@ -23,6 +24,12 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self._ieee = None
         self._nwk = None
         self._ota = zigpy.ota.OTA(self)
+        if database_file is None:
+            ota_dir = None
+        else:
+            ota_dir = os.path.dirname(database_file)
+            ota_dir = os.path.join(ota_dir, 'zigpy_ota/')
+        self.ota.initialize(ota_dir)
 
         if database_file is not None:
             self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
@@ -45,8 +52,6 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     def add_device(self, ieee, nwk):
         assert isinstance(ieee, t.EUI64)
         # TODO: Shut down existing device
-        if self.ota.not_initialized:
-            self.ota.initialize()
 
         dev = zigpy.device.Device(self, ieee, nwk)
         self.devices[ieee] = dev

@@ -48,14 +48,12 @@ def ota():
 
 @pytest.mark.asyncio
 async def test_ota_initialize(ota):
-    init_mock = mock.MagicMock()
-    init_mock.side_effect = asyncio.coroutine(mock.MagicMock())
-    ota.listener_event = mock.MagicMock(return_value=[init_mock()])
-    await ota._initialize()
+    ota.async_event = CoroutineMock()
+    await ota._initialize(mock.sentinel.ota_dir)
 
-    assert ota.listener_event.call_count == 1
-    assert ota.listener_event.call_args[0][0] == 'initialize_provider'
-    assert init_mock.call_count == 1
+    assert ota.async_event.call_count == 1
+    assert ota.async_event.call_args[0][0] == 'initialize_provider'
+    assert ota.async_event.call_args[0][1] == mock.sentinel.ota_dir
 
 
 @pytest.mark.asyncio
@@ -71,11 +69,10 @@ async def test_refresh_firmware(ota):
 
 
 def test_initialize(ota):
-    ota._initialize = mock.MagicMock()
-    ota._initialize.side_effect = asyncio.coroutine(mock.MagicMock())
+    ota._initialize = CoroutineMock()
 
     assert ota.not_initialized
-    ota.initialize()
+    ota.initialize(mock.sentinel.ota_dir)
     assert not ota.not_initialized
     assert ota._initialize.call_count == 1
 
