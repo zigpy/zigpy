@@ -41,6 +41,27 @@ class ListenableMixin:
                 LOGGER.warning("Error calling listener.%s: %s", method_name, e)
         return result
 
+    async def async_event(self, method_name, *args):
+        tasks = []
+        for listener, include_context in self._listeners.values():
+            method = getattr(listener, method_name, None)
+
+            if not method:
+                continue
+
+            if include_context:
+                tasks.append(method(self, *args))
+            else:
+                tasks.append(method(*args))
+
+        results = []
+        for result in await asyncio.gather(*tasks, return_exceptions=True):
+            if isinstance(result, Exception):
+                LOGGER.warning("Error calling listener: %s", result)
+            else:
+                results.append(result)
+        return results
+
 
 class LocalLogMixin:
     def debug(self, msg, *args):
