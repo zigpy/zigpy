@@ -112,6 +112,24 @@ def test_basic_enable_provider(key):
 
 
 @pytest.mark.asyncio
+async def test_basic_get_image_filtered(basic_prov, key):
+    image = mock.MagicMock()
+    image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
+    basic_prov._cache = mock.MagicMock()
+    basic_prov._cache.__getitem__.return_value = image
+    basic_prov.refresh_firmware_list = CoroutineMock()
+    basic_prov.filter_get_image = CoroutineMock(return_value=True)
+
+    r = await basic_prov.get_image(key)
+    assert r is None
+    assert basic_prov.filter_get_image.call_count == 1
+    assert basic_prov.filter_get_image.call_args[0][0] == key
+    assert basic_prov.refresh_firmware_list.call_count == 0
+    assert basic_prov._cache.__getitem__.call_count == 0
+    assert image.fetch_image.call_count == 0
+
+
+@pytest.mark.asyncio
 async def test_get_image_no_cache(ikea_prov, image):
     image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
     ikea_prov._cache = mock.MagicMock()

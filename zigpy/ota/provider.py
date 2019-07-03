@@ -38,7 +38,14 @@ class Basic:
         """Loads list of firmware into memory."""
         raise NotImplementedError
 
+    async def filter_get_image(self, key: ImageKey) -> bool:
+        """Filter unwanted get_image lookups."""
+        return False
+
     async def get_image(self, key: ImageKey) -> Optional[OTAImage]:
+        if await self.filter_get_image(key):
+            return None
+
         if not self.is_enabled or self._locks[key].locked():
             return None
 
@@ -141,11 +148,8 @@ class Trådfri(Basic):
             self._cache[img.key] = img
         self.update_expiration()
 
-    async def get_image(self, key: ImageKey) -> Optional[OTAImage]:
-        if key.manufacturer_id != self.MANUFACTURER_ID:
-            return None
-
-        return await super().get_image(key)
+    async def filter_get_image(self, key: ImageKey) -> bool:
+        return key.manufacturer_id != self.MANUFACTURER_ID
 
 
 @attr.s
