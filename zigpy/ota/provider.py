@@ -27,6 +27,7 @@ class Basic:
 
     def __init__(self):
         self._cache = {}
+        self._is_enabled = False
         self._locks = defaultdict(asyncio.Semaphore)
         self._last_refresh = None
 
@@ -38,7 +39,7 @@ class Basic:
         raise NotImplementedError
 
     async def get_image(self, key: ImageKey) -> Optional[OTAImage]:
-        if self._locks[key].locked():
+        if not self.is_enabled or self._locks[key].locked():
             return None
 
         if self.expired:
@@ -52,8 +53,18 @@ class Basic:
         async with self._locks[key]:
             return await fw_file.fetch_image()
 
+    def disable(self) -> None:
+        self._is_enabled = False
+
+    def enable(self) -> None:
+        self._is_enabled = True
+
     def update_expiration(self):
         self._last_refresh = datetime.datetime.now()
+
+    @property
+    def is_enabled(self) -> bool:
+        return self._is_enabled
 
     @property
     def expired(self) -> bool:

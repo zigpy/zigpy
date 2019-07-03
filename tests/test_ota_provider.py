@@ -29,12 +29,16 @@ def image(image_with_version):
 
 @pytest.fixture
 def basic_prov():
-    return ota_p.Basic()
+    p = ota_p.Basic()
+    p.enable()
+    return p
 
 
 @pytest.fixture
 def ikea_prov():
-    return ota_p.Trådfri()
+    p = ota_p.Trådfri()
+    p.enable()
+    return p
 
 
 @pytest.fixture
@@ -66,9 +70,18 @@ async def test_basic_get_image(basic_prov, key):
     basic_prov._cache.__getitem__.return_value = image
     basic_prov.refresh_firmware_list = CoroutineMock()
 
+    # check when disabled
+    basic_prov.disable()
+    r = await basic_prov.get_image(key)
+    assert r is None
+    assert basic_prov.refresh_firmware_list.call_count == 0
+    assert basic_prov._cache.__getitem__.call_count == 0
+    assert image.fetch_image.call_count == 0
+
+    # check with locked image
+    basic_prov.enable()
     await basic_prov._locks[key].acquire()
 
-    # locked image
     r = await basic_prov.get_image(key)
     assert r is None
     assert basic_prov.refresh_firmware_list.call_count == 0
@@ -84,6 +97,18 @@ async def test_basic_get_image(basic_prov, key):
     assert basic_prov._cache.__getitem__.call_count == 1
     assert basic_prov._cache.__getitem__.call_args[0][0] == key
     assert image.fetch_image.call_count == 1
+
+
+def test_basic_enable_provider(key):
+    basic_prov = ota_p.Basic()
+
+    assert basic_prov.is_enabled is False
+
+    basic_prov.enable()
+    assert basic_prov.is_enabled is True
+
+    basic_prov.disable()
+    assert basic_prov.is_enabled is False
 
 
 @pytest.mark.asyncio
