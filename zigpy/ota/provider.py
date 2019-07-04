@@ -225,11 +225,12 @@ class FileStore(Basic):
         return None
 
     async def initialize_provider(self, ota_dir: str) -> None:
-        if self._ota_dir is not None:
-            return
+        if self._ota_dir is None:
+            self._ota_dir = self.validate_ota_dir(ota_dir)
 
-        self._ota_dir = self.validate_ota_dir(ota_dir)
-        await self.refresh_firmware_list()
+        if self._ota_dir is not None:
+            self.enable()
+            await self.refresh_firmware_list()
 
     async def refresh_firmware_list(self) -> None:
         if self._ota_dir is None:
