@@ -1,8 +1,11 @@
 import binascii
+import os.path
 from unittest import mock
+import uuid
 
 import pytest
 from asynctest import CoroutineMock, patch
+
 
 import zigpy.ota
 import zigpy.ota.image
@@ -10,6 +13,53 @@ import zigpy.ota.provider as ota_p
 
 MANUFACTURER_ID = 4476
 IMAGE_TYPE = mock.sentinel.image_type
+
+
+@pytest.fixture
+def file_image_name(tmpdir):
+    def ota_img_filename(name='ota-image'):
+        prefix = b'\x00This is extra data\x00\x55\xaa'
+        data = ('1ef1ee0b0001380000007c11012178563412020054657374204f54412049'
+                '6d61676500000000000000000000000000000000000042000000')
+        data = binascii.unhexlify(data)
+        sub_el = b'\x00\x00\x04\x00\x00\x00abcd'
+
+        file_name = os.path.join(
+            str(tmpdir),
+            name + '-' + str(uuid.uuid4())
+        )
+        with open(os.path.join(file_name), mode='bw+') as file:
+            file.write(prefix + data + sub_el)
+        return file_name
+    return ota_img_filename
+
+
+@pytest.fixture
+def file_image(file_image_name):
+    img = ota_p.FileImage()
+    img.file_name = file_image_name()
+    img.manufacturer_id = MANUFACTURER_ID
+    img.image_type = IMAGE_TYPE
+    return img
+
+
+@pytest.fixture
+def file_prov():
+    p = ota_p.FileStore()
+    p.enable()
+    return p
+
+
+@pytest.fixture
+def file_image_with_version(file_image_name):
+    def img(version=100, image_type=IMAGE_TYPE):
+        img = ota_p.FileImage()
+        img.file_version = version
+        img.file_name = file_image_name()
+        img.manufacturer_id = MANUFACTURER_ID
+        img.image_type = image_type
+        return img
+    return img
 
 
 @pytest.fixture
@@ -127,6 +177,36 @@ async def test_basic_get_image_filtered(basic_prov, key):
     assert basic_prov.refresh_firmware_list.call_count == 0
     assert basic_prov._cache.__getitem__.call_count == 0
     assert image.fetch_image.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_ikea_init_no_ota_dir(ikea_prov):
+    ikea_prov.enable = mock.MagicMock()
+    ikea_prov.refresh_firmware_list = CoroutineMock()
+
+    r = await ikea_prov.initialize_provider(None)
+    assert r is None
+    assert ikea_prov.enable.call_count == 0
+    assert ikea_prov.refresh_firmware_list.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_ikea_init_ota_dir(ikea_prov, tmpdir):
+    ikea_prov.enable = mock.MagicMock()
+    ikea_prov.refresh_firmware_list = CoroutineMock()
+
+    r = await ikea_prov.initialize_provider(str(tmpdir))
+    assert r is None
+    assert ikea_prov.enable.call_count == 0
+    assert ikea_prov.refresh_firmware_list.call_count == 0
+
+    # create flag
+    with open(os.path.join(str(tmpdir), ota_p.ENABLE_IKEA_OTA), mode='w+'):
+        pass
+    r = await ikea_prov.initialize_provider(str(tmpdir))
+    assert r is None
+    assert ikea_prov.enable.call_count == 1
+    assert ikea_prov.refresh_firmware_list.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -262,3 +342,252 @@ async def test_ikea_fetch_image(mock_get, image_with_version):
     assert mock_get.call_count == 1
     assert mock_get.call_args[0][0] == mock.sentinel.url
     assert r.serialize() == data + sub_el
+
+
+def test_file_image_key(key):
+    fimg = ota_p.FileImage()
+    fimg.manufacturer_id = MANUFACTURER_ID
+    fimg.image_type = IMAGE_TYPE
+    fimg.file_version = mock.sentinel.version
+
+    assert fimg.key == key
+    assert fimg.version == mock.sentinel.version
+
+
+@pytest.mark.asyncio
+async def test_filestore_scan(file_image_name):
+    file_name = file_image_name()
+    r = await ota_p.FileImage.scan_image(file_name)
+
+    assert isinstance(r, ota_p.FileImage)
+    assert r.file_name == file_name
+
+
+@pytest.mark.asyncio
+async def test_filestore_scan_exc(file_image_name):
+    ota_file = file_image_name()
+    with mock.patch('builtins.open',
+                    mock.mock_open()) as mock_file:
+        mock_file.side_effect = IOError()
+
+        r = await ota_p.FileImage.scan_image(ota_file)
+        assert r is None
+        assert mock_file.call_count == 1
+        assert mock_file.call_args[0][0] == ota_file
+
+    with mock.patch('builtins.open',
+                    mock.mock_open()) as mock_file:
+        mock_file.side_effect = ValueError()
+
+        r = await ota_p.FileImage.scan_image(ota_file)
+        assert r is None
+        assert mock_file.call_count == 1
+        assert mock_file.call_args[0][0] == ota_file
+
+
+@pytest.mark.asyncio
+async def test_filestore_scan_uncaught_exc(file_image_name):
+    ota_file = file_image_name()
+    with pytest.raises(RuntimeError):
+        with mock.patch('builtins.open',
+                        mock.mock_open()) as mock_file:
+            mock_file.side_effect = RuntimeError()
+
+            await ota_p.FileImage.scan_image(ota_file)
+    assert mock_file.call_count == 1
+    assert mock_file.call_args[0][0] == ota_file
+
+
+@pytest.mark.asyncio
+async def test_filestore_fetch_image(file_image):
+    r = await ota_p.FileImage.fetch_image(file_image)
+
+    assert isinstance(r, zigpy.ota.image.OTAImage)
+
+
+@pytest.mark.asyncio
+async def test_filestore_fetch_image_exc(file_image):
+    with mock.patch('builtins.open',
+                    mock.mock_open()) as mock_file:
+        mock_file.side_effect = IOError()
+
+        r = await ota_p.FileImage.fetch_image(file_image)
+        assert r is None
+        assert mock_file.call_count == 1
+        assert mock_file.call_args[0][0] == file_image.file_name
+
+    with mock.patch('builtins.open',
+                    mock.mock_open()) as mock_file:
+        mock_file.side_effect = ValueError()
+
+        r = await ota_p.FileImage.fetch_image(file_image)
+        assert r is None
+        assert mock_file.call_count == 1
+        assert mock_file.call_args[0][0] == file_image.file_name
+
+
+@pytest.mark.asyncio
+async def test_filestore_fetch_uncaught_exc(file_image):
+    with pytest.raises(RuntimeError):
+        with mock.patch('builtins.open',
+                        mock.mock_open()) as mock_file:
+            mock_file.side_effect = RuntimeError()
+
+            await ota_p.FileImage.fetch_image(file_image)
+    assert mock_file.call_count == 1
+    assert mock_file.call_args[0][0] == file_image.file_name
+
+
+def test_filestore_validate_ota_dir(tmpdir):
+    file_prov = ota_p.FileStore()
+
+    assert file_prov.validate_ota_dir(None) is None
+
+    tmpdir = str(tmpdir)
+    assert file_prov.validate_ota_dir(tmpdir) == tmpdir
+
+    # non existing dir
+    non_existing = os.path.join(tmpdir, 'non_existing')
+    assert file_prov.validate_ota_dir(non_existing) is None
+
+    # file instead of dir
+    file_path = os.path.join(tmpdir, 'file')
+    with open(file_path, mode='w+'):
+        pass
+    assert file_prov.validate_ota_dir(file_path) is None
+
+
+@pytest.mark.asyncio
+async def test_filestore_init_provider_success(file_prov):
+    file_prov.enable = mock.MagicMock()
+    file_prov.refresh_firmware_list = CoroutineMock()
+    file_prov.validate_ota_dir = mock.MagicMock(return_value=mock.sentinel.ota_dir)
+
+    r = await file_prov.initialize_provider(mock.sentinel.ota_dir)
+    assert r is None
+    assert file_prov.validate_ota_dir.call_count == 1
+    assert file_prov.validate_ota_dir.call_args[0][0] == mock.sentinel.ota_dir
+    assert file_prov.enable.call_count == 1
+    assert file_prov.refresh_firmware_list.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_filestore_init_provider_failure(file_prov):
+    file_prov.enable = mock.MagicMock()
+    file_prov.refresh_firmware_list = CoroutineMock()
+    file_prov.validate_ota_dir = mock.MagicMock(return_value=None)
+
+    r = await file_prov.initialize_provider(mock.sentinel.ota_dir)
+    assert r is None
+    assert file_prov.validate_ota_dir.call_count == 1
+    assert file_prov.validate_ota_dir.call_args[0][0] == mock.sentinel.ota_dir
+    assert file_prov.enable.call_count == 0
+    assert file_prov.refresh_firmware_list.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_filestore_refresh_firmware_list(file_prov,
+                                               file_image_with_version,
+                                               monkeypatch):
+    image_1 = file_image_with_version(image_type=mock.sentinel.image_1)
+    image_2 = file_image_with_version(image_type=mock.sentinel.image_2)
+    _ = file_image_with_version(image_type=mock.sentinel.image_3)
+    images = (image_1, None, image_2, )
+    ota_dir = os.path.dirname(image_1.file_name)
+
+    file_image_mock = mock.MagicMock()
+    file_image_mock.scan_image = CoroutineMock(side_effect=images)
+    monkeypatch.setattr(ota_p, 'FileImage', file_image_mock)
+    file_prov.update_expiration = mock.MagicMock()
+
+    r = await file_prov.refresh_firmware_list()
+    assert r is None
+    assert file_image_mock.scan_image.call_count == 0
+    assert file_prov.update_expiration.call_count == 0
+    assert len(file_prov._cache) == 0
+
+    # check with an ota_dir this time
+    file_prov._ota_dir = ota_dir
+    for file in ota_p.SKIP_OTA_FILES:
+        with open(os.path.join(ota_dir, file), mode='w+'):
+            pass
+    r = await file_prov.refresh_firmware_list()
+    assert r is None
+    assert file_image_mock.scan_image.call_count == len(images)
+    assert file_prov.update_expiration.call_count == 1
+    assert len(file_prov._cache) == len([img for img in images if img])
+
+
+@pytest.mark.asyncio
+async def test_filestore_refresh_firmware_list_2(file_prov,
+                                                 file_image_with_version,
+                                                 monkeypatch):
+    """Test two files with same key and the same version."""
+    ver = 100
+    image_1 = file_image_with_version(version=ver)
+    image_2 = file_image_with_version(version=ver)
+
+    ota_dir = os.path.dirname(image_1.file_name)
+
+    file_image_mock = mock.MagicMock()
+    file_image_mock.scan_image = CoroutineMock(side_effect=[image_1, image_2])
+    monkeypatch.setattr(ota_p, 'FileImage', file_image_mock)
+    file_prov.update_expiration = mock.MagicMock()
+
+    file_prov._ota_dir = ota_dir
+    r = await file_prov.refresh_firmware_list()
+    assert r is None
+    assert file_image_mock.scan_image.call_count == 2
+    assert file_prov.update_expiration.call_count == 1
+    assert len(file_prov._cache) == 1
+    assert file_prov._cache[image_1.key].version == ver
+
+
+@pytest.mark.asyncio
+async def test_filestore_refresh_firmware_list_3(file_prov,
+                                                 file_image_with_version,
+                                                 monkeypatch):
+    """Test two files with the same key, older, then newer versions."""
+    ver = 100
+    image_1 = file_image_with_version(version=(ver - 1))
+    image_2 = file_image_with_version(version=ver)
+
+    ota_dir = os.path.dirname(image_1.file_name)
+
+    file_image_mock = mock.MagicMock()
+    file_image_mock.scan_image = CoroutineMock(side_effect=[image_1, image_2])
+    monkeypatch.setattr(ota_p, 'FileImage', file_image_mock)
+    file_prov.update_expiration = mock.MagicMock()
+
+    file_prov._ota_dir = ota_dir
+    r = await file_prov.refresh_firmware_list()
+    assert r is None
+    assert file_image_mock.scan_image.call_count == 2
+    assert file_prov.update_expiration.call_count == 1
+    assert len(file_prov._cache) == 1
+    assert file_prov._cache[image_1.key].version == ver
+
+
+@pytest.mark.asyncio
+async def test_filestore_refresh_firmware_list_4(file_prov,
+                                                 file_image_with_version,
+                                                 monkeypatch):
+    """Test two files with the same key, newer, then older versions."""
+    ver = 100
+    image_1 = file_image_with_version(version=ver)
+    image_2 = file_image_with_version(version=(ver - 1))
+
+    ota_dir = os.path.dirname(image_1.file_name)
+
+    file_image_mock = mock.MagicMock()
+    file_image_mock.scan_image = CoroutineMock(side_effect=[image_1, image_2])
+    monkeypatch.setattr(ota_p, 'FileImage', file_image_mock)
+    file_prov.update_expiration = mock.MagicMock()
+
+    file_prov._ota_dir = ota_dir
+    r = await file_prov.refresh_firmware_list()
+    assert r is None
+    assert file_image_mock.scan_image.call_count == 2
+    assert file_prov.update_expiration.call_count == 1
+    assert len(file_prov._cache) == 1
+    assert file_prov._cache[image_1.key].version == ver
