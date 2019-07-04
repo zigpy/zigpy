@@ -154,6 +154,7 @@ class Trådfri(Basic):
 
 @attr.s
 class FileImage(OTAImageHeader):
+    REFRESH = datetime.timedelta(hours=24)
     OTA_HEADER = 0x0BEEF11E.to_bytes(4, 'little')
 
     file_name = attr.ib(default=None)
