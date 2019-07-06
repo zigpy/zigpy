@@ -89,7 +89,7 @@ class IKEAImage:
     manufacturer_id = attr.ib()
     image_type = attr.ib()
     version = attr.ib(default=None)
-    file_size = attr.ib(default=None)
+    image_size = attr.ib(default=None)
     url = attr.ib(default=None)
 
     @classmethod
@@ -112,7 +112,7 @@ class IKEAImage:
                 data = await rsp.read()
         offset = data.index(self.OTA_HEADER)
         LOGGER.debug("Finished downloading %s bytes from %s for %s ver %s",
-                     self.file_size, self.url, self.key, self.version)
+                     self.image_size, self.url, self.key, self.version)
         return OTAImage.deserialize(data[offset:])[0]
 
 
