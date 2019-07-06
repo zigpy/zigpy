@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 from unittest import mock
 
@@ -54,18 +53,6 @@ async def test_ota_initialize(ota):
     assert ota.async_event.call_count == 1
     assert ota.async_event.call_args[0][0] == 'initialize_provider'
     assert ota.async_event.call_args[0][1] == mock.sentinel.ota_dir
-
-
-@pytest.mark.asyncio
-async def test_refresh_firmware(ota):
-    handler_mock = mock.MagicMock()
-    handler_mock.side_effect = asyncio.coroutine(mock.MagicMock())
-    ota.listener_event = mock.MagicMock(return_value=[handler_mock()])
-    await ota.refresh_firmwares()
-
-    assert ota.listener_event.call_count == 1
-    assert ota.listener_event.call_args[0][0] == 'refresh_firmwares'
-    assert handler_mock.call_count == 1
 
 
 def test_initialize(ota):

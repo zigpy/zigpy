@@ -51,12 +51,6 @@ class OTA(zigpy.util.ListenableMixin):
         LOGGER.debug("Initialize OTA providers")
         await self.async_event('initialize_provider', ota_dir)
 
-    async def refresh_firmwares(self) -> None:
-        LOGGER.debug("Refreshing OTA firmwares")
-        handlers = self.listener_event('refresh_firmwares')
-        if handlers:
-            await asyncio.gather(*handlers)
-
     def initialize(self, ota_dir: str) -> None:
         self._not_initialized = False
         asyncio.ensure_future(self._initialize(ota_dir))
