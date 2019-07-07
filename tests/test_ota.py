@@ -111,9 +111,11 @@ async def test_get_image_new(ota,
 
     # on cache expiration, ping listeners
     ota.async_event.reset_mock()
-    delta = datetime.timedelta(seconds=-1)
-    monkeypatch.setattr(ota._image_cache[key], 'DEFAULT_EXPIRATION', delta)
     assert len(ota._image_cache) == 1
+
+    monkeypatch.setattr(zigpy.ota, 'TIMEDELTA_0',
+                        zigpy.ota.CachedImage.DEFAULT_EXPIRATION +
+                        datetime.timedelta(seconds=1))
     res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
     assert len(ota._image_cache) == 1
@@ -123,17 +125,20 @@ async def test_get_image_new(ota,
 
 
 def test_cached_image_expiration(image, monkeypatch):
-    delta = datetime.timedelta(seconds=-1)
-
     cached = zigpy.ota.CachedImage.new(image)
-    monkeypatch.setattr(cached, 'DEFAULT_EXPIRATION', delta)
-    assert cached.expired is True
-
-    cached = zigpy.ota.CachedImage()
-    monkeypatch.setattr(cached, 'DEFAULT_EXPIRATION', delta)
     assert cached.expired is False
 
-    cached = zigpy.ota.CachedImage.new(image)
+    monkeypatch.setattr(zigpy.ota, 'TIMEDELTA_0',
+                        zigpy.ota.CachedImage.DEFAULT_EXPIRATION +
+                        datetime.timedelta(seconds=1))
+    assert cached.expired is True
+
+
+def test_cached_image_no_expiration(image, monkeypatch):
+    cached = zigpy.ota.CachedImage()
+    monkeypatch.setattr(zigpy.ota, 'TIMEDELTA_0',
+                        zigpy.ota.CachedImage.DEFAULT_EXPIRATION +
+                        datetime.timedelta(seconds=1))
     assert cached.expired is False
 
 
@@ -148,4 +153,14 @@ def test_cached_image_expiration_delay():
     orig_expiration = cached.expires_on
 
     cached.get_image_block(0, 40)
-    assert cached.expires_on > orig_expiration
+    assert cached.expires_on == orig_expiration
+
+    new_expiration = \
+        cached.expires_on - \
+        zigpy.ota.CachedImage.DEFAULT_EXPIRATION + \
+        zigpy.ota.DELAY_EXPIRATION - \
+        datetime.timedelta(seconds=10)
+
+    cached.expires_on = new_expiration
+    cached.get_image_block(0, 40)
+    assert cached.expires_on > new_expiration

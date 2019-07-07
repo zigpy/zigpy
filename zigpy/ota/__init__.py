@@ -11,11 +11,13 @@ from zigpy.ota.image import ImageKey, OTAImage
 
 LOGGER = logging.getLogger(__name__)
 
+DELAY_EXPIRATION = datetime.timedelta(hours=2)
+TIMEDELTA_0 = datetime.timedelta()
+
 
 @attr.s
 class CachedImage(OTAImage):
     DEFAULT_EXPIRATION = datetime.timedelta(hours=18)
-    DELAY_EXPIRY = datetime.timedelta(hours=2)
 
     expires_on = attr.ib(default=None)
 
@@ -28,11 +30,12 @@ class CachedImage(OTAImage):
     def expired(self) -> bool:
         if self.expires_on is None:
             return False
-        return self.expires_on - datetime.datetime.now() > self.DEFAULT_EXPIRATION
+        return self.expires_on - datetime.datetime.now() < TIMEDELTA_0
 
     def get_image_block(self, *args, **kwargs) -> bytes:
-        if self.expires_on is not None:
-            self.expires_on += self.DELAY_EXPIRY
+        if self.expires_on is not None and \
+                self.expires_on - datetime.datetime.now() < DELAY_EXPIRATION:
+            self.expires_on += DELAY_EXPIRATION
         return super().get_image_block(*args, **kwargs)
 
 
