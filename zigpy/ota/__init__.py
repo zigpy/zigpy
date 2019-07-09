@@ -1,8 +1,8 @@
 """OTA support for Zigbee devices."""
 import asyncio
+import datetime
 import logging
 from typing import Optional
-import datetime
 
 import attr
 import zigpy.ota.provider

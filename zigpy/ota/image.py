@@ -1,7 +1,7 @@
 """OTA Firmware handling."""
-import attr
 import enum
 
+import attr
 import zigpy.types as t
 
 

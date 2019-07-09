@@ -2,14 +2,13 @@
 import asyncio
 import datetime
 import logging
-from collections import defaultdict
-from typing import Optional
 import os
 import os.path
+from collections import defaultdict
+from typing import Optional
 
 import aiohttp
 import attr
-
 from zigpy.ota.image import ImageKey, OTAImage, OTAImageHeader
 
 LOGGER = logging.getLogger(__name__)
