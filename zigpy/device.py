@@ -6,7 +6,7 @@ import time
 import zigpy.endpoint
 import zigpy.util
 import zigpy.zdo as zdo
-from zigpy.types import BroadcastAddress
+from zigpy.types import BroadcastAddress, NWK
 
 
 LOGGER = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class Device(zigpy.util.LocalLogMixin):
         self._application = application
         self._ieee = ieee
         self._init_handle = None
-        self.nwk = nwk
+        self.nwk = NWK(nwk)
         self.zdo = zdo.ZDO(self)
         self.endpoints = {0: self.zdo}
         self.lqi = None
