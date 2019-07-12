@@ -132,7 +132,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return ZCLStatus.FAILURE
 
         if res[0] != ZCLStatus.SUCCESS:
-            self.debug("Couldn't add to 0x%04x group: %s", grp_id, res[0])
+            self.debug("Couldn't remove to 0x%04x group: %s", grp_id, res[0])
             return res[0]
 
         if grp_id in self.device.application.groups:
