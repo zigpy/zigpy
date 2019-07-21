@@ -224,7 +224,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             for record in result[0]:
                 orig_attribute = orig_attributes[record.attrid]
                 if record.status == 0:
-                    self._update_attribute(record.attrid, record.value.value)
+                    self._update_attribute(record.attrid, record.value.value, 
+                        event = False)
                     success[orig_attribute] = record.value.value
                 else:
                     failure[orig_attribute] = record.status
@@ -325,9 +326,10 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def commands(self):
         return list(self._server_command_idx.keys())
 
-    def _update_attribute(self, attrid, value):
+    def _update_attribute(self, attrid, value, event = True):
         self._attr_cache[attrid] = value
-        self.listener_event('attribute_updated', attrid, value)
+        if event:
+            self.listener_event('attribute_updated', attrid, value)
         if self.cluster_id == 0:
             if attrid == 5:
                 self._endpoint._device.model = ''.join([x for x in value.decode('ascii').strip() if x in string.printable])

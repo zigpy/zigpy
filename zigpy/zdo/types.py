@@ -5,8 +5,8 @@ import zigpy.types as t
 
 class PowerDescriptor(t.Struct):
     _fields = [
-        ('byte_1', 1),  # Current power mode 4, Available power sources 4
-        ('byte_2', 1),  # Current power source 4, Current power source level 4
+        ('byte_1', t.uint8_t),  # Current power mode 4, Available power sources 4
+        ('byte_2', t.uint8_t),  # Current power source 4, Current power source level 4
     ]
 
 

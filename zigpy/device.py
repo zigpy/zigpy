@@ -8,7 +8,7 @@ import zigpy.util
 import zigpy.zdo as zdo
 
 
-LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger(__name__)
 
 
 class Status(enum.IntEnum):
@@ -23,7 +23,7 @@ class Status(enum.IntEnum):
     ENDPOINTS_INIT = 2
 
 
-class Device(zigpy.util.LocalLogMixin):
+class Device():
 
     """A device on the network."""
 
@@ -42,10 +42,12 @@ class Device(zigpy.util.LocalLogMixin):
         self.model = None
         self.manufacturer = None
         self.type = 0
+        self.NodeDesc = None
+        self.PowerDesc = None
 
     def schedule_initialize(self):
         if self.initializing:
-            LOGGER.debug("[0x%04x] Canceling old initialize call",  self.nwk)
+            _LOGGER.debug("[0x%04x] Canceling old initialize call",  self.nwk)
             self._init_handle.cancel()
         else:
             self.initializing = True
@@ -54,7 +56,7 @@ class Device(zigpy.util.LocalLogMixin):
     async def _initialize(self):
         try:
             if self.status == Status.NEW:
-                self.info("[0x%04x] Discovering endpoints", self.nwk)
+                _LOGGER.info("[0x%04x] Discovering endpoints", self.nwk)
                 try:
                     epr = await self.zdo.request(0x0005, self.nwk, tries=3)
                     if epr[0] != 0:
@@ -62,29 +64,70 @@ class Device(zigpy.util.LocalLogMixin):
                             "[0x%04x] Endpoint request failed: %s", self.nwk, epr)
                 except Exception as exc:
                     self.initializing = False
-                    LOGGER.exception(
+                    _LOGGER.exception(
                         "[0x%04x] Failed ZDO request during device initialization: %s",
                         self.nwk, exc
                     )
                     return
 
-                self.info("[0x%04x] Discovered endpoints: %s", self.nwk, epr[2])
+                _LOGGER.info("[0x%04x] Discovered endpoints: %s", self.nwk, epr[2])
                 
                 for endpoint_id in epr[2]:
                     self.add_endpoint(endpoint_id)
 
                 self.status = Status.ZDO_INIT
-            self.debug("[0x%04x] Endpoints: %s", self.nwk,self.endpoints.keys() )
+            _LOGGER.debug("[0x%04x] Endpoints: %s", self.nwk,self.endpoints.keys() )
             for endpoint_id in self.endpoints.keys():
                 if endpoint_id == 0:  # ZDO
                     continue
                 await self.endpoints[endpoint_id].initialize()
-
+            result = await self.zdo.request(0x0002, self.nwk, tries=3)
+            self.NodeDesc = result [2] 
+            result =  await self.zdo.request(0x0003, self.nwk, tries=3)
+            self.PowerDesc = result[2]
+            _LOGGER.info("[0x%04x] Discovering NodeDesc: %s", self.nwk,  self.NodeDesc)
+            _LOGGER.info("[0x%04x] Discovering PowerDesc: %s", self.nwk,  self.PowerDesc)
             self.status = Status.ENDPOINTS_INIT
             self.initializing = False
             self._application.device_initialized(self)
         except asyncio.CancelledError:
-            LOGGER.debug("[0x%04x] Catched CanceledError",  self.nwk)
+            _LOGGER.debug("[0x%04x] Catched CanceledError",  self.nwk)
+    
+    @property
+    def logical_type(self):
+        return (self.NodeDesc.byte1 % 7)
+    
+    @property
+    def complex_desc_available(self):
+        return bool(self.NodeDesc.byte1 % 8)
+
+    @property
+    def user_desc_available(self):
+        return bool(self.NodeDesc.byte1 % 16)
+    
+    @property
+    def freq_band(self):
+        return (self.NodeDesc.byte2 >>3)
+      
+    @property
+    def mac_capability(self):
+        return(self.NodeDesc.mac_capability_flags)
+        
+    @property
+    def maunfacturer_code(self):
+        return(self.NodeDesc.manufacturer_code)
+
+    @property
+    def extended_endpoint(self):
+        return bool(self.NodeDesc.descriptor_capability_field & 1 )
+        
+    @property
+    def extended_simple(self):
+        return bool(self.NodeDesc.descriptor_capability_field & 2 )
+
+  
+
+        
 
     def add_endpoint(self, endpoint_id):
         ep = zigpy.endpoint.Endpoint(self, endpoint_id)
@@ -129,7 +172,7 @@ class Device(zigpy.util.LocalLogMixin):
         try:
             endpoint = self.endpoints[src_ep]
         except KeyError:
-            self.warn(
+            _LOGGER.info(
                 "[0x%04x] Message on unknown endpoint %s",
                 self.nwk, src_ep,
             )
@@ -138,11 +181,11 @@ class Device(zigpy.util.LocalLogMixin):
             return endpoint.handle_message(is_reply, profile, cluster, tsn,
                                        command_id, args, 
                                        message_type=message_type)
-        except Exception:
-            self.debug(
-                "[0x%04x:%s] catched Exceptionc for %s - %s",
+        except Exception as e:
+            _LOGGER.debug(
+                "[0x%04x:%s] catched Exception for %s - %s: %s",
                 self.nwk, src_ep,
-                message_type, cluster
+                message_type, cluster, e,
                 )
 
     def handle_RouteRecord(self, path):
@@ -159,7 +202,7 @@ class Device(zigpy.util.LocalLogMixin):
     def log(self, lvl, msg, *args):
         msg = '[0x%04x] ' + msg
         args = (self.nwk, ) + args
-        return LOGGER.log(lvl, msg, *args)
+        return _LOGGER.log(lvl, msg, *args)
 
     @property
     def application(self):
