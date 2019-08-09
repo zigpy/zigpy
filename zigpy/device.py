@@ -41,11 +41,7 @@ class Device(zigpy.util.LocalLogMixin):
         self._node_handle = None
 
     def schedule_initialize(self):
-        if self.initializing:
-            LOGGER.debug("Canceling old initialize call")
-            self._init_handle.cancel()
-        else:
-            self.initializing = True
+        self.initializing = True
         self._init_handle = asyncio.ensure_future(self._initialize())
 
     async def get_node_descriptor(self):
