@@ -35,6 +35,9 @@ class DeviceRegistry:
 
     def get_device(self, device):
         """Get a CustomDevice object, if one is available"""
+        from . import CustomDevice
+        if isinstance(device, CustomDevice):
+            return device
         dev_ep = set(device.endpoints) - set([0])
         _LOGGER.debug("Checking quirks for %s %s (%s)",
                       device.manufacturer, device.model, device.ieee)
