@@ -15,6 +15,9 @@ def add_to_registry(device):
 
 def get_device(device, registry=_DEVICE_REGISTRY):
     """Get a CustomDevice object, if one is available"""
+    if isinstance(device, CustomDevice):
+        # don't reapply the quirk if it was already applied
+        return device
     dev_ep = set(device.endpoints.keys()) - set([0])
     for candidate in registry:
         _LOGGER.debug("Considering %s", candidate)
