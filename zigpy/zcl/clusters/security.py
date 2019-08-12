@@ -4,6 +4,13 @@ import zigpy.types as t
 from zigpy.zcl import Cluster
 
 
+class ZoneStatus(t.Struct):
+    _fields = [
+        ('zone_id', t.uint8_t),
+        ('zone_status', t.bitmap16),
+    ]
+
+
 class IasZone(Cluster):
     cluster_id = 0x0500
     name = 'IAS Zone'
@@ -36,27 +43,27 @@ class IasAce(Cluster):
     ep_attribute = 'ias_ace'
     attributes = {}
     server_commands = {
-        0x0000: ('arm', (), False),
-        0x0001: ('bypass', (), False),
+        0x0000: ('arm', (t.enum8, t.CharacterString, t.uint8_t), False),
+        0x0001: ('bypass', (t.LVList(t.uint8_t), t.CharacterString), False),
         0x0002: ('emergency', (), False),
         0x0003: ('fire', (), False),
         0x0004: ('panic', (), False),
         0x0005: ('get_zone_id_map', (), False),
-        0x0006: ('get_zone_info', (), False),
+        0x0006: ('get_zone_info', (t.uint8_t,), False),
         0x0007: ('get_panel_status', (), False),
         0x0008: ('get_bypassed_zone_list', (), False),
         0x0009: ('get_zone_status', (t.uint8_t, t.uint8_t, t.Bool, t.bitmap16), False),
     }
     client_commands = {
-        0x0000: ('arm_response', (), True),
-        0x0001: ('get_zone_id_map_response', (), True),
-        0x0002: ('get_zone_info_response', (), True),
-        0x0003: ('zone_status_changed', (), False),
-        0x0004: ('panel_status_changed', (), False),
-        0x0005: ('panel_status_response', (), True),
-        0x0006: ('set_bypassed_zone_list', (), False),
-        0x0007: ('bypass_response', (), True),
-        0x0008: ('get_zone_status_response', (), True),
+        0x0000: ('arm_response', (t.enum8,), True),
+        0x0001: ('get_zone_id_map_response', (t.List(t.bitmap16),), True),
+        0x0002: ('get_zone_info_response', (t.uint8_t, t.enum16, t.EUI64, t.CharacterString), True),
+        0x0003: ('zone_status_changed', (t.uint8_t, t.enum16, t.enum8, t.CharacterString), False),
+        0x0004: ('panel_status_changed', (t.enum8, t.uint8_t, t.enum8, t.enum8), False),
+        0x0005: ('panel_status_response', (t.enum8, t.uint8_t, t.enum8, t.enum8), True),
+        0x0006: ('set_bypassed_zone_list', (t.LVList(t.uint8_t),), False),
+        0x0007: ('bypass_response', (t.LVList(t.uint8_t),), True),
+        0x0008: ('get_zone_status_response', (t.Bool, t.LVList(ZoneStatus)), True),
     }
 
 
