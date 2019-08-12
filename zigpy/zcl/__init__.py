@@ -143,23 +143,24 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             command_id=command_id,
         )
 
-    def reply(self, general, command_id, schema, *args, manufacturer=None):
+    def reply(self, general, command_id, schema, *args, manufacturer=None, tsn=None):
         if len(schema) != len(args) and foundation.Status not in schema:
             self.debug("Schema and args lengths do not match in reply")
 
-        sequence = self._endpoint._device.application.get_sequence()
+        if tsn is None:
+            tsn = self._endpoint._device.application.get_sequence()
         if general:
             hdr = foundation.ZCLHeader.general(
-                sequence, command_id, manufacturer, is_reply=True
+                tsn, command_id, manufacturer, is_reply=True
             )
         else:
             hdr = foundation.ZCLHeader.cluster(
-                sequence, command_id, manufacturer, is_reply=True
+                tsn, command_id, manufacturer, is_reply=True
             )
         hdr.manufacturer = manufacturer
         data = hdr.serialize() + t.serialize(args, schema)
 
-        return self._endpoint.reply(self.cluster_id, sequence, data)
+        return self._endpoint.reply(self.cluster_id, tsn, data)
 
     def handle_message(self, tsn, command_id, args):
         self.debug("ZCL request 0x%04x: %s", command_id, args)
@@ -345,9 +346,9 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             expect_reply=expect_reply
         )
 
-    def client_command(self, command, *args):
+    def client_command(self, command, *args, tsn=None):
         schema = self.client_commands[command][1]
-        return self.reply(False, command, schema, *args)
+        return self.reply(False, command, schema, *args, tsn=tsn)
 
     @property
     def is_client(self) -> bool:

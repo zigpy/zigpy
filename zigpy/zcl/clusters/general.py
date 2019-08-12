@@ -853,11 +853,11 @@ class Ota(Cluster):
         cmd_name = self.server_commands.get(command_id, [command_id])[0]
 
         if cmd_name == "query_next_image":
-            await self._handle_query_next_image(*args)
+            await self._handle_query_next_image(*args, tsn=tsn)
         elif cmd_name == "image_block":
-            await self._handle_image_block(*args)
+            await self._handle_image_block(*args, tsn=tsn)
         elif cmd_name == "upgrade_end":
-            await self._handle_upgrade_end(*args)
+            await self._handle_upgrade_end(*args, tsn=tsn)
         else:
             self.debug(
                 "no '%s' OTA command handler for '%s %s': %s",
@@ -874,6 +874,8 @@ class Ota(Cluster):
         image_type,
         current_file_version,
         hardware_version,
+        *,
+        tsn
     ):
         self.debug(
             (
@@ -914,11 +916,14 @@ class Ota(Cluster):
                     img.key.image_type,
                     img.version,
                     img.header.image_size,
+                    tsn=tsn,
                 )
                 return
         else:
             self.debug("No OTA image is available")
-        await self.query_next_image_response(foundation.Status.NO_IMAGE_AVAILABLE)
+        await self.query_next_image_response(
+            foundation.Status.NO_IMAGE_AVAILABLE, tsn=tsn
+        )
 
     async def _handle_image_block(
         self,
@@ -930,6 +935,8 @@ class Ota(Cluster):
         max_data_size,
         request_node_addr,
         block_request_delay,
+        *,
+        tsn=None
     ):
         self.debug(
             (
@@ -954,7 +961,7 @@ class Ota(Cluster):
         )
         if img is None or img.version != file_version:
             self.debug("OTA image is not available")
-            await self.image_block_response(foundation.Status.ABORT)
+            await self.image_block_response(foundation.Status.ABORT, tsn=tsn)
             return
         self.debug(
             "OTA upgrade progress: %0.1f", 100.0 * file_offset / img.header.image_size
@@ -967,11 +974,16 @@ class Ota(Cluster):
                 img.version,
                 file_offset,
                 img.get_image_block(file_offset, max_data_size),
+                tsn=tsn,
             )
         except ValueError:
-            await self.image_block_response(foundation.Status.MALFORMED_COMMAND)
+            await self.image_block_response(
+                foundation.Status.MALFORMED_COMMAND, tsn=tsn
+            )
 
-    async def _handle_upgrade_end(self, status, manufacturer_id, image_type, file_ver):
+    async def _handle_upgrade_end(
+        self, status, manufacturer_id, image_type, file_ver, *, tsn
+    ):
         self.debug(
             (
                 "OTA upgrade_end handler for '%s %s': status=%s, "
@@ -985,7 +997,7 @@ class Ota(Cluster):
             file_ver,
         )
         await self.upgrade_end_response(
-            manufacturer_id, image_type, file_ver, 0x00000000, 0x00000000
+            manufacturer_id, image_type, file_ver, 0x00000000, 0x00000000, tsn=tsn
         )
 
 
