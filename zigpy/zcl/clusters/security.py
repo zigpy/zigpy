@@ -4,6 +4,13 @@ import zigpy.types as t
 from zigpy.zcl import Cluster
 
 
+class ZoneStatus(t.Struct):
+    _fields = [
+        ('zone_id', t.uint8_t),
+        ('zone_status', t.bitmap16),
+    ]
+
+
 class IasZone(Cluster):
     cluster_id = 0x0500
     name = 'IAS Zone'
@@ -56,7 +63,7 @@ class IasAce(Cluster):
         0x0005: ('panel_status_response', (t.enum8, t.uint8_t, t.enum8, t.enum8), True),
         0x0006: ('set_bypassed_zone_list', (t.LVList(t.uint8_t),), False),
         0x0007: ('bypass_response', (t.LVList(t.uint8_t),), True),
-        0x0008: ('get_zone_status_response', (t.Bool, t.LVList(t.uint8_t, t.bitmap16)), True),
+        0x0008: ('get_zone_status_response', (t.Bool, t.LVList(ZoneStatus)), True),
     }
 
 
