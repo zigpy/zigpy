@@ -1,6 +1,7 @@
 import collections
 import itertools
 import logging
+import zigpy.quirks
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,6 +36,8 @@ class DeviceRegistry:
 
     def get_device(self, device):
         """Get a CustomDevice object, if one is available"""
+        if isinstance(device, zigpy.quirks.CustomDevice):
+            return device
         dev_ep = set(device.endpoints) - set([0])
         _LOGGER.debug("Checking quirks for %s %s (%s)",
                       device.manufacturer, device.model, device.ieee)
