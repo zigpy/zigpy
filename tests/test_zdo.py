@@ -6,6 +6,10 @@ import pytest
 import zigpy.types as t
 import zigpy.device
 import zigpy.zdo as zdo
+import zigpy.zdo.types as zdo_types
+
+
+DEFAULT_SEQUENCE = 123
 
 
 def test_commands():
@@ -22,7 +26,7 @@ def test_commands():
 def app():
     app = mock.MagicMock()
     app.ieee = t.EUI64(map(t.uint8_t, [8, 9, 10, 11, 12, 13, 14, 15]))
-    app.get_sequence.return_value = 123
+    app.get_sequence.return_value = DEFAULT_SEQUENCE
     return app
 
 
@@ -163,3 +167,30 @@ async def test_reply(zdo_f):
 def test_get_attr_error(zdo_f):
     with pytest.raises(AttributeError):
         zdo_f.no_such_attribute()
+
+
+def test_reply_tsn_override(zdo_f, monkeypatch):
+    clusters = mock.MagicMock()
+    clusters.__getitem__.return_value = (
+        mock.sentinel.param_names,
+        mock.sentinel.scheam,
+    )
+    monkeypatch.setattr(zdo_types, "CLUSTERS", clusters)
+    mock_ser = mock.MagicMock()
+    mock_ser.return_value = b"\xaa\x55"
+    monkeypatch.setattr(t, "serialize", mock_ser)
+    zdo_f.reply(mock.sentinel.cmd, mock.sentinel.arg1, mock.sentinel.arg2)
+    seq = zdo_f.device.request.call_args[0][4]
+    data = zdo_f.device.request.call_args[0][5]
+    assert seq == DEFAULT_SEQUENCE
+    assert data[0] == DEFAULT_SEQUENCE
+    assert data[1:3] == b"\xaa\x55"
+
+    # override tsn
+    tsn = 0x23
+    zdo_f.reply(mock.sentinel.cmd, mock.sentinel.arg1, mock.sentinel.arg2, tsn=tsn)
+    seq = zdo_f.device.request.call_args[0][4]
+    data = zdo_f.device.request.call_args[0][5]
+    assert seq == tsn
+    assert data[0] == tsn
+    assert data[1:3] == b"\xaa\x55"
