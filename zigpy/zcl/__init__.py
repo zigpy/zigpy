@@ -252,7 +252,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             return success[attributes[0]]
         return success, failure
 
-    def read_attributes_rsp(self, attributes, manufacturer=None):
+    def read_attributes_rsp(self, attributes, manufacturer=None, *, tsn=None):
         args = []
         for attrid, value in attributes.items():
             if isinstance(attrid, str):
@@ -275,7 +275,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 a.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
                 self.error(str(e))
 
-        return self._read_attributes_rsp(args, manufacturer=manufacturer)
+        return self._read_attributes_rsp(args, manufacturer=manufacturer, tsn=tsn)
 
     def write_attributes(self, attributes, manufacturer=None):
         args = []
@@ -399,12 +399,14 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         return self.read_attributes([key], allow_cache=True, raw=True)
 
     def general_command(
-        self, cmd, *args, manufacturer=None, expect_reply=True, tries=1
+        self, cmd, *args, manufacturer=None, expect_reply=True, tries=1, tsn=None
     ):
         schema = foundation.COMMANDS[cmd][0]
         if foundation.COMMANDS[cmd][1]:
             # should reply be retryable?
-            return self.reply(True, cmd, schema, *args, manufacturer=manufacturer)
+            return self.reply(
+                True, cmd, schema, *args, manufacturer=manufacturer, tsn=tsn
+            )
 
         return self.request(
             True,

@@ -389,7 +389,7 @@ class Time(Cluster):
                     data[attr] = diff.total_seconds()
                 else:
                     data[attr] = None
-            asyncio.ensure_future(self.read_attributes_rsp(data))
+            asyncio.ensure_future(self.read_attributes_rsp(data, tsn=tsn))
 
 
 class RSSILocation(Cluster):
