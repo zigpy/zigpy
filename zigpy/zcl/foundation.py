@@ -346,3 +346,117 @@ COMMANDS = {
     0x15: ('Discover attributes extended', (t.uint16_t, t.uint8_t), False),
     0x16: ('Discover attributes extended response', (t.Bool, t.List(DiscoverAttributesExtendedResponseRecord)), True),
 }
+
+
+class FrameType(enum.IntEnum):
+    """ZCL Frame Type."""
+    GLOBAL_COMMAND = 0b00
+    CLUSTER_COMMAND = 0b01
+    RESERVED_2 = 0b10
+    RESERVED_3 = 0b11
+
+
+class FrameControl:
+    """The frame control field contains information defining the command type
+     and other control flags."""
+
+    def __init__(self, frame_control: int = 0x00) -> None:
+        self.value = frame_control
+
+    @property
+    def disable_default_response(self) -> bool:
+        """Return True if default response is disabled."""
+        return bool(self.value & 0b10000)
+
+    @disable_default_response.setter
+    def disable_default_response(self, value: bool) -> None:
+        """Disable the default response."""
+        if value:
+            self.value |= 0b10000
+            return
+        self.value &= 0b11101111
+
+    @property
+    def frame_type(self) -> FrameType:
+        """Return frame type."""
+        return FrameType(self.value & 0b00000011)
+
+    @frame_type.setter
+    def frame_type(self, value: FrameType) -> None:
+        """Sets frame type to Global general command."""
+        self.value &= 0b11111100
+        self.value |= value
+
+    @property
+    def is_cluster(self) -> bool:
+        """Return True if command is a local cluster specific command."""
+        return bool(self.frame_type == FrameType.CLUSTER_COMMAND)
+
+    @property
+    def is_general(self) -> bool:
+        """Return True if command is a global ZCL command."""
+        return bool(self.frame_type == FrameType.GLOBAL_COMMAND)
+
+    @property
+    def is_manufacturer_specific(self) -> bool:
+        """Return True if manufacturer code is present."""
+        return bool(self.value & 0b100)
+
+    @is_manufacturer_specific.setter
+    def is_manufacturer_specific(self, value: bool) -> None:
+        """Sets manufacturer specific code."""
+        if value:
+            self.value |= 0b100
+            return
+        self.value &= 0b11111011
+
+    @property
+    def is_reply(self) -> bool:
+        """Return True if is a reply (server cluster -> client cluster."""
+        return bool(self.value & 0b1000)
+
+    # in ZCL specs the above is the "direction" field
+    direction = is_reply
+
+    @is_reply.setter
+    def is_reply(self, value: bool) -> None:
+        """Sets the direction."""
+        if value:
+            self.value |= 0b1000
+            return
+        self.value &= 0b11110111
+
+    def __repr__(self) -> str:
+        """Representation."""
+        return ("<{} frame_type={} manufacturer_specific={} is_reply={} "
+                "disable_default_response={}>").format(self.__class__.__name__,
+                                                       self.frame_type.name,
+                                                       self.is_manufacturer_specific,
+                                                       self.is_reply,
+                                                       self.disable_default_response)
+
+    def serialize(self) -> bytes:
+        return t.uint8_t(self.value).serialize()
+
+    @classmethod
+    def cluster(cls, is_reply: bool = False):
+        """New Local Cluster specific command frame control."""
+        r = cls(FrameType.CLUSTER_COMMAND)
+        r.is_reply = is_reply
+        if is_reply:
+            r.disable_default_response = True
+        return r
+
+    @classmethod
+    def deserialize(cls, data):
+        frc, data = t.uint8_t.deserialize(data)
+        return cls(frc), data
+
+    @classmethod
+    def general(cls, is_reply: bool = False):
+        """New General ZCL command frame control."""
+        r = cls(FrameType.GLOBAL_COMMAND)
+        r.is_reply = is_reply
+        if is_reply:
+            r.disable_default_response = True
+        return r
