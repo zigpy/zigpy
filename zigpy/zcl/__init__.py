@@ -66,37 +66,39 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         c.cluster_id = cluster_id
         return c
 
-    def deserialize(self, tsn, frame_type, is_reply, command_id, data):
-        if frame_type == 1:
+    def deserialize(self, data):
+        hdr, data = foundation.ZCLHeader.deserialize(data)
+        self.debug("ZCL deserialize: %s", hdr)
+        if hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND:
             # Cluster command
-            if is_reply:
+            if hdr.is_reply:
                 commands = self.client_commands
             else:
                 commands = self.server_commands
 
             try:
-                schema = commands[command_id][1]
-                is_reply = commands[command_id][2]
+                schema = commands[hdr.command_id][1]
+                is_reply = commands[hdr.command_id][2]
             except KeyError:
-                LOGGER.warning("Unknown cluster-specific command %s", command_id)
-                return tsn, command_id + 256, is_reply, data
+                LOGGER.warning("Unknown cluster-specific command %s", hdr.command_id)
+                return hdr.tsn, hdr.command_id + 256, hdr.is_reply, data
 
             # Bad hack to differentiate foundation vs cluster
-            command_id = command_id + 256
+            hdr.command_id = hdr.command_id + 256
         else:
             # General command
             try:
-                schema = foundation.COMMANDS[command_id][1]
-                is_reply = foundation.COMMANDS[command_id][2]
+                schema = foundation.COMMANDS[hdr.command_id][1]
+                is_reply = foundation.COMMANDS[hdr.command_id][2]
             except KeyError:
-                LOGGER.warning("Unknown foundation command %s", command_id)
-                return tsn, command_id, is_reply, data
+                LOGGER.warning("Unknown foundation command %s", hdr.command_id)
+                return hdr.tsn, hdr.command_id, hdr.is_reply, data
 
         value, data = t.deserialize(data, schema)
         if data != b'':
             LOGGER.warning("Data remains after deserializing ZCL frame")
 
-        return tsn, command_id, is_reply, value
+        return hdr.tsn, hdr.command_id, is_reply, value
 
     @util.retryable_request
     def request(self, general, command_id, schema, *args, manufacturer=None, expect_reply=True):
