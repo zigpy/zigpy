@@ -111,16 +111,11 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
         sequence = self._endpoint._device.application.get_sequence()
         if general:
-            frame_control = 0x00
+            hdr = foundation.ZCLHeader.general(sequence, command_id, manufacturer)
         else:
-            frame_control = 0x01
-        if manufacturer is not None:
-            frame_control |= 0b0100
-            manufacturer = manufacturer.to_bytes(2, 'little')
-        else:
-            manufacturer = b''
-        data = bytes([frame_control]) + manufacturer + bytes([sequence, command_id])
-        data += t.serialize(args, schema)
+            hdr = foundation.ZCLHeader.cluster(sequence, command_id, manufacturer)
+        hdr.manufacturer = manufacturer
+        data = hdr.serialize() + t.serialize(args, schema)
 
         return self._endpoint.request(self.cluster_id, sequence, data, expect_reply=expect_reply, command_id=command_id)
 
@@ -129,16 +124,12 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             self.debug("Schema and args lengths do not match in reply")
 
         sequence = self._endpoint._device.application.get_sequence()
-        frame_control = 0b1000  # Cluster reply command
-        if not general:
-            frame_control |= 0x01
-        if manufacturer is not None:
-            frame_control |= 0b0100
-            manufacturer = manufacturer.to_bytes(2, 'little')
+        if general:
+            hdr = foundation.ZCLHeader.general(sequence, command_id, manufacturer, is_reply=True)
         else:
-            manufacturer = b''
-        data = bytes([frame_control]) + manufacturer + bytes([sequence, command_id])
-        data += t.serialize(args, schema)
+            hdr = foundation.ZCLHeader.cluster(sequence, command_id, manufacturer, is_reply=True)
+        hdr.manufacturer = manufacturer
+        data = hdr.serialize() + t.serialize(args, schema)
 
         return self._endpoint.reply(self.cluster_id, sequence, data)
 
