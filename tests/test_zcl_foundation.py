@@ -242,3 +242,59 @@ def test_frame_control_cluster():
     assert frc.serialize() == b'\x01'
     frc.disable_default_response = True
     assert frc.serialize() == b'\x11'
+
+
+def test_frame_header():
+    """Test frame header deserialization."""
+    data = b'\x1c_\x11\xc0\n'
+    extra = b'\xaa\xaa\x55\x55'
+    hdr, rest = foundation.ZCLHeader.deserialize(data + extra)
+
+    assert rest == extra
+    assert hdr.command_id == 0x0A
+    assert hdr.is_reply is True
+    assert hdr.manufacturer == 0x115F
+    assert hdr.tsn == 0xC0
+
+    assert hdr.serialize() == data
+
+    # check no manufacturer
+    hdr.frame_control.is_manufacturer_specific = False
+    assert hdr.serialize() == b'\x18\xc0\n'
+
+    r = repr(hdr)
+    assert isinstance(r, str)
+    assert r.startswith('<')
+    assert r.endswith('>')
+
+
+def test_frame_header_general():
+    """Test frame header general command."""
+    (tsn, cmd_id, manufacturer) = (0x11, 0x22, 0x3344)
+
+    hdr = foundation.ZCLHeader.general(tsn, cmd_id, manufacturer)
+    assert hdr.frame_control.frame_type == foundation.FrameType.GLOBAL_COMMAND
+    assert hdr.command_id == cmd_id
+    assert hdr.tsn == tsn
+    assert hdr.manufacturer == manufacturer
+    assert hdr.frame_control.is_manufacturer_specific is True
+
+    hdr.manufacturer = None
+    assert hdr.manufacturer is None
+    assert hdr.frame_control.is_manufacturer_specific is False
+
+
+def test_frame_header_cluster():
+    """Test frame header cluster command."""
+    (tsn, cmd_id, manufacturer) = (0x11, 0x22, 0x3344)
+
+    hdr = foundation.ZCLHeader.cluster(tsn, cmd_id, manufacturer)
+    assert hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND
+    assert hdr.command_id == cmd_id
+    assert hdr.tsn == tsn
+    assert hdr.manufacturer == manufacturer
+    assert hdr.frame_control.is_manufacturer_specific is True
+
+    hdr.manufacturer = None
+    assert hdr.manufacturer is None
+    assert hdr.frame_control.is_manufacturer_specific is False
