@@ -190,7 +190,6 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return cluster.deserialize(tsn, frame_type, is_reply, command_id, data)
 
     def handle_message(self, is_reply, profile, cluster, tsn, command_id, args):
-        handler = None
         if cluster in self.in_clusters:
             handler = self.in_clusters[cluster].handle_message
         elif cluster in self.out_clusters:
