@@ -380,12 +380,26 @@ def test_commands(cluster):
     assert cluster.commands == ["reset_fact_default"]
 
 
-def test_discover(cluster):
+def test_general_command(cluster):
     cluster.request = mock.MagicMock()
+    cluster.reply = mock.MagicMock()
     s = mock.sentinel
     cmd_id = 0x0c
-    cluster._discover(cmd_id, s.start, s.items, s.manuf)
+    cluster.general_command(cmd_id, s.start, s.items, manufacturer=0x4567)
 
+    assert cluster.reply.call_count == 0
     assert cluster.request.call_count == 1
     cluster.request.assert_called_with(
-        True, cmd_id, mock.ANY, s.start, s.items, manufacturer=s.manuf)
+        True, cmd_id, mock.ANY, s.start, s.items, expect_reply=True, manufacturer=0x4567)
+
+
+def test_general_command_reply(cluster):
+    cluster.request = mock.MagicMock()
+    cluster.reply = mock.MagicMock()
+    cmd_id = 0x0d
+    cluster.general_command(cmd_id, True, [], manufacturer=0x4567)
+
+    assert cluster.request.call_count == 0
+    assert cluster.reply.call_count == 1
+    cluster.reply.assert_called_with(
+        True, cmd_id, mock.ANY, True, [], manufacturer=0x4567)

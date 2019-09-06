@@ -363,22 +363,24 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def __getitem__(self, key):
         return self.read_attributes([key], allow_cache=True, raw=True)
 
-    @util.retryable_request
-    def _discover(self, cmd_id, start_item, num_of_items,
-                  manufacturer=None, tries=3):
-        schema = foundation.COMMANDS[cmd_id][0]
-        return self.request(
-            True, cmd_id, schema, start_item, num_of_items,
-            manufacturer=manufacturer)
+    def general_command(self, cmd, *args, manufacturer=None, expect_reply=True):
+        schema = foundation.COMMANDS[cmd][0]
+        if foundation.COMMANDS[cmd][1]:
+            return self.reply(True, cmd, schema, *args,
+                              manufacturer=manufacturer)
+
+        return self.request(True, cmd, schema, *args,
+                            manufacturer=manufacturer,
+                            expect_reply=expect_reply)
 
     discover_attributes = functools.partialmethod(
-        _discover, foundation.Command.Discover_Attributes)
+        general_command, foundation.Command.Discover_Attributes)
     discover_attributes_extended = functools.partialmethod(
-        _discover, foundation.Command.Discover_Attribute_Extended)
+        general_command, foundation.Command.Discover_Attribute_Extended)
     discover_commands_received = functools.partialmethod(
-        _discover, foundation.Command.Discover_Commands_Received)
+        general_command, foundation.Command.Discover_Commands_Received)
     discover_commands_generated = functools.partialmethod(
-        _discover, foundation.Command.Discover_Commands_Generated)
+        general_command, foundation.Command.Discover_Commands_Generated)
 
 
 class ClusterPersistingListener:
