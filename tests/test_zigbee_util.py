@@ -1,5 +1,6 @@
 from unittest import mock
 
+from asynctest import CoroutineMock
 import pytest
 
 from zigpy import util
@@ -164,3 +165,41 @@ def test_fail_convert_install_code():
     message = bytes([0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0xFF, 0xFF])
     key = util.convert_install_code(message)
     assert key is None
+
+
+@pytest.mark.asyncio
+async def test_async_listener():
+    listenable = Listenable()
+
+    listener_1 = mock.MagicMock(spec=['async_event'])
+    listener_1.async_event.side_effect = CoroutineMock(return_value=mock.sentinel.result_1)
+
+    listener_2 = mock.MagicMock(spec=['async_event'])
+    listener_2.async_event.side_effect = CoroutineMock(return_value=mock.sentinel.result_2)
+
+    failed = mock.MagicMock(spec=['async_event'])
+    failed.async_event = CoroutineMock(side_effect=RuntimeError("async listener exception"))
+
+    listenable.add_listener(listener_1)
+    listenable.add_context_listener(listener_2)
+    listenable.add_listener(failed)
+
+    r = await listenable.async_event('async_event', mock.sentinel.data)
+    assert len(r) == 2
+    assert mock.sentinel.result_1 in r
+    assert mock.sentinel.result_2 in r
+
+    assert listener_1.async_event.call_count == 1
+    assert listener_1.async_event.call_args[0][0] is mock.sentinel.data
+
+    # context listener
+    assert listener_2.async_event.call_count == 1
+    assert listener_2.async_event.call_args[0][0] is listenable
+    assert listener_2.async_event.call_args[0][1] is mock.sentinel.data
+
+    # failed listener
+    assert failed.async_event.call_count == 1
+    assert failed.async_event.call_args[0][0] is mock.sentinel.data
+
+    r = await listenable.async_event('no_such_event', mock.sentinel.no_data)
+    assert r == []

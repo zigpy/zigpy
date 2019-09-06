@@ -8,13 +8,16 @@ from zigpy.application import ControllerApplication
 from zigpy import profiles
 from zigpy.quirks import CustomDevice
 from zigpy.device import Device, Status
+import zigpy.ota
 import zigpy.zcl
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
 
 def make_app(database_file):
-    return ControllerApplication(database_file)
+    with mock.patch('zigpy.ota.OTA', mock.MagicMock(spec_set=zigpy.ota.OTA)):
+        app = ControllerApplication(database_file)
+    return app
 
 
 def make_ieee(init=0):

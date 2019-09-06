@@ -1,16 +1,19 @@
 import asyncio
 import logging
+import os.path
 
 import zigpy.appdb
 import zigpy.device
 import zigpy.group
 import zigpy.quirks
+import zigpy.ota
 import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
 
 LOGGER = logging.getLogger(__name__)
+OTA_DIR = 'zigpy_ota/'
 
 
 class ControllerApplication(zigpy.util.ListenableMixin):
@@ -21,6 +24,13 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self._listeners = {}
         self._ieee = None
         self._nwk = None
+        self._ota = zigpy.ota.OTA(self)
+        if database_file is None:
+            ota_dir = None
+        else:
+            ota_dir = os.path.dirname(database_file)
+            ota_dir = os.path.join(ota_dir, OTA_DIR)
+        self.ota.initialize(ota_dir)
 
         if database_file is not None:
             self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
@@ -174,3 +184,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     @property
     def nwk(self):
         return self._nwk
+
+    @property
+    def ota(self):
+        return self._ota

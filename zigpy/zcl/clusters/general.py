@@ -695,6 +695,95 @@ class Ota(Cluster):
                                                   t.Optional(t.uint32_t), t.Optional(t.uint32_t)), True),
     }
 
+    def handle_cluster_request(self, tsn, command_id, args):
+        asyncio.ensure_future(
+            self._handle_cluster_request(tsn, command_id, args))
+
+    async def _handle_cluster_request(self, tsn, command_id, args):
+        """Parse OTA commands."""
+        cmd_name = self.server_commands.get(command_id, [command_id])[0]
+
+        if cmd_name == 'query_next_image':
+            await self._handle_query_next_image(*args)
+        elif cmd_name == 'image_block':
+            await self._handle_image_block(*args)
+        elif cmd_name == 'upgrade_end':
+            await self._handle_upgrade_end(*args)
+        else:
+            self.debug("no '%s' OTA command handler for '%s %s': %s", cmd_name,
+                       self.endpoint.manufacturer, self.endpoint.model, args)
+
+    async def _handle_query_next_image(self, field_ctrl, manufacturer_id,
+                                       image_type, current_file_version,
+                                       hardware_version):
+        self.debug(("OTA query_next_image handler for '%s %s': "
+                    "field_control=%s, manufacture_id=%s, image_type=%s, "
+                    "current_file_version=%s, hardware_version=%s"),
+                   self.endpoint.manufacturer, self.endpoint.model,
+                   field_ctrl, manufacturer_id, image_type,
+                   current_file_version, hardware_version)
+
+        img = await self.endpoint.device.application.ota.get_ota_image(
+            manufacturer_id, image_type)
+
+        if img is not None:
+            should_update = img.should_update(
+                manufacturer_id, image_type, current_file_version,
+                hardware_version)
+            self.debug("OTA image version: %s, size: %s. Update needed: %s",
+                       img.version, img.header.image_size, should_update)
+            if should_update:
+                self.info("Updating: %s %s",
+                          self.endpoint.manufacturer, self.endpoint.model)
+                await self.query_next_image_response(
+                    foundation.Status.SUCCESS, img.key.manufacturer_id,
+                    img.key.image_type, img.version, img.header.image_size)
+                return
+        else:
+            self.debug("No OTA image is available")
+        await self.query_next_image_response(
+            foundation.Status.NO_IMAGE_AVAILABLE)
+
+    async def _handle_image_block(self, field_ctr, manufacturer_id,
+                                  image_type, file_version, file_offset,
+                                  max_data_size, request_node_addr,
+                                  block_request_delay):
+        self.debug(("OTA image_block handler for '%s %s': field_control=%s, "
+                    "manufacturer_id=%s, image_type=%s, file_version=%s, "
+                    "file_offset=%s, max_data_size=%s, request_node_addr=%s"
+                    "block_request_delay=%s"),
+                   self.endpoint.manufacturer, self.endpoint.model,
+                   field_ctr, manufacturer_id, image_type, file_version,
+                   file_offset, max_data_size, request_node_addr,
+                   block_request_delay)
+        img = await self.endpoint.device.application.ota.get_ota_image(
+            manufacturer_id, image_type)
+        if img is None or img.version != file_version:
+            self.debug("OTA image is not available")
+            await self.image_block_response(foundation.Status.ABORT)
+            return
+        self.debug("OTA upgrade progress: %0.1f",
+                   100.0 * file_offset / img.header.image_size)
+        try:
+            await self.image_block_response(
+                foundation.Status.SUCCESS,
+                img.key.manufacturer_id, img.key.image_type,
+                img.version, file_offset,
+                img.get_image_block(file_offset, max_data_size)
+            )
+        except ValueError:
+            await self.image_block_response(foundation.Status.MALFORMED_COMMAND)
+
+    async def _handle_upgrade_end(self, status, manufacturer_id, image_type,
+                                  file_ver):
+        self.debug(("OTA upgrade_end handler for '%s %s': status=%s, "
+                    "manufacturer_id=%s, image_type=%s, file_version=%s"),
+                   self.endpoint.manufacturer, self.endpoint.model,
+                   status, manufacturer_id, image_type, file_ver)
+        await self.upgrade_end_response(
+            manufacturer_id, image_type, file_ver, 0x00000000, 0x00000000
+        )
+
 
 class PowerProfile(Cluster):
     cluster_id = 0x001a
