@@ -167,7 +167,7 @@ class FileImage(OTAImageHeader):
         return self.file_version
 
     @classmethod
-    async def scan_image(cls, file_name: str):
+    def scan_image(cls, file_name: str):
         """Check the header of the image."""
         try:
             with open(file_name, mode='rb') as file:
@@ -189,7 +189,12 @@ class FileImage(OTAImageHeader):
                          file_name, exc)
         return None
 
-    async def fetch_image(self) -> Optional[OTAImage]:
+    def fetch_image(self) -> Optional[OTAImage]:
+        """Load image using executor."""
+        loop = asyncio.get_event_loop()
+        return loop.run_in_executor(None, self._fetch_image)
+
+    def _fetch_image(self) -> Optional[OTAImage]:
         """Loads full OTA Image from the file."""
         try:
             with open(self.file_name, mode='rb') as file:
@@ -237,12 +242,13 @@ class FileStore(Basic):
             return None
 
         self._cache.clear()
+        loop = asyncio.get_event_loop()
         for root, dirs, files in os.walk(self._ota_dir):
             for file in files:
                 if file in SKIP_OTA_FILES:
                     continue
                 file_name = os.path.join(root, file)
-                img = await FileImage.scan_image(file_name)
+                img = await loop.run_in_executor(None, FileImage.scan_image, file_name)
                 if img is None:
                     continue
 

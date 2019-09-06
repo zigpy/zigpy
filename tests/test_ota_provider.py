@@ -354,23 +354,21 @@ def test_file_image_key(key):
     assert fimg.version == mock.sentinel.version
 
 
-@pytest.mark.asyncio
-async def test_filestore_scan(file_image_name):
+def test_filestore_scan(file_image_name):
     file_name = file_image_name()
-    r = await ota_p.FileImage.scan_image(file_name)
+    r = ota_p.FileImage.scan_image(file_name)
 
     assert isinstance(r, ota_p.FileImage)
     assert r.file_name == file_name
 
 
-@pytest.mark.asyncio
-async def test_filestore_scan_exc(file_image_name):
+def test_filestore_scan_exc(file_image_name):
     ota_file = file_image_name()
     with mock.patch('builtins.open',
                     mock.mock_open()) as mock_file:
         mock_file.side_effect = IOError()
 
-        r = await ota_p.FileImage.scan_image(ota_file)
+        r = ota_p.FileImage.scan_image(ota_file)
         assert r is None
         assert mock_file.call_count == 1
         assert mock_file.call_args[0][0] == ota_file
@@ -379,21 +377,20 @@ async def test_filestore_scan_exc(file_image_name):
                     mock.mock_open()) as mock_file:
         mock_file.side_effect = ValueError()
 
-        r = await ota_p.FileImage.scan_image(ota_file)
+        r = ota_p.FileImage.scan_image(ota_file)
         assert r is None
         assert mock_file.call_count == 1
         assert mock_file.call_args[0][0] == ota_file
 
 
-@pytest.mark.asyncio
-async def test_filestore_scan_uncaught_exc(file_image_name):
+def test_filestore_scan_uncaught_exc(file_image_name):
     ota_file = file_image_name()
     with pytest.raises(RuntimeError):
         with mock.patch('builtins.open',
                         mock.mock_open()) as mock_file:
             mock_file.side_effect = RuntimeError()
 
-            await ota_p.FileImage.scan_image(ota_file)
+            ota_p.FileImage.scan_image(ota_file)
     assert mock_file.call_count == 1
     assert mock_file.call_args[0][0] == ota_file
 
@@ -496,7 +493,7 @@ async def test_filestore_refresh_firmware_list(file_prov,
     ota_dir = os.path.dirname(image_1.file_name)
 
     file_image_mock = mock.MagicMock()
-    file_image_mock.scan_image = CoroutineMock(side_effect=images)
+    file_image_mock.scan_image.side_effect = images
     monkeypatch.setattr(ota_p, 'FileImage', file_image_mock)
     file_prov.update_expiration = mock.MagicMock()
 
@@ -530,7 +527,7 @@ async def test_filestore_refresh_firmware_list_2(file_prov,
     ota_dir = os.path.dirname(image_1.file_name)
 
     file_image_mock = mock.MagicMock()
-    file_image_mock.scan_image = CoroutineMock(side_effect=[image_1, image_2])
+    file_image_mock.scan_image.side_effect = [image_1, image_2]
     monkeypatch.setattr(ota_p, 'FileImage', file_image_mock)
     file_prov.update_expiration = mock.MagicMock()
 
@@ -555,7 +552,7 @@ async def test_filestore_refresh_firmware_list_3(file_prov,
     ota_dir = os.path.dirname(image_1.file_name)
 
     file_image_mock = mock.MagicMock()
-    file_image_mock.scan_image = CoroutineMock(side_effect=[image_1, image_2])
+    file_image_mock.scan_image.side_effect = [image_1, image_2]
     monkeypatch.setattr(ota_p, 'FileImage', file_image_mock)
     file_prov.update_expiration = mock.MagicMock()
 
@@ -580,7 +577,7 @@ async def test_filestore_refresh_firmware_list_4(file_prov,
     ota_dir = os.path.dirname(image_1.file_name)
 
     file_image_mock = mock.MagicMock()
-    file_image_mock.scan_image = CoroutineMock(side_effect=[image_1, image_2])
+    file_image_mock.scan_image.side_effect = [image_1, image_2]
     monkeypatch.setattr(ota_p, 'FileImage', file_image_mock)
     file_prov.update_expiration = mock.MagicMock()
 
