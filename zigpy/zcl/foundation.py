@@ -322,31 +322,65 @@ class DiscoverAttributesExtendedResponseRecord(t.Struct):
     ]
 
 
+class Command(t.uint8_t, enum.Enum):
+    """ZCL Foundation Global Command IDs."""
+    Read_Attributes = 0x00
+    Read_Attributes_rsp = 0x01
+    Write_Attributes = 0x02
+    Write_Attributes_Undivided = 0x03
+    Write_Attributes_rsp = 0x04
+    Write_Attributes_No_Response = 0x05
+    Configure_Reporting = 0x06
+    Configure_Reporting_rsp = 0x07
+    Read_Reporting_Configuration = 0x08
+    Read_Reporting_Configuration_rsp = 0x09
+    Report_Attributes = 0x0a
+    Default_Response = 0x0b
+    Discover_Attributes = 0x0c
+    Discover_Attributes_rsp = 0x0d
+    # Read_Attributes_Structured = 0x0e
+    # Write_Attributes_Structured = 0x0f
+    # Write_Attributes_Structured_rsp = 0x10
+    Discover_Commands_Received = 0x11
+    Discover_Commands_Received_rsp = 0x12
+    Discover_Commands_Generated = 0x13
+    Discover_Commands_Generated_rsp = 0x14
+    Discover_Attribute_Extended = 0x15
+    Discover_Attribute_Extended_rsp = 0x16
+
+    @classmethod
+    def deserialize(cls, data):
+        try:
+            return super().deserialize(data)
+        except ValueError:
+            return t.uint8_t.deserialize(data)
+
+
 COMMANDS = {
-    # id: (name, params, is_response)
-    0x00: ('Read attributes', (t.List(t.uint16_t), ), False),
-    0x01: ('Read attributes response', (t.List(ReadAttributeRecord), ), True),
-    0x02: ('Write attributes', (t.List(Attribute), ), False),
-    0x03: ('Write attributes undivided', (t.List(Attribute), ), False),
-    0x04: ('Write attributes response', (t.List(WriteAttributesStatusRecord), ), True),
-    0x05: ('Write attributes no response', (t.List(Attribute), ), False),
-    0x06: ('Configure reporting', (t.List(AttributeReportingConfig), ), False),
-    0x07: ('Configure reporting response', (t.List(ConfigureReportingResponseRecord), ), True),
-    0x08: ('Read reporting configuration', (t.List(ReadReportingConfigRecord), ), False),
-    0x09: ('Read reporting configuration response', (t.List(AttributeReportingConfig), ), True),
-    0x0a: ('Report attributes', (t.List(Attribute), ), False),
-    0x0b: ('Default response', (t.uint8_t, Status), True),
-    0x0c: ('Discover attributes', (t.uint16_t, t.uint8_t), False),
-    0x0d: ('Discover attributes response', (t.Bool, t.List(DiscoverAttributesResponseRecord), ), True),
-    # 0x0e: ('Read attributes structured', (, ), False),
-    # 0x0f: ('Write attributes structured', (, ), False),
-    # 0x10: ('Write attributes structured response', (, ), True),
-    0x11: ('Discover commands received', (t.uint8_t, t.uint8_t), False),
-    0x12: ('Discover commands received response', (t.Bool, t.List(t.uint8_t)), True),
-    0x13: ('Discover commands generated', (t.uint8_t, t.uint8_t), False),
-    0x14: ('Discover commands generated response', (t.Bool, t.List(t.uint8_t)), True),
-    0x15: ('Discover attributes extended', (t.uint16_t, t.uint8_t), False),
-    0x16: ('Discover attributes extended response', (t.Bool, t.List(DiscoverAttributesExtendedResponseRecord)), True),
+    # id: (params, is_response)
+    Command.Configure_Reporting: ((t.List(AttributeReportingConfig), ), False),
+    Command.Configure_Reporting_rsp: ((t.List(ConfigureReportingResponseRecord), ), True),
+    Command.Default_Response: ((t.uint8_t, Status), True),
+    Command.Discover_Attributes: ((t.uint16_t, t.uint8_t), False),
+    Command.Discover_Attributes_rsp: ((t.Bool, t.List(DiscoverAttributesResponseRecord),), True),
+    Command.Discover_Attribute_Extended: ((t.uint16_t, t.uint8_t), False),
+    Command.Discover_Attribute_Extended_rsp: ((t.Bool, t.List(DiscoverAttributesExtendedResponseRecord)), True),
+    Command.Discover_Commands_Generated: ((t.uint8_t, t.uint8_t), False),
+    Command.Discover_Commands_Generated_rsp: ((t.Bool, t.List(t.uint8_t)), True),
+    Command.Discover_Commands_Received: ((t.uint8_t, t.uint8_t), False),
+    Command.Discover_Commands_Received_rsp: ((t.Bool, t.List(t.uint8_t)), True),
+    Command.Read_Attributes: ((t.List(t.uint16_t), ), False),
+    Command.Read_Attributes_rsp: ((t.List(ReadAttributeRecord), ), True),
+    # Command.Read_Attributes_Structured: ((, ), False),
+    Command.Read_Reporting_Configuration: ((t.List(ReadReportingConfigRecord),), False),
+    Command.Read_Reporting_Configuration_rsp: ((t.List(AttributeReportingConfig),), True),
+    Command.Report_Attributes: ((t.List(Attribute),), False),
+    Command.Write_Attributes: ((t.List(Attribute),), False),
+    Command.Write_Attributes_No_Response: ((t.List(Attribute),), False),
+    Command.Write_Attributes_rsp: ((t.List(WriteAttributesStatusRecord),), True),
+    # Command.Write_Attributes_Structured: ((, ), False),
+    # Command.Write_Attributes_Structured_rsp: ((, ), True),
+    Command.Write_Attributes_Undivided: ((t.List(Attribute), ), False),
 }
 
 
@@ -470,11 +504,11 @@ class ZCLHeader:
     def __init__(self,
                  frame_control: FrameControl,
                  tsn: t.uint8_t = 0,
-                 command_id: t.uint8_t = 0,
+                 command_id: Command = 0,
                  manufacturer: t.uint16_t = None,
                  ) -> None:
         """Initialize ZCL Frame instance."""
-        self._cmd_id = t.uint8_t(command_id)
+        self._cmd_id = Command(command_id)
         self._frc = frame_control
         self._manufacturer = manufacturer
         if manufacturer is not None:
@@ -487,14 +521,17 @@ class ZCLHeader:
         return self._frc
 
     @property
-    def command_id(self) -> t.uint8_t:
+    def command_id(self) -> Command:
         """Return command identifier."""
         return self._cmd_id
 
     @command_id.setter
-    def command_id(self, value: t.uint8_t) -> None:
+    def command_id(self, value: Command) -> None:
         """Setter for command identifier."""
-        self._cmd_id = t.uint8_t(value)
+        try:
+            self._cmd_id = Command(value)
+        except ValueError:
+            self._cmd_id = t.uint8_t(value)
 
     @property
     def is_reply(self) -> bool:
@@ -531,7 +568,7 @@ class ZCLHeader:
         if frc.is_manufacturer_specific:
             r.manufacturer, data = t.uint16_t.deserialize(data)
         r.tsn, data = t.uint8_t.deserialize(data)
-        r.command_id, data = t.uint8_t.deserialize(data)
+        r.command_id, data = Command.deserialize(data)
         return r, data
 
     def serialize(self):
@@ -569,5 +606,5 @@ class ZCLHeader:
 
     def __repr__(self) -> str:
         """Representation."""
-        return "<{} frame_control={} manufacturer={} tsn={} command_id=0x{:02x}>".format(
-            self.__class__.__name__, self.frame_control, self.manufacturer, self.tsn, self.command_id)
+        return "<{} frame_control={} manufacturer={} tsn={} command_id={}>".format(
+            self.__class__.__name__, self.frame_control, self.manufacturer, self.tsn, str(self.command_id))

@@ -88,8 +88,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         else:
             # General command
             try:
-                schema = foundation.COMMANDS[hdr.command_id][1]
-                is_reply = foundation.COMMANDS[hdr.command_id][2]
+                schema = foundation.COMMANDS[hdr.command_id][0]
+                is_reply = foundation.COMMANDS[hdr.command_id][1]
             except KeyError:
                 LOGGER.warning("Unknown foundation command %s", hdr.command_id)
                 return hdr.tsn, hdr.command_id, hdr.is_reply, data
@@ -148,7 +148,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             self.handle_cluster_request(tsn, command_id, args)
             return
 
-        if command_id == 0x0a:  # Report attributes
+        if command_id == foundation.Command.Report_Attributes:
             valuestr = ", ".join([
                 "%s=%s" % (self.attributes.get(a.attrid, [a.attrid])[0],
                            a.value.value) for a in args[0]
@@ -166,9 +166,10 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         self.debug("No handler for general command %s", command_id)
 
     async def read_attributes_raw(self, attributes, manufacturer=None):
-        schema = foundation.COMMANDS[0x00][1]
+        schema = foundation.COMMANDS[foundation.Command.Read_Attributes][1]
         attributes = [t.uint16_t(a) for a in attributes]
-        v = await self.request(True, 0x00, schema, attributes, manufacturer=manufacturer)
+        v = await self.request(True, foundation.Command.Read_Attributes, schema,
+                               attributes, manufacturer=manufacturer)
         return v
 
     async def read_attributes(self, attributes, allow_cache=False, only_cache=False, raw=False, manufacturer=None):
@@ -254,11 +255,13 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 args.append(a)
 
         if is_report:
-            schema = foundation.COMMANDS[0x01][1]
-            return self.reply(True, 0x01, schema, args, manufacturer=manufacturer)
+            cmd = foundation.Command.Read_Attributes_rsp
+            schema = foundation.COMMANDS[cmd][0]
+            return self.reply(True, cmd, schema, args, manufacturer=manufacturer)
         else:
-            schema = foundation.COMMANDS[0x02][1]
-            return self.request(True, 0x02, schema, args, manufacturer=manufacturer)
+            cmd = foundation.Command.Write_Attributes
+            schema = foundation.COMMANDS[cmd][0]
+            return self.request(True, cmd, schema, args, manufacturer=manufacturer)
 
     def bind(self):
         return self._endpoint.device.zdo.bind(self._endpoint.endpoint_id, self.cluster_id)
@@ -276,7 +279,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             self.error("{} is not a valid attribute id".format(attribute))
             return
 
-        schema = foundation.COMMANDS[0x06][1]
+        cmd = foundation.Command.Configure_Reporting
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = 0
         cfg.attrid = attrid
@@ -287,7 +290,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change
         return self.request(
-            True, 0x06, schema, [cfg], manufacturer=manufacturer
+            True, cmd, foundation.COMMANDS[cmd][0], [cfg], manufacturer=manufacturer
         )
 
     def command(self, command, *args, manufacturer=None, expect_reply=True):
@@ -343,15 +346,19 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     @util.retryable_request
     def _discover(self, cmd_id, start_item, num_of_items,
                   manufacturer=None, tries=3):
-        schema = foundation.COMMANDS[cmd_id][1]
+        schema = foundation.COMMANDS[cmd_id][0]
         return self.request(
             True, cmd_id, schema, start_item, num_of_items,
             manufacturer=manufacturer)
 
-    discover_attributes = functools.partialmethod(_discover, 0x0c)
-    discover_attributes_extended = functools.partialmethod(_discover, 0x15)
-    discover_commands_received = functools.partialmethod(_discover, 0x11)
-    discover_commands_generated = functools.partialmethod(_discover, 0x13)
+    discover_attributes = functools.partialmethod(
+        _discover, foundation.Command.Discover_Attributes)
+    discover_attributes_extended = functools.partialmethod(
+        _discover, foundation.Command.Discover_Attribute_Extended)
+    discover_commands_received = functools.partialmethod(
+        _discover, foundation.Command.Discover_Commands_Received)
+    discover_commands_generated = functools.partialmethod(
+        _discover, foundation.Command.Discover_Commands_Generated)
 
 
 class ClusterPersistingListener:
