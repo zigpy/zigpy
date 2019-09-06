@@ -175,12 +175,9 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def handle_cluster_general_request(self, tsn, command_id, args):
         self.debug("No handler for general command %s", command_id)
 
-    async def read_attributes_raw(self, attributes, manufacturer=None):
-        schema = foundation.COMMANDS[foundation.Command.Read_Attributes][1]
+    def read_attributes_raw(self, attributes, manufacturer=None):
         attributes = [t.uint16_t(a) for a in attributes]
-        v = await self.request(True, foundation.Command.Read_Attributes, schema,
-                               attributes, manufacturer=manufacturer)
-        return v
+        return self._read_attributes(attributes, manufacturer=manufacturer)
 
     async def read_attributes(self, attributes, allow_cache=False, only_cache=False, raw=False, manufacturer=None):
         if raw:
@@ -265,13 +262,9 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 args.append(a)
 
         if is_report:
-            cmd = foundation.Command.Read_Attributes_rsp
-            schema = foundation.COMMANDS[cmd][0]
-            return self.reply(True, cmd, schema, args, manufacturer=manufacturer)
+            return self._read_attributes_rsp(args, manufacturer=manufacturer)
         else:
-            cmd = foundation.Command.Write_Attributes
-            schema = foundation.COMMANDS[cmd][0]
-            return self.request(True, cmd, schema, args, manufacturer=manufacturer)
+            return self._write_attributes(args, manufacturer=manufacturer)
 
     def bind(self):
         return self._endpoint.device.zdo.bind(self._endpoint.endpoint_id, self.cluster_id)
@@ -289,7 +282,6 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             self.error("{} is not a valid attribute id".format(attribute))
             return
 
-        cmd = foundation.Command.Configure_Reporting
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = 0
         cfg.attrid = attrid
@@ -299,9 +291,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change
-        return self.request(
-            True, cmd, foundation.COMMANDS[cmd][0], [cfg], manufacturer=manufacturer
-        )
+        return self._configure_reporting([cfg], manufacturer=manufacturer)
 
     def command(self, command, *args, manufacturer=None, expect_reply=True):
         schema = self.server_commands[command][1]
@@ -373,6 +363,14 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                             manufacturer=manufacturer,
                             expect_reply=expect_reply)
 
+    _configure_reporting = functools.partialmethod(
+        general_command, foundation.Command.Configure_Reporting)
+    _read_attributes = functools.partialmethod(
+        general_command, foundation.Command.Read_Attributes)
+    _read_attributes_rsp = functools.partialmethod(
+        general_command, foundation.Command.Read_Attributes_rsp)
+    _write_attributes = functools.partialmethod(
+        general_command, foundation.Command.Write_Attributes)
     discover_attributes = functools.partialmethod(
         general_command, foundation.Command.Discover_Attributes)
     discover_attributes_extended = functools.partialmethod(

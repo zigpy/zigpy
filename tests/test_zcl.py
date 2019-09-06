@@ -177,7 +177,7 @@ def _mk_rar(attrid, value, status=0):
 
 @pytest.mark.asyncio
 async def test_read_attributes_uncached(cluster):
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+    async def mockrequest(foundation, command, schema, args, manufacturer=None, **kwargs):
         assert foundation is True
         assert command == 0
         rar0 = _mk_rar(0, 99)
@@ -210,7 +210,7 @@ async def test_read_attributes_cached(cluster):
 
 @pytest.mark.asyncio
 async def test_read_attributes_mixed_cached(cluster):
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+    async def mockrequest(foundation, command, schema, args, manufacturer=None, **kwargs):
         assert foundation is True
         assert command == 0
         rar5 = _mk_rar(5, b'Model')
@@ -231,7 +231,7 @@ async def test_read_attributes_mixed_cached(cluster):
 
 @pytest.mark.asyncio
 async def test_read_attributes_default_response(cluster):
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+    async def mockrequest(foundation, command, schema, args, manufacturer=None, **kwargs):
         assert foundation is True
         assert command == 0
         return [0xc1]
@@ -247,7 +247,7 @@ async def test_read_attributes_default_response(cluster):
 
 @pytest.mark.asyncio
 async def test_item_access_attributes(cluster):
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+    async def mockrequest(foundation, command, schema, args, manufacturer=None, **kwargs):
         assert foundation is True
         assert command == 0
         rar5 = _mk_rar(5, b'Model')
@@ -330,14 +330,14 @@ def test_configure_reporting_manuf():
     cluster.request = mock.MagicMock(name='request')
     cluster.configure_reporting(0, 10, 20, 1)
     cluster.request.assert_called_with(
-        mock.ANY, mock.ANY, mock.ANY, mock.ANY, manufacturer=None
+        True, 0x06, mock.ANY, mock.ANY, expect_reply=True, manufacturer=None
     )
 
     cluster.request.reset_mock()
     manufacturer_id = 0xfcfc
     cluster.configure_reporting(0, 10, 20, 1, manufacturer=manufacturer_id)
     cluster.request.assert_called_with(
-        mock.ANY, mock.ANY, mock.ANY, mock.ANY, manufacturer=manufacturer_id
+        True, 0x06, mock.ANY, mock.ANY, expect_reply=True, manufacturer=manufacturer_id
     )
     assert cluster.request.call_count == 1
 
