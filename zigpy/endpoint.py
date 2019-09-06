@@ -172,25 +172,13 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def deserialize(self, cluster_id, data):
         """Deserialize data for ZCL"""
-        frame_control, data = data[0], data[1:]
-        frame_type = frame_control & 0b0011
-        direction = (frame_control & 0b1000) >> 3
-        is_reply = bool(direction)
-        if frame_control & 0b0100:
-            # Manufacturer specific value present
-            data = data[2:]
-        tsn, command_id, data = data[0], data[1], data[2:]
-
         if cluster_id not in self.in_clusters and cluster_id not in self.out_clusters:
-            LOGGER.debug("Ignoring unknown cluster ID 0x%04x",
-                         cluster_id)
-            return tsn, command_id + 256, is_reply, data
+            raise KeyError("No cluster ID 0x%04x on %s" % (cluster_id, self.unique_id, ))
 
-        cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id, None))
-        return cluster.deserialize(tsn, frame_type, is_reply, command_id, data)
+        cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id))
+        return cluster.deserialize(data)
 
     def handle_message(self, is_reply, profile, cluster, tsn, command_id, args):
-        handler = None
         if cluster in self.in_clusters:
             handler = self.in_clusters[cluster].handle_message
         elif cluster in self.out_clusters:
