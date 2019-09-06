@@ -1,5 +1,7 @@
 import enum
 
+from typing import Optional
+
 import zigpy.types as t
 
 
@@ -346,3 +348,226 @@ COMMANDS = {
     0x15: ('Discover attributes extended', (t.uint16_t, t.uint8_t), False),
     0x16: ('Discover attributes extended response', (t.Bool, t.List(DiscoverAttributesExtendedResponseRecord)), True),
 }
+
+
+class FrameType(enum.IntEnum):
+    """ZCL Frame Type."""
+    GLOBAL_COMMAND = 0b00
+    CLUSTER_COMMAND = 0b01
+    RESERVED_2 = 0b10
+    RESERVED_3 = 0b11
+
+
+class FrameControl:
+    """The frame control field contains information defining the command type
+     and other control flags."""
+
+    def __init__(self, frame_control: int = 0x00) -> None:
+        self.value = frame_control
+
+    @property
+    def disable_default_response(self) -> bool:
+        """Return True if default response is disabled."""
+        return bool(self.value & 0b10000)
+
+    @disable_default_response.setter
+    def disable_default_response(self, value: bool) -> None:
+        """Disable the default response."""
+        if value:
+            self.value |= 0b10000
+            return
+        self.value &= 0b11101111
+
+    @property
+    def frame_type(self) -> FrameType:
+        """Return frame type."""
+        return FrameType(self.value & 0b00000011)
+
+    @frame_type.setter
+    def frame_type(self, value: FrameType) -> None:
+        """Sets frame type to Global general command."""
+        self.value &= 0b11111100
+        self.value |= value
+
+    @property
+    def is_cluster(self) -> bool:
+        """Return True if command is a local cluster specific command."""
+        return bool(self.frame_type == FrameType.CLUSTER_COMMAND)
+
+    @property
+    def is_general(self) -> bool:
+        """Return True if command is a global ZCL command."""
+        return bool(self.frame_type == FrameType.GLOBAL_COMMAND)
+
+    @property
+    def is_manufacturer_specific(self) -> bool:
+        """Return True if manufacturer code is present."""
+        return bool(self.value & 0b100)
+
+    @is_manufacturer_specific.setter
+    def is_manufacturer_specific(self, value: bool) -> None:
+        """Sets manufacturer specific code."""
+        if value:
+            self.value |= 0b100
+            return
+        self.value &= 0b11111011
+
+    @property
+    def is_reply(self) -> bool:
+        """Return True if is a reply (server cluster -> client cluster."""
+        return bool(self.value & 0b1000)
+
+    # in ZCL specs the above is the "direction" field
+    direction = is_reply
+
+    @is_reply.setter
+    def is_reply(self, value: bool) -> None:
+        """Sets the direction."""
+        if value:
+            self.value |= 0b1000
+            return
+        self.value &= 0b11110111
+
+    def __repr__(self) -> str:
+        """Representation."""
+        return ("<{} frame_type={} manufacturer_specific={} is_reply={} "
+                "disable_default_response={}>").format(self.__class__.__name__,
+                                                       self.frame_type.name,
+                                                       self.is_manufacturer_specific,
+                                                       self.is_reply,
+                                                       self.disable_default_response)
+
+    def serialize(self) -> bytes:
+        return t.uint8_t(self.value).serialize()
+
+    @classmethod
+    def cluster(cls, is_reply: bool = False):
+        """New Local Cluster specific command frame control."""
+        r = cls(FrameType.CLUSTER_COMMAND)
+        r.is_reply = is_reply
+        if is_reply:
+            r.disable_default_response = True
+        return r
+
+    @classmethod
+    def deserialize(cls, data):
+        frc, data = t.uint8_t.deserialize(data)
+        return cls(frc), data
+
+    @classmethod
+    def general(cls, is_reply: bool = False):
+        """New General ZCL command frame control."""
+        r = cls(FrameType.GLOBAL_COMMAND)
+        r.is_reply = is_reply
+        if is_reply:
+            r.disable_default_response = True
+        return r
+
+
+class ZCLHeader:
+    """ZCL Header."""
+
+    def __init__(self,
+                 frame_control: FrameControl,
+                 tsn: t.uint8_t = 0,
+                 command_id: t.uint8_t = 0,
+                 manufacturer: t.uint16_t = None,
+                 ) -> None:
+        """Initialize ZCL Frame instance."""
+        self._cmd_id = t.uint8_t(command_id)
+        self._frc = frame_control
+        self._manufacturer = manufacturer
+        if manufacturer is not None:
+            self.frame_control.is_manufacturer_specific = True
+        self._tsn = t.uint8_t(tsn)
+
+    @property
+    def frame_control(self) -> FrameControl:
+        """Return frame control."""
+        return self._frc
+
+    @property
+    def command_id(self) -> t.uint8_t:
+        """Return command identifier."""
+        return self._cmd_id
+
+    @command_id.setter
+    def command_id(self, value: t.uint8_t) -> None:
+        """Setter for command identifier."""
+        self._cmd_id = t.uint8_t(value)
+
+    @property
+    def is_reply(self) -> bool:
+        """Return direction of Frame Control."""
+        return self.frame_control.is_reply
+
+    @property
+    def manufacturer(self) -> Optional[t.uint16_t]:
+        """Return manufacturer id."""
+        if self._manufacturer is None:
+            return None
+        return t.uint16_t(self._manufacturer)
+
+    @manufacturer.setter
+    def manufacturer(self, value: t.uint16_t) -> None:
+        self.frame_control.is_manufacturer_specific = bool(value)
+        self._manufacturer = value
+
+    @property
+    def tsn(self) -> t.uint8_t:
+        """Return transaction seq number."""
+        return self._tsn
+
+    @tsn.setter
+    def tsn(self, value: t.uint8_t) -> None:
+        """Setter for tsn."""
+        self._tsn = t.uint8_t(value)
+
+    @classmethod
+    def deserialize(cls, data):
+        """Deserialize from bytes."""
+        frc, data = FrameControl.deserialize(data)
+        r = cls(frc)
+        if frc.is_manufacturer_specific:
+            r.manufacturer, data = t.uint16_t.deserialize(data)
+        r.tsn, data = t.uint8_t.deserialize(data)
+        r.command_id, data = t.uint8_t.deserialize(data)
+        return r, data
+
+    def serialize(self):
+        """Serialize to bytes."""
+        d = self.frame_control.serialize()
+        if self.frame_control.is_manufacturer_specific:
+            d += self.manufacturer.serialize()
+        d += self.tsn.serialize()
+        d += self.command_id.serialize()
+        return d
+
+    @classmethod
+    def general(cls,
+                tsn: t.uint8_t,
+                command_id: t.uint8_t,
+                manufacturer: t.uint16_t = None,
+                is_reply: bool = False,
+                ) -> 'ZCLHeader':
+        r = cls(FrameControl.general(is_reply), tsn, command_id, manufacturer)
+        if manufacturer is not None:
+            r.frame_control.is_manufacturer_specific = True
+        return r
+
+    @classmethod
+    def cluster(cls,
+                tsn: t.uint8_t,
+                command_id: t.uint8_t,
+                manufacturer: t.uint16_t = None,
+                is_reply: bool = False,
+                ) -> 'ZCLHeader':
+        r = cls(FrameControl.cluster(is_reply), tsn, command_id, manufacturer)
+        if manufacturer is not None:
+            r.frame_control.is_manufacturer_specific = True
+        return r
+
+    def __repr__(self) -> str:
+        """Representation."""
+        return "<{} frame_control={} manufacturer={} tsn={} command_id=0x{:02x}>".format(
+            self.__class__.__name__, self.frame_control, self.manufacturer, self.tsn, self.command_id)

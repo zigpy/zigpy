@@ -45,10 +45,8 @@ def test_deserialize_cluster_client(endpoint):
 
 
 def test_deserialize_cluster_unknown(endpoint):
-    tsn, command_id, is_reply, args = endpoint.deserialize(0xff00, b'\x05\x00\x00\x01\x00')
-    assert tsn == 1
-    assert command_id == 256
-    assert is_reply is False
+    with pytest.raises(KeyError):
+        endpoint.deserialize(0xff00, b'\x05\x00\x00\x01\x00')
 
 
 def test_deserialize_cluster_command_unknown(endpoint):
