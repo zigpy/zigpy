@@ -13,6 +13,7 @@ import zigpy.zcl
 import zigpy.zdo
 
 LOGGER = logging.getLogger(__name__)
+OTA_DIR = 'zigpy_ota/'
 
 
 class ControllerApplication(zigpy.util.ListenableMixin):
@@ -28,7 +29,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             ota_dir = None
         else:
             ota_dir = os.path.dirname(database_file)
-            ota_dir = os.path.join(ota_dir, 'zigpy_ota/')
+            ota_dir = os.path.join(ota_dir, OTA_DIR)
         self.ota.initialize(ota_dir)
 
         if database_file is not None:
