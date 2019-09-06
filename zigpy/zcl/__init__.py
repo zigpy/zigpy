@@ -227,8 +227,31 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             return success[attributes[0]]
         return success, failure
 
-    def write_attributes(self, attributes, is_report=False, manufacturer=None,
-                         unsupported_attrs=[]):
+    def read_attributes_rsp(self, attributes, manufacturer=None):
+        args = []
+        for attrid, value in attributes.items():
+            if isinstance(attrid, str):
+                attrid = self._attridx[attrid]
+
+            a = foundation.ReadAttributeRecord(
+                attrid, foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                foundation.TypeValue())
+            args.append(a)
+
+            if value is None:
+                continue
+
+            try:
+                a.status = foundation.Status.SUCCESS
+                python_type = self.attributes[attrid][1]
+                a.value.type = t.uint8_t(foundation.DATA_TYPE_IDX[python_type])
+                a.value.value = python_type(value)
+            except ValueError as e:
+                self.error(str(e))
+
+        return self._read_attributes_rsp(args, manufacturer=manufacturer)
+
+    def write_attributes(self, attributes, manufacturer=None):
         args = []
         for attrid, value in attributes.items():
             if isinstance(attrid, str):
@@ -237,14 +260,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 self.error("%d is not a valid attribute id", attrid)
                 continue
 
-            if is_report:
-                a = foundation.ReadAttributeRecord()
-                a.status = 0
-            else:
-                a = foundation.Attribute()
-
-            a.attrid = t.uint16_t(attrid)
-            a.value = foundation.TypeValue()
+            a = foundation.Attribute(attrid, foundation.TypeValue())
 
             try:
                 python_type = self.attributes[attrid][1]
@@ -254,17 +270,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             except ValueError as e:
                 self.error(str(e))
 
-        if is_report and unsupported_attrs:
-            for attrid in unsupported_attrs:
-                a = foundation.ReadAttributeRecord()
-                a.attrid = attrid
-                a.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
-                args.append(a)
-
-        if is_report:
-            return self._read_attributes_rsp(args, manufacturer=manufacturer)
-        else:
-            return self._write_attributes(args, manufacturer=manufacturer)
+        return self._write_attributes(args, manufacturer=manufacturer)
 
     def bind(self):
         return self._endpoint.device.zdo.bind(self._endpoint.endpoint_id, self.cluster_id)

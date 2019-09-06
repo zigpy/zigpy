@@ -340,9 +340,8 @@ class Time(Cluster):
     client_commands = {}
 
     def handle_cluster_general_request(self, tsn, command_id, *args):
-        if command_id == 0:
+        if command_id == foundation.Command.Read_Attributes:
             data = {}
-            unsupported = []
             for attr in args[0][0]:
                 if attr == 0:
                     epoch = datetime(2000, 1, 1, 0, 0, 0, 0)
@@ -358,10 +357,8 @@ class Time(Cluster):
                     diff = datetime.now() - epoch
                     data[attr] = diff.total_seconds()
                 else:
-                    unsupported.append(attr)
-            asyncio.ensure_future(
-                self.write_attributes(data, True,
-                                      unsupported_attrs=unsupported))
+                    data[attr] = None
+            asyncio.ensure_future(self.read_attributes_rsp(data))
 
 
 class RSSILocation(Cluster):

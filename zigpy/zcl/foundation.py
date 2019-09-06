@@ -59,13 +59,17 @@ class Discrete:
 
 
 class TypeValue:
+    def __init__(self, python_type=None, value=None):
+        self.type = python_type
+        self.value = value
+
     def serialize(self):
         return self.type.to_bytes(1, 'little') + self.value.serialize()
 
     @classmethod
     def deserialize(cls, data):
         self = cls()
-        self.type, data = data[0], data[1:]
+        self.type, data = t.uint8_t.deserialize(data)
         python_type = DATA_TYPES[self.type][1]
         self.value, data = python_type.deserialize(data)
         return self, data
@@ -156,13 +160,21 @@ DATA_TYPE_IDX[t.EUI64] = 0xf0
 DATA_TYPE_IDX[t.Bool] = 0x10
 
 
-class ReadAttributeRecord():
+class ReadAttributeRecord(t.Struct):
+    """Read Attribute Record."""
+
+    _fields = [
+        ('attrid', t.uint16_t),
+        ('status', Status),
+        ('value', TypeValue),
+    ]
+
     @classmethod
     def deserialize(cls, data):
         r = cls()
-        r.attrid, data = int.from_bytes(data[:2], 'little'), data[2:]
-        r.status, data = data[0], data[1:]
-        if r.status == 0:
+        r.attrid, data = t.uint16_t.deserialize(data)
+        r.status, data = Status.deserialize(data)
+        if r.status == Status.SUCCESS:
             r.value, data = TypeValue.deserialize(data)
 
         return r, data
@@ -170,14 +182,14 @@ class ReadAttributeRecord():
     def serialize(self):
         r = t.uint16_t(self.attrid).serialize()
         r += t.uint8_t(self.status).serialize()
-        if self.status == 0:
+        if self.status == Status.SUCCESS:
             r += self.value.serialize()
 
         return r
 
     def __repr__(self):
         r = '<ReadAttributeRecord attrid=%s status=%s' % (self.attrid, self.status)
-        if self.status == 0:
+        if self.status == Status.SUCCESS:
             r += ' value=%s' % (self.value.value, )
         r += '>'
         return r
