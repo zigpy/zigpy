@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import enum
 import logging
 
 import zigpy.types as t
@@ -38,6 +39,11 @@ class Registry(type):
             cls._registry_range[cls.cluster_id_range] = cls
 
 
+class ClusterType(enum.IntEnum):
+    Server = 0
+    Client = 1
+
+
 class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     """A cluster on an endpoint"""
     _registry = {}
@@ -45,24 +51,28 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     _server_command_idx = {}
     _client_command_idx = {}
 
-    def __init__(self, endpoint):
+    def __init__(self, endpoint, is_server=True):
         self._endpoint = endpoint
         self._attr_cache = {}
         self._listeners = {}
+        if is_server:
+            self._type = ClusterType.Server
+        else:
+            self._type = ClusterType.Client
 
     @classmethod
-    def from_id(cls, endpoint, cluster_id):
+    def from_id(cls, endpoint, cluster_id, is_server=True):
         if cluster_id in cls._registry:
-            return cls._registry[cluster_id](endpoint)
+            return cls._registry[cluster_id](endpoint, is_server)
         else:
             for cluster_id_range, cluster in cls._registry_range.items():
                 if cluster_id_range[0] <= cluster_id <= cluster_id_range[1]:
-                    c = cluster(endpoint)
+                    c = cluster(endpoint, is_server)
                     c.cluster_id = cluster_id
                     return c
 
         LOGGER.warning("Unknown cluster %s", cluster_id)
-        c = cls(endpoint)
+        c = cls(endpoint, is_server)
         c.cluster_id = cluster_id
         return c
 
@@ -304,6 +314,16 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def client_command(self, command, *args):
         schema = self.client_commands[command][1]
         return self.reply(False, command, schema, *args)
+
+    @property
+    def is_client(self) -> bool:
+        """Return True if this is a client cluster."""
+        return self._type == ClusterType.Client
+
+    @property
+    def is_server(self) -> bool:
+        """Return True if this is a server cluster."""
+        return self._type == ClusterType.Server
 
     @property
     def name(self):
