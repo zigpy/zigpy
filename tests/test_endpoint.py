@@ -69,6 +69,8 @@ async def test_reinitialize(ep):
 def test_add_input_cluster(ep):
     ep.add_input_cluster(0)
     assert 0 in ep.in_clusters
+    assert ep.in_clusters[0].is_server is True
+    assert ep.in_clusters[0].is_client is False
 
 
 def test_add_custom_input_cluster(ep):
@@ -81,6 +83,8 @@ def test_add_custom_input_cluster(ep):
 def test_add_output_cluster(ep):
     ep.add_output_cluster(0)
     assert 0 in ep.out_clusters
+    assert ep.out_clusters[0].is_server is False
+    assert ep.out_clusters[0].is_client is True
 
 
 def test_add_custom_output_cluster(ep):
