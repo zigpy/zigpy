@@ -242,8 +242,10 @@ class PersistingListener:
         self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         self._db.commit()
 
-    def _scan(self, table):
-        return self.execute("SELECT * FROM %s" % (table, ))
+    def _scan(self, table, filter=None):
+        if filter is None:
+            return self.execute("SELECT * FROM %s" % (table, ))
+        return self.execute("SELECT * FROM %s WHERE %s" % (table, filter))
 
     def load(self):
         LOGGER.debug("Loading application state from %s", self._database_file)
@@ -252,8 +254,8 @@ class PersistingListener:
         self._load_endpoints()
         self._load_clusters()
 
-        def _load_attributes():
-            for (ieee, endpoint_id, cluster, attrid, value) in self._scan("attributes"):
+        def _load_attributes(filter=None):
+            for (ieee, endpoint_id, cluster, attrid, value) in self._scan("attributes", filter):
                 dev = self._application.get_device(ieee)
                 if endpoint_id in dev.endpoints:
                     ep = dev.endpoints[endpoint_id]
@@ -274,7 +276,7 @@ class PersistingListener:
                             else:
                                 dev.model = value
 
-        _load_attributes()
+        _load_attributes("attrid=4 OR attrid=5")
 
         for device in self._application.devices.values():
             device = zigpy.quirks.get_device(device)
