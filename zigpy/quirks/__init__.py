@@ -83,7 +83,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                 cluster = None
                 cluster_id = c
             else:
-                cluster = c(self)
+                cluster = c(self, is_server=True)
                 cluster_id = cluster.cluster_id
             self.add_input_cluster(cluster_id, cluster)
 
@@ -92,7 +92,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                 cluster = None
                 cluster_id = c
             else:
-                cluster = c(self)
+                cluster = c(self, is_server=False)
                 cluster_id = cluster.cluster_id
             self.add_output_cluster(cluster_id, cluster)
 

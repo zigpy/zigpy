@@ -82,7 +82,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return self.in_clusters[cluster_id]
 
         if cluster is None:
-            cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
+            cluster = zigpy.zcl.Cluster.from_id(self, cluster_id,
+                                                is_server=True)
         self.in_clusters[cluster_id] = cluster
         if hasattr(cluster, 'ep_attribute'):
             self._cluster_attr[cluster.ep_attribute] = cluster
@@ -105,7 +106,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return self.out_clusters[cluster_id]
 
         if cluster is None:
-            cluster = zigpy.zcl.Cluster.from_id(self, cluster_id)
+            cluster = zigpy.zcl.Cluster.from_id(self, cluster_id,
+                                                is_server=False)
         self.out_clusters[cluster_id] = cluster
         return cluster
 
