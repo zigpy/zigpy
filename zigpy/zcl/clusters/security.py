@@ -1,4 +1,6 @@
 """Security and Safety Functional Domain"""
+import collections
+import enum
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
@@ -9,6 +11,34 @@ class ZoneStatus(t.Struct):
         ('zone_id', t.uint8_t),
         ('zone_status', t.bitmap16),
     ]
+
+
+class IasZoneType(t.enum16, enum.Enum):
+    """Zone type enum."""
+    Standard_CIE = 0x0000
+    Motion_Sensor = 0x000d
+    Contact_Switch = 0x0015
+    Fire_Sensor = 0x0028
+    Water_Sensor = 0x002a
+    Carbon_Monoxide_Sensor = 0x002b
+    Personal_Emergency_Device = 0x002c
+    Vibration_Movement_Sensor = 0x002d
+    Remote_Control = 0x010f
+    Key_Fob = 0x0115
+    Key_Pad = 0x021d
+    Standard_Warning_Device = 0x0225
+    Glass_Break_Sensor = 0x0226
+    Security_Repeater = 0x0229
+    Invalid_Zone_Type = 0xffff
+
+    @classmethod
+    def deserialize(cls, data):
+        try:
+            return super().deserialize(data)
+        except ValueError:
+            fake = collections.namedtuple(cls.__name__, "name, value")
+            val, data = t.uint16_t.deserialize(data)
+            return fake('manufacturer_specific_0x{:04x}'.format(val), val), data
 
 
 class IasZone(Cluster):
@@ -27,13 +57,13 @@ class IasZone(Cluster):
         0x0013: ('current_zone_sensitivity_level', t.uint8_t),
     }
     server_commands = {
-        0x0000: ('enroll_response', (t.uint8_t, t.uint8_t), True),
+        0x0000: ('enroll_response', (t.enum8, t.uint8_t), True),
         0x0001: ('init_normal_op_mode', (), False),
-        0x0002: ('init_test_mode', (), False),
+        0x0002: ('init_test_mode', (t.uint8_t, t.uint8_t), False),
     }
     client_commands = {
         0x0000: ('status_change_notification', (t.bitmap16, t.bitmap8, t.uint8_t, t.uint16_t), False),
-        0x0001: ('enroll', (), False),
+        0x0001: ('enroll', (IasZoneType, t.uint16_t), False),
     }
 
 

@@ -6,6 +6,7 @@ from unittest import mock
 import zigpy.endpoint
 import zigpy.zcl as zcl
 import zigpy.ota as ota
+import zigpy.zcl.clusters.security as sec
 
 
 IMAGE_SIZE = 0x2345
@@ -372,3 +373,15 @@ async def test_ota_handle_upgrade_end(ota_cluster):
         mock.sentinel.image_version
     assert ota_cluster.upgrade_end_response.call_args[0][3] == 0x0000
     assert ota_cluster.upgrade_end_response.call_args[0][4] == 0x0000
+
+
+def test_ias_zone_type():
+    extra = b'\xaa\x55'
+    zone, rest = sec.IasZoneType.deserialize(b'\x0d\x00' + extra)
+    assert rest == extra
+    assert zone is sec.IasZoneType.Motion_Sensor
+
+    zone, rest = sec.IasZoneType.deserialize(b'\x81\x81' + extra)
+    assert rest == extra
+    assert zone.name.startswith('manufacturer_specific')
+    assert zone.value == 0x8181
