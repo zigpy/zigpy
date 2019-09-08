@@ -270,7 +270,7 @@ def test_frame_header():
 
 def test_frame_header_general():
     """Test frame header general command."""
-    (tsn, cmd_id, manufacturer) = (0x11, 0x22, 0x3344)
+    (tsn, cmd_id, manufacturer) = (0x11, 0x15, 0x3344)
 
     hdr = foundation.ZCLHeader.general(tsn, cmd_id, manufacturer)
     assert hdr.frame_control.frame_type == foundation.FrameType.GLOBAL_COMMAND
@@ -286,7 +286,7 @@ def test_frame_header_general():
 
 def test_frame_header_cluster():
     """Test frame header cluster command."""
-    (tsn, cmd_id, manufacturer) = (0x11, 0x22, 0x3344)
+    (tsn, cmd_id, manufacturer) = (0x11, 0x16, 0x3344)
 
     hdr = foundation.ZCLHeader.cluster(tsn, cmd_id, manufacturer)
     assert hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND
