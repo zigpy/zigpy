@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime
+import collections
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
@@ -341,7 +342,8 @@ class Time(Cluster):
 
     def handle_cluster_general_request(self, tsn, command_id, *args):
         if command_id == foundation.Command.Read_Attributes:
-            data = {}
+            # responses should be in the same order. Is it time to ditch py35?
+            data = collections.OrderedDict()
             for attr in args[0][0]:
                 if attr == 0:
                     epoch = datetime(2000, 1, 1, 0, 0, 0, 0)
