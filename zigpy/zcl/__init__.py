@@ -247,6 +247,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 a.value.type = t.uint8_t(foundation.DATA_TYPE_IDX[python_type])
                 a.value.value = python_type(value)
             except ValueError as e:
+                a.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
                 self.error(str(e))
 
         return self._read_attributes_rsp(args, manufacturer=manufacturer)

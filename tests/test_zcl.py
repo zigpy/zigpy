@@ -5,6 +5,7 @@ import pytest
 import zigpy.endpoint
 import zigpy.types as t
 import zigpy.zcl as zcl
+import zigpy.zcl.foundation as foundation
 
 
 @pytest.fixture
@@ -279,7 +280,7 @@ def test_write_attributes_wrong_type(cluster):
     assert cluster._endpoint.request.call_count == 1
 
 
-def test_read_attributes_respnse(cluster):
+def test_read_attributes_response(cluster):
     cluster.read_attributes_rsp({0: 5})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
@@ -295,6 +296,23 @@ def test_read_attributes_resp_unsupported(cluster):
     assert cluster._endpoint.reply.call_count == 2
     assert cluster._endpoint.request.call_count == 0
     assert len(cluster._endpoint.reply.call_args[0][2]) == orig_len + 3
+
+
+def test_read_attributes_resp_str(cluster):
+    cluster.read_attributes_rsp({"hw_version": 32})
+    assert cluster._endpoint.reply.call_count == 1
+    assert cluster._endpoint.request.call_count == 0
+
+
+def test_read_attributes_resp_exc(cluster, monkeypatch):
+    type_idx = mock.MagicMock()
+    type_idx.__getitem__.side_effect = ValueError()
+    monkeypatch.setattr(foundation, 'DATA_TYPE_IDX', type_idx)
+
+    cluster.read_attributes_rsp({"hw_version": 32})
+    assert cluster._endpoint.reply.call_count == 1
+    assert cluster._endpoint.request.call_count == 0
+    assert cluster.endpoint.reply.call_args[0][2][-3:] == b'\x03\x00\x86'
 
 
 def test_bind(cluster):
