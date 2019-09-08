@@ -348,14 +348,14 @@ def test_configure_reporting_manuf():
     cluster.request = mock.MagicMock(name='request')
     cluster.configure_reporting(0, 10, 20, 1)
     cluster.request.assert_called_with(
-        True, 0x06, mock.ANY, mock.ANY, expect_reply=True, manufacturer=None
+        True, 0x06, mock.ANY, mock.ANY, expect_reply=True, manufacturer=None, tries=1
     )
 
     cluster.request.reset_mock()
     manufacturer_id = 0xfcfc
     cluster.configure_reporting(0, 10, 20, 1, manufacturer=manufacturer_id)
     cluster.request.assert_called_with(
-        True, 0x06, mock.ANY, mock.ANY, expect_reply=True, manufacturer=manufacturer_id
+        True, 0x06, mock.ANY, mock.ANY, expect_reply=True, manufacturer=manufacturer_id, tries=1
     )
     assert cluster.request.call_count == 1
 
@@ -408,7 +408,7 @@ def test_general_command(cluster):
     assert cluster.reply.call_count == 0
     assert cluster.request.call_count == 1
     cluster.request.assert_called_with(
-        True, cmd_id, mock.ANY, s.start, s.items, expect_reply=True, manufacturer=0x4567)
+        True, cmd_id, mock.ANY, s.start, s.items, expect_reply=True, manufacturer=0x4567, tries=1)
 
 
 def test_general_command_reply(cluster):

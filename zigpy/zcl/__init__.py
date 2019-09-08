@@ -360,15 +360,17 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def __getitem__(self, key):
         return self.read_attributes([key], allow_cache=True, raw=True)
 
-    def general_command(self, cmd, *args, manufacturer=None, expect_reply=True):
+    def general_command(self, cmd, *args, manufacturer=None, expect_reply=True, tries=1):
         schema = foundation.COMMANDS[cmd][0]
         if foundation.COMMANDS[cmd][1]:
+            # should reply be retryable?
             return self.reply(True, cmd, schema, *args,
                               manufacturer=manufacturer)
 
         return self.request(True, cmd, schema, *args,
                             manufacturer=manufacturer,
-                            expect_reply=expect_reply)
+                            expect_reply=expect_reply,
+                            tries=tries)
 
     _configure_reporting = functools.partialmethod(
         general_command, foundation.Command.Configure_Reporting)
