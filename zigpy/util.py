@@ -195,3 +195,42 @@ def convert_install_code(code):
         return None
 
     return aes_mmo_hash(code)
+
+
+class Request:
+    """Request context manager."""
+
+    def __init__(self, pending: dict, sequence: t.uint8_t) -> None:
+        """Init context manager for requests."""
+        assert sequence not in pending
+        self._pending = pending
+        self._result = asyncio.Future()
+        self._sequence = sequence
+
+    @property
+    def result(self) -> asyncio.Future:
+        return self._result
+
+    @property
+    def sequence(self) -> t.uint8_t:
+        """Send Future."""
+        return self._sequence
+
+    def __enter__(self):
+        """Return context manager."""
+        self._pending[self.sequence] = self
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        """Clean up pending on exit."""
+        if not self.result.done():
+            self.result.cancel()
+        self._pending.pop(self.sequence)
+
+        return not exc_type
+
+
+class Requests(dict):
+    def new(self, sequence: t.uint8_t) -> Request:
+        """Wrap new request into a context manager."""
+        return Request(self, sequence)
