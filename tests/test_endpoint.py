@@ -174,7 +174,7 @@ def _get_model_info(ep, test_manuf=None, test_model=None,
     assert 0 in ep.in_clusters
     assert ep.in_clusters[0] is clus
 
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+    async def mockrequest(foundation, command, schema, args, manufacturer=None, **kwargs):
         assert foundation is True
         assert command == 0
         if fail:

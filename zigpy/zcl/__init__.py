@@ -175,12 +175,9 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def handle_cluster_general_request(self, tsn, command_id, args):
         self.debug("No handler for general command %s", command_id)
 
-    async def read_attributes_raw(self, attributes, manufacturer=None):
-        schema = foundation.COMMANDS[foundation.Command.Read_Attributes][1]
+    def read_attributes_raw(self, attributes, manufacturer=None):
         attributes = [t.uint16_t(a) for a in attributes]
-        v = await self.request(True, foundation.Command.Read_Attributes, schema,
-                               attributes, manufacturer=manufacturer)
-        return v
+        return self._read_attributes(attributes, manufacturer=manufacturer)
 
     async def read_attributes(self, attributes, allow_cache=False, only_cache=False, raw=False, manufacturer=None):
         if raw:
@@ -230,8 +227,32 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             return success[attributes[0]]
         return success, failure
 
-    def write_attributes(self, attributes, is_report=False, manufacturer=None,
-                         unsupported_attrs=[]):
+    def read_attributes_rsp(self, attributes, manufacturer=None):
+        args = []
+        for attrid, value in attributes.items():
+            if isinstance(attrid, str):
+                attrid = self._attridx[attrid]
+
+            a = foundation.ReadAttributeRecord(
+                attrid, foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                foundation.TypeValue())
+            args.append(a)
+
+            if value is None:
+                continue
+
+            try:
+                a.status = foundation.Status.SUCCESS
+                python_type = self.attributes[attrid][1]
+                a.value.type = t.uint8_t(foundation.DATA_TYPE_IDX[python_type])
+                a.value.value = python_type(value)
+            except ValueError as e:
+                a.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+                self.error(str(e))
+
+        return self._read_attributes_rsp(args, manufacturer=manufacturer)
+
+    def write_attributes(self, attributes, manufacturer=None):
         args = []
         for attrid, value in attributes.items():
             if isinstance(attrid, str):
@@ -240,14 +261,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 self.error("%d is not a valid attribute id", attrid)
                 continue
 
-            if is_report:
-                a = foundation.ReadAttributeRecord()
-                a.status = 0
-            else:
-                a = foundation.Attribute()
-
-            a.attrid = t.uint16_t(attrid)
-            a.value = foundation.TypeValue()
+            a = foundation.Attribute(attrid, foundation.TypeValue())
 
             try:
                 python_type = self.attributes[attrid][1]
@@ -257,21 +271,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             except ValueError as e:
                 self.error(str(e))
 
-        if is_report and unsupported_attrs:
-            for attrid in unsupported_attrs:
-                a = foundation.ReadAttributeRecord()
-                a.attrid = attrid
-                a.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
-                args.append(a)
-
-        if is_report:
-            cmd = foundation.Command.Read_Attributes_rsp
-            schema = foundation.COMMANDS[cmd][0]
-            return self.reply(True, cmd, schema, args, manufacturer=manufacturer)
-        else:
-            cmd = foundation.Command.Write_Attributes
-            schema = foundation.COMMANDS[cmd][0]
-            return self.request(True, cmd, schema, args, manufacturer=manufacturer)
+        return self._write_attributes(args, manufacturer=manufacturer)
 
     def bind(self):
         return self._endpoint.device.zdo.bind(self._endpoint.endpoint_id, self.cluster_id)
@@ -289,7 +289,6 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             self.error("{} is not a valid attribute id".format(attribute))
             return
 
-        cmd = foundation.Command.Configure_Reporting
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = 0
         cfg.attrid = attrid
@@ -299,9 +298,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change
-        return self.request(
-            True, cmd, foundation.COMMANDS[cmd][0], [cfg], manufacturer=manufacturer
-        )
+        return self._configure_reporting([cfg], manufacturer=manufacturer)
 
     def command(self, command, *args, manufacturer=None, expect_reply=True):
         schema = self.server_commands[command][1]
@@ -363,22 +360,34 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def __getitem__(self, key):
         return self.read_attributes([key], allow_cache=True, raw=True)
 
-    @util.retryable_request
-    def _discover(self, cmd_id, start_item, num_of_items,
-                  manufacturer=None, tries=3):
-        schema = foundation.COMMANDS[cmd_id][0]
-        return self.request(
-            True, cmd_id, schema, start_item, num_of_items,
-            manufacturer=manufacturer)
+    def general_command(self, cmd, *args, manufacturer=None, expect_reply=True, tries=1):
+        schema = foundation.COMMANDS[cmd][0]
+        if foundation.COMMANDS[cmd][1]:
+            # should reply be retryable?
+            return self.reply(True, cmd, schema, *args,
+                              manufacturer=manufacturer)
 
+        return self.request(True, cmd, schema, *args,
+                            manufacturer=manufacturer,
+                            expect_reply=expect_reply,
+                            tries=tries)
+
+    _configure_reporting = functools.partialmethod(
+        general_command, foundation.Command.Configure_Reporting)
+    _read_attributes = functools.partialmethod(
+        general_command, foundation.Command.Read_Attributes)
+    _read_attributes_rsp = functools.partialmethod(
+        general_command, foundation.Command.Read_Attributes_rsp)
+    _write_attributes = functools.partialmethod(
+        general_command, foundation.Command.Write_Attributes)
     discover_attributes = functools.partialmethod(
-        _discover, foundation.Command.Discover_Attributes)
+        general_command, foundation.Command.Discover_Attributes)
     discover_attributes_extended = functools.partialmethod(
-        _discover, foundation.Command.Discover_Attribute_Extended)
+        general_command, foundation.Command.Discover_Attribute_Extended)
     discover_commands_received = functools.partialmethod(
-        _discover, foundation.Command.Discover_Commands_Received)
+        general_command, foundation.Command.Discover_Commands_Received)
     discover_commands_generated = functools.partialmethod(
-        _discover, foundation.Command.Discover_Commands_Generated)
+        general_command, foundation.Command.Discover_Commands_Generated)
 
 
 class ClusterPersistingListener:
