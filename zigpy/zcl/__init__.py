@@ -15,27 +15,27 @@ class Registry(type):
     def __init__(cls, name, bases, nmspc):  # noqa: N805
         super(Registry, cls).__init__(name, bases, nmspc)
 
-        if hasattr(cls, 'attributes'):
+        if hasattr(cls, "attributes"):
             cls._attridx = {}
             for attrid, (attrname, datatype) in cls.attributes.items():
                 cls._attridx[attrname] = attrid
-        if hasattr(cls, 'server_commands'):
+        if hasattr(cls, "server_commands"):
             cls._server_command_idx = {}
             for command_id, details in cls.server_commands.items():
                 command_name, schema, is_reply = details
                 cls._server_command_idx[command_name] = command_id
-        if hasattr(cls, 'client_commands'):
+        if hasattr(cls, "client_commands"):
             cls._client_command_idx = {}
             for command_id, details in cls.client_commands.items():
                 command_name, schema, is_reply = details
                 cls._client_command_idx[command_name] = command_id
 
-        if getattr(cls, '_skip_registry', False):
+        if getattr(cls, "_skip_registry", False):
             return
 
-        if hasattr(cls, 'cluster_id'):
+        if hasattr(cls, "cluster_id"):
             cls._registry[cls.cluster_id] = cls
-        if hasattr(cls, 'cluster_id_range'):
+        if hasattr(cls, "cluster_id_range"):
             cls._registry_range[cls.cluster_id_range] = cls
 
 
@@ -46,6 +46,7 @@ class ClusterType(enum.IntEnum):
 
 class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     """A cluster on an endpoint"""
+
     _registry = {}
     _registry_range = {}
     _server_command_idx = {}
@@ -105,18 +106,25 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 return hdr.tsn, hdr.command_id, hdr.is_reply, data
 
         value, data = t.deserialize(data, schema)
-        if data != b'':
+        if data != b"":
             LOGGER.warning("Data remains after deserializing ZCL frame")
 
         return hdr.tsn, hdr.command_id, is_reply, value
 
     @util.retryable_request
-    def request(self, general, command_id, schema, *args, manufacturer=None, expect_reply=True):
-        optional = len([s for s in schema if hasattr(s, 'optional') and s.optional])
+    def request(
+        self, general, command_id, schema, *args, manufacturer=None, expect_reply=True
+    ):
+        optional = len([s for s in schema if hasattr(s, "optional") and s.optional])
         if len(schema) < len(args) or len(args) < len(schema) - optional:
             self.error("Schema and args lengths do not match in request")
             error = asyncio.Future()
-            error.set_exception(ValueError("Wrong number of parameters for request, expected %d argument(s)" % len(schema)))
+            error.set_exception(
+                ValueError(
+                    "Wrong number of parameters for request, expected %d argument(s)"
+                    % len(schema)
+                )
+            )
             return error
 
         sequence = self._endpoint._device.application.get_sequence()
@@ -127,7 +135,13 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         hdr.manufacturer = manufacturer
         data = hdr.serialize() + t.serialize(args, schema)
 
-        return self._endpoint.request(self.cluster_id, sequence, data, expect_reply=expect_reply, command_id=command_id)
+        return self._endpoint.request(
+            self.cluster_id,
+            sequence,
+            data,
+            expect_reply=expect_reply,
+            command_id=command_id,
+        )
 
     def reply(self, general, command_id, schema, *args, manufacturer=None):
         if len(schema) != len(args) and foundation.Status not in schema:
@@ -135,9 +149,13 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
         sequence = self._endpoint._device.application.get_sequence()
         if general:
-            hdr = foundation.ZCLHeader.general(sequence, command_id, manufacturer, is_reply=True)
+            hdr = foundation.ZCLHeader.general(
+                sequence, command_id, manufacturer, is_reply=True
+            )
         else:
-            hdr = foundation.ZCLHeader.cluster(sequence, command_id, manufacturer, is_reply=True)
+            hdr = foundation.ZCLHeader.cluster(
+                sequence, command_id, manufacturer, is_reply=True
+            )
         hdr.manufacturer = manufacturer
         data = hdr.serialize() + t.serialize(args, schema)
 
@@ -149,20 +167,23 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             return
 
         self.debug("ZCL request 0x%04x: %s", command_id, args)
-        if command_id <= 0xff:
-            self.listener_event('zdo_command', tsn, command_id, args)
+        if command_id <= 0xFF:
+            self.listener_event("zdo_command", tsn, command_id, args)
         else:
             # Unencapsulate bad hack
             command_id -= 256
-            self.listener_event('cluster_command', tsn, command_id, args)
+            self.listener_event("cluster_command", tsn, command_id, args)
             self.handle_cluster_request(tsn, command_id, args)
             return
 
         if command_id == foundation.Command.Report_Attributes:
-            valuestr = ", ".join([
-                "%s=%s" % (self.attributes.get(a.attrid, [a.attrid])[0],
-                           a.value.value) for a in args[0]
-            ])
+            valuestr = ", ".join(
+                [
+                    "%s=%s"
+                    % (self.attributes.get(a.attrid, [a.attrid])[0], a.value.value)
+                    for a in args[0]
+                ]
+            )
             self.debug("Attribute report received: %s", valuestr)
             for attr in args[0]:
                 self._update_attribute(attr.attrid, attr.value.value)
@@ -179,7 +200,14 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         attributes = [t.uint16_t(a) for a in attributes]
         return self._read_attributes(attributes, manufacturer=manufacturer)
 
-    async def read_attributes(self, attributes, allow_cache=False, only_cache=False, raw=False, manufacturer=None):
+    async def read_attributes(
+        self,
+        attributes,
+        allow_cache=False,
+        only_cache=False,
+        raw=False,
+        manufacturer=None,
+    ):
         if raw:
             assert len(attributes) == 1
         success, failure = {}, {}
@@ -234,8 +262,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 attrid = self._attridx[attrid]
 
             a = foundation.ReadAttributeRecord(
-                attrid, foundation.Status.UNSUPPORTED_ATTRIBUTE,
-                foundation.TypeValue())
+                attrid, foundation.Status.UNSUPPORTED_ATTRIBUTE, foundation.TypeValue()
+            )
             args.append(a)
 
             if value is None:
@@ -274,13 +302,23 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         return self._write_attributes(args, manufacturer=manufacturer)
 
     def bind(self):
-        return self._endpoint.device.zdo.bind(self._endpoint.endpoint_id, self.cluster_id)
+        return self._endpoint.device.zdo.bind(
+            self._endpoint.endpoint_id, self.cluster_id
+        )
 
     def unbind(self):
-        return self._endpoint.device.zdo.unbind(self._endpoint.endpoint_id, self.cluster_id)
+        return self._endpoint.device.zdo.unbind(
+            self._endpoint.endpoint_id, self.cluster_id
+        )
 
-    def configure_reporting(self, attribute, min_interval, max_interval,
-                            reportable_change, manufacturer=None):
+    def configure_reporting(
+        self,
+        attribute,
+        min_interval,
+        max_interval,
+        reportable_change,
+        manufacturer=None,
+    ):
         if isinstance(attribute, str):
             attrid = self._attridx.get(attribute, None)
         else:
@@ -293,8 +331,8 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         cfg.direction = 0
         cfg.attrid = attrid
         cfg.datatype = foundation.DATA_TYPE_IDX.get(
-            self.attributes.get(attrid, (None, None))[1],
-            None)
+            self.attributes.get(attrid, (None, None))[1], None
+        )
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change
@@ -302,7 +340,14 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
     def command(self, command, *args, manufacturer=None, expect_reply=True):
         schema = self.server_commands[command][1]
-        return self.request(False, command, schema, *args, manufacturer=manufacturer, expect_reply=expect_reply)
+        return self.request(
+            False,
+            command,
+            schema,
+            *args,
+            manufacturer=manufacturer,
+            expect_reply=expect_reply
+        )
 
     def client_command(self, command, *args):
         schema = self.client_commands[command][1]
@@ -332,10 +377,10 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
     def _update_attribute(self, attrid, value):
         self._attr_cache[attrid] = value
-        self.listener_event('attribute_updated', attrid, value)
+        self.listener_event("attribute_updated", attrid, value)
 
     def log(self, lvl, msg, *args):
-        msg = '[0x%04x:%s:0x%04x] ' + msg
+        msg = "[0x%04x:%s:0x%04x] " + msg
         args = (
             self._endpoint.device.nwk,
             self._endpoint.endpoint_id,
@@ -346,48 +391,58 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
     def __getattr__(self, name):
         if name in self._client_command_idx:
             return functools.partial(
-                self.client_command,
-                self._client_command_idx[name],
+                self.client_command, self._client_command_idx[name]
             )
         elif name in self._server_command_idx:
-            return functools.partial(
-                self.command,
-                self._server_command_idx[name],
-            )
+            return functools.partial(self.command, self._server_command_idx[name])
         else:
-            raise AttributeError("No such command name: %s" % (name, ))
+            raise AttributeError("No such command name: %s" % (name,))
 
     def __getitem__(self, key):
         return self.read_attributes([key], allow_cache=True, raw=True)
 
-    def general_command(self, cmd, *args, manufacturer=None, expect_reply=True, tries=1):
+    def general_command(
+        self, cmd, *args, manufacturer=None, expect_reply=True, tries=1
+    ):
         schema = foundation.COMMANDS[cmd][0]
         if foundation.COMMANDS[cmd][1]:
             # should reply be retryable?
-            return self.reply(True, cmd, schema, *args,
-                              manufacturer=manufacturer)
+            return self.reply(True, cmd, schema, *args, manufacturer=manufacturer)
 
-        return self.request(True, cmd, schema, *args,
-                            manufacturer=manufacturer,
-                            expect_reply=expect_reply,
-                            tries=tries)
+        return self.request(
+            True,
+            cmd,
+            schema,
+            *args,
+            manufacturer=manufacturer,
+            expect_reply=expect_reply,
+            tries=tries
+        )
 
     _configure_reporting = functools.partialmethod(
-        general_command, foundation.Command.Configure_Reporting)
+        general_command, foundation.Command.Configure_Reporting
+    )
     _read_attributes = functools.partialmethod(
-        general_command, foundation.Command.Read_Attributes)
+        general_command, foundation.Command.Read_Attributes
+    )
     _read_attributes_rsp = functools.partialmethod(
-        general_command, foundation.Command.Read_Attributes_rsp)
+        general_command, foundation.Command.Read_Attributes_rsp
+    )
     _write_attributes = functools.partialmethod(
-        general_command, foundation.Command.Write_Attributes)
+        general_command, foundation.Command.Write_Attributes
+    )
     discover_attributes = functools.partialmethod(
-        general_command, foundation.Command.Discover_Attributes)
+        general_command, foundation.Command.Discover_Attributes
+    )
     discover_attributes_extended = functools.partialmethod(
-        general_command, foundation.Command.Discover_Attribute_Extended)
+        general_command, foundation.Command.Discover_Attribute_Extended
+    )
     discover_commands_received = functools.partialmethod(
-        general_command, foundation.Command.Discover_Commands_Received)
+        general_command, foundation.Command.Discover_Commands_Received
+    )
     discover_commands_generated = functools.partialmethod(
-        general_command, foundation.Command.Discover_Commands_Generated)
+        general_command, foundation.Command.Discover_Commands_Generated
+    )
 
 
 class ClusterPersistingListener:

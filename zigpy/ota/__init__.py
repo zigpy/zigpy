@@ -33,8 +33,10 @@ class CachedImage(OTAImage):
         return self.expires_on - datetime.datetime.now() < TIMEDELTA_0
 
     def get_image_block(self, *args, **kwargs) -> bytes:
-        if self.expires_on is not None and \
-                self.expires_on - datetime.datetime.now() < DELAY_EXPIRATION:
+        if (
+            self.expires_on is not None
+            and self.expires_on - datetime.datetime.now() < DELAY_EXPIRATION
+        ):
             self.expires_on += DELAY_EXPIRATION
         return super().get_image_block(*args, **kwargs)
 
@@ -52,20 +54,18 @@ class OTA(zigpy.util.ListenableMixin):
 
     async def _initialize(self, ota_dir: str) -> None:
         LOGGER.debug("Initialize OTA providers")
-        await self.async_event('initialize_provider', ota_dir)
+        await self.async_event("initialize_provider", ota_dir)
 
     def initialize(self, ota_dir: str) -> None:
         self._not_initialized = False
         asyncio.ensure_future(self._initialize(ota_dir))
 
-    async def get_ota_image(self,
-                            manufacturer_id,
-                            image_type) -> Optional[OTAImage]:
+    async def get_ota_image(self, manufacturer_id, image_type) -> Optional[OTAImage]:
         key = ImageKey(manufacturer_id, image_type)
         if key in self._image_cache and not self._image_cache[key].expired:
             return self._image_cache[key]
 
-        images = await self.async_event('get_image', key)
+        images = await self.async_event("get_image", key)
         images = [img for img in images if img]
         if not images:
             return None

@@ -5,26 +5,26 @@ import zigpy.types as t
 
 class PowerDescriptor(t.Struct):
     _fields = [
-        ('byte_1', 1),  # Current power mode 4, Available power sources 4
-        ('byte_2', 1),  # Current power source 4, Current power source level 4
+        ("byte_1", 1),  # Current power mode 4, Available power sources 4
+        ("byte_2", 1),  # Current power source 4, Current power source level 4
     ]
 
 
 class SimpleDescriptor(t.Struct):
     _fields = [
-        ('endpoint', t.uint8_t),
-        ('profile', t.uint16_t),
-        ('device_type', t.uint16_t),
-        ('device_version', t.uint8_t),
-        ('input_clusters', t.LVList(t.uint16_t)),
-        ('output_clusters', t.LVList(t.uint16_t)),
+        ("endpoint", t.uint8_t),
+        ("profile", t.uint16_t),
+        ("device_type", t.uint16_t),
+        ("device_version", t.uint8_t),
+        ("input_clusters", t.LVList(t.uint16_t)),
+        ("output_clusters", t.LVList(t.uint16_t)),
     ]
 
 
 class SizePrefixedSimpleDescriptor(SimpleDescriptor):
     def serialize(self):
         data = super().serialize()
-        return len(data).to_bytes(1, 'little') + data
+        return len(data).to_bytes(1, "little") + data
 
     @classmethod
     def deserialize(cls, data):
@@ -46,15 +46,15 @@ class LogicalType(t.uint8_t, enum.Enum):
 
 class NodeDescriptor(t.Struct):
     _fields = [
-        ('byte1', t.uint8_t),
-        ('byte2', t.uint8_t),
-        ('mac_capability_flags', t.uint8_t),
-        ('manufacturer_code', t.uint16_t),
-        ('maximum_buffer_size', t.uint8_t),
-        ('maximum_incoming_transfer_size', t.uint16_t),
-        ('server_mask', t.uint16_t),
-        ('maximum_outgoing_transfer_size', t.uint16_t),
-        ('descriptor_capability_field', t.uint8_t),
+        ("byte1", t.uint8_t),
+        ("byte2", t.uint8_t),
+        ("mac_capability_flags", t.uint8_t),
+        ("manufacturer_code", t.uint16_t),
+        ("maximum_buffer_size", t.uint8_t),
+        ("maximum_incoming_transfer_size", t.uint16_t),
+        ("server_mask", t.uint16_t),
+        ("maximum_outgoing_transfer_size", t.uint16_t),
+        ("descriptor_capability_field", t.uint8_t),
     ]
 
     def __init__(self, *args, **kwargs):
@@ -157,12 +157,13 @@ class NodeDescriptor(t.Struct):
 
 class MultiAddress:
     """Used for binds, represents an IEEE+endpoint or NWK address"""
+
     def __init__(self, other=None):
         if isinstance(other, self.__class__):
             self.addrmode = other.addrmode
-            self.nwk = getattr(other, 'nwk', None)
-            self.ieee = getattr(other, 'ieee', None)
-            self.endpoint = getattr(other, 'endpoint', None)
+            self.nwk = getattr(other, "nwk", None)
+            self.ieee = getattr(other, "ieee", None)
+            self.endpoint = getattr(other, "endpoint", None)
 
     @classmethod
     def deserialize(cls, data):
@@ -180,15 +181,12 @@ class MultiAddress:
 
     def serialize(self):
         if self.addrmode == 0x01:
-            return (
-                self.addrmode.to_bytes(1, 'little') +
-                self.nwk.to_bytes(2, 'little')
-            )
+            return self.addrmode.to_bytes(1, "little") + self.nwk.to_bytes(2, "little")
         elif self.addrmode == 0x03:
             return (
-                self.addrmode.to_bytes(1, 'little') +
-                self.ieee.serialize() +
-                self.endpoint.to_bytes(1, 'little')
+                self.addrmode.to_bytes(1, "little")
+                + self.ieee.serialize()
+                + self.endpoint.to_bytes(1, "little")
             )
         else:
             raise ValueError("Invalid value for addrmode")
@@ -196,40 +194,39 @@ class MultiAddress:
 
 class Neighbor(t.Struct):
     """Neighbor Descriptor"""
+
     _fields = [
-        ('PanId', t.EUI64),
-        ('IEEEAddr', t.EUI64),
-        ('NWKAddr', t.NWK),
-        ('NeighborType', t.uint8_t),
-        ('PermitJoining', t.uint8_t),
-        ('Depth', t.uint8_t),
-        ('LQI', t.uint8_t)
+        ("PanId", t.EUI64),
+        ("IEEEAddr", t.EUI64),
+        ("NWKAddr", t.NWK),
+        ("NeighborType", t.uint8_t),
+        ("PermitJoining", t.uint8_t),
+        ("Depth", t.uint8_t),
+        ("LQI", t.uint8_t),
     ]
 
 
 class Neighbors(t.Struct):
     """Mgmt_Lqi_rsp"""
+
     _fields = [
-        ('Entries', t.uint8_t),
-        ('StartIndex', t.uint8_t),
-        ('NeighborTableList', t.LVList(Neighbor))
+        ("Entries", t.uint8_t),
+        ("StartIndex", t.uint8_t),
+        ("NeighborTableList", t.LVList(Neighbor)),
     ]
 
 
 class Route(t.Struct):
     """Route Descriptor"""
-    _fields = [
-        ('DstNWK', t.NWK),
-        ('RouteStatus', t.uint8_t),
-        ('NextHop', t.NWK)
-    ]
+
+    _fields = [("DstNWK", t.NWK), ("RouteStatus", t.uint8_t), ("NextHop", t.NWK)]
 
 
 class Routes(t.Struct):
     _fields = [
-        ('Entries', t.uint8_t),
-        ('StartIndex', t.uint8_t),
-        ('RoutingTableList', t.LVList(Route))
+        ("Entries", t.uint8_t),
+        ("StartIndex", t.uint8_t),
+        ("RoutingTableList", t.LVList(Route)),
     ]
 
 
@@ -260,14 +257,14 @@ class Status(t.uint8_t, enum.Enum):
     NO_DESCRIPTOR = 0x89
     # The device does not have storage space to support the requested
     # operation.
-    INSUFFICIENT_SPACE = 0x8a
+    INSUFFICIENT_SPACE = 0x8A
     # The device is not in the proper state to support the requested operation.
-    NOT_PERMITTED = 0x8b
+    NOT_PERMITTED = 0x8B
     # The device does not have table space to support the operation.
-    TABLE_FULL = 0x8c
+    TABLE_FULL = 0x8C
     # The permissions configuration table on the target indicates that the
     # request is not authorized from this device.
-    NOT_AUTHORIZED = 0x8d
+    NOT_AUTHORIZED = 0x8D
 
     @classmethod
     def deserialize(cls, data):
@@ -277,10 +274,10 @@ class Status(t.uint8_t, enum.Enum):
             return t.uint8_t.deserialize(data)
 
 
-NWK = ('NWKAddr', t.NWK)
-NWKI = ('NWKAddrOfInterest', t.NWK)
-IEEE = ('IEEEAddr', t.EUI64)
-STATUS = ('Status', Status)
+NWK = ("NWKAddr", t.NWK)
+NWKI = ("NWKAddrOfInterest", t.NWK)
+IEEE = ("IEEEAddr", t.EUI64)
+STATUS = ("Status", Status)
 
 
 class _CommandID(t.HexRepr, t.uint16_t):
@@ -305,11 +302,11 @@ class ZDOCmd(_CommandID, enum.Enum):
     Discovery_store_req = 0x0016
     Node_Desc_store_req = 0x0017
     Active_EP_store_req = 0x0019
-    Simple_Desc_store_req = 0x001a
-    Remove_node_cache_req = 0x001b
-    Find_node_cache_req = 0x001c
-    Extended_Simple_Desc_req = 0x001d
-    Extended_Active_EP_req = 0x001e
+    Simple_Desc_store_req = 0x001A
+    Remove_node_cache_req = 0x001B
+    Find_node_cache_req = 0x001C
+    Extended_Simple_Desc_req = 0x001D
+    Extended_Active_EP_req = 0x001E
     #  Bind Management Server Services Responses
     End_Device_Bind_req = 0x0020
     Bind_req = 0x0021
@@ -341,11 +338,11 @@ class ZDOCmd(_CommandID, enum.Enum):
     Node_Desc_store_rsp = 0x8017
     Power_Desc_store_rsp = 0x8018
     Active_EP_store_rsp = 0x8019
-    Simple_Desc_store_rsp = 0x801a
-    Remove_node_cache_rsp = 0x801b
-    Find_node_cache_rsp = 0x801c
-    Extended_Simple_Desc_rsp = 0x801d
-    Extended_Active_EP_rsp = 0x801e
+    Simple_Desc_store_rsp = 0x801A
+    Remove_node_cache_rsp = 0x801B
+    Find_node_cache_rsp = 0x801C
+    Extended_Simple_Desc_rsp = 0x801D
+    Extended_Active_EP_rsp = 0x801E
     #  Bind Management Server Services Responses
     End_Device_Bind_rsp = 0x8020
     Bind_rsp = 0x8021
@@ -362,80 +359,163 @@ class ZDOCmd(_CommandID, enum.Enum):
 
 CLUSTERS = {
     # Device and Service Discovery Server Requests
-    ZDOCmd.NWK_addr_req: (IEEE, ('RequestType', t.uint8_t), ('StartIndex', t.uint8_t)),
-    ZDOCmd.IEEE_addr_req: (NWKI, ('RequestType', t.uint8_t), ('StartIndex', t.uint8_t)),
+    ZDOCmd.NWK_addr_req: (IEEE, ("RequestType", t.uint8_t), ("StartIndex", t.uint8_t)),
+    ZDOCmd.IEEE_addr_req: (NWKI, ("RequestType", t.uint8_t), ("StartIndex", t.uint8_t)),
     ZDOCmd.Node_Desc_req: (NWKI,),
     ZDOCmd.Power_Desc_req: (NWKI,),
-    ZDOCmd.Simple_Desc_req: (NWKI, ('EndPoint', t.uint8_t)),
+    ZDOCmd.Simple_Desc_req: (NWKI, ("EndPoint", t.uint8_t)),
     ZDOCmd.Active_EP_req: (NWKI,),
-    ZDOCmd.Match_Desc_req: (NWKI, ('ProfileID', t.uint16_t), ('InClusterList', t.LVList(t.uint16_t)), ('OutClusterList', t.LVList(t.uint16_t))),
+    ZDOCmd.Match_Desc_req: (
+        NWKI,
+        ("ProfileID", t.uint16_t),
+        ("InClusterList", t.LVList(t.uint16_t)),
+        ("OutClusterList", t.LVList(t.uint16_t)),
+    ),
     # ZDO.Complex_Desc_req: (NWKI, ),
     ZDOCmd.User_Desc_req: (NWKI,),
     ZDOCmd.Discovery_Cache_req: (NWK, IEEE),
-    ZDOCmd.Device_annce: (NWK, IEEE, ('Capability', t.uint8_t)),
-    ZDOCmd.User_Desc_set: (NWKI, ('UserDescriptor', t.fixed_list(16, t.uint8_t))),  # Really a string
-    ZDOCmd.System_Server_Discovery_req: (('ServerMask', t.uint16_t),),
-    ZDOCmd.Discovery_store_req: (NWK, IEEE, ('NodeDescSize', t.uint8_t), ('PowerDescSize', t.uint8_t), ('ActiveEPSize', t.uint8_t), ('SimpleDescSizeList', t.LVList(t.uint8_t))),
-    ZDOCmd.Node_Desc_store_req: (NWK, IEEE, ('NodeDescriptor', NodeDescriptor)),
-    ZDOCmd.Active_EP_store_req: (NWK, IEEE, ('ActiveEPList', t.LVList(t.uint8_t))),
-    ZDOCmd.Simple_Desc_store_req: (NWK, IEEE, ('SimpleDescriptor', SizePrefixedSimpleDescriptor)),
+    ZDOCmd.Device_annce: (NWK, IEEE, ("Capability", t.uint8_t)),
+    ZDOCmd.User_Desc_set: (
+        NWKI,
+        ("UserDescriptor", t.fixed_list(16, t.uint8_t)),
+    ),  # Really a string
+    ZDOCmd.System_Server_Discovery_req: (("ServerMask", t.uint16_t),),
+    ZDOCmd.Discovery_store_req: (
+        NWK,
+        IEEE,
+        ("NodeDescSize", t.uint8_t),
+        ("PowerDescSize", t.uint8_t),
+        ("ActiveEPSize", t.uint8_t),
+        ("SimpleDescSizeList", t.LVList(t.uint8_t)),
+    ),
+    ZDOCmd.Node_Desc_store_req: (NWK, IEEE, ("NodeDescriptor", NodeDescriptor)),
+    ZDOCmd.Active_EP_store_req: (NWK, IEEE, ("ActiveEPList", t.LVList(t.uint8_t))),
+    ZDOCmd.Simple_Desc_store_req: (
+        NWK,
+        IEEE,
+        ("SimpleDescriptor", SizePrefixedSimpleDescriptor),
+    ),
     ZDOCmd.Remove_node_cache_req: (NWK, IEEE),
     ZDOCmd.Find_node_cache_req: (NWK, IEEE),
-    ZDOCmd.Extended_Simple_Desc_req: (NWKI, ('EndPoint', t.uint8_t), ('StartIndex', t.uint8_t)),
-    ZDOCmd.Extended_Active_EP_req: (NWKI, ('StartIndex', t.uint8_t)),
+    ZDOCmd.Extended_Simple_Desc_req: (
+        NWKI,
+        ("EndPoint", t.uint8_t),
+        ("StartIndex", t.uint8_t),
+    ),
+    ZDOCmd.Extended_Active_EP_req: (NWKI, ("StartIndex", t.uint8_t)),
     #  Bind Management Server Services Responses
-    ZDOCmd.End_Device_Bind_req: (('BindingTarget', t.uint16_t), ('SrcAddress', t.EUI64), ('SrcEndpoint', t.uint8_t), ('ProfileID', t.uint8_t), ('InClusterList', t.LVList(t.uint8_t)), ('OutClusterList', t.LVList(t.uint8_t))),
-    ZDOCmd.Bind_req: (('SrcAddress', t.EUI64), ('SrcEndpoint', t.uint8_t), ('ClusterID', t.uint16_t), ('DstAddress', MultiAddress)),
-    ZDOCmd.Unbind_req: (('SrcAddress', t.EUI64), ('SrcEndpoint', t.uint8_t), ('ClusterID', t.uint16_t), ('DstAddress', MultiAddress)),
+    ZDOCmd.End_Device_Bind_req: (
+        ("BindingTarget", t.uint16_t),
+        ("SrcAddress", t.EUI64),
+        ("SrcEndpoint", t.uint8_t),
+        ("ProfileID", t.uint8_t),
+        ("InClusterList", t.LVList(t.uint8_t)),
+        ("OutClusterList", t.LVList(t.uint8_t)),
+    ),
+    ZDOCmd.Bind_req: (
+        ("SrcAddress", t.EUI64),
+        ("SrcEndpoint", t.uint8_t),
+        ("ClusterID", t.uint16_t),
+        ("DstAddress", MultiAddress),
+    ),
+    ZDOCmd.Unbind_req: (
+        ("SrcAddress", t.EUI64),
+        ("SrcEndpoint", t.uint8_t),
+        ("ClusterID", t.uint16_t),
+        ("DstAddress", MultiAddress),
+    ),
     # Network Management Server Services Requests
     # ... TODO optional stuff ...
-    ZDOCmd.Mgmt_Lqi_req: (('StartIndex', t.uint8_t),),
-    ZDOCmd.Mgmt_Rtg_req: (('StartIndex', t.uint8_t),),
+    ZDOCmd.Mgmt_Lqi_req: (("StartIndex", t.uint8_t),),
+    ZDOCmd.Mgmt_Rtg_req: (("StartIndex", t.uint8_t),),
     # ... TODO optional stuff ...
-    ZDOCmd.Mgmt_Leave_req: (('DeviceAddress', t.EUI64), ('Options', t.bitmap8)),
-    ZDOCmd.Mgmt_Permit_Joining_req: (('PermitDuration', t.uint8_t), ('TC_Significant', t.Bool)),
+    ZDOCmd.Mgmt_Leave_req: (("DeviceAddress", t.EUI64), ("Options", t.bitmap8)),
+    ZDOCmd.Mgmt_Permit_Joining_req: (
+        ("PermitDuration", t.uint8_t),
+        ("TC_Significant", t.Bool),
+    ),
     # ... TODO optional stuff ...
-
     # Responses
     # Device and Service Discovery Server Responses
-    ZDOCmd.NWK_addr_rsp: (STATUS, IEEE, NWK,
-                          ('NumAssocDev', t.Optional(t.uint8_t)),
-                          ('StartIndex', t.Optional(t.uint8_t)),
-                          ('NWKAddressAssocDevList', t.Optional(t.List(t.NWK)))),
-    ZDOCmd.IEEE_addr_rsp: (STATUS, IEEE, NWK,
-                           ('NumAssocDev', t.Optional(t.uint8_t)),
-                           ('StartIndex', t.Optional(t.uint8_t)),
-                           ('NWKAddrAssocDevList', t.Optional(t.List(t.NWK)))),
-    ZDOCmd.Node_Desc_rsp: (STATUS, NWKI, ('NodeDescriptor', t.Optional(NodeDescriptor))),
-    ZDOCmd.Power_Desc_rsp: (STATUS, NWKI, ('PowerDescriptor', t.Optional(PowerDescriptor))),
-    ZDOCmd.Simple_Desc_rsp: (STATUS, NWKI, ('SimpleDescriptor', t.Optional(SizePrefixedSimpleDescriptor))),
-    ZDOCmd.Active_EP_rsp: (STATUS, NWKI, ('ActiveEPList', t.LVList(t.uint8_t))),
-    ZDOCmd.Match_Desc_rsp: (STATUS, NWKI, ('MatchList', t.LVList(t.uint8_t))),
-    # ZDO.Complex_Desc_rsp: (STATUS, NWKI, ('Length', t.uint8_t), ('ComplexDescriptor', t.Optional(ComplexDescriptor))),
-    ZDOCmd.User_Desc_rsp: (STATUS, NWKI, ('Length', t.uint8_t),
-                           ('UserDescriptor', t.Optional(t.fixed_list(16, t.uint8_t)))),
+    ZDOCmd.NWK_addr_rsp: (
+        STATUS,
+        IEEE,
+        NWK,
+        ("NumAssocDev", t.Optional(t.uint8_t)),
+        ("StartIndex", t.Optional(t.uint8_t)),
+        ("NWKAddressAssocDevList", t.Optional(t.List(t.NWK))),
+    ),
+    ZDOCmd.IEEE_addr_rsp: (
+        STATUS,
+        IEEE,
+        NWK,
+        ("NumAssocDev", t.Optional(t.uint8_t)),
+        ("StartIndex", t.Optional(t.uint8_t)),
+        ("NWKAddrAssocDevList", t.Optional(t.List(t.NWK))),
+    ),
+    ZDOCmd.Node_Desc_rsp: (
+        STATUS,
+        NWKI,
+        ("NodeDescriptor", t.Optional(NodeDescriptor)),
+    ),
+    ZDOCmd.Power_Desc_rsp: (
+        STATUS,
+        NWKI,
+        ("PowerDescriptor", t.Optional(PowerDescriptor)),
+    ),
+    ZDOCmd.Simple_Desc_rsp: (
+        STATUS,
+        NWKI,
+        ("SimpleDescriptor", t.Optional(SizePrefixedSimpleDescriptor)),
+    ),
+    ZDOCmd.Active_EP_rsp: (STATUS, NWKI, ("ActiveEPList", t.LVList(t.uint8_t))),
+    ZDOCmd.Match_Desc_rsp: (STATUS, NWKI, ("MatchList", t.LVList(t.uint8_t))),
+    # ZDO.Complex_Desc_rsp: (
+    #     STATUS,
+    #     NWKI,
+    #     ('Length', t.uint8_t),
+    #     ('ComplexDescriptor', t.Optional(ComplexDescriptor)),
+    # ),
+    ZDOCmd.User_Desc_rsp: (
+        STATUS,
+        NWKI,
+        ("Length", t.uint8_t),
+        ("UserDescriptor", t.Optional(t.fixed_list(16, t.uint8_t))),
+    ),
     ZDOCmd.Discovery_Cache_rsp: (STATUS,),
     ZDOCmd.User_Desc_conf: (STATUS, NWKI),
-    ZDOCmd.System_Server_Discovery_rsp: (STATUS, ('ServerMask', t.uint16_t)),
+    ZDOCmd.System_Server_Discovery_rsp: (STATUS, ("ServerMask", t.uint16_t)),
     ZDOCmd.Discovery_Store_rsp: (STATUS,),
     ZDOCmd.Node_Desc_store_rsp: (STATUS,),
-    ZDOCmd.Power_Desc_store_rsp: (STATUS, IEEE, ('PowerDescriptor', PowerDescriptor)),
+    ZDOCmd.Power_Desc_store_rsp: (STATUS, IEEE, ("PowerDescriptor", PowerDescriptor)),
     ZDOCmd.Active_EP_store_rsp: (STATUS,),
     ZDOCmd.Simple_Desc_store_rsp: (STATUS,),
     ZDOCmd.Remove_node_cache_rsp: (STATUS,),
-    ZDOCmd.Find_node_cache_rsp: (('CacheNWKAddr', t.EUI64), NWK, IEEE),
-    ZDOCmd.Extended_Simple_Desc_rsp: (STATUS, NWK, ('Endpoint', t.uint8_t), ('AppInputClusterCount', t.uint8_t),
-                                      ('AppOutputClusterCount', t.uint8_t), ('StartIndex', t.uint8_t),
-                                      ('AppClusterList', t.Optional(t.List(t.uint16_t)))),
-    ZDOCmd.Extended_Active_EP_rsp: (STATUS, NWKI, ('ActiveEPCount', t.uint8_t), ('StartIndex', t.uint8_t), ('ActiveEPList', t.List(t.uint8_t))),
+    ZDOCmd.Find_node_cache_rsp: (("CacheNWKAddr", t.EUI64), NWK, IEEE),
+    ZDOCmd.Extended_Simple_Desc_rsp: (
+        STATUS,
+        NWK,
+        ("Endpoint", t.uint8_t),
+        ("AppInputClusterCount", t.uint8_t),
+        ("AppOutputClusterCount", t.uint8_t),
+        ("StartIndex", t.uint8_t),
+        ("AppClusterList", t.Optional(t.List(t.uint16_t))),
+    ),
+    ZDOCmd.Extended_Active_EP_rsp: (
+        STATUS,
+        NWKI,
+        ("ActiveEPCount", t.uint8_t),
+        ("StartIndex", t.uint8_t),
+        ("ActiveEPList", t.List(t.uint8_t)),
+    ),
     #  Bind Management Server Services Responses
     ZDOCmd.End_Device_Bind_rsp: (STATUS,),
     ZDOCmd.Bind_rsp: (STATUS,),
     ZDOCmd.Unbind_rsp: (STATUS,),
     # ... TODO optional stuff ...
     # Network Management Server Services Responses
-    ZDOCmd.Mgmt_Lqi_rsp: (STATUS, ('Neighbors', t.Optional(Neighbors))),
-    ZDOCmd.Mgmt_Rtg_rsp: (STATUS, ('Routes', t.Optional(Routes))),
+    ZDOCmd.Mgmt_Lqi_rsp: (STATUS, ("Neighbors", t.Optional(Neighbors))),
+    ZDOCmd.Mgmt_Rtg_rsp: (STATUS, ("Routes", t.Optional(Routes))),
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Leave_rsp: (STATUS,),
     ZDOCmd.Mgmt_Permit_Joining_rsp: (STATUS,),

@@ -517,7 +517,8 @@ class AnalogOutput(Cluster):
         0x0045: ("min_present_value", t.Single),
         0x0051: ("out_of_service", t.Bool),
         0x0055: ("present_value", t.Single),
-        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
+        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
+        # single precision)
         0x0067: ("reliability", t.enum8),
         0x0068: ("relinquish_default", t.Single),
         0x006A: ("resolution", t.Single),
@@ -536,7 +537,8 @@ class AnalogValue(Cluster):
         0x001C: ("description", t.CharacterString),
         0x0051: ("out_of_service", t.Bool),
         0x0055: ("present_value", t.Single),
-        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
+        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
+        # single precision)
         0x0067: ("reliability", t.enum8),
         0x0068: ("relinquish_default", t.Single),
         0x006F: ("status_flags", t.bitmap8),
@@ -578,7 +580,8 @@ class BinaryOutput(Cluster):
         0x0051: ("out_of_service", t.Bool),
         0x0054: ("polarity", t.enum8),
         0x0055: ("present_value", t.Bool),
-        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
+        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
+        # single precision)
         0x0067: ("reliability", t.enum8),
         0x0068: ("relinquish_default", t.Bool),
         0x006F: ("status_flags", t.bitmap8),
@@ -599,7 +602,8 @@ class BinaryValue(Cluster):
         0x0043: ("minimum_on_time", t.uint32_t),
         0x0051: ("out_of_service", t.Bool),
         0x0055: ("present_value", t.Single),
-        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
+        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
+        # single precision)
         0x0067: ("reliability", t.enum8),
         0x0068: ("relinquish_default", t.Single),
         0x006F: ("status_flags", t.bitmap8),
@@ -618,7 +622,8 @@ class MultistateInput(Cluster):
         0x004A: ("number_of_states", t.uint16_t),
         0x0051: ("out_of_service", t.Bool),
         0x0055: ("present_value", t.Single),
-        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
+        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
+        # single precision)
         0x0067: ("reliability", t.enum8),
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
@@ -636,7 +641,8 @@ class MultistateOutput(Cluster):
         0x004A: ("number_of_states", t.uint16_t),
         0x0051: ("out_of_service", t.Bool),
         0x0055: ("present_value", t.Single),
-        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
+        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
+        # single precision)
         0x0067: ("reliability", t.enum8),
         0x0068: ("relinquish_default", t.Single),
         0x006F: ("status_flags", t.bitmap8),
@@ -655,7 +661,8 @@ class MultistateValue(Cluster):
         0x004A: ("number_of_states", t.uint16_t),
         0x0051: ("out_of_service", t.Bool),
         0x0055: ("present_value", t.Single),
-        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean, single precision)
+        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
+        # single precision)
         0x0067: ("reliability", t.enum8),
         0x0068: ("relinquish_default", t.Single),
         0x006F: ("status_flags", t.bitmap8),

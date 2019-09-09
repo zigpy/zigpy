@@ -10,12 +10,12 @@ import zigpy.zdo as zdo
 
 def test_commands():
     for cmdid, cmdspec in zdo.types.CLUSTERS.items():
-        assert 0 <= cmdid <= 0xffff
+        assert 0 <= cmdid <= 0xFFFF
         assert isinstance(cmdspec, tuple)
         for paramname, paramtype in zip(cmdspec[0], cmdspec[1]):
             assert isinstance(paramname, str)
-            assert hasattr(paramtype, 'serialize')
-            assert hasattr(paramtype, 'deserialize')
+            assert hasattr(paramtype, "serialize")
+            assert hasattr(paramtype, "deserialize")
 
 
 @pytest.fixture
@@ -35,14 +35,14 @@ def zdo_f(app):
 
 
 def test_deserialize(zdo_f):
-    tsn, command_id, is_reply, args = zdo_f.deserialize(2, b'\x01\x02\x03xx')
+    tsn, command_id, is_reply, args = zdo_f.deserialize(2, b"\x01\x02\x03xx")
     assert tsn == 1
     assert is_reply is False
     assert args == [0x0302]
 
 
 def test_deserialize_unknown(zdo_f):
-    tsn, command_id, is_reply, args = zdo_f.deserialize(0x0100, b'\x01')
+    tsn, command_id, is_reply, args = zdo_f.deserialize(0x0100, b"\x01")
     assert tsn == 1
     assert is_reply is False
 
@@ -142,7 +142,7 @@ def test_handle_permit_join(zdo_f):
 
 
 def test_handle_unsupported(zdo_f):
-    zdo_f.handle_message(False, 5, 0xffff, 321, 0xffff, [])
+    zdo_f.handle_message(False, 5, 0xFFFF, 321, 0xFFFF, [])
 
 
 def test_device_accessor(zdo_f):

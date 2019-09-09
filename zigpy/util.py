@@ -83,7 +83,7 @@ async def retry(func, retry_exceptions, tries=3, delay=0.1):
     Only exceptions in `retry_exceptions` will be retried.
     """
     while True:
-        print("Tries remaining: %s" % (tries, ))
+        print("Tries remaining: %s" % (tries,))
         try:
             r = await func()
             return r
@@ -100,6 +100,7 @@ def retryable(retry_exceptions, tries=1, delay=0.1):
     This adds "tries" and "delay" keyword arguments to the function. Only
     exceptions in `retry_exceptions` will be retried.
     """
+
     def decorator(func):
         nonlocal tries, delay
 
@@ -113,7 +114,9 @@ def retryable(retry_exceptions, tries=1, delay=0.1):
                 tries=tries,
                 delay=delay,
             )
+
         return wrapper
+
     return decorator
 
 
@@ -124,13 +127,13 @@ def aes_mmo_hash_update(length, result, data):
     while len(data) >= AES.block_size:
         # Encrypt
         aes = AES.new(bytes(result), AES.MODE_ECB)
-        result = bytearray(aes.encrypt(bytes(data[:AES.block_size])))
+        result = bytearray(aes.encrypt(bytes(data[: AES.block_size])))
 
         # XOR
         for i in range(AES.block_size):
-            result[i] ^= bytes(data[:AES.block_size])[i]
+            result[i] ^= bytes(data[: AES.block_size])[i]
 
-        data = data[AES.block_size:]
+        data = data[AES.block_size :]
         length += AES.block_size
 
     return (length, result)
@@ -143,13 +146,13 @@ def aes_mmo_hash(data):
     result = bytearray([0] * AES.block_size)
     temp = bytearray([0] * AES.block_size)
 
-    if (data and length > 0):
+    if data and length > 0:
         remaining_length = length & (AES.block_size - 1)
-        if (length >= AES.block_size):
+        if length >= AES.block_size:
             # Mask out the lower byte since hash update will hash
             # everything except the last piece, if the last piece
             # is less than 16 bytes.
-            hashed_length = (length & ~(AES.block_size - 1))
+            hashed_length = length & ~(AES.block_size - 1)
             (result_len, result) = aes_mmo_hash_update(result_len, result, data)
             data = data[hashed_length:]
 
@@ -163,7 +166,7 @@ def aes_mmo_hash(data):
 
     # If appending the bit string will push us beyond the 16-byte boundary
     # we must hash that block and append another 16-byte block.
-    if ((AES.block_size - remaining_length) < 3):
+    if (AES.block_size - remaining_length) < 3:
         (result_len, result) = aes_mmo_hash_update(result_len, result, temp)
 
         # Since this extra data is due to the concatenation,
@@ -187,7 +190,7 @@ def convert_install_code(code):
 
     real_crc = bytes([code[-1], code[-2]])
     crc = CrcX25()
-    crc.process(code[:len(code) - 2])
+    crc.process(code[: len(code) - 2])
     if real_crc != crc.finalbytes():
         return None
 

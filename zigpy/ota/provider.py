@@ -12,16 +12,15 @@ import attr
 from zigpy.ota.image import ImageKey, OTAImage, OTAImageHeader
 
 LOGGER = logging.getLogger(__name__)
-LOCK_REFRESH = 'firmware_list'
+LOCK_REFRESH = "firmware_list"
 
-ENABLE_IKEA_OTA = 'enable_ikea_ota'
-SKIP_OTA_FILES = (
-    ENABLE_IKEA_OTA,
-)
+ENABLE_IKEA_OTA = "enable_ikea_ota"
+SKIP_OTA_FILES = (ENABLE_IKEA_OTA,)
 
 
 class Basic:
     """Skeleton OTA Firmware provider."""
+
     REFRESH = datetime.timedelta(hours=12)
 
     def __init__(self):
@@ -83,7 +82,7 @@ class Basic:
 
 @attr.s
 class IKEAImage:
-    OTA_HEADER = 0x0BEEF11E.to_bytes(4, 'little')
+    OTA_HEADER = 0x0BEEF11E .to_bytes(4, "little")
 
     manufacturer_id = attr.ib()
     image_type = attr.ib()
@@ -93,11 +92,11 @@ class IKEAImage:
 
     @classmethod
     def new(cls, data):
-        res = cls(data['fw_manufacturer_id'], data['fw_image_type'])
-        res.file_version = data['fw_file_version_MSB'] << 16
-        res.file_version |= data['fw_file_version_LSB']
-        res.image_size = data['fw_filesize']
-        res.url = data['fw_binary_url']
+        res = cls(data["fw_manufacturer_id"], data["fw_image_type"])
+        res.file_version = data["fw_file_version_MSB"] << 16
+        res.file_version |= data["fw_file_version_LSB"]
+        res.image_size = data["fw_filesize"]
+        res.url = data["fw_binary_url"]
         return res
 
     @property
@@ -110,14 +109,20 @@ class IKEAImage:
             async with req.get(self.url) as rsp:
                 data = await rsp.read()
         offset = data.index(self.OTA_HEADER)
-        LOGGER.debug("Finished downloading %s bytes from %s for %s ver %s",
-                     self.image_size, self.url, self.key, self.version)
+        LOGGER.debug(
+            "Finished downloading %s bytes from %s for %s ver %s",
+            self.image_size,
+            self.url,
+            self.key,
+            self.version,
+        )
         return OTAImage.deserialize(data[offset:])[0]
 
 
 class Trådfri(Basic):
     """IKEA OTA Firmware provider."""
-    UPDATE_URL = 'https://fw.ota.homesmart.ikea.net/feed/version_info.json'
+
+    UPDATE_URL = "https://fw.ota.homesmart.ikea.net/feed/version_info.json"
     MANUFACTURER_ID = 4476
 
     async def initialize_provider(self, ota_dir: str) -> None:
@@ -137,11 +142,10 @@ class Trådfri(Basic):
         async with self._locks[LOCK_REFRESH]:
             async with aiohttp.ClientSession() as req:
                 async with req.get(self.UPDATE_URL) as rsp:
-                    fw_lst = await rsp.json(
-                        content_type='application/octet-stream')
+                    fw_lst = await rsp.json(content_type="application/octet-stream")
         self._cache.clear()
         for fw in fw_lst:
-            if 'fw_file_version_MSB' not in fw:
+            if "fw_file_version_MSB" not in fw:
                 continue
             img = IKEAImage.new(fw)
             self._cache[img.key] = img
@@ -154,7 +158,7 @@ class Trådfri(Basic):
 @attr.s
 class FileImage(OTAImageHeader):
     REFRESH = datetime.timedelta(hours=24)
-    OTA_HEADER = 0x0BEEF11E.to_bytes(4, 'little')
+    OTA_HEADER = 0x0BEEF11E .to_bytes(4, "little")
 
     file_name = attr.ib(default=None)
 
@@ -170,23 +174,26 @@ class FileImage(OTAImageHeader):
     def scan_image(cls, file_name: str):
         """Check the header of the image."""
         try:
-            with open(file_name, mode='rb') as file:
+            with open(file_name, mode="rb") as file:
                 data = file.read(512)
                 offset = data.index(cls.OTA_HEADER)
                 if offset >= 0:
                     img = cls.deserialize(data[offset:])[0]
                     img.file_name = file_name
                     LOGGER.debug(
-                        ("%s: %s, version: %s, hw_ver: (%s, %s),"
-                         " OTA string: %s"),
-                        img.key, file_name, img.file_version,
+                        ("%s: %s, version: %s, hw_ver: (%s, %s)," " OTA string: %s"),
+                        img.key,
+                        file_name,
+                        img.file_version,
                         img.minimum_hardware_version,
                         img.maximum_hardware_version,
-                        img.header_string)
+                        img.header_string,
+                    )
                     return img
         except (OSError, ValueError) as exc:
-            LOGGER.debug("File '%s' doesn't appear to be a OTA image: %s",
-                         file_name, exc)
+            LOGGER.debug(
+                "File '%s' doesn't appear to be a OTA image: %s", file_name, exc
+            )
         return None
 
     def fetch_image(self) -> Optional[OTAImage]:
@@ -197,15 +204,14 @@ class FileImage(OTAImageHeader):
     def _fetch_image(self) -> Optional[OTAImage]:
         """Loads full OTA Image from the file."""
         try:
-            with open(self.file_name, mode='rb') as file:
+            with open(self.file_name, mode="rb") as file:
                 data = file.read()
                 offset = data.index(self.OTA_HEADER)
                 if offset >= 0:
                     img = OTAImage.deserialize(data[offset:])[0]
                     return img
         except (OSError, ValueError) as exc:
-            LOGGER.debug("Couldn't load '%s' OTA image: %s",
-                         self.file_name, exc)
+            LOGGER.debug("Couldn't load '%s' OTA image: %s", self.file_name, exc)
         return None
 
 
@@ -225,8 +231,7 @@ class FileStore(Basic):
                 return ota_dir
             LOGGER.error("OTA image path '%s' is not a directory", ota_dir)
         else:
-            LOGGER.debug("OTA image directory '%s' does not exist",
-                         ota_dir)
+            LOGGER.debug("OTA image directory '%s' does not exist", ota_dir)
         return None
 
     async def initialize_provider(self, ota_dir: str) -> None:
@@ -254,21 +259,27 @@ class FileStore(Basic):
 
                 if img.key in self._cache:
                     if img.version > self._cache[img.key].version:
-                        LOGGER.debug("%s: Preferring '%s' over '%s'",
-                                     img.key,
-                                     file_name,
-                                     self._cache[img.key].file_name)
+                        LOGGER.debug(
+                            "%s: Preferring '%s' over '%s'",
+                            img.key,
+                            file_name,
+                            self._cache[img.key].file_name,
+                        )
                         self._cache[img.key] = img
                     elif img.version == self._cache[img.key].version:
                         LOGGER.debug(
                             "%s: Ignoring '%s' already have %s version",
-                            img.key, file_name, img.version
+                            img.key,
+                            file_name,
+                            img.version,
                         )
                     else:
-                        LOGGER.debug("%s: Preferring '%s' over '%s'",
-                                     img.key,
-                                     self._cache[img.key].file_name,
-                                     file_name)
+                        LOGGER.debug(
+                            "%s: Preferring '%s' over '%s'",
+                            img.key,
+                            self._cache[img.key].file_name,
+                            file_name,
+                        )
                 else:
                     self._cache[img.key] = img
 

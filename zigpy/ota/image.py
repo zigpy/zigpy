@@ -18,12 +18,12 @@ class HWVersion(t.uint16_t):
 
     @property
     def revision(self):
-        return self & 0x00ff
+        return self & 0x00FF
 
     def __repr__(self):
-        return "<{} version={} revision={}>".format(self.__class__.__name__,
-                                                    self.version,
-                                                    self.revision)
+        return "<{} version={} revision={}>".format(
+            self.__class__.__name__, self.version, self.revision
+        )
 
 
 class HeaderString(str):
@@ -32,28 +32,27 @@ class HeaderString(str):
     @classmethod
     def deserialize(cls, data):
         if len(data) < cls._size:
-            raise ValueError("Data is too short. Should be at least %s",
-                             cls._size)
-        raw = data[:cls._size].split(b'\x00')[0]
-        return cls(raw.decode('utf8', errors='replace')), data[cls._size:]
+            raise ValueError("Data is too short. Should be at least %s", cls._size)
+        raw = data[: cls._size].split(b"\x00")[0]
+        return cls(raw.decode("utf8", errors="replace")), data[cls._size :]
 
     def serialize(self):
-        return self.encode('utf8').ljust(self._size, b'\x00')
+        return self.encode("utf8").ljust(self._size, b"\x00")
 
 
 class OTAImageHeader(t.Struct):
-    MAGIC_VALUE = 0x0beef11e
+    MAGIC_VALUE = 0x0BEEF11E
     _fields = [
-        ('upgrade_file_id', t.uint32_t),
-        ('header_version', t.uint16_t),
-        ('header_length', t.uint16_t),
-        ('field_control', t.uint16_t),
-        ('manufacturer_id', t.uint16_t),
-        ('image_type', t.uint16_t),
-        ('file_version', t.uint32_t),
-        ('stack_version', t.uint16_t),
-        ('header_string', HeaderString),
-        ('image_size', t.uint32_t)
+        ("upgrade_file_id", t.uint32_t),
+        ("header_version", t.uint16_t),
+        ("header_length", t.uint16_t),
+        ("field_control", t.uint16_t),
+        ("manufacturer_id", t.uint16_t),
+        ("image_type", t.uint16_t),
+        ("file_version", t.uint32_t),
+        ("stack_version", t.uint16_t),
+        ("header_string", HeaderString),
+        ("image_size", t.uint32_t),
     ]
 
     @property
@@ -78,8 +77,9 @@ class OTAImageHeader(t.Struct):
     def deserialize(cls, data) -> tuple:
         hdr, data = super().deserialize(data)
         if hdr.upgrade_file_id != cls.MAGIC_VALUE:
-            raise ValueError("Wrong magic number for OTA Image: %s" %
-                             (hdr.upgrade_file_id, ))
+            raise ValueError(
+                "Wrong magic number for OTA Image: %s" % (hdr.upgrade_file_id,)
+            )
 
         if hdr.security_credential_version_present:
             hdr.security_credential_version, data = t.uint8_t.deserialize(data)
@@ -191,10 +191,7 @@ class OTAImage:
     def should_update(self, manufacturer_id, img_type, ver, hw_ver=None) -> bool:
         """Check if it should upgrade"""
         key = ImageKey(manufacturer_id, img_type)
-        should_update = [
-            key == self.key,
-            ver < self.version,
-        ]
+        should_update = [key == self.key, ver < self.version]
         if hw_ver is not None and self.header.hardware_versions_present:
             min_ver = self.header.minimum_hardware_version
             max_ver = self.header.maximum_hardware_version
@@ -207,4 +204,4 @@ class OTAImage:
         if offset > len(data):
             raise ValueError("Offset exceeds image size")
 
-        return data[offset:offset + min(self.MAXIMUM_DATA_SIZE, size)]
+        return data[offset : offset + min(self.MAXIMUM_DATA_SIZE, size)]
