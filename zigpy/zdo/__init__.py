@@ -13,13 +13,14 @@ LOGGER = logging.getLogger(__name__)
 
 class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """The ZDO endpoint of a device"""
+
     def __init__(self, device):
         self._device = device
         self._listeners = {}
 
     def _serialize(self, command, *args):
         sequence = self._device.application.get_sequence()
-        data = sequence.to_bytes(1, 'little')
+        data = sequence.to_bytes(1, "little")
         schema = types.CLUSTERS[command][1]
         data += t.serialize(args, schema)
         return sequence, data
@@ -39,7 +40,7 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return tsn, cluster_id, is_reply, data
 
         args, data = t.deserialize(data, cluster_details[1])
-        if data != b'':
+        if data != b"":
             # TODO: Seems sane to check, but what should we do?
             self.warn("Data remains after deserializing ZDO frame")
 
@@ -66,15 +67,15 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             if app.ieee == args[0]:
                 self.NWK_addr_rsp(0, app.ieee, app.nwk, 0, 0, [])
         elif command_id == types.ZDOCmd.IEEE_addr_req:
-            broadcast = (0xffff, 0xfffd, 0xfffc)
+            broadcast = (0xFFFF, 0xFFFD, 0xFFFC)
             if args[0] in broadcast or app.nwk == args[0]:
                 self.IEEE_addr_rsp(0, app.ieee, app.nwk, 0, 0, [])
         elif command_id == types.ZDOCmd.Match_Desc_req:
             self.handle_match_desc(*args)
         elif command_id == types.ZDOCmd.Device_annce:
-            self.listener_event('device_announce', self._device)
+            self.listener_event("device_announce", self._device)
         elif command_id == types.ZDOCmd.Mgmt_Permit_Joining_req:
-            self.listener_event('permit_duration', args[0])
+            self.listener_event("permit_duration", args[0])
         else:
             self.warn("Unsupported ZDO request:%s", command_id)
 
@@ -106,10 +107,8 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self.Mgmt_Permit_Joining_req(duration, tc_significance)
 
     def log(self, lvl, msg, *args):
-        msg = '[0x%04x:zdo] ' + msg
-        args = (
-            self._device.nwk,
-        ) + args
+        msg = "[0x%04x:zdo] " + msg
+        args = (self._device.nwk,) + args
         return LOGGER.log(lvl, msg, *args)
 
     @property
@@ -120,20 +119,34 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         try:
             command = types.ZDOCmd[name]
         except KeyError:
-            raise AttributeError("No such '%s' ZDO command" % (name, ))
+            raise AttributeError("No such '%s' ZDO command" % (name,))
 
         if command & 0x8000:
             return functools.partial(self.reply, command)
         return functools.partial(self.request, command)
 
 
-def broadcast(app, command, grpid, radius, *args,
-              broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE):
+def broadcast(
+    app,
+    command,
+    grpid,
+    radius,
+    *args,
+    broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE
+):
     sequence = app.get_sequence()
-    data = sequence.to_bytes(1, 'little')
+    data = sequence.to_bytes(1, "little")
     schema = types.CLUSTERS[command][1]
     data += t.serialize(args, schema)
     return zigpy.device.broadcast(
-        app, 0, command, 0, 0, grpid, radius, sequence, data,
-        broadcast_address=broadcast_address
+        app,
+        0,
+        command,
+        0,
+        0,
+        grpid,
+        radius,
+        sequence,
+        data,
+        broadcast_address=broadcast_address,
     )

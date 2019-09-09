@@ -54,7 +54,9 @@ async def test_permit(app, ieee):
     ncp_ieee = t.EUI64(map(t.uint8_t, range(8, 16)))
     app._ieee = ncp_ieee
     app.devices[ieee] = mock.MagicMock()
-    app.devices[ieee].zdo.permit = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    app.devices[ieee].zdo.permit = mock.MagicMock(
+        side_effect=asyncio.coroutine(mock.MagicMock())
+    )
     app.permit_ncp = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
     await app.permit(node=(1, 1, 1, 1, 1, 1, 1, 1))
     assert app.devices[ieee].zdo.permit.call_count == 0
@@ -195,7 +197,7 @@ def test_nwk(app):
 
 def test_deserialize(app, ieee):
     dev = mock.MagicMock()
-    app.deserialize(dev, 1, 1, b'')
+    app.deserialize(dev, 1, 1, b"")
     assert dev.deserialize.call_count == 1
 
 
@@ -208,12 +210,21 @@ def test_handle_message(app, ieee):
 @pytest.mark.asyncio
 async def test_broadcast(app):
     from zigpy.profiles import zha
+
     with pytest.raises(NotImplementedError):
         (profile, cluster, src_ep, dst_ep, grp, radius, tsn, data) = (
-            zha.PROFILE_ID, 1, 2, 3, 0, 4, 212, b'\x02\x01\x00'
+            zha.PROFILE_ID,
+            1,
+            2,
+            3,
+            0,
+            4,
+            212,
+            b"\x02\x01\x00",
         )
-        await app.broadcast(app, profile, cluster, src_ep, dst_ep,
-                            grp, radius, tsn, data)
+        await app.broadcast(
+            app, profile, cluster, src_ep, dst_ep, grp, radius, tsn, data
+        )
 
 
 @pytest.mark.asyncio

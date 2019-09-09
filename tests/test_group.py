@@ -10,7 +10,7 @@ import zigpy.endpoint
 
 
 FIXTURE_GRP_ID = 0x1001
-FIXTURE_GRP_NAME = 'fixture group'
+FIXTURE_GRP_NAME = "fixture group"
 
 
 @pytest.fixture
@@ -37,9 +37,11 @@ def group():
 
 
 def test_add_group(groups, monkeypatch):
-    monkeypatch.setattr(zigpy.group, 'Group',
-                        mock.MagicMock(spec_set=zigpy.group.Group,
-                                       return_value=mock.sentinel.group))
+    monkeypatch.setattr(
+        zigpy.group,
+        "Group",
+        mock.MagicMock(spec_set=zigpy.group.Group, return_value=mock.sentinel.group),
+    )
     grp_id, grp_name = 0x1234, "Group Name for 0x1234 group."
 
     assert grp_id not in groups
@@ -54,9 +56,11 @@ def test_add_group(groups, monkeypatch):
 
 
 def test_add_group_no_evt(groups, monkeypatch):
-    monkeypatch.setattr(zigpy.group, 'Group',
-                        mock.MagicMock(spec_set=zigpy.group.Group,
-                                       return_value=mock.sentinel.group))
+    monkeypatch.setattr(
+        zigpy.group,
+        "Group",
+        mock.MagicMock(spec_set=zigpy.group.Group, return_value=mock.sentinel.group),
+    )
     grp_id, grp_name = 0x1234, "Group Name for 0x1234 group."
 
     assert grp_id not in groups

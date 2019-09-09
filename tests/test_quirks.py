@@ -10,17 +10,17 @@ from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
 from zigpy.zcl import Cluster
 
-ALLOWED_SIGNATURE = set([
-    'profile_id',
-    'device_type',
-    'model',
-    'manufacturer',
-    'input_clusters',
-    'output_clusters',
-])
-ALLOWED_REPLACEMENT = set([
-    'endpoints',
-])
+ALLOWED_SIGNATURE = set(
+    [
+        "profile_id",
+        "device_type",
+        "model",
+        "manufacturer",
+        "input_clusters",
+        "output_clusters",
+    ]
+)
+ALLOWED_REPLACEMENT = set(["endpoints"])
 
 
 def test_registry():
@@ -42,8 +42,8 @@ def real_device():
     real_device.add_endpoint(1)
     real_device[1].profile_id = 255
     real_device[1].device_type = 255
-    real_device.model = 'model'
-    real_device.manufacturer = 'manufacturer'
+    real_device.model = "model"
+    real_device.manufacturer = "manufacturer"
     real_device[1].add_input_cluster(3)
     real_device[1].add_output_cluster(6)
     return real_device
@@ -57,8 +57,7 @@ def _dev_reg(device):
 
 def test_get_device_new_sig(real_device):
     class TestDevice:
-        signature = {
-        }
+        signature = {}
 
         def __init__(*args, **kwargs):
             pass
@@ -70,44 +69,43 @@ def test_get_device_new_sig(real_device):
 
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature['endpoints'] = {1: {'profile_id': 1}}
+    TestDevice.signature["endpoints"] = {1: {"profile_id": 1}}
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature['endpoints'][1]['profile_id'] = 255
-    TestDevice.signature['endpoints'][1]['device_type'] = 1
+    TestDevice.signature["endpoints"][1]["profile_id"] = 255
+    TestDevice.signature["endpoints"][1]["device_type"] = 1
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature['endpoints'][1]['device_type'] = 255
-    TestDevice.signature['endpoints'][1]['input_clusters'] = [1]
+    TestDevice.signature["endpoints"][1]["device_type"] = 255
+    TestDevice.signature["endpoints"][1]["input_clusters"] = [1]
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature['endpoints'][1]['input_clusters'] = [3]
-    TestDevice.signature['endpoints'][1]['output_clusters'] = [1]
+    TestDevice.signature["endpoints"][1]["input_clusters"] = [3]
+    TestDevice.signature["endpoints"][1]["output_clusters"] = [1]
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature['endpoints'][1]['output_clusters'] = [6]
-    TestDevice.signature['model'] = 'x'
+    TestDevice.signature["endpoints"][1]["output_clusters"] = [6]
+    TestDevice.signature["model"] = "x"
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature['model'] = 'model'
-    TestDevice.signature['manufacturer'] = 'x'
+    TestDevice.signature["model"] = "model"
+    TestDevice.signature["manufacturer"] = "x"
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature['manufacturer'] = 'manufacturer'
+    TestDevice.signature["manufacturer"] = "manufacturer"
     registry = _dev_reg(TestDevice)
     assert isinstance(registry.get_device(real_device), TestDevice)
 
 
 def test_get_device_old_signature(real_device):
     class TestDevice:
-        signature = {
-        }
+        signature = {}
 
         def __init__(*args, **kwargs):
             pass
@@ -120,30 +118,30 @@ def test_get_device_old_signature(real_device):
 
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature[1] = {'profile_id': 1}
+    TestDevice.signature[1] = {"profile_id": 1}
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature[1]['profile_id'] = 255
-    TestDevice.signature[1]['device_type'] = 1
+    TestDevice.signature[1]["profile_id"] = 255
+    TestDevice.signature[1]["device_type"] = 1
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature[1]['device_type'] = 255
-    TestDevice.signature[1]['input_clusters'] = [1]
+    TestDevice.signature[1]["device_type"] = 255
+    TestDevice.signature[1]["input_clusters"] = [1]
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature[1]['input_clusters'] = [3]
-    TestDevice.signature[1]['output_clusters'] = [1]
+    TestDevice.signature[1]["input_clusters"] = [3]
+    TestDevice.signature[1]["output_clusters"] = [1]
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature[1]['output_clusters'] = [6]
-    TestDevice.signature[1]['model'] = 'x'
+    TestDevice.signature[1]["output_clusters"] = [6]
+    TestDevice.signature[1]["model"] = "x"
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature[1]['model'] = 'model'
-    TestDevice.signature[1]['manufacturer'] = 'x'
+    TestDevice.signature[1]["model"] = "model"
+    TestDevice.signature[1]["manufacturer"] = "x"
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature[1]['manufacturer'] = 'manufacturer'
+    TestDevice.signature[1]["manufacturer"] = "manufacturer"
     assert isinstance(registry.get_device(real_device), TestDevice)
 
 
@@ -162,21 +160,23 @@ def test_model_manuf_device_sig(real_device):
 
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature['endpoints'] = {1: {
-        'profile_id': 255,
-        'device_type': 255,
-        'input_clusters': [3],
-        'output_clusters': [6],
-    }}
+    TestDevice.signature["endpoints"] = {
+        1: {
+            "profile_id": 255,
+            "device_type": 255,
+            "input_clusters": [3],
+            "output_clusters": [6],
+        }
+    }
 
-    TestDevice.signature['model'] = 'x'
+    TestDevice.signature["model"] = "x"
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature['model'] = 'model'
-    TestDevice.signature['manufacturer'] = 'x'
+    TestDevice.signature["model"] = "model"
+    TestDevice.signature["manufacturer"] = "x"
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature['manufacturer'] = 'manufacturer'
+    TestDevice.signature["manufacturer"] = "manufacturer"
     assert isinstance(registry.get_device(real_device), TestDevice)
 
 
@@ -190,40 +190,43 @@ def test_custom_devices():
     # Validate that all CustomDevices look sane
     reg = zigpy.quirks._DEVICE_REGISTRY.registry
     return
-    candidates = list(itertools.chain(
-        *itertools.chain(*[m.values() for m in reg.values()])))
+    candidates = list(
+        itertools.chain(*itertools.chain(*[m.values() for m in reg.values()]))
+    )
 
     for device in candidates:
         # enforce new style of signature
-        assert 'endpoints' in device.signature
+        assert "endpoints" in device.signature
         numeric = [eid for eid in device.signature if isinstance(eid, int)]
         assert not numeric
 
         # Check that the signature data is OK
-        signature = device.signature['endpoints']
+        signature = device.signature["endpoints"]
         for profile_id, profile_data in signature.items():
             assert isinstance(profile_id, int)
             assert set(profile_data.keys()) - ALLOWED_SIGNATURE == set()
 
         # Check that the replacement data is OK
         assert set(device.replacement.keys()) - ALLOWED_REPLACEMENT == set()
-        for epid, epdata in device.replacement.get('endpoints', {}).items():
+        for epid, epdata in device.replacement.get("endpoints", {}).items():
             assert (epid in signature) or (
-                'profile' in epdata and 'device_type' in epdata)
-            if 'profile' in epdata:
-                profile = epdata['profile']
-                assert isinstance(profile, int) and 0 <= profile <= 0xffff
-            if 'device_type' in epdata:
-                device_type = epdata['device_type']
-                assert isinstance(device_type, int) and 0 <= device_type <= 0xffff
+                "profile" in epdata and "device_type" in epdata
+            )
+            if "profile" in epdata:
+                profile = epdata["profile"]
+                assert isinstance(profile, int) and 0 <= profile <= 0xFFFF
+            if "device_type" in epdata:
+                device_type = epdata["device_type"]
+                assert isinstance(device_type, int) and 0 <= device_type <= 0xFFFF
 
-            all_clusters = (epdata.get('input_clusters', []) +
-                            epdata.get('output_clusters', []))
+            all_clusters = epdata.get("input_clusters", []) + epdata.get(
+                "output_clusters", []
+            )
             for cluster in all_clusters:
                 assert (
-                    (isinstance(cluster, int) and cluster in Cluster._registry) or
-                    (isinstance(cluster, int) and _check_range(cluster)) or
-                    issubclass(cluster, Cluster)
+                    (isinstance(cluster, int) and cluster in Cluster._registry)
+                    or (isinstance(cluster, int) and _check_range(cluster))
+                    or issubclass(cluster, Cluster)
                 )
 
 
@@ -239,16 +242,16 @@ def test_custom_device():
             cluster_id = 0x8888
 
         replacement = {
-            'endpoints': {
+            "endpoints": {
                 1: {
-                    'profile_id': mock.sentinel.profile_id,
-                    'input_clusters': [0x0000, MyCluster],
-                    'output_clusters': [0x0001, MyCluster],
+                    "profile_id": mock.sentinel.profile_id,
+                    "input_clusters": [0x0000, MyCluster],
+                    "output_clusters": [0x0001, MyCluster],
                 },
                 2: (MyEndpoint, mock.sentinel.custom_endpoint_arg),
             },
-            'model': 'Mock Model',
-            'manufacturer': 'Mock Manufacturer',
+            "model": "Mock Model",
+            "manufacturer": "Mock Manufacturer",
         }
 
     assert 0x8888 not in Cluster._registry
@@ -257,8 +260,8 @@ def test_custom_device():
     replaces[1].device_type = mock.sentinel.device_type
     test_device = Device(None, None, 0x4455, replaces)
 
-    assert test_device.manufacturer == 'Mock Manufacturer'
-    assert test_device.model == 'Mock Model'
+    assert test_device.manufacturer == "Mock Manufacturer"
+    assert test_device.model == "Mock Model"
 
     assert test_device[1].profile_id == mock.sentinel.profile_id
     assert test_device[1].device_type == mock.sentinel.device_type
@@ -285,8 +288,8 @@ def test_kof_no_reply():
         cluster_id = 0x1234
         void_input_commands = [0x0002]
         server_commands = {
-            0x0001: ('noop', (), False),
-            0x0002: ('noop_noreply', (), False),
+            0x0001: ("noop", (), False),
+            0x0002: ("noop_noreply", (), False),
         }
         client_commands = {}
 
@@ -294,19 +297,27 @@ def test_kof_no_reply():
     cluster = TestCluster(ep)
 
     cluster.command(0x0001)
-    ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=True, command_id=mock.ANY)
+    ep.request.assert_called_with(
+        mock.ANY, mock.ANY, mock.ANY, expect_reply=True, command_id=mock.ANY
+    )
     ep.reset_mock()
 
     cluster.command(0x0001, expect_reply=False)
-    ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=False, command_id=mock.ANY)
+    ep.request.assert_called_with(
+        mock.ANY, mock.ANY, mock.ANY, expect_reply=False, command_id=mock.ANY
+    )
     ep.reset_mock()
 
     cluster.command(0x0002)
-    ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=False, command_id=mock.ANY)
+    ep.request.assert_called_with(
+        mock.ANY, mock.ANY, mock.ANY, expect_reply=False, command_id=mock.ANY
+    )
     ep.reset_mock()
 
     cluster.command(0x0002, expect_reply=True)
-    ep.request.assert_called_with(mock.ANY, mock.ANY, mock.ANY, expect_reply=True, command_id=mock.ANY)
+    ep.request.assert_called_with(
+        mock.ANY, mock.ANY, mock.ANY, expect_reply=True, command_id=mock.ANY
+    )
     ep.reset_mock()
 
 
@@ -314,16 +325,16 @@ def test_custom_cluster_idx():
     class TestClusterIdx(zigpy.quirks.CustomCluster):
         cluster_Id = 0x1234
         attributes = {
-            0x0000: ('first_attribute', t.uint8_t),
-            0x00ff: ('2nd_attribute', t.enum8)
+            0x0000: ("first_attribute", t.uint8_t),
+            0x00FF: ("2nd_attribute", t.enum8),
         }
         server_commands = {
-            0x00: ('server_cmd_0', (t.uint8_t, t.uint8_t), False),
-            0x01: ('server_cmd_2', (t.uint8_t, t.uint8_t), False),
+            0x00: ("server_cmd_0", (t.uint8_t, t.uint8_t), False),
+            0x01: ("server_cmd_2", (t.uint8_t, t.uint8_t), False),
         }
         client_commands = {
-            0x00: ('client_cmd_0', (t.uint8_t, ), True),
-            0x01: ('client_cmd_1', (t.uint8_t, ), True),
+            0x00: ("client_cmd_0", (t.uint8_t,), True),
+            0x01: ("client_cmd_1", (t.uint8_t,), True),
         }
 
     def _test_cmd(cmd_set, cmd_set_idx):
@@ -334,12 +345,12 @@ def test_custom_cluster_idx():
         for cmd_name, cmd_id in getattr(TestClusterIdx, cmd_set_idx).items():
             assert getattr(TestClusterIdx, cmd_set)[cmd_id][0] == cmd_name
 
-    assert hasattr(TestClusterIdx, '_attridx')
+    assert hasattr(TestClusterIdx, "_attridx")
     attr_idx_len = len(TestClusterIdx._attridx)
     attrs_len = len(TestClusterIdx.attributes)
     assert attr_idx_len == attrs_len
     for attr_name, attr_id in TestClusterIdx._attridx.items():
         assert TestClusterIdx.attributes[attr_id][0] == attr_name
 
-    _test_cmd('server_commands', '_server_command_idx')
-    _test_cmd('client_commands', '_client_command_idx')
+    _test_cmd("server_commands", "_server_command_idx")
+    _test_cmd("client_commands", "_client_command_idx")

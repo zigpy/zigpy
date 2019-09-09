@@ -2,8 +2,8 @@ from zigpy.zcl import Cluster
 
 
 class ManufacturerSpecificCluster(Cluster):
-    cluster_id_range = (0xfc00, 0xffff)
-    ep_attribute = 'manufacturer_specific'
+    cluster_id_range = (0xFC00, 0xFFFF)
+    ep_attribute = "manufacturer_specific"
     name = "Manufacturer Specific"
     attributes = {}
     server_commands = {}

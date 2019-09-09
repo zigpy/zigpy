@@ -17,23 +17,15 @@ def fake_dev():
 def test_reg_get_model(fake_dev):
     assert DeviceRegistry.get_model(fake_dev) is None
 
-    fake_dev.signature = {
-        1: {},
-        2: {},
-        3: {'model': mock.sentinel.legacy_model},
-    }
+    fake_dev.signature = {1: {}, 2: {}, 3: {"model": mock.sentinel.legacy_model}}
     assert DeviceRegistry.get_model(fake_dev) is mock.sentinel.legacy_model
 
     fake_dev.signature = {
         1: {},
         2: {},
-        3: {'model': mock.sentinel.legacy_model},
-        'endpoints': {
-            1: {},
-            2: {},
-            3: {'model': mock.sentinel.ep_model}
-        },
-        'model': mock.sentinel.model
+        3: {"model": mock.sentinel.legacy_model},
+        "endpoints": {1: {}, 2: {}, 3: {"model": mock.sentinel.ep_model}},
+        "model": mock.sentinel.model,
     }
     assert DeviceRegistry.get_model(fake_dev) is mock.sentinel.model
 
@@ -44,20 +36,18 @@ def test_reg_get_manufacturer(fake_dev):
     fake_dev.signature = {
         1: {},
         2: {},
-        3: {'manufacturer': mock.sentinel.legacy_manufacturer},
+        3: {"manufacturer": mock.sentinel.legacy_manufacturer},
     }
-    assert DeviceRegistry.get_manufacturer(fake_dev) is mock.sentinel.legacy_manufacturer
+    assert (
+        DeviceRegistry.get_manufacturer(fake_dev) is mock.sentinel.legacy_manufacturer
+    )
 
     fake_dev.signature = {
         1: {},
         2: {},
-        3: {'manufacturer': mock.sentinel.legacy_manufacturer},
-        'endpoints': {
-            1: {},
-            2: {},
-            3: {'manufacturer': mock.sentinel.ep_manufacturer}
-        },
-        'manufacturer': mock.sentinel.manufacturer
+        3: {"manufacturer": mock.sentinel.legacy_manufacturer},
+        "endpoints": {1: {}, 2: {}, 3: {"manufacturer": mock.sentinel.ep_manufacturer}},
+        "manufacturer": mock.sentinel.manufacturer,
     }
     assert DeviceRegistry.get_manufacturer(fake_dev) is mock.sentinel.manufacturer
 
@@ -77,8 +67,8 @@ def test_add_to_registry_legacy_sig(fake_dev):
         1: {},
         2: {},
         3: {
-            'manufacturer': mock.sentinel.legacy_manufacturer,
-            'model': mock.sentinel.legacy_model,
+            "manufacturer": mock.sentinel.legacy_manufacturer,
+            "model": mock.sentinel.legacy_model,
         },
     }
 
@@ -96,17 +86,17 @@ def test_add_to_registry_new_sig(fake_dev):
         1: {},
         2: {},
         3: {
-            'manufacturer': mock.sentinel.legacy_manufacturer,
-            'model': mock.sentinel.legacy_model,
+            "manufacturer": mock.sentinel.legacy_manufacturer,
+            "model": mock.sentinel.legacy_model,
         },
-        'endpoints': {
+        "endpoints": {
             1: {
-                'manufacturer': mock.sentinel.manufacturer,
-                'model': mock.sentinel.model,
+                "manufacturer": mock.sentinel.manufacturer,
+                "model": mock.sentinel.model,
             }
         },
-        'manufacturer': mock.sentinel.dev_manufacturer,
-        'model': mock.sentinel.dev_model,
+        "manufacturer": mock.sentinel.dev_manufacturer,
+        "model": mock.sentinel.dev_model,
     }
 
     reg = DeviceRegistry()
@@ -135,19 +125,19 @@ def test_add_to_registry_models_info(fake_dev):
         1: {},
         2: {},
         3: {
-            'manufacturer': mock.sentinel.legacy_manufacturer,
-            'model': mock.sentinel.legacy_model,
+            "manufacturer": mock.sentinel.legacy_manufacturer,
+            "model": mock.sentinel.legacy_model,
         },
-        'endpoints': {
+        "endpoints": {
             1: {
-                'manufacturer': mock.sentinel.manufacturer,
-                'model': mock.sentinel.model,
+                "manufacturer": mock.sentinel.manufacturer,
+                "model": mock.sentinel.model,
             }
         },
         SIG_MODELS_INFO: [
             (mock.sentinel.manuf_1, mock.sentinel.model_1),
             (mock.sentinel.manuf_2, mock.sentinel.model_2),
-        ]
+        ],
     }
 
     reg = DeviceRegistry()
@@ -189,8 +179,8 @@ def test_remove_legacy_sig(fake_dev):
         1: {},
         2: {},
         3: {
-            'manufacturer': mock.sentinel.legacy_manufacturer,
-            'model': mock.sentinel.legacy_model,
+            "manufacturer": mock.sentinel.legacy_manufacturer,
+            "model": mock.sentinel.legacy_model,
         },
     }
 
@@ -209,17 +199,17 @@ def test_remove_new_sig(fake_dev):
         1: {},
         2: {},
         3: {
-            'manufacturer': mock.sentinel.legacy_manufacturer,
-            'model': mock.sentinel.legacy_model,
+            "manufacturer": mock.sentinel.legacy_manufacturer,
+            "model": mock.sentinel.legacy_model,
         },
-        'endpoints': {
+        "endpoints": {
             1: {
-                'manufacturer': mock.sentinel.manufacturer,
-                'model': mock.sentinel.model,
+                "manufacturer": mock.sentinel.manufacturer,
+                "model": mock.sentinel.model,
             }
         },
-        'manufacturer': mock.sentinel.dev_manufacturer,
-        'model': mock.sentinel.dev_model,
+        "manufacturer": mock.sentinel.dev_manufacturer,
+        "model": mock.sentinel.dev_model,
     }
 
     reg = DeviceRegistry()
@@ -246,19 +236,19 @@ def test_remove_models_info(fake_dev):
         1: {},
         2: {},
         3: {
-            'manufacturer': mock.sentinel.legacy_manufacturer,
-            'model': mock.sentinel.legacy_model,
+            "manufacturer": mock.sentinel.legacy_manufacturer,
+            "model": mock.sentinel.legacy_model,
         },
-        'endpoints': {
+        "endpoints": {
             1: {
-                'manufacturer': mock.sentinel.manufacturer,
-                'model': mock.sentinel.model,
+                "manufacturer": mock.sentinel.manufacturer,
+                "model": mock.sentinel.model,
             }
         },
         SIG_MODELS_INFO: [
             (mock.sentinel.manuf_1, mock.sentinel.model_1),
             (mock.sentinel.manuf_2, mock.sentinel.model_2),
-        ]
+        ],
     }
 
     reg = DeviceRegistry()

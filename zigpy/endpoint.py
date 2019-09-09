@@ -14,6 +14,7 @@ LOGGER = logging.getLogger(__name__)
 
 class Status(enum.IntEnum):
     """The status of an Endpoint"""
+
     # No initialization is done
     NEW = 0
     # Endpoint information (device type, clusters, etc) init done
@@ -22,6 +23,7 @@ class Status(enum.IntEnum):
 
 class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """An endpoint on a device on the network"""
+
     def __init__(self, device, endpoint_id):
         self._device = device
         self._endpoint_id = endpoint_id
@@ -43,10 +45,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.info("Discovering endpoint information")
         try:
             sdr = await self._device.zdo.Simple_Desc_req(
-                self._device.nwk,
-                self._endpoint_id,
-                tries=3,
-                delay=2,
+                self._device.nwk, self._endpoint_id, tries=3, delay=2
             )
             if sdr[0] != 0:
                 raise Exception("Failed to retrieve service descriptor: %s", sdr)
@@ -82,16 +81,14 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return self.in_clusters[cluster_id]
 
         if cluster is None:
-            cluster = zigpy.zcl.Cluster.from_id(self, cluster_id,
-                                                is_server=True)
+            cluster = zigpy.zcl.Cluster.from_id(self, cluster_id, is_server=True)
         self.in_clusters[cluster_id] = cluster
-        if hasattr(cluster, 'ep_attribute'):
+        if hasattr(cluster, "ep_attribute"):
             self._cluster_attr[cluster.ep_attribute] = cluster
 
-        if hasattr(self._device.application, '_dblistener'):
+        if hasattr(self._device.application, "_dblistener"):
             listener = zigpy.zcl.ClusterPersistingListener(
-                self._device.application._dblistener,
-                cluster,
+                self._device.application._dblistener, cluster
             )
             cluster.add_listener(listener)
 
@@ -106,8 +103,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return self.out_clusters[cluster_id]
 
         if cluster is None:
-            cluster = zigpy.zcl.Cluster.from_id(self, cluster_id,
-                                                is_server=False)
+            cluster = zigpy.zcl.Cluster.from_id(self, cluster_id, is_server=False)
         self.out_clusters[cluster_id] = cluster
         return cluster
 
@@ -145,37 +141,33 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if Basic.cluster_id not in self.in_clusters:
             return None, None
 
-        attributes = {
-            'manufacturer': None,
-            'model': None,
-        }
+        attributes = {"manufacturer": None, "model": None}
 
         async def read(attribute_names):
             """Read attributes and update extra_info convenience function."""
             try:
                 result, _ = await self.basic.read_attributes(
-                    attribute_names,
-                    allow_cache=True,
+                    attribute_names, allow_cache=True
                 )
                 attributes.update(result)
             except (zigpy.exceptions.ZigbeeException, asyncio.TimeoutError):
                 pass
 
-        await read(['manufacturer', 'model'])
+        await read(["manufacturer", "model"])
 
-        if attributes['manufacturer'] is None or attributes['model'] is None:
+        if attributes["manufacturer"] is None or attributes["model"] is None:
             # Some devices fail at returning multiple results. Attempt separately.
-            await read(['manufacturer'])
-            await read(['model'])
+            await read(["manufacturer"])
+            await read(["model"])
 
-        self.debug("Manufacturer: %s", attributes['manufacturer'])
-        self.debug("Model: %s", attributes['model'])
-        return attributes['model'], attributes['manufacturer']
+        self.debug("Manufacturer: %s", attributes["manufacturer"])
+        self.debug("Model: %s", attributes["model"])
+        return attributes["model"], attributes["manufacturer"]
 
     def deserialize(self, cluster_id, data):
         """Deserialize data for ZCL"""
         if cluster_id not in self.in_clusters and cluster_id not in self.out_clusters:
-            raise KeyError("No cluster ID 0x%04x on %s" % (cluster_id, self.unique_id, ))
+            raise KeyError("No cluster ID 0x%04x on %s" % (cluster_id, self.unique_id))
 
         cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id))
         return cluster.deserialize(data)
@@ -187,15 +179,16 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             handler = self.out_clusters[cluster].handle_message
         else:
             self.debug("Message on unknown cluster 0x%04x", cluster)
-            self.listener_event("unknown_cluster_message", is_reply,
-                                command_id, args)
+            self.listener_event("unknown_cluster_message", is_reply, command_id, args)
             return
 
         handler(is_reply, tsn, command_id, args)
 
     def request(self, cluster, sequence, data, expect_reply=True, command_id=0x00):
-        if (self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
-                cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id and command_id < 0x40)):
+        if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
+            cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
+            and command_id < 0x40
+        ):
             profile_id = zigpy.profiles.zha.PROFILE_ID
         else:
             profile_id = self.profile_id
@@ -207,7 +200,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._endpoint_id,
             sequence,
             data,
-            expect_reply=expect_reply
+            expect_reply=expect_reply,
         )
 
     def reply(self, cluster, sequence, data):
@@ -221,7 +214,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         )
 
     def log(self, lvl, msg, *args):
-        msg = '[0x%04x:%s] ' + msg
+        msg = "[0x%04x:%s] " + msg
         args = (self._device.nwk, self._endpoint_id) + args
         return LOGGER.log(lvl, msg, *args)
 
@@ -241,8 +234,12 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @manufacturer.setter
     def manufacturer(self, value):
-        self.warn(("Overriding manufacturer from quirks is not supported and "
-                   "will be removed in the next zigpy version"))
+        self.warn(
+            (
+                "Overriding manufacturer from quirks is not supported and "
+                "will be removed in the next zigpy version"
+            )
+        )
         self._manufacturer = value
 
     @property
@@ -257,8 +254,12 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @model.setter
     def model(self, value):
-        self.warn(("Overriding model from quirks is not supported and "
-                   "will be removed in the next version"))
+        self.warn(
+            (
+                "Overriding model from quirks is not supported and "
+                "will be removed in the next version"
+            )
+        )
         self._model = value
 
     @property

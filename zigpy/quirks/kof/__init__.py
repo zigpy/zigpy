@@ -6,7 +6,15 @@ module overrides all server commands that do not have a mandatory reply to not
  expect replies at all.
 """
 from zigpy.quirks import CustomDevice, CustomCluster
-from zigpy.zcl.clusters.general import Basic, Identify, Groups, Scenes, OnOff, LevelControl, Ota
+from zigpy.zcl.clusters.general import (
+    Basic,
+    Identify,
+    Groups,
+    Scenes,
+    OnOff,
+    LevelControl,
+    Ota,
+)
 from zigpy.zcl.clusters.hvac import Fan
 
 
@@ -15,6 +23,7 @@ class NoReplyMixin(object):
     A simple mixin that allows a cluster to have configureable list of command
     ids that do not generate an explicit reply.
     """
+
     void_input_commands = []
 
     def command(self, command, *args, manufacturer=None, expect_reply=None):
@@ -27,7 +36,9 @@ class NoReplyMixin(object):
         if expect_reply is None:
             expect_reply = command not in self.void_input_commands
 
-        return super(NoReplyMixin, self).command(command, *args, manufacturer=manufacturer, expect_reply=expect_reply)
+        return super(NoReplyMixin, self).command(
+            command, *args, manufacturer=manufacturer, expect_reply=expect_reply
+        )
 
 
 class KofBasic(NoReplyMixin, CustomCluster, Basic):
@@ -61,11 +72,11 @@ class KofLevelControl(NoReplyMixin, CustomCluster, LevelControl):
 
 class CeilingFan(CustomDevice):
     signature = {
-        'endpoints': {
+        "endpoints": {
             1: {
-                'profile_id': 0x0104,
-                'device_type': 14,
-                'input_clusters': [
+                "profile_id": 0x0104,
+                "device_type": 14,
+                "input_clusters": [
                     Basic.cluster_id,
                     Identify.cluster_id,
                     Groups.cluster_id,
@@ -74,19 +85,16 @@ class CeilingFan(CustomDevice):
                     LevelControl.cluster_id,
                     Fan.cluster_id,
                 ],
-                'output_clusters': [
-                    Identify.cluster_id,
-                    Ota.cluster_id,
-                ],
-            },
+                "output_clusters": [Identify.cluster_id, Ota.cluster_id],
+            }
         },
-        'manufacturer': 'King Of Fans,  Inc.',
+        "manufacturer": "King Of Fans,  Inc.",
     }
 
     replacement = {
-        'endpoints': {
+        "endpoints": {
             1: {
-                'input_clusters': [
+                "input_clusters": [
                     KofBasic,
                     KofIdentify,
                     KofGroups,
@@ -95,10 +103,7 @@ class CeilingFan(CustomDevice):
                     KofLevelControl,
                     Fan,
                 ],
-                'output_clusters': [
-                    Identify,
-                    Ota,
-                ]
+                "output_clusters": [Identify, Ota],
             }
-        },
+        }
     }

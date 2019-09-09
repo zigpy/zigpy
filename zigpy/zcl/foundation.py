@@ -8,8 +8,8 @@ import zigpy.types as t
 class Status(t.uint8_t, enum.Enum):
     SUCCESS = 0x00  # Operation was successful.
     FAILURE = 0x01  # Operation was not successful
-    NOT_AUTHORIZED = 0x7e  # The sender of the command does not have
-    RESERVED_FIELD_NOT_ZERO = 0x7f  # A reserved field/subfield/bit contains a
+    NOT_AUTHORIZED = 0x7E  # The sender of the command does not have
+    RESERVED_FIELD_NOT_ZERO = 0x7F  # A reserved field/subfield/bit contains a
     MALFORMED_COMMAND = 0x80  # The command appears to contain the wrong
     UNSUP_CLUSTER_COMMAND = 0x81  # The specified cluster command is not
     UNSUP_GENERAL_COMMAND = 0x82  # The specified general ZCL command is not
@@ -20,27 +20,31 @@ class Status(t.uint8_t, enum.Enum):
     INVALID_VALUE = 0x87  # Out of range error, or set to a reserved value.
     READ_ONLY = 0x88  # Attempt to write a read only attribute.
     INSUFFICIENT_SPACE = 0x89  # An operation (e.g. an attempt to create an
-    DUPLICATE_EXISTS = 0x8a  # An attempt to create an entry in a table failed
-    NOT_FOUND = 0x8b  # The requested information (e.g. table entry)
-    UNREPORTABLE_ATTRIBUTE = 0x8c  # Periodic reports cannot be issued for this
-    INVALID_DATA_TYPE = 0x8d  # The data type given for an attribute is
-    INVALID_SELECTOR = 0x8e  # The selector for an attribute is incorrect.
-    WRITE_ONLY = 0x8f  # A request has been made to read an attribute
+    DUPLICATE_EXISTS = 0x8A  # An attempt to create an entry in a table failed
+    NOT_FOUND = 0x8B  # The requested information (e.g. table entry)
+    UNREPORTABLE_ATTRIBUTE = 0x8C  # Periodic reports cannot be issued for this
+    INVALID_DATA_TYPE = 0x8D  # The data type given for an attribute is
+    INVALID_SELECTOR = 0x8E  # The selector for an attribute is incorrect.
+    WRITE_ONLY = 0x8F  # A request has been made to read an attribute
     INCONSISTENT_STARTUP_STATE = 0x90  # Setting the requested values would put
     DEFINED_OUT_OF_BAND = 0x91  # An attempt has been made to write an
-    INCONSISTENT = 0x92  # The supplied values (e.g., contents of table cells) are inconsistent
+    INCONSISTENT = (
+        0x92
+    )  # The supplied values (e.g., contents of table cells) are inconsistent
     ACTION_DENIED = 0x93  # The credentials presented by the device sending the
     TIMEOUT = 0x94  # The exchange was aborted due to excessive response time
-    ABORT = 0x95  # Failed case when a client or a server decides to abort the upgrade process
+    ABORT = (
+        0x95
+    )  # Failed case when a client or a server decides to abort the upgrade process
     INVALID_IMAGE = 0x96  # Invalid OTA upgrade image (ex. failed signature
     WAIT_FOR_DATA = 0x97  # Server does not have data block available yet
     NO_IMAGE_AVAILABLE = 0x98  # No OTA upgrade image available for a particular client
     REQUIRE_MORE_IMAGE = 0x99  # The client still requires more OTA upgrade image
-    NOTIFICATION_PENDING = 0x9a  # The command has been received and is being processed
-    HARDWARE_FAILURE = 0xc0  # An operation was unsuccessful due to a
-    SOFTWARE_FAILURE = 0xc1  # An operation was unsuccessful due to a
-    CALIBRATION_ERROR = 0xc2  # An error occurred during calibration
-    UNSUPPORTED_CLUSTER = 0xc3  # The cluster is not supported
+    NOTIFICATION_PENDING = 0x9A  # The command has been received and is being processed
+    HARDWARE_FAILURE = 0xC0  # An operation was unsuccessful due to a
+    SOFTWARE_FAILURE = 0xC1  # An operation was unsuccessful due to a
+    CALIBRATION_ERROR = 0xC2  # An error occurred during calibration
+    UNSUPPORTED_CLUSTER = 0xC3  # The cluster is not supported
 
     @classmethod
     def deserialize(cls, data):
@@ -64,7 +68,7 @@ class TypeValue:
         self.value = value
 
     def serialize(self):
-        return self.type.to_bytes(1, 'little') + self.value.serialize()
+        return self.type.to_bytes(1, "little") + self.value.serialize()
 
     @classmethod
     def deserialize(cls, data):
@@ -75,9 +79,11 @@ class TypeValue:
         return self, data
 
     def __repr__(self):
-        return "<%s type=%s, value=%s>" % (self.__class__.__name__,
-                                           self.value.__class__.__name__,
-                                           self.value)
+        return "<%s type=%s, value=%s>" % (
+            self.__class__.__name__,
+            self.value.__class__.__name__,
+            self.value,
+        )
 
 
 class TypedCollection(TypeValue):
@@ -92,82 +98,78 @@ class TypedCollection(TypeValue):
 
 
 DATA_TYPES = {
-    0x00: ('No data', None, None),
-    0x08: ('General', t.fixed_list(1, t.uint8_t), Discrete),
-    0x09: ('General', t.fixed_list(2, t.uint8_t), Discrete),
-    0x0a: ('General', t.fixed_list(3, t.uint8_t), Discrete),
-    0x0b: ('General', t.fixed_list(4, t.uint8_t), Discrete),
-    0x0c: ('General', t.fixed_list(5, t.uint8_t), Discrete),
-    0x0d: ('General', t.fixed_list(6, t.uint8_t), Discrete),
-    0x0e: ('General', t.fixed_list(7, t.uint8_t), Discrete),
-    0x0f: ('General', t.fixed_list(8, t.uint8_t), Discrete),
-    0x10: ('Boolean', t.Bool, Discrete),
-    0x18: ('Bitmap', t.bitmap8, Discrete),
-    0x19: ('Bitmap', t.bitmap16, Discrete),
-    0x1a: ('Bitmap', t.bitmap24, Discrete),
-    0x1b: ('Bitmap', t.bitmap32, Discrete),
-    0x1c: ('Bitmap', t.bitmap40, Discrete),
-    0x1d: ('Bitmap', t.bitmap48, Discrete),
-    0x1e: ('Bitmap', t.bitmap56, Discrete),
-    0x1f: ('Bitmap', t.bitmap64, Discrete),
-    0x20: ('Unsigned Integer', t.uint8_t, Analog),
-    0x21: ('Unsigned Integer', t.uint16_t, Analog),
-    0x22: ('Unsigned Integer', t.uint24_t, Analog),
-    0x23: ('Unsigned Integer', t.uint32_t, Analog),
-    0x24: ('Unsigned Integer', t.uint40_t, Analog),
-    0x25: ('Unsigned Integer', t.uint48_t, Analog),
-    0x26: ('Unsigned Integer', t.uint56_t, Analog),
-    0x27: ('Unsigned Integer', t.uint64_t, Analog),
-    0x28: ('Signed Integer', t.int8s, Analog),
-    0x29: ('Signed Integer', t.int16s, Analog),
-    0x2a: ('Signed Integer', t.int24s, Analog),
-    0x2b: ('Signed Integer', t.int32s, Analog),
-    0x2c: ('Signed Integer', t.int40s, Analog),
-    0x2d: ('Signed Integer', t.int48s, Analog),
-    0x2e: ('Signed Integer', t.int56s, Analog),
-    0x2f: ('Signed Integer', t.int64s, Analog),
-    0x30: ('Enumeration', t.enum8, Discrete),
-    0x31: ('Enumeration', t.enum16, Discrete),
+    0x00: ("No data", None, None),
+    0x08: ("General", t.fixed_list(1, t.uint8_t), Discrete),
+    0x09: ("General", t.fixed_list(2, t.uint8_t), Discrete),
+    0x0A: ("General", t.fixed_list(3, t.uint8_t), Discrete),
+    0x0B: ("General", t.fixed_list(4, t.uint8_t), Discrete),
+    0x0C: ("General", t.fixed_list(5, t.uint8_t), Discrete),
+    0x0D: ("General", t.fixed_list(6, t.uint8_t), Discrete),
+    0x0E: ("General", t.fixed_list(7, t.uint8_t), Discrete),
+    0x0F: ("General", t.fixed_list(8, t.uint8_t), Discrete),
+    0x10: ("Boolean", t.Bool, Discrete),
+    0x18: ("Bitmap", t.bitmap8, Discrete),
+    0x19: ("Bitmap", t.bitmap16, Discrete),
+    0x1A: ("Bitmap", t.bitmap24, Discrete),
+    0x1B: ("Bitmap", t.bitmap32, Discrete),
+    0x1C: ("Bitmap", t.bitmap40, Discrete),
+    0x1D: ("Bitmap", t.bitmap48, Discrete),
+    0x1E: ("Bitmap", t.bitmap56, Discrete),
+    0x1F: ("Bitmap", t.bitmap64, Discrete),
+    0x20: ("Unsigned Integer", t.uint8_t, Analog),
+    0x21: ("Unsigned Integer", t.uint16_t, Analog),
+    0x22: ("Unsigned Integer", t.uint24_t, Analog),
+    0x23: ("Unsigned Integer", t.uint32_t, Analog),
+    0x24: ("Unsigned Integer", t.uint40_t, Analog),
+    0x25: ("Unsigned Integer", t.uint48_t, Analog),
+    0x26: ("Unsigned Integer", t.uint56_t, Analog),
+    0x27: ("Unsigned Integer", t.uint64_t, Analog),
+    0x28: ("Signed Integer", t.int8s, Analog),
+    0x29: ("Signed Integer", t.int16s, Analog),
+    0x2A: ("Signed Integer", t.int24s, Analog),
+    0x2B: ("Signed Integer", t.int32s, Analog),
+    0x2C: ("Signed Integer", t.int40s, Analog),
+    0x2D: ("Signed Integer", t.int48s, Analog),
+    0x2E: ("Signed Integer", t.int56s, Analog),
+    0x2F: ("Signed Integer", t.int64s, Analog),
+    0x30: ("Enumeration", t.enum8, Discrete),
+    0x31: ("Enumeration", t.enum16, Discrete),
     # 0x38: ('Floating point', t.Half, Analog),
-    0x39: ('Floating point', t.Single, Analog),
-    0x3a: ('Floating point', t.Double, Analog),
-    0x41: ('Octet string', t.LVBytes, Discrete),
-    0x42: ('Character string', t.CharacterString, Discrete),
-    0x43: ('Long octet string', t.LongOctetString, Discrete),
-    0x44: ('Long character string', t.LongCharacterString, Discrete),
-    0x48: ('Array', TypedCollection, Discrete),
-    0x4c: ('Structure', t.LVList(TypeValue, 2), Discrete),
-    0x50: ('Set', TypedCollection, Discrete),
-    0x51: ('Bag', TypedCollection, Discrete),
-    0xe0: ('Time of day', t.uint32_t, Analog),
-    0xe1: ('Date', t.uint32_t, Analog),
-    0xe2: ('UTCTime', t.uint32_t, Analog),
-    0xe8: ('Cluster ID', t.uint16_t, Discrete),
-    0xe9: ('Attribute ID', t.uint16_t, Discrete),
-    0xea: ('BACNet OID', t.uint32_t, Discrete),
-    0xf0: ('IEEE address', t.EUI64, Discrete),
-    0xf1: ('128-bit security key', t.fixed_list(16, t.uint16_t), Discrete),
-    0xff: ('Unknown', None, None),
+    0x39: ("Floating point", t.Single, Analog),
+    0x3A: ("Floating point", t.Double, Analog),
+    0x41: ("Octet string", t.LVBytes, Discrete),
+    0x42: ("Character string", t.CharacterString, Discrete),
+    0x43: ("Long octet string", t.LongOctetString, Discrete),
+    0x44: ("Long character string", t.LongCharacterString, Discrete),
+    0x48: ("Array", TypedCollection, Discrete),
+    0x4C: ("Structure", t.LVList(TypeValue, 2), Discrete),
+    0x50: ("Set", TypedCollection, Discrete),
+    0x51: ("Bag", TypedCollection, Discrete),
+    0xE0: ("Time of day", t.uint32_t, Analog),
+    0xE1: ("Date", t.uint32_t, Analog),
+    0xE2: ("UTCTime", t.uint32_t, Analog),
+    0xE8: ("Cluster ID", t.uint16_t, Discrete),
+    0xE9: ("Attribute ID", t.uint16_t, Discrete),
+    0xEA: ("BACNet OID", t.uint32_t, Discrete),
+    0xF0: ("IEEE address", t.EUI64, Discrete),
+    0xF1: ("128-bit security key", t.fixed_list(16, t.uint16_t), Discrete),
+    0xFF: ("Unknown", None, None),
 }
 
 DATA_TYPE_IDX = {
     t: tidx
     for tidx, (tname, t, ad) in DATA_TYPES.items()
-    if ad is Analog or tname == 'Enumeration' or tname == 'Bitmap'
+    if ad is Analog or tname == "Enumeration" or tname == "Bitmap"
 }
 DATA_TYPE_IDX[t.uint32_t] = 0x23
-DATA_TYPE_IDX[t.EUI64] = 0xf0
+DATA_TYPE_IDX[t.EUI64] = 0xF0
 DATA_TYPE_IDX[t.Bool] = 0x10
 
 
 class ReadAttributeRecord(t.Struct):
     """Read Attribute Record."""
 
-    _fields = [
-        ('attrid', t.uint16_t),
-        ('status', Status),
-        ('value', TypeValue),
-    ]
+    _fields = [("attrid", t.uint16_t), ("status", Status), ("value", TypeValue)]
 
     @classmethod
     def deserialize(cls, data):
@@ -188,25 +190,19 @@ class ReadAttributeRecord(t.Struct):
         return r
 
     def __repr__(self):
-        r = '<ReadAttributeRecord attrid=%s status=%s' % (self.attrid, self.status)
+        r = "<ReadAttributeRecord attrid=%s status=%s" % (self.attrid, self.status)
         if self.status == Status.SUCCESS:
-            r += ' value=%s' % (self.value.value, )
-        r += '>'
+            r += " value=%s" % (self.value.value,)
+        r += ">"
         return r
 
 
 class Attribute(t.Struct):
-    _fields = [
-        ('attrid', t.uint16_t),
-        ('value', TypeValue),
-    ]
+    _fields = [("attrid", t.uint16_t), ("value", TypeValue)]
 
 
 class WriteAttributesStatusRecord(t.Struct):
-    _fields = [
-        ('status', Status),
-        ('attrid', t.uint16_t),
-    ]
+    _fields = [("status", Status), ("attrid", t.uint16_t)]
 
     @classmethod
     def deserialize(cls, data):
@@ -224,24 +220,24 @@ class WriteAttributesStatusRecord(t.Struct):
         return r
 
     def __repr__(self):
-        r = '<%s status=%s' % (self.__class__.__name__, self.status, )
+        r = "<%s status=%s" % (self.__class__.__name__, self.status)
         if self.status != Status.SUCCESS:
-            r += ' attrid=%s' % (self.attrid, )
-        r += '>'
+            r += " attrid=%s" % (self.attrid,)
+        r += ">"
         return r
 
 
 class AttributeReportingConfig:
     def serialize(self):
-        r = int.to_bytes(self.direction, 1, 'little')
-        r += int.to_bytes(self.attrid, 2, 'little')
+        r = int.to_bytes(self.direction, 1, "little")
+        r += int.to_bytes(self.attrid, 2, "little")
         if self.direction:
-            r += int.to_bytes(self.timeout, 2, 'little')
+            r += int.to_bytes(self.timeout, 2, "little")
         else:
             r += (
-                int.to_bytes(self.datatype, 1, 'little') +
-                int.to_bytes(self.min_interval, 2, 'little') +
-                int.to_bytes(self.max_interval, 2, 'little')
+                int.to_bytes(self.datatype, 1, "little")
+                + int.to_bytes(self.min_interval, 2, "little")
+                + int.to_bytes(self.max_interval, 2, "little")
             )
             datatype = DATA_TYPES.get(self.datatype, None)
             if datatype and datatype[2] is Analog:
@@ -270,11 +266,7 @@ class AttributeReportingConfig:
 
 
 class ConfigureReportingResponseRecord(t.Struct):
-    _fields = [
-        ('status', Status),
-        ('direction', t.uint8_t),
-        ('attrid', t.uint16_t),
-    ]
+    _fields = [("status", Status), ("direction", t.uint8_t), ("attrid", t.uint16_t)]
 
     @classmethod
     def deserialize(cls, data):
@@ -294,25 +286,19 @@ class ConfigureReportingResponseRecord(t.Struct):
         return r
 
     def __repr__(self):
-        r = '<%s status=%s' % (self.__class__.__name__, self.status, )
+        r = "<%s status=%s" % (self.__class__.__name__, self.status)
         if self.status != Status.SUCCESS:
-            r += ' direction=%s attrid=%s' % (self.direction, self.attrid, )
-        r += '>'
+            r += " direction=%s attrid=%s" % (self.direction, self.attrid)
+        r += ">"
         return r
 
 
 class ReadReportingConfigRecord(t.Struct):
-    _fields = [
-        ('direction', t.uint8_t),
-        ('attrid', t.uint16_t),
-    ]
+    _fields = [("direction", t.uint8_t), ("attrid", t.uint16_t)]
 
 
 class DiscoverAttributesResponseRecord(t.Struct):
-    _fields = [
-        ('attrid', t.uint16_t),
-        ('datatype', t.uint8_t),
-    ]
+    _fields = [("attrid", t.uint16_t), ("datatype", t.uint8_t)]
 
 
 class AttributeAccessControl(t.uint8_t, enum.Enum):
@@ -328,14 +314,15 @@ class AttributeAccessControl(t.uint8_t, enum.Enum):
 
 class DiscoverAttributesExtendedResponseRecord(t.Struct):
     _fields = [
-        ('attrid', t.uint16_t),
-        ('datatype', t.uint8_t),
-        ('acl', AttributeAccessControl),
+        ("attrid", t.uint16_t),
+        ("datatype", t.uint8_t),
+        ("acl", AttributeAccessControl),
     ]
 
 
 class Command(t.uint8_t, enum.Enum):
     """ZCL Foundation Global Command IDs."""
+
     Read_Attributes = 0x00
     Read_Attributes_rsp = 0x01
     Write_Attributes = 0x02
@@ -346,10 +333,10 @@ class Command(t.uint8_t, enum.Enum):
     Configure_Reporting_rsp = 0x07
     Read_Reporting_Configuration = 0x08
     Read_Reporting_Configuration_rsp = 0x09
-    Report_Attributes = 0x0a
-    Default_Response = 0x0b
-    Discover_Attributes = 0x0c
-    Discover_Attributes_rsp = 0x0d
+    Report_Attributes = 0x0A
+    Default_Response = 0x0B
+    Discover_Attributes = 0x0C
+    Discover_Attributes_rsp = 0x0D
     # Read_Attributes_Structured = 0x0e
     # Write_Attributes_Structured = 0x0f
     # Write_Attributes_Structured_rsp = 0x10
@@ -370,34 +357,47 @@ class Command(t.uint8_t, enum.Enum):
 
 COMMANDS = {
     # id: (params, is_response)
-    Command.Configure_Reporting: ((t.List(AttributeReportingConfig), ), False),
-    Command.Configure_Reporting_rsp: ((t.List(ConfigureReportingResponseRecord), ), True),
+    Command.Configure_Reporting: ((t.List(AttributeReportingConfig),), False),
+    Command.Configure_Reporting_rsp: (
+        (t.List(ConfigureReportingResponseRecord),),
+        True,
+    ),
     Command.Default_Response: ((t.uint8_t, Status), True),
     Command.Discover_Attributes: ((t.uint16_t, t.uint8_t), False),
-    Command.Discover_Attributes_rsp: ((t.Bool, t.List(DiscoverAttributesResponseRecord),), True),
+    Command.Discover_Attributes_rsp: (
+        (t.Bool, t.List(DiscoverAttributesResponseRecord)),
+        True,
+    ),
     Command.Discover_Attribute_Extended: ((t.uint16_t, t.uint8_t), False),
-    Command.Discover_Attribute_Extended_rsp: ((t.Bool, t.List(DiscoverAttributesExtendedResponseRecord)), True),
+    Command.Discover_Attribute_Extended_rsp: (
+        (t.Bool, t.List(DiscoverAttributesExtendedResponseRecord)),
+        True,
+    ),
     Command.Discover_Commands_Generated: ((t.uint8_t, t.uint8_t), False),
     Command.Discover_Commands_Generated_rsp: ((t.Bool, t.List(t.uint8_t)), True),
     Command.Discover_Commands_Received: ((t.uint8_t, t.uint8_t), False),
     Command.Discover_Commands_Received_rsp: ((t.Bool, t.List(t.uint8_t)), True),
-    Command.Read_Attributes: ((t.List(t.uint16_t), ), False),
-    Command.Read_Attributes_rsp: ((t.List(ReadAttributeRecord), ), True),
+    Command.Read_Attributes: ((t.List(t.uint16_t),), False),
+    Command.Read_Attributes_rsp: ((t.List(ReadAttributeRecord),), True),
     # Command.Read_Attributes_Structured: ((, ), False),
     Command.Read_Reporting_Configuration: ((t.List(ReadReportingConfigRecord),), False),
-    Command.Read_Reporting_Configuration_rsp: ((t.List(AttributeReportingConfig),), True),
+    Command.Read_Reporting_Configuration_rsp: (
+        (t.List(AttributeReportingConfig),),
+        True,
+    ),
     Command.Report_Attributes: ((t.List(Attribute),), False),
     Command.Write_Attributes: ((t.List(Attribute),), False),
     Command.Write_Attributes_No_Response: ((t.List(Attribute),), False),
     Command.Write_Attributes_rsp: ((t.List(WriteAttributesStatusRecord),), True),
     # Command.Write_Attributes_Structured: ((, ), False),
     # Command.Write_Attributes_Structured_rsp: ((, ), True),
-    Command.Write_Attributes_Undivided: ((t.List(Attribute), ), False),
+    Command.Write_Attributes_Undivided: ((t.List(Attribute),), False),
 }
 
 
 class FrameType(enum.IntEnum):
     """ZCL Frame Type."""
+
     GLOBAL_COMMAND = 0b00
     CLUSTER_COMMAND = 0b01
     RESERVED_2 = 0b10
@@ -476,12 +476,16 @@ class FrameControl:
 
     def __repr__(self) -> str:
         """Representation."""
-        return ("<{} frame_type={} manufacturer_specific={} is_reply={} "
-                "disable_default_response={}>").format(self.__class__.__name__,
-                                                       self.frame_type.name,
-                                                       self.is_manufacturer_specific,
-                                                       self.is_reply,
-                                                       self.disable_default_response)
+        return (
+            "<{} frame_type={} manufacturer_specific={} is_reply={} "
+            "disable_default_response={}>"
+        ).format(
+            self.__class__.__name__,
+            self.frame_type.name,
+            self.is_manufacturer_specific,
+            self.is_reply,
+            self.disable_default_response,
+        )
 
     def serialize(self) -> bytes:
         return t.uint8_t(self.value).serialize()
@@ -513,12 +517,13 @@ class FrameControl:
 class ZCLHeader:
     """ZCL Header."""
 
-    def __init__(self,
-                 frame_control: FrameControl,
-                 tsn: t.uint8_t = 0,
-                 command_id: Command = 0,
-                 manufacturer: t.uint16_t = None,
-                 ) -> None:
+    def __init__(
+        self,
+        frame_control: FrameControl,
+        tsn: t.uint8_t = 0,
+        command_id: Command = 0,
+        manufacturer: t.uint16_t = None,
+    ) -> None:
         """Initialize ZCL Frame instance."""
         self._cmd_id = Command(command_id)
         self._frc = frame_control
@@ -593,24 +598,26 @@ class ZCLHeader:
         return d
 
     @classmethod
-    def general(cls,
-                tsn: t.uint8_t,
-                command_id: t.uint8_t,
-                manufacturer: t.uint16_t = None,
-                is_reply: bool = False,
-                ) -> 'ZCLHeader':
+    def general(
+        cls,
+        tsn: t.uint8_t,
+        command_id: t.uint8_t,
+        manufacturer: t.uint16_t = None,
+        is_reply: bool = False,
+    ) -> "ZCLHeader":
         r = cls(FrameControl.general(is_reply), tsn, command_id, manufacturer)
         if manufacturer is not None:
             r.frame_control.is_manufacturer_specific = True
         return r
 
     @classmethod
-    def cluster(cls,
-                tsn: t.uint8_t,
-                command_id: t.uint8_t,
-                manufacturer: t.uint16_t = None,
-                is_reply: bool = False,
-                ) -> 'ZCLHeader':
+    def cluster(
+        cls,
+        tsn: t.uint8_t,
+        command_id: t.uint8_t,
+        manufacturer: t.uint16_t = None,
+        is_reply: bool = False,
+    ) -> "ZCLHeader":
         r = cls(FrameControl.cluster(is_reply), tsn, command_id, manufacturer)
         if manufacturer is not None:
             r.frame_control.is_manufacturer_specific = True
@@ -619,4 +626,9 @@ class ZCLHeader:
     def __repr__(self) -> str:
         """Representation."""
         return "<{} frame_control={} manufacturer={} tsn={} command_id={}>".format(
-            self.__class__.__name__, self.frame_control, self.manufacturer, self.tsn, str(self.command_id))
+            self.__class__.__name__,
+            self.frame_control,
+            self.manufacturer,
+            self.tsn,
+            str(self.command_id),
+        )
