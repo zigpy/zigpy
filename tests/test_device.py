@@ -27,7 +27,7 @@ async def test_initialize(monkeypatch, dev):
         self.status = endpoint.Status.ZDO_INIT
         return
 
-    monkeypatch.setattr(endpoint.Endpoint, 'initialize', mockepinit)
+    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
     gnd = asyncio.coroutine(mock.MagicMock())
     dev.get_node_descriptor = mock.MagicMock(side_effect=gnd)
 
@@ -61,21 +61,21 @@ async def test_initialize_ep_failed(monkeypatch, dev):
     async def mockepinit(self):
         raise AttributeError
 
-    monkeypatch.setattr(endpoint.Endpoint, 'initialize', mockepinit)
+    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
 
     dev.zdo.request = mockrequest
     await dev._initialize()
 
     assert dev.status == device.Status.ZDO_INIT
     assert dev.application.listener_event.call_count == 1
-    assert dev.application.listener_event.call_args[0][0] == 'device_init_failure'
+    assert dev.application.listener_event.call_args[0][0] == "device_init_failure"
     assert dev.application.remove.call_count == 1
 
 
 @pytest.mark.asyncio
 async def test_request(dev):
     assert dev.last_seen is None
-    await dev.request(1, 2, 3, 3, 4, b'')
+    await dev.request(1, 2, 3, 3, 4, b"")
     assert dev._application.request.call_count == 1
     assert dev._application.get_sequence.call_count == 0
     assert dev.last_seen is not None
@@ -86,7 +86,7 @@ async def test_failed_request(dev):
     assert dev.last_seen is None
     dev._application.request.side_effect = Exception
     with pytest.raises(Exception):
-        await dev.request(1, 2, 3, 4, b'')
+        await dev.request(1, 2, 3, 4, b"")
     assert dev.last_seen is None
 
 
@@ -99,7 +99,7 @@ def test_radio_details(dev):
 def test_deserialize(dev):
     ep = dev.add_endpoint(3)
     ep.deserialize = mock.MagicMock()
-    dev.deserialize(3, 1, b'')
+    dev.deserialize(3, 1, b"")
     assert ep.deserialize.call_count == 1
 
 
@@ -131,7 +131,11 @@ async def test_broadcast():
     app.ieee = t.EUI64(map(t.uint8_t, [8, 9, 10, 11, 12, 13, 14, 15]))
 
     (profile, cluster, src_ep, dst_ep, data) = (
-        zha.PROFILE_ID, 1, 2, 3, b'\x02\x01\x00'
+        zha.PROFILE_ID,
+        1,
+        2,
+        3,
+        b"\x02\x01\x00",
     )
     await device.broadcast(app, profile, cluster, src_ep, dst_ep, 0, 0, 123, data)
 
@@ -149,8 +153,7 @@ async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
             raise asyncio.TimeoutError
 
         status = 0 if zdo_success else 1
-        return [status, nwk,
-                zdo_t.NodeDescriptor.deserialize(b'abcdefghijklm')[0]]
+        return [status, nwk, zdo_t.NodeDescriptor.deserialize(b"abcdefghijklm")[0]]
 
     dev.zdo.Node_Desc_req = mock.MagicMock(side_effect=mockrequest)
     return await dev.get_node_descriptor()
@@ -158,8 +161,7 @@ async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
 
 @pytest.mark.asyncio
 async def test_get_node_descriptor(dev):
-    nd = await _get_node_descriptor(dev, zdo_success=True,
-                                    request_success=True)
+    nd = await _get_node_descriptor(dev, zdo_success=True, request_success=True)
 
     assert nd is not None
     assert isinstance(nd, zdo_t.NodeDescriptor)
@@ -168,8 +170,7 @@ async def test_get_node_descriptor(dev):
 
 @pytest.mark.asyncio
 async def test_get_node_descriptor_no_reply(dev):
-    nd = await _get_node_descriptor(dev, zdo_success=True,
-                                    request_success=False)
+    nd = await _get_node_descriptor(dev, zdo_success=True, request_success=False)
 
     assert nd is None
     assert dev.zdo.Node_Desc_req.call_count == 1
@@ -177,8 +178,7 @@ async def test_get_node_descriptor_no_reply(dev):
 
 @pytest.mark.asyncio
 async def test_get_node_descriptor_fail(dev):
-    nd = await _get_node_descriptor(dev, zdo_success=False,
-                                    request_success=True)
+    nd = await _get_node_descriptor(dev, zdo_success=False, request_success=True)
 
     assert nd is None
     assert dev.zdo.Node_Desc_req.call_count == 1
@@ -186,10 +186,9 @@ async def test_get_node_descriptor_fail(dev):
 
 @pytest.mark.asyncio
 async def test_add_to_group(dev, monkeypatch):
-    grp_id, grp_name = 0x1234, 'test group 0x1234'
+    grp_id, grp_name = 0x1234, "test group 0x1234"
     epmock = mock.MagicMock(spec_set=endpoint.Endpoint)
-    monkeypatch.setattr(
-        endpoint, 'Endpoint', mock.MagicMock(return_value=epmock))
+    monkeypatch.setattr(endpoint, "Endpoint", mock.MagicMock(return_value=epmock))
     epmock.add_to_group.side_effect = asyncio.coroutine(mock.MagicMock())
 
     dev.add_endpoint(3)
@@ -205,8 +204,7 @@ async def test_add_to_group(dev, monkeypatch):
 async def test_remove_from_group(dev, monkeypatch):
     grp_id = 0x1234
     epmock = mock.MagicMock(spec_set=endpoint.Endpoint)
-    monkeypatch.setattr(
-        endpoint, 'Endpoint', mock.MagicMock(return_value=epmock))
+    monkeypatch.setattr(endpoint, "Endpoint", mock.MagicMock(return_value=epmock))
     epmock.remove_from_group.side_effect = asyncio.coroutine(mock.MagicMock())
 
     dev.add_endpoint(3)

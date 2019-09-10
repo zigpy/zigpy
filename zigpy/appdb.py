@@ -18,11 +18,13 @@ DB_VERSION = 0x0001
 def _sqlite_adapters():
     def adapt_ieee(eui64):
         return repr(eui64)
+
     sqlite3.register_adapter(t.EUI64, adapt_ieee)
 
     def convert_ieee(s):
-        ieee = [t.uint8_t(p, base=16) for p in s.split(b':')]
+        ieee = [t.uint8_t(p, base=16) for p in s.split(b":")]
         return t.EUI64(ieee)
+
     sqlite3.register_converter("ieee", convert_ieee)
 
 
@@ -30,8 +32,7 @@ class PersistingListener:
     def __init__(self, database_file, application):
         self._database_file = database_file
         _sqlite_adapters()
-        self._db = sqlite3.connect(database_file,
-                                   detect_types=sqlite3.PARSE_DECLTYPES)
+        self._db = sqlite3.connect(database_file, detect_types=sqlite3.PARSE_DECLTYPES)
         self._cursor = self._db.cursor()
 
         self._enable_foreign_keys()
@@ -96,17 +97,18 @@ class PersistingListener:
 
     def group_removed(self, group):
         q = "DELETE FROM groups WHERE group_id=?"
-        self.execute(q, (group.group_id, ))
+        self.execute(q, (group.group_id,))
         self._db.commit()
 
     def _create_table(self, table_name, spec):
         self.execute("CREATE TABLE IF NOT EXISTS %s %s" % (table_name, spec))
-        self.execute("PRAGMA user_version = %s" % (DB_VERSION, ))
+        self.execute("PRAGMA user_version = %s" % (DB_VERSION,))
 
     def _create_index(self, index_name, table, columns):
-        self.execute("CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(%s)" % (
-            index_name, table, columns
-        ))
+        self.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(%s)"
+            % (index_name, table, columns)
+        )
 
     def _create_table_devices(self):
         self._create_table("devices", "(ieee ieee, nwk, status)")
@@ -121,35 +123,27 @@ class PersistingListener:
 
     def _create_table_clusters(self):
         self._create_table("clusters", "(ieee ieee, endpoint_id, cluster)")
-        self._create_index(
-            "cluster_idx",
-            "clusters",
-            "ieee, endpoint_id, cluster",
-        )
+        self._create_index("cluster_idx", "clusters", "ieee, endpoint_id, cluster")
 
     def _create_table_node_descriptors(self):
         self._create_table(
             "node_descriptors",
-            "(ieee ieee, value, FOREIGN KEY(ieee) REFERENCES devices(ieee))")
+            "(ieee ieee, value, FOREIGN KEY(ieee) REFERENCES devices(ieee))",
+        )
         self._create_index("node_descriptors_idx", "node_descriptors", "ieee")
 
     def _create_table_output_clusters(self):
         self._create_table("output_clusters", "(ieee ieee, endpoint_id, cluster)")
         self._create_index(
-            "output_cluster_idx",
-            "output_clusters",
-            "ieee, endpoint_id, cluster",
+            "output_cluster_idx", "output_clusters", "ieee, endpoint_id, cluster"
         )
 
     def _create_table_attributes(self):
         self._create_table(
-            "attributes",
-            "(ieee ieee, endpoint_id, cluster, attrid, value)",
+            "attributes", "(ieee ieee, endpoint_id, cluster, attrid, value)"
         )
         self._create_index(
-            "attribute_idx",
-            "attributes",
-            "ieee, endpoint_id, cluster, attrid"
+            "attribute_idx", "attributes", "ieee, endpoint_id, cluster, attrid"
         )
 
     def _create_table_groups(self):
@@ -162,21 +156,23 @@ class PersistingListener:
             """(group_id, ieee ieee, endpoint_id,
                 FOREIGN KEY(group_id) REFERENCES groups(group_id),
                 FOREIGN KEY(ieee, endpoint_id)
-                REFERENCES endpoints(ieee, endpoint_id))""")
+                REFERENCES endpoints(ieee, endpoint_id))""",
+        )
         self._create_index(
-            "group_members_idx", "group_members", "group_id, ieee, endpoint_id")
+            "group_members_idx", "group_members", "group_id, ieee, endpoint_id"
+        )
 
     def _enable_foreign_keys(self):
         self.execute("PRAGMA foreign_keys = ON")
 
     def _remove_device(self, device):
-        self.execute("DELETE FROM attributes WHERE ieee = ?", (device.ieee, ))
-        self.execute("DELETE FROM node_descriptors WHERE ieee = ?", (device.ieee, ))
-        self.execute("DELETE FROM clusters WHERE ieee = ?", (device.ieee, ))
-        self.execute("DELETE FROM output_clusters WHERE ieee = ?", (device.ieee, ))
-        self.execute("DELETE FROM group_members WHERE ieee = ?", (device.ieee, ))
-        self.execute("DELETE FROM endpoints WHERE ieee = ?", (device.ieee, ))
-        self.execute("DELETE FROM devices WHERE ieee = ?", (device.ieee, ))
+        self.execute("DELETE FROM attributes WHERE ieee = ?", (device.ieee,))
+        self.execute("DELETE FROM node_descriptors WHERE ieee = ?", (device.ieee,))
+        self.execute("DELETE FROM clusters WHERE ieee = ?", (device.ieee,))
+        self.execute("DELETE FROM output_clusters WHERE ieee = ?", (device.ieee,))
+        self.execute("DELETE FROM group_members WHERE ieee = ?", (device.ieee,))
+        self.execute("DELETE FROM endpoints WHERE ieee = ?", (device.ieee,))
+        self.execute("DELETE FROM devices WHERE ieee = ?", (device.ieee,))
         self._db.commit()
 
     def _save_device(self, device):
@@ -201,11 +197,11 @@ class PersistingListener:
         for epid, ep in device.endpoints.items():
             if epid == 0:
                 continue  # Skip zdo
-            device_type = getattr(ep, 'device_type', None)
+            device_type = getattr(ep, "device_type", None)
             eprow = (
                 device.ieee,
                 ep.endpoint_id,
-                getattr(ep, 'profile_id', None),
+                getattr(ep, "profile_id", None),
                 device_type,
                 ep.status,
             )
@@ -242,8 +238,10 @@ class PersistingListener:
         self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         self._db.commit()
 
-    def _scan(self, table):
-        return self.execute("SELECT * FROM %s" % (table, ))
+    def _scan(self, table, filter=None):
+        if filter is None:
+            return self.execute("SELECT * FROM %s" % (table,))
+        return self.execute("SELECT * FROM %s WHERE %s" % (table, filter))
 
     def load(self):
         LOGGER.debug("Loading application state from %s", self._database_file)
@@ -252,8 +250,10 @@ class PersistingListener:
         self._load_endpoints()
         self._load_clusters()
 
-        def _load_attributes():
-            for (ieee, endpoint_id, cluster, attrid, value) in self._scan("attributes"):
+        def _load_attributes(filter=None):
+            for (ieee, endpoint_id, cluster, attrid, value) in self._scan(
+                "attributes", filter
+            ):
                 dev = self._application.get_device(ieee)
                 if endpoint_id in dev.endpoints:
                     ep = dev.endpoints[endpoint_id]
@@ -263,18 +263,18 @@ class PersistingListener:
                         LOGGER.debug("Attribute id: %s value: %s", attrid, value)
                         if cluster == Basic.cluster_id and attrid == 4:
                             if isinstance(value, bytes):
-                                value = value.split(b'\x00')[0]
+                                value = value.split(b"\x00")[0]
                                 dev.manufacturer = value.decode().strip()
                             else:
                                 dev.manufacturer = value
                         if cluster == Basic.cluster_id and attrid == 5:
                             if isinstance(value, bytes):
-                                value = value.split(b'\x00')[0]
+                                value = value.split(b"\x00")[0]
                                 dev.model = value.decode().strip()
                             else:
                                 dev.model = value
 
-        _load_attributes()
+        _load_attributes("attrid=4 OR attrid=5")
 
         for device in self._application.devices.values():
             device = zigpy.quirks.get_device(device)
@@ -322,13 +322,11 @@ class PersistingListener:
 
     def _load_groups(self):
         for (group_id, name) in self._scan("groups"):
-            self._application.groups.add_group(group_id, name,
-                                               suppress_event=True)
+            self._application.groups.add_group(group_id, name, suppress_event=True)
 
     def _load_group_members(self):
         for (group_id, ieee, ep_id) in self._scan("group_members"):
             group = self._application.groups[group_id]
             group.add_member(
-                self._application.get_device(ieee).endpoints[ep_id],
-                suppress_event=True
+                self._application.get_device(ieee).endpoints[ep_id], suppress_event=True
             )

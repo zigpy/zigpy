@@ -1,16 +1,19 @@
 import asyncio
 import logging
+import os.path
 
 import zigpy.appdb
 import zigpy.device
 import zigpy.group
 import zigpy.quirks
+import zigpy.ota
 import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
 
 LOGGER = logging.getLogger(__name__)
+OTA_DIR = "zigpy_ota/"
 
 
 class ControllerApplication(zigpy.util.ListenableMixin):
@@ -21,6 +24,13 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self._listeners = {}
         self._ieee = None
         self._nwk = None
+        self._ota = zigpy.ota.OTA(self)
+        if database_file is None:
+            ota_dir = None
+        else:
+            ota_dir = os.path.dirname(database_file)
+            ota_dir = os.path.join(ota_dir, OTA_DIR)
+        self.ota.initialize(ota_dir)
 
         if database_file is not None:
             self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
@@ -50,10 +60,10 @@ class ControllerApplication(zigpy.util.ListenableMixin):
 
     def device_initialized(self, device):
         """Used by a device to signal that it is initialized"""
-        self.listener_event('raw_device_initialized', device)
+        self.listener_event("raw_device_initialized", device)
         device = zigpy.quirks.get_device(device)
         self.devices[device.ieee] = device
-        self.listener_event('device_initialized', device)
+        self.listener_event("device_initialized", device)
 
     async def remove(self, ieee):
         assert isinstance(ieee, t.EUI64)
@@ -73,7 +83,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             await self.force_remove(dev)
         self.devices.pop(ieee, None)
 
-        self.listener_event('device_removed', dev)
+        self.listener_event("device_removed", dev)
 
     async def force_remove(self, dev):
         raise NotImplementedError
@@ -81,15 +91,21 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     def deserialize(self, sender, endpoint_id, cluster_id, data):
         return sender.deserialize(endpoint_id, cluster_id, data)
 
-    def handle_message(self, sender, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args):
-        return sender.handle_message(is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args)
+    def handle_message(
+        self, sender, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args
+    ):
+        return sender.handle_message(
+            is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args
+        )
 
     def handle_join(self, nwk, ieee, parent_nwk):
         LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
         if ieee in self.devices:
             dev = self.get_device(ieee)
             if dev.nwk != nwk:
-                LOGGER.debug("Device %s changed id (0x%04x => 0x%04x)", ieee, dev.nwk, nwk)
+                LOGGER.debug(
+                    "Device %s changed id (0x%04x => 0x%04x)", ieee, dev.nwk, nwk
+                )
                 dev.nwk = nwk
             elif dev.initializing or dev.status == zigpy.device.Status.ENDPOINTS_INIT:
                 LOGGER.debug("Skip initialization for existing device %s", ieee)
@@ -97,21 +113,42 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         else:
             dev = self.add_device(ieee, nwk)
 
-        self.listener_event('device_joined', dev)
+        self.listener_event("device_joined", dev)
         dev.schedule_initialize()
 
     def handle_leave(self, nwk, ieee):
         LOGGER.info("Device 0x%04x (%s) left the network", nwk, ieee)
         dev = self.devices.get(ieee, None)
         if dev is not None:
-            self.listener_event('device_left', dev)
+            self.listener_event("device_left", dev)
 
     @zigpy.util.retryable_request
-    async def request(self, nwk, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True, timeout=10):
+    async def request(
+        self,
+        nwk,
+        profile,
+        cluster,
+        src_ep,
+        dst_ep,
+        sequence,
+        data,
+        expect_reply=True,
+        timeout=10,
+    ):
         raise NotImplementedError
 
-    async def broadcast(self, profile, cluster, src_ep, dst_ep, grpid, radius,
-                        sequence, data, broadcast_address):
+    async def broadcast(
+        self,
+        profile,
+        cluster,
+        src_ep,
+        dst_ep,
+        grpid,
+        radius,
+        sequence,
+        data,
+        broadcast_address,
+    ):
         raise NotImplementedError
 
     async def permit_ncp(self, time_s=60):
@@ -128,20 +165,23 @@ class ControllerApplication(zigpy.util.ListenableMixin):
                 try:
                     dev = self.get_device(ieee=node)
                     r = await dev.zdo.permit(time_s)
-                    LOGGER.debug("Sent 'mgmt_permit_joining_req' to %s: %s",
-                                 node, r)
+                    LOGGER.debug("Sent 'mgmt_permit_joining_req' to %s: %s", node, r)
                 except KeyError:
                     LOGGER.warning("Device '%s' not found", node)
                 except zigpy.exceptions.DeliveryError as ex:
-                    LOGGER.warning(
-                        "Couldn't open '%s' for joining: %s", node, ex)
+                    LOGGER.warning("Couldn't open '%s' for joining: %s", node, ex)
             else:
                 await self.permit_ncp(time_s)
             return
 
         await zigpy.zdo.broadcast(
-            self, 0x0036, 0x0000, 0x00, time_s, 0,
-            broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR
+            self,
+            0x0036,
+            0x0000,
+            0x00,
+            time_s,
+            0,
+            broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
         )
         return await self.permit_ncp(time_s)
 
@@ -174,3 +214,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     @property
     def nwk(self):
         return self._nwk
+
+    @property
+    def ota(self):
+        return self._ota

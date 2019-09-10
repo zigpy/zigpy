@@ -5,6 +5,7 @@ import pytest
 import zigpy.endpoint
 import zigpy.types as t
 import zigpy.zcl as zcl
+import zigpy.zcl.foundation as foundation
 
 
 @pytest.fixture
@@ -16,28 +17,28 @@ def endpoint():
 
 
 def test_deserialize_general(endpoint):
-    tsn, command_id, is_reply, args = endpoint.deserialize(0, b'\x00\x01\x00')
+    tsn, command_id, is_reply, args = endpoint.deserialize(0, b"\x00\x01\x00")
     assert tsn == 1
     assert command_id == 0
     assert is_reply is False
 
 
 def test_deserialize_general_unknown(endpoint):
-    tsn, command_id, is_reply, args = endpoint.deserialize(0, b'\x00\x01\xff')
+    tsn, command_id, is_reply, args = endpoint.deserialize(0, b"\x00\x01\xff")
     assert tsn == 1
     assert command_id == 255
     assert is_reply is False
 
 
 def test_deserialize_cluster(endpoint):
-    tsn, command_id, is_reply, args = endpoint.deserialize(0, b'\x01\x01\x00xxx')
+    tsn, command_id, is_reply, args = endpoint.deserialize(0, b"\x01\x01\x00xxx")
     assert tsn == 1
     assert command_id == 256
     assert is_reply is False
 
 
 def test_deserialize_cluster_client(endpoint):
-    tsn, command_id, is_reply, args = endpoint.deserialize(3, b'\x09\x01\x00AB')
+    tsn, command_id, is_reply, args = endpoint.deserialize(3, b"\x09\x01\x00AB")
     assert tsn == 1
     assert command_id == 256
     assert is_reply is True
@@ -45,14 +46,12 @@ def test_deserialize_cluster_client(endpoint):
 
 
 def test_deserialize_cluster_unknown(endpoint):
-    tsn, command_id, is_reply, args = endpoint.deserialize(0xff00, b'\x05\x00\x00\x01\x00')
-    assert tsn == 1
-    assert command_id == 256
-    assert is_reply is False
+    with pytest.raises(KeyError):
+        endpoint.deserialize(0xFF00, b"\x05\x00\x00\x01\x00")
 
 
 def test_deserialize_cluster_command_unknown(endpoint):
-    tsn, command_id, is_reply, args = endpoint.deserialize(0, b'\x01\x01\xff')
+    tsn, command_id, is_reply, args = endpoint.deserialize(0, b"\x01\x01\xff")
     assert tsn == 1
     assert command_id == 255 + 256
     assert is_reply is False
@@ -66,12 +65,13 @@ def test_unknown_cluster():
 
 def test_manufacturer_specific_cluster():
     import zigpy.zcl.clusters.manufacturer_specific as ms
-    c = zcl.Cluster.from_id(None, 0xfc00)
+
+    c = zcl.Cluster.from_id(None, 0xFC00)
     assert isinstance(c, ms.ManufacturerSpecificCluster)
-    assert hasattr(c, 'cluster_id')
-    c = zcl.Cluster.from_id(None, 0xffff)
+    assert hasattr(c, "cluster_id")
+    c = zcl.Cluster.from_id(None, 0xFFFF)
     assert isinstance(c, ms.ManufacturerSpecificCluster)
-    assert hasattr(c, 'cluster_id')
+    assert hasattr(c, "cluster_id")
 
 
 @pytest.fixture
@@ -152,12 +152,12 @@ def test_attribute_report(cluster):
     attr.attrid = 4
     attr.value = zcl.foundation.TypeValue()
     attr.value.value = 1
-    cluster.handle_message(False, 0, 0x0a, [[attr]])
+    cluster.handle_message(False, 0, 0x0A, [[attr]])
     assert cluster._attr_cache[4] == 1
 
 
 def test_handle_request_unknown(cluster):
-    cluster.handle_message(False, 0, 0xff, [])
+    cluster.handle_message(False, 0, 0xFF, [])
 
 
 def test_handle_cluster_request(cluster):
@@ -179,19 +179,20 @@ def _mk_rar(attrid, value, status=0):
 
 @pytest.mark.asyncio
 async def test_read_attributes_uncached(cluster):
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+    async def mockrequest(
+        foundation, command, schema, args, manufacturer=None, **kwargs
+    ):
         assert foundation is True
         assert command == 0
         rar0 = _mk_rar(0, 99)
-        rar4 = _mk_rar(4, b'Manufacturer')
+        rar4 = _mk_rar(4, b"Manufacturer")
         rar99 = _mk_rar(99, None, 1)
         return [[rar0, rar4, rar99]]
+
     cluster.request = mockrequest
-    success, failure = await cluster.read_attributes(
-        [0, "manufacturer", 99],
-    )
+    success, failure = await cluster.read_attributes([0, "manufacturer", 99])
     assert success[0] == 99
-    assert success["manufacturer"] == b'Manufacturer'
+    assert success["manufacturer"] == b"Manufacturer"
     assert failure[99] == 1
 
 
@@ -199,80 +200,81 @@ async def test_read_attributes_uncached(cluster):
 async def test_read_attributes_cached(cluster):
     cluster.request = mock.MagicMock()
     cluster._attr_cache[0] = 99
-    cluster._attr_cache[4] = b'Manufacturer'
+    cluster._attr_cache[4] = b"Manufacturer"
     success, failure = await cluster.read_attributes(
-        [0, "manufacturer"],
-        allow_cache=True,
+        [0, "manufacturer"], allow_cache=True
     )
     assert cluster.request.call_count == 0
     assert success[0] == 99
-    assert success["manufacturer"] == b'Manufacturer'
+    assert success["manufacturer"] == b"Manufacturer"
     assert failure == {}
 
 
 @pytest.mark.asyncio
 async def test_read_attributes_mixed_cached(cluster):
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+    async def mockrequest(
+        foundation, command, schema, args, manufacturer=None, **kwargs
+    ):
         assert foundation is True
         assert command == 0
-        rar5 = _mk_rar(5, b'Model')
+        rar5 = _mk_rar(5, b"Model")
         return [[rar5]]
 
     cluster.request = mockrequest
     cluster._attr_cache[0] = 99
-    cluster._attr_cache[4] = b'Manufacturer'
+    cluster._attr_cache[4] = b"Manufacturer"
     success, failure = await cluster.read_attributes(
-        [0, "manufacturer", "model"],
-        allow_cache=True,
+        [0, "manufacturer", "model"], allow_cache=True
     )
     assert success[0] == 99
-    assert success["manufacturer"] == b'Manufacturer'
-    assert success["model"] == b'Model'
+    assert success["manufacturer"] == b"Manufacturer"
+    assert success["model"] == b"Model"
     assert failure == {}
 
 
 @pytest.mark.asyncio
 async def test_read_attributes_default_response(cluster):
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+    async def mockrequest(
+        foundation, command, schema, args, manufacturer=None, **kwargs
+    ):
         assert foundation is True
         assert command == 0
-        return [0xc1]
+        return [0xC1]
 
     cluster.request = mockrequest
-    success, failure = await cluster.read_attributes(
-        [0, 5, 23],
-        allow_cache=False,
-    )
+    success, failure = await cluster.read_attributes([0, 5, 23], allow_cache=False)
     assert success == {}
-    assert failure == {0: 0xc1, 5: 0xc1, 23: 0xc1}
+    assert failure == {0: 0xC1, 5: 0xC1, 23: 0xC1}
 
 
 @pytest.mark.asyncio
 async def test_item_access_attributes(cluster):
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+    async def mockrequest(
+        foundation, command, schema, args, manufacturer=None, **kwargs
+    ):
         assert foundation is True
         assert command == 0
-        rar5 = _mk_rar(5, b'Model')
+        rar5 = _mk_rar(5, b"Model")
         return [[rar5]]
 
     cluster.request = mockrequest
     cluster._attr_cache[0] = 99
 
-    v = await cluster['model']
-    assert v == b'Model'
-    v = await cluster['zcl_version']
+    v = await cluster["model"]
+    assert v == b"Model"
+    v = await cluster["zcl_version"]
     assert v == 99
     with pytest.raises(KeyError):
         v = await cluster[99]
 
 
 def test_write_attributes(cluster):
-    cluster.write_attributes({0: 5, 'app_version': 4})
+    cluster.write_attributes({0: 5, "app_version": 4})
     assert cluster._endpoint.request.call_count == 1
 
 
 def test_write_wrong_attribute(cluster):
-    cluster.write_attributes({0xff: 5})
+    cluster.write_attributes({0xFF: 5})
     assert cluster._endpoint.request.call_count == 1
 
 
@@ -281,22 +283,39 @@ def test_write_attributes_wrong_type(cluster):
     assert cluster._endpoint.request.call_count == 1
 
 
-def test_write_attributes_report(cluster):
-    cluster.write_attributes({0: 5}, is_report=True)
+def test_read_attributes_response(cluster):
+    cluster.read_attributes_rsp({0: 5})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
 
 
-def test_write_attributes_report_unsupported(cluster):
-    cluster.write_attributes({0: 5}, is_report=True, unsupported_attrs=[])
+def test_read_attributes_resp_unsupported(cluster):
+    cluster.read_attributes_rsp({0: 5})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
     orig_len = len(cluster._endpoint.reply.call_args[0][2])
 
-    cluster.write_attributes({0: 5}, is_report=True, unsupported_attrs=[2])
+    cluster.read_attributes_rsp({0: 5, 2: None})
     assert cluster._endpoint.reply.call_count == 2
     assert cluster._endpoint.request.call_count == 0
     assert len(cluster._endpoint.reply.call_args[0][2]) == orig_len + 3
+
+
+def test_read_attributes_resp_str(cluster):
+    cluster.read_attributes_rsp({"hw_version": 32})
+    assert cluster._endpoint.reply.call_count == 1
+    assert cluster._endpoint.request.call_count == 0
+
+
+def test_read_attributes_resp_exc(cluster, monkeypatch):
+    type_idx = mock.MagicMock()
+    type_idx.__getitem__.side_effect = ValueError()
+    monkeypatch.setattr(foundation, "DATA_TYPE_IDX", type_idx)
+
+    cluster.read_attributes_rsp({"hw_version": 32})
+    assert cluster._endpoint.reply.call_count == 1
+    assert cluster._endpoint.request.call_count == 0
+    assert cluster.endpoint.reply.call_args[0][2][-3:] == b"\x03\x00\x86"
 
 
 def test_bind(cluster):
@@ -312,34 +331,40 @@ def test_configure_reporting(cluster):
 
 
 def test_configure_reporting_named(cluster):
-    cluster.configure_reporting('zcl_version', 10, 20, 1)
+    cluster.configure_reporting("zcl_version", 10, 20, 1)
     assert cluster._endpoint.request.call_count == 1
 
 
 def test_configure_reporting_wrong_named(cluster):
-    cluster.configure_reporting('wrong_attr_name', 10, 20, 1)
+    cluster.configure_reporting("wrong_attr_name", 10, 20, 1)
     assert cluster._endpoint.request.call_count == 0
 
 
 def test_configure_reporting_wrong_attrid(cluster):
-    cluster.configure_reporting(0xfffe, 10, 20, 1)
+    cluster.configure_reporting(0xFFFE, 10, 20, 1)
     assert cluster._endpoint.request.call_count == 0
 
 
 def test_configure_reporting_manuf():
     ep = mock.MagicMock()
     cluster = zcl.Cluster.from_id(ep, 6)
-    cluster.request = mock.MagicMock(name='request')
+    cluster.request = mock.MagicMock(name="request")
     cluster.configure_reporting(0, 10, 20, 1)
     cluster.request.assert_called_with(
-        mock.ANY, mock.ANY, mock.ANY, mock.ANY, manufacturer=None
+        True, 0x06, mock.ANY, mock.ANY, expect_reply=True, manufacturer=None, tries=1
     )
 
     cluster.request.reset_mock()
-    manufacturer_id = 0xfcfc
+    manufacturer_id = 0xFCFC
     cluster.configure_reporting(0, 10, 20, 1, manufacturer=manufacturer_id)
     cluster.request.assert_called_with(
-        mock.ANY, mock.ANY, mock.ANY, mock.ANY, manufacturer=manufacturer_id
+        True,
+        0x06,
+        mock.ANY,
+        mock.ANY,
+        expect_reply=True,
+        manufacturer=manufacturer_id,
+        tries=1,
     )
     assert cluster.request.call_count == 1
 
@@ -375,19 +400,42 @@ def test_invalid_arguments_cluster_client_command(client_cluster):
 
 
 def test_name(cluster):
-    assert cluster.name == 'Basic'
+    assert cluster.name == "Basic"
 
 
 def test_commands(cluster):
     assert cluster.commands == ["reset_fact_default"]
 
 
-def test_discover(cluster):
+def test_general_command(cluster):
     cluster.request = mock.MagicMock()
+    cluster.reply = mock.MagicMock()
     s = mock.sentinel
-    cmd_id = 0x0c
-    cluster._discover(cmd_id, s.start, s.items, s.manuf)
+    cmd_id = 0x0C
+    cluster.general_command(cmd_id, s.start, s.items, manufacturer=0x4567)
 
+    assert cluster.reply.call_count == 0
     assert cluster.request.call_count == 1
     cluster.request.assert_called_with(
-        True, cmd_id, mock.ANY, s.start, s.items, manufacturer=s.manuf)
+        True,
+        cmd_id,
+        mock.ANY,
+        s.start,
+        s.items,
+        expect_reply=True,
+        manufacturer=0x4567,
+        tries=1,
+    )
+
+
+def test_general_command_reply(cluster):
+    cluster.request = mock.MagicMock()
+    cluster.reply = mock.MagicMock()
+    cmd_id = 0x0D
+    cluster.general_command(cmd_id, True, [], manufacturer=0x4567)
+
+    assert cluster.request.call_count == 0
+    assert cluster.reply.call_count == 1
+    cluster.reply.assert_called_with(
+        True, cmd_id, mock.ANY, True, [], manufacturer=0x4567
+    )

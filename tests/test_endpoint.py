@@ -23,7 +23,7 @@ async def _test_initialize(ep, profile):
         sd = types.SimpleDescriptor()
         sd.endpoint = 1
         sd.profile = profile
-        sd.device_type = 0xff
+        sd.device_type = 0xFF
         sd.input_clusters = [5]
         sd.output_clusters = [6]
         return [0, None, sd]
@@ -139,23 +139,23 @@ def test_cluster_attr(ep):
 
 def test_request(ep):
     ep.profile_id = 260
-    ep.request(7, 8, b'')
+    ep.request(7, 8, b"")
     assert ep._device.request.call_count == 1
 
 
 def test_request_change_profileid(ep):
     ep.profile_id = 49246
-    ep.request(7, 9, b'')
+    ep.request(7, 9, b"")
     ep.profile_id = 49246
-    ep.request(0x1000, 10, b'')
+    ep.request(0x1000, 10, b"")
     ep.profile_id = 260
-    ep.request(0x1000, 11, b'')
+    ep.request(0x1000, 11, b"")
     assert ep._device.request.call_count == 3
 
 
 def test_reply(ep):
     ep.profile_id = 260
-    ep.reply(7, 8, b'')
+    ep.reply(7, 8, b"")
     assert ep._device.reply.call_count == 1
 
 
@@ -168,13 +168,14 @@ def _mk_rar(attrid, value, status=0):
     return r
 
 
-def _get_model_info(ep, test_manuf=None, test_model=None,
-                    fail=False, timeout=False):
+def _get_model_info(ep, test_manuf=None, test_model=None, fail=False, timeout=False):
     clus = ep.add_input_cluster(0)
     assert 0 in ep.in_clusters
     assert ep.in_clusters[0] is clus
 
-    async def mockrequest(foundation, command, schema, args, manufacturer=None):
+    async def mockrequest(
+        foundation, command, schema, args, manufacturer=None, **kwargs
+    ):
         assert foundation is True
         assert command == 0
         if fail:
@@ -197,6 +198,7 @@ def _get_model_info(ep, test_manuf=None, test_model=None,
             rar5 = _mk_rar(5, None)
 
         return [[rar4, rar5]]
+
     clus.request = mockrequest
 
     return ep.get_model_info()
@@ -204,13 +206,13 @@ def _get_model_info(ep, test_manuf=None, test_model=None,
 
 @pytest.mark.asyncio
 async def test_get_model_info(ep):
-    manufacturer = b'Mock Manufacturer'
-    model = b'Mock Model'
+    manufacturer = b"Mock Manufacturer"
+    model = b"Mock Model"
 
     mod, man = await _get_model_info(ep, manufacturer, model)
 
-    assert man == 'Mock Manufacturer'
-    assert mod == 'Mock Model'
+    assert man == "Mock Manufacturer"
+    assert mod == "Mock Model"
 
 
 @pytest.mark.asyncio
@@ -223,38 +225,38 @@ async def test_init_endpoint_info_none(ep):
 
 @pytest.mark.asyncio
 async def test_init_endpoint_info_null_padded_manuf(ep):
-    manufacturer = b'Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07'
-    model = b'Mock Model'
+    manufacturer = b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07"
+    model = b"Mock Model"
     mod, man = await _get_model_info(ep, manufacturer, model)
 
-    assert man == 'Mock Manufacturer'
-    assert mod == 'Mock Model'
+    assert man == "Mock Manufacturer"
+    assert mod == "Mock Model"
 
 
 @pytest.mark.asyncio
 async def test_init_endpoint_info_null_padded_model(ep):
-    manufacturer = b'Mock Manufacturer'
-    model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+    manufacturer = b"Mock Manufacturer"
+    model = b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
     mod, man = await _get_model_info(ep, manufacturer, model)
 
-    assert man == 'Mock Manufacturer'
-    assert mod == 'Mock Model'
+    assert man == "Mock Manufacturer"
+    assert mod == "Mock Model"
 
 
 @pytest.mark.asyncio
 async def test_init_endpoint_info_null_padded_manuf_model(ep):
-    manufacturer = b'Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07'
-    model = b'Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+    manufacturer = b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07"
+    model = b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
     mod, man = await _get_model_info(ep, manufacturer, model)
 
-    assert man == 'Mock Manufacturer'
-    assert mod == 'Mock Model'
+    assert man == "Mock Manufacturer"
+    assert mod == "Mock Model"
 
 
 @pytest.mark.asyncio
 async def test_get_model_info_delivery_error(ep):
-    manufacturer = b'Mock Manufacturer'
-    model = b'Mock Model'
+    manufacturer = b"Mock Manufacturer"
+    model = b"Mock Model"
     mod, man = await _get_model_info(ep, manufacturer, model, fail=True)
 
     assert man is None
@@ -263,17 +265,15 @@ async def test_get_model_info_delivery_error(ep):
 
 @pytest.mark.asyncio
 async def test_get_model_info_timeout(ep):
-    manufacturer = b'Mock Manufacturer'
-    model = b'Mock Model'
-    mod, man = await _get_model_info(ep, manufacturer, model,
-                                     fail=True, timeout=True)
+    manufacturer = b"Mock Manufacturer"
+    model = b"Mock Model"
+    mod, man = await _get_model_info(ep, manufacturer, model, fail=True, timeout=True)
 
     assert man is None
     assert mod is None
 
 
-def _group_add_mock(ep, success=True,
-                    no_groups_cluster=False):
+def _group_add_mock(ep, success=True, no_groups_cluster=False):
     async def mock_req(*args, **kwargs):
         if success:
             return [ZCLStatus.SUCCESS, mock.sentinel.group_id]
@@ -328,8 +328,7 @@ async def test_add_to_group_fail(ep):
     assert groups.remove_group.call_count == 0
 
 
-def _group_remove_mock(ep, success=True,
-                       no_groups_cluster=False, not_member=False):
+def _group_remove_mock(ep, success=True, no_groups_cluster=False, not_member=False):
     async def mock_req(*args, **kwargs):
         if success:
             return [ZCLStatus.SUCCESS, mock.sentinel.group_id]

@@ -12,7 +12,7 @@ class Struct:
                 setattr(self, field[0], None)
 
     def serialize(self):
-        r = b''
+        r = b""
         for field in self._fields:
             r += getattr(self, field[0]).serialize()
         return r
@@ -26,9 +26,9 @@ class Struct:
         return r, data
 
     def __repr__(self):
-        r = '<%s ' % (self.__class__.__name__, )
-        r += ' '.join(
-            ['%s=%s' % (f[0], getattr(self, f[0], None)) for f in self._fields]
+        r = "<%s " % (self.__class__.__name__,)
+        r += " ".join(
+            ["%s=%s" % (f[0], getattr(self, f[0], None)) for f in self._fields]
         )
-        r += '>'
+        r += ">"
         return r

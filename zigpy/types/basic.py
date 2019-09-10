@@ -5,15 +5,15 @@ class int_t(int):  # noqa: N801
     _signed = True
 
     def serialize(self):
-        return self.to_bytes(self._size, 'little', signed=self._signed)
+        return self.to_bytes(self._size, "little", signed=self._signed)
 
     @classmethod
     def deserialize(cls, data):
         if len(data) < cls._size:
-            raise ValueError('Data is too short to contain %d bytes' % cls._size)
+            raise ValueError("Data is too short to contain %d bytes" % cls._size)
 
-        r = cls.from_bytes(data[:cls._size], 'little', signed=cls._signed)
-        return r, data[cls._size:]
+        r = cls.from_bytes(data[: cls._size], "little", signed=cls._signed)
+        return r, data[cls._size :]
 
 
 class int8s(int_t):  # noqa: N801
@@ -125,7 +125,7 @@ class bitmap64(uint64_t):  # noqa: N801
 
 
 class Single(float):
-    _fmt = '<f'
+    _fmt = "<f"
 
     def serialize(self):
         return struct.pack(self._fmt, self)
@@ -134,13 +134,13 @@ class Single(float):
     def deserialize(cls, data):
         size = struct.calcsize(cls._fmt)
         if len(data) < size:
-            raise ValueError('Data is too short to contain %s float' % cls.__name__)
+            raise ValueError("Data is too short to contain %s float" % cls.__name__)
 
         return struct.unpack(cls._fmt, data[0:size])[0], data[size:]
 
 
 class Double(Single):
-    _fmt = '<d'
+    _fmt = "<d"
 
 
 class LVBytes(bytes):
@@ -149,22 +149,21 @@ class LVBytes(bytes):
     def serialize(self):
         if len(self) >= pow(256, self._prefix_length) - 1:
             raise ValueError("OctetString is too long")
-        return len(self).to_bytes(self._prefix_length,
-                                  'little', signed=False) + self
+        return len(self).to_bytes(self._prefix_length, "little", signed=False) + self
 
     @classmethod
     def deserialize(cls, data):
         if len(data) < cls._prefix_length:
-            raise ValueError('Data is too short')
+            raise ValueError("Data is too short")
 
-        num_bytes = int.from_bytes(data[:cls._prefix_length], 'little')
+        num_bytes = int.from_bytes(data[: cls._prefix_length], "little")
 
         if len(data) < cls._prefix_length + num_bytes:
-            raise ValueError('Data is too short')
+            raise ValueError("Data is too short")
 
-        s = data[cls._prefix_length:cls._prefix_length + num_bytes]
+        s = data[cls._prefix_length : cls._prefix_length + num_bytes]
 
-        return cls(s), data[cls._prefix_length + num_bytes:]
+        return cls(s), data[cls._prefix_length + num_bytes :]
 
 
 class LongOctetString(LVBytes):
@@ -176,7 +175,7 @@ class _List(list):
 
     def serialize(self):
         assert self._length is None or len(self) == self._length
-        return b''.join([i.serialize() for i in self])
+        return b"".join([i.serialize() for i in self])
 
     @classmethod
     def deserialize(cls, data):
@@ -191,7 +190,7 @@ class _LVList(_List):
     _prefix_length = 1
 
     def serialize(self):
-        head = len(self).to_bytes(self._prefix_length, 'little')
+        head = len(self).to_bytes(self._prefix_length, "little")
         data = super().serialize()
         return head + data
 
@@ -200,10 +199,10 @@ class _LVList(_List):
         r = cls()
 
         if len(data) < cls._prefix_length:
-            raise ValueError('Data is too short')
+            raise ValueError("Data is too short")
 
-        length = int.from_bytes(data[:cls._prefix_length], 'little')
-        data = data[cls._prefix_length:]
+        length = int.from_bytes(data[: cls._prefix_length], "little")
+        data = data[cls._prefix_length :]
         for i in range(length):
             item, data = r._itemtype.deserialize(data)
             r.append(item)
@@ -213,6 +212,7 @@ class _LVList(_List):
 def List(itemtype):  # noqa: N802
     class List(_List):
         _itemtype = itemtype
+
     return List
 
 
@@ -220,6 +220,7 @@ def LVList(itemtype, prefix_length=1):  # noqa: N802
     class LVList(_LVList):
         _itemtype = itemtype
         _prefix_length = prefix_length
+
     return LVList
 
 
@@ -247,23 +248,24 @@ class CharacterString(str):
     def serialize(self):
         if len(self) >= pow(256, self._prefix_length) - 1:
             raise ValueError("String is too long")
-        return len(self).to_bytes(self._prefix_length,
-                                  'little', signed=False) + self.encode('utf8')
+        return len(self).to_bytes(
+            self._prefix_length, "little", signed=False
+        ) + self.encode("utf8")
 
     @classmethod
     def deserialize(cls, data):
         if len(data) < cls._prefix_length:
-            raise ValueError('Data is too short')
+            raise ValueError("Data is too short")
 
-        length = int.from_bytes(data[:cls._prefix_length], 'little')
+        length = int.from_bytes(data[: cls._prefix_length], "little")
 
         if len(data) < cls._prefix_length + length:
-            raise ValueError('Data is too short')
+            raise ValueError("Data is too short")
 
-        raw = data[cls._prefix_length:cls._prefix_length + length]
-        r = cls(raw.split(b'\x00')[0].decode('utf8', errors='replace'))
+        raw = data[cls._prefix_length : cls._prefix_length + length]
+        r = cls(raw.split(b"\x00")[0].decode("utf8", errors="replace"))
         r.raw = raw
-        return r, data[cls._prefix_length + length:]
+        return r, data[cls._prefix_length + length :]
 
 
 class LongCharacterString(CharacterString):
@@ -278,6 +280,7 @@ def LimitedCharString(max_len):  # noqa: N802
             if len(self) > self._max_len:
                 raise ValueError("String is too long")
             return super().serialize()
+
     return LimitedCharString
 
 
@@ -290,6 +293,6 @@ def Optional(optional_item_type):
             try:
                 return super().deserialize(data)
             except ValueError:
-                return None, b''
+                return None, b""
 
     return Optional
