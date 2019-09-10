@@ -91,12 +91,8 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     def deserialize(self, sender, endpoint_id, cluster_id, data):
         return sender.deserialize(endpoint_id, cluster_id, data)
 
-    def handle_message(
-        self, sender, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args
-    ):
-        return sender.handle_message(
-            is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args
-        )
+    def handle_message(self, sender, profile, cluster, src_ep, dst_ep, message):
+        return sender.handle_message(profile, cluster, src_ep, dst_ep, message)
 
     def handle_join(self, nwk, ieee, parent_nwk):
         LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
@@ -124,16 +120,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
 
     @zigpy.util.retryable_request
     async def request(
-        self,
-        nwk,
-        profile,
-        cluster,
-        src_ep,
-        dst_ep,
-        sequence,
-        data,
-        expect_reply=True,
-        timeout=10,
+        self, nwk, profile, cluster, src_ep, dst_ep, sequence, data, timeout=10
     ):
         raise NotImplementedError
 
