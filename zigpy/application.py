@@ -92,6 +92,28 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         return sender.deserialize(endpoint_id, cluster_id, data)
 
     def handle_message(self, sender, profile, cluster, src_ep, dst_ep, message):
+        if sender.status == zigpy.device.Status.NEW and dst_ep != 0:
+            # only allow ZDO responses while initializing device
+            LOGGER.debug(
+                "Received frame on uninitialized device %s (%s) for endpoint: %s",
+                sender.ieee,
+                sender.status,
+                dst_ep,
+            )
+            return
+        elif (
+            sender.status == zigpy.device.Status.ZDO_INIT
+            and dst_ep != 0
+            and cluster != 0
+        ):
+            # only allow access to basic cluster while initializing endpoints
+            LOGGER.debug(
+                "Received frame on uninitialized device %s endpoint %s for cluster: %s",
+                sender.ieee,
+                dst_ep,
+                cluster,
+            )
+            return
         return sender.handle_message(profile, cluster, src_ep, dst_ep, message)
 
     def handle_join(self, nwk, ieee, parent_nwk):
