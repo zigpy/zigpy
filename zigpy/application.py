@@ -144,6 +144,19 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     async def request(
         self, nwk, profile, cluster, src_ep, dst_ep, sequence, data, timeout=10
     ):
+        """Submit and send data out as an unicast transmission.
+
+        :param nwk: destination network address
+        :param profile: Zigbee Profile ID to use for outgoing message
+        :param cluster: cluster id where the message is being sent
+        :param src_ep: source endpoint id
+        :param dst_ep: destination endpoint id
+        :param sequence: transaction sequence number of the message
+        :param data: zigbee message payload
+        :param timeout: how long to wait for transmission ACK
+        :returns: return a tuple of a status and an error_message. Original requestor
+                  has more context to provide a more meaningful error message
+        """
         raise NotImplementedError
 
     async def broadcast(
@@ -158,6 +171,21 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         data,
         broadcast_address,
     ):
+        """Submit and send data out as an unicast transmission.
+
+        :param profile: Zigbee Profile ID to use for outgoing message
+        :param cluster: cluster id where the message is being sent
+        :param src_ep: source endpoint id
+        :param dst_ep: destination endpoint id
+        :param: grpid: group id to address the broadcast to
+        :param radius: max radius of the broadcast
+        :param sequence: transaction sequence number of the message
+        :param data: zigbee message payload
+        :param timeout: how long to wait for transmission ACK
+        :param broadcast_address: broadcast address.
+        :returns: return a tuple of a status and an error_message. Original requestor
+                  has more context to provide a more meaningful error message
+        """
         raise NotImplementedError
 
     async def permit_ncp(self, time_s=60):
