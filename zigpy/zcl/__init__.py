@@ -161,11 +161,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
         return self._endpoint.reply(self.cluster_id, sequence, data)
 
-    def handle_message(self, is_reply, tsn, command_id, args):
-        if is_reply:
-            self.debug("Unexpected ZCL reply 0x%04x: %s", command_id, args)
-            return
-
+    def handle_message(self, tsn, command_id, args):
         self.debug("ZCL request 0x%04x: %s", command_id, args)
         if command_id <= 0xFF:
             self.listener_event("zdo_command", tsn, command_id, args)

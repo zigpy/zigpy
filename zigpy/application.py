@@ -91,12 +91,30 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     def deserialize(self, sender, endpoint_id, cluster_id, data):
         return sender.deserialize(endpoint_id, cluster_id, data)
 
-    def handle_message(
-        self, sender, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args
-    ):
-        return sender.handle_message(
-            is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args
-        )
+    def handle_message(self, sender, profile, cluster, src_ep, dst_ep, message):
+        if sender.status == zigpy.device.Status.NEW and dst_ep != 0:
+            # only allow ZDO responses while initializing device
+            LOGGER.debug(
+                "Received frame on uninitialized device %s (%s) for endpoint: %s",
+                sender.ieee,
+                sender.status,
+                dst_ep,
+            )
+            return
+        elif (
+            sender.status == zigpy.device.Status.ZDO_INIT
+            and dst_ep != 0
+            and cluster != 0
+        ):
+            # only allow access to basic cluster while initializing endpoints
+            LOGGER.debug(
+                "Received frame on uninitialized device %s endpoint %s for cluster: %s",
+                sender.ieee,
+                dst_ep,
+                cluster,
+            )
+            return
+        return sender.handle_message(profile, cluster, src_ep, dst_ep, message)
 
     def handle_join(self, nwk, ieee, parent_nwk):
         LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
@@ -124,17 +142,21 @@ class ControllerApplication(zigpy.util.ListenableMixin):
 
     @zigpy.util.retryable_request
     async def request(
-        self,
-        nwk,
-        profile,
-        cluster,
-        src_ep,
-        dst_ep,
-        sequence,
-        data,
-        expect_reply=True,
-        timeout=10,
+        self, nwk, profile, cluster, src_ep, dst_ep, sequence, data, timeout=10
     ):
+        """Submit and send data out as an unicast transmission.
+
+        :param nwk: destination network address
+        :param profile: Zigbee Profile ID to use for outgoing message
+        :param cluster: cluster id where the message is being sent
+        :param src_ep: source endpoint id
+        :param dst_ep: destination endpoint id
+        :param sequence: transaction sequence number of the message
+        :param data: zigbee message payload
+        :param timeout: how long to wait for transmission ACK
+        :returns: return a tuple of a status and an error_message. Original requestor
+                  has more context to provide a more meaningful error message
+        """
         raise NotImplementedError
 
     async def broadcast(
@@ -149,6 +171,21 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         data,
         broadcast_address,
     ):
+        """Submit and send data out as an unicast transmission.
+
+        :param profile: Zigbee Profile ID to use for outgoing message
+        :param cluster: cluster id where the message is being sent
+        :param src_ep: source endpoint id
+        :param dst_ep: destination endpoint id
+        :param: grpid: group id to address the broadcast to
+        :param radius: max radius of the broadcast
+        :param sequence: transaction sequence number of the message
+        :param data: zigbee message payload
+        :param timeout: how long to wait for transmission ACK
+        :param broadcast_address: broadcast address.
+        :returns: return a tuple of a status and an error_message. Original requestor
+                  has more context to provide a more meaningful error message
+        """
         raise NotImplementedError
 
     async def permit_ncp(self, time_s=60):

@@ -1,19 +1,20 @@
 import asyncio
 from unittest import mock
 
+from asynctest import CoroutineMock
 import pytest
-
-import zigpy.types as t
-from zigpy.application import ControllerApplication
 from zigpy import device, endpoint
+from zigpy.application import ControllerApplication
+import zigpy.exceptions
+import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
 
 @pytest.fixture
-def dev():
+def dev(monkeypatch):
+    monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
     app_mock = mock.MagicMock(spec_set=ControllerApplication)
     app_mock.remove.side_effect = asyncio.coroutine(mock.MagicMock())
-    app_mock.request.side_effect = asyncio.coroutine(mock.MagicMock())
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     return device.Device(app_mock, ieee, 65535)
 
@@ -74,19 +75,26 @@ async def test_initialize_ep_failed(monkeypatch, dev):
 
 @pytest.mark.asyncio
 async def test_request(dev):
+    seq = mock.sentinel.tsn
+
+    async def mock_req(*args, **kwargs):
+        dev._pending[seq].result.set_result(mock.sentinel.result)
+        return 0, ""
+
+    dev.application.request.side_effect = mock_req
     assert dev.last_seen is None
-    await dev.request(1, 2, 3, 3, 4, b"")
+    r = await dev.request(1, 2, 3, 3, seq, b"")
+    assert r is mock.sentinel.result
     assert dev._application.request.call_count == 1
-    assert dev._application.get_sequence.call_count == 0
     assert dev.last_seen is not None
 
 
 @pytest.mark.asyncio
 async def test_failed_request(dev):
     assert dev.last_seen is None
-    dev._application.request.side_effect = Exception
-    with pytest.raises(Exception):
-        await dev.request(1, 2, 3, 4, b"")
+    dev._application.request = CoroutineMock(return_value=(1, "error"))
+    with pytest.raises(zigpy.exceptions.DeliveryError):
+        await dev.request(1, 2, 3, 4, 5, b"")
     assert dev.last_seen is None
 
 
@@ -104,14 +112,62 @@ def test_deserialize(dev):
 
 
 def test_handle_message_no_endpoint(dev):
-    dev.handle_message(False, 99, 98, 97, 97, 1, 0, [])
+    dev.handle_message(99, 98, 97, 97, b"aabbcc")
 
 
 def test_handle_message(dev):
     ep = dev.add_endpoint(3)
+    dev.deserialize = mock.MagicMock(
+        return_value=[
+            mock.sentinel.tsn,
+            mock.sentinel.cmd_id,
+            mock.sentinel.is_reply,
+            mock.sentinel.args,
+        ]
+    )
     ep.handle_message = mock.MagicMock()
-    dev.handle_message(False, 99, 98, 3, 3, 1, 0, [])
+    dev.handle_message(99, 98, 3, 3, b"abcd")
     assert ep.handle_message.call_count == 1
+
+
+def test_handle_message_reply(dev):
+    ep = dev.add_endpoint(3)
+    ep.handle_message = mock.MagicMock()
+    tsn = mock.sentinel.tsn
+    req_mock = mock.MagicMock()
+    dev._pending[tsn] = req_mock
+    dev.deserialize = mock.MagicMock(
+        side_effect=(
+            (tsn, mock.sentinel.cmd_id, True, mock.sentinel.args),
+            (mock.sentinel.another_tsn, mock.sentinel.cmd_id, True, mock.sentinel.args),
+            (tsn, mock.sentinel.cmd_id, True, mock.sentinel.args),
+        )
+    )
+    dev.handle_message(99, 98, 3, 3, b"abcd")
+    assert ep.handle_message.call_count == 0
+    assert req_mock.result.set_result.call_count == 1
+    assert req_mock.result.set_result.call_args[0][0] is mock.sentinel.args
+
+    req_mock.reset_mock()
+    dev.handle_message(99, 98, 3, 3, b"abcd")
+    assert ep.handle_message.call_count == 1
+    assert ep.handle_message.call_args[0][-1] is mock.sentinel.args
+    assert req_mock.result.set_result.call_count == 0
+
+    req_mock.reset_mock()
+    req_mock.result.set_result.side_effect = asyncio.InvalidStateError
+    ep.handle_message.reset_mock()
+    dev.handle_message(99, 98, 3, 3, b"abcd")
+    assert ep.handle_message.call_count == 0
+    assert req_mock.result.set_result.call_count == 1
+
+
+def test_handle_message_deserialize_error(dev):
+    ep = dev.add_endpoint(3)
+    dev.deserialize = mock.MagicMock(side_effect=ValueError)
+    ep.handle_message = mock.MagicMock()
+    dev.handle_message(99, 98, 3, 3, b"abcd")
+    assert ep.handle_message.call_count == 0
 
 
 def test_endpoint_getitem(dev):
