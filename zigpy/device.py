@@ -165,6 +165,7 @@ class Device(zigpy.util.LocalLogMixin):
                 dst_ep,
                 sequence,
                 data,
+                expect_reply=expect_reply,
                 use_ieee=use_ieee,
             )
             if result != foundation.Status.SUCCESS:
