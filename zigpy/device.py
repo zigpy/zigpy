@@ -158,7 +158,14 @@ class Device(zigpy.util.LocalLogMixin):
             timeout = APS_REPLY_TIMEOUT_EXTENDED
         with self._pending.new(sequence) as req:
             result, msg = await self._application.request(
-                self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee
+                self,
+                profile,
+                cluster,
+                src_ep,
+                dst_ep,
+                sequence,
+                data,
+                use_ieee=use_ieee,
             )
             if result != foundation.Status.SUCCESS:
                 self.debug(
