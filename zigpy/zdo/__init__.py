@@ -45,19 +45,21 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return tsn, cluster_id, is_reply, args
 
     @zigpy.util.retryable_request
-    def request(self, command, *args):
+    def request(self, command, *args, use_ieee=False):
         data = self._serialize(command, *args)
         tsn = self.device.application.get_sequence()
         data = t.uint8_t(tsn).serialize() + data
-        return self._device.request(0, command, 0, 0, tsn, data)
+        return self._device.request(0, command, 0, 0, tsn, data, use_ieee=use_ieee)
 
-    def reply(self, command, *args, tsn=None):
+    def reply(self, command, *args, tsn=None, use_ieee=False):
         data = self._serialize(command, *args)
         if tsn is None:
             tsn = self.device.application.get_sequence()
         data = t.uint8_t(tsn).serialize() + data
         loop = asyncio.get_event_loop()
-        loop.create_task(self._device.reply(0, command, 0, 0, tsn, data))
+        loop.create_task(
+            self._device.reply(0, command, 0, 0, tsn, data, use_ieee=use_ieee)
+        )
 
     def handle_message(self, profile, cluster, tsn, command_id, args):
         self.debug("ZDO request %s: %s", command_id, args)
