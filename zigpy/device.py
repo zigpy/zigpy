@@ -151,13 +151,14 @@ class Device(zigpy.util.LocalLogMixin):
         data,
         expect_reply=True,
         timeout=APS_REPLY_TIMEOUT,
+        use_ieee=False,
     ):
         if expect_reply and self.node_desc.is_end_device in (True, None):
             self.debug("Extending timeout for 0x%02x request", sequence)
             timeout = APS_REPLY_TIMEOUT_EXTENDED
         with self._pending.new(sequence) as req:
             result, msg = await self._application.request(
-                self.nwk, profile, cluster, src_ep, dst_ep, sequence, data
+                self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee
             )
             if result != foundation.Status.SUCCESS:
                 self.debug(
@@ -231,9 +232,16 @@ class Device(zigpy.util.LocalLogMixin):
         endpoint = self.endpoints[src_ep]
         return endpoint.handle_message(profile, cluster, tsn, command_id, args)
 
-    def reply(self, profile, cluster, src_ep, dst_ep, sequence, data):
+    def reply(self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee=False):
         return self.request(
-            profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=False
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            sequence,
+            data,
+            expect_reply=False,
+            use_ieee=use_ieee,
         )
 
     def radio_details(self, lqi, rssi):
