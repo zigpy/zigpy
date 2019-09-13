@@ -142,7 +142,16 @@ class ControllerApplication(zigpy.util.ListenableMixin):
 
     @zigpy.util.retryable_request
     async def request(
-        self, device, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee=False
+        self,
+        device,
+        profile,
+        cluster,
+        src_ep,
+        dst_ep,
+        sequence,
+        data,
+        expect_reply=True,
+        use_ieee=False,
     ):
         """Submit and send data out as an unicast transmission.
 
@@ -153,6 +162,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         :param dst_ep: destination endpoint id
         :param sequence: transaction sequence number of the message
         :param data: Zigbee message payload
+        :param expect_reply: True if this is essentially a request
         :param use_ieee: use EUI64 for destination addressing
         :returns: return a tuple of a status and an error_message. Original requestor
                   has more context to provide a more meaningful error message
