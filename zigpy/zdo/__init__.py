@@ -19,11 +19,9 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._listeners = {}
 
     def _serialize(self, command, *args):
-        sequence = self._device.application.get_sequence()
-        data = sequence.to_bytes(1, "little")
         schema = types.CLUSTERS[command][1]
-        data += t.serialize(args, schema)
-        return sequence, data
+        data = t.serialize(args, schema)
+        return data
 
     def deserialize(self, cluster_id, data):
         tsn, data = data[0], data[1:]
@@ -48,26 +46,31 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @zigpy.util.retryable_request
     def request(self, command, *args):
-        sequence, data = self._serialize(command, *args)
-        return self._device.request(0, command, 0, 0, sequence, data)
+        data = self._serialize(command, *args)
+        tsn = self.device.application.get_sequence()
+        data = t.uint8_t(tsn).serialize() + data
+        return self._device.request(0, command, 0, 0, tsn, data)
 
-    def reply(self, command, *args):
-        sequence, data = self._serialize(command, *args)
+    def reply(self, command, *args, tsn=None):
+        data = self._serialize(command, *args)
+        if tsn is None:
+            tsn = self.device.application.get_sequence()
+        data = t.uint8_t(tsn).serialize() + data
         loop = asyncio.get_event_loop()
-        loop.create_task(self._device.reply(0, command, 0, 0, sequence, data))
+        loop.create_task(self._device.reply(0, command, 0, 0, tsn, data))
 
     def handle_message(self, profile, cluster, tsn, command_id, args):
         self.debug("ZDO request %s: %s", command_id, args)
         app = self._device.application
         if command_id == types.ZDOCmd.NWK_addr_req:
             if app.ieee == args[0]:
-                self.NWK_addr_rsp(0, app.ieee, app.nwk, 0, 0, [])
+                self.NWK_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=tsn)
         elif command_id == types.ZDOCmd.IEEE_addr_req:
             broadcast = (0xFFFF, 0xFFFD, 0xFFFC)
             if args[0] in broadcast or app.nwk == args[0]:
-                self.IEEE_addr_rsp(0, app.ieee, app.nwk, 0, 0, [])
+                self.IEEE_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=tsn)
         elif command_id == types.ZDOCmd.Match_Desc_req:
-            self.handle_match_desc(*args)
+            self.handle_match_desc(*args, tsn=tsn)
         elif command_id == types.ZDOCmd.Device_annce:
             self.listener_event("device_announce", self._device)
         elif command_id == types.ZDOCmd.Mgmt_Permit_Joining_req:
@@ -75,12 +78,12 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         else:
             self.warn("Unsupported ZDO request:%s", command_id)
 
-    def handle_match_desc(self, addr, profile, in_clusters, out_clusters):
+    def handle_match_desc(self, addr, profile, in_clusters, out_clusters, *, tsn=None):
         local_addr = self._device.application.nwk
         if profile != 260:
-            return self.Match_Desc_rsp(0, local_addr, [])
+            return self.Match_Desc_rsp(0, local_addr, [], tsn=tsn)
 
-        return self.Match_Desc_rsp(0, local_addr, [t.uint8_t(1)])
+        return self.Match_Desc_rsp(0, local_addr, [t.uint8_t(1)], tsn=tsn)
 
     def bind(self, endpoint, cluster):
         dstaddr = types.MultiAddress()

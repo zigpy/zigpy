@@ -437,5 +437,17 @@ def test_general_command_reply(cluster):
     assert cluster.request.call_count == 0
     assert cluster.reply.call_count == 1
     cluster.reply.assert_called_with(
-        True, cmd_id, mock.ANY, True, [], manufacturer=0x4567
+        True, cmd_id, mock.ANY, True, [], manufacturer=0x4567, tsn=None
+    )
+
+    cluster.request.reset_mock()
+    cluster.reply.reset_mock()
+    cluster.general_command(
+        cmd_id, True, [], manufacturer=0x4567, tsn=mock.sentinel.tsn
+    )
+
+    assert cluster.request.call_count == 0
+    assert cluster.reply.call_count == 1
+    cluster.reply.assert_called_with(
+        True, cmd_id, mock.ANY, True, [], manufacturer=0x4567, tsn=mock.sentinel.tsn
     )
