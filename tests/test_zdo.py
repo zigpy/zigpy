@@ -27,6 +27,11 @@ def app():
     app = mock.MagicMock()
     app.ieee = t.EUI64(map(t.uint8_t, [8, 9, 10, 11, 12, 13, 14, 15]))
     app.get_sequence.return_value = DEFAULT_SEQUENCE
+    dst_addr = zdo_types.MultiAddress()
+    dst_addr.addrmode = 3
+    dst_addr.ieee = app.ieee
+    dst_addr.endpoint = 1
+    app.get_dst_address.return_value = dst_addr
     return app
 
 
@@ -62,14 +67,20 @@ async def test_request(zdo_f):
 
 @pytest.mark.asyncio
 async def test_bind(zdo_f):
-    await zdo_f.bind(1, 1026)
+    cluster = mock.MagicMock()
+    cluster.endpoint.endpoint_id = 1
+    cluster.cluster_id = 1026
+    await zdo_f.bind(cluster)
     assert zdo_f.device.request.call_count == 1
     assert zdo_f.device.request.call_args[0][1] == 0x0021
 
 
 @pytest.mark.asyncio
 async def test_unbind(zdo_f):
-    await zdo_f.unbind(1, 1026)
+    cluster = mock.MagicMock()
+    cluster.endpoint.endpoint_id = 1
+    cluster.cluster_id = 1026
+    await zdo_f.unbind(cluster)
     assert zdo_f.device.request.call_count == 1
     assert zdo_f.device.request.call_args[0][1] == 0x0022
 
