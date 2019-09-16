@@ -11,6 +11,7 @@ import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
+import zigpy.zdo.types as zdo_types
 
 LOGGER = logging.getLogger(__name__)
 OTA_DIR = "zigpy_ota/"
@@ -249,6 +250,20 @@ class ControllerApplication(zigpy.util.ListenableMixin):
                 return dev
 
         raise KeyError
+
+    def get_dst_address(self, cluster):
+        """Helper to get a dst address for bind/unbind operations.
+
+        Allows radios to provide correct information especially for radios which listen
+        on specific endpoints only.
+        :param cluster: cluster instance to be bound to coordinator
+        :returns: returns a "destination address"
+        """
+        dstaddr = zdo_types.MultiAddress()
+        dstaddr.addrmode = 3
+        dstaddr.ieee = self.ieee
+        dstaddr.endpoint = 1
+        return dstaddr
 
     @property
     def groups(self):

@@ -299,14 +299,10 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         return self._write_attributes(args, manufacturer=manufacturer)
 
     def bind(self):
-        return self._endpoint.device.zdo.bind(
-            self._endpoint.endpoint_id, self.cluster_id
-        )
+        return self._endpoint.device.zdo.bind(cluster=self)
 
     def unbind(self):
-        return self._endpoint.device.zdo.unbind(
-            self._endpoint.endpoint_id, self.cluster_id
-        )
+        return self._endpoint.device.zdo.unbind(cluster=self)
 
     def configure_reporting(
         self,

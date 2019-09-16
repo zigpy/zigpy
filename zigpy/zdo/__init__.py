@@ -87,19 +87,21 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return self.Match_Desc_rsp(0, local_addr, [t.uint8_t(1)], tsn=tsn)
 
-    def bind(self, endpoint, cluster):
-        dstaddr = types.MultiAddress()
-        dstaddr.addrmode = 3
-        dstaddr.ieee = self._device.application.ieee
-        dstaddr.endpoint = endpoint
-        return self.Bind_req(self._device.ieee, endpoint, cluster, dstaddr)
+    def bind(self, cluster):
+        return self.Bind_req(
+            self._device.ieee,
+            cluster.endpoint.endpoint_id,
+            cluster.cluster_id,
+            self.device.application.get_dst_address(cluster),
+        )
 
-    def unbind(self, endpoint, cluster):
-        dstaddr = types.MultiAddress()
-        dstaddr.addrmode = 3
-        dstaddr.ieee = self._device.application.ieee
-        dstaddr.endpoint = endpoint
-        return self.Unbind_req(self._device.ieee, endpoint, cluster, dstaddr)
+    def unbind(self, cluster):
+        return self.Unbind_req(
+            self._device.ieee,
+            cluster.endpoint.endpoint_id,
+            cluster.cluster_id,
+            self.device.application.get_dst_address(cluster),
+        )
 
     def leave(self):
         return self.Mgmt_Leave_req(self._device.ieee, 0x02)

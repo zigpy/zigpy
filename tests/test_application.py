@@ -244,3 +244,9 @@ async def test_broadcast(app):
 @pytest.mark.asyncio
 async def test_shutdown(app):
     await app.shutdown()
+
+
+def test_get_dst_address(app):
+    r = app.get_dst_address(mock.MagicMock())
+    assert r.addrmode == 3
+    assert r.endpoint == 1
