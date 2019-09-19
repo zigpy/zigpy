@@ -172,7 +172,7 @@ class Device(zigpy.util.LocalLogMixin):
                 self.debug(
                     (
                         "Delivery error for seq # 0x%02x, on endpoint id %s "
-                        "cluster 0x%04x cluster: %s"
+                        "cluster 0x%04x: %s"
                     ),
                     sequence,
                     dst_ep,
