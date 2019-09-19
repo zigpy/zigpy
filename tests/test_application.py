@@ -203,7 +203,21 @@ def test_deserialize(app, ieee):
 
 def test_handle_message(app, ieee):
     dev = mock.MagicMock()
-    app.handle_message(dev, False, 260, 1, 1, 1, 1, 1, [])
+    app.handle_message(dev, 260, 1, 1, 1, [])
+    assert dev.handle_message.call_count == 1
+
+
+def test_handle_message_uninitialized_dev(app, ieee):
+    dev = device.Device(app, ieee, 0x1234)
+    dev.handle_message = mock.MagicMock()
+    app.handle_message(dev, 260, 1, 1, 1, [])
+    assert dev.handle_message.call_count == 0
+
+    dev.status = device.Status.ZDO_INIT
+    app.handle_message(dev, 260, 1, 1, 1, [])
+    assert dev.handle_message.call_count == 0
+
+    app.handle_message(dev, 260, 0, 1, 1, [])
     assert dev.handle_message.call_count == 1
 
 
@@ -230,3 +244,9 @@ async def test_broadcast(app):
 @pytest.mark.asyncio
 async def test_shutdown(app):
     await app.shutdown()
+
+
+def test_get_dst_address(app):
+    r = app.get_dst_address(mock.MagicMock())
+    assert r.addrmode == 3
+    assert r.endpoint == 1

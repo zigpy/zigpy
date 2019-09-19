@@ -11,6 +11,7 @@ import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
+import zigpy.zdo.types as zdo_types
 
 LOGGER = logging.getLogger(__name__)
 OTA_DIR = "zigpy_ota/"
@@ -91,12 +92,30 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     def deserialize(self, sender, endpoint_id, cluster_id, data):
         return sender.deserialize(endpoint_id, cluster_id, data)
 
-    def handle_message(
-        self, sender, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args
-    ):
-        return sender.handle_message(
-            is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args
-        )
+    def handle_message(self, sender, profile, cluster, src_ep, dst_ep, message):
+        if sender.status == zigpy.device.Status.NEW and dst_ep != 0:
+            # only allow ZDO responses while initializing device
+            LOGGER.debug(
+                "Received frame on uninitialized device %s (%s) for endpoint: %s",
+                sender.ieee,
+                sender.status,
+                dst_ep,
+            )
+            return
+        elif (
+            sender.status == zigpy.device.Status.ZDO_INIT
+            and dst_ep != 0
+            and cluster != 0
+        ):
+            # only allow access to basic cluster while initializing endpoints
+            LOGGER.debug(
+                "Received frame on uninitialized device %s endpoint %s for cluster: %s",
+                sender.ieee,
+                dst_ep,
+                cluster,
+            )
+            return
+        return sender.handle_message(profile, cluster, src_ep, dst_ep, message)
 
     def handle_join(self, nwk, ieee, parent_nwk):
         LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
@@ -125,7 +144,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     @zigpy.util.retryable_request
     async def request(
         self,
-        nwk,
+        device,
         profile,
         cluster,
         src_ep,
@@ -133,8 +152,22 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         sequence,
         data,
         expect_reply=True,
-        timeout=10,
+        use_ieee=False,
     ):
+        """Submit and send data out as an unicast transmission.
+
+        :param device: destination device
+        :param profile: Zigbee Profile ID to use for outgoing message
+        :param cluster: cluster id where the message is being sent
+        :param src_ep: source endpoint id
+        :param dst_ep: destination endpoint id
+        :param sequence: transaction sequence number of the message
+        :param data: Zigbee message payload
+        :param expect_reply: True if this is essentially a request
+        :param use_ieee: use EUI64 for destination addressing
+        :returns: return a tuple of a status and an error_message. Original requestor
+                  has more context to provide a more meaningful error message
+        """
         raise NotImplementedError
 
     async def broadcast(
@@ -149,6 +182,21 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         data,
         broadcast_address,
     ):
+        """Submit and send data out as an unicast transmission.
+
+        :param profile: Zigbee Profile ID to use for outgoing message
+        :param cluster: cluster id where the message is being sent
+        :param src_ep: source endpoint id
+        :param dst_ep: destination endpoint id
+        :param: grpid: group id to address the broadcast to
+        :param radius: max radius of the broadcast
+        :param sequence: transaction sequence number of the message
+        :param data: zigbee message payload
+        :param timeout: how long to wait for transmission ACK
+        :param broadcast_address: broadcast address.
+        :returns: return a tuple of a status and an error_message. Original requestor
+                  has more context to provide a more meaningful error message
+        """
         raise NotImplementedError
 
     async def permit_ncp(self, time_s=60):
@@ -202,6 +250,20 @@ class ControllerApplication(zigpy.util.ListenableMixin):
                 return dev
 
         raise KeyError
+
+    def get_dst_address(self, cluster):
+        """Helper to get a dst address for bind/unbind operations.
+
+        Allows radios to provide correct information especially for radios which listen
+        on specific endpoints only.
+        :param cluster: cluster instance to be bound to coordinator
+        :returns: returns a "destination address"
+        """
+        dstaddr = zdo_types.MultiAddress()
+        dstaddr.addrmode = 3
+        dstaddr.ieee = self.ieee
+        dstaddr.endpoint = 1
+        return dstaddr
 
     @property
     def groups(self):
