@@ -324,3 +324,40 @@ async def test_async_listener():
 
     r = await listenable.async_event("no_such_event", mock.sentinel.no_data)
     assert r == []
+
+
+def test_requests(monkeypatch):
+    req_mock = mock.MagicMock()
+    monkeypatch.setattr(util, "Request", req_mock)
+    r = util.Requests()
+    r.new(mock.sentinel.seq)
+    assert req_mock.call_count == 1
+
+
+def test_request():
+    pending = util.Requests()
+    seq = 0x11
+
+    req = pending.new(seq)
+    assert seq not in pending
+    assert req.result.done() is False
+    with req:
+        assert seq in pending
+        assert req.result.done() is False
+        assert req.sequence is seq
+    assert req.result.done() is True
+    assert req.result.cancelled() is True
+    assert seq not in pending
+
+    seq = mock.sentinel.seq
+    req = pending.new(seq)
+    assert seq not in pending
+    assert req.result.done() is False
+    with req:
+        assert seq in pending
+        assert req.result.done() is False
+        assert req.sequence is seq
+        req.result.set_result(True)
+    assert req.result.done() is True
+    assert req.result.cancelled() is False
+    assert seq not in pending

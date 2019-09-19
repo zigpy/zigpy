@@ -204,6 +204,7 @@ def _ota_next_image(cluster, has_image=True, upgradeable=False):
         mock.sentinel.image_type,
         mock.sentinel.current_file_version,
         mock.sentinel.hw_version,
+        tsn=0x21,
     )
 
 
@@ -296,6 +297,7 @@ def _ota_image_block(cluster, has_image=True, correct_version=True, wrong_offset
         mock.sentinel.max_data_size,
         mock.sentinel.addr,
         mock.sentinel.delay,
+        tsn=0x21,
     )
 
 
@@ -381,6 +383,7 @@ async def test_ota_handle_upgrade_end(ota_cluster):
         mock.sentinel.manufacturer_id,
         mock.sentinel.image_type,
         mock.sentinel.image_version,
+        tsn=0x21,
     )
 
     assert ota_cluster.upgrade_end_response.call_count == 1

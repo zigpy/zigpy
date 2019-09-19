@@ -1,14 +1,19 @@
 import asyncio
+import binascii
 import enum
 import logging
 import time
 
 import zigpy.endpoint
+import zigpy.exceptions
 import zigpy.util
 import zigpy.zdo as zdo
+import zigpy.zcl.foundation as foundation
 from zigpy.types import BroadcastAddress, NWK
 
 
+APS_REPLY_TIMEOUT = 5
+APS_REPLY_TIMEOUT_EXTENDED = 28
 LOGGER = logging.getLogger(__name__)
 
 
@@ -42,6 +47,7 @@ class Device(zigpy.util.LocalLogMixin):
         self._model = None
         self.node_desc = zdo.types.NodeDescriptor()
         self._node_handle = None
+        self._pending = zigpy.util.Requests()
 
     def schedule_initialize(self):
         if self.initializing:
@@ -136,47 +142,114 @@ class Device(zigpy.util.LocalLogMixin):
                 await ep.remove_from_group(grp_id)
 
     async def request(
-        self, profile, cluster, src_ep, dst_ep, sequence, data, expect_reply=True
+        self,
+        profile,
+        cluster,
+        src_ep,
+        dst_ep,
+        sequence,
+        data,
+        expect_reply=True,
+        timeout=APS_REPLY_TIMEOUT,
+        use_ieee=False,
     ):
-        result = await self._application.request(
-            self.nwk,
+        if expect_reply and self.node_desc.is_end_device in (True, None):
+            self.debug("Extending timeout for 0x%02x request", sequence)
+            timeout = APS_REPLY_TIMEOUT_EXTENDED
+        with self._pending.new(sequence) as req:
+            result, msg = await self._application.request(
+                self,
+                profile,
+                cluster,
+                src_ep,
+                dst_ep,
+                sequence,
+                data,
+                expect_reply=expect_reply,
+                use_ieee=use_ieee,
+            )
+            if result != foundation.Status.SUCCESS:
+                self.debug(
+                    (
+                        "Delivery error for seq # 0x%02x, on endpoint id %s "
+                        "cluster 0x%04x: %s"
+                    ),
+                    sequence,
+                    dst_ep,
+                    cluster,
+                    msg,
+                )
+                raise zigpy.exceptions.DeliveryError(
+                    "[0x{:04x}:{}:0x{:04x}]: Message send failure".format(
+                        self.nwk, dst_ep, cluster
+                    )
+                )
+            # If application.request raises an exception, we won't get here, so
+            # won't update last_seen, as expected
+            self.last_seen = time.time()
+            if expect_reply:
+                result = await asyncio.wait_for(req.result, timeout)
+
+        return result
+
+    def deserialize(self, endpoint_id, cluster_id, data):
+        return self.endpoints[endpoint_id].deserialize(cluster_id, data)
+
+    def handle_message(self, profile, cluster, src_ep, dst_ep, message):
+        self.last_seen = time.time()
+        if not self.node_desc.is_valid and (
+            self._node_handle is None or self._node_handle.done()
+        ):
+            self._node_handle = asyncio.ensure_future(self.refresh_node_descriptor())
+
+        try:
+            tsn, command_id, is_reply, args = self.deserialize(src_ep, cluster, message)
+        except ValueError as e:
+            LOGGER.error(
+                "Failed to parse message (%s) on cluster %d, because %s",
+                binascii.hexlify(message),
+                cluster,
+                e,
+            )
+            return
+        except KeyError as e:
+            LOGGER.debug(
+                (
+                    "Ignoring message (%s) on cluster %d: "
+                    "unknown endpoint or cluster id: %s"
+                ),
+                binascii.hexlify(message),
+                cluster,
+                e,
+            )
+            return
+
+        if tsn in self._pending and is_reply:
+            try:
+                self._pending[tsn].result.set_result(args)
+                return
+            except asyncio.InvalidStateError:
+                self.debug(
+                    (
+                        "Invalid state on future for 0x%02x seq "
+                        "-- probably duplicate response"
+                    ),
+                    tsn,
+                )
+                return
+        endpoint = self.endpoints[src_ep]
+        return endpoint.handle_message(profile, cluster, tsn, command_id, args)
+
+    def reply(self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee=False):
+        return self.request(
             profile,
             cluster,
             src_ep,
             dst_ep,
             sequence,
             data,
-            expect_reply=expect_reply,
-        )
-        # If application.request raises an exception, we won't get here, so
-        # won't update last_seen, as expected
-        self.last_seen = time.time()
-        return result
-
-    def deserialize(self, endpoint_id, cluster_id, data):
-        return self.endpoints[endpoint_id].deserialize(cluster_id, data)
-
-    def handle_message(
-        self, is_reply, profile, cluster, src_ep, dst_ep, tsn, command_id, args
-    ):
-        self.last_seen = time.time()
-        if not self.node_desc.is_valid and (
-            self._node_handle is None or self._node_handle.done()
-        ):
-            self._node_handle = asyncio.ensure_future(self.refresh_node_descriptor())
-        try:
-            endpoint = self.endpoints[src_ep]
-        except KeyError:
-            self.warn("Message on unknown endpoint %s", src_ep)
-            return
-
-        return endpoint.handle_message(
-            is_reply, profile, cluster, tsn, command_id, args
-        )
-
-    def reply(self, profile, cluster, src_ep, dst_ep, sequence, data):
-        return self._application.request(
-            self.nwk, profile, cluster, src_ep, dst_ep, sequence, data, False
+            expect_reply=False,
+            use_ieee=use_ieee,
         )
 
     def radio_details(self, lqi, rssi):
