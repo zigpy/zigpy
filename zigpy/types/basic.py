@@ -296,3 +296,52 @@ def Optional(optional_item_type):
                 return None, b""
 
     return Optional
+
+
+class data8(_FixedList):
+    """General data, Discrete, 8 bit."""
+
+    _itemtype = uint8_t
+    _length = 1
+
+
+class data16(data8):
+    """General data, Discrete, 16 bit."""
+
+    _length = 2
+
+
+class data24(data8):
+    """General data, Discrete, 24 bit."""
+
+    _length = 3
+
+
+class data32(data8):
+    """General data, Discrete, 32 bit."""
+
+    _length = 4
+
+
+class data40(data8):
+    """General data, Discrete, 40 bit."""
+
+    _length = 5
+
+
+class data48(data8):
+    """General data, Discrete, 48 bit."""
+
+    _length = 6
+
+
+class data56(data8):
+    """General data, Discrete, 56 bit."""
+
+    _length = 7
+
+
+class data64(data8):
+    """General data, Discrete, 64 bit."""
+
+    _length = 8
