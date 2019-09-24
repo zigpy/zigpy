@@ -42,21 +42,19 @@ class Bool(basic.uint8_t, enum.Enum):
 
 
 class HexRepr:
-    _hex_len = 2
-
     def __repr__(self):
-        return ("0x{:0" + str(self._hex_len) + "x}").format(self)
+        return ("0x{:0" + str(self._size * 2) + "x}").format(self)
 
     def __str__(self):
-        return ("0x{:0" + str(self._hex_len) + "x}").format(self)
+        return ("0x{:0" + str(self._size * 2) + "x}").format(self)
 
 
 class NWK(HexRepr, basic.uint16_t):
-    _hex_len = 4
+    pass
 
 
 class Group(HexRepr, basic.uint16_t):
-    _hex_len = 4
+    pass
 
 
 class NoData:
