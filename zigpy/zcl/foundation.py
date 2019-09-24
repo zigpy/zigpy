@@ -152,22 +152,15 @@ DATA_TYPES = {
     0xE0: ("Time of day", t.uint32_t, Analog),
     0xE1: ("Date", t.uint32_t, Analog),
     0xE2: ("UTCTime", t.uint32_t, Analog),
-    0xE8: ("Cluster ID", t.uint16_t, Discrete),
-    0xE9: ("Attribute ID", t.uint16_t, Discrete),
-    0xEA: ("BACNet OID", t.uint32_t, Discrete),
+    0xE8: ("Cluster ID", t.ClusterId, Discrete),
+    0xE9: ("Attribute ID", t.AttributeId, Discrete),
+    0xEA: ("BACNet OID", t.BACNetOid, Discrete),
     0xF0: ("IEEE address", t.EUI64, Discrete),
-    0xF1: ("128-bit security key", t.fixed_list(16, t.uint16_t), Discrete),
+    0xF1: ("128-bit security key", t.KeyData, Discrete),
     0xFF: ("Unknown", None, None),
 }
 
-DATA_TYPE_IDX = {
-    t: tidx
-    for tidx, (tname, t, ad) in DATA_TYPES.items()
-    if ad is Analog or tname == "Enumeration" or tname == "Bitmap"
-}
-DATA_TYPE_IDX[t.uint32_t] = 0x23
-DATA_TYPE_IDX[t.EUI64] = 0xF0
-DATA_TYPE_IDX[t.Bool] = 0x10
+DATA_TYPE_IDX = {t: tidx for tidx, (tname, t, ad) in DATA_TYPES.items()}
 
 
 class ReadAttributeRecord(t.Struct):

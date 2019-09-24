@@ -49,6 +49,18 @@ class HexRepr:
         return ("0x{:0" + str(self._size * 2) + "x}").format(self)
 
 
+class AttributeId(HexRepr, basic.uint16_t):
+    pass
+
+
+class BACNetOid(basic.uint32_t):
+    pass
+
+
+class ClusterId(HexRepr, basic.uint16_t):
+    pass
+
+
 class NWK(HexRepr, basic.uint16_t):
     pass
 
