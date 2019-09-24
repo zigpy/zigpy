@@ -232,3 +232,13 @@ def test_optional():
     d, r = t.Optional(t.uint8_t).deserialize(b"\x001234aaa")
     assert d == 0
     assert r == b"1234aaa"
+
+
+def test_nodata():
+    """Test No Data ZCL data type."""
+    data = b"\xaa\x55\xbb"
+    r, rest = t.NoData.deserialize(data)
+    assert isinstance(r, t.NoData)
+    assert rest == data
+
+    assert t.NoData().serialize() == b""

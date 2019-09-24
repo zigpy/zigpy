@@ -57,3 +57,12 @@ class NWK(HexRepr, basic.uint16_t):
 
 class Group(HexRepr, basic.uint16_t):
     _hex_len = 4
+
+
+class NoData:
+    @classmethod
+    def deserialize(cls, data):
+        return cls(), data
+
+    def serialize(self):
+        return b""

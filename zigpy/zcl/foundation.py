@@ -62,6 +62,10 @@ class Discrete:
     pass
 
 
+class Null:
+    pass
+
+
 class TypeValue:
     def __init__(self, python_type=None, value=None):
         self.type = python_type
@@ -98,7 +102,7 @@ class TypedCollection(TypeValue):
 
 
 DATA_TYPES = {
-    0x00: ("No data", None, None),
+    0x00: ("No data", t.NoData, Null),
     0x08: ("General", t.data8, Discrete),
     0x09: ("General", t.data16, Discrete),
     0x0A: ("General", t.data24, Discrete),
