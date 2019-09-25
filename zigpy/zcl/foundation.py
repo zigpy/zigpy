@@ -101,6 +101,18 @@ class TypedCollection(TypeValue):
         return self, data
 
 
+class Array(TypedCollection):
+    pass
+
+
+class Bag(TypedCollection):
+    pass
+
+
+class Set(TypedCollection):
+    pass  # ToDo: Make this a real set?
+
+
 DATA_TYPES = {
     0x00: ("No data", t.NoData, Null),
     0x08: ("General", t.data8, Discrete),
@@ -145,10 +157,10 @@ DATA_TYPES = {
     0x42: ("Character string", t.CharacterString, Discrete),
     0x43: ("Long octet string", t.LongOctetString, Discrete),
     0x44: ("Long character string", t.LongCharacterString, Discrete),
-    0x48: ("Array", TypedCollection, Discrete),
+    0x48: ("Array", Array, Discrete),
     0x4C: ("Structure", t.LVList(TypeValue, 2), Discrete),
-    0x50: ("Set", TypedCollection, Discrete),
-    0x51: ("Bag", TypedCollection, Discrete),
+    0x50: ("Set", Set, Discrete),
+    0x51: ("Bag", Bag, Discrete),
     0xE0: ("Time of day", t.uint32_t, Analog),
     0xE1: ("Date", t.uint32_t, Analog),
     0xE2: ("UTCTime", t.uint32_t, Analog),
