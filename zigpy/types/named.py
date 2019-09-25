@@ -1,6 +1,7 @@
 import enum
 
 from . import basic
+from .struct import Struct
 
 
 class BroadcastAddress(basic.uint16_t, enum.Enum):
@@ -61,6 +62,27 @@ class ClusterId(HexRepr, basic.uint16_t):
     pass
 
 
+class Date(Struct):
+    _fields = [
+        ("_year", basic.uint8_t),
+        ("month", basic.uint8_t),
+        ("day", basic.uint8_t),
+        ("day_of_week", basic.uint8_t),
+    ]
+
+    @property
+    def year(self):
+        """Return year."""
+        if self._year is None:
+            return self._year
+        return 1900 + self._year
+
+    @year.setter
+    def year(self, value):
+        assert 1900 <= value <= 2155
+        self._year = basic.uint8_t(value - 1900)
+
+
 class NWK(HexRepr, basic.uint16_t):
     pass
 
@@ -76,3 +98,16 @@ class NoData:
 
     def serialize(self):
         return b""
+
+
+class TimeOfDay(Struct):
+    _fields = [
+        ("hours", basic.uint8_t),
+        ("minutes", basic.uint8_t),
+        ("seconds", basic.uint8_t),
+        ("hundredths", basic.uint8_t),
+    ]
+
+
+class UTCTime(basic.uint32_t):
+    pass

@@ -242,3 +242,27 @@ def test_nodata():
     assert rest == data
 
     assert t.NoData().serialize() == b""
+
+
+def test_date():
+    """Test Date ZCL data type."""
+    year = t.uint8_t(70)
+    month = t.uint8_t(1)
+    day = t.uint8_t(1)
+    dow = t.uint8_t(4)
+
+    data = year.serialize() + month.serialize() + day.serialize() + dow.serialize()
+    extra = b"\xaa\x55"
+
+    r, rest = t.Date.deserialize(data + extra)
+    assert rest == extra
+    assert r._year == 70
+    assert r.year == 1970
+    assert r.month == 1
+    assert r.day == 1
+    assert r.day_of_week == 4
+
+    assert r.serialize() == data
+    r.year = 2020
+    assert r.serialize()[0] == 2020 - 1900
+    assert t.Date().year is None
