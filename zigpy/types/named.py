@@ -58,7 +58,7 @@ class BACNetOid(basic.uint32_t):
     pass
 
 
-class ClusterId(HexRepr, basic.uint16_t):
+class ClusterId(basic.uint16_t):
     pass
 
 
