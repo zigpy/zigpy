@@ -23,6 +23,10 @@ zigpy works with separate radio libraries which can each interface with multiple
   - [ConBee](https://www.dresden-elektronik.de/conbee/) USB radio adapter from [Dresden-Elektronik](https://www.dresden-elektronik.de)
   - [RaspBee](https://www.dresden-elektronik.de/raspbee/) GPIO radio adapter from [Dresden-Elektronik](https://www.dresden-elektronik.de)
   
+**Experimental Zigbee radio modules:**
+- ZiGate based radios (via the [zigpy-zigate](https://github.com/doudz/zigpy-zigate) library for zigpy)
+  - [ZiGate open source ZigBee adapter hardware](https://zigate.fr/)
+  
 **Release packages available via PyPI:**
 Packages of tagged versions are also released via PyPI
 - https://pypi.org/project/zigpy-homeassistant/
