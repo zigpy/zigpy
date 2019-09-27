@@ -162,7 +162,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         hdr.manufacturer = manufacturer
         data = hdr.serialize() + t.serialize(args, schema)
 
-        return self._endpoint.reply(self.cluster_id, tsn, data)
+        return self._endpoint.reply(self.cluster_id, tsn, data, command_id=command_id)
 
     def handle_message(self, tsn, command_id, args):
         self.debug("ZCL request 0x%04x: %s", command_id, args)

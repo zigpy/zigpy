@@ -159,6 +159,22 @@ def test_reply(ep):
     assert ep._device.reply.call_count == 1
 
 
+def test_reply_change_profile_id(ep):
+    ep.profile_id = 49246
+    ep.reply(0x1000, 8, b"", 0x3F)
+    assert ep._device.reply.call_count == 1
+    assert ep._device.reply.call_args[0][0] == ep.profile_id
+
+    ep.reply(0x1000, 8, b"", 0x40)
+    assert ep._device.reply.call_count == 2
+    assert ep._device.reply.call_args[0][0] == 0x0104
+
+    ep.profile_id = 0xBEEF
+    ep.reply(0x1000, 8, b"", 0x40)
+    assert ep._device.reply.call_count == 3
+    assert ep._device.reply.call_args[0][0] == ep.profile_id
+
+
 def _mk_rar(attrid, value, status=0):
     r = zcl.foundation.ReadAttributeRecord()
     r.attrid = attrid

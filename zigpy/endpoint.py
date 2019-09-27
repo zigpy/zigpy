@@ -203,14 +203,17 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             expect_reply=expect_reply,
         )
 
-    def reply(self, cluster, sequence, data):
+    def reply(self, cluster, sequence, data, command_id=0x00):
+        if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
+            cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
+            and command_id < 0x40
+        ):
+            profile_id = zigpy.profiles.zha.PROFILE_ID
+        else:
+            profile_id = self.profile_id
+
         return self.device.reply(
-            self.profile_id,
-            cluster,
-            self._endpoint_id,
-            self._endpoint_id,
-            sequence,
-            data,
+            profile_id, cluster, self._endpoint_id, self._endpoint_id, sequence, data
         )
 
     def log(self, lvl, msg, *args):
