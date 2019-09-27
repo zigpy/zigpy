@@ -62,6 +62,10 @@ class Discrete:
     pass
 
 
+class Null:
+    pass
+
+
 class TypeValue:
     def __init__(self, python_type=None, value=None):
         self.type = python_type
@@ -97,16 +101,28 @@ class TypedCollection(TypeValue):
         return self, data
 
 
+class Array(TypedCollection):
+    pass
+
+
+class Bag(TypedCollection):
+    pass
+
+
+class Set(TypedCollection):
+    pass  # ToDo: Make this a real set?
+
+
 DATA_TYPES = {
-    0x00: ("No data", None, None),
-    0x08: ("General", t.fixed_list(1, t.uint8_t), Discrete),
-    0x09: ("General", t.fixed_list(2, t.uint8_t), Discrete),
-    0x0A: ("General", t.fixed_list(3, t.uint8_t), Discrete),
-    0x0B: ("General", t.fixed_list(4, t.uint8_t), Discrete),
-    0x0C: ("General", t.fixed_list(5, t.uint8_t), Discrete),
-    0x0D: ("General", t.fixed_list(6, t.uint8_t), Discrete),
-    0x0E: ("General", t.fixed_list(7, t.uint8_t), Discrete),
-    0x0F: ("General", t.fixed_list(8, t.uint8_t), Discrete),
+    0x00: ("No data", t.NoData, Null),
+    0x08: ("General", t.data8, Discrete),
+    0x09: ("General", t.data16, Discrete),
+    0x0A: ("General", t.data24, Discrete),
+    0x0B: ("General", t.data32, Discrete),
+    0x0C: ("General", t.data40, Discrete),
+    0x0D: ("General", t.data48, Discrete),
+    0x0E: ("General", t.data56, Discrete),
+    0x0F: ("General", t.data64, Discrete),
     0x10: ("Boolean", t.Bool, Discrete),
     0x18: ("Bitmap", t.bitmap8, Discrete),
     0x19: ("Bitmap", t.bitmap16, Discrete),
@@ -141,29 +157,22 @@ DATA_TYPES = {
     0x42: ("Character string", t.CharacterString, Discrete),
     0x43: ("Long octet string", t.LongOctetString, Discrete),
     0x44: ("Long character string", t.LongCharacterString, Discrete),
-    0x48: ("Array", TypedCollection, Discrete),
+    0x48: ("Array", Array, Discrete),
     0x4C: ("Structure", t.LVList(TypeValue, 2), Discrete),
-    0x50: ("Set", TypedCollection, Discrete),
-    0x51: ("Bag", TypedCollection, Discrete),
-    0xE0: ("Time of day", t.uint32_t, Analog),
-    0xE1: ("Date", t.uint32_t, Analog),
-    0xE2: ("UTCTime", t.uint32_t, Analog),
-    0xE8: ("Cluster ID", t.uint16_t, Discrete),
-    0xE9: ("Attribute ID", t.uint16_t, Discrete),
-    0xEA: ("BACNet OID", t.uint32_t, Discrete),
+    0x50: ("Set", Set, Discrete),
+    0x51: ("Bag", Bag, Discrete),
+    0xE0: ("Time of day", t.TimeOfDay, Analog),
+    0xE1: ("Date", t.Date, Analog),
+    0xE2: ("UTCTime", t.UTCTime, Analog),
+    0xE8: ("Cluster ID", t.ClusterId, Discrete),
+    0xE9: ("Attribute ID", t.AttributeId, Discrete),
+    0xEA: ("BACNet OID", t.BACNetOid, Discrete),
     0xF0: ("IEEE address", t.EUI64, Discrete),
-    0xF1: ("128-bit security key", t.fixed_list(16, t.uint16_t), Discrete),
+    0xF1: ("128-bit security key", t.KeyData, Discrete),
     0xFF: ("Unknown", None, None),
 }
 
-DATA_TYPE_IDX = {
-    t: tidx
-    for tidx, (tname, t, ad) in DATA_TYPES.items()
-    if ad is Analog or tname == "Enumeration" or tname == "Bitmap"
-}
-DATA_TYPE_IDX[t.uint32_t] = 0x23
-DATA_TYPE_IDX[t.EUI64] = 0xF0
-DATA_TYPE_IDX[t.Bool] = 0x10
+DATA_TYPE_IDX = {t: tidx for tidx, (tname, t, ad) in DATA_TYPES.items()}
 
 
 class ReadAttributeRecord(t.Struct):

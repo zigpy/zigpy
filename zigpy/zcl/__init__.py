@@ -15,6 +15,8 @@ class Registry(type):
     def __init__(cls, name, bases, nmspc):  # noqa: N805
         super(Registry, cls).__init__(name, bases, nmspc)
 
+        if hasattr(cls, "cluster_id"):
+            cls.cluster_id = t.ClusterId(cls.cluster_id)
         if hasattr(cls, "attributes"):
             cls._attridx = {}
             for attrid, (attrname, datatype) in cls.attributes.items():
