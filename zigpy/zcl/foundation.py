@@ -534,8 +534,11 @@ class ZCLHeader:
         manufacturer: t.uint16_t = None,
     ) -> None:
         """Initialize ZCL Frame instance."""
-        self._cmd_id = Command(command_id)
         self._frc = frame_control
+        if frame_control.is_general:
+            self._cmd_id = Command(command_id)
+        else:
+            self._cmd_id = t.uint8_t(command_id)
         self._manufacturer = manufacturer
         if manufacturer is not None:
             self.frame_control.is_manufacturer_specific = True
@@ -554,10 +557,13 @@ class ZCLHeader:
     @command_id.setter
     def command_id(self, value: Command) -> None:
         """Setter for command identifier."""
-        try:
-            self._cmd_id = Command(value)
-        except ValueError:
-            self._cmd_id = t.uint8_t(value)
+        if self.frame_control.is_general:
+            try:
+                self._cmd_id = Command(value)
+                return
+            except ValueError:
+                pass
+        self._cmd_id = t.uint8_t(value)
 
     @property
     def is_reply(self) -> bool:
