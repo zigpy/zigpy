@@ -1,4 +1,5 @@
 import enum
+import typing
 
 import zigpy.types as t
 
@@ -528,3 +529,57 @@ for command_id, schema in CLUSTERS.items():
     param_names = [p[0] for p in schema]
     param_types = [p[1] for p in schema]
     CLUSTERS[command_id] = (param_names, param_types)
+
+
+class ZDOHeader:
+    """Just a wrapper representing ZDO header, similar to ZCL header."""
+
+    def __init__(self, command_id: t.uint16_t = 0x0000, tsn: t.uint8_t = 0) -> None:
+        try:
+            self._command_id = ZDOCmd(command_id)
+        except ValueError:
+            self._command_id = t.uint16_t(command_id)
+        self._tsn = t.uint8_t(tsn)
+
+    @property
+    def command_id(self) -> ZDOCmd:
+        """Return ZDO command."""
+        return self._command_id
+
+    @command_id.setter
+    def command_id(self, value: t.uint16_t) -> None:
+        """Command ID setter."""
+        try:
+            self._command_id = ZDOCmd(value)
+            return
+        except ValueError:
+            pass
+        self._command_id = t.uint16_t(value)
+
+    @property
+    def is_reply(self) -> bool:
+        """Return True if this is a reply."""
+        return bool(self._command_id & 0x8000)
+
+    @property
+    def tsn(self) -> t.uint8_t:
+        """Return transaction seq number."""
+        return self._tsn
+
+    @tsn.setter
+    def tsn(self, value: t.uint8_t) -> None:
+        """Set TSN."""
+        self._tsn = t.uint8_t(value)
+
+    @classmethod
+    def deserialize(
+        cls, command_id: t.uint16_t, data: bytes
+    ) -> typing.Tuple["ZDOHeader", bytes]:
+        """Deserialize data."""
+        tsn, data = t.uint8_t.deserialize(data)
+        return cls(command_id, tsn), data
+
+    def serialize(self) -> bytes:
+        """Serialize header."""
+
+        return self.tsn.serialize()
