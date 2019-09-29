@@ -74,7 +74,7 @@ async def test_database(tmpdir, monkeypatch):
     clus._update_attribute(4, bytes("Custom", "ascii"))
     clus._update_attribute(5, bytes("Model", "ascii"))
     clus.listener_event("cluster_command", 0)
-    clus.listener_event("zdo_command")
+    clus.listener_event("general_command")
 
     # Test a CustomDevice
     custom_ieee = make_ieee(1)

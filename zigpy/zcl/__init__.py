@@ -163,14 +163,18 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
     def handle_message(self, hdr, args):
         self.debug("ZCL request 0x%04x: %s", hdr.command_id, args)
-        if hdr.frame_control.is_general:
-            self.listener_event("zdo_command", hdr.tsn, hdr.command_id, args)
-        else:
-            self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
+        if hdr.frame_control.is_cluster:
             self.handle_cluster_request(hdr.tsn, hdr.command_id, args)
+            self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
             return
+        self.listener_event("general_command", hdr.tsn, hdr.command_id, args)
+        self.handle_cluster_general_request(hdr.tsn, hdr.command_id, args)
 
-        if hdr.command_id == foundation.Command.Report_Attributes:
+    def handle_cluster_request(self, tsn, command_id, args):
+        self.debug("No handler for cluster command %s", command_id)
+
+    def handle_cluster_general_request(self, tsn, command_id, args):
+        if command_id == foundation.Command.Report_Attributes:
             valuestr = ", ".join(
                 [
                     "%s=%s"
@@ -181,14 +185,6 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             self.debug("Attribute report received: %s", valuestr)
             for attr in args[0]:
                 self._update_attribute(attr.attrid, attr.value.value)
-        else:
-            self.handle_cluster_general_request(hdr.tsn, hdr.command_id, args)
-
-    def handle_cluster_request(self, tsn, command_id, args):
-        self.debug("No handler for cluster command %s", command_id)
-
-    def handle_cluster_general_request(self, tsn, command_id, args):
-        self.debug("No handler for general command %s", command_id)
 
     def read_attributes_raw(self, attributes, manufacturer=None):
         attributes = [t.uint16_t(a) for a in attributes]
@@ -448,7 +444,7 @@ class ClusterPersistingListener:
     def cluster_command(self, *args, **kwargs):
         pass
 
-    def zdo_command(self, *args, **kwargs):
+    def general_command(self, *args, **kwargs):
         pass
 
 

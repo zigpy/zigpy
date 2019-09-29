@@ -160,6 +160,8 @@ def test_attribute_report(cluster):
     attr.value.value = 1
     hdr = mock.MagicMock(auto_spec=foundation.ZCLHeader)
     hdr.command_id = foundation.Command.Report_Attributes
+    hdr.frame_control.is_general = True
+    hdr.frame_control.is_cluster = False
     cluster.handle_message(hdr, [[attr]])
     assert cluster._attr_cache[4] == 1
 
@@ -167,6 +169,8 @@ def test_attribute_report(cluster):
 def test_handle_request_unknown(cluster):
     hdr = mock.MagicMock(auto_spec=foundation.ZCLHeader)
     hdr.command_id = mock.sentinel.command_id
+    hdr.frame_control.is_general = True
+    hdr.frame_control.is_cluster = False
     cluster.listener_event = mock.MagicMock()
     cluster._update_attribute = mock.MagicMock()
     cluster.handle_cluster_general_request = mock.MagicMock()
@@ -174,7 +178,7 @@ def test_handle_request_unknown(cluster):
     cluster.handle_message(hdr, mock.sentinel.args)
 
     assert cluster.listener_event.call_count == 1
-    assert cluster.listener_event.call_args[0][0] == "zdo_command"
+    assert cluster.listener_event.call_args[0][0] == "general_command"
     assert cluster._update_attribute.call_count == 0
     assert cluster.handle_cluster_general_request.call_count == 1
     assert cluster.handle_cluster_request.call_count == 0
