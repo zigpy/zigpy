@@ -24,25 +24,19 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return data
 
     def deserialize(self, cluster_id, data):
-        tsn, data = data[0], data[1:]
-
-        is_reply = bool(cluster_id & 0x8000)
-        try:
-            cluster_id = types.ZDOCmd(cluster_id)
-        except ValueError:
-            self.warn("Unsupported ZDO cluster id 0x%04x", cluster_id)
+        hdr, data = types.ZDOHeader.deserialize(cluster_id, data)
         try:
             cluster_details = types.CLUSTERS[cluster_id]
         except KeyError:
             self.warn("Unknown ZDO cluster 0x%04x", cluster_id)
-            return tsn, cluster_id, is_reply, data
+            return hdr, data
 
         args, data = t.deserialize(data, cluster_details[1])
         if data != b"":
             # TODO: Seems sane to check, but what should we do?
             self.warn("Data remains after deserializing ZDO frame")
 
-        return tsn, cluster_id, is_reply, args
+        return hdr, args
 
     @zigpy.util.retryable_request
     def request(self, command, *args, use_ieee=False):
@@ -61,24 +55,24 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._device.reply(0, command, 0, 0, tsn, data, use_ieee=use_ieee)
         )
 
-    def handle_message(self, profile, cluster, tsn, command_id, args):
-        self.debug("ZDO request %s: %s", command_id, args)
+    def handle_message(self, profile, cluster, hdr, args):
+        self.debug("ZDO request %s: %s", hdr.command_id, args)
         app = self._device.application
-        if command_id == types.ZDOCmd.NWK_addr_req:
+        if hdr.command_id == types.ZDOCmd.NWK_addr_req:
             if app.ieee == args[0]:
-                self.NWK_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=tsn)
-        elif command_id == types.ZDOCmd.IEEE_addr_req:
+                self.NWK_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
+        elif hdr.command_id == types.ZDOCmd.IEEE_addr_req:
             broadcast = (0xFFFF, 0xFFFD, 0xFFFC)
             if args[0] in broadcast or app.nwk == args[0]:
-                self.IEEE_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=tsn)
-        elif command_id == types.ZDOCmd.Match_Desc_req:
-            self.handle_match_desc(*args, tsn=tsn)
-        elif command_id == types.ZDOCmd.Device_annce:
+                self.IEEE_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
+        elif hdr.command_id == types.ZDOCmd.Match_Desc_req:
+            self.handle_match_desc(*args, tsn=hdr.tsn)
+        elif hdr.command_id == types.ZDOCmd.Device_annce:
             self.listener_event("device_announce", self._device)
-        elif command_id == types.ZDOCmd.Mgmt_Permit_Joining_req:
+        elif hdr.command_id == types.ZDOCmd.Mgmt_Permit_Joining_req:
             self.listener_event("permit_duration", args[0])
         else:
-            self.warn("Unsupported ZDO request:%s", command_id)
+            self.warn("Unsupported ZDO request:%s", hdr.command_id)
 
     def handle_match_desc(self, addr, profile, in_clusters, out_clusters, *, tsn=None):
         local_addr = self._device.application.nwk

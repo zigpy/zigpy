@@ -17,31 +17,37 @@ def endpoint():
 
 
 def test_deserialize_general(endpoint):
-    tsn, command_id, is_reply, args = endpoint.deserialize(0, b"\x00\x01\x00")
-    assert tsn == 1
-    assert command_id == 0
-    assert is_reply is False
+    hdr, args = endpoint.deserialize(0, b"\x00\x01\x00")
+    assert hdr.tsn == 1
+    assert hdr.command_id == 0
+    assert hdr.is_reply is False
 
 
 def test_deserialize_general_unknown(endpoint):
-    tsn, command_id, is_reply, args = endpoint.deserialize(0, b"\x00\x01\xff")
-    assert tsn == 1
-    assert command_id == 255
-    assert is_reply is False
+    hdr, args = endpoint.deserialize(0, b"\x00\x01\xff")
+    assert hdr.tsn == 1
+    assert hdr.frame_control.is_general is True
+    assert hdr.frame_control.is_cluster is False
+    assert hdr.command_id == 255
+    assert hdr.is_reply is False
 
 
 def test_deserialize_cluster(endpoint):
-    tsn, command_id, is_reply, args = endpoint.deserialize(0, b"\x01\x01\x00xxx")
-    assert tsn == 1
-    assert command_id == 256
-    assert is_reply is False
+    hdr, args = endpoint.deserialize(0, b"\x01\x01\x00xxx")
+    assert hdr.tsn == 1
+    assert hdr.frame_control.is_general is False
+    assert hdr.frame_control.is_cluster is True
+    assert hdr.command_id == 0
+    assert hdr.is_reply is False
 
 
 def test_deserialize_cluster_client(endpoint):
-    tsn, command_id, is_reply, args = endpoint.deserialize(3, b"\x09\x01\x00AB")
-    assert tsn == 1
-    assert command_id == 256
-    assert is_reply is True
+    hdr, args = endpoint.deserialize(3, b"\x09\x01\x00AB")
+    assert hdr.tsn == 1
+    assert hdr.frame_control.is_general is False
+    assert hdr.frame_control.is_cluster is True
+    assert hdr.command_id == 0
+    assert hdr.is_reply is True
     assert args == [0x4241]
 
 
@@ -51,10 +57,10 @@ def test_deserialize_cluster_unknown(endpoint):
 
 
 def test_deserialize_cluster_command_unknown(endpoint):
-    tsn, command_id, is_reply, args = endpoint.deserialize(0, b"\x01\x01\xff")
-    assert tsn == 1
-    assert command_id == 255 + 256
-    assert is_reply is False
+    hdr, args = endpoint.deserialize(0, b"\x01\x01\xff")
+    assert hdr.tsn == 1
+    assert hdr.command_id == 255
+    assert hdr.is_reply is False
 
 
 def test_unknown_cluster():
@@ -152,20 +158,45 @@ def test_attribute_report(cluster):
     attr.attrid = 4
     attr.value = zcl.foundation.TypeValue()
     attr.value.value = 1
-    cluster.handle_message(0, 0x0A, [[attr]])
+    hdr = mock.MagicMock(auto_spec=foundation.ZCLHeader)
+    hdr.command_id = foundation.Command.Report_Attributes
+    cluster.handle_message(hdr, [[attr]])
     assert cluster._attr_cache[4] == 1
 
 
 def test_handle_request_unknown(cluster):
-    cluster.handle_message(0, 0xFF, [])
+    hdr = mock.MagicMock(auto_spec=foundation.ZCLHeader)
+    hdr.command_id = mock.sentinel.command_id
+    cluster.listener_event = mock.MagicMock()
+    cluster._update_attribute = mock.MagicMock()
+    cluster.handle_cluster_general_request = mock.MagicMock()
+    cluster.handle_cluster_request = mock.MagicMock()
+    cluster.handle_message(hdr, mock.sentinel.args)
+
+    assert cluster.listener_event.call_count == 1
+    assert cluster.listener_event.call_args[0][0] == "zdo_command"
+    assert cluster._update_attribute.call_count == 0
+    assert cluster.handle_cluster_general_request.call_count == 1
+    assert cluster.handle_cluster_request.call_count == 0
 
 
 def test_handle_cluster_request(cluster):
-    cluster.handle_message(0, 256, [])
+    hdr = mock.MagicMock(auto_spec=foundation.ZCLHeader)
+    hdr.command_id = mock.sentinel.command_id
+    hdr.frame_control.is_general = False
+    hdr.frame_control.is_cluster = True
+    hdr.command_id.is_general = False
+    cluster.listener_event = mock.MagicMock()
+    cluster._update_attribute = mock.MagicMock()
+    cluster.handle_cluster_general_request = mock.MagicMock()
+    cluster.handle_cluster_request = mock.MagicMock()
+    cluster.handle_message(hdr, mock.sentinel.args)
 
-
-def test_handle_unexpected_reply(cluster):
-    cluster.handle_message(0, 0, [])
+    assert cluster.listener_event.call_count == 1
+    assert cluster.listener_event.call_args[0][0] == "cluster_command"
+    assert cluster._update_attribute.call_count == 0
+    assert cluster.handle_cluster_general_request.call_count == 0
+    assert cluster.handle_cluster_request.call_count == 1
 
 
 def _mk_rar(attrid, value, status=0):
@@ -450,4 +481,16 @@ def test_general_command_reply(cluster):
     assert cluster.reply.call_count == 1
     cluster.reply.assert_called_with(
         True, cmd_id, mock.ANY, True, [], manufacturer=0x4567, tsn=mock.sentinel.tsn
+    )
+
+
+def test_handle_cluster_request_handler(cluster):
+    cluster.handle_cluster_request(
+        mock.sentinel.tsn, mock.sentinel.command_id, mock.sentinel.args
+    )
+
+
+def test_handle_cluster_general_request(cluster):
+    cluster.handle_cluster_general_request(
+        mock.sentinel.tsn, mock.sentinel.command_id, mock.sentinel.args
     )

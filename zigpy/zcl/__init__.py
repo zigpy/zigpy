@@ -91,27 +91,24 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
             try:
                 schema = commands[hdr.command_id][1]
-                is_reply = commands[hdr.command_id][2]
+                hdr.frame_control.is_reply = commands[hdr.command_id][2]
             except KeyError:
                 LOGGER.warning("Unknown cluster-specific command %s", hdr.command_id)
-                return hdr.tsn, hdr.command_id + 256, hdr.is_reply, data
-
-            # Bad hack to differentiate foundation vs cluster
-            hdr.command_id = hdr.command_id + 256
+                return hdr, data
         else:
             # General command
             try:
                 schema = foundation.COMMANDS[hdr.command_id][0]
-                is_reply = foundation.COMMANDS[hdr.command_id][1]
+                hdr.frame_control.is_reply = foundation.COMMANDS[hdr.command_id][1]
             except KeyError:
                 LOGGER.warning("Unknown foundation command %s", hdr.command_id)
-                return hdr.tsn, hdr.command_id, hdr.is_reply, data
+                return hdr, data
 
         value, data = t.deserialize(data, schema)
         if data != b"":
             LOGGER.warning("Data remains after deserializing ZCL frame")
 
-        return hdr.tsn, hdr.command_id, is_reply, value
+        return hdr, value
 
     @util.retryable_request
     def request(
@@ -164,18 +161,16 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
         return self._endpoint.reply(self.cluster_id, tsn, data, command_id=command_id)
 
-    def handle_message(self, tsn, command_id, args):
-        self.debug("ZCL request 0x%04x: %s", command_id, args)
-        if command_id <= 0xFF:
-            self.listener_event("zdo_command", tsn, command_id, args)
+    def handle_message(self, hdr, args):
+        self.debug("ZCL request 0x%04x: %s", hdr.command_id, args)
+        if hdr.frame_control.is_general:
+            self.listener_event("zdo_command", hdr.tsn, hdr.command_id, args)
         else:
-            # Unencapsulate bad hack
-            command_id -= 256
-            self.listener_event("cluster_command", tsn, command_id, args)
-            self.handle_cluster_request(tsn, command_id, args)
+            self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
+            self.handle_cluster_request(hdr.tsn, hdr.command_id, args)
             return
 
-        if command_id == foundation.Command.Report_Attributes:
+        if hdr.command_id == foundation.Command.Report_Attributes:
             valuestr = ", ".join(
                 [
                     "%s=%s"
@@ -187,7 +182,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             for attr in args[0]:
                 self._update_attribute(attr.attrid, attr.value.value)
         else:
-            self.handle_cluster_general_request(tsn, command_id, args)
+            self.handle_cluster_general_request(hdr.tsn, hdr.command_id, args)
 
     def handle_cluster_request(self, tsn, command_id, args):
         self.debug("No handler for cluster command %s", command_id)

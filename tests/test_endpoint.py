@@ -115,19 +115,21 @@ def test_multiple_add_output_cluster(ep):
 def test_handle_message(ep):
     c = ep.add_input_cluster(0)
     c.handle_message = mock.MagicMock()
-    ep.handle_message(0, 0, 0, 1, [])
-    c.handle_message.assert_called_once_with(0, 1, [])
+    ep.handle_message(mock.sentinel.profile, 0, mock.sentinel.hdr, mock.sentinel.data)
+    c.handle_message.assert_called_once_with(mock.sentinel.hdr, mock.sentinel.data)
 
 
 def test_handle_message_output(ep):
     c = ep.add_output_cluster(0)
     c.handle_message = mock.MagicMock()
-    ep.handle_message(0, 0, 0, 1, [])
-    c.handle_message.assert_called_once_with(0, 1, [])
+    ep.handle_message(mock.sentinel.profile, 0, mock.sentinel.hdr, mock.sentinel.data)
+    c.handle_message.assert_called_once_with(mock.sentinel.hdr, mock.sentinel.data)
 
 
 def test_handle_request_unknown(ep):
-    ep.handle_message(0, 99, 0, 0, [])
+    hdr = mock.MagicMock()
+    hdr.command_id = mock.sentinel.command_id
+    ep.handle_message(mock.sentinel.profile, 99, hdr, mock.sentinel.args)
 
 
 def test_cluster_attr(ep):
