@@ -117,14 +117,10 @@ def test_handle_message_no_endpoint(dev):
 
 def test_handle_message(dev):
     ep = dev.add_endpoint(3)
-    dev.deserialize = mock.MagicMock(
-        return_value=[
-            mock.sentinel.tsn,
-            mock.sentinel.cmd_id,
-            mock.sentinel.is_reply,
-            mock.sentinel.args,
-        ]
-    )
+    hdr = mock.MagicMock()
+    hdr.tsn = mock.sentinel.tsn
+    hdr.is_reply = mock.sentinel.is_reply
+    dev.deserialize = mock.MagicMock(return_value=[hdr, mock.sentinel.args])
     ep.handle_message = mock.MagicMock()
     dev.handle_message(99, 98, 3, 3, b"abcd")
     assert ep.handle_message.call_count == 1
@@ -136,11 +132,19 @@ def test_handle_message_reply(dev):
     tsn = mock.sentinel.tsn
     req_mock = mock.MagicMock()
     dev._pending[tsn] = req_mock
+    hdr_1 = mock.MagicMock()
+    hdr_1.tsn = tsn
+    hdr_1.command_id = mock.sentinel.command_id
+    hdr_1.is_reply = True
+    hdr_2 = mock.MagicMock()
+    hdr_2.tsn = mock.sentinel.another_tsn
+    hdr_2.command_id = mock.sentinel.command_id
+    hdr_2.is_reply = True
     dev.deserialize = mock.MagicMock(
         side_effect=(
-            (tsn, mock.sentinel.cmd_id, True, mock.sentinel.args),
-            (mock.sentinel.another_tsn, mock.sentinel.cmd_id, True, mock.sentinel.args),
-            (tsn, mock.sentinel.cmd_id, True, mock.sentinel.args),
+            (hdr_1, mock.sentinel.args),
+            (hdr_2, mock.sentinel.args),
+            (hdr_1, mock.sentinel.args),
         )
     )
     dev.handle_message(99, 98, 3, 3, b"abcd")

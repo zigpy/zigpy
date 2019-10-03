@@ -172,17 +172,17 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id))
         return cluster.deserialize(data)
 
-    def handle_message(self, profile, cluster, tsn, command_id, args):
+    def handle_message(self, profile, cluster, hdr, args):
         if cluster in self.in_clusters:
             handler = self.in_clusters[cluster].handle_message
         elif cluster in self.out_clusters:
             handler = self.out_clusters[cluster].handle_message
         else:
             self.debug("Message on unknown cluster 0x%04x", cluster)
-            self.listener_event("unknown_cluster_message", command_id, args)
+            self.listener_event("unknown_cluster_message", hdr.command_id, args)
             return
 
-        handler(tsn, command_id, args)
+        handler(hdr, args)
 
     def request(self, cluster, sequence, data, expect_reply=True, command_id=0x00):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (

@@ -156,3 +156,39 @@ def test_status_undef():
     assert rest == extra
     assert status == 0xAA
     assert not isinstance(status, types.Status)
+
+
+def test_zdo_header():
+    tsn = t.uint8_t(0xAA)
+    cmd_id = 0x55
+    data = tsn.serialize()
+    extra = b"abcdefExtraDataHere"
+    hdr, rest = types.ZDOHeader.deserialize(cmd_id, data + extra)
+    assert rest == extra
+    assert hdr.tsn == tsn
+    assert hdr.command_id == cmd_id
+    assert hdr.is_reply is False
+
+    hdr.command_id = types.ZDOCmd.Bind_rsp
+    assert hdr.is_reply is True
+
+    assert hdr.serialize() == data
+
+    new_tsn = 0xBB
+    hdr.tsn = new_tsn
+    assert isinstance(hdr.tsn, t.uint8_t)
+    assert hdr.tsn == new_tsn
+
+
+def test_zdo_header_cmd_id():
+    unk_cmd = 0x00FF
+    assert unk_cmd not in list(types.ZDOCmd)
+    hdr = types.ZDOHeader(unk_cmd, 0x55)
+    assert isinstance(hdr.command_id, t.uint16_t)
+    assert hdr.command_id == unk_cmd
+
+    unk_cmd += 1
+    assert unk_cmd not in list(types.ZDOCmd)
+    hdr.command_id = unk_cmd
+    assert isinstance(hdr.command_id, t.uint16_t)
+    assert hdr.command_id == unk_cmd
