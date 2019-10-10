@@ -17,20 +17,19 @@ class BroadcastAddress(basic.uint16_t, enum.Enum):
 
 class EUI64(basic.fixed_list(8, basic.uint8_t)):
     # EUI 64-bit ID (an IEEE address).
-    @classmethod
-    def deserialize(cls, data):
-        r, data = super().deserialize(data)
-        return cls(r[::-1]), data
-
-    def serialize(self):
-        assert self._length == len(self)
-        return b"".join([i.serialize() for i in self[::-1]])
-
     def __repr__(self):
-        return ":".join("%02x" % i for i in self)
+        return ":".join("%02x" % i for i in self[::-1])
 
     def __hash__(self):
         return hash(repr(self))
+
+    @classmethod
+    def convert(cls, ieee: str):
+        if ieee is None:
+            return None
+        ieee = [basic.uint8_t(p, base=16) for p in ieee.split(":")[::-1]]
+        assert len(ieee) == cls._length
+        return cls(ieee)
 
 
 class KeyData(basic.fixed_list(16, basic.uint8_t)):
