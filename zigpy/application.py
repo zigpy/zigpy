@@ -23,8 +23,14 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self.devices = {}
         self._groups = zigpy.group.Groups(self)
         self._listeners = {}
+        self._channel = None
+        self._channels = None
+        self._ext_pan_id = None
         self._ieee = None
         self._nwk = None
+        self._nwk_update_id = None
+        self._pan_id = None
+
         self._ota = zigpy.ota.OTA(self)
         if database_file is None:
             ota_dir = None
@@ -58,6 +64,22 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         dev = zigpy.device.Device(self, ieee, nwk)
         self.devices[ieee] = dev
         return dev
+
+    async def set_channel(self, channel=15):
+        """Set radio channel."""
+        raise NotImplementedError
+
+    async def set_extended_pan_id(self, extended_pan_id=None):
+        """Set network's Extended PAN ID."""
+        raise NotImplementedError
+
+    async def set_network_key(self, network_key=None):
+        """Set Network Key."""
+        raise NotImplementedError
+
+    async def set_pan_id(self, pan_id=None):
+        """Set network's PAN ID."""
+        raise NotImplementedError
 
     def device_initialized(self, device):
         """Used by a device to signal that it is initialized"""
@@ -266,6 +288,21 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         return dstaddr
 
     @property
+    def channel(self):
+        """Current radio channel."""
+        return self._channel
+
+    @property
+    def channels(self):
+        """Channel mask."""
+        return self._channels
+
+    @property
+    def extended_pan_id(self):
+        """Extended PAN Id."""
+        return self._ext_pan_id
+
+    @property
     def groups(self):
         return self._groups
 
@@ -278,5 +315,15 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         return self._nwk
 
     @property
+    def nwk_update_id(self):
+        """NWK Update ID."""
+        return self._nwk_update_id
+
+    @property
     def ota(self):
         return self._ota
+
+    @property
+    def pan_id(self):
+        """Network PAN Id."""
+        return self._pan_id

@@ -250,3 +250,35 @@ def test_get_dst_address(app):
     r = app.get_dst_address(mock.MagicMock())
     assert r.addrmode == 3
     assert r.endpoint == 1
+
+
+@pytest.mark.asyncio
+async def test_set_channel(app):
+    with pytest.raises(NotImplementedError):
+        await app.set_channel()
+    assert app.channel is None
+
+
+@pytest.mark.asyncio
+async def test_set_extended_pan_id(app):
+    with pytest.raises(NotImplementedError):
+        await app.set_extended_pan_id()
+    assert app.extended_pan_id is None
+
+
+@pytest.mark.asyncio
+async def test_set_pan_id(app):
+    with pytest.raises(NotImplementedError):
+        await app.set_pan_id()
+    assert app.pan_id is None
+
+
+@pytest.mark.asyncio
+async def test_set_network_key(app):
+    with pytest.raises(NotImplementedError):
+        await app.set_network_key()
+
+
+def test_props(app):
+    assert app.channels is None
+    assert app.nwk_update_id is None
