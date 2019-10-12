@@ -86,6 +86,14 @@ class NWK(HexRepr, basic.uint16_t):
     pass
 
 
+class PanId(NWK):
+    pass
+
+
+class ExtendedPanId(EUI64):
+    pass
+
+
 class Group(HexRepr, basic.uint16_t):
     pass
 
