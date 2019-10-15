@@ -115,19 +115,21 @@ def test_multiple_add_output_cluster(ep):
 def test_handle_message(ep):
     c = ep.add_input_cluster(0)
     c.handle_message = mock.MagicMock()
-    ep.handle_message(0, 0, 0, 1, [])
-    c.handle_message.assert_called_once_with(0, 1, [])
+    ep.handle_message(mock.sentinel.profile, 0, mock.sentinel.hdr, mock.sentinel.data)
+    c.handle_message.assert_called_once_with(mock.sentinel.hdr, mock.sentinel.data)
 
 
 def test_handle_message_output(ep):
     c = ep.add_output_cluster(0)
     c.handle_message = mock.MagicMock()
-    ep.handle_message(0, 0, 0, 1, [])
-    c.handle_message.assert_called_once_with(0, 1, [])
+    ep.handle_message(mock.sentinel.profile, 0, mock.sentinel.hdr, mock.sentinel.data)
+    c.handle_message.assert_called_once_with(mock.sentinel.hdr, mock.sentinel.data)
 
 
 def test_handle_request_unknown(ep):
-    ep.handle_message(0, 99, 0, 0, [])
+    hdr = mock.MagicMock()
+    hdr.command_id = mock.sentinel.command_id
+    ep.handle_message(mock.sentinel.profile, 99, hdr, mock.sentinel.args)
 
 
 def test_cluster_attr(ep):
@@ -157,6 +159,22 @@ def test_reply(ep):
     ep.profile_id = 260
     ep.reply(7, 8, b"")
     assert ep._device.reply.call_count == 1
+
+
+def test_reply_change_profile_id(ep):
+    ep.profile_id = 49246
+    ep.reply(0x1000, 8, b"", 0x3F)
+    assert ep._device.reply.call_count == 1
+    assert ep._device.reply.call_args[0][0] == ep.profile_id
+
+    ep.reply(0x1000, 8, b"", 0x40)
+    assert ep._device.reply.call_count == 2
+    assert ep._device.reply.call_args[0][0] == 0x0104
+
+    ep.profile_id = 0xBEEF
+    ep.reply(0x1000, 8, b"", 0x40)
+    assert ep._device.reply.call_count == 3
+    assert ep._device.reply.call_args[0][0] == ep.profile_id
 
 
 def _mk_rar(attrid, value, status=0):

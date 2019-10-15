@@ -45,16 +45,16 @@ def zdo_f(app):
 
 
 def test_deserialize(zdo_f):
-    tsn, command_id, is_reply, args = zdo_f.deserialize(2, b"\x01\x02\x03xx")
-    assert tsn == 1
-    assert is_reply is False
+    hdr, args = zdo_f.deserialize(2, b"\x01\x02\x03xx")
+    assert hdr.tsn == 1
+    assert hdr.is_reply is False
     assert args == [0x0302]
 
 
 def test_deserialize_unknown(zdo_f):
-    tsn, command_id, is_reply, args = zdo_f.deserialize(0x0100, b"\x01")
-    assert tsn == 1
-    assert is_reply is False
+    hdr, args = zdo_f.deserialize(0x0100, b"\x01")
+    assert hdr.tsn == 1
+    assert hdr.is_reply is False
 
 
 @pytest.mark.asyncio
@@ -109,7 +109,9 @@ def test_broadcast(app):
 
 def _handle_match_desc(zdo_f, profile):
     zdo_f.reply = mock.MagicMock()
-    zdo_f.handle_message(5, 0x0006, 123, 0x0006, [None, profile, [], []])
+    hdr = mock.MagicMock()
+    hdr.command_id = zdo_types.ZDOCmd.Match_Desc_req
+    zdo_f.handle_message(5, 0x0006, hdr, [None, profile, [], []])
     assert zdo_f.reply.call_count == 1
 
 
@@ -121,21 +123,21 @@ def test_handle_match_desc_generic(zdo_f):
     return _handle_match_desc(zdo_f, 0)
 
 
-def test_unexpected_reply(zdo_f):
-    zdo_f.handle_message(5, 4, 3, 2, [])
-
-
 def test_handle_nwk_addr(zdo_f):
     ieee = zdo_f._device.application.ieee
     zdo_f.reply = mock.MagicMock()
-    zdo_f.handle_message(5, 0x0000, 234, 0x0000, [ieee])
+    hdr = mock.MagicMock()
+    hdr.command_id = zdo_types.ZDOCmd.NWK_addr_req
+    zdo_f.handle_message(5, 0x0000, hdr, [ieee])
     assert zdo_f.reply.call_count == 1
 
 
 def test_handle_ieee_addr(zdo_f):
     nwk = zdo_f._device.application.nwk
     zdo_f.reply = mock.MagicMock()
-    zdo_f.handle_message(5, 0x0001, 234, 0x0001, [nwk])
+    hdr = mock.MagicMock()
+    hdr.command_id = zdo_types.ZDOCmd.IEEE_addr_req
+    zdo_f.handle_message(5, 0x0001, hdr, [nwk])
     assert zdo_f.reply.call_count == 1
 
 
@@ -143,18 +145,32 @@ def test_handle_announce(zdo_f):
     dev = zdo_f._device
     zdo_f.listener_event = mock.MagicMock()
     dev._application.devices.pop(dev.ieee)
-    zdo_f.handle_message(5, 0x0013, 111, 0x0013, [0, dev.ieee, dev.nwk])
+    hdr = mock.MagicMock()
+    hdr.command_id = zdo_types.ZDOCmd.Device_annce
+    zdo_f.handle_message(5, 0x0013, hdr, [0, dev.ieee, dev.nwk])
     assert zdo_f.listener_event.call_count == 1
 
 
 def test_handle_permit_join(zdo_f):
     zdo_f.listener_event = mock.MagicMock()
-    zdo_f.handle_message(5, 0x0036, 111, 0x0036, [100, 1])
+    hdr = mock.MagicMock()
+    hdr.command_id = zdo_types.ZDOCmd.Mgmt_Permit_Joining_req
+    zdo_f.handle_message(5, 0x0036, hdr, [100, 1])
     assert zdo_f.listener_event.call_count == 1
 
 
 def test_handle_unsupported(zdo_f):
-    zdo_f.handle_message(5, 0xFFFF, 321, 0xFFFF, [])
+    zdo_f.listener_event = mock.MagicMock()
+    hdr = mock.MagicMock()
+    hdr.command_id = 0xFFFF
+    assert hdr.command_id not in list(zdo_types.ZDOCmd)
+    zdo_f.request = mock.MagicMock()
+    zdo_f.reply = mock.MagicMock()
+    zdo_f.handle_message(5, 0xFFFF, hdr, [])
+
+    assert zdo_f.listener_event.call_count == 0
+    assert zdo_f.request.call_count == 0
+    assert zdo_f.reply.call_count == 0
 
 
 def test_device_accessor(zdo_f):

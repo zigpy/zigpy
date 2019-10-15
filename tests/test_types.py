@@ -232,3 +232,69 @@ def test_optional():
     d, r = t.Optional(t.uint8_t).deserialize(b"\x001234aaa")
     assert d == 0
     assert r == b"1234aaa"
+
+
+def test_nodata():
+    """Test No Data ZCL data type."""
+    data = b"\xaa\x55\xbb"
+    r, rest = t.NoData.deserialize(data)
+    assert isinstance(r, t.NoData)
+    assert rest == data
+
+    assert t.NoData().serialize() == b""
+
+
+def test_date():
+    """Test Date ZCL data type."""
+    year = t.uint8_t(70)
+    month = t.uint8_t(1)
+    day = t.uint8_t(1)
+    dow = t.uint8_t(4)
+
+    data = year.serialize() + month.serialize() + day.serialize() + dow.serialize()
+    extra = b"\xaa\x55"
+
+    r, rest = t.Date.deserialize(data + extra)
+    assert rest == extra
+    assert r._year == 70
+    assert r.year == 1970
+    assert r.month == 1
+    assert r.day == 1
+    assert r.day_of_week == 4
+
+    assert r.serialize() == data
+    r.year = 2020
+    assert r.serialize()[0] == 2020 - 1900
+    assert t.Date().year is None
+
+
+def test_eui64():
+    """Test EUI64."""
+    data = b"\x01\x02\x03\x04\x05\x06\x07\x08"
+    extra = b"\xaa\x55"
+
+    ieee, rest = t.EUI64.deserialize(data + extra)
+    assert ieee[0] == 1
+    assert ieee[1] == 2
+    assert ieee[2] == 3
+    assert ieee[3] == 4
+    assert ieee[4] == 5
+    assert ieee[5] == 6
+    assert ieee[6] == 7
+    assert ieee[7] == 8
+    assert rest == extra
+    assert ieee.serialize() == data
+
+
+def test_eui64_convert():
+    ieee = t.EUI64.convert("08:07:06:05:04:03:02:01")
+    assert ieee[0] == 1
+    assert ieee[1] == 2
+    assert ieee[2] == 3
+    assert ieee[3] == 4
+    assert ieee[4] == 5
+    assert ieee[5] == 6
+    assert ieee[6] == 7
+    assert ieee[7] == 8
+
+    assert t.EUI64.convert(None) is None

@@ -15,6 +15,8 @@ class Registry(type):
     def __init__(cls, name, bases, nmspc):  # noqa: N805
         super(Registry, cls).__init__(name, bases, nmspc)
 
+        if hasattr(cls, "cluster_id"):
+            cls.cluster_id = t.ClusterId(cls.cluster_id)
         if hasattr(cls, "attributes"):
             cls._attridx = {}
             for attrid, (attrname, datatype) in cls.attributes.items():
@@ -89,27 +91,24 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
 
             try:
                 schema = commands[hdr.command_id][1]
-                is_reply = commands[hdr.command_id][2]
+                hdr.frame_control.is_reply = commands[hdr.command_id][2]
             except KeyError:
                 LOGGER.warning("Unknown cluster-specific command %s", hdr.command_id)
-                return hdr.tsn, hdr.command_id + 256, hdr.is_reply, data
-
-            # Bad hack to differentiate foundation vs cluster
-            hdr.command_id = hdr.command_id + 256
+                return hdr, data
         else:
             # General command
             try:
                 schema = foundation.COMMANDS[hdr.command_id][0]
-                is_reply = foundation.COMMANDS[hdr.command_id][1]
+                hdr.frame_control.is_reply = foundation.COMMANDS[hdr.command_id][1]
             except KeyError:
                 LOGGER.warning("Unknown foundation command %s", hdr.command_id)
-                return hdr.tsn, hdr.command_id, hdr.is_reply, data
+                return hdr, data
 
         value, data = t.deserialize(data, schema)
         if data != b"":
             LOGGER.warning("Data remains after deserializing ZCL frame")
 
-        return hdr.tsn, hdr.command_id, is_reply, value
+        return hdr, value
 
     @util.retryable_request
     def request(
@@ -160,19 +159,21 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         hdr.manufacturer = manufacturer
         data = hdr.serialize() + t.serialize(args, schema)
 
-        return self._endpoint.reply(self.cluster_id, tsn, data)
+        return self._endpoint.reply(self.cluster_id, tsn, data, command_id=command_id)
 
-    def handle_message(self, tsn, command_id, args):
-        self.debug("ZCL request 0x%04x: %s", command_id, args)
-        if command_id <= 0xFF:
-            self.listener_event("zdo_command", tsn, command_id, args)
-        else:
-            # Unencapsulate bad hack
-            command_id -= 256
-            self.listener_event("cluster_command", tsn, command_id, args)
-            self.handle_cluster_request(tsn, command_id, args)
+    def handle_message(self, hdr, args):
+        self.debug("ZCL request 0x%04x: %s", hdr.command_id, args)
+        if hdr.frame_control.is_cluster:
+            self.handle_cluster_request(hdr.tsn, hdr.command_id, args)
+            self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
             return
+        self.listener_event("general_command", hdr.tsn, hdr.command_id, args)
+        self.handle_cluster_general_request(hdr.tsn, hdr.command_id, args)
 
+    def handle_cluster_request(self, tsn, command_id, args):
+        self.debug("No handler for cluster command %s", command_id)
+
+    def handle_cluster_general_request(self, tsn, command_id, args):
         if command_id == foundation.Command.Report_Attributes:
             valuestr = ", ".join(
                 [
@@ -184,14 +185,6 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             self.debug("Attribute report received: %s", valuestr)
             for attr in args[0]:
                 self._update_attribute(attr.attrid, attr.value.value)
-        else:
-            self.handle_cluster_general_request(tsn, command_id, args)
-
-    def handle_cluster_request(self, tsn, command_id, args):
-        self.debug("No handler for cluster command %s", command_id)
-
-    def handle_cluster_general_request(self, tsn, command_id, args):
-        self.debug("No handler for general command %s", command_id)
 
     def read_attributes_raw(self, attributes, manufacturer=None):
         attributes = [t.uint16_t(a) for a in attributes]
@@ -451,7 +444,7 @@ class ClusterPersistingListener:
     def cluster_command(self, *args, **kwargs):
         pass
 
-    def zdo_command(self, *args, **kwargs):
+    def general_command(self, *args, **kwargs):
         pass
 
 

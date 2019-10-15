@@ -7,9 +7,12 @@
 
 Zigbee Home Automation integration with zigpy allows you to connect one of many off-the-shelf Zigbee adapters using one of the available Zigbee radio library modules compatible with zigpy to control Zigbee based devices. There is currently support for controlling Zigbee device types such as binary sensors (e.g., motion and door sensors), sensors (e.g., temperature sensors), lightbulbs, switches, and fans. A working implementation of zigbe exist in **[Home Assistant](https://www.home-assistant.io)** (Python based open source home automation software) as part of its **[ZHA component](https://www.home-assistant.io/components/zha/)**
 
-zigpy works with separate radio libraries which can each interface with multiple USB and GPIO radio adapters/modules over different native UART serial protocols. Such radio libraries includes **[bellows](https://github.com/zigpy/bellows)** (which communicates with EZSP/EmberZNet based radios) and **[zigpy-xbee](https://github.com/zigpy/zigpy-xbee)** (which communicates with XBee based Zigbee radios). There are also experimental radio libraries called **[zigpy-deconz](https://github.com/zigpy/zigpy-deconz)** and **[pyconz](https://github.com/Equidamoid/pyconz/)** available for deCONZ serial protocol (for communicating with ConBee and RaspBee USB and GPIO radios from Dresden-Elektronik).
+## Compatible hardware
 
-**Known working Zigbee radio modules:**
+zigpy works with separate radio libraries which can each interface with multiple USB and GPIO radio hardware adapters/modules over different native UART serial protocols. Such radio libraries includes **[bellows](https://github.com/zigpy/bellows)** (which communicates with EZSP/EmberZNet based radios), **[zigpy-xbee](https://github.com/zigpy/zigpy-xbee)** (which communicates with XBee based Zigbee radios), and as **[zigpy-deconz](https://github.com/zigpy/zigpy-deconz)** for deCONZ serial protocol (for communicating with ConBee and RaspBee USB and GPIO radios from Dresden-Elektronik). There are also an experimental radio library called **[zigpy-zigate](https://github.com/doudz/zigpy-zigate)** for communicating with ZiGate based radios.
+
+### Known working Zigbee radio modules
+
 - EmberZNet based radios using the EZSP protocol (via the [bellows](https://github.com/zigpy/bellows) library for zigpy)
   - [Nortek GoControl QuickStick Combo Model HUSBZB-1 (Z-Wave & Zigbee USB Adapter)](https://www.nortekcontrol.com/products/2gig/husbzb-1-gocontrol-quickstick-combo/)
   - [Elelabs Zigbee USB Adapter](https://elelabs.com/products/elelabs_usb_adapter.html)
@@ -23,7 +26,12 @@ zigpy works with separate radio libraries which can each interface with multiple
   - [ConBee](https://www.dresden-elektronik.de/conbee/) USB radio adapter from [Dresden-Elektronik](https://www.dresden-elektronik.de)
   - [RaspBee](https://www.dresden-elektronik.de/raspbee/) GPIO radio adapter from [Dresden-Elektronik](https://www.dresden-elektronik.de)
   
-**Release packages available via PyPI:**
+### Experimental Zigbee radio modules
+- ZiGate based radios (via the [zigpy-zigate](https://github.com/doudz/zigpy-zigate) library for zigpy)
+  - [ZiGate open source ZigBee adapter hardware](https://zigate.fr/)
+  
+## Release packages available via PyPI
+
 Packages of tagged versions are also released via PyPI
 - https://pypi.org/project/zigpy-homeassistant/
   - https://pypi.org/project/bellows-homeassistant/
@@ -31,5 +39,7 @@ Packages of tagged versions are also released via PyPI
   - https://pypi.org/project/zigpy-deconz/
   - https://pypi.org/project/zigpy-zigate/
   
-**Related projects:**
+## Related projects
+
+### ZHA Device Handlers
 ZHA deviation handling in Home Assistant relies on on the third-party [ZHA Device Handlers](https://github.com/dmulcahey/zha-device-handlers) project. Zigbee devices that deviate from or do not fully conform to the standard specifications set by the [Zigbee Alliance](https://www.zigbee.org) may require the development of custom [ZHA Device Handlers](https://github.com/dmulcahey/zha-device-handlers) (ZHA custom quirks handler implementation) to for all their functions to work properly with the ZHA component in Home Assistant. These ZHA Device Handlers for Home Assistant can thus be used to parse custom messages to and from non-compliant Zigbee devices. The custom quirks implementations for zigpy implemented as ZHA Device Handlers for Home Assistant are a similar concept to that of [Hub-connected Device Handlers for the SmartThings Classics platform](https://docs.smartthings.com/en/latest/device-type-developers-guide/) as well as that of [Zigbee-Shepherd Converters as used by Zigbee2mqtt](https://www.zigbee2mqtt.io/how_tos/how_to_support_new_devices.html), meaning they are each virtual representations of a physical device that expose additional functionality that is not provided out-of-the-box by the existing integration between these platforms.

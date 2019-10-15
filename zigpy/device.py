@@ -203,7 +203,7 @@ class Device(zigpy.util.LocalLogMixin):
             self._node_handle = asyncio.ensure_future(self.refresh_node_descriptor())
 
         try:
-            tsn, command_id, is_reply, args = self.deserialize(src_ep, cluster, message)
+            hdr, args = self.deserialize(src_ep, cluster, message)
         except ValueError as e:
             LOGGER.error(
                 "Failed to parse message (%s) on cluster %d, because %s",
@@ -224,9 +224,9 @@ class Device(zigpy.util.LocalLogMixin):
             )
             return
 
-        if tsn in self._pending and is_reply:
+        if hdr.tsn in self._pending and hdr.is_reply:
             try:
-                self._pending[tsn].result.set_result(args)
+                self._pending[hdr.tsn].result.set_result(args)
                 return
             except asyncio.InvalidStateError:
                 self.debug(
@@ -234,11 +234,11 @@ class Device(zigpy.util.LocalLogMixin):
                         "Invalid state on future for 0x%02x seq "
                         "-- probably duplicate response"
                     ),
-                    tsn,
+                    hdr.tsn,
                 )
                 return
         endpoint = self.endpoints[src_ep]
-        return endpoint.handle_message(profile, cluster, tsn, command_id, args)
+        return endpoint.handle_message(profile, cluster, hdr, args)
 
     def reply(self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee=False):
         return self.request(

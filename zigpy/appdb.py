@@ -17,13 +17,12 @@ DB_VERSION = 0x0001
 
 def _sqlite_adapters():
     def adapt_ieee(eui64):
-        return repr(eui64)
+        return str(eui64)
 
     sqlite3.register_adapter(t.EUI64, adapt_ieee)
 
     def convert_ieee(s):
-        ieee = [t.uint8_t(p, base=16) for p in s.split(b":")]
-        return t.EUI64(ieee)
+        return t.EUI64.convert(s.decode())
 
     sqlite3.register_converter("ieee", convert_ieee)
 

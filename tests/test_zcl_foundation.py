@@ -298,3 +298,11 @@ def test_frame_header_cluster():
     hdr.manufacturer = None
     assert hdr.manufacturer is None
     assert hdr.frame_control.is_manufacturer_specific is False
+
+
+def test_data_types():
+    """Test data types mappings."""
+    assert len(foundation.DATA_TYPES) == len(foundation.DATA_TYPE_IDX)
+    data_types_set = set([d[1] for d in foundation.DATA_TYPES.values()])
+    dt_2_id_set = set(foundation.DATA_TYPE_IDX.keys())
+    assert data_types_set == dt_2_id_set
