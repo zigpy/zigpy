@@ -143,6 +143,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         return sender.handle_message(profile, cluster, src_ep, dst_ep, message)
 
     def handle_join(self, nwk, ieee, parent_nwk):
+        ieee = t.EUI64(ieee)
         LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
         if ieee in self.devices:
             dev = self.get_device(ieee)
