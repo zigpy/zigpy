@@ -250,27 +250,77 @@ def test_zigbee_security_hash():
     ]
 
 
-def test_convert_install_code():
-    message = bytes([0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x4A, 0xF7])
+@pytest.mark.parametrize(
+    "message, expected_key",
+    [
+        (
+            bytes([0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x4A, 0xF7]),
+            [
+                0x41,
+                0x61,
+                0x8F,
+                0xC0,
+                0xC8,
+                0x3B,
+                0x0E,
+                0x14,
+                0xA5,
+                0x89,
+                0x95,
+                0x4B,
+                0x16,
+                0xE3,
+                0x14,
+                0x66,
+            ],
+        ),
+        (
+            bytes(
+                [
+                    0x83,
+                    0xFE,
+                    0xD3,
+                    0x40,
+                    0x7A,
+                    0x93,
+                    0x97,
+                    0x23,
+                    0xA5,
+                    0xC6,
+                    0x39,
+                    0xB2,
+                    0x69,
+                    0x16,
+                    0xD5,
+                    0x05,
+                    0xC3,
+                    0xB5,
+                ]
+            ),
+            [
+                0x66,
+                0xB6,
+                0x90,
+                0x09,
+                0x81,
+                0xE1,
+                0xEE,
+                0x3C,
+                0xA4,
+                0x20,
+                0x6B,
+                0x6B,
+                0x86,
+                0x1C,
+                0x02,
+                0xBB,
+            ],
+        ),
+    ],
+)
+def test_convert_install_code(message, expected_key):
     key = util.convert_install_code(message)
-    assert key == [
-        0x41,
-        0x61,
-        0x8F,
-        0xC0,
-        0xC8,
-        0x3B,
-        0x0E,
-        0x14,
-        0xA5,
-        0x89,
-        0x95,
-        0x4B,
-        0x16,
-        0xE3,
-        0x14,
-        0x66,
-    ]
+    assert key == expected_key
 
 
 def test_fail_convert_install_code():
