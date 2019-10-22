@@ -175,7 +175,7 @@ class _List(list):
 
     def serialize(self):
         assert self._length is None or len(self) == self._length
-        return b"".join([i.serialize() for i in self])
+        return b"".join([self._itemtype(i).serialize() for i in self])
 
     @classmethod
     def deserialize(cls, data):
