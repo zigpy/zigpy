@@ -126,7 +126,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             )
             return error
 
-        sequence = self._endpoint._device.application.get_sequence()
+        sequence = self._endpoint.device.application.get_sequence()
         if general:
             hdr = foundation.ZCLHeader.general(sequence, command_id, manufacturer)
         else:
@@ -147,7 +147,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
             self.debug("Schema and args lengths do not match in reply")
 
         if tsn is None:
-            tsn = self._endpoint._device.application.get_sequence()
+            tsn = self._endpoint.device.application.get_sequence()
         if general:
             hdr = foundation.ZCLHeader.general(
                 tsn, command_id, manufacturer, is_reply=True

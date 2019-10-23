@@ -3,7 +3,9 @@ from typing import Optional
 
 from zigpy import types as t
 from zigpy.endpoint import Endpoint
-from zigpy.util import ListenableMixin
+import zigpy.profiles.zha as zha_profile
+from zigpy.util import ListenableMixin, LocalLogMixin
+import zigpy.zcl
 
 LOGGER = logging.getLogger(__name__)
 
@@ -14,6 +16,7 @@ class Group(ListenableMixin, dict):
         self._group_id = t.Group(group_id)
         self._listeners = {}
         self._name = name
+        self._endpoint = GroupEndpoint(self)
         if groups is not None:
             self.add_listener(groups)
         super().__init__(*args, **kwargs)
@@ -36,10 +39,30 @@ class Group(ListenableMixin, dict):
             self.listener_event("member_removed", self, ep)
         return self
 
+    def request(self, profile, cluster, sequence, data, *args, **kwargs):
+        """Send multicast request."""
+        return self.application.mrequest(
+            self.group_id,
+            profile,
+            cluster,
+            self.application.get_endpoint_id(cluster, is_server_cluster=False),
+            sequence,
+            data,
+        )
+
     def __repr__(self):
         return "<{} group_id={} name='{}' members={}>".format(
             self.__class__.__name__, self.group_id, self.name, super().__repr__()
         )
+
+    @property
+    def application(self):
+        """Expose application to FakeEndpoint/GroupCluster."""
+        return self.groups.application
+
+    @property
+    def groups(self):
+        return self._groups
 
     @property
     def group_id(self):
@@ -54,6 +77,10 @@ class Group(ListenableMixin, dict):
         if self._name is None:
             return "No name group {}".format(self.group_id)
         return self._name
+
+    @property
+    def endpoint(self):
+        return self._endpoint
 
 
 class Groups(ListenableMixin, dict):
@@ -98,3 +125,95 @@ class Groups(ListenableMixin, dict):
         return group
 
     remove_group = pop
+
+    @property
+    def application(self):
+        """Return application controller."""
+        return self._application
+
+
+class GroupCluster(zigpy.zcl.Cluster):
+    """Virtual cluster for group requests. """
+
+    @classmethod
+    def from_id(cls, group_endpoint, cluster_id: int):
+        """Instantiate from ZCL cluster by cluster id."""
+        if cluster_id in cls._registry:
+            return cls._registry[cluster_id](group_endpoint, is_server=True)
+        group_endpoint.debug(
+            "0x%04x cluster id is not supported for group requests", cluster_id
+        )
+        raise KeyError("Unsupported 0x{:04x} cluster id for groups".format(cluster_id))
+
+    @classmethod
+    def from_attr(cls, group_endpoint, ep_name: str):
+        """Instantiate by Cluster name."""
+
+        for cluster in cls._registry.values():
+            if hasattr(cluster, "ep_attribute") and cluster.ep_attribute == ep_name:
+                return cluster(group_endpoint, is_server=True)
+        raise AttributeError("Unsupported %s group cluster".format(ep_name))
+
+
+class GroupEndpoint(LocalLogMixin):
+    """Group request handlers.
+
+    wrapper for virtual clusters.
+    """
+
+    def __init__(self, group: Group):
+        """Instantiate GroupRequest."""
+        self._group = group
+        self._clusters = {}
+        self._cluster_by_attr = {}
+
+    @property
+    def clusters(self):
+        """Group clusters.
+
+        most of the times, group requests are addressed from client -> server clusters.
+        """
+        return self._clusters
+
+    @property
+    def device(self):
+        """Group is our fake zigpy device"""
+        return self._group
+
+    def request(self, cluster, sequence, data, *args, **kwargs):
+        """Send multicast request."""
+        return self.device.request(zha_profile.PROFILE_ID, cluster, sequence, data)
+
+    def reply(self, cluster, sequence, data, *args, **kwargs):
+        """Send multicast reply.
+
+        do we really need this one :shrug:
+        """
+        return self.request(cluster, sequence, data, *args, **kwargs)
+
+    def log(self, lvl, msg, *args):
+        msg = "[0x%04x] " + msg
+        args = (self._group.group_id,) + args
+        return LOGGER.log(lvl, msg, *args)
+
+    def __getitem__(self, item: int):
+        """Return or instantiate a group cluster."""
+        try:
+            return self.clusters[item]
+        except KeyError:
+            self.debug("trying to create new group %s cluster id", item)
+
+        cluster = GroupCluster.from_id(self, item)
+        self.clusters[item] = cluster
+        return cluster
+
+    def __getattr__(self, name: str):
+        """Return or instantiate a group cluster by cluster name."""
+        try:
+            return self._cluster_by_attr[name]
+        except KeyError:
+            self.debug("trying to create a new group '%s' cluster", name)
+
+        cluster = GroupCluster.from_attr(self, name)
+        self._cluster_by_attr[name] = cluster
+        return cluster
