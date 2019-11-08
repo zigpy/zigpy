@@ -264,3 +264,12 @@ def test_props(app):
     assert app.extended_pan_id is None
     assert app.pan_id is None
     assert app.nwk_update_id is None
+
+
+@pytest.mark.asyncio
+async def test_mrequest(app):
+    s = mock.sentinel
+    with pytest.raises(NotImplementedError):
+        await app.mrequest(
+            s.group_id, s.profile_id, s.cluster, s.src_ep, s.sequence, s.data
+        )
