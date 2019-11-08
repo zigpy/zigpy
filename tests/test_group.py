@@ -1,13 +1,13 @@
 from unittest import mock
 
+import asynctest
 import pytest
-
-import zigpy.types as t
 from zigpy.application import ControllerApplication
 import zigpy.device
-import zigpy.group
 import zigpy.endpoint
-
+import zigpy.group
+import zigpy.types as t
+import zigpy.zcl
 
 FIXTURE_GRP_ID = 0x1001
 FIXTURE_GRP_NAME = "fixture group"
@@ -34,6 +34,12 @@ def groups():
 def group():
     groups_mock = mock.MagicMock(spec_set=zigpy.group.Groups)
     return zigpy.group.Group(FIXTURE_GRP_ID, FIXTURE_GRP_NAME, groups_mock)
+
+
+@pytest.fixture
+def group_endpoint(group):
+    group.request = asynctest.CoroutineMock()
+    return zigpy.group.GroupEndpoint(group)
 
 
 def test_add_group(groups, monkeypatch):
@@ -174,3 +180,130 @@ def test_group_magic_methods(group, endpoint):
     assert endpoint.unique_id in group.members
     assert endpoint.unique_id in group
     assert group[endpoint.unique_id] is endpoint
+
+
+def test_groups_properties(groups: zigpy.group.Groups):
+    """Test groups properties."""
+    assert groups.application is not None
+
+
+def test_group_properties(group: zigpy.group.Group):
+    """Test group properties."""
+    assert group.application is not None
+    assert group.groups is not None
+    assert isinstance(group.endpoint, zigpy.group.GroupEndpoint)
+
+
+def test_group_cluster_from_cluster_id():
+    """Group cluster by cluster id."""
+
+    cls = zigpy.group.GroupCluster.from_id(mock.MagicMock(), 6)
+    assert isinstance(cls, zigpy.zcl.Cluster)
+
+    with pytest.raises(KeyError):
+        zigpy.group.GroupCluster.from_id(mock.MagicMock(), 0xFFFF)
+
+
+def test_group_cluster_from_cluster_name():
+    """Group cluster by cluster name."""
+
+    cls = zigpy.group.GroupCluster.from_attr(mock.MagicMock(), "on_off")
+    assert isinstance(cls, zigpy.zcl.Cluster)
+
+    with pytest.raises(AttributeError):
+        zigpy.group.GroupCluster.from_attr(mock.MagicMock(), "no_such_cluster")
+
+
+def test_group_ep_request(group_endpoint):
+    assert group_endpoint.device is not None
+    group_endpoint.request(
+        mock.sentinel.cluster,
+        mock.sentinel.seq,
+        mock.sentinel.data,
+        mock.sentinel.extra_arg,
+        extra_kwarg=mock.sentinel.extra_kwarg,
+    )
+    assert group_endpoint.device.request.call_count == 1
+    assert group_endpoint.device.request.call_args[0][1] is mock.sentinel.cluster
+    assert group_endpoint.device.request.call_args[0][2] is mock.sentinel.seq
+    assert group_endpoint.device.request.call_args[0][3] is mock.sentinel.data
+
+
+def test_group_ep_reply(group_endpoint):
+    group_endpoint.request = mock.MagicMock()
+    group_endpoint.reply(
+        mock.sentinel.cluster,
+        mock.sentinel.seq,
+        mock.sentinel.data,
+        mock.sentinel.extra_arg,
+        extra_kwarg=mock.sentinel.extra_kwarg,
+    )
+    assert group_endpoint.request.call_count == 1
+    assert group_endpoint.request.call_args[0][0] is mock.sentinel.cluster
+    assert group_endpoint.request.call_args[0][1] is mock.sentinel.seq
+    assert group_endpoint.request.call_args[0][2] is mock.sentinel.data
+    assert group_endpoint.request.call_args[0][3] is mock.sentinel.extra_arg
+    assert (
+        group_endpoint.request.call_args[1]["extra_kwarg"] is mock.sentinel.extra_kwarg
+    )
+
+
+def test_group_ep_by_cluster_id(group_endpoint, monkeypatch):
+    clusters = {}
+    group_endpoint._clusters = mock.MagicMock(return_value=clusters)
+    group_endpoint._clusters.__getitem__.side_effect = clusters.__getitem__
+    group_endpoint._clusters.__setitem__.side_effect = clusters.__setitem__
+
+    group_cluster_mock = mock.MagicMock()
+    group_cluster_mock.from_id.return_value = mock.sentinel.group_cluster
+    monkeypatch.setattr(zigpy.group, "GroupCluster", group_cluster_mock)
+
+    assert len(clusters) == 0
+    cluster = group_endpoint[6]
+    assert cluster is mock.sentinel.group_cluster
+    assert group_cluster_mock.from_id.call_count == 1
+
+    assert len(clusters) == 1
+    cluster = group_endpoint[6]
+    assert cluster is mock.sentinel.group_cluster
+    assert group_cluster_mock.from_id.call_count == 1
+
+
+def test_group_ep_by_cluster_attr(group_endpoint, monkeypatch):
+    cluster_by_attr = {}
+    group_endpoint._cluster_by_attr = mock.MagicMock(return_value=cluster_by_attr)
+    group_endpoint._cluster_by_attr.__getitem__.side_effect = (
+        cluster_by_attr.__getitem__
+    )
+    group_endpoint._cluster_by_attr.__setitem__.side_effect = (
+        cluster_by_attr.__setitem__
+    )
+
+    group_cluster_mock = mock.MagicMock()
+    group_cluster_mock.from_attr.return_value = mock.sentinel.group_cluster
+    monkeypatch.setattr(zigpy.group, "GroupCluster", group_cluster_mock)
+
+    assert len(cluster_by_attr) == 0
+    cluster = group_endpoint.on_off
+    assert cluster is mock.sentinel.group_cluster
+    assert group_cluster_mock.from_attr.call_count == 1
+
+    assert len(cluster_by_attr) == 1
+    cluster = group_endpoint.on_off
+    assert cluster is mock.sentinel.group_cluster
+    assert group_cluster_mock.from_attr.call_count == 1
+
+
+def test_group_request(group):
+    group.request(
+        mock.sentinel.profile,
+        mock.sentinel.cluster,
+        mock.sentinel.sequence,
+        mock.sentinel.data,
+    )
+    assert group.application.mrequest.call_count == 1
+    assert group.application.mrequest.call_args[0][0] == group.group_id
+    assert group.application.mrequest.call_args[0][1] is mock.sentinel.profile
+    assert group.application.mrequest.call_args[0][2] is mock.sentinel.cluster
+    assert group.application.mrequest.call_args[0][4] is mock.sentinel.sequence
+    assert group.application.mrequest.call_args[0][5] is mock.sentinel.data
