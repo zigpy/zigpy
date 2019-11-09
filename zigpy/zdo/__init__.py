@@ -72,7 +72,7 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         elif hdr.command_id == types.ZDOCmd.Mgmt_Permit_Joining_req:
             self.listener_event("permit_duration", args[0])
         else:
-            self.warn("Unsupported ZDO request:%s", hdr.command_id)
+            self.debug("Unsupported ZDO request:%s", hdr.command_id)
 
     def handle_match_desc(self, addr, profile, in_clusters, out_clusters, *, tsn=None):
         local_addr = self._device.application.nwk
