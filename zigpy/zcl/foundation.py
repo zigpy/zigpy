@@ -237,17 +237,27 @@ class WriteAttributesStatusRecord(t.Struct):
 
 
 class AttributeReportingConfig:
+    def __init__(self, other=None):
+        if isinstance(other, self.__class__):
+            self.direction = other.direction
+            self.attrid = other.attrid
+            if self.direction:
+                self.timeout = other.timeout
+                return
+            self.datatype = other.datatype
+            self.min_interval = other.min_interval
+            self.max_interval = other.max_interval
+            self.reportable_change = other.reportable_change
+
     def serialize(self):
-        r = int.to_bytes(self.direction, 1, "little")
-        r += int.to_bytes(self.attrid, 2, "little")
+        r = t.uint8_t(self.direction).serialize()
+        r += t.uint16_t(self.attrid).serialize()
         if self.direction:
-            r += int.to_bytes(self.timeout, 2, "little")
+            r += t.uint16_t(self.timeout).serialize()
         else:
-            r += (
-                int.to_bytes(self.datatype, 1, "little")
-                + int.to_bytes(self.min_interval, 2, "little")
-                + int.to_bytes(self.max_interval, 2, "little")
-            )
+            r += t.uint8_t(self.datatype).serialize()
+            r += t.uint16_t(self.min_interval).serialize()
+            r += t.uint16_t(self.max_interval).serialize()
             datatype = DATA_TYPES.get(self.datatype, None)
             if datatype and datatype[2] is Analog:
                 datatype = datatype[1]

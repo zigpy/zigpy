@@ -185,13 +185,13 @@ def aes_mmo_hash(data):
 
 
 def convert_install_code(code):
-    if len(code) < 8:
+    if len(code) not in (8, 10, 14, 18):
         return None
 
-    real_crc = bytes([code[-1], code[-2]])
+    real_crc = bytes(code[-2:])
     crc = CrcX25()
-    crc.process(code[: len(code) - 2])
-    if real_crc != crc.finalbytes():
+    crc.process(code[:-2])
+    if real_crc != crc.finalbytes(byteorder='little'):
         return None
 
     return aes_mmo_hash(code)

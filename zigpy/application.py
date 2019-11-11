@@ -14,6 +14,7 @@ import zigpy.zcl
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
 
+DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
 OTA_DIR = "zigpy_ota/"
 
@@ -167,6 +168,36 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         if dev is not None:
             self.listener_event("device_left", dev)
 
+    async def mrequest(
+        self,
+        group_id,
+        profile,
+        cluster,
+        src_ep,
+        sequence,
+        data,
+        *,
+        hops=0,
+        non_member_radius=3
+    ):
+        """Submit and send data out as a multicast transmission.
+
+        :param group_id: destination multicast address
+        :param profile: Zigbee Profile ID to use for outgoing message
+        :param cluster: cluster id where the message is being sent
+        :param src_ep: source endpoint id
+        :param sequence: transaction sequence number of the message
+        :param data: Zigbee message payload
+        :param hops: the message will be delivered to all nodes within this number of
+                     hops of the sender. A value of zero is converted to MAX_HOPS
+        :param non_member_radius: the number of hops that the message will be forwarded
+                                  by devices that are not members of the group. A value
+                                  of 7 or greater is treated as infinite
+        :returns: return a tuple of a status and an error_message. Original requestor
+                  has more context to provide a more meaningful error message
+        """
+        raise NotImplementedError
+
     @zigpy.util.retryable_request
     async def request(
         self,
@@ -277,6 +308,10 @@ class ControllerApplication(zigpy.util.ListenableMixin):
 
         raise KeyError
 
+    def get_endpoint_id(self, cluster_id: int, is_server_cluster: bool = False):
+        """Returns coordinator endpoint id for specified cluster id."""
+        return DEFAULT_ENDPOINT_ID
+
     def get_dst_address(self, cluster):
         """Helper to get a dst address for bind/unbind operations.
 
@@ -288,7 +323,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         dstaddr = zdo_types.MultiAddress()
         dstaddr.addrmode = 3
         dstaddr.ieee = self.ieee
-        dstaddr.endpoint = 1
+        dstaddr.endpoint = self.get_endpoint_id(cluster.cluster_id, cluster.is_server)
         return dstaddr
 
     @property

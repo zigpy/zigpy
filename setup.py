@@ -18,6 +18,8 @@ setup(
         'crccheck',
     ],
     tests_require=[
+        'asynctest',
         'pytest',
+        'pytest-asyncio',
     ],
 )

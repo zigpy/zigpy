@@ -17,6 +17,9 @@ zigpy works with separate radio libraries which can each interface with multiple
   - [Nortek GoControl QuickStick Combo Model HUSBZB-1 (Z-Wave & Zigbee USB Adapter)](https://www.nortekcontrol.com/products/2gig/husbzb-1-gocontrol-quickstick-combo/)
   - [Elelabs Zigbee USB Adapter](https://elelabs.com/products/elelabs_usb_adapter.html)
   - [Elelabs Zigbee Raspberry Pi Shield](https://elelabs.com/products/elelabs_zigbee_shield.html)
+  - Telegesis ETRX357USB (Note! First have to be flashed with other EmberZNet firmware)
+  - Telegesis ETRX357USB-LRS (Note! First have to be flashed with other EmberZNet firmware)
+  - Telegesis ETRX357USB-LRS+8M (Note! First have to be flashed with other EmberZNet firmware)
 - XBee Zigbee based radios (via the [zigpy-xbee](https://github.com/zigpy/zigpy-xbee) library for zigpy)
   - Digi XBee Series 2C (S2C) modules
   - Digi XBee Series 2 (S2) modules. Note: These will need to be manually flashed with the Zigbee Coordinator API firmware via XCTU.

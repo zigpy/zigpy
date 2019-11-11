@@ -306,3 +306,14 @@ def test_data_types():
     data_types_set = set([d[1] for d in foundation.DATA_TYPES.values()])
     dt_2_id_set = set(foundation.DATA_TYPE_IDX.keys())
     assert data_types_set == dt_2_id_set
+
+
+def test_attribute_report():
+    a = foundation.AttributeReportingConfig()
+    a.direction = 0x01
+    a.attrid = 0xAA55
+    a.timeout = 900
+    b = foundation.AttributeReportingConfig(a)
+    assert a.attrid == b.attrid
+    assert a.direction == b.direction
+    assert a.timeout == b.timeout
