@@ -154,13 +154,13 @@ async def test_basic_get_image(basic_prov, key):
 def test_basic_enable_provider(key):
     basic_prov = ota_p.Basic()
 
-    assert not basic_prov.is_enabled
+    assert basic_prov.is_enabled is False
 
     basic_prov.enable()
-    assert basic_prov.is_enabled
+    assert basic_prov.is_enabled is True
 
     basic_prov.disable()
-    assert not basic_prov.is_enabled
+    assert basic_prov.is_enabled is False
 
 
 @pytest.mark.asyncio
