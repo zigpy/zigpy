@@ -30,6 +30,7 @@ zigpy works with separate radio libraries which can each interface with multiple
   - [RaspBee](https://www.dresden-elektronik.de/raspbee/) GPIO radio adapter from [Dresden-Elektronik](https://www.dresden-elektronik.de)
   
 ### Experimental Zigbee radio modules
+
 - ZiGate based radios (via the [zigpy-zigate](https://github.com/doudz/zigpy-zigate) library for zigpy)
   - [ZiGate open source ZigBee adapter hardware](https://zigate.fr/)
   
@@ -42,6 +43,14 @@ Packages of tagged versions are also released via PyPI
   - https://pypi.org/project/zigpy-deconz/
   - https://pypi.org/project/zigpy-zigate/
   
+## How to contribute
+
+If you are looking to make a contribution to this project we suggest that you follow the steps in these guides:
+- https://github.com/firstcontributions/first-contributions/blob/master/README.md
+- https://github.com/firstcontributions/first-contributions/blob/master/github-desktop-tutorial.md
+
+Some developers might also be interested in receiving donations in the form of hardware such as Zigbee modules or devices, and even if such donations are most often donated with no strings attached it could in many cases help the developers motivation and indirect improve the development of this project.
+
 ## Related projects
 
 ### ZHA Device Handlers
