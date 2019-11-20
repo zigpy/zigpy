@@ -324,18 +324,23 @@ async def test_ikea_refresh_list_locked(mock_get, ikea_prov, image_with_version)
 @pytest.mark.asyncio
 @patch("aiohttp.ClientSession.get")
 async def test_ikea_fetch_image(mock_get, image_with_version):
-    prefix = b"\x00This is extra data\x00\x55\xaa"
-    data = (
+    data = bytes.fromhex(
         "1ef1ee0b0001380000007c11012178563412020054657374204f544120496d61"
         "676500000000000000000000000000000000000042000000"
     )
-    data = binascii.unhexlify(data)
     sub_el = b"\x00\x00\x04\x00\x00\x00abcd"
+
+    container = bytearray(b"\x00This is extra data\x00\x55\xaa" * 100)
+    container[0:4] = b'NGIS'
+    container[16:20] = (512).to_bytes(4, 'little')      # offset
+    container[20:24] = len(data + sub_el).to_bytes(4, 'little')  # size
+    container[512:512 + len(data) + len(sub_el)] = data + sub_el
+
     img = image_with_version(image_type=0x2101)
     img.url = mock.sentinel.url
 
     mock_get.return_value.__aenter__.return_value.read = CoroutineMock(
-        side_effect=[prefix + data + sub_el]
+        side_effect=[container]
     )
 
     r = await img.fetch_image()

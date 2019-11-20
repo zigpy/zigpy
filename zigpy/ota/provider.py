@@ -82,8 +82,6 @@ class Basic:
 
 @attr.s
 class IKEAImage:
-    OTA_HEADER = 0x0BEEF11E .to_bytes(4, "little")
-
     manufacturer_id = attr.ib()
     image_type = attr.ib()
     version = attr.ib(default=None)
@@ -108,7 +106,15 @@ class IKEAImage:
             LOGGER.debug("Downloading %s for %s", self.url, self.key)
             async with req.get(self.url) as rsp:
                 data = await rsp.read()
-        offset = data.index(self.OTA_HEADER)
+
+        assert len(data) > 24
+        offset = int.from_bytes(data[16:20], 'little')
+        size = int.from_bytes(data[20:24], 'little')
+        assert len(data) > offset + size
+
+        ota_image, _ = OTAImage.deserialize(data[offset:offset + size])
+        assert ota_image.key == self.key
+
         LOGGER.debug(
             "Finished downloading %s bytes from %s for %s ver %s",
             self.image_size,
@@ -116,7 +122,7 @@ class IKEAImage:
             self.key,
             self.version,
         )
-        return OTAImage.deserialize(data[offset:])[0]
+        return ota_image
 
 
 class Trådfri(Basic):
