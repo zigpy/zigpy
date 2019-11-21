@@ -51,6 +51,11 @@ If you are looking to make a contribution to this project we suggest that you fo
 
 Some developers might also be interested in receiving donations in the form of hardware such as Zigbee modules or devices, and even if such donations are most often donated with no strings attached it could in many cases help the developers motivation and indirect improve the development of this project.
 
+## Developer references
+
+Silicon Labs video playlist of ZigBee Concepts: Architecture basics, MAC/PHY, node types, and application profiles
+- https://www.youtube.com/playlist?list=PL-awFRrdECXvAs1mN2t2xaI0_bQRh2AqD
+
 ## Related projects
 
 ### ZHA Device Handlers
