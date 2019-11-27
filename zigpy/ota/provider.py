@@ -142,7 +142,7 @@ class Trådfri(Basic):
         async with self._locks[LOCK_REFRESH]:
             async with aiohttp.ClientSession() as req:
                 async with req.get(self.UPDATE_URL) as rsp:
-                    fw_lst = await rsp.json(content_type="application/octet-stream")
+                    fw_lst = await rsp.json(content_type=None)
         self._cache.clear()
         for fw in fw_lst:
             if "fw_file_version_MSB" not in fw:
