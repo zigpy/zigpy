@@ -47,7 +47,11 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             sdr = await self._device.zdo.Simple_Desc_req(
                 self._device.nwk, self._endpoint_id, tries=3, delay=2
             )
-            if sdr[0] != 0:
+            if sdr[0] == 131:
+                # These endpoints are essentially junk but this lets the device join
+                self.status = Status.ENDPOINT_INACTIVE
+                return
+            elif sdr[0] != 0:
                 raise Exception("Failed to retrieve service descriptor: %s", sdr)
         except Exception as exc:
             self.warn("Failed ZDO request during endpoint initialization: %s", exc)
