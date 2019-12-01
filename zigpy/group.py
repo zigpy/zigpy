@@ -113,13 +113,13 @@ class Groups(ListenableMixin, dict):
         if isinstance(item, Group):
             group = super().pop(item.group_id, *args)
             if isinstance(group, Group):
-                for member in group.values():
+                for member in (*group.values(),):
                     group.remove_member(member)
                 self.listener_event("group_removed", group)
             return group
         group = super().pop(item, *args)
         if isinstance(group, Group):
-            for member in group.values():
+            for member in (*group.values(),):
                 group.remove_member(member)
         self.listener_event("group_removed", group)
         return group
