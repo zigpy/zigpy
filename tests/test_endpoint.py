@@ -45,7 +45,7 @@ async def test_inactive_initialize(ep):
 
     ep._device.zdo.Simple_Desc_req = mockrequest
     await ep.initialize()
-    assert ep.status > endpoint.Status.ENDPOINT_INACTIVE
+    assert ep.status == endpoint.Status.ENDPOINT_INACTIVE
 
 
 @pytest.mark.asyncio
