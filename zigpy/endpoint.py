@@ -8,6 +8,7 @@ import zigpy.util
 import zigpy.zcl
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zcl.foundation import Status as ZCLStatus
+from zigpy.zdo.types import Status as zdo_status
 
 LOGGER = logging.getLogger(__name__)
 
@@ -19,6 +20,8 @@ class Status(enum.IntEnum):
     NEW = 0
     # Endpoint information (device type, clusters, etc) init done
     ZDO_INIT = 1
+    # Endpoint Inactive
+    ENDPOINT_INACTIVE = 3
 
 
 class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
@@ -47,7 +50,11 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             sdr = await self._device.zdo.Simple_Desc_req(
                 self._device.nwk, self._endpoint_id, tries=3, delay=2
             )
-            if sdr[0] != 0:
+            if sdr[0] == zdo_status.NOT_ACTIVE:
+                # These endpoints are essentially junk but this lets the device join
+                self.status = Status.ENDPOINT_INACTIVE
+                return
+            elif sdr[0] != zdo_status.SUCCESS:
                 raise Exception("Failed to retrieve service descriptor: %s", sdr)
         except Exception as exc:
             self.warn("Failed ZDO request during endpoint initialization: %s", exc)

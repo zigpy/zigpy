@@ -37,6 +37,18 @@ async def _test_initialize(ep, profile):
 
 
 @pytest.mark.asyncio
+async def test_inactive_initialize(ep):
+    async def mockrequest(nwk, epid, tries=None, delay=None):
+        sd = types.SimpleDescriptor()
+        sd.endpoint = 2
+        return [131, None, sd]
+
+    ep._device.zdo.Simple_Desc_req = mockrequest
+    await ep.initialize()
+    assert ep.status == endpoint.Status.ENDPOINT_INACTIVE
+
+
+@pytest.mark.asyncio
 async def test_initialize_zha(ep):
     return await _test_initialize(ep, 260)
 
