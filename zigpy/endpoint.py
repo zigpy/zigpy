@@ -19,6 +19,8 @@ class Status(enum.IntEnum):
     NEW = 0
     # Endpoint information (device type, clusters, etc) init done
     ZDO_INIT = 1
+    # Endpoint Inactive
+    ENDPOINT_INACTIVE = 3
 
 
 class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
