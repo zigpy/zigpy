@@ -37,7 +37,7 @@ async def _test_initialize(ep, profile):
 
 
 @pytest.mark.asyncio
-async def test_inactive_initialize(ep, profile):
+async def test_inactive_initialize(ep):
     async def mockrequest(nwk, epid, tries=None, delay=None):
         sd = types.SimpleDescriptor()
         sd.endpoint = 2
