@@ -43,6 +43,7 @@ class PersistingListener:
         self._create_table_attributes()
         self._create_table_groups()
         self._create_table_group_members()
+        self._create_table_relays()
 
         self._application = application
 
@@ -63,6 +64,14 @@ class PersistingListener:
 
     def device_removed(self, device):
         self._remove_device(device)
+
+    def device_relays_updated(self, device, relays):
+        """Device relay list is updated."""
+        if relays is None:
+            self._save_device_relays_clear(device.ieee)
+            return
+
+        self._save_device_relays_update(device.ieee, t.Relays(relays).serialize())
 
     def attribute_updated(self, cluster, attrid, value):
         self._save_attribute(
@@ -161,6 +170,14 @@ class PersistingListener:
             "group_members_idx", "group_members", "group_id, ieee, endpoint_id"
         )
 
+    def _create_table_relays(self):
+        self._create_table(
+            "relays",
+            """(ieee ieee, relays,
+                FOREIGN KEY(ieee) REFERENCES devices(ieee) ON DELETE CASCADE)""",
+        )
+        self._create_index("relays_idx", "relays", "ieee")
+
     def _enable_foreign_keys(self):
         self.execute("PRAGMA foreign_keys = ON")
 
@@ -237,6 +254,15 @@ class PersistingListener:
         self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         self._db.commit()
 
+    def _save_device_relays_update(self, ieee, value):
+        q = "INSERT OR REPLACE INTO relays VALUES (?, ?)"
+        self.execute(q, (ieee, value))
+        self._db.commit()
+
+    def _save_device_relays_clear(self, ieee):
+        self.execute("DELETE FROM relays WHERE ieee = ?", (ieee,))
+        self._db.commit()
+
     def _scan(self, table, filter=None):
         if filter is None:
             return self.execute("SELECT * FROM %s" % (table,))
@@ -282,6 +308,7 @@ class PersistingListener:
         _load_attributes()
         self._load_groups()
         self._load_group_members()
+        self._load_relays()
 
     def _load_devices(self):
         for (ieee, nwk, status) in self._scan("devices"):
@@ -329,3 +356,10 @@ class PersistingListener:
             group.add_member(
                 self._application.get_device(ieee).endpoints[ep_id], suppress_event=True
             )
+
+    def _load_relays(self):
+        for (ieee, value) in self._scan("relays"):
+            dev = self._application.get_device(ieee)
+            dev.relays = t.Relays.deserialize(value)[0]
+        for dev in self._application.devices.values():
+            dev.add_context_listener(self)

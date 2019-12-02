@@ -41,6 +41,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             ota_dir = os.path.join(ota_dir, OTA_DIR)
         self.ota.initialize(ota_dir)
 
+        self._dblistener = None
         if database_file is not None:
             self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
             self.add_listener(self._dblistener)
@@ -90,6 +91,8 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self.listener_event("raw_device_initialized", device)
         device = zigpy.quirks.get_device(device)
         self.devices[device.ieee] = device
+        if self._dblistener is not None:
+            device.add_context_listener(self._dblistener)
         self.listener_event("device_initialized", device)
 
     async def remove(self, ieee):

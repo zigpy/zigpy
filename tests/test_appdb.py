@@ -53,6 +53,8 @@ async def test_database(tmpdir, monkeypatch):
     app = make_app(db)
     # TODO: Leaks a task on dev.initialize, I think?
     ieee = make_ieee()
+    relays_1 = [t.NWK(0x1234), t.NWK(0x2345)]
+    relays_2 = [t.NWK(0x3456), t.NWK(0x4567)]
     app.handle_join(99, ieee, 0)
     app.handle_join(99, ieee, 0)
 
@@ -75,6 +77,7 @@ async def test_database(tmpdir, monkeypatch):
     clus._update_attribute(5, bytes("Model", "ascii"))
     clus.listener_event("cluster_command", 0)
     clus.listener_event("general_command")
+    dev.relays = relays_1
 
     # Test a CustomDevice
     custom_ieee = make_ieee(1)
@@ -89,6 +92,7 @@ async def test_database(tmpdir, monkeypatch):
     assert isinstance(app.get_device(custom_ieee), CustomDevice)
     assert ep.endpoint_id in dev.get_signature()
     app.device_initialized(app.get_device(custom_ieee))
+    dev.relays = relays_2
 
     # Everything should've been saved - check that it re-loads
     with mock.patch("zigpy.quirks.get_device", fake_get_device):
@@ -103,7 +107,11 @@ async def test_database(tmpdir, monkeypatch):
     assert dev.endpoints[2].model == "Model"
     assert dev.endpoints[2].out_clusters[1].cluster_id == 1
     assert dev.endpoints[3].device_type == profiles.zll.DeviceType.COLOR_LIGHT
+    assert dev.relays == relays_1
+
     dev = app2.get_device(custom_ieee)
+    assert dev.relays == relays_2
+    dev.relays = None
 
     app.handle_leave(99, ieee)
 
@@ -119,6 +127,8 @@ async def test_database(tmpdir, monkeypatch):
 
     app3 = make_app(db)
     assert ieee not in app3.devices
+    dev = app2.get_device(custom_ieee)
+    assert dev.relays is None
 
     os.unlink(db)
 
