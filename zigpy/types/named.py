@@ -118,3 +118,9 @@ class TimeOfDay(Struct):
 
 class UTCTime(basic.uint32_t):
     pass
+
+
+class Relays(basic.LVList(NWK)):
+    """Relay list for static routing."""
+
+    pass
