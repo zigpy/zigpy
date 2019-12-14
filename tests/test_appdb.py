@@ -138,8 +138,9 @@ def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     app = make_app(db)
     # TODO: Leaks a task on dev.initialize, I think?
     ieee = make_ieee()
-    app.handle_join(99, ieee, 0)
-    app.handle_join(99, ieee, 0)
+    with mock.patch("zigpy.device.Device.schedule_initialize"):
+        app.handle_join(99, ieee, 0)
+        app.handle_join(99, ieee, 0)
 
     dev = app.get_device(ieee)
     ep = dev.add_endpoint(3)
