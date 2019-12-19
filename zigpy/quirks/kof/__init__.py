@@ -5,6 +5,7 @@ The King of Fans ceiling fan receiver does not generate default replies. This
 module overrides all server commands that do not have a mandatory reply to not
  expect replies at all.
 """
+from zigpy.profiles import zha
 from zigpy.quirks import CustomDevice, CustomCluster
 from zigpy.zcl.clusters.general import (
     Basic,
@@ -74,7 +75,7 @@ class CeilingFan(CustomDevice):
     signature = {
         "endpoints": {
             1: {
-                "profile_id": 0x0104,
+                "profile_id": zha.PROFILE_ID,
                 "device_type": 14,
                 "input_clusters": [
                     Basic.cluster_id,
@@ -94,6 +95,7 @@ class CeilingFan(CustomDevice):
     replacement = {
         "endpoints": {
             1: {
+                "device_type": zha.DeviceType.DIMMABLE_LIGHT,
                 "input_clusters": [
                     KofBasic,
                     KofIdentify,
