@@ -283,44 +283,6 @@ def test_custom_device():
     assert Device not in zigpy.quirks._DEVICE_REGISTRY
 
 
-def test_kof_no_reply():
-    class TestCluster(zigpy.quirks.kof.NoReplyMixin, zigpy.quirks.CustomCluster):
-        cluster_id = 0x1234
-        void_input_commands = [0x0002]
-        server_commands = {
-            0x0001: ("noop", (), False),
-            0x0002: ("noop_noreply", (), False),
-        }
-        client_commands = {}
-
-    ep = mock.MagicMock()
-    cluster = TestCluster(ep)
-
-    cluster.command(0x0001)
-    ep.request.assert_called_with(
-        mock.ANY, mock.ANY, mock.ANY, expect_reply=True, command_id=mock.ANY
-    )
-    ep.reset_mock()
-
-    cluster.command(0x0001, expect_reply=False)
-    ep.request.assert_called_with(
-        mock.ANY, mock.ANY, mock.ANY, expect_reply=False, command_id=mock.ANY
-    )
-    ep.reset_mock()
-
-    cluster.command(0x0002)
-    ep.request.assert_called_with(
-        mock.ANY, mock.ANY, mock.ANY, expect_reply=False, command_id=mock.ANY
-    )
-    ep.reset_mock()
-
-    cluster.command(0x0002, expect_reply=True)
-    ep.request.assert_called_with(
-        mock.ANY, mock.ANY, mock.ANY, expect_reply=True, command_id=mock.ANY
-    )
-    ep.reset_mock()
-
-
 def test_custom_cluster_idx():
     class TestClusterIdx(zigpy.quirks.CustomCluster):
         cluster_Id = 0x1234
