@@ -194,6 +194,10 @@ def test_nwk(app):
     assert app.nwk == app._nwk
 
 
+def test_config(app):
+    assert app.config == app._config
+
+
 def test_deserialize(app, ieee):
     dev = mock.MagicMock()
     app.deserialize(dev, 1, 1, b"")
