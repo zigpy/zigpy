@@ -83,7 +83,7 @@ def test_add_group_no_evt(groups, monkeypatch):
 def test_pop_group_id(groups, endpoint):
     group = groups[FIXTURE_GRP_ID]
     group.add_member(endpoint)
-    group.remove_member = mock.MagicMock()
+    group.remove_member = mock.MagicMock(side_effect=group.remove_member)
     groups.listener_event.reset_mock()
 
     assert FIXTURE_GRP_ID in groups
@@ -91,7 +91,7 @@ def test_pop_group_id(groups, endpoint):
 
     assert isinstance(grp, zigpy.group.Group)
     assert FIXTURE_GRP_ID not in groups
-    assert groups.listener_event.call_count == 1
+    assert groups.listener_event.call_count == 2
     assert group.remove_member.call_count == 1
     assert group.remove_member.call_args[0][0] is endpoint
 
@@ -103,13 +103,13 @@ def test_pop_group(groups, endpoint):
     assert FIXTURE_GRP_ID in groups
     group = groups[FIXTURE_GRP_ID]
     group.add_member(endpoint)
-    group.remove_member = mock.MagicMock()
+    group.remove_member = mock.MagicMock(side_effect=group.remove_member)
     groups.listener_event.reset_mock()
 
     grp = groups.pop(group)
     assert isinstance(grp, zigpy.group.Group)
     assert FIXTURE_GRP_ID not in groups
-    assert groups.listener_event.call_count == 1
+    assert groups.listener_event.call_count == 2
     assert group.remove_member.call_count == 1
     assert group.remove_member.call_args[0][0] is endpoint
 

@@ -3,14 +3,14 @@ import binascii
 import enum
 import logging
 import time
+from typing import Optional
 
 import zigpy.endpoint
 import zigpy.exceptions
+from zigpy.types import NWK, BroadcastAddress, Relays
 import zigpy.util
-import zigpy.zdo as zdo
 import zigpy.zcl.foundation as foundation
-from zigpy.types import BroadcastAddress, NWK
-
+import zigpy.zdo as zdo
 
 APS_REPLY_TIMEOUT = 5
 APS_REPLY_TIMEOUT_EXTENDED = 28
@@ -28,7 +28,7 @@ class Status(enum.IntEnum):
     ENDPOINTS_INIT = 2
 
 
-class Device(zigpy.util.LocalLogMixin):
+class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """A device on the network"""
 
     def __init__(self, application, ieee, nwk):
@@ -43,11 +43,13 @@ class Device(zigpy.util.LocalLogMixin):
         self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
+        self._listeners = {}
         self._manufacturer = None
         self._model = None
         self.node_desc = zdo.types.NodeDescriptor()
         self._node_handle = None
         self._pending = zigpy.util.Requests()
+        self._relays = None
 
     def schedule_initialize(self):
         if self.initializing:
@@ -286,6 +288,16 @@ class Device(zigpy.util.LocalLogMixin):
     def model(self, value):
         if isinstance(value, str):
             self._model = value
+
+    @property
+    def relays(self) -> Optional[Relays]:
+        """Relay list."""
+        return self._relays
+
+    @relays.setter
+    def relays(self, relays: Optional[Relays]) -> None:
+        self._relays = relays
+        self.listener_event("device_relays_updated", relays)
 
     def __getitem__(self, key):
         return self.endpoints[key]

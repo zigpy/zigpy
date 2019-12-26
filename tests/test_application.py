@@ -67,7 +67,6 @@ async def test_permit(app, ieee):
     await app.permit(node=ncp_ieee)
     assert app.devices[ieee].zdo.permit.call_count == 1
     assert app.permit_ncp.call_count == 1
-    print("{}".format(asyncio.Task.all_tasks()))
 
 
 @pytest.mark.asyncio
@@ -193,6 +192,10 @@ def test_ieee(app):
 
 def test_nwk(app):
     assert app.nwk == app._nwk
+
+
+def test_config(app):
+    assert app.config == app._config
 
 
 def test_deserialize(app, ieee):
