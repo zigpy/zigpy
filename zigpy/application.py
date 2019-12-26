@@ -3,6 +3,7 @@ import logging
 import os.path
 from typing import Optional
 
+import voluptuous as vol
 import zigpy.appdb
 import zigpy.device
 import zigpy.group
@@ -14,17 +15,19 @@ import zigpy.zcl
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
 
+CONFIG_SCHEMA = vol.Schema({}, extra=vol.ALLOW_EXTRA)
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
 OTA_DIR = "zigpy_ota/"
 
 
 class ControllerApplication(zigpy.util.ListenableMixin):
-    def __init__(self, database_file=None):
+    def __init__(self, database_file=None, config={}):
         self._send_sequence = 0
         self.devices = {}
         self._groups = zigpy.group.Groups(self)
         self._listeners = {}
+        self._config = CONFIG_SCHEMA(config)
         self._channel = None
         self._channels = None
         self._ext_pan_id = None
@@ -338,6 +341,11 @@ class ControllerApplication(zigpy.util.ListenableMixin):
     def channels(self):
         """Channel mask."""
         return self._channels
+
+    @property
+    def config(self) -> dict:
+        """Return current configuration."""
+        return self._config
 
     @property
     def extended_pan_id(self):
