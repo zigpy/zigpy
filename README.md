@@ -34,6 +34,9 @@ zigpy works with separate radio libraries which can each interface with multiple
 - ZiGate based radios (via the [zigpy-zigate](https://github.com/doudz/zigpy-zigate) library for zigpy)
   - [ZiGate open source ZigBee adapter hardware](https://zigate.fr/)
   
+- Texas Instruments CC2531 based radios (via the [zigpy-cc](https://github.com/sanyatuning/zigpy-cc) library for zigpy)
+  - [CC2531 USB stick hardware with custom Z-Stack firmware from the Zigbee2mqtt project](https://www.zigbee2mqtt.io/getting_started/what_do_i_need.html)
+  
 ## Release packages available via PyPI
 
 Packages of tagged versions are also released via PyPI
