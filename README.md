@@ -64,5 +64,11 @@ ZHA deviation handling in Home Assistant relies on on the third-party [ZHA Devic
 ### ZHA Map
 Home Assistant can build ZHA network topology map using the [zha-map](https://github.com/zha-ng/zha-map) project.
 
+### zha-network-visualization-card
+[zha-network-visualization-card](https://github.com/dmulcahey/zha-network-visualization-card) is a custom Lovelace element for visualizing the ZHA Zigbee network in Home Assistant.
+
+### ZHA Network Card
+[zha-network-card](https://github.com/dmulcahey/zha-network-card) is a custom Lovelace card that displays ZHA network and device information in Home Assistant.
+
 ### zigpy-deconz-parser
 zigpy-deconz-parser project can parse HomeAssistant ZHA component debug log using `zigpy-deconz` library if you have Conbee or Raspbee hardware.
