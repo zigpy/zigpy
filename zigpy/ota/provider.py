@@ -16,7 +16,7 @@ LOCK_REFRESH = "firmware_list"
 
 ENABLE_IKEA_OTA = "enable_ikea_ota"
 ENABLE_LEDVANCE_OTA = "enable_ledvance_ota"
-SKIP_OTA_FILES = (ENABLE_IKEA_OTA, ENABLE_LEDVANCE_OTA,)
+SKIP_OTA_FILES = (ENABLE_IKEA_OTA, ENABLE_LEDVANCE_OTA)
 
 
 class Basic:
@@ -109,11 +109,11 @@ class IKEAImage:
                 data = await rsp.read()
 
         assert len(data) > 24
-        offset = int.from_bytes(data[16:20], 'little')
-        size = int.from_bytes(data[20:24], 'little')
+        offset = int.from_bytes(data[16:20], "little")
+        size = int.from_bytes(data[20:24], "little")
         assert len(data) > offset + size
 
-        ota_image, _ = OTAImage.deserialize(data[offset:offset + size])
+        ota_image, _ = OTAImage.deserialize(data[offset : offset + size])
         assert ota_image.key == self.key
 
         LOGGER.debug(
@@ -166,8 +166,6 @@ class Trådfri(Basic):
 class LedvanceImage:
     """Ledvance image handler."""
 
-    OTA_HEADER = 0x0BEEF11E .to_bytes(4, "little")
-
     manufacturer_id = attr.ib()
     image_type = attr.ib()
     version = attr.ib(default=None)
@@ -177,16 +175,17 @@ class LedvanceImage:
     @classmethod
     def new(cls, data):
         ident = data["identity"]
-        ver = ident["version"]
+        company, product, ver = (ident["company"], ident["product"], ident["version"])
+        major, minor, build = (ver["major"], ver["minor"], ver["build"])
 
-        res = cls(ident["company"], ident["product"])
+        res = cls(company, product)
         res.file_version = int(data["fullName"].split("/")[1], 16)
         res.image_size = data["length"]
 
-        res.url = "https://api.update.ledvance.com/v1/zigbee/firmwares/download"
-        res.url += "?Company=" + str(ident["company"]) + "&Product="
-        res.url += str(ident["product"]) + "&Version=" + str(ver["major"]) + "."
-        res.url += str(ver["minor"]) + "." + str(ver["build"])
+        res.url = (
+            f"https://api.update.ledvance.com/v1/zigbee/firmwares/download"
+            f"?Company={company}&Product={product}&Version={major}.{minor}.{build}"
+        )
 
         return res
 
@@ -200,15 +199,11 @@ class LedvanceImage:
             async with req.get(self.url) as rsp:
                 data = await rsp.read()
 
-        assert len(data) > 24
-        offset = data.index(self.OTA_HEADER)
-        assert offset >= 0
-
-        img, _ = OTAImage.deserialize(data[offset:])
+        img, _ = OTAImage.deserialize(data)
         assert img.key == self.key
 
         LOGGER.debug(
-            ("%s: version: %s, hw_ver: (%s, %s)," " OTA string: %s"),
+            "%s: version: %s, hw_ver: (%s, %s), OTA string: %s",
             img.key,
             img.header.file_version,
             img.header.minimum_hardware_version,
@@ -228,6 +223,7 @@ class LedvanceImage:
 
 class Ledvance(Basic):
     """ Ledvance firmware provider """
+
     # documentation: https://portal.update.ledvance.com/docs/services/firmware-rest-api/
 
     UPDATE_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
@@ -260,7 +256,6 @@ class Ledvance(Basic):
 @attr.s
 class FileImage(OTAImageHeader):
     REFRESH = datetime.timedelta(hours=24)
-    OTA_HEADER = 0x0BEEF11E .to_bytes(4, "little")
 
     file_name = attr.ib(default=None)
 
@@ -283,7 +278,7 @@ class FileImage(OTAImageHeader):
                     img = cls.deserialize(data[offset:])[0]
                     img.file_name = file_name
                     LOGGER.debug(
-                        ("%s: %s, version: %s, hw_ver: (%s, %s)," " OTA string: %s"),
+                        "%s: %s, version: %s, hw_ver: (%s, %s), OTA string: %s",
                         img.key,
                         file_name,
                         img.file_version,
