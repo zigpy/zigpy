@@ -62,13 +62,13 @@ Silicon Labs video playlist of ZigBee Concepts: Architecture basics, MAC/PHY, no
 ZHA deviation handling in Home Assistant relies on on the third-party [ZHA Device Handlers](https://github.com/dmulcahey/zha-device-handlers) project. Zigbee devices that deviate from or do not fully conform to the standard specifications set by the [Zigbee Alliance](https://www.zigbee.org) may require the development of custom [ZHA Device Handlers](https://github.com/dmulcahey/zha-device-handlers) (ZHA custom quirks handler implementation) to for all their functions to work properly with the ZHA component in Home Assistant. These ZHA Device Handlers for Home Assistant can thus be used to parse custom messages to and from non-compliant Zigbee devices. The custom quirks implementations for zigpy implemented as ZHA Device Handlers for Home Assistant are a similar concept to that of [Hub-connected Device Handlers for the SmartThings Classics platform](https://docs.smartthings.com/en/latest/device-type-developers-guide/) as well as that of [Zigbee-Shepherd Converters as used by Zigbee2mqtt](https://www.zigbee2mqtt.io/how_tos/how_to_support_new_devices.html), meaning they are each virtual representations of a physical device that expose additional functionality that is not provided out-of-the-box by the existing integration between these platforms.
 
 ### ZHA Map
-Home Assistant can build ZHA network topology map using the [zha-map](https://github.com/zha-ng/zha-map) project.
+Home Assistant can build ZHA network topology map using the [zha-map](https://github.com/zha-ng/zha-map) project when using Home Assistant ZHA integration component (which is based on Zigpy)
 
 ### zha-network-visualization-card
 [zha-network-visualization-card](https://github.com/dmulcahey/zha-network-visualization-card) is a custom Lovelace element for visualizing the ZHA Zigbee network in Home Assistant.
 
 ### ZHA Network Card
-[zha-network-card](https://github.com/dmulcahey/zha-network-card) is a custom Lovelace card that displays ZHA network and device information in Home Assistant.
+[zha-network-card](https://github.com/dmulcahey/zha-network-card) is a custom Lovelace card for Home Assistant ZHA integration component Zigbee network and device information.
 
 ### zigpy-deconz-parser
-zigpy-deconz-parser project can parse HomeAssistant ZHA component debug log using `zigpy-deconz` library if you have Conbee or Raspbee hardware.
+[zigpy-deconz-parser](https://github.com/zha-ng/zigpy-deconz-parser) project can parse Home Assistant ZHA integration component debug log using `zigpy-deconz` library if you have ConBee or RaspBee hardware from Dresden Elektronik.
