@@ -331,10 +331,10 @@ async def test_ikea_fetch_image(mock_get, ikea_image_with_version):
     sub_el = b"\x00\x00\x04\x00\x00\x00abcd"
 
     container = bytearray(b"\x00This is extra data\x00\x55\xaa" * 100)
-    container[0:4] = b'NGIS'
-    container[16:20] = (512).to_bytes(4, 'little')      # offset
-    container[20:24] = len(data + sub_el).to_bytes(4, 'little')  # size
-    container[512:512 + len(data) + len(sub_el)] = data + sub_el
+    container[0:4] = b"NGIS"
+    container[16:20] = (512).to_bytes(4, "little")  # offset
+    container[20:24] = len(data + sub_el).to_bytes(4, "little")  # size
+    container[512 : 512 + len(data) + len(sub_el)] = data + sub_el
 
     img = ikea_image_with_version(image_type=0x2101)
     img.url = mock.sentinel.url
@@ -685,57 +685,56 @@ async def test_ledvance_get_image(ledvance_prov, ledvance_key, ledvance_image):
 @pytest.mark.asyncio
 @patch("aiohttp.ClientSession.get")
 async def test_ledvance_refresh_list(
-        mock_get, ledvance_prov, ledvance_image_with_version
+    mock_get, ledvance_prov, ledvance_image_with_version
 ):
     ver1, img_type1 = (0x00102428, 25)
     ver2, img_type2 = (0x00102428, 13)
     img1 = ledvance_image_with_version(version=ver1, image_type=img_type1)
     img2 = ledvance_image_with_version(version=ver2, image_type=img_type2)
 
+    sha_1 = "ffe0298312f63fa0be5e568886e419d714146652ff4747a8afed2de"
+    fn_1 = "A19 RGBW/00102428/A19_RGBW_IMG0019_00102428-encrypted"
+    sha_2 = "fa5ab550bde3e8c877cf40aa460fc9836405a7843df040e75bfdb2f"
+    fn_2 = "A19 TW 10 year/00102428/A19_TW_10_year_IMG000D_001024"
     mock_get.return_value.__aenter__.return_value.json = CoroutineMock(
         side_effect=[
             {
-                "firmwares": [{
-                    "blob": None,
-                    "identity": {
-                        "company": 4489,
-                        "product": 25,
-                        "version": {
-                            "major": 1,
-                            "minor": 2,
-                            "build": 428
-                        }
+                "firmwares": [
+                    {
+                        "blob": None,
+                        "identity": {
+                            "company": 4489,
+                            "product": 25,
+                            "version": {"major": 1, "minor": 2, "build": 428},
+                        },
+                        "releaseNotes": "",
+                        "shA256": sha_1,
+                        "name": "A19_RGBW_IMG0019_00102428-encrypted.ota",
+                        "productName": "A19 RGBW",
+                        "fullName": fn_1,
+                        "extension": ".ota",
+                        "released": "2019-02-28T16:36:28",
+                        "salesRegion": "us",
+                        "length": 180052,
                     },
-                    "releaseNotes": "",
-                    "shA256": "ffe0298312f63fa0be5e568886e419d714146652ff4747a8afed2de",
-                    "name": "A19_RGBW_IMG0019_00102428-encrypted.ota",
-                    "productName": "A19 RGBW",
-                    "fullName": "A19 RGBW/00102428/A19_RGBW_IMG0019_00102428-encrypted",
-                    "extension": ".ota",
-                    "released": "2019-02-28T16:36:28",
-                    "salesRegion": "us",
-                    "length": 180052
-                }, {
-                    "blob": None,
-                    "identity": {
-                        "company": 4489,
-                        "product": 13,
-                        "version": {
-                            "major": 1,
-                            "minor": 2,
-                            "build": 428
-                        }
+                    {
+                        "blob": None,
+                        "identity": {
+                            "company": 4489,
+                            "product": 13,
+                            "version": {"major": 1, "minor": 2, "build": 428},
+                        },
+                        "releaseNotes": "",
+                        "shA256": sha_2,
+                        "name": "A19_TW_10_year_IMG000D_00102428-encrypted.ota",
+                        "productName": "A19 TW 10 year",
+                        "fullName": fn_2,
+                        "extension": ".ota",
+                        "released": "2019-02-28T16:42:50",
+                        "salesRegion": "us",
+                        "length": 170800,
                     },
-                    "releaseNotes": "",
-                    "shA256": "fa5ab550bde3e8c877cf40aa460fc9836405a7843df040e75bfdb2f",
-                    "name": "A19_TW_10_year_IMG000D_00102428-encrypted.ota",
-                    "productName": "A19 TW 10 year",
-                    "fullName": "A19 TW 10 year/00102428/A19_TW_10_year_IMG000D_001024",
-                    "extension": ".ota",
-                    "released": "2019-02-28T16:42:50",
-                    "salesRegion": "us",
-                    "length": 170800
-                }]
+                ]
             }
         ]
     )
@@ -760,7 +759,7 @@ async def test_ledvance_refresh_list(
 @pytest.mark.asyncio
 @patch("aiohttp.ClientSession.get")
 async def test_ledvance_refresh_list_locked(
-        mock_get, ledvance_prov, ledvance_image_with_version
+    mock_get, ledvance_prov, ledvance_image_with_version
 ):
     await ledvance_prov._locks[ota_p.LOCK_REFRESH].acquire()
 
@@ -768,3 +767,26 @@ async def test_ledvance_refresh_list_locked(
 
     await ledvance_prov.refresh_firmware_list()
     assert mock_get.call_count == 0
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.get")
+async def test_ledvance_fetch_image(mock_get, ledvance_image_with_version):
+    data = bytes.fromhex(
+        "1ef1ee0b0001380000008911012178563412020054657374204f544120496d61"
+        "676500000000000000000000000000000000000042000000"
+    )
+    sub_el = b"\x00\x00\x04\x00\x00\x00abcd"
+
+    img = ledvance_image_with_version(image_type=0x2101)
+    img.url = mock.sentinel.url
+
+    mock_get.return_value.__aenter__.return_value.read = CoroutineMock(
+        side_effect=[data + sub_el]
+    )
+
+    r = await img.fetch_image()
+    assert isinstance(r, zigpy.ota.image.OTAImage)
+    assert mock_get.call_count == 1
+    assert mock_get.call_args[0][0] == mock.sentinel.url
+    assert r.serialize() == data + sub_el
