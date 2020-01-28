@@ -15,7 +15,8 @@ LOGGER = logging.getLogger(__name__)
 LOCK_REFRESH = "firmware_list"
 
 ENABLE_IKEA_OTA = "enable_ikea_ota"
-SKIP_OTA_FILES = (ENABLE_IKEA_OTA,)
+ENABLE_LEDVANCE_OTA = "enable_ledvance_ota"
+SKIP_OTA_FILES = (ENABLE_IKEA_OTA, ENABLE_LEDVANCE_OTA,)
 
 
 class Basic:
@@ -159,6 +160,101 @@ class Trådfri(Basic):
 
     async def filter_get_image(self, key: ImageKey) -> bool:
         return key.manufacturer_id != self.MANUFACTURER_ID
+
+
+@attr.s
+class LedvanceImage:
+    """Ledvance image handler."""
+
+    OTA_HEADER = 0x0BEEF11E .to_bytes(4, "little")
+
+    manufacturer_id = attr.ib()
+    image_type = attr.ib()
+    version = attr.ib(default=None)
+    image_size = attr.ib(default=None)
+    url = attr.ib(default=None)
+
+    @classmethod
+    def new(cls, data):
+        ident = data["identity"]
+        ver = ident["version"]
+
+        res = cls(ident["company"], ident["product"])
+        res.file_version = int(data["fullName"].split("/")[1], 16)
+        res.image_size = data["length"]
+
+        res.url = "https://api.update.ledvance.com/v1/zigbee/firmwares/download"
+        res.url += "?Company=" + str(ident["company"]) + "&Product="
+        res.url += str(ident["product"]) + "&Version=" + str(ver["major"]) + "."
+        res.url += str(ver["minor"]) + "." + str(ver["build"])
+
+        return res
+
+    @property
+    def key(self):
+        return ImageKey(self.manufacturer_id, self.image_type)
+
+    async def fetch_image(self) -> Optional[OTAImage]:
+        async with aiohttp.ClientSession() as req:
+            LOGGER.debug("Downloading %s for %s", self.url, self.key)
+            async with req.get(self.url) as rsp:
+                data = await rsp.read()
+
+        assert len(data) > 24
+        offset = data.index(self.OTA_HEADER)
+        assert offset >= 0
+
+        img, _ = OTAImage.deserialize(data[offset:])
+        assert img.key == self.key
+
+        LOGGER.debug(
+            ("%s: version: %s, hw_ver: (%s, %s)," " OTA string: %s"),
+            img.key,
+            img.header.file_version,
+            img.header.minimum_hardware_version,
+            img.header.maximum_hardware_version,
+            img.header.header_string,
+        )
+
+        LOGGER.debug(
+            "Finished downloading %s bytes from %s for %s ver %s",
+            self.image_size,
+            self.url,
+            self.key,
+            self.version,
+        )
+        return img
+
+
+class Ledvance(Basic):
+    """ Ledvance firmware provider """
+    # documentation: https://portal.update.ledvance.com/docs/services/firmware-rest-api/
+
+    UPDATE_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
+
+    async def initialize_provider(self, ota_dir: str) -> None:
+        if ota_dir is None:
+            return
+
+        if os.path.isfile(os.path.join(ota_dir, ENABLE_LEDVANCE_OTA)):
+            LOGGER.debug("Ledvance OTA provider enabled")
+            await self.refresh_firmware_list()
+            self.enable()
+
+    async def refresh_firmware_list(self) -> None:
+        if self._locks[LOCK_REFRESH].locked():
+            return
+
+        LOGGER.debug("Downloading Ledvance firmware update list")
+        async with self._locks[LOCK_REFRESH]:
+            async with aiohttp.ClientSession() as req:
+                async with req.get(self.UPDATE_URL) as rsp:
+                    fw_lst = await rsp.json(content_type=None)
+        self._cache.clear()
+        for fw in fw_lst["firmwares"]:
+            img = LedvanceImage.new(fw)
+            self._cache[img.key] = img
+        self.update_expiration()
 
 
 @attr.s
