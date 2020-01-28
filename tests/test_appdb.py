@@ -317,5 +317,10 @@ async def test_groups(tmpdir, monkeypatch):
     await dev3.remove_from_group(group_id)
     app4 = make_app(db)
     dev4 = app4.get_device(ieee)
-    assert group_id not in app4.groups
+    assert group_id in app4.groups
+    assert not app4.groups[group_id]
     assert group_id not in dev4.endpoints[1].member_of
+    app4.groups.pop(group_id)
+
+    app5 = make_app(db)
+    assert not app5.groups
