@@ -12,7 +12,7 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 0x0001
+DB_VERSION = 0x0002
 
 
 def _sqlite_adapters():
@@ -125,30 +125,56 @@ class PersistingListener:
     def _create_table_endpoints(self):
         self._create_table(
             "endpoints",
-            "(ieee ieee, endpoint_id, profile_id, device_type device_type, status)",
+            (
+                "(ieee ieee, endpoint_id, profile_id, device_type device_type, status, "
+                "FOREIGN KEY(ieee) REFERENCES devices(ieee) ON DELETE CASCADE)"
+            ),
         )
         self._create_index("endpoint_idx", "endpoints", "ieee, endpoint_id")
 
     def _create_table_clusters(self):
-        self._create_table("clusters", "(ieee ieee, endpoint_id, cluster)")
+        self._create_table(
+            "clusters",
+            (
+                "(ieee ieee, endpoint_id, cluster, "
+                "FOREIGN KEY(ieee, endpoint_id) REFERENCES endpoints(ieee, endpoint_id)"
+                " ON DELETE CASCADE)"
+            ),
+        )
         self._create_index("cluster_idx", "clusters", "ieee, endpoint_id, cluster")
 
     def _create_table_node_descriptors(self):
         self._create_table(
             "node_descriptors",
-            "(ieee ieee, value, FOREIGN KEY(ieee) REFERENCES devices(ieee))",
+            (
+                "(ieee ieee, value, "
+                "FOREIGN KEY(ieee) REFERENCES devices(ieee) ON DELETE CASCADE)"
+            ),
         )
         self._create_index("node_descriptors_idx", "node_descriptors", "ieee")
 
     def _create_table_output_clusters(self):
-        self._create_table("output_clusters", "(ieee ieee, endpoint_id, cluster)")
+        self._create_table(
+            "output_clusters",
+            (
+                "(ieee ieee, endpoint_id, cluster, "
+                "FOREIGN KEY(ieee, endpoint_id) REFERENCES endpoints(ieee, endpoint_id)"
+                " ON DELETE CASCADE)"
+            ),
+        )
         self._create_index(
             "output_cluster_idx", "output_clusters", "ieee, endpoint_id, cluster"
         )
 
     def _create_table_attributes(self):
         self._create_table(
-            "attributes", "(ieee ieee, endpoint_id, cluster, attrid, value)"
+            "attributes",
+            (
+                "(ieee ieee, endpoint_id, cluster, attrid, value, "
+                "FOREIGN KEY(ieee, endpoint_id, cluster) "
+                "REFERENCES clusters(ieee, endpoint_Id, cluster) "
+                "ON DELETE CASCADE)"
+            ),
         )
         self._create_index(
             "attribute_idx", "attributes", "ieee, endpoint_id, cluster, attrid"
@@ -162,9 +188,9 @@ class PersistingListener:
         self._create_table(
             "group_members",
             """(group_id, ieee ieee, endpoint_id,
-                FOREIGN KEY(group_id) REFERENCES groups(group_id),
+                FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE CASCADE,
                 FOREIGN KEY(ieee, endpoint_id)
-                REFERENCES endpoints(ieee, endpoint_id))""",
+                REFERENCES endpoints(ieee, endpoint_id) ON DELETE CASCADE)""",
         )
         self._create_index(
             "group_members_idx", "group_members", "group_id, ieee, endpoint_id"
