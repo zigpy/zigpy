@@ -106,8 +106,6 @@ class Groups(ListenableMixin, dict):
 
     def member_removed(self, group: Group, ep: Endpoint):
         self.listener_event("group_member_removed", group, ep)
-        if not group:
-            self.pop(group)
 
     def pop(self, item, *args) -> Optional[Group]:
         if isinstance(item, Group):
