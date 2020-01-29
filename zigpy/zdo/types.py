@@ -308,6 +308,7 @@ class ZDOCmd(_CommandID, enum.Enum):
     Find_node_cache_req = 0x001C
     Extended_Simple_Desc_req = 0x001D
     Extended_Active_EP_req = 0x001E
+    Parent_annce = 0x001F
     #  Bind Management Server Services Responses
     End_Device_Bind_req = 0x0020
     Bind_req = 0x0021
@@ -344,6 +345,7 @@ class ZDOCmd(_CommandID, enum.Enum):
     Find_node_cache_rsp = 0x801C
     Extended_Simple_Desc_rsp = 0x801D
     Extended_Active_EP_rsp = 0x801E
+    Parent_annce_rsp = 0x801F
     #  Bind Management Server Services Responses
     End_Device_Bind_rsp = 0x8020
     Bind_rsp = 0x8021
@@ -404,6 +406,7 @@ CLUSTERS = {
         ("StartIndex", t.uint8_t),
     ),
     ZDOCmd.Extended_Active_EP_req: (NWKI, ("StartIndex", t.uint8_t)),
+    ZDOCmd.Parent_annce: (("Children", t.LVList(t.EUI64)),),
     #  Bind Management Server Services Responses
     ZDOCmd.End_Device_Bind_req: (
         ("BindingTarget", t.uint16_t),
@@ -509,6 +512,7 @@ CLUSTERS = {
         ("StartIndex", t.uint8_t),
         ("ActiveEPList", t.List(t.uint8_t)),
     ),
+    ZDOCmd.Parent_annce_rsp: (STATUS, ("Children", t.LVList(t.EUI64))),
     #  Bind Management Server Services Responses
     ZDOCmd.End_Device_Bind_rsp: (STATUS,),
     ZDOCmd.Bind_rsp: (STATUS,),
