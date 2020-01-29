@@ -121,6 +121,16 @@ class Color(Cluster):
             False,
         ),
         0x0047: ("stop_move_step", (), False),
+        0x004B: (
+            "move_color_temp",
+            (t.bitmap8, t.uint16_t, t.uint16_t, t.uint16_t),
+            False,
+        ),
+        0x004C: (
+            "step_color_temp",
+            (t.bitmap8, t.uint16_t, t.uint16_t, t.uint16_t, t.uint16_t),
+            False,
+        ),
     }
     client_commands = {}
 

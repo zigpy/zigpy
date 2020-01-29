@@ -42,6 +42,8 @@ class HeaderString(str):
 
 class OTAImageHeader(t.Struct):
     MAGIC_VALUE = 0x0BEEF11E
+    OTA_HEADER = MAGIC_VALUE.to_bytes(4, "little")
+
     _fields = [
         ("upgrade_file_id", t.uint32_t),
         ("header_version", t.uint16_t),

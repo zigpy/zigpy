@@ -64,7 +64,7 @@ def file_image_with_version(file_image_name):
 
 
 @pytest.fixture
-def image_with_version():
+def ikea_image_with_version():
     def img(version=100, image_type=IMAGE_TYPE):
         img = zigpy.ota.provider.IKEAImage(
             MANUFACTURER_ID, image_type, version, 66, mock.sentinel.url
@@ -75,8 +75,8 @@ def image_with_version():
 
 
 @pytest.fixture
-def image(image_with_version):
-    return image_with_version()
+def ikea_image(ikea_image_with_version):
+    return ikea_image_with_version()
 
 
 @pytest.fixture
@@ -212,8 +212,8 @@ async def test_ikea_init_ota_dir(ikea_prov, tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_get_image_no_cache(ikea_prov, image):
-    image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
+async def test_ikea_get_image_no_cache(ikea_prov, ikea_image):
+    ikea_image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
     ikea_prov._cache = mock.MagicMock()
     ikea_prov._cache.__getitem__.side_effect = KeyError()
     ikea_prov.refresh_firmware_list = CoroutineMock()
@@ -228,35 +228,35 @@ async def test_get_image_no_cache(ikea_prov, image):
     assert non_ikea not in ikea_prov._cache
 
     # IKEA manufacturer_id, but not in cache
-    assert image.key not in ikea_prov._cache
-    r = await ikea_prov.get_image(image.key)
+    assert ikea_image.key not in ikea_prov._cache
+    r = await ikea_prov.get_image(ikea_image.key)
     assert r is None
     assert ikea_prov.refresh_firmware_list.call_count == 1
     assert ikea_prov._cache.__getitem__.call_count == 1
-    assert image.fetch_image.call_count == 0
+    assert ikea_image.fetch_image.call_count == 0
 
 
 @pytest.mark.asyncio
-async def test_get_image(ikea_prov, key, image):
-    image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
+async def test_ikea_get_image(ikea_prov, key, ikea_image):
+    ikea_image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
     ikea_prov._cache = mock.MagicMock()
-    ikea_prov._cache.__getitem__.return_value = image
+    ikea_prov._cache.__getitem__.return_value = ikea_image
     ikea_prov.refresh_firmware_list = CoroutineMock()
 
     r = await ikea_prov.get_image(key)
     assert r is mock.sentinel.image
     assert ikea_prov._cache.__getitem__.call_count == 1
-    assert ikea_prov._cache.__getitem__.call_args[0][0] == image.key
-    assert image.fetch_image.call_count == 1
+    assert ikea_prov._cache.__getitem__.call_args[0][0] == ikea_image.key
+    assert ikea_image.fetch_image.call_count == 1
 
 
 @pytest.mark.asyncio
 @patch("aiohttp.ClientSession.get")
-async def test_ikea_refresh_list(mock_get, ikea_prov, image_with_version):
+async def test_ikea_refresh_list(mock_get, ikea_prov, ikea_image_with_version):
     ver1, img_type1 = (0x12345678, mock.sentinel.img_type_1)
     ver2, img_type2 = (0x23456789, mock.sentinel.img_type_2)
-    img1 = image_with_version(version=ver1, image_type=img_type1)
-    img2 = image_with_version(version=ver2, image_type=img_type2)
+    img1 = ikea_image_with_version(version=ver1, image_type=img_type1)
+    img2 = ikea_image_with_version(version=ver2, image_type=img_type2)
 
     mock_get.return_value.__aenter__.return_value.json = CoroutineMock(
         side_effect=[
@@ -312,7 +312,7 @@ async def test_ikea_refresh_list(mock_get, ikea_prov, image_with_version):
 
 @pytest.mark.asyncio
 @patch("aiohttp.ClientSession.get")
-async def test_ikea_refresh_list_locked(mock_get, ikea_prov, image_with_version):
+async def test_ikea_refresh_list_locked(mock_get, ikea_prov, ikea_image_with_version):
     await ikea_prov._locks[ota_p.LOCK_REFRESH].acquire()
 
     mock_get.return_value.__aenter__.return_value.json = CoroutineMock(side_effect=[[]])
@@ -323,7 +323,7 @@ async def test_ikea_refresh_list_locked(mock_get, ikea_prov, image_with_version)
 
 @pytest.mark.asyncio
 @patch("aiohttp.ClientSession.get")
-async def test_ikea_fetch_image(mock_get, image_with_version):
+async def test_ikea_fetch_image(mock_get, ikea_image_with_version):
     data = bytes.fromhex(
         "1ef1ee0b0001380000007c11012178563412020054657374204f544120496d61"
         "676500000000000000000000000000000000000042000000"
@@ -331,12 +331,12 @@ async def test_ikea_fetch_image(mock_get, image_with_version):
     sub_el = b"\x00\x00\x04\x00\x00\x00abcd"
 
     container = bytearray(b"\x00This is extra data\x00\x55\xaa" * 100)
-    container[0:4] = b'NGIS'
-    container[16:20] = (512).to_bytes(4, 'little')      # offset
-    container[20:24] = len(data + sub_el).to_bytes(4, 'little')  # size
-    container[512:512 + len(data) + len(sub_el)] = data + sub_el
+    container[0:4] = b"NGIS"
+    container[16:20] = (512).to_bytes(4, "little")  # offset
+    container[20:24] = len(data + sub_el).to_bytes(4, "little")  # size
+    container[512 : 512 + len(data) + len(sub_el)] = data + sub_el
 
-    img = image_with_version(image_type=0x2101)
+    img = ikea_image_with_version(image_type=0x2101)
     img.url = mock.sentinel.url
 
     mock_get.return_value.__aenter__.return_value.read = CoroutineMock(
@@ -588,3 +588,205 @@ async def test_filestore_refresh_firmware_list_4(
     assert file_prov.update_expiration.call_count == 1
     assert len(file_prov._cache) == 1
     assert file_prov._cache[image_1.key].version == ver
+
+
+LEDVANCE_ID = 4489
+LEDVANCE_IMAGE_TYPE = 25
+
+
+@pytest.fixture
+def ledvance_prov():
+    p = ota_p.Ledvance()
+    p.enable()
+    return p
+
+
+@pytest.fixture
+def ledvance_image_with_version():
+    def img(version=100, image_type=LEDVANCE_IMAGE_TYPE):
+        img = zigpy.ota.provider.LedvanceImage(
+            LEDVANCE_ID, image_type, version, 180052, mock.sentinel.url
+        )
+        return img
+
+    return img
+
+
+@pytest.fixture
+def ledvance_image(ledvance_image_with_version):
+    return ledvance_image_with_version()
+
+
+@pytest.fixture
+def ledvance_key():
+    return zigpy.ota.image.ImageKey(LEDVANCE_ID, LEDVANCE_IMAGE_TYPE)
+
+
+@pytest.mark.asyncio
+async def test_ledvance_init_no_ota_dir(ledvance_prov):
+    ledvance_prov.enable = mock.MagicMock()
+    ledvance_prov.refresh_firmware_list = CoroutineMock()
+
+    r = await ledvance_prov.initialize_provider(None)
+    assert r is None
+    assert ledvance_prov.enable.call_count == 0
+    assert ledvance_prov.refresh_firmware_list.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_ledvance_init_ota_dir(ledvance_prov, tmpdir):
+    ledvance_prov.enable = mock.MagicMock()
+    ledvance_prov.refresh_firmware_list = CoroutineMock()
+
+    r = await ledvance_prov.initialize_provider(str(tmpdir))
+    assert r is None
+    assert ledvance_prov.enable.call_count == 0
+    assert ledvance_prov.refresh_firmware_list.call_count == 0
+
+    # create flag
+    with open(os.path.join(str(tmpdir), ota_p.ENABLE_LEDVANCE_OTA), mode="w+"):
+        pass
+    r = await ledvance_prov.initialize_provider(str(tmpdir))
+    assert r is None
+    assert ledvance_prov.enable.call_count == 1
+    assert ledvance_prov.refresh_firmware_list.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_ledvance_get_image_no_cache(ledvance_prov, ledvance_image):
+    ledvance_image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
+    ledvance_prov._cache = mock.MagicMock()
+    ledvance_prov._cache.__getitem__.side_effect = KeyError()
+    ledvance_prov.refresh_firmware_list = CoroutineMock()
+
+    # LEDVANCE manufacturer_id, but not in cache
+    assert ledvance_image.key not in ledvance_prov._cache
+    r = await ledvance_prov.get_image(ledvance_image.key)
+    assert r is None
+    assert ledvance_prov.refresh_firmware_list.call_count == 1
+    assert ledvance_prov._cache.__getitem__.call_count == 1
+    assert ledvance_image.fetch_image.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_ledvance_get_image(ledvance_prov, ledvance_key, ledvance_image):
+    ledvance_image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
+    ledvance_prov._cache = mock.MagicMock()
+    ledvance_prov._cache.__getitem__.return_value = ledvance_image
+    ledvance_prov.refresh_firmware_list = CoroutineMock()
+
+    r = await ledvance_prov.get_image(ledvance_key)
+    assert r is mock.sentinel.image
+    assert ledvance_prov._cache.__getitem__.call_count == 1
+    assert ledvance_prov._cache.__getitem__.call_args[0][0] == ledvance_image.key
+    assert ledvance_image.fetch_image.call_count == 1
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.get")
+async def test_ledvance_refresh_list(
+    mock_get, ledvance_prov, ledvance_image_with_version
+):
+    ver1, img_type1 = (0x00102428, 25)
+    ver2, img_type2 = (0x00102428, 13)
+    img1 = ledvance_image_with_version(version=ver1, image_type=img_type1)
+    img2 = ledvance_image_with_version(version=ver2, image_type=img_type2)
+
+    sha_1 = "ffe0298312f63fa0be5e568886e419d714146652ff4747a8afed2de"
+    fn_1 = "A19 RGBW/00102428/A19_RGBW_IMG0019_00102428-encrypted"
+    sha_2 = "fa5ab550bde3e8c877cf40aa460fc9836405a7843df040e75bfdb2f"
+    fn_2 = "A19 TW 10 year/00102428/A19_TW_10_year_IMG000D_001024"
+    mock_get.return_value.__aenter__.return_value.json = CoroutineMock(
+        side_effect=[
+            {
+                "firmwares": [
+                    {
+                        "blob": None,
+                        "identity": {
+                            "company": 4489,
+                            "product": 25,
+                            "version": {"major": 1, "minor": 2, "build": 428},
+                        },
+                        "releaseNotes": "",
+                        "shA256": sha_1,
+                        "name": "A19_RGBW_IMG0019_00102428-encrypted.ota",
+                        "productName": "A19 RGBW",
+                        "fullName": fn_1,
+                        "extension": ".ota",
+                        "released": "2019-02-28T16:36:28",
+                        "salesRegion": "us",
+                        "length": 180052,
+                    },
+                    {
+                        "blob": None,
+                        "identity": {
+                            "company": 4489,
+                            "product": 13,
+                            "version": {"major": 1, "minor": 2, "build": 428},
+                        },
+                        "releaseNotes": "",
+                        "shA256": sha_2,
+                        "name": "A19_TW_10_year_IMG000D_00102428-encrypted.ota",
+                        "productName": "A19 TW 10 year",
+                        "fullName": fn_2,
+                        "extension": ".ota",
+                        "released": "2019-02-28T16:42:50",
+                        "salesRegion": "us",
+                        "length": 170800,
+                    },
+                ]
+            }
+        ]
+    )
+
+    await ledvance_prov.refresh_firmware_list()
+    assert mock_get.call_count == 1
+    assert len(ledvance_prov._cache) == 2
+    assert img1.key in ledvance_prov._cache
+    assert img2.key in ledvance_prov._cache
+    cached_1 = ledvance_prov._cache[img1.key]
+    assert cached_1.image_type == img1.image_type
+    base = "https://api.update.ledvance.com/v1/zigbee/firmwares/download"
+    assert cached_1.url == base + "?Company=4489&Product=25&Version=1.2.428"
+
+    cached_2 = ledvance_prov._cache[img2.key]
+    assert cached_2.image_type == img2.image_type
+    assert cached_2.url == base + "?Company=4489&Product=13&Version=1.2.428"
+
+    assert not ledvance_prov.expired
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.get")
+async def test_ledvance_refresh_list_locked(
+    mock_get, ledvance_prov, ledvance_image_with_version
+):
+    await ledvance_prov._locks[ota_p.LOCK_REFRESH].acquire()
+
+    mock_get.return_value.__aenter__.return_value.json = CoroutineMock(side_effect=[[]])
+
+    await ledvance_prov.refresh_firmware_list()
+    assert mock_get.call_count == 0
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.get")
+async def test_ledvance_fetch_image(mock_get, ledvance_image_with_version):
+    data = bytes.fromhex(
+        "1ef1ee0b0001380000008911012178563412020054657374204f544120496d61"
+        "676500000000000000000000000000000000000042000000"
+    )
+    sub_el = b"\x00\x00\x04\x00\x00\x00abcd"
+
+    img = ledvance_image_with_version(image_type=0x2101)
+    img.url = mock.sentinel.url
+
+    mock_get.return_value.__aenter__.return_value.read = CoroutineMock(
+        side_effect=[data + sub_el]
+    )
+
+    r = await img.fetch_image()
+    assert isinstance(r, zigpy.ota.image.OTAImage)
+    assert mock_get.call_count == 1
+    assert mock_get.call_args[0][0] == mock.sentinel.url
+    assert r.serialize() == data + sub_el
