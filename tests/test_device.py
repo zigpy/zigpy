@@ -98,6 +98,12 @@ async def test_failed_request(dev):
     assert dev.last_seen is None
 
 
+def test_skip_configuration(dev):
+    assert dev.skip_configuration is False
+    dev.skip_configuration = True
+    assert dev.skip_configuration is True
+
+
 def test_radio_details(dev):
     dev.radio_details(1, 2)
     assert dev.lqi == 1

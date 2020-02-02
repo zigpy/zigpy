@@ -38,6 +38,7 @@ class CustomDevice(zigpy.device.Device, metaclass=Registry):
         set_device_attr("node_desc")
         set_device_attr("manufacturer")
         set_device_attr("model")
+        set_device_attr("skip_configuration")
         for endpoint_id, endpoint in self.replacement.get("endpoints", {}).items():
             self.add_endpoint(endpoint_id, replace_device=replaces)
 

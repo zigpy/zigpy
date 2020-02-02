@@ -50,6 +50,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._node_handle = None
         self._pending = zigpy.util.Requests()
         self._relays = None
+        self._skip_configuration = False
 
     def schedule_initialize(self):
         if self.initializing:
@@ -283,6 +284,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def model(self):
         return self._model
+
+    @property
+    def skip_configuration(self):
+        return self._skip_configuration
+
+    @skip_configuration.setter
+    def skip_configuration(self, should_skip_configuration):
+        if isinstance(should_skip_configuration, bool):
+            self._skip_configuration = should_skip_configuration
+        else:
+            self._skip_configuration = False
 
     @model.setter
     def model(self, value):
