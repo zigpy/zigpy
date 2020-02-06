@@ -254,14 +254,42 @@ def test_custom_device():
             "manufacturer": "Mock Manufacturer",
         }
 
+    class Device2(zigpy.quirks.CustomDevice):
+        signature = {}
+
+        class MyEndpoint:
+            def __init__(self, device, endpoint_id, *args, **kwargs):
+                assert args == (mock.sentinel.custom_endpoint_arg, replaces)
+
+        class MyCluster(zigpy.quirks.CustomCluster):
+            cluster_id = 0x8888
+
+        replacement = {
+            "endpoints": {
+                1: {
+                    "profile_id": mock.sentinel.profile_id,
+                    "input_clusters": [0x0000, MyCluster],
+                    "output_clusters": [0x0001, MyCluster],
+                },
+                2: (MyEndpoint, mock.sentinel.custom_endpoint_arg),
+            },
+            "model": "Mock Model",
+            "manufacturer": "Mock Manufacturer",
+            "skip_configuration": True,
+        }
+
     assert 0x8888 not in Cluster._registry
 
     replaces = mock.MagicMock()
     replaces[1].device_type = mock.sentinel.device_type
     test_device = Device(None, None, 0x4455, replaces)
+    test_device2 = Device2(None, None, 0x4455, replaces)
+
+    assert test_device2.skip_configuration is True
 
     assert test_device.manufacturer == "Mock Manufacturer"
     assert test_device.model == "Mock Model"
+    assert test_device.skip_configuration is False
 
     assert test_device[1].profile_id == mock.sentinel.profile_id
     assert test_device[1].device_type == mock.sentinel.device_type
