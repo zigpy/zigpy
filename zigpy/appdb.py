@@ -171,8 +171,8 @@ class PersistingListener:
             "attributes",
             (
                 "(ieee ieee, endpoint_id, cluster, attrid, value, "
-                "FOREIGN KEY(ieee, endpoint_id, cluster) "
-                "REFERENCES clusters(ieee, endpoint_Id, cluster) "
+                "FOREIGN KEY(ieee, endpoint_id) "
+                "REFERENCES endpoints(ieee, endpoint_id) "
                 "ON DELETE CASCADE)"
             ),
         )
@@ -218,6 +218,14 @@ class PersistingListener:
         self._db.commit()
 
     def _save_device(self, device):
+        if device.status != zigpy.device.Status.ENDPOINTS_INIT:
+            LOGGER.warning(
+                "Not saving uninitialized %s/%s device: %s",
+                device.ieee,
+                device.nwk,
+                device.status,
+            )
+            return
         q = "INSERT OR REPLACE INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
         self.execute(q, (device.ieee, device.nwk, device.status))
         self._save_node_descriptor(device)
@@ -230,6 +238,7 @@ class PersistingListener:
                 # ZDO
                 continue
             self._save_input_clusters(ep)
+            self._save_attribute_cache(ep)
             self._save_output_clusters(ep)
         self._db.commit()
 
@@ -249,10 +258,12 @@ class PersistingListener:
             )
             endpoints.append(eprow)
         self._cursor.executemany(q, endpoints)
-        self._db.commit()
 
     def _save_node_descriptor(self, device):
-        if not device.node_desc.is_valid:
+        if (
+            device.status != zigpy.device.Status.ENDPOINTS_INIT
+            or not device.node_desc.is_valid
+        ):
             return
         q = "INSERT OR REPLACE INTO node_descriptors VALUES (?, ?)"
         self.execute(q, (device.ieee, device.node_desc.serialize()))
@@ -264,7 +275,15 @@ class PersistingListener:
             for cluster in endpoint.in_clusters.values()
         ]
         self._cursor.executemany(q, clusters)
-        self._db.commit()
+
+    def _save_attribute_cache(self, ep):
+        q = "INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?, ?)"
+        clusters = [
+            (ep.device.ieee, ep.endpoint_id, cluster.cluster_id, attrid, value)
+            for cluster in ep.in_clusters.values()
+            for attrid, value in cluster._attr_cache.items()
+        ]
+        self._cursor.executemany(q, clusters)
 
     def _save_output_clusters(self, endpoint):
         q = "INSERT OR REPLACE INTO output_clusters VALUES (?, ?, ?)"
@@ -273,7 +292,6 @@ class PersistingListener:
             for cluster in endpoint.out_clusters.values()
         ]
         self._cursor.executemany(q, clusters)
-        self._db.commit()
 
     def _save_attribute(self, ieee, endpoint_id, cluster_id, attrid, value):
         q = "INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?, ?)"

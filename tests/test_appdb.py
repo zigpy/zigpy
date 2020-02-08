@@ -25,33 +25,34 @@ def make_ieee(init=0):
 
 
 class FakeCustomDevice(CustomDevice):
-    def __init__(self, application, ieee, nwk, replaces):
-        super().__init__(application, ieee, nwk, replaces)
+    pass
 
 
-async def _initialize(self):
-    self.status = Status.ENDPOINTS_INIT
-    self.initializing = False
-    self._application.device_initialized(self)
+def mock_dev_init(status: Status):
+    """Device schedule_initialize mock factory."""
+
+    def _initialize(self):
+        self.status = status
+        self.initializing = False
+        self._application.device_initialized(self)
+        self.node_desc = zdo_t.NodeDescriptor(0, 1, 2, 3, 4, 5, 6, 7, 8)
+
+    return _initialize
 
 
 def fake_get_device(device):
     if device.endpoints.get(1) is not None and device[1].profile_id == 65535:
-        return FakeCustomDevice(
-            device.application,
-            make_ieee(1),
-            199,
-            Device(device.application, make_ieee(1), 199),
-        )
+        return FakeCustomDevice(device.application, make_ieee(1), 199, device)
     return device
 
 
 @pytest.mark.asyncio
 async def test_database(tmpdir, monkeypatch):
-    monkeypatch.setattr(Device, "_initialize", _initialize)
+    monkeypatch.setattr(
+        Device, "schedule_initialize", mock_dev_init(Status.ENDPOINTS_INIT)
+    )
     db = os.path.join(str(tmpdir), "test.db")
     app = make_app(db)
-    # TODO: Leaks a task on dev.initialize, I think?
     ieee = make_ieee()
     relays_1 = [t.NWK(0x1234), t.NWK(0x2345)]
     relays_2 = [t.NWK(0x3456), t.NWK(0x4567)]
@@ -59,7 +60,6 @@ async def test_database(tmpdir, monkeypatch):
     app.handle_join(99, ieee, 0)
 
     dev = app.get_device(ieee)
-    dev.node_desc, _ = zdo_t.NodeDescriptor.deserialize(b"1234567890123")
     ep = dev.add_endpoint(1)
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
@@ -136,9 +136,11 @@ async def test_database(tmpdir, monkeypatch):
 def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     db = os.path.join(str(tmpdir), "test.db")
     app = make_app(db)
-    # TODO: Leaks a task on dev.initialize, I think?
     ieee = make_ieee()
-    with mock.patch("zigpy.device.Device.schedule_initialize"):
+    with mock.patch(
+        "zigpy.device.Device.schedule_initialize",
+        new=mock_dev_init(Status.ENDPOINTS_INIT),
+    ):
         app.handle_join(99, ieee, 0)
         app.handle_join(99, ieee, 0)
 
@@ -210,13 +212,17 @@ def test_appdb_str_model(tmpdir):
     assert dev.endpoints[3].model == "Mock Model"
 
 
+@pytest.mark.parametrize(
+    "status, success",
+    ((Status.ENDPOINTS_INIT, True), (Status.ZDO_INIT, False), (Status.NEW, False)),
+)
 @pytest.mark.asyncio
-async def test_node_descriptor_updated(tmpdir, monkeypatch):
-    monkeypatch.setattr(Device, "_initialize", _initialize)
+async def test_node_descriptor_updated(tmpdir, status, success):
     db = os.path.join(str(tmpdir), "test_nd.db")
     app = make_app(db)
     nd_ieee = make_ieee(2)
-    app.handle_join(299, nd_ieee, 0)
+    with mock.patch.object(Device, "schedule_initialize", new=mock_dev_init(status)):
+        app.handle_join(299, nd_ieee, 0)
 
     dev = app.get_device(nd_ieee)
     ep = dev.add_endpoint(1)
@@ -239,16 +245,22 @@ async def test_node_descriptor_updated(tmpdir, monkeypatch):
     assert dev.get_node_descriptor.call_count == 1
 
     app2 = make_app(db)
-    dev = app2.get_device(nd_ieee)
-    assert dev.node_desc.is_valid
-    assert dev.node_desc.serialize() == b"abcdefghijklm"
+    if success:
+        dev = app2.get_device(nd_ieee)
+        assert dev.status == status
+        assert dev.node_desc.is_valid
+        assert dev.node_desc.serialize() == b"abcdefghijklm"
+    else:
+        assert nd_ieee not in app2.devices
 
     os.unlink(db)
 
 
 @pytest.mark.asyncio
 async def test_groups(tmpdir, monkeypatch):
-    monkeypatch.setattr(Device, "_initialize", _initialize)
+    monkeypatch.setattr(
+        Device, "schedule_initialize", mock_dev_init(Status.ENDPOINTS_INIT)
+    )
 
     group_id, group_name = 0x1221, "app db Test Group 0x1221"
 
@@ -324,3 +336,45 @@ async def test_groups(tmpdir, monkeypatch):
 
     app5 = make_app(db)
     assert not app5.groups
+
+
+@pytest.mark.parametrize(
+    "status, success",
+    ((Status.ENDPOINTS_INIT, True), (Status.ZDO_INIT, False), (Status.NEW, False)),
+)
+def test_attribute_update(tmpdir, status, success):
+    """Test attribute update for initialized and uninitialized devices."""
+
+    db = os.path.join(str(tmpdir), "test.db")
+    app = make_app(db)
+    ieee = make_ieee()
+    with mock.patch(
+        "zigpy.device.Device.schedule_initialize", new=mock_dev_init(status)
+    ):
+        app.handle_join(99, ieee, 0)
+
+    test_manufacturer = "Test Manufacturer"
+    test_model = "Test Model"
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(3)
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    clus._update_attribute(4, test_manufacturer)
+    clus._update_attribute(5, test_model)
+    app.device_initialized(dev)
+
+    # Everything should've been saved - check that it re-loads
+    app2 = make_app(db)
+    if success:
+        dev = app2.get_device(ieee)
+        assert dev.status == status
+        assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
+        assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
+        assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
+    else:
+        assert ieee not in app2.devices
+
+    os.unlink(db)
