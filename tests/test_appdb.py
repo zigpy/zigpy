@@ -33,7 +33,7 @@ def mock_dev_init(status: Status):
     """Device schedule_initialize mock factory."""
 
     def _initialize(self):
-        self.status = Status.ENDPOINTS_INIT
+        self.status = status
         self.initializing = False
         self._application.device_initialized(self)
         self.node_desc = zdo_t.NodeDescriptor(0, 1, 2, 3, 4, 5, 6, 7, 8)
@@ -252,6 +252,7 @@ async def test_node_descriptor_updated(tmpdir, status, desc_is_valid):
 
     app2 = make_app(db)
     dev = app2.get_device(nd_ieee)
+    assert dev.status == status
     if desc_is_valid:
         assert dev.node_desc.is_valid
         assert dev.node_desc.serialize() == b"abcdefghijklm"
@@ -354,8 +355,7 @@ def test_attribute_update(tmpdir, status, attributes_present):
     app = make_app(db)
     ieee = make_ieee()
     with mock.patch(
-        "zigpy.device.Device.schedule_initialize",
-        new=mock_dev_init(Status.ENDPOINTS_INIT),
+        "zigpy.device.Device.schedule_initialize", new=mock_dev_init(status)
     ):
         app.handle_join(99, ieee, 0)
 
@@ -375,6 +375,7 @@ def test_attribute_update(tmpdir, status, attributes_present):
     # Everything should've been saved - check that it re-loads
     app2 = make_app(db)
     dev = app2.get_device(ieee)
+    assert dev.status == status
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
     if attributes_present:
         assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
