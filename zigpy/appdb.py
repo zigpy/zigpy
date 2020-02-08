@@ -171,8 +171,8 @@ class PersistingListener:
             "attributes",
             (
                 "(ieee ieee, endpoint_id, cluster, attrid, value, "
-                "FOREIGN KEY(ieee, endpoint_id, cluster) "
-                "REFERENCES clusters(ieee, endpoint_Id, cluster) "
+                "FOREIGN KEY(ieee, endpoint_id) "
+                "REFERENCES endpoints(ieee, endpoint_id) "
                 "ON DELETE CASCADE)"
             ),
         )
