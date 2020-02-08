@@ -219,11 +219,11 @@ def test_appdb_str_model(tmpdir):
 
 
 @pytest.mark.parametrize(
-    "status, desc_is_valid",
+    "status, success",
     ((Status.ENDPOINTS_INIT, True), (Status.ZDO_INIT, False), (Status.NEW, False)),
 )
 @pytest.mark.asyncio
-async def test_node_descriptor_updated(tmpdir, status, desc_is_valid):
+async def test_node_descriptor_updated(tmpdir, status, success):
     db = os.path.join(str(tmpdir), "test_nd.db")
     app = make_app(db)
     nd_ieee = make_ieee(2)
@@ -251,13 +251,13 @@ async def test_node_descriptor_updated(tmpdir, status, desc_is_valid):
     assert dev.get_node_descriptor.call_count == 1
 
     app2 = make_app(db)
-    dev = app2.get_device(nd_ieee)
-    assert dev.status == status
-    if desc_is_valid:
+    if success:
+        dev = app2.get_device(nd_ieee)
+        assert dev.status == status
         assert dev.node_desc.is_valid
         assert dev.node_desc.serialize() == b"abcdefghijklm"
     else:
-        assert dev.node_desc.is_valid is False
+        assert nd_ieee not in app2.devices
 
     os.unlink(db)
 
@@ -345,10 +345,10 @@ async def test_groups(tmpdir, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "status, attributes_present",
+    "status, success",
     ((Status.ENDPOINTS_INIT, True), (Status.ZDO_INIT, False), (Status.NEW, False)),
 )
-def test_attribute_update(tmpdir, status, attributes_present):
+def test_attribute_update(tmpdir, status, success):
     """Test attribute update for initialized and uninitialized devices."""
 
     db = os.path.join(str(tmpdir), "test.db")
@@ -368,20 +368,19 @@ def test_attribute_update(tmpdir, status, attributes_present):
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
-    app.device_initialized(dev)
     clus._update_attribute(4, test_manufacturer)
     clus._update_attribute(5, test_model)
+    app.device_initialized(dev)
 
     # Everything should've been saved - check that it re-loads
     app2 = make_app(db)
-    dev = app2.get_device(ieee)
-    assert dev.status == status
-    assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
-    if attributes_present:
+    if success:
+        dev = app2.get_device(ieee)
+        assert dev.status == status
+        assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
         assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
         assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
     else:
-        assert 4 not in dev.endpoints[3].in_clusters[0]._attr_cache
-        assert 5 not in dev.endpoints[3].in_clusters[0]._attr_cache
+        assert ieee not in app2.devices
 
     os.unlink(db)
