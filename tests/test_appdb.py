@@ -142,7 +142,6 @@ async def test_database(tmpdir, monkeypatch):
 def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     db = os.path.join(str(tmpdir), "test.db")
     app = make_app(db)
-    # TODO: Leaks a task on dev.initialize, I think?
     ieee = make_ieee()
     with mock.patch(
         "zigpy.device.Device.schedule_initialize",
@@ -342,3 +341,46 @@ async def test_groups(tmpdir, monkeypatch):
 
     app5 = make_app(db)
     assert not app5.groups
+
+
+@pytest.mark.parametrize(
+    "status, attributes_present",
+    ((Status.ENDPOINTS_INIT, True), (Status.ZDO_INIT, False), (Status.NEW, False)),
+)
+def test_attribute_update(tmpdir, status, attributes_present):
+    """Test attribute update for initialized and uninitialized devices."""
+
+    db = os.path.join(str(tmpdir), "test.db")
+    app = make_app(db)
+    ieee = make_ieee()
+    with mock.patch(
+        "zigpy.device.Device.schedule_initialize",
+        new=mock_dev_init(Status.ENDPOINTS_INIT),
+    ):
+        app.handle_join(99, ieee, 0)
+
+    test_manufacturer = "Test Manufacturer"
+    test_model = "Test Model"
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(3)
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    app.device_initialized(dev)
+    clus._update_attribute(4, test_manufacturer)
+    clus._update_attribute(5, test_model)
+
+    # Everything should've been saved - check that it re-loads
+    app2 = make_app(db)
+    dev = app2.get_device(ieee)
+    assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
+    if attributes_present:
+        assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
+        assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
+    else:
+        assert 4 not in dev.endpoints[3].in_clusters[0]._attr_cache
+        assert 5 not in dev.endpoints[3].in_clusters[0]._attr_cache
+
+    os.unlink(db)
