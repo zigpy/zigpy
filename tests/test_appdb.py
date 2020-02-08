@@ -25,8 +25,7 @@ def make_ieee(init=0):
 
 
 class FakeCustomDevice(CustomDevice):
-    def __init__(self, application, ieee, nwk, replaces):
-        super().__init__(application, ieee, nwk, replaces)
+    pass
 
 
 def mock_dev_init(status: Status):
@@ -43,12 +42,7 @@ def mock_dev_init(status: Status):
 
 def fake_get_device(device):
     if device.endpoints.get(1) is not None and device[1].profile_id == 65535:
-        return FakeCustomDevice(
-            device.application,
-            make_ieee(1),
-            199,
-            Device(device.application, make_ieee(1), 199),
-        )
+        return FakeCustomDevice(device.application, make_ieee(1), 199, device)
     return device
 
 
