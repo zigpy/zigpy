@@ -255,7 +255,7 @@ class OnOff(Cluster):
         0x4000: ("global_scene_control", t.Bool),
         0x4001: ("on_time", t.uint16_t),
         0x4002: ("off_wait_time", t.uint16_t),
-        0x4003: ("poweron_onoff", t.enum8),
+        0x4003: ("startup_on_off", t.enum8),
     }
     server_commands = {
         0x0000: ("off", (), False),
@@ -300,6 +300,7 @@ class LevelControl(Cluster):
         0x0012: ("on_transition_time", t.uint16_t),
         0x0013: ("off_transition_time", t.uint16_t),
         0x0014: ("default_move_rate", t.uint8_t),
+        0x4000: ("startup_current_level", t.uint8_t),
     }
     server_commands = {
         0x0000: ("move_to_level", (t.uint8_t, t.uint16_t), False),
