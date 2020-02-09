@@ -255,6 +255,7 @@ class OnOff(Cluster):
         0x4000: ("global_scene_control", t.Bool),
         0x4001: ("on_time", t.uint16_t),
         0x4002: ("off_wait_time", t.uint16_t),
+        0x4003: ("poweron_onoff", t.enum8),
     }
     server_commands = {
         0x0000: ("off", (), False),
