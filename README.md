@@ -52,7 +52,8 @@ Packages of tagged versions are also released via PyPI
   - https://pypi.org/project/zigpy-xbee-homeassistant/
   - https://pypi.org/project/zigpy-deconz/
   - https://pypi.org/project/zigpy-zigate/
-  
+  - https://pypi.org/project/zigpy-cc/
+
 ## How to contribute
 
 If you are looking to make a contribution to this project we suggest that you follow the steps in these guides:
