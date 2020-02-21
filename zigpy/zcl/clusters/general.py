@@ -159,7 +159,7 @@ class Identify(Cluster):
         0x0001: ("identify_query", (), False),
         0x0002: ("ezmode_invoke", (t.bitmap8,), False),
         0x0003: ("update_commission_state", (t.bitmap8,), False),
-        0x0040: ("trigger_effect", (), False),
+        0x0040: ("trigger_effect", (t.uint8_t, t.uint8_t), False),
     }
     client_commands = {0x0000: ("identify_query_response", (t.uint16_t,), True)}
 
