@@ -131,6 +131,7 @@ class Trådfri(Basic):
 
     UPDATE_URL = "https://fw.ota.homesmart.ikea.net/feed/version_info.json"
     MANUFACTURER_ID = 4476
+    HEADERS = {'content-type': 'application/json'}
 
     async def initialize_provider(self, ota_dir: str) -> None:
         if ota_dir is None:
@@ -147,7 +148,7 @@ class Trådfri(Basic):
 
         LOGGER.debug("Downloading IKEA firmware update list")
         async with self._locks[LOCK_REFRESH]:
-            async with aiohttp.ClientSession() as req:
+            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
                 async with req.get(self.UPDATE_URL) as rsp:
                     fw_lst = await rsp.json(content_type=None)
         self._cache.clear()
@@ -227,6 +228,7 @@ class Ledvance(Basic):
     # documentation: https://portal.update.ledvance.com/docs/services/firmware-rest-api/
 
     UPDATE_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
+    HEADERS = {'content-type': 'application/json'}
 
     async def initialize_provider(self, ota_dir: str) -> None:
         if ota_dir is None:
@@ -243,7 +245,7 @@ class Ledvance(Basic):
 
         LOGGER.debug("Downloading Ledvance firmware update list")
         async with self._locks[LOCK_REFRESH]:
-            async with aiohttp.ClientSession() as req:
+            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
                 async with req.get(self.UPDATE_URL) as rsp:
                     fw_lst = await rsp.json(content_type=None)
         self._cache.clear()
