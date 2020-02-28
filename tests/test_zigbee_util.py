@@ -59,8 +59,9 @@ class Logger(util.LocalLogMixin):
 def test_log():
     log = Logger()
     log.debug("Test debug")
+    log.exception("Test exception")
     log.info("Test info")
-    log.warn("Test warn")
+    log.warning("Test warn")
     log.error("Test error")
 
 

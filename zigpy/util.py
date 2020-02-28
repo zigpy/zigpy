@@ -64,17 +64,20 @@ class ListenableMixin:
 
 
 class LocalLogMixin:
-    def debug(self, msg, *args):
-        return self.log(logging.DEBUG, msg, *args)
+    def exception(self, msg, *args, **kwargs):
+        return self.log(logging.ERROR, msg, *args, {**kwargs, "exc_info": True})
 
-    def info(self, msg, *args):
-        return self.log(logging.INFO, msg, *args)
+    def debug(self, msg, *args, **kwargs):
+        return self.log(logging.DEBUG, msg, *args, **kwargs)
 
-    def warn(self, msg, *args):
-        return self.log(logging.WARNING, msg, *args)
+    def info(self, msg, *args, **kwargs):
+        return self.log(logging.INFO, msg, *args, **kwargs)
 
-    def error(self, msg, *args):
-        return self.log(logging.ERROR, msg, *args)
+    def warning(self, msg, *args, **kwargs):
+        return self.log(logging.WARNING, msg, *args, **kwargs)
+
+    def error(self, msg, *args, **kwargs):
+        return self.log(logging.ERROR, msg, *args, **kwargs)
 
 
 async def retry(func, retry_exceptions, tries=3, delay=0.1):
@@ -191,7 +194,7 @@ def convert_install_code(code):
     real_crc = bytes(code[-2:])
     crc = CrcX25()
     crc.process(code[:-2])
-    if real_crc != crc.finalbytes(byteorder='little'):
+    if real_crc != crc.finalbytes(byteorder="little"):
         return None
 
     return aes_mmo_hash(code)

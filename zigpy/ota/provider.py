@@ -10,6 +10,7 @@ from typing import Optional
 import aiohttp
 import attr
 from zigpy.ota.image import ImageKey, OTAImage, OTAImageHeader
+import zigpy.util
 
 LOGGER = logging.getLogger(__name__)
 LOCK_REFRESH = "firmware_list"
@@ -19,7 +20,7 @@ ENABLE_LEDVANCE_OTA = "enable_ledvance_ota"
 SKIP_OTA_FILES = (ENABLE_IKEA_OTA, ENABLE_LEDVANCE_OTA)
 
 
-class Basic:
+class Basic(zigpy.util.LocalLogMixin):
     """Skeleton OTA Firmware provider."""
 
     REFRESH = datetime.timedelta(hours=12)
@@ -80,6 +81,11 @@ class Basic:
 
         return datetime.datetime.now() - self._last_refresh > self.REFRESH
 
+    def log(self, lvl, msg, *args, **kwargs):
+        """Log a message"""
+        msg = f"{self.__class__.__name__}: {msg}"
+        return LOGGER.log(lvl, msg, *args, **kwargs)
+
 
 @attr.s
 class IKEAImage:
@@ -131,13 +137,14 @@ class Trådfri(Basic):
 
     UPDATE_URL = "https://fw.ota.homesmart.ikea.net/feed/version_info.json"
     MANUFACTURER_ID = 4476
+    HEADERS = {"content-type": "application/json"}
 
     async def initialize_provider(self, ota_dir: str) -> None:
         if ota_dir is None:
             return
 
         if os.path.isfile(os.path.join(ota_dir, ENABLE_IKEA_OTA)):
-            LOGGER.debug("IKEA OTA provider enabled")
+            self.info("OTA provider enabled")
             await self.refresh_firmware_list()
             self.enable()
 
@@ -145,11 +152,11 @@ class Trådfri(Basic):
         if self._locks[LOCK_REFRESH].locked():
             return
 
-        LOGGER.debug("Downloading IKEA firmware update list")
         async with self._locks[LOCK_REFRESH]:
-            async with aiohttp.ClientSession() as req:
+            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
                 async with req.get(self.UPDATE_URL) as rsp:
                     fw_lst = await rsp.json(content_type=None)
+        self.debug("Finished downloading firmware update list")
         self._cache.clear()
         for fw in fw_lst:
             if "fw_file_version_MSB" not in fw:
@@ -227,13 +234,14 @@ class Ledvance(Basic):
     # documentation: https://portal.update.ledvance.com/docs/services/firmware-rest-api/
 
     UPDATE_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
+    HEADERS = {"content-type": "application/json"}
 
     async def initialize_provider(self, ota_dir: str) -> None:
         if ota_dir is None:
             return
 
         if os.path.isfile(os.path.join(ota_dir, ENABLE_LEDVANCE_OTA)):
-            LOGGER.debug("Ledvance OTA provider enabled")
+            self.info("OTA provider enabled")
             await self.refresh_firmware_list()
             self.enable()
 
@@ -241,11 +249,11 @@ class Ledvance(Basic):
         if self._locks[LOCK_REFRESH].locked():
             return
 
-        LOGGER.debug("Downloading Ledvance firmware update list")
         async with self._locks[LOCK_REFRESH]:
-            async with aiohttp.ClientSession() as req:
+            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
                 async with req.get(self.UPDATE_URL) as rsp:
                     fw_lst = await rsp.json(content_type=None)
+        self.debug("Finished downloading firmware update list")
         self._cache.clear()
         for fw in fw_lst["firmwares"]:
             img = LedvanceImage.new(fw)
@@ -287,9 +295,9 @@ class FileImage(OTAImageHeader):
                         img.header_string,
                     )
                     return img
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError):
             LOGGER.debug(
-                "File '%s' doesn't appear to be a OTA image: %s", file_name, exc
+                "File '%s' doesn't appear to be a OTA image", file_name, exc_info=True
             )
         return None
 
@@ -307,8 +315,8 @@ class FileImage(OTAImageHeader):
                 if offset >= 0:
                     img = OTAImage.deserialize(data[offset:])[0]
                     return img
-        except (OSError, ValueError) as exc:
-            LOGGER.debug("Couldn't load '%s' OTA image: %s", self.file_name, exc)
+        except (OSError, ValueError):
+            LOGGER.debug("Couldn't load '%s' OTA image", self.file_name, exc_info=True)
         return None
 
 
@@ -356,7 +364,7 @@ class FileStore(Basic):
 
                 if img.key in self._cache:
                     if img.version > self._cache[img.key].version:
-                        LOGGER.debug(
+                        self.debug(
                             "%s: Preferring '%s' over '%s'",
                             img.key,
                             file_name,
@@ -364,14 +372,14 @@ class FileStore(Basic):
                         )
                         self._cache[img.key] = img
                     elif img.version == self._cache[img.key].version:
-                        LOGGER.debug(
+                        self.debug(
                             "%s: Ignoring '%s' already have %s version",
                             img.key,
                             file_name,
                             img.version,
                         )
                     else:
-                        LOGGER.debug(
+                        self.debug(
                             "%s: Preferring '%s' over '%s'",
                             img.key,
                             self._cache[img.key].file_name,

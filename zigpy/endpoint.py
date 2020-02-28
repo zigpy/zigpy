@@ -56,8 +56,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 return
             elif sdr[0] != zdo_status.SUCCESS:
                 raise Exception("Failed to retrieve service descriptor: %s", sdr)
-        except Exception as exc:
-            self.warn("Failed ZDO request during endpoint initialization: %s", exc)
+        except Exception:
+            self.warning(
+                "Failed ZDO request during endpoint initialization", exc_info=True
+            )
             return
 
         self.info("Discovered endpoint information: %s", sdr[2])
@@ -223,10 +225,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             profile_id, cluster, self._endpoint_id, self._endpoint_id, sequence, data
         )
 
-    def log(self, lvl, msg, *args):
+    def log(self, lvl, msg, *args, **kwargs):
         msg = "[0x%04x:%s] " + msg
         args = (self._device.nwk, self._endpoint_id) + args
-        return LOGGER.log(lvl, msg, *args)
+        return LOGGER.log(lvl, msg, *args, **kwargs)
 
     @property
     def device(self):
@@ -244,7 +246,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @manufacturer.setter
     def manufacturer(self, value):
-        self.warn(
+        self.warning(
             (
                 "Overriding manufacturer from quirks is not supported and "
                 "will be removed in the next zigpy version"
@@ -264,7 +266,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @model.setter
     def model(self, value):
-        self.warn(
+        self.warning(
             (
                 "Overriding model from quirks is not supported and "
                 "will be removed in the next version"

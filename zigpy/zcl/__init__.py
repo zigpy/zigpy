@@ -94,7 +94,7 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 schema = commands[hdr.command_id][1]
                 hdr.frame_control.is_reply = commands[hdr.command_id][2]
             except KeyError:
-                LOGGER.warning("Unknown cluster-specific command %s", hdr.command_id)
+                self.warning("Unknown cluster-specific command %s", hdr.command_id)
                 return hdr, data
         else:
             # General command
@@ -102,12 +102,12 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
                 schema = foundation.COMMANDS[hdr.command_id][0]
                 hdr.frame_control.is_reply = foundation.COMMANDS[hdr.command_id][1]
             except KeyError:
-                LOGGER.warning("Unknown foundation command %s", hdr.command_id)
+                self.warning("Unknown foundation command %s", hdr.command_id)
                 return hdr, data
 
         value, data = t.deserialize(data, schema)
         if data != b"":
-            LOGGER.warning("Data remains after deserializing ZCL frame")
+            self.warning("Data remains after deserializing ZCL frame")
 
         return hdr, value
 
@@ -366,14 +366,14 @@ class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
         self._attr_cache[attrid] = value
         self.listener_event("attribute_updated", attrid, value)
 
-    def log(self, lvl, msg, *args):
+    def log(self, lvl, msg, *args, **kwargs):
         msg = "[0x%04x:%s:0x%04x] " + msg
         args = (
             self._endpoint.device.nwk,
             self._endpoint.endpoint_id,
             self.cluster_id,
         ) + args
-        return LOGGER.log(lvl, msg, *args)
+        return LOGGER.log(lvl, msg, *args, **kwargs)
 
     def __getattr__(self, name):
         if name in self._client_command_idx:
