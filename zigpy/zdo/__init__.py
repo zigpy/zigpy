@@ -28,13 +28,13 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         try:
             cluster_details = types.CLUSTERS[cluster_id]
         except KeyError:
-            self.warn("Unknown ZDO cluster 0x%04x", cluster_id)
+            self.warning("Unknown ZDO cluster 0x%04x", cluster_id)
             return hdr, data
 
         args, data = t.deserialize(data, cluster_details[1])
         if data != b"":
             # TODO: Seems sane to check, but what should we do?
-            self.warn("Data remains after deserializing ZDO frame")
+            self.warning("Data remains after deserializing ZDO frame")
 
         return hdr, args
 
@@ -103,10 +103,10 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def permit(self, duration=60, tc_significance=0):
         return self.Mgmt_Permit_Joining_req(duration, tc_significance)
 
-    def log(self, lvl, msg, *args):
+    def log(self, lvl, msg, *args, **kwargs):
         msg = "[0x%04x:zdo] " + msg
         args = (self._device.nwk,) + args
-        return LOGGER.log(lvl, msg, *args)
+        return LOGGER.log(lvl, msg, *args, **kwargs)
 
     @property
     def device(self):

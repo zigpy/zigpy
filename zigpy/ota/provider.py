@@ -287,9 +287,9 @@ class FileImage(OTAImageHeader):
                         img.header_string,
                     )
                     return img
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError):
             LOGGER.debug(
-                "File '%s' doesn't appear to be a OTA image: %s", file_name, exc
+                "File '%s' doesn't appear to be a OTA image", file_name, exc_info=True
             )
         return None
 
@@ -307,8 +307,8 @@ class FileImage(OTAImageHeader):
                 if offset >= 0:
                     img = OTAImage.deserialize(data[offset:])[0]
                     return img
-        except (OSError, ValueError) as exc:
-            LOGGER.debug("Couldn't load '%s' OTA image: %s", self.file_name, exc)
+        except (OSError, ValueError):
+            LOGGER.debug("Couldn't load '%s' OTA image", self.file_name, exc_info=True)
         return None
 
 

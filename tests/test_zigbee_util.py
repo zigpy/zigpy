@@ -60,7 +60,7 @@ def test_log():
     log = Logger()
     log.debug("Test debug")
     log.info("Test info")
-    log.warn("Test warn")
+    log.warning("Test warn")
     log.error("Test error")
 
 

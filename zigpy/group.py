@@ -189,10 +189,10 @@ class GroupEndpoint(LocalLogMixin):
         """
         return self.request(cluster, sequence, data, *args, **kwargs)
 
-    def log(self, lvl, msg, *args):
+    def log(self, lvl, msg, *args, **kwargs):
         msg = "[0x%04x] " + msg
         args = (self._group.group_id,) + args
-        return LOGGER.log(lvl, msg, *args)
+        return LOGGER.log(lvl, msg, *args, **kwargs)
 
     def __getitem__(self, item: int):
         """Return or instantiate a group cluster."""
