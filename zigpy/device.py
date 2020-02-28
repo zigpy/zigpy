@@ -71,9 +71,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 self.info("Node Descriptor: %s", node_desc)
                 return node_desc
             else:
-                self.warn("Requesting Node Descriptor failed: %s", status)
-        except Exception as exc:
-            self.warn("Requesting Node Descriptor failed: %s", exc)
+                self.warning("Requesting Node Descriptor failed: %s", status)
+        except Exception:
+            self.warning("Requesting Node Descriptor failed", exc_info=True)
 
     async def refresh_node_descriptor(self):
         if await self.get_node_descriptor():
@@ -89,10 +89,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 epr = await self.zdo.Active_EP_req(self.nwk, tries=3, delay=2)
                 if epr[0] != 0:
                     raise Exception("Endpoint request failed: %s", epr)
-            except Exception as exc:
+            except Exception:
                 self.initializing = False
                 LOGGER.exception(
-                    "Failed ZDO request during device initialization: %s", exc
+                    "Failed ZDO request during device initialization", exc_info=True
                 )
                 return
 
@@ -259,10 +259,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.lqi = lqi
         self.rssi = rssi
 
-    def log(self, lvl, msg, *args):
+    def log(self, lvl, msg, *args, **kwargs):
         msg = "[0x%04x] " + msg
         args = (self.nwk,) + args
-        return LOGGER.log(lvl, msg, *args)
+        return LOGGER.log(lvl, msg, *args, **kwargs)
 
     @property
     def application(self):
