@@ -6,7 +6,6 @@ import logging
 import zigpy.types as t
 from zigpy import util
 from zigpy.zcl import foundation
-import zigpy.device
 
 
 LOGGER = logging.getLogger(__name__)
@@ -440,8 +439,6 @@ class ClusterPersistingListener:
         self._cluster = cluster
 
     def attribute_updated(self, attrid, value):
-        if self._cluster.endpoint.device.status != zigpy.device.Status.ENDPOINTS_INIT:
-            return
         self._applistener.attribute_updated(self._cluster, attrid, value)
 
     def cluster_command(self, *args, **kwargs):
