@@ -137,7 +137,7 @@ class Trådfri(Basic):
 
     UPDATE_URL = "https://fw.ota.homesmart.ikea.net/feed/version_info.json"
     MANUFACTURER_ID = 4476
-    HEADERS = {"accept": "application/json"}
+    HEADERS = {"accept": "application/json;q=0.9,*/*;q=0.8"}
 
     async def initialize_provider(self, ota_dir: str) -> None:
         if ota_dir is None:
@@ -155,6 +155,8 @@ class Trådfri(Basic):
         async with self._locks[LOCK_REFRESH]:
             async with aiohttp.ClientSession(headers=self.HEADERS) as req:
                 async with req.get(self.UPDATE_URL) as rsp:
+                    # IKEA does not always respond with an appropriate Content-Type
+                    # but the response is always JSON
                     fw_lst = await rsp.json(content_type=None)
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
@@ -252,7 +254,7 @@ class Ledvance(Basic):
         async with self._locks[LOCK_REFRESH]:
             async with aiohttp.ClientSession(headers=self.HEADERS) as req:
                 async with req.get(self.UPDATE_URL) as rsp:
-                    fw_lst = await rsp.json(content_type=None)
+                    fw_lst = await rsp.json()
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
         for fw in fw_lst["firmwares"]:
