@@ -2,13 +2,12 @@ import os
 from unittest import mock
 
 import pytest
-
-import zigpy.types as t
-from zigpy.application import ControllerApplication
 from zigpy import profiles
-from zigpy.quirks import CustomDevice
+from zigpy.application import ControllerApplication
 from zigpy.device import Device, Status
 import zigpy.ota
+from zigpy.quirks import CustomDevice
+import zigpy.types as t
 import zigpy.zcl
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t

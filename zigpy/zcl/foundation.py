@@ -1,5 +1,4 @@
 import enum
-
 from typing import Optional
 
 import zigpy.types as t

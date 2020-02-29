@@ -1,10 +1,10 @@
 """OTA Firmware providers."""
 import asyncio
+from collections import defaultdict
 import datetime
 import logging
 import os
 import os.path
-from collections import defaultdict
 from typing import Optional
 
 import aiohttp

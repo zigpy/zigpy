@@ -3,10 +3,8 @@ import os.path
 from unittest import mock
 import uuid
 
-import pytest
 from asynctest import CoroutineMock, patch
-
-
+import pytest
 import zigpy.ota
 import zigpy.ota.image
 import zigpy.ota.provider as ota_p

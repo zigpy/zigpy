@@ -2,7 +2,6 @@ import itertools
 from unittest import mock
 
 import pytest
-
 import zigpy.device
 import zigpy.endpoint
 import zigpy.quirks

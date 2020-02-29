@@ -2,12 +2,10 @@ import asyncio
 from unittest import mock
 
 import pytest
-
-import zigpy.types as t
 import zigpy.device
+import zigpy.types as t
 import zigpy.zdo as zdo
 import zigpy.zdo.types as zdo_types
-
 
 DEFAULT_SEQUENCE = 123
 

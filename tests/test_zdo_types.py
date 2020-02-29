@@ -1,5 +1,4 @@
 import pytest
-
 import zigpy.types as t
 import zigpy.zdo.types as types
 

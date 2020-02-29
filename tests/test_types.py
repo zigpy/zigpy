@@ -1,6 +1,6 @@
 import itertools
-import pytest
 
+import pytest
 import zigpy.types as t
 
 

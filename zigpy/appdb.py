@@ -9,7 +9,6 @@ import zigpy.types as t
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zdo import types as zdo_t
 
-
 LOGGER = logging.getLogger(__name__)
 
 DB_VERSION = 0x0002

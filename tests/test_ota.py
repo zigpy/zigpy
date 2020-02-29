@@ -3,7 +3,6 @@ from unittest import mock
 
 from asynctest import CoroutineMock
 import pytest
-
 import zigpy.application
 import zigpy.ota
 import zigpy.ota.image
