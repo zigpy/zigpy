@@ -137,7 +137,7 @@ class Trådfri(Basic):
 
     UPDATE_URL = "https://fw.ota.homesmart.ikea.net/feed/version_info.json"
     MANUFACTURER_ID = 4476
-    HEADERS = {"content-type": "application/json"}
+    HEADERS = {"accept": "application/json"}
 
     async def initialize_provider(self, ota_dir: str) -> None:
         if ota_dir is None:
@@ -234,7 +234,7 @@ class Ledvance(Basic):
     # documentation: https://portal.update.ledvance.com/docs/services/firmware-rest-api/
 
     UPDATE_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
-    HEADERS = {"content-type": "application/json"}
+    HEADERS = {"accept": "application/json"}
 
     async def initialize_provider(self, ota_dir: str) -> None:
         if ota_dir is None:
