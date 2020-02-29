@@ -74,6 +74,9 @@ class PersistingListener:
         self._save_device_relays_update(device.ieee, t.Relays(relays).serialize())
 
     def attribute_updated(self, cluster, attrid, value):
+        if cluster.endpoint.device.status != zigpy.device.Status.ENDPOINTS_INIT:
+            return
+
         self._save_attribute(
             cluster.endpoint.device.ieee,
             cluster.endpoint.endpoint_id,
