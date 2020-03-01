@@ -1,13 +1,12 @@
 import asyncio
 import re
+from unittest import mock
 
 import pytest
-from unittest import mock
 import zigpy.endpoint
-import zigpy.zcl as zcl
 import zigpy.ota as ota
+import zigpy.zcl as zcl
 import zigpy.zcl.clusters.security as sec
-
 
 IMAGE_SIZE = 0x2345
 IMAGE_OFFSET = 0x2000

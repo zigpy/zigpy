@@ -1,12 +1,11 @@
 """General Functional Domain"""
 
 import asyncio
-from datetime import datetime
 import collections
+from datetime import datetime
 
 import zigpy.types as t
-from zigpy.zcl import Cluster
-from zigpy.zcl import foundation
+from zigpy.zcl import Cluster, foundation
 
 
 class Basic(Cluster):

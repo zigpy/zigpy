@@ -2,10 +2,9 @@ import asyncio
 from unittest import mock
 
 import pytest
-
+from zigpy import device
 from zigpy.application import ControllerApplication
 from zigpy.exceptions import DeliveryError
-from zigpy import device
 import zigpy.types as t
 
 

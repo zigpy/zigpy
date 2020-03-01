@@ -7,8 +7,8 @@ import voluptuous as vol
 import zigpy.appdb
 import zigpy.device
 import zigpy.group
-import zigpy.quirks
 import zigpy.ota
+import zigpy.quirks
 import zigpy.types as t
 import zigpy.util
 import zigpy.zcl

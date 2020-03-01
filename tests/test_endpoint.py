@@ -2,12 +2,11 @@ import asyncio
 from unittest import mock
 
 import pytest
-
-import zigpy.exceptions
+from zigpy import endpoint, group
 import zigpy.device
+import zigpy.exceptions
 import zigpy.types as t
 import zigpy.zcl as zcl
-from zigpy import endpoint, group
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types
 

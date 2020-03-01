@@ -2,7 +2,6 @@ from unittest import mock
 
 from asynctest import CoroutineMock
 import pytest
-
 from zigpy import util
 
 

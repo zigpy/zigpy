@@ -7,7 +7,6 @@ import zigpy.util
 
 from . import types
 
-
 LOGGER = logging.getLogger(__name__)
 
 
