@@ -4,7 +4,7 @@ import functools
 import inspect
 import logging
 import traceback
-from typing import Any, Coroutine, Optional, Tuple, Union
+from typing import Any, Callable, Coroutine, Optional, Tuple, Union, Type
 
 from Crypto.Cipher import AES
 from crccheck.crc import CrcX25
@@ -69,7 +69,7 @@ class ListenableMixin:
 
 class LocalLogMixin:
     @abc.abstractmethod
-    def log(self, lvl: int, msg: str, *args, **kwargs):
+    def log(self, lvl: int, msg: str, *args, **kwargs):  # pragma: no cover
         pass
 
     def exception(self, msg, *args, **kwargs):
@@ -253,7 +253,7 @@ class CatchingTaskMixin(LocalLogMixin):
     def create_catching_task(
         self,
         target: Coroutine,
-        exceptions: Optional[Union[Exception, Tuple[Exception]]] = None,
+        exceptions: Optional[Union[Type[Exception], Tuple]] = None,
     ) -> None:
         """Create a task."""
         asyncio.create_task(self._catching_coro(target, exceptions))
@@ -261,7 +261,7 @@ class CatchingTaskMixin(LocalLogMixin):
     async def _catching_coro(
         self,
         target: Coroutine,
-        exceptions: Optional[Union[Exception, Tuple[Exception]]] = None,
+        exceptions: Optional[Union[Type[Exception], Tuple]] = None,
     ) -> Any:
         """Wrap a target coro and catch specified exceptions."""
         if exceptions is None:

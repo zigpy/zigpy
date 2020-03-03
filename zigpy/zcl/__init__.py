@@ -45,7 +45,7 @@ class ClusterType(enum.IntEnum):
     Client = 1
 
 
-class Cluster(util.ListenableMixin, util.LocalLogMixin, metaclass=Registry):
+class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     """A cluster on an endpoint"""
 
     _registry = {}
