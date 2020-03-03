@@ -1,6 +1,10 @@
+import abc
 import asyncio
 import functools
+import inspect
 import logging
+import traceback
+from typing import Any, Coroutine, Optional, Tuple, Union
 
 from Crypto.Cipher import AES
 from crccheck.crc import CrcX25
@@ -64,6 +68,10 @@ class ListenableMixin:
 
 
 class LocalLogMixin:
+    @abc.abstractmethod
+    def log(self, lvl: int, msg: str, *args, **kwargs):
+        pass
+
     def exception(self, msg, *args, **kwargs):
         return self.log(logging.ERROR, msg, *args, {**kwargs, "exc_info": True})
 
@@ -237,3 +245,36 @@ class Requests(dict):
     def new(self, sequence: t.uint8_t) -> Request:
         """Wrap new request into a context manager."""
         return Request(self, sequence)
+
+
+class CatchingTaskMixin(LocalLogMixin):
+    """Allow creating tasks suppressing exceptions."""
+
+    def create_catching_task(
+        self,
+        target: Coroutine,
+        exceptions: Optional[Union[Exception, Tuple[Exception]]] = None,
+    ) -> None:
+        """Create a task."""
+        asyncio.create_task(self._catching_coro(target, exceptions))
+
+    async def _catching_coro(
+        self,
+        target: Coroutine,
+        exceptions: Optional[Union[Exception, Tuple[Exception]]] = None,
+    ) -> Any:
+        """Wrap a target coro and catch specified exceptions."""
+        if exceptions is None:
+            exceptions = (asyncio.TimeoutError, DeliveryError)
+
+        try:
+            return await target
+        except exceptions:
+            self.debug("Exception running %s", target.__name__, exc_info=True)
+        except Exception:  # pylint: disable=broad-except
+            # Do not print the wrapper in the traceback
+            frames = len(inspect.trace()) - 1
+            exc_msg = traceback.format_exc(-frames)
+            self.exception("%s", exc_msg)
+
+        return None
