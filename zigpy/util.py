@@ -4,7 +4,7 @@ import functools
 import inspect
 import logging
 import traceback
-from typing import Any, Callable, Coroutine, Optional, Tuple, Union, Type
+from typing import Any, Coroutine, Optional, Tuple, Type, Union
 
 from Crypto.Cipher import AES
 from crccheck.crc import CrcX25
@@ -73,7 +73,7 @@ class LocalLogMixin:
         pass
 
     def exception(self, msg, *args, **kwargs):
-        return self.log(logging.ERROR, msg, *args, {**kwargs, "exc_info": True})
+        return self.log(logging.ERROR, msg, *args, **kwargs)
 
     def debug(self, msg, *args, **kwargs):
         return self.log(logging.DEBUG, msg, *args, **kwargs)
@@ -270,7 +270,7 @@ class CatchingTaskMixin(LocalLogMixin):
         try:
             return await target
         except exceptions:
-            self.debug("Exception running %s", target.__name__, exc_info=True)
+            pass
         except Exception:  # pylint: disable=broad-except
             # Do not print the wrapper in the traceback
             frames = len(inspect.trace()) - 1
