@@ -1,6 +1,7 @@
-from unittest import mock
+import asyncio
+import logging
 
-from asynctest import CoroutineMock
+from asynctest import CoroutineMock, mock
 import pytest
 from zigpy import util
 
@@ -402,3 +403,76 @@ async def test_request():
     assert req.result.done() is True
     assert req.result.cancelled() is False
     assert seq not in pending
+
+
+class _ClusterMock(util.CatchingTaskMixin):
+    """Test class."""
+
+    def __init__(self, logger):
+        logger.setLevel(logging.DEBUG)
+        self._logger = logger
+
+    def log(self, lvl, msg, *args, **kwargs):
+        return self._logger.log(lvl, msg, *args, **kwargs)
+
+    async def a(self, exception=None):
+        self.debug("test a")
+        return await self._b(exception)
+
+    async def _b(self, exception):
+        self.warning("test b")
+        if exception is None:
+            return True
+        raise exception()
+
+
+@mock.patch("zigpy.util.CatchingTaskMixin._catching_coro")
+async def test_create_catching_task(catching_coro_mock):
+    """Test catching task."""
+    mock_cluster = _ClusterMock(logging.getLogger(__name__))
+    coro = CoroutineMock()
+    mock_cluster.create_catching_task(coro)
+    assert catching_coro_mock.call_count == 1
+    assert catching_coro_mock.call_args[0][0] is coro
+
+
+async def test_catching_coro(caplog):
+    """Test _catching_coro no exception."""
+    caplog.set_level(level=logging.DEBUG)
+    mock_cluster = _ClusterMock(logging.getLogger(__name__))
+    await mock_cluster._catching_coro(mock_cluster.a())
+    assert caplog.records[0].levelno == logging.DEBUG
+    assert caplog.records[0].message == "test a"
+    assert caplog.records[1].levelno == logging.WARNING
+    assert caplog.records[1].message == "test b"
+    assert len(caplog.records) == 2
+
+
+@pytest.mark.parametrize("exception", [None, asyncio.TimeoutError])
+async def test_catching_task_expected_exception(exception, caplog):
+    """Test CatchingTaskMixin allowed exceptions."""
+    mock_cluster = _ClusterMock(logging.getLogger("expected_exceptions"))
+    await mock_cluster._catching_coro(
+        mock_cluster.a(asyncio.TimeoutError), exceptions=exception
+    )
+    assert caplog.records[0].levelno == logging.DEBUG
+    assert caplog.records[0].message == "test a"
+    assert caplog.records[1].levelno == logging.WARNING
+    assert caplog.records[1].message == "test b"
+    assert len(caplog.records) == 2
+
+
+@pytest.mark.parametrize(
+    "to_raise, exception", [(RuntimeError, None), (asyncio.TimeoutError, RuntimeError)]
+)
+async def test_catching_task_unexpected_exception(to_raise, exception, caplog):
+    """Test CatchingTaskMixin unexpected exceptions."""
+    mock_cluster = _ClusterMock(logging.getLogger("unexpected_exceptions"))
+    await mock_cluster._catching_coro(mock_cluster.a(to_raise), exceptions=exception)
+    assert caplog.records[0].levelno == logging.DEBUG
+    assert caplog.records[0].message == "test a"
+    assert caplog.records[1].levelno == logging.WARNING
+    assert caplog.records[1].message == "test b"
+    assert caplog.records[2].levelno == logging.ERROR
+    assert caplog.records[2].message.startswith("Traceback (most recent call last)")
+    assert len(caplog.records) == 3

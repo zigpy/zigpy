@@ -37,8 +37,7 @@ def app():
 def zdo_f(app):
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     dev = zigpy.device.Device(app, ieee, 65535)
-    dev.request = mock.MagicMock()
-    dev.request.side_effect = asyncio.coroutine(mock.MagicMock())
+    dev.request = mock.CoroutineMock()
     return zdo.ZDO(dev)
 
 
@@ -101,22 +100,28 @@ def test_broadcast(app):
 
 
 def _handle_match_desc(zdo_f, profile):
-    zdo_f.reply = mock.MagicMock()
+    zdo_f.reply = mock.CoroutineMock()
     hdr = mock.MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.Match_Desc_req
     zdo_f.handle_message(5, 0x0006, hdr, [None, profile, [], []])
     assert zdo_f.reply.call_count == 1
 
 
-def test_handle_match_desc_zha(zdo_f):
-    return _handle_match_desc(zdo_f, 260)
+async def test_handle_match_desc_zha(zdo_f):
+    _handle_match_desc(zdo_f, 260)
+    await asyncio.wait(asyncio.Task.all_tasks(), return_when=asyncio.FIRST_COMPLETED)
+    assert zdo_f.reply.await_count == 1
+    assert zdo_f.reply.call_args[0][3]
 
 
-def test_handle_match_desc_generic(zdo_f):
-    return _handle_match_desc(zdo_f, 0)
+async def test_handle_match_desc_generic(zdo_f):
+    _handle_match_desc(zdo_f, 0)
+    await asyncio.wait(asyncio.Task.all_tasks(), return_when=asyncio.FIRST_COMPLETED)
+    assert zdo_f.reply.await_count == 1
+    assert not zdo_f.reply.call_args[0][3]
 
 
-def test_handle_nwk_addr(zdo_f):
+async def test_handle_nwk_addr(zdo_f):
     ieee = zdo_f._device.application.ieee
     zdo_f.reply = mock.MagicMock()
     hdr = mock.MagicMock()
@@ -125,7 +130,7 @@ def test_handle_nwk_addr(zdo_f):
     assert zdo_f.reply.call_count == 1
 
 
-def test_handle_ieee_addr(zdo_f):
+async def test_handle_ieee_addr(zdo_f):
     nwk = zdo_f._device.application.nwk
     zdo_f.reply = mock.MagicMock()
     hdr = mock.MagicMock()
@@ -170,17 +175,10 @@ def test_device_accessor(zdo_f):
     assert zdo_f.device.nwk == 65535
 
 
-async def test_reply(zdo_f):
-    call_count = 0
-
-    async def mock_request(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-
-    zdo_f.device.request = mock_request
+def test_reply(zdo_f):
+    zdo_f.device.request = mock.MagicMock()
     zdo_f.reply(0x0005)
-    await asyncio.sleep(0)
-    assert call_count == 1
+    assert zdo_f.device.request.call_count == 1
 
 
 def test_get_attr_error(zdo_f):

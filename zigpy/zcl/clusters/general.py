@@ -4,6 +4,7 @@ import asyncio
 import collections
 from datetime import datetime
 
+from zigpy.exceptions import DeliveryError
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
 
@@ -388,7 +389,7 @@ class Time(Cluster):
                     data[attr] = diff.total_seconds()
                 else:
                     data[attr] = None
-            asyncio.ensure_future(self.read_attributes_rsp(data, tsn=tsn))
+            self.create_catching_task(self.read_attributes_rsp(data, tsn=tsn))
 
 
 class RSSILocation(Cluster):
@@ -845,7 +846,10 @@ class Ota(Cluster):
     }
 
     def handle_cluster_request(self, tsn, command_id, args):
-        asyncio.ensure_future(self._handle_cluster_request(tsn, command_id, args))
+        self.create_catching_task(
+            self._handle_cluster_request(tsn, command_id, args),
+            exceptions=(AssertionError, asyncio.TimeoutError, DeliveryError),
+        )
 
     async def _handle_cluster_request(self, tsn, command_id, args):
         """Parse OTA commands."""
