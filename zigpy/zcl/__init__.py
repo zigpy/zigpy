@@ -17,9 +17,9 @@ class Registry(type):
         if hasattr(cls, "cluster_id"):
             cls.cluster_id = t.ClusterId(cls.cluster_id)
         if hasattr(cls, "attributes"):
-            cls._attridx = {}
+            cls.attridx = {}
             for attrid, (attrname, datatype) in cls.attributes.items():
-                cls._attridx[attrname] = attrid
+                cls.attridx[attrname] = attrid
         if hasattr(cls, "server_commands"):
             cls._server_command_idx = {}
             for command_id, details in cls.server_commands.items():
@@ -204,7 +204,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         orig_attributes = {}
         for attribute in attributes:
             if isinstance(attribute, str):
-                attrid = self._attridx[attribute]
+                attrid = self.attridx[attribute]
             else:
                 attrid = attribute
             attribute_ids.append(attrid)
@@ -248,7 +248,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         args = []
         for attrid, value in attributes.items():
             if isinstance(attrid, str):
-                attrid = self._attridx[attrid]
+                attrid = self.attridx[attrid]
 
             a = foundation.ReadAttributeRecord(
                 attrid, foundation.Status.UNSUPPORTED_ATTRIBUTE, foundation.TypeValue()
@@ -273,7 +273,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         args = []
         for attrid, value in attributes.items():
             if isinstance(attrid, str):
-                attrid = self._attridx[attrid]
+                attrid = self.attridx[attrid]
             if attrid not in self.attributes:
                 self.error("%d is not a valid attribute id", attrid)
                 continue
@@ -305,7 +305,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         manufacturer=None,
     ):
         if isinstance(attribute, str):
-            attrid = self._attridx.get(attribute, None)
+            attrid = self.attridx.get(attribute, None)
         else:
             attrid = attribute
         if attrid not in self.attributes or attrid is None:
