@@ -256,7 +256,7 @@ class CatchingTaskMixin(LocalLogMixin):
         exceptions: Optional[Union[Type[Exception], Tuple]] = None,
     ) -> None:
         """Create a task."""
-        asyncio.create_task(self._catching_coro(target, exceptions))
+        asyncio.ensure_future(self._catching_coro(target, exceptions))
 
     async def _catching_coro(
         self,
