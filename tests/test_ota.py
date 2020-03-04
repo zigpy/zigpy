@@ -1,7 +1,6 @@
 import datetime
-from unittest import mock
 
-from asynctest import CoroutineMock
+from asynctest import CoroutineMock, mock
 import pytest
 import zigpy.application
 import zigpy.ota
@@ -45,7 +44,6 @@ def ota():
         return zigpy.ota.OTA(app)
 
 
-@pytest.mark.asyncio
 async def test_ota_initialize(ota):
     ota.async_event = CoroutineMock()
     await ota._initialize(mock.sentinel.ota_dir)
@@ -55,7 +53,7 @@ async def test_ota_initialize(ota):
     assert ota.async_event.call_args[0][1] == mock.sentinel.ota_dir
 
 
-def test_initialize(ota):
+async def test_initialize(ota):
     ota._initialize = CoroutineMock()
 
     assert ota.not_initialized
@@ -64,7 +62,6 @@ def test_initialize(ota):
     assert ota._initialize.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_get_image_empty(ota, image, key):
     ota.async_event = CoroutineMock(return_value=[None, None])
 
@@ -78,7 +75,6 @@ async def test_get_image_empty(ota, image, key):
     assert ota.async_event.call_args[0][1] == key
 
 
-@pytest.mark.asyncio
 async def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
     newer = image_with_version(image.version + 1)
 

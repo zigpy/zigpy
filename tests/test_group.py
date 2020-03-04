@@ -1,6 +1,4 @@
-from unittest import mock
-
-import asynctest
+from asynctest import CoroutineMock, mock
 import pytest
 from zigpy.application import ControllerApplication
 import zigpy.device
@@ -38,7 +36,7 @@ def group():
 
 @pytest.fixture
 def group_endpoint(group):
-    group.request = asynctest.CoroutineMock()
+    group.request = CoroutineMock()
     return zigpy.group.GroupEndpoint(group)
 
 

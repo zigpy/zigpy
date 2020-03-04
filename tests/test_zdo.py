@@ -1,6 +1,6 @@
 import asyncio
-from unittest import mock
 
+from asynctest import mock
 import pytest
 import zigpy.device
 import zigpy.types as t
@@ -55,7 +55,6 @@ def test_deserialize_unknown(zdo_f):
     assert hdr.is_reply is False
 
 
-@pytest.mark.asyncio
 async def test_request(zdo_f):
     await zdo_f.request(2, 65535)
     app_mock = zdo_f._device._application
@@ -63,7 +62,6 @@ async def test_request(zdo_f):
     assert app_mock.get_sequence.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_bind(zdo_f):
     cluster = mock.MagicMock()
     cluster.endpoint.endpoint_id = 1
@@ -73,7 +71,6 @@ async def test_bind(zdo_f):
     assert zdo_f.device.request.call_args[0][1] == 0x0021
 
 
-@pytest.mark.asyncio
 async def test_unbind(zdo_f):
     cluster = mock.MagicMock()
     cluster.endpoint.endpoint_id = 1
@@ -83,14 +80,12 @@ async def test_unbind(zdo_f):
     assert zdo_f.device.request.call_args[0][1] == 0x0022
 
 
-@pytest.mark.asyncio
 async def test_leave(zdo_f):
     await zdo_f.leave()
     assert zdo_f.device.request.call_count == 1
     assert zdo_f.device.request.call_args[0][1] == 0x0034
 
 
-@pytest.mark.asyncio
 async def test_permit(zdo_f):
     await zdo_f.permit()
     assert zdo_f.device.request.call_count == 1
@@ -175,7 +170,6 @@ def test_device_accessor(zdo_f):
     assert zdo_f.device.nwk == 65535
 
 
-@pytest.mark.asyncio
 async def test_reply(zdo_f):
     call_count = 0
 
@@ -194,7 +188,7 @@ def test_get_attr_error(zdo_f):
         zdo_f.no_such_attribute()
 
 
-def test_reply_tsn_override(zdo_f, monkeypatch):
+async def test_reply_tsn_override(zdo_f, monkeypatch):
     clusters = mock.MagicMock()
     clusters.__getitem__.return_value = (
         mock.sentinel.param_names,

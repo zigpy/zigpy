@@ -79,20 +79,17 @@ async def _test_retry(exception, retry_exceptions, n):
     return counter
 
 
-@pytest.mark.asyncio
 async def test_retry_no_retries():
     counter = await _test_retry(Exception, Exception, 0)
     assert counter == 1
 
 
-@pytest.mark.asyncio
 async def test_retry_always():
     with pytest.raises(ValueError) as exc_info:
         await _test_retry(ValueError, (IndexError, ValueError), 999)
     assert exc_info.value._counter == 3
 
 
-@pytest.mark.asyncio
 async def test_retry_once():
     counter = await _test_retry(ValueError, ValueError, 1)
     assert counter == 2
@@ -115,33 +112,28 @@ async def _test_retryable(exception, retry_exceptions, n, tries=3, delay=0.001):
     return counter
 
 
-@pytest.mark.asyncio
 async def test_retryable_no_retry():
     counter = await _test_retryable(Exception, Exception, 0, 0, 0)
     assert counter == 1
 
 
-@pytest.mark.asyncio
 async def test_retryable_exception_no_retry():
     with pytest.raises(Exception) as exc_info:
         await _test_retryable(Exception, Exception, 1, 0, 0)
     assert exc_info.value._counter == 1
 
 
-@pytest.mark.asyncio
 async def test_retryable_no_retries():
     counter = await _test_retryable(Exception, Exception, 0)
     assert counter == 1
 
 
-@pytest.mark.asyncio
 async def test_retryable_always():
     with pytest.raises(ValueError) as exc_info:
         await _test_retryable(ValueError, (IndexError, ValueError), 999)
     assert exc_info.value._counter == 3
 
 
-@pytest.mark.asyncio
 async def test_retryable_once():
     counter = await _test_retryable(ValueError, ValueError, 1)
     assert counter == 2
@@ -332,7 +324,6 @@ def test_fail_convert_install_code():
     assert key is None
 
 
-@pytest.mark.asyncio
 async def test_async_listener():
     listenable = Listenable()
 
@@ -384,7 +375,7 @@ def test_requests(monkeypatch):
     assert req_mock.call_count == 1
 
 
-def test_request():
+async def test_request():
     pending = util.Requests()
     seq = 0x11
 
