@@ -45,7 +45,6 @@ def fake_get_device(device):
     return device
 
 
-@pytest.mark.asyncio
 async def test_database(tmpdir, monkeypatch):
     monkeypatch.setattr(
         Device, "schedule_initialize", mock_dev_init(Status.ENDPOINTS_INIT)
@@ -215,7 +214,6 @@ def test_appdb_str_model(tmpdir):
     "status, success",
     ((Status.ENDPOINTS_INIT, True), (Status.ZDO_INIT, False), (Status.NEW, False)),
 )
-@pytest.mark.asyncio
 async def test_node_descriptor_updated(tmpdir, status, success):
     db = os.path.join(str(tmpdir), "test_nd.db")
     app = make_app(db)
@@ -255,7 +253,6 @@ async def test_node_descriptor_updated(tmpdir, status, success):
     os.unlink(db)
 
 
-@pytest.mark.asyncio
 async def test_groups(tmpdir, monkeypatch):
     monkeypatch.setattr(
         Device, "schedule_initialize", mock_dev_init(Status.ENDPOINTS_INIT)

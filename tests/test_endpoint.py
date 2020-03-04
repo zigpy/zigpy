@@ -1,6 +1,6 @@
 import asyncio
-from unittest import mock
 
+from asynctest import mock
 import pytest
 from zigpy import endpoint, group
 import zigpy.device
@@ -35,7 +35,6 @@ async def _test_initialize(ep, profile):
     assert 6 in ep.out_clusters
 
 
-@pytest.mark.asyncio
 async def test_inactive_initialize(ep):
     async def mockrequest(nwk, epid, tries=None, delay=None):
         sd = types.SimpleDescriptor()
@@ -47,17 +46,14 @@ async def test_inactive_initialize(ep):
     assert ep.status == endpoint.Status.ENDPOINT_INACTIVE
 
 
-@pytest.mark.asyncio
 async def test_initialize_zha(ep):
     return await _test_initialize(ep, 260)
 
 
-@pytest.mark.asyncio
 async def test_initialize_zll(ep):
     return await _test_initialize(ep, 49246)
 
 
-@pytest.mark.asyncio
 async def test_initialize_fail(ep):
     async def mockrequest(nwk, epid, tries=None, delay=None):
         return [1, None, None]
@@ -68,7 +64,6 @@ async def test_initialize_fail(ep):
     assert ep.status == endpoint.Status.NEW
 
 
-@pytest.mark.asyncio
 async def test_reinitialize(ep):
     await _test_initialize(ep, 260)
     assert ep.profile_id == 260
@@ -233,7 +228,6 @@ def _get_model_info(ep, test_manuf=None, test_model=None, fail=False, timeout=Fa
     return ep.get_model_info()
 
 
-@pytest.mark.asyncio
 async def test_get_model_info(ep):
     manufacturer = b"Mock Manufacturer"
     model = b"Mock Model"
@@ -244,7 +238,6 @@ async def test_get_model_info(ep):
     assert mod == "Mock Model"
 
 
-@pytest.mark.asyncio
 async def test_init_endpoint_info_none(ep):
     mod, man = await _get_model_info(ep)
 
@@ -252,7 +245,6 @@ async def test_init_endpoint_info_none(ep):
     assert mod is None
 
 
-@pytest.mark.asyncio
 async def test_init_endpoint_info_null_padded_manuf(ep):
     manufacturer = b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07"
     model = b"Mock Model"
@@ -262,7 +254,6 @@ async def test_init_endpoint_info_null_padded_manuf(ep):
     assert mod == "Mock Model"
 
 
-@pytest.mark.asyncio
 async def test_init_endpoint_info_null_padded_model(ep):
     manufacturer = b"Mock Manufacturer"
     model = b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -272,7 +263,6 @@ async def test_init_endpoint_info_null_padded_model(ep):
     assert mod == "Mock Model"
 
 
-@pytest.mark.asyncio
 async def test_init_endpoint_info_null_padded_manuf_model(ep):
     manufacturer = b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07"
     model = b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -282,7 +272,6 @@ async def test_init_endpoint_info_null_padded_manuf_model(ep):
     assert mod == "Mock Model"
 
 
-@pytest.mark.asyncio
 async def test_get_model_info_delivery_error(ep):
     manufacturer = b"Mock Manufacturer"
     model = b"Mock Model"
@@ -292,7 +281,6 @@ async def test_get_model_info_delivery_error(ep):
     assert mod is None
 
 
-@pytest.mark.asyncio
 async def test_get_model_info_timeout(ep):
     manufacturer = b"Mock Manufacturer"
     model = b"Mock Model"
@@ -316,7 +304,6 @@ def _group_add_mock(ep, success=True, no_groups_cluster=False):
     return ep
 
 
-@pytest.mark.asyncio
 async def test_add_to_group(ep):
     ep = _group_add_mock(ep)
 
@@ -331,7 +318,6 @@ async def test_add_to_group(ep):
     assert groups.add_group.call_args[0][1] == grp_name
 
 
-@pytest.mark.asyncio
 async def test_add_to_group_no_groups(ep):
     ep = _group_add_mock(ep, no_groups_cluster=True)
 
@@ -344,7 +330,6 @@ async def test_add_to_group_no_groups(ep):
     assert groups.remove_group.call_count == 0
 
 
-@pytest.mark.asyncio
 async def test_add_to_group_fail(ep):
     ep = _group_add_mock(ep, success=False)
 
@@ -374,7 +359,6 @@ def _group_remove_mock(ep, success=True, no_groups_cluster=False, not_member=Fal
     return ep, grp
 
 
-@pytest.mark.asyncio
 async def test_remove_from_group(ep):
     grp_id = 0x1234
     ep, grp_mock = _group_remove_mock(ep)
@@ -390,7 +374,6 @@ async def test_remove_from_group(ep):
     assert grp_mock.remove_member.call_args[0][0] == ep
 
 
-@pytest.mark.asyncio
 async def test_remove_from_group_no_groups_cluster(ep):
     grp_id = 0x1234
     ep, grp_mock = _group_remove_mock(ep, no_groups_cluster=True)
@@ -404,7 +387,6 @@ async def test_remove_from_group_no_groups_cluster(ep):
     assert grp_mock.remove_member.call_count == 0
 
 
-@pytest.mark.asyncio
 async def test_remove_from_group_fail(ep):
     grp_id = 0x1234
     ep, grp_mock = _group_remove_mock(ep, success=False)

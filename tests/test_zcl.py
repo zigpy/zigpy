@@ -1,5 +1,4 @@
-from unittest import mock
-
+from asynctest import mock
 import pytest
 import zigpy.endpoint
 import zigpy.types as t
@@ -107,16 +106,16 @@ def test_request_manufacturer(cluster):
     assert org_size + 2 == len(cluster._endpoint.request.call_args[0][2])
 
 
-def test_request_optional(cluster):
+async def test_request_optional(cluster):
     schema = [t.uint8_t, t.uint16_t, t.Optional(t.uint16_t), t.Optional(t.uint8_t)]
 
     res = cluster.request(True, 0, schema)
-    assert type(res.exception()) == ValueError
+    assert isinstance(res.exception(), ValueError)
     assert cluster._endpoint.request.call_count == 0
     cluster._endpoint.request.reset_mock()
 
     res = cluster.request(True, 0, schema, 1)
-    assert type(res.exception()) == ValueError
+    assert isinstance(res.exception(), ValueError)
     assert cluster._endpoint.request.call_count == 0
     cluster._endpoint.request.reset_mock()
 
@@ -133,7 +132,7 @@ def test_request_optional(cluster):
     cluster._endpoint.request.reset_mock()
 
     res = cluster.request(True, 0, schema, 1, 2, 3, 4, 5)
-    assert type(res.exception()) == ValueError
+    assert isinstance(res.exception(), ValueError)
     assert cluster._endpoint.request.call_count == 0
     cluster._endpoint.request.reset_mock()
 
@@ -211,7 +210,6 @@ def _mk_rar(attrid, value, status=0):
     return r
 
 
-@pytest.mark.asyncio
 async def test_read_attributes_uncached(cluster):
     async def mockrequest(
         foundation, command, schema, args, manufacturer=None, **kwargs
@@ -230,7 +228,6 @@ async def test_read_attributes_uncached(cluster):
     assert failure[99] == 1
 
 
-@pytest.mark.asyncio
 async def test_read_attributes_cached(cluster):
     cluster.request = mock.MagicMock()
     cluster._attr_cache[0] = 99
@@ -244,7 +241,6 @@ async def test_read_attributes_cached(cluster):
     assert failure == {}
 
 
-@pytest.mark.asyncio
 async def test_read_attributes_mixed_cached(cluster):
     async def mockrequest(
         foundation, command, schema, args, manufacturer=None, **kwargs
@@ -266,7 +262,6 @@ async def test_read_attributes_mixed_cached(cluster):
     assert failure == {}
 
 
-@pytest.mark.asyncio
 async def test_read_attributes_default_response(cluster):
     async def mockrequest(
         foundation, command, schema, args, manufacturer=None, **kwargs
@@ -281,7 +276,6 @@ async def test_read_attributes_default_response(cluster):
     assert failure == {0: 0xC1, 5: 0xC1, 23: 0xC1}
 
 
-@pytest.mark.asyncio
 async def test_item_access_attributes(cluster):
     async def mockrequest(
         foundation, command, schema, args, manufacturer=None, **kwargs
@@ -423,9 +417,9 @@ def test_command_invalid_attr(cluster):
         cluster.no_such_command()
 
 
-def test_invalid_arguments_cluster_command(cluster):
+async def test_invalid_arguments_cluster_command(cluster):
     res = cluster.command(0x00, 1)
-    assert type(res.exception()) == ValueError
+    assert isinstance(res.exception(), ValueError)
 
 
 def test_invalid_arguments_cluster_client_command(client_cluster):
