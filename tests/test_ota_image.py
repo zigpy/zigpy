@@ -1,7 +1,6 @@
 from unittest import mock
 
 import pytest
-
 import zigpy.ota.image as firmware
 import zigpy.types as t
 

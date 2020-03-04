@@ -1,13 +1,12 @@
 import asyncio
 import re
 
+from asynctest import mock
 import pytest
-from unittest import mock
 import zigpy.endpoint
-import zigpy.zcl as zcl
 import zigpy.ota as ota
+import zigpy.zcl as zcl
 import zigpy.zcl.clusters.security as sec
-
 
 IMAGE_SIZE = 0x2345
 IMAGE_OFFSET = 0x2000
@@ -64,10 +63,9 @@ def test_ep_attributes():
         assert not hasattr(ep, cluster.ep_attribute)
 
 
-@pytest.mark.asyncio
 async def test_time_cluster():
     ep = mock.MagicMock()
-    ep.reply.side_effect = asyncio.coroutine(mock.MagicMock())
+    ep.reply = mock.CoroutineMock()
     t = zcl.Cluster._registry[0x000A](ep)
 
     tsn = 0
@@ -96,7 +94,6 @@ async def test_time_cluster():
     assert ep.reply.call_args[0][2][3] == 7
 
 
-@pytest.mark.asyncio
 async def test_time_cluster_unsupported():
     ep = mock.MagicMock()
     ep.reply.side_effect = asyncio.coroutine(mock.MagicMock())
@@ -116,11 +113,8 @@ def ota_cluster():
     return zcl.Cluster._registry[0x0019](ep)
 
 
-@pytest.mark.asyncio
 async def test_ota_handle_cluster_req(ota_cluster):
-    ota_cluster._handle_cluster_request = mock.MagicMock(
-        side_effect=asyncio.coroutine(mock.MagicMock())
-    )
+    ota_cluster._handle_cluster_request = mock.CoroutineMock()
 
     ota_cluster.handle_cluster_request(
         mock.sentinel.tsn, mock.sentinel.cmd, mock.sentinel.args
@@ -128,17 +122,10 @@ async def test_ota_handle_cluster_req(ota_cluster):
     assert ota_cluster._handle_cluster_request.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_ota_handle_cluster_req_wrapper(ota_cluster):
-    ota_cluster._handle_query_next_image = mock.MagicMock(
-        side_effect=asyncio.coroutine(mock.MagicMock())
-    )
-    ota_cluster._handle_image_block = mock.MagicMock(
-        side_effect=asyncio.coroutine(mock.MagicMock())
-    )
-    ota_cluster._handle_upgrade_end = mock.MagicMock(
-        side_effect=asyncio.coroutine(mock.MagicMock())
-    )
+    ota_cluster._handle_query_next_image = mock.CoroutineMock()
+    ota_cluster._handle_image_block = mock.CoroutineMock()
+    ota_cluster._handle_upgrade_end = mock.CoroutineMock()
 
     await ota_cluster._handle_cluster_request(
         mock.sentinel.tsn, 0x01, [mock.sentinel.args]
@@ -208,11 +195,8 @@ def _ota_next_image(cluster, has_image=True, upgradeable=False):
     )
 
 
-@pytest.mark.asyncio
 async def test_ota_handle_query_next_image_no_img(ota_cluster):
-    ota_cluster.query_next_image_response = mock.MagicMock(
-        side_effect=asyncio.coroutine(mock.MagicMock())
-    )
+    ota_cluster.query_next_image_response = mock.CoroutineMock()
 
     await _ota_next_image(ota_cluster, has_image=False, upgradeable=False)
     assert ota_cluster.query_next_image_response.call_count == 1
@@ -223,11 +207,8 @@ async def test_ota_handle_query_next_image_no_img(ota_cluster):
     assert len(ota_cluster.query_next_image_response.call_args[0]) == 1
 
 
-@pytest.mark.asyncio
 async def test_ota_handle_query_next_image_not_upgradeable(ota_cluster):
-    ota_cluster.query_next_image_response = mock.MagicMock(
-        side_effect=asyncio.coroutine(mock.MagicMock())
-    )
+    ota_cluster.query_next_image_response = mock.CoroutineMock()
 
     await _ota_next_image(ota_cluster, has_image=True, upgradeable=False)
     assert ota_cluster.query_next_image_response.call_count == 1
@@ -238,11 +219,8 @@ async def test_ota_handle_query_next_image_not_upgradeable(ota_cluster):
     assert len(ota_cluster.query_next_image_response.call_args[0]) == 1
 
 
-@pytest.mark.asyncio
 async def test_ota_handle_query_next_image_upgradeable(ota_cluster):
-    ota_cluster.query_next_image_response = mock.MagicMock(
-        side_effect=asyncio.coroutine(mock.MagicMock())
-    )
+    ota_cluster.query_next_image_response = mock.CoroutineMock()
 
     await _ota_next_image(ota_cluster, has_image=True, upgradeable=True)
     assert ota_cluster.query_next_image_response.call_count == 1
@@ -301,11 +279,8 @@ def _ota_image_block(cluster, has_image=True, correct_version=True, wrong_offset
     )
 
 
-@pytest.mark.asyncio
 async def test_ota_handle_image_block_no_img(ota_cluster):
-    ota_cluster.image_block_response = mock.MagicMock(
-        side_effect=asyncio.coroutine(mock.MagicMock())
-    )
+    ota_cluster.image_block_response = mock.CoroutineMock()
 
     await _ota_image_block(ota_cluster, has_image=False, correct_version=True)
     assert ota_cluster.image_block_response.call_count == 1
@@ -323,11 +298,8 @@ async def test_ota_handle_image_block_no_img(ota_cluster):
     assert len(ota_cluster.image_block_response.call_args[0]) == 1
 
 
-@pytest.mark.asyncio
 async def test_ota_handle_image_block(ota_cluster):
-    ota_cluster.image_block_response = mock.MagicMock(
-        side_effect=asyncio.coroutine(mock.MagicMock())
-    )
+    ota_cluster.image_block_response = mock.CoroutineMock()
 
     await _ota_image_block(ota_cluster, has_image=True, correct_version=True)
     assert ota_cluster.image_block_response.call_count == 1
@@ -355,11 +327,8 @@ async def test_ota_handle_image_block(ota_cluster):
     assert len(ota_cluster.image_block_response.call_args[0]) == 1
 
 
-@pytest.mark.asyncio
 async def test_ota_handle_image_block_wrong_offset(ota_cluster):
-    ota_cluster.image_block_response = mock.MagicMock(
-        side_effect=asyncio.coroutine(mock.MagicMock())
-    )
+    ota_cluster.image_block_response = mock.CoroutineMock()
 
     await _ota_image_block(
         ota_cluster, has_image=True, correct_version=True, wrong_offset=True
@@ -372,11 +341,8 @@ async def test_ota_handle_image_block_wrong_offset(ota_cluster):
     assert len(ota_cluster.image_block_response.call_args[0]) == 1
 
 
-@pytest.mark.asyncio
 async def test_ota_handle_upgrade_end(ota_cluster):
-    ota_cluster.upgrade_end_response = mock.MagicMock(
-        side_effect=asyncio.coroutine(mock.MagicMock())
-    )
+    ota_cluster.upgrade_end_response = mock.CoroutineMock()
 
     await ota_cluster._handle_upgrade_end(
         mock.sentinel.status,

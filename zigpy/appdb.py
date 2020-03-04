@@ -9,7 +9,6 @@ import zigpy.types as t
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zdo import types as zdo_t
 
-
 LOGGER = logging.getLogger(__name__)
 
 DB_VERSION = 0x0002
@@ -74,6 +73,9 @@ class PersistingListener:
         self._save_device_relays_update(device.ieee, t.Relays(relays).serialize())
 
     def attribute_updated(self, cluster, attrid, value):
+        if cluster.endpoint.device.status != zigpy.device.Status.ENDPOINTS_INIT:
+            return
+
         self._save_attribute(
             cluster.endpoint.device.ieee,
             cluster.endpoint.endpoint_id,

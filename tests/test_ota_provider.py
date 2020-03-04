@@ -3,10 +3,8 @@ import os.path
 from unittest import mock
 import uuid
 
-import pytest
 from asynctest import CoroutineMock, patch
-
-
+import pytest
 import zigpy.ota
 import zigpy.ota.image
 import zigpy.ota.provider as ota_p
@@ -103,18 +101,15 @@ def test_expiration(ikea_prov):
     assert ikea_prov.expired
 
 
-@pytest.mark.asyncio
 async def test_initialize_provider(basic_prov):
     await basic_prov.initialize_provider(mock.sentinel.ota_dir)
 
 
-@pytest.mark.asyncio
 async def test_basic_refresh_firmware_list(basic_prov):
     with pytest.raises(NotImplementedError):
         await basic_prov.refresh_firmware_list()
 
 
-@pytest.mark.asyncio
 async def test_basic_get_image(basic_prov, key):
     image = mock.MagicMock()
     image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
@@ -163,7 +158,6 @@ def test_basic_enable_provider(key):
     assert basic_prov.is_enabled is False
 
 
-@pytest.mark.asyncio
 async def test_basic_get_image_filtered(basic_prov, key):
     image = mock.MagicMock()
     image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
@@ -181,7 +175,6 @@ async def test_basic_get_image_filtered(basic_prov, key):
     assert image.fetch_image.call_count == 0
 
 
-@pytest.mark.asyncio
 async def test_ikea_init_no_ota_dir(ikea_prov):
     ikea_prov.enable = mock.MagicMock()
     ikea_prov.refresh_firmware_list = CoroutineMock()
@@ -192,7 +185,6 @@ async def test_ikea_init_no_ota_dir(ikea_prov):
     assert ikea_prov.refresh_firmware_list.call_count == 0
 
 
-@pytest.mark.asyncio
 async def test_ikea_init_ota_dir(ikea_prov, tmpdir):
     ikea_prov.enable = mock.MagicMock()
     ikea_prov.refresh_firmware_list = CoroutineMock()
@@ -211,7 +203,6 @@ async def test_ikea_init_ota_dir(ikea_prov, tmpdir):
     assert ikea_prov.refresh_firmware_list.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_ikea_get_image_no_cache(ikea_prov, ikea_image):
     ikea_image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
     ikea_prov._cache = mock.MagicMock()
@@ -236,7 +227,6 @@ async def test_ikea_get_image_no_cache(ikea_prov, ikea_image):
     assert ikea_image.fetch_image.call_count == 0
 
 
-@pytest.mark.asyncio
 async def test_ikea_get_image(ikea_prov, key, ikea_image):
     ikea_image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
     ikea_prov._cache = mock.MagicMock()
@@ -250,7 +240,6 @@ async def test_ikea_get_image(ikea_prov, key, ikea_image):
     assert ikea_image.fetch_image.call_count == 1
 
 
-@pytest.mark.asyncio
 @patch("aiohttp.ClientSession.get")
 async def test_ikea_refresh_list(mock_get, ikea_prov, ikea_image_with_version):
     ver1, img_type1 = (0x12345678, mock.sentinel.img_type_1)
@@ -310,7 +299,6 @@ async def test_ikea_refresh_list(mock_get, ikea_prov, ikea_image_with_version):
     assert not ikea_prov.expired
 
 
-@pytest.mark.asyncio
 @patch("aiohttp.ClientSession.get")
 async def test_ikea_refresh_list_locked(mock_get, ikea_prov, ikea_image_with_version):
     await ikea_prov._locks[ota_p.LOCK_REFRESH].acquire()
@@ -321,7 +309,6 @@ async def test_ikea_refresh_list_locked(mock_get, ikea_prov, ikea_image_with_ver
     assert mock_get.call_count == 0
 
 
-@pytest.mark.asyncio
 @patch("aiohttp.ClientSession.get")
 async def test_ikea_fetch_image(mock_get, ikea_image_with_version):
     data = bytes.fromhex(
@@ -398,14 +385,12 @@ def test_filestore_scan_uncaught_exc(file_image_name):
     assert mock_file.call_args[0][0] == ota_file
 
 
-@pytest.mark.asyncio
 async def test_filestore_fetch_image(file_image):
     r = await ota_p.FileImage.fetch_image(file_image)
 
     assert isinstance(r, zigpy.ota.image.OTAImage)
 
 
-@pytest.mark.asyncio
 async def test_filestore_fetch_image_exc(file_image):
     with mock.patch("builtins.open", mock.mock_open()) as mock_file:
         mock_file.side_effect = IOError()
@@ -424,7 +409,6 @@ async def test_filestore_fetch_image_exc(file_image):
         assert mock_file.call_args[0][0] == file_image.file_name
 
 
-@pytest.mark.asyncio
 async def test_filestore_fetch_uncaught_exc(file_image):
     with pytest.raises(RuntimeError):
         with mock.patch("builtins.open", mock.mock_open()) as mock_file:
@@ -454,7 +438,6 @@ def test_filestore_validate_ota_dir(tmpdir):
     assert file_prov.validate_ota_dir(file_path) is None
 
 
-@pytest.mark.asyncio
 async def test_filestore_init_provider_success(file_prov):
     file_prov.enable = mock.MagicMock()
     file_prov.refresh_firmware_list = CoroutineMock()
@@ -468,7 +451,6 @@ async def test_filestore_init_provider_success(file_prov):
     assert file_prov.refresh_firmware_list.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_filestore_init_provider_failure(file_prov):
     file_prov.enable = mock.MagicMock()
     file_prov.refresh_firmware_list = CoroutineMock()
@@ -482,7 +464,6 @@ async def test_filestore_init_provider_failure(file_prov):
     assert file_prov.refresh_firmware_list.call_count == 0
 
 
-@pytest.mark.asyncio
 async def test_filestore_refresh_firmware_list(
     file_prov, file_image_with_version, monkeypatch
 ):
@@ -515,7 +496,6 @@ async def test_filestore_refresh_firmware_list(
     assert len(file_prov._cache) == len([img for img in images if img])
 
 
-@pytest.mark.asyncio
 async def test_filestore_refresh_firmware_list_2(
     file_prov, file_image_with_version, monkeypatch
 ):
@@ -540,7 +520,6 @@ async def test_filestore_refresh_firmware_list_2(
     assert file_prov._cache[image_1.key].version == ver
 
 
-@pytest.mark.asyncio
 async def test_filestore_refresh_firmware_list_3(
     file_prov, file_image_with_version, monkeypatch
 ):
@@ -565,7 +544,6 @@ async def test_filestore_refresh_firmware_list_3(
     assert file_prov._cache[image_1.key].version == ver
 
 
-@pytest.mark.asyncio
 async def test_filestore_refresh_firmware_list_4(
     file_prov, file_image_with_version, monkeypatch
 ):
@@ -622,7 +600,6 @@ def ledvance_key():
     return zigpy.ota.image.ImageKey(LEDVANCE_ID, LEDVANCE_IMAGE_TYPE)
 
 
-@pytest.mark.asyncio
 async def test_ledvance_init_no_ota_dir(ledvance_prov):
     ledvance_prov.enable = mock.MagicMock()
     ledvance_prov.refresh_firmware_list = CoroutineMock()
@@ -633,7 +610,6 @@ async def test_ledvance_init_no_ota_dir(ledvance_prov):
     assert ledvance_prov.refresh_firmware_list.call_count == 0
 
 
-@pytest.mark.asyncio
 async def test_ledvance_init_ota_dir(ledvance_prov, tmpdir):
     ledvance_prov.enable = mock.MagicMock()
     ledvance_prov.refresh_firmware_list = CoroutineMock()
@@ -652,7 +628,6 @@ async def test_ledvance_init_ota_dir(ledvance_prov, tmpdir):
     assert ledvance_prov.refresh_firmware_list.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_ledvance_get_image_no_cache(ledvance_prov, ledvance_image):
     ledvance_image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
     ledvance_prov._cache = mock.MagicMock()
@@ -668,7 +643,6 @@ async def test_ledvance_get_image_no_cache(ledvance_prov, ledvance_image):
     assert ledvance_image.fetch_image.call_count == 0
 
 
-@pytest.mark.asyncio
 async def test_ledvance_get_image(ledvance_prov, ledvance_key, ledvance_image):
     ledvance_image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
     ledvance_prov._cache = mock.MagicMock()
@@ -682,7 +656,6 @@ async def test_ledvance_get_image(ledvance_prov, ledvance_key, ledvance_image):
     assert ledvance_image.fetch_image.call_count == 1
 
 
-@pytest.mark.asyncio
 @patch("aiohttp.ClientSession.get")
 async def test_ledvance_refresh_list(
     mock_get, ledvance_prov, ledvance_image_with_version
@@ -756,7 +729,6 @@ async def test_ledvance_refresh_list(
     assert not ledvance_prov.expired
 
 
-@pytest.mark.asyncio
 @patch("aiohttp.ClientSession.get")
 async def test_ledvance_refresh_list_locked(
     mock_get, ledvance_prov, ledvance_image_with_version
@@ -769,7 +741,6 @@ async def test_ledvance_refresh_list_locked(
     assert mock_get.call_count == 0
 
 
-@pytest.mark.asyncio
 @patch("aiohttp.ClientSession.get")
 async def test_ledvance_fetch_image(mock_get, ledvance_image_with_version):
     data = bytes.fromhex(

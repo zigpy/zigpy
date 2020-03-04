@@ -1,8 +1,8 @@
-from unittest import mock
+import asyncio
+import logging
 
-from asynctest import CoroutineMock
+from asynctest import CoroutineMock, mock
 import pytest
-
 from zigpy import util
 
 
@@ -80,20 +80,17 @@ async def _test_retry(exception, retry_exceptions, n):
     return counter
 
 
-@pytest.mark.asyncio
 async def test_retry_no_retries():
     counter = await _test_retry(Exception, Exception, 0)
     assert counter == 1
 
 
-@pytest.mark.asyncio
 async def test_retry_always():
     with pytest.raises(ValueError) as exc_info:
         await _test_retry(ValueError, (IndexError, ValueError), 999)
     assert exc_info.value._counter == 3
 
 
-@pytest.mark.asyncio
 async def test_retry_once():
     counter = await _test_retry(ValueError, ValueError, 1)
     assert counter == 2
@@ -116,33 +113,28 @@ async def _test_retryable(exception, retry_exceptions, n, tries=3, delay=0.001):
     return counter
 
 
-@pytest.mark.asyncio
 async def test_retryable_no_retry():
     counter = await _test_retryable(Exception, Exception, 0, 0, 0)
     assert counter == 1
 
 
-@pytest.mark.asyncio
 async def test_retryable_exception_no_retry():
     with pytest.raises(Exception) as exc_info:
         await _test_retryable(Exception, Exception, 1, 0, 0)
     assert exc_info.value._counter == 1
 
 
-@pytest.mark.asyncio
 async def test_retryable_no_retries():
     counter = await _test_retryable(Exception, Exception, 0)
     assert counter == 1
 
 
-@pytest.mark.asyncio
 async def test_retryable_always():
     with pytest.raises(ValueError) as exc_info:
         await _test_retryable(ValueError, (IndexError, ValueError), 999)
     assert exc_info.value._counter == 3
 
 
-@pytest.mark.asyncio
 async def test_retryable_once():
     counter = await _test_retryable(ValueError, ValueError, 1)
     assert counter == 2
@@ -333,7 +325,6 @@ def test_fail_convert_install_code():
     assert key is None
 
 
-@pytest.mark.asyncio
 async def test_async_listener():
     listenable = Listenable()
 
@@ -385,7 +376,7 @@ def test_requests(monkeypatch):
     assert req_mock.call_count == 1
 
 
-def test_request():
+async def test_request():
     pending = util.Requests()
     seq = 0x11
 
@@ -412,3 +403,76 @@ def test_request():
     assert req.result.done() is True
     assert req.result.cancelled() is False
     assert seq not in pending
+
+
+class _ClusterMock(util.CatchingTaskMixin):
+    """Test class."""
+
+    def __init__(self, logger):
+        logger.setLevel(logging.DEBUG)
+        self._logger = logger
+
+    def log(self, lvl, msg, *args, **kwargs):
+        return self._logger.log(lvl, msg, *args, **kwargs)
+
+    async def a(self, exception=None):
+        self.debug("test a")
+        return await self._b(exception)
+
+    async def _b(self, exception):
+        self.warning("test b")
+        if exception is None:
+            return True
+        raise exception()
+
+
+@mock.patch("zigpy.util.CatchingTaskMixin._catching_coro")
+async def test_create_catching_task(catching_coro_mock):
+    """Test catching task."""
+    mock_cluster = _ClusterMock(logging.getLogger(__name__))
+    coro = CoroutineMock()
+    mock_cluster.create_catching_task(coro)
+    assert catching_coro_mock.call_count == 1
+    assert catching_coro_mock.call_args[0][0] is coro
+
+
+async def test_catching_coro(caplog):
+    """Test _catching_coro no exception."""
+    caplog.set_level(level=logging.DEBUG)
+    mock_cluster = _ClusterMock(logging.getLogger(__name__))
+    await mock_cluster._catching_coro(mock_cluster.a())
+    assert caplog.records[0].levelno == logging.DEBUG
+    assert caplog.records[0].message == "test a"
+    assert caplog.records[1].levelno == logging.WARNING
+    assert caplog.records[1].message == "test b"
+    assert len(caplog.records) == 2
+
+
+@pytest.mark.parametrize("exception", [None, asyncio.TimeoutError])
+async def test_catching_task_expected_exception(exception, caplog):
+    """Test CatchingTaskMixin allowed exceptions."""
+    mock_cluster = _ClusterMock(logging.getLogger("expected_exceptions"))
+    await mock_cluster._catching_coro(
+        mock_cluster.a(asyncio.TimeoutError), exceptions=exception
+    )
+    assert caplog.records[0].levelno == logging.DEBUG
+    assert caplog.records[0].message == "test a"
+    assert caplog.records[1].levelno == logging.WARNING
+    assert caplog.records[1].message == "test b"
+    assert len(caplog.records) == 2
+
+
+@pytest.mark.parametrize(
+    "to_raise, exception", [(RuntimeError, None), (asyncio.TimeoutError, RuntimeError)]
+)
+async def test_catching_task_unexpected_exception(to_raise, exception, caplog):
+    """Test CatchingTaskMixin unexpected exceptions."""
+    mock_cluster = _ClusterMock(logging.getLogger("unexpected_exceptions"))
+    await mock_cluster._catching_coro(mock_cluster.a(to_raise), exceptions=exception)
+    assert caplog.records[0].levelno == logging.DEBUG
+    assert caplog.records[0].message == "test a"
+    assert caplog.records[1].levelno == logging.WARNING
+    assert caplog.records[1].message == "test b"
+    assert caplog.records[2].levelno == logging.ERROR
+    assert caplog.records[2].message.startswith("Traceback (most recent call last)")
+    assert len(caplog.records) == 3

@@ -5,9 +5,9 @@ import logging
 from typing import Optional
 
 import attr
+from zigpy.ota.image import ImageKey, OTAImage
 import zigpy.ota.provider
 import zigpy.util
-from zigpy.ota.image import ImageKey, OTAImage
 
 LOGGER = logging.getLogger(__name__)
 

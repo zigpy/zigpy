@@ -1,11 +1,15 @@
+import abc
 import asyncio
 import functools
+import inspect
 import logging
-from crccheck.crc import CrcX25
-from Crypto.Cipher import AES
+import traceback
+from typing import Any, Coroutine, Optional, Tuple, Type, Union
 
-import zigpy.types as t
+from Crypto.Cipher import AES
+from crccheck.crc import CrcX25
 from zigpy.exceptions import DeliveryError
+import zigpy.types as t
 
 LOGGER = logging.getLogger(__name__)
 
@@ -64,8 +68,12 @@ class ListenableMixin:
 
 
 class LocalLogMixin:
+    @abc.abstractmethod
+    def log(self, lvl: int, msg: str, *args, **kwargs):  # pragma: no cover
+        pass
+
     def exception(self, msg, *args, **kwargs):
-        return self.log(logging.ERROR, msg, *args, {**kwargs, "exc_info": True})
+        return self.log(logging.ERROR, msg, *args, **kwargs)
 
     def debug(self, msg, *args, **kwargs):
         return self.log(logging.DEBUG, msg, *args, **kwargs)
@@ -237,3 +245,36 @@ class Requests(dict):
     def new(self, sequence: t.uint8_t) -> Request:
         """Wrap new request into a context manager."""
         return Request(self, sequence)
+
+
+class CatchingTaskMixin(LocalLogMixin):
+    """Allow creating tasks suppressing exceptions."""
+
+    def create_catching_task(
+        self,
+        target: Coroutine,
+        exceptions: Optional[Union[Type[Exception], Tuple]] = None,
+    ) -> None:
+        """Create a task."""
+        asyncio.ensure_future(self._catching_coro(target, exceptions))
+
+    async def _catching_coro(
+        self,
+        target: Coroutine,
+        exceptions: Optional[Union[Type[Exception], Tuple]] = None,
+    ) -> Any:
+        """Wrap a target coro and catch specified exceptions."""
+        if exceptions is None:
+            exceptions = (asyncio.TimeoutError, DeliveryError)
+
+        try:
+            return await target
+        except exceptions:
+            pass
+        except Exception:  # pylint: disable=broad-except
+            # Do not print the wrapper in the traceback
+            frames = len(inspect.trace()) - 1
+            exc_msg = traceback.format_exc(-frames)
+            self.exception("%s", exc_msg)
+
+        return None

@@ -1,7 +1,7 @@
-from zigpy.quirks.registry import DeviceRegistry, SIG_MODELS_INFO
+from unittest import mock
 
 import pytest
-from unittest import mock
+from zigpy.quirks.registry import SIG_MODELS_INFO, DeviceRegistry
 
 
 class FakeDevice:

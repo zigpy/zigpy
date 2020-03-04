@@ -1,25 +1,28 @@
 import asyncio
-from unittest import mock
 
-from asynctest import CoroutineMock
+from asynctest import CoroutineMock, mock
 import pytest
 from zigpy import device, endpoint
-from zigpy.application import ControllerApplication
+import zigpy.application
 import zigpy.exceptions
+from zigpy.profiles import zha
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
 
 @pytest.fixture
-def dev(monkeypatch):
+def app():
+    """Controller Application mock."""
+    return mock.MagicMock(spec_set=zigpy.application.ControllerApplication)
+
+
+@pytest.fixture
+def dev(monkeypatch, app):
     monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
-    app_mock = mock.MagicMock(spec_set=ControllerApplication)
-    app_mock.remove.side_effect = asyncio.coroutine(mock.MagicMock())
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
-    return device.Device(app_mock, ieee, 65535)
+    return device.Device(app, ieee, 65535)
 
 
-@pytest.mark.asyncio
 async def test_initialize(monkeypatch, dev):
     async def mockrequest(nwk, tries=None, delay=None):
         return [0, None, [1, 2]]
@@ -29,9 +32,6 @@ async def test_initialize(monkeypatch, dev):
         return
 
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
-    gnd = asyncio.coroutine(mock.MagicMock())
-    dev.get_node_descriptor = mock.MagicMock(side_effect=gnd)
-
     dev.zdo.Active_EP_req = mockrequest
     await dev._initialize()
 
@@ -41,20 +41,17 @@ async def test_initialize(monkeypatch, dev):
     assert dev._application.device_initialized.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_initialize_fail(dev):
     async def mockrequest(nwk, tries=None, delay=None):
         return [1]
 
     dev.zdo.Active_EP_req = mockrequest
-    gnd = asyncio.coroutine(mock.MagicMock())
-    dev.get_node_descriptor = mock.MagicMock(side_effect=gnd)
     await dev._initialize()
 
     assert dev.status == device.Status.NEW
 
 
-@pytest.mark.asyncio
+@mock.patch("zigpy.device.Device.get_node_descriptor", mock.CoroutineMock())
 async def test_initialize_ep_failed(monkeypatch, dev):
     async def mockrequest(req, nwk, tries=None, delay=None):
         return [0, None, [1, 2]]
@@ -73,7 +70,6 @@ async def test_initialize_ep_failed(monkeypatch, dev):
     assert dev.application.remove.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_request(dev):
     seq = mock.sentinel.tsn
 
@@ -89,7 +85,6 @@ async def test_request(dev):
     assert dev.last_seen is not None
 
 
-@pytest.mark.asyncio
 async def test_failed_request(dev):
     assert dev.last_seen is None
     dev._application.request = CoroutineMock(return_value=(1, "error"))
@@ -117,11 +112,11 @@ def test_deserialize(dev):
     assert ep.deserialize.call_count == 1
 
 
-def test_handle_message_no_endpoint(dev):
+async def test_handle_message_no_endpoint(dev):
     dev.handle_message(99, 98, 97, 97, b"aabbcc")
 
 
-def test_handle_message(dev):
+async def test_handle_message(dev):
     ep = dev.add_endpoint(3)
     hdr = mock.MagicMock()
     hdr.tsn = mock.sentinel.tsn
@@ -132,7 +127,7 @@ def test_handle_message(dev):
     assert ep.handle_message.call_count == 1
 
 
-def test_handle_message_reply(dev):
+async def test_handle_message_reply(dev):
     ep = dev.add_endpoint(3)
     ep.handle_message = mock.MagicMock()
     tsn = mock.sentinel.tsn
@@ -172,7 +167,7 @@ def test_handle_message_reply(dev):
     assert req_mock.result.set_result.call_count == 1
 
 
-def test_handle_message_deserialize_error(dev):
+async def test_handle_message_deserialize_error(dev):
     ep = dev.add_endpoint(3)
     dev.deserialize = mock.MagicMock(side_effect=ValueError)
     ep.handle_message = mock.MagicMock()
@@ -188,12 +183,7 @@ def test_endpoint_getitem(dev):
         dev[1]
 
 
-@pytest.mark.asyncio
-async def test_broadcast():
-    from zigpy.profiles import zha
-
-    app = mock.MagicMock()
-    app.broadcast.side_effect = asyncio.coroutine(mock.MagicMock())
+async def test_broadcast(app):
     app.ieee = t.EUI64(map(t.uint8_t, [8, 9, 10, 11, 12, 13, 14, 15]))
 
     (profile, cluster, src_ep, dst_ep, data) = (
@@ -225,7 +215,6 @@ async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
     return await dev.get_node_descriptor()
 
 
-@pytest.mark.asyncio
 async def test_get_node_descriptor(dev):
     nd = await _get_node_descriptor(dev, zdo_success=True, request_success=True)
 
@@ -234,7 +223,6 @@ async def test_get_node_descriptor(dev):
     assert dev.zdo.Node_Desc_req.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_get_node_descriptor_no_reply(dev):
     nd = await _get_node_descriptor(dev, zdo_success=True, request_success=False)
 
@@ -242,7 +230,6 @@ async def test_get_node_descriptor_no_reply(dev):
     assert dev.zdo.Node_Desc_req.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_get_node_descriptor_fail(dev):
     nd = await _get_node_descriptor(dev, zdo_success=False, request_success=True)
 
@@ -250,7 +237,6 @@ async def test_get_node_descriptor_fail(dev):
     assert dev.zdo.Node_Desc_req.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_add_to_group(dev, monkeypatch):
     grp_id, grp_name = 0x1234, "test group 0x1234"
     epmock = mock.MagicMock(spec_set=endpoint.Endpoint)
@@ -266,7 +252,6 @@ async def test_add_to_group(dev, monkeypatch):
     assert epmock.add_to_group.call_args[0][1] == grp_name
 
 
-@pytest.mark.asyncio
 async def test_remove_from_group(dev, monkeypatch):
     grp_id = 0x1234
     epmock = mock.MagicMock(spec_set=endpoint.Endpoint)

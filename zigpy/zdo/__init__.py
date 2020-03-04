@@ -1,4 +1,3 @@
-import asyncio
 import functools
 import logging
 
@@ -7,11 +6,10 @@ import zigpy.util
 
 from . import types
 
-
 LOGGER = logging.getLogger(__name__)
 
 
-class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
+class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
     """The ZDO endpoint of a device"""
 
     def __init__(self, device):
@@ -50,21 +48,22 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if tsn is None:
             tsn = self.device.application.get_sequence()
         data = t.uint8_t(tsn).serialize() + data
-        loop = asyncio.get_event_loop()
-        loop.create_task(
-            self._device.reply(0, command, 0, 0, tsn, data, use_ieee=use_ieee)
-        )
+        return self._device.reply(0, command, 0, 0, tsn, data, use_ieee=use_ieee)
 
     def handle_message(self, profile, cluster, hdr, args):
         self.debug("ZDO request %s: %s", hdr.command_id, args)
         app = self._device.application
         if hdr.command_id == types.ZDOCmd.NWK_addr_req:
             if app.ieee == args[0]:
-                self.NWK_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
+                self.create_catching_task(
+                    self.NWK_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
+                )
         elif hdr.command_id == types.ZDOCmd.IEEE_addr_req:
             broadcast = (0xFFFF, 0xFFFD, 0xFFFC)
             if args[0] in broadcast or app.nwk == args[0]:
-                self.IEEE_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
+                self.create_catching_task(
+                    self.IEEE_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
+                )
         elif hdr.command_id == types.ZDOCmd.Match_Desc_req:
             self.handle_match_desc(*args, tsn=hdr.tsn)
         elif hdr.command_id == types.ZDOCmd.Device_annce:
@@ -77,9 +76,12 @@ class ZDO(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def handle_match_desc(self, addr, profile, in_clusters, out_clusters, *, tsn=None):
         local_addr = self._device.application.nwk
         if profile != 260:
-            return self.Match_Desc_rsp(0, local_addr, [], tsn=tsn)
+            self.create_catching_task(self.Match_Desc_rsp(0, local_addr, [], tsn=tsn))
+            return
 
-        return self.Match_Desc_rsp(0, local_addr, [t.uint8_t(1)], tsn=tsn)
+        self.create_catching_task(
+            self.Match_Desc_rsp(0, local_addr, [t.uint8_t(1)], tsn=tsn)
+        )
 
     def bind(self, cluster):
         return self.Bind_req(

@@ -2,7 +2,6 @@ import itertools
 from unittest import mock
 
 import pytest
-
 import zigpy.device
 import zigpy.endpoint
 import zigpy.quirks
@@ -313,7 +312,7 @@ def test_custom_device():
 
 def test_custom_cluster_idx():
     class TestClusterIdx(zigpy.quirks.CustomCluster):
-        cluster_Id = 0x1234
+        cluster_id = 0x1234
         attributes = {
             0x0000: ("first_attribute", t.uint8_t),
             0x00FF: ("2nd_attribute", t.enum8),
@@ -335,11 +334,11 @@ def test_custom_cluster_idx():
         for cmd_name, cmd_id in getattr(TestClusterIdx, cmd_set_idx).items():
             assert getattr(TestClusterIdx, cmd_set)[cmd_id][0] == cmd_name
 
-    assert hasattr(TestClusterIdx, "_attridx")
-    attr_idx_len = len(TestClusterIdx._attridx)
+    assert hasattr(TestClusterIdx, "attridx")
+    attr_idx_len = len(TestClusterIdx.attridx)
     attrs_len = len(TestClusterIdx.attributes)
     assert attr_idx_len == attrs_len
-    for attr_name, attr_id in TestClusterIdx._attridx.items():
+    for attr_name, attr_id in TestClusterIdx.attridx.items():
         assert TestClusterIdx.attributes[attr_id][0] == attr_name
 
     _test_cmd("server_commands", "_server_command_idx")
