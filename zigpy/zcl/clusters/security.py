@@ -165,8 +165,26 @@ class IasAce(Cluster):
             (t.uint8_t, ZoneStatus, IasAceAudibleNotification, t.CharacterString),
             False,
         ),
-        0x0004: ("panel_status_changed", (IasAcePanelStatus, t.uint8_t, IasAceAudibleNotification, IasAceAlarmStatus), False),
-        0x0005: ("panel_status_response", (IasAcePanelStatus, t.uint8_t, IasAceAudibleNotification, IasAceAlarmStatus), True),
+        0x0004: (
+            "panel_status_changed",
+            (
+                IasAcePanelStatus,
+                t.uint8_t,
+                IasAceAudibleNotification,
+                IasAceAlarmStatus,
+            ),
+            False,
+        ),
+        0x0005: (
+            "panel_status_response",
+            (
+                IasAcePanelStatus,
+                t.uint8_t,
+                IasAceAudibleNotification,
+                IasAceAlarmStatus,
+            ),
+            True,
+        ),
         0x0006: ("set_bypassed_zone_list", (t.LVList(t.uint8_t),), False),
         0x0007: ("bypass_response", (t.LVList(t.uint8_t),), True),
         0x0008: ("get_zone_status_response", (t.Bool, t.LVList(ZoneStatus)), True),
