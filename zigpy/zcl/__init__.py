@@ -2,6 +2,7 @@ import asyncio
 import enum
 import functools
 import logging
+from typing import Optional, Tuple, Union
 
 from zigpy import util
 import zigpy.types as t
@@ -111,7 +112,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
     @util.retryable_request
     def request(
-        self, general, command_id, schema, *args, manufacturer=None, expect_reply=True
+        self,
+        general: bool,
+        command_id: Union[foundation.Command, int, t.uint8_t],
+        schema: Tuple,
+        *args,
+        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        expect_reply: bool = True,
+        tsn: Optional[Union[int, t.uint8_t]] = None,
     ):
         optional = len([s for s in schema if hasattr(s, "optional") and s.optional])
         if len(schema) < len(args) or len(args) < len(schema) - optional:
@@ -125,23 +133,28 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             )
             return error
 
-        sequence = self._endpoint.device.application.get_sequence()
+        if tsn is None:
+            tsn = self._endpoint.device.application.get_sequence()
         if general:
-            hdr = foundation.ZCLHeader.general(sequence, command_id, manufacturer)
+            hdr = foundation.ZCLHeader.general(tsn, command_id, manufacturer)
         else:
-            hdr = foundation.ZCLHeader.cluster(sequence, command_id, manufacturer)
+            hdr = foundation.ZCLHeader.cluster(tsn, command_id, manufacturer)
         hdr.manufacturer = manufacturer
         data = hdr.serialize() + t.serialize(args, schema)
 
         return self._endpoint.request(
-            self.cluster_id,
-            sequence,
-            data,
-            expect_reply=expect_reply,
-            command_id=command_id,
+            self.cluster_id, tsn, data, expect_reply=expect_reply, command_id=command_id
         )
 
-    def reply(self, general, command_id, schema, *args, manufacturer=None, tsn=None):
+    def reply(
+        self,
+        general: bool,
+        command_id: Union[foundation.Command, int, t.uint8_t],
+        schema: Tuple,
+        *args,
+        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        tsn: Optional[Union[int, t.uint8_t]] = None,
+    ):
         if len(schema) != len(args) and foundation.Status not in schema:
             self.debug("Schema and args lengths do not match in reply")
 
@@ -323,20 +336,33 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         cfg.reportable_change = reportable_change
         return self._configure_reporting([cfg], manufacturer=manufacturer)
 
-    def command(self, command, *args, manufacturer=None, expect_reply=True):
-        schema = self.server_commands[command][1]
+    def command(
+        self,
+        command_id: Union[foundation.Command, int, t.uint8_t],
+        *args,
+        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        expect_reply: bool = True,
+        tsn: Optional[Union[int, t.uint8_t]] = None,
+    ):
+        schema = self.server_commands[command_id][1]
         return self.request(
             False,
-            command,
+            command_id,
             schema,
             *args,
             manufacturer=manufacturer,
-            expect_reply=expect_reply
+            expect_reply=expect_reply,
+            tsn=tsn,
         )
 
-    def client_command(self, command, *args, tsn=None):
-        schema = self.client_commands[command][1]
-        return self.reply(False, command, schema, *args, tsn=tsn)
+    def client_command(
+        self,
+        command_id: Union[foundation.Command, int, t.uint8_t],
+        *args,
+        tsn: Optional[Union[int, t.uint8_t]] = None,
+    ):
+        schema = self.client_commands[command_id][1]
+        return self.reply(False, command_id, schema, *args, tsn=tsn)
 
     @property
     def is_client(self) -> bool:
@@ -387,23 +413,30 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         return self.read_attributes([key], allow_cache=True, raw=True)
 
     def general_command(
-        self, cmd, *args, manufacturer=None, expect_reply=True, tries=1, tsn=None
+        self,
+        command_id: Union[foundation.Command, int, t.uint8_t],
+        *args,
+        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        expect_reply: bool = True,
+        tries: int = 1,
+        tsn: Optional[Union[int, t.uint8_t]] = None,
     ):
-        schema = foundation.COMMANDS[cmd][0]
-        if foundation.COMMANDS[cmd][1]:
+        schema = foundation.COMMANDS[command_id][0]
+        if foundation.COMMANDS[command_id][1]:
             # should reply be retryable?
             return self.reply(
-                True, cmd, schema, *args, manufacturer=manufacturer, tsn=tsn
+                True, command_id, schema, *args, manufacturer=manufacturer, tsn=tsn
             )
 
         return self.request(
             True,
-            cmd,
+            command_id,
             schema,
             *args,
             manufacturer=manufacturer,
             expect_reply=expect_reply,
-            tries=tries
+            tries=tries,
+            tsn=tsn,
         )
 
     _configure_reporting = functools.partialmethod(

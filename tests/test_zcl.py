@@ -5,6 +5,8 @@ import zigpy.types as t
 import zigpy.zcl as zcl
 import zigpy.zcl.foundation as foundation
 
+DEFAULT_TSN = 123
+
 
 @pytest.fixture
 def endpoint():
@@ -81,14 +83,15 @@ def test_manufacturer_specific_cluster():
 @pytest.fixture
 def cluster():
     epmock = mock.MagicMock()
-    epmock._device._application.get_sequence.return_value = 123
+    epmock._device.application.get_sequence.return_value = DEFAULT_TSN
+    epmock.device.application.get_sequence.return_value = DEFAULT_TSN
     return zcl.Cluster.from_id(epmock, 0)
 
 
 @pytest.fixture
 def client_cluster():
     epmock = mock.MagicMock()
-    epmock._device._application.get_sequence.return_value = 123
+    epmock._device._application.get_sequence.return_value = DEFAULT_TSN
     return zcl.Cluster.from_id(epmock, 3)
 
 
@@ -379,7 +382,14 @@ def test_configure_reporting_manuf():
     cluster.request = mock.MagicMock(name="request")
     cluster.configure_reporting(0, 10, 20, 1)
     cluster.request.assert_called_with(
-        True, 0x06, mock.ANY, mock.ANY, expect_reply=True, manufacturer=None, tries=1
+        True,
+        0x06,
+        mock.ANY,
+        mock.ANY,
+        expect_reply=True,
+        manufacturer=None,
+        tries=1,
+        tsn=mock.ANY,
     )
 
     cluster.request.reset_mock()
@@ -393,6 +403,7 @@ def test_configure_reporting_manuf():
         expect_reply=True,
         manufacturer=manufacturer_id,
         tries=1,
+        tsn=mock.ANY,
     )
     assert cluster.request.call_count == 1
 
@@ -400,6 +411,13 @@ def test_configure_reporting_manuf():
 def test_command(cluster):
     cluster.command(0x00)
     assert cluster._endpoint.request.call_count == 1
+    assert cluster._endpoint.request.call_args[0][1] == DEFAULT_TSN
+
+
+def test_command_override_tsn(cluster):
+    cluster.command(0x00, tsn=22)
+    assert cluster._endpoint.request.call_count == 1
+    assert cluster._endpoint.request.call_args[0][1] == 22
 
 
 def test_command_attr(cluster):
@@ -453,6 +471,7 @@ def test_general_command(cluster):
         expect_reply=True,
         manufacturer=0x4567,
         tries=1,
+        tsn=mock.ANY,
     )
 
 
