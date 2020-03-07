@@ -379,11 +379,15 @@ def test_ias_zone_type():
 
 def test_ias_ace_audible_notification():
     extra = b"\xaa\x55"
-    notification_type, rest = sec.IasAce.AudibleNotification.deserialize(b"\x00" + extra)
+    notification_type, rest = sec.IasAce.AudibleNotification.deserialize(
+        b"\x00" + extra
+    )
     assert rest == extra
     assert notification_type is sec.IasAce.AudibleNotification.Mute
 
-    notification_type, rest = sec.IasAce.AudibleNotification.deserialize(b"\x81" + extra)
+    notification_type, rest = sec.IasAce.AudibleNotification.deserialize(
+        b"\x81" + extra
+    )
     assert rest == extra
     assert notification_type.name.startswith("manufacturer_specific")
     assert notification_type.value == 0x81
