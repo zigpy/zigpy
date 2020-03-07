@@ -367,11 +367,11 @@ async def test_ota_handle_upgrade_end(ota_cluster):
 
 def test_ias_zone_type():
     extra = b"\xaa\x55"
-    zone, rest = sec.IasZoneType.deserialize(b"\x0d\x00" + extra)
+    zone, rest = sec.IasZone.ZoneType.deserialize(b"\x0d\x00" + extra)
     assert rest == extra
-    assert zone is sec.IasZoneType.Motion_Sensor
+    assert zone is sec.IasZone.ZoneType.Motion_Sensor
 
-    zone, rest = sec.IasZoneType.deserialize(b"\x81\x81" + extra)
+    zone, rest = sec.IasZone.ZoneType.deserialize(b"\x81\x81" + extra)
     assert rest == extra
     assert zone.name.startswith("manufacturer_specific")
     assert zone.value == 0x8181
@@ -379,11 +379,11 @@ def test_ias_zone_type():
 
 def test_ias_ace_audible_notification():
     extra = b"\xaa\x55"
-    notification_type, rest = sec.IasAceAudibleNotification.deserialize(b"\x00" + extra)
+    notification_type, rest = sec.IasAce.AudibleNotification.deserialize(b"\x00" + extra)
     assert rest == extra
-    assert notification_type is sec.IasAceAudibleNotification.Mute
+    assert notification_type is sec.IasAce.AudibleNotification.Mute
 
-    notification_type, rest = sec.IasAceAudibleNotification.deserialize(b"\x81" + extra)
+    notification_type, rest = sec.IasAce.AudibleNotification.deserialize(b"\x81" + extra)
     assert rest == extra
     assert notification_type.name.startswith("manufacturer_specific")
     assert notification_type.value == 0x81
