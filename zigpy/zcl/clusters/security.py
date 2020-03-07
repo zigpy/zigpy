@@ -39,6 +39,72 @@ class IasZoneType(t.enum16, enum.Enum):
             return fake("manufacturer_specific_0x{:04x}".format(val), val), data
 
 
+class IasAceArmMode(t.enum8, enum.Enum):
+    """IAS ACE arm mode enum."""
+
+    Disarm = 0x00
+    Arm_Day_Home_Only = 0x01
+    Arm_Night_Sleep_Only = 0x02
+    Arm_All_Zones = 0x03
+
+
+class IasAceArmNotification(t.enum8, enum.Enum):
+    """IAS ACE arm notification enum."""
+
+    All_Zones_Disarmed = 0x00
+    Only_Day_Home_Zones_Armed = 0x01
+    Only_Night_Sleep_Zones_Armed = 0x02
+    All_Zones_Armed = 0x03
+    Invalid_Arm_Disarm_Code = 0x04
+    Not_Ready_To_Arm = 0x05
+    Already_Disarmed = 0x06
+
+
+class IasAceAudibleNotification(t.enum8, enum.Enum):
+    """IAS ACE audible notification enum."""
+
+    Mute = 0x00
+    Default_Sound = 0x01
+
+    @classmethod
+    def deserialize(cls, data):
+        """Deserialize the audible notification enum."""
+        try:
+            return super().deserialize(data)
+        except ValueError:
+            fake = collections.namedtuple(cls.__name__, "name, value")
+            val, data = t.uint8_t.deserialize(data)
+            return fake("manufacturer_specific_0x{:02x}".format(val), val), data
+
+
+class IasAcePanelStatus(t.enum8, enum.Enum):
+    """IAS ACE panel status enum."""
+
+    Panel_Disarmed = 0x00
+    Armed_Stay = 0x01
+    Armed_Night = 0x02
+    Armed_Away = 0x03
+    Exit_Delay = 0x04
+    Entry_Delay = 0x05
+    Not_Ready_To_Arm = 0x06
+    In_Alarm = 0x07
+    Arming_Stay = 0x08
+    Arming_Night = 0x09
+    Arming_Away = 0x0A
+
+
+class IasAceAlarmStatus(t.enum8, enum.Enum):
+    """IAS ACE alarm status enum."""
+
+    No_Alarm = 0x00
+    Burglar = 0x01
+    Fire = 0x02
+    Emergency = 0x03
+    Police_Panic = 0x04
+    Fire_Panic = 0x05
+    Emergency_Panic = 0x06
+
+
 class IasZone(Cluster):
     cluster_id = 0x0500
     name = "IAS Zone"
@@ -75,7 +141,7 @@ class IasAce(Cluster):
     ep_attribute = "ias_ace"
     attributes = {}
     server_commands = {
-        0x0000: ("arm", (t.enum8, t.CharacterString, t.uint8_t), False),
+        0x0000: ("arm", (IasAceArmMode, t.CharacterString, t.uint8_t), False),
         0x0001: ("bypass", (t.LVList(t.uint8_t), t.CharacterString), False),
         0x0002: ("emergency", (), False),
         0x0003: ("fire", (), False),
@@ -87,20 +153,20 @@ class IasAce(Cluster):
         0x0009: ("get_zone_status", (t.uint8_t, t.uint8_t, t.Bool, t.bitmap16), False),
     }
     client_commands = {
-        0x0000: ("arm_response", (t.enum8,), True),
+        0x0000: ("arm_response", (IasAceArmNotification,), True),
         0x0001: ("get_zone_id_map_response", (t.List(t.bitmap16),), True),
         0x0002: (
             "get_zone_info_response",
-            (t.uint8_t, t.enum16, t.EUI64, t.CharacterString),
+            (t.uint8_t, IasZoneType, t.EUI64, t.CharacterString),
             True,
         ),
         0x0003: (
             "zone_status_changed",
-            (t.uint8_t, t.enum16, t.enum8, t.CharacterString),
+            (t.uint8_t, ZoneStatus, IasAceAudibleNotification, t.CharacterString),
             False,
         ),
-        0x0004: ("panel_status_changed", (t.enum8, t.uint8_t, t.enum8, t.enum8), False),
-        0x0005: ("panel_status_response", (t.enum8, t.uint8_t, t.enum8, t.enum8), True),
+        0x0004: ("panel_status_changed", (IasAcePanelStatus, t.uint8_t, IasAceAudibleNotification, IasAceAlarmStatus), False),
+        0x0005: ("panel_status_response", (IasAcePanelStatus, t.uint8_t, IasAceAudibleNotification, IasAceAlarmStatus), True),
         0x0006: ("set_bypassed_zone_list", (t.LVList(t.uint8_t),), False),
         0x0007: ("bypass_response", (t.LVList(t.uint8_t),), True),
         0x0008: ("get_zone_status_response", (t.Bool, t.LVList(ZoneStatus)), True),
