@@ -1,5 +1,5 @@
 import enum
-from typing import Optional
+from typing import Optional, Union
 
 import zigpy.types as t
 
@@ -536,9 +536,9 @@ class ZCLHeader:
     def __init__(
         self,
         frame_control: FrameControl,
-        tsn: t.uint8_t = 0,
-        command_id: Command = 0,
-        manufacturer: t.uint16_t = None,
+        tsn: Union[int, t.uint8_t] = 0,
+        command_id: Union[Command, int, t.uint8_t] = 0,
+        manufacturer: Optional[Union[int, t.uint16_t]] = None,
     ) -> None:
         """Initialize ZCL Frame instance."""
         self._frc = frame_control
@@ -622,9 +622,9 @@ class ZCLHeader:
     @classmethod
     def general(
         cls,
-        tsn: t.uint8_t,
-        command_id: t.uint8_t,
-        manufacturer: t.uint16_t = None,
+        tsn: Union[int, t.uint8_t],
+        command_id: Union[int, t.uint8_t],
+        manufacturer: Optional[Union[int, t.uint16_t]] = None,
         is_reply: bool = False,
     ) -> "ZCLHeader":
         r = cls(FrameControl.general(is_reply), tsn, command_id, manufacturer)
@@ -635,9 +635,9 @@ class ZCLHeader:
     @classmethod
     def cluster(
         cls,
-        tsn: t.uint8_t,
-        command_id: t.uint8_t,
-        manufacturer: t.uint16_t = None,
+        tsn: Union[int, t.uint8_t],
+        command_id: Union[int, t.uint8_t],
+        manufacturer: Optional[Union[int, t.uint16_t]] = None,
         is_reply: bool = False,
     ) -> "ZCLHeader":
         r = cls(FrameControl.cluster(is_reply), tsn, command_id, manufacturer)
