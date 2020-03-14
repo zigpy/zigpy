@@ -4,7 +4,7 @@ from . import basic
 from .struct import Struct
 
 
-class BroadcastAddress(basic.uint16_t, enum.Enum):
+class BroadcastAddress(basic.enum16):
     ALL_DEVICES = 0xFFFF
     RESERVED_FFFE = 0xFFFE
     RX_ON_WHEN_IDLE = 0xFFFD

@@ -1,9 +1,9 @@
-import enum
+import zigpy.types as t
 
 PROFILE_ID = 260
 
 
-class DeviceType(enum.IntEnum):
+class DeviceType(t.enum16):
     # Generic
     ON_OFF_SWITCH = 0x0000
     LEVEL_CONTROL_SWITCH = 0x0001

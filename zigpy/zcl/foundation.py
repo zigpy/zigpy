@@ -1,10 +1,9 @@
-import enum
 from typing import Optional, Union
 
 import zigpy.types as t
 
 
-class Status(t.uint8_t, enum.Enum):
+class Status(t.enum8):
     SUCCESS = 0x00  # Operation was successful.
     FAILURE = 0x01  # Operation was not successful
     NOT_AUTHORIZED = 0x7E  # The sender of the command does not have
@@ -42,13 +41,6 @@ class Status(t.uint8_t, enum.Enum):
     SOFTWARE_FAILURE = 0xC1  # An operation was unsuccessful due to a
     CALIBRATION_ERROR = 0xC2  # An error occurred during calibration
     UNSUPPORTED_CLUSTER = 0xC3  # The cluster is not supported
-
-    @classmethod
-    def deserialize(cls, data):
-        try:
-            return super().deserialize(data)
-        except ValueError:
-            return t.uint8_t.deserialize(data)
 
 
 class Analog:
@@ -317,15 +309,10 @@ class DiscoverAttributesResponseRecord(t.Struct):
     _fields = [("attrid", t.uint16_t), ("datatype", t.uint8_t)]
 
 
-class AttributeAccessControl(t.uint8_t, enum.Enum):
-    NO_ACCESS = 0b000
-    REPORT = 0b001
-    WRITE = 0b010
-    WRITE_REPORT = 0b011
-    READ = 0b100
-    READ_REPORT = 0b101
-    READ_WRITE = 0b110
-    READ_WRITE_REPORT = 0b111
+class AttributeAccessControl(t.bitmap8):
+    READ = 0x01
+    WRITE = 0x02
+    REPORT = 0x04
 
 
 class DiscoverAttributesExtendedResponseRecord(t.Struct):
@@ -336,7 +323,7 @@ class DiscoverAttributesExtendedResponseRecord(t.Struct):
     ]
 
 
-class Command(t.uint8_t, enum.Enum):
+class Command(t.enum8):
     """ZCL Foundation Global Command IDs."""
 
     Read_Attributes = 0x00
@@ -362,13 +349,6 @@ class Command(t.uint8_t, enum.Enum):
     Discover_Commands_Generated_rsp = 0x14
     Discover_Attribute_Extended = 0x15
     Discover_Attribute_Extended_rsp = 0x16
-
-    @classmethod
-    def deserialize(cls, data):
-        try:
-            return super().deserialize(data)
-        except ValueError:
-            return t.uint8_t.deserialize(data)
 
 
 COMMANDS = {
@@ -411,7 +391,7 @@ COMMANDS = {
 }
 
 
-class FrameType(enum.IntEnum):
+class FrameType(t.enum8):
     """ZCL Frame Type."""
 
     GLOBAL_COMMAND = 0b00
