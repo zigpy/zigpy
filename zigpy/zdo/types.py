@@ -230,6 +230,41 @@ class Routes(t.Struct):
     ]
 
 
+class NwkUpdate(t.Struct):
+    _fields = [
+        ("ScanChannels", t.Channels),
+        ("ScanDuration", t.uint8_t),
+        ("ScanCount", t.uint8_t),
+        ("nwkUpdateId", t.uint8_t),
+        ("nwkManagerAddr", t.NWK),
+    ]
+
+    def serialize(self) -> bytes:
+        """Serialize data."""
+        r = self.ScanChannels.serialize() + self.ScanDuration.serialize()
+        if self.ScanDuration <= 0x05:
+            r += self.ScanCount.serialize()
+        if self.ScanDuration >= 0xFE:
+            r += self.nwkUpdateId.serialize()
+        if self.ScanDuration == 0xFF:
+            r += self.nwkManagerAddr.serialize()
+        return r
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> typing.Tuple["NwkUpdate", bytes]:
+        """Deserialize data."""
+        r = cls()
+        r.ScanChannels, data = t.Channels.deserialize(data)
+        r.ScanDuration, data = t.uint8_t.deserialize(data)
+        if r.ScanDuration <= 0x05:
+            r.ScanCount, data = t.uint8_t.deserialize(data)
+        if r.ScanDuration >= 0xFE:
+            r.nwkUpdateId, data = t.uint8_t.deserialize(data)
+        if r.ScanDuration == 0xFF:
+            r.nwkManagerAddr, data = t.NWK.deserialize(data)
+        return r, data
+
+
 class Status(t.enum8):
     # The requested operation or transmission was completed successfully.
     SUCCESS = 0x00
@@ -312,6 +347,7 @@ class ZDOCmd(t.enum_factory(_CommandID)):
     # ... TODO optional stuff ...
     Mgmt_Leave_req = 0x0034
     Mgmt_Permit_Joining_req = 0x0036
+    Mgmt_NWK_Update_req = 0x0038
     # ... TODO optional stuff ...
 
     # Responses
@@ -350,6 +386,7 @@ class ZDOCmd(t.enum_factory(_CommandID)):
     Mgmt_Leave_rsp = 0x8034
     Mgmt_Permit_Joining_rsp = 0x8036
     # ... TODO optional stuff ...
+    Mgmt_NWK_Update_rsp = 0x8038
 
 
 CLUSTERS = {
@@ -430,6 +467,7 @@ CLUSTERS = {
         ("PermitDuration", t.uint8_t),
         ("TC_Significant", t.Bool),
     ),
+    ZDOCmd.Mgmt_NWK_Update_req: (("NwkUpdate", NwkUpdate),),
     # ... TODO optional stuff ...
     # Responses
     # Device and Service Discovery Server Responses
@@ -516,6 +554,13 @@ CLUSTERS = {
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Leave_rsp: (STATUS,),
     ZDOCmd.Mgmt_Permit_Joining_rsp: (STATUS,),
+    ZDOCmd.Mgmt_NWK_Update_rsp: (
+        STATUS,
+        ("ScannedChannels", t.Channels),
+        ("TotalTransmissions", t.uint16_t),
+        ("TransmissionFailures", t.uint16_t),
+        ("EnergyValues", t.LVList(t.uint8_t)),
+    )
     # ... TODO optional stuff ...
 }
 
