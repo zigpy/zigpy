@@ -1,4 +1,3 @@
-import enum
 import typing
 
 import zigpy.types as t
@@ -34,7 +33,7 @@ class SizePrefixedSimpleDescriptor(SimpleDescriptor):
         return SimpleDescriptor.deserialize(data[1:])
 
 
-class LogicalType(t.uint8_t, enum.Enum):
+class LogicalType(t.enum8):
     Coordinator = 0b000
     Router = 0b001
     EndDevice = 0b010
@@ -231,7 +230,7 @@ class Routes(t.Struct):
     ]
 
 
-class Status(t.uint8_t, enum.Enum):
+class Status(t.enum8):
     # The requested operation or transmission was completed successfully.
     SUCCESS = 0x00
     # The supplied request type was invalid.
@@ -267,13 +266,6 @@ class Status(t.uint8_t, enum.Enum):
     # request is not authorized from this device.
     NOT_AUTHORIZED = 0x8D
 
-    @classmethod
-    def deserialize(cls, data):
-        try:
-            return super().deserialize(data)
-        except ValueError:
-            return t.uint8_t.deserialize(data)
-
 
 NWK = ("NWKAddr", t.NWK)
 NWKI = ("NWKAddrOfInterest", t.NWK)
@@ -285,7 +277,7 @@ class _CommandID(t.HexRepr, t.uint16_t):
     _hex_len = 4
 
 
-class ZDOCmd(_CommandID, enum.Enum):
+class ZDOCmd(t.enum_factory(_CommandID)):
     # Device and Service Discovery Server Requests
     NWK_addr_req = 0x0000
     IEEE_addr_req = 0x0001
@@ -539,10 +531,7 @@ class ZDOHeader:
     """Just a wrapper representing ZDO header, similar to ZCL header."""
 
     def __init__(self, command_id: t.uint16_t = 0x0000, tsn: t.uint8_t = 0) -> None:
-        try:
-            self._command_id = ZDOCmd(command_id)
-        except ValueError:
-            self._command_id = t.uint16_t(command_id)
+        self._command_id = ZDOCmd(command_id)
         self._tsn = t.uint8_t(tsn)
 
     @property
@@ -553,12 +542,7 @@ class ZDOHeader:
     @command_id.setter
     def command_id(self, value: t.uint16_t) -> None:
         """Command ID setter."""
-        try:
-            self._command_id = ZDOCmd(value)
-            return
-        except ValueError:
-            pass
-        self._command_id = t.uint16_t(value)
+        self._command_id = ZDOCmd(value)
 
     @property
     def is_reply(self) -> bool:

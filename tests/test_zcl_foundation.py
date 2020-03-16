@@ -159,7 +159,9 @@ def test_status_undef():
     status, rest = foundation.Status.deserialize(data + extra)
     assert rest == extra
     assert status == 0xAA
-    assert not isinstance(status, foundation.Status)
+    assert status.value == 0xAA
+    assert status.name == "undefined_0xaa"
+    assert isinstance(status, foundation.Status)
 
 
 def test_frame_control():

@@ -154,7 +154,9 @@ def test_status_undef():
     status, rest = types.Status.deserialize(data + extra)
     assert rest == extra
     assert status == 0xAA
-    assert not isinstance(status, types.Status)
+    assert status.value == 0xAA
+    assert status.name == "undefined_0xaa"
+    assert isinstance(status, types.Status)
 
 
 def test_zdo_header():

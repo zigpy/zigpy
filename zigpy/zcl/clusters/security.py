@@ -1,7 +1,4 @@
 """Security and Safety Functional Domain"""
-import collections
-import enum
-
 import zigpy.types as t
 from zigpy.zcl import Cluster
 
@@ -10,7 +7,7 @@ class IasZone(Cluster):
     class ZoneStatus(t.Struct):
         _fields = [("zone_id", t.uint8_t), ("zone_status", t.bitmap16)]
 
-    class ZoneType(t.enum16, enum.Enum):
+    class ZoneType(t.enum_factory(t.uint16_t, "manufacturer_specific")):
         """Zone type enum."""
 
         Standard_CIE = 0x0000
@@ -28,15 +25,6 @@ class IasZone(Cluster):
         Glass_Break_Sensor = 0x0226
         Security_Repeater = 0x0229
         Invalid_Zone_Type = 0xFFFF
-
-        @classmethod
-        def deserialize(cls, data):
-            try:
-                return super().deserialize(data)
-            except ValueError:
-                fake = collections.namedtuple(cls.__name__, "name, value")
-                val, data = t.uint16_t.deserialize(data)
-                return fake("manufacturer_specific_0x{:04x}".format(val), val), data
 
     cluster_id = 0x0500
     name = "IAS Zone"
@@ -68,7 +56,7 @@ class IasZone(Cluster):
 
 
 class IasAce(Cluster):
-    class ArmMode(t.enum8, enum.Enum):
+    class ArmMode(t.enum8):
         """IAS ACE arm mode enum."""
 
         Disarm = 0x00
@@ -76,7 +64,7 @@ class IasAce(Cluster):
         Arm_Night_Sleep_Only = 0x02
         Arm_All_Zones = 0x03
 
-    class ArmNotification(t.enum8, enum.Enum):
+    class ArmNotification(t.enum8):
         """IAS ACE arm notification enum."""
 
         All_Zones_Disarmed = 0x00
@@ -87,23 +75,13 @@ class IasAce(Cluster):
         Not_Ready_To_Arm = 0x05
         Already_Disarmed = 0x06
 
-    class AudibleNotification(t.enum8, enum.Enum):
+    class AudibleNotification(t.enum_factory(t.uint8_t, "manufacturer_specific")):
         """IAS ACE audible notification enum."""
 
         Mute = 0x00
         Default_Sound = 0x01
 
-        @classmethod
-        def deserialize(cls, data):
-            """Deserialize the audible notification enum."""
-            try:
-                return super().deserialize(data)
-            except ValueError:
-                fake = collections.namedtuple(cls.__name__, "name, value")
-                val, data = t.uint8_t.deserialize(data)
-                return fake("manufacturer_specific_0x{:02x}".format(val), val), data
-
-    class PanelStatus(t.enum8, enum.Enum):
+    class PanelStatus(t.enum8):
         """IAS ACE panel status enum."""
 
         Panel_Disarmed = 0x00
@@ -118,7 +96,7 @@ class IasAce(Cluster):
         Arming_Night = 0x09
         Arming_Away = 0x0A
 
-    class AlarmStatus(t.enum8, enum.Enum):
+    class AlarmStatus(t.enum8):
         """IAS ACE alarm status enum."""
 
         No_Alarm = 0x00

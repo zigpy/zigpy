@@ -298,3 +298,119 @@ def test_eui64_convert():
     assert ieee[7] == 8
 
     assert t.EUI64.convert(None) is None
+
+
+def test_enum_uint():
+    class TestBitmap(t.bitmap16):
+        ALL = 0xFFFF
+        CH_1 = 0x0001
+        CH_2 = 0x0002
+        CH_3 = 0x0004
+        CH_5 = 0x0008
+        CH_6 = 0x0010
+        CH_Z = 0x8000
+
+    extra = b"The rest of the data\x55\xaa"
+    data = b"\x12\x80"
+
+    r, rest = TestBitmap.deserialize(data + extra)
+    assert rest == extra
+    assert r == 0x8012
+    assert r == (TestBitmap.CH_2 | TestBitmap.CH_6 | TestBitmap.CH_Z)
+
+    assert r.serialize() == data
+    assert TestBitmap(0x8012).serialize() == data
+
+    r, _ = TestBitmap.deserialize(b"\x12\x84")
+    assert r == 0x8412
+    assert r.value == 0x8412
+    assert TestBitmap.CH_2 in r
+    assert TestBitmap.CH_6 in r
+    assert TestBitmap.CH_Z in r
+
+
+def test_enum_undef():
+    class TestEnum(t.enum8):
+        ALL = 0xAA
+
+    data = b"\x55"
+    extra = b"extra"
+
+    r, rest = TestEnum.deserialize(data + extra)
+    assert rest == extra
+    assert r == 0x55
+    assert r.value == 0x55
+    assert r.name == "undefined_0x55"
+    assert r.serialize() == data
+    assert isinstance(r, TestEnum)
+
+
+def test_enum():
+    class TestEnum(t.enum8):
+        ALL = 0x55
+        ERR = 1
+
+    data = b"\x55"
+    extra = b"extra"
+
+    r, rest = TestEnum.deserialize(data + extra)
+    assert rest == extra
+    assert r == 0x55
+    assert r.value == 0x55
+    assert r.name == "ALL"
+    assert isinstance(r, TestEnum)
+    assert TestEnum.ALL + TestEnum.ERR == 0x56
+
+
+def test_bitmap():
+    """Test bitmaps."""
+
+    class TestBitmap(t.bitmap16):
+        CH_1 = 0x0010
+        CH_2 = 0x0020
+        CH_3 = 0x0040
+        CH_4 = 0x0080
+        ALL = 0x00F0
+
+    extra = b"extra data\xaa\55"
+    data = b"\xf0\x00"
+    r, rest = TestBitmap.deserialize(data + extra)
+    assert rest == extra
+    assert r is TestBitmap.ALL
+    assert r.name == "ALL"
+    assert r.value == 0x00F0
+    assert r.serialize() == data
+
+    data = b"\x60\x00"
+    r, rest = TestBitmap.deserialize(data + extra)
+    assert rest == extra
+    assert TestBitmap.CH_1 not in r
+    assert TestBitmap.CH_2 in r
+    assert TestBitmap.CH_3 in r
+    assert TestBitmap.CH_4 not in r
+    assert TestBitmap.ALL not in r
+    assert r.value == 0x0060
+    assert r.serialize() == data
+
+
+def test_bitmap_undef():
+    """Test bitmaps with some undefined flags."""
+
+    class TestBitmap(t.bitmap16):
+        CH_1 = 0x0010
+        CH_2 = 0x0020
+        CH_3 = 0x0040
+        CH_4 = 0x0080
+        ALL = 0x00F0
+
+    extra = b"extra data\xaa\55"
+    data = b"\x60\x0f"
+    r, rest = TestBitmap.deserialize(data + extra)
+    assert rest == extra
+    assert TestBitmap.CH_1 not in r
+    assert TestBitmap.CH_2 in r
+    assert TestBitmap.CH_3 in r
+    assert TestBitmap.CH_4 not in r
+    assert TestBitmap.ALL not in r
+    assert r.value == 0x0F60
+    assert r.serialize() == data

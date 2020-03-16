@@ -1,4 +1,8 @@
+import enum
 import struct
+from typing import Callable, TypeVar
+
+CALLABLE_T = TypeVar("CALLABLE_T", bound=Callable)  # pylint: disable=invalid-name
 
 
 class int_t(int):  # noqa: N801
@@ -84,43 +88,85 @@ class uint64_t(uint_t):  # noqa: N801
     _size = 8
 
 
-class enum8(uint8_t):  # noqa: N801
+class _UndefEnumMeta(enum.EnumMeta):
+    def __call__(cls, value, names=None, *args, **kwargs):
+        try:
+            return super().__call__(value, names, *args, **kwargs)
+        except ValueError:
+            return cls.undefined(value)
+
+
+class _UndefEnum(enum.Enum, metaclass=_UndefEnumMeta):
     pass
 
 
-class enum16(uint16_t):  # noqa: N801
+def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined",) -> CALLABLE_T:
+    """Enum factory."""
+
+    class _NewEnum(int_type, _UndefEnum):
+        @classmethod
+        def undefined(cls, val):
+            name = f"{undefined}_0x{{:0{int_type._size * 2}x}}"  # pylint: disable=protected-access
+            fake = _UndefEnum(cls.__name__, {name.format(val): val}, type=cls,)
+            return fake(val)
+
+    return _NewEnum
+
+
+class enum8(enum_factory(uint8_t)):  # noqa: N801
     pass
 
 
-class bitmap8(uint8_t):  # noqa: N801
+class enum16(enum_factory(uint16_t)):  # noqa: N801
     pass
 
 
-class bitmap16(uint16_t):  # noqa: N801
+def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
+    """Bitmap factory."""
+
+    class _NewBitmap(enum.IntFlag):
+        def serialize(self):
+            """Serialize enum."""
+            return int_type(self.value).serialize()
+
+        @classmethod
+        def deserialize(cls, data: bytes) -> (bytes, bytes):
+            """Deserialize data."""
+            val, data = int_type.deserialize(data)
+            return cls(val), data
+
+    return _NewBitmap
+
+
+class bitmap8(bitmap_factory(uint8_t)):  # noqa: N801
     pass
 
 
-class bitmap24(uint24_t):  # noqa: N801
+class bitmap16(bitmap_factory(uint16_t)):  # noqa: N801
     pass
 
 
-class bitmap32(uint32_t):  # noqa: N801
+class bitmap24(bitmap_factory(uint24_t)):  # noqa: N801
     pass
 
 
-class bitmap40(uint40_t):  # noqa: N801
+class bitmap32(bitmap_factory(uint32_t)):  # noqa: N801
     pass
 
 
-class bitmap48(uint48_t):  # noqa: N801
+class bitmap40(bitmap_factory(uint40_t)):  # noqa: N801
     pass
 
 
-class bitmap56(uint56_t):  # noqa: N801
+class bitmap48(bitmap_factory(uint48_t)):  # noqa: N801
     pass
 
 
-class bitmap64(uint64_t):  # noqa: N801
+class bitmap56(bitmap_factory(uint56_t)):  # noqa: N801
+    pass
+
+
+class bitmap64(bitmap_factory(uint64_t)):  # noqa: N801
     pass
 
 
