@@ -231,6 +231,9 @@ class Routes(t.Struct):
 
 
 class NwkUpdate(t.Struct):
+    CHANNEL_CHANGE_REQ = 0xFE
+    CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ = 0xFF
+
     _fields = [
         ("ScanChannels", t.Channels),
         ("ScanDuration", t.uint8_t),
@@ -244,9 +247,12 @@ class NwkUpdate(t.Struct):
         r = self.ScanChannels.serialize() + self.ScanDuration.serialize()
         if self.ScanDuration <= 0x05:
             r += self.ScanCount.serialize()
-        if self.ScanDuration >= 0xFE:
+        if self.ScanDuration in (
+            self.CHANNEL_CHANGE_REQ,
+            self.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ,
+        ):
             r += self.nwkUpdateId.serialize()
-        if self.ScanDuration == 0xFF:
+        if self.ScanDuration == self.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ:
             r += self.nwkManagerAddr.serialize()
         return r
 
@@ -258,9 +264,12 @@ class NwkUpdate(t.Struct):
         r.ScanDuration, data = t.uint8_t.deserialize(data)
         if r.ScanDuration <= 0x05:
             r.ScanCount, data = t.uint8_t.deserialize(data)
-        if r.ScanDuration >= 0xFE:
+        if r.ScanDuration in (
+            cls.CHANNEL_CHANGE_REQ,
+            cls.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ,
+        ):
             r.nwkUpdateId, data = t.uint8_t.deserialize(data)
-        if r.ScanDuration == 0xFF:
+        if r.ScanDuration == cls.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ:
             r.nwkManagerAddr, data = t.NWK.deserialize(data)
         return r, data
 
