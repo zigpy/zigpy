@@ -545,11 +545,8 @@ class ZCLHeader:
     def command_id(self, value: Command) -> None:
         """Setter for command identifier."""
         if self.frame_control.is_general:
-            try:
-                self._cmd_id = Command(value)
-                return
-            except ValueError:
-                pass
+            self._cmd_id = Command(value)
+            return
         self._cmd_id = t.uint8_t(value)
 
     @property

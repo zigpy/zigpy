@@ -531,10 +531,7 @@ class ZDOHeader:
     """Just a wrapper representing ZDO header, similar to ZCL header."""
 
     def __init__(self, command_id: t.uint16_t = 0x0000, tsn: t.uint8_t = 0) -> None:
-        try:
-            self._command_id = ZDOCmd(command_id)
-        except ValueError:
-            self._command_id = t.uint16_t(command_id)
+        self._command_id = ZDOCmd(command_id)
         self._tsn = t.uint8_t(tsn)
 
     @property
@@ -545,12 +542,7 @@ class ZDOHeader:
     @command_id.setter
     def command_id(self, value: t.uint16_t) -> None:
         """Command ID setter."""
-        try:
-            self._command_id = ZDOCmd(value)
-            return
-        except ValueError:
-            pass
-        self._command_id = t.uint16_t(value)
+        self._command_id = ZDOCmd(value)
 
     @property
     def is_reply(self) -> bool:
