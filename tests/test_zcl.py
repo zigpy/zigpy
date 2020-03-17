@@ -81,11 +81,19 @@ def test_manufacturer_specific_cluster():
 
 
 @pytest.fixture
-def cluster():
-    epmock = mock.MagicMock()
-    epmock._device.application.get_sequence.return_value = DEFAULT_TSN
-    epmock.device.application.get_sequence.return_value = DEFAULT_TSN
-    return zcl.Cluster.from_id(epmock, 0)
+def cluster_by_id():
+    def _cluster(cluster_id=0):
+        epmock = mock.MagicMock()
+        epmock._device.application.get_sequence.return_value = DEFAULT_TSN
+        epmock.device.application.get_sequence.return_value = DEFAULT_TSN
+        return zcl.Cluster.from_id(epmock, cluster_id)
+
+    return _cluster
+
+
+@pytest.fixture
+def cluster(cluster_by_id):
+    return cluster_by_id(0)
 
 
 @pytest.fixture
@@ -314,6 +322,24 @@ def test_write_attributes_wrong_type(cluster):
     assert cluster._endpoint.request.call_count == 1
 
 
+@pytest.mark.parametrize(
+    "cluster_id, attr, value, serialized",
+    (
+        (0, "zcl_version", 0xAA, b"\x00\x00\x20\xaa"),
+        (0, "model", "model x", b"\x05\x00\x42\x07model x"),
+        (0, "device_enabled", True, b"\x12\x00\x10\x01"),
+        (0, "alarm_mask", 0x55, b"\x13\x00\x18\x55"),
+        (0x0202, "fan_mode", 0xDE, b"\x00\x00\x30\xde"),
+    ),
+)
+def test_write_attribute_types(cluster_id, attr, value, serialized, cluster_by_id):
+    cluster = cluster_by_id(cluster_id)
+    cluster.write_attributes({attr: value})
+    assert cluster._endpoint.reply.call_count == 0
+    assert cluster._endpoint.request.call_count == 1
+    assert cluster.endpoint.request.call_args[0][2][3:] == serialized
+
+
 def test_read_attributes_response(cluster):
     cluster.read_attributes_rsp({0: 5})
     assert cluster._endpoint.reply.call_count == 1
@@ -347,6 +373,24 @@ def test_read_attributes_resp_exc(cluster, monkeypatch):
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
     assert cluster.endpoint.reply.call_args[0][2][-3:] == b"\x03\x00\x86"
+
+
+@pytest.mark.parametrize(
+    "cluster_id, attr, value, serialized",
+    (
+        (0, "zcl_version", 0xAA, b"\x00\x00\x00\x20\xaa"),
+        (0, "model", "model x", b"\x05\x00\x00\x42\x07model x"),
+        (0, "device_enabled", True, b"\x12\x00\x00\x10\x01"),
+        (0, "alarm_mask", 0x55, b"\x13\x00\x00\x18\x55"),
+        (0x0202, "fan_mode", 0xDE, b"\x00\x00\x00\x30\xde"),
+    ),
+)
+def test_read_attribute_resp(cluster_id, attr, value, serialized, cluster_by_id):
+    cluster = cluster_by_id(cluster_id)
+    cluster.read_attributes_rsp({attr: value})
+    assert cluster._endpoint.reply.call_count == 1
+    assert cluster._endpoint.request.call_count == 0
+    assert cluster.endpoint.reply.call_args[0][2][3:] == serialized
 
 
 def test_bind(cluster):
@@ -406,6 +450,24 @@ def test_configure_reporting_manuf():
         tsn=mock.ANY,
     )
     assert cluster.request.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "cluster_id, attr, data_type",
+    (
+        (0, "zcl_version", 0x20),
+        (0, "model", 0x42),
+        (0, "device_enabled", 0x10),
+        (0, "alarm_mask", 0x18),
+        (0x0202, "fan_mode", 0x30),
+    ),
+)
+def test_configure_reporting_types(cluster_id, attr, data_type, cluster_by_id):
+    cluster = cluster_by_id(cluster_id)
+    cluster.configure_reporting(attr, 0x1234, 0x2345, 0xAA)
+    assert cluster._endpoint.reply.call_count == 0
+    assert cluster._endpoint.request.call_count == 1
+    assert cluster.endpoint.request.call_args[0][2][6] == data_type
 
 
 def test_command(cluster):
