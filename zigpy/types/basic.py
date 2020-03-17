@@ -103,7 +103,17 @@ class _UndefEnum(enum.Enum, metaclass=_UndefEnumMeta):
 def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined",) -> CALLABLE_T:
     """Enum factory."""
 
-    class _NewEnum(int_type, _UndefEnum):
+    class _NewEnum(enum.IntEnum, _UndefEnum):
+        def serialize(self):
+            """Serialize enum."""
+            return int_type(self.value).serialize()
+
+        @classmethod
+        def deserialize(cls, data: bytes) -> (bytes, bytes):
+            """Deserialize data."""
+            val, data = int_type.deserialize(data)
+            return cls(val), data
+
         @classmethod
         def undefined(cls, val):
             name = f"{undefined}_0x{{:0{int_type._size * 2}x}}"  # pylint: disable=protected-access
