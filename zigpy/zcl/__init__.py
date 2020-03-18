@@ -198,11 +198,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             for attr in args[0]:
                 try:
                     value = self.attributes[attr.attrid][1](attr.value.value)
-                except (KeyError, ValueError):
-                    self.exception(
+                except KeyError:
+                    value = attr.value.value
+                except ValueError:
+                    self.debug(
                         "Couldn't normalize %a attribute with %s value",
                         attr.attrid,
                         attr.value.value,
+                        exc_info=True,
                     )
                     value = attr.value.value
                 self._update_attribute(attr.attrid, value)
@@ -258,13 +261,16 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                 if record.status == foundation.Status.SUCCESS:
                     try:
                         value = self.attributes[record.attrid][1](record.value.value)
-                    except (KeyError, ValueError):
-                        self.exception(
+                    except KeyError:
+                        value = record.value.value
+                    except ValueError:
+                        value = record.value.value
+                        self.debug(
                             "Couldn't normalize %a attribute with %s value",
                             record.attrid,
-                            record.value.value,
+                            value,
+                            exc_info=True,
                         )
-                        value = record.value.value
                     self._update_attribute(record.attrid, value)
                     success[orig_attribute] = value
                 else:
