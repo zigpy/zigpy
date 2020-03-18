@@ -24,14 +24,119 @@ class Shade(Cluster):
 
 
 class DoorLock(Cluster):
+    """The door lock cluster provides an interface to a generic way to secure a door."""
+
+    class LockState(t.enum8):
+        Not_fully_locked = 0x00
+        Locked = 0x01
+        Unlocked = 0x02
+        Undefined = 0xFF
+
+    class LockType(t.enum8):
+        Dead_bolt = 0x00
+        Magnetic = 0x01
+        Other = 0x02
+        Mortise = 0x03
+        Rim = 0x04
+        Latch_bolt = 0x05
+        Cylindrical_lock = 0x06
+        Tubular_lock = 0x07
+        Interconnected_lock = 0x08
+        Dead_latch = 0x09
+        Door_furniture = 0x0A
+
+    class DoorState(t.enum8):
+        Open = 0x00
+        Closed = 0x01
+        Error_jammed = 0x02
+        Error_forced_open = 0x03
+        Error_unspecified = 0x04
+        Undefined = 0xFF
+
+    class OperatingMode(t.enum8):
+        Normal = 0x00
+        Vacation = 0x01
+        Privacy = 0x02
+        No_RF_Lock_Unlock = 0x03
+        Passage = 0x04
+
+    class SupportedOperatingModes(t.bitmap8):
+        Normal = 0x01
+        Vacation = 0x02
+        Privacy = 0x04
+        No_RF = 0x08
+        Passage = 0x10
+
+    class DefaultConfigurationRegister(t.bitmap8):
+        Enable_Local_Programming = 0x01
+        Keypad_Interface_default_access = 0x02
+        RF_Interface_default_access = 0x04
+        Sound_Volume_non_zero = 0x20
+        Auto_Relock_time_non_zero = 0x40
+        Led_settings_non_zero = 0x80
+
+    class ZigbeeSecurityLevel(t.enum8):
+        Network_Security = 0x00
+        APS_Security = 0x01
+
+    class AlarmMask(t.bitmap8):
+        Deadbolt_Jammed = 0x01
+        Lock_Reset_to_Factory_Defaults = 0x02
+        Reserved = 0x04
+        RF_Module_Power_Cycled = 0x08
+        Tamper_Alarm_wrong_code_entry_limit = 0x10
+        Tamper_Alarm_front_escutcheon_removed = 0x20
+        Forced_Door_Open_under_Door_Lockec_Condition = 0x40
+
+    class KeypadOperationEventMask(t.bitmap16):
+        Manufacturer_specific = 0x0001
+        Lock_source_keypad = 0x0002
+        Unlock_source_keypad = 0x0004
+        Lock_source_keypad_error_invalid_code = 0x0008
+        Lock_source_keypad_error_invalid_schedule = 0x0010
+        Unlock_source_keypad_error_invalid_code = 0x0020
+        Unlock_source_keypad_error_invalid_schedule = 0x0040
+        Non_Access_User_Operation = 0x0080
+
+    class RFOperationEventMask(t.bitmap16):
+        Manufacturer_specific = 0x0001
+        Lock_source_RF = 0x0002
+        Unlock_source_RF = 0x0004
+        Lock_source_RF_error_invalid_code = 0x0008
+        Lock_source_RF_error_invalid_schedule = 0x0010
+        Unlock_source_RF_error_invalid_code = 0x0020
+        Unlock_source_RF_error_invalid_schedule = 0x0040
+
+    class ManualOperatitonEventMask(t.bitmap16):
+        Manufacturer_specific = 0x0001
+        Thumbturn_Lock = 0x0002
+        Thumbturn_Unlock = 0x0004
+        One_touch_lock = 0x0008
+        Key_Lock = 0x0010
+        Key_Unlock = 0x0020
+        Auto_lock = 0x0040
+        Schedule_Lock = 0x0080
+        Schedule_Unlock = 0x0100
+        Manual_Lock_key_or_thumbturn = 0x0200
+        Manual_Unlock_key_or_thumbturn = 0x0400
+
+    class RFIDOperationEventMask(t.bitmap16):
+        Manufacturer_specific = 0x0001
+        Lock_source_RFID = 0x0002
+        Unlock_source_RFID = 0x0004
+        Lock_source_RFID_error_invalid_RFID_ID = 0x0008
+        Lock_source_RFID_error_invalid_schedule = 0x0010
+        Unlock_source_RFID_error_invalid_RFID_ID = 0x0020
+        Unlock_source_RFID_error_invalid_schedule = 0x0040
+
     cluster_id = 0x0101
     name = "Door Lock"
     ep_attribute = "door_lock"
     attributes = {
-        0x0000: ("lock_state", t.enum8),
-        0x0001: ("lock_type", t.enum8),
+        0x0000: ("lock_state", LockState),
+        0x0001: ("lock_type", LockType),
         0x0002: ("actuator_enabled", t.Bool),
-        0x0003: ("door_state", t.enum8),
+        0x0003: ("door_state", DoorState),
         0x0004: ("door_open_events", t.uint32_t),
         0x0005: ("door_closed_events", t.uint32_t),
         0x0006: ("open_period", t.uint16_t),
@@ -51,9 +156,9 @@ class DoorLock(Cluster):
         0x0022: ("led_settings", t.uint8_t),
         0x0023: ("auto_relock_time", t.uint32_t),
         0x0024: ("sound_volume", t.uint8_t),
-        0x0025: ("operating_mode", t.enum8),
-        0x0026: ("supported_operating_modes", t.bitmap16),
-        0x0027: ("default_configuration_register", t.bitmap16),
+        0x0025: ("operating_mode", OperatingMode),
+        0x0026: ("supported_operating_modes", SupportedOperatingModes),
+        0x0027: ("default_configuration_register", DefaultConfigurationRegister),
         0x0028: ("enable_local_programming", t.Bool),
         0x0029: ("enable_one_touch_locking", t.Bool),
         0x002A: ("enable_inside_status_led", t.Bool),
@@ -62,12 +167,12 @@ class DoorLock(Cluster):
         0x0031: ("user_code_temporary_disable_time", t.uint8_t),
         0x0032: ("send_pin_ota", t.Bool),
         0x0033: ("require_pin_for_rf_operation", t.Bool),
-        0x0034: ("zigbee_security_level", t.enum8),
-        0x0040: ("alarm_mask", t.bitmap16),
-        0x0041: ("keypad_operation_event_mask", t.bitmap16),
-        0x0042: ("rf_operation_event_mask", t.bitmap16),
-        0x0043: ("manual_operation_event_mask", t.bitmap16),
-        0x0044: ("rfid_operation_event_mask", t.bitmap16),
+        0x0034: ("zigbee_security_level", ZigbeeSecurityLevel),
+        0x0040: ("alarm_mask", AlarmMask),
+        0x0041: ("keypad_operation_event_mask", KeypadOperationEventMask),
+        0x0042: ("rf_operation_event_mask", RFOperationEventMask),
+        0x0043: ("manual_operation_event_mask", ManualOperatitonEventMask),
+        0x0044: ("rfid_operation_event_mask", RFIDOperationEventMask),
         0x0045: ("keypad_programming_event_mask", t.bitmap16),
         0x0046: ("rf_programming_event_mask", t.bitmap16),
         0x0047: ("rfid_programming_event_mask", t.bitmap16),
