@@ -1,4 +1,5 @@
-from asynctest import mock
+from unittest import mock
+
 import pytest
 import zigpy.endpoint
 import zigpy.types as t
@@ -364,12 +365,10 @@ def test_read_attributes_resp_str(cluster):
     assert cluster._endpoint.request.call_count == 0
 
 
-def test_read_attributes_resp_exc(cluster, monkeypatch):
-    type_idx = mock.MagicMock()
-    type_idx.__getitem__.side_effect = ValueError()
-    monkeypatch.setattr(foundation, "DATA_TYPE_IDX", type_idx)
-
-    cluster.read_attributes_rsp({"hw_version": 32})
+def test_read_attributes_resp_exc(cluster):
+    with mock.patch.object(foundation.DATA_TYPES, "pytype_to_datatype_id") as mck:
+        mck.side_effect = ValueError
+        cluster.read_attributes_rsp({"hw_version": 32})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
     assert cluster.endpoint.reply.call_args[0][2][-3:] == b"\x03\x00\x86"
