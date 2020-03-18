@@ -255,9 +255,18 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         else:
             for record in result[0]:
                 orig_attribute = orig_attributes[record.attrid]
-                if record.status == 0:
-                    self._update_attribute(record.attrid, record.value.value)
-                    success[orig_attribute] = record.value.value
+                if record.status == foundation.Status.SUCCESS:
+                    try:
+                        value = self.attributes[record.attrid][1](record.value.value)
+                    except (KeyError, ValueError):
+                        self.exception(
+                            "Couldn't normalize %a attribute with %s value",
+                            record.attrid,
+                            record.value.value,
+                        )
+                        value = record.value.value
+                    self._update_attribute(record.attrid, value)
+                    success[orig_attribute] = value
                 else:
                     failure[orig_attribute] = record.status
 
