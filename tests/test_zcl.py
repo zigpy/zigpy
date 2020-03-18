@@ -167,13 +167,17 @@ def test_attribute_report(cluster):
     attr = zcl.foundation.Attribute()
     attr.attrid = 4
     attr.value = zcl.foundation.TypeValue()
-    attr.value.value = 1
+    attr.value.value = "manufacturer"
     hdr = mock.MagicMock(auto_spec=foundation.ZCLHeader)
     hdr.command_id = foundation.Command.Report_Attributes
     hdr.frame_control.is_general = True
     hdr.frame_control.is_cluster = False
     cluster.handle_message(hdr, [[attr]])
-    assert cluster._attr_cache[4] == 1
+    assert cluster._attr_cache[4] == "manufacturer"
+
+    attr.attrid = 0x89AB
+    cluster.handle_message(hdr, [[attr]])
+    assert cluster._attr_cache[attr.attrid] == "manufacturer"
 
 
 def test_handle_request_unknown(cluster):
@@ -229,27 +233,29 @@ async def test_read_attributes_uncached(cluster):
         assert foundation is True
         assert command == 0
         rar0 = _mk_rar(0, 99)
-        rar4 = _mk_rar(4, b"Manufacturer")
+        rar4 = _mk_rar(4, "Manufacturer")
         rar99 = _mk_rar(99, None, 1)
-        return [[rar0, rar4, rar99]]
+        rar199 = _mk_rar(199, 199)
+        return [[rar0, rar4, rar99, rar199]]
 
     cluster.request = mockrequest
-    success, failure = await cluster.read_attributes([0, "manufacturer", 99])
+    success, failure = await cluster.read_attributes([0, "manufacturer", 99, 199])
     assert success[0] == 99
-    assert success["manufacturer"] == b"Manufacturer"
+    assert success["manufacturer"] == "Manufacturer"
     assert failure[99] == 1
+    assert success[199] == 199
 
 
 async def test_read_attributes_cached(cluster):
     cluster.request = mock.MagicMock()
     cluster._attr_cache[0] = 99
-    cluster._attr_cache[4] = b"Manufacturer"
+    cluster._attr_cache[4] = "Manufacturer"
     success, failure = await cluster.read_attributes(
         [0, "manufacturer"], allow_cache=True
     )
     assert cluster.request.call_count == 0
     assert success[0] == 99
-    assert success["manufacturer"] == b"Manufacturer"
+    assert success["manufacturer"] == "Manufacturer"
     assert failure == {}
 
 
@@ -259,18 +265,18 @@ async def test_read_attributes_mixed_cached(cluster):
     ):
         assert foundation is True
         assert command == 0
-        rar5 = _mk_rar(5, b"Model")
+        rar5 = _mk_rar(5, "Model")
         return [[rar5]]
 
     cluster.request = mockrequest
     cluster._attr_cache[0] = 99
-    cluster._attr_cache[4] = b"Manufacturer"
+    cluster._attr_cache[4] = "Manufacturer"
     success, failure = await cluster.read_attributes(
         [0, "manufacturer", "model"], allow_cache=True
     )
     assert success[0] == 99
-    assert success["manufacturer"] == b"Manufacturer"
-    assert success["model"] == b"Model"
+    assert success["manufacturer"] == "Manufacturer"
+    assert success["model"] == "Model"
     assert failure == {}
 
 
@@ -294,14 +300,14 @@ async def test_item_access_attributes(cluster):
     ):
         assert foundation is True
         assert command == 0
-        rar5 = _mk_rar(5, b"Model")
+        rar5 = _mk_rar(5, "Model")
         return [[rar5]]
 
     cluster.request = mockrequest
     cluster._attr_cache[0] = 99
 
     v = await cluster["model"]
-    assert v == b"Model"
+    assert v == "Model"
     v = await cluster["zcl_version"]
     assert v == 99
     with pytest.raises(KeyError):
