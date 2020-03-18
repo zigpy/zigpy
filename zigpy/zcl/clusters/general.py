@@ -3,6 +3,7 @@
 import asyncio
 import collections
 from datetime import datetime
+from typing import Tuple
 
 from zigpy.exceptions import DeliveryError
 import zigpy.types as t
@@ -15,6 +16,144 @@ class Basic(Cluster):
     and enabling a device.
     """
 
+    class PowerSource(t.enum8):
+        """Power source enum."""
+
+        Unknown = 0x00
+        Mains_single_phase = 0x01
+        Mains_three_phase = 0x02
+        Battery = 0x03
+        DC_Source = 0x04
+        Emergency_Mains_Always_On = 0x05
+        Emergency_Mains_Transfer_Switch = 0x06
+
+        def __init__(self, *args, **kwargs):
+            self.battery_backup = False
+
+        @classmethod
+        def deserialize(cls, data: bytes) -> Tuple[bytes, bytes]:
+            val, data = t.uint8_t.deserialize(data)
+            r = cls(val & 0x7F)
+            r.battery_backup = bool(val & 0x80)
+            return r, data
+
+    class PhysicalEnvironment(t.enum8):
+        Unspecified_environment = 0x00
+        Mirror = 0x01
+        Atrium = 0x01
+        Bar = 0x02
+        Courtyard = 0x03
+        Bathroom = 0x04
+        Bedroom = 0x05
+        Billiard_Room = 0x06
+        Utility_Room = 0x07
+        Cellar = 0x08
+        Storage_Closet = 0x09
+        Theater = 0x0A
+        Office = 0x0B
+        Deck = 0x0C
+        Den = 0x0D
+        Dining_Room = 0x0E
+        Electrical_Room = 0x0F
+        Elevator = 0x10
+        Entry = 0x11
+        Family_Room = 0x12
+        Main_Floor = 0x13
+        Upstairs = 0x14
+        Downstairs = 0x15
+        Basement = 0x16
+        Gallery = 0x17
+        Game_Room = 0x18
+        Garage = 0x19
+        Gym = 0x1A
+        Hallway = 0x1B
+        House = 0x1C
+        Kitchen = 0x1D
+        Laundry_Room = 0x1E
+        Library = 0x1F
+        Master_Bedroom = 0x20
+        Mud_Room_small_room_for_coats_and_boots = 0x21
+        Nursery = 0x22
+        Pantry = 0x23
+        Office_2 = 0x24
+        Outside = 0x25
+        Pool = 0x26
+        Porch = 0x27
+        Sewing_Room = 0x28
+        Sitting_Room = 0x29
+        Stairway = 0x2A
+        Yard = 0x2B
+        Attic = 0x2C
+        Hot_Tub = 0x2D
+        Living_Room = 0x2E
+        Sauna = 0x2F
+        Workshop = 0x30
+        Guest_Bedroom = 0x31
+        Guest_Bath = 0x32
+        Back_Yard = 0x34
+        Front_Yard = 0x35
+        Patio = 0x36
+        Driveway = 0x37
+        Sun_Room = 0x38
+        Grand_Room = 0x39
+        Spa = 0x3A
+        Whirlpool = 0x3B
+        Shed = 0x3C
+        Equipment_Storage = 0x3D
+        Craft_Room = 0x3E
+        Fountain = 0x3F
+        Pond = 0x40
+        Reception_Room = 0x41
+        Breakfast_Room = 0x42
+        Nook = 0x43
+        Garden = 0x44
+        Balcony = 0x45
+        Panic_Room = 0x46
+        Terrace = 0x47
+        Roof = 0x48
+        Toilet = 0x49
+        Toilet_Main = 0x4A
+        Outside_Toilet = 0x4B
+        Shower_room = 0x4C
+        Study = 0x4D
+        Front_Garden = 0x4E
+        Back_Garden = 0x4F
+        Kettle = 0x50
+        Television = 0x51
+        Stove = 0x52
+        Microwave = 0x53
+        Toaster = 0x54
+        Vacuum = 0x55
+        Appliance = 0x56
+        Front_Door = 0x57
+        Back_Door = 0x58
+        Fridge_Door = 0x59
+        Medication_Cabinet_Door = 0x60
+        Wardrobe_Door = 0x61
+        Front_Cupboard_Door = 0x62
+        Other_Door = 0x63
+        Waiting_Room = 0x64
+        Triage_Room = 0x65
+        Doctors_Office = 0x66
+        Patients_Private_Room = 0x67
+        Consultation_Room = 0x68
+        Nurse_Station = 0x69
+        Ward = 0x6A
+        Corridor = 0x6B
+        Operating_Theatre = 0x6C
+        Dental_Surgery_Room = 0x6D
+        Medical_Imaging_Room = 0x6E
+        Decontamination_Room = 0x6F
+        Unknown_environment = 0xFF
+
+    class AlarmMask(t.bitmap8):
+        General_hardware_fault = 0x01
+        General_software_fault = 0x02
+
+    class DisableLocalConfig(t.bitmap8):
+        Reset = 0x01
+        Device_Configuration = 0x02
+
     cluster_id = 0x0000
     ep_attribute = "basic"
     attributes = {
@@ -26,14 +165,14 @@ class Basic(Cluster):
         0x0004: ("manufacturer", t.CharacterString),
         0x0005: ("model", t.CharacterString),
         0x0006: ("date_code", t.CharacterString),
-        0x0007: ("power_source", t.enum8),
+        0x0007: ("power_source", PowerSource),
         0x0008: ("app_profile_version", t.enum8),
         # Basic Device Settings
         0x0010: ("location_desc", t.LimitedCharString(16)),
-        0x0011: ("physical_env", t.enum8),
+        0x0011: ("physical_env", PhysicalEnvironment),
         0x0012: ("device_enabled", t.Bool),
-        0x0013: ("alarm_mask", t.bitmap8),
-        0x0014: ("disable_local_config", t.bitmap8),
+        0x0013: ("alarm_mask", AlarmMask),
+        0x0014: ("disable_local_config", DisableLocalConfig),
         0x4000: ("sw_build_id", t.CharacterString),
     }
     server_commands = {0x0000: ("reset_fact_default", (), False)}
