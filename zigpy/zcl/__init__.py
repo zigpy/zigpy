@@ -196,7 +196,16 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             )
             self.debug("Attribute report received: %s", valuestr)
             for attr in args[0]:
-                self._update_attribute(attr.attrid, attr.value.value)
+                try:
+                    value = self.attributes[attr.attrid][1](attr.value.value)
+                except (KeyError, ValueError):
+                    self.exception(
+                        "Couldn't normalize %a attribute with %s value",
+                        attr.attrid,
+                        attr.value.value,
+                    )
+                    value = attr.value.value
+                self._update_attribute(attr.attrid, value)
 
     def read_attributes_raw(self, attributes, manufacturer=None):
         attributes = [t.uint16_t(a) for a in attributes]
