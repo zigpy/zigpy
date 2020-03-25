@@ -126,13 +126,29 @@ class Fan(Cluster):
     """ An interface for controlling a fan in a heating /
     cooling system."""
 
+    class FanMode(t.enum8):
+        Off = 0x00
+        Low = 0x01
+        Medium = 0x02
+        High = 0x03
+        On = 0x04
+        Auto = 0x05
+        Smart = 0x06
+
+    class FanModeSequence(t.enum8):
+        Low_Med_High = 0x00
+        Low_High = 0x01
+        Low_Med_High_Auto = 0x02
+        Low_High_Auto = 0x03
+        On_Auto = 0x04
+
     cluster_id = 0x0202
     name = "Fan Control"
     ep_attribute = "fan"
     attributes = {
         # Fan Control Status
-        0x0000: ("fan_mode", t.enum8),
-        0x0001: ("fan_mode_sequence", t.enum8),
+        0x0000: ("fan_mode", FanMode),
+        0x0001: ("fan_mode_sequence", FanModeSequence),
     }
     server_commands = {}
     client_commands = {}
