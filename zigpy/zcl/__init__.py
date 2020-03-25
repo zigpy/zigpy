@@ -196,7 +196,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             )
             self.debug("Attribute report received: %s", valuestr)
             for attr in args[0]:
-                self._update_attribute(attr.attrid, attr.value.value)
+                try:
+                    value = self.attributes[attr.attrid][1](attr.value.value)
+                except KeyError:
+                    value = attr.value.value
+                except ValueError:
+                    self.debug(
+                        "Couldn't normalize %a attribute with %s value",
+                        attr.attrid,
+                        attr.value.value,
+                        exc_info=True,
+                    )
+                    value = attr.value.value
+                self._update_attribute(attr.attrid, value)
 
     def read_attributes_raw(self, attributes, manufacturer=None):
         attributes = [t.uint16_t(a) for a in attributes]
@@ -246,9 +258,21 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         else:
             for record in result[0]:
                 orig_attribute = orig_attributes[record.attrid]
-                if record.status == 0:
-                    self._update_attribute(record.attrid, record.value.value)
-                    success[orig_attribute] = record.value.value
+                if record.status == foundation.Status.SUCCESS:
+                    try:
+                        value = self.attributes[record.attrid][1](record.value.value)
+                    except KeyError:
+                        value = record.value.value
+                    except ValueError:
+                        value = record.value.value
+                        self.debug(
+                            "Couldn't normalize %a attribute with %s value",
+                            record.attrid,
+                            value,
+                            exc_info=True,
+                        )
+                    self._update_attribute(record.attrid, value)
+                    success[orig_attribute] = value
                 else:
                     failure[orig_attribute] = record.status
 
