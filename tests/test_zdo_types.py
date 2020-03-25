@@ -185,13 +185,13 @@ def test_zdo_header_cmd_id():
     unk_cmd = 0x00FF
     assert unk_cmd not in list(types.ZDOCmd)
     hdr = types.ZDOHeader(unk_cmd, 0x55)
-    assert isinstance(hdr.command_id, t.uint16_t)
+    assert isinstance(hdr.command_id, types.ZDOCmd)
     assert hdr.command_id == unk_cmd
 
     unk_cmd += 1
     assert unk_cmd not in list(types.ZDOCmd)
     hdr.command_id = unk_cmd
-    assert isinstance(hdr.command_id, t.uint16_t)
+    assert isinstance(hdr.command_id, types.ZDOCmd)
     assert hdr.command_id == unk_cmd
 
 

@@ -55,6 +55,10 @@ class Null:
     pass
 
 
+class Unknown(t.NoData):
+    pass
+
+
 class TypeValue:
     def __init__(self, python_type=None, value=None):
         self.type = python_type
@@ -102,66 +106,97 @@ class Set(TypedCollection):
     pass  # ToDo: Make this a real set?
 
 
-DATA_TYPES = {
-    0x00: ("No data", t.NoData, Null),
-    0x08: ("General", t.data8, Discrete),
-    0x09: ("General", t.data16, Discrete),
-    0x0A: ("General", t.data24, Discrete),
-    0x0B: ("General", t.data32, Discrete),
-    0x0C: ("General", t.data40, Discrete),
-    0x0D: ("General", t.data48, Discrete),
-    0x0E: ("General", t.data56, Discrete),
-    0x0F: ("General", t.data64, Discrete),
-    0x10: ("Boolean", t.Bool, Discrete),
-    0x18: ("Bitmap", t.bitmap8, Discrete),
-    0x19: ("Bitmap", t.bitmap16, Discrete),
-    0x1A: ("Bitmap", t.bitmap24, Discrete),
-    0x1B: ("Bitmap", t.bitmap32, Discrete),
-    0x1C: ("Bitmap", t.bitmap40, Discrete),
-    0x1D: ("Bitmap", t.bitmap48, Discrete),
-    0x1E: ("Bitmap", t.bitmap56, Discrete),
-    0x1F: ("Bitmap", t.bitmap64, Discrete),
-    0x20: ("Unsigned Integer", t.uint8_t, Analog),
-    0x21: ("Unsigned Integer", t.uint16_t, Analog),
-    0x22: ("Unsigned Integer", t.uint24_t, Analog),
-    0x23: ("Unsigned Integer", t.uint32_t, Analog),
-    0x24: ("Unsigned Integer", t.uint40_t, Analog),
-    0x25: ("Unsigned Integer", t.uint48_t, Analog),
-    0x26: ("Unsigned Integer", t.uint56_t, Analog),
-    0x27: ("Unsigned Integer", t.uint64_t, Analog),
-    0x28: ("Signed Integer", t.int8s, Analog),
-    0x29: ("Signed Integer", t.int16s, Analog),
-    0x2A: ("Signed Integer", t.int24s, Analog),
-    0x2B: ("Signed Integer", t.int32s, Analog),
-    0x2C: ("Signed Integer", t.int40s, Analog),
-    0x2D: ("Signed Integer", t.int48s, Analog),
-    0x2E: ("Signed Integer", t.int56s, Analog),
-    0x2F: ("Signed Integer", t.int64s, Analog),
-    0x30: ("Enumeration", t.enum8, Discrete),
-    0x31: ("Enumeration", t.enum16, Discrete),
-    # 0x38: ('Floating point', t.Half, Analog),
-    0x39: ("Floating point", t.Single, Analog),
-    0x3A: ("Floating point", t.Double, Analog),
-    0x41: ("Octet string", t.LVBytes, Discrete),
-    0x42: ("Character string", t.CharacterString, Discrete),
-    0x43: ("Long octet string", t.LongOctetString, Discrete),
-    0x44: ("Long character string", t.LongCharacterString, Discrete),
-    0x48: ("Array", Array, Discrete),
-    0x4C: ("Structure", t.LVList(TypeValue, 2), Discrete),
-    0x50: ("Set", Set, Discrete),
-    0x51: ("Bag", Bag, Discrete),
-    0xE0: ("Time of day", t.TimeOfDay, Analog),
-    0xE1: ("Date", t.Date, Analog),
-    0xE2: ("UTCTime", t.UTCTime, Analog),
-    0xE8: ("Cluster ID", t.ClusterId, Discrete),
-    0xE9: ("Attribute ID", t.AttributeId, Discrete),
-    0xEA: ("BACNet OID", t.BACNetOid, Discrete),
-    0xF0: ("IEEE address", t.EUI64, Discrete),
-    0xF1: ("128-bit security key", t.KeyData, Discrete),
-    0xFF: ("Unknown", None, None),
-}
+class DataTypes(dict):
+    """DataTypes container."""
 
-DATA_TYPE_IDX = {t: tidx for tidx, (tname, t, ad) in DATA_TYPES.items()}
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._idx_by_class = {
+            _type: type_id for type_id, (name, _type, ad) in self.items()
+        }
+        self._idx_by_cls_name = {
+            cls.__name__: type_id for cls, type_id in self._idx_by_class.items()
+        }
+
+    def pytype_to_datatype_id(self, python_type) -> int:
+        """Return Zigbee Datatype ID for a give python type."""
+        data_type_id = self._idx_by_class.get(python_type)
+        if data_type_id is not None:
+            return data_type_id
+
+        # lookup by class name
+        try:
+            return self._idx_by_cls_name[python_type.__name__]
+        except KeyError:
+            pass
+
+        for cls, type_id in self._idx_by_class.items():
+            if issubclass(python_type, cls):
+                self._idx_by_cls_name[python_type.__name__] = type_id
+                return type_id
+        return 0xFF
+
+
+DATA_TYPES = DataTypes(
+    {
+        0x00: ("No data", t.NoData, Null),
+        0x08: ("General", t.data8, Discrete),
+        0x09: ("General", t.data16, Discrete),
+        0x0A: ("General", t.data24, Discrete),
+        0x0B: ("General", t.data32, Discrete),
+        0x0C: ("General", t.data40, Discrete),
+        0x0D: ("General", t.data48, Discrete),
+        0x0E: ("General", t.data56, Discrete),
+        0x0F: ("General", t.data64, Discrete),
+        0x10: ("Boolean", t.Bool, Discrete),
+        0x18: ("Bitmap", t.bitmap8, Discrete),
+        0x19: ("Bitmap", t.bitmap16, Discrete),
+        0x1A: ("Bitmap", t.bitmap24, Discrete),
+        0x1B: ("Bitmap", t.bitmap32, Discrete),
+        0x1C: ("Bitmap", t.bitmap40, Discrete),
+        0x1D: ("Bitmap", t.bitmap48, Discrete),
+        0x1E: ("Bitmap", t.bitmap56, Discrete),
+        0x1F: ("Bitmap", t.bitmap64, Discrete),
+        0x20: ("Unsigned Integer", t.uint8_t, Analog),
+        0x21: ("Unsigned Integer", t.uint16_t, Analog),
+        0x22: ("Unsigned Integer", t.uint24_t, Analog),
+        0x23: ("Unsigned Integer", t.uint32_t, Analog),
+        0x24: ("Unsigned Integer", t.uint40_t, Analog),
+        0x25: ("Unsigned Integer", t.uint48_t, Analog),
+        0x26: ("Unsigned Integer", t.uint56_t, Analog),
+        0x27: ("Unsigned Integer", t.uint64_t, Analog),
+        0x28: ("Signed Integer", t.int8s, Analog),
+        0x29: ("Signed Integer", t.int16s, Analog),
+        0x2A: ("Signed Integer", t.int24s, Analog),
+        0x2B: ("Signed Integer", t.int32s, Analog),
+        0x2C: ("Signed Integer", t.int40s, Analog),
+        0x2D: ("Signed Integer", t.int48s, Analog),
+        0x2E: ("Signed Integer", t.int56s, Analog),
+        0x2F: ("Signed Integer", t.int64s, Analog),
+        0x30: ("Enumeration", t.enum8, Discrete),
+        0x31: ("Enumeration", t.enum16, Discrete),
+        # 0x38: ('Floating point', t.Half, Analog),
+        0x39: ("Floating point", t.Single, Analog),
+        0x3A: ("Floating point", t.Double, Analog),
+        0x41: ("Octet string", t.LVBytes, Discrete),
+        0x42: ("Character string", t.CharacterString, Discrete),
+        0x43: ("Long octet string", t.LongOctetString, Discrete),
+        0x44: ("Long character string", t.LongCharacterString, Discrete),
+        0x48: ("Array", Array, Discrete),
+        0x4C: ("Structure", t.LVList(TypeValue, 2), Discrete),
+        0x50: ("Set", Set, Discrete),
+        0x51: ("Bag", Bag, Discrete),
+        0xE0: ("Time of day", t.TimeOfDay, Analog),
+        0xE1: ("Date", t.Date, Analog),
+        0xE2: ("UTCTime", t.UTCTime, Analog),
+        0xE8: ("Cluster ID", t.ClusterId, Discrete),
+        0xE9: ("Attribute ID", t.AttributeId, Discrete),
+        0xEA: ("BACNet OID", t.BACNetOid, Discrete),
+        0xF0: ("IEEE address", t.EUI64, Discrete),
+        0xF1: ("128-bit security key", t.KeyData, Discrete),
+        0xFF: ("Unknown", Unknown, None),
+    }
+)
 
 
 class ReadAttributeRecord(t.Struct):

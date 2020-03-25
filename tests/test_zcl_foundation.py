@@ -304,9 +304,9 @@ def test_frame_header_cluster():
 
 def test_data_types():
     """Test data types mappings."""
-    assert len(foundation.DATA_TYPES) == len(foundation.DATA_TYPE_IDX)
+    assert len(foundation.DATA_TYPES) == len(foundation.DATA_TYPES._idx_by_class)
     data_types_set = set([d[1] for d in foundation.DATA_TYPES.values()])
-    dt_2_id_set = set(foundation.DATA_TYPE_IDX.keys())
+    dt_2_id_set = set(foundation.DATA_TYPES._idx_by_class.keys())
     assert data_types_set == dt_2_id_set
 
 
@@ -319,3 +319,56 @@ def test_attribute_report():
     assert a.attrid == b.attrid
     assert a.direction == b.direction
     assert a.timeout == b.timeout
+
+
+def test_pytype_to_datatype_derived_enums():
+    """Test pytype_to_datatype_id lookup for derived enums."""
+
+    class e_1(t.enum8):
+        pass
+
+    class e_2(t.enum8):
+        pass
+
+    class e_3(t.enum16):
+        pass
+
+    enum8_id = foundation.DATA_TYPES.pytype_to_datatype_id(t.enum8)
+    enum16_id = foundation.DATA_TYPES.pytype_to_datatype_id(t.enum16)
+
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(e_1) == enum8_id
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(e_2) == enum8_id
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(e_3) == enum16_id
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(e_2) == enum8_id
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(e_3) == enum16_id
+
+
+def test_pytype_to_datatype_derived_bitmaps():
+    """Test pytype_to_datatype_id lookup for derived enums."""
+
+    class b_1(t.bitmap8):
+        pass
+
+    class b_2(t.bitmap8):
+        pass
+
+    class b_3(t.bitmap16):
+        pass
+
+    bitmap8_id = foundation.DATA_TYPES.pytype_to_datatype_id(t.bitmap8)
+    bitmap16_id = foundation.DATA_TYPES.pytype_to_datatype_id(t.bitmap16)
+
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(b_1) == bitmap8_id
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(b_2) == bitmap8_id
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(b_3) == bitmap16_id
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(b_2) == bitmap8_id
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(b_3) == bitmap16_id
+
+
+def test_ptype_to_datatype_notype():
+    """Test ptype for NoData."""
+
+    class ZigpyUnknown:
+        pass
+
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(ZigpyUnknown) == 0xFF
