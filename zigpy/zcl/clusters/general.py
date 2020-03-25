@@ -492,14 +492,14 @@ class Time(Cluster):
     cluster_id = 0x000A
     ep_attribute = "time"
     attributes = {
-        0x0000: ("time", t.uint32_t),
+        0x0000: ("time", t.UTCTime),
         0x0001: ("time_status", t.bitmap8),
         0x0002: ("time_zone", t.int32s),
         0x0003: ("dst_start", t.uint32_t),
         0x0004: ("dst_end", t.uint32_t),
         0x0005: ("dst_shift", t.int32s),
-        0x0006: ("standard_time", t.uint32_t),
-        0x0007: ("local_time", t.uint32_t),
+        0x0006: ("standard_time", t.StandardTime),
+        0x0007: ("local_time", t.LocalTime),
         0x0008: ("last_set_time", t.uint32_t),
         0x0009: ("valid_until_time", t.uint32_t),
     }

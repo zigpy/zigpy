@@ -139,7 +139,23 @@ class TimeOfDay(Struct):
     ]
 
 
-class UTCTime(basic.uint32_t):
+class _Time(basic.uint32_t):
+    pass
+
+
+class UTCTime(_Time):
+    pass
+
+
+class StandardTime(_Time):
+    """Adjusted for TimeZone but not for daylight saving."""
+
+    pass
+
+
+class LocalTime(_Time):
+    """Standard time adjusted for daylight saving."""
+
     pass
 
 
