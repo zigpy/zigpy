@@ -391,3 +391,14 @@ def test_ias_ace_audible_notification():
     assert rest == extra
     assert notification_type.name.startswith("manufacturer_specific")
     assert notification_type.value == 0x81
+
+
+def test_basic_cluster_power_source():
+    extra = b"The rest of the owl\xaa\x55"
+    pwr_src, rest = zcl.clusters.general.Basic.PowerSource.deserialize(b"\x81" + extra)
+
+    assert rest == extra
+    assert pwr_src == zcl.clusters.general.Basic.PowerSource.Mains_single_phase
+    assert pwr_src == 0x01
+    assert pwr_src.value == 0x01
+    assert pwr_src.battery_backup
