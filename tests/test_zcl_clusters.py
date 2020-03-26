@@ -5,6 +5,7 @@ from asynctest import mock
 import pytest
 import zigpy.endpoint
 import zigpy.ota as ota
+import zigpy.types as types
 import zigpy.zcl as zcl
 import zigpy.zcl.clusters.security as sec
 
@@ -402,3 +403,169 @@ def test_basic_cluster_power_source():
     assert pwr_src == 0x01
     assert pwr_src.value == 0x01
     assert pwr_src.battery_backup
+
+
+@pytest.mark.parametrize(
+    "raw, mode, name",
+    (
+        (0x00, 0, "Stop"),
+        (0x01, 0, "Stop"),
+        (0x02, 0, "Stop"),
+        (0x03, 0, "Stop"),
+        (0x30, 3, "Emergency"),
+        (0x31, 3, "Emergency"),
+        (0x32, 3, "Emergency"),
+        (0x33, 3, "Emergency"),
+    ),
+)
+def test_security_iaswd_warning_mode(raw, mode, name):
+    """Test warning command class of IasWD cluster."""
+
+    def _test(warning, data):
+        assert warning.serialize() == data
+        assert warning == raw
+        assert warning.mode == mode
+        assert warning.mode.name == name
+        warning.mode = mode
+        assert warning.serialize() == data
+        assert warning.mode == mode
+
+    data = types.uint8_t(raw).serialize()
+    _test(sec.IasWd.Warning(raw), data)
+
+    extra = b"The rest of the owl\xaa\x55"
+    warn, rest = sec.IasWd.Warning.deserialize(data + extra)
+    assert rest == extra
+    _test(warn, data)
+    repr(warn)
+
+
+def test_security_iaswd_warning_mode_2():
+    """Test warning command class of IasWD cluster."""
+
+    def _test(data, raw, mode, name):
+        warning, _ = sec.IasWd.Warning.deserialize(data)
+        assert warning.serialize() == data
+        assert warning == raw
+        assert warning.mode == mode
+        assert warning.mode.name == name
+        warning.mode = mode
+        assert warning.serialize() == data
+        assert warning.mode == mode
+
+    for mode in sec.IasWd.Warning.WarningMode:
+        for other in range(16):
+            raw = mode << 4 | other
+            data = types.uint8_t(raw).serialize()
+            _test(data, raw, mode.value, mode.name)
+
+
+def test_security_iaswd_warning_strobe():
+    """Test strobe of warning command class of IasWD cluster."""
+
+    for strobe in sec.IasWd.Warning.Strobe:
+        for mode in range(16):
+            for siren in range(4):
+                raw = mode << 4 | siren
+                raw |= strobe.value << 2
+                data = types.uint8_t(raw).serialize()
+                warning, _ = sec.IasWd.Warning.deserialize(data)
+                assert warning.serialize() == data
+                assert warning == raw
+                assert warning.strobe == strobe.value
+                assert warning.strobe.name == strobe.name
+                warning.strobe = strobe
+                assert warning.serialize() == data
+                assert warning.strobe == strobe.value
+
+
+def test_security_iaswd_warning_siren():
+    """Test siren of warning command class of IasWD cluster."""
+
+    for siren in sec.IasWd.Warning.SirenLevel:
+        for mode in range(16):
+            for strobe in range(4):
+                raw = mode << 4 | (strobe << 2)
+                raw |= siren.value
+                data = types.uint8_t(raw).serialize()
+                warning, _ = sec.IasWd.Warning.deserialize(data)
+                assert warning.serialize() == data
+                assert warning == raw
+                assert warning.level == siren.value
+                assert warning.level.name == siren.name
+                warning.level = siren
+                assert warning.serialize() == data
+                assert warning.level == siren.value
+
+
+@pytest.mark.parametrize(
+    "raw, mode, name",
+    (
+        (0x00, 0, "Armed"),
+        (0x01, 0, "Armed"),
+        (0x02, 0, "Armed"),
+        (0x03, 0, "Armed"),
+        (0x10, 1, "Disarmed"),
+        (0x11, 1, "Disarmed"),
+        (0x12, 1, "Disarmed"),
+        (0x13, 1, "Disarmed"),
+    ),
+)
+def test_security_iaswd_squawk_mode(raw, mode, name):
+    """Test squawk command class of IasWD cluster."""
+
+    def _test(squawk, data):
+        assert squawk.serialize() == data
+        assert squawk == raw
+        assert squawk.mode == mode
+        assert squawk.mode.name == name
+        squawk.mode = mode
+        assert squawk.serialize() == data
+        assert squawk.mode == mode
+
+    data = types.uint8_t(raw).serialize()
+    _test(sec.IasWd.Squawk(raw), data)
+
+    extra = b"The rest of the owl\xaa\x55"
+    squawk, rest = sec.IasWd.Squawk.deserialize(data + extra)
+    assert rest == extra
+    _test(squawk, data)
+    repr(squawk)
+
+
+def test_security_iaswd_squawk_strobe():
+    """Test strobe of squawk command class of IasWD cluster."""
+
+    for strobe in sec.IasWd.Squawk.Strobe:
+        for mode in range(16):
+            for level in range(4):
+                raw = mode << 4 | level
+                raw |= strobe.value << 3
+                data = types.uint8_t(raw).serialize()
+                squawk, _ = sec.IasWd.Squawk.deserialize(data)
+                assert squawk.serialize() == data
+                assert squawk == raw
+                assert squawk.strobe == strobe.value
+                assert squawk.strobe == strobe
+                assert squawk.strobe.name == strobe.name
+                squawk.strobe = strobe
+                assert squawk.serialize() == data
+                assert squawk.strobe == strobe
+
+
+def test_security_iaswd_squawk_level():
+    """Test level of squawk command class of IasWD cluster."""
+
+    for level in sec.IasWd.Squawk.SquawkLevel:
+        for other in range(64):
+            raw = other << 2 | level.value
+            data = types.uint8_t(raw).serialize()
+            squawk, _ = sec.IasWd.Squawk.deserialize(data)
+            assert squawk.serialize() == data
+            assert squawk == raw
+            assert squawk.level == level.value
+            assert squawk.level == level
+            assert squawk.level.name == level.name
+            squawk.level = level
+            assert squawk.serialize() == data
+            assert squawk.level == level
