@@ -1,9 +1,11 @@
 import logging
+from typing import Any, Dict, Optional
 
 import zigpy.device
 import zigpy.endpoint
-from zigpy.quirks.registry import DeviceRegistry
 import zigpy.zcl
+import zigpy.zcl.foundation as foundation
+from zigpy.quirks.registry import DeviceRegistry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,3 +97,42 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
 
 class CustomCluster(zigpy.zcl.Cluster):
     _skip_registry = True
+    _CONSTANT_ATTRIBUTES: Optional[Dict[int, Any]] = None
+
+    async def read_attributes_raw(self, attributes, manufacturer=None):
+        if not self._CONSTANT_ATTRIBUTES:
+            return await super().read_attributes_raw(
+                attributes, manufacturer=manufacturer
+            )
+
+        succeeded = [
+            foundation.ReadAttributeRecord(
+                attr, foundation.Status.SUCCESS, foundation.TypeValue()
+            )
+            for attr in attributes
+            if attr in self._CONSTANT_ATTRIBUTES
+        ]
+        for record in succeeded:
+            record.value.value = self._CONSTANT_ATTRIBUTES[record.attrid]
+
+        attrs_to_read = [
+            attr for attr in attributes if attr not in self._CONSTANT_ATTRIBUTES
+        ]
+        failed = []
+
+        if not attrs_to_read:
+            return (succeeded, failed)
+
+        results = await super().read_attributes_raw(
+            attrs_to_read, manufacturer=manufacturer
+        )
+        if not isinstance(results[0], list):
+            for attrid in attrs_to_read:
+                failed.append(
+                    foundation.ReadAttributeRecord(
+                        attrid, results[0].status, foundation.TypeValue()
+                    )
+                )
+        else:
+            succeeded.extend(results[0])
+        return (succeeded, failed)
