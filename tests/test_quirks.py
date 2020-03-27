@@ -2,13 +2,12 @@ import itertools
 from unittest import mock
 
 import pytest
-
 import zigpy.device
 import zigpy.endpoint
 import zigpy.quirks
+from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
 import zigpy.zcl as zcl
-from zigpy.quirks.registry import DeviceRegistry
 from zigpy.zcl import Cluster
 
 ALLOWED_SIGNATURE = set(

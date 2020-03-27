@@ -3,9 +3,9 @@ from typing import Any, Dict, Optional
 
 import zigpy.device
 import zigpy.endpoint
+from zigpy.quirks.registry import DeviceRegistry
 import zigpy.zcl
 import zigpy.zcl.foundation as foundation
-from zigpy.quirks.registry import DeviceRegistry
 
 _LOGGER = logging.getLogger(__name__)
 
