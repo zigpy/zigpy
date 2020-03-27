@@ -366,10 +366,17 @@ async def test_read_attributes_uncached():
             0x01: ("client_cmd_1", (t.uint8_t,), True),
         }
 
+    class TestCluster2(zigpy.quirks.CustomCluster):
+        cluster_id = 0x1235
+        attributes = {0x0000: ("first_attribute", t.uint8_t)}
+        server_commands = {}
+        client_commands = {}
+
     epmock = mock.MagicMock()
     epmock._device.application.get_sequence.return_value = 123
     epmock.device.application.get_sequence.return_value = 123
     cluster = TestCluster(epmock, True)
+    cluster2 = TestCluster2(epmock, True)
 
     async def mockrequest(
         foundation, command, schema, args, manufacturer=None, **kwargs
@@ -382,6 +389,7 @@ async def test_read_attributes_uncached():
         return [[rar0, rar99, rar199]]
 
     cluster.request = mockrequest
+    cluster2.request = mockrequest
     # test no constants
     success, failure = await cluster.read_attributes([0, 2, 3])
     assert success[0] == 99
@@ -392,6 +400,16 @@ async def test_read_attributes_uncached():
     success, failure = await cluster.read_attributes([0, 1, 2, 3])
     assert success[0] == 99
     assert success[1] == 5
+    assert failure[2] == 1
+    assert success[3] == 199
+
+    # test just constant attr
+    success, failure = await cluster.read_attributes([1])
+    assert success[1] == 5
+
+    # test just constant attr
+    success, failure = await cluster2.read_attributes([0, 2, 3])
+    assert success[0] == 99
     assert failure[2] == 1
     assert success[3] == 199
 
