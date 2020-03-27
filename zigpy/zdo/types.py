@@ -1,4 +1,3 @@
-import enum
 import typing
 
 import zigpy.types as t
@@ -34,7 +33,7 @@ class SizePrefixedSimpleDescriptor(SimpleDescriptor):
         return SimpleDescriptor.deserialize(data[1:])
 
 
-class LogicalType(t.uint8_t, enum.Enum):
+class LogicalType(t.enum8):
     Coordinator = 0b000
     Router = 0b001
     EndDevice = 0b010
@@ -231,7 +230,51 @@ class Routes(t.Struct):
     ]
 
 
-class Status(t.uint8_t, enum.Enum):
+class NwkUpdate(t.Struct):
+    CHANNEL_CHANGE_REQ = 0xFE
+    CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ = 0xFF
+
+    _fields = [
+        ("ScanChannels", t.Channels),
+        ("ScanDuration", t.uint8_t),
+        ("ScanCount", t.uint8_t),
+        ("nwkUpdateId", t.uint8_t),
+        ("nwkManagerAddr", t.NWK),
+    ]
+
+    def serialize(self) -> bytes:
+        """Serialize data."""
+        r = self.ScanChannels.serialize() + self.ScanDuration.serialize()
+        if self.ScanDuration <= 0x05:
+            r += self.ScanCount.serialize()
+        if self.ScanDuration in (
+            self.CHANNEL_CHANGE_REQ,
+            self.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ,
+        ):
+            r += self.nwkUpdateId.serialize()
+        if self.ScanDuration == self.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ:
+            r += self.nwkManagerAddr.serialize()
+        return r
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> typing.Tuple["NwkUpdate", bytes]:
+        """Deserialize data."""
+        r = cls()
+        r.ScanChannels, data = t.Channels.deserialize(data)
+        r.ScanDuration, data = t.uint8_t.deserialize(data)
+        if r.ScanDuration <= 0x05:
+            r.ScanCount, data = t.uint8_t.deserialize(data)
+        if r.ScanDuration in (
+            cls.CHANNEL_CHANGE_REQ,
+            cls.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ,
+        ):
+            r.nwkUpdateId, data = t.uint8_t.deserialize(data)
+        if r.ScanDuration == cls.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ:
+            r.nwkManagerAddr, data = t.NWK.deserialize(data)
+        return r, data
+
+
+class Status(t.enum8):
     # The requested operation or transmission was completed successfully.
     SUCCESS = 0x00
     # The supplied request type was invalid.
@@ -267,13 +310,6 @@ class Status(t.uint8_t, enum.Enum):
     # request is not authorized from this device.
     NOT_AUTHORIZED = 0x8D
 
-    @classmethod
-    def deserialize(cls, data):
-        try:
-            return super().deserialize(data)
-        except ValueError:
-            return t.uint8_t.deserialize(data)
-
 
 NWK = ("NWKAddr", t.NWK)
 NWKI = ("NWKAddrOfInterest", t.NWK)
@@ -285,7 +321,7 @@ class _CommandID(t.HexRepr, t.uint16_t):
     _hex_len = 4
 
 
-class ZDOCmd(_CommandID, enum.Enum):
+class ZDOCmd(t.enum_factory(_CommandID)):
     # Device and Service Discovery Server Requests
     NWK_addr_req = 0x0000
     IEEE_addr_req = 0x0001
@@ -320,6 +356,7 @@ class ZDOCmd(_CommandID, enum.Enum):
     # ... TODO optional stuff ...
     Mgmt_Leave_req = 0x0034
     Mgmt_Permit_Joining_req = 0x0036
+    Mgmt_NWK_Update_req = 0x0038
     # ... TODO optional stuff ...
 
     # Responses
@@ -358,6 +395,7 @@ class ZDOCmd(_CommandID, enum.Enum):
     Mgmt_Leave_rsp = 0x8034
     Mgmt_Permit_Joining_rsp = 0x8036
     # ... TODO optional stuff ...
+    Mgmt_NWK_Update_rsp = 0x8038
 
 
 CLUSTERS = {
@@ -438,6 +476,7 @@ CLUSTERS = {
         ("PermitDuration", t.uint8_t),
         ("TC_Significant", t.Bool),
     ),
+    ZDOCmd.Mgmt_NWK_Update_req: (("NwkUpdate", NwkUpdate),),
     # ... TODO optional stuff ...
     # Responses
     # Device and Service Discovery Server Responses
@@ -524,6 +563,13 @@ CLUSTERS = {
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Leave_rsp: (STATUS,),
     ZDOCmd.Mgmt_Permit_Joining_rsp: (STATUS,),
+    ZDOCmd.Mgmt_NWK_Update_rsp: (
+        STATUS,
+        ("ScannedChannels", t.Channels),
+        ("TotalTransmissions", t.uint16_t),
+        ("TransmissionFailures", t.uint16_t),
+        ("EnergyValues", t.LVList(t.uint8_t)),
+    )
     # ... TODO optional stuff ...
 }
 
@@ -539,10 +585,7 @@ class ZDOHeader:
     """Just a wrapper representing ZDO header, similar to ZCL header."""
 
     def __init__(self, command_id: t.uint16_t = 0x0000, tsn: t.uint8_t = 0) -> None:
-        try:
-            self._command_id = ZDOCmd(command_id)
-        except ValueError:
-            self._command_id = t.uint16_t(command_id)
+        self._command_id = ZDOCmd(command_id)
         self._tsn = t.uint8_t(tsn)
 
     @property
@@ -553,12 +596,7 @@ class ZDOHeader:
     @command_id.setter
     def command_id(self, value: t.uint16_t) -> None:
         """Command ID setter."""
-        try:
-            self._command_id = ZDOCmd(value)
-            return
-        except ValueError:
-            pass
-        self._command_id = t.uint16_t(value)
+        self._command_id = ZDOCmd(value)
 
     @property
     def is_reply(self) -> bool:

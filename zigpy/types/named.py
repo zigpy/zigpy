@@ -4,7 +4,7 @@ from . import basic
 from .struct import Struct
 
 
-class BroadcastAddress(basic.uint16_t, enum.Enum):
+class BroadcastAddress(basic.enum16):
     ALL_DEVICES = 0xFFFF
     RESERVED_FFFE = 0xFFFE
     RX_ON_WHEN_IDLE = 0xFFFD
@@ -55,6 +55,29 @@ class AttributeId(HexRepr, basic.uint16_t):
 
 class BACNetOid(basic.uint32_t):
     pass
+
+
+class Channels(basic.bitmap32):
+    """Zigbee Channels."""
+
+    NO_CHANNELS = 0x00000000
+    ALL_CHANNELS = 0x07FFF800
+    CHANNEL_11 = 0x00000800
+    CHANNEL_12 = 0x00001000
+    CHANNEL_13 = 0x00002000
+    CHANNEL_14 = 0x00004000
+    CHANNEL_15 = 0x00008000
+    CHANNEL_16 = 0x00010000
+    CHANNEL_17 = 0x00020000
+    CHANNEL_18 = 0x00040000
+    CHANNEL_19 = 0x00080000
+    CHANNEL_20 = 0x00100000
+    CHANNEL_21 = 0x00200000
+    CHANNEL_22 = 0x00400000
+    CHANNEL_23 = 0x00800000
+    CHANNEL_24 = 0x01000000
+    CHANNEL_25 = 0x02000000
+    CHANNEL_26 = 0x04000000
 
 
 class ClusterId(basic.uint16_t):
@@ -116,7 +139,23 @@ class TimeOfDay(Struct):
     ]
 
 
-class UTCTime(basic.uint32_t):
+class _Time(basic.uint32_t):
+    pass
+
+
+class UTCTime(_Time):
+    pass
+
+
+class StandardTime(_Time):
+    """Adjusted for TimeZone but not for daylight saving."""
+
+    pass
+
+
+class LocalTime(_Time):
+    """Standard time adjusted for daylight saving."""
+
     pass
 
 

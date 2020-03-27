@@ -1,6 +1,4 @@
 """OTA Firmware handling."""
-import enum
-
 import attr
 import zigpy.types as t
 
@@ -114,7 +112,7 @@ class OTAImageHeader(t.Struct):
         return data
 
 
-class ElementTagId(t.uint16_t, enum.Enum):
+class ElementTagId(t.enum16):
     UPGRADE_IMAGE = 0x0000
     ECDSA_SIGNATURE = 0x0001
     ECDSA_SIGNING_CERTIFICATE = 0x0002
@@ -135,11 +133,7 @@ class SubElement(bytes):
         if len(data) < 6:
             raise ValueError("Data is too short for {}".format(cls.__name__))
 
-        try:
-            tag_id, rest = ElementTagId.deserialize(data)
-        except ValueError:
-            tag_id, rest = t.uint16_t.deserialize(data)
-
+        tag_id, rest = ElementTagId.deserialize(data)
         length, rest = t.uint32_t.deserialize(rest)
         if length > len(rest):
             raise ValueError("Data is too short for {}".format(cls.__name__))

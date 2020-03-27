@@ -1,4 +1,5 @@
-from asynctest import mock
+from unittest import mock
+
 import pytest
 import zigpy.endpoint
 import zigpy.types as t
@@ -81,11 +82,19 @@ def test_manufacturer_specific_cluster():
 
 
 @pytest.fixture
-def cluster():
-    epmock = mock.MagicMock()
-    epmock._device.application.get_sequence.return_value = DEFAULT_TSN
-    epmock.device.application.get_sequence.return_value = DEFAULT_TSN
-    return zcl.Cluster.from_id(epmock, 0)
+def cluster_by_id():
+    def _cluster(cluster_id=0):
+        epmock = mock.MagicMock()
+        epmock._device.application.get_sequence.return_value = DEFAULT_TSN
+        epmock.device.application.get_sequence.return_value = DEFAULT_TSN
+        return zcl.Cluster.from_id(epmock, cluster_id)
+
+    return _cluster
+
+
+@pytest.fixture
+def cluster(cluster_by_id):
+    return cluster_by_id(0)
 
 
 @pytest.fixture
@@ -158,13 +167,25 @@ def test_attribute_report(cluster):
     attr = zcl.foundation.Attribute()
     attr.attrid = 4
     attr.value = zcl.foundation.TypeValue()
-    attr.value.value = 1
+    attr.value.value = "manufacturer"
     hdr = mock.MagicMock(auto_spec=foundation.ZCLHeader)
     hdr.command_id = foundation.Command.Report_Attributes
     hdr.frame_control.is_general = True
     hdr.frame_control.is_cluster = False
     cluster.handle_message(hdr, [[attr]])
-    assert cluster._attr_cache[4] == 1
+    assert cluster._attr_cache[4] == "manufacturer"
+
+    attr.attrid = 0x89AB
+    cluster.handle_message(hdr, [[attr]])
+    assert cluster._attr_cache[attr.attrid] == "manufacturer"
+
+    def mock_type(*args, **kwargs):
+        raise ValueError
+
+    with mock.patch.dict(cluster.attributes, {0xAAAA: ("Name", mock_type)}):
+        attr.attrid = 0xAAAA
+        cluster.handle_message(hdr, [[attr]])
+        assert cluster._attr_cache[attr.attrid] == "manufacturer"
 
 
 def test_handle_request_unknown(cluster):
@@ -220,27 +241,29 @@ async def test_read_attributes_uncached(cluster):
         assert foundation is True
         assert command == 0
         rar0 = _mk_rar(0, 99)
-        rar4 = _mk_rar(4, b"Manufacturer")
+        rar4 = _mk_rar(4, "Manufacturer")
         rar99 = _mk_rar(99, None, 1)
-        return [[rar0, rar4, rar99]]
+        rar199 = _mk_rar(199, 199)
+        return [[rar0, rar4, rar99, rar199]]
 
     cluster.request = mockrequest
-    success, failure = await cluster.read_attributes([0, "manufacturer", 99])
+    success, failure = await cluster.read_attributes([0, "manufacturer", 99, 199])
     assert success[0] == 99
-    assert success["manufacturer"] == b"Manufacturer"
+    assert success["manufacturer"] == "Manufacturer"
     assert failure[99] == 1
+    assert success[199] == 199
 
 
 async def test_read_attributes_cached(cluster):
     cluster.request = mock.MagicMock()
     cluster._attr_cache[0] = 99
-    cluster._attr_cache[4] = b"Manufacturer"
+    cluster._attr_cache[4] = "Manufacturer"
     success, failure = await cluster.read_attributes(
         [0, "manufacturer"], allow_cache=True
     )
     assert cluster.request.call_count == 0
     assert success[0] == 99
-    assert success["manufacturer"] == b"Manufacturer"
+    assert success["manufacturer"] == "Manufacturer"
     assert failure == {}
 
 
@@ -250,18 +273,18 @@ async def test_read_attributes_mixed_cached(cluster):
     ):
         assert foundation is True
         assert command == 0
-        rar5 = _mk_rar(5, b"Model")
+        rar5 = _mk_rar(5, "Model")
         return [[rar5]]
 
     cluster.request = mockrequest
     cluster._attr_cache[0] = 99
-    cluster._attr_cache[4] = b"Manufacturer"
+    cluster._attr_cache[4] = "Manufacturer"
     success, failure = await cluster.read_attributes(
         [0, "manufacturer", "model"], allow_cache=True
     )
     assert success[0] == 99
-    assert success["manufacturer"] == b"Manufacturer"
-    assert success["model"] == b"Model"
+    assert success["manufacturer"] == "Manufacturer"
+    assert success["model"] == "Model"
     assert failure == {}
 
 
@@ -279,20 +302,39 @@ async def test_read_attributes_default_response(cluster):
     assert failure == {0: 0xC1, 5: 0xC1, 23: 0xC1}
 
 
+async def test_read_attributes_value_normalization_error(cluster):
+    async def mockrequest(
+        foundation, command, schema, args, manufacturer=None, **kwargs
+    ):
+        assert foundation is True
+        assert command == 0
+        rar5 = _mk_rar(5, "Model")
+        return [[rar5]]
+
+    def mock_type(*args, **kwargs):
+        raise ValueError
+
+    cluster.request = mockrequest
+    with mock.patch.dict(cluster.attributes, {5: ("Name", mock_type)}):
+        success, failure = await cluster.read_attributes(["model"], allow_cache=True)
+    assert failure == {}
+    assert success["model"] == "Model"
+
+
 async def test_item_access_attributes(cluster):
     async def mockrequest(
         foundation, command, schema, args, manufacturer=None, **kwargs
     ):
         assert foundation is True
         assert command == 0
-        rar5 = _mk_rar(5, b"Model")
+        rar5 = _mk_rar(5, "Model")
         return [[rar5]]
 
     cluster.request = mockrequest
     cluster._attr_cache[0] = 99
 
     v = await cluster["model"]
-    assert v == b"Model"
+    assert v == "Model"
     v = await cluster["zcl_version"]
     assert v == 99
     with pytest.raises(KeyError):
@@ -312,6 +354,24 @@ def test_write_wrong_attribute(cluster):
 def test_write_attributes_wrong_type(cluster):
     cluster.write_attributes({18: 2})
     assert cluster._endpoint.request.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "cluster_id, attr, value, serialized",
+    (
+        (0, "zcl_version", 0xAA, b"\x00\x00\x20\xaa"),
+        (0, "model", "model x", b"\x05\x00\x42\x07model x"),
+        (0, "device_enabled", True, b"\x12\x00\x10\x01"),
+        (0, "alarm_mask", 0x55, b"\x13\x00\x18\x55"),
+        (0x0202, "fan_mode", 0xDE, b"\x00\x00\x30\xde"),
+    ),
+)
+def test_write_attribute_types(cluster_id, attr, value, serialized, cluster_by_id):
+    cluster = cluster_by_id(cluster_id)
+    cluster.write_attributes({attr: value})
+    assert cluster._endpoint.reply.call_count == 0
+    assert cluster._endpoint.request.call_count == 1
+    assert cluster.endpoint.request.call_args[0][2][3:] == serialized
 
 
 def test_read_attributes_response(cluster):
@@ -338,15 +398,31 @@ def test_read_attributes_resp_str(cluster):
     assert cluster._endpoint.request.call_count == 0
 
 
-def test_read_attributes_resp_exc(cluster, monkeypatch):
-    type_idx = mock.MagicMock()
-    type_idx.__getitem__.side_effect = ValueError()
-    monkeypatch.setattr(foundation, "DATA_TYPE_IDX", type_idx)
-
-    cluster.read_attributes_rsp({"hw_version": 32})
+def test_read_attributes_resp_exc(cluster):
+    with mock.patch.object(foundation.DATA_TYPES, "pytype_to_datatype_id") as mck:
+        mck.side_effect = ValueError
+        cluster.read_attributes_rsp({"hw_version": 32})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
     assert cluster.endpoint.reply.call_args[0][2][-3:] == b"\x03\x00\x86"
+
+
+@pytest.mark.parametrize(
+    "cluster_id, attr, value, serialized",
+    (
+        (0, "zcl_version", 0xAA, b"\x00\x00\x00\x20\xaa"),
+        (0, "model", "model x", b"\x05\x00\x00\x42\x07model x"),
+        (0, "device_enabled", True, b"\x12\x00\x00\x10\x01"),
+        (0, "alarm_mask", 0x55, b"\x13\x00\x00\x18\x55"),
+        (0x0202, "fan_mode", 0xDE, b"\x00\x00\x00\x30\xde"),
+    ),
+)
+def test_read_attribute_resp(cluster_id, attr, value, serialized, cluster_by_id):
+    cluster = cluster_by_id(cluster_id)
+    cluster.read_attributes_rsp({attr: value})
+    assert cluster._endpoint.reply.call_count == 1
+    assert cluster._endpoint.request.call_count == 0
+    assert cluster.endpoint.reply.call_args[0][2][3:] == serialized
 
 
 def test_bind(cluster):
@@ -406,6 +482,24 @@ def test_configure_reporting_manuf():
         tsn=mock.ANY,
     )
     assert cluster.request.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "cluster_id, attr, data_type",
+    (
+        (0, "zcl_version", 0x20),
+        (0, "model", 0x42),
+        (0, "device_enabled", 0x10),
+        (0, "alarm_mask", 0x18),
+        (0x0202, "fan_mode", 0x30),
+    ),
+)
+def test_configure_reporting_types(cluster_id, attr, data_type, cluster_by_id):
+    cluster = cluster_by_id(cluster_id)
+    cluster.configure_reporting(attr, 0x1234, 0x2345, 0xAA)
+    assert cluster._endpoint.reply.call_count == 0
+    assert cluster._endpoint.request.call_count == 1
+    assert cluster.endpoint.request.call_args[0][2][6] == data_type
 
 
 def test_command(cluster):

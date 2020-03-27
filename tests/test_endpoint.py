@@ -209,19 +209,26 @@ def _get_model_info(ep, test_manuf=None, test_model=None, fail=False, timeout=Fa
                 raise zigpy.exceptions.ZigbeeException
         nonlocal test_manuf, test_model
 
-        if test_manuf is not None:
-            test_manuf = t.uint8_t(len(test_manuf)).serialize() + test_manuf
-            rar4 = _mk_rar(4, t.CharacterString.deserialize(test_manuf)[0])
-        else:
-            rar4 = _mk_rar(4, None)
+        result = []
+        if 4 in args:
+            if test_manuf is not None:
+                test_manuf = t.uint8_t(len(test_manuf)).serialize() + test_manuf
+                rar4 = _mk_rar(4, t.CharacterString.deserialize(test_manuf)[0])
+                result.append(rar4)
+            else:
+                rar4 = _mk_rar(4, None, status=1)
+                result.append(rar4)
 
-        if test_model is not None:
-            test_model = t.uint8_t(len(test_model)).serialize() + test_model
-            rar5 = _mk_rar(5, t.CharacterString.deserialize(test_model)[0])
-        else:
-            rar5 = _mk_rar(5, None)
+        if 5 in args:
+            if test_model is not None:
+                test_model = t.uint8_t(len(test_model)).serialize() + test_model
+                rar5 = _mk_rar(5, t.CharacterString.deserialize(test_model)[0])
+                result.append(rar5)
+            else:
+                rar5 = _mk_rar(5, None, status=1)
+                result.append(rar5)
 
-        return [[rar4, rar5]]
+        return [result]
 
     clus.request = mockrequest
 

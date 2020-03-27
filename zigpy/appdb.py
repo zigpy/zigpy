@@ -371,14 +371,10 @@ class PersistingListener:
             dev = self._application.get_device(ieee)
             ep = dev.add_endpoint(epid)
             ep.profile_id = profile_id
-            try:
-                if profile_id == 260:
-                    device_type = zigpy.profiles.zha.DeviceType(device_type)
-                elif profile_id == 49246:
-                    device_type = zigpy.profiles.zll.DeviceType(device_type)
-            except ValueError:
-                pass
-            ep.device_type = device_type
+            if profile_id == 260:
+                ep.device_type = zigpy.profiles.zha.DeviceType(device_type)
+            elif profile_id == 49246:
+                ep.device_type = zigpy.profiles.zll.DeviceType(device_type)
             ep.status = zigpy.endpoint.Status(status)
 
     def _load_clusters(self):

@@ -154,7 +154,9 @@ def test_status_undef():
     status, rest = types.Status.deserialize(data + extra)
     assert rest == extra
     assert status == 0xAA
-    assert not isinstance(status, types.Status)
+    assert status.value == 0xAA
+    assert status.name == "undefined_0xaa"
+    assert isinstance(status, types.Status)
 
 
 def test_zdo_header():
@@ -183,11 +185,59 @@ def test_zdo_header_cmd_id():
     unk_cmd = 0x00FF
     assert unk_cmd not in list(types.ZDOCmd)
     hdr = types.ZDOHeader(unk_cmd, 0x55)
-    assert isinstance(hdr.command_id, t.uint16_t)
+    assert isinstance(hdr.command_id, types.ZDOCmd)
     assert hdr.command_id == unk_cmd
 
     unk_cmd += 1
     assert unk_cmd not in list(types.ZDOCmd)
     hdr.command_id = unk_cmd
-    assert isinstance(hdr.command_id, t.uint16_t)
+    assert isinstance(hdr.command_id, types.ZDOCmd)
     assert hdr.command_id == unk_cmd
+
+
+def test_nwkupdate():
+    """Test NwkUpdate class."""
+
+    extra = b"extra data\xaa\x55"
+
+    upd = types.NwkUpdate(t.Channels.ALL_CHANNELS, 0x05, 0x04, 0xAA, 0x1234)
+    data = upd.serialize()
+    assert data == b"\x00\xf8\xff\x07\x05\x04"
+
+    new, rest = types.NwkUpdate.deserialize(data + extra)
+    assert rest == extra
+    assert new.ScanChannels == t.Channels.ALL_CHANNELS
+    assert new.ScanDuration == 0x05
+    assert new.ScanCount == 0x04
+    assert new.nwkUpdateId is None
+    assert new.nwkManagerAddr is None
+
+
+def test_nwkupdate_nwk_update_id():
+    """Test NwkUpdate class."""
+
+    extra = b"extra data\xaa\x55"
+
+    upd = types.NwkUpdate(t.Channels.ALL_CHANNELS, 0xFE, 0x04, 0xAA, 0x1234)
+    data = upd.serialize()
+    assert data == b"\x00\xf8\xff\x07\xfe\xaa"
+
+    new, rest = types.NwkUpdate.deserialize(data + extra)
+    assert rest == extra
+    assert new.ScanChannels == t.Channels.ALL_CHANNELS
+    assert new.ScanDuration == 0xFE
+    assert new.ScanCount is None
+    assert new.nwkUpdateId == 0xAA
+    assert new.nwkManagerAddr is None
+
+    upd = types.NwkUpdate(t.Channels.ALL_CHANNELS, 0xFF, 0x04, 0xAA, 0x1234)
+    data = upd.serialize()
+    assert data == b"\x00\xf8\xff\x07\xff\xaa\x34\x12"
+
+    new, rest = types.NwkUpdate.deserialize(data + extra)
+    assert rest == extra
+    assert new.ScanChannels == t.Channels.ALL_CHANNELS
+    assert new.ScanDuration == 0xFF
+    assert new.ScanCount is None
+    assert new.nwkUpdateId == 0xAA
+    assert new.nwkManagerAddr == 0x1234

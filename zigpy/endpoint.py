@@ -66,13 +66,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         sd = sdr[2]
         self.profile_id = sd.profile
         self.device_type = sd.device_type
-        try:
-            if self.profile_id == 260:
-                self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
-            elif self.profile_id == 49246:
-                self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
-        except ValueError:
-            pass
+        if self.profile_id == 260:
+            self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
+        elif self.profile_id == 49246:
+            self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
 
         for cluster in sd.input_clusters:
             self.add_input_cluster(cluster)
