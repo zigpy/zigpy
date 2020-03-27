@@ -21,6 +21,6 @@ jobs:
       run: >-
         python3 setup.py sdist bdist_wheel
     - name: Publish distribution to PyPI
-      uses: pypa/gh-action-pypi-publish@test-master
+      uses: pypa/gh-action-pypi-publish@master
       with:
         password: ${{ secrets.PYPI_TOKEN }}
