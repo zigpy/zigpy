@@ -7,6 +7,47 @@ from zigpy.zcl import Cluster
 class Pump(Cluster):
     """An interface for configuring and controlling pumps."""
 
+    class AlarmMask(t.bitmap16):
+        Supply_voltage_too_low = 0x0001
+        Supply_voltage_too_high = 0x0002
+        Power_missing_phase = 0x0004
+        System_pressure_too_low = 0x0008
+        System_pressure_too_high = 0x0010
+        Dry_running = 0x0020
+        Motor_temperature_too_high = 0x0040
+        Pump_motor_has_fatal_failure = 0x0080
+        Electronic_temperature_too_high = 0x0100
+        Pump_blocked = 0x0200
+        Sensor_failure = 0x0400
+        Electronic_non_fatal_failure = 0x0800
+        Electronic_fatal_failure = 0x1000
+        General_fault = 0x2000
+
+    class ControlMode(t.enum8):
+        Constant_speed = 0x00
+        Constant_pressure = 0x01
+        Proportional_pressure = 0x02
+        Constant_flow = 0x03
+        Constant_temperature = 0x05
+        Automatic = 0x07
+
+    class OperationMode(t.enum8):
+        Normal = 0x00
+        Minimum = 0x01
+        Maximum = 0x02
+        Local = 0x03
+
+    class PumpStatus(t.bitmap16):
+        Device_fault = 0x0001
+        Supply_fault = 0x0002
+        Speed_low = 0x0004
+        Speed_high = 0x0008
+        Local_override = 0x0010
+        Running = 0x0020
+        Remote_Pressure = 0x0040
+        Remote_Flow = 0x0080
+        Remote_Temperature = 0x0100
+
     cluster_id = 0x0200
     name = "Pump Configuration and Control"
     ep_attribute = "pump"
@@ -26,18 +67,18 @@ class Pump(Cluster):
         0x000B: ("min_const_temp", t.int16s),
         0x000C: ("max_const_temp", t.int16s),
         # Pump Dynamic Information
-        0x0010: ("pump_status", t.bitmap16),
-        0x0011: ("effective_operation_mode", t.enum8),
-        0x0012: ("effective_control_mode", t.enum8),
+        0x0010: ("pump_status", PumpStatus),
+        0x0011: ("effective_operation_mode", OperationMode),
+        0x0012: ("effective_control_mode", ControlMode),
         0x0013: ("capacity", t.int16s),
         0x0014: ("speed", t.uint16_t),
         0x0015: ("lifetime_running_hours", t.uint24_t),
         0x0016: ("power", t.uint24_t),
         0x0017: ("lifetime_energy_consumed", t.uint32_t),
         # Pump Settings
-        0x0020: ("operation_mode", t.enum8),
-        0x0021: ("control_mode", t.enum8),
-        0x0022: ("alarm_mask", t.bitmap16),
+        0x0020: ("operation_mode", OperationMode),
+        0x0021: ("control_mode", ControlMode),
+        0x0022: ("alarm_mask", AlarmMask),
     }
     server_commands = {}
     client_commands = {}
