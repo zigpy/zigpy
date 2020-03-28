@@ -135,6 +135,7 @@ class Thermostat(Cluster):
         R407c = 0x03
 
     class ACErrorCode(t.bitmap32):
+        No_Errors = 0x00000000
         Commpressor_Failure = 0x00000001
         Room_Temperature_Sensor_Failure = 0x00000002
         Outdoor_Temperature_Sensor_Failure = 0x00000004
@@ -187,6 +188,7 @@ class Thermostat(Cluster):
         Economy_mode = 0x04
 
     class RemoteSensing(t.bitmap8):
+        all_local = 0x00
         local_temperature_sensed_remotely = 0x01
         outdoor_temperature_sensed_remotely = 0x02
         occupancy_sensed_remotely = 0x04
@@ -222,6 +224,7 @@ class Thermostat(Cluster):
         Sleep = 0x09
 
     class SystemType(t.bitmap8):
+        Heatt_and_or_Cool_Stage_1 = 0x00
         Cool_Stage_1 = 0x01
         Cool_Stage_2 = 0x02
         Heat_Stage_1 = 0x04
@@ -255,6 +258,7 @@ class Thermostat(Cluster):
         Heat = 0x04
 
     class RunningState(t.bitmap16):
+        Idle = 0x0000
         Heat_State_On = 0x0001
         Cool_State_On = 0x0002
         Fan_State_On = 0x0004
