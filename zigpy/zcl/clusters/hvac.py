@@ -373,6 +373,18 @@ class Fan(Cluster):
 class Dehumidification(Cluster):
     """An interface for controlling dehumidification."""
 
+    class RelativeHumidityMode(t.enum8):
+        RH_measured_locally = 0x00
+        RH_measured_remotely = 0x01
+
+    class DehumidificationLockout(t.enum8):
+        Dehumidification_not_allowed = 0x00
+        Dehumidification_is_allowed = 0x01
+
+    class RelativeHumidityDisplay(t.enum8):
+        RH_not_displayed = 0x00
+        RH_is_displayed = 0x01
+
     cluster_id = 0x0203
     ep_attribute = "dehumidification"
     attributes = {
@@ -381,11 +393,11 @@ class Dehumidification(Cluster):
         0x0001: ("dehumid_cooling", t.uint8_t),
         # Dehumidification Settings
         0x0010: ("rh_dehumid_setpoint", t.uint8_t),
-        0x0011: ("relative_humidity_mode", t.enum8),
-        0x0012: ("dehumid_lockout", t.enum8),
+        0x0011: ("relative_humidity_mode", RelativeHumidityMode),
+        0x0012: ("dehumid_lockout", DehumidificationLockout),
         0x0013: ("dehumid_hysteresis", t.uint8_t),
         0x0014: ("dehumid_max_cool", t.uint8_t),
-        0x0015: ("relative_humid_display", t.enum8),
+        0x0015: ("relative_humid_display", RelativeHumidityDisplay),
     }
     server_commands = {}
     client_commands = {}
@@ -396,13 +408,29 @@ class UserInterface(Cluster):
     thermostat (which may be remote from the
     thermostat)."""
 
+    class TemperatureDisplayMode(t.enum8):
+        Metric = 0x00
+        Imperial = 0x01
+
+    class KeypadLockout(t.enum8):
+        No_lockout = 0x00
+        Level_1_lockout = 0x01
+        Level_2_lockout = 0x02
+        Level_3_lockout = 0x03
+        Level_4_lockout = 0x04
+        Level_5_lockout = 0x05
+
+    class ScheduleProgrammingVisibility(t.enum8):
+        Enabled = 0x00
+        Disabled = 0x02
+
     cluster_id = 0x0204
     name = "Thermostat User Interface Configuration"
     ep_attribute = "thermostat_ui"
     attributes = {
-        0x0000: ("temp_display_mode", t.enum8),
-        0x0001: ("keypad_lockout", t.enum8),
-        0x0002: ("programming_visibility", t.enum8),
+        0x0000: ("temp_display_mode", TemperatureDisplayMode),
+        0x0001: ("keypad_lockout", KeypadLockout),
+        0x0002: ("programming_visibility", ScheduleProgrammingVisibility),
     }
     server_commands = {}
     client_commands = {}
