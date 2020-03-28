@@ -7,6 +7,7 @@ import zigpy.endpoint
 import zigpy.quirks
 from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
+import zigpy.zcl as zcl
 from zigpy.zcl import Cluster
 
 ALLOWED_SIGNATURE = set(
@@ -343,3 +344,117 @@ def test_custom_cluster_idx():
 
     _test_cmd("server_commands", "_server_command_idx")
     _test_cmd("client_commands", "_client_command_idx")
+
+
+async def test_read_attributes_uncached():
+    class TestCluster(zigpy.quirks.CustomCluster):
+        cluster_id = 0x1234
+        _CONSTANT_ATTRIBUTES = {0x0001: 5}
+        attributes = {
+            0x0000: ("first_attribute", t.uint8_t),
+            0x0001: ("2nd_attribute", t.uint8_t),
+            0x0002: ("3rd_attribute", t.uint8_t),
+            0x0003: ("4th_attribute", t.enum8),
+        }
+        server_commands = {
+            0x00: ("server_cmd_0", (t.uint8_t, t.uint8_t), False),
+            0x01: ("server_cmd_2", (t.uint8_t, t.uint8_t), False),
+        }
+        client_commands = {
+            0x00: ("client_cmd_0", (t.uint8_t,), True),
+            0x01: ("client_cmd_1", (t.uint8_t,), True),
+        }
+
+    class TestCluster2(zigpy.quirks.CustomCluster):
+        cluster_id = 0x1235
+        attributes = {0x0000: ("first_attribute", t.uint8_t)}
+        server_commands = {}
+        client_commands = {}
+
+    epmock = mock.MagicMock()
+    epmock._device.application.get_sequence.return_value = 123
+    epmock.device.application.get_sequence.return_value = 123
+    cluster = TestCluster(epmock, True)
+    cluster2 = TestCluster2(epmock, True)
+
+    async def mockrequest(
+        foundation, command, schema, args, manufacturer=None, **kwargs
+    ):
+        assert foundation is True
+        assert command == 0
+        rar0 = _mk_rar(0, 99)
+        rar99 = _mk_rar(2, None, 1)
+        rar199 = _mk_rar(3, 199)
+        return [[rar0, rar99, rar199]]
+
+    cluster.request = mockrequest
+    cluster2.request = mockrequest
+    # test no constants
+    success, failure = await cluster.read_attributes([0, 2, 3])
+    assert success[0] == 99
+    assert failure[2] == 1
+    assert success[3] == 199
+
+    # test mixed response with constant
+    success, failure = await cluster.read_attributes([0, 1, 2, 3])
+    assert success[0] == 99
+    assert success[1] == 5
+    assert failure[2] == 1
+    assert success[3] == 199
+
+    # test just constant attr
+    success, failure = await cluster.read_attributes([1])
+    assert success[1] == 5
+
+    # test just constant attr
+    success, failure = await cluster2.read_attributes([0, 2, 3])
+    assert success[0] == 99
+    assert failure[2] == 1
+    assert success[3] == 199
+
+
+async def test_read_attributes_default_response():
+    class TestCluster(zigpy.quirks.CustomCluster):
+        cluster_id = 0x1234
+        _CONSTANT_ATTRIBUTES = {0x0001: 5}
+        attributes = {
+            0x0000: ("first_attribute", t.uint8_t),
+            0x0001: ("2nd_attribute", t.uint8_t),
+            0x0002: ("3rd_attribute", t.uint8_t),
+            0x0003: ("4th_attribute", t.enum8),
+        }
+        server_commands = {
+            0x00: ("server_cmd_0", (t.uint8_t, t.uint8_t), False),
+            0x01: ("server_cmd_2", (t.uint8_t, t.uint8_t), False),
+        }
+        client_commands = {
+            0x00: ("client_cmd_0", (t.uint8_t,), True),
+            0x01: ("client_cmd_1", (t.uint8_t,), True),
+        }
+
+    epmock = mock.MagicMock()
+    epmock._device.application.get_sequence.return_value = 123
+    epmock.device.application.get_sequence.return_value = 123
+    cluster = TestCluster(epmock, True)
+
+    async def mockrequest(
+        foundation, command, schema, args, manufacturer=None, **kwargs
+    ):
+        assert foundation is True
+        assert command == 0
+        return [0xC1]
+
+    cluster.request = mockrequest
+    # test constants with errors
+    success, failure = await cluster.read_attributes([0, 1, 2, 3], allow_cache=False)
+    assert success == {1: 5}
+    assert failure == {0: 0xC1, 2: 0xC1, 3: 0xC1}
+
+
+def _mk_rar(attrid, value, status=0):
+    r = zcl.foundation.ReadAttributeRecord()
+    r.attrid = attrid
+    r.status = status
+    r.value = zcl.foundation.TypeValue()
+    r.value.value = value
+    return r
