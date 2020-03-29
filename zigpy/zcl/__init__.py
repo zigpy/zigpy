@@ -2,7 +2,7 @@ import asyncio
 import enum
 import functools
 import logging
-from typing import Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from zigpy import util
 import zigpy.types as t
@@ -306,7 +306,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
         return self._read_attributes_rsp(args, manufacturer=manufacturer, tsn=tsn)
 
-    def write_attributes(self, attributes, manufacturer=None):
+    def _write_attr_records(
+        self, attributes: Dict[Union[str, int], Any]
+    ) -> List[foundation.Attribute]:
         args = []
         for attrid, value in attributes.items():
             if isinstance(attrid, str):
@@ -324,8 +326,26 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                 args.append(a)
             except ValueError as e:
                 self.error(str(e))
+        return args
 
-        return self._write_attributes(args, manufacturer=manufacturer)
+    async def write_attributes(
+        self, attributes: Dict[Union[str, int], Any], manufacturer: Optional[int] = None
+    ) -> List:
+        args = self._write_attr_records(attributes)
+        result = await self._write_attributes(args, manufacturer=manufacturer)
+        if not isinstance(result[0], list):
+            return result
+
+        records = result[0]
+        if len(records) == 1 and records[0].status == foundation.Status.SUCCESS:
+            for attr_rec in args:
+                self._attr_cache[attr_rec.attrid] = attr_rec.value.value
+        else:
+            for req, rsp in zip(args, records):
+                if rsp.status == foundation.Status.SUCCESS:
+                    self._attr_cache[req.attrid] = req.value.value
+
+        return result
 
     def bind(self):
         return self._endpoint.device.zdo.bind(cluster=self)
