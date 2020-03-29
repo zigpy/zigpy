@@ -341,9 +341,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             for attr_rec in args:
                 self._attr_cache[attr_rec.attrid] = attr_rec.value.value
         else:
-            for req, rsp in zip(args, records):
-                if rsp.status == foundation.Status.SUCCESS:
-                    self._attr_cache[req.attrid] = req.value.value
+            failed = [rec.attrid for rec in records]
+            for attr_rec in args:
+                if attr_rec.attrid not in failed:
+                    self._attr_cache[attr_rec.attrid] = attr_rec.value.value
 
         return result
 
