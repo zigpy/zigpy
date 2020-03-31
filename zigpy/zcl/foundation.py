@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import zigpy.types as t
 
@@ -260,6 +260,35 @@ class WriteAttributesStatusRecord(t.Struct):
         return r
 
 
+class WriteAttributesResponse(list):
+    """Write Attributes response list.
+
+    Response to Write Attributes request should contain only success status, in
+    case when all attributes were successfully written or list of status + attr_id
+    records for all failed writes.
+    """
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> Tuple["WriteAttributesResponse", bytes]:
+        record, data = WriteAttributesStatusRecord.deserialize(data)
+        r = cls([record])
+        if record.status == Status.SUCCESS:
+            return r, data
+
+        while len(data) >= 3:
+            record, data = WriteAttributesStatusRecord.deserialize(data)
+            r.append(record)
+        return r, data
+
+    def serialize(self):
+        failed = [record for record in self if record.status != Status.SUCCESS]
+        if failed:
+            return b"".join(
+                [WriteAttributesStatusRecord(i).serialize() for i in failed]
+            )
+        return Status.SUCCESS.serialize()
+
+
 class AttributeReportingConfig:
     def __init__(self, other=None):
         if isinstance(other, self.__class__):
@@ -419,7 +448,7 @@ COMMANDS = {
     Command.Report_Attributes: ((t.List(Attribute),), False),
     Command.Write_Attributes: ((t.List(Attribute),), False),
     Command.Write_Attributes_No_Response: ((t.List(Attribute),), False),
-    Command.Write_Attributes_rsp: ((t.List(WriteAttributesStatusRecord),), True),
+    Command.Write_Attributes_rsp: ((WriteAttributesResponse,), True),
     # Command.Write_Attributes_Structured: ((, ), False),
     # Command.Write_Attributes_Structured_rsp: ((, ), True),
     Command.Write_Attributes_Undivided: ((t.List(Attribute),), False),

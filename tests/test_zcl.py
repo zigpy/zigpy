@@ -437,7 +437,7 @@ async def test_write_attributes_cache_success(cluster, attributes, result):
     ),
 )
 async def test_write_attributes_cache_failure(cluster, attributes, result, failed):
-    rsp_type = t.List(foundation.WriteAttributesStatusRecord)
+    rsp_type = foundation.WriteAttributesResponse
     write_mock = CoroutineMock(return_value=[rsp_type.deserialize(result)[0]])
 
     with mock.patch.object(cluster, "_write_attributes", write_mock):
