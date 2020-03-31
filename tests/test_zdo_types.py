@@ -39,6 +39,23 @@ def test_multi_address_invalid():
         types.MultiAddress.deserialize(b"\xffnot read")
 
 
+def test_channels():
+    """Test Channels bitmap."""
+
+    assert t.Channels.from_channel_list([]) == t.Channels.NO_CHANNELS
+    assert t.Channels.from_channel_list(range(11, 26 + 1)) == t.Channels.ALL_CHANNELS
+    assert (
+        t.Channels.from_channel_list([11, 21])
+        == t.Channels.CHANNEL_11 | t.Channels.CHANNEL_21
+    )
+
+    with pytest.raises(ValueError):
+        t.Channels.from_channel_list([11, 13, 10])  # 10 is not a valid channel
+
+    with pytest.raises(ValueError):
+        t.Channels.from_channel_list([27, 13, 15, 18])  # 27 is not a valid channel
+
+
 def test_node_descriptor():
     data = b"\x00\x01\x02\x03\x03\x04\x05\x05\x06\x06\x07\x07\x08\xff"
     nd, rest = types.NodeDescriptor.deserialize(data)
