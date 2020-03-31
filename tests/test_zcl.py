@@ -1,5 +1,4 @@
-from unittest import mock
-
+from asynctest import CoroutineMock, mock
 import pytest
 import zigpy.endpoint
 import zigpy.types as t
@@ -341,21 +340,28 @@ async def test_item_access_attributes(cluster):
         v = await cluster[99]
 
 
-def test_write_attributes(cluster):
-    cluster.write_attributes({0: 5, "app_version": 4})
-    assert cluster._endpoint.request.call_count == 1
+@pytest.mark.asyncio
+async def test_write_attributes(cluster):
+    with mock.patch.object(cluster, "_write_attributes", new=CoroutineMock()):
+        await cluster.write_attributes({0: 5, "app_version": 4})
+        assert cluster._write_attributes.call_count == 1
 
 
-def test_write_wrong_attribute(cluster):
-    cluster.write_attributes({0xFF: 5})
-    assert cluster._endpoint.request.call_count == 1
+@pytest.mark.asyncio
+async def test_write_wrong_attribute(cluster):
+    with mock.patch.object(cluster, "_write_attributes", new=CoroutineMock()):
+        await cluster.write_attributes({0xFF: 5})
+        assert cluster._write_attributes.call_count == 1
 
 
-def test_write_attributes_wrong_type(cluster):
-    cluster.write_attributes({18: 2})
-    assert cluster._endpoint.request.call_count == 1
+@pytest.mark.asyncio
+async def test_write_attributes_wrong_type(cluster):
+    with mock.patch.object(cluster, "_write_attributes", new=CoroutineMock()):
+        await cluster.write_attributes({18: 2})
+        assert cluster._write_attributes.call_count == 1
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "cluster_id, attr, value, serialized",
     (
@@ -366,12 +372,82 @@ def test_write_attributes_wrong_type(cluster):
         (0x0202, "fan_mode", 0xDE, b"\x00\x00\x30\xde"),
     ),
 )
-def test_write_attribute_types(cluster_id, attr, value, serialized, cluster_by_id):
+async def test_write_attribute_types(
+    cluster_id, attr, value, serialized, cluster_by_id
+):
     cluster = cluster_by_id(cluster_id)
-    cluster.write_attributes({attr: value})
-    assert cluster._endpoint.reply.call_count == 0
-    assert cluster._endpoint.request.call_count == 1
-    assert cluster.endpoint.request.call_args[0][2][3:] == serialized
+    with mock.patch.object(cluster.endpoint, "request", new=CoroutineMock()):
+        await cluster.write_attributes({attr: value})
+        assert cluster._endpoint.reply.call_count == 0
+        assert cluster._endpoint.request.call_count == 1
+        assert cluster.endpoint.request.call_args[0][2][3:] == serialized
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status", (foundation.Status.SUCCESS, foundation.Status.UNSUPPORTED_ATTRIBUTE)
+)
+async def test_write_attributes_cache_default_response(cluster, status):
+    write_mock = CoroutineMock(
+        return_value=[foundation.Command.Write_Attributes, status]
+    )
+    with mock.patch.object(cluster, "_write_attributes", write_mock):
+        attributes = {4: "manufacturer", 5: "model", 12: 12}
+        await cluster.write_attributes(attributes)
+        assert cluster._write_attributes.call_count == 1
+        for attr_id in attributes:
+            assert attr_id not in cluster._attr_cache
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "attributes, result",
+    (
+        ({4: "manufacturer"}, b"\x00"),
+        ({4: "manufacturer", 5: "model"}, b"\x00"),
+        ({4: "manufacturer", 5: "model", 3: 12}, b"\x00"),
+        ({4: "manufacturer", 5: "model"}, b"\x00\x00"),
+        ({4: "manufacturer", 5: "model", 3: 12}, b"\x00\x00\x00"),
+    ),
+)
+async def test_write_attributes_cache_success(cluster, attributes, result):
+    rsp_type = t.List(foundation.WriteAttributesStatusRecord)
+    write_mock = CoroutineMock(return_value=[rsp_type.deserialize(result)[0]])
+    with mock.patch.object(cluster, "_write_attributes", write_mock):
+        await cluster.write_attributes(attributes)
+        assert cluster._write_attributes.call_count == 1
+        for attr_id in attributes:
+            assert cluster._attr_cache[attr_id] == attributes[attr_id]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "attributes, result, failed",
+    (
+        ({4: "manufacturer"}, b"\x86\x04\x00", [4]),
+        ({4: "manufacturer", 5: "model"}, b"\x86\x05\x00", [5]),
+        ({4: "manufacturer", 5: "model"}, b"\x86\x04\x00\x86\x05\x00", [4, 5]),
+        ({4: "manufacturer", 5: "model", 3: 12}, b"\x86\x05\x00", [5],),
+        ({4: "manufacturer", 5: "model", 3: 12}, b"\x86\x05\x00\x01\x03\x00", [5, 3],),
+        (
+            {4: "manufacturer", 5: "model", 3: 12},
+            b"\x02\x04\x00\x86\x05\x00\x01\x03\x00",
+            [4, 5, 3],
+        ),
+    ),
+)
+async def test_write_attributes_cache_failure(cluster, attributes, result, failed):
+    rsp_type = t.List(foundation.WriteAttributesStatusRecord)
+    write_mock = CoroutineMock(return_value=[rsp_type.deserialize(result)[0]])
+
+    with mock.patch.object(cluster, "_write_attributes", write_mock):
+        await cluster.write_attributes(attributes)
+        assert cluster._write_attributes.call_count == 1
+        for attr_id in attributes:
+            if attr_id in failed:
+                assert attr_id not in cluster._attr_cache
+            else:
+                assert cluster._attr_cache[attr_id] == attributes[attr_id]
 
 
 def test_read_attributes_response(cluster):
