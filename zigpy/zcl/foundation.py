@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import zigpy.types as t
 
@@ -260,6 +260,35 @@ class WriteAttributesStatusRecord(t.Struct):
         return r
 
 
+class WriteAttributesResponse(list):
+    """Write Attributes response list.
+
+    Response to Write Attributes request should contain only success status, in
+    case when all attributes were successfully written or list of status + attr_id
+    records for all failed writes.
+    """
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> Tuple["WriteAttributesResponse", bytes]:
+        record, data = WriteAttributesStatusRecord.deserialize(data)
+        r = cls([record])
+        if record.status == Status.SUCCESS:
+            return r, data
+
+        while len(data) >= 3:
+            record, data = WriteAttributesStatusRecord.deserialize(data)
+            r.append(record)
+        return r, data
+
+    def serialize(self):
+        failed = [record for record in self if record.status != Status.SUCCESS]
+        if failed:
+            return b"".join(
+                [WriteAttributesStatusRecord(i).serialize() for i in failed]
+            )
+        return Status.SUCCESS.serialize()
+
+
 class AttributeReportingConfig:
     def __init__(self, other=None):
         if isinstance(other, self.__class__):
@@ -336,6 +365,28 @@ class ConfigureReportingResponseRecord(t.Struct):
         return r
 
 
+class ConfigureReportingResponse(list):
+    @classmethod
+    def deserialize(cls, data: bytes) -> Tuple["ConfigureReportingResponse", bytes]:
+        record, data = ConfigureReportingResponseRecord.deserialize(data)
+        r = cls([record])
+        if record.status == Status.SUCCESS:
+            return r, data
+
+        while len(data) >= 4:
+            record, data = ConfigureReportingResponseRecord.deserialize(data)
+            r.append(record)
+        return r, data
+
+    def serialize(self):
+        failed = [record for record in self if record.status != Status.SUCCESS]
+        if failed:
+            return b"".join(
+                [ConfigureReportingResponseRecord(i).serialize() for i in failed]
+            )
+        return Status.SUCCESS.serialize()
+
+
 class ReadReportingConfigRecord(t.Struct):
     _fields = [("direction", t.uint8_t), ("attrid", t.uint16_t)]
 
@@ -389,10 +440,7 @@ class Command(t.enum8):
 COMMANDS = {
     # id: (params, is_response)
     Command.Configure_Reporting: ((t.List(AttributeReportingConfig),), False),
-    Command.Configure_Reporting_rsp: (
-        (t.List(ConfigureReportingResponseRecord),),
-        True,
-    ),
+    Command.Configure_Reporting_rsp: ((ConfigureReportingResponse,), True),
     Command.Default_Response: ((t.uint8_t, Status), True),
     Command.Discover_Attributes: ((t.uint16_t, t.uint8_t), False),
     Command.Discover_Attributes_rsp: (
@@ -419,7 +467,7 @@ COMMANDS = {
     Command.Report_Attributes: ((t.List(Attribute),), False),
     Command.Write_Attributes: ((t.List(Attribute),), False),
     Command.Write_Attributes_No_Response: ((t.List(Attribute),), False),
-    Command.Write_Attributes_rsp: ((t.List(WriteAttributesStatusRecord),), True),
+    Command.Write_Attributes_rsp: ((WriteAttributesResponse,), True),
     # Command.Write_Attributes_Structured: ((, ), False),
     # Command.Write_Attributes_Structured_rsp: ((, ), True),
     Command.Write_Attributes_Undivided: ((t.List(Attribute),), False),
