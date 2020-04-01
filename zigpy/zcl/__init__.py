@@ -348,6 +348,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
         return result
 
+    def write_attributes_undivided(
+        self, attributes: Dict[Union[str, int], Any], manufacturer: Optional[int] = None
+    ) -> List:
+        """Either all or none of the attributes are written by the device."""
+        args = self._write_attr_records(attributes)
+        return self._write_attributes_undivided(args, manufacturer=manufacturer)
+
     def bind(self):
         return self._endpoint.device.zdo.bind(cluster=self)
 
@@ -495,6 +502,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     )
     _write_attributes = functools.partialmethod(
         general_command, foundation.Command.Write_Attributes
+    )
+    _write_attributes_undivided = functools.partialmethod(
+        general_command, foundation.Command.Write_Attributes_Undivided
     )
     discover_attributes = functools.partialmethod(
         general_command, foundation.Command.Discover_Attributes

@@ -680,3 +680,10 @@ def test_handle_cluster_general_request(cluster):
     cluster.handle_cluster_general_request(
         mock.sentinel.tsn, mock.sentinel.command_id, mock.sentinel.args
     )
+
+
+async def test_write_attributes_undivided(cluster):
+    with mock.patch.object(cluster, "request", new=CoroutineMock()):
+        i = cluster.write_attributes_undivided({0: 5, "app_version": 4})
+        await i
+        assert cluster.request.call_count == 1
