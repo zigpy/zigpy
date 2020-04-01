@@ -1,4 +1,5 @@
 import enum
+import typing
 
 from . import basic
 from .struct import Struct
@@ -78,6 +79,20 @@ class Channels(basic.bitmap32):
     CHANNEL_24 = 0x01000000
     CHANNEL_25 = 0x02000000
     CHANNEL_26 = 0x04000000
+
+    @classmethod
+    def from_channel_list(cls, channels: typing.Iterable[int]) -> "Channels":
+        mask = cls.NO_CHANNELS
+
+        for channel in channels:
+            if not 11 <= channel <= 26:
+                raise ValueError(
+                    f"Invalid channel number {channel}. Must be between 11 and 26."
+                )
+
+            mask |= cls[f"CHANNEL_{channel}"]
+
+        return mask
 
 
 class ClusterId(basic.uint16_t):

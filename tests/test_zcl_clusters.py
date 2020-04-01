@@ -569,3 +569,20 @@ def test_security_iaswd_squawk_level():
             squawk.level = level
             assert squawk.serialize() == data
             assert squawk.level == level
+
+
+def test_hvac_thermostat_system_type():
+    """Test system_type class."""
+
+    hvac = zcl.clusters.hvac
+    sys_type = hvac.Thermostat.SystemType(0x00)
+    assert sys_type.cooling_system_stage == hvac.CoolingSystemStage.Cool_Stage_1
+    assert sys_type.heating_system_stage == hvac.HeatingSystemStage.Heat_Stage_1
+    assert sys_type.heating_fuel_source == hvac.HeatingFuelSource.Electric
+    assert sys_type.heating_system_type == hvac.HeatingSystemType.Conventional
+
+    sys_type = hvac.Thermostat.SystemType(0x35)
+    assert sys_type.cooling_system_stage == hvac.CoolingSystemStage.Cool_Stage_2
+    assert sys_type.heating_system_stage == hvac.HeatingSystemStage.Heat_Stage_2
+    assert sys_type.heating_fuel_source == hvac.HeatingFuelSource.Gas
+    assert sys_type.heating_system_type == hvac.HeatingSystemType.Heat_Pump

@@ -426,7 +426,7 @@ class _ClusterMock(util.CatchingTaskMixin):
         raise exception()
 
 
-@mock.patch("zigpy.util.CatchingTaskMixin._catching_coro")
+@mock.patch("zigpy.util.CatchingTaskMixin.catching_coro")
 async def test_create_catching_task(catching_coro_mock):
     """Test catching task."""
     mock_cluster = _ClusterMock(logging.getLogger(__name__))
@@ -437,10 +437,10 @@ async def test_create_catching_task(catching_coro_mock):
 
 
 async def test_catching_coro(caplog):
-    """Test _catching_coro no exception."""
+    """Test catching_coro no exception."""
     caplog.set_level(level=logging.DEBUG)
     mock_cluster = _ClusterMock(logging.getLogger(__name__))
-    await mock_cluster._catching_coro(mock_cluster.a())
+    await mock_cluster.catching_coro(mock_cluster.a())
     assert caplog.records[0].levelno == logging.DEBUG
     assert caplog.records[0].message == "test a"
     assert caplog.records[1].levelno == logging.WARNING
@@ -452,7 +452,7 @@ async def test_catching_coro(caplog):
 async def test_catching_task_expected_exception(exception, caplog):
     """Test CatchingTaskMixin allowed exceptions."""
     mock_cluster = _ClusterMock(logging.getLogger("expected_exceptions"))
-    await mock_cluster._catching_coro(
+    await mock_cluster.catching_coro(
         mock_cluster.a(asyncio.TimeoutError), exceptions=exception
     )
     assert caplog.records[0].levelno == logging.DEBUG
@@ -468,7 +468,7 @@ async def test_catching_task_expected_exception(exception, caplog):
 async def test_catching_task_unexpected_exception(to_raise, exception, caplog):
     """Test CatchingTaskMixin unexpected exceptions."""
     mock_cluster = _ClusterMock(logging.getLogger("unexpected_exceptions"))
-    await mock_cluster._catching_coro(mock_cluster.a(to_raise), exceptions=exception)
+    await mock_cluster.catching_coro(mock_cluster.a(to_raise), exceptions=exception)
     assert caplog.records[0].levelno == logging.DEBUG
     assert caplog.records[0].message == "test a"
     assert caplog.records[1].levelno == logging.WARNING

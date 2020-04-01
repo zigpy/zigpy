@@ -1,3 +1,4 @@
+import pytest
 import zigpy.types as t
 from zigpy.zcl import foundation
 
@@ -372,3 +373,91 @@ def test_ptype_to_datatype_notype():
         pass
 
     assert foundation.DATA_TYPES.pytype_to_datatype_id(ZigpyUnknown) == 0xFF
+
+
+def test_write_attrs_response_deserialize():
+    """Test deserialization."""
+
+    data = b"\x00"
+    extra = b"\xaa\x55"
+    r, rest = foundation.WriteAttributesResponse.deserialize(data + extra)
+    assert len(r) == 1
+    assert r[0].status == foundation.Status.SUCCESS
+    assert rest == extra
+
+    data = b"\x86\x34\x12\x87\x35\x12"
+    r, rest = foundation.WriteAttributesResponse.deserialize(data + extra)
+    assert len(r) == 2
+    assert rest == extra
+    assert r[0].status == foundation.Status.UNSUPPORTED_ATTRIBUTE
+    assert r[0].attrid == 0x1234
+    assert r[1].status == foundation.Status.INVALID_VALUE
+    assert r[1].attrid == 0x1235
+
+
+@pytest.mark.parametrize(
+    "attributes, data",
+    (
+        ({4: 0, 5: 0, 3: 0}, b"\x00"),
+        ({4: 0, 5: 0, 3: 0x86}, b"\x86\x03\x00"),
+        ({4: 0x87, 5: 0, 3: 0x86}, b"\x87\x04\x00\x86\x03\x00"),
+        ({4: 0x87, 5: 0x86, 3: 0x86}, b"\x87\x04\x00\x86\x05\x00\x86\x03\x00"),
+    ),
+)
+def test_write_attrs_response_serialize(attributes, data):
+    """Test WriteAttributes Response serialization."""
+
+    r = foundation.WriteAttributesResponse()
+    for attr_id, status in attributes.items():
+        rec = foundation.WriteAttributesStatusRecord()
+        rec.status = status
+        rec.attrid = attr_id
+        r.append(rec)
+
+    assert r.serialize() == data
+
+
+def test_configure_reporting_response_deserialize():
+    """Test deserialization."""
+
+    data = b"\x00"
+    extra = b"\x01\xaa\x55"
+    r, rest = foundation.ConfigureReportingResponse.deserialize(data + extra)
+    assert len(r) == 1
+    assert r[0].status == foundation.Status.SUCCESS
+    assert rest == extra
+
+    data = b"\x86\x01\x34\x12\x87\x01\x35\x12"
+    r, rest = foundation.ConfigureReportingResponse.deserialize(data + extra)
+    assert len(r) == 2
+    assert rest == extra
+    assert r[0].status == foundation.Status.UNSUPPORTED_ATTRIBUTE
+    assert r[0].attrid == 0x1234
+    assert r[1].status == foundation.Status.INVALID_VALUE
+    assert r[1].attrid == 0x1235
+
+
+@pytest.mark.parametrize(
+    "attributes, data",
+    (
+        ({4: 0, 5: 0, 3: 0}, b"\x00"),
+        ({4: 0, 5: 0, 3: 0x86}, b"\x86\x01\x03\x00"),
+        ({4: 0x87, 5: 0, 3: 0x86}, b"\x87\x01\x04\x00\x86\x01\x03\x00"),
+        (
+            {4: 0x87, 5: 0x86, 3: 0x86},
+            b"\x87\x01\x04\x00\x86\x01\x05\x00\x86\x01\x03\x00",
+        ),
+    ),
+)
+def test_configure_reporting_response_serialize(attributes, data):
+    """Test ConfigureReporting Response serialization."""
+
+    r = foundation.ConfigureReportingResponse()
+    for attr_id, status in attributes.items():
+        rec = foundation.ConfigureReportingResponseRecord()
+        rec.status = status
+        rec.direction = 0x01
+        rec.attrid = attr_id
+        r.append(rec)
+
+    assert r.serialize() == data

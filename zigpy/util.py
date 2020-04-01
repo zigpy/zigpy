@@ -8,7 +8,7 @@ from typing import Any, Coroutine, Optional, Tuple, Type, Union
 
 from Crypto.Cipher import AES
 from crccheck.crc import CrcX25
-from zigpy.exceptions import DeliveryError
+from zigpy.exceptions import DeliveryError, ZigbeeException
 import zigpy.types as t
 
 LOGGER = logging.getLogger(__name__)
@@ -256,16 +256,16 @@ class CatchingTaskMixin(LocalLogMixin):
         exceptions: Optional[Union[Type[Exception], Tuple]] = None,
     ) -> None:
         """Create a task."""
-        asyncio.ensure_future(self._catching_coro(target, exceptions))
+        asyncio.ensure_future(self.catching_coro(target, exceptions))
 
-    async def _catching_coro(
+    async def catching_coro(
         self,
         target: Coroutine,
         exceptions: Optional[Union[Type[Exception], Tuple]] = None,
     ) -> Any:
         """Wrap a target coro and catch specified exceptions."""
         if exceptions is None:
-            exceptions = (asyncio.TimeoutError, DeliveryError)
+            exceptions = (asyncio.TimeoutError, ZigbeeException)
 
         try:
             return await target

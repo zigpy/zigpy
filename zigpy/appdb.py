@@ -11,7 +11,7 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 0x0002
+DB_VERSION = 0x0003
 
 
 def _sqlite_adapters():
@@ -173,8 +173,8 @@ class PersistingListener:
             "attributes",
             (
                 "(ieee ieee, endpoint_id, cluster, attrid, value, "
-                "FOREIGN KEY(ieee, endpoint_id) "
-                "REFERENCES endpoints(ieee, endpoint_id) "
+                "FOREIGN KEY(ieee) "
+                "REFERENCES devices(ieee) "
                 "ON DELETE CASCADE)"
             ),
         )
@@ -371,6 +371,7 @@ class PersistingListener:
             dev = self._application.get_device(ieee)
             ep = dev.add_endpoint(epid)
             ep.profile_id = profile_id
+            ep.device_type = device_type
             if profile_id == 260:
                 ep.device_type = zigpy.profiles.zha.DeviceType(device_type)
             elif profile_id == 49246:

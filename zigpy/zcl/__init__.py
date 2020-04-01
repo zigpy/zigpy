@@ -2,7 +2,7 @@ import asyncio
 import enum
 import functools
 import logging
-from typing import Optional, Tuple, Union
+from typing import Any, Coroutine, Dict, List, Optional, Tuple, Union
 
 from zigpy import util
 import zigpy.types as t
@@ -306,7 +306,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
         return self._read_attributes_rsp(args, manufacturer=manufacturer, tsn=tsn)
 
-    def write_attributes(self, attributes, manufacturer=None):
+    def _write_attr_records(
+        self, attributes: Dict[Union[str, int], Any]
+    ) -> List[foundation.Attribute]:
         args = []
         for attrid, value in attributes.items():
             if isinstance(attrid, str):
@@ -324,8 +326,34 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                 args.append(a)
             except ValueError as e:
                 self.error(str(e))
+        return args
 
-        return self._write_attributes(args, manufacturer=manufacturer)
+    async def write_attributes(
+        self, attributes: Dict[Union[str, int], Any], manufacturer: Optional[int] = None
+    ) -> List:
+        args = self._write_attr_records(attributes)
+        result = await self._write_attributes(args, manufacturer=manufacturer)
+        if not isinstance(result[0], list):
+            return result
+
+        records = result[0]
+        if len(records) == 1 and records[0].status == foundation.Status.SUCCESS:
+            for attr_rec in args:
+                self._attr_cache[attr_rec.attrid] = attr_rec.value.value
+        else:
+            failed = [rec.attrid for rec in records]
+            for attr_rec in args:
+                if attr_rec.attrid not in failed:
+                    self._attr_cache[attr_rec.attrid] = attr_rec.value.value
+
+        return result
+
+    def write_attributes_undivided(
+        self, attributes: Dict[Union[str, int], Any], manufacturer: Optional[int] = None
+    ) -> List:
+        """Either all or none of the attributes are written by the device."""
+        args = self._write_attr_records(attributes)
+        return self._write_attributes_undivided(args, manufacturer=manufacturer)
 
     def bind(self):
         return self._endpoint.device.zdo.bind(cluster=self)
@@ -333,24 +361,23 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     def unbind(self):
         return self._endpoint.device.zdo.unbind(cluster=self)
 
-    def configure_reporting(
+    def _attr_reporting_rec(
         self,
-        attribute,
-        min_interval,
-        max_interval,
-        reportable_change,
-        manufacturer=None,
-    ):
+        attribute: Union[int, str],
+        min_interval: int,
+        max_interval: int,
+        reportable_change: int = 1,
+        direction: int = 0x00,
+    ) -> foundation.ConfigureReportingResponseRecord:
         if isinstance(attribute, str):
-            attrid = self.attridx.get(attribute, None)
+            attrid = self.attridx.get(attribute)
         else:
             attrid = attribute
-        if attrid not in self.attributes or attrid is None:
-            self.error("{} is not a valid attribute id".format(attribute))
-            return
+        if attrid is None or attrid not in self.attributes:
+            raise ValueError(f"Unknown {attribute} name of {self.ep_attribute} cluster")
 
         cfg = foundation.AttributeReportingConfig()
-        cfg.direction = 0
+        cfg.direction = direction
         cfg.attrid = attrid
         cfg.datatype = foundation.DATA_TYPES.pytype_to_datatype_id(
             self.attributes.get(attrid, (None, foundation.Unknown))[1]
@@ -358,7 +385,42 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change
+        return cfg
+
+    def configure_reporting(
+        self,
+        attribute: Union[int, str],
+        min_interval: int,
+        max_interval: int,
+        reportable_change: int,
+        manufacturer: Optional[int] = None,
+    ) -> Coroutine:
+        cfg = self._attr_reporting_rec(
+            attribute, min_interval, max_interval, reportable_change
+        )
         return self._configure_reporting([cfg], manufacturer=manufacturer)
+
+    def configure_reporting_multiple(
+        self,
+        attributes: Dict[Union[int, str], Tuple[int, int, int]],
+        manufacturer: Optional[int] = None,
+    ) -> Coroutine:
+        """Configure attribute reporting for multiple attributes in the same request.
+
+        :param attributes: dict of attributes to configure attribute reporting.
+        Key is either int or str for attribute id or attribute name.
+        Value is a Tuple of:
+        - minimum reporting interval
+        - maximum reporting interval
+        - reportable change
+        :param manufacturer: optional manufacturer id to use with the command
+        """
+
+        cfg = [
+            self._attr_reporting_rec(attr, rep[0], rep[1], rep[2])
+            for attr, rep in attributes.items()
+        ]
+        return self._configure_reporting(cfg, manufacturer=manufacturer)
 
     def command(
         self,
@@ -474,6 +536,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     )
     _write_attributes = functools.partialmethod(
         general_command, foundation.Command.Write_Attributes
+    )
+    _write_attributes_undivided = functools.partialmethod(
+        general_command, foundation.Command.Write_Attributes_Undivided
     )
     discover_attributes = functools.partialmethod(
         general_command, foundation.Command.Discover_Attributes

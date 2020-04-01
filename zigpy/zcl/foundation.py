@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import zigpy.types as t
 
@@ -260,12 +260,46 @@ class WriteAttributesStatusRecord(t.Struct):
         return r
 
 
+class WriteAttributesResponse(list):
+    """Write Attributes response list.
+
+    Response to Write Attributes request should contain only success status, in
+    case when all attributes were successfully written or list of status + attr_id
+    records for all failed writes.
+    """
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> Tuple["WriteAttributesResponse", bytes]:
+        record, data = WriteAttributesStatusRecord.deserialize(data)
+        r = cls([record])
+        if record.status == Status.SUCCESS:
+            return r, data
+
+        while len(data) >= 3:
+            record, data = WriteAttributesStatusRecord.deserialize(data)
+            r.append(record)
+        return r, data
+
+    def serialize(self):
+        failed = [record for record in self if record.status != Status.SUCCESS]
+        if failed:
+            return b"".join(
+                [WriteAttributesStatusRecord(i).serialize() for i in failed]
+            )
+        return Status.SUCCESS.serialize()
+
+
+class ReportingDirection(t.enum8):
+    SendReports = 0x00
+    ReceiveReports = 0x01
+
+
 class AttributeReportingConfig:
     def __init__(self, other=None):
         if isinstance(other, self.__class__):
             self.direction = other.direction
             self.attrid = other.attrid
-            if self.direction:
+            if self.direction == ReportingDirection.ReceiveReports:
                 self.timeout = other.timeout
                 return
             self.datatype = other.datatype
@@ -274,9 +308,9 @@ class AttributeReportingConfig:
             self.reportable_change = other.reportable_change
 
     def serialize(self):
-        r = t.uint8_t(self.direction).serialize()
+        r = ReportingDirection(self.direction).serialize()
         r += t.uint16_t(self.attrid).serialize()
-        if self.direction:
+        if self.direction == ReportingDirection.ReceiveReports:
             r += t.uint16_t(self.timeout).serialize()
         else:
             r += t.uint8_t(self.datatype).serialize()
@@ -291,9 +325,9 @@ class AttributeReportingConfig:
     @classmethod
     def deserialize(cls, data):
         self = cls()
-        self.direction, data = t.Bool.deserialize(data)
+        self.direction, data = ReportingDirection.deserialize(data)
         self.attrid, data = t.uint16_t.deserialize(data)
-        if self.direction:
+        if self.direction == ReportingDirection.ReceiveReports:
             # Requesting things to be received by me
             self.timeout, data = t.uint16_t.deserialize(data)
         else:
@@ -309,14 +343,18 @@ class AttributeReportingConfig:
 
 
 class ConfigureReportingResponseRecord(t.Struct):
-    _fields = [("status", Status), ("direction", t.uint8_t), ("attrid", t.uint16_t)]
+    _fields = [
+        ("status", Status),
+        ("direction", ReportingDirection),
+        ("attrid", t.uint16_t),
+    ]
 
     @classmethod
     def deserialize(cls, data):
         r = cls()
         r.status, data = Status.deserialize(data)
         if r.status != Status.SUCCESS:
-            r.direction, data = t.uint8_t.deserialize(data)
+            r.direction, data = ReportingDirection.deserialize(data)
             r.attrid, data = t.uint16_t.deserialize(data)
 
         return r, data
@@ -324,7 +362,7 @@ class ConfigureReportingResponseRecord(t.Struct):
     def serialize(self):
         r = Status(self.status).serialize()
         if self.status != Status.SUCCESS:
-            r += t.uint8_t(self.direction).serialize()
+            r += ReportingDirection(self.direction).serialize()
             r += t.uint16_t(self.attrid).serialize()
         return r
 
@@ -334,6 +372,28 @@ class ConfigureReportingResponseRecord(t.Struct):
             r += " direction=%s attrid=%s" % (self.direction, self.attrid)
         r += ">"
         return r
+
+
+class ConfigureReportingResponse(list):
+    @classmethod
+    def deserialize(cls, data: bytes) -> Tuple["ConfigureReportingResponse", bytes]:
+        record, data = ConfigureReportingResponseRecord.deserialize(data)
+        r = cls([record])
+        if record.status == Status.SUCCESS:
+            return r, data
+
+        while len(data) >= 4:
+            record, data = ConfigureReportingResponseRecord.deserialize(data)
+            r.append(record)
+        return r, data
+
+    def serialize(self):
+        failed = [record for record in self if record.status != Status.SUCCESS]
+        if failed:
+            return b"".join(
+                [ConfigureReportingResponseRecord(i).serialize() for i in failed]
+            )
+        return Status.SUCCESS.serialize()
 
 
 class ReadReportingConfigRecord(t.Struct):
@@ -389,10 +449,7 @@ class Command(t.enum8):
 COMMANDS = {
     # id: (params, is_response)
     Command.Configure_Reporting: ((t.List(AttributeReportingConfig),), False),
-    Command.Configure_Reporting_rsp: (
-        (t.List(ConfigureReportingResponseRecord),),
-        True,
-    ),
+    Command.Configure_Reporting_rsp: ((ConfigureReportingResponse,), True),
     Command.Default_Response: ((t.uint8_t, Status), True),
     Command.Discover_Attributes: ((t.uint16_t, t.uint8_t), False),
     Command.Discover_Attributes_rsp: (
@@ -419,7 +476,7 @@ COMMANDS = {
     Command.Report_Attributes: ((t.List(Attribute),), False),
     Command.Write_Attributes: ((t.List(Attribute),), False),
     Command.Write_Attributes_No_Response: ((t.List(Attribute),), False),
-    Command.Write_Attributes_rsp: ((t.List(WriteAttributesStatusRecord),), True),
+    Command.Write_Attributes_rsp: ((WriteAttributesResponse,), True),
     # Command.Write_Attributes_Structured: ((, ), False),
     # Command.Write_Attributes_Structured_rsp: ((, ), True),
     Command.Write_Attributes_Undivided: ((t.List(Attribute),), False),
