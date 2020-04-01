@@ -224,7 +224,7 @@ class Thermostat(Cluster):
         Sleep = 0x09
 
     class SystemType(t.bitmap8):
-        Heatt_and_or_Cool_Stage_1 = 0x00
+        Heat_and_or_Cool_Stage_1 = 0x00
         Cool_Stage_1 = 0x01
         Cool_Stage_2 = 0x02
         Heat_Stage_1 = 0x04
