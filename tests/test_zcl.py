@@ -340,28 +340,24 @@ async def test_item_access_attributes(cluster):
         v = await cluster[99]
 
 
-@pytest.mark.asyncio
 async def test_write_attributes(cluster):
     with mock.patch.object(cluster, "_write_attributes", new=CoroutineMock()):
         await cluster.write_attributes({0: 5, "app_version": 4})
         assert cluster._write_attributes.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_write_wrong_attribute(cluster):
     with mock.patch.object(cluster, "_write_attributes", new=CoroutineMock()):
         await cluster.write_attributes({0xFF: 5})
         assert cluster._write_attributes.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_write_attributes_wrong_type(cluster):
     with mock.patch.object(cluster, "_write_attributes", new=CoroutineMock()):
         await cluster.write_attributes({18: 2})
         assert cluster._write_attributes.call_count == 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "cluster_id, attr, value, serialized",
     (
@@ -383,7 +379,6 @@ async def test_write_attribute_types(
         assert cluster.endpoint.request.call_args[0][2][3:] == serialized
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status", (foundation.Status.SUCCESS, foundation.Status.UNSUPPORTED_ATTRIBUTE)
 )
@@ -399,7 +394,6 @@ async def test_write_attributes_cache_default_response(cluster, status):
             assert attr_id not in cluster._attr_cache
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "attributes, result",
     (
@@ -420,7 +414,6 @@ async def test_write_attributes_cache_success(cluster, attributes, result):
             assert cluster._attr_cache[attr_id] == attributes[attr_id]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "attributes, result, failed",
     (
@@ -519,13 +512,15 @@ def test_configure_reporting_named(cluster):
 
 
 def test_configure_reporting_wrong_named(cluster):
-    cluster.configure_reporting("wrong_attr_name", 10, 20, 1)
-    assert cluster._endpoint.request.call_count == 0
+    with pytest.raises(ValueError):
+        cluster.configure_reporting("wrong_attr_name", 10, 20, 1)
+        assert cluster._endpoint.request.call_count == 0
 
 
 def test_configure_reporting_wrong_attrid(cluster):
-    cluster.configure_reporting(0xFFFE, 10, 20, 1)
-    assert cluster._endpoint.request.call_count == 0
+    with pytest.raises(ValueError):
+        cluster.configure_reporting(0xFFFE, 10, 20, 1)
+        assert cluster._endpoint.request.call_count == 0
 
 
 def test_configure_reporting_manuf():
@@ -687,3 +682,16 @@ async def test_write_attributes_undivided(cluster):
         i = cluster.write_attributes_undivided({0: 5, "app_version": 4})
         await i
         assert cluster.request.call_count == 1
+
+
+async def test_configure_reporting_multiple(cluster):
+    with mock.patch.object(cluster.endpoint, "request", new=CoroutineMock()):
+        await cluster.configure_reporting(3, 5, 15, 20, manufacturer=0x2345)
+        await cluster.configure_reporting_multiple(
+            {3: (5, 15, 20)}, manufacturer=0x2345
+        )
+        assert cluster.endpoint.request.call_count == 2
+        assert (
+            cluster.endpoint.request.call_args_list[0][0][2]
+            == cluster.endpoint.request.call_args_list[1][0][2]
+        )
