@@ -116,21 +116,30 @@ def test_write_attribute_status_record():
 
 
 def test_configure_reporting_response_serialization():
+    # success status only
+    res, d = foundation.ConfigureReportingResponseRecord.deserialize(b"\x00")
+    assert res.status == foundation.Status.SUCCESS
+    assert res.direction is None
+    assert res.attrid is None
+    assert d == b""
+
+    # success + direction and attr id
     direction_attr_id = b"\x00\x01\x10"
     extra = b"12da-"
     res, d = foundation.ConfigureReportingResponseRecord.deserialize(
         b"\x00" + direction_attr_id + extra
     )
     assert res.status == foundation.Status.SUCCESS
-    assert res.direction is None
-    assert res.attrid is None
-    assert d == direction_attr_id + extra
+    assert res.direction is foundation.ReportingDirection.SendReports
+    assert res.attrid == 0x1001
+    assert d == extra
     r = repr(res)
     assert r.startswith("<" + foundation.ConfigureReportingResponseRecord.__name__)
     assert "status" in r
     assert "direction" not in r
     assert "attrid" not in r
 
+    # failure record deserialization
     res, d = foundation.ConfigureReportingResponseRecord.deserialize(
         b"\x8c" + direction_attr_id + extra
     )
@@ -144,6 +153,7 @@ def test_configure_reporting_response_serialization():
     assert "direction" in r
     assert "attrid" in r
 
+    # successful record serializes only Status
     rec = foundation.ConfigureReportingResponseRecord(
         foundation.Status.SUCCESS, 0x00, 0xAABB
     )
@@ -421,20 +431,33 @@ def test_configure_reporting_response_deserialize():
     """Test deserialization."""
 
     data = b"\x00"
+    r, rest = foundation.ConfigureReportingResponse.deserialize(data)
+    assert len(r) == 1
+    assert r[0].status == foundation.Status.SUCCESS
+    assert r[0].direction is None
+    assert r[0].attrid is None
+    assert rest == b""
+
+    data = b"\x00"
     extra = b"\x01\xaa\x55"
     r, rest = foundation.ConfigureReportingResponse.deserialize(data + extra)
     assert len(r) == 1
     assert r[0].status == foundation.Status.SUCCESS
-    assert rest == extra
+    assert r[0].direction == foundation.ReportingDirection.ReceiveReports
+    assert r[0].attrid == 0x55AA
+    assert rest == b""
 
     data = b"\x86\x01\x34\x12\x87\x01\x35\x12"
-    r, rest = foundation.ConfigureReportingResponse.deserialize(data + extra)
+    r, rest = foundation.ConfigureReportingResponse.deserialize(data)
     assert len(r) == 2
-    assert rest == extra
+    assert rest == b""
     assert r[0].status == foundation.Status.UNSUPPORTED_ATTRIBUTE
     assert r[0].attrid == 0x1234
     assert r[1].status == foundation.Status.INVALID_VALUE
     assert r[1].attrid == 0x1235
+
+    with pytest.raises(ValueError):
+        foundation.ConfigureReportingResponse.deserialize(data + extra)
 
 
 @pytest.mark.parametrize(

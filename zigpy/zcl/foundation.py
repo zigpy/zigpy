@@ -353,11 +353,15 @@ class ConfigureReportingResponseRecord(t.Struct):
     def deserialize(cls, data):
         r = cls()
         r.status, data = Status.deserialize(data)
-        r.direction, data = t.Optional(t.uint8_t).deserialize(data)
-        if r.direction is not None:
-            r.direction = ReportingDirection(r.direction)
-        r.attrid, data = t.Optional(t.uint16_t).deserialize(data)
+        if r.status == Status.SUCCESS:
+            r.direction, data = t.Optional(t.uint8_t).deserialize(data)
+            if r.direction is not None:
+                r.direction = ReportingDirection(r.direction)
+            r.attrid, data = t.Optional(t.uint16_t).deserialize(data)
+            return r, data
 
+        r.direction, data = ReportingDirection.deserialize(data)
+        r.attrid, data = t.uint16_t.deserialize(data)
         return r, data
 
     def serialize(self):
