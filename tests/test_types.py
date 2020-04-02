@@ -344,6 +344,20 @@ def test_enum_undef():
     assert r.serialize() == data
     assert isinstance(r, TestEnum)
 
+    r = TestEnum("85")
+    assert r == 0x55
+    assert r.value == 0x55
+    assert r.name == "undefined_0x55"
+    assert r.serialize() == data
+    assert isinstance(r, TestEnum)
+
+    r = TestEnum("0x55")
+    assert r == 0x55
+    assert r.value == 0x55
+    assert r.name == "undefined_0x55"
+    assert r.serialize() == data
+    assert isinstance(r, TestEnum)
+
 
 def test_enum():
     class TestEnum(t.enum8):
@@ -355,6 +369,20 @@ def test_enum():
 
     r, rest = TestEnum.deserialize(data + extra)
     assert rest == extra
+    assert r == 0x55
+    assert r.value == 0x55
+    assert r.name == "ALL"
+    assert isinstance(r, TestEnum)
+    assert TestEnum.ALL + TestEnum.ERR == 0x56
+
+    r = TestEnum("85")
+    assert r == 0x55
+    assert r.value == 0x55
+    assert r.name == "ALL"
+    assert isinstance(r, TestEnum)
+    assert TestEnum.ALL + TestEnum.ERR == 0x56
+
+    r = TestEnum("0x55")
     assert r == 0x55
     assert r.value == 0x55
     assert r.name == "ALL"
