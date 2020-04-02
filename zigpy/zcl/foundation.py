@@ -353,9 +353,10 @@ class ConfigureReportingResponseRecord(t.Struct):
     def deserialize(cls, data):
         r = cls()
         r.status, data = Status.deserialize(data)
-        if r.status != Status.SUCCESS:
-            r.direction, data = ReportingDirection.deserialize(data)
-            r.attrid, data = t.uint16_t.deserialize(data)
+        r.direction, data = t.Optional(t.uint8_t).deserialize(data)
+        if r.direction is not None:
+            r.direction = ReportingDirection(r.direction)
+        r.attrid, data = t.Optional(t.uint16_t).deserialize(data)
 
         return r, data
 
@@ -374,19 +375,7 @@ class ConfigureReportingResponseRecord(t.Struct):
         return r
 
 
-class ConfigureReportingResponse(list):
-    @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["ConfigureReportingResponse", bytes]:
-        record, data = ConfigureReportingResponseRecord.deserialize(data)
-        r = cls([record])
-        if record.status == Status.SUCCESS:
-            return r, data
-
-        while len(data) >= 4:
-            record, data = ConfigureReportingResponseRecord.deserialize(data)
-            r.append(record)
-        return r, data
-
+class ConfigureReportingResponse(t.List(ConfigureReportingResponseRecord)):
     def serialize(self):
         failed = [record for record in self if record.status != Status.SUCCESS]
         if failed:
