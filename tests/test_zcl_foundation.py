@@ -484,3 +484,42 @@ def test_configure_reporting_response_serialize(attributes, data):
         r.append(rec)
 
     assert r.serialize() == data
+
+
+def test_status_enum():
+    """Test Status enums chaining."""
+    status_names = [e.name for e in foundation.Status]
+    aps_names = [e.name for e in t.APSStatus]
+    nwk_names = [e.name for e in t.NWKStatus]
+    mac_names = [e.name for e in t.MACStatus]
+
+    status = foundation.Status(0x98)
+    assert status.name in status_names
+    assert status.name not in aps_names
+    assert status.name not in nwk_names
+    assert status.name not in mac_names
+
+    status = foundation.Status(0xAE)
+    assert status.name not in status_names
+    assert status.name in aps_names
+    assert status.name not in nwk_names
+    assert status.name not in mac_names
+
+    status = foundation.Status(0xD0)
+    assert status.name not in status_names
+    assert status.name not in aps_names
+    assert status.name in nwk_names
+    assert status.name not in mac_names
+
+    status = foundation.Status(0xE9)
+    assert status.name not in status_names
+    assert status.name not in aps_names
+    assert status.name not in nwk_names
+    assert status.name in mac_names
+
+    status = foundation.Status(0xFF)
+    assert status.name not in status_names
+    assert status.name not in aps_names
+    assert status.name not in nwk_names
+    assert status.name not in mac_names
+    assert status.name == "undefined_0xff"

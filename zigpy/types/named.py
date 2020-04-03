@@ -247,6 +247,14 @@ class APSStatus(basic.enum8):
     # attribute identifier
     APS_UNSUPPORTED_ATTRIBUTE = 0xB0
 
+    @classmethod
+    def _missing_(cls, value):
+        chained = NWKStatus(value)
+        status = basic.uint8_t.__new__(cls, chained.value)
+        status._name_ = chained.name
+        status._value_ = value
+        return status
+
 
 class MACStatus(basic.enum8):
     # Operation was successful
@@ -471,3 +479,11 @@ class NWKStatus(basic.enum8):
     # An NLDE-DATA.request has failed due to insufficient buffering available.
     # A non-member mode multicast frame was discarded pending route discovery
     NWK_FRAME_NOT_BUFFERED = 0xD3
+
+    @classmethod
+    def _missing_(cls, value):
+        chained = MACStatus(value)
+        status = basic.uint8_t.__new__(cls, chained.value)
+        status._name_ = chained.name
+        status._value_ = value
+        return status
