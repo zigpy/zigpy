@@ -97,7 +97,7 @@ class _IntEnumMeta(enum.EnumMeta):
         return super().__call__(value, names, *args, **kwargs)
 
 
-def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined",) -> CALLABLE_T:
+def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined") -> CALLABLE_T:
     """Enum factory."""
 
     class _NewEnum(enum.IntEnum, metaclass=_IntEnumMeta):
