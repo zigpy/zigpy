@@ -164,14 +164,14 @@ def test_configure_reporting_response_serialization():
 
 
 def test_status_undef():
-    data = b"\xaa"
+    data = b"\xff"
     extra = b"extra"
 
     status, rest = foundation.Status.deserialize(data + extra)
     assert rest == extra
-    assert status == 0xAA
-    assert status.value == 0xAA
-    assert status.name == "undefined_0xaa"
+    assert status == 0xFF
+    assert status.value == 0xFF
+    assert status.name == "undefined_0xff"
     assert isinstance(status, foundation.Status)
 
 
