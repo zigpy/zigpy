@@ -3,8 +3,10 @@ from unittest import mock
 
 import asynctest
 import pytest
+import voluptuous as vol
 from zigpy import device
-from zigpy.application import ControllerApplication
+import zigpy.application
+from zigpy.config import CONF_DATABASE
 from zigpy.exceptions import DeliveryError
 import zigpy.ota
 import zigpy.types as t
@@ -14,7 +16,10 @@ import zigpy.types as t
 @asynctest.patch("zigpy.ota.OTA", asynctest.MagicMock(spec_set=zigpy.ota.OTA))
 @asynctest.patch("zigpy.device.Device._initialize", asynctest.CoroutineMock())
 def app():
-    return ControllerApplication()
+    schema = vol.Schema({vol.Optional(CONF_DATABASE, default=None): None})
+    with mock.patch.object(zigpy.application, "CONFIG_SCHEMA", new=schema):
+        app = zigpy.application.ControllerApplication()
+    return app
 
 
 @pytest.fixture
