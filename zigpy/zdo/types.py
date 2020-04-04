@@ -310,6 +310,14 @@ class Status(t.enum8):
     # request is not authorized from this device.
     NOT_AUTHORIZED = 0x8D
 
+    @classmethod
+    def _missing_(cls, value):
+        chained = t.APSStatus(value)
+        status = t.uint8_t.__new__(cls, chained.value)
+        status._name_ = chained.name
+        status._value_ = value
+        return status
+
 
 NWK = ("NWKAddr", t.NWK)
 NWKI = ("NWKAddrOfInterest", t.NWK)

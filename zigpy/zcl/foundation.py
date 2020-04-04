@@ -42,6 +42,14 @@ class Status(t.enum8):
     CALIBRATION_ERROR = 0xC2  # An error occurred during calibration
     UNSUPPORTED_CLUSTER = 0xC3  # The cluster is not supported
 
+    @classmethod
+    def _missing_(cls, value):
+        chained = t.APSStatus(value)
+        status = t.uint8_t.__new__(cls, chained.value)
+        status._name_ = chained.name
+        status._value_ = value
+        return status
+
 
 class Analog:
     pass
@@ -353,10 +361,15 @@ class ConfigureReportingResponseRecord(t.Struct):
     def deserialize(cls, data):
         r = cls()
         r.status, data = Status.deserialize(data)
-        if r.status != Status.SUCCESS:
-            r.direction, data = ReportingDirection.deserialize(data)
-            r.attrid, data = t.uint16_t.deserialize(data)
+        if r.status == Status.SUCCESS:
+            r.direction, data = t.Optional(t.uint8_t).deserialize(data)
+            if r.direction is not None:
+                r.direction = ReportingDirection(r.direction)
+            r.attrid, data = t.Optional(t.uint16_t).deserialize(data)
+            return r, data
 
+        r.direction, data = ReportingDirection.deserialize(data)
+        r.attrid, data = t.uint16_t.deserialize(data)
         return r, data
 
     def serialize(self):
@@ -374,19 +387,7 @@ class ConfigureReportingResponseRecord(t.Struct):
         return r
 
 
-class ConfigureReportingResponse(list):
-    @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["ConfigureReportingResponse", bytes]:
-        record, data = ConfigureReportingResponseRecord.deserialize(data)
-        r = cls([record])
-        if record.status == Status.SUCCESS:
-            return r, data
-
-        while len(data) >= 4:
-            record, data = ConfigureReportingResponseRecord.deserialize(data)
-            r.append(record)
-        return r, data
-
+class ConfigureReportingResponse(t.List(ConfigureReportingResponseRecord)):
     def serialize(self):
         failed = [record for record in self if record.status != Status.SUCCESS]
         if failed:

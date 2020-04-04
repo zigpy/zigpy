@@ -88,22 +88,19 @@ class uint64_t(uint_t):  # noqa: N801
     _size = 8
 
 
-class _UndefEnumMeta(enum.EnumMeta):
+class _IntEnumMeta(enum.EnumMeta):
     def __call__(cls, value, names=None, *args, **kwargs):
-        try:
-            return super().__call__(value, names, *args, **kwargs)
-        except ValueError:
-            return cls.undefined(value)
+        if isinstance(value, str) and value.startswith("0x"):
+            value = int(value, base=16)
+        else:
+            value = int(value)
+        return super().__call__(value, names, *args, **kwargs)
 
 
-class _UndefEnum(enum.Enum, metaclass=_UndefEnumMeta):
-    pass
-
-
-def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined",) -> CALLABLE_T:
+def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined") -> CALLABLE_T:
     """Enum factory."""
 
-    class _NewEnum(enum.IntEnum, _UndefEnum):
+    class _NewEnum(enum.IntEnum, metaclass=_IntEnumMeta):
         def serialize(self):
             """Serialize enum."""
             return int_type(self.value).serialize()
@@ -115,10 +112,12 @@ def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined",) -> CALLABL
             return cls(val), data
 
         @classmethod
-        def undefined(cls, val):
+        def _missing_(cls, value):
+            new = int_type.__new__(cls, value)
             name = f"{undefined}_0x{{:0{int_type._size * 2}x}}"  # pylint: disable=protected-access
-            fake = _UndefEnum(cls.__name__, {name.format(val): val}, type=cls,)
-            return fake(val)
+            new._name_ = name.format(value)
+            new._value_ = value
+            return new
 
     return _NewEnum
 
