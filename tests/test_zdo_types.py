@@ -165,14 +165,14 @@ def test_empty_size_prefixed_simple_descriptor():
 
 
 def test_status_undef():
-    data = b"\xaa"
+    data = b"\xff"
     extra = b"extra"
 
     status, rest = types.Status.deserialize(data + extra)
     assert rest == extra
-    assert status == 0xAA
-    assert status.value == 0xAA
-    assert status.name == "undefined_0xaa"
+    assert status == 0xFF
+    assert status.value == 0xFF
+    assert status.name == "undefined_0xff"
     assert isinstance(status, types.Status)
 
 
@@ -258,3 +258,42 @@ def test_nwkupdate_nwk_update_id():
     assert new.ScanCount is None
     assert new.nwkUpdateId == 0xAA
     assert new.nwkManagerAddr == 0x1234
+
+
+def test_status_enum():
+    """Test Status enums chaining."""
+    status_names = [e.name for e in types.Status]
+    aps_names = [e.name for e in t.APSStatus]
+    nwk_names = [e.name for e in t.NWKStatus]
+    mac_names = [e.name for e in t.MACStatus]
+
+    status = types.Status(0x80)
+    assert status.name in status_names
+    assert status.name not in aps_names
+    assert status.name not in nwk_names
+    assert status.name not in mac_names
+
+    status = types.Status(0xAE)
+    assert status.name not in status_names
+    assert status.name in aps_names
+    assert status.name not in nwk_names
+    assert status.name not in mac_names
+
+    status = types.Status(0xD0)
+    assert status.name not in status_names
+    assert status.name not in aps_names
+    assert status.name in nwk_names
+    assert status.name not in mac_names
+
+    status = types.Status(0xE9)
+    assert status.name not in status_names
+    assert status.name not in aps_names
+    assert status.name not in nwk_names
+    assert status.name in mac_names
+
+    status = types.Status(0xFF)
+    assert status.name not in status_names
+    assert status.name not in aps_names
+    assert status.name not in nwk_names
+    assert status.name not in mac_names
+    assert status.name == "undefined_0xff"
