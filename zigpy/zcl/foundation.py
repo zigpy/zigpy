@@ -42,6 +42,14 @@ class Status(t.enum8):
     CALIBRATION_ERROR = 0xC2  # An error occurred during calibration
     UNSUPPORTED_CLUSTER = 0xC3  # The cluster is not supported
 
+    @classmethod
+    def _missing_(cls, value):
+        chained = t.APSStatus(value)
+        status = t.uint8_t.__new__(cls, chained.value)
+        status._name_ = chained.name
+        status._value_ = value
+        return status
+
 
 class Analog:
     pass
