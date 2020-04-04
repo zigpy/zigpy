@@ -3,7 +3,6 @@ import logging
 import os.path
 from typing import Dict, Optional
 
-import voluptuous as vol
 import zigpy.appdb
 import zigpy.config
 import zigpy.device
@@ -16,21 +15,18 @@ import zigpy.zcl
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
 
-CONFIG_SCHEMA = vol.Schema(zigpy.config.SCHEMA, extra=vol.ALLOW_EXTRA)
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
 OTA_DIR = "zigpy_ota/"
 
 
 class ControllerApplication(zigpy.util.ListenableMixin):
-    def __init__(self, config: Optional[vol.Schema] = None):
+    def __init__(self, config: Dict):
         self._send_sequence = 0
         self.devices: Dict[t.EUI64, zigpy.device.Device] = {}
         self._groups = zigpy.group.Groups(self)
         self._listeners = {}
-        if config is None:
-            config = {}
-        self._config = CONFIG_SCHEMA(config)
+        self._config = config
         self._channel = None
         self._channels = None
         self._ext_pan_id = None
@@ -39,7 +35,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self._nwk_update_id = None
         self._pan_id = None
 
-        database_file = self._config[zigpy.config.CONF_DATABASE]
+        database_file = config[zigpy.config.CONF_DATABASE]
         self._ota = zigpy.ota.OTA(self)
         if database_file is None:
             ota_dir = None

@@ -21,3 +21,5 @@ SCHEMA = {
     vol.Optional(CONF_OTA, default={}): SCHEMA_OTA,
     vol.Required(CONF_DEVICE): SCHEMA_DEVICE,
 }
+
+CONFIG_SCHEMA = vol.Schema(SCHEMA, extra=vol.ALLOW_EXTRA)

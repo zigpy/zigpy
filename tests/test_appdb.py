@@ -2,7 +2,6 @@ import os
 from unittest import mock
 
 import pytest
-import voluptuous as vol
 from zigpy import profiles
 import zigpy.application
 from zigpy.config import CONF_DATABASE
@@ -16,11 +15,8 @@ from zigpy.zdo import types as zdo_t
 
 
 def make_app(database_file):
-    p1 = mock.patch("zigpy.ota.OTA", mock.MagicMock(spec_set=zigpy.ota.OTA))
-    schema = vol.Schema({vol.Optional(CONF_DATABASE, default=database_file): str})
-    p2 = mock.patch.object(zigpy.application, "CONFIG_SCHEMA", new=schema)
-    with p1, p2:
-        app = zigpy.application.ControllerApplication()
+    with mock.patch("zigpy.ota.OTA", mock.MagicMock(spec_set=zigpy.ota.OTA)):
+        app = zigpy.application.ControllerApplication({CONF_DATABASE: database_file})
     return app
 
 
