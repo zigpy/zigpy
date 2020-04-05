@@ -30,6 +30,10 @@ def test_config_validation_bool(value, result):
     """Test boolean config validation."""
     assert zigpy.config.cv_boolean(value) is result
 
+    schema = vol.Schema({vol.Required("value"): zigpy.config.cv_boolean})
+    validated = schema({"value": value})
+    assert validated["value"] is result
+
 
 @pytest.mark.parametrize("value", ["invalid", "not a bool", "something"])
 def test_config_validation_bool_invalid(value):

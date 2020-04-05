@@ -11,21 +11,6 @@ CONF_OTA_DIR = "otau_directory"
 CONF_OTA_IKEA = "ikea_provider"
 CONF_OTA_LEDVANCE = "ledvance_provider"
 
-SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): vol.PathExists()})
-SCHEMA_OTA = {
-    vol.Optional(CONF_OTA_IKEA, default=False): vol.Boolean(),
-    vol.Optional(CONF_OTA_LEDVANCE, default=False): vol.Boolean(),
-    vol.Optional(CONF_OTA_DIR, default=None): vol.Any(None, vol.IsDir()),
-}
-
-SCHEMA = {
-    vol.Optional(CONF_DATABASE, default=None): vol.IsFile(),
-    vol.Optional(CONF_OTA, default={}): SCHEMA_OTA,
-    vol.Required(CONF_DEVICE): SCHEMA_DEVICE,
-}
-
-CONFIG_SCHEMA = vol.Schema(SCHEMA, extra=vol.ALLOW_EXTRA)
-
 
 def cv_boolean(value: Union[bool, int, str]) -> bool:
     """Validate and coerce a boolean value."""
@@ -40,3 +25,19 @@ def cv_boolean(value: Union[bool, int, str]) -> bool:
     elif isinstance(value, int):
         return bool(value)
     raise vol.Invalid("invalid boolean value {}".format(value))
+
+
+SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): vol.PathExists()})
+SCHEMA_OTA = {
+    vol.Optional(CONF_OTA_IKEA, default=False): cv_boolean,
+    vol.Optional(CONF_OTA_LEDVANCE, default=False): cv_boolean,
+    vol.Optional(CONF_OTA_DIR, default=None): vol.Any(None, vol.IsDir()),
+}
+
+SCHEMA = {
+    vol.Optional(CONF_DATABASE, default=None): vol.IsFile(),
+    vol.Optional(CONF_OTA, default={}): SCHEMA_OTA,
+    vol.Required(CONF_DEVICE): SCHEMA_DEVICE,
+}
+
+CONFIG_SCHEMA = vol.Schema(SCHEMA, extra=vol.ALLOW_EXTRA)
