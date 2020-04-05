@@ -314,14 +314,14 @@ class PersistingListener:
             return self.execute("SELECT * FROM %s" % (table,))
         return self.execute("SELECT * FROM %s WHERE %s" % (table, filter))
 
-    def load(self):
+    async def load(self) -> None:
         LOGGER.debug("Loading application state from %s", self._database_file)
-        self._load_devices()
-        self._load_node_descriptors()
-        self._load_endpoints()
-        self._load_clusters()
+        await self._load_devices()
+        await self._load_node_descriptors()
+        await self._load_endpoints()
+        await self._load_clusters()
 
-        def _load_attributes(filter=None):
+        async def _load_attributes(filter: str = None) -> None:
             for (ieee, endpoint_id, cluster, attrid, value) in self._scan(
                 "attributes", filter
             ):
@@ -345,28 +345,28 @@ class PersistingListener:
                             else:
                                 dev.model = value
 
-        _load_attributes("attrid=4 OR attrid=5")
+        await _load_attributes("attrid=4 OR attrid=5")
 
         for device in self._application.devices.values():
             device = zigpy.quirks.get_device(device)
             self._application.devices[device.ieee] = device
 
-        _load_attributes()
-        self._load_groups()
-        self._load_group_members()
-        self._load_relays()
+        await _load_attributes()
+        await self._load_groups()
+        await self._load_group_members()
+        await self._load_relays()
 
-    def _load_devices(self):
+    async def _load_devices(self):
         for (ieee, nwk, status) in self._scan("devices"):
             dev = self._application.add_device(ieee, nwk)
             dev.status = zigpy.device.Status(status)
 
-    def _load_node_descriptors(self):
+    async def _load_node_descriptors(self):
         for (ieee, value) in self._scan("node_descriptors"):
             dev = self._application.get_device(ieee)
             dev.node_desc = zdo_t.NodeDescriptor.deserialize(value)[0]
 
-    def _load_endpoints(self):
+    async def _load_endpoints(self):
         for (ieee, epid, profile_id, device_type, status) in self._scan("endpoints"):
             dev = self._application.get_device(ieee)
             ep = dev.add_endpoint(epid)
@@ -378,7 +378,7 @@ class PersistingListener:
                 ep.device_type = zigpy.profiles.zll.DeviceType(device_type)
             ep.status = zigpy.endpoint.Status(status)
 
-    def _load_clusters(self):
+    async def _load_clusters(self):
         for (ieee, endpoint_id, cluster) in self._scan("clusters"):
             dev = self._application.get_device(ieee)
             ep = dev.endpoints[endpoint_id]
@@ -389,18 +389,18 @@ class PersistingListener:
             ep = dev.endpoints[endpoint_id]
             ep.add_output_cluster(cluster)
 
-    def _load_groups(self):
+    async def _load_groups(self):
         for (group_id, name) in self._scan("groups"):
             self._application.groups.add_group(group_id, name, suppress_event=True)
 
-    def _load_group_members(self):
+    async def _load_group_members(self):
         for (group_id, ieee, ep_id) in self._scan("group_members"):
             group = self._application.groups[group_id]
             group.add_member(
                 self._application.get_device(ieee).endpoints[ep_id], suppress_event=True
             )
 
-    def _load_relays(self):
+    async def _load_relays(self):
         for (ieee, value) in self._scan("relays"):
             dev = self._application.get_device(ieee)
             dev.relays = t.Relays.deserialize(value)[0]
