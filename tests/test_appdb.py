@@ -15,8 +15,32 @@ from zigpy.zdo import types as zdo_t
 
 
 def make_app(database_file):
+    class App(zigpy.application.ControllerApplication):
+        async def shutdown(self):
+            pass
+
+        async def startup(self, auto_form=False):
+            pass
+
+        async def request(
+            self,
+            device,
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            sequence,
+            data,
+            expect_reply=True,
+            use_ieee=False,
+        ):
+            pass
+
+        async def permit_ncp(self, time_s=60):
+            pass
+
     with mock.patch("zigpy.ota.OTA", mock.MagicMock(spec_set=zigpy.ota.OTA)):
-        app = zigpy.application.ControllerApplication({CONF_DATABASE: database_file})
+        app = App({CONF_DATABASE: database_file})
     return app
 
 
