@@ -1,5 +1,5 @@
 """OTA Firmware providers."""
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 import asyncio
 from collections import defaultdict
 import datetime
@@ -22,7 +22,7 @@ ENABLE_LEDVANCE_OTA = "enable_ledvance_ota"
 SKIP_OTA_FILES = (ENABLE_IKEA_OTA, ENABLE_LEDVANCE_OTA)
 
 
-class Basic(zigpy.util.LocalLogMixin):
+class Basic(zigpy.util.LocalLogMixin, ABC):
     """Skeleton OTA Firmware provider."""
 
     REFRESH = datetime.timedelta(hours=12)
