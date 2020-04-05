@@ -5,8 +5,10 @@ import logging
 from typing import Optional
 
 import attr
+from zigpy.config import CONF_OTA, CONF_OTA_DIR, CONF_OTA_IKEA, CONF_OTA_LEDVANCE
 from zigpy.ota.image import ImageKey, OTAImage
 import zigpy.ota.provider
+from zigpy.typing import ControllerApplicationType
 import zigpy.util
 
 LOGGER = logging.getLogger(__name__)
@@ -44,22 +46,25 @@ class CachedImage(OTAImage):
 class OTA(zigpy.util.ListenableMixin):
     """OTA Manager."""
 
-    def __init__(self, app, *args, **kwargs):
-        self._app = app
+    def __init__(self, app: ControllerApplicationType, *args, **kwargs):
+        self._app: ControllerApplicationType = app
         self._image_cache = {}
         self._not_initialized = True
         self._listeners = {}
-        self.add_listener(zigpy.ota.provider.Trådfri())
-        self.add_listener(zigpy.ota.provider.FileStore())
-        self.add_listener(zigpy.ota.provider.Ledvance())
+        ota_config = app.config[CONF_OTA]
+        if ota_config[CONF_OTA_IKEA]:
+            self.add_listener(zigpy.ota.provider.Trådfri())
+        if ota_config[CONF_OTA_DIR]:
+            self.add_listener(zigpy.ota.provider.FileStore())
+        if ota_config[CONF_OTA_LEDVANCE]:
+            self.add_listener(zigpy.ota.provider.Ledvance())
 
-    async def _initialize(self, ota_dir: str) -> None:
-        LOGGER.debug("Initialize OTA providers")
-        await self.async_event("initialize_provider", ota_dir)
+    async def _initialize(self) -> None:
+        await self.async_event("initialize_provider", self._app.config[CONF_OTA])
 
-    def initialize(self, ota_dir: str) -> None:
+    def initialize(self) -> None:
         self._not_initialized = False
-        asyncio.ensure_future(self._initialize(ota_dir))
+        asyncio.ensure_future(self._initialize())
 
     async def get_ota_image(self, manufacturer_id, image_type) -> Optional[OTAImage]:
         key = ImageKey(manufacturer_id, image_type)

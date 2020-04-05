@@ -1,14 +1,16 @@
 """OTA Firmware providers."""
+from abc import abstractmethod
 import asyncio
 from collections import defaultdict
 import datetime
 import logging
 import os
 import os.path
-from typing import Optional
+from typing import Dict, Optional
 
 import aiohttp
 import attr
+from zigpy.config import CONF_OTA_DIR
 from zigpy.ota.image import ImageKey, OTAImage, OTAImageHeader
 import zigpy.util
 
@@ -31,12 +33,13 @@ class Basic(zigpy.util.LocalLogMixin):
         self._locks = defaultdict(asyncio.Semaphore)
         self._last_refresh = None
 
-    async def initialize_provider(self, ota_dir: str) -> None:
-        pass
+    @abstractmethod
+    async def initialize_provider(self, ota_config: Dict) -> None:
+        """Initialize OTA provider."""
 
+    @abstractmethod
     async def refresh_firmware_list(self) -> None:
         """Loads list of firmware into memory."""
-        raise NotImplementedError
 
     async def filter_get_image(self, key: ImageKey) -> bool:
         """Filter unwanted get_image lookups."""
@@ -139,14 +142,10 @@ class Trådfri(Basic):
     MANUFACTURER_ID = 4476
     HEADERS = {"accept": "application/json;q=0.9,*/*;q=0.8"}
 
-    async def initialize_provider(self, ota_dir: str) -> None:
-        if ota_dir is None:
-            return
-
-        if os.path.isfile(os.path.join(ota_dir, ENABLE_IKEA_OTA)):
-            self.info("OTA provider enabled")
-            await self.refresh_firmware_list()
-            self.enable()
+    async def initialize_provider(self, ota_config: Dict) -> None:
+        self.info("OTA provider enabled")
+        await self.refresh_firmware_list()
+        self.enable()
 
     async def refresh_firmware_list(self) -> None:
         if self._locks[LOCK_REFRESH].locked():
@@ -238,14 +237,10 @@ class Ledvance(Basic):
     UPDATE_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
     HEADERS = {"accept": "application/json"}
 
-    async def initialize_provider(self, ota_dir: str) -> None:
-        if ota_dir is None:
-            return
-
-        if os.path.isfile(os.path.join(ota_dir, ENABLE_LEDVANCE_OTA)):
-            self.info("OTA provider enabled")
-            await self.refresh_firmware_list()
-            self.enable()
+    async def initialize_provider(self, ota_config: Dict) -> None:
+        self.info("OTA provider enabled")
+        await self.refresh_firmware_list()
+        self.enable()
 
     async def refresh_firmware_list(self) -> None:
         if self._locks[LOCK_REFRESH].locked():
@@ -323,9 +318,9 @@ class FileImage(OTAImageHeader):
 
 
 class FileStore(Basic):
-    def __init__(self, ota_dir=None):
+    def __init__(self):
         super().__init__()
-        self._ota_dir = self.validate_ota_dir(ota_dir)
+        self._ota_dir = None
 
     @staticmethod
     def validate_ota_dir(ota_dir: str) -> str:
@@ -341,9 +336,9 @@ class FileStore(Basic):
             LOGGER.debug("OTA image directory '%s' does not exist", ota_dir)
         return None
 
-    async def initialize_provider(self, ota_dir: str) -> None:
-        if self._ota_dir is None:
-            self._ota_dir = self.validate_ota_dir(ota_dir)
+    async def initialize_provider(self, ota_config: Dict) -> None:
+        ota_dir = ota_config[CONF_OTA_DIR]
+        self._ota_dir = self.validate_ota_dir(ota_dir)
 
         if self._ota_dir is not None:
             self.enable()

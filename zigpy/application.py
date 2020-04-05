@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os.path
 from typing import Dict, Optional
 
 import zigpy.appdb
@@ -35,16 +34,11 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         self._nwk_update_id = None
         self._pan_id = None
 
-        database_file = config[zigpy.config.CONF_DATABASE]
         self._ota = zigpy.ota.OTA(self)
-        if database_file is None:
-            ota_dir = None
-        else:
-            ota_dir = os.path.dirname(database_file)
-            ota_dir = os.path.join(ota_dir, OTA_DIR)
-        self.ota.initialize(ota_dir)
+        self.ota.initialize()
 
         self._dblistener = None
+        database_file = config[zigpy.config.CONF_DATABASE]
         if database_file is not None:
             self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
             self.add_listener(self._dblistener)
