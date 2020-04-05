@@ -16,7 +16,6 @@ import zigpy.zdo.types as zdo_types
 
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
-OTA_DIR = "zigpy_ota/"
 
 
 class ControllerApplication(zigpy.util.ListenableMixin):
