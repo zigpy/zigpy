@@ -27,7 +27,9 @@ def cv_boolean(value: Union[bool, int, str]) -> bool:
     raise vol.Invalid("invalid boolean value {}".format(value))
 
 
-SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): vol.PathExists()})
+SCHEMA_DEVICE = vol.Schema(
+    {vol.Required(CONF_DEVICE_PATH, default=None): vol.Any(None, vol.PathExists())}
+)
 SCHEMA_OTA = {
     vol.Optional(CONF_OTA_IKEA, default=False): cv_boolean,
     vol.Optional(CONF_OTA_LEDVANCE, default=False): cv_boolean,
