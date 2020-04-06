@@ -35,7 +35,7 @@ SCHEMA_OTA = {
 }
 
 SCHEMA = {
-    vol.Optional(CONF_DATABASE, default=None): vol.IsFile(),
+    vol.Optional(CONF_DATABASE, default=None): vol.Any(None, vol.IsFile()),
     vol.Optional(CONF_OTA, default={}): SCHEMA_OTA,
     vol.Required(CONF_DEVICE): SCHEMA_DEVICE,
 }
