@@ -294,7 +294,7 @@ def test_group_ep_by_cluster_attr(group_endpoint, monkeypatch):
 
 
 async def test_group_request(group):
-    group.application.mrequest.return_value = [mock.sentinel.status, "message sent"]
+    group.application.mrequest.return_value = [0, "message sent"]
     data = b"\x01\x02\x03\x04\x05"
     res = await group.request(
         mock.sentinel.profile, mock.sentinel.cluster, mock.sentinel.sequence, data,
@@ -306,4 +306,4 @@ async def test_group_request(group):
     assert group.application.mrequest.call_args[0][4] is mock.sentinel.sequence
     assert group.application.mrequest.call_args[0][5] == data
     assert res[0] == data[2]
-    assert res[1] == mock.sentinel.status
+    assert res[1] is zigpy.zcl.foundation.Status.SUCCESS
