@@ -49,7 +49,7 @@ class Group(ListenableMixin, dict):
             sequence,
             data,
         )
-        return [data[2], res[0]]
+        return [data[2], zigpy.zcl.foundation.Status(res[0])]
 
     def __repr__(self):
         return "<{} group_id={} name='{}' members={}>".format(
