@@ -1,5 +1,4 @@
 """OTA support for Zigbee devices."""
-import asyncio
 import datetime
 import logging
 from typing import Optional
@@ -59,12 +58,9 @@ class OTA(zigpy.util.ListenableMixin):
         if ota_config[CONF_OTA_LEDVANCE]:
             self.add_listener(zigpy.ota.provider.Ledvance())
 
-    async def _initialize(self) -> None:
+    async def initialize(self) -> None:
         await self.async_event("initialize_provider", self._app.config[CONF_OTA])
-
-    def initialize(self) -> None:
         self._not_initialized = False
-        asyncio.ensure_future(self._initialize())
 
     async def get_ota_image(self, manufacturer_id, image_type) -> Optional[OTAImage]:
         key = ImageKey(manufacturer_id, image_type)

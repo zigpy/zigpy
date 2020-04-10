@@ -37,7 +37,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._ota = zigpy.ota.OTA(self)
         self._pan_id = None
         self._send_sequence = 0
-        self.ota.initialize()
 
     async def _load_db(self) -> None:
         """Restore save state."""
@@ -57,6 +56,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Create new instance of application controller."""
         app = cls(config)
         await app._load_db()
+        await app.ota.initialize()
         if start_radio:
             try:
                 await app.startup(auto_form)
