@@ -31,7 +31,7 @@ SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): vol.PathExists()})
 SCHEMA_OTA = {
     vol.Optional(CONF_OTA_IKEA, default=False): cv_boolean,
     vol.Optional(CONF_OTA_LEDVANCE, default=False): cv_boolean,
-    vol.Optional(CONF_OTA_DIR, default=None): vol.Any(None, vol.IsDir()),
+    vol.Optional(CONF_OTA_DIR, default=None): vol.Any(None, str),
 }
 
 ZIGPY_SCHEMA = vol.Schema(
