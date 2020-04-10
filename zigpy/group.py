@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Set
 
 from zigpy import types as t
 from zigpy.endpoint import Endpoint
@@ -123,6 +123,19 @@ class Groups(ListenableMixin, dict):
         return group
 
     remove_group = pop
+
+    def update_group_membership(self, ep: Endpoint, groups: Set[int]) -> None:
+        """Sync up device group membership."""
+        old_groups = {
+            group.group_id for group in self.values() if ep.unique_id in group.members
+        }
+
+        for grp_id in old_groups - groups:
+            self[grp_id].remove_member(ep)
+
+        for grp_id in groups - old_groups:
+            group = self.add_group(grp_id)
+            group.add_member(ep)
 
     @property
     def application(self):

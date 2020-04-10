@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os.path
-from typing import Optional
+from typing import Dict, Optional
 
 import voluptuous as vol
 import zigpy.appdb
@@ -24,7 +24,7 @@ OTA_DIR = "zigpy_ota/"
 class ControllerApplication(zigpy.util.ListenableMixin):
     def __init__(self, database_file=None, config={}):
         self._send_sequence = 0
-        self.devices = {}
+        self.devices: Dict[t.EUI64, zigpy.device.Device] = {}
         self._groups = zigpy.group.Groups(self)
         self._listeners = {}
         self._config = CONFIG_SCHEMA(config)
@@ -159,8 +159,10 @@ class ControllerApplication(zigpy.util.ListenableMixin):
                     "Device %s changed id (0x%04x => 0x%04x)", ieee, dev.nwk, nwk
                 )
                 dev.nwk = nwk
+                dev.schedule_group_membership_scan()
             elif dev.initializing or dev.status == zigpy.device.Status.ENDPOINTS_INIT:
                 LOGGER.debug("Skip initialization for existing device %s", ieee)
+                dev.schedule_group_membership_scan()
                 return
         else:
             dev = self.add_device(ieee, nwk)

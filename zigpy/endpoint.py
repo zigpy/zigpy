@@ -143,6 +143,19 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.device.application.groups[grp_id].remove_member(self)
         return res[0]
 
+    async def group_membership_scan(self) -> None:
+        """Sync up group membership."""
+        try:
+            res = await self.groups.get_membership([])
+        except AttributeError:
+            return
+        except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
+            self.debug("Failed to sync-up group membership")
+            return
+
+        groups = {group for group in res[1]}
+        self.device.application.groups.update_group_membership(self, groups)
+
     async def get_model_info(self):
         if Basic.cluster_id not in self.in_clusters:
             return None, None
