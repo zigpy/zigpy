@@ -58,7 +58,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         app = cls(config)
         await app._load_db()
         if start_radio:
-            await app.startup(auto_form)
+            try:
+                await app.startup(auto_form)
+            except Exception:
+                LOGGER.error("Couldn't start application")
+                await app.shutdown()
+                raise
 
         return app
 
