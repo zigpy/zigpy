@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from asynctest import CoroutineMock, mock
 import pytest
@@ -264,3 +265,23 @@ async def test_remove_from_group(dev, monkeypatch):
     await dev.remove_from_group(grp_id)
     assert epmock.remove_from_group.call_count == 2
     assert epmock.remove_from_group.call_args[0][0] == grp_id
+
+
+async def test_schedule_group_membership(dev, caplog):
+    """Test preempting group membership scan."""
+
+    p1 = mock.patch.object(dev, "group_membership_scan", new=CoroutineMock())
+    caplog.set_level(logging.DEBUG)
+    with p1 as scan_mock:
+        dev.schedule_group_membership_scan()
+        await asyncio.sleep(0)
+        assert scan_mock.call_count == 1
+        assert scan_mock.await_count == 1
+        assert not caplog.records
+
+        scan_mock.reset_mock()
+        dev.schedule_group_membership_scan()
+        dev.schedule_group_membership_scan()
+        await asyncio.sleep(0)
+        assert scan_mock.await_count == 1
+        assert "Cancelling old group rescan" in caplog.text

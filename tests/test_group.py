@@ -307,3 +307,43 @@ async def test_group_request(group):
     assert group.application.mrequest.call_args[0][5] == data
     assert res[0] == data[2]
     assert res[1] is zigpy.zcl.foundation.Status.SUCCESS
+
+
+def test_update_group_membership_remove_member(groups, endpoint):
+    """New device is not member of the old groups."""
+
+    groups[FIXTURE_GRP_ID].add_member(endpoint)
+
+    assert endpoint.unique_id in groups[FIXTURE_GRP_ID]
+    groups.update_group_membership(endpoint, set())
+
+    assert endpoint.unique_id not in groups[FIXTURE_GRP_ID]
+
+
+def test_update_group_membership_remove_add(groups, endpoint):
+    """New device is not member of the old group, but member of new one."""
+
+    groups[FIXTURE_GRP_ID].add_member(endpoint)
+
+    assert endpoint.unique_id in groups[FIXTURE_GRP_ID]
+    new_group_id = 0x1234
+    assert new_group_id not in groups
+    groups.update_group_membership(endpoint, {new_group_id})
+    assert endpoint.unique_id not in groups[FIXTURE_GRP_ID]
+    assert new_group_id in groups
+    assert endpoint.unique_id in groups[new_group_id]
+
+
+def test_update_group_membership_add_existing(groups, endpoint):
+    """New device is member of new and existing groups."""
+
+    groups[FIXTURE_GRP_ID].add_member(endpoint)
+
+    assert endpoint.unique_id in groups[FIXTURE_GRP_ID]
+    new_group_id = 0x1234
+    groups.add_group(new_group_id)
+    assert new_group_id in groups
+    groups.update_group_membership(endpoint, {new_group_id, FIXTURE_GRP_ID})
+    assert endpoint.unique_id in groups[FIXTURE_GRP_ID]
+    assert new_group_id in groups
+    assert endpoint.unique_id in groups[new_group_id]
