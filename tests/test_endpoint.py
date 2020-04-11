@@ -1,6 +1,6 @@
 import asyncio
 
-from asynctest import mock
+from asynctest import CoroutineMock, mock
 import pytest
 from zigpy import endpoint, group
 import zigpy.device
@@ -14,6 +14,7 @@ from zigpy.zdo import types
 @pytest.fixture
 def ep():
     dev = mock.MagicMock()
+    dev.request = CoroutineMock()
     return endpoint.Endpoint(dev, 1)
 
 
@@ -421,3 +422,34 @@ def test_ep_model(ep):
 
     ep.model = mock.sentinel.ep_model
     assert ep.model is mock.sentinel.ep_model
+
+
+async def test_group_membership_scan(ep):
+    """Test group membership scan."""
+
+    ep.device.application.groups.update_group_membership = mock.MagicMock()
+    await ep.group_membership_scan()
+    assert ep.device.application.groups.update_group_membership.call_count == 0
+    assert ep.device.request.call_count == 0
+
+    ep.add_input_cluster(4)
+    ep.device.request.return_value = [0, [1, 3, 7]]
+    await ep.group_membership_scan()
+    assert ep.device.application.groups.update_group_membership.call_count == 1
+    assert ep.device.application.groups.update_group_membership.call_args[0][1] == {
+        1,
+        3,
+        7,
+    }
+    assert ep.device.request.call_count == 1
+
+
+async def test_group_membership_scan_fail(ep):
+    """Test group membership scan failure."""
+
+    ep.device.application.groups.update_group_membership = mock.MagicMock()
+    ep.add_input_cluster(4)
+    ep.device.request.side_effect = asyncio.TimeoutError
+    await ep.group_membership_scan()
+    assert ep.device.application.groups.update_group_membership.call_count == 0
+    assert ep.device.request.call_count == 1

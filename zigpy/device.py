@@ -3,7 +3,7 @@ import binascii
 import enum
 import logging
 import time
-from typing import Optional
+from typing import Dict, Optional, Union
 
 import zigpy.endpoint
 import zigpy.exceptions
@@ -37,12 +37,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._init_handle = None
         self.nwk = NWK(nwk)
         self.zdo = zdo.ZDO(self)
-        self.endpoints = {0: self.zdo}
+        self.endpoints: Dict[int, Union[zdo.ZDO, zigpy.endpoint.Endpoint]] = {
+            0: self.zdo
+        }
         self.lqi = None
         self.rssi = None
         self.last_seen = None
         self.status = Status.NEW
         self.initializing = False
+        self._group_scan_handle: Optional[asyncio.Task] = None
         self._listeners = {}
         self._manufacturer = None
         self._model = None
@@ -59,6 +62,19 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         else:
             self.initializing = True
         self._init_handle = asyncio.ensure_future(self._initialize())
+
+    def schedule_group_membership_scan(self) -> None:
+        """Rescan device group's membership."""
+        if self._group_scan_handle and not self._group_scan_handle.done():
+            self.debug("Cancelling old group rescan")
+            self._group_scan_handle.cancel()
+        self._group_scan_handle = asyncio.ensure_future(self.group_membership_scan())
+
+    async def group_membership_scan(self) -> None:
+        """Sync up group membership."""
+        for ep_id, ep in self.endpoints.items():
+            if ep_id:
+                await ep.group_membership_scan()
 
     async def get_node_descriptor(self):
         self.info("Requesting 'Node Descriptor'")
