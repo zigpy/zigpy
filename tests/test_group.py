@@ -31,6 +31,7 @@ def groups():
 @pytest.fixture
 def group():
     groups_mock = mock.MagicMock(spec_set=zigpy.group.Groups)
+    groups_mock.application.mrequest = CoroutineMock()
     return zigpy.group.Group(FIXTURE_GRP_ID, FIXTURE_GRP_NAME, groups_mock)
 
 
@@ -292,19 +293,20 @@ def test_group_ep_by_cluster_attr(group_endpoint, monkeypatch):
     assert group_cluster_mock.from_attr.call_count == 1
 
 
-def test_group_request(group):
-    group.request(
-        mock.sentinel.profile,
-        mock.sentinel.cluster,
-        mock.sentinel.sequence,
-        mock.sentinel.data,
+async def test_group_request(group):
+    group.application.mrequest.return_value = [0, "message sent"]
+    data = b"\x01\x02\x03\x04\x05"
+    res = await group.request(
+        mock.sentinel.profile, mock.sentinel.cluster, mock.sentinel.sequence, data,
     )
     assert group.application.mrequest.call_count == 1
     assert group.application.mrequest.call_args[0][0] == group.group_id
     assert group.application.mrequest.call_args[0][1] is mock.sentinel.profile
     assert group.application.mrequest.call_args[0][2] is mock.sentinel.cluster
     assert group.application.mrequest.call_args[0][4] is mock.sentinel.sequence
-    assert group.application.mrequest.call_args[0][5] is mock.sentinel.data
+    assert group.application.mrequest.call_args[0][5] == data
+    assert res[0] == data[2]
+    assert res[1] is zigpy.zcl.foundation.Status.SUCCESS
 
 
 def test_update_group_membership_remove_member(groups, endpoint):

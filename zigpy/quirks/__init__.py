@@ -36,6 +36,9 @@ class CustomDevice(zigpy.device.Device, metaclass=Registry):
             else:
                 setattr(self, attr, getattr(replaces, attr))
 
+        for attr in ("lqi", "rssi", "last_seen", "relays"):
+            setattr(self, attr, getattr(replaces, attr))
+
         set_device_attr("status")
         set_device_attr("node_desc")
         set_device_attr("manufacturer")

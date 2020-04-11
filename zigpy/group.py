@@ -39,9 +39,9 @@ class Group(ListenableMixin, dict):
             self.listener_event("member_removed", self, ep)
         return self
 
-    def request(self, profile, cluster, sequence, data, *args, **kwargs):
+    async def request(self, profile, cluster, sequence, data, *args, **kwargs):
         """Send multicast request."""
-        return self.application.mrequest(
+        res = await self.application.mrequest(
             self.group_id,
             profile,
             cluster,
@@ -49,6 +49,7 @@ class Group(ListenableMixin, dict):
             sequence,
             data,
         )
+        return [data[2], zigpy.zcl.foundation.Status(res[0])]
 
     def __repr__(self):
         return "<{} group_id={} name='{}' members={}>".format(
