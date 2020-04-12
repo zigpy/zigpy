@@ -1,11 +1,11 @@
 import asyncio
-from unittest import mock
 
 import asynctest
+from asynctest import CoroutineMock, mock
 import pytest
 from zigpy import device
 import zigpy.application
-from zigpy.config import CONF_DATABASE
+from zigpy.config import CONF_DATABASE, ZIGPY_SCHEMA
 from zigpy.exceptions import DeliveryError
 import zigpy.ota
 import zigpy.types as t
@@ -71,6 +71,60 @@ async def test_startup():
 
     with pytest.raises(TypeError):
         await App({}).startup()
+
+
+@mock.patch("zigpy.ota.OTA", spec_set=zigpy.ota.OTA)
+async def test_new_exception(ota_mock):
+    class App(zigpy.application.ControllerApplication):
+        async def shutdown(self):
+            pass
+
+        async def startup(self, auto_form=False):
+            pass
+
+        async def request(
+            self,
+            device,
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            sequence,
+            data,
+            expect_reply=True,
+            use_ieee=False,
+        ):
+            pass
+
+        async def permit_ncp(self, time_s=60):
+            pass
+
+    p1 = mock.patch.object(App, "_load_db", CoroutineMock())
+    p2 = mock.patch.object(App, "startup", CoroutineMock())
+    p3 = mock.patch.object(App, "shutdown", CoroutineMock())
+    ota_mock.return_value.initialize.side_effect = CoroutineMock()
+
+    with p1 as db_mck, p2 as start_mck, p3 as shut_mck:
+        await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
+    assert db_mck.call_count == 1
+    assert db_mck.await_count == 1
+    assert ota_mock.return_value.initialize.call_count == 1
+    assert start_mck.call_count == 1
+    assert start_mck.await_count == 1
+    assert shut_mck.call_count == 0
+    assert shut_mck.await_count == 0
+
+    start_mck.side_effect = asyncio.TimeoutError
+    with p1 as db_mck, p2 as start_mck, p3 as shut_mck:
+        with pytest.raises(asyncio.TimeoutError):
+            await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
+    assert db_mck.call_count == 2
+    assert db_mck.await_count == 2
+    assert ota_mock.return_value.initialize.call_count == 2
+    assert start_mck.call_count == 2
+    assert start_mck.await_count == 2
+    assert shut_mck.call_count == 1
+    assert shut_mck.await_count == 1
 
 
 async def test_form_network(app):
