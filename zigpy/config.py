@@ -36,7 +36,7 @@ SCHEMA_OTA = {
 
 ZIGPY_SCHEMA = vol.Schema(
     {
-        vol.Optional(CONF_DATABASE, default=None): vol.Any(None, vol.IsFile()),
+        vol.Optional(CONF_DATABASE, default=None): vol.Any(None, str),
         vol.Optional(CONF_OTA, default={}): SCHEMA_OTA,
     },
     extra=vol.ALLOW_EXTRA,

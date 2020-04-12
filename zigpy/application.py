@@ -23,27 +23,49 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def __init__(self, config: Dict):
         self._send_sequence = 0
         self.devices: Dict[t.EUI64, zigpy.device.Device] = {}
-        self._groups = zigpy.group.Groups(self)
         self._listeners = {}
-        self._config = config
         self._channel = None
         self._channels = None
+        self._config = config
+        self._dblistener = None
         self._ext_pan_id = None
+        self._groups = zigpy.group.Groups(self)
         self._ieee = None
+        self._listeners = {}
         self._nwk = None
         self._nwk_update_id = None
-        self._pan_id = None
-
         self._ota = zigpy.ota.OTA(self)
+        self._pan_id = None
+        self._send_sequence = 0
         self.ota.initialize()
 
-        self._dblistener = None
-        database_file = config[zigpy.config.CONF_DATABASE]
-        if database_file is not None:
-            self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
-            self.add_listener(self._dblistener)
-            self.groups.add_listener(self._dblistener)
-            self._dblistener.load()
+    async def _load_db(self) -> None:
+        """Restore save state."""
+        database_file = self.config[zigpy.config.CONF_DATABASE]
+        if not database_file:
+            return
+
+        self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
+        self.add_listener(self._dblistener)
+        self.groups.add_listener(self._dblistener)
+        await self._dblistener.load()
+
+    @classmethod
+    async def new(
+        cls, config: Dict, auto_form: bool = False, start_radio: bool = True
+    ) -> "ControllerApplication":
+        """Create new instance of application controller."""
+        app = cls(config)
+        await app._load_db()
+        if start_radio:
+            try:
+                await app.startup(auto_form)
+            except Exception:
+                LOGGER.error("Couldn't start application")
+                await app.shutdown()
+                raise
+
+        return app
 
     @abc.abstractmethod
     async def shutdown(self):
