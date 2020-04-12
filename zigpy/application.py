@@ -1,3 +1,4 @@
+import abc
 import asyncio
 import logging
 from typing import Dict, Optional
@@ -18,7 +19,7 @@ DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
 
 
-class ControllerApplication(zigpy.util.ListenableMixin):
+class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def __init__(self, config: Dict):
         self._send_sequence = 0
         self.devices: Dict[t.EUI64, zigpy.device.Device] = {}
@@ -44,13 +45,13 @@ class ControllerApplication(zigpy.util.ListenableMixin):
             self.groups.add_listener(self._dblistener)
             self._dblistener.load()
 
+    @abc.abstractmethod
     async def shutdown(self):
         """Perform a complete application shutdown."""
-        pass
 
+    @abc.abstractmethod
     async def startup(self, auto_form=False):
         """Perform a complete application startup"""
-        raise NotImplementedError
 
     async def form_network(self, channel=15, pan_id=None, extended_pan_id=None):
         """Form a new network"""
@@ -199,6 +200,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
     @zigpy.util.retryable_request
     async def request(
         self,
@@ -226,7 +228,6 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         :returns: return a tuple of a status and an error_message. Original requestor
                   has more context to provide a more meaningful error message
         """
-        raise NotImplementedError
 
     async def broadcast(
         self,
@@ -257,9 +258,9 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
     async def permit_ncp(self, time_s=60):
         """Permit joining on NCP."""
-        raise NotImplementedError
 
     async def permit(self, time_s=60, node=None):
         """Permit joining on a specific node or all router nodes."""
