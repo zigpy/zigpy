@@ -30,7 +30,7 @@ class SizePrefixedSimpleDescriptor(SimpleDescriptor):
     def deserialize(cls, data):
         if not data or data[0] == 0:
             return None, data[1:]
-        return SimpleDescriptor.deserialize(data[1:])
+        return super().deserialize(data[1:])
 
 
 class LogicalType(t.enum8):
