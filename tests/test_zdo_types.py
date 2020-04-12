@@ -154,14 +154,21 @@ def test_size_prefixed_simple_descriptor():
     ser = sd.serialize()
     assert ser[0] == len(ser) - 1
 
-    sd2, data = types.SizePrefixedSimpleDescriptor.deserialize(ser)
+    sd2, data = types.SizePrefixedSimpleDescriptor.deserialize(ser + b"extra")
     assert sd.input_clusters == sd2.input_clusters
     assert sd.output_clusters == sd2.output_clusters
+    assert isinstance(sd2, types.SizePrefixedSimpleDescriptor)
+    assert data == b"extra"
 
 
 def test_empty_size_prefixed_simple_descriptor():
     r = types.SizePrefixedSimpleDescriptor.deserialize(b"\x00")
     assert r == (None, b"")
+
+
+def test_invalid_size_prefixed_simple_descriptor():
+    with pytest.raises(ValueError):
+        types.SizePrefixedSimpleDescriptor.deserialize(b"\x01")
 
 
 def test_status_undef():
