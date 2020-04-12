@@ -5,6 +5,7 @@ import uuid
 
 from asynctest import CoroutineMock, patch
 import pytest
+from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA, CONF_OTA_LEDVANCE
 import zigpy.ota
 import zigpy.ota.image
 import zigpy.ota.provider as ota_p
@@ -79,7 +80,14 @@ def ikea_image(ikea_image_with_version):
 
 @pytest.fixture
 def basic_prov():
-    p = ota_p.Basic()
+    class Prov(ota_p.Basic):
+        async def initialize_provider(self, ota_config):
+            return None
+
+        async def refresh_firmware_list(self):
+            return None
+
+    p = Prov()
     p.enable()
     return p
 
@@ -103,11 +111,6 @@ def test_expiration(ikea_prov):
 
 async def test_initialize_provider(basic_prov):
     await basic_prov.initialize_provider(mock.sentinel.ota_dir)
-
-
-async def test_basic_refresh_firmware_list(basic_prov):
-    with pytest.raises(NotImplementedError):
-        await basic_prov.refresh_firmware_list()
 
 
 async def test_basic_get_image(basic_prov, key):
@@ -146,16 +149,14 @@ async def test_basic_get_image(basic_prov, key):
     assert image.fetch_image.call_count == 1
 
 
-def test_basic_enable_provider(key):
-    basic_prov = ota_p.Basic()
-
-    assert basic_prov.is_enabled is False
-
-    basic_prov.enable()
+def test_basic_enable_provider(key, basic_prov):
     assert basic_prov.is_enabled is True
 
     basic_prov.disable()
     assert basic_prov.is_enabled is False
+
+    basic_prov.enable()
+    assert basic_prov.is_enabled is True
 
 
 async def test_basic_get_image_filtered(basic_prov, key):
@@ -175,29 +176,11 @@ async def test_basic_get_image_filtered(basic_prov, key):
     assert image.fetch_image.call_count == 0
 
 
-async def test_ikea_init_no_ota_dir(ikea_prov):
-    ikea_prov.enable = mock.MagicMock()
-    ikea_prov.refresh_firmware_list = CoroutineMock()
-
-    r = await ikea_prov.initialize_provider(None)
-    assert r is None
-    assert ikea_prov.enable.call_count == 0
-    assert ikea_prov.refresh_firmware_list.call_count == 0
-
-
 async def test_ikea_init_ota_dir(ikea_prov, tmpdir):
     ikea_prov.enable = mock.MagicMock()
     ikea_prov.refresh_firmware_list = CoroutineMock()
 
-    r = await ikea_prov.initialize_provider(str(tmpdir))
-    assert r is None
-    assert ikea_prov.enable.call_count == 0
-    assert ikea_prov.refresh_firmware_list.call_count == 0
-
-    # create flag
-    with open(os.path.join(str(tmpdir), ota_p.ENABLE_IKEA_OTA), mode="w+"):
-        pass
-    r = await ikea_prov.initialize_provider(str(tmpdir))
+    r = await ikea_prov.initialize_provider({CONF_OTA_IKEA: True})
     assert r is None
     assert ikea_prov.enable.call_count == 1
     assert ikea_prov.refresh_firmware_list.call_count == 1
@@ -443,7 +426,7 @@ async def test_filestore_init_provider_success(file_prov):
     file_prov.refresh_firmware_list = CoroutineMock()
     file_prov.validate_ota_dir = mock.MagicMock(return_value=mock.sentinel.ota_dir)
 
-    r = await file_prov.initialize_provider(mock.sentinel.ota_dir)
+    r = await file_prov.initialize_provider({CONF_OTA_DIR: mock.sentinel.ota_dir})
     assert r is None
     assert file_prov.validate_ota_dir.call_count == 1
     assert file_prov.validate_ota_dir.call_args[0][0] == mock.sentinel.ota_dir
@@ -456,7 +439,7 @@ async def test_filestore_init_provider_failure(file_prov):
     file_prov.refresh_firmware_list = CoroutineMock()
     file_prov.validate_ota_dir = mock.MagicMock(return_value=None)
 
-    r = await file_prov.initialize_provider(mock.sentinel.ota_dir)
+    r = await file_prov.initialize_provider({CONF_OTA_DIR: mock.sentinel.ota_dir})
     assert r is None
     assert file_prov.validate_ota_dir.call_count == 1
     assert file_prov.validate_ota_dir.call_args[0][0] == mock.sentinel.ota_dir
@@ -600,29 +583,11 @@ def ledvance_key():
     return zigpy.ota.image.ImageKey(LEDVANCE_ID, LEDVANCE_IMAGE_TYPE)
 
 
-async def test_ledvance_init_no_ota_dir(ledvance_prov):
+async def test_ledvance_init_ota_dir(ledvance_prov):
     ledvance_prov.enable = mock.MagicMock()
     ledvance_prov.refresh_firmware_list = CoroutineMock()
 
-    r = await ledvance_prov.initialize_provider(None)
-    assert r is None
-    assert ledvance_prov.enable.call_count == 0
-    assert ledvance_prov.refresh_firmware_list.call_count == 0
-
-
-async def test_ledvance_init_ota_dir(ledvance_prov, tmpdir):
-    ledvance_prov.enable = mock.MagicMock()
-    ledvance_prov.refresh_firmware_list = CoroutineMock()
-
-    r = await ledvance_prov.initialize_provider(str(tmpdir))
-    assert r is None
-    assert ledvance_prov.enable.call_count == 0
-    assert ledvance_prov.refresh_firmware_list.call_count == 0
-
-    # create flag
-    with open(os.path.join(str(tmpdir), ota_p.ENABLE_LEDVANCE_OTA), mode="w+"):
-        pass
-    r = await ledvance_prov.initialize_provider(str(tmpdir))
+    r = await ledvance_prov.initialize_provider({CONF_OTA_LEDVANCE: True})
     assert r is None
     assert ledvance_prov.enable.call_count == 1
     assert ledvance_prov.refresh_firmware_list.call_count == 1
