@@ -4,7 +4,8 @@ from unittest import mock
 import asynctest
 import pytest
 from zigpy import device
-from zigpy.application import ControllerApplication
+import zigpy.application
+from zigpy.config import CONF_DATABASE
 from zigpy.exceptions import DeliveryError
 import zigpy.ota
 import zigpy.types as t
@@ -14,7 +15,7 @@ import zigpy.types as t
 @asynctest.patch("zigpy.ota.OTA", asynctest.MagicMock(spec_set=zigpy.ota.OTA))
 @asynctest.patch("zigpy.device.Device._initialize", asynctest.CoroutineMock())
 def app():
-    return ControllerApplication()
+    return zigpy.application.ControllerApplication({CONF_DATABASE: None})
 
 
 @pytest.fixture

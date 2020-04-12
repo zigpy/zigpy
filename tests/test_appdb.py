@@ -3,7 +3,8 @@ from unittest import mock
 
 import pytest
 from zigpy import profiles
-from zigpy.application import ControllerApplication
+import zigpy.application
+from zigpy.config import CONF_DATABASE
 from zigpy.device import Device, Status
 import zigpy.ota
 from zigpy.quirks import CustomDevice
@@ -15,7 +16,7 @@ from zigpy.zdo import types as zdo_t
 
 def make_app(database_file):
     with mock.patch("zigpy.ota.OTA", mock.MagicMock(spec_set=zigpy.ota.OTA)):
-        app = ControllerApplication(database_file)
+        app = zigpy.application.ControllerApplication({CONF_DATABASE: database_file})
     return app
 
 
