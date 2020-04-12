@@ -4,7 +4,7 @@ from setuptools import find_packages, setup
 import zigpy
 
 setup(
-    name="zigpy-homeassistant",
+    name="zigpy",
     version=zigpy.__version__,
     description="Library implementing a ZigBee stack",
     url="http://github.com/zigpy/zigpy",
