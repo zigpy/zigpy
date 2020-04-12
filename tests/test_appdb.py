@@ -157,7 +157,7 @@ async def test_database(tmpdir, monkeypatch):
 
 
 @mock.patch("zigpy.device.Device.schedule_group_membership_scan", mock.MagicMock())
-def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
+async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
     ieee = make_ieee()
