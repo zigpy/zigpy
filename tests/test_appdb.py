@@ -1,10 +1,10 @@
 import os
-from unittest import mock
 
+from asynctest import CoroutineMock, mock
 import pytest
 from zigpy import profiles
 import zigpy.application
-from zigpy.config import CONF_DATABASE
+from zigpy.config import CONF_DATABASE, ZIGPY_SCHEMA
 from zigpy.device import Device, Status
 import zigpy.ota
 from zigpy.quirks import CustomDevice
@@ -39,8 +39,8 @@ async def make_app(database_file):
         async def permit_ncp(self, time_s=60):
             pass
 
-    with mock.patch("zigpy.ota.OTA", mock.MagicMock(spec_set=zigpy.ota.OTA)):
-        app = await App.new({CONF_DATABASE: database_file})
+    with mock.patch("zigpy.ota.OTA.initialize", CoroutineMock()):
+        app = await App.new(ZIGPY_SCHEMA({CONF_DATABASE: database_file}))
     return app
 
 
@@ -68,6 +68,19 @@ def fake_get_device(device):
     if device.endpoints.get(1) is not None and device[1].profile_id == 65535:
         return FakeCustomDevice(device.application, make_ieee(1), 199, device)
     return device
+
+
+async def test_no_database(tmpdir):
+    with mock.patch("zigpy.appdb.PersistingListener") as db_mock:
+        db_mock.return_value.load.side_effect = CoroutineMock()
+        await make_app(None)
+    assert db_mock.return_value.load.call_count == 0
+
+    db = os.path.join(str(tmpdir), "test.db")
+    with mock.patch("zigpy.appdb.PersistingListener") as db_mock:
+        db_mock.return_value.load.side_effect = CoroutineMock()
+        await make_app(db)
+    assert db_mock.return_value.load.call_count == 1
 
 
 async def test_database(tmpdir, monkeypatch):
