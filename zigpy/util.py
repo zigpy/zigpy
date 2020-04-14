@@ -77,8 +77,8 @@ class LocalLogMixin:
         if sys.version_info >= (3, 8):
             # We have to exclude log, _log, and info
             return self.log(lvl, msg, *args, stacklevel=4, **kwargs)
-        else:
-            return self.log(lvl, msg, *args, **kwargs)
+
+        return self.log(lvl, msg, *args, **kwargs)
 
     def exception(self, msg, *args, **kwargs):
         return self._log(logging.ERROR, msg, *args, **kwargs)
