@@ -3,6 +3,7 @@ import asyncio
 import functools
 import inspect
 import logging
+import sys
 import traceback
 from typing import Any, Coroutine, Optional, Tuple, Type, Union
 
@@ -72,20 +73,27 @@ class LocalLogMixin:
     def log(self, lvl: int, msg: str, *args, **kwargs):  # pragma: no cover
         pass
 
+    def _log(self, lvl: int, msg: str, *args, **kwargs):
+        if sys.version_info >= (3, 8):
+            # We have to exclude log, _log, and info
+            return self.log(lvl, msg, *args, stacklevel=4, **kwargs)
+
+        return self.log(lvl, msg, *args, **kwargs)
+
     def exception(self, msg, *args, **kwargs):
-        return self.log(logging.ERROR, msg, *args, **kwargs)
+        return self._log(logging.ERROR, msg, *args, **kwargs)
 
     def debug(self, msg, *args, **kwargs):
-        return self.log(logging.DEBUG, msg, *args, **kwargs)
+        return self._log(logging.DEBUG, msg, *args, **kwargs)
 
     def info(self, msg, *args, **kwargs):
-        return self.log(logging.INFO, msg, *args, **kwargs)
+        return self._log(logging.INFO, msg, *args, **kwargs)
 
     def warning(self, msg, *args, **kwargs):
-        return self.log(logging.WARNING, msg, *args, **kwargs)
+        return self._log(logging.WARNING, msg, *args, **kwargs)
 
     def error(self, msg, *args, **kwargs):
-        return self.log(logging.ERROR, msg, *args, **kwargs)
+        return self._log(logging.ERROR, msg, *args, **kwargs)
 
 
 async def retry(func, retry_exceptions, tries=3, delay=0.1):
