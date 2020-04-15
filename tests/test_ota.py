@@ -46,20 +46,11 @@ def ota():
 
 async def test_ota_initialize(ota):
     ota.async_event = CoroutineMock()
-    await ota._initialize(mock.sentinel.ota_dir)
+    await ota.initialize()
 
     assert ota.async_event.call_count == 1
     assert ota.async_event.call_args[0][0] == "initialize_provider"
-    assert ota.async_event.call_args[0][1] == mock.sentinel.ota_dir
-
-
-async def test_initialize(ota):
-    ota._initialize = CoroutineMock()
-
-    assert ota.not_initialized
-    ota.initialize(mock.sentinel.ota_dir)
-    assert not ota.not_initialized
-    assert ota._initialize.call_count == 1
+    assert ota.not_initialized is False
 
 
 async def test_get_image_empty(ota, image, key):

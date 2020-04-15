@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 
 from asynctest import CoroutineMock, mock
 import pytest
@@ -63,6 +64,45 @@ def test_log():
     log.info("Test info")
     log.warning("Test warn")
     log.error("Test error")
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 8), reason="logging stacklevel kwarg was introduced in 3.8"
+)
+def test_log_stacklevel():
+    class MockHandler(logging.Handler):
+        emit = mock.Mock()
+
+    handler = MockHandler()
+
+    LOGGER = logging.getLogger("test_log_stacklevel")
+    LOGGER.setLevel(logging.DEBUG)
+    LOGGER.addHandler(handler)
+
+    class TestClass(util.LocalLogMixin):
+        def log(self, lvl, msg, *args, **kwargs):
+            LOGGER.log(lvl, msg, *args, **kwargs)
+
+        def test_method(self):
+            self.info("Test1")
+            LOGGER.info("Test2")
+
+    TestClass().test_method()
+
+    assert handler.emit.call_count == 2
+
+    indirect_call, direct_call = handler.emit.mock_calls
+    (indirect,) = indirect_call[1]
+    (direct,) = direct_call[1]
+
+    assert indirect.message == "Test1"
+    assert direct.message == "Test2"
+    assert direct.levelname == indirect.levelname
+
+    assert direct.module == indirect.module
+    assert direct.filename == indirect.filename
+    assert direct.funcName == indirect.funcName
+    assert direct.lineno == indirect.lineno + 1
 
 
 async def _test_retry(exception, retry_exceptions, n):
