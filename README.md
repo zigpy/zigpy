@@ -54,13 +54,40 @@ Packages of tagged versions are also released via PyPI
   - https://pypi.org/project/zigpy-zigate/
   - https://pypi.org/project/zigpy-cc/
 
-## How to contribute
+## How to contribute 
 
-If you are looking to make a contribution to this project we suggest that you follow the steps in these guides:
+You can contribute to this project either as a end-user, a tester (advanced user contributing constructive issue/bug-reports) or as a developer contibuting code.
+
+### How to contribute as an end-user
+
+If you think that you are having problems due to a bug then please see the section below on reporting issues as a tester, but be aware that reporting issues put higher responsibility on your active involment on your part as a tester.
+
+Some developers might be also interested in receiving donations in the form of money or hardware such as Zigbee modules and devices, and even if such donations are most often donated with no strings attached it could in many cases help the developers motivation and indirect improve the development of this project. 
+
+Sometimes it might just be simpler to just donate money earmarked to specifically let an willing developer buy the exact same type Zigbee device that you are having issues with to be able to replicate the issue themselves in order to troubleshoot and hopefully also solve the problem.
+
+Consider submitting a post on GitHub projects issues tracker about willingness to making a donation (please see section bellow on posing issues).
+
+### How to report issues or bugs as a tester
+
+Issues or bugs are normally first be submitted upstream to the software/project that it utilizing zigpy and its radio libraries, (like for example Home Assistant), however if and when the issue is determened to be in the zigpy or underlying radio library then you should continue by submitting a detailed issue/bug report via the GitHub projects issues tracker.
+
+Always be sure to first check if there is not already an existing issue posted with the same description before posting a new issue.
+
+- https://help.github.com/en/github/managing-your-work-on-github/creating-an-issue
+  - https://guides.github.com/features/issues/
+
+### How to contribute as a developer
+
+If you are looking to make a contribution as a developer to this project we suggest that you follow the steps in these guides:
+
 - https://github.com/firstcontributions/first-contributions/blob/master/README.md
-- https://github.com/firstcontributions/first-contributions/blob/master/github-desktop-tutorial.md
+  - https://github.com/firstcontributions/first-contributions/blob/master/github-desktop-tutorial.md
 
-Some developers might also be interested in receiving donations in the form of hardware such as Zigbee modules or devices, and even if such donations are most often donated with no strings attached it could in many cases help the developers motivation and indirect improve the development of this project.
+Code changes or additions can then be submitted to this project on GitHub via pull requests:
+
+- https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests
+  - https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request
 
 ## Developer references
 
