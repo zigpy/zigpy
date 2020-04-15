@@ -1,10 +1,11 @@
 import asyncio
-from unittest import mock
 
 import asynctest
+from asynctest import CoroutineMock, mock
 import pytest
 from zigpy import device
-from zigpy.application import ControllerApplication
+import zigpy.application
+from zigpy.config import CONF_DATABASE, ZIGPY_SCHEMA
 from zigpy.exceptions import DeliveryError
 import zigpy.ota
 import zigpy.types as t
@@ -14,7 +15,31 @@ import zigpy.types as t
 @asynctest.patch("zigpy.ota.OTA", asynctest.MagicMock(spec_set=zigpy.ota.OTA))
 @asynctest.patch("zigpy.device.Device._initialize", asynctest.CoroutineMock())
 def app():
-    return ControllerApplication()
+    class App(zigpy.application.ControllerApplication):
+        async def shutdown(self):
+            pass
+
+        async def startup(self, auto_form=False):
+            pass
+
+        async def request(
+            self,
+            device,
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            sequence,
+            data,
+            expect_reply=True,
+            use_ieee=False,
+        ):
+            pass
+
+        async def permit_ncp(self, time_s=60):
+            pass
+
+    return App({CONF_DATABASE: None})
 
 
 @pytest.fixture
@@ -22,9 +47,84 @@ def ieee(init=0):
     return t.EUI64(map(t.uint8_t, range(init, init + 8)))
 
 
-async def test_startup(app):
-    with pytest.raises(NotImplementedError):
-        await app.startup()
+async def test_startup():
+    class App(zigpy.application.ControllerApplication):
+        async def shutdown(self):
+            pass
+
+        async def request(
+            self,
+            device,
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            sequence,
+            data,
+            expect_reply=True,
+            use_ieee=False,
+        ):
+            pass
+
+        async def permit_ncp(self, time_s=60):
+            pass
+
+    with pytest.raises(TypeError):
+        await App({}).startup()
+
+
+@mock.patch("zigpy.ota.OTA", spec_set=zigpy.ota.OTA)
+async def test_new_exception(ota_mock):
+    class App(zigpy.application.ControllerApplication):
+        async def shutdown(self):
+            pass
+
+        async def startup(self, auto_form=False):
+            pass
+
+        async def request(
+            self,
+            device,
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            sequence,
+            data,
+            expect_reply=True,
+            use_ieee=False,
+        ):
+            pass
+
+        async def permit_ncp(self, time_s=60):
+            pass
+
+    p1 = mock.patch.object(App, "_load_db", CoroutineMock())
+    p2 = mock.patch.object(App, "startup", CoroutineMock())
+    p3 = mock.patch.object(App, "shutdown", CoroutineMock())
+    ota_mock.return_value.initialize.side_effect = CoroutineMock()
+
+    with p1 as db_mck, p2 as start_mck, p3 as shut_mck:
+        await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
+    assert db_mck.call_count == 1
+    assert db_mck.await_count == 1
+    assert ota_mock.return_value.initialize.call_count == 1
+    assert start_mck.call_count == 1
+    assert start_mck.await_count == 1
+    assert shut_mck.call_count == 0
+    assert shut_mck.await_count == 0
+
+    start_mck.side_effect = asyncio.TimeoutError
+    with p1 as db_mck, p2 as start_mck, p3 as shut_mck:
+        with pytest.raises(asyncio.TimeoutError):
+            await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
+    assert db_mck.call_count == 2
+    assert db_mck.await_count == 2
+    assert ota_mock.return_value.initialize.call_count == 2
+    assert start_mck.call_count == 2
+    assert start_mck.await_count == 2
+    assert shut_mck.call_count == 1
+    assert shut_mck.await_count == 1
 
 
 async def test_form_network(app):
@@ -37,14 +137,45 @@ async def test_force_remove(app):
         await app.force_remove(None)
 
 
-async def test_request(app):
-    with pytest.raises(NotImplementedError):
-        await app.request(None, None, None, None, None, None, None)
+async def test_request():
+    class App(zigpy.application.ControllerApplication):
+        async def shutdown(self):
+            pass
+
+        async def startup(self, auto_form=False):
+            pass
+
+        async def permit_ncp(self, time_s=60):
+            pass
+
+    with pytest.raises(TypeError):
+        await App({}).request(None, None, None, None, None, None, None)
 
 
-async def test_permit_ncp(app):
-    with pytest.raises(NotImplementedError):
-        await app.permit_ncp()
+async def test_permit_ncp():
+    class App(zigpy.application.ControllerApplication):
+        async def shutdown(self):
+            pass
+
+        async def startup(self, auto_form=False):
+            pass
+
+        async def request(
+            self,
+            device,
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            sequence,
+            data,
+            expect_reply=True,
+            use_ieee=False,
+        ):
+            pass
+
+    with pytest.raises(TypeError):
+        await App({}).permit_ncp()
 
 
 async def test_permit(app, ieee):
@@ -233,8 +364,30 @@ async def test_broadcast(app):
         )
 
 
-async def test_shutdown(app):
-    await app.shutdown()
+async def test_shutdown():
+    class App(zigpy.application.ControllerApplication):
+        async def startup(self, auto_form=False):
+            pass
+
+        async def request(
+            self,
+            device,
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            sequence,
+            data,
+            expect_reply=True,
+            use_ieee=False,
+        ):
+            pass
+
+        async def permit_ncp(self, time_s=60):
+            pass
+
+    with pytest.raises(TypeError):
+        await App({}).shutdown()
 
 
 def test_get_dst_address(app):

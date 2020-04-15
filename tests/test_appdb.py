@@ -1,9 +1,10 @@
 import os
-from unittest import mock
 
+from asynctest import CoroutineMock, mock
 import pytest
 from zigpy import profiles
-from zigpy.application import ControllerApplication
+import zigpy.application
+from zigpy.config import CONF_DATABASE, ZIGPY_SCHEMA
 from zigpy.device import Device, Status
 import zigpy.ota
 from zigpy.quirks import CustomDevice
@@ -13,9 +14,33 @@ from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
 
-def make_app(database_file):
-    with mock.patch("zigpy.ota.OTA", mock.MagicMock(spec_set=zigpy.ota.OTA)):
-        app = ControllerApplication(database_file)
+async def make_app(database_file):
+    class App(zigpy.application.ControllerApplication):
+        async def shutdown(self):
+            pass
+
+        async def startup(self, auto_form=False):
+            pass
+
+        async def request(
+            self,
+            device,
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            sequence,
+            data,
+            expect_reply=True,
+            use_ieee=False,
+        ):
+            pass
+
+        async def permit_ncp(self, time_s=60):
+            pass
+
+    with mock.patch("zigpy.ota.OTA.initialize", CoroutineMock()):
+        app = await App.new(ZIGPY_SCHEMA({CONF_DATABASE: database_file}))
     return app
 
 
@@ -45,12 +70,25 @@ def fake_get_device(device):
     return device
 
 
+async def test_no_database(tmpdir):
+    with mock.patch("zigpy.appdb.PersistingListener") as db_mock:
+        db_mock.return_value.load.side_effect = CoroutineMock()
+        await make_app(None)
+    assert db_mock.return_value.load.call_count == 0
+
+    db = os.path.join(str(tmpdir), "test.db")
+    with mock.patch("zigpy.appdb.PersistingListener") as db_mock:
+        db_mock.return_value.load.side_effect = CoroutineMock()
+        await make_app(db)
+    assert db_mock.return_value.load.call_count == 1
+
+
 async def test_database(tmpdir, monkeypatch):
     monkeypatch.setattr(
         Device, "schedule_initialize", mock_dev_init(Status.ENDPOINTS_INIT)
     )
     db = os.path.join(str(tmpdir), "test.db")
-    app = make_app(db)
+    app = await make_app(db)
     ieee = make_ieee()
     relays_1 = [t.NWK(0x1234), t.NWK(0x2345)]
     relays_2 = [t.NWK(0x3456), t.NWK(0x4567)]
@@ -94,7 +132,7 @@ async def test_database(tmpdir, monkeypatch):
 
     # Everything should've been saved - check that it re-loads
     with mock.patch("zigpy.quirks.get_device", fake_get_device):
-        app2 = make_app(db)
+        app2 = await make_app(db)
     dev = app2.get_device(ieee)
     assert dev.endpoints[1].device_type == profiles.zha.DeviceType.PUMP
     assert dev.endpoints[2].device_type == 0xFFFD
@@ -113,7 +151,7 @@ async def test_database(tmpdir, monkeypatch):
 
     app.handle_leave(99, ieee)
 
-    app2 = make_app(db)
+    app2 = await make_app(db)
     assert ieee in app2.devices
 
     async def mockleave(*args, **kwargs):
@@ -123,7 +161,7 @@ async def test_database(tmpdir, monkeypatch):
     await app2.remove(ieee)
     assert ieee not in app2.devices
 
-    app3 = make_app(db)
+    app3 = await make_app(db)
     assert ieee not in app3.devices
     dev = app2.get_device(custom_ieee)
     assert dev.relays is None
@@ -132,9 +170,9 @@ async def test_database(tmpdir, monkeypatch):
 
 
 @mock.patch("zigpy.device.Device.schedule_group_membership_scan", mock.MagicMock())
-def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
+async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     db = os.path.join(str(tmpdir), "test.db")
-    app = make_app(db)
+    app = await make_app(db)
     ieee = make_ieee()
     with mock.patch(
         "zigpy.device.Device.schedule_initialize",
@@ -156,7 +194,7 @@ def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     clus.listener_event("zdo_command")
 
     # Everything should've been saved - check that it re-loads
-    app2 = make_app(db)
+    app2 = await make_app(db)
     dev = app2.get_device(ieee)
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
     assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
@@ -167,10 +205,10 @@ def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     return dev
 
 
-def test_appdb_load_null_padded_manuf(tmpdir):
+async def test_appdb_load_null_padded_manuf(tmpdir):
     manufacturer = b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07"
     model = b"Mock Model"
-    dev = _test_null_padded(tmpdir, manufacturer, model)
+    dev = await _test_null_padded(tmpdir, manufacturer, model)
 
     assert dev.manufacturer == "Mock Manufacturer"
     assert dev.model == "Mock Model"
@@ -178,10 +216,10 @@ def test_appdb_load_null_padded_manuf(tmpdir):
     assert dev.endpoints[3].model == "Mock Model"
 
 
-def test_appdb_load_null_padded_model(tmpdir):
+async def test_appdb_load_null_padded_model(tmpdir):
     manufacturer = b"Mock Manufacturer"
     model = b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-    dev = _test_null_padded(tmpdir, manufacturer, model)
+    dev = await _test_null_padded(tmpdir, manufacturer, model)
 
     assert dev.manufacturer == "Mock Manufacturer"
     assert dev.model == "Mock Model"
@@ -189,10 +227,10 @@ def test_appdb_load_null_padded_model(tmpdir):
     assert dev.endpoints[3].model == "Mock Model"
 
 
-def test_appdb_load_null_padded_manuf_model(tmpdir):
+async def test_appdb_load_null_padded_manuf_model(tmpdir):
     manufacturer = b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07"
     model = b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-    dev = _test_null_padded(tmpdir, manufacturer, model)
+    dev = await _test_null_padded(tmpdir, manufacturer, model)
 
     assert dev.manufacturer == "Mock Manufacturer"
     assert dev.model == "Mock Model"
@@ -200,10 +238,10 @@ def test_appdb_load_null_padded_manuf_model(tmpdir):
     assert dev.endpoints[3].model == "Mock Model"
 
 
-def test_appdb_str_model(tmpdir):
+async def test_appdb_str_model(tmpdir):
     manufacturer = "Mock Manufacturer"
     model = "Mock Model"
-    dev = _test_null_padded(tmpdir, manufacturer, model)
+    dev = await _test_null_padded(tmpdir, manufacturer, model)
 
     assert dev.manufacturer == "Mock Manufacturer"
     assert dev.model == "Mock Model"
@@ -217,7 +255,7 @@ def test_appdb_str_model(tmpdir):
 )
 async def test_node_descriptor_updated(tmpdir, status, success):
     db = os.path.join(str(tmpdir), "test_nd.db")
-    app = make_app(db)
+    app = await make_app(db)
     nd_ieee = make_ieee(2)
     with mock.patch.object(Device, "schedule_initialize", new=mock_dev_init(status)):
         app.handle_join(299, nd_ieee, 0)
@@ -242,7 +280,7 @@ async def test_node_descriptor_updated(tmpdir, status, success):
 
     assert dev.get_node_descriptor.call_count == 1
 
-    app2 = make_app(db)
+    app2 = await make_app(db)
     if success:
         dev = app2.get_device(nd_ieee)
         assert dev.status == status
@@ -267,7 +305,7 @@ async def test_groups(tmpdir, monkeypatch):
     monkeypatch.setattr(zigpy.zcl.Cluster, "request", mock_request)
 
     db = os.path.join(str(tmpdir), "test.db")
-    app = make_app(db)
+    app = await make_app(db)
     ieee = make_ieee()
     app.handle_join(99, ieee, 0)
 
@@ -296,7 +334,7 @@ async def test_groups(tmpdir, monkeypatch):
     assert group_id in ep.member_of
 
     # Everything should've been saved - check that it re-loads
-    app2 = make_app(db)
+    app2 = await make_app(db)
     dev2 = app2.get_device(ieee)
     assert group_id in app2.groups
     group = app2.groups[group_id]
@@ -310,7 +348,7 @@ async def test_groups(tmpdir, monkeypatch):
 
     # check member removal
     await dev_b.remove_from_group(group_id)
-    app3 = make_app(db)
+    app3 = await make_app(db)
     dev3 = app3.get_device(ieee)
     assert group_id in app3.groups
     group = app3.groups[group_id]
@@ -324,14 +362,14 @@ async def test_groups(tmpdir, monkeypatch):
 
     # check group removal
     await dev3.remove_from_group(group_id)
-    app4 = make_app(db)
+    app4 = await make_app(db)
     dev4 = app4.get_device(ieee)
     assert group_id in app4.groups
     assert not app4.groups[group_id]
     assert group_id not in dev4.endpoints[1].member_of
     app4.groups.pop(group_id)
 
-    app5 = make_app(db)
+    app5 = await make_app(db)
     assert not app5.groups
 
 
@@ -339,11 +377,11 @@ async def test_groups(tmpdir, monkeypatch):
     "status, success",
     ((Status.ENDPOINTS_INIT, True), (Status.ZDO_INIT, False), (Status.NEW, False)),
 )
-def test_attribute_update(tmpdir, status, success):
+async def test_attribute_update(tmpdir, status, success):
     """Test attribute update for initialized and uninitialized devices."""
 
     db = os.path.join(str(tmpdir), "test.db")
-    app = make_app(db)
+    app = await make_app(db)
     ieee = make_ieee()
     with mock.patch(
         "zigpy.device.Device.schedule_initialize", new=mock_dev_init(status)
@@ -364,7 +402,7 @@ def test_attribute_update(tmpdir, status, success):
     app.device_initialized(dev)
 
     # Everything should've been saved - check that it re-loads
-    app2 = make_app(db)
+    app2 = await make_app(db)
     if success:
         dev = app2.get_device(ieee)
         assert dev.status == status

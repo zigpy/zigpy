@@ -1,2 +1,5 @@
 [run]
 source = zigpy
+
+omit =
+    zigpy/typing.py

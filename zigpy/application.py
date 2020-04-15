@@ -1,10 +1,10 @@
+import abc
 import asyncio
 import logging
-import os.path
 from typing import Dict, Optional
 
-import voluptuous as vol
 import zigpy.appdb
+import zigpy.config
 import zigpy.device
 import zigpy.group
 import zigpy.ota
@@ -15,49 +15,65 @@ import zigpy.zcl
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
 
-CONFIG_SCHEMA = vol.Schema({}, extra=vol.ALLOW_EXTRA)
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
-OTA_DIR = "zigpy_ota/"
 
 
-class ControllerApplication(zigpy.util.ListenableMixin):
-    def __init__(self, database_file=None, config={}):
+class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
+    def __init__(self, config: Dict):
         self._send_sequence = 0
         self.devices: Dict[t.EUI64, zigpy.device.Device] = {}
-        self._groups = zigpy.group.Groups(self)
         self._listeners = {}
-        self._config = CONFIG_SCHEMA(config)
         self._channel = None
         self._channels = None
+        self._config = config
+        self._dblistener = None
         self._ext_pan_id = None
+        self._groups = zigpy.group.Groups(self)
         self._ieee = None
+        self._listeners = {}
         self._nwk = None
         self._nwk_update_id = None
-        self._pan_id = None
-
         self._ota = zigpy.ota.OTA(self)
-        if database_file is None:
-            ota_dir = None
-        else:
-            ota_dir = os.path.dirname(database_file)
-            ota_dir = os.path.join(ota_dir, OTA_DIR)
-        self.ota.initialize(ota_dir)
+        self._pan_id = None
+        self._send_sequence = 0
 
-        self._dblistener = None
-        if database_file is not None:
-            self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
-            self.add_listener(self._dblistener)
-            self.groups.add_listener(self._dblistener)
-            self._dblistener.load()
+    async def _load_db(self) -> None:
+        """Restore save state."""
+        database_file = self.config[zigpy.config.CONF_DATABASE]
+        if not database_file:
+            return
 
+        self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
+        self.add_listener(self._dblistener)
+        self.groups.add_listener(self._dblistener)
+        await self._dblistener.load()
+
+    @classmethod
+    async def new(
+        cls, config: Dict, auto_form: bool = False, start_radio: bool = True
+    ) -> "ControllerApplication":
+        """Create new instance of application controller."""
+        app = cls(config)
+        await app._load_db()
+        await app.ota.initialize()
+        if start_radio:
+            try:
+                await app.startup(auto_form)
+            except Exception:
+                LOGGER.error("Couldn't start application")
+                await app.shutdown()
+                raise
+
+        return app
+
+    @abc.abstractmethod
     async def shutdown(self):
         """Perform a complete application shutdown."""
-        pass
 
+    @abc.abstractmethod
     async def startup(self, auto_form=False):
         """Perform a complete application startup"""
-        raise NotImplementedError
 
     async def form_network(self, channel=15, pan_id=None, extended_pan_id=None):
         """Form a new network"""
@@ -206,6 +222,7 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
     @zigpy.util.retryable_request
     async def request(
         self,
@@ -233,7 +250,6 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         :returns: return a tuple of a status and an error_message. Original requestor
                   has more context to provide a more meaningful error message
         """
-        raise NotImplementedError
 
     async def broadcast(
         self,
@@ -264,9 +280,9 @@ class ControllerApplication(zigpy.util.ListenableMixin):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
     async def permit_ncp(self, time_s=60):
         """Permit joining on NCP."""
-        raise NotImplementedError
 
     async def permit(self, time_s=60, node=None):
         """Permit joining on a specific node or all router nodes."""
