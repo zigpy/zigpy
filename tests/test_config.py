@@ -3,6 +3,7 @@
 import pytest
 import voluptuous as vol
 import zigpy.config
+import zigpy.config.validators
 
 
 @pytest.mark.parametrize(
@@ -28,9 +29,9 @@ import zigpy.config
 )
 def test_config_validation_bool(value, result):
     """Test boolean config validation."""
-    assert zigpy.config.cv_boolean(value) is result
+    assert zigpy.config.validators.cv_boolean(value) is result
 
-    schema = vol.Schema({vol.Required("value"): zigpy.config.cv_boolean})
+    schema = vol.Schema({vol.Required("value"): zigpy.config.validators.cv_boolean})
     validated = schema({"value": value})
     assert validated["value"] is result
 
@@ -39,4 +40,4 @@ def test_config_validation_bool(value, result):
 def test_config_validation_bool_invalid(value):
     """Test boolean config validation."""
     with pytest.raises(vol.Invalid):
-        zigpy.config.cv_boolean(value)
+        zigpy.config.validators.cv_boolean(value)
