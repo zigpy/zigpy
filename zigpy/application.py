@@ -1,7 +1,7 @@
 import abc
 import asyncio
 import logging
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import zigpy.appdb
 import zigpy.config
@@ -398,3 +398,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def pan_id(self):
         """Network PAN Id."""
         return self._pan_id
+
+    @classmethod
+    @abc.abstractmethod
+    async def probe(cls, device_config: Dict[str, Any]) -> bool:
+        """API/Port probe method."""
