@@ -1,7 +1,7 @@
 import abc
 import asyncio
 import logging
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import zigpy.appdb
 import zigpy.config
@@ -20,6 +20,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
+    SCHEMA = zigpy.config.CONFIG_SCHEMA
+    SCHEMA_DEVICE = zigpy.config.SCHEMA_DEVICE
+
     def __init__(self, config: Dict):
         self._send_sequence = 0
         self.devices: Dict[t.EUI64, zigpy.device.Device] = {}
@@ -395,3 +398,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def pan_id(self):
         """Network PAN Id."""
         return self._pan_id
+
+    @classmethod
+    @abc.abstractmethod
+    async def probe(cls, device_config: Dict[str, Any]) -> bool:
+        """API/Port probe method."""

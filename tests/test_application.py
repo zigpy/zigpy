@@ -39,6 +39,9 @@ def app():
         async def permit_ncp(self, time_s=60):
             pass
 
+        async def probe(self, config):
+            return True
+
     return App({CONF_DATABASE: None})
 
 
@@ -98,6 +101,9 @@ async def test_new_exception(ota_mock):
 
         async def permit_ncp(self, time_s=60):
             pass
+
+        async def probe(self, config):
+            return True
 
     p1 = mock.patch.object(App, "_load_db", CoroutineMock())
     p2 = mock.patch.object(App, "startup", CoroutineMock())

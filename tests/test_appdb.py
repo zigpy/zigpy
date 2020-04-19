@@ -39,6 +39,9 @@ async def make_app(database_file):
         async def permit_ncp(self, time_s=60):
             pass
 
+        async def probe(self, config):
+            return True
+
     with mock.patch("zigpy.ota.OTA.initialize", CoroutineMock()):
         app = await App.new(ZIGPY_SCHEMA({CONF_DATABASE: database_file}))
     return app
