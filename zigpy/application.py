@@ -20,6 +20,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
+    SCHEMA = zigpy.config.CONFIG_SCHEMA
+    SCHEMA_DEVICE = zigpy.config.SCHEMA_DEVICE
+
     def __init__(self, config: Dict):
         self._send_sequence = 0
         self.devices: Dict[t.EUI64, zigpy.device.Device] = {}
