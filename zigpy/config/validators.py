@@ -1,6 +1,7 @@
-from typing import Union
+from typing import List, Union
 
 import voluptuous as vol
+import zigpy.types as t
 
 
 def cv_boolean(value: Union[bool, int, str]) -> bool:
@@ -16,3 +17,17 @@ def cv_boolean(value: Union[bool, int, str]) -> bool:
     elif isinstance(value, int):
         return bool(value)
     raise vol.Invalid("invalid boolean value {}".format(value))
+
+
+def cv_key(key: List[int]) -> t.KeyData:
+    """Validate a key."""
+    if not isinstance(key, list):
+        raise vol.Invalid("key is expected to be a list of integers")
+
+    if len(key) != 16:
+        raise vol.Invalid("key list length must be 16")
+
+    if not any((0 <= e <= 255 for e in key)):
+        raise vol.Invalid("Key element myst be a within (0..255) range")
+
+    return t.KeyData(key)
