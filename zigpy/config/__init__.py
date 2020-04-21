@@ -13,7 +13,7 @@ from zigpy.config.defaults import (
     CONF_OTA_LEDVANCE_DEFAULT,
     CONF_OTA_OTAU_DIR_DEFAULT,
 )
-from zigpy.config.validators import cv_boolean, cv_key
+from zigpy.config.validators import cv_boolean, cv_hex, cv_key
 import zigpy.types as t
 
 CONF_DATABASE = "database_path"
@@ -36,7 +36,7 @@ SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): str})
 SCHEMA_NETWORK = vol.Schema(
     {
         vol.Optional(CONF_NWK_CHANNEL, default=CONF_NWK_CHANNEL_DEFAULT): vol.All(
-            int, vol.Range(min=11, max=26)
+            cv_hex, vol.Range(min=11, max=26)
         ),
         vol.Optional(CONF_NWK_CHANNELS, default=CONF_NWK_CHANNELS_DEFAULT): vol.All(
             list, t.Channels.from_channel_list
@@ -45,12 +45,14 @@ SCHEMA_NETWORK = vol.Schema(
             CONF_NWK_EXTENDED_PAN_ID, default=CONF_NWK_EXTENDED_PAN_ID_DEFAULT
         ): t.ExtendedPanId,
         vol.Optional(CONF_NWK_KEY, default=CONF_NWK_KEY_DEFAULT): cv_key,
-        vol.Optional(CONF_NWK_PAN_ID, default=CONF_NWK_PAN_ID_DEFAULT): t.PanId,
+        vol.Optional(CONF_NWK_PAN_ID, default=CONF_NWK_PAN_ID_DEFAULT): vol.All(
+            cv_hex, t.PanId
+        ),
         vol.Optional(
             CONF_NWK_TC_LINK_KEY, default=CONF_NWK_TC_LINK_KEY_DEFAULT
         ): cv_key,
-        vol.Optional(CONF_NWK_UPDATE_ID, default=CONF_NWK_UPDATE_ID_DEFAULT): vol.Range(
-            min=0, max=255
+        vol.Optional(CONF_NWK_UPDATE_ID, default=CONF_NWK_UPDATE_ID_DEFAULT): vol.All(
+            cv_hex, vol.Range(min=0, max=255)
         ),
     }
 )

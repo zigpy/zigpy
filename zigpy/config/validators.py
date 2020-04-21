@@ -16,7 +16,26 @@ def cv_boolean(value: Union[bool, int, str]) -> bool:
             return False
     elif isinstance(value, int):
         return bool(value)
-    raise vol.Invalid("invalid boolean value {}".format(value))
+    raise vol.Invalid(f"invalid boolean '{value}' value")
+
+
+def cv_hex(value: Union[int, str]) -> int:
+    """Convert string with possible hex number into int."""
+    if isinstance(value, int):
+        return value
+
+    if not isinstance(value, str):
+        raise vol.Invalid(f"{value} is not a valid hex number")
+
+    try:
+        if value.startswith("0x"):
+            value = int(value, base=16)
+        else:
+            value = int(value)
+    except ValueError:
+        raise vol.Invalid(f"Could not convert '{value}' to number")
+
+    return value
 
 
 def cv_key(key: List[int]) -> t.KeyData:

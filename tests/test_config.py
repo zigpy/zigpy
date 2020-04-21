@@ -74,3 +74,25 @@ def test_config_validation_key_success():
 
     key = zigpy.config.validators.cv_key(zigpy.config.CONF_NWK_TC_LINK_KEY_DEFAULT)
     assert key.serialize() == b"ZigBeeAlliance09"
+
+
+@pytest.mark.parametrize(
+    "value, result",
+    (
+        (0x1234, 0x1234),
+        ("0x1234", 0x1234),
+        (1234, 1234),
+        ("1234", 1234),
+        ("001234", 1234),
+        ("0e1234", vol.Invalid),
+        ("1234abcd", vol.Invalid),
+    ),
+)
+def test_config_validation_hex_number(value, result):
+    """Test hex number config validation."""
+
+    if isinstance(result, int):
+        assert zigpy.config.validators.cv_hex(value) == result
+    else:
+        with pytest.raises(vol.Invalid):
+            zigpy.config.validators.cv_key(value)
