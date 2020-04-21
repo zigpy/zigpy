@@ -46,10 +46,18 @@ zigpy works with separate radio libraries which can each interface with multiple
 
 ## Release packages available via PyPI
 
-Packages of tagged versions are also released via PyPI
+New packages of tagged versions are also released via the "zigpy" project on PyPI
+  - https://pypi.org/project/zigpy/
+    - https://pypi.org/project/zigpy/#history
+    - https://pypi.org/project/zigpy/#files
+
+Older packages of tagged versions are still available on the "zigpy-homeassistant" project on PyPI
+  - https://pypi.org/project/zigpy-homeassistant/
+
+Packages of tagged versions of the radio libraries are released via seperate projects on PyPI
 - https://pypi.org/project/zigpy-homeassistant/
-  - https://pypi.org/project/bellows-homeassistant/
-  - https://pypi.org/project/zigpy-xbee-homeassistant/
+  - https://pypi.org/project/bellows/
+  - https://pypi.org/project/zigpy-xbee/
   - https://pypi.org/project/zigpy-deconz/
   - https://pypi.org/project/zigpy-zigate/
   - https://pypi.org/project/zigpy-cc/
