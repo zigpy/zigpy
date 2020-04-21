@@ -54,6 +54,9 @@ def test_config_validation_key_not_16_list():
     with pytest.raises(vol.Invalid):
         zigpy.config.validators.cv_key([0x00 for i in range(17)])
 
+    with pytest.raises(vol.Invalid):
+        zigpy.config.validators.cv_key(None)
+
     zigpy.config.validators.cv_key([0x00 for i in range(16)])
 
 
@@ -86,6 +89,8 @@ def test_config_validation_key_success():
         ("001234", 1234),
         ("0e1234", vol.Invalid),
         ("1234abcd", vol.Invalid),
+        ("0xabGG", vol.Invalid),
+        (None, vol.Invalid),
     ),
 )
 def test_config_validation_hex_number(value, result):
@@ -95,7 +100,7 @@ def test_config_validation_hex_number(value, result):
         assert zigpy.config.validators.cv_hex(value) == result
     else:
         with pytest.raises(vol.Invalid):
-            zigpy.config.validators.cv_key(value)
+            zigpy.config.validators.cv_hex(value)
 
 
 @pytest.mark.parametrize(
