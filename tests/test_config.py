@@ -96,3 +96,27 @@ def test_config_validation_hex_number(value, result):
     else:
         with pytest.raises(vol.Invalid):
             zigpy.config.validators.cv_key(value)
+
+
+@pytest.mark.parametrize(
+    "value, result",
+    (
+        (1, vol.Invalid),
+        (11, 11),
+        (0x11, 17),
+        ("26", 26),
+        (27, vol.Invalid),
+        ("27", vol.Invalid),
+    ),
+)
+def test_schema_network_channel(value, result):
+    """Test network schema for channel."""
+
+    config = {zigpy.config.CONF_NWK_CHANNEL: value}
+
+    if isinstance(result, int):
+        config = zigpy.config.SCHEMA_NETWORK(config)
+        assert config[zigpy.config.CONF_NWK_CHANNEL] == result
+    else:
+        with pytest.raises(vol.Invalid):
+            zigpy.config.SCHEMA_NETWORK(config)
