@@ -78,8 +78,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def startup(self, auto_form=False):
         """Perform a complete application startup"""
 
-    async def form_network(self, channel=15, pan_id=None, extended_pan_id=None):
-        """Form a new network"""
+    async def form_network(self):
+        """Form a new network based on network configuration from config."""
         raise NotImplementedError
 
     def add_device(self, ieee, nwk):
@@ -92,19 +92,24 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def update_network(
         self,
+        *,
         channel: Optional[t.uint8_t] = None,
-        channels: Optional[t.uint32_t] = None,
-        pan_id: Optional[t.PanId] = None,
+        channels: Optional[t.Channels] = None,
         extended_pan_id: Optional[t.ExtendedPanId] = None,
         network_key: Optional[t.KeyData] = None,
+        pan_id: Optional[t.PanId] = None,
+        tc_link_key: Optional[t.KeyData] = None,
+        update_id: int = 0,
     ):
         """Update network parameters.
 
         :param channel: Radio channel
         :param channels: Channels mask
-        :param pan_id: Network pan id
         :param extended_pan_id: Extended pan id
         :param network_key: network key
+        :param pan_id: Network pan id
+        :param tc_link_key: Trust Center link key
+        :param update_id: nwk_update_id parameter
         """
         raise NotImplementedError
 
@@ -205,7 +210,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         data,
         *,
         hops=0,
-        non_member_radius=3
+        non_member_radius=3,
     ):
         """Submit and send data out as a multicast transmission.
 
