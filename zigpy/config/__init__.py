@@ -7,6 +7,7 @@ from zigpy.config.defaults import (
     CONF_NWK_EXTENDED_PAN_ID_DEFAULT,
     CONF_NWK_KEY_DEFAULT,
     CONF_NWK_PAN_ID_DEFAULT,
+    CONF_NWK_TC_ADDRESS_DEFAULT,
     CONF_NWK_TC_LINK_KEY_DEFAULT,
     CONF_NWK_UPDATE_ID_DEFAULT,
     CONF_OTA_IKEA_DEFAULT,
@@ -25,6 +26,7 @@ CONF_NWK_CHANNELS = "channels"
 CONF_NWK_EXTENDED_PAN_ID = "extended_pan_id"
 CONF_NWK_PAN_ID = "pan_id"
 CONF_NWK_KEY = "key"
+CONF_NWK_TC_ADDRESS = "tc_address"
 CONF_NWK_TC_LINK_KEY = "tc_link_key"
 CONF_NWK_UPDATE_ID = "update_id"
 CONF_OTA = "ota"
@@ -43,10 +45,13 @@ SCHEMA_NETWORK = vol.Schema(
         ),
         vol.Optional(
             CONF_NWK_EXTENDED_PAN_ID, default=CONF_NWK_EXTENDED_PAN_ID_DEFAULT
-        ): t.ExtendedPanId,
-        vol.Optional(CONF_NWK_KEY, default=CONF_NWK_KEY_DEFAULT): cv_key,
-        vol.Optional(CONF_NWK_PAN_ID, default=CONF_NWK_PAN_ID_DEFAULT): vol.All(
-            cv_hex, t.PanId
+        ): vol.Any(None, t.ExtendedPanId.convert),
+        vol.Optional(CONF_NWK_KEY, default=CONF_NWK_KEY_DEFAULT): vol.Any(None, cv_key),
+        vol.Optional(CONF_NWK_PAN_ID, default=CONF_NWK_PAN_ID_DEFAULT): vol.Any(
+            None, vol.All(cv_hex, t.PanId)
+        ),
+        vol.Optional(CONF_NWK_TC_ADDRESS, default=CONF_NWK_TC_ADDRESS_DEFAULT): vol.Any(
+            None, cv_key
         ),
         vol.Optional(
             CONF_NWK_TC_LINK_KEY, default=CONF_NWK_TC_LINK_KEY_DEFAULT

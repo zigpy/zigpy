@@ -125,3 +125,20 @@ def test_schema_network_channel(value, result):
     else:
         with pytest.raises(vol.Invalid):
             zigpy.config.SCHEMA_NETWORK(config)
+
+
+def test_schema_network_pan_id():
+    """Test Extended Pan-id."""
+    config = zigpy.config.SCHEMA_NETWORK({})
+    assert (
+        config[zigpy.config.CONF_NWK_EXTENDED_PAN_ID]
+        == zigpy.config.CONF_NWK_EXTENDED_PAN_ID_DEFAULT
+    )
+
+    config = zigpy.config.SCHEMA_NETWORK(
+        {zigpy.config.CONF_NWK_EXTENDED_PAN_ID: "00:11:22:33:44:55:66:77"}
+    )
+    assert (
+        config[zigpy.config.CONF_NWK_EXTENDED_PAN_ID].serialize()
+        == b"\x77\x66\x55\x44\x33\x22\x11\x00"
+    )
