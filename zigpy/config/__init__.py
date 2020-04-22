@@ -51,7 +51,7 @@ SCHEMA_NETWORK = vol.Schema(
             None, t.PanId, vol.All(cv_hex, vol.Coerce(t.PanId))
         ),
         vol.Optional(CONF_NWK_TC_ADDRESS, default=CONF_NWK_TC_ADDRESS_DEFAULT): vol.Any(
-            None, cv_key
+            None, t.EUI64, t.EUI64.convert
         ),
         vol.Optional(
             CONF_NWK_TC_LINK_KEY, default=CONF_NWK_TC_LINK_KEY_DEFAULT
