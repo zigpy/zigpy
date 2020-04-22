@@ -40,15 +40,15 @@ SCHEMA_NETWORK = vol.Schema(
         vol.Optional(CONF_NWK_CHANNEL, default=CONF_NWK_CHANNEL_DEFAULT): vol.All(
             cv_hex, vol.Range(min=11, max=26)
         ),
-        vol.Optional(CONF_NWK_CHANNELS, default=CONF_NWK_CHANNELS_DEFAULT): vol.All(
-            list, t.Channels.from_channel_list
+        vol.Optional(CONF_NWK_CHANNELS, default=CONF_NWK_CHANNELS_DEFAULT): vol.Any(
+            t.Channels, vol.All(list, t.Channels.from_channel_list)
         ),
         vol.Optional(
             CONF_NWK_EXTENDED_PAN_ID, default=CONF_NWK_EXTENDED_PAN_ID_DEFAULT
-        ): vol.Any(None, t.ExtendedPanId.convert),
+        ): vol.Any(None, t.ExtendedPanId, t.ExtendedPanId.convert),
         vol.Optional(CONF_NWK_KEY, default=CONF_NWK_KEY_DEFAULT): vol.Any(None, cv_key),
         vol.Optional(CONF_NWK_PAN_ID, default=CONF_NWK_PAN_ID_DEFAULT): vol.Any(
-            None, vol.All(cv_hex, t.PanId)
+            None, t.PanId, vol.All(cv_hex, vol.Coerce(t.PanId))
         ),
         vol.Optional(CONF_NWK_TC_ADDRESS, default=CONF_NWK_TC_ADDRESS_DEFAULT): vol.Any(
             None, cv_key
