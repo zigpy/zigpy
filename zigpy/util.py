@@ -102,7 +102,7 @@ async def retry(func, retry_exceptions, tries=3, delay=0.1):
     Only exceptions in `retry_exceptions` will be retried.
     """
     while True:
-        print("Tries remaining: %s" % (tries,))
+        LOGGER.debug("Tries remaining: %s", tries)
         try:
             r = await func()
             return r
