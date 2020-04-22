@@ -1,31 +1,11 @@
-from zigpy import types as t
+import zigpy.types as t
 
 CONF_NWK_CHANNEL_DEFAULT = 15
 CONF_NWK_CHANNELS_DEFAULT = [15, 20, 25]
-CONF_NWK_EXTENDED_PAN_ID_DEFAULT = t.ExtendedPanId(
-    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-)
-CONF_NWK_PAN_ID_DEFAULT = t.PanId(0x0000)
-CONF_NWK_KEY_DEFAULT = t.KeyData(
-    [
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-    ]
-)
+CONF_NWK_EXTENDED_PAN_ID_DEFAULT = None
+CONF_NWK_PAN_ID_DEFAULT = None
+CONF_NWK_KEY_DEFAULT = None
+CONF_NWK_TC_ADDRESS_DEFAULT = None
 CONF_NWK_TC_LINK_KEY_DEFAULT = t.KeyData(
     [
         0x5A,
