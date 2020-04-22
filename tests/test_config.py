@@ -142,3 +142,12 @@ def test_schema_network_pan_id():
         config[zigpy.config.CONF_NWK_EXTENDED_PAN_ID].serialize()
         == b"\x77\x66\x55\x44\x33\x22\x11\x00"
     )
+
+
+def test_schema_network_short_pan_id():
+    """Test Pan-id."""
+    config = zigpy.config.SCHEMA_NETWORK({})
+    assert config[zigpy.config.CONF_NWK_PAN_ID] is None
+
+    config = zigpy.config.SCHEMA_NETWORK({zigpy.config.CONF_NWK_PAN_ID: 0x1234})
+    assert config[zigpy.config.CONF_NWK_PAN_ID].serialize() == b"\x34\x12"
