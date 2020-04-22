@@ -69,6 +69,15 @@ def test_config_validation_key_not_a_byte():
     with pytest.raises(vol.Invalid):
         zigpy.config.validators.cv_key([256 for i in range(16)])
 
+    with pytest.raises(vol.Invalid):
+        zigpy.config.validators.cv_key([0] * 15 + [256])
+
+    with pytest.raises(vol.Invalid):
+        zigpy.config.validators.cv_key([0] * 15 + [-1])
+
+    with pytest.raises(vol.Invalid):
+        zigpy.config.validators.cv_key([0] * 15 + ["x1"])
+
     zigpy.config.validators.cv_key([0xFF for i in range(16)])
 
 
