@@ -44,6 +44,28 @@ zigpy works with separate radio libraries which can each interface with multiple
   - [CC1352P-2 dev board hardware flashed with custom Z-Stack coordinator firmware from the Zigbee2mqtt project](https://www.zigbee2mqtt.io/getting_started/what_do_i_need.html)
   - [CC2538 + CC2592 dev board hardware flashed with custom Z-Stack coordinator firmware from the Zigbee2mqtt project](https://www.zigbee2mqtt.io/getting_started/what_do_i_need.html)  
 
+## Testing new releases
+
+Testing a new release of the zigpy library before it is released in Home Assistant.
+
+If you are using Supervised Home Assistant (formerly known as the Hassio/Hass.io distro):
+- Add https://github.com/home-assistant/hassio-addons-development as "add-on" repository
+- Install "Custom deps deployment" addon
+- Update config like: 
+  ```
+  pypi:
+    - zigpy==0.20.0
+  apk: []
+  ```
+  where 0.20.0 is the new version
+- Start the addon
+
+If you are instead using some custom python installation of Home Assistant then do this:
+- Activate your python virtual env
+- Update package with ``pip``
+  ```
+  pip install zigpy==0.20.0
+
 ## Release packages available via PyPI
 
 New packages of tagged versions are also released via the "zigpy" project on PyPI
