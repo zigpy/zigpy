@@ -3,9 +3,17 @@ import asyncio
 import asynctest
 from asynctest import CoroutineMock, mock
 import pytest
+import voluptuous as vol
 from zigpy import device
 import zigpy.application
-from zigpy.config import CONF_DATABASE, ZIGPY_SCHEMA
+from zigpy.config import (
+    CONF_DATABASE,
+    CONF_DEVICE,
+    CONF_DEVICE_PATH,
+    CONF_OTA,
+    CONF_OTA_IKEA,
+    ZIGPY_SCHEMA,
+)
 from zigpy.exceptions import DeliveryError
 import zigpy.ota
 import zigpy.types as t
@@ -42,7 +50,10 @@ def app():
         async def probe(self, config):
             return True
 
-    return App({CONF_DATABASE: None})
+    config = App.SCHEMA(
+        {CONF_DATABASE: None, CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"}}
+    )
+    return App(config)
 
 
 @pytest.fixture
@@ -421,3 +432,39 @@ async def test_mrequest(app):
         await app.mrequest(
             s.group_id, s.profile_id, s.cluster, s.src_ep, s.sequence, s.data
         )
+
+
+def test_app_config_setter(app):
+    """Test configuration setter."""
+
+    cfg_copy = app.config.copy()
+    assert app.config[CONF_OTA][CONF_OTA_IKEA] is False
+    with pytest.raises(vol.Invalid):
+        cfg_copy[CONF_OTA][CONF_OTA_IKEA] = "invalid bool"
+        app.config = cfg_copy
+        assert app.config[CONF_OTA][CONF_OTA_IKEA] is False
+
+    cfg_copy[CONF_OTA][CONF_OTA_IKEA] = True
+    app.config = cfg_copy
+    assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
+
+    with pytest.raises(vol.Invalid):
+        cfg_copy[CONF_OTA][CONF_OTA_IKEA] = "invalid bool"
+        app.config = cfg_copy
+        assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
+
+
+def test_app_update_config(app):
+    """Test configuration partial update."""
+
+    assert app.config[CONF_OTA][CONF_OTA_IKEA] is False
+    with pytest.raises(vol.Invalid):
+        app.update_config({CONF_OTA: {CONF_OTA_IKEA: "invalid bool"}})
+        assert app.config[CONF_OTA][CONF_OTA_IKEA] is False
+
+    app.update_config({CONF_OTA: {CONF_OTA_IKEA: "yes"}})
+    assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
+
+    with pytest.raises(vol.Invalid):
+        app.update_config({CONF_OTA: {CONF_OTA_IKEA: "invalid bool"}})
+        assert app.config[CONF_OTA][CONF_OTA_IKEA] is True

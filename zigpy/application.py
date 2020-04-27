@@ -358,6 +358,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dstaddr.endpoint = self.get_endpoint_id(cluster.cluster_id, cluster.is_server)
         return dstaddr
 
+    def update_config(self, partial_config: Dict[str, Any]) -> None:
+        """Update existing config."""
+        self.config = {**self.config, **partial_config}
+
     @property
     def channel(self):
         """Current radio channel."""
@@ -372,6 +376,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def config(self) -> dict:
         """Return current configuration."""
         return self._config
+
+    @config.setter
+    def config(self, new_config) -> None:
+        """Configuration setter."""
+        self._config = self.SCHEMA(new_config)
 
     @property
     def extended_pan_id(self):
