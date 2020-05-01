@@ -6,6 +6,7 @@ from zigpy.config.defaults import (
     CONF_NWK_CHANNELS_DEFAULT,
     CONF_NWK_EXTENDED_PAN_ID_DEFAULT,
     CONF_NWK_KEY_DEFAULT,
+    CONF_NWK_KEY_SEQ_DEFAULT,
     CONF_NWK_PAN_ID_DEFAULT,
     CONF_NWK_TC_ADDRESS_DEFAULT,
     CONF_NWK_TC_LINK_KEY_DEFAULT,
@@ -26,6 +27,7 @@ CONF_NWK_CHANNELS = "channels"
 CONF_NWK_EXTENDED_PAN_ID = "extended_pan_id"
 CONF_NWK_PAN_ID = "pan_id"
 CONF_NWK_KEY = "key"
+CONF_NWK_KEY_SEQ = "key_sequence_number"
 CONF_NWK_TC_ADDRESS = "tc_address"
 CONF_NWK_TC_LINK_KEY = "tc_link_key"
 CONF_NWK_UPDATE_ID = "update_id"
@@ -47,6 +49,9 @@ SCHEMA_NETWORK = vol.Schema(
             CONF_NWK_EXTENDED_PAN_ID, default=CONF_NWK_EXTENDED_PAN_ID_DEFAULT
         ): vol.Any(None, t.ExtendedPanId, t.ExtendedPanId.convert),
         vol.Optional(CONF_NWK_KEY, default=CONF_NWK_KEY_DEFAULT): vol.Any(None, cv_key),
+        vol.Optional(CONF_NWK_KEY_SEQ, default=CONF_NWK_KEY_SEQ_DEFAULT): vol.Range(
+            min=0, max=255
+        ),
         vol.Optional(CONF_NWK_PAN_ID, default=CONF_NWK_PAN_ID_DEFAULT): vol.Any(
             None, t.PanId, vol.All(cv_hex, vol.Coerce(t.PanId))
         ),
