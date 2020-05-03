@@ -291,7 +291,7 @@ class MACStatus(basic.enum8):
 
     # A transmission could not take place due to activity on the channel, i.e.
     # the CSMA-CA mechanism has failed
-    MACX_CHANNEL_ACCESS_FAILURE = 0xE1
+    MAC_CHANNEL_ACCESS_FAILURE = 0xE1
 
     # The GTS request has been denied by the PAN coordinator
     MAC_DENIED = 0xE2

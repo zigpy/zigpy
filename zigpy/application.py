@@ -1,7 +1,7 @@
 import abc
 import asyncio
 import logging
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import zigpy.appdb
 import zigpy.config
@@ -20,6 +20,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
+    SCHEMA = zigpy.config.CONFIG_SCHEMA
+    SCHEMA_DEVICE = zigpy.config.SCHEMA_DEVICE
+
     def __init__(self, config: Dict):
         self._send_sequence = 0
         self.devices: Dict[t.EUI64, zigpy.device.Device] = {}
@@ -75,8 +78,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def startup(self, auto_form=False):
         """Perform a complete application startup"""
 
-    async def form_network(self, channel=15, pan_id=None, extended_pan_id=None):
-        """Form a new network"""
+    async def form_network(self):
+        """Form a new network based on network configuration from config."""
         raise NotImplementedError
 
     def add_device(self, ieee, nwk):
@@ -89,19 +92,24 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def update_network(
         self,
+        *,
         channel: Optional[t.uint8_t] = None,
-        channels: Optional[t.uint32_t] = None,
-        pan_id: Optional[t.PanId] = None,
+        channels: Optional[t.Channels] = None,
         extended_pan_id: Optional[t.ExtendedPanId] = None,
         network_key: Optional[t.KeyData] = None,
+        pan_id: Optional[t.PanId] = None,
+        tc_link_key: Optional[t.KeyData] = None,
+        update_id: int = 0,
     ):
         """Update network parameters.
 
         :param channel: Radio channel
         :param channels: Channels mask
-        :param pan_id: Network pan id
         :param extended_pan_id: Extended pan id
         :param network_key: network key
+        :param pan_id: Network pan id
+        :param tc_link_key: Trust Center link key
+        :param update_id: nwk_update_id parameter
         """
         raise NotImplementedError
 
@@ -202,7 +210,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         data,
         *,
         hops=0,
-        non_member_radius=3
+        non_member_radius=3,
     ):
         """Submit and send data out as a multicast transmission.
 
@@ -350,6 +358,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dstaddr.endpoint = self.get_endpoint_id(cluster.cluster_id, cluster.is_server)
         return dstaddr
 
+    def update_config(self, partial_config: Dict[str, Any]) -> None:
+        """Update existing config."""
+        self.config = {**self.config, **partial_config}
+
     @property
     def channel(self):
         """Current radio channel."""
@@ -364,6 +376,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def config(self) -> dict:
         """Return current configuration."""
         return self._config
+
+    @config.setter
+    def config(self, new_config) -> None:
+        """Configuration setter."""
+        self._config = self.SCHEMA(new_config)
 
     @property
     def extended_pan_id(self):
@@ -395,3 +412,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def pan_id(self):
         """Network PAN Id."""
         return self._pan_id
+
+    @classmethod
+    @abc.abstractmethod
+    async def probe(cls, device_config: Dict[str, Any]) -> bool:
+        """API/Port probe method."""

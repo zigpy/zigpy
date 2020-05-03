@@ -13,6 +13,8 @@ setup(
     name="zigpy",
     version=zigpy.__version__,
     description="Library implementing a ZigBee stack",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     url="http://github.com/zigpy/zigpy",
     author="Russell Cloran",
     author_email="rcloran@gmail.com",
