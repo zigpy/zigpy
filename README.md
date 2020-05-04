@@ -70,6 +70,29 @@ If you are instead using some custom python installation of Home Assistant then 
   ```
   pip install zigpy==0.20.0
 
+## Toubleshooting 
+
+For toubleshooting with Home Assistant, the general recommendation is to first only enable DEBUG logging for homeassistant.core and homeassistant.components.zha in Home Assistant, then look in the home-assistant.log file and try to get the Home Assistant community to exhausted their combined troubleshooting knowledge of the ZHA component before posting issue directly to a radio library, like example zigpy-deconz or zigpy-xbee.
+
+That is, begin with checking debug logs for Home Assistant core and the ZHA component first, (troubleshooting/debugging from the top down instead of from the bottom up), trying to getting help via Home Assistant community forum before moving on to posting debug logs to zigpy and radio libraries. This is to general suggestion to help filter away common problems and not flood the zigpy-cc developer(s) with to many logs.
+
+Please also try the very latest versions of zigpy and the radio library, (see the section above about "Testing new releases"), and only if you still have the same issues with the latest versions then enable debug logging for zigpy and the radio libraries in Home Assistant in addition to core and zha. Once enabled debug logging for all those libraries in Home Assistant you should try to reproduce the problem and then raise an issue to the zigpy repo (or to a specific radio library) repo with a copy of those logs.
+
+To enable debugging in Home Assistant to get debug logs, either update logger configuration section in configuration.yaml or call logger.set_default_level service with {"level": "debug"} data. Check logger component configuration where you want something this in your configuration.yaml
+
+  logger:
+  default: info
+  logs:
+  asyncio: debug
+  homeassistant.core: debug
+  homeassistant.components.zha: debug
+  zigpy: debug
+  bellows: debug
+  zigpy_xbee: debug
+  zigpy_deconz: debug
+  zigpy_zigate: debug
+  zigpy_cc: debug
+
 ## Release packages available via PyPI
 
 New packages of tagged versions are also released via the "zigpy" project on PyPI
