@@ -180,17 +180,18 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
             return
         self.listener_event("general_command", hdr.tsn, hdr.command_id, args)
-        self.handle_cluster_general_request(hdr.tsn, hdr.command_id, args)
+        self.handle_cluster_general_request(hdr, args)
 
     def handle_cluster_request(self, tsn, command_id, args):
         self.debug("No handler for cluster command %s", command_id)
 
-    def handle_cluster_general_request(self, tsn, command_id, args):
-        if command_id == foundation.Command.Report_Attributes:
+    def handle_cluster_general_request(
+        self, hdr: foundation.ZCLHeader, args: List
+    ) -> None:
+        if hdr.command_id == foundation.Command.Report_Attributes:
             valuestr = ", ".join(
                 [
-                    "%s=%s"
-                    % (self.attributes.get(a.attrid, [a.attrid])[0], a.value.value)
+                    f"{self.attributes.get(a.attrid, [a.attrid])[0]}={a.value.value}"
                     for a in args[0]
                 ]
             )
@@ -209,6 +210,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                     )
                     value = attr.value.value
                 self._update_attribute(attr.attrid, value)
+
+            if not hdr.frame_control.disable_default_response:
+                self.create_catching_task(
+                    self.general_command(
+                        foundation.Command.Default_Response,
+                        hdr.command_id,
+                        foundation.Status.SUCCESS,
+                    )
+                )
 
     def read_attributes_raw(self, attributes, manufacturer=None):
         attributes = [t.uint16_t(a) for a in attributes]
