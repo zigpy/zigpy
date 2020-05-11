@@ -298,11 +298,9 @@ async def test_get_model_info_timeout(ep):
     assert mod is None
 
 
-def _group_add_mock(ep, success=True, no_groups_cluster=False):
+def _group_add_mock(ep, status=ZCLStatus.SUCCESS, no_groups_cluster=False):
     async def mock_req(*args, **kwargs):
-        if success:
-            return [ZCLStatus.SUCCESS, mock.sentinel.group_id]
-        return [ZCLStatus.DUPLICATE_EXISTS, mock.sentinel.group_id]
+        return [status, mock.sentinel.group_id]
 
     if not no_groups_cluster:
         ep.add_input_cluster(4)
@@ -312,12 +310,13 @@ def _group_add_mock(ep, success=True, no_groups_cluster=False):
     return ep
 
 
-async def test_add_to_group(ep):
-    ep = _group_add_mock(ep)
+@pytest.mark.parametrize("status", (ZCLStatus.SUCCESS, ZCLStatus.DUPLICATE_EXISTS))
+async def test_add_to_group(ep, status):
+    ep = _group_add_mock(ep, status=status)
 
     grp_id, grp_name = 0x1234, "Group name 0x1234**"
     res = await ep.add_to_group(grp_id, grp_name)
-    assert res == ZCLStatus.SUCCESS
+    assert res == status
     assert ep.request.call_count == 1
     groups = ep.device.application.groups
     assert groups.add_group.call_count == 1
@@ -338,8 +337,12 @@ async def test_add_to_group_no_groups(ep):
     assert groups.remove_group.call_count == 0
 
 
-async def test_add_to_group_fail(ep):
-    ep = _group_add_mock(ep, success=False)
+@pytest.mark.parametrize(
+    "status",
+    (s for s in ZCLStatus if s not in (ZCLStatus.SUCCESS, ZCLStatus.DUPLICATE_EXISTS)),
+)
+async def test_add_to_group_fail(ep, status):
+    ep = _group_add_mock(ep, status=status)
 
     grp_id, grp_name = 0x1234, "Group name 0x1234**"
     res = await ep.add_to_group(grp_id, grp_name)

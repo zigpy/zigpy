@@ -120,7 +120,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.debug("Cannot add 0x%04x group, no groups cluster", grp_id)
             return ZCLStatus.FAILURE
 
-        if res[0] != ZCLStatus.SUCCESS:
+        if res[0] not in (ZCLStatus.SUCCESS, ZCLStatus.DUPLICATE_EXISTS):
             self.debug("Couldn't add to 0x%04x group: %s", grp_id, res[0])
             return res[0]
 
@@ -135,7 +135,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.debug("Cannot remove 0x%04x group, no groups cluster", grp_id)
             return ZCLStatus.FAILURE
 
-        if res[0] != ZCLStatus.SUCCESS:
+        if res[0] not in (ZCLStatus.SUCCESS, ZCLStatus.NOT_FOUND):
             self.debug("Couldn't remove to 0x%04x group: %s", grp_id, res[0])
             return res[0]
 
