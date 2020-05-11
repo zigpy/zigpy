@@ -5,6 +5,7 @@ import sys
 from asynctest import CoroutineMock, mock
 import pytest
 from zigpy import util
+from zigpy.exceptions import ControllerException
 
 
 class Listenable(util.ListenableMixin):
@@ -443,6 +444,15 @@ async def test_request():
     assert req.result.done() is True
     assert req.result.cancelled() is False
     assert seq not in pending
+
+
+async def test_request_duplicate():
+    pending = util.Requests()
+    seq = 0x23
+    with pending.new(seq):
+        with pytest.raises(ControllerException):
+            with pending.new(seq):
+                pass
 
 
 class _ClusterMock(util.CatchingTaskMixin):

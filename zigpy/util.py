@@ -5,17 +5,19 @@ import inspect
 import logging
 import sys
 import traceback
-from typing import Any, Coroutine, Optional, Tuple, Type, Union
+from typing import Any, Coroutine, Dict, Optional, Tuple, Type, Union
 
 from Crypto.Cipher import AES
 from crccheck.crc import CrcX25
-from zigpy.exceptions import DeliveryError, ZigbeeException
+from zigpy.exceptions import ControllerException, ZigbeeException
 import zigpy.types as t
 
 LOGGER = logging.getLogger(__name__)
 
 
 class ListenableMixin:
+    _listeners: Dict
+
     def _add_listener(self, listener, include_context):
         id_ = id(listener)
         while id_ in self._listeners:
@@ -139,7 +141,7 @@ def retryable(retry_exceptions, tries=1, delay=0.1):
     return decorator
 
 
-retryable_request = retryable((DeliveryError, asyncio.TimeoutError))
+retryable_request = retryable((ZigbeeException, asyncio.TimeoutError))
 
 
 def aes_mmo_hash_update(length, result, data):
@@ -252,7 +254,11 @@ class Request:
 class Requests(dict):
     def new(self, sequence: t.uint8_t) -> Request:
         """Wrap new request into a context manager."""
-        return Request(self, sequence)
+        try:
+            return Request(self, sequence)
+        except AssertionError:
+            LOGGER.debug("Duplicate %s TSN", sequence)
+            raise ControllerException(f"duplicate {sequence} TSN")
 
 
 class CatchingTaskMixin(LocalLogMixin):

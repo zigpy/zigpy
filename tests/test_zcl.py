@@ -1,3 +1,5 @@
+import asyncio
+
 from asynctest import CoroutineMock, mock
 import pytest
 import zigpy.endpoint
@@ -671,10 +673,40 @@ def test_handle_cluster_request_handler(cluster):
     )
 
 
-def test_handle_cluster_general_request(cluster):
-    cluster.handle_cluster_general_request(
-        mock.sentinel.tsn, mock.sentinel.command_id, mock.sentinel.args
+async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
+    hdr, values = endpoint.deserialize(
+        0,
+        b"\x18\xCD\x0A\x01\xFF\x42\x25\x01\x21\x95\x0B\x04\x21\xA8\x43\x05\x21\x36\x00"
+        b"\x06\x24\x02\x00\x05\x00\x00\x64\x29\xF8\x07\x65\x21\xD9\x0E\x66\x2B\x84\x87"
+        b"\x01\x00\x0A\x21\x00\x00",
     )
+    cluster = endpoint.in_clusters[0]
+    p1 = mock.patch.object(cluster, "_update_attribute")
+    p2 = mock.patch.object(cluster, "general_command")
+    with p1 as attr_lst_mock, p2 as general_cmd_mock:
+        cluster.handle_cluster_general_request(hdr, values)
+        await asyncio.sleep(0)
+        assert attr_lst_mock.call_count > 0
+        assert general_cmd_mock.call_count == 0
+
+    with p1 as attr_lst_mock, p2 as general_cmd_mock:
+        hdr.frame_control.disable_default_response = False
+        cluster.handle_cluster_general_request(hdr, values)
+        await asyncio.sleep(0)
+        assert attr_lst_mock.call_count > 0
+        assert general_cmd_mock.call_count == 1
+        assert general_cmd_mock.call_args[1]["tsn"] == hdr.tsn
+
+
+async def test_handle_cluster_general_request_not_attr_report(cluster):
+    hdr = foundation.ZCLHeader.general(1, foundation.Command.Write_Attributes)
+    p1 = mock.patch.object(cluster, "_update_attribute")
+    p2 = mock.patch.object(cluster, "create_catching_task")
+    with p1 as attr_lst_mock, p2 as response_mock:
+        cluster.handle_cluster_general_request(hdr, [1, 2, 3])
+        await asyncio.sleep(0)
+        assert attr_lst_mock.call_count == 0
+        assert response_mock.call_count == 0
 
 
 async def test_write_attributes_undivided(cluster):
