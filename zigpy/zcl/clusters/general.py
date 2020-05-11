@@ -1,11 +1,9 @@
 """General Functional Domain"""
 
-import asyncio
 import collections
 from datetime import datetime
 from typing import Tuple
 
-from zigpy.exceptions import DeliveryError
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
 
@@ -985,10 +983,7 @@ class Ota(Cluster):
     }
 
     def handle_cluster_request(self, tsn, command_id, args):
-        self.create_catching_task(
-            self._handle_cluster_request(tsn, command_id, args),
-            exceptions=(AssertionError, asyncio.TimeoutError, DeliveryError),
-        )
+        self.create_catching_task(self._handle_cluster_request(tsn, command_id, args),)
 
     async def _handle_cluster_request(self, tsn, command_id, args):
         """Parse OTA commands."""
