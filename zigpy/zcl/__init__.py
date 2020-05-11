@@ -217,6 +217,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                         foundation.Command.Default_Response,
                         hdr.command_id,
                         foundation.Status.SUCCESS,
+                        tsn=hdr.tsn,
                     )
                 )
 

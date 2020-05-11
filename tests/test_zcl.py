@@ -1,3 +1,5 @@
+import asyncio
+
 from asynctest import CoroutineMock, mock
 import pytest
 import zigpy.endpoint
@@ -671,7 +673,7 @@ def test_handle_cluster_request_handler(cluster):
     )
 
 
-def test_handle_cluster_general_request_disable_default_rsp(endpoint):
+async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
     hdr, values = endpoint.deserialize(
         0,
         b"\x18\xCD\x0A\x01\xFF\x42\x25\x01\x21\x95\x0B\x04\x21\xA8\x43\x05\x21\x36\x00"
@@ -680,25 +682,29 @@ def test_handle_cluster_general_request_disable_default_rsp(endpoint):
     )
     cluster = endpoint.in_clusters[0]
     p1 = mock.patch.object(cluster, "_update_attribute")
-    p2 = mock.patch.object(cluster, "create_catching_task")
-    with p1 as attr_lst_mock, p2 as response_mock:
+    p2 = mock.patch.object(cluster, "general_command")
+    with p1 as attr_lst_mock, p2 as general_cmd_mock:
         cluster.handle_cluster_general_request(hdr, values)
+        await asyncio.sleep(0)
         assert attr_lst_mock.call_count > 0
-        assert response_mock.call_count == 0
+        assert general_cmd_mock.call_count == 0
 
-    with p1 as attr_lst_mock, p2 as response_mock:
+    with p1 as attr_lst_mock, p2 as general_cmd_mock:
         hdr.frame_control.disable_default_response = False
         cluster.handle_cluster_general_request(hdr, values)
+        await asyncio.sleep(0)
         assert attr_lst_mock.call_count > 0
-        assert response_mock.call_count == 1
+        assert general_cmd_mock.call_count == 1
+        assert general_cmd_mock.call_args[1]["tsn"] == hdr.tsn
 
 
-def test_handle_cluster_general_request_not_attr_report(cluster):
+async def test_handle_cluster_general_request_not_attr_report(cluster):
     hdr = foundation.ZCLHeader.general(1, foundation.Command.Write_Attributes)
     p1 = mock.patch.object(cluster, "_update_attribute")
     p2 = mock.patch.object(cluster, "create_catching_task")
     with p1 as attr_lst_mock, p2 as response_mock:
         cluster.handle_cluster_general_request(hdr, [1, 2, 3])
+        await asyncio.sleep(0)
         assert attr_lst_mock.call_count == 0
         assert response_mock.call_count == 0
 
