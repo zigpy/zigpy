@@ -258,7 +258,7 @@ class Requests(dict):
             return Request(self, sequence)
         except AssertionError:
             LOGGER.debug("Duplicate %s TSN", sequence)
-            raise ControllerException(f"duplicate {sequence} TSN")
+            raise ControllerException(f"duplicate {sequence} TSN") from AssertionError
 
 
 class CatchingTaskMixin(LocalLogMixin):
