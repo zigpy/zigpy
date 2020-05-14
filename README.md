@@ -29,10 +29,11 @@ Radio libraries for zigpy include **[bellows](https://github.com/zigpy/bellows)*
   - Digi XBee Series 2 (S2) modules. Note: These will need to be manually flashed with the Zigbee Coordinator API firmware via XCTU.
   - Digi XBee Series 3 (xbee3-24) modules
 - **deCONZ based radios** (via the [zigpy-deconz](https://github.com/zigpy/zigpy-deconz) library for zigpy)
-  - [ConBee II (a.k.a. ConBee 2) USB adapter from Dresden-Elektronik](https://shop.dresden-elektronik.de/conbee-2.html)
-  - [ConBee](https://www.dresden-elektronik.de/conbee/) USB radio adapter from [Dresden-Elektronik](https://www.dresden-elektronik.de)
-  - [RaspBee](https://www.dresden-elektronik.de/raspbee/) GPIO radio adapter from [Dresden-Elektronik](https://www.dresden-elektronik.de)
-  
+  - [ConBee II (a.k.a. ConBee 2) USB adapter from dresden dlektronik](https://shop.dresden-elektronik.de/conbee-2.html)
+  - [ConBee](https://www.dresden-elektronik.de/conbee/) USB radio adapter from [dresden elektronik](https://www.dresden-elektronik.de)
+  - [RaspBee II (a.k.a. RaspBee 2)](https://www.dresden-elektronik.com/product/raspbee-II.html) GPIO radio adapter from [dresden elektronik](https://www.dresden-elektronik.de)
+  - [RaspBee](https://www.dresden-elektronik.de/raspbee/) GPIO radio adapter from [dresden elektronik](https://www.dresden-elektronik.de)
+
 ### Experimental support for additional Zigbee radio modules
 
 - **[ZiGate open source ZigBee adapter hardware](https://zigate.fr/)** (via the [zigpy-zigate](https://github.com/zigpy/zigpy-zigate) library for zigpy)
