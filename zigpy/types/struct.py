@@ -1,6 +1,12 @@
 class Struct:
     def __init__(self, *args, **kwargs):
-        if len(args) == 1 and isinstance(args[0], self.__class__):
+        if getattr(self, "optional", False):
+            # the "Optional" subclass is dynamically created
+            cls = next(c for c in self.__class__.__mro__ if c.__name__ != "Optional")
+        else:
+            cls = self.__class__
+
+        if len(args) == 1 and isinstance(args[0], cls):
             # copy constructor
             for field in self._fields:
                 setattr(self, field[0], getattr(args[0], field[0]))
