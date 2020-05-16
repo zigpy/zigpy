@@ -101,9 +101,10 @@ async def test_time_cluster_unsupported():
     ep.reply.side_effect = asyncio.coroutine(mock.MagicMock())
     t = zcl.Cluster._registry[0x000A](ep)
 
-    tsn = 0
+    hdr_general = zcl.foundation.ZCLHeader.general
+    tsn = 123
 
-    t.handle_cluster_general_request(tsn, 0, [[199, 128]])
+    t.handle_cluster_general_request(hdr_general(tsn, 0), [[199, 128]])
     assert ep.reply.call_count == 1
     assert ep.reply.call_args[0][2][-6:] == b"\xc7\x00\x86\x80\x00\x86"
 
