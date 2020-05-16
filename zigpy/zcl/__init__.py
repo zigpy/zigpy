@@ -179,7 +179,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             self.handle_cluster_request(hdr.tsn, hdr.command_id, args)
             self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
             return
-        self.listener_event("general_command", hdr.tsn, hdr.command_id, args)
+        self.listener_event("general_command", hdr, args)
         self.handle_cluster_general_request(hdr, args)
 
     def handle_cluster_request(self, tsn, command_id, args):
