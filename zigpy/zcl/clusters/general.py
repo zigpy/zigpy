@@ -504,8 +504,8 @@ class Time(Cluster):
     server_commands = {}
     client_commands = {}
 
-    def handle_cluster_general_request(self, tsn, command_id, *args):
-        if command_id == foundation.Command.Read_Attributes:
+    def handle_cluster_general_request(self, hdr, *args):
+        if hdr.command_id == foundation.Command.Read_Attributes:
             # responses should be in the same order. Is it time to ditch py35?
             data = collections.OrderedDict()
             for attr in args[0][0]:
@@ -526,7 +526,7 @@ class Time(Cluster):
                     data[attr] = diff.total_seconds()
                 else:
                     data[attr] = None
-            self.create_catching_task(self.read_attributes_rsp(data, tsn=tsn))
+            self.create_catching_task(self.read_attributes_rsp(data, tsn=hdr.tsn))
 
 
 class RSSILocation(Cluster):
