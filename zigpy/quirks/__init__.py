@@ -20,12 +20,13 @@ def get_device(device, registry=_DEVICE_REGISTRY):
 class Registry(type):
     def __init__(cls, name, bases, nmspc):  # noqa: N805
         super(Registry, cls).__init__(name, bases, nmspc)
-        if hasattr(cls, "signature"):
+        if getattr(cls, "signature", None) is not None:
             _DEVICE_REGISTRY.add_to_registry(cls)
 
 
 class CustomDevice(zigpy.device.Device, metaclass=Registry):
     replacement = {}
+    signature = None
 
     def __init__(self, application, ieee, nwk, replaces):
         super().__init__(application, ieee, nwk)
