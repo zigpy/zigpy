@@ -2,12 +2,6 @@
 
 from typing import TYPE_CHECKING
 
-import zigpy.application
-import zigpy.device
-import zigpy.endpoint
-import zigpy.zcl
-import zigpy.zdo
-
 # pylint: disable=invalid-name
 ClusterType = "Cluster"
 ControllerApplicationType = "ControllerApplication"
@@ -16,6 +10,12 @@ EndpointType = "Endpoint"
 ZDOType = "ZDO"
 
 if TYPE_CHECKING:
+    import zigpy.application
+    import zigpy.device
+    import zigpy.endpoint
+    import zigpy.zcl
+    import zigpy.zdo
+
     ClusterType = zigpy.zcl.Cluster
     ControllerApplicationType = zigpy.application.ControllerApplication
     DeviceType = zigpy.device.Device

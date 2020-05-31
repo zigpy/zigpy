@@ -6,6 +6,7 @@ from typing import Any, Coroutine, Dict, List, Optional, Tuple, Union
 
 from zigpy import util
 import zigpy.types as t
+from zigpy.typing import EndpointType
 from zigpy.zcl import foundation
 
 LOGGER = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ class Registry(type):
         if hasattr(cls, "cluster_id"):
             cls.cluster_id = t.ClusterId(cls.cluster_id)
         if hasattr(cls, "attributes"):
-            cls.attridx = {}
+            cls.attridx: Dict[str, int] = {}
             for attrid, (attrname, datatype) in cls.attributes.items():
                 cls.attridx[attrname] = attrid
         if hasattr(cls, "server_commands"):
@@ -49,19 +50,19 @@ class ClusterType(enum.IntEnum):
 class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     """A cluster on an endpoint"""
 
-    _registry = {}
-    _registry_range = {}
-    _server_command_idx = {}
-    _client_command_idx = {}
+    _registry: Dict = {}
+    _registry_range: Dict = {}
+    _server_command_idx: Dict[int, Tuple] = {}
+    _client_command_idx: Dict[int, Tuple] = {}
 
-    def __init__(self, endpoint, is_server=True):
-        self._endpoint = endpoint
-        self._attr_cache = {}
+    def __init__(self, endpoint: EndpointType, is_server: bool = True):
+        self._endpoint: EndpointType = endpoint
+        self._attr_cache: Dict[int, Any] = {}
         self._listeners = {}
         if is_server:
-            self._type = ClusterType.Server
+            self._type: ClusterType = ClusterType.Server
         else:
-            self._type = ClusterType.Client
+            self._type: ClusterType = ClusterType.Client
 
     @classmethod
     def from_id(cls, endpoint, cluster_id, is_server=True):
@@ -506,8 +507,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         else:
             raise AttributeError("No such command name: %s" % (name,))
 
-    def __getitem__(self, key):
-        return self.read_attributes([key], allow_cache=True, raw=True)
+    def __getitem__(self, key: Union[int, str]) -> Any:
+        """Return cached value of the attr."""
+        if isinstance(key, int):
+            return self._attr_cache[key]
+        elif isinstance(key, str):
+            return self._attr_cache[self.attridx[key]]
+        raise ValueError("attr_name or attr_id are accepted only")
+
+    def __setitem__(self, key: Union[int, str], value: Any) -> None:
+        """Set cached value through attribute write."""
+        if not isinstance(key, (int, str)):
+            raise ValueError("attr_name or attr_id are accepted only")
+        self.create_catching_task(self.write_attributes({key: value}))
 
     def general_command(
         self,
