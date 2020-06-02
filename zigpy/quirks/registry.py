@@ -1,8 +1,10 @@
 import collections
 import itertools
 import logging
+from typing import Union
 
 import zigpy.quirks
+from zigpy.typing import CustomDeviceType, DeviceType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -14,32 +16,32 @@ class DeviceRegistry:
         dd = collections.defaultdict
         self._registry = dd(lambda: dd(list))
 
-    def add_to_registry(self, custom_device):
+    def add_to_registry(self, custom_device: CustomDeviceType) -> None:
         """Add a device to the registry"""
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
         if models_info:
             for manuf, model in models_info:
                 self.registry[manuf][model].append(custom_device)
         else:
-            manufacturer = self.get_manufacturer(custom_device)
-            model = self.get_model(custom_device)
+            manufacturer = custom_device.signature.get("manufacturer")
+            model = custom_device.signature.get("model")
             self.registry[manufacturer][model].append(custom_device)
 
-    def remove(self, custom_device):
+    def remove(self, custom_device: CustomDeviceType) -> None:
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
         if models_info:
             for manuf, model in models_info:
                 self.registry[manuf][model].remove(custom_device)
         else:
-            manufacturer = self.get_manufacturer(custom_device)
-            model = self.get_model(custom_device)
+            manufacturer = custom_device.signature.get("manufacturer")
+            model = custom_device.signature.get("model")
             self.registry[manufacturer][model].remove(custom_device)
 
-    def get_device(self, device):
+    def get_device(self, device: DeviceType) -> Union[CustomDeviceType, DeviceType]:
         """Get a CustomDevice object, if one is available"""
         if isinstance(device, zigpy.quirks.CustomDevice):
             return device
-        dev_ep = set(device.endpoints) - set([0])
+        dev_ep = set(device.endpoints) - {0}
         _LOGGER.debug(
             "Checking quirks for %s %s (%s)",
             device.manufacturer,
@@ -52,22 +54,7 @@ class DeviceRegistry:
             self.registry[None][None],
         ):
             _LOGGER.debug("Considering %s", candidate)
-            sig = candidate.signature.get("endpoints", {})
-            if not sig:
-                _LOGGER.warning(
-                    (
-                        "%s signature update is required. Support for "
-                        "`signature = {1: { replacement }}`"
-                        " will be removed in the future releases. Use "
-                        "`signature = {'endpoints': {1: { replacement }}}"
-                    ),
-                    candidate,
-                )
-                sig = {
-                    eid: ep
-                    for eid, ep in candidate.signature.items()
-                    if isinstance(eid, int)
-                }
+
             if not device.model == candidate.signature.get("model", device.model):
                 _LOGGER.debug("Fail, because device model mismatch: '%s'", device.model)
                 continue
@@ -80,6 +67,10 @@ class DeviceRegistry:
                     "Fail, because device manufacturer mismatch: '%s'",
                     device.manufacturer,
                 )
+                continue
+
+            sig = candidate.signature.get("endpoints")
+            if sig is None:
                 continue
 
             if not self._match(sig, dev_ep):
@@ -116,27 +107,6 @@ class DeviceRegistry:
 
             if not all(
                 [
-                    device[eid].model == sig[eid].get("model", device[eid].model)
-                    for eid in sig
-                ]
-            ):
-                _LOGGER.debug("Fail because model mismatch on at least one endpoint")
-                continue
-
-            if not all(
-                [
-                    device[eid].manufacturer
-                    == sig[eid].get("manufacturer", device[eid].manufacturer)
-                    for eid in sig
-                ]
-            ):
-                _LOGGER.debug(
-                    "Fail because manufacturer mismatch on at least one endpoint"
-                )
-                continue
-
-            if not all(
-                [
                     self._match(device[eid].in_clusters, ep.get("input_clusters", []))
                     for eid, ep in sig.items()
                 ]
@@ -166,35 +136,6 @@ class DeviceRegistry:
         return device
 
     @staticmethod
-    def get_manufacturer(custom_dev):
-        manuf = custom_dev.signature.get("manufacturer")
-        if manuf is None:
-            # Get manufacturer from legacy endpoint sig
-            sig = {
-                eid: ep
-                for eid, ep in custom_dev.signature.items()
-                if isinstance(eid, int)
-            }
-            manuf = next(
-                (ep["manufacturer"] for ep in sig.values() if "manufacturer" in ep),
-                None,
-            )
-        return manuf
-
-    @staticmethod
-    def get_model(custom_dev):
-        model = custom_dev.signature.get("model")
-        if model is None:
-            # Get model from legacy endpoint sig
-            sig = {
-                eid: ep
-                for eid, ep in custom_dev.signature.items()
-                if isinstance(eid, int)
-            }
-            model = next((ep["model"] for ep in sig.values() if "model" in ep), None)
-        return model
-
-    @staticmethod
     def _match(a, b):
         return set(a) == set(b)
 
@@ -202,9 +143,10 @@ class DeviceRegistry:
     def registry(self):
         return self._registry
 
-    def __contains__(self, device):
+    def __contains__(self, device: CustomDeviceType) -> bool:
         manufacturer, model = device.signature.get(
-            SIG_MODELS_INFO, [(self.get_manufacturer(device), self.get_model(device))]
+            SIG_MODELS_INFO,
+            [(device.signature.get("manufacturer"), device.signature.get("model"))],
         )[0]
 
         return device in itertools.chain(
