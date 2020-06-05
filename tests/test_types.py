@@ -215,6 +215,17 @@ def test_struct_init():
     assert ts.c == "TestStruct"
 
 
+def test_struct_optional_init():
+    class TestStruct(t.Struct):
+        _fields = [("a", t.uint8_t), ("b", t.uint16_t), ("c", t.CharacterString)]
+
+    ts = TestStruct(1, 0x0100, "TestStruct")
+    ts_copy = TestStruct(ts)
+    ts_optional = t.Optional(TestStruct)(ts)
+
+    assert ts.serialize() == ts_copy.serialize() == ts_optional.serialize()
+
+
 def test_hex_repr():
     class NwkAsHex(t.HexRepr, t.uint16_t):
         _hex_len = 4

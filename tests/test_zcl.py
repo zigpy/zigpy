@@ -323,23 +323,33 @@ async def test_read_attributes_value_normalization_error(cluster):
 
 
 async def test_item_access_attributes(cluster):
-    async def mockrequest(
-        foundation, command, schema, args, manufacturer=None, **kwargs
-    ):
-        assert foundation is True
-        assert command == 0
-        rar5 = _mk_rar(5, "Model")
-        return [[rar5]]
+    cluster._attr_cache[5] = mock.sentinel.model
 
-    cluster.request = mockrequest
-    cluster._attr_cache[0] = 99
-
-    v = await cluster["model"]
-    assert v == "Model"
-    v = await cluster["zcl_version"]
-    assert v == 99
+    assert cluster["model"] == mock.sentinel.model
+    assert cluster[5] == mock.sentinel.model
     with pytest.raises(KeyError):
-        v = await cluster[99]
+        cluster[4]
+    with pytest.raises(KeyError):
+        cluster["manufacturer"]
+
+    with pytest.raises(KeyError):
+        # wrong attr name
+        cluster["some_non_existent_attr"]
+
+    with pytest.raises(ValueError):
+        # wrong key type
+        cluster[None]
+
+
+async def test_item_set_attributes(cluster):
+    with mock.patch.object(cluster, "write_attributes") as write_mock:
+        cluster["model"] = mock.sentinel.model
+        await asyncio.sleep(0)
+    assert write_mock.await_count == 1
+    assert write_mock.call_args[0][0] == {"model": mock.sentinel.model}
+
+    with pytest.raises(ValueError):
+        cluster[None] = mock.sentinel.manufacturer
 
 
 async def test_write_attributes(cluster):
