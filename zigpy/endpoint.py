@@ -1,9 +1,11 @@
 import asyncio
 import enum
 import logging
+from typing import Optional
 
 import zigpy.exceptions
 import zigpy.profiles
+from zigpy.typing import DeviceType
 import zigpy.util
 import zigpy.zcl
 from zigpy.zcl.clusters.general import Basic
@@ -27,7 +29,7 @@ class Status(enum.IntEnum):
 class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """An endpoint on a device on the network"""
 
-    def __init__(self, device, endpoint_id):
+    def __init__(self, device: DeviceType, endpoint_id: int):
         self._device = device
         self._endpoint_id = endpoint_id
         self.device_type = None
@@ -241,7 +243,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return LOGGER.log(lvl, msg, *args, **kwargs)
 
     @property
-    def device(self):
+    def device(self) -> DeviceType:
         return self._device
 
     @property
@@ -263,6 +265,11 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
         )
         self._manufacturer = value
+
+    @property
+    def manufacturer_id(self) -> Optional[int]:
+        """Return device's manufacturer id code."""
+        return self.device.manufacturer_id
 
     @property
     def member_of(self):

@@ -456,3 +456,9 @@ async def test_group_membership_scan_fail(ep):
     await ep.group_membership_scan()
     assert ep.device.application.groups.update_group_membership.call_count == 0
     assert ep.device.request.call_count == 1
+
+
+def test_endpoint_manufacturer_id(ep):
+    """Test manufacturer id."""
+    ep.device.manufacturer_id = mock.sentinel.manufacturer_id
+    assert ep.manufacturer_id is mock.sentinel.manufacturer_id
