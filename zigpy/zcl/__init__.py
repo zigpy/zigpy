@@ -1,8 +1,9 @@
 import asyncio
 import enum
 import functools
+import itertools
 import logging
-from typing import Any, Coroutine, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Tuple, Union
 
 from zigpy import util
 import zigpy.types as t
@@ -20,16 +21,22 @@ class Registry(type):
             cls.cluster_id = t.ClusterId(cls.cluster_id)
         if hasattr(cls, "attributes"):
             cls.attridx: Dict[str, int] = {}
-            for attrid, (attrname, datatype) in cls.attributes.items():
+            for attrid, (attrname, datatype) in itertools.chain(
+                cls.attributes.items(), cls.manufacturer_attributes.items()
+            ):
                 cls.attridx[attrname] = attrid
         if hasattr(cls, "server_commands"):
             cls._server_command_idx = {}
-            for command_id, details in cls.server_commands.items():
+            for command_id, details in itertools.chain(
+                cls.server_commands.items(), cls.manufacturer_server_commands.items()
+            ):
                 command_name, schema, is_reply = details
                 cls._server_command_idx[command_name] = command_id
         if hasattr(cls, "client_commands"):
             cls._client_command_idx = {}
-            for command_id, details in cls.client_commands.items():
+            for command_id, details in itertools.chain(
+                cls.client_commands.items(), cls.manufacturer_client_commands.items()
+            ):
                 command_name, schema, is_reply = details
                 cls._client_command_idx[command_name] = command_id
 
@@ -52,8 +59,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
     _registry: Dict = {}
     _registry_range: Dict = {}
-    _server_command_idx: Dict[int, Tuple] = {}
-    _client_command_idx: Dict[int, Tuple] = {}
+    _server_command_idx: Dict[str, int] = {}
+    _client_command_idx: Dict[str, int] = {}
+    attridx: Dict[int, str]
+    attributes: Dict[int : Tuple[str, Callable]]
+    client_commands: Dict[int, Tuple[str, Tuple, bool]]
+    server_commands: Dict[int, Tuple[str, Tuple, bool]]
+    manufacturer_attributes: Dict[int : Tuple[str, Callable]] = {}
+    manufacturer_client_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
+    manufacturer_server_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
 
     def __init__(self, endpoint: EndpointType, is_server: bool = True):
         self._endpoint: EndpointType = endpoint
