@@ -227,15 +227,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         return self._read_attributes(attributes, manufacturer=manufacturer)
 
     async def read_attributes(
-        self,
-        attributes,
-        allow_cache=False,
-        only_cache=False,
-        raw=False,
-        manufacturer=None,
+        self, attributes, allow_cache=False, only_cache=False, manufacturer=None,
     ):
-        if raw:
-            assert len(attributes) == 1
         success, failure = {}, {}
         attribute_ids = []
         orig_attributes = {}
@@ -258,8 +251,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             to_read = attribute_ids
 
         if not to_read or only_cache:
-            if raw:
-                return success[attributes[0]]
             return success, failure
 
         result = await self.read_attributes_raw(to_read, manufacturer=manufacturer)
@@ -288,9 +279,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                 else:
                     failure[orig_attribute] = record.status
 
-        if raw:
-            # KeyError is an appropriate exception here, I think.
-            return success[attributes[0]]
         return success, failure
 
     def read_attributes_rsp(self, attributes, manufacturer=None, *, tsn=None):
