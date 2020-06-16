@@ -737,3 +737,72 @@ async def test_configure_reporting_multiple(cluster):
             cluster.endpoint.request.call_args_list[0][0][2]
             == cluster.endpoint.request.call_args_list[1][0][2]
         )
+
+
+class ManufacturerSpecificCluster(zigpy.zcl.Cluster):
+    cluster_id = 0x2222
+    attributes = {0: ("attr0", t.uint8_t)}
+    manufacturer_attributes = {1: ("attr1", t.uint16_t)}
+    client_commands = {0: ("client_cmd0", (), False)}
+    manufacturer_client_commands = {1: ("client_cmd1", (), False)}
+    server_commands = {0: ("server_cmd0", (), False)}
+    manufacturer_server_commands = {1: ("server_cmd1", (), False)}
+
+
+@pytest.fixture
+def manuf_cluster(endpoint):
+    """Return a manufacturer specific cluster fixture."""
+
+    ep = mock.MagicMock()
+    ep.manufacturer_id = mock.sentinel.manufacturer_id
+    return zigpy.zcl.Cluster.from_id(ep, 0x2222)
+
+
+@pytest.fixture
+def manuf_cluster2(endpoint):
+    """Return a manufacturer specific cluster fixture."""
+
+    class ManufCluster2(ManufacturerSpecificCluster):
+        cluster_id = 0xFC00
+
+    ep = mock.MagicMock()
+    ep.manufacturer_id = mock.sentinel.manufacturer_id2
+    return zigpy.zcl.Cluster.from_id(ep, 0xFC00)
+
+
+@pytest.mark.parametrize(
+    "cmd_name, manufacturer",
+    (("client_cmd0", None), ("client_cmd1", mock.sentinel.manufacturer_id),),
+)
+def test_client_cmd_vendor_specific_by_name(
+    manuf_cluster, manuf_cluster2, cmd_name, manufacturer
+):
+    """Test manufacturer specific client commands."""
+    with mock.patch.object(manuf_cluster, "reply") as cmd_mock:
+        getattr(manuf_cluster, cmd_name)()
+        assert cmd_mock.call_count == 1
+        assert cmd_mock.call_args[1]["manufacturer"] is manufacturer
+
+    with mock.patch.object(manuf_cluster2, "reply") as cmd_mock:
+        getattr(manuf_cluster2, cmd_name)()
+        assert cmd_mock.call_count == 1
+        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.manufacturer_id2
+
+
+@pytest.mark.parametrize(
+    "cmd_name, manufacturer",
+    (("server_cmd0", None), ("server_cmd1", mock.sentinel.manufacturer_id),),
+)
+def test_srv_cmd_vendor_specific_by_name(
+    manuf_cluster, manuf_cluster2, cmd_name, manufacturer
+):
+    """Test manufacturer specific server commands."""
+    with mock.patch.object(manuf_cluster, "request") as cmd_mock:
+        getattr(manuf_cluster, cmd_name)()
+        assert cmd_mock.call_count == 1
+        assert cmd_mock.call_args[1]["manufacturer"] is manufacturer
+
+    with mock.patch.object(manuf_cluster2, "request") as cmd_mock:
+        getattr(manuf_cluster2, cmd_name)()
+        assert cmd_mock.call_count == 1
+        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.manufacturer_id2
