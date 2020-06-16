@@ -303,8 +303,8 @@ def test_custom_cluster_idx():
     for attr_name, attr_id in TestClusterIdx.attridx.items():
         assert TestClusterIdx.attributes[attr_id][0] == attr_name
 
-    _test_cmd("server_commands", "_server_command_idx")
-    _test_cmd("client_commands", "_client_command_idx")
+    _test_cmd("server_commands", "_server_commands_idx")
+    _test_cmd("client_commands", "_client_commands_idx")
 
 
 async def test_read_attributes_uncached():

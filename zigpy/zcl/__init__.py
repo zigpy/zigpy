@@ -20,27 +20,23 @@ class Registry(type):
             cls.cluster_id = t.ClusterId(cls.cluster_id)
         if hasattr(cls, "attributes"):
             cls.attridx: Dict[str, int] = {}
-            cls.attributes = {**cls.attributes, **cls.manufacturer_attributes}
+            if cls.manufacturer_attributes:
+                cls.attributes = {**cls.attributes, **cls.manufacturer_attributes}
             for attrid, (attrname, datatype) in cls.attributes.items():
                 cls.attridx[attrname] = attrid
-        if hasattr(cls, "server_commands"):
-            cls._server_command_idx = {}
-            cls.server_commands = {
-                **cls.server_commands,
-                **cls.manufacturer_server_commands,
-            }
-            for command_id, details in cls.server_commands.items():
-                command_name, schema, is_reply = details
-                cls._server_command_idx[command_name] = command_id
-        if hasattr(cls, "client_commands"):
-            cls._client_command_idx = {}
-            cls.client_commands = {
-                **cls.client_commands,
-                **cls.manufacturer_client_commands,
-            }
-            for command_id, details in cls.client_commands.items():
-                command_name, schema, is_reply = details
-                cls._client_command_idx[command_name] = command_id
+
+        for commands_type in ("server_commands", "client_commands"):
+            commands = getattr(cls, commands_type, None)
+            if not commands:
+                continue
+            commands_idx = {}
+            manufacturer_specific = getattr(cls, f"manufacturer_{commands_type}", {})
+            if manufacturer_specific:
+                commands = {**commands, **manufacturer_specific}
+                setattr(cls, commands_type, commands)
+            for command_id, (command_name, _, _) in commands.items():
+                commands_idx[command_name] = command_id
+            setattr(cls, f"_{commands_type}_idx", commands_idx)
 
         if getattr(cls, "_skip_registry", False):
             return
@@ -61,8 +57,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
     _registry: Dict = {}
     _registry_range: Dict = {}
-    _server_command_idx: Dict[str, int] = {}
-    _client_command_idx: Dict[str, int] = {}
+    _server_commands_idx: Dict[str, int] = {}
+    _client_commands_idx: Dict[str, int] = {}
     attridx: Dict[str, int]
     attributes: Dict[int, Tuple[str, Callable]]
     client_commands: Dict[int, Tuple[str, Tuple, bool]]
@@ -504,7 +500,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
     @property
     def commands(self):
-        return list(self._server_command_idx.keys())
+        return list(self._server_commands_idx.keys())
 
     def _update_attribute(self, attrid, value):
         self._attr_cache[attrid] = value
@@ -520,12 +516,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         return LOGGER.log(lvl, msg, *args, **kwargs)
 
     def __getattr__(self, name):
-        if name in self._client_command_idx:
+        if name in self._client_commands_idx:
             return functools.partial(
-                self.client_command, self._client_command_idx[name]
+                self.client_command, self._client_commands_idx[name]
             )
-        elif name in self._server_command_idx:
-            return functools.partial(self.command, self._server_command_idx[name])
+        elif name in self._server_commands_idx:
+            return functools.partial(self.command, self._server_commands_idx[name])
         else:
             raise AttributeError("No such command name: %s" % (name,))
 

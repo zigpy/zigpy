@@ -741,6 +741,7 @@ async def test_configure_reporting_multiple(cluster):
 
 class ManufacturerSpecificCluster(zigpy.zcl.Cluster):
     cluster_id = 0x2222
+    ep_attribute = "just_a_cluster"
     attributes = {0: ("attr0", t.uint8_t)}
     manufacturer_attributes = {1: ("attr1", t.uint16_t)}
     client_commands = {0: ("client_cmd0", (), False)}
@@ -763,6 +764,7 @@ def manuf_cluster2(endpoint):
     """Return a manufacturer specific cluster fixture."""
 
     class ManufCluster2(ManufacturerSpecificCluster):
+        ep_attribute = "just_a_manufacturer_specific_cluster"
         cluster_id = 0xFC00
 
     ep = mock.MagicMock()
