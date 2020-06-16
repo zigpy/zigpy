@@ -102,6 +102,10 @@ def test_get_device_new_sig(real_device):
     registry = _dev_reg(TestDevice)
     assert isinstance(registry.get_device(real_device), TestDevice)
 
+    TestDevice.signature["endpoints"][2] = {"profile_id": 2}
+    registry = _dev_reg(TestDevice)
+    assert registry.get_device(real_device) is real_device
+
 
 def test_model_manuf_device_sig(real_device):
     class TestDevice:
