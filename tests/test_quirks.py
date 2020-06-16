@@ -147,7 +147,6 @@ def test_custom_devices():
 
     # Validate that all CustomDevices look sane
     reg = zigpy.quirks._DEVICE_REGISTRY.registry
-    return
     candidates = list(
         itertools.chain(*itertools.chain(*[m.values() for m in reg.values()]))
     )
