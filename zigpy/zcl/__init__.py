@@ -20,7 +20,7 @@ class Registry(type):
             cls.cluster_id = t.ClusterId(cls.cluster_id)
         if hasattr(cls, "attributes"):
             cls.attridx: Dict[str, int] = {}
-            if cls.manufacturer_attributes:
+            if hasattr(cls, "manufacturer_attributes"):
                 cls.attributes = {**cls.attributes, **cls.manufacturer_attributes}
             for attrid, (attrname, datatype) in cls.attributes.items():
                 cls.attridx[attrname] = attrid
@@ -63,15 +63,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     attributes: Dict[int, Tuple[str, Callable]]
     client_commands: Dict[int, Tuple[str, Tuple, bool]]
     server_commands: Dict[int, Tuple[str, Tuple, bool]]
-    manufacturer_attributes: Dict[int, Tuple[str, Callable]] = {}
-    manufacturer_client_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
-    manufacturer_server_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
 
     def __init__(self, endpoint: EndpointType, is_server: bool = True):
         self._endpoint: EndpointType = endpoint
         self._attr_cache: Dict[int, Any] = {}
         self._listeners = {}
-        self._is_manuf_specific = False
         if is_server:
             self._type: ClusterType = ClusterType.Server
         else:
@@ -83,19 +79,16 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     ) -> ClusterType:
         if cluster_id in cls._registry:
             c = cls._registry[cluster_id](endpoint, is_server)
-            c._is_manuf_specific = 0xFC00 <= cluster_id <= 0xFFFF
             return c
         else:
             for cluster_id_range, cluster in cls._registry_range.items():
                 if cluster_id_range[0] <= cluster_id <= cluster_id_range[1]:
                     c = cluster(endpoint, is_server)
                     c.cluster_id = cluster_id
-                    c._is_manuf_specific = 0xFC00 <= cluster_id <= 0xFFFF
                     return c
 
         LOGGER.warning("Unknown cluster %s", cluster_id)
         c = cls(endpoint, is_server)
-        c._is_manuf_specific = 0xFC00 <= cluster_id <= 0xFFFF
         c.cluster_id = cluster_id
         return c
 
@@ -450,10 +443,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         tsn: Optional[Union[int, t.uint8_t]] = None,
     ):
         schema = self.server_commands[command_id][1]
-        if manufacturer is None and (
-            command_id in self.manufacturer_server_commands or self._is_manuf_specific
-        ):
-            manufacturer = self.endpoint.manufacturer_id
         return self.request(
             False,
             command_id,
@@ -472,10 +461,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         tsn: Optional[Union[int, t.uint8_t]] = None,
     ):
         schema = self.client_commands[command_id][1]
-        if manufacturer is None and (
-            command_id in self.manufacturer_client_commands or self._is_manuf_specific
-        ):
-            manufacturer = self.endpoint.manufacturer_id
         return self.reply(
             False, command_id, schema, *args, manufacturer=manufacturer, tsn=tsn
         )

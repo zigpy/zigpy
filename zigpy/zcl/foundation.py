@@ -239,6 +239,8 @@ class ReadAttributeRecord(t.Struct):
 
 
 class Attribute(t.Struct):
+    attrid: t.uint16_t
+    value: TypeValue
     _fields = [("attrid", t.uint16_t), ("value", TypeValue)]
 
 
@@ -351,6 +353,10 @@ class AttributeReportingConfig:
 
 
 class ConfigureReportingResponseRecord(t.Struct):
+    status: Status
+    direction: ReportingDirection
+    attrid: t.uint16_t
+
     _fields = [
         ("status", Status),
         ("direction", ReportingDirection),
