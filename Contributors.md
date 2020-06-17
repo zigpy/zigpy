@@ -18,5 +18,6 @@
 - [Abílio Costa] (https://github.com/abmantis)
 - [https://github.com/SchaumburgM] (https://github.com/SchaumburgM)
 - [https://github.com/Nemesis24] (https://github.com/Nemesis24)
+- [Kurt Warwick] (https://github.com/kurtwarwick-new)
 - [Hedda] (https://github.com/Hedda)
 - [Andreas Setterlind] (https://github.com/Gamester17)
