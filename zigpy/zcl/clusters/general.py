@@ -384,6 +384,12 @@ class OnOff(Cluster):
     """Attributes and commands for switching devices between
     ‘On’ and ‘Off’ states. """
 
+    class PowerOnState(t.enum8):
+        """Power on state enum."""
+        Off = 0x00
+        On = 0x01
+        Previous = 0xff
+
     cluster_id = 0x0006
     name = "On/Off"
     ep_attribute = "on_off"
@@ -392,7 +398,7 @@ class OnOff(Cluster):
         0x4000: ("global_scene_control", t.Bool),
         0x4001: ("on_time", t.uint16_t),
         0x4002: ("off_wait_time", t.uint16_t),
-        0x4003: ("power_on__on_off", t.enum8),
+        0x4003: ("power_on_state", PowerOnState),
     }
     server_commands = {
         0x0000: ("off", (), False),
