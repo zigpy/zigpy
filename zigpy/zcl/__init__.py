@@ -18,12 +18,11 @@ class Registry(type):
 
         if hasattr(cls, "cluster_id"):
             cls.cluster_id = t.ClusterId(cls.cluster_id)
-        if hasattr(cls, "attributes"):
-            cls.attridx: Dict[str, int] = {}
-            if hasattr(cls, "manufacturer_attributes"):
-                cls.attributes = {**cls.attributes, **cls.manufacturer_attributes}
-            for attrid, (attrname, datatype) in cls.attributes.items():
-                cls.attridx[attrname] = attrid
+        if hasattr(cls, "manufacturer_attributes"):
+            cls.attributes = {**cls.attributes, **cls.manufacturer_attributes}
+        cls.attridx: Dict[str, int] = {
+            attr_name: attr_id for attr_id, (attr_name, _) in cls.attributes.items()
+        }
 
         for commands_type in ("server_commands", "client_commands"):
             commands = getattr(cls, commands_type, None)
@@ -60,9 +59,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     _server_commands_idx: Dict[str, int] = {}
     _client_commands_idx: Dict[str, int] = {}
     attridx: Dict[str, int]
-    attributes: Dict[int, Tuple[str, Callable]]
-    client_commands: Dict[int, Tuple[str, Tuple, bool]]
-    server_commands: Dict[int, Tuple[str, Tuple, bool]]
+    attributes: Dict[int, Tuple[str, Callable]] = {}
+    client_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
+    server_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
 
     def __init__(self, endpoint: EndpointType, is_server: bool = True):
         self._endpoint: EndpointType = endpoint
@@ -84,12 +83,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             for cluster_id_range, cluster in cls._registry_range.items():
                 if cluster_id_range[0] <= cluster_id <= cluster_id_range[1]:
                     c = cluster(endpoint, is_server)
-                    c.cluster_id = cluster_id
+                    c.cluster_id = t.ClusterId(cluster_id)
                     return c
 
         LOGGER.warning("Unknown cluster %s", cluster_id)
         c = cls(endpoint, is_server)
-        c.cluster_id = cluster_id
+        c.cluster_id = t.ClusterId(cluster_id)
         return c
 
     def deserialize(self, data):
