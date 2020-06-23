@@ -45,6 +45,16 @@ class LogicalType(t.enum8):
 
 
 class NodeDescriptor(t.Struct):
+    byte1: t.uint8_t
+    byte2: t.uint8_t
+    mac_capability_flags: t.uint8_t
+    manufacturer_code: t.uint16_t
+    maximum_buffer_size: t.uint8_t
+    maximum_incoming_transfer_size: t.uint16_t
+    server_mask: t.uint16_t
+    maximum_outgoing_transfer_size: t.uint16_t
+    descriptor_capability_field: t.uint8_t
+
     _fields = [
         ("byte1", t.uint8_t),
         ("byte2", t.uint8_t),

@@ -31,6 +31,8 @@ class Status(enum.IntEnum):
 class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """A device on the network"""
 
+    manufacturer_id_override = None
+
     def __init__(self, application, ieee, nwk):
         self._application = application
         self._ieee = ieee
@@ -296,6 +298,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def manufacturer(self, value):
         if isinstance(value, str):
             self._manufacturer = value
+
+    @property
+    def manufacturer_id(self) -> Optional[int]:
+        """Return manufacturer id."""
+        return self.manufacturer_id_override or self.node_desc.manufacturer_code
 
     @property
     def model(self):

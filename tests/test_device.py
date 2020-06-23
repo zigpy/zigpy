@@ -285,3 +285,19 @@ async def test_schedule_group_membership(dev, caplog):
         await asyncio.sleep(0)
         assert scan_mock.await_count == 1
         assert "Cancelling old group rescan" in caplog.text
+
+
+def test_device_manufacture_id_override(dev):
+    """Test manufacturer id override."""
+
+    assert dev.manufacturer_id is None
+    assert dev.manufacturer_id_override is None
+
+    dev.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4153, 82, 255, 0, 255, 0)
+    assert dev.manufacturer_id == 4153
+
+    dev.manufacturer_id_override = 2345
+    assert dev.manufacturer_id == 2345
+
+    dev.node_desc = zdo_t.NodeDescriptor()
+    assert dev.manufacturer_id == 2345
