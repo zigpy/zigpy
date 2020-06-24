@@ -161,7 +161,7 @@ class Thermostat(Cluster):
         Heating_Only = 0x02
         Heating_With_Reheat = 0x03
         Cooling_and_Heating = 0x04
-        Cooling_and_Heating_with_Reheat = 0x08
+        Cooling_and_Heating_with_Reheat = 0x05
 
     class SeqDayOfWeek(t.bitmap8):
         Sunday = 0x01
