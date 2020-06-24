@@ -18,8 +18,9 @@ class Registry(type):
 
         if hasattr(cls, "cluster_id"):
             cls.cluster_id = t.ClusterId(cls.cluster_id)
-        if hasattr(cls, "manufacturer_attributes"):
-            cls.attributes = {**cls.attributes, **cls.manufacturer_attributes}
+        manufacturer_attributes = getattr(cls, "manufacturer_attributes", None)
+        if manufacturer_attributes:
+            cls.attributes = {**cls.attributes, **manufacturer_attributes}
         cls.attridx: Dict[str, int] = {
             attr_name: attr_id for attr_id, (attr_name, _) in cls.attributes.items()
         }
