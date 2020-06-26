@@ -2,7 +2,7 @@ import asyncio
 import enum
 import functools
 import logging
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Set, Tuple, Union
 
 from zigpy import util
 import zigpy.types as t
@@ -39,6 +39,8 @@ class Registry(type):
             setattr(cls, f"_{commands_type}_idx", commands_idx)
 
         if getattr(cls, "_skip_registry", False):
+            if cls.__name__ != "CustomCluster":
+                cls._registry_custom_clusters.add(cls)
             return
 
         if hasattr(cls, "cluster_id"):
@@ -56,6 +58,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     """A cluster on an endpoint"""
 
     _registry: Dict = {}
+    _registry_custom_clusters: Set = set()
     _registry_range: Dict = {}
     _server_commands_idx: Dict[str, int] = {}
     _client_commands_idx: Dict[str, int] = {}
