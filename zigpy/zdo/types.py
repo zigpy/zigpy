@@ -67,19 +67,6 @@ class NodeDescriptor(t.Struct):
         ("descriptor_capability_field", t.uint8_t),
     ]
 
-    def __init__(self, *args, **kwargs):
-        if len(args) == 1 and isinstance(args[0], self.__class__):
-            # copy constructor
-            for field in self._fields:
-                setattr(self, field[0], getattr(args[0], field[0]))
-            self._valid = True
-        elif len(args) == len(self._fields):
-            for field, val in zip(self._fields, args):
-                setattr(self, field[0], field[1](val))
-        else:
-            for field in self._fields:
-                setattr(self, field[0], None)
-
     @property
     def is_valid(self):
         """Return True if all fields were initialized."""
