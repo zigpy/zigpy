@@ -45,6 +45,16 @@ class LogicalType(t.enum8):
 
 
 class NodeDescriptor(t.Struct):
+    byte1: t.uint8_t
+    byte2: t.uint8_t
+    mac_capability_flags: t.uint8_t
+    manufacturer_code: t.uint16_t
+    maximum_buffer_size: t.uint8_t
+    maximum_incoming_transfer_size: t.uint16_t
+    server_mask: t.uint16_t
+    maximum_outgoing_transfer_size: t.uint16_t
+    descriptor_capability_field: t.uint8_t
+
     _fields = [
         ("byte1", t.uint8_t),
         ("byte2", t.uint8_t),
@@ -56,19 +66,6 @@ class NodeDescriptor(t.Struct):
         ("maximum_outgoing_transfer_size", t.uint16_t),
         ("descriptor_capability_field", t.uint8_t),
     ]
-
-    def __init__(self, *args, **kwargs):
-        if len(args) == 1 and isinstance(args[0], self.__class__):
-            # copy constructor
-            for field in self._fields:
-                setattr(self, field[0], getattr(args[0], field[0]))
-            self._valid = True
-        elif len(args) == len(self._fields):
-            for field, val in zip(self._fields, args):
-                setattr(self, field[0], field[1](val))
-        else:
-            for field in self._fields:
-                setattr(self, field[0], None)
 
     @property
     def is_valid(self):

@@ -2,7 +2,7 @@ import asyncio
 import enum
 import functools
 import logging
-from typing import Any, Coroutine, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Set, Tuple, Union
 
 from zigpy import util
 import zigpy.types as t
@@ -18,22 +18,29 @@ class Registry(type):
 
         if hasattr(cls, "cluster_id"):
             cls.cluster_id = t.ClusterId(cls.cluster_id)
-        if hasattr(cls, "attributes"):
-            cls.attridx: Dict[str, int] = {}
-            for attrid, (attrname, datatype) in cls.attributes.items():
-                cls.attridx[attrname] = attrid
-        if hasattr(cls, "server_commands"):
-            cls._server_command_idx = {}
-            for command_id, details in cls.server_commands.items():
-                command_name, schema, is_reply = details
-                cls._server_command_idx[command_name] = command_id
-        if hasattr(cls, "client_commands"):
-            cls._client_command_idx = {}
-            for command_id, details in cls.client_commands.items():
-                command_name, schema, is_reply = details
-                cls._client_command_idx[command_name] = command_id
+        manufacturer_attributes = getattr(cls, "manufacturer_attributes", None)
+        if manufacturer_attributes:
+            cls.attributes = {**cls.attributes, **manufacturer_attributes}
+        cls.attridx: Dict[str, int] = {
+            attr_name: attr_id for attr_id, (attr_name, _) in cls.attributes.items()
+        }
+
+        for commands_type in ("server_commands", "client_commands"):
+            commands = getattr(cls, commands_type, None)
+            if not commands:
+                continue
+            commands_idx = {}
+            manufacturer_specific = getattr(cls, f"manufacturer_{commands_type}", {})
+            if manufacturer_specific:
+                commands = {**commands, **manufacturer_specific}
+                setattr(cls, commands_type, commands)
+            for command_id, (command_name, _, _) in commands.items():
+                commands_idx[command_name] = command_id
+            setattr(cls, f"_{commands_type}_idx", commands_idx)
 
         if getattr(cls, "_skip_registry", False):
+            if cls.__name__ != "CustomCluster":
+                cls._registry_custom_clusters.add(cls)
             return
 
         if hasattr(cls, "cluster_id"):
@@ -51,9 +58,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     """A cluster on an endpoint"""
 
     _registry: Dict = {}
+    _registry_custom_clusters: Set = set()
     _registry_range: Dict = {}
-    _server_command_idx: Dict[int, Tuple] = {}
-    _client_command_idx: Dict[int, Tuple] = {}
+    _server_commands_idx: Dict[str, int] = {}
+    _client_commands_idx: Dict[str, int] = {}
+    attridx: Dict[str, int]
+    attributes: Dict[int, Tuple[str, Callable]] = {}
+    client_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
+    server_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
 
     def __init__(self, endpoint: EndpointType, is_server: bool = True):
         self._endpoint: EndpointType = endpoint
@@ -65,19 +77,22 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             self._type: ClusterType = ClusterType.Client
 
     @classmethod
-    def from_id(cls, endpoint, cluster_id, is_server=True):
+    def from_id(
+        cls, endpoint: EndpointType, cluster_id: int, is_server: bool = True
+    ) -> ClusterType:
         if cluster_id in cls._registry:
-            return cls._registry[cluster_id](endpoint, is_server)
+            c = cls._registry[cluster_id](endpoint, is_server)
+            return c
         else:
             for cluster_id_range, cluster in cls._registry_range.items():
                 if cluster_id_range[0] <= cluster_id <= cluster_id_range[1]:
                     c = cluster(endpoint, is_server)
-                    c.cluster_id = cluster_id
+                    c.cluster_id = t.ClusterId(cluster_id)
                     return c
 
         LOGGER.warning("Unknown cluster %s", cluster_id)
         c = cls(endpoint, is_server)
-        c.cluster_id = cluster_id
+        c.cluster_id = t.ClusterId(cluster_id)
         return c
 
     def deserialize(self, data):
@@ -227,15 +242,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         return self._read_attributes(attributes, manufacturer=manufacturer)
 
     async def read_attributes(
-        self,
-        attributes,
-        allow_cache=False,
-        only_cache=False,
-        raw=False,
-        manufacturer=None,
+        self, attributes, allow_cache=False, only_cache=False, manufacturer=None,
     ):
-        if raw:
-            assert len(attributes) == 1
         success, failure = {}, {}
         attribute_ids = []
         orig_attributes = {}
@@ -258,8 +266,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             to_read = attribute_ids
 
         if not to_read or only_cache:
-            if raw:
-                return success[attributes[0]]
             return success, failure
 
         result = await self.read_attributes_raw(to_read, manufacturer=manufacturer)
@@ -288,9 +294,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                 else:
                     failure[orig_attribute] = record.status
 
-        if raw:
-            # KeyError is an appropriate exception here, I think.
-            return success[attributes[0]]
         return success, failure
 
     def read_attributes_rsp(self, attributes, manufacturer=None, *, tsn=None):
@@ -457,10 +460,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         self,
         command_id: Union[foundation.Command, int, t.uint8_t],
         *args,
+        manufacturer: Optional[Union[int, t.uint16_t]] = None,
         tsn: Optional[Union[int, t.uint8_t]] = None,
     ):
         schema = self.client_commands[command_id][1]
-        return self.reply(False, command_id, schema, *args, tsn=tsn)
+        return self.reply(
+            False, command_id, schema, *args, manufacturer=manufacturer, tsn=tsn
+        )
 
     @property
     def is_client(self) -> bool:
@@ -482,7 +488,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
     @property
     def commands(self):
-        return list(self._server_command_idx.keys())
+        return list(self._server_commands_idx.keys())
 
     def _update_attribute(self, attrid, value):
         self._attr_cache[attrid] = value
@@ -498,12 +504,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         return LOGGER.log(lvl, msg, *args, **kwargs)
 
     def __getattr__(self, name):
-        if name in self._client_command_idx:
+        if name in self._client_commands_idx:
             return functools.partial(
-                self.client_command, self._client_command_idx[name]
+                self.client_command, self._client_commands_idx[name]
             )
-        elif name in self._server_command_idx:
-            return functools.partial(self.command, self._server_command_idx[name])
+        elif name in self._server_commands_idx:
+            return functools.partial(self.command, self._server_commands_idx[name])
         else:
             raise AttributeError("No such command name: %s" % (name,))
 
