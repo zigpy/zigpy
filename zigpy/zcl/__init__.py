@@ -27,10 +27,8 @@ class Registry(type):
 
         for commands_type in ("server_commands", "client_commands"):
             commands = getattr(cls, commands_type, None)
-            if not commands:
-                continue
-            commands_idx = {}
             manufacturer_specific = getattr(cls, f"manufacturer_{commands_type}", {})
+            commands_idx = {}
             if manufacturer_specific:
                 commands = {**commands, **manufacturer_specific}
                 setattr(cls, commands_type, commands)
