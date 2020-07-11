@@ -110,10 +110,11 @@ class Date(Struct):
         if self.years_since_1900 is None:
             return None
 
-        return self.years_since_1900 + 1900
+        return 1900 + self.years_since_1900
 
     @year.setter
     def year(self, years):
+        assert 1900 <= years <= 2155
         self.years_since_1900 = years - 1900
 
 
