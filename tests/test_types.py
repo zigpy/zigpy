@@ -220,6 +220,10 @@ def test_struct_init():
     ts2 = TestStruct(1, b=0x0100, c="TestStruct")
     assert ts.serialize() == ts2.serialize()
 
+    # Serialization is using the type annotations, not using the attributes themselves
+    ts2.b = 0x0100
+    assert ts.serialize() == ts2.serialize()
+
 
 def test_struct_optional_init():
     class TestStruct(t.Struct):
