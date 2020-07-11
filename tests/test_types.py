@@ -250,6 +250,11 @@ def test_struct_init_ambiguous():
     with pytest.raises(ValueError):
         TestStruct(1, a=1)
 
+    TestStruct(1, b=2)
+
+    assert TestStruct(1, 2, "3").serialize() == TestStruct(1, b=2, c="3").serialize()
+    assert TestStruct(1, 2, "3").serialize() == TestStruct(a=1, b=2, c="3").serialize()
+
 
 def test_hex_repr():
     class NwkAsHex(t.HexRepr, t.uint16_t):
