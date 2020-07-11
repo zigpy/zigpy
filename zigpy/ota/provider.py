@@ -279,10 +279,11 @@ class FileImage:
         try:
             with open(file_name, mode="rb") as file:
                 data = file.read(512)
-                offset = data.index(cls.OTA_HEADER)
+                offset = data.index(OTAImageHeader.OTA_HEADER)
                 if offset >= 0:
-                    img = cls.deserialize(data[offset:])[0]
-                    img.file_name = file_name
+                    header, _ = OTAImageHeader.deserialize(data[offset:])
+                    img = cls(file_name=file_name, header=header)
+
                     LOGGER.debug(
                         "%s: %s, version: %s, hw_ver: (%s, %s), OTA string: %s",
                         img.key,
@@ -309,7 +310,7 @@ class FileImage:
         try:
             with open(self.file_name, mode="rb") as file:
                 data = file.read()
-                offset = data.index(self.OTA_HEADER)
+                offset = data.index(OTAImageHeader.OTA_HEADER)
                 if offset >= 0:
                     img = OTAImage.deserialize(data[offset:])[0]
                     return img
