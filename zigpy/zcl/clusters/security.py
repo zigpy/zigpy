@@ -152,7 +152,8 @@ class IasAce(Cluster):
     class ZoneStatusRsp(t.Struct):
         """Zone status response."""
 
-        _fields = [("zone_id", t.uint8_t), ("zone_status", IasZone.ZoneStatus)]
+        zone_id: t.uint8_t
+        zone_status: IasZone.ZoneStatus
 
     cluster_id = 0x0501
     name = "IAS Ancillary Control Equipment"

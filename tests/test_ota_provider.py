@@ -53,10 +53,10 @@ def file_prov():
 def file_image_with_version(file_image_name):
     def img(version=100, image_type=IMAGE_TYPE):
         img = ota_p.FileImage()
-        img.file_version = version
         img.file_name = file_image_name()
-        img.manufacturer_id = MANUFACTURER_ID
-        img.image_type = image_type
+        img.header.file_version = version
+        img.header.manufacturer_id = MANUFACTURER_ID
+        img.header.image_type = image_type
         return img
 
     return img
@@ -322,9 +322,9 @@ async def test_ikea_fetch_image(mock_get, ikea_image_with_version):
 
 def test_file_image_key(key):
     fimg = ota_p.FileImage()
-    fimg.manufacturer_id = MANUFACTURER_ID
-    fimg.image_type = IMAGE_TYPE
-    fimg.file_version = mock.sentinel.version
+    fimg.header.manufacturer_id = MANUFACTURER_ID
+    fimg.header.image_type = IMAGE_TYPE
+    fimg.header.file_version = mock.sentinel.version
 
     assert fimg.key == key
     assert fimg.version == mock.sentinel.version

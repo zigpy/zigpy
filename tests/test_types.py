@@ -182,7 +182,8 @@ def test_list():
 
 def test_struct():
     class TestStruct(t.Struct):
-        _fields = [("a", t.uint8_t), ("b", t.uint8_t)]
+        a: t.uint8_t
+        b: t.uint8_t
 
     ts = TestStruct()
     assert ts.a is None
@@ -203,7 +204,9 @@ def test_struct():
 
 def test_struct_init():
     class TestStruct(t.Struct):
-        _fields = [("a", t.uint8_t), ("b", t.uint16_t), ("c", t.CharacterString)]
+        a: t.uint8_t
+        b: t.uint16_t
+        c: t.CharacterString
 
     ts = TestStruct(1, 0x0100, "TestStruct")
     assert repr(ts)
@@ -214,10 +217,15 @@ def test_struct_init():
     assert ts.b == 0x100
     assert ts.c == "TestStruct"
 
+    ts2 = TestStruct(1, b=0x0100, c="TestStruct")
+    assert ts.serialize() == ts2.serialize()
+
 
 def test_struct_optional_init():
     class TestStruct(t.Struct):
-        _fields = [("a", t.uint8_t), ("b", t.uint16_t), ("c", t.CharacterString)]
+        a: t.uint8_t
+        b: t.uint16_t
+        c: t.CharacterString
 
     ts = TestStruct(1, 0x0100, "TestStruct")
     ts_copy = TestStruct(ts)
@@ -267,7 +275,7 @@ def test_date():
 
     r, rest = t.Date.deserialize(data + extra)
     assert rest == extra
-    assert r._year == 70
+    assert r.years_since_1900 == 70
     assert r.year == 1970
     assert r.month == 1
     assert r.day == 1

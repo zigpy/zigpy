@@ -259,18 +259,19 @@ class Ledvance(Basic):
 
 
 @attr.s
-class FileImage(OTAImageHeader):
+class FileImage:
     REFRESH = datetime.timedelta(hours=24)
 
     file_name = attr.ib(default=None)
+    header = attr.ib(factory=OTAImageHeader)
 
     @property
     def key(self) -> ImageKey:
-        return ImageKey(self.manufacturer_id, self.image_type)
+        return ImageKey(self.header.manufacturer_id, self.header.image_type)
 
     @property
     def version(self) -> int:
-        return self.file_version
+        return self.header.file_version
 
     @classmethod
     def scan_image(cls, file_name: str):
@@ -278,20 +279,25 @@ class FileImage(OTAImageHeader):
         try:
             with open(file_name, mode="rb") as file:
                 data = file.read(512)
-                offset = data.index(cls.OTA_HEADER)
-                if offset >= 0:
-                    img = cls.deserialize(data[offset:])[0]
-                    img.file_name = file_name
-                    LOGGER.debug(
-                        "%s: %s, version: %s, hw_ver: (%s, %s), OTA string: %s",
-                        img.key,
-                        file_name,
-                        img.file_version,
-                        img.minimum_hardware_version,
-                        img.maximum_hardware_version,
-                        img.header_string,
-                    )
-                    return img
+
+            offset = data.index(OTAImageHeader.OTA_HEADER)
+
+            if offset < 0:
+                return None
+
+            header, _ = OTAImageHeader.deserialize(data[offset:])
+            img = FileImage(file_name=file_name, header=header)
+
+            LOGGER.debug(
+                "%s: %s, version: %s, hw_ver: (%s, %s), OTA string: %s",
+                img.key,
+                img.file_name,
+                img.version,
+                img.header.minimum_hardware_version,
+                img.header.maximum_hardware_version,
+                img.header.header_string,
+            )
+            return img
         except (OSError, ValueError):
             LOGGER.debug(
                 "File '%s' doesn't appear to be a OTA image", file_name, exc_info=True
@@ -308,10 +314,13 @@ class FileImage(OTAImageHeader):
         try:
             with open(self.file_name, mode="rb") as file:
                 data = file.read()
-                offset = data.index(self.OTA_HEADER)
-                if offset >= 0:
-                    img = OTAImage.deserialize(data[offset:])[0]
-                    return img
+
+            offset = data.index(OTAImageHeader.OTA_HEADER)
+            if offset < 0:
+                return None
+
+            img = OTAImage.deserialize(data[offset:])[0]
+            return img
         except (OSError, ValueError):
             LOGGER.debug("Couldn't load '%s' OTA image", self.file_name, exc_info=True)
         return None

@@ -38,29 +38,26 @@ NET_JOIN = (
 
 
 class DeviceInfoRecord(t.Struct):
-    _fields = [
-        ("ieee", t.EUI64),
-        ("endpoint_id", t.uint8_t),
-        ("profile_id", t.uint16_t),
-        ("device_id", t.uint16_t),
-        ("version", t.uint8_t),
-        ("group_id_count", t.uint8_t),
-        ("sort", t.uint8_t),
-    ]
+    ieee: t.EUI64
+    endpoint_id: t.uint8_t
+    profile_id: t.uint16_t
+    device_id: t.uint16_t
+    version: t.uint8_t
+    group_id_count: t.uint8_t
+    sort: t.uint8_t
 
 
 class EndpointInfoRecord(t.Struct):
-    _fields = [
-        ("nwk", t.NWK),
-        ("endpoint_id", t.uint8_t),
-        ("profile_id", t.uint16_t),
-        ("device_id", t.uint16_t),
-        ("version", t.uint8_t),
-    ]
+    nwk: t.NWK
+    endpoint_id: t.uint8_t
+    profile_id: t.uint16_t
+    device_id: t.uint16_t
+    version: t.uint8_t
 
 
 class GroupInfoRecord(t.Struct):
-    _fields = [("group_id", t.Group), ("group_type", t.uint8_t)]
+    group_id: t.Group
+    group_type: t.uint8_t
 
 
 class LightLink(Cluster):

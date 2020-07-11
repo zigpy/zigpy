@@ -100,24 +100,21 @@ class ClusterId(basic.uint16_t):
 
 
 class Date(Struct):
-    _fields = [
-        ("_year", basic.uint8_t),
-        ("month", basic.uint8_t),
-        ("day", basic.uint8_t),
-        ("day_of_week", basic.uint8_t),
-    ]
+    years_since_1900: basic.uint8_t
+    month: basic.uint8_t
+    day: basic.uint8_t
+    day_of_week: basic.uint8_t
 
     @property
     def year(self):
-        """Return year."""
-        if self._year is None:
-            return self._year
-        return 1900 + self._year
+        if self.years_since_1900 is None:
+            return None
+
+        return self.years_since_1900 + 1900
 
     @year.setter
-    def year(self, value):
-        assert 1900 <= value <= 2155
-        self._year = basic.uint8_t(value - 1900)
+    def year(self, years):
+        self.years_since_1900 = years - 1900
 
 
 class NWK(HexRepr, basic.uint16_t):
@@ -146,12 +143,10 @@ class NoData:
 
 
 class TimeOfDay(Struct):
-    _fields = [
-        ("hours", basic.uint8_t),
-        ("minutes", basic.uint8_t),
-        ("seconds", basic.uint8_t),
-        ("hundredths", basic.uint8_t),
-    ]
+    hours: basic.uint8_t
+    minutes: basic.uint8_t
+    seconds: basic.uint8_t
+    hundredths: basic.uint8_t
 
 
 class _Time(basic.uint32_t):

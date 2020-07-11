@@ -5,7 +5,8 @@ from zigpy.zcl import Cluster
 
 
 class DateTime(t.Struct):
-    _fields = [("date", t.uint32_t), ("time", t.uint32_t)]
+    date: t.uint32_t
+    time: t.uint32_t
 
 
 class GenericTunnel(Cluster):

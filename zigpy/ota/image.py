@@ -42,18 +42,16 @@ class OTAImageHeader(t.Struct):
     MAGIC_VALUE = 0x0BEEF11E
     OTA_HEADER = MAGIC_VALUE.to_bytes(4, "little")
 
-    _fields = [
-        ("upgrade_file_id", t.uint32_t),
-        ("header_version", t.uint16_t),
-        ("header_length", t.uint16_t),
-        ("field_control", t.uint16_t),
-        ("manufacturer_id", t.uint16_t),
-        ("image_type", t.uint16_t),
-        ("file_version", t.uint32_t),
-        ("stack_version", t.uint16_t),
-        ("header_string", HeaderString),
-        ("image_size", t.uint32_t),
-    ]
+    upgrade_file_id: t.uint32_t
+    header_version: t.uint16_t
+    header_length: t.uint16_t
+    field_control: t.uint16_t
+    manufacturer_id: t.uint16_t
+    image_type: t.uint16_t
+    file_version: t.uint32_t
+    stack_version: t.uint16_t
+    header_string: HeaderString
+    image_size: t.uint32_t
 
     @property
     def security_credential_version_present(self) -> bool:
