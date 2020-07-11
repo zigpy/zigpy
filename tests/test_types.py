@@ -238,6 +238,19 @@ def test_struct_optional_init():
     assert ts.serialize() == ts_copy.serialize() == ts_optional.serialize()
 
 
+def test_struct_init_ambiguous():
+    class TestStruct(t.Struct):
+        a: t.uint8_t
+        b: t.uint16_t
+        c: t.CharacterString
+
+    TestStruct(1)
+    TestStruct(a=1)
+
+    with pytest.raises(ValueError):
+        TestStruct(1, a=1)
+
+
 def test_hex_repr():
     class NwkAsHex(t.HexRepr, t.uint16_t):
         _hex_len = 4
