@@ -134,26 +134,19 @@ class Struct:
         for field in self.fields():
             value = getattr(self, field.name)
 
-            if strict and not field.optional and value is None:
+            # Ignore assigned fields that should be skipped
+            if field.skip_if is not None and field.skip_if(self):
+                continue
+
+            # If the field should not be skipped but it has no value, this is bad
+            if value is None:
+                if field.optional or not strict:
+                    continue
+
                 raise ValueError(f"Value for field {field.name} is required")
 
-            # Ignore assigned fields that should be skipped
-            if field.skip_if is not None:
-                should_skip = field.skip_if(self)
-                value = getattr(self, field.name)
-
-                if should_skip and value is not None:
-                    # This case is fine, we just ignore the field
-                    continue
-                elif not should_skip and value is None:
-                    if strict:
-                        raise ValueError(f"Value for field {field.name} is required")
-                    else:
-                        continue
-
-            if value is not None:
-                assigned_fields.append((field, value))
-                setattr(assigned_fields, field.name, (field, value))
+            assigned_fields.append((field, value))
+            setattr(assigned_fields, field.name, (field, value))
 
         return assigned_fields
 

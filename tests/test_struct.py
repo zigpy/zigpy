@@ -80,6 +80,17 @@ def test_struct_subclass_creation():
         class TestStruct8(t.Struct):
             bad: typing.Union[t.uint8_t, t.uint16_t]
 
+    # It's possible for something like this to happen, I guess
+    NWK = t.uint8_t
+    GRP_ID = t.uint8_t
+
+    class TestStruct9(t.Struct):
+        weird1: typing.Union[NWK, GRP_ID]
+        weird2: typing.Union[None, t.uint8_t]
+
+    assert not TestStruct9.fields().weird1.optional
+    assert TestStruct9.fields().weird2.optional
+
 
 def test_struct_construction():
     class TestStruct(t.Struct):
@@ -269,6 +280,11 @@ def test_struct_field_invalid_dependencies():
 
     with pytest.raises(ValueError):
         ts2.serialize()
+
+    # Value is not optional but doesn't need to be passed due to dependencies
+    ts3 = TestStruct(status=0x01)
+    assert ts3.serialize() == b"\x01"
+    assert len(ts3.assigned_fields()) == 1
 
 
 def test_struct_optional_dependencies():
