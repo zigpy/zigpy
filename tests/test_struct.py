@@ -80,17 +80,6 @@ def test_struct_subclass_creation():
         class TestStruct8(t.Struct):
             bad: typing.Union[t.uint8_t, t.uint16_t]
 
-    # It's possible for something like this to happen, I guess
-    NWK = t.uint8_t
-    GRP_ID = t.uint8_t
-
-    class TestStruct9(t.Struct):
-        weird1: typing.Union[NWK, GRP_ID]
-        weird2: typing.Union[None, t.uint8_t]
-
-    assert not TestStruct9.fields().weird1.optional
-    assert TestStruct9.fields().weird2.optional
-
 
 def test_struct_construction():
     class TestStruct(t.Struct):

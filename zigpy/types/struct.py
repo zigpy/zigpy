@@ -202,10 +202,8 @@ class StructField:
         if getattr(self.type, "__origin__", None) is not typing.Union:
             return False
 
-        if NoneType not in self.type.__args__:
-            return False
-
-        return True
+        # I can't think of a case where this is ever False but it's best to be explicit
+        return NoneType in self.type.__args__
 
     @property
     def concrete_type(self):
