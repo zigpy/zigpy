@@ -32,62 +32,48 @@ class Struct:
         fields = real_cls.fields()
 
         # We dynamically create our subclass's `__new__` method
-        def __new__(cls, other_struct=None, **kwargs):
+        def __new__(cls, *args, **kwargs):
             # Like a copy constructor
-            if other_struct is not None:
-                if not isinstance(other_struct, real_cls):
-                    raise TypeError(f"Cannot create a {real_cls} from {other_struct}")
-
+            if len(args) == 1 and isinstance(args[0], real_cls):
                 if kwargs:
                     raise ValueError(
                         f"Cannot use copy constructor with kwargs: " f"{kwargs!r}"
                     )
 
-                kwargs = other_struct.as_dict()
+                kwargs = args[0].as_dict()
+                args = ()
 
-            # Pretend our signature is `__new__(cls, *, p1: t1, p2: t2, ...)`
+            # Pretend our signature is `__new__(cls, p1: t1, p2: t2, ...)`
             signature = inspect.Signature(
                 parameters=[
                     inspect.Parameter(
                         name=f.name,
-                        kind=inspect.Parameter.KEYWORD_ONLY,
-                        default=None
-                        if f.optional or f.skip_if
-                        else inspect.Parameter.empty,
+                        kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                        default=None,
                         annotation=f.type,
                     )
                     for f in real_cls.fields()
                 ]
             )
 
-            bound = signature.bind(**kwargs)
+            bound = signature.bind(*args, **kwargs)
             bound.apply_defaults()
 
             instance = super().__new__(real_cls)
 
             # Set and type-coerce the provided attributes
             for name, value in bound.arguments.items():
+                field = getattr(fields, name)
+
                 if value is not None:
-                    value = getattr(fields, name).concrete_type(value)
+                    try:
+                        value = field.concrete_type(value)
+                    except Exception as e:
+                        raise ValueError(
+                            f"Failed to coerce {name}={value} to {field.concrete_type}"
+                        ) from e
 
                 setattr(instance, name, value)
-
-            # Make sure our dependencies make sense
-            for field in real_cls.fields():
-                if field.skip_if is None:
-                    continue
-
-                should_skip = field.skip_if(instance)
-                value = getattr(instance, field.name)
-
-                if should_skip and value is not None:
-                    raise ValueError(
-                        f"Field {field.name}'s dependencies are not satisfied so it cannot have a value. Got: {value!r}"
-                    )
-                elif not should_skip and value is None:
-                    raise ValueError(
-                        f"Field {field.name}'s dependencies are satisfied so it must have a value"
-                    )
 
             return instance
 
@@ -145,6 +131,16 @@ class Struct:
     def assigned_fields(self):
         for field in self.fields():
             value = getattr(self, field.name)
+
+            # Ignore assigned fields that should be skipped
+            if field.skip_if is not None:
+                should_skip = field.skip_if(self)
+                value = getattr(self, field.name)
+
+                if should_skip and value is not None:
+                    continue
+                elif not should_skip and value is None:
+                    continue
 
             if value is not None:
                 yield field, value
