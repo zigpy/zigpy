@@ -101,6 +101,22 @@ def test_struct_construction():
     assert s1.replace(b=2).serialize() == s2.replace(b=2).serialize() == b"\x01\x02"
 
 
+def test_struct_attribute_assignment():
+    class TestStruct(t.Struct):
+        a: t.uint8_t
+        b: typing.Optional[t.uint8_t]
+
+    s1 = TestStruct(a=1)
+    s1.a = -1
+
+    with pytest.raises(OverflowError):
+        s1.serialize()
+
+    s1.a = 1
+
+    assert s1.serialize() == TestStruct(a=1).serialize()
+
+
 def test_nested_structs():
     class InnerStruct(t.Struct):
         b: t.uint8_t
