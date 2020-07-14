@@ -128,9 +128,14 @@ class Struct:
 
         return fields
 
-    def assigned_fields(self):
+    def assigned_fields(self, *, strict=False):
+        assigned_fields = ListSubclass()
+
         for field in self.fields():
             value = getattr(self, field.name)
+
+            if strict and not field.optional and value is None:
+                raise ValueError(f"Value for field {field.name} is required")
 
             # Ignore assigned fields that should be skipped
             if field.skip_if is not None:
@@ -138,19 +143,26 @@ class Struct:
                 value = getattr(self, field.name)
 
                 if should_skip and value is not None:
+                    # This case is fine, we just ignore the field
                     continue
                 elif not should_skip and value is None:
-                    continue
+                    if strict:
+                        raise ValueError(f"Value for field {field.name} is required")
+                    else:
+                        continue
 
             if value is not None:
-                yield field, value
+                assigned_fields.append((field, value))
+                setattr(assigned_fields, field.name, (field, value))
+
+        return assigned_fields
 
     def as_dict(self):
         return {f.name: v for f, v in self.assigned_fields()}
 
     def serialize(self):
         return b"".join(
-            f.concrete_type(v).serialize() for f, v in self.assigned_fields()
+            f.concrete_type(v).serialize() for f, v in self.assigned_fields(strict=True)
         )
 
     @classmethod
@@ -174,7 +186,7 @@ class Struct:
 
     def __repr__(self):
         kwargs = ", ".join([f"{k}={v!r}" for k, v in self.as_dict().items()])
-        return type(self).__name__ + f"({kwargs})"
+        return f"{type(self).__name__}({kwargs})"
 
     def __eq__(self, other):
         return self.as_dict() == other.as_dict()

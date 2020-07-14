@@ -100,6 +100,16 @@ def test_struct_construction():
     assert s1.replace(b=2) == s2.replace(b=2)
     assert s1.replace(b=2).serialize() == s2.replace(b=2).serialize() == b"\x01\x02"
 
+    assert TestStruct(s1) == s1
+
+    # You cannot use the copy constructor with other keyword arguments
+    with pytest.raises(ValueError):
+        TestStruct(s1, b=2)
+
+    # Types are coerced on construction so you cannot pass bad values
+    with pytest.raises(ValueError):
+        TestStruct(a=object())
+
 
 def test_struct_attribute_assignment():
     class TestStruct(t.Struct):
@@ -177,6 +187,15 @@ def test_struct_init():
     assert ts4.serialize() != ts2.serialize()
 
 
+def test_struct_string_is_none():
+    class TestStruct(t.Struct):
+        a: t.CharacterString
+
+    # str(None) == "None", which is bad
+    with pytest.raises(ValueError):
+        TestStruct(a=None).serialize()
+
+
 def test_struct_optional_init():
     class TestStruct(t.Struct):
         a: t.uint8_t
@@ -223,6 +242,33 @@ def test_struct_field_dependencies():
     )
     assert not remaining
     assert ts2 == TestStruct(foo=1, status=Status.FAILURE, bar=None, baz1=2, baz2=3)
+
+    # If a struct is created and invalid fields are assigned, they will not show up
+    ts3 = TestStruct()
+    ts3.foo = 1
+    ts3.status = Status.FAILURE
+    ts3.bar = 2
+    ts3.baz1 = 3
+
+    assert ts3 == TestStruct(foo=1, status=Status.FAILURE, baz1=3)
+
+
+def test_struct_field_invalid_dependencies():
+    class TestStruct(t.Struct):
+        status: t.uint8_t
+        value: t.uint8_t = t.StructField(skip_if=lambda s: s.status != 0x00)
+
+    # Value will be ignored during serialization even though it has been assigned
+    ts1 = TestStruct(status=0x01, value=0x02)
+    assert ts1.serialize() == b"\x01"
+    assert len(ts1.assigned_fields()) == 1
+
+    # Value wasn't provided but it is required
+    ts2 = TestStruct(status=0x00, value=None)
+    assert len(ts1.assigned_fields()) == 1
+
+    with pytest.raises(ValueError):
+        ts2.serialize()
 
 
 def test_struct_optional_dependencies():
