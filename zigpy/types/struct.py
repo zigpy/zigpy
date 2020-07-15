@@ -21,14 +21,17 @@ class Struct:
 
         return type(self)(**d)
 
+    @classmethod
+    def real_cls(cls):
+        # The "Optional" subclass is dynamically created and breaks types.
+        # We have to use a little introspection to find our real class.
+        return next(c for c in cls.__mro__ if c.__name__ != "Optional")
+
     def __init_subclass__(cls):
         super().__init_subclass__()
 
-        # The "Optional" subclass is dynamically created and breaks types.
-        # We have to use a little introspection to find our real class.
-        real_cls = next(c for c in cls.__mro__ if c.__name__ != "Optional")
-
         # We generate fields out here to fail early as well as speed things up
+        real_cls = cls.real_cls()
         fields = real_cls.fields()
 
         # We dynamically create our subclass's `__new__` method
@@ -84,8 +87,8 @@ class Struct:
         fields = ListSubclass()
         seen_optional = False
 
-        annotations = getattr(cls, "__annotations__", {})
-        variables = vars(cls)
+        annotations = getattr(cls.real_cls(), "__annotations__", {})
+        variables = vars(cls.real_cls())
 
         # `set(annotations) | set(variables)` doesn't preserve order, which we need
         for name in list(annotations) + [v for v in variables if v not in annotations]:
@@ -182,6 +185,9 @@ class Struct:
         return f"{type(self).__name__}({kwargs})"
 
     def __eq__(self, other):
+        if not isinstance(self, type(other)) and not isinstance(other, type(self)):
+            return False
+
         return self.as_dict() == other.as_dict()
 
 

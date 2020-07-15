@@ -368,3 +368,30 @@ def test_struct_optional_dependencies():
     )
     assert remaining == b"\xff"
     assert ts6 == TestStruct(foo=0, status1=StrictStatus.SUCCESS, value1=1)
+
+
+def test_struct_equality():
+    class TestStruct1(t.Struct):
+        foo: t.uint8_t
+
+    class TestStruct2(t.Struct):
+        foo: t.uint8_t
+
+    assert TestStruct1() != TestStruct2()
+    assert TestStruct1(foo=1) != TestStruct2(foo=1)
+
+    assert TestStruct1() == TestStruct1()
+    assert TestStruct1(foo=1) == TestStruct1(foo=1)
+
+
+def test_optional_struct_special_case():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+
+    OptionalTestStruct = t.Optional(TestStruct)
+
+    assert OptionalTestStruct.deserialize(b"") == (None, b"")
+    assert OptionalTestStruct.deserialize(b"\x00") == (
+        OptionalTestStruct(foo=0x00),
+        b"",
+    )
