@@ -511,6 +511,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         else:
             raise AttributeError("No such command name: %s" % (name,))
 
+    def get(self, key: Union[int, str], default: Optional[Any] = None) -> Any:
+        """Get cached attribute."""
+        if isinstance(key, int):
+            return self._attr_cache.get(key, default)
+        elif isinstance(key, str):
+            return self._attr_cache.get(self.attridx[key], default)
+        raise ValueError("attr_name or attr_id are accepted only")
+
     def __getitem__(self, key: Union[int, str]) -> Any:
         """Return cached value of the attr."""
         if isinstance(key, int):
