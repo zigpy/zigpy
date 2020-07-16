@@ -327,8 +327,17 @@ async def test_item_access_attributes(cluster):
 
     assert cluster["model"] == mock.sentinel.model
     assert cluster[5] == mock.sentinel.model
+    assert cluster.get("model") == mock.sentinel.model
+    assert cluster.get(5) == mock.sentinel.model
+    assert cluster.get("model", mock.sentinel.default) == mock.sentinel.model
+    assert cluster.get(5, mock.sentinel.default) == mock.sentinel.model
     with pytest.raises(KeyError):
         cluster[4]
+    assert cluster.get(4) is None
+    assert cluster.get("manufacturer") is None
+    assert cluster.get(4, mock.sentinel.default) is mock.sentinel.default
+    assert cluster.get("manufacturer", mock.sentinel.default) is mock.sentinel.default
+
     with pytest.raises(KeyError):
         cluster["manufacturer"]
 
@@ -339,6 +348,10 @@ async def test_item_access_attributes(cluster):
     with pytest.raises(ValueError):
         # wrong key type
         cluster[None]
+
+    with pytest.raises(ValueError):
+        # wrong key type
+        cluster.get(None)
 
 
 async def test_item_set_attributes(cluster):
