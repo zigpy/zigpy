@@ -331,7 +331,14 @@ class PersistingListener:
                     if cluster in ep.in_clusters:
                         clus = ep.in_clusters[cluster]
                         clus._attr_cache[attrid] = value
-                        LOGGER.debug("Attribute id: %s value: %s", attrid, value)
+                        LOGGER.debug(
+                            "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
+                            dev.nwk,
+                            endpoint_id,
+                            cluster,
+                            attrid,
+                            value,
+                        )
                         if cluster == Basic.cluster_id and attrid == 4:
                             if isinstance(value, bytes):
                                 value = value.split(b"\x00")[0]
