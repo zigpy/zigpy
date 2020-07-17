@@ -384,6 +384,54 @@ def test_struct_equality():
     assert TestStruct1(foo=1) == TestStruct1(foo=1)
 
 
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"\x00",
+        b"\x00\x00",
+        b"\x01",
+        b"\x01\x00",
+        b"\x01\x02\x03",
+        b"",
+        b"\x00\x00\x00\x00",
+    ],
+)
+def test_struct_subclass_extension(data):
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+
+    class TestStructSubclass(TestStruct):
+        bar: t.uint8_t = t.StructField(requires=lambda s: s.foo == 0x01)
+
+    class TestCombinedStruct(t.Struct):
+        foo: t.uint8_t
+        bar: t.uint8_t = t.StructField(requires=lambda s: s.foo == 0x01)
+
+    assert len(TestStructSubclass.fields()) == 2
+    assert len(TestCombinedStruct.fields()) == 2
+
+    error1 = None
+    error2 = None
+
+    try:
+        ts1, remaining1 = TestStructSubclass.deserialize(data)
+    except Exception as e:
+        error1 = e
+
+    try:
+        ts2, remaining2 = TestCombinedStruct.deserialize(data)
+    except Exception as e:
+        error2 = e
+
+    assert (error1 and error2) or (not error1 and not error2)
+
+    if error1 or error2:
+        assert repr(error1) == repr(error2)
+    else:
+        assert ts1.as_dict() == ts2.as_dict()
+        assert remaining1 == remaining2
+
+
 def test_optional_struct_special_case():
     class TestStruct(t.Struct):
         foo: t.uint8_t
