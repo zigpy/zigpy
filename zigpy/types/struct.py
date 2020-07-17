@@ -15,12 +15,6 @@ class DotDict(dict):
 
 
 class Struct:
-    def replace(self, **kwargs):
-        d = self.as_dict().copy()
-        d.update(kwargs)
-
-        return type(self)(**d)
-
     @classmethod
     def real_cls(cls):
         # The "Optional" subclass is dynamically created and breaks types.
@@ -30,7 +24,14 @@ class Struct:
     def __init_subclass__(cls):
         super().__init_subclass__()
 
-        # We generate fields out here to fail early as well as speed things up
+        # Explicitly check for old-style structs and fail very early
+        if hasattr(cls, "_fields"):
+            raise TypeError(
+                "Struct subclasses do not use `_fields` any more."
+                " Use class attributes with type annotations."
+            )
+
+        # We generate fields up here to fail early (and cache it)
         real_cls = cls.real_cls()
         fields = real_cls.fields()
 
@@ -64,7 +65,7 @@ class Struct:
 
             instance = super().__new__(real_cls)
 
-            # Set and type-coerce the provided attributes
+            # Set and convert the attributes to their respective types
             for name, value in bound.arguments.items():
                 field = getattr(fields, name)
 
@@ -73,13 +74,15 @@ class Struct:
                         value = field.concrete_type(value)
                     except Exception as e:
                         raise ValueError(
-                            f"Failed to coerce {name}={value} to {field.concrete_type}"
+                            f"Failed to convert {name}={value!r} from type"
+                            f" {type(value)} to {field.concrete_type}"
                         ) from e
 
                 setattr(instance, name, value)
 
             return instance
 
+        # Finally, attach the above __new__ classmethod to our subclass
         cls.__new__ = __new__
 
     @classmethod
@@ -96,7 +99,7 @@ class Struct:
             if name.startswith("_") or name.upper() == name:
                 continue
 
-            field = getattr(cls, name, None)
+            field = getattr(cls, name, StructField())
 
             # Ignore methods and properties
             if callable(field) or isinstance(field, property):
@@ -109,14 +112,18 @@ class Struct:
 
             annotation = annotations[name]
 
-            if field is None:
-                field = StructField(name=name, type=annotation)
-            elif isinstance(field, StructField):
-                field = field.replace(name=name, type=annotation)
-            else:
+            if not isinstance(field, StructField):
                 raise TypeError(
                     f"Field {name!r} must be a StructField or undefined, not {field!r}"
                 )
+
+            if field.type is not None and field.type != annotation:
+                raise TypeError(
+                    f"Field {name!r} type annotation conflicts with provided type:"
+                    f" {annotation} != {field.type}"
+                )
+
+            field = field.replace(name=name, type=annotation)
 
             if field.optional:
                 seen_optional = True
@@ -180,15 +187,21 @@ class Struct:
 
         return cls(**kwargs), data
 
-    def __repr__(self):
-        kwargs = ", ".join([f"{k}={v!r}" for k, v in self.as_dict().items()])
-        return f"{type(self).__name__}({kwargs})"
+    def replace(self, **kwargs):
+        d = self.as_dict().copy()
+        d.update(kwargs)
+
+        return type(self)(**d)
 
     def __eq__(self, other):
         if not isinstance(self, type(other)) and not isinstance(other, type(self)):
             return False
 
         return self.as_dict() == other.as_dict()
+
+    def __repr__(self):
+        kwargs = ", ".join([f"{k}={v!r}" for k, v in self.as_dict().items()])
+        return f"{type(self).__name__}({kwargs})"
 
 
 @dataclasses.dataclass(frozen=True)
