@@ -137,11 +137,11 @@ class Struct:
         for field in self.fields():
             value = getattr(self, field.name)
 
-            # Ignore assigned fields that should be skipped
-            if field.skip_if is not None and field.skip_if(self):
+            # Ignore fields that aren't required
+            if field.requires is not None and not field.requires(self):
                 continue
 
-            # If the field should not be skipped but it has no value, this is bad
+            # Missing non-optional required fields cause an error if strict
             if value is None:
                 if field.optional or not strict:
                     continue
@@ -166,8 +166,8 @@ class Struct:
         kwargs = DotDict()
 
         for field in cls.fields():
-            # `kwargs` behaves like our struct due to having attributes
-            if field.skip_if is not None and field.skip_if(kwargs):
+            # XXX: DotDict looks like our struct because it has attributes
+            if field.requires is not None and not field.requires(kwargs):
                 continue
 
             try:
@@ -196,7 +196,7 @@ class StructField:
     name: typing.Optional[str] = None
     type: typing.Optional[type] = None
 
-    skip_if: typing.Optional[typing.Callable[[Struct], bool]] = None
+    requires: typing.Optional[typing.Callable[[Struct], bool]] = None
 
     def __post_init__(self):
         # Fail to initialize if the concrete type is invalid

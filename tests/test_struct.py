@@ -212,7 +212,7 @@ def test_struct_field_dependencies():
     class TestStruct(t.Struct):
         foo: t.uint8_t
         status: Status
-        bar: t.uint8_t = t.StructField(skip_if=lambda s: s.status != Status.SUCCESS)
+        bar: t.uint8_t = t.StructField(requires=lambda s: s.status == Status.SUCCESS)
         baz1: t.uint8_t
         baz2: typing.Optional[t.uint8_t]
 
@@ -256,7 +256,7 @@ def test_struct_field_dependencies():
 def test_struct_field_invalid_dependencies():
     class TestStruct(t.Struct):
         status: t.uint8_t
-        value: t.uint8_t = t.StructField(skip_if=lambda s: s.status != 0x00)
+        value: t.uint8_t = t.StructField(requires=lambda s: s.status == 0x00)
 
     # Value will be ignored during serialization even though it has been assigned
     ts1 = TestStruct(status=0x01, value=0x02)
@@ -290,13 +290,13 @@ def test_struct_optional_dependencies():
         # The first pair of (status, value) is not optional
         status1: StrictStatus
         value1: t.uint8_t = t.StructField(
-            skip_if=lambda s: s.status1 != StrictStatus.SUCCESS
+            requires=lambda s: s.status1 == StrictStatus.SUCCESS
         )
 
         # The second one is
         status2: typing.Optional[StrictStatus]
         value2: typing.Optional[t.uint8_t] = t.StructField(
-            skip_if=lambda s: s.status2 != StrictStatus.SUCCESS
+            requires=lambda s: s.status2 == StrictStatus.SUCCESS
         )
 
     # status1: success, status2: success
