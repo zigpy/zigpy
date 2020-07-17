@@ -580,14 +580,12 @@ class RSSILocation(Cluster):
     }
 
     class NeighborInfo(t.Struct):
-        _fields = [
-            ("neighbor", t.EUI64),
-            ("x", t.int16s),
-            ("y", t.int16s),
-            ("z", t.int16s),
-            ("rssi", t.int8s),
-            ("num_measurements", t.uint8_t),
-        ]
+        neighbor: t.EUI64
+        x: t.int16s
+        y: t.int16s
+        z: t.int16s
+        rssi: t.int8s
+        num_measurements: t.uint8_t
 
     client_commands = {
         0x0000: (
@@ -1150,24 +1148,21 @@ class PowerProfile(Cluster):
     }
 
     class ScheduleRecord(t.Struct):
-        _fields = [("phase_id", t.uint8_t), ("scheduled_time", t.uint16_t)]
+        phase_id: t.uint8_t
+        scheduled_time: t.uint16_t
 
     class PowerProfilePhase(t.Struct):
-        _fields = [
-            ("energy_phase_id", t.uint8_t),
-            ("macro_phase_id", t.uint8_t),
-            ("expected_duration", t.uint16_t),
-            ("peak_power", t.uint16_t),
-            ("energy", t.uint16_t),
-        ]
+        energy_phase_id: t.uint8_t
+        macro_phase_id: t.uint8_t
+        expected_duration: t.uint16_t
+        peak_power: t.uint16_t
+        energy: t.uint16_t
 
     class PowerProfile(t.Struct):
-        _fields = [
-            ("power_profile_id", t.uint8_t),
-            ("energy_phase_id", t.uint8_t),
-            ("power_profile_remote_control", t.Bool),
-            ("power_profile_state", t.uint8_t),
-        ]
+        power_profile_id: t.uint8_t
+        energy_phase_id: t.uint8_t
+        power_profile_remote_control: t.Bool
+        power_profile_state: t.uint8_t
 
     server_commands = {
         0x0000: ("power_profile_request", (t.uint8_t,), False),
