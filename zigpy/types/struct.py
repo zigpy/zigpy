@@ -16,13 +16,13 @@ class DotDict(dict):
 
 class Struct:
     @classmethod
-    def real_cls(cls):
+    def real_cls(cls) -> type:
         # The "Optional" subclass is dynamically created and breaks types.
         # We have to use a little introspection to find our real class.
         return next(c for c in cls.__mro__ if c.__name__ != "Optional")
 
     @classmethod
-    def _annotations(cls):
+    def _annotations(cls) -> typing.List[type]:
         # First get our proper subclasses
         subclasses = []
 
@@ -47,7 +47,7 @@ class Struct:
         # Explicitly check for old-style structs and fail very early
         if hasattr(cls, "_fields"):
             raise TypeError(
-                "Struct subclasses do not use `_fields` any more."
+                "Struct subclasses do not use `_fields` anymore."
                 " Use class attributes with type annotations."
             )
 
@@ -56,7 +56,7 @@ class Struct:
         fields = real_cls.fields()
 
         # We dynamically create our subclass's `__new__` method
-        def __new__(cls, *args, **kwargs):
+        def __new__(cls, *args, **kwargs) -> "Struct":
             # Like a copy constructor
             if len(args) == 1 and isinstance(args[0], real_cls):
                 if kwargs:
@@ -106,7 +106,7 @@ class Struct:
         cls.__new__ = __new__
 
     @classmethod
-    def fields(cls):
+    def fields(cls) -> typing.List["StructField"]:
         fields = ListSubclass()
         seen_optional = False
 
@@ -159,7 +159,7 @@ class Struct:
 
         return fields
 
-    def assigned_fields(self, *, strict=False):
+    def assigned_fields(self, *, strict=False) -> typing.List["StructField"]:
         assigned_fields = ListSubclass()
 
         for field in self.fields():
@@ -181,16 +181,16 @@ class Struct:
 
         return assigned_fields
 
-    def as_dict(self):
+    def as_dict(self) -> typing.Dict[str, typing.Any]:
         return {f.name: v for f, v in self.assigned_fields()}
 
-    def serialize(self):
+    def serialize(self) -> bytes:
         return b"".join(
             f.concrete_type(v).serialize() for f, v in self.assigned_fields(strict=True)
         )
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data: bytes) -> "Struct":
         kwargs = DotDict()
 
         for field in cls.fields():
@@ -208,19 +208,19 @@ class Struct:
 
         return cls(**kwargs), data
 
-    def replace(self, **kwargs):
+    def replace(self, **kwargs) -> "Struct":
         d = self.as_dict().copy()
         d.update(kwargs)
 
         return type(self)(**d)
 
-    def __eq__(self, other):
+    def __eq__(self, other: "Struct") -> bool:
         if not isinstance(self, type(other)) and not isinstance(other, type(self)):
             return False
 
         return self.as_dict() == other.as_dict()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         kwargs = ", ".join([f"{k}={v!r}" for k, v in self.as_dict().items()])
         return f"{type(self).__name__}({kwargs})"
 
@@ -237,7 +237,7 @@ class StructField:
         self.concrete_type
 
     @property
-    def optional(self):
+    def optional(self) -> bool:
         # typing.Optional[Foo] is really typing.Union[Foo, None]
         if getattr(self.type, "__origin__", None) is not typing.Union:
             return False
@@ -246,7 +246,7 @@ class StructField:
         return NoneType in self.type.__args__
 
     @property
-    def concrete_type(self):
+    def concrete_type(self) -> type:
         if getattr(self.type, "__origin__", None) is not typing.Union:
             return self.type
 
@@ -257,5 +257,5 @@ class StructField:
 
         return tuple(types)[0]
 
-    def replace(self, **kwargs):
+    def replace(self, **kwargs) -> "StructField":
         return dataclasses.replace(self, **kwargs)
