@@ -69,6 +69,13 @@ class Unknown(t.NoData):
 
 class TypeValue:
     def __init__(self, python_type=None, value=None):
+        # Copy constructor
+        if isinstance(python_type, TypeValue):
+            other = python_type
+
+            python_type = other.type
+            value = other.value
+
         self.type = python_type
         self.value = value
 
@@ -210,7 +217,9 @@ DATA_TYPES = DataTypes(
 class ReadAttributeRecord(t.Struct):
     """Read Attribute Record."""
 
-    _fields = [("attrid", t.uint16_t), ("status", Status), ("value", TypeValue)]
+    attrid: t.uint16_t
+    status: Status
+    value: TypeValue
 
     @classmethod
     def deserialize(cls, data):
@@ -241,11 +250,11 @@ class ReadAttributeRecord(t.Struct):
 class Attribute(t.Struct):
     attrid: t.uint16_t
     value: TypeValue
-    _fields = [("attrid", t.uint16_t), ("value", TypeValue)]
 
 
 class WriteAttributesStatusRecord(t.Struct):
-    _fields = [("status", Status), ("attrid", t.uint16_t)]
+    status: Status
+    attrid: t.uint16_t
 
     @classmethod
     def deserialize(cls, data):
@@ -357,12 +366,6 @@ class ConfigureReportingResponseRecord(t.Struct):
     direction: ReportingDirection
     attrid: t.uint16_t
 
-    _fields = [
-        ("status", Status),
-        ("direction", ReportingDirection),
-        ("attrid", t.uint16_t),
-    ]
-
     @classmethod
     def deserialize(cls, data):
         r = cls()
@@ -404,11 +407,13 @@ class ConfigureReportingResponse(t.List(ConfigureReportingResponseRecord)):
 
 
 class ReadReportingConfigRecord(t.Struct):
-    _fields = [("direction", t.uint8_t), ("attrid", t.uint16_t)]
+    direction: t.uint8_t
+    attrid: t.uint16_t
 
 
 class DiscoverAttributesResponseRecord(t.Struct):
-    _fields = [("attrid", t.uint16_t), ("datatype", t.uint8_t)]
+    attrid: t.uint16_t
+    datatype: t.uint8_t
 
 
 class AttributeAccessControl(t.bitmap8):
@@ -418,11 +423,9 @@ class AttributeAccessControl(t.bitmap8):
 
 
 class DiscoverAttributesExtendedResponseRecord(t.Struct):
-    _fields = [
-        ("attrid", t.uint16_t),
-        ("datatype", t.uint8_t),
-        ("acl", AttributeAccessControl),
-    ]
+    attrid: t.uint16_t
+    datatype: t.uint8_t
+    acl: AttributeAccessControl
 
 
 class Command(t.enum8):

@@ -4,21 +4,19 @@ import zigpy.types as t
 
 
 class PowerDescriptor(t.Struct):
-    _fields = [
-        ("byte_1", 1),  # Current power mode 4, Available power sources 4
-        ("byte_2", 1),  # Current power source 4, Current power source level 4
-    ]
+    byte_1: t.uint8_t
+    byte_2: t.uint8_t
+
+    # TODO: interpret the four 4-bit fields
 
 
 class SimpleDescriptor(t.Struct):
-    _fields = [
-        ("endpoint", t.uint8_t),
-        ("profile", t.uint16_t),
-        ("device_type", t.uint16_t),
-        ("device_version", t.uint8_t),
-        ("input_clusters", t.LVList(t.uint16_t)),
-        ("output_clusters", t.LVList(t.uint16_t)),
-    ]
+    endpoint: t.uint8_t
+    profile: t.uint16_t
+    device_type: t.uint16_t
+    device_version: t.uint8_t
+    input_clusters: t.LVList(t.uint16_t)
+    output_clusters: t.LVList(t.uint16_t)
 
 
 class SizePrefixedSimpleDescriptor(SimpleDescriptor):
@@ -55,23 +53,11 @@ class NodeDescriptor(t.Struct):
     maximum_outgoing_transfer_size: t.uint16_t
     descriptor_capability_field: t.uint8_t
 
-    _fields = [
-        ("byte1", t.uint8_t),
-        ("byte2", t.uint8_t),
-        ("mac_capability_flags", t.uint8_t),
-        ("manufacturer_code", t.uint16_t),
-        ("maximum_buffer_size", t.uint8_t),
-        ("maximum_incoming_transfer_size", t.uint16_t),
-        ("server_mask", t.uint16_t),
-        ("maximum_outgoing_transfer_size", t.uint16_t),
-        ("descriptor_capability_field", t.uint8_t),
-    ]
-
     @property
     def is_valid(self):
         """Return True if all fields were initialized."""
         non_empty_fields = [
-            getattr(self, field[0]) is not None for field in self._fields
+            getattr(self, field.name) is not None for field in self.fields()
         ]
         return all(non_empty_fields)
 
@@ -192,52 +178,46 @@ class MultiAddress:
 class Neighbor(t.Struct):
     """Neighbor Descriptor"""
 
-    _fields = [
-        ("PanId", t.EUI64),
-        ("IEEEAddr", t.EUI64),
-        ("NWKAddr", t.NWK),
-        ("NeighborType", t.uint8_t),
-        ("PermitJoining", t.uint8_t),
-        ("Depth", t.uint8_t),
-        ("LQI", t.uint8_t),
-    ]
+    PanId: t.EUI64
+    IEEEAddr: t.EUI64
+    NWKAddr: t.NWK
+    NeighborType: t.uint8_t
+    PermitJoining: t.uint8_t
+    Depth: t.uint8_t
+    LQI: t.uint8_t
 
 
 class Neighbors(t.Struct):
     """Mgmt_Lqi_rsp"""
 
-    _fields = [
-        ("Entries", t.uint8_t),
-        ("StartIndex", t.uint8_t),
-        ("NeighborTableList", t.LVList(Neighbor)),
-    ]
+    Entries: t.uint8_t
+    StartIndex: t.uint8_t
+    NeighborTableList: t.LVList(Neighbor)
 
 
 class Route(t.Struct):
     """Route Descriptor"""
 
-    _fields = [("DstNWK", t.NWK), ("RouteStatus", t.uint8_t), ("NextHop", t.NWK)]
+    DstNWK: t.NWK
+    RouteStatus: t.uint8_t
+    NextHop: t.NWK
 
 
 class Routes(t.Struct):
-    _fields = [
-        ("Entries", t.uint8_t),
-        ("StartIndex", t.uint8_t),
-        ("RoutingTableList", t.LVList(Route)),
-    ]
+    Entries: t.uint8_t
+    StartIndex: t.uint8_t
+    RoutingTableList: t.LVList(Route)
 
 
 class NwkUpdate(t.Struct):
     CHANNEL_CHANGE_REQ = 0xFE
     CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ = 0xFF
 
-    _fields = [
-        ("ScanChannels", t.Channels),
-        ("ScanDuration", t.uint8_t),
-        ("ScanCount", t.uint8_t),
-        ("nwkUpdateId", t.uint8_t),
-        ("nwkManagerAddr", t.NWK),
-    ]
+    ScanChannels: t.Channels
+    ScanDuration: t.uint8_t
+    ScanCount: t.uint8_t
+    nwkUpdateId: t.uint8_t
+    nwkManagerAddr: t.NWK
 
     def serialize(self) -> bytes:
         """Serialize data."""
