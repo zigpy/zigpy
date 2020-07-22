@@ -45,7 +45,7 @@ class Status(t.enum8):
     @classmethod
     def _missing_(cls, value):
         chained = t.APSStatus(value)
-        status = t.uint8_t.__new__(cls, chained.value)
+        status = cls._member_type_.__new__(cls, chained.value)
         status._name_ = chained.name
         status._value_ = value
         return status
@@ -129,26 +129,15 @@ class DataTypes(dict):
         self._idx_by_class = {
             _type: type_id for type_id, (name, _type, ad) in self.items()
         }
-        self._idx_by_cls_name = {
-            cls.__name__: type_id for cls, type_id in self._idx_by_class.items()
-        }
 
     def pytype_to_datatype_id(self, python_type) -> int:
         """Return Zigbee Datatype ID for a give python type."""
-        data_type_id = self._idx_by_class.get(python_type)
-        if data_type_id is not None:
-            return data_type_id
 
-        # lookup by class name
-        try:
-            return self._idx_by_cls_name[python_type.__name__]
-        except KeyError:
-            pass
+        # We want the most specific parent class that is a data type
+        for cls in python_type.__mro__:
+            if cls in self._idx_by_class:
+                return self._idx_by_class[cls]
 
-        for cls, type_id in self._idx_by_class.items():
-            if issubclass(python_type, cls):
-                self._idx_by_cls_name[python_type.__name__] = type_id
-                return type_id
         return 0xFF
 
 

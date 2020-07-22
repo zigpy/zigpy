@@ -246,7 +246,7 @@ class APSStatus(basic.enum8):
     @classmethod
     def _missing_(cls, value):
         chained = NWKStatus(value)
-        status = basic.uint8_t.__new__(cls, chained.value)
+        status = cls._member_type_.__new__(cls, chained.value)
         status._name_ = chained.name
         status._value_ = value
         return status
@@ -479,7 +479,7 @@ class NWKStatus(basic.enum8):
     @classmethod
     def _missing_(cls, value):
         chained = MACStatus(value)
-        status = basic.uint8_t.__new__(cls, chained.value)
+        status = cls._member_type_.__new__(cls, chained.value)
         status._name_ = chained.name
         status._value_ = value
         return status

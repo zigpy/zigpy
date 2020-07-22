@@ -4,6 +4,30 @@ import pytest
 import zigpy.types as t
 
 
+def test_abstract_ints():
+    assert issubclass(t.uint8_t, t.uint_t)
+    assert not issubclass(t.uint8_t, t.int_t)
+    assert t.int_t._signed is True
+    assert t.uint_t._signed is False
+
+    with pytest.raises(TypeError):
+        t.int_t(0)
+
+    with pytest.raises(TypeError):
+        t.FixedIntType(0)
+
+
+def test_int_out_of_bounds():
+    t.uint8_t(0)
+
+    with pytest.raises(ValueError):
+        # Normally this would throw an OverflowError. We re-raise it as a ValueError.
+        t.uint8_t(-1)
+
+    with pytest.raises(ValueError):
+        t.uint8_t(0xFF + 1)
+
+
 def test_int_too_short():
     with pytest.raises(ValueError):
         t.uint8_t.deserialize(b"")
@@ -355,6 +379,16 @@ def test_enum():
     assert TestEnum.ALL + TestEnum.ERR == 0x56
 
 
+def test_enum_instance_types():
+    class TestEnum(t.enum8):
+        Member = 0x00
+
+    assert TestEnum._member_type_ is t.uint8_t
+    assert type(TestEnum.Member.value) is t.uint8_t
+    assert isinstance(TestEnum.Member, t.uint8_t)
+    assert issubclass(TestEnum, t.uint8_t)
+
+
 def test_bitmap():
     """Test bitmaps."""
 
@@ -407,3 +441,17 @@ def test_bitmap_undef():
     assert TestBitmap.ALL not in r
     assert r.value == 0x0F60
     assert r.serialize() == data
+
+
+def test_bitmap_instance_types():
+    class TestBitmap(t.bitmap16):
+        CH_1 = 0x0010
+        CH_2 = 0x0020
+        CH_3 = 0x0040
+        CH_4 = 0x0080
+        ALL = 0x00F0
+
+    assert TestBitmap._member_type_ is t.uint16_t
+    assert type(TestBitmap.ALL.value) is t.uint16_t
+    assert isinstance(TestBitmap.ALL, t.uint16_t)
+    assert issubclass(TestBitmap, t.uint16_t)
