@@ -42,15 +42,7 @@ class Bool(basic.uint8_t, enum.Enum):
     true = 1
 
 
-class HexRepr:
-    def __repr__(self):
-        return ("0x{:0" + str(self._size * 2) + "x}").format(self)
-
-    def __str__(self):
-        return ("0x{:0" + str(self._size * 2) + "x}").format(self)
-
-
-class AttributeId(HexRepr, basic.uint16_t):
+class AttributeId(basic.uint16_t, hex_repr=True):
     pass
 
 
@@ -118,7 +110,7 @@ class Date(Struct):
         self.years_since_1900 = years - 1900
 
 
-class NWK(HexRepr, basic.uint16_t):
+class NWK(basic.uint16_t, hex_repr=True):
     pass
 
 
@@ -130,7 +122,7 @@ class ExtendedPanId(EUI64):
     pass
 
 
-class Group(HexRepr, basic.uint16_t):
+class Group(basic.uint16_t, hex_repr=True):
     pass
 
 
