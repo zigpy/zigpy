@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, Union
 
 import zigpy.types as t
+from zigpy.types.basic import _LVList
 
 
 class Status(t.enum8):
@@ -133,7 +134,18 @@ class DataTypes(dict):
     def pytype_to_datatype_id(self, python_type) -> int:
         """Return Zigbee Datatype ID for a give python type."""
 
-        # We want the most specific parent class that is a data type
+        # XXX: t.LVList is not a real type so it needs to be handled explicitly.
+        #      Thankfully there is only one data type based on it.
+        #      This check essentially does `python_type == t.LVList(TypeValue, 2)`.
+        if (
+            issubclass(python_type, _LVList)
+            and python_type.__mro__[1] is _LVList
+            and python_type._itemtype is TypeValue
+            and python_type._prefix_length == 2
+        ):
+            return 0x4C
+
+        # All other data types work normally. We return the most specific parent class.
         for cls in python_type.__mro__:
             if cls in self._idx_by_class:
                 return self._idx_by_class[cls]
