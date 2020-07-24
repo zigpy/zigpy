@@ -1,6 +1,6 @@
 import enum
 import struct
-from typing import Callable, TypeVar
+from typing import Callable, Tuple, TypeVar
 
 CALLABLE_T = TypeVar("CALLABLE_T", bound=Callable)  # pylint: disable=invalid-name
 
@@ -179,23 +179,85 @@ class bitmap64(bitmap_factory(uint64_t)):  # noqa: N801
     pass
 
 
-class Single(float):
-    _fmt = "<f"
+class BaseFloat(float):
+    _exponent_bits = None
+    _fraction_bits = None
+    _size = None
 
-    def serialize(self):
-        return struct.pack(self._fmt, self)
+    def __init_subclass__(cls, exponent_bits, fraction_bits):
+        size_bits = 1 + exponent_bits + fraction_bits
+        assert size_bits % 8 == 0
+
+        cls._exponent_bits = exponent_bits
+        cls._fraction_bits = fraction_bits
+        cls._size = size_bits // 8
+
+    @staticmethod
+    def _convert_format(*, src: "BaseFloat", dst: "BaseFloat", n: int) -> int:
+        """
+        Converts an integer representing a float from one format into another. Note:
+
+         1. Format is assumed to be little endian: 0b[sign bit] [exponent] [fraction]
+         2. Truncates/extends the exponent, preserving the special cases of all 1's
+            and all 0's.
+         3. Truncates/extends the fractional bits from the right, allowing lossless
+            conversion to a "bigger" representation.
+        """
+
+        src_sign = n >> (src._exponent_bits + src._fraction_bits)
+        src_frac = n & ((1 << src._fraction_bits) - 1)
+        src_biased_exp = (n >> src._fraction_bits) & ((1 << src._exponent_bits) - 1)
+        src_exp = src_biased_exp - 2 ** (src._exponent_bits - 1)
+
+        if src_biased_exp == (1 << src._exponent_bits) - 1:
+            dst_biased_exp = 2 ** dst._exponent_bits - 1
+        elif src_biased_exp == 0:
+            dst_biased_exp = 0
+        else:
+            dst_min_exp = 2 - 2 ** (dst._exponent_bits - 1)  # Can't be all zeroes
+            dst_max_exp = 2 ** (dst._exponent_bits - 1) - 2  # Can't be all ones
+            dst_exp = min(max(dst_min_exp, src_exp), dst_max_exp)
+            dst_biased_exp = dst_exp + 2 ** (dst._exponent_bits - 1)
+
+        # We add/remove LSBs
+        if src._fraction_bits > dst._fraction_bits:
+            dst_frac = src_frac >> (src._fraction_bits - dst._fraction_bits)
+        else:
+            dst_frac = src_frac << (dst._fraction_bits - src._fraction_bits)
+
+        return (
+            src_sign << (dst._exponent_bits + dst._fraction_bits)
+            | dst_biased_exp << (dst._fraction_bits)
+            | dst_frac
+        )
+
+    def serialize(self) -> bytes:
+        return self._convert_format(
+            src=Double, dst=self, n=int.from_bytes(struct.pack("<d", self), "little")
+        ).to_bytes(self._size, "little")
 
     @classmethod
-    def deserialize(cls, data):
-        size = struct.calcsize(cls._fmt)
-        if len(data) < size:
-            raise ValueError("Data is too short to contain %s float" % cls.__name__)
+    def deserialize(cls, data: bytes) -> Tuple["BaseFloat", bytes]:
+        if len(data) < cls._size:
+            raise ValueError(f"Data is too short to contain {cls._size} bytes")
 
-        return struct.unpack(cls._fmt, data[0:size])[0], data[size:]
+        double_bytes = cls._convert_format(
+            src=cls, dst=Double, n=int.from_bytes(data[: cls._size], "little")
+        ).to_bytes(Double._size, "little")
+
+        return cls(struct.unpack("<d", double_bytes)[0]), data[cls._size :]
 
 
-class Double(Single):
-    _fmt = "<d"
+class Half(BaseFloat, exponent_bits=5, fraction_bits=10):
+    pass
+
+
+class Single(BaseFloat, exponent_bits=8, fraction_bits=23):
+    pass
+
+
+class Double(BaseFloat, exponent_bits=11, fraction_bits=52):
+    pass
 
 
 class LVBytes(bytes):

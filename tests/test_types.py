@@ -1,4 +1,6 @@
 import itertools
+import math
+import struct
 
 import pytest
 import zigpy.types as t
@@ -12,28 +14,68 @@ def test_int_too_short():
         t.uint16_t.deserialize(b"\x00")
 
 
-def test_single():
-    value = 1.25
+def compare_with_nan(v1, v2):
+    if not math.isnan(v1) ^ math.isnan(v2):
+        return True
+
+    return v1 == v2
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        1.25,
+        0,
+        -1.25,
+        float("nan"),
+        float("+inf"),
+        float("-inf"),
+        # Max value held by Half
+        65504,
+        -65504,
+    ],
+)
+def test_floats(value):
     extra = b"ab12!"
-    v = t.Single(value)
-    ser = v.serialize()
-    assert t.Single.deserialize(ser) == (value, b"")
-    assert t.Single.deserialize(ser + extra) == (value, extra)
 
-    with pytest.raises(ValueError):
-        t.Double.deserialize(ser[1:])
+    for data_type in (t.Half, t.Single, t.Double):
+        value2, remaining = data_type.deserialize(data_type(value).serialize() + extra)
+        assert remaining == extra
+
+        # nan != nan so make sure they're both nan or the same value
+        assert compare_with_nan(value, value2)
+        assert len(data_type(value).serialize()) == data_type._size
 
 
-def test_double():
-    value = 1.25
-    extra = b"ab12!"
-    v = t.Double(value)
-    ser = v.serialize()
-    assert t.Double.deserialize(ser) == (value, b"")
-    assert t.Double.deserialize(ser + extra) == (value, extra)
+@pytest.mark.parametrize(
+    "value, only_double",
+    [
+        (2, False),
+        (1.25, False),
+        (0, False),
+        (-1.25, False),
+        (-2, False),
+        (float("nan"), False),
+        (float("+inf"), False),
+        (float("-inf"), False),
+        (struct.unpack(">f", bytes.fromhex("7f7f ffff"))[0], False),
+        (struct.unpack(">f", bytes.fromhex("3f7f ffff"))[0], False),
+        (struct.unpack(">d", bytes.fromhex("7f7f ffff ffff ffff"))[0], True),
+        (struct.unpack(">d", bytes.fromhex("3f7f ffff ffff ffff"))[0], True),
+    ],
+)
+def test_single_and_double_with_struct(value, only_double):
+    # Float and double must match the behavior of the built-in struct module
+    if not only_double:
+        assert t.Single(value).serialize() == struct.pack("<f", value)
+        v1, r1 = t.Single.deserialize(struct.pack("<f", value))
+        assert compare_with_nan(v1, t.Single(value))
+        assert r1 == b""
 
-    with pytest.raises(ValueError):
-        t.Double.deserialize(ser[1:])
+    assert t.Double(value).serialize() == struct.pack("<d", value)
+    v2, r2 = t.Double.deserialize(struct.pack("<d", value))
+    assert compare_with_nan(v2, t.Double(value))
+    assert r2 == b""
 
 
 def test_lvbytes():

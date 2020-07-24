@@ -190,7 +190,7 @@ DATA_TYPES = DataTypes(
         0x2F: ("Signed Integer", t.int64s, Analog),
         0x30: ("Enumeration", t.enum8, Discrete),
         0x31: ("Enumeration", t.enum16, Discrete),
-        # 0x38: ('Floating point', t.Half, Analog),
+        0x38: ("Floating point", t.Half, Analog),
         0x39: ("Floating point", t.Single, Analog),
         0x3A: ("Floating point", t.Double, Analog),
         0x41: ("Octet string", t.LVBytes, Discrete),
