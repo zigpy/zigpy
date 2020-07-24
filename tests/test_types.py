@@ -78,6 +78,17 @@ def test_single_and_double_with_struct(value, only_double):
     assert r2 == b""
 
 
+def test_float_parsing_errors():
+    with pytest.raises(ValueError):
+        t.Double.deserialize(b"\x00\x00\x00\x00\x00\x00\x00")
+
+    with pytest.raises(ValueError):
+        t.Single.deserialize(b"\x00\x00\x00")
+
+    with pytest.raises(ValueError):
+        t.Half.deserialize(b"\x00")
+
+
 def test_lvbytes():
     d, r = t.LVBytes.deserialize(b"\x0412345")
     assert r == b"5"
