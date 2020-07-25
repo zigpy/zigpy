@@ -161,23 +161,52 @@ def test_limited_char_string():
 
 
 def test_lvlist():
-    d, r = t.LVList(t.uint8_t).deserialize(b"\x0412345")
+    d, r = t.LVList[t.uint8_t, t.uint8_t].deserialize(b"\x0412345")
     assert r == b"5"
     assert d == list(map(ord, "1234"))
-    assert t.LVList(t.uint8_t).serialize(d) == b"\x041234"
+    assert t.LVList[t.uint8_t, t.uint8_t].serialize(d) == b"\x041234"
+
+    assert isinstance(d, t.LVList[t.uint8_t, t.uint8_t])
 
 
 def test_lvlist_too_short():
     with pytest.raises(ValueError):
-        t.LVList(t.uint8_t).deserialize(b"")
+        t.LVList[t.uint8_t, t.uint8_t].deserialize(b"")
 
     with pytest.raises(ValueError):
-        t.LVList(t.uint8_t).deserialize(b"\x04123")
+        t.LVList[t.uint8_t, t.uint8_t].deserialize(b"\x04123")
 
 
 def test_list():
     expected = list(map(ord, "\x0123"))
-    assert t.List(t.uint8_t).deserialize(b"\x0123") == (expected, b"")
+    d, r = t.List[t.uint8_t].deserialize(b"\x0123")
+
+    assert (d, r) == (expected, b"")
+    assert not isinstance(expected, t.List[t.uint8_t])
+    assert isinstance(d, t.List[t.uint8_t])
+
+
+def test_list_types():
+    class LVListSubclass(t.LVList, length_type=t.uint8_t, item_type=t.uint16_t):
+        pass
+
+    # Brackets create singleton types
+    anon_lst = t.LVList[t.uint8_t, t.uint16_t]
+    assert anon_lst._length_type is t.uint8_t
+    assert anon_lst._item_type is t.uint16_t
+    assert t.LVList[t.uint8_t, t.uint16_t] is t.LVList[t.uint8_t, t.uint16_t]
+
+    # Bracketed types are compatible with explicit subclasses
+    assert issubclass(t.LVList[t.uint8_t, t.uint16_t], t.LVList[t.uint8_t, t.uint16_t])
+    assert issubclass(LVListSubclass, t.LVList[t.uint8_t, t.uint16_t])
+    assert issubclass(LVListSubclass, LVListSubclass)
+
+    # Instances are also compatible
+    assert isinstance(LVListSubclass(), LVListSubclass)
+    assert isinstance(LVListSubclass(), t.LVList[t.uint8_t, t.uint16_t])
+    assert isinstance(
+        t.LVList[t.uint8_t, t.uint16_t](), t.LVList[t.uint8_t, t.uint16_t]
+    )
 
 
 def test_hex_repr():

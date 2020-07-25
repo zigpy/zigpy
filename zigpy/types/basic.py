@@ -1,5 +1,6 @@
 import enum
 import struct
+import typing
 from typing import Callable, TypeVar
 
 CALLABLE_T = TypeVar("CALLABLE_T", bound=Callable)  # pylint: disable=invalid-name
@@ -225,76 +226,166 @@ class LongOctetString(LVBytes):
     _prefix_length = 2
 
 
-class _List(list):
-    _length = None
+class ListMeta(type):
+    # So things like `LVList[NWK, t.uint8_t]` are singletons
+    _anonymous_classes = {}
 
-    def serialize(self):
-        assert self._length is None or len(self) == self._length
-        return b"".join([self._itemtype(i).serialize() for i in self])
+    def __new__(metaclass, name, bases, namespaces, **kwargs):
+        return type.__new__(metaclass, name, bases, namespaces, **kwargs)
+
+    def __subclasscheck__(self, subclass):
+        # Only check with `t.LVList[]`, others don't make sense
+        if self.__mro__[1] is LVList and issubclass(subclass, LVList):
+            return issubclass(subclass._item_type, self._item_type) and issubclass(
+                subclass._length_type, self._length_type
+            )
+        elif self.__mro__[1] is List and issubclass(subclass, List):
+            return issubclass(subclass._item_type, self._item_type)
+        elif self.__mro__[1] is FixedList and issubclass(subclass, FixedList):
+            return (
+                issubclass(subclass._item_type, self._item_type)
+                and subclass._length == self._length
+            )
+
+        return super().__subclasscheck__(subclass)
+
+    def __instancecheck__(self, subclass):
+        if issubclass(type(subclass), self):
+            return True
+
+        return super().__instancecheck__(subclass)
+
+
+class List(list, metaclass=ListMeta):
+    _item_type = None
+
+    def __init_subclass__(cls, *, item_type=None) -> None:
+        super().__init_subclass__()
+
+        if item_type is not None:
+            cls._item_type = item_type
+
+    def __class_getitem__(cls, key):
+        if (cls, key) in cls._anonymous_classes:
+            return cls._anonymous_classes[cls, key]
+
+        item_type = key
+
+        class AnonymousList(List, item_type=item_type):
+            pass
+
+        cls._anonymous_classes[cls, key] = AnonymousList
+
+        return AnonymousList
+
+    def serialize(self) -> bytes:
+        assert self._item_type is not None
+        return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls, data):
-        r = cls()
+    def deserialize(cls, data: bytes) -> typing.Tuple["LVList", bytes]:
+        assert cls._item_type is not None
+
+        lst = cls()
+
         while data:
-            item, data = r._itemtype.deserialize(data)
-            r.append(item)
-        return r, data
+            item, data = cls._item_type.deserialize(data)
+            lst.append(item)
+
+        return lst, data
 
 
-class _LVList(_List):
-    _prefix_length = 1
+class LVList(list, metaclass=ListMeta):
+    _length_type = None
+    _item_type = None
 
-    def serialize(self):
-        head = len(self).to_bytes(self._prefix_length, "little")
-        data = super().serialize()
-        return head + data
+    def __init_subclass__(cls, *, length_type=None, item_type=None) -> None:
+        super().__init_subclass__()
+
+        if length_type is not None:
+            cls._length_type = length_type
+
+        if item_type is not None:
+            cls._item_type = item_type
+
+    def __class_getitem__(cls, key):
+        if (cls, key) in cls._anonymous_classes:
+            return cls._anonymous_classes[cls, key]
+
+        length_type, item_type = key
+
+        class AnonymousLVList(cls, length_type=length_type, item_type=item_type):
+            pass
+
+        cls._anonymous_classes[cls, key] = AnonymousLVList
+
+        return AnonymousLVList
+
+    def serialize(self) -> bytes:
+        assert self._item_type is not None
+        return b"".join(
+            [
+                i.serialize()
+                for i in [self._length_type(len(self))]
+                + [self._item_type(i) for i in self]
+            ]
+        )
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data: bytes) -> typing.Tuple["LVList", bytes]:
+        assert cls._item_type is not None
+        length, data = cls._length_type.deserialize(data)
         r = cls()
-
-        if len(data) < cls._prefix_length:
-            raise ValueError("Data is too short")
-
-        length = int.from_bytes(data[: cls._prefix_length], "little")
-        data = data[cls._prefix_length :]
         for i in range(length):
-            item, data = r._itemtype.deserialize(data)
+            item, data = cls._item_type.deserialize(data)
             r.append(item)
         return r, data
 
 
-def List(itemtype):  # noqa: N802
-    class List(_List):
-        _itemtype = itemtype
+class FixedList(list, metaclass=ListMeta):
+    _length = None
+    _item_type = None
 
-    return List
+    def __init_subclass__(cls, *, length=None, item_type=None) -> None:
+        super().__init_subclass__()
 
+        if length is not None:
+            cls._length = length
 
-def LVList(itemtype, prefix_length=1):  # noqa: N802
-    class LVList(_LVList):
-        _itemtype = itemtype
-        _prefix_length = prefix_length
+        if item_type is not None:
+            cls._item_type = item_type
 
-    return LVList
+    def __class_getitem__(cls, key):
+        if (cls, key) in cls._anonymous_classes:
+            return cls._anonymous_classes[cls, key]
 
+        length, item_type = key
 
-class _FixedList(_List):
+        class AnonymousFixedList(cls, length=length, item_type=item_type):
+            pass
+
+        cls._anonymous_classes[cls, key] = AnonymousFixedList
+
+        return AnonymousFixedList
+
+    def serialize(self) -> bytes:
+        assert self._length is not None
+
+        if len(self) != self._length:
+            raise ValueError(
+                f"Invalid length for {self!r}: expected {self._length}, got {len(self)}"
+            )
+
+        return b"".join([self._item_type(i).serialize() for i in self])
+
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data: bytes) -> typing.Tuple["FixedList", bytes]:
+        assert cls._item_type is not None
         r = cls()
-        for i in range(r._length):
-            item, data = r._itemtype.deserialize(data)
+        for i in range(cls._length):
+            item, data = cls._item_type.deserialize(data)
             r.append(item)
         return r, data
-
-
-def fixed_list(length, itemtype):
-    class FixedList(_FixedList):
-        _length = length
-        _itemtype = itemtype
-
-    return FixedList
 
 
 class CharacterString(str):
@@ -353,50 +444,49 @@ def Optional(optional_item_type):
     return Optional
 
 
-class data8(_FixedList):
+class data8(FixedList, item_type=uint8_t, length=1):
     """General data, Discrete, 8 bit."""
 
-    _itemtype = uint8_t
-    _length = 1
+    pass
 
 
-class data16(data8):
+class data16(FixedList, item_type=uint8_t, length=2):
     """General data, Discrete, 16 bit."""
 
-    _length = 2
+    pass
 
 
-class data24(data8):
+class data24(FixedList, item_type=uint8_t, length=3):
     """General data, Discrete, 24 bit."""
 
-    _length = 3
+    pass
 
 
-class data32(data8):
+class data32(FixedList, item_type=uint8_t, length=4):
     """General data, Discrete, 32 bit."""
 
-    _length = 4
+    pass
 
 
-class data40(data8):
+class data40(FixedList, item_type=uint8_t, length=5):
     """General data, Discrete, 40 bit."""
 
-    _length = 5
+    pass
 
 
-class data48(data8):
+class data48(FixedList, item_type=uint8_t, length=6):
     """General data, Discrete, 48 bit."""
 
-    _length = 6
+    pass
 
 
-class data56(data8):
+class data56(FixedList, item_type=uint8_t, length=7):
     """General data, Discrete, 56 bit."""
 
-    _length = 7
+    pass
 
 
-class data64(data8):
+class data64(FixedList, item_type=uint8_t, length=8):
     """General data, Discrete, 64 bit."""
 
-    _length = 8
+    pass
