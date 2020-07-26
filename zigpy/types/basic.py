@@ -1,92 +1,150 @@
 import enum
 import struct
-import typing
-from typing import Callable, TypeVar
+from typing import Callable, Tuple, TypeVar
 
 CALLABLE_T = TypeVar("CALLABLE_T", bound=Callable)  # pylint: disable=invalid-name
 
 
-class int_t(int):  # noqa: N801
-    _signed = True
+class FixedIntType(int):
+    _signed = None
+    _size = None
 
-    def serialize(self):
-        return self.to_bytes(self._size, "little", signed=self._signed)
+    def __new__(cls, *args, **kwargs):
+        if cls._signed is None or cls._size is None:
+            raise TypeError(f"{cls} is abstract and cannot be created")
+
+        instance = super().__new__(cls, *args, **kwargs)
+        instance.serialize()
+
+        return instance
+
+    def __init_subclass__(cls, signed=None, size=None, hex_repr=None) -> None:
+        super().__init_subclass__()
+
+        if signed is not None:
+            cls._signed = signed
+
+        if size is not None:
+            cls._size = size
+
+        if hex_repr:
+            fmt = f"0x{{:0{cls._size * 2}X}}"
+            cls.__str__ = cls.__repr__ = lambda self: fmt.format(self)
+        elif hex_repr is not None and not hex_repr:
+            cls.__str__ = super().__str__
+            cls.__repr__ = super().__repr__
+
+        # XXX: The enum module uses the first class with __new__ in its __dict__ as the
+        #      member type. We have to ensure this is true for every subclass.
+        if "__new__" not in cls.__dict__:
+            cls.__new__ = cls.__new__
+
+    def serialize(self) -> bytes:
+        try:
+            return self.to_bytes(self._size, "little", signed=self._signed)
+        except OverflowError as e:
+            # OverflowError is not a subclass of ValueError, making it annoying to catch
+            raise ValueError(str(e)) from e
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data: bytes) -> Tuple["FixedIntType", bytes]:
         if len(data) < cls._size:
-            raise ValueError("Data is too short to contain %d bytes" % cls._size)
+            raise ValueError(f"Data is too short to contain {cls._size} bytes")
 
         r = cls.from_bytes(data[: cls._size], "little", signed=cls._signed)
-        return r, data[cls._size :]
+        data = data[cls._size :]
+        return r, data
 
 
-class int8s(int_t):  # noqa: N801
-    _size = 1
+class uint_t(FixedIntType, signed=False):
+    pass
 
 
-class int16s(int_t):  # noqa: N801
-    _size = 2
+class int_t(FixedIntType, signed=True):
+    pass
 
 
-class int24s(int_t):  # noqa: N801
-    _size = 3
+class int8s(int_t, size=1):
+    pass
 
 
-class int32s(int_t):  # noqa: N801
-    _size = 4
+class int16s(int_t, size=2):
+    pass
 
 
-class int40s(int_t):  # noqa: N801
-    _size = 5
+class int24s(int_t, size=3):
+    pass
 
 
-class int48s(int_t):  # noqa: N801
-    _size = 6
+class int32s(int_t, size=4):
+    pass
 
 
-class int56s(int_t):  # noqa: N801
-    _size = 7
+class int40s(int_t, size=5):
+    pass
 
 
-class int64s(int_t):  # noqa: N801
-    _size = 8
+class int48s(int_t, size=6):
+    pass
 
 
-class uint_t(int_t):  # noqa: N801
-    _signed = False
+class int56s(int_t, size=7):
+    pass
 
 
-class uint8_t(uint_t):  # noqa: N801
-    _size = 1
+class int64s(int_t, size=8):
+    pass
 
 
-class uint16_t(uint_t):  # noqa: N801
-    _size = 2
+class uint8_t(uint_t, size=1):
+    pass
 
 
-class uint24_t(uint_t):  # noqa: N801
-    _size = 3
+class uint16_t(uint_t, size=2):
+    pass
 
 
-class uint32_t(uint_t):  # noqa: N801
-    _size = 4
+class uint24_t(uint_t, size=3):
+    pass
 
 
-class uint40_t(uint_t):  # noqa: N801
-    _size = 5
+class uint32_t(uint_t, size=4):
+    pass
 
 
-class uint48_t(uint_t):  # noqa: N801
-    _size = 6
+class uint40_t(uint_t, size=5):
+    pass
 
 
-class uint56_t(uint_t):  # noqa: N801
-    _size = 7
+class uint48_t(uint_t, size=6):
+    pass
 
 
-class uint64_t(uint_t):  # noqa: N801
-    _size = 8
+class uint56_t(uint_t, size=7):
+    pass
+
+
+class uint64_t(uint_t, size=8):
+    pass
+
+
+class EnumIntFlagMixin:
+    """
+    Enum does not allow multiple base classes. We turn enum.IntFlag into a mixin because
+    it doesn't actualy depend on the base class specifically being `int`.
+    """
+
+    # Rebind classmethods to our own class
+    _missing_ = classmethod(enum.IntFlag._missing_.__func__)
+    _create_pseudo_member_ = classmethod(enum.IntFlag._create_pseudo_member_.__func__)
+
+    __or__ = enum.IntFlag.__or__
+    __and__ = enum.IntFlag.__and__
+    __xor__ = enum.IntFlag.__xor__
+    __ror__ = enum.IntFlag.__ror__
+    __rand__ = enum.IntFlag.__rand__
+    __rxor__ = enum.IntFlag.__rxor__
+    __invert__ = enum.IntFlag.__invert__
 
 
 class _IntEnumMeta(enum.EnumMeta):
@@ -101,21 +159,11 @@ class _IntEnumMeta(enum.EnumMeta):
 def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined") -> CALLABLE_T:
     """Enum factory."""
 
-    class _NewEnum(enum.IntEnum, metaclass=_IntEnumMeta):
-        def serialize(self):
-            """Serialize enum."""
-            return int_type(self.value).serialize()
-
-        @classmethod
-        def deserialize(cls, data: bytes) -> (bytes, bytes):
-            """Deserialize data."""
-            val, data = int_type.deserialize(data)
-            return cls(val), data
-
+    class _NewEnum(int_type, enum.Enum, metaclass=_IntEnumMeta):
         @classmethod
         def _missing_(cls, value):
-            new = int_type.__new__(cls, value)
-            name = f"{undefined}_0x{{:0{int_type._size * 2}x}}"  # pylint: disable=protected-access
+            new = cls._member_type_.__new__(cls, value)
+            name = f"{undefined}_0x{{:0{cls._size * 2}x}}"  # pylint: disable=protected-access
             new._name_ = name.format(value)
             new._value_ = value
             return new
@@ -131,72 +179,117 @@ class enum16(enum_factory(uint16_t)):  # noqa: N801
     pass
 
 
-def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
-    """Bitmap factory."""
-
-    class _NewBitmap(enum.IntFlag):
-        def serialize(self):
-            """Serialize enum."""
-            return int_type(self.value).serialize()
-
-        @classmethod
-        def deserialize(cls, data: bytes) -> (bytes, bytes):
-            """Deserialize data."""
-            val, data = int_type.deserialize(data)
-            return cls(val), data
-
-    return _NewBitmap
-
-
-class bitmap8(bitmap_factory(uint8_t)):  # noqa: N801
+class bitmap8(EnumIntFlagMixin, uint8_t, enum.Flag):
     pass
 
 
-class bitmap16(bitmap_factory(uint16_t)):  # noqa: N801
+class bitmap16(EnumIntFlagMixin, uint16_t, enum.Flag):
     pass
 
 
-class bitmap24(bitmap_factory(uint24_t)):  # noqa: N801
+class bitmap24(EnumIntFlagMixin, uint24_t, enum.Flag):
     pass
 
 
-class bitmap32(bitmap_factory(uint32_t)):  # noqa: N801
+class bitmap32(EnumIntFlagMixin, uint32_t, enum.Flag):
     pass
 
 
-class bitmap40(bitmap_factory(uint40_t)):  # noqa: N801
+class bitmap40(EnumIntFlagMixin, uint40_t, enum.Flag):
     pass
 
 
-class bitmap48(bitmap_factory(uint48_t)):  # noqa: N801
+class bitmap48(EnumIntFlagMixin, uint48_t, enum.Flag):
     pass
 
 
-class bitmap56(bitmap_factory(uint56_t)):  # noqa: N801
+class bitmap56(EnumIntFlagMixin, uint56_t, enum.Flag):
     pass
 
 
-class bitmap64(bitmap_factory(uint64_t)):  # noqa: N801
+class bitmap64(EnumIntFlagMixin, uint64_t, enum.Flag):
     pass
 
 
-class Single(float):
-    _fmt = "<f"
+class BaseFloat(float):
+    _exponent_bits = None
+    _fraction_bits = None
+    _size = None
 
-    def serialize(self):
-        return struct.pack(self._fmt, self)
+    def __init_subclass__(cls, exponent_bits, fraction_bits):
+        size_bits = 1 + exponent_bits + fraction_bits
+        assert size_bits % 8 == 0
+
+        cls._exponent_bits = exponent_bits
+        cls._fraction_bits = fraction_bits
+        cls._size = size_bits // 8
+
+    @staticmethod
+    def _convert_format(*, src: "BaseFloat", dst: "BaseFloat", n: int) -> int:
+        """
+        Converts an integer representing a float from one format into another. Note:
+
+         1. Format is assumed to be little endian: 0b[sign bit] [exponent] [fraction]
+         2. Truncates/extends the exponent, preserving the special cases of all 1's
+            and all 0's.
+         3. Truncates/extends the fractional bits from the right, allowing lossless
+            conversion to a "bigger" representation.
+        """
+
+        src_sign = n >> (src._exponent_bits + src._fraction_bits)
+        src_frac = n & ((1 << src._fraction_bits) - 1)
+        src_biased_exp = (n >> src._fraction_bits) & ((1 << src._exponent_bits) - 1)
+        src_exp = src_biased_exp - 2 ** (src._exponent_bits - 1)
+
+        if src_biased_exp == (1 << src._exponent_bits) - 1:
+            dst_biased_exp = 2 ** dst._exponent_bits - 1
+        elif src_biased_exp == 0:
+            dst_biased_exp = 0
+        else:
+            dst_min_exp = 2 - 2 ** (dst._exponent_bits - 1)  # Can't be all zeroes
+            dst_max_exp = 2 ** (dst._exponent_bits - 1) - 2  # Can't be all ones
+            dst_exp = min(max(dst_min_exp, src_exp), dst_max_exp)
+            dst_biased_exp = dst_exp + 2 ** (dst._exponent_bits - 1)
+
+        # We add/remove LSBs
+        if src._fraction_bits > dst._fraction_bits:
+            dst_frac = src_frac >> (src._fraction_bits - dst._fraction_bits)
+        else:
+            dst_frac = src_frac << (dst._fraction_bits - src._fraction_bits)
+
+        return (
+            src_sign << (dst._exponent_bits + dst._fraction_bits)
+            | dst_biased_exp << (dst._fraction_bits)
+            | dst_frac
+        )
+
+    def serialize(self) -> bytes:
+        return self._convert_format(
+            src=Double, dst=self, n=int.from_bytes(struct.pack("<d", self), "little")
+        ).to_bytes(self._size, "little")
 
     @classmethod
-    def deserialize(cls, data):
-        size = struct.calcsize(cls._fmt)
-        if len(data) < size:
-            raise ValueError("Data is too short to contain %s float" % cls.__name__)
+    def deserialize(cls, data: bytes) -> Tuple["BaseFloat", bytes]:
+        if len(data) < cls._size:
+            raise ValueError(f"Data is too short to contain {cls._size} bytes")
 
-        return struct.unpack(cls._fmt, data[0:size])[0], data[size:]
+        double_bytes = cls._convert_format(
+            src=cls, dst=Double, n=int.from_bytes(data[: cls._size], "little")
+        ).to_bytes(Double._size, "little")
+
+        return cls(struct.unpack("<d", double_bytes)[0]), data[cls._size :]
 
 
-class Double(Single):
-    _fmt = "<d"
+class Half(BaseFloat, exponent_bits=5, fraction_bits=10):
+    pass
+
+
+class Single(BaseFloat, exponent_bits=8, fraction_bits=23):
+    pass
+
+
+class Double(BaseFloat, exponent_bits=11, fraction_bits=52):
+    pass
 
 
 class LVBytes(bytes):
@@ -283,7 +376,7 @@ class List(list, metaclass=ListMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls, data: bytes) -> typing.Tuple["LVList", bytes]:
+    def deserialize(cls, data: bytes) -> Tuple["LVList", bytes]:
         assert cls._item_type is not None
 
         lst = cls()
@@ -332,7 +425,7 @@ class LVList(list, metaclass=ListMeta):
         )
 
     @classmethod
-    def deserialize(cls, data: bytes) -> typing.Tuple["LVList", bytes]:
+    def deserialize(cls, data: bytes) -> Tuple["LVList", bytes]:
         assert cls._item_type is not None
         length, data = cls._length_type.deserialize(data)
         r = cls()
@@ -379,7 +472,7 @@ class FixedList(list, metaclass=ListMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls, data: bytes) -> typing.Tuple["FixedList", bytes]:
+    def deserialize(cls, data: bytes) -> Tuple["FixedList", bytes]:
         assert cls._item_type is not None
         r = cls()
         for i in range(cls._length):

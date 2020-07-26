@@ -290,7 +290,7 @@ class Status(t.enum8):
     @classmethod
     def _missing_(cls, value):
         chained = t.APSStatus(value)
-        status = t.uint8_t.__new__(cls, chained.value)
+        status = cls._member_type_.__new__(cls, chained.value)
         status._name_ = chained.name
         status._value_ = value
         return status
@@ -302,8 +302,8 @@ IEEE = ("IEEEAddr", t.EUI64)
 STATUS = ("Status", Status)
 
 
-class _CommandID(t.HexRepr, t.uint16_t):
-    _hex_len = 4
+class _CommandID(t.uint16_t, hex_repr=True):
+    pass
 
 
 class ZDOCmd(t.enum_factory(_CommandID)):

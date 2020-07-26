@@ -1,7 +1,33 @@
 import itertools
+import math
+import struct
 
 import pytest
 import zigpy.types as t
+
+
+def test_abstract_ints():
+    assert issubclass(t.uint8_t, t.uint_t)
+    assert not issubclass(t.uint8_t, t.int_t)
+    assert t.int_t._signed is True
+    assert t.uint_t._signed is False
+
+    with pytest.raises(TypeError):
+        t.int_t(0)
+
+    with pytest.raises(TypeError):
+        t.FixedIntType(0)
+
+
+def test_int_out_of_bounds():
+    t.uint8_t(0)
+
+    with pytest.raises(ValueError):
+        # Normally this would throw an OverflowError. We re-raise it as a ValueError.
+        t.uint8_t(-1)
+
+    with pytest.raises(ValueError):
+        t.uint8_t(0xFF + 1)
 
 
 def test_int_too_short():
@@ -12,28 +38,79 @@ def test_int_too_short():
         t.uint16_t.deserialize(b"\x00")
 
 
-def test_single():
-    value = 1.25
+def compare_with_nan(v1, v2):
+    if not math.isnan(v1) ^ math.isnan(v2):
+        return True
+
+    return v1 == v2
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        1.25,
+        0,
+        -1.25,
+        float("nan"),
+        float("+inf"),
+        float("-inf"),
+        # Max value held by Half
+        65504,
+        -65504,
+    ],
+)
+def test_floats(value):
     extra = b"ab12!"
-    v = t.Single(value)
-    ser = v.serialize()
-    assert t.Single.deserialize(ser) == (value, b"")
-    assert t.Single.deserialize(ser + extra) == (value, extra)
+
+    for data_type in (t.Half, t.Single, t.Double):
+        value2, remaining = data_type.deserialize(data_type(value).serialize() + extra)
+        assert remaining == extra
+
+        # nan != nan so make sure they're both nan or the same value
+        assert compare_with_nan(value, value2)
+        assert len(data_type(value).serialize()) == data_type._size
+
+
+@pytest.mark.parametrize(
+    "value, only_double",
+    [
+        (2, False),
+        (1.25, False),
+        (0, False),
+        (-1.25, False),
+        (-2, False),
+        (float("nan"), False),
+        (float("+inf"), False),
+        (float("-inf"), False),
+        (struct.unpack(">f", bytes.fromhex("7f7f ffff"))[0], False),
+        (struct.unpack(">f", bytes.fromhex("3f7f ffff"))[0], False),
+        (struct.unpack(">d", bytes.fromhex("7f7f ffff ffff ffff"))[0], True),
+        (struct.unpack(">d", bytes.fromhex("3f7f ffff ffff ffff"))[0], True),
+    ],
+)
+def test_single_and_double_with_struct(value, only_double):
+    # Float and double must match the behavior of the built-in struct module
+    if not only_double:
+        assert t.Single(value).serialize() == struct.pack("<f", value)
+        v1, r1 = t.Single.deserialize(struct.pack("<f", value))
+        assert compare_with_nan(v1, t.Single(value))
+        assert r1 == b""
+
+    assert t.Double(value).serialize() == struct.pack("<d", value)
+    v2, r2 = t.Double.deserialize(struct.pack("<d", value))
+    assert compare_with_nan(v2, t.Double(value))
+    assert r2 == b""
+
+
+def test_float_parsing_errors():
+    with pytest.raises(ValueError):
+        t.Double.deserialize(b"\x00\x00\x00\x00\x00\x00\x00")
 
     with pytest.raises(ValueError):
-        t.Double.deserialize(ser[1:])
-
-
-def test_double():
-    value = 1.25
-    extra = b"ab12!"
-    v = t.Double(value)
-    ser = v.serialize()
-    assert t.Double.deserialize(ser) == (value, b"")
-    assert t.Double.deserialize(ser + extra) == (value, extra)
+        t.Single.deserialize(b"\x00\x00\x00")
 
     with pytest.raises(ValueError):
-        t.Double.deserialize(ser[1:])
+        t.Half.deserialize(b"\x00")
 
 
 def test_lvbytes():
@@ -210,12 +287,26 @@ def test_list_types():
 
 
 def test_hex_repr():
-    class NwkAsHex(t.HexRepr, t.uint16_t):
-        _hex_len = 4
+    class NwkAsHex(t.uint16_t, hex_repr=True):
+        pass
 
-    nwk = NwkAsHex(0x1234)
-    assert str(nwk) == "0x1234"
-    assert repr(nwk) == "0x1234"
+    nwk = NwkAsHex(0x123A)
+    assert str(nwk) == "0x123A"
+    assert repr(nwk) == "0x123A"
+
+    assert str([nwk]) == "[0x123A]"
+    assert repr([nwk]) == "[0x123A]"
+
+    # You can turn it off as well
+    class NwkWithoutHex(NwkAsHex, hex_repr=False):
+        pass
+
+    nwk = NwkWithoutHex(1234)
+    assert str(nwk) == "1234"
+    assert repr(nwk) == "1234"
+
+    assert str([nwk]) == "[1234]"
+    assert repr([nwk]) == "[1234]"
 
 
 def test_optional():
@@ -384,6 +475,16 @@ def test_enum():
     assert TestEnum.ALL + TestEnum.ERR == 0x56
 
 
+def test_enum_instance_types():
+    class TestEnum(t.enum8):
+        Member = 0x00
+
+    assert TestEnum._member_type_ is t.uint8_t
+    assert type(TestEnum.Member.value) is t.uint8_t
+    assert isinstance(TestEnum.Member, t.uint8_t)
+    assert issubclass(TestEnum, t.uint8_t)
+
+
 def test_bitmap():
     """Test bitmaps."""
 
@@ -436,3 +537,17 @@ def test_bitmap_undef():
     assert TestBitmap.ALL not in r
     assert r.value == 0x0F60
     assert r.serialize() == data
+
+
+def test_bitmap_instance_types():
+    class TestBitmap(t.bitmap16):
+        CH_1 = 0x0010
+        CH_2 = 0x0020
+        CH_3 = 0x0040
+        CH_4 = 0x0080
+        ALL = 0x00F0
+
+    assert TestBitmap._member_type_ is t.uint16_t
+    assert type(TestBitmap.ALL.value) is t.uint16_t
+    assert isinstance(TestBitmap.ALL, t.uint16_t)
+    assert issubclass(TestBitmap, t.uint16_t)

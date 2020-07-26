@@ -376,8 +376,18 @@ def test_pytype_to_datatype_derived_bitmaps():
     assert foundation.DATA_TYPES.pytype_to_datatype_id(b_3) == bitmap16_id
 
 
+def test_ptype_to_datatype_lvlist():
+    """Test pytype for Structure."""
+
+    lst1 = t.LVList[t.uint16_t, foundation.TypeValue]
+    lst2 = t.LVList[t.uint16_t, t.uint8_t]
+
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(lst1) == 0x4C
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(lst2) == 0xFF
+
+
 def test_ptype_to_datatype_notype():
-    """Test ptype for NoData."""
+    """Test pytype for NoData."""
 
     class ZigpyUnknown:
         pass
