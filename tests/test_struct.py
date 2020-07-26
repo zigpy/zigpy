@@ -119,7 +119,7 @@ def test_struct_attribute_assignment():
     s1 = TestStruct(a=1)
     s1.a = -1
 
-    with pytest.raises(OverflowError):
+    with pytest.raises(ValueError):
         s1.serialize()
 
     s1.a = 1

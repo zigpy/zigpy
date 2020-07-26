@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, Union
 
 import zigpy.types as t
+from zigpy.types.basic import _LVList
 
 
 class Status(t.enum8):
@@ -45,7 +46,7 @@ class Status(t.enum8):
     @classmethod
     def _missing_(cls, value):
         chained = t.APSStatus(value)
-        status = t.uint8_t.__new__(cls, chained.value)
+        status = cls._member_type_.__new__(cls, chained.value)
         status._name_ = chained.name
         status._value_ = value
         return status
@@ -129,26 +130,26 @@ class DataTypes(dict):
         self._idx_by_class = {
             _type: type_id for type_id, (name, _type, ad) in self.items()
         }
-        self._idx_by_cls_name = {
-            cls.__name__: type_id for cls, type_id in self._idx_by_class.items()
-        }
 
     def pytype_to_datatype_id(self, python_type) -> int:
         """Return Zigbee Datatype ID for a give python type."""
-        data_type_id = self._idx_by_class.get(python_type)
-        if data_type_id is not None:
-            return data_type_id
 
-        # lookup by class name
-        try:
-            return self._idx_by_cls_name[python_type.__name__]
-        except KeyError:
-            pass
+        # XXX: t.LVList is not a real type so it needs to be handled explicitly.
+        #      Thankfully there is only one data type based on it.
+        #      This check essentially does `python_type == t.LVList(TypeValue, 2)`.
+        if (
+            issubclass(python_type, _LVList)
+            and python_type.__mro__[1] is _LVList
+            and python_type._itemtype is TypeValue
+            and python_type._prefix_length == 2
+        ):
+            return 0x4C
 
-        for cls, type_id in self._idx_by_class.items():
-            if issubclass(python_type, cls):
-                self._idx_by_cls_name[python_type.__name__] = type_id
-                return type_id
+        # All other data types work normally. We return the most specific parent class.
+        for cls in python_type.__mro__:
+            if cls in self._idx_by_class:
+                return self._idx_by_class[cls]
+
         return 0xFF
 
 
