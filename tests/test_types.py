@@ -263,7 +263,20 @@ def test_list():
     assert isinstance(d, t.List[t.uint8_t])
 
 
-def test_list_types():
+def test_fixedlist():
+    with pytest.raises(ValueError):
+        t.FixedList[t.uint8_t, 2]([]).serialize()
+
+    with pytest.raises(ValueError):
+        t.FixedList[t.uint8_t, 2]([1]).serialize()
+
+    with pytest.raises(ValueError):
+        t.FixedList[t.uint8_t, 2]([1, 2, 3]).serialize()
+
+    assert t.FixedList[t.uint8_t, 2]([1, 2]).serialize() == b"\x01\x02"
+
+
+def test_lvlist_types():
     # Brackets create singleton types
     anon_lst1 = t.LVList[t.uint16_t]
     anon_lst2 = t.LVList[t.uint16_t, t.uint8_t]
@@ -295,6 +308,19 @@ def test_list_types():
     assert isinstance(
         t.LVList[t.uint16_t, t.uint8_t](), t.LVList[t.uint16_t, t.uint8_t]
     )
+
+    # Similar-looking classes are not compatible
+    class NewListType(list, metaclass=t.KwargTypeMeta):
+        _item_type = None
+        _length_type = t.uint8_t
+
+        _getitem_kwargs = {"item_type": None, "length_type": t.uint8_t}
+
+    class NewList(NewListType, item_type=t.uint16_t, length_type=t.uint8_t):
+        pass
+
+    assert not issubclass(NewList, t.LVList[t.uint16_t, t.uint8_t])
+    assert not isinstance(NewList(), t.LVList[t.uint16_t, t.uint8_t])
 
 
 def test_hex_repr():

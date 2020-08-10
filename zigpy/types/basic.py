@@ -436,12 +436,8 @@ class LVList(list, metaclass=KwargTypeMeta):
 
     def serialize(self) -> bytes:
         assert self._item_type is not None
-        return b"".join(
-            [
-                i.serialize()
-                for i in [self._length_type(len(self))]
-                + [self._item_type(i) for i in self]
-            ]
+        return self._length_type(len(self)).serialize() + b"".join(
+            [self._item_type(i).serialize() for i in self]
         )
 
     @classmethod
