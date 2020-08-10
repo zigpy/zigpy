@@ -1,4 +1,5 @@
 import enum
+import inspect
 import struct
 from typing import Callable, Tuple, TypeVar
 
@@ -319,57 +320,97 @@ class LongOctetString(LVBytes):
     _prefix_length = 2
 
 
-class ListMeta(type):
+class KwargTypeMeta(type):
     # So things like `LVList[NWK, t.uint8_t]` are singletons
     _anonymous_classes = {}
 
     def __new__(metaclass, name, bases, namespaces, **kwargs):
+        cls_kwarg_attrs = namespaces.get("_getitem_kwargs", {})
+
+        def __init_subclass__(cls, **kwargs):
+            filtered_kwargs = kwargs.copy()
+
+            for name, value in kwargs.items():
+                if name in cls_kwarg_attrs:
+                    setattr(cls, f"_{name}", filtered_kwargs.pop(name))
+
+            super().__init_subclass__(**filtered_kwargs)
+
+        if "__init_subclass__" not in namespaces:
+            namespaces["__init_subclass__"] = __init_subclass__
+
         return type.__new__(metaclass, name, bases, namespaces, **kwargs)
 
-    def __subclasscheck__(self, subclass):
-        # Only check with `t.LVList[]`, others don't make sense
-        if self.__mro__[1] is LVList and issubclass(subclass, LVList):
-            return issubclass(subclass._item_type, self._item_type) and issubclass(
-                subclass._length_type, self._length_type
-            )
-        elif self.__mro__[1] is List and issubclass(subclass, List):
-            return issubclass(subclass._item_type, self._item_type)
-        elif self.__mro__[1] is FixedList and issubclass(subclass, FixedList):
-            return (
-                issubclass(subclass._item_type, self._item_type)
-                and subclass._length == self._length
-            )
+    def __getitem__(cls, key):
+        # Make sure Foo[a] is the same as Foo[a,]
+        if not isinstance(key, tuple):
+            key = (key,)
 
-        return super().__subclasscheck__(subclass)
+        signature = inspect.Signature(
+            parameters=[
+                inspect.Parameter(
+                    name=k,
+                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    default=v if v is not None else inspect.Parameter.empty,
+                )
+                for k, v in cls._getitem_kwargs.items()
+            ]
+        )
+
+        bound = signature.bind(*key)
+        bound.apply_defaults()
+
+        # Default types need to work, which is why we need to create the key down here
+        expanded_key = tuple(bound.arguments.values())
+
+        if (cls, expanded_key) in cls._anonymous_classes:
+            return cls._anonymous_classes[cls, expanded_key]
+
+        class AnonSubclass(cls, **bound.arguments):
+            pass
+
+        AnonSubclass.__name__ = AnonSubclass.__qualname__ = f"Anonymous{cls.__name__}"
+        cls._anonymous_classes[cls, expanded_key] = AnonSubclass
+
+        return AnonSubclass
+
+    def __subclasscheck__(cls, subclass):
+        if type(subclass) is not KwargTypeMeta:
+            return False
+
+        # Named subclasses are handled normally
+        if not cls.__name__.startswith("Anonymous"):
+            return super().__subclasscheck__(subclass)
+
+        # Anonymous subclasses must be identical
+        if subclass.__name__.startswith("Anonymous"):
+            return cls is subclass
+
+        # A named class is a "subclass" of an anonymous subclass only if its ancestors
+        # are all the same
+        if subclass.__mro__[-len(cls.__mro__) + 1 :] != cls.__mro__[1:]:
+            return False
+
+        # They must also have the same class kwargs
+        for key in cls._getitem_kwargs.keys():
+            key = f"_{key}"
+
+            if getattr(cls, key) != getattr(subclass, key):
+                return False
+
+        return True
 
     def __instancecheck__(self, subclass):
+        # We rely on __subclasscheck__ to do the work
         if issubclass(type(subclass), self):
             return True
 
         return super().__instancecheck__(subclass)
 
 
-class List(list, metaclass=ListMeta):
+class List(list, metaclass=KwargTypeMeta):
     _item_type = None
-
-    def __init_subclass__(cls, *, item_type=None) -> None:
-        super().__init_subclass__()
-
-        if item_type is not None:
-            cls._item_type = item_type
-
-    def __class_getitem__(cls, key):
-        if (cls, key) in cls._anonymous_classes:
-            return cls._anonymous_classes[cls, key]
-
-        item_type = key
-
-        class AnonymousList(List, item_type=item_type):
-            pass
-
-        cls._anonymous_classes[cls, key] = AnonymousList
-
-        return AnonymousList
+    _getitem_kwargs = {"item_type": None}
 
     def serialize(self) -> bytes:
         assert self._item_type is not None
@@ -380,7 +421,6 @@ class List(list, metaclass=ListMeta):
         assert cls._item_type is not None
 
         lst = cls()
-
         while data:
             item, data = cls._item_type.deserialize(data)
             lst.append(item)
@@ -388,31 +428,11 @@ class List(list, metaclass=ListMeta):
         return lst, data
 
 
-class LVList(list, metaclass=ListMeta):
-    _length_type = None
+class LVList(list, metaclass=KwargTypeMeta):
     _item_type = None
+    _length_type = uint8_t
 
-    def __init_subclass__(cls, *, length_type=None, item_type=None) -> None:
-        super().__init_subclass__()
-
-        if length_type is not None:
-            cls._length_type = length_type
-
-        if item_type is not None:
-            cls._item_type = item_type
-
-    def __class_getitem__(cls, key):
-        if (cls, key) in cls._anonymous_classes:
-            return cls._anonymous_classes[cls, key]
-
-        length_type, item_type = key
-
-        class AnonymousLVList(cls, length_type=length_type, item_type=item_type):
-            pass
-
-        cls._anonymous_classes[cls, key] = AnonymousLVList
-
-        return AnonymousLVList
+    _getitem_kwargs = {"item_type": None, "length_type": uint8_t}
 
     def serialize(self) -> bytes:
         assert self._item_type is not None
@@ -435,31 +455,11 @@ class LVList(list, metaclass=ListMeta):
         return r, data
 
 
-class FixedList(list, metaclass=ListMeta):
-    _length = None
+class FixedList(list, metaclass=KwargTypeMeta):
     _item_type = None
+    _length = None
 
-    def __init_subclass__(cls, *, length=None, item_type=None) -> None:
-        super().__init_subclass__()
-
-        if length is not None:
-            cls._length = length
-
-        if item_type is not None:
-            cls._item_type = item_type
-
-    def __class_getitem__(cls, key):
-        if (cls, key) in cls._anonymous_classes:
-            return cls._anonymous_classes[cls, key]
-
-        length, item_type = key
-
-        class AnonymousFixedList(cls, length=length, item_type=item_type):
-            pass
-
-        cls._anonymous_classes[cls, key] = AnonymousFixedList
-
-        return AnonymousFixedList
+    _getitem_kwargs = {"item_type": None, "length": None}
 
     def serialize(self) -> bytes:
         assert self._length is not None

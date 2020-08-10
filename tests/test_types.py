@@ -264,25 +264,36 @@ def test_list():
 
 
 def test_list_types():
-    class LVListSubclass(t.LVList, length_type=t.uint8_t, item_type=t.uint16_t):
-        pass
-
     # Brackets create singleton types
-    anon_lst = t.LVList[t.uint8_t, t.uint16_t]
-    assert anon_lst._length_type is t.uint8_t
-    assert anon_lst._item_type is t.uint16_t
-    assert t.LVList[t.uint8_t, t.uint16_t] is t.LVList[t.uint8_t, t.uint16_t]
+    anon_lst1 = t.LVList[t.uint16_t]
+    anon_lst2 = t.LVList[t.uint16_t, t.uint8_t]
+
+    assert anon_lst1._length_type is t.uint8_t
+    assert anon_lst1._item_type is t.uint16_t
+    assert anon_lst2._length_type is t.uint8_t
+    assert anon_lst2._item_type is t.uint16_t
+    assert anon_lst1 is anon_lst2
+    assert issubclass(t.LVList[t.uint8_t, t.uint16_t], t.LVList[t.uint8_t, t.uint16_t])
+    assert not issubclass(
+        t.LVList[t.uint16_t, t.uint8_t], t.LVList[t.uint8_t, t.uint16_t]
+    )
 
     # Bracketed types are compatible with explicit subclasses
-    assert issubclass(t.LVList[t.uint8_t, t.uint16_t], t.LVList[t.uint8_t, t.uint16_t])
-    assert issubclass(LVListSubclass, t.LVList[t.uint8_t, t.uint16_t])
+    class LVListSubclass(t.LVList, item_type=t.uint16_t, length_type=t.uint8_t):
+        pass
+
+    assert issubclass(LVListSubclass, t.LVList[t.uint16_t, t.uint8_t])
+    assert not issubclass(t.LVList[t.uint16_t, t.uint8_t], LVListSubclass)
+    assert not issubclass(LVListSubclass, t.LVList[t.uint8_t, t.uint16_t])
     assert issubclass(LVListSubclass, LVListSubclass)
 
     # Instances are also compatible
     assert isinstance(LVListSubclass(), LVListSubclass)
-    assert isinstance(LVListSubclass(), t.LVList[t.uint8_t, t.uint16_t])
+    assert isinstance(LVListSubclass(), t.LVList[t.uint16_t, t.uint8_t])
+    assert not isinstance(LVListSubclass(), t.LVList[t.uint8_t, t.uint16_t])
+    assert not isinstance(t.LVList[t.uint16_t, t.uint8_t](), LVListSubclass)
     assert isinstance(
-        t.LVList[t.uint8_t, t.uint16_t](), t.LVList[t.uint8_t, t.uint16_t]
+        t.LVList[t.uint16_t, t.uint8_t](), t.LVList[t.uint16_t, t.uint8_t]
     )
 
 
@@ -551,3 +562,5 @@ def test_bitmap_instance_types():
     assert type(TestBitmap.ALL.value) is t.uint16_t
     assert isinstance(TestBitmap.ALL, t.uint16_t)
     assert issubclass(TestBitmap, t.uint16_t)
+    assert isinstance(TestBitmap(0xFF00), t.uint16_t)
+    assert isinstance(TestBitmap(0xFF00), TestBitmap)
