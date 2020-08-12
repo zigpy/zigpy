@@ -1,4 +1,5 @@
 import enum
+import inspect
 import struct
 from typing import Callable, Tuple, TypeVar
 
@@ -319,76 +320,161 @@ class LongOctetString(LVBytes):
     _prefix_length = 2
 
 
-class _List(list):
+class KwargTypeMeta(type):
+    # So things like `LVList[NWK, t.uint8_t]` are singletons
+    _anonymous_classes = {}
+
+    def __new__(metaclass, name, bases, namespaces, **kwargs):
+        cls_kwarg_attrs = namespaces.get("_getitem_kwargs", {})
+
+        def __init_subclass__(cls, **kwargs):
+            filtered_kwargs = kwargs.copy()
+
+            for name, value in kwargs.items():
+                if name in cls_kwarg_attrs:
+                    setattr(cls, f"_{name}", filtered_kwargs.pop(name))
+
+            super().__init_subclass__(**filtered_kwargs)
+
+        if "__init_subclass__" not in namespaces:
+            namespaces["__init_subclass__"] = __init_subclass__
+
+        return type.__new__(metaclass, name, bases, namespaces, **kwargs)
+
+    def __getitem__(cls, key):
+        # Make sure Foo[a] is the same as Foo[a,]
+        if not isinstance(key, tuple):
+            key = (key,)
+
+        signature = inspect.Signature(
+            parameters=[
+                inspect.Parameter(
+                    name=k,
+                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    default=v if v is not None else inspect.Parameter.empty,
+                )
+                for k, v in cls._getitem_kwargs.items()
+            ]
+        )
+
+        bound = signature.bind(*key)
+        bound.apply_defaults()
+
+        # Default types need to work, which is why we need to create the key down here
+        expanded_key = tuple(bound.arguments.values())
+
+        if (cls, expanded_key) in cls._anonymous_classes:
+            return cls._anonymous_classes[cls, expanded_key]
+
+        class AnonSubclass(cls, **bound.arguments):
+            pass
+
+        AnonSubclass.__name__ = AnonSubclass.__qualname__ = f"Anonymous{cls.__name__}"
+        cls._anonymous_classes[cls, expanded_key] = AnonSubclass
+
+        return AnonSubclass
+
+    def __subclasscheck__(cls, subclass):
+        if type(subclass) is not KwargTypeMeta:
+            return False
+
+        # Named subclasses are handled normally
+        if not cls.__name__.startswith("Anonymous"):
+            return super().__subclasscheck__(subclass)
+
+        # Anonymous subclasses must be identical
+        if subclass.__name__.startswith("Anonymous"):
+            return cls is subclass
+
+        # A named class is a "subclass" of an anonymous subclass only if its ancestors
+        # are all the same
+        if subclass.__mro__[-len(cls.__mro__) + 1 :] != cls.__mro__[1:]:
+            return False
+
+        # They must also have the same class kwargs
+        for key in cls._getitem_kwargs.keys():
+            key = f"_{key}"
+
+            if getattr(cls, key) != getattr(subclass, key):
+                return False
+
+        return True
+
+    def __instancecheck__(self, subclass):
+        # We rely on __subclasscheck__ to do the work
+        if issubclass(type(subclass), self):
+            return True
+
+        return super().__instancecheck__(subclass)
+
+
+class List(list, metaclass=KwargTypeMeta):
+    _item_type = None
+    _getitem_kwargs = {"item_type": None}
+
+    def serialize(self) -> bytes:
+        assert self._item_type is not None
+        return b"".join([self._item_type(i).serialize() for i in self])
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> Tuple["LVList", bytes]:
+        assert cls._item_type is not None
+
+        lst = cls()
+        while data:
+            item, data = cls._item_type.deserialize(data)
+            lst.append(item)
+
+        return lst, data
+
+
+class LVList(list, metaclass=KwargTypeMeta):
+    _item_type = None
+    _length_type = uint8_t
+
+    _getitem_kwargs = {"item_type": None, "length_type": uint8_t}
+
+    def serialize(self) -> bytes:
+        assert self._item_type is not None
+        return self._length_type(len(self)).serialize() + b"".join(
+            [self._item_type(i).serialize() for i in self]
+        )
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> Tuple["LVList", bytes]:
+        assert cls._item_type is not None
+        length, data = cls._length_type.deserialize(data)
+        r = cls()
+        for i in range(length):
+            item, data = cls._item_type.deserialize(data)
+            r.append(item)
+        return r, data
+
+
+class FixedList(list, metaclass=KwargTypeMeta):
+    _item_type = None
     _length = None
 
-    def serialize(self):
-        assert self._length is None or len(self) == self._length
-        return b"".join([self._itemtype(i).serialize() for i in self])
+    _getitem_kwargs = {"item_type": None, "length": None}
+
+    def serialize(self) -> bytes:
+        assert self._length is not None
+
+        if len(self) != self._length:
+            raise ValueError(
+                f"Invalid length for {self!r}: expected {self._length}, got {len(self)}"
+            )
+
+        return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data: bytes) -> Tuple["FixedList", bytes]:
+        assert cls._item_type is not None
         r = cls()
-        while data:
-            item, data = r._itemtype.deserialize(data)
+        for i in range(cls._length):
+            item, data = cls._item_type.deserialize(data)
             r.append(item)
         return r, data
-
-
-class _LVList(_List):
-    _prefix_length = 1
-
-    def serialize(self):
-        head = len(self).to_bytes(self._prefix_length, "little")
-        data = super().serialize()
-        return head + data
-
-    @classmethod
-    def deserialize(cls, data):
-        r = cls()
-
-        if len(data) < cls._prefix_length:
-            raise ValueError("Data is too short")
-
-        length = int.from_bytes(data[: cls._prefix_length], "little")
-        data = data[cls._prefix_length :]
-        for i in range(length):
-            item, data = r._itemtype.deserialize(data)
-            r.append(item)
-        return r, data
-
-
-def List(itemtype):  # noqa: N802
-    class List(_List):
-        _itemtype = itemtype
-
-    return List
-
-
-def LVList(itemtype, prefix_length=1):  # noqa: N802
-    class LVList(_LVList):
-        _itemtype = itemtype
-        _prefix_length = prefix_length
-
-    return LVList
-
-
-class _FixedList(_List):
-    @classmethod
-    def deserialize(cls, data):
-        r = cls()
-        for i in range(r._length):
-            item, data = r._itemtype.deserialize(data)
-            r.append(item)
-        return r, data
-
-
-def fixed_list(length, itemtype):
-    class FixedList(_FixedList):
-        _length = length
-        _itemtype = itemtype
-
-    return FixedList
 
 
 class CharacterString(str):
@@ -447,50 +533,49 @@ def Optional(optional_item_type):
     return Optional
 
 
-class data8(_FixedList):
+class data8(FixedList, item_type=uint8_t, length=1):
     """General data, Discrete, 8 bit."""
 
-    _itemtype = uint8_t
-    _length = 1
+    pass
 
 
-class data16(data8):
+class data16(FixedList, item_type=uint8_t, length=2):
     """General data, Discrete, 16 bit."""
 
-    _length = 2
+    pass
 
 
-class data24(data8):
+class data24(FixedList, item_type=uint8_t, length=3):
     """General data, Discrete, 24 bit."""
 
-    _length = 3
+    pass
 
 
-class data32(data8):
+class data32(FixedList, item_type=uint8_t, length=4):
     """General data, Discrete, 32 bit."""
 
-    _length = 4
+    pass
 
 
-class data40(data8):
+class data40(FixedList, item_type=uint8_t, length=5):
     """General data, Discrete, 40 bit."""
 
-    _length = 5
+    pass
 
 
-class data48(data8):
+class data48(FixedList, item_type=uint8_t, length=6):
     """General data, Discrete, 48 bit."""
 
-    _length = 6
+    pass
 
 
-class data56(data8):
+class data56(FixedList, item_type=uint8_t, length=7):
     """General data, Discrete, 56 bit."""
 
-    _length = 7
+    pass
 
 
-class data64(data8):
+class data64(FixedList, item_type=uint8_t, length=8):
     """General data, Discrete, 64 bit."""
 
-    _length = 8
+    pass

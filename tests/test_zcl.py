@@ -430,7 +430,7 @@ async def test_write_attributes_cache_default_response(cluster, status):
     ),
 )
 async def test_write_attributes_cache_success(cluster, attributes, result):
-    rsp_type = t.List(foundation.WriteAttributesStatusRecord)
+    rsp_type = t.List[foundation.WriteAttributesStatusRecord]
     write_mock = CoroutineMock(return_value=[rsp_type.deserialize(result)[0]])
     with mock.patch.object(cluster, "_write_attributes", write_mock):
         await cluster.write_attributes(attributes)

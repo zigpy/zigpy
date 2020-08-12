@@ -238,23 +238,89 @@ def test_limited_char_string():
 
 
 def test_lvlist():
-    d, r = t.LVList(t.uint8_t).deserialize(b"\x0412345")
+    d, r = t.LVList[t.uint8_t, t.uint8_t].deserialize(b"\x0412345")
     assert r == b"5"
     assert d == list(map(ord, "1234"))
-    assert t.LVList(t.uint8_t).serialize(d) == b"\x041234"
+    assert t.LVList[t.uint8_t, t.uint8_t].serialize(d) == b"\x041234"
+
+    assert isinstance(d, t.LVList[t.uint8_t, t.uint8_t])
 
 
 def test_lvlist_too_short():
     with pytest.raises(ValueError):
-        t.LVList(t.uint8_t).deserialize(b"")
+        t.LVList[t.uint8_t, t.uint8_t].deserialize(b"")
 
     with pytest.raises(ValueError):
-        t.LVList(t.uint8_t).deserialize(b"\x04123")
+        t.LVList[t.uint8_t, t.uint8_t].deserialize(b"\x04123")
 
 
 def test_list():
     expected = list(map(ord, "\x0123"))
-    assert t.List(t.uint8_t).deserialize(b"\x0123") == (expected, b"")
+    d, r = t.List[t.uint8_t].deserialize(b"\x0123")
+
+    assert (d, r) == (expected, b"")
+    assert not isinstance(expected, t.List[t.uint8_t])
+    assert isinstance(d, t.List[t.uint8_t])
+
+
+def test_fixedlist():
+    with pytest.raises(ValueError):
+        t.FixedList[t.uint8_t, 2]([]).serialize()
+
+    with pytest.raises(ValueError):
+        t.FixedList[t.uint8_t, 2]([1]).serialize()
+
+    with pytest.raises(ValueError):
+        t.FixedList[t.uint8_t, 2]([1, 2, 3]).serialize()
+
+    assert t.FixedList[t.uint8_t, 2]([1, 2]).serialize() == b"\x01\x02"
+
+
+def test_lvlist_types():
+    # Brackets create singleton types
+    anon_lst1 = t.LVList[t.uint16_t]
+    anon_lst2 = t.LVList[t.uint16_t, t.uint8_t]
+
+    assert anon_lst1._length_type is t.uint8_t
+    assert anon_lst1._item_type is t.uint16_t
+    assert anon_lst2._length_type is t.uint8_t
+    assert anon_lst2._item_type is t.uint16_t
+    assert anon_lst1 is anon_lst2
+    assert issubclass(t.LVList[t.uint8_t, t.uint16_t], t.LVList[t.uint8_t, t.uint16_t])
+    assert not issubclass(
+        t.LVList[t.uint16_t, t.uint8_t], t.LVList[t.uint8_t, t.uint16_t]
+    )
+
+    # Bracketed types are compatible with explicit subclasses
+    class LVListSubclass(t.LVList, item_type=t.uint16_t, length_type=t.uint8_t):
+        pass
+
+    assert issubclass(LVListSubclass, t.LVList[t.uint16_t, t.uint8_t])
+    assert not issubclass(t.LVList[t.uint16_t, t.uint8_t], LVListSubclass)
+    assert not issubclass(LVListSubclass, t.LVList[t.uint8_t, t.uint16_t])
+    assert issubclass(LVListSubclass, LVListSubclass)
+
+    # Instances are also compatible
+    assert isinstance(LVListSubclass(), LVListSubclass)
+    assert isinstance(LVListSubclass(), t.LVList[t.uint16_t, t.uint8_t])
+    assert not isinstance(LVListSubclass(), t.LVList[t.uint8_t, t.uint16_t])
+    assert not isinstance(t.LVList[t.uint16_t, t.uint8_t](), LVListSubclass)
+    assert isinstance(
+        t.LVList[t.uint16_t, t.uint8_t](), t.LVList[t.uint16_t, t.uint8_t]
+    )
+
+    # Similar-looking classes are not compatible
+    class NewListType(list, metaclass=t.KwargTypeMeta):
+        _item_type = None
+        _length_type = t.uint8_t
+
+        _getitem_kwargs = {"item_type": None, "length_type": t.uint8_t}
+
+    class NewList(NewListType, item_type=t.uint16_t, length_type=t.uint8_t):
+        pass
+
+    assert not issubclass(NewList, t.LVList[t.uint16_t, t.uint8_t])
+    assert not isinstance(NewList(), t.LVList[t.uint16_t, t.uint8_t])
 
 
 def test_hex_repr():
@@ -522,3 +588,5 @@ def test_bitmap_instance_types():
     assert type(TestBitmap.ALL.value) is t.uint16_t
     assert isinstance(TestBitmap.ALL, t.uint16_t)
     assert issubclass(TestBitmap, t.uint16_t)
+    assert isinstance(TestBitmap(0xFF00), t.uint16_t)
+    assert isinstance(TestBitmap(0xFF00), TestBitmap)

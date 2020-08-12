@@ -15,8 +15,8 @@ class SimpleDescriptor(t.Struct):
     profile: t.uint16_t
     device_type: t.uint16_t
     device_version: t.uint8_t
-    input_clusters: t.LVList(t.uint16_t)
-    output_clusters: t.LVList(t.uint16_t)
+    input_clusters: t.LVList[t.uint16_t]
+    output_clusters: t.LVList[t.uint16_t]
 
 
 class SizePrefixedSimpleDescriptor(SimpleDescriptor):
@@ -192,7 +192,7 @@ class Neighbors(t.Struct):
 
     Entries: t.uint8_t
     StartIndex: t.uint8_t
-    NeighborTableList: t.LVList(Neighbor)
+    NeighborTableList: t.LVList[Neighbor]
 
 
 class Route(t.Struct):
@@ -206,7 +206,7 @@ class Route(t.Struct):
 class Routes(t.Struct):
     Entries: t.uint8_t
     StartIndex: t.uint8_t
-    RoutingTableList: t.LVList(Route)
+    RoutingTableList: t.LVList[Route]
 
 
 class NwkUpdate(t.Struct):
@@ -368,8 +368,8 @@ CLUSTERS = {
     ZDOCmd.Match_Desc_req: (
         NWKI,
         ("ProfileID", t.uint16_t),
-        ("InClusterList", t.LVList(t.uint16_t)),
-        ("OutClusterList", t.LVList(t.uint16_t)),
+        ("InClusterList", t.LVList[t.uint16_t]),
+        ("OutClusterList", t.LVList[t.uint16_t]),
     ),
     # ZDO.Complex_Desc_req: (NWKI, ),
     ZDOCmd.User_Desc_req: (NWKI,),
@@ -377,7 +377,7 @@ CLUSTERS = {
     ZDOCmd.Device_annce: (NWK, IEEE, ("Capability", t.uint8_t)),
     ZDOCmd.User_Desc_set: (
         NWKI,
-        ("UserDescriptor", t.fixed_list(16, t.uint8_t)),
+        ("UserDescriptor", t.FixedList[16, t.uint8_t]),
     ),  # Really a string
     ZDOCmd.System_Server_Discovery_req: (("ServerMask", t.uint16_t),),
     ZDOCmd.Discovery_store_req: (
@@ -386,10 +386,10 @@ CLUSTERS = {
         ("NodeDescSize", t.uint8_t),
         ("PowerDescSize", t.uint8_t),
         ("ActiveEPSize", t.uint8_t),
-        ("SimpleDescSizeList", t.LVList(t.uint8_t)),
+        ("SimpleDescSizeList", t.LVList[t.uint8_t]),
     ),
     ZDOCmd.Node_Desc_store_req: (NWK, IEEE, ("NodeDescriptor", NodeDescriptor)),
-    ZDOCmd.Active_EP_store_req: (NWK, IEEE, ("ActiveEPList", t.LVList(t.uint8_t))),
+    ZDOCmd.Active_EP_store_req: (NWK, IEEE, ("ActiveEPList", t.LVList[t.uint8_t])),
     ZDOCmd.Simple_Desc_store_req: (
         NWK,
         IEEE,
@@ -403,15 +403,15 @@ CLUSTERS = {
         ("StartIndex", t.uint8_t),
     ),
     ZDOCmd.Extended_Active_EP_req: (NWKI, ("StartIndex", t.uint8_t)),
-    ZDOCmd.Parent_annce: (("Children", t.LVList(t.EUI64)),),
+    ZDOCmd.Parent_annce: (("Children", t.LVList[t.EUI64]),),
     #  Bind Management Server Services Responses
     ZDOCmd.End_Device_Bind_req: (
         ("BindingTarget", t.uint16_t),
         ("SrcAddress", t.EUI64),
         ("SrcEndpoint", t.uint8_t),
         ("ProfileID", t.uint8_t),
-        ("InClusterList", t.LVList(t.uint8_t)),
-        ("OutClusterList", t.LVList(t.uint8_t)),
+        ("InClusterList", t.LVList[t.uint8_t]),
+        ("OutClusterList", t.LVList[t.uint8_t]),
     ),
     ZDOCmd.Bind_req: (
         ("SrcAddress", t.EUI64),
@@ -445,7 +445,7 @@ CLUSTERS = {
         NWK,
         ("NumAssocDev", t.Optional(t.uint8_t)),
         ("StartIndex", t.Optional(t.uint8_t)),
-        ("NWKAddressAssocDevList", t.Optional(t.List(t.NWK))),
+        ("NWKAddressAssocDevList", t.Optional(t.List[t.NWK])),
     ),
     ZDOCmd.IEEE_addr_rsp: (
         STATUS,
@@ -453,7 +453,7 @@ CLUSTERS = {
         NWK,
         ("NumAssocDev", t.Optional(t.uint8_t)),
         ("StartIndex", t.Optional(t.uint8_t)),
-        ("NWKAddrAssocDevList", t.Optional(t.List(t.NWK))),
+        ("NWKAddrAssocDevList", t.Optional(t.List[t.NWK])),
     ),
     ZDOCmd.Node_Desc_rsp: (
         STATUS,
@@ -470,8 +470,8 @@ CLUSTERS = {
         NWKI,
         ("SimpleDescriptor", t.Optional(SizePrefixedSimpleDescriptor)),
     ),
-    ZDOCmd.Active_EP_rsp: (STATUS, NWKI, ("ActiveEPList", t.LVList(t.uint8_t))),
-    ZDOCmd.Match_Desc_rsp: (STATUS, NWKI, ("MatchList", t.LVList(t.uint8_t))),
+    ZDOCmd.Active_EP_rsp: (STATUS, NWKI, ("ActiveEPList", t.LVList[t.uint8_t])),
+    ZDOCmd.Match_Desc_rsp: (STATUS, NWKI, ("MatchList", t.LVList[t.uint8_t])),
     # ZDO.Complex_Desc_rsp: (
     #     STATUS,
     #     NWKI,
@@ -482,7 +482,7 @@ CLUSTERS = {
         STATUS,
         NWKI,
         ("Length", t.uint8_t),
-        ("UserDescriptor", t.Optional(t.fixed_list(16, t.uint8_t))),
+        ("UserDescriptor", t.Optional(t.FixedList[16, t.uint8_t])),
     ),
     ZDOCmd.Discovery_Cache_rsp: (STATUS,),
     ZDOCmd.User_Desc_conf: (STATUS, NWKI),
@@ -501,16 +501,16 @@ CLUSTERS = {
         ("AppInputClusterCount", t.uint8_t),
         ("AppOutputClusterCount", t.uint8_t),
         ("StartIndex", t.uint8_t),
-        ("AppClusterList", t.Optional(t.List(t.uint16_t))),
+        ("AppClusterList", t.Optional(t.List[t.uint16_t])),
     ),
     ZDOCmd.Extended_Active_EP_rsp: (
         STATUS,
         NWKI,
         ("ActiveEPCount", t.uint8_t),
         ("StartIndex", t.uint8_t),
-        ("ActiveEPList", t.List(t.uint8_t)),
+        ("ActiveEPList", t.List[t.uint8_t]),
     ),
-    ZDOCmd.Parent_annce_rsp: (STATUS, ("Children", t.LVList(t.EUI64))),
+    ZDOCmd.Parent_annce_rsp: (STATUS, ("Children", t.LVList[t.EUI64])),
     #  Bind Management Server Services Responses
     ZDOCmd.End_Device_Bind_rsp: (STATUS,),
     ZDOCmd.Bind_rsp: (STATUS,),
@@ -527,7 +527,7 @@ CLUSTERS = {
         ("ScannedChannels", t.Channels),
         ("TotalTransmissions", t.uint16_t),
         ("TransmissionFailures", t.uint16_t),
-        ("EnergyValues", t.LVList(t.uint8_t)),
+        ("EnergyValues", t.LVList[t.uint8_t]),
     )
     # ... TODO optional stuff ...
 }

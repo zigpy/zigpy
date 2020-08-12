@@ -107,7 +107,7 @@ class LightLink(Cluster):
         ),
         0x0003: (
             "device_information_rsp",
-            (t.uint32_t, t.uint8_t, t.uint8_t, t.LVList(DeviceInfoRecord)),
+            (t.uint32_t, t.uint8_t, t.uint8_t, t.LVList[DeviceInfoRecord]),
             True,
         ),
         0x0011: (
@@ -124,12 +124,12 @@ class LightLink(Cluster):
         ),
         0x0041: (
             "get_group_identifiers_rsp",
-            (t.uint8_t, t.uint8_t, t.LVList(GroupInfoRecord)),
+            (t.uint8_t, t.uint8_t, t.LVList[GroupInfoRecord]),
             True,
         ),
         0x0042: (
             "get_endpoint_list_rsp",
-            (t.uint8_t, t.uint8_t, t.LVList(EndpointInfoRecord)),
+            (t.uint8_t, t.uint8_t, t.LVList[EndpointInfoRecord]),
             True,
         ),
     }

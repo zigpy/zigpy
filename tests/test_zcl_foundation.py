@@ -72,7 +72,7 @@ def test_attribute_reporting_config_1():
 def test_typed_collection():
     tc = foundation.TypedCollection()
     tc.type = 0x20
-    tc.value = t.LVList(t.uint8_t)([t.uint8_t(i) for i in range(100)])
+    tc.value = t.LVList[t.uint8_t]([t.uint8_t(i) for i in range(100)])
     ser = tc.serialize()
 
     assert len(ser) == 1 + 1 + 100  # type, length, values
@@ -379,8 +379,8 @@ def test_pytype_to_datatype_derived_bitmaps():
 def test_ptype_to_datatype_lvlist():
     """Test pytype for Structure."""
 
-    lst1 = t.LVList(foundation.TypeValue, 2)
-    lst2 = t.LVList(t.uint8_t, 2)
+    lst1 = t.LVList[t.uint16_t, foundation.TypeValue]
+    lst2 = t.LVList[t.uint16_t, t.uint8_t]
 
     assert foundation.DATA_TYPES.pytype_to_datatype_id(lst1) == 0x4C
     assert foundation.DATA_TYPES.pytype_to_datatype_id(lst2) == 0xFF

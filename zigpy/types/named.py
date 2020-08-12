@@ -16,7 +16,7 @@ class BroadcastAddress(basic.enum16):
     RESERVED_FFF8 = 0xFFF8
 
 
-class EUI64(basic.fixed_list(8, basic.uint8_t)):
+class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
     # EUI 64-bit ID (an IEEE address).
     def __repr__(self):
         return ":".join("%02x" % i for i in self[::-1])
@@ -33,7 +33,7 @@ class EUI64(basic.fixed_list(8, basic.uint8_t)):
         return cls(ieee)
 
 
-class KeyData(basic.fixed_list(16, basic.uint8_t)):
+class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
     pass
 
 
@@ -162,7 +162,7 @@ class LocalTime(_Time):
     pass
 
 
-class Relays(basic.LVList(NWK)):
+class Relays(basic.LVList, item_type=NWK, length_type=basic.uint8_t):
     """Relay list for static routing."""
 
     pass

@@ -1,7 +1,6 @@
 from typing import Optional, Tuple, Union
 
 import zigpy.types as t
-from zigpy.types.basic import _LVList
 
 
 class Status(t.enum8):
@@ -105,7 +104,7 @@ class TypedCollection(TypeValue):
         self = cls()
         self.type, data = data[0], data[1:]
         python_item_type = DATA_TYPES[self.type][1]
-        python_type = t.LVList(python_item_type)
+        python_type = t.LVList[python_item_type]
         self.value, data = python_type.deserialize(data)
         return self, data
 
@@ -134,18 +133,7 @@ class DataTypes(dict):
     def pytype_to_datatype_id(self, python_type) -> int:
         """Return Zigbee Datatype ID for a give python type."""
 
-        # XXX: t.LVList is not a real type so it needs to be handled explicitly.
-        #      Thankfully there is only one data type based on it.
-        #      This check essentially does `python_type == t.LVList(TypeValue, 2)`.
-        if (
-            issubclass(python_type, _LVList)
-            and python_type.__mro__[1] is _LVList
-            and python_type._itemtype is TypeValue
-            and python_type._prefix_length == 2
-        ):
-            return 0x4C
-
-        # All other data types work normally. We return the most specific parent class.
+        # We return the most specific parent class
         for cls in python_type.__mro__:
             if cls in self._idx_by_class:
                 return self._idx_by_class[cls]
@@ -199,7 +187,7 @@ DATA_TYPES = DataTypes(
         0x43: ("Long octet string", t.LongOctetString, Discrete),
         0x44: ("Long character string", t.LongCharacterString, Discrete),
         0x48: ("Array", Array, Discrete),
-        0x4C: ("Structure", t.LVList(TypeValue, 2), Discrete),
+        0x4C: ("Structure", t.LVList[t.uint16_t, TypeValue], Discrete),
         0x50: ("Set", Set, Discrete),
         0x51: ("Bag", Bag, Discrete),
         0xE0: ("Time of day", t.TimeOfDay, Analog),
@@ -397,7 +385,7 @@ class ConfigureReportingResponseRecord(t.Struct):
         return r
 
 
-class ConfigureReportingResponse(t.List(ConfigureReportingResponseRecord)):
+class ConfigureReportingResponse(t.List[ConfigureReportingResponseRecord]):
     def serialize(self):
         failed = [record for record in self if record.status != Status.SUCCESS]
         if failed:
@@ -459,38 +447,38 @@ class Command(t.enum8):
 
 COMMANDS = {
     # id: (params, is_response)
-    Command.Configure_Reporting: ((t.List(AttributeReportingConfig),), False),
+    Command.Configure_Reporting: ((t.List[AttributeReportingConfig],), False),
     Command.Configure_Reporting_rsp: ((ConfigureReportingResponse,), True),
     Command.Default_Response: ((t.uint8_t, Status), True),
     Command.Discover_Attributes: ((t.uint16_t, t.uint8_t), False),
     Command.Discover_Attributes_rsp: (
-        (t.Bool, t.List(DiscoverAttributesResponseRecord)),
+        (t.Bool, t.List[DiscoverAttributesResponseRecord]),
         True,
     ),
     Command.Discover_Attribute_Extended: ((t.uint16_t, t.uint8_t), False),
     Command.Discover_Attribute_Extended_rsp: (
-        (t.Bool, t.List(DiscoverAttributesExtendedResponseRecord)),
+        (t.Bool, t.List[DiscoverAttributesExtendedResponseRecord]),
         True,
     ),
     Command.Discover_Commands_Generated: ((t.uint8_t, t.uint8_t), False),
-    Command.Discover_Commands_Generated_rsp: ((t.Bool, t.List(t.uint8_t)), True),
+    Command.Discover_Commands_Generated_rsp: ((t.Bool, t.List[t.uint8_t]), True),
     Command.Discover_Commands_Received: ((t.uint8_t, t.uint8_t), False),
-    Command.Discover_Commands_Received_rsp: ((t.Bool, t.List(t.uint8_t)), True),
-    Command.Read_Attributes: ((t.List(t.uint16_t),), False),
-    Command.Read_Attributes_rsp: ((t.List(ReadAttributeRecord),), True),
+    Command.Discover_Commands_Received_rsp: ((t.Bool, t.List[t.uint8_t]), True),
+    Command.Read_Attributes: ((t.List[t.uint16_t],), False),
+    Command.Read_Attributes_rsp: ((t.List[ReadAttributeRecord],), True),
     # Command.Read_Attributes_Structured: ((, ), False),
-    Command.Read_Reporting_Configuration: ((t.List(ReadReportingConfigRecord),), False),
+    Command.Read_Reporting_Configuration: ((t.List[ReadReportingConfigRecord],), False),
     Command.Read_Reporting_Configuration_rsp: (
-        (t.List(AttributeReportingConfig),),
+        (t.List[AttributeReportingConfig],),
         True,
     ),
-    Command.Report_Attributes: ((t.List(Attribute),), False),
-    Command.Write_Attributes: ((t.List(Attribute),), False),
-    Command.Write_Attributes_No_Response: ((t.List(Attribute),), False),
+    Command.Report_Attributes: ((t.List[Attribute],), False),
+    Command.Write_Attributes: ((t.List[Attribute],), False),
+    Command.Write_Attributes_No_Response: ((t.List[Attribute],), False),
     Command.Write_Attributes_rsp: ((WriteAttributesResponse,), True),
     # Command.Write_Attributes_Structured: ((, ), False),
     # Command.Write_Attributes_Structured_rsp: ((, ), True),
-    Command.Write_Attributes_Undivided: ((t.List(Attribute),), False),
+    Command.Write_Attributes_Undivided: ((t.List[Attribute],), False),
 }
 
 

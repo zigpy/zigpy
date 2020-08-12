@@ -148,8 +148,8 @@ def test_size_prefixed_simple_descriptor():
     sd.profile = t.uint16_t(2)
     sd.device_type = t.uint16_t(3)
     sd.device_version = t.uint8_t(4)
-    sd.input_clusters = t.LVList(t.uint16_t)([t.uint16_t(5), t.uint16_t(6)])
-    sd.output_clusters = t.LVList(t.uint16_t)([t.uint16_t(7), t.uint16_t(8)])
+    sd.input_clusters = t.LVList[t.uint16_t]([t.uint16_t(5), t.uint16_t(6)])
+    sd.output_clusters = t.LVList[t.uint16_t]([t.uint16_t(7), t.uint16_t(8)])
 
     ser = sd.serialize()
     assert ser[0] == len(ser) - 1

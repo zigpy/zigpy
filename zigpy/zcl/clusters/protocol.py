@@ -38,7 +38,7 @@ class AnalogInputRegular(Cluster):
     attributes = {
         0x0016: ("cov_increment", t.Single),
         0x001F: ("device_type", t.CharacterString),
-        0x004B: ("object_id", t.fixed_list(4, t.uint8_t)),
+        0x004B: ("object_id", t.FixedList[4, t.uint8_t]),
         0x004D: ("object_name", t.CharacterString),
         0x004F: ("object_type", t.enum16),
         0x0076: ("update_interval", t.uint8_t),
@@ -80,7 +80,7 @@ class AnalogOutputRegular(Cluster):
     attributes = {
         0x0016: ("cov_increment", t.Single),
         0x001F: ("device_type", t.CharacterString),
-        0x004B: ("object_id", t.fixed_list(4, t.uint8_t)),
+        0x004B: ("object_id", t.FixedList[4, t.uint8_t]),
         0x004D: ("object_name", t.CharacterString),
         0x004F: ("object_type", t.enum16),
         0x0076: ("update_interval", t.uint8_t),
@@ -116,7 +116,7 @@ class AnalogValueRegular(Cluster):
     ep_attribute = "bacnet_regular_analog_value"
     attributes = {
         0x0016: ("cov_increment", t.Single),
-        0x004B: ("object_id", t.fixed_list(4, t.uint8_t)),
+        0x004B: ("object_id", t.FixedList[4, t.uint8_t]),
         0x004D: ("object_name", t.CharacterString),
         0x004F: ("object_type", t.enum16),
         0x00A8: ("profile_name", t.CharacterString),
@@ -154,7 +154,7 @@ class BinaryInputRegular(Cluster):
         0x0010: ("change_of_state_time", DateTime),
         0x001F: ("device_type", t.CharacterString),
         0x0021: ("elapsed_active_time", t.uint32_t),
-        0x004B: ("object_id", t.fixed_list(4, t.uint8_t)),
+        0x004B: ("object_id", t.FixedList[4, t.uint8_t]),
         0x004D: ("object_name", t.CharacterString),
         0x004F: ("object_type", t.enum16),
         0x0072: ("time_of_at_reset", DateTime),
@@ -192,7 +192,7 @@ class BinaryOutputRegular(Cluster):
         0x001F: ("device_type", t.CharacterString),
         0x0021: ("elapsed_active_time", t.uint32_t),
         0x0028: ("feed_back_value", t.enum8),
-        0x004B: ("object_id", t.fixed_list(4, t.uint8_t)),
+        0x004B: ("object_id", t.FixedList[4, t.uint8_t]),
         0x004D: ("object_name", t.CharacterString),
         0x004F: ("object_type", t.enum16),
         0x0072: ("time_of_at_reset", DateTime),
@@ -227,7 +227,7 @@ class BinaryValueRegular(Cluster):
         0x000F: ("change_of_state_count", t.uint32_t),
         0x0010: ("change_of_state_time", DateTime),
         0x0021: ("elapsed_active_time", t.uint32_t),
-        0x004B: ("object_id", t.fixed_list(4, t.uint8_t)),
+        0x004B: ("object_id", t.FixedList[4, t.uint8_t]),
         0x004D: ("object_name", t.CharacterString),
         0x004F: ("object_type", t.enum16),
         0x0072: ("time_of_at_reset", DateTime),
@@ -261,7 +261,7 @@ class MultistateInputRegular(Cluster):
     ep_attribute = "bacnet_regular_multistate_input"
     attributes = {
         0x001F: ("device_type", t.CharacterString),
-        0x004B: ("object_id", t.fixed_list(4, t.uint8_t)),
+        0x004B: ("object_id", t.FixedList[4, t.uint8_t]),
         0x004D: ("object_name", t.CharacterString),
         0x004F: ("object_type", t.enum16),
         0x00A8: ("profile_name", t.CharacterString),
@@ -295,7 +295,7 @@ class MultistateOutputRegular(Cluster):
     attributes = {
         0x001F: ("device_type", t.CharacterString),
         0x0028: ("feed_back_value", t.enum8),
-        0x004B: ("object_id", t.fixed_list(4, t.uint8_t)),
+        0x004B: ("object_id", t.FixedList[4, t.uint8_t]),
         0x004D: ("object_name", t.CharacterString),
         0x004F: ("object_type", t.enum16),
         0x00A8: ("profile_name", t.CharacterString),
@@ -325,7 +325,7 @@ class MultistateValueRegular(Cluster):
     cluster_id = 0x0612
     ep_attribute = "bacnet_regular_multistate_value"
     attributes = {
-        0x004B: ("object_id", t.fixed_list(4, t.uint8_t)),
+        0x004B: ("object_id", t.FixedList[4, t.uint8_t]),
         0x004D: ("object_name", t.CharacterString),
         0x004F: ("object_type", t.enum16),
         0x00A8: ("profile_name", t.CharacterString),
