@@ -10,10 +10,6 @@ class ListSubclass(list):
     pass
 
 
-class DotDict(dict):
-    __getattr__ = dict.__getitem__
-
-
 class Struct:
     @classmethod
     def real_cls(cls) -> type:
@@ -194,7 +190,6 @@ class Struct:
         instance = cls()
 
         for field in cls.fields():
-            # XXX: DotDict looks like our struct because it has attributes
             if field.requires is not None and not field.requires(instance):
                 continue
 
