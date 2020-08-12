@@ -415,7 +415,7 @@ CLUSTERS = {
         ("SimpleDescSizeList", t.LVList[t.uint8_t]),
     ),
     ZDOCmd.Node_Desc_store_req: (NWK, IEEE, ("NodeDescriptor", NodeDescriptor)),
-    ZDOCmd.Active_EP_store_req: (NWK, IEEE, ("ActiveEPList", t.LVList[t.uint8_t]),),
+    ZDOCmd.Active_EP_store_req: (NWK, IEEE, ("ActiveEPList", t.LVList[t.uint8_t])),
     ZDOCmd.Simple_Desc_store_req: (
         NWK,
         IEEE,
@@ -496,8 +496,8 @@ CLUSTERS = {
         NWKI,
         ("SimpleDescriptor", t.Optional(SizePrefixedSimpleDescriptor)),
     ),
-    ZDOCmd.Active_EP_rsp: (STATUS, NWKI, ("ActiveEPList", t.LVList[t.uint8_t]),),
-    ZDOCmd.Match_Desc_rsp: (STATUS, NWKI, ("MatchList", t.LVList[t.uint8_t]),),
+    ZDOCmd.Active_EP_rsp: (STATUS, NWKI, ("ActiveEPList", t.LVList[t.uint8_t])),
+    ZDOCmd.Match_Desc_rsp: (STATUS, NWKI, ("MatchList", t.LVList[t.uint8_t])),
     # ZDO.Complex_Desc_rsp: (
     #     STATUS,
     #     NWKI,

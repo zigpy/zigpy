@@ -196,7 +196,7 @@ class IasAce(Cluster):
         ),
         0x0006: ("set_bypassed_zone_list", (t.LVList[t.uint8_t],), False),
         0x0007: ("bypass_response", (t.LVList[BypassResponse],), True),
-        0x0008: ("get_zone_status_response", (t.Bool, t.LVList[ZoneStatusRsp]), True,),
+        0x0008: ("get_zone_status_response", (t.Bool, t.LVList[ZoneStatusRsp]), True),
     }
 
 

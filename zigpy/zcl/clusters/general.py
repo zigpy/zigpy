@@ -323,7 +323,7 @@ class Groups(Cluster):
             (foundation.Status, t.Group, t.CharacterString),
             True,
         ),
-        0x0002: ("get_membership_response", (t.uint8_t, t.LVList[t.Group]), True,),
+        0x0002: ("get_membership_response", (t.uint8_t, t.LVList[t.Group]), True),
         0x0003: ("remove_response", (foundation.Status, t.Group), True),
     }
 
@@ -371,7 +371,7 @@ class Scenes(Cluster):
         0x0004: ("store_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
         0x0006: (
             "get_scene_membership_response",
-            (t.uint8_t, t.uint8_t, t.uint16_t, t.Optional(t.LVList[t.uint8_t]),),
+            (t.uint8_t, t.uint8_t, t.uint16_t, t.Optional(t.LVList[t.uint8_t])),
             True,
         ),
         0x0040: ("enhanced_add_response", (), True),
@@ -619,7 +619,7 @@ class RSSILocation(Cluster):
         0x0003: ("compact_location_data_notification", (), False),
         0x0004: ("rssi_ping", (t.uint8_t,), False),  # data8
         0x0005: ("rssi_req", (), False),
-        0x0006: ("report_rssi_measurements", (t.EUI64, t.LVList[NeighborInfo]), False,),
+        0x0006: ("report_rssi_measurements", (t.EUI64, t.LVList[NeighborInfo]), False),
         0x0007: ("request_own_location", (t.EUI64,), False),
     }
 
