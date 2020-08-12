@@ -104,7 +104,7 @@ class TypedCollection(TypeValue):
         self = cls()
         self.type, data = data[0], data[1:]
         python_item_type = DATA_TYPES[self.type][1]
-        python_type = t.LVList[t.uint8_t, python_item_type]
+        python_type = t.LVList[python_item_type]
         self.value, data = python_type.deserialize(data)
         return self, data
 

@@ -72,7 +72,7 @@ def test_attribute_reporting_config_1():
 def test_typed_collection():
     tc = foundation.TypedCollection()
     tc.type = 0x20
-    tc.value = t.LVList[t.uint8_t, t.uint8_t]([t.uint8_t(i) for i in range(100)])
+    tc.value = t.LVList[t.uint8_t]([t.uint8_t(i) for i in range(100)])
     ser = tc.serialize()
 
     assert len(ser) == 1 + 1 + 100  # type, length, values

@@ -161,7 +161,7 @@ class IasAce(Cluster):
     attributes = {}
     server_commands = {
         0x0000: ("arm", (ArmMode, t.CharacterString, t.uint8_t), False),
-        0x0001: ("bypass", (t.LVList[t.uint8_t, t.uint8_t], t.CharacterString), False),
+        0x0001: ("bypass", (t.LVList[t.uint8_t], t.CharacterString), False),
         0x0002: ("emergency", (), False),
         0x0003: ("fire", (), False),
         0x0004: ("panic", (), False),
@@ -194,13 +194,9 @@ class IasAce(Cluster):
             (PanelStatus, t.uint8_t, AudibleNotification, AlarmStatus),
             True,
         ),
-        0x0006: ("set_bypassed_zone_list", (t.LVList[t.uint8_t, t.uint8_t],), False),
-        0x0007: ("bypass_response", (t.LVList[t.uint8_t, BypassResponse],), True),
-        0x0008: (
-            "get_zone_status_response",
-            (t.Bool, t.LVList[t.uint8_t, ZoneStatusRsp]),
-            True,
-        ),
+        0x0006: ("set_bypassed_zone_list", (t.LVList[t.uint8_t],), False),
+        0x0007: ("bypass_response", (t.LVList[BypassResponse],), True),
+        0x0008: ("get_zone_status_response", (t.Bool, t.LVList[ZoneStatusRsp]), True,),
     }
 
 

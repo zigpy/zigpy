@@ -311,7 +311,7 @@ class Groups(Cluster):
     server_commands = {
         0x0000: ("add", (t.Group, t.CharacterString), False),
         0x0001: ("view", (t.Group,), False),
-        0x0002: ("get_membership", (t.LVList[t.uint8_t, t.Group],), False),
+        0x0002: ("get_membership", (t.LVList[t.Group],), False),
         0x0003: ("remove", (t.Group,), False),
         0x0004: ("remove_all", (), False),
         0x0005: ("add_if_identifying", (t.Group, t.CharacterString), False),
@@ -323,11 +323,7 @@ class Groups(Cluster):
             (foundation.Status, t.Group, t.CharacterString),
             True,
         ),
-        0x0002: (
-            "get_membership_response",
-            (t.uint8_t, t.LVList[t.uint8_t, t.Group]),
-            True,
-        ),
+        0x0002: ("get_membership_response", (t.uint8_t, t.LVList[t.Group]), True,),
         0x0003: ("remove_response", (foundation.Status, t.Group), True),
     }
 
@@ -375,12 +371,7 @@ class Scenes(Cluster):
         0x0004: ("store_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
         0x0006: (
             "get_scene_membership_response",
-            (
-                t.uint8_t,
-                t.uint8_t,
-                t.uint16_t,
-                t.Optional(t.LVList[t.uint8_t, t.uint8_t]),
-            ),
+            (t.uint8_t, t.uint8_t, t.uint16_t, t.Optional(t.LVList[t.uint8_t]),),
             True,
         ),
         0x0040: ("enhanced_add_response", (), True),
@@ -628,11 +619,7 @@ class RSSILocation(Cluster):
         0x0003: ("compact_location_data_notification", (), False),
         0x0004: ("rssi_ping", (t.uint8_t,), False),  # data8
         0x0005: ("rssi_req", (), False),
-        0x0006: (
-            "report_rssi_measurements",
-            (t.EUI64, t.LVList[t.uint8_t, NeighborInfo]),
-            False,
-        ),
+        0x0006: ("report_rssi_measurements", (t.EUI64, t.LVList[NeighborInfo]), False,),
         0x0007: ("request_own_location", (t.EUI64,), False),
     }
 
@@ -1192,12 +1179,12 @@ class PowerProfile(Cluster):
         ),
         0x0004: (
             "energy_phases_schedule_notification",
-            (t.uint8_t, t.LVList[t.uint8_t, ScheduleRecord]),
+            (t.uint8_t, t.LVList[ScheduleRecord]),
             False,
         ),
         0x0005: (
             "energy_phases_schedule_response",
-            (t.uint8_t, t.LVList[t.uint8_t, ScheduleRecord]),
+            (t.uint8_t, t.LVList[ScheduleRecord]),
             True,
         ),
         0x0006: ("power_profile_schedule_constraints_request", (t.uint8_t,), False),
@@ -1211,25 +1198,17 @@ class PowerProfile(Cluster):
     client_commands = {
         0x0000: (
             "power_profile_notification",
-            (t.uint8_t, t.uint8_t, t.LVList[t.uint8_t, PowerProfilePhase]),
+            (t.uint8_t, t.uint8_t, t.LVList[PowerProfilePhase]),
             False,
         ),
         0x0001: (
             "power_profile_response",
-            (t.uint8_t, t.uint8_t, t.LVList[t.uint8_t, PowerProfilePhase]),
+            (t.uint8_t, t.uint8_t, t.LVList[PowerProfilePhase]),
             True,
         ),
-        0x0002: (
-            "power_profile_state_response",
-            (t.LVList[t.uint8_t, PowerProfile],),
-            True,
-        ),
+        0x0002: ("power_profile_state_response", (t.LVList[PowerProfile],), True,),
         0x0003: ("get_power_profile_price", (t.uint8_t,), False),
-        0x0004: (
-            "power_profile_state_notification",
-            (t.LVList[t.uint8_t, PowerProfile],),
-            False,
-        ),
+        0x0004: ("power_profile_state_notification", (t.LVList[PowerProfile],), False,),
         0x0005: ("get_overall_schedule_price", (), False),
         0x0006: ("energy_phases_schedule_request", (), False),
         0x0007: ("energy_phases_schedule_state_response", (t.uint8_t, t.uint8_t), True),
