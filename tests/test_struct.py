@@ -460,3 +460,19 @@ def test_conflicting_types():
 
         class BadStruct(t.Struct):
             foo: t.uint8_t = t.StructField(type=t.uint16_t)
+
+
+def test_requires_uses_instance_of_struct():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+
+        # the first parameter is really an instance of TestStruct
+        bar: t.uint8_t = t.StructField(requires=lambda s: s.test)
+
+        @property
+        def test(self):
+            assert isinstance(self, TestStruct)
+            return self.foo == 0x01
+
+    assert TestStruct.deserialize(b"\x00\x00") == (TestStruct(foo=0x00), b"\x00")
+    assert TestStruct.deserialize(b"\x01\x00") == (TestStruct(foo=0x01, bar=0x00), b"")
