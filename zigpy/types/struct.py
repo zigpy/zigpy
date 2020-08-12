@@ -10,10 +10,6 @@ class ListSubclass(list):
     pass
 
 
-class DotDict(dict):
-    __getattr__ = dict.__getitem__
-
-
 class Struct:
     @classmethod
     def real_cls(cls) -> type:
@@ -191,22 +187,23 @@ class Struct:
 
     @classmethod
     def deserialize(cls, data: bytes) -> "Struct":
-        kwargs = DotDict()
+        instance = cls()
 
         for field in cls.fields():
-            # XXX: DotDict looks like our struct because it has attributes
-            if field.requires is not None and not field.requires(kwargs):
+            if field.requires is not None and not field.requires(instance):
                 continue
 
             try:
-                kwargs[field.name], data = field.concrete_type.deserialize(data)
+                value, data = field.concrete_type.deserialize(data)
             except (ValueError, AssertionError):
                 if field.optional:
                     break
 
                 raise
 
-        return cls(**kwargs), data
+            setattr(instance, field.name, value)
+
+        return instance, data
 
     def replace(self, **kwargs) -> "Struct":
         d = self.as_dict().copy()
