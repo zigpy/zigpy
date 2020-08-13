@@ -469,6 +469,14 @@ def test_configure_reporting_response_deserialize():
         foundation.ConfigureReportingResponse.deserialize(data + extra)
 
 
+def test_configure_reporting_response_serialize_empty():
+    r = foundation.ConfigureReportingResponse()
+
+    # An empty configure reporting response doesn't make sense
+    with pytest.raises(ValueError):
+        r.serialize()
+
+
 @pytest.mark.parametrize(
     "attributes, data",
     (
