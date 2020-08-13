@@ -208,32 +208,7 @@ class ReadAttributeRecord(t.Struct):
 
     attrid: t.uint16_t
     status: Status
-    value: TypeValue
-
-    @classmethod
-    def deserialize(cls, data):
-        r = cls()
-        r.attrid, data = t.uint16_t.deserialize(data)
-        r.status, data = Status.deserialize(data)
-        if r.status == Status.SUCCESS:
-            r.value, data = TypeValue.deserialize(data)
-
-        return r, data
-
-    def serialize(self):
-        r = t.uint16_t(self.attrid).serialize()
-        r += t.uint8_t(self.status).serialize()
-        if self.status == Status.SUCCESS:
-            r += self.value.serialize()
-
-        return r
-
-    def __repr__(self):
-        r = "<ReadAttributeRecord attrid=%s status=%s" % (self.attrid, self.status)
-        if self.status == Status.SUCCESS:
-            r += " value=%s" % (self.value.value,)
-        r += ">"
-        return r
+    value: TypeValue = t.StructField(requires=lambda s: s.status == Status.SUCCESS)
 
 
 class Attribute(t.Struct):
@@ -243,29 +218,7 @@ class Attribute(t.Struct):
 
 class WriteAttributesStatusRecord(t.Struct):
     status: Status
-    attrid: t.uint16_t
-
-    @classmethod
-    def deserialize(cls, data):
-        r = cls()
-        r.status, data = Status.deserialize(data)
-        if r.status != Status.SUCCESS:
-            r.attrid, data = t.uint16_t.deserialize(data)
-
-        return r, data
-
-    def serialize(self):
-        r = Status(self.status).serialize()
-        if self.status != Status.SUCCESS:
-            r += t.uint16_t(self.attrid).serialize()
-        return r
-
-    def __repr__(self):
-        r = "<%s status=%s" % (self.__class__.__name__, self.status)
-        if self.status != Status.SUCCESS:
-            r += " attrid=%s" % (self.attrid,)
-        r += ">"
-        return r
+    attrid: t.uint16_t = t.StructField(requires=lambda s: s.status != Status.SUCCESS)
 
 
 class WriteAttributesResponse(list):

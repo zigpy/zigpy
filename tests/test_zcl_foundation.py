@@ -30,7 +30,7 @@ def test_read_attribute_record():
 
     r = repr(rar)
     assert len(r) > 5
-    assert r.startswith("<") and r.endswith(">")
+    assert repr(foundation.Status.SUCCESS) in r
 
     ser = rar.serialize()
     assert ser == orig
@@ -93,7 +93,7 @@ def test_write_attribute_status_record():
     assert res.attrid is None
     assert d == attr_id + extra
     r = repr(res)
-    assert r.startswith("<" + foundation.WriteAttributesStatusRecord.__name__)
+    assert r.startswith(foundation.WriteAttributesStatusRecord.__name__)
     assert "status" in r
     assert "attrid" not in r
 
