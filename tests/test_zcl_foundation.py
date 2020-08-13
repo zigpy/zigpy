@@ -133,11 +133,6 @@ def test_configure_reporting_response_serialization():
     assert res.direction is foundation.ReportingDirection.SendReports
     assert res.attrid == 0x1001
     assert d == extra
-    r = repr(res)
-    assert r.startswith("<" + foundation.ConfigureReportingResponseRecord.__name__)
-    assert "status" in r
-    assert "direction" not in r
-    assert "attrid" not in r
 
     # failure record deserialization
     res, d = foundation.ConfigureReportingResponseRecord.deserialize(
@@ -148,16 +143,11 @@ def test_configure_reporting_response_serialization():
     assert res.attrid == 0x1001
     assert d == extra
 
-    r = repr(res)
-    assert "status" in r
-    assert "direction" in r
-    assert "attrid" in r
-
-    # successful record serializes only Status
+    # successful record with direction and attrid
     rec = foundation.ConfigureReportingResponseRecord(
         foundation.Status.SUCCESS, 0x00, 0xAABB
     )
-    assert rec.serialize() == b"\x00"
+    assert rec.serialize() == b"\x00\x00\xbb\xaa"
     rec.status = foundation.Status.UNREPORTABLE_ATTRIBUTE
     assert rec.serialize()[0:1] == foundation.Status.UNREPORTABLE_ATTRIBUTE.serialize()
     assert rec.serialize()[1:] == b"\x00\xbb\xaa"
@@ -447,6 +437,15 @@ def test_configure_reporting_response_deserialize():
     assert r[0].direction is None
     assert r[0].attrid is None
     assert rest == b""
+
+    with pytest.raises(ValueError):
+        foundation.ConfigureReportingResponse.deserialize(b"\x00\x00")
+
+    with pytest.raises(ValueError):
+        foundation.ConfigureReportingResponse.deserialize(b"\x00\x00\x00")
+
+    with pytest.raises(ValueError):
+        foundation.ConfigureReportingResponse.deserialize(b"\x00\x00\x00\x00\x00")
 
     data = b"\x00"
     extra = b"\x01\xaa\x55"

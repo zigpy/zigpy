@@ -308,44 +308,59 @@ class ConfigureReportingResponseRecord(t.Struct):
     direction: ReportingDirection
     attrid: t.uint16_t
 
+    def serialize(self):
+        # Special serialization case for "all config reports are successful"
+        if (
+            self.status == Status.SUCCESS
+            and self.direction is None
+            and self.attrid is None
+        ):
+            return Status(self.status).serialize()
+
+        return super().serialize()
+
     @classmethod
     def deserialize(cls, data):
-        r = cls()
-        r.status, data = Status.deserialize(data)
-        if r.status == Status.SUCCESS:
-            r.direction, data = t.Optional(t.uint8_t).deserialize(data)
-            if r.direction is not None:
-                r.direction = ReportingDirection(r.direction)
-            r.attrid, data = t.Optional(t.uint16_t).deserialize(data)
-            return r, data
+        # Special deserialization case for "all config reports are successful"
+        if data == Status.SUCCESS.serialize():
+            return cls(status=Status.SUCCESS), data[1:]
 
-        r.direction, data = ReportingDirection.deserialize(data)
-        r.attrid, data = t.uint16_t.deserialize(data)
-        return r, data
-
-    def serialize(self):
-        r = Status(self.status).serialize()
-        if self.status != Status.SUCCESS:
-            r += ReportingDirection(self.direction).serialize()
-            r += t.uint16_t(self.attrid).serialize()
-        return r
-
-    def __repr__(self):
-        r = "<%s status=%s" % (self.__class__.__name__, self.status)
-        if self.status != Status.SUCCESS:
-            r += " direction=%s attrid=%s" % (self.direction, self.attrid)
-        r += ">"
-        return r
+        return super().deserialize(data)
 
 
 class ConfigureReportingResponse(t.List[ConfigureReportingResponseRecord]):
+    # In the case of successful configuration of all attributes, only a single
+    # attribute status record SHALL be included in the command, with the status
+    # field set to SUCCESS and the direction and attribute identifier fields omitted
+
     def serialize(self):
+        if not self:
+            raise ValueError(f"Cannot serialize empty list")
+
         failed = [record for record in self if record.status != Status.SUCCESS]
-        if failed:
-            return b"".join(
-                [ConfigureReportingResponseRecord(i).serialize() for i in failed]
-            )
-        return Status.SUCCESS.serialize()
+
+        if not failed:
+            return ConfigureReportingResponseRecord(status=Status.SUCCESS).serialize()
+
+        # Note that attribute status records are not included for successfully
+        # configured attributes, in order to save bandwidth.
+        return b"".join(
+            [ConfigureReportingResponseRecord(r).serialize() for r in failed]
+        )
+
+    @classmethod
+    def deserialize(cls, data):
+        rsp = cls([])
+
+        while data:
+            record, data = ConfigureReportingResponseRecord.deserialize(data)
+
+            if rsp and (record.direction is None or record.attrid is None):
+                raise ValueError(f"Invalid record: {record}")
+
+            rsp.append(record)
+
+        return rsp, data
 
 
 class ReadReportingConfigRecord(t.Struct):
