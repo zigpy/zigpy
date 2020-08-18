@@ -138,41 +138,28 @@ class NodeDescriptor(t.Struct):
         return bool(self.mac_capability_flags & 0b10000000)
 
 
-class MultiAddress:
+class MultiAddress(t.Struct):
     """Used for binds, represents an IEEE+endpoint or NWK address"""
 
-    def __init__(self, other=None):
-        if isinstance(other, self.__class__):
-            self.addrmode = other.addrmode
-            self.nwk = getattr(other, "nwk", None)
-            self.ieee = getattr(other, "ieee", None)
-            self.endpoint = getattr(other, "endpoint", None)
+    addrmode: t.uint8_t
+    nwk: t.uint16_t = t.StructField(requires=lambda s: s.addrmode == 0x01)
+    ieee: t.EUI64 = t.StructField(requires=lambda s: s.addrmode == 0x03)
+    endpoint: t.uint8_t = t.StructField(requires=lambda s: s.addrmode == 0x03)
 
     @classmethod
     def deserialize(cls, data):
-        r = cls()
-        r.addrmode, data = data[0], data[1:]
-        if r.addrmode == 0x01:
-            r.nwk, data = t.uint16_t.deserialize(data)
-        elif r.addrmode == 0x03:
-            r.ieee, data = t.EUI64.deserialize(data)
-            r.endpoint, data = t.uint8_t.deserialize(data)
-        else:
+        r, data = super().deserialize(data)
+
+        if r.addrmode not in (0x01, 0x03):
             raise ValueError("Invalid MultiAddress - unknown address mode")
 
         return r, data
 
     def serialize(self):
-        if self.addrmode == 0x01:
-            return self.addrmode.to_bytes(1, "little") + self.nwk.to_bytes(2, "little")
-        elif self.addrmode == 0x03:
-            return (
-                self.addrmode.to_bytes(1, "little")
-                + self.ieee.serialize()
-                + self.endpoint.to_bytes(1, "little")
-            )
-        else:
-            raise ValueError("Invalid value for addrmode")
+        if self.addrmode not in (0x01, 0x03):
+            raise ValueError("Invalid MultiAddress - unknown address mode")
+
+        return super().serialize()
 
 
 class Neighbor(t.Struct):
