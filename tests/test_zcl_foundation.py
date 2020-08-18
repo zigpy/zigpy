@@ -55,6 +55,9 @@ def test_attribute_reporting_config_0():
     assert arc2.max_interval == arc.max_interval
     assert arc.reportable_change == arc.reportable_change
 
+    assert repr(arc)
+    assert repr(arc) == repr(arc2)
+
 
 def test_attribute_reporting_config_1():
     arc = foundation.AttributeReportingConfig()

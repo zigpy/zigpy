@@ -302,6 +302,25 @@ class AttributeReportingConfig:
 
         return self, data
 
+    def __repr__(self):
+        r = f"{self.__class__.__name__}("
+        r += f"direction={self.direction}"
+        r += f", attrid={self.attrid}"
+
+        if self.direction == ReportingDirection.ReceiveReports:
+            r += f", timeout={self.timeout}"
+        else:
+            r += f", datatype={self.datatype}"
+            r += f", min_interval={self.min_interval}"
+            r += f", max_interval={self.max_interval}"
+
+            if self.reportable_change is not None:
+                r += f", reportable_change={self.reportable_change}"
+
+        r += ")"
+
+        return r
+
 
 class ConfigureReportingResponseRecord(t.Struct):
     status: Status
