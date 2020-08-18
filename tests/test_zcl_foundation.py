@@ -147,7 +147,7 @@ def test_configure_reporting_response_serialization():
     rec = foundation.ConfigureReportingResponseRecord(
         foundation.Status.SUCCESS, 0x00, 0xAABB
     )
-    assert rec.serialize() == b"\x00\x00\xbb\xaa"
+    assert rec.serialize() == b"\x00"
     rec.status = foundation.Status.UNREPORTABLE_ATTRIBUTE
     assert rec.serialize()[0:1] == foundation.Status.UNREPORTABLE_ATTRIBUTE.serialize()
     assert rec.serialize()[1:] == b"\x00\xbb\xaa"
@@ -437,15 +437,6 @@ def test_configure_reporting_response_deserialize():
     assert r[0].direction is None
     assert r[0].attrid is None
     assert rest == b""
-
-    with pytest.raises(ValueError):
-        foundation.ConfigureReportingResponse.deserialize(b"\x00\x00")
-
-    with pytest.raises(ValueError):
-        foundation.ConfigureReportingResponse.deserialize(b"\x00\x00\x00")
-
-    with pytest.raises(ValueError):
-        foundation.ConfigureReportingResponse.deserialize(b"\x00\x00\x00\x00\x00")
 
     data = b"\x00"
     extra = b"\x01\xaa\x55"

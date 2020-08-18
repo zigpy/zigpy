@@ -308,24 +308,34 @@ class ConfigureReportingResponseRecord(t.Struct):
     direction: ReportingDirection
     attrid: t.uint16_t
 
-    def serialize(self):
-        # Special serialization case for "all config reports are successful"
-        if (
-            self.status == Status.SUCCESS
-            and self.direction is None
-            and self.attrid is None
-        ):
-            return Status(self.status).serialize()
-
-        return super().serialize()
-
     @classmethod
     def deserialize(cls, data):
-        # Special deserialization case for "all config reports are successful"
-        if data == Status.SUCCESS.serialize():
-            return cls(status=Status.SUCCESS), data[1:]
+        r = cls()
+        r.status, data = Status.deserialize(data)
+        if r.status == Status.SUCCESS:
+            r.direction, data = t.Optional(t.uint8_t).deserialize(data)
+            if r.direction is not None:
+                r.direction = ReportingDirection(r.direction)
+            r.attrid, data = t.Optional(t.uint16_t).deserialize(data)
+            return r, data
 
-        return super().deserialize(data)
+        r.direction, data = ReportingDirection.deserialize(data)
+        r.attrid, data = t.uint16_t.deserialize(data)
+        return r, data
+
+    def serialize(self):
+        r = Status(self.status).serialize()
+        if self.status != Status.SUCCESS:
+            r += ReportingDirection(self.direction).serialize()
+            r += t.uint16_t(self.attrid).serialize()
+        return r
+
+    def __repr__(self):
+        r = f"{self.__class__.__name__}(status={self.status}"
+        if self.direction is not None or self.attrid is not None:
+            r += f", direction={self.direction}, attrid={self.attrid}"
+        r += ")"
+        return r
 
 
 class ConfigureReportingResponse(t.List[ConfigureReportingResponseRecord]):
@@ -347,20 +357,6 @@ class ConfigureReportingResponse(t.List[ConfigureReportingResponseRecord]):
         return b"".join(
             [ConfigureReportingResponseRecord(r).serialize() for r in failed]
         )
-
-    @classmethod
-    def deserialize(cls, data):
-        rsp = cls([])
-
-        while data:
-            record, data = ConfigureReportingResponseRecord.deserialize(data)
-
-            if rsp and (record.direction is None or record.attrid is None):
-                raise ValueError(f"Invalid record: {record}")
-
-            rsp.append(record)
-
-        return rsp, data
 
 
 class ReadReportingConfigRecord(t.Struct):
