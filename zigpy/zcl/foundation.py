@@ -351,7 +351,7 @@ class ConfigureReportingResponseRecord(t.Struct):
 
     def __repr__(self):
         r = f"{self.__class__.__name__}(status={self.status}"
-        if self.direction is not None or self.attrid is not None:
+        if self.status != Status.SUCCESS:
             r += f", direction={self.direction}, attrid={self.attrid}"
         r += ")"
         return r

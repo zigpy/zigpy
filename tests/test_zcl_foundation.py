@@ -136,6 +136,11 @@ def test_configure_reporting_response_serialization():
     assert res.direction is foundation.ReportingDirection.SendReports
     assert res.attrid == 0x1001
     assert d == extra
+    r = repr(res)
+    assert r.startswith(foundation.ConfigureReportingResponseRecord.__name__ + "(")
+    assert "status" in r
+    assert "direction" not in r
+    assert "attrid" not in r
 
     # failure record deserialization
     res, d = foundation.ConfigureReportingResponseRecord.deserialize(
@@ -146,7 +151,12 @@ def test_configure_reporting_response_serialization():
     assert res.attrid == 0x1001
     assert d == extra
 
-    # successful record with direction and attrid
+    r = repr(res)
+    assert "status" in r
+    assert "direction" in r
+    assert "attrid" in r
+
+    # successful record serializes only Status
     rec = foundation.ConfigureReportingResponseRecord(
         foundation.Status.SUCCESS, 0x00, 0xAABB
     )
