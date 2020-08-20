@@ -147,6 +147,18 @@ Code changes or additions can then be submitted to this project on GitHub via pu
 - https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests
   - https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request
 
+In general when contributing code to this project it is encouraged that you try to follow the coding standards:
+
+- First [raise issues on GitHub](https://github.com/zigpy/zigpy/issues) before working on an enhancement to provide coordination with other contributors.
+- Try to keep each pull request short and only a single PR per enhancement as this makes tracking and reviewing easier.
+- Ideally, you should aim to acheive full coverage of any code changes with tests.
+- Recommend read and follow [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html).
+- Recommend read and follow [Clifford Programming Style](http://www.clifford.at/style.html).
+- Recommend code style use [standard naming conventions for Python](https://medium.com/@dasagrivamanu/python-naming-conventions-the-10-points-you-should-know-149a9aa9f8c7).
+- Recommend use [Semantic Versioning](http://semver.org/) for libraries and dependencies if possible.
+- Contributions must be your own and you must agree with the license.
+- All code for this project should aim to be licensed under [GNU GENERAL PUBLIC LICENSE Version 3](https://raw.githubusercontent.com/zigpy/zigpy/dev/LICENSE).
+
 ## Developer references
 
 Silicon Labs video playlist of ZigBee Concepts: Architecture basics, MAC/PHY, node types, and application profiles
