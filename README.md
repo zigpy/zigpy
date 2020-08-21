@@ -11,6 +11,16 @@ zigpy contains common code implementing Zigbee ZCL, ZDO and application state ma
 
 Reference implementation of the zigpy library exist in **[Home Assistant](https://www.home-assistant.io)** (Python based open source home automation software) as part of its **[ZHA integration component](https://www.home-assistant.io/integrations/zha/)**.
 
+## How to install and test, report bugs, or contribute to this project
+
+For specific instructions on how-to install and test zigpy or contribute bug-reports and code to this project please see the guidelines in the CONTRIBUTING.md file:
+
+- [Guidelines in CONTRIBUTING.md](./CONTRIBUTING.md)
+
+This CONTRIBUTING.md file will contain information about using zigpy, testiing new releases, troubleshooting and bug-reporting as, as well as librar + code instructions for developers and more.
+
+You can contribute to this project either as an end-user, a tester (advanced user contributing constructive issue/bug-reports) or as a developer contributing code.
+
 ## Compatible hardware
 
 Radio libraries for zigpy include **[bellows](https://github.com/zigpy/bellows)** (which communicates with EZSP/EmberZNet based radios), **[zigpy-xbee](https://github.com/zigpy/zigpy-xbee)** (which communicates with XBee based Zigbee radios), and as **[zigpy-deconz](https://github.com/zigpy/zigpy-deconz)** for deCONZ serial protocol (for communicating with ConBee and RaspBee USB and GPIO radios from Dresden-Elektronik). There are also experimental radio libraries called **[zigpy-zigate](https://github.com/zigpy/zigpy-zigate)** for communicating with ZiGate based radios and **[zigpy-cc](https://github.com/zigpy/zigpy-cc)** for communicating with Texas Instruments based radios based radios that have custom Z-Stack coordinator firmware.
@@ -49,51 +59,6 @@ Radio libraries for zigpy include **[bellows](https://github.com/zigpy/bellows)*
   - [CC2652P/CC2652R/CC2652RB USB stick and dev board hardware flashed with custom Z-Stack coordinator firmware from the Zigbee2mqtt project](https://www.zigbee2mqtt.io/getting_started/what_do_i_need.html)
   - [CC1352P/CC1352R USB stick and dev board hardware flashed with custom Z-Stack coordinator firmware from the Zigbee2mqtt project](https://www.zigbee2mqtt.io/getting_started/what_do_i_need.html)
 
-## Testing new releases
-
-Testing a new release of the zigpy library before it is released in Home Assistant.
-
-If you are using Supervised Home Assistant (formerly known as the Hassio/Hass.io distro):
-- Add https://github.com/home-assistant/hassio-addons-development as "add-on" repository
-- Install "Custom deps deployment" addon
-- Update config like: 
-  ```
-  pypi:
-    - zigpy==0.20.0
-  apk: []
-  ```
-  where 0.20.0 is the new version
-- Start the addon
-
-If you are instead using some custom python installation of Home Assistant then do this:
-- Activate your python virtual env
-- Update package with ``pip``
-  ```
-  pip install zigpy==0.20.0
-
-## Troubleshooting 
-
-For troubleshooting with Home Assistant, the general recommendation is to first only enable DEBUG logging for homeassistant.core and homeassistant.components.zha in Home Assistant, then look in the home-assistant.log file and try to get the Home Assistant community to exhausted their combined troubleshooting knowledge of the ZHA component before posting issue directly to a radio library, like example zigpy-deconz or zigpy-xbee.
-
-That is, begin with checking debug logs for Home Assistant core and the ZHA component first, (troubleshooting/debugging from the top down instead of from the bottom up), trying to getting help via Home Assistant community forum before moving on to posting debug logs to zigpy and radio libraries. This is a general suggestion to help filter away common problems and not flood the zigpy-cc developer(s) with too many logs.
-
-Please also try the very latest versions of zigpy and the radio library, (see the section above about "Testing new releases"), and only if you still have the same issues with the latest versions then enable debug logging for zigpy and the radio libraries in Home Assistant in addition to core and zha. Once enabled debug logging for all those libraries in Home Assistant you should try to reproduce the problem and then raise an issue to the zigpy repo (or to a specific radio library) repo with a copy of those logs.
-
-To enable debugging in Home Assistant to get debug logs, either update logger configuration section in configuration.yaml or call logger.set_default_level service with {"level": "debug"} data. Check logger component configuration where you want something this in your configuration.yaml
-
-  logger:
-  default: info
-  logs:
-  asyncio: debug
-  homeassistant.core: debug
-  homeassistant.components.zha: debug
-  zigpy: debug
-  bellows: debug
-  zigpy_xbee: debug
-  zigpy_deconz: debug
-  zigpy_zigate: debug
-  zigpy_cc: debug
-
 ## Release packages available via PyPI
 
 New packages of tagged versions are also released via the "zigpy" project on PyPI
@@ -111,46 +76,6 @@ Packages of tagged versions of the radio libraries are released via separate pro
   - https://pypi.org/project/zigpy-deconz/
   - https://pypi.org/project/zigpy-zigate/
   - https://pypi.org/project/zigpy-cc/
-
-## How to contribute 
-
-You can contribute to this project either as an end-user, a tester (advanced user contributing constructive issue/bug-reports) or as a developer contributing code.
-
-### How to contribute as an end-user
-
-If you think that you are having problems due to a bug then please see the section below on reporting issues as a tester, but be aware that reporting issues put higher responsibility on your active involvement on your part as a tester.
-
-Some developers might be also interested in receiving donations in the form of money or hardware such as Zigbee modules and devices, and even if such donations are most often donated with no strings attached it could in many cases help the developers motivation and indirectly improve the development of this project. 
-
-Sometimes it might just be simpler to just donate money earmarked to specifically let a willing developer buy the exact same type Zigbee device that you are having issues with to be able to replicate the issue themselves in order to troubleshoot and hopefully also solve the problem.
-
-Consider submitting a post on GitHub projects issues tracker about willingness to making a donation (please see section below on posing issues).
-
-### How to report issues or bugs as a tester
-
-Issues or bugs are normally first to be submitted upstream to the software/project that it utilizing zigpy and its radio libraries, (like for example Home Assistant), however if and when the issue is determined to be in the zigpy or underlying radio library then you should continue by submitting a detailed issue/bug report via the GitHub projects issues tracker.
-
-Always be sure to first check if there is not already an existing issue posted with the same description before posting a new issue.
-
-- https://help.github.com/en/github/managing-your-work-on-github/creating-an-issue
-  - https://guides.github.com/features/issues/
-
-### How to contribute as a developer
-
-If you are looking to make a contribution as a developer to this project we suggest that you follow the steps in these guides:
-
-- https://github.com/firstcontributions/first-contributions/blob/master/README.md
-  - https://github.com/firstcontributions/first-contributions/blob/master/github-desktop-tutorial.md
-
-Code changes or additions can then be submitted to this project on GitHub via pull requests:
-
-- https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests
-  - https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request
-
-## Developer references
-
-Silicon Labs video playlist of ZigBee Concepts: Architecture basics, MAC/PHY, node types, and application profiles
-- https://www.youtube.com/playlist?list=PL-awFRrdECXvAs1mN2t2xaI0_bQRh2AqD
 
 ## Related projects
 
