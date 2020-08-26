@@ -121,6 +121,45 @@ At this point `black` and `isort` will be run by the pre-commit hook, reformatti
 
 Run `pytest -lv`, which will show you a stack trace and all the local variables when something breaks. It is recommended that you install both Python 3.7 and 3.8 so that you can run `tox` from the root project folder and see exactly what the CI system will tell you without having to wait for Travis CI or Coveralls. Code coverage information will be written by tox to `htmlcov/index.html`.
 
+### The zigoy API
+
+This section is meant to describe the zigpy API (Application Programming Interface) and how-to to use it.
+
+#### Application 
+
+* raw_device_initialized
+* device_initialized
+* device_removed
+* device_joined
+* device_left
+
+#### Device
+
+* node_descriptor_updated
+* device_init_failure
+* device_relays_updated
+
+#### Endpoint
+
+* unknown_cluster_message
+* member_added
+* member_removed
+
+#### Group
+
+* group_added
+* group_member_added
+* group_removed
+* group_removed
+
+#### ZCL Commands
+
+* cluster_command
+* general_command
+* attribute_updated
+* device_announce
+* permit_duration
+
 ### Developer references
 
 Silicon Labs video playlist of ZigBee Concepts: Architecture basics, MAC/PHY, node types, and application profiles
