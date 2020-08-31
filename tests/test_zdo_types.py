@@ -10,6 +10,10 @@ def test_multi_address_3():
     ma.endpoint = 1
     ser = ma.serialize()
 
+    assert "ieee" in repr(ma)
+    assert "endpoint" in repr(ma)
+    assert "nwk" not in repr(ma)
+
     ma2, data = types.MultiAddress.deserialize(ser)
     assert data == b""
     assert ma2.addrmode == ma.addrmode
@@ -22,6 +26,10 @@ def test_multi_address_1():
     ma.addrmode = 1
     ma.nwk = 123
     ser = ma.serialize()
+
+    assert "ieee" not in repr(ma)
+    assert "endpoint" not in repr(ma)
+    assert "nwk" in repr(ma)
 
     ma2, data = types.MultiAddress.deserialize(ser)
     assert data == b""

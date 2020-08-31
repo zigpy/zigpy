@@ -208,32 +208,7 @@ class ReadAttributeRecord(t.Struct):
 
     attrid: t.uint16_t
     status: Status
-    value: TypeValue
-
-    @classmethod
-    def deserialize(cls, data):
-        r = cls()
-        r.attrid, data = t.uint16_t.deserialize(data)
-        r.status, data = Status.deserialize(data)
-        if r.status == Status.SUCCESS:
-            r.value, data = TypeValue.deserialize(data)
-
-        return r, data
-
-    def serialize(self):
-        r = t.uint16_t(self.attrid).serialize()
-        r += t.uint8_t(self.status).serialize()
-        if self.status == Status.SUCCESS:
-            r += self.value.serialize()
-
-        return r
-
-    def __repr__(self):
-        r = "<ReadAttributeRecord attrid=%s status=%s" % (self.attrid, self.status)
-        if self.status == Status.SUCCESS:
-            r += " value=%s" % (self.value.value,)
-        r += ">"
-        return r
+    value: TypeValue = t.StructField(requires=lambda s: s.status == Status.SUCCESS)
 
 
 class Attribute(t.Struct):
@@ -243,29 +218,7 @@ class Attribute(t.Struct):
 
 class WriteAttributesStatusRecord(t.Struct):
     status: Status
-    attrid: t.uint16_t
-
-    @classmethod
-    def deserialize(cls, data):
-        r = cls()
-        r.status, data = Status.deserialize(data)
-        if r.status != Status.SUCCESS:
-            r.attrid, data = t.uint16_t.deserialize(data)
-
-        return r, data
-
-    def serialize(self):
-        r = Status(self.status).serialize()
-        if self.status != Status.SUCCESS:
-            r += t.uint16_t(self.attrid).serialize()
-        return r
-
-    def __repr__(self):
-        r = "<%s status=%s" % (self.__class__.__name__, self.status)
-        if self.status != Status.SUCCESS:
-            r += " attrid=%s" % (self.attrid,)
-        r += ">"
-        return r
+    attrid: t.uint16_t = t.StructField(requires=lambda s: s.status != Status.SUCCESS)
 
 
 class WriteAttributesResponse(list):
@@ -349,6 +302,25 @@ class AttributeReportingConfig:
 
         return self, data
 
+    def __repr__(self):
+        r = f"{self.__class__.__name__}("
+        r += f"direction={self.direction}"
+        r += f", attrid={self.attrid}"
+
+        if self.direction == ReportingDirection.ReceiveReports:
+            r += f", timeout={self.timeout}"
+        else:
+            r += f", datatype={self.datatype}"
+            r += f", min_interval={self.min_interval}"
+            r += f", max_interval={self.max_interval}"
+
+            if self.reportable_change is not None:
+                r += f", reportable_change={self.reportable_change}"
+
+        r += ")"
+
+        return r
+
 
 class ConfigureReportingResponseRecord(t.Struct):
     status: Status
@@ -378,21 +350,32 @@ class ConfigureReportingResponseRecord(t.Struct):
         return r
 
     def __repr__(self):
-        r = "<%s status=%s" % (self.__class__.__name__, self.status)
+        r = f"{self.__class__.__name__}(status={self.status}"
         if self.status != Status.SUCCESS:
-            r += " direction=%s attrid=%s" % (self.direction, self.attrid)
-        r += ">"
+            r += f", direction={self.direction}, attrid={self.attrid}"
+        r += ")"
         return r
 
 
 class ConfigureReportingResponse(t.List[ConfigureReportingResponseRecord]):
+    # In the case of successful configuration of all attributes, only a single
+    # attribute status record SHALL be included in the command, with the status
+    # field set to SUCCESS and the direction and attribute identifier fields omitted
+
     def serialize(self):
+        if not self:
+            raise ValueError(f"Cannot serialize empty list")
+
         failed = [record for record in self if record.status != Status.SUCCESS]
-        if failed:
-            return b"".join(
-                [ConfigureReportingResponseRecord(i).serialize() for i in failed]
-            )
-        return Status.SUCCESS.serialize()
+
+        if not failed:
+            return ConfigureReportingResponseRecord(status=Status.SUCCESS).serialize()
+
+        # Note that attribute status records are not included for successfully
+        # configured attributes, in order to save bandwidth.
+        return b"".join(
+            [ConfigureReportingResponseRecord(r).serialize() for r in failed]
+        )
 
 
 class ReadReportingConfigRecord(t.Struct):
