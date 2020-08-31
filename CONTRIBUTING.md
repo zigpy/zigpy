@@ -121,7 +121,7 @@ At this point `black` and `isort` will be run by the pre-commit hook, reformatti
 
 Run `pytest -lv`, which will show you a stack trace and all the local variables when something breaks. It is recommended that you install both Python 3.7 and 3.8 so that you can run `tox` from the root project folder and see exactly what the CI system will tell you without having to wait for Travis CI or Coveralls. Code coverage information will be written by tox to `htmlcov/index.html`.
 
-### The zigoy API
+### The zigpy API
 
 This section is meant to describe the zigpy API (Application Programming Interface) and how-to to use it.
 
