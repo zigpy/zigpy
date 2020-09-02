@@ -197,7 +197,9 @@ class CustomCluster(zigpy.zcl.Cluster):
             for attrid in attrs_to_read:
                 succeeded.append(
                     foundation.ReadAttributeRecord(
-                        attrid, results[0], foundation.TypeValue(),
+                        attrid,
+                        results[0],
+                        foundation.TypeValue(),
                     )
                 )
         else:

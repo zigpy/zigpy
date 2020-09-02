@@ -297,7 +297,10 @@ async def test_group_request(group):
     group.application.mrequest.return_value = [0, "message sent"]
     data = b"\x01\x02\x03\x04\x05"
     res = await group.request(
-        mock.sentinel.profile, mock.sentinel.cluster, mock.sentinel.sequence, data,
+        mock.sentinel.profile,
+        mock.sentinel.cluster,
+        mock.sentinel.sequence,
+        data,
     )
     assert group.application.mrequest.call_count == 1
     assert group.application.mrequest.call_args[0][0] == group.group_id

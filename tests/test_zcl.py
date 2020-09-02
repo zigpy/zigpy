@@ -445,8 +445,16 @@ async def test_write_attributes_cache_success(cluster, attributes, result):
         ({4: "manufacturer"}, b"\x86\x04\x00", [4]),
         ({4: "manufacturer", 5: "model"}, b"\x86\x05\x00", [5]),
         ({4: "manufacturer", 5: "model"}, b"\x86\x04\x00\x86\x05\x00", [4, 5]),
-        ({4: "manufacturer", 5: "model", 3: 12}, b"\x86\x05\x00", [5],),
-        ({4: "manufacturer", 5: "model", 3: 12}, b"\x86\x05\x00\x01\x03\x00", [5, 3],),
+        (
+            {4: "manufacturer", 5: "model", 3: 12},
+            b"\x86\x05\x00",
+            [5],
+        ),
+        (
+            {4: "manufacturer", 5: "model", 3: 12},
+            b"\x86\x05\x00\x01\x03\x00",
+            [5, 3],
+        ),
         (
             {4: "manufacturer", 5: "model", 3: 12},
             b"\x02\x04\x00\x86\x05\x00\x01\x03\x00",
