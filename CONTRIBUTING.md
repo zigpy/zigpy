@@ -125,6 +125,69 @@ Run `pytest -lv`, which will show you a stack trace and all the local variables 
 
 This section is meant to describe the zigpy API (Application Programming Interface) and how-to to use it.
 
+### MainListener template
+
+Here should be describe what are the skeleton of a MainListner, what are the methods to be define there in order to use event/commands from below layer
+
+```
+class MainListener:
+    """
+    Contains callbacks that zigpy will call whenever something happens.
+    Look for `listener_event` in the Zigpy source or just look at the logged warnings.
+    """
+    def __init__(self, application):
+        pass
+
+    def device_joined(self, device):
+        # Call everytime a device join the network
+        pass
+
+
+    def device_announce(self, zigpy_device):
+        # Call at device annoucement
+        pass
+
+
+    def device_initialized(self, device, *, new=True):
+        # Called at runtime after a device's information has been queried
+        # It is also a good advice to call it at startup in order to load the existing device to the DB.
+        # new will allow to make the differences between startup and ongoing
+
+        LOGGER.info("Device is ready: new=%s, device=%s NwkId: %s IEEE: %s signature=%s", new, device, device.nwk, device._ieee, device.get_signature()
+        if new and device.nwk != 0x0000 and len( device.get_signature()) > 0:     
+            domoCreateDevice( self, device._ieee, device.get_signature() )
+        for ep_id, endpoint in device.endpoints.items():
+            if ep_id == 0: # Ignore ZDO
+                continue
+            # You need to attach a listener to every cluster to receive events
+            for cluster in endpoint.in_clusters.values():
+                # The context listener passes its own object as the first argument
+                # to the callback
+                cluster.add_context_listener(self)
+
+
+    def device_left(self, device):
+        # When a device left the network
+        pass
+
+
+    def device_removed(self, device):
+        # When a device is removed from the controler
+        pass
+
+
+    def cluster_command(self, cluster, command_id, *args):
+        # ???? not sure on the parameters
+        pass
+
+    def attribute_updated(self, cluster, attribute_id, value):
+        # Call everytime and event is received. 
+        # Each object is linked to its parent (i.e. app > device > endpoint > cluster)
+        device = cluster.endpoint.device
+        pass
+        
+```
+
 #### Application 
 
 * raw_device_initialized
