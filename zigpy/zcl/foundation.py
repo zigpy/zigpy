@@ -476,7 +476,7 @@ class FrameType(t.enum8):
 
 class FrameControl:
     """The frame control field contains information defining the command type
-     and other control flags."""
+    and other control flags."""
 
     def __init__(self, frame_control: int = 0x00) -> None:
         self.value = frame_control

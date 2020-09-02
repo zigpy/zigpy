@@ -240,7 +240,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         return self._read_attributes(attributes, manufacturer=manufacturer)
 
     async def read_attributes(
-        self, attributes, allow_cache=False, only_cache=False, manufacturer=None,
+        self,
+        attributes,
+        allow_cache=False,
+        only_cache=False,
+        manufacturer=None,
     ):
         success, failure = {}, {}
         attribute_ids = []

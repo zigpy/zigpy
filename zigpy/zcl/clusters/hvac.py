@@ -343,7 +343,7 @@ class Thermostat(Cluster):
 
 
 class Fan(Cluster):
-    """ An interface for controlling a fan in a heating /
+    """An interface for controlling a fan in a heating /
     cooling system."""
 
     class FanMode(t.enum8):

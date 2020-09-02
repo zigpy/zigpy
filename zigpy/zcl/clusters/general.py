@@ -9,7 +9,7 @@ from zigpy.zcl import Cluster, foundation
 
 
 class Basic(Cluster):
-    """ Attributes for determining basic information about a
+    """Attributes for determining basic information about a
     device, setting user device information such as location,
     and enabling a device.
     """
@@ -178,7 +178,7 @@ class Basic(Cluster):
 
 
 class PowerConfiguration(Cluster):
-    """ Attributes for determining more detailed information
+    """Attributes for determining more detailed information
     about a device’s power source(s), and for configuring
     under/over voltage alarms."""
 
@@ -382,7 +382,7 @@ class Scenes(Cluster):
 
 class OnOff(Cluster):
     """Attributes and commands for switching devices between
-    ‘On’ and ‘Off’ states. """
+    ‘On’ and ‘Off’ states."""
 
     cluster_id = 0x0006
     name = "On/Off"
@@ -451,7 +451,7 @@ class LevelControl(Cluster):
 
 
 class Alarms(Cluster):
-    """ Attributes and commands for sending notifications and
+    """Attributes and commands for sending notifications and
     configuring alarm functionality."""
 
     cluster_id = 0x0009
@@ -484,7 +484,7 @@ class Alarms(Cluster):
 
 
 class Time(Cluster):
-    """ Attributes and commands that provide a basic interface
+    """Attributes and commands that provide a basic interface
     to a real-time clock."""
 
     cluster_id = 0x000A
@@ -981,7 +981,9 @@ class Ota(Cluster):
     }
 
     def handle_cluster_request(self, tsn, command_id, args):
-        self.create_catching_task(self._handle_cluster_request(tsn, command_id, args),)
+        self.create_catching_task(
+            self._handle_cluster_request(tsn, command_id, args),
+        )
 
     async def _handle_cluster_request(self, tsn, command_id, args):
         """Parse OTA commands."""
@@ -1206,9 +1208,17 @@ class PowerProfile(Cluster):
             (t.uint8_t, t.uint8_t, t.LVList[PowerProfilePhase]),
             True,
         ),
-        0x0002: ("power_profile_state_response", (t.LVList[PowerProfile],), True,),
+        0x0002: (
+            "power_profile_state_response",
+            (t.LVList[PowerProfile],),
+            True,
+        ),
         0x0003: ("get_power_profile_price", (t.uint8_t,), False),
-        0x0004: ("power_profile_state_notification", (t.LVList[PowerProfile],), False,),
+        0x0004: (
+            "power_profile_state_notification",
+            (t.LVList[PowerProfile],),
+            False,
+        ),
         0x0005: ("get_overall_schedule_price", (), False),
         0x0006: ("energy_phases_schedule_request", (), False),
         0x0007: ("energy_phases_schedule_state_response", (t.uint8_t, t.uint8_t), True),

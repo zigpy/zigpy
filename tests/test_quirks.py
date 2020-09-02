@@ -457,7 +457,10 @@ def manuf_cluster2():
 
 @pytest.mark.parametrize(
     "cmd_name, manufacturer",
-    (("client_cmd0", None), ("client_cmd1", mock.sentinel.manufacturer_id),),
+    (
+        ("client_cmd0", None),
+        ("client_cmd1", mock.sentinel.manufacturer_id),
+    ),
 )
 def test_client_cmd_vendor_specific_by_name(
     manuf_cluster, manuf_cluster2, cmd_name, manufacturer
@@ -476,7 +479,10 @@ def test_client_cmd_vendor_specific_by_name(
 
 @pytest.mark.parametrize(
     "cmd_name, manufacturer",
-    (("server_cmd0", None), ("server_cmd1", mock.sentinel.manufacturer_id),),
+    (
+        ("server_cmd0", None),
+        ("server_cmd1", mock.sentinel.manufacturer_id),
+    ),
 )
 def test_srv_cmd_vendor_specific_by_name(
     manuf_cluster, manuf_cluster2, cmd_name, manufacturer
@@ -495,7 +501,10 @@ def test_srv_cmd_vendor_specific_by_name(
 
 @pytest.mark.parametrize(
     "attr_name, manufacturer",
-    (("attr0", None), ("attr1", mock.sentinel.manufacturer_id),),
+    (
+        ("attr0", None),
+        ("attr1", mock.sentinel.manufacturer_id),
+    ),
 )
 async def test_read_attr_manufacture_specific(
     manuf_cluster, manuf_cluster2, attr_name, manufacturer
@@ -530,7 +539,10 @@ async def test_read_attr_manufacture_specific(
 
 @pytest.mark.parametrize(
     "attr_name, manufacturer",
-    (("attr0", None), ("attr1", mock.sentinel.manufacturer_id),),
+    (
+        ("attr0", None),
+        ("attr1", mock.sentinel.manufacturer_id),
+    ),
 )
 async def test_write_attr_manufacture_specific(
     manuf_cluster, manuf_cluster2, attr_name, manufacturer
@@ -565,7 +577,10 @@ async def test_write_attr_manufacture_specific(
 
 @pytest.mark.parametrize(
     "attr_name, manufacturer",
-    (("attr0", None), ("attr1", mock.sentinel.manufacturer_id),),
+    (
+        ("attr0", None),
+        ("attr1", mock.sentinel.manufacturer_id),
+    ),
 )
 async def test_write_attr_undivided_manufacture_specific(
     manuf_cluster, manuf_cluster2, attr_name, manufacturer
@@ -600,7 +615,10 @@ async def test_write_attr_undivided_manufacture_specific(
 
 @pytest.mark.parametrize(
     "attr_name, manufacturer",
-    (("attr0", None), ("attr1", mock.sentinel.manufacturer_id),),
+    (
+        ("attr0", None),
+        ("attr1", mock.sentinel.manufacturer_id),
+    ),
 )
 async def test_configure_reporting_manufacture_specific(
     manuf_cluster, manuf_cluster2, attr_name, manufacturer
