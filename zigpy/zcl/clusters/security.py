@@ -152,7 +152,8 @@ class IasAce(Cluster):
     class ZoneStatusRsp(t.Struct):
         """Zone status response."""
 
-        _fields = [("zone_id", t.uint8_t), ("zone_status", IasZone.ZoneStatus)]
+        zone_id: t.uint8_t
+        zone_status: IasZone.ZoneStatus
 
     cluster_id = 0x0501
     name = "IAS Ancillary Control Equipment"
@@ -160,7 +161,7 @@ class IasAce(Cluster):
     attributes = {}
     server_commands = {
         0x0000: ("arm", (ArmMode, t.CharacterString, t.uint8_t), False),
-        0x0001: ("bypass", (t.LVList(t.uint8_t), t.CharacterString), False),
+        0x0001: ("bypass", (t.LVList[t.uint8_t], t.CharacterString), False),
         0x0002: ("emergency", (), False),
         0x0003: ("fire", (), False),
         0x0004: ("panic", (), False),
@@ -172,7 +173,7 @@ class IasAce(Cluster):
     }
     client_commands = {
         0x0000: ("arm_response", (ArmNotification,), True),
-        0x0001: ("get_zone_id_map_response", (t.List(t.bitmap16),), True),
+        0x0001: ("get_zone_id_map_response", (t.List[t.bitmap16],), True),
         0x0002: (
             "get_zone_info_response",
             (t.uint8_t, ZoneType, t.EUI64, t.CharacterString),
@@ -193,9 +194,9 @@ class IasAce(Cluster):
             (PanelStatus, t.uint8_t, AudibleNotification, AlarmStatus),
             True,
         ),
-        0x0006: ("set_bypassed_zone_list", (t.LVList(t.uint8_t),), False),
-        0x0007: ("bypass_response", (t.LVList(BypassResponse),), True),
-        0x0008: ("get_zone_status_response", (t.Bool, t.LVList(ZoneStatusRsp)), True),
+        0x0006: ("set_bypassed_zone_list", (t.LVList[t.uint8_t],), False),
+        0x0007: ("bypass_response", (t.LVList[BypassResponse],), True),
+        0x0008: ("get_zone_status_response", (t.Bool, t.LVList[ZoneStatusRsp]), True),
     }
 
 

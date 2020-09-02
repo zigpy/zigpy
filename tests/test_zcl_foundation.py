@@ -30,7 +30,7 @@ def test_read_attribute_record():
 
     r = repr(rar)
     assert len(r) > 5
-    assert r.startswith("<") and r.endswith(">")
+    assert repr(foundation.Status.SUCCESS) in r
 
     ser = rar.serialize()
     assert ser == orig
@@ -55,6 +55,9 @@ def test_attribute_reporting_config_0():
     assert arc2.max_interval == arc.max_interval
     assert arc.reportable_change == arc.reportable_change
 
+    assert repr(arc)
+    assert repr(arc) == repr(arc2)
+
 
 def test_attribute_reporting_config_1():
     arc = foundation.AttributeReportingConfig()
@@ -72,7 +75,7 @@ def test_attribute_reporting_config_1():
 def test_typed_collection():
     tc = foundation.TypedCollection()
     tc.type = 0x20
-    tc.value = t.LVList(t.uint8_t)([t.uint8_t(i) for i in range(100)])
+    tc.value = t.LVList[t.uint8_t]([t.uint8_t(i) for i in range(100)])
     ser = tc.serialize()
 
     assert len(ser) == 1 + 1 + 100  # type, length, values
@@ -93,7 +96,7 @@ def test_write_attribute_status_record():
     assert res.attrid is None
     assert d == attr_id + extra
     r = repr(res)
-    assert r.startswith("<" + foundation.WriteAttributesStatusRecord.__name__)
+    assert r.startswith(foundation.WriteAttributesStatusRecord.__name__)
     assert "status" in r
     assert "attrid" not in r
 
@@ -134,7 +137,7 @@ def test_configure_reporting_response_serialization():
     assert res.attrid == 0x1001
     assert d == extra
     r = repr(res)
-    assert r.startswith("<" + foundation.ConfigureReportingResponseRecord.__name__)
+    assert r.startswith(foundation.ConfigureReportingResponseRecord.__name__ + "(")
     assert "status" in r
     assert "direction" not in r
     assert "attrid" not in r
@@ -376,8 +379,18 @@ def test_pytype_to_datatype_derived_bitmaps():
     assert foundation.DATA_TYPES.pytype_to_datatype_id(b_3) == bitmap16_id
 
 
+def test_ptype_to_datatype_lvlist():
+    """Test pytype for Structure."""
+
+    lst1 = t.LVList[t.uint16_t, foundation.TypeValue]
+    lst2 = t.LVList[t.uint16_t, t.uint8_t]
+
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(lst1) == 0x4C
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(lst2) == 0xFF
+
+
 def test_ptype_to_datatype_notype():
-    """Test ptype for NoData."""
+    """Test pytype for NoData."""
 
     class ZigpyUnknown:
         pass
@@ -458,6 +471,14 @@ def test_configure_reporting_response_deserialize():
 
     with pytest.raises(ValueError):
         foundation.ConfigureReportingResponse.deserialize(data + extra)
+
+
+def test_configure_reporting_response_serialize_empty():
+    r = foundation.ConfigureReportingResponse()
+
+    # An empty configure reporting response doesn't make sense
+    with pytest.raises(ValueError):
+        r.serialize()
 
 
 @pytest.mark.parametrize(

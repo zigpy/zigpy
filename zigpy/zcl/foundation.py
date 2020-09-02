@@ -45,7 +45,7 @@ class Status(t.enum8):
     @classmethod
     def _missing_(cls, value):
         chained = t.APSStatus(value)
-        status = t.uint8_t.__new__(cls, chained.value)
+        status = cls._member_type_.__new__(cls, chained.value)
         status._name_ = chained.name
         status._value_ = value
         return status
@@ -69,6 +69,13 @@ class Unknown(t.NoData):
 
 class TypeValue:
     def __init__(self, python_type=None, value=None):
+        # Copy constructor
+        if isinstance(python_type, TypeValue):
+            other = python_type
+
+            python_type = other.type
+            value = other.value
+
         self.type = python_type
         self.value = value
 
@@ -97,7 +104,7 @@ class TypedCollection(TypeValue):
         self = cls()
         self.type, data = data[0], data[1:]
         python_item_type = DATA_TYPES[self.type][1]
-        python_type = t.LVList(python_item_type)
+        python_type = t.LVList[python_item_type]
         self.value, data = python_type.deserialize(data)
         return self, data
 
@@ -122,26 +129,15 @@ class DataTypes(dict):
         self._idx_by_class = {
             _type: type_id for type_id, (name, _type, ad) in self.items()
         }
-        self._idx_by_cls_name = {
-            cls.__name__: type_id for cls, type_id in self._idx_by_class.items()
-        }
 
     def pytype_to_datatype_id(self, python_type) -> int:
         """Return Zigbee Datatype ID for a give python type."""
-        data_type_id = self._idx_by_class.get(python_type)
-        if data_type_id is not None:
-            return data_type_id
 
-        # lookup by class name
-        try:
-            return self._idx_by_cls_name[python_type.__name__]
-        except KeyError:
-            pass
+        # We return the most specific parent class
+        for cls in python_type.__mro__:
+            if cls in self._idx_by_class:
+                return self._idx_by_class[cls]
 
-        for cls, type_id in self._idx_by_class.items():
-            if issubclass(python_type, cls):
-                self._idx_by_cls_name[python_type.__name__] = type_id
-                return type_id
         return 0xFF
 
 
@@ -183,7 +179,7 @@ DATA_TYPES = DataTypes(
         0x2F: ("Signed Integer", t.int64s, Analog),
         0x30: ("Enumeration", t.enum8, Discrete),
         0x31: ("Enumeration", t.enum16, Discrete),
-        # 0x38: ('Floating point', t.Half, Analog),
+        0x38: ("Floating point", t.Half, Analog),
         0x39: ("Floating point", t.Single, Analog),
         0x3A: ("Floating point", t.Double, Analog),
         0x41: ("Octet string", t.LVBytes, Discrete),
@@ -191,7 +187,7 @@ DATA_TYPES = DataTypes(
         0x43: ("Long octet string", t.LongOctetString, Discrete),
         0x44: ("Long character string", t.LongCharacterString, Discrete),
         0x48: ("Array", Array, Discrete),
-        0x4C: ("Structure", t.LVList(TypeValue, 2), Discrete),
+        0x4C: ("Structure", t.LVList[t.uint16_t, TypeValue], Discrete),
         0x50: ("Set", Set, Discrete),
         0x51: ("Bag", Bag, Discrete),
         0xE0: ("Time of day", t.TimeOfDay, Analog),
@@ -210,64 +206,19 @@ DATA_TYPES = DataTypes(
 class ReadAttributeRecord(t.Struct):
     """Read Attribute Record."""
 
-    _fields = [("attrid", t.uint16_t), ("status", Status), ("value", TypeValue)]
-
-    @classmethod
-    def deserialize(cls, data):
-        r = cls()
-        r.attrid, data = t.uint16_t.deserialize(data)
-        r.status, data = Status.deserialize(data)
-        if r.status == Status.SUCCESS:
-            r.value, data = TypeValue.deserialize(data)
-
-        return r, data
-
-    def serialize(self):
-        r = t.uint16_t(self.attrid).serialize()
-        r += t.uint8_t(self.status).serialize()
-        if self.status == Status.SUCCESS:
-            r += self.value.serialize()
-
-        return r
-
-    def __repr__(self):
-        r = "<ReadAttributeRecord attrid=%s status=%s" % (self.attrid, self.status)
-        if self.status == Status.SUCCESS:
-            r += " value=%s" % (self.value.value,)
-        r += ">"
-        return r
+    attrid: t.uint16_t
+    status: Status
+    value: TypeValue = t.StructField(requires=lambda s: s.status == Status.SUCCESS)
 
 
 class Attribute(t.Struct):
     attrid: t.uint16_t
     value: TypeValue
-    _fields = [("attrid", t.uint16_t), ("value", TypeValue)]
 
 
 class WriteAttributesStatusRecord(t.Struct):
-    _fields = [("status", Status), ("attrid", t.uint16_t)]
-
-    @classmethod
-    def deserialize(cls, data):
-        r = cls()
-        r.status, data = Status.deserialize(data)
-        if r.status != Status.SUCCESS:
-            r.attrid, data = t.uint16_t.deserialize(data)
-
-        return r, data
-
-    def serialize(self):
-        r = Status(self.status).serialize()
-        if self.status != Status.SUCCESS:
-            r += t.uint16_t(self.attrid).serialize()
-        return r
-
-    def __repr__(self):
-        r = "<%s status=%s" % (self.__class__.__name__, self.status)
-        if self.status != Status.SUCCESS:
-            r += " attrid=%s" % (self.attrid,)
-        r += ">"
-        return r
+    status: Status
+    attrid: t.uint16_t = t.StructField(requires=lambda s: s.status != Status.SUCCESS)
 
 
 class WriteAttributesResponse(list):
@@ -351,17 +302,30 @@ class AttributeReportingConfig:
 
         return self, data
 
+    def __repr__(self):
+        r = f"{self.__class__.__name__}("
+        r += f"direction={self.direction}"
+        r += f", attrid={self.attrid}"
+
+        if self.direction == ReportingDirection.ReceiveReports:
+            r += f", timeout={self.timeout}"
+        else:
+            r += f", datatype={self.datatype}"
+            r += f", min_interval={self.min_interval}"
+            r += f", max_interval={self.max_interval}"
+
+            if self.reportable_change is not None:
+                r += f", reportable_change={self.reportable_change}"
+
+        r += ")"
+
+        return r
+
 
 class ConfigureReportingResponseRecord(t.Struct):
     status: Status
     direction: ReportingDirection
     attrid: t.uint16_t
-
-    _fields = [
-        ("status", Status),
-        ("direction", ReportingDirection),
-        ("attrid", t.uint16_t),
-    ]
 
     @classmethod
     def deserialize(cls, data):
@@ -386,29 +350,42 @@ class ConfigureReportingResponseRecord(t.Struct):
         return r
 
     def __repr__(self):
-        r = "<%s status=%s" % (self.__class__.__name__, self.status)
+        r = f"{self.__class__.__name__}(status={self.status}"
         if self.status != Status.SUCCESS:
-            r += " direction=%s attrid=%s" % (self.direction, self.attrid)
-        r += ">"
+            r += f", direction={self.direction}, attrid={self.attrid}"
+        r += ")"
         return r
 
 
-class ConfigureReportingResponse(t.List(ConfigureReportingResponseRecord)):
+class ConfigureReportingResponse(t.List[ConfigureReportingResponseRecord]):
+    # In the case of successful configuration of all attributes, only a single
+    # attribute status record SHALL be included in the command, with the status
+    # field set to SUCCESS and the direction and attribute identifier fields omitted
+
     def serialize(self):
+        if not self:
+            raise ValueError(f"Cannot serialize empty list")
+
         failed = [record for record in self if record.status != Status.SUCCESS]
-        if failed:
-            return b"".join(
-                [ConfigureReportingResponseRecord(i).serialize() for i in failed]
-            )
-        return Status.SUCCESS.serialize()
+
+        if not failed:
+            return ConfigureReportingResponseRecord(status=Status.SUCCESS).serialize()
+
+        # Note that attribute status records are not included for successfully
+        # configured attributes, in order to save bandwidth.
+        return b"".join(
+            [ConfigureReportingResponseRecord(r).serialize() for r in failed]
+        )
 
 
 class ReadReportingConfigRecord(t.Struct):
-    _fields = [("direction", t.uint8_t), ("attrid", t.uint16_t)]
+    direction: t.uint8_t
+    attrid: t.uint16_t
 
 
 class DiscoverAttributesResponseRecord(t.Struct):
-    _fields = [("attrid", t.uint16_t), ("datatype", t.uint8_t)]
+    attrid: t.uint16_t
+    datatype: t.uint8_t
 
 
 class AttributeAccessControl(t.bitmap8):
@@ -418,11 +395,9 @@ class AttributeAccessControl(t.bitmap8):
 
 
 class DiscoverAttributesExtendedResponseRecord(t.Struct):
-    _fields = [
-        ("attrid", t.uint16_t),
-        ("datatype", t.uint8_t),
-        ("acl", AttributeAccessControl),
-    ]
+    attrid: t.uint16_t
+    datatype: t.uint8_t
+    acl: AttributeAccessControl
 
 
 class Command(t.enum8):
@@ -455,38 +430,38 @@ class Command(t.enum8):
 
 COMMANDS = {
     # id: (params, is_response)
-    Command.Configure_Reporting: ((t.List(AttributeReportingConfig),), False),
+    Command.Configure_Reporting: ((t.List[AttributeReportingConfig],), False),
     Command.Configure_Reporting_rsp: ((ConfigureReportingResponse,), True),
     Command.Default_Response: ((t.uint8_t, Status), True),
     Command.Discover_Attributes: ((t.uint16_t, t.uint8_t), False),
     Command.Discover_Attributes_rsp: (
-        (t.Bool, t.List(DiscoverAttributesResponseRecord)),
+        (t.Bool, t.List[DiscoverAttributesResponseRecord]),
         True,
     ),
     Command.Discover_Attribute_Extended: ((t.uint16_t, t.uint8_t), False),
     Command.Discover_Attribute_Extended_rsp: (
-        (t.Bool, t.List(DiscoverAttributesExtendedResponseRecord)),
+        (t.Bool, t.List[DiscoverAttributesExtendedResponseRecord]),
         True,
     ),
     Command.Discover_Commands_Generated: ((t.uint8_t, t.uint8_t), False),
-    Command.Discover_Commands_Generated_rsp: ((t.Bool, t.List(t.uint8_t)), True),
+    Command.Discover_Commands_Generated_rsp: ((t.Bool, t.List[t.uint8_t]), True),
     Command.Discover_Commands_Received: ((t.uint8_t, t.uint8_t), False),
-    Command.Discover_Commands_Received_rsp: ((t.Bool, t.List(t.uint8_t)), True),
-    Command.Read_Attributes: ((t.List(t.uint16_t),), False),
-    Command.Read_Attributes_rsp: ((t.List(ReadAttributeRecord),), True),
+    Command.Discover_Commands_Received_rsp: ((t.Bool, t.List[t.uint8_t]), True),
+    Command.Read_Attributes: ((t.List[t.uint16_t],), False),
+    Command.Read_Attributes_rsp: ((t.List[ReadAttributeRecord],), True),
     # Command.Read_Attributes_Structured: ((, ), False),
-    Command.Read_Reporting_Configuration: ((t.List(ReadReportingConfigRecord),), False),
+    Command.Read_Reporting_Configuration: ((t.List[ReadReportingConfigRecord],), False),
     Command.Read_Reporting_Configuration_rsp: (
-        (t.List(AttributeReportingConfig),),
+        (t.List[AttributeReportingConfig],),
         True,
     ),
-    Command.Report_Attributes: ((t.List(Attribute),), False),
-    Command.Write_Attributes: ((t.List(Attribute),), False),
-    Command.Write_Attributes_No_Response: ((t.List(Attribute),), False),
+    Command.Report_Attributes: ((t.List[Attribute],), False),
+    Command.Write_Attributes: ((t.List[Attribute],), False),
+    Command.Write_Attributes_No_Response: ((t.List[Attribute],), False),
     Command.Write_Attributes_rsp: ((WriteAttributesResponse,), True),
     # Command.Write_Attributes_Structured: ((, ), False),
     # Command.Write_Attributes_Structured_rsp: ((, ), True),
-    Command.Write_Attributes_Undivided: ((t.List(Attribute),), False),
+    Command.Write_Attributes_Undivided: ((t.List[Attribute],), False),
 }
 
 
@@ -501,7 +476,7 @@ class FrameType(t.enum8):
 
 class FrameControl:
     """The frame control field contains information defining the command type
-     and other control flags."""
+    and other control flags."""
 
     def __init__(self, frame_control: int = 0x00) -> None:
         self.value = frame_control

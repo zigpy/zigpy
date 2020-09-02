@@ -9,7 +9,7 @@ from zigpy.zcl import Cluster, foundation
 
 
 class Basic(Cluster):
-    """ Attributes for determining basic information about a
+    """Attributes for determining basic information about a
     device, setting user device information such as location,
     and enabling a device.
     """
@@ -178,7 +178,7 @@ class Basic(Cluster):
 
 
 class PowerConfiguration(Cluster):
-    """ Attributes for determining more detailed information
+    """Attributes for determining more detailed information
     about a device’s power source(s), and for configuring
     under/over voltage alarms."""
 
@@ -311,7 +311,7 @@ class Groups(Cluster):
     server_commands = {
         0x0000: ("add", (t.Group, t.CharacterString), False),
         0x0001: ("view", (t.Group,), False),
-        0x0002: ("get_membership", (t.LVList(t.Group),), False),
+        0x0002: ("get_membership", (t.LVList[t.Group],), False),
         0x0003: ("remove", (t.Group,), False),
         0x0004: ("remove_all", (), False),
         0x0005: ("add_if_identifying", (t.Group, t.CharacterString), False),
@@ -323,7 +323,7 @@ class Groups(Cluster):
             (foundation.Status, t.Group, t.CharacterString),
             True,
         ),
-        0x0002: ("get_membership_response", (t.uint8_t, t.LVList(t.Group)), True),
+        0x0002: ("get_membership_response", (t.uint8_t, t.LVList[t.Group]), True),
         0x0003: ("remove_response", (foundation.Status, t.Group), True),
     }
 
@@ -371,7 +371,7 @@ class Scenes(Cluster):
         0x0004: ("store_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
         0x0006: (
             "get_scene_membership_response",
-            (t.uint8_t, t.uint8_t, t.uint16_t, t.Optional(t.LVList(t.uint8_t))),
+            (t.uint8_t, t.uint8_t, t.uint16_t, t.Optional(t.LVList[t.uint8_t])),
             True,
         ),
         0x0040: ("enhanced_add_response", (), True),
@@ -382,7 +382,7 @@ class Scenes(Cluster):
 
 class OnOff(Cluster):
     """Attributes and commands for switching devices between
-    ‘On’ and ‘Off’ states. """
+    ‘On’ and ‘Off’ states."""
 
     cluster_id = 0x0006
     name = "On/Off"
@@ -451,7 +451,7 @@ class LevelControl(Cluster):
 
 
 class Alarms(Cluster):
-    """ Attributes and commands for sending notifications and
+    """Attributes and commands for sending notifications and
     configuring alarm functionality."""
 
     cluster_id = 0x0009
@@ -484,7 +484,7 @@ class Alarms(Cluster):
 
 
 class Time(Cluster):
-    """ Attributes and commands that provide a basic interface
+    """Attributes and commands that provide a basic interface
     to a real-time clock."""
 
     cluster_id = 0x000A
@@ -580,14 +580,12 @@ class RSSILocation(Cluster):
     }
 
     class NeighborInfo(t.Struct):
-        _fields = [
-            ("neighbor", t.EUI64),
-            ("x", t.int16s),
-            ("y", t.int16s),
-            ("z", t.int16s),
-            ("rssi", t.int8s),
-            ("num_measurements", t.uint8_t),
-        ]
+        neighbor: t.EUI64
+        x: t.int16s
+        y: t.int16s
+        z: t.int16s
+        rssi: t.int8s
+        num_measurements: t.uint8_t
 
     client_commands = {
         0x0000: (
@@ -621,7 +619,7 @@ class RSSILocation(Cluster):
         0x0003: ("compact_location_data_notification", (), False),
         0x0004: ("rssi_ping", (t.uint8_t,), False),  # data8
         0x0005: ("rssi_req", (), False),
-        0x0006: ("report_rssi_measurements", (t.EUI64, t.LVList(NeighborInfo)), False),
+        0x0006: ("report_rssi_measurements", (t.EUI64, t.LVList[NeighborInfo]), False),
         0x0007: ("request_own_location", (t.EUI64,), False),
     }
 
@@ -754,7 +752,7 @@ class MultistateInput(Cluster):
     cluster_id = 0x0012
     ep_attribute = "multistate_input"
     attributes = {
-        0x000E: ("state_text", t.List(t.CharacterString)),
+        0x000E: ("state_text", t.List[t.CharacterString]),
         0x001C: ("description", t.CharacterString),
         0x004A: ("number_of_states", t.uint16_t),
         0x0051: ("out_of_service", t.Bool),
@@ -773,7 +771,7 @@ class MultistateOutput(Cluster):
     cluster_id = 0x0013
     ep_attribute = "multistate_output"
     attributes = {
-        0x000E: ("state_text", t.List(t.CharacterString)),
+        0x000E: ("state_text", t.List[t.CharacterString]),
         0x001C: ("description", t.CharacterString),
         0x004A: ("number_of_states", t.uint16_t),
         0x0051: ("out_of_service", t.Bool),
@@ -793,7 +791,7 @@ class MultistateValue(Cluster):
     cluster_id = 0x0014
     ep_attribute = "multistate_value"
     attributes = {
-        0x000E: ("state_text", t.List(t.CharacterString)),
+        0x000E: ("state_text", t.List[t.CharacterString]),
         0x001C: ("description", t.CharacterString),
         0x004A: ("number_of_states", t.uint16_t),
         0x0051: ("out_of_service", t.Bool),
@@ -825,10 +823,10 @@ class Commissioning(Cluster):
         0x0005: ("stack_profile", t.uint8_t),
         0x0006: ("startup_control", t.enum8),
         0x0010: ("trust_center_address", t.EUI64),
-        0x0011: ("trust_center_master_key", t.fixed_list(16, t.uint8_t)),
-        0x0012: ("network_key", t.fixed_list(16, t.uint8_t)),
+        0x0011: ("trust_center_master_key", t.FixedList[16, t.uint8_t]),
+        0x0012: ("network_key", t.FixedList[16, t.uint8_t]),
         0x0013: ("use_insecure_join", t.Bool),
-        0x0014: ("preconfigured_link_key", t.fixed_list(16, t.uint8_t)),
+        0x0014: ("preconfigured_link_key", t.FixedList[16, t.uint8_t]),
         0x0015: ("network_key_seq_num", t.uint8_t),
         0x0016: ("network_key_type", t.enum8),
         0x0017: ("network_manager_address", t.uint16_t),
@@ -983,7 +981,9 @@ class Ota(Cluster):
     }
 
     def handle_cluster_request(self, tsn, command_id, args):
-        self.create_catching_task(self._handle_cluster_request(tsn, command_id, args),)
+        self.create_catching_task(
+            self._handle_cluster_request(tsn, command_id, args),
+        )
 
     async def _handle_cluster_request(self, tsn, command_id, args):
         """Parse OTA commands."""
@@ -1150,24 +1150,21 @@ class PowerProfile(Cluster):
     }
 
     class ScheduleRecord(t.Struct):
-        _fields = [("phase_id", t.uint8_t), ("scheduled_time", t.uint16_t)]
+        phase_id: t.uint8_t
+        scheduled_time: t.uint16_t
 
     class PowerProfilePhase(t.Struct):
-        _fields = [
-            ("energy_phase_id", t.uint8_t),
-            ("macro_phase_id", t.uint8_t),
-            ("expected_duration", t.uint16_t),
-            ("peak_power", t.uint16_t),
-            ("energy", t.uint16_t),
-        ]
+        energy_phase_id: t.uint8_t
+        macro_phase_id: t.uint8_t
+        expected_duration: t.uint16_t
+        peak_power: t.uint16_t
+        energy: t.uint16_t
 
     class PowerProfile(t.Struct):
-        _fields = [
-            ("power_profile_id", t.uint8_t),
-            ("energy_phase_id", t.uint8_t),
-            ("power_profile_remote_control", t.Bool),
-            ("power_profile_state", t.uint8_t),
-        ]
+        power_profile_id: t.uint8_t
+        energy_phase_id: t.uint8_t
+        power_profile_remote_control: t.Bool
+        power_profile_state: t.uint8_t
 
     server_commands = {
         0x0000: ("power_profile_request", (t.uint8_t,), False),
@@ -1184,12 +1181,12 @@ class PowerProfile(Cluster):
         ),
         0x0004: (
             "energy_phases_schedule_notification",
-            (t.uint8_t, t.LVList(ScheduleRecord)),
+            (t.uint8_t, t.LVList[ScheduleRecord]),
             False,
         ),
         0x0005: (
             "energy_phases_schedule_response",
-            (t.uint8_t, t.LVList(ScheduleRecord)),
+            (t.uint8_t, t.LVList[ScheduleRecord]),
             True,
         ),
         0x0006: ("power_profile_schedule_constraints_request", (t.uint8_t,), False),
@@ -1203,17 +1200,25 @@ class PowerProfile(Cluster):
     client_commands = {
         0x0000: (
             "power_profile_notification",
-            (t.uint8_t, t.uint8_t, t.LVList(PowerProfilePhase)),
+            (t.uint8_t, t.uint8_t, t.LVList[PowerProfilePhase]),
             False,
         ),
         0x0001: (
             "power_profile_response",
-            (t.uint8_t, t.uint8_t, t.LVList(PowerProfilePhase)),
+            (t.uint8_t, t.uint8_t, t.LVList[PowerProfilePhase]),
             True,
         ),
-        0x0002: ("power_profile_state_response", (t.LVList(PowerProfile),), True),
+        0x0002: (
+            "power_profile_state_response",
+            (t.LVList[PowerProfile],),
+            True,
+        ),
         0x0003: ("get_power_profile_price", (t.uint8_t,), False),
-        0x0004: ("power_profile_state_notification", (t.LVList(PowerProfile),), False),
+        0x0004: (
+            "power_profile_state_notification",
+            (t.LVList[PowerProfile],),
+            False,
+        ),
         0x0005: ("get_overall_schedule_price", (), False),
         0x0006: ("energy_phases_schedule_request", (), False),
         0x0007: ("energy_phases_schedule_state_response", (t.uint8_t, t.uint8_t), True),

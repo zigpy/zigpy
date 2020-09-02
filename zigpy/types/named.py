@@ -16,7 +16,7 @@ class BroadcastAddress(basic.enum16):
     RESERVED_FFF8 = 0xFFF8
 
 
-class EUI64(basic.fixed_list(8, basic.uint8_t)):
+class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
     # EUI 64-bit ID (an IEEE address).
     def __repr__(self):
         return ":".join("%02x" % i for i in self[::-1])
@@ -33,7 +33,7 @@ class EUI64(basic.fixed_list(8, basic.uint8_t)):
         return cls(ieee)
 
 
-class KeyData(basic.fixed_list(16, basic.uint8_t)):
+class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
     pass
 
 
@@ -42,15 +42,7 @@ class Bool(basic.uint8_t, enum.Enum):
     true = 1
 
 
-class HexRepr:
-    def __repr__(self):
-        return ("0x{:0" + str(self._size * 2) + "x}").format(self)
-
-    def __str__(self):
-        return ("0x{:0" + str(self._size * 2) + "x}").format(self)
-
-
-class AttributeId(HexRepr, basic.uint16_t):
+class AttributeId(basic.uint16_t, hex_repr=True):
     pass
 
 
@@ -100,27 +92,25 @@ class ClusterId(basic.uint16_t):
 
 
 class Date(Struct):
-    _fields = [
-        ("_year", basic.uint8_t),
-        ("month", basic.uint8_t),
-        ("day", basic.uint8_t),
-        ("day_of_week", basic.uint8_t),
-    ]
+    years_since_1900: basic.uint8_t
+    month: basic.uint8_t
+    day: basic.uint8_t
+    day_of_week: basic.uint8_t
 
     @property
     def year(self):
-        """Return year."""
-        if self._year is None:
-            return self._year
-        return 1900 + self._year
+        if self.years_since_1900 is None:
+            return None
+
+        return 1900 + self.years_since_1900
 
     @year.setter
-    def year(self, value):
-        assert 1900 <= value <= 2155
-        self._year = basic.uint8_t(value - 1900)
+    def year(self, years):
+        assert 1900 <= years <= 2155
+        self.years_since_1900 = years - 1900
 
 
-class NWK(HexRepr, basic.uint16_t):
+class NWK(basic.uint16_t, hex_repr=True):
     pass
 
 
@@ -132,7 +122,7 @@ class ExtendedPanId(EUI64):
     pass
 
 
-class Group(HexRepr, basic.uint16_t):
+class Group(basic.uint16_t, hex_repr=True):
     pass
 
 
@@ -146,12 +136,10 @@ class NoData:
 
 
 class TimeOfDay(Struct):
-    _fields = [
-        ("hours", basic.uint8_t),
-        ("minutes", basic.uint8_t),
-        ("seconds", basic.uint8_t),
-        ("hundredths", basic.uint8_t),
-    ]
+    hours: basic.uint8_t
+    minutes: basic.uint8_t
+    seconds: basic.uint8_t
+    hundredths: basic.uint8_t
 
 
 class _Time(basic.uint32_t):
@@ -174,7 +162,7 @@ class LocalTime(_Time):
     pass
 
 
-class Relays(basic.LVList(NWK)):
+class Relays(basic.LVList, item_type=NWK, length_type=basic.uint8_t):
     """Relay list for static routing."""
 
     pass
@@ -250,7 +238,7 @@ class APSStatus(basic.enum8):
     @classmethod
     def _missing_(cls, value):
         chained = NWKStatus(value)
-        status = basic.uint8_t.__new__(cls, chained.value)
+        status = cls._member_type_.__new__(cls, chained.value)
         status._name_ = chained.name
         status._value_ = value
         return status
@@ -483,7 +471,7 @@ class NWKStatus(basic.enum8):
     @classmethod
     def _missing_(cls, value):
         chained = MACStatus(value)
-        status = basic.uint8_t.__new__(cls, chained.value)
+        status = cls._member_type_.__new__(cls, chained.value)
         status._name_ = chained.name
         status._value_ = value
         return status

@@ -38,29 +38,26 @@ NET_JOIN = (
 
 
 class DeviceInfoRecord(t.Struct):
-    _fields = [
-        ("ieee", t.EUI64),
-        ("endpoint_id", t.uint8_t),
-        ("profile_id", t.uint16_t),
-        ("device_id", t.uint16_t),
-        ("version", t.uint8_t),
-        ("group_id_count", t.uint8_t),
-        ("sort", t.uint8_t),
-    ]
+    ieee: t.EUI64
+    endpoint_id: t.uint8_t
+    profile_id: t.uint16_t
+    device_id: t.uint16_t
+    version: t.uint8_t
+    group_id_count: t.uint8_t
+    sort: t.uint8_t
 
 
 class EndpointInfoRecord(t.Struct):
-    _fields = [
-        ("nwk", t.NWK),
-        ("endpoint_id", t.uint8_t),
-        ("profile_id", t.uint16_t),
-        ("device_id", t.uint16_t),
-        ("version", t.uint8_t),
-    ]
+    nwk: t.NWK
+    endpoint_id: t.uint8_t
+    profile_id: t.uint16_t
+    device_id: t.uint16_t
+    version: t.uint8_t
 
 
 class GroupInfoRecord(t.Struct):
-    _fields = [("group_id", t.Group), ("group_type", t.uint8_t)]
+    group_id: t.Group
+    group_type: t.uint8_t
 
 
 class LightLink(Cluster):
@@ -110,7 +107,7 @@ class LightLink(Cluster):
         ),
         0x0003: (
             "device_information_rsp",
-            (t.uint32_t, t.uint8_t, t.uint8_t, t.LVList(DeviceInfoRecord)),
+            (t.uint32_t, t.uint8_t, t.uint8_t, t.LVList[DeviceInfoRecord]),
             True,
         ),
         0x0011: (
@@ -127,12 +124,12 @@ class LightLink(Cluster):
         ),
         0x0041: (
             "get_group_identifiers_rsp",
-            (t.uint8_t, t.uint8_t, t.LVList(GroupInfoRecord)),
+            (t.uint8_t, t.uint8_t, t.LVList[GroupInfoRecord]),
             True,
         ),
         0x0042: (
             "get_endpoint_list_rsp",
-            (t.uint8_t, t.uint8_t, t.LVList(EndpointInfoRecord)),
+            (t.uint8_t, t.uint8_t, t.LVList[EndpointInfoRecord]),
             True,
         ),
     }

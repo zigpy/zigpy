@@ -321,7 +321,7 @@ class Thermostat(Cluster):
         0x0000: ("setpoint_raise_lower", (SetpointMode, t.int8s), False),
         0x0001: (
             "set_weekly_schedule",
-            (t.enum8, SeqDayOfWeek, SeqMode, t.List(t.int16s)),
+            (t.enum8, SeqDayOfWeek, SeqMode, t.List[t.int16s]),
             False,
         ),
         0x0002: ("get_weekly_schedule", (SeqDayOfWeek, SeqMode), False),
@@ -331,7 +331,7 @@ class Thermostat(Cluster):
     client_commands = {
         0x0000: (
             "get_weekly_schedule_response",
-            (t.enum8, SeqDayOfWeek, SeqMode, t.List(t.int16s)),
+            (t.enum8, SeqDayOfWeek, SeqMode, t.List[t.int16s]),
             True,
         ),
         0x0001: (
@@ -343,7 +343,7 @@ class Thermostat(Cluster):
 
 
 class Fan(Cluster):
-    """ An interface for controlling a fan in a heating /
+    """An interface for controlling a fan in a heating /
     cooling system."""
 
     class FanMode(t.enum8):

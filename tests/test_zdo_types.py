@@ -10,6 +10,10 @@ def test_multi_address_3():
     ma.endpoint = 1
     ser = ma.serialize()
 
+    assert "ieee" in repr(ma)
+    assert "endpoint" in repr(ma)
+    assert "nwk" not in repr(ma)
+
     ma2, data = types.MultiAddress.deserialize(ser)
     assert data == b""
     assert ma2.addrmode == ma.addrmode
@@ -22,6 +26,10 @@ def test_multi_address_1():
     ma.addrmode = 1
     ma.nwk = 123
     ser = ma.serialize()
+
+    assert "ieee" not in repr(ma)
+    assert "endpoint" not in repr(ma)
+    assert "nwk" in repr(ma)
 
     ma2, data = types.MultiAddress.deserialize(ser)
     assert data == b""
@@ -78,10 +86,10 @@ def test_node_descriptor():
 
 
 def test_node_descriptor_is_valid():
-    for field in types.NodeDescriptor._fields:
+    for field in types.NodeDescriptor.fields():
         nd = types.NodeDescriptor(0, 1, 2, 0x0303, 0x04, 0x0505, 0x0606, 0x0707, 0x08)
         assert nd.is_valid is True
-        setattr(nd, field[0], None)
+        setattr(nd, field.name, None)
         assert nd.is_valid is False
 
 
@@ -148,8 +156,8 @@ def test_size_prefixed_simple_descriptor():
     sd.profile = t.uint16_t(2)
     sd.device_type = t.uint16_t(3)
     sd.device_version = t.uint8_t(4)
-    sd.input_clusters = t.LVList(t.uint16_t)([t.uint16_t(5), t.uint16_t(6)])
-    sd.output_clusters = t.LVList(t.uint16_t)([t.uint16_t(7), t.uint16_t(8)])
+    sd.input_clusters = t.LVList[t.uint16_t]([t.uint16_t(5), t.uint16_t(6)])
+    sd.output_clusters = t.LVList[t.uint16_t]([t.uint16_t(7), t.uint16_t(8)])
 
     ser = sd.serialize()
     assert ser[0] == len(ser) - 1

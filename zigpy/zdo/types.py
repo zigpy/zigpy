@@ -4,21 +4,19 @@ import zigpy.types as t
 
 
 class PowerDescriptor(t.Struct):
-    _fields = [
-        ("byte_1", 1),  # Current power mode 4, Available power sources 4
-        ("byte_2", 1),  # Current power source 4, Current power source level 4
-    ]
+    byte_1: t.uint8_t
+    byte_2: t.uint8_t
+
+    # TODO: interpret the four 4-bit fields
 
 
 class SimpleDescriptor(t.Struct):
-    _fields = [
-        ("endpoint", t.uint8_t),
-        ("profile", t.uint16_t),
-        ("device_type", t.uint16_t),
-        ("device_version", t.uint8_t),
-        ("input_clusters", t.LVList(t.uint16_t)),
-        ("output_clusters", t.LVList(t.uint16_t)),
-    ]
+    endpoint: t.uint8_t
+    profile: t.uint16_t
+    device_type: t.uint16_t
+    device_version: t.uint8_t
+    input_clusters: t.LVList[t.uint16_t]
+    output_clusters: t.LVList[t.uint16_t]
 
 
 class SizePrefixedSimpleDescriptor(SimpleDescriptor):
@@ -55,23 +53,11 @@ class NodeDescriptor(t.Struct):
     maximum_outgoing_transfer_size: t.uint16_t
     descriptor_capability_field: t.uint8_t
 
-    _fields = [
-        ("byte1", t.uint8_t),
-        ("byte2", t.uint8_t),
-        ("mac_capability_flags", t.uint8_t),
-        ("manufacturer_code", t.uint16_t),
-        ("maximum_buffer_size", t.uint8_t),
-        ("maximum_incoming_transfer_size", t.uint16_t),
-        ("server_mask", t.uint16_t),
-        ("maximum_outgoing_transfer_size", t.uint16_t),
-        ("descriptor_capability_field", t.uint8_t),
-    ]
-
     @property
     def is_valid(self):
         """Return True if all fields were initialized."""
         non_empty_fields = [
-            getattr(self, field[0]) is not None for field in self._fields
+            getattr(self, field.name) is not None for field in self.fields()
         ]
         return all(non_empty_fields)
 
@@ -152,123 +138,78 @@ class NodeDescriptor(t.Struct):
         return bool(self.mac_capability_flags & 0b10000000)
 
 
-class MultiAddress:
+class MultiAddress(t.Struct):
     """Used for binds, represents an IEEE+endpoint or NWK address"""
 
-    def __init__(self, other=None):
-        if isinstance(other, self.__class__):
-            self.addrmode = other.addrmode
-            self.nwk = getattr(other, "nwk", None)
-            self.ieee = getattr(other, "ieee", None)
-            self.endpoint = getattr(other, "endpoint", None)
+    addrmode: t.uint8_t
+    nwk: t.uint16_t = t.StructField(requires=lambda s: s.addrmode == 0x01)
+    ieee: t.EUI64 = t.StructField(requires=lambda s: s.addrmode == 0x03)
+    endpoint: t.uint8_t = t.StructField(requires=lambda s: s.addrmode == 0x03)
 
     @classmethod
     def deserialize(cls, data):
-        r = cls()
-        r.addrmode, data = data[0], data[1:]
-        if r.addrmode == 0x01:
-            r.nwk, data = t.uint16_t.deserialize(data)
-        elif r.addrmode == 0x03:
-            r.ieee, data = t.EUI64.deserialize(data)
-            r.endpoint, data = t.uint8_t.deserialize(data)
-        else:
+        r, data = super().deserialize(data)
+
+        if r.addrmode not in (0x01, 0x03):
             raise ValueError("Invalid MultiAddress - unknown address mode")
 
         return r, data
 
     def serialize(self):
-        if self.addrmode == 0x01:
-            return self.addrmode.to_bytes(1, "little") + self.nwk.to_bytes(2, "little")
-        elif self.addrmode == 0x03:
-            return (
-                self.addrmode.to_bytes(1, "little")
-                + self.ieee.serialize()
-                + self.endpoint.to_bytes(1, "little")
-            )
-        else:
-            raise ValueError("Invalid value for addrmode")
+        if self.addrmode not in (0x01, 0x03):
+            raise ValueError("Invalid MultiAddress - unknown address mode")
+
+        return super().serialize()
 
 
 class Neighbor(t.Struct):
     """Neighbor Descriptor"""
 
-    _fields = [
-        ("PanId", t.EUI64),
-        ("IEEEAddr", t.EUI64),
-        ("NWKAddr", t.NWK),
-        ("NeighborType", t.uint8_t),
-        ("PermitJoining", t.uint8_t),
-        ("Depth", t.uint8_t),
-        ("LQI", t.uint8_t),
-    ]
+    PanId: t.EUI64
+    IEEEAddr: t.EUI64
+    NWKAddr: t.NWK
+    NeighborType: t.uint8_t
+    PermitJoining: t.uint8_t
+    Depth: t.uint8_t
+    LQI: t.uint8_t
 
 
 class Neighbors(t.Struct):
     """Mgmt_Lqi_rsp"""
 
-    _fields = [
-        ("Entries", t.uint8_t),
-        ("StartIndex", t.uint8_t),
-        ("NeighborTableList", t.LVList(Neighbor)),
-    ]
+    Entries: t.uint8_t
+    StartIndex: t.uint8_t
+    NeighborTableList: t.LVList[Neighbor]
 
 
 class Route(t.Struct):
     """Route Descriptor"""
 
-    _fields = [("DstNWK", t.NWK), ("RouteStatus", t.uint8_t), ("NextHop", t.NWK)]
+    DstNWK: t.NWK
+    RouteStatus: t.uint8_t
+    NextHop: t.NWK
 
 
 class Routes(t.Struct):
-    _fields = [
-        ("Entries", t.uint8_t),
-        ("StartIndex", t.uint8_t),
-        ("RoutingTableList", t.LVList(Route)),
-    ]
+    Entries: t.uint8_t
+    StartIndex: t.uint8_t
+    RoutingTableList: t.LVList[Route]
 
 
 class NwkUpdate(t.Struct):
     CHANNEL_CHANGE_REQ = 0xFE
     CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ = 0xFF
 
-    _fields = [
-        ("ScanChannels", t.Channels),
-        ("ScanDuration", t.uint8_t),
-        ("ScanCount", t.uint8_t),
-        ("nwkUpdateId", t.uint8_t),
-        ("nwkManagerAddr", t.NWK),
-    ]
-
-    def serialize(self) -> bytes:
-        """Serialize data."""
-        r = self.ScanChannels.serialize() + self.ScanDuration.serialize()
-        if self.ScanDuration <= 0x05:
-            r += self.ScanCount.serialize()
-        if self.ScanDuration in (
-            self.CHANNEL_CHANGE_REQ,
-            self.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ,
-        ):
-            r += self.nwkUpdateId.serialize()
-        if self.ScanDuration == self.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ:
-            r += self.nwkManagerAddr.serialize()
-        return r
-
-    @classmethod
-    def deserialize(cls, data: bytes) -> typing.Tuple["NwkUpdate", bytes]:
-        """Deserialize data."""
-        r = cls()
-        r.ScanChannels, data = t.Channels.deserialize(data)
-        r.ScanDuration, data = t.uint8_t.deserialize(data)
-        if r.ScanDuration <= 0x05:
-            r.ScanCount, data = t.uint8_t.deserialize(data)
-        if r.ScanDuration in (
-            cls.CHANNEL_CHANGE_REQ,
-            cls.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ,
-        ):
-            r.nwkUpdateId, data = t.uint8_t.deserialize(data)
-        if r.ScanDuration == cls.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ:
-            r.nwkManagerAddr, data = t.NWK.deserialize(data)
-        return r, data
+    ScanChannels: t.Channels
+    ScanDuration: t.uint8_t
+    ScanCount: t.uint8_t = t.StructField(requires=lambda s: s.ScanDuration <= 0x05)
+    nwkUpdateId: t.uint8_t = t.StructField(
+        requires=lambda s: s.ScanDuration
+        in (s.CHANNEL_CHANGE_REQ, s.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ)
+    )
+    nwkManagerAddr: t.NWK = t.StructField(
+        requires=lambda s: s.ScanDuration == s.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ
+    )
 
 
 class Status(t.enum8):
@@ -310,7 +251,7 @@ class Status(t.enum8):
     @classmethod
     def _missing_(cls, value):
         chained = t.APSStatus(value)
-        status = t.uint8_t.__new__(cls, chained.value)
+        status = cls._member_type_.__new__(cls, chained.value)
         status._name_ = chained.name
         status._value_ = value
         return status
@@ -322,8 +263,8 @@ IEEE = ("IEEEAddr", t.EUI64)
 STATUS = ("Status", Status)
 
 
-class _CommandID(t.HexRepr, t.uint16_t):
-    _hex_len = 4
+class _CommandID(t.uint16_t, hex_repr=True):
+    pass
 
 
 class ZDOCmd(t.enum_factory(_CommandID)):
@@ -414,8 +355,8 @@ CLUSTERS = {
     ZDOCmd.Match_Desc_req: (
         NWKI,
         ("ProfileID", t.uint16_t),
-        ("InClusterList", t.LVList(t.uint16_t)),
-        ("OutClusterList", t.LVList(t.uint16_t)),
+        ("InClusterList", t.LVList[t.uint16_t]),
+        ("OutClusterList", t.LVList[t.uint16_t]),
     ),
     # ZDO.Complex_Desc_req: (NWKI, ),
     ZDOCmd.User_Desc_req: (NWKI,),
@@ -423,7 +364,7 @@ CLUSTERS = {
     ZDOCmd.Device_annce: (NWK, IEEE, ("Capability", t.uint8_t)),
     ZDOCmd.User_Desc_set: (
         NWKI,
-        ("UserDescriptor", t.fixed_list(16, t.uint8_t)),
+        ("UserDescriptor", t.FixedList[16, t.uint8_t]),
     ),  # Really a string
     ZDOCmd.System_Server_Discovery_req: (("ServerMask", t.uint16_t),),
     ZDOCmd.Discovery_store_req: (
@@ -432,10 +373,10 @@ CLUSTERS = {
         ("NodeDescSize", t.uint8_t),
         ("PowerDescSize", t.uint8_t),
         ("ActiveEPSize", t.uint8_t),
-        ("SimpleDescSizeList", t.LVList(t.uint8_t)),
+        ("SimpleDescSizeList", t.LVList[t.uint8_t]),
     ),
     ZDOCmd.Node_Desc_store_req: (NWK, IEEE, ("NodeDescriptor", NodeDescriptor)),
-    ZDOCmd.Active_EP_store_req: (NWK, IEEE, ("ActiveEPList", t.LVList(t.uint8_t))),
+    ZDOCmd.Active_EP_store_req: (NWK, IEEE, ("ActiveEPList", t.LVList[t.uint8_t])),
     ZDOCmd.Simple_Desc_store_req: (
         NWK,
         IEEE,
@@ -449,15 +390,15 @@ CLUSTERS = {
         ("StartIndex", t.uint8_t),
     ),
     ZDOCmd.Extended_Active_EP_req: (NWKI, ("StartIndex", t.uint8_t)),
-    ZDOCmd.Parent_annce: (("Children", t.LVList(t.EUI64)),),
+    ZDOCmd.Parent_annce: (("Children", t.LVList[t.EUI64]),),
     #  Bind Management Server Services Responses
     ZDOCmd.End_Device_Bind_req: (
         ("BindingTarget", t.uint16_t),
         ("SrcAddress", t.EUI64),
         ("SrcEndpoint", t.uint8_t),
         ("ProfileID", t.uint8_t),
-        ("InClusterList", t.LVList(t.uint8_t)),
-        ("OutClusterList", t.LVList(t.uint8_t)),
+        ("InClusterList", t.LVList[t.uint8_t]),
+        ("OutClusterList", t.LVList[t.uint8_t]),
     ),
     ZDOCmd.Bind_req: (
         ("SrcAddress", t.EUI64),
@@ -491,7 +432,7 @@ CLUSTERS = {
         NWK,
         ("NumAssocDev", t.Optional(t.uint8_t)),
         ("StartIndex", t.Optional(t.uint8_t)),
-        ("NWKAddressAssocDevList", t.Optional(t.List(t.NWK))),
+        ("NWKAddressAssocDevList", t.Optional(t.List[t.NWK])),
     ),
     ZDOCmd.IEEE_addr_rsp: (
         STATUS,
@@ -499,7 +440,7 @@ CLUSTERS = {
         NWK,
         ("NumAssocDev", t.Optional(t.uint8_t)),
         ("StartIndex", t.Optional(t.uint8_t)),
-        ("NWKAddrAssocDevList", t.Optional(t.List(t.NWK))),
+        ("NWKAddrAssocDevList", t.Optional(t.List[t.NWK])),
     ),
     ZDOCmd.Node_Desc_rsp: (
         STATUS,
@@ -516,8 +457,8 @@ CLUSTERS = {
         NWKI,
         ("SimpleDescriptor", t.Optional(SizePrefixedSimpleDescriptor)),
     ),
-    ZDOCmd.Active_EP_rsp: (STATUS, NWKI, ("ActiveEPList", t.LVList(t.uint8_t))),
-    ZDOCmd.Match_Desc_rsp: (STATUS, NWKI, ("MatchList", t.LVList(t.uint8_t))),
+    ZDOCmd.Active_EP_rsp: (STATUS, NWKI, ("ActiveEPList", t.LVList[t.uint8_t])),
+    ZDOCmd.Match_Desc_rsp: (STATUS, NWKI, ("MatchList", t.LVList[t.uint8_t])),
     # ZDO.Complex_Desc_rsp: (
     #     STATUS,
     #     NWKI,
@@ -528,7 +469,7 @@ CLUSTERS = {
         STATUS,
         NWKI,
         ("Length", t.uint8_t),
-        ("UserDescriptor", t.Optional(t.fixed_list(16, t.uint8_t))),
+        ("UserDescriptor", t.Optional(t.FixedList[16, t.uint8_t])),
     ),
     ZDOCmd.Discovery_Cache_rsp: (STATUS,),
     ZDOCmd.User_Desc_conf: (STATUS, NWKI),
@@ -547,16 +488,16 @@ CLUSTERS = {
         ("AppInputClusterCount", t.uint8_t),
         ("AppOutputClusterCount", t.uint8_t),
         ("StartIndex", t.uint8_t),
-        ("AppClusterList", t.Optional(t.List(t.uint16_t))),
+        ("AppClusterList", t.Optional(t.List[t.uint16_t])),
     ),
     ZDOCmd.Extended_Active_EP_rsp: (
         STATUS,
         NWKI,
         ("ActiveEPCount", t.uint8_t),
         ("StartIndex", t.uint8_t),
-        ("ActiveEPList", t.List(t.uint8_t)),
+        ("ActiveEPList", t.List[t.uint8_t]),
     ),
-    ZDOCmd.Parent_annce_rsp: (STATUS, ("Children", t.LVList(t.EUI64))),
+    ZDOCmd.Parent_annce_rsp: (STATUS, ("Children", t.LVList[t.EUI64])),
     #  Bind Management Server Services Responses
     ZDOCmd.End_Device_Bind_rsp: (STATUS,),
     ZDOCmd.Bind_rsp: (STATUS,),
@@ -573,7 +514,7 @@ CLUSTERS = {
         ("ScannedChannels", t.Channels),
         ("TotalTransmissions", t.uint16_t),
         ("TransmissionFailures", t.uint16_t),
-        ("EnergyValues", t.LVList(t.uint8_t)),
+        ("EnergyValues", t.LVList[t.uint8_t]),
     )
     # ... TODO optional stuff ...
 }
