@@ -7,6 +7,10 @@
 
 Zigbee Home Automation integration with zigpy allows you to connect one of many off-the-shelf Zigbee adapters using one of the available Zigbee radio library modules compatible with zigpy to control Zigbee based devices. There is currently support for controlling Zigbee device types such as binary sensors (e.g., motion and door sensors), sensors (e.g., temperature sensors), lightbulbs, switches, and fans.
 
+This software is aimed at application developers who wish to incorporate or integrate Zigbee functionality into their applications. The ultimate goal is for zigpy to be a free software library that interfaces with Zigbee controllers (that are called "coordinators" in the Zigbee specification), allowing anyone who integrates zigpy to create applications to control devices on a Zigbee network, without requiring very depth knowledge of the Zigbee protocols. The zigpy projects is not about creating Zigbee devices (routes and end devices). The project consists of the main zigpy library, wrappers for Zigbee radios from different manufacturers, and supporting projects, all written in Python.
+
+The zigpy Github Organization is located at https://github.com/zigpy/. There are several repositories at that location. This is the README of the main project (often refered to as "zigpy library", "zigpy project", or just "zigpy"), located in the https://github.com/zigpy/zigpy/ repository.
+
 zigpy contains common code implementing Zigbee ZCL, ZDO and application state management which is being used by various radio libraries implementing the actual interface with the radio modules from different manufacturers. The separate radio libraries interface with radio hardware adapters/modules over USB and GPIO using different native UART serial protocols.
 
 Reference implementation of the zigpy library exist in **[Home Assistant](https://www.home-assistant.io)** (Python based open source home automation software) as part of its **[ZHA integration component](https://www.home-assistant.io/integrations/zha/)**.
