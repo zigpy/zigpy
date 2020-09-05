@@ -141,6 +141,10 @@ class DataTypes(dict):
         return 0xFF
 
 
+class ZCLStructure(t.LVList, item_type=TypeValue, length_type=t.uint16_t):
+    """ZCL Structure data type."""
+
+
 DATA_TYPES = DataTypes(
     {
         0x00: ("No data", t.NoData, Null),
@@ -187,7 +191,7 @@ DATA_TYPES = DataTypes(
         0x43: ("Long octet string", t.LongOctetString, Discrete),
         0x44: ("Long character string", t.LongCharacterString, Discrete),
         0x48: ("Array", Array, Discrete),
-        0x4C: ("Structure", t.LVList[t.uint16_t, TypeValue], Discrete),
+        0x4C: ("Structure", ZCLStructure, Discrete),
         0x50: ("Set", Set, Discrete),
         0x51: ("Bag", Bag, Discrete),
         0xE0: ("Time of day", t.TimeOfDay, Analog),
