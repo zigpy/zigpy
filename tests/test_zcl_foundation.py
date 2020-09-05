@@ -382,11 +382,18 @@ def test_pytype_to_datatype_derived_bitmaps():
 def test_ptype_to_datatype_lvlist():
     """Test pytype for Structure."""
 
-    lst1 = t.LVList[t.uint16_t, foundation.TypeValue]
-    lst2 = t.LVList[t.uint16_t, t.uint8_t]
+    data = b"L\x06\x00\x10\x00!\xce\x0b!\xa8\x01$\x00\x00\x00\x00\x00!\xbdJ ]"
+    extra = b"\xaa\x55extra\x00"
 
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(lst1) == 0x4C
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(lst2) == 0xFF
+    result, rest = foundation.TypeValue.deserialize(data + extra)
+    assert rest == extra
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(result.value.__class__) == 0x4C
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(foundation.ZCLStructure) == 0x4C
+
+    class _Similar(t.LVList, item_type=foundation.TypeValue, length_type=t.uint16_t):
+        pass
+
+    assert foundation.DATA_TYPES.pytype_to_datatype_id(_Similar) == 0xFF
 
 
 def test_ptype_to_datatype_notype():
