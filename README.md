@@ -7,6 +7,8 @@
 
 Zigbee Home Automation integration with zigpy allows you to connect one of many off-the-shelf Zigbee adapters using one of the available Zigbee radio library modules compatible with zigpy to control Zigbee based devices. There is currently support for controlling Zigbee device types such as binary sensors (e.g., motion and door sensors), sensors (e.g., temperature sensors), lightbulbs, switches, and fans.
 
+Zigbee coordinator hardware from many different hardware manufacurer are support via radio libraries which translate their propriatory communication protocol into a common API which is shared among all radio libraries for zigpy. If some Zigbee coordinator hardware for other manufacurers is not supported yet by zigpy it is possible for any independent developer to step-up and develop a new radio library for zigpy which translates its propriatory communication protocol into the common API that zigpy can understand.
+
 zigpy contains common code implementing Zigbee ZCL, ZDO and application state management which is being used by various radio libraries implementing the actual interface with the radio modules from different manufacturers. The separate radio libraries interface with radio hardware adapters/modules over USB and GPIO using different native UART serial protocols.
 
 Reference implementation of the zigpy library exist in **[Home Assistant](https://www.home-assistant.io)** (Python based open source home automation software) as part of its **[ZHA integration component](https://www.home-assistant.io/integrations/zha/)**.
@@ -21,43 +23,46 @@ This CONTRIBUTING.md file will contain information about using zigpy, testiing n
 
 You can contribute to this project either as an end-user, a tester (advanced user contributing constructive issue/bug-reports) or as a developer contributing code.
 
-## Compatible hardware
+## Compatible Zigbee coordinator hardware
 
-Radio libraries for zigpy include **[bellows](https://github.com/zigpy/bellows)** (which communicates with EZSP/ZNet based radios), **[zigpy-xbee](https://github.com/zigpy/zigpy-xbee)** (which communicates with XBee based Zigbee radios), and as **[zigpy-deconz](https://github.com/zigpy/zigpy-deconz)** for deCONZ serial protocol (for communicating with ConBee and RaspBee USB and GPIO radios from Dresden-Elektronik). There are also experimental radio libraries called **[zigpy-zigate](https://github.com/zigpy/zigpy-zigate)** for communicating with ZiGate based radios and **[zigpy-cc](https://github.com/zigpy/zigpy-cc)** for communicating with Texas Instruments based radios based radios that have custom Z-Stack coordinator firmware.
+Radio libraries for zigpy are separate projects with their own repositories and these include **[bellows](https://github.com/zigpy/bellows)** (for communicating with Silicon Labs EmberZNet based radios), **[zigpy-deconz](https://github.com/zigpy/zigpy-deconz)** (for communicating with deCONZ based radios from Dresden Elektronik), and **[zigpy-xbee](https://github.com/zigpy/zigpy-xbee)** (for communicating with XBee based Zigbee radios), **[zigpy-znp](https://github.com/zha-ng/zigpy-znp)** and **[zigpy-cc](https://github.com/zigpy/zigpy-cc)** for communicating with newer and older Texas Instruments based radios that have Z-Stack 3.x.x or Z-Stack Home 1.2.x ZNP coordinator firmware respectivly, and **[zigpy-zigate](https://github.com/zigpy/zigpy-zigate)** for communicating with ZiGate based radios.
+
+Note! Zigbee 3.0 support or not in zigpy depends primarly on your Zigbee coordinator hardware and its firmware. Some Zigbee coordinator hardware support Zigbee 3.0 but might be shipped with an older firmware which do not, in which case may want to upgrade the firmware manually yourself. Some other Zigbee coordinator hardware may not support a firmware that is capable of Zigbee 3.0 at all but can still be fully functional and feature complete for your needs, (this is very common as many if not most Zigbee devices do not yet Zigbee 3.0 or are backwards-compable with a Zigbee profile that is support by your Zigbee coordinator hardware and its firmware). As a general rule, newer Zigbee coordinator hardware released can normally support Zigbee 3.0 firmware and it is up to its manufacturer make such firmware available for them.
 
 ### Known working Zigbee radio modules
 
-- **EmberZNet based radios** using the EZSP protocol (via the [bellows](https://github.com/zigpy/bellows) library for zigpy)
-  - [ITEAD Sonoff ZBBridge](https://www.itead.cc/smart-home/sonoff-zbbridge.html) (Note! This first have to be flashed with [Tasmota firmware and EmberZNet firmware](https://www.digiblur.com/2020/07/how-to-use-sonoff-zigbee-bridge-with.html))
-  - [Nortek GoControl QuickStick Combo Model HUSBZB-1 (Z-Wave & Zigbee USB Adapter)](https://www.nortekcontrol.com/products/2gig/husbzb-1-gocontrol-quickstick-combo/)
+- **Silicon Labs EmberZNet based radios** using the EZSP protocol (via the [bellows](https://github.com/zigpy/bellows) library for zigpy)
+  - [ITEAD Sonoff ZBBridge WiFi-bridge](https://www.itead.cc/smart-home/sonoff-zbbridge.html) (Note! This first have to be flashed with [Tasmota firmware and EmberZNet firmware](https://www.digiblur.com/2020/07/how-to-use-sonoff-zigbee-bridge-with.html))
   - [Elelabs Zigbee USB Adapter](https://elelabs.com/products/elelabs_usb_adapter.html)
   - [Elelabs Zigbee Raspberry Pi Shield](https://elelabs.com/products/elelabs_zigbee_shield.html)
-  - Telegesis ETRX357USB (Note! First have to be flashed with other EmberZNet firmware)
-  - Telegesis ETRX357USB-LRS (Note! First have to be flashed with other EmberZNet firmware)
-  - Telegesis ETRX357USB-LRS+8M (Note! First have to be flashed with other EmberZNet firmware)
-- **XBee Zigbee based radios** (via the [zigpy-xbee](https://github.com/zigpy/zigpy-xbee) library for zigpy)
-  - Digi XBee Series 2C (S2C) modules
-  - Digi XBee Series 2 (S2) modules. Note: These will need to be manually flashed with the Zigbee Coordinator API firmware via XCTU.
-  - Digi XBee Series 3 (xbee3-24) modules
+  - [Nortek GoControl QuickStick Combo Model HUSBZB-1 (Z-Wave & Zigbee USB Adapter)](https://www.nortekcontrol.com/products/2gig/husbzb-1-gocontrol-quickstick-combo/)
+  - Telegesis ETRX357USB (Note! First have to be flashed with other EmberZNet NCP firmware)
+  - Telegesis ETRX357USB-LRS (Note! First have to be flashed with other EmberZNet NCP firmware)
+  - Telegesis ETRX357USB-LRS+8M (Note! First have to be flashed with other EmberZNet NCP firmware)
 - **deCONZ based radios** (via the [zigpy-deconz](https://github.com/zigpy/zigpy-deconz) library for zigpy)
   - [ConBee II (a.k.a. ConBee 2) USB adapter from dresden dlektronik](https://shop.dresden-elektronik.de/conbee-2.html)
-  - [ConBee](https://www.dresden-elektronik.de/conbee/) USB radio adapter from [dresden elektronik](https://www.dresden-elektronik.de)
   - [RaspBee II (a.k.a. RaspBee 2)](https://www.dresden-elektronik.com/product/raspbee-II.html) GPIO radio adapter from [dresden elektronik](https://www.dresden-elektronik.de)
+  - [ConBee](https://www.dresden-elektronik.de/conbee/) USB radio adapter from [dresden elektronik](https://www.dresden-elektronik.de)
   - [RaspBee](https://www.dresden-elektronik.de/raspbee/) GPIO radio adapter from [dresden elektronik](https://www.dresden-elektronik.de)
+- **XBee Zigbee based radios** (via the [zigpy-xbee](https://github.com/zigpy/zigpy-xbee) library for zigpy)
+  - Digi XBee Series 3 (xbee3-24) modules
+  - Digi XBee Series 2C (S2C) modules
+  - Digi XBee Series 2 (S2) modules (Note! First have to be flashed with XBee Zigbee Coordinator API firmware via XCTU)
 
 ### Experimental support for additional Zigbee radio modules
 
+- **Texas Instruments based radios with Z-Stack 3.x.x firmware** (via the [zigpy-znp](https://github.com/zha-ng/zigpy-znp) library for zigpy)
+  - [CC2652P/CC2652R/CC2652RB USB stick and dev board hardware flashed with Z-Stack 3.x.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
+  - [CC1352P/CC1352R USB stick and dev board hardware flashed with Z-Stack 3.x.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
+- **Texas Instruments with Z-Stack Home 1.2.x firmware** (via the [zigpy-cc](https://github.com/zigpy/zigpy-cc) library for zigpy)
+  - [CC2538 + CC2592 dev board hardware flashed with Z-Stack Home 1.2.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
+  - [CC2531 USB stick hardware flashed with Z-Stack Home 1.2.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
+  - [CC2530 + CC2591/CC2592 USB stick hardware flashed with Z-Stack Home 1.2.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
 - **[ZiGate open source ZigBee adapter hardware](https://zigate.fr/)** (via the [zigpy-zigate](https://github.com/zigpy/zigpy-zigate) library for zigpy)
   - [ZiGate USB-TTL](https://zigate.fr/produit/zigate-ttl/) (Note! Requires ZiGate firmware 3.1a or later)
   - [ZiGate USB-DIN](https://zigate.fr/produit/zigate-usb-din/) (Note! Requires ZiGate firmware 3.1a or later)
   - [PiZiGate (ZiGate module for Raspberry Pi GPIO)](https://zigate.fr/produit/pizigate-v1-0/) (Note! Requires ZiGate firmware 3.1a or later)
   - [ZiGate Pack WiFi](https://zigate.fr/produit/zigate-pack-wifi-v1-3/) (Note! Requires ZiGate firmware 3.1a or later)
-- **Texas Instruments CC253x, CC26x2R, and CC13x2 based radios** (via the [zigpy-cc](https://github.com/zigpy/zigpy-cc) library for zigpy)
-  - [CC2531 USB stick hardware flashed with custom Z-Stack coordinator firmware from the Zigbee2mqtt project](https://www.zigbee2mqtt.io/getting_started/what_do_i_need.html)
-  - [CC2530 + CC2591/CC2592 USB stick hardware flashed with custom Z-Stack coordinator firmware from the Zigbee2mqtt project](https://www.zigbee2mqtt.io/getting_started/what_do_i_need.html)
-  - [CC2538 + CC2592 dev board hardware flashed with custom Z-Stack coordinator firmware from the Zigbee2mqtt project](https://www.zigbee2mqtt.io/getting_started/what_do_i_need.html)  
-  - [CC2652P/CC2652R/CC2652RB USB stick and dev board hardware flashed with custom Z-Stack coordinator firmware from the Zigbee2mqtt project](https://www.zigbee2mqtt.io/getting_started/what_do_i_need.html)
-  - [CC1352P/CC1352R USB stick and dev board hardware flashed with custom Z-Stack coordinator firmware from the Zigbee2mqtt project](https://www.zigbee2mqtt.io/getting_started/what_do_i_need.html)
 
 ## Release packages available via PyPI
 
@@ -72,10 +77,11 @@ Older packages of tagged versions are still available on the "zigpy-homeassistan
 Packages of tagged versions of the radio libraries are released via separate projects on PyPI
 - https://pypi.org/project/zigpy/
   - https://pypi.org/project/bellows/
-  - https://pypi.org/project/zigpy-xbee/
   - https://pypi.org/project/zigpy-deconz/
-  - https://pypi.org/project/zigpy-zigate/
   - https://pypi.org/project/zigpy-cc/
+  - https://pypi.org/project/zigpy-xbee/
+  - https://pypi.org/project/zigpy-zigate/
+  - https://pypi.org/project/zigpy-znp/
 
 ## Related projects
 

@@ -476,3 +476,68 @@ def test_requires_uses_instance_of_struct():
 
     assert TestStruct.deserialize(b"\x00\x00") == (TestStruct(foo=0x00), b"\x00")
     assert TestStruct.deserialize(b"\x01\x00") == (TestStruct(foo=0x01, bar=0x00), b"")
+
+
+def test_uppercase_field():
+    class Neighbor(t.Struct):
+        """Neighbor Descriptor"""
+
+        PanId: t.EUI64
+        IEEEAddr: t.EUI64
+        NWKAddr: t.NWK
+        NeighborType: t.uint8_t
+        PermitJoining: t.uint8_t
+        Depth: t.uint8_t
+        LQI: t.uint8_t  # this should not be a constant
+
+    assert len(Neighbor.fields()) == 7
+    assert Neighbor.fields()[6].name == "LQI"
+    assert Neighbor.fields()[6].type == t.uint8_t
+
+
+def test_non_annotated_field():
+    class TestStruct(t.Struct):
+        field1: t.uint8_t
+        field2 = t.StructField(type=t.uint16_t)
+
+    assert len(TestStruct.fields()) == 2
+    assert TestStruct.fields()[0] == t.StructField(name="field1", type=t.uint8_t)
+    assert TestStruct.fields()[1] == t.StructField(name="field2", type=t.uint16_t)
+
+
+def test_allowed_non_fields():
+    class Other:
+        def bar(self):
+            return "bar"
+
+    def foo2_(_):
+        return "foo2"
+
+    class TestStruct(t.Struct):
+        @property
+        def prop(self):
+            return "prop"
+
+        @prop.setter
+        def prop(self, value):
+            return
+
+        foo1 = lambda _: "foo1"  # noqa: E731
+        foo2 = foo2_
+        bar = Other.bar
+
+        field: t.uint8_t
+        CONSTANT1: t.uint8_t = "CONSTANT1"
+        CONSTANT2 = "CONSTANT2"
+
+    assert len(TestStruct.fields()) == 1
+    assert TestStruct.CONSTANT1 == "CONSTANT1"
+    assert TestStruct.CONSTANT2 == "CONSTANT2"
+    assert TestStruct().prop == "prop"
+    assert TestStruct().foo1() == "foo1"
+    assert TestStruct().foo2() == "foo2"
+    assert TestStruct().bar() == "bar"
+
+    instance = TestStruct()
+    instance.prop = None
+    assert instance.prop == "prop"
