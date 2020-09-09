@@ -207,7 +207,7 @@ class _NeighborPackStruct(t.Struct):
         """Return rx_on."""
         if self.packed is None:
             return None
-        return _NeighborEnums.RxOnWhenIdle((self.packed > 2) & 0x03)
+        return _NeighborEnums.RxOnWhenIdle((self.packed >> 2) & 0x03)
 
     @rx_on_when_idle.setter
     def rx_on_when_idle(self, value: _NeighborEnums.RxOnWhenIdle) -> None:
@@ -222,7 +222,7 @@ class _NeighborPackStruct(t.Struct):
         """Return relationship."""
         if self.packed is None:
             return None
-        return _NeighborEnums.Relationship((self.packed > 4) & 0x07)
+        return _NeighborEnums.Relationship((self.packed >> 4) & 0x07)
 
     @relationship.setter
     def relationship(self, value: _NeighborEnums.Relationship) -> None:
@@ -245,21 +245,21 @@ class Neighbor(t.Struct):
         Accepting = 0x1
         Unknown = 0x2
 
-    ExtendedPanId: t.ExtendedPanId
-    IEEEAddr: t.EUI64
-    NWKAddr: t.NWK
+    extended_pan_id: t.ExtendedPanId
+    ieee: t.EUI64
+    nwk: t.NWK
     struct: _NeighborPackStruct
-    PermitJoining: PermitJoins
-    Depth: t.uint8_t
-    Lqi: t.uint8_t
+    permit_joining: PermitJoins
+    depth: t.uint8_t
+    lqi: t.uint8_t
 
 
 class Neighbors(t.Struct):
     """Mgmt_Lqi_rsp"""
 
-    Entries: t.uint8_t
-    StartIndex: t.uint8_t
-    NeighborTableList: t.LVList[Neighbor]
+    entries: t.uint8_t
+    start_index: t.uint8_t
+    neighbor_table_list: t.LVList[Neighbor]
 
 
 class Route(t.Struct):

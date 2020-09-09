@@ -336,16 +336,16 @@ def test_neighbor():
     neighbor, rest = types.Neighbor.deserialize(data + extra)
     assert rest == extra
 
-    assert str(neighbor.ExtendedPanId) == "b4:96:03:f5:59:8c:af:a2"
-    assert str(neighbor.IEEEAddr) == "14:b4:57:ff:fe:07:70:3a"
-    assert neighbor.NWKAddr == 0xB7D1
+    assert str(neighbor.extended_pan_id) == "b4:96:03:f5:59:8c:af:a2"
+    assert str(neighbor.ieee) == "14:b4:57:ff:fe:07:70:3a"
+    assert neighbor.nwk == 0xB7D1
     assert neighbor.struct.packed == 18
     assert neighbor.struct.device_type == types.Neighbor.DeviceType.EndDevice
     assert neighbor.struct.relationship == types.Neighbor.RelationShip.Child
     assert neighbor.struct.rx_on_when_idle == types.Neighbor.RxOnWhenIdle.On
-    assert neighbor.PermitJoining == 1
-    assert neighbor.Depth == 1
-    assert neighbor.Lqi == 72
+    assert neighbor.permit_joining == 1
+    assert neighbor.depth == 1
+    assert neighbor.lqi == 72
 
 
 def test_neighbor_struct():
