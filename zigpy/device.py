@@ -343,13 +343,18 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         #    - Manufacturer Name ( Attribut 0x0004 of Basic Cluster 0x0000 )
         #    - Endpoint list
         #        - Profile Id, Device Id, Cluster Out, Cluster In
-        signature = {"manufacturer_name": '', "manufacture_code": '', "model": ''}
+        signature = { }
         if self._manufacturer is not None:
             signature["manufacturer_name"] = self.manufacturer
         if self.manufacturer_id is not None:
             signature["manufacture_code"] = self.manufacturer_id
         if self._model is not None:
             signature["model"] = self._model
+        if self.node_desc.is_valid :
+            signature["mac_capability_flags"] = self.node_desc.mac_capability_flags
+            signature["descriptor_capability_field"] = self.node_desc.descriptor_capability_field
+            signature["server_mask"] = self.node_desc.server_mask
+
         for endpoint_id, endpoint in self.endpoints.items():
             if endpoint_id == 0:  # ZDO
                 continue
