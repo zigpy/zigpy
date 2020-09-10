@@ -348,7 +348,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 - Cluster In
                 - Cluster Out
         """
-        signature = { "manufacturer_name":'', "manufacture_code":'', "model":'' }
+        signature = {"manufacturer_name": '', "manufacture_code": '', "model": ''}
 
         if self._manufacturer is not None:
             signature["manufacturer_name"] = self.manufacturer
