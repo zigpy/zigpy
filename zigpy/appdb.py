@@ -210,13 +210,17 @@ class PersistingListener:
         self.execute("PRAGMA foreign_keys = ON")
 
     def _remove_device(self, device):
-        self.execute("DELETE FROM attributes WHERE ieee = ?", (device.ieee,))
-        self.execute("DELETE FROM node_descriptors WHERE ieee = ?", (device.ieee,))
-        self.execute("DELETE FROM clusters WHERE ieee = ?", (device.ieee,))
-        self.execute("DELETE FROM output_clusters WHERE ieee = ?", (device.ieee,))
-        self.execute("DELETE FROM group_members WHERE ieee = ?", (device.ieee,))
-        self.execute("DELETE FROM endpoints WHERE ieee = ?", (device.ieee,))
-        self.execute("DELETE FROM devices WHERE ieee = ?", (device.ieee,))
+        queries = (
+            "DELETE FROM attributes WHERE ieee = ?",
+            "DELETE FROM node_descriptors WHERE ieee = ?",
+            "DELETE FROM clusters WHERE ieee = ?",
+            "DELETE FROM output_clusters WHERE ieee = ?",
+            "DELETE FROM group_members WHERE ieee = ?",
+            "DELETE FROM endpoints WHERE ieee = ?",
+            "DELETE FROM devices WHERE ieee = ?",
+        )
+        for query in queries:
+            self.execute(query, (device.ieee,))
         self._db.commit()
 
     def _save_device(self, device):
