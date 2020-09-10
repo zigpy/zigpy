@@ -338,7 +338,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self.endpoints[key]
 
     def get_signature(self):
-        #return the device signature by providing essential device information
+        # return the device signature by providing essential device information
         #    - Model Identifier ( Attribut 0x0005 of Basic Cluster 0x0000 )
         #    - Manufacturer Name ( Attribut 0x0004 of Basic Cluster 0x0000 )
         #    - Endpoint list
