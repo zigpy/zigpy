@@ -37,6 +37,7 @@ class PersistingListener:
         self._create_table_devices()
         self._create_table_endpoints()
         self._create_table_clusters()
+        self._create_table_neighbors()
         self._create_table_node_descriptors()
         self._create_table_output_clusters()
         self._create_table_attributes()
@@ -144,6 +145,19 @@ class PersistingListener:
             ),
         )
         self._create_index("cluster_idx", "clusters", "ieee, endpoint_id, cluster")
+
+    def _create_table_neighbors(self):
+        self._create_table(
+            "neighbors",
+            (
+                "(device_ieee ieee NOT NULL, ieee ieee NOT NULL, extended_pan_id, "
+                "nwk INTEGER NOT NULL, struct INTEGER NOT NULL, "
+                "permit_joining INTEGER NOT NULL, depth INTEGER NOT NULL, "
+                "lqi INTEGER NOT NULL, "
+                "FOREIGN KEY(device_ieee) REFERENCES devices(ieee) ON DELETE CASCADE)"
+            ),
+        )
+        self._create_index("neighbors_idx", "neighbors", "device_ieee")
 
     def _create_table_node_descriptors(self):
         self._create_table(
