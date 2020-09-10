@@ -12,6 +12,7 @@ import zigpy.zdo.types
 
 LOGGER = logging.getLogger(__name__)
 NeighborListType = List[zigpy.zdo.types.Neighbor]
+REQUEST_DELAY = (1.0, 1.5)
 
 
 class Neighbor:
@@ -95,7 +96,7 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
             if idx >= rsp.entries or not rsp.neighbor_table_list:
                 break
 
-            await asyncio.sleep(random.uniform(1.0, 1.5))
+            await asyncio.sleep(random.uniform(*REQUEST_DELAY))
             self.debug("Querying next starting at %s", idx)
 
         self.debug("Done scanning. Total %s neighbours", len(new_neighbors))
