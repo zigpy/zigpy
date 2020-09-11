@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import random
+import time
 from typing import List, Optional
 
 import zigpy.exceptions
@@ -41,7 +42,9 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
         """Initialize instance."""
         self._device = device
         self._neighbors: NeighborListType = []
+        self._staging: NeighborListType = []
         self._listeners = {}
+        self.last_scan = None
 
     @property
     def ieee(self) -> zigpy.types.EUI64:
@@ -68,8 +71,8 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
     async def _scan(self) -> NeighborListType:
         """Scan device."""
 
-        new_neighbors = []
         idx = 0
+        self._staging = []
 
         while True:
             status, rsp = await self._device.zdo.Mgmt_Lqi_req(idx, tries=3, delay=1)
@@ -87,10 +90,7 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
                     idx += 1
                     continue
 
-                nei = Neighbor(
-                    neighbor, self._device.application.devices.get(neighbor.ieee)
-                )
-                new_neighbors.append(nei)
+                self.add_neighbor(neighbor)
                 idx += 1
 
             if idx >= rsp.entries or not rsp.neighbor_table_list:
@@ -99,7 +99,19 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
             await asyncio.sleep(random.uniform(*REQUEST_DELAY))
             self.debug("Querying next starting at %s", idx)
 
-        self.debug("Done scanning. Total %s neighbours", len(new_neighbors))
-        self._neighbors = new_neighbors
+        self.debug("Done scanning. Total %s neighbours", len(self._staging))
+        self.done_staging()
         self.listener_event("neighbors_updated")
-        return new_neighbors
+        return self._neighbors
+
+    def add_neighbor(self, neighbor: zigpy.zdo.types.Neighbor) -> None:
+        """Add neighbor."""
+
+        nei = Neighbor(neighbor, self._device.application.devices.get(neighbor.ieee))
+        self._staging.append(nei)
+
+    def done_staging(self) -> None:
+        """Switch staging."""
+        self._neighbors = self._staging
+        self._staging = None
+        self.last_scan = time.time()
