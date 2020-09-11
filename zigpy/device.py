@@ -349,7 +349,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if self._model is not None:
             signature["model"] = self._model
         if self.node_desc.is_valid:
-            signature["node_descriptor"] = self._node_desc.as_dict()
+            signature["node_descriptor"] = self.node_desc.as_dict()
 
         for endpoint_id, endpoint in self.endpoints.items():
             if endpoint_id == 0:  # ZDO
