@@ -158,17 +158,22 @@ class PersistingListener:
         self._create_index("cluster_idx", "clusters", "ieee, endpoint_id, cluster")
 
     def _create_table_neighbors(self):
+        idx_name = "neighbors_idx"
+        idx_table = "neighbors"
+        idx_cols = "device_ieee"
         self._create_table(
-            "neighbors",
+            idx_table,
             (
-                "(device_ieee ieee NOT NULL, ieee ieee NOT NULL, extended_pan_id, "
-                "nwk INTEGER NOT NULL, struct INTEGER NOT NULL, "
+                "(device_ieee ieee NOT NULL, extended_pan_id ieee NOT NULL,"
+                "ieee ieee NOT NULL, nwk INTEGER NOT NULL, struct INTEGER NOT NULL, "
                 "permit_joining INTEGER NOT NULL, depth INTEGER NOT NULL, "
                 "lqi INTEGER NOT NULL, "
                 "FOREIGN KEY(device_ieee) REFERENCES devices(ieee) ON DELETE CASCADE)"
             ),
         )
-        self._create_index("neighbors_idx", "neighbors", "device_ieee")
+        self.execute(
+            f"CREATE INDEX IF NOT EXISTS {idx_name} ON {idx_table}({idx_cols})"
+        )
 
     def _create_table_node_descriptors(self):
         self._create_table(
