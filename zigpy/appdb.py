@@ -19,6 +19,7 @@ def _sqlite_adapters():
         return str(eui64)
 
     sqlite3.register_adapter(t.EUI64, adapt_ieee)
+    sqlite3.register_adapter(t.ExtendedPanId, adapt_ieee)
 
     def convert_ieee(s):
         return t.EUI64.convert(s.decode())
@@ -92,9 +93,10 @@ class PersistingListener:
     def neighbors_updated(self, neighbors):
         self.execute("DELETE FROM neighbors WHERE ieee = ?", (neighbors.ieee,))
         for nei in neighbors.neighbors:
+            epid, ieee, nwk, struct, prm, depth, lqi = nei.neighbor.as_dict().values()
             self.execute(
-                "INSERT INTO neighbors VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (neighbors.ieee, *nei.neighbor.as_dict().values()),
+                "INSERT INTO neighbors VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (neighbors.ieee, epid, ieee, nwk, struct.packed, prm, depth, lqi),
             )
         self._db.commit()
 
