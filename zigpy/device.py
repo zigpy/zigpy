@@ -346,25 +346,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         signature = {}
         if self._manufacturer is not None:
             signature["manufacturer_name"] = self.manufacturer
-        if self.manufacturer_id is not None:
-            signature["manufacture_code"] = self.manufacturer_id
         if self._model is not None:
             signature["model"] = self._model
         if self.node_desc.is_valid:
-            signature["mac_capability_flags"] = self.node_desc.mac_capability_flags
-            signature[
-                "descriptor_capability_field"
-            ] = self.node_desc.descriptor_capability_field
-            signature["server_mask"] = self.node_desc.server_mask
-            signature["byte1"] = self.node_desc.byte1
-            signature["byte2"] = self.node_desc.byte2
-            signature["maximum_buffer_size"] = self.node_desc.maximum_buffer_size
-            signature[
-                "maximum_incoming_transfer_size"
-            ] = self.node_desc.maximum_incoming_transfer_size
-            signature[
-                "maximum_outgoing_transfer_size"
-            ] = self.node_desc.maximum_outgoing_transfer_size
+            signature["node_descriptor"] = self._node_desc.as_dict()
 
         for endpoint_id, endpoint in self.endpoints.items():
             if endpoint_id == 0:  # ZDO
