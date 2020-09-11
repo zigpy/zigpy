@@ -89,6 +89,15 @@ class PersistingListener:
         self._save_node_descriptor(device)
         self._db.commit()
 
+    def neighbors_updated(self, neighbors):
+        self.execute("DELETE FROM neighbors WHERE ieee = ?", (neighbors.ieee,))
+        for nei in neighbors.neighbors:
+            self.execute(
+                "INSERT INTO neighbors VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (neighbors.ieee, *nei.neighbor.as_dict().values()),
+            )
+        self._db.commit()
+
     def group_added(self, group):
         q = "INSERT OR REPLACE INTO groups VALUES (?, ?)"
         self.execute(q, (group.group_id, group.name))
@@ -226,6 +235,7 @@ class PersistingListener:
     def _remove_device(self, device):
         queries = (
             "DELETE FROM attributes WHERE ieee = ?",
+            "DELETE FROM neighbors WHERE ieee = ?",
             "DELETE FROM node_descriptors WHERE ieee = ?",
             "DELETE FROM clusters WHERE ieee = ?",
             "DELETE FROM output_clusters WHERE ieee = ?",
