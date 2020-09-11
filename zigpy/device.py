@@ -343,7 +343,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         #    - Manufacturer Name ( Attribut 0x0004 of Basic Cluster 0x0000 )
         #    - Endpoint list
         #        - Profile Id, Device Id, Cluster Out, Cluster In
-        signature = { }
+        signature = {}
         if self._manufacturer is not None:
             signature["manufacturer_name"] = self.manufacturer
         if self.manufacturer_id is not None:
