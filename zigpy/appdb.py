@@ -390,6 +390,8 @@ class PersistingListener:
         await self._load_groups()
         await self._load_group_members()
         await self._load_relays()
+        await self._load_neighbors()
+        await self._finish_loading()
 
     async def _load_devices(self):
         for (ieee, nwk, status) in self._scan("devices"):
@@ -439,5 +441,15 @@ class PersistingListener:
         for (ieee, value) in self._scan("relays"):
             dev = self._application.get_device(ieee)
             dev.relays = t.Relays.deserialize(value)[0]
+
+    async def _load_neighbors(self):
+        for (dev_ieee, epid, ieee, nwk, struct, prm, depth, lqi) in self._scan(
+            "neighbors"
+        ):
+            dev = self._application.get_device(dev_ieee)
+            nei = zdo_t.Neighbor(epid, ieee, nwk, struct, prm, depth, lqi)
+            dev.neighbors.add_neighbor(nei)
+
+    async def _finish_loading(self):
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
