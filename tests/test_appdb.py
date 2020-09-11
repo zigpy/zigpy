@@ -470,10 +470,18 @@ async def test_neighbors(tmpdir):
         res = await dev_2.neighbors.scan()
         assert res
 
+    del dev_1, dev_2
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
     dev_1 = app2.get_device(ieee_1)
-    assert dev_1
-
     dev_2 = app2.get_device(ieee_2)
-    assert dev_2
+
+    assert len(dev_1.neighbors.neighbors) == 2
+    assert dev_1.neighbors.neighbors[0].device is dev_2
+    assert dev_1.neighbors.neighbors[1].device is None
+    assert dev_1.neighbors.neighbors[1].neighbor.ieee == ieee_3
+
+    assert len(dev_2.neighbors.neighbors) == 2
+    assert dev_2.neighbors.neighbors[0].device is dev_1
+    assert dev_2.neighbors.neighbors[1].device is None
+    assert dev_2.neighbors.neighbors[1].neighbor.ieee == ieee_3
