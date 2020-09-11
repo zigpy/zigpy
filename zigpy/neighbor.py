@@ -1,5 +1,6 @@
 """Neighbor list container."""
 import asyncio
+import functools
 import logging
 import random
 import time
@@ -90,7 +91,7 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
                     idx += 1
                     continue
 
-                self.add_neighbor(neighbor)
+                self.stage_neighbor(neighbor)
                 idx += 1
 
             if idx >= rsp.entries or not rsp.neighbor_table_list:
@@ -104,11 +105,17 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
         self.listener_event("neighbors_updated")
         return self._neighbors
 
-    def add_neighbor(self, neighbor: zigpy.zdo.types.Neighbor) -> None:
+    def _add_neighbor(self, staged: bool, neighbor: zigpy.zdo.types.Neighbor) -> None:
         """Add neighbor."""
 
         nei = Neighbor(neighbor, self._device.application.devices.get(neighbor.ieee))
-        self._staging.append(nei)
+        if staged:
+            self._staging.append(nei)
+            return
+        self._neighbors.append(nei)
+
+    add_neighbor = functools.partialmethod(_add_neighbor, False)
+    stage_neighbor = functools.partialmethod(_add_neighbor, True)
 
     def done_staging(self) -> None:
         """Switch staging."""

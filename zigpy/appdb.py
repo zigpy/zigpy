@@ -91,7 +91,7 @@ class PersistingListener:
         self._db.commit()
 
     def neighbors_updated(self, neighbors):
-        self.execute("DELETE FROM neighbors WHERE ieee = ?", (neighbors.ieee,))
+        self.execute("DELETE FROM neighbors WHERE device_ieee = ?", (neighbors.ieee,))
         for nei in neighbors.neighbors:
             epid, ieee, nwk, struct, prm, depth, lqi = nei.neighbor.as_dict().values()
             self.execute(
@@ -460,3 +460,4 @@ class PersistingListener:
     async def _finish_loading(self):
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
+            dev.neighbors.add_context_listener(self)
