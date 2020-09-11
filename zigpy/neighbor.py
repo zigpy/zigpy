@@ -4,7 +4,7 @@ import functools
 import logging
 import random
 import time
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
 import zigpy.exceptions
 import zigpy.types
@@ -46,6 +46,22 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
         self._staging: NeighborListType = []
         self._listeners = {}
         self.last_scan = None
+
+    def __getitem__(self, *args, **kwargs) -> Neighbor:
+        """Get item method."""
+        return self.neighbors.__getitem__(*args, **kwargs)
+
+    def __setitem__(self, *args, **kwargs) -> None:
+        """Set item method."""
+        return self.neighbors.__setitem__(*args, **kwargs)
+
+    def __len__(self) -> int:
+        """Len item method."""
+        return self.neighbors.__len__()
+
+    def __iter__(self) -> Iterator:
+        """Iter item method."""
+        return self.neighbors.__iter__()
 
     @property
     def ieee(self) -> zigpy.types.EUI64:
