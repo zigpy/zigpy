@@ -9,6 +9,7 @@ import zigpy.device
 import zigpy.group
 import zigpy.ota
 import zigpy.quirks
+import zigpy.toplogy
 import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
@@ -26,6 +27,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def __init__(self, config: Dict):
         self._send_sequence = 0
         self.devices: Dict[t.EUI64, zigpy.device.Device] = {}
+        self.topology = zigpy.toplogy.Topology(self)
         self._listeners = {}
         self._channel = None
         self._channels = None
@@ -60,6 +62,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         app = cls(config)
         await app._load_db()
         await app.ota.initialize()
+        app.topology.async_schedule_scan()
         if start_radio:
             try:
                 await app.startup(auto_form)
