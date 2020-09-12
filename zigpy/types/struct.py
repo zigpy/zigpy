@@ -112,8 +112,6 @@ class Struct:
 
         # `set(annotations) | set(variables)` doesn't preserve order, which we need
         for name in list(annotations) + [v for v in variables if v not in annotations]:
-            # It's a lot easier to debug when things break immediately instead of
-            # fields being silently skipped
             field = getattr(cls, name, StructField())
             if not isinstance(field, StructField):
                 continue
