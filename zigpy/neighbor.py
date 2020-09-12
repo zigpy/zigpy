@@ -44,8 +44,13 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
         self._device = device
         self._neighbors: NeighborListType = []
         self._staging: NeighborListType = []
+        self._supported: bool = True
         self._listeners = {}
         self.last_scan = None
+
+    def append(self, *args, **kwargs) -> None:
+        """Append method."""
+        return self.neighbors.append(*args, **kwargs)
 
     def __getitem__(self, *args, **kwargs) -> Neighbor:
         """Get item method."""
@@ -73,6 +78,11 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
         """Return our list of Neighbors."""
         return self._neighbors
 
+    @property
+    def supported(self) -> bool:
+        """Return True if Mgmt_lqi_req is supported."""
+        return self._supported
+
     def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
         msg = "[0x%04x] " + msg
         args = (self._device.nwk,) + args
@@ -95,6 +105,7 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
             status, rsp = await self._device.zdo.Mgmt_Lqi_req(idx, tries=3, delay=1)
             self.debug("request status: %s. response: %s", status, rsp)
             if status != zigpy.zdo.types.Status.SUCCESS:
+                self._supported = False
                 self.debug("does not support 'Mgmt_Lqi_req'")
                 return
 

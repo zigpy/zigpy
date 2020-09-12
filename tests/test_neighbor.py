@@ -64,7 +64,9 @@ async def test_neighbors_scan(neighbours_f, device):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("side_effect", (asyncio.TimeoutError, zigpy.exceptions.APIException))
+@pytest.mark.parametrize(
+    "side_effect", (asyncio.TimeoutError, zigpy.exceptions.APIException)
+)
 async def test_neighbors_scan_fail(neighbours_f, device, side_effect):
     """Test scan fail."""
 
@@ -89,7 +91,9 @@ async def test_neighbors_unsupported(neighbours_f, device):
     device.zdo.request.return_value = (zdo_t.Status.NOT_SUPPORTED, [])
 
     assert neighbours_f.neighbors == []
+    assert neighbours_f.supported is True
     res = await neighbours_f.scan()
+    assert neighbours_f.supported is False
     assert res is None
     assert neighbours_f.neighbors == []
     assert listener.neighbors_updated.call_count == 0
@@ -102,7 +106,7 @@ async def test_neighbors_invalid_ieee(neighbours_f, device):
     data_in = (
         b'\x00\x02\x00\x02h\xf1W\xde\xcb\xaf4"\xff\xff\xff\xff\xff\xff\xff\xff)\x03'
         b'%\x02\x0f\xffh\xf1W\xde\xcb\xaf4"\x00\x00\x00\x00\x00\x00\x00\x00\x15\x14'
-        b'%\x02\x0f\xfe',
+        b"%\x02\x0f\xfe",
     )
 
     listener = mock.MagicMock()
@@ -120,6 +124,17 @@ async def test_neighbors_invalid_ieee(neighbours_f, device):
 def test_neighbor(device):
     """Test neighbor struct."""
 
-    nei = zigpy.neighbor.Neighbor(zdo_t.Neighbor(device.ieee, device.ieee, 1, 2, 3, 4, 5), device)
+    nei = zigpy.neighbor.Neighbor(
+        zdo_t.Neighbor(device.ieee, device.ieee, 1, 2, 3, 4, 5), device
+    )
     assert nei.device is device
     assert nei.neighbor.ieee == device.ieee
+
+
+def test_neihgbors_magic_methods(neighbours_f):
+    """Test neighbors methods."""
+
+    neighbours_f.append(mock.sentinel.other)
+    neighbours_f[0] = mock.sentinel.nei
+    assert neighbours_f[0] is mock.sentinel.nei
+    assert [n for n in neighbours_f] == [mock.sentinel.nei]
