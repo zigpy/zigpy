@@ -112,28 +112,9 @@ class Struct:
 
         # `set(annotations) | set(variables)` doesn't preserve order, which we need
         for name in list(annotations) + [v for v in variables if v not in annotations]:
-            # It's a lot easier to debug when things break immediately instead of
-            # fields being silently skipped
-            if hasattr(cls, name):
-                field = getattr(cls, name)
-
-                if not isinstance(field, StructField):
-                    if name.startswith("_") or name.isupper():
-                        # _foo and FOO are considered constants and ignored
-                        continue
-                    elif isinstance(field, property):
-                        # Ignore properties
-                        continue
-                    elif inspect.isfunction(field) or inspect.ismethod(field):
-                        # Ignore methods and overridden functions
-                        continue
-
-                    # Everything else is an error
-                    raise TypeError(
-                        f"Field {name!r}={field!r} is not a constant or a field"
-                    )
-            else:
-                field = StructField(name)
+            field = getattr(cls, name, StructField())
+            if not isinstance(field, StructField):
+                continue
 
             field = field.replace(name=name)
 

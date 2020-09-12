@@ -1,5 +1,6 @@
 import enum
 import typing
+from unittest import mock
 
 import pytest
 import zigpy.types as t
@@ -37,24 +38,27 @@ def test_struct_subclass_creation():
             a: t.uint8_t
             c: typing.Optional[t.uint8_t]
 
-    # Every field must be annotated
-    with pytest.raises(TypeError):
-
-        class BadTestStruct3(t.Struct):
-            a = 5
-
     # In-class constants are allowed
     class TestStruct3(t.Struct):
         CONSTANT1: int = 123
         CONSTANT2 = 1234
         _private1: int = 456
         _private2 = 4567
+        _PRIVATE_CONST = mock.sentinel.priv_const
+
+        class Test:
+            pass
 
     assert not TestStruct3.fields()
     assert TestStruct3.CONSTANT1 == 123
     assert TestStruct3.CONSTANT2 == 1234
     assert TestStruct3._private1 == 456
     assert TestStruct3._private2 == 4567
+    assert TestStruct3._PRIVATE_CONST is mock.sentinel.priv_const
+    assert TestStruct3()._PRIVATE_CONST is mock.sentinel.priv_const
+    assert TestStruct3.Test
+    assert TestStruct3().Test
+    assert "Test" not in TestStruct3().as_dict()
 
     # This is fine
     class TestStruct4(t.Struct):
@@ -64,15 +68,20 @@ def test_struct_subclass_creation():
     class TestStruct5(t.Struct):
         pass
 
-    # Fields cannot have values
-    with pytest.raises(TypeError):
+    # Annotations with values are not fields
+    class TestStruct6(t.Struct):
+        a: t.uint8_t = 2  # not a field
+        b: t.uint16_t  # is a field
 
-        class TestStruct6(t.Struct):
-            a: t.uint8_t = 2
+    inst6 = TestStruct6(123)
+    assert "a" not in inst6.as_dict()
+    assert "b" in inst6.as_dict()
 
     # unless they are a StructField
     class TestStruct7(t.Struct):
         a: t.uint8_t = t.StructField()
+
+    assert "a" in TestStruct7(2).as_dict()
 
     # Fields can only have a single concrete type
     with pytest.raises(TypeError):
