@@ -15,6 +15,7 @@ import zigpy.topology
 def device_1():
     dev = mock.MagicMock()
     dev.ieee = mock.sentinel.ieee_1
+    dev.node_desc.is_end_device = False
     dev.nwk = 0x1111
     dev.neighbors.scan = CoroutineMock()
     return dev
@@ -24,6 +25,7 @@ def device_1():
 def device_2():
     dev = mock.MagicMock()
     dev.ieee = mock.sentinel.ieee_2
+    dev.node_desc.is_end_device = False
     dev.nwk = 0x2222
     dev.neighbors.scan = CoroutineMock()
     return dev
@@ -33,6 +35,7 @@ def device_2():
 def device_3():
     dev = mock.MagicMock()
     dev.ieee = mock.sentinel.ieee_3
+    dev.node_desc.is_end_device = False
     dev.nwk = 0x3333
     dev.neighbors.scan = CoroutineMock()
     dev.neighbors.supported = False

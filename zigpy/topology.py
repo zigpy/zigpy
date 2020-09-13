@@ -31,7 +31,11 @@ class Topology(zigpy.util.ListenableMixin):
     @property
     def current(self) -> Dict[t.EUI64, zigpy.neighbor.Neighbors]:
         """Return a dict of Neighbors for each device."""
-        return {dev.ieee: dev.neighbors for dev in self._app.devices.values()}
+        return {
+            dev.ieee: dev.neighbors
+            for dev in self._app.devices.values()
+            if not dev.node_desc.is_end_device
+        }
 
     @property
     def timestamp(self) -> float:
@@ -71,7 +75,10 @@ class Topology(zigpy.util.ListenableMixin):
     async def _scan(self) -> None:
         """Scan topology."""
 
-        for device in self._app.devices.values():
+        devices_to_scan = [
+            dev for dev in self._app.devices.values() if not dev.node_desc.is_end_device
+        ]
+        for device in devices_to_scan:
             if not device.neighbors.supported:
                 continue
             LOGGER.debug(
@@ -79,4 +86,5 @@ class Topology(zigpy.util.ListenableMixin):
             )
             await device.neighbors.scan()
             await asyncio.sleep(DELAY_INTER_DEVICE)
+        LOGGER.debug("Finished scanning neighbors for all devices")
         self._timestamp = time.time()
