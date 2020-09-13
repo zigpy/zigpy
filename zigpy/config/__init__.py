@@ -36,7 +36,7 @@ CONF_OTA = "ota"
 CONF_OTA_DIR = "otau_directory"
 CONF_OTA_IKEA = "ikea_provider"
 CONF_OTA_LEDVANCE = "ledvance_provider"
-CONF_TOPO_SCAN_PERIOD = "topology_scan_persiod"
+CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 
 SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): str})
 SCHEMA_NETWORK = vol.Schema(
