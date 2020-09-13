@@ -28,7 +28,6 @@ def neighbours_f(device):
     return zigpy.neighbor.Neighbors(device)
 
 
-@pytest.mark.asyncio
 async def test_neighbors_scan(neighbours_f, device):
     """Test scanning."""
 
@@ -63,7 +62,6 @@ async def test_neighbors_scan(neighbours_f, device):
     assert listener.neighbors_updated.call_count == 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "side_effect", (asyncio.TimeoutError, zigpy.exceptions.APIException)
 )
@@ -82,7 +80,6 @@ async def test_neighbors_scan_fail(neighbours_f, device, side_effect):
     assert listener.neighbors_updated.call_count == 0
 
 
-@pytest.mark.asyncio
 async def test_neighbors_unsupported(neighbours_f, device):
     """Test scanning."""
 
@@ -99,7 +96,6 @@ async def test_neighbors_unsupported(neighbours_f, device):
     assert listener.neighbors_updated.call_count == 0
 
 
-@pytest.mark.asyncio
 async def test_neighbors_invalid_ieee(neighbours_f, device):
     """Test scanning."""
 
