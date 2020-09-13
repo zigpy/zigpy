@@ -38,9 +38,13 @@ class Topology(zigpy.util.ListenableMixin):
         """Return timestamp of successful build."""
         return self._timestamp
 
-    def async_schedule_scan(self) -> asyncio.Task:
-        """Setup periodic scan of all devices."""
-        return asyncio.create_task(self.scan_loop())
+    @classmethod
+    def new(cls, app: zigpy.typing.ControllerApplicationType) -> "Topology":
+        """Create Topology instance."""
+
+        topo = cls(app)
+        asyncio.create_task(topo.scan_loop())
+        return topo
 
     async def scan_loop(self) -> None:
         """Delay scan by creating a task."""

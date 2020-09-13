@@ -53,14 +53,16 @@ def topology_f(device_1, device_2, device_3):
         yield zigpy.topology.Topology(app)
 
 
-async def test_schedule_scan(device_1, device_2, topology_f):
-    """Test scheduling a scan."""
+async def test_new():
+    """Test creating new instance."""
 
-    with mock.patch.object(topology_f, "scan_loop", new=CoroutineMock()) as scan_loop:
-        topology_f.async_schedule_scan()
-        for i in range(5):
-            await asyncio.sleep(0)
-    assert scan_loop.await_count == 1
+    app = mock.MagicMock()
+    app.config = {zigpy.config.CONF_TOPO_SCAN_PERIOD: 0}
+    with mock.patch("zigpy.topology.Topology.scan", new=CoroutineMock()) as scan:
+        zigpy.topology.Topology.new(app)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+    assert scan.await_count >= 1
 
 
 async def test_scan(device_1, device_2, topology_f, caplog):
