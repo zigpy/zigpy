@@ -47,7 +47,7 @@ def topology_f(device_1, device_2, device_3):
         device_2.ieee: device_2,
         device_3.ieee: device_3,
     }
-    app.config = {zigpy.config.CONF_TOPO_SCAN_PERIOD: 0.1 / 600}
+    app.config = {zigpy.config.CONF_TOPO_SCAN_PERIOD: 0}
 
     with mock.patch("zigpy.topology.DELAY_INTER_DEVICE", 0):
         yield zigpy.topology.Topology(app)
@@ -56,10 +56,11 @@ def topology_f(device_1, device_2, device_3):
 async def test_schedule_scan(device_1, device_2, topology_f):
     """Test scheduling a scan."""
 
-    with mock.patch.object(topology_f, "scan", new=CoroutineMock()) as scan:
+    with mock.patch.object(topology_f, "scan_loop", new=CoroutineMock()) as scan_loop:
         topology_f.async_schedule_scan()
-        await asyncio.sleep(0.1)
-    assert scan.call_count == 1
+        for i in range(5):
+            await asyncio.sleep(0)
+    assert scan_loop.await_count == 1
 
 
 async def test_scan(device_1, device_2, topology_f, caplog):

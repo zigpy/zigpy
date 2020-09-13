@@ -23,6 +23,8 @@ class Topology(zigpy.util.ListenableMixin):
         self._app: zigpy.typing.ControllerApplicationType = app
         self._listeners: Dict = {}
         self._last_scanned: Optional[t.EUI64] = None
+        delay_minutes = app.config[zigpy.config.CONF_TOPO_SCAN_PERIOD]
+        self._scan_period = delay_minutes * 60
         self._scan_task: Optional[asyncio.Task] = None
         self._timestamp: float = 0
 
@@ -36,11 +38,18 @@ class Topology(zigpy.util.ListenableMixin):
         """Return timestamp of successful build."""
         return self._timestamp
 
-    def async_schedule_scan(self) -> None:
+    def async_schedule_scan(self) -> asyncio.Task:
         """Setup periodic scan of all devices."""
-        loop = asyncio.get_running_loop()
-        delay_minutes = self._app.config[zigpy.config.CONF_TOPO_SCAN_PERIOD]
-        loop.call_later(delay_minutes * 60, self.scan)
+        return asyncio.create_task(self.scan_loop())
+
+    async def scan_loop(self) -> None:
+        """Delay scan by creating a task."""
+
+        while True:
+            await asyncio.sleep(self._scan_period)
+            if not self._scan_task or self._scan_task.done():
+                LOGGER.debug("Starting scheduled neighbor scan")
+                await self.scan()
 
     async def scan(self) -> None:
         """Preempt Topology scan and reschedule."""
@@ -50,7 +59,6 @@ class Topology(zigpy.util.ListenableMixin):
             self._scan_task.cancel()
 
         self._scan_task = asyncio.create_task(self._scan())
-        self.async_schedule_scan()
         try:
             await self._scan_task
         except asyncio.CancelledError:
@@ -58,6 +66,7 @@ class Topology(zigpy.util.ListenableMixin):
 
     async def _scan(self) -> None:
         """Scan topology."""
+
         for device in self._app.devices.values():
             if not device.neighbors.supported:
                 continue
