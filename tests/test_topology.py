@@ -88,4 +88,5 @@ async def test_scan_preempts(device_1, device_2, topology_f, caplog):
         await asyncio.gather(topology_f.scan(), topology_f.scan())
     assert "Cancelling old" in caplog.text
     assert "Cancelled topology" in caplog.text
-    assert topology_f.current
+    assert device_1.neighbors.scan.await_count == 1
+    assert device_2.neighbors.scan.await_count == 1
