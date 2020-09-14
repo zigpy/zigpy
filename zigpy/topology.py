@@ -29,15 +29,6 @@ class Topology(zigpy.util.ListenableMixin):
         self._timestamp: float = 0
 
     @property
-    def current(self) -> Dict[t.EUI64, zigpy.neighbor.Neighbors]:
-        """Return a dict of Neighbors for each device."""
-        return {
-            dev.ieee: dev.neighbors
-            for dev in self._app.devices.values()
-            if not dev.node_desc.is_end_device
-        }
-
-    @property
     def timestamp(self) -> float:
         """Return timestamp of successful build."""
         return self._timestamp
