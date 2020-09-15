@@ -1,12 +1,13 @@
 import asyncio
 
-from asynctest import mock
 import pytest
 
 import zigpy.device
 import zigpy.types as t
 import zigpy.zdo as zdo
 import zigpy.zdo.types as zdo_types
+
+from .async_mock import AsyncMock, MagicMock, sentinel
 
 DEFAULT_SEQUENCE = 123
 
@@ -23,7 +24,7 @@ def test_commands():
 
 @pytest.fixture
 def app():
-    app = mock.MagicMock()
+    app = MagicMock()
     app.ieee = t.EUI64(map(t.uint8_t, [8, 9, 10, 11, 12, 13, 14, 15]))
     app.get_sequence.return_value = DEFAULT_SEQUENCE
     dst_addr = zdo_types.MultiAddress()
@@ -38,7 +39,7 @@ def app():
 def zdo_f(app):
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     dev = zigpy.device.Device(app, ieee, 65535)
-    dev.request = mock.CoroutineMock()
+    dev.request = AsyncMock()
     return zdo.ZDO(dev)
 
 
@@ -63,7 +64,7 @@ async def test_request(zdo_f):
 
 
 async def test_bind(zdo_f):
-    cluster = mock.MagicMock()
+    cluster = MagicMock()
     cluster.endpoint.endpoint_id = 1
     cluster.cluster_id = 1026
     await zdo_f.bind(cluster)
@@ -72,7 +73,7 @@ async def test_bind(zdo_f):
 
 
 async def test_unbind(zdo_f):
-    cluster = mock.MagicMock()
+    cluster = MagicMock()
     cluster.endpoint.endpoint_id = 1
     cluster.cluster_id = 1026
     await zdo_f.unbind(cluster)
@@ -93,7 +94,7 @@ async def test_permit(zdo_f):
 
 
 def test_broadcast(app):
-    zigpy.device.broadcast = mock.MagicMock()
+    zigpy.device.broadcast = MagicMock()
     zigpy.zdo.broadcast(app, 0x0036, 0, 0, 60, 0)
 
     assert zigpy.device.broadcast.call_count == 1
@@ -101,8 +102,8 @@ def test_broadcast(app):
 
 
 def _handle_match_desc(zdo_f, profile):
-    zdo_f.reply = mock.CoroutineMock()
-    hdr = mock.MagicMock()
+    zdo_f.reply = AsyncMock()
+    hdr = MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.Match_Desc_req
     zdo_f.handle_message(5, 0x0006, hdr, [None, profile, [], []])
     assert zdo_f.reply.call_count == 1
@@ -124,8 +125,8 @@ async def test_handle_match_desc_generic(zdo_f):
 
 async def test_handle_nwk_addr(zdo_f):
     ieee = zdo_f._device.application.ieee
-    zdo_f.reply = mock.MagicMock()
-    hdr = mock.MagicMock()
+    zdo_f.reply = MagicMock()
+    hdr = MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.NWK_addr_req
     zdo_f.handle_message(5, 0x0000, hdr, [ieee])
     assert zdo_f.reply.call_count == 1
@@ -133,8 +134,8 @@ async def test_handle_nwk_addr(zdo_f):
 
 async def test_handle_ieee_addr(zdo_f):
     nwk = zdo_f._device.application.nwk
-    zdo_f.reply = mock.MagicMock()
-    hdr = mock.MagicMock()
+    zdo_f.reply = MagicMock()
+    hdr = MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.IEEE_addr_req
     zdo_f.handle_message(5, 0x0001, hdr, [nwk])
     assert zdo_f.reply.call_count == 1
@@ -142,29 +143,29 @@ async def test_handle_ieee_addr(zdo_f):
 
 def test_handle_announce(zdo_f):
     dev = zdo_f._device
-    zdo_f.listener_event = mock.MagicMock()
+    zdo_f.listener_event = MagicMock()
     dev._application.devices.pop(dev.ieee)
-    hdr = mock.MagicMock()
+    hdr = MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.Device_annce
     zdo_f.handle_message(5, 0x0013, hdr, [0, dev.ieee, dev.nwk])
     assert zdo_f.listener_event.call_count == 1
 
 
 def test_handle_permit_join(zdo_f):
-    zdo_f.listener_event = mock.MagicMock()
-    hdr = mock.MagicMock()
+    zdo_f.listener_event = MagicMock()
+    hdr = MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.Mgmt_Permit_Joining_req
     zdo_f.handle_message(5, 0x0036, hdr, [100, 1])
     assert zdo_f.listener_event.call_count == 1
 
 
 def test_handle_unsupported(zdo_f):
-    zdo_f.listener_event = mock.MagicMock()
-    hdr = mock.MagicMock()
+    zdo_f.listener_event = MagicMock()
+    hdr = MagicMock()
     hdr.command_id = 0xFFFF
     assert hdr.command_id not in list(zdo_types.ZDOCmd)
-    zdo_f.request = mock.MagicMock()
-    zdo_f.reply = mock.MagicMock()
+    zdo_f.request = MagicMock()
+    zdo_f.reply = MagicMock()
     zdo_f.handle_message(5, 0xFFFF, hdr, [])
 
     assert zdo_f.listener_event.call_count == 0
@@ -177,7 +178,7 @@ def test_device_accessor(zdo_f):
 
 
 def test_reply(zdo_f):
-    zdo_f.device.request = mock.MagicMock()
+    zdo_f.device.request = MagicMock()
     zdo_f.reply(0x0005)
     assert zdo_f.device.request.call_count == 1
 
@@ -188,16 +189,16 @@ def test_get_attr_error(zdo_f):
 
 
 async def test_reply_tsn_override(zdo_f, monkeypatch):
-    clusters = mock.MagicMock()
+    clusters = MagicMock()
     clusters.__getitem__.return_value = (
-        mock.sentinel.param_names,
-        mock.sentinel.scheam,
+        sentinel.param_names,
+        sentinel.scheam,
     )
     monkeypatch.setattr(zdo_types, "CLUSTERS", clusters)
-    mock_ser = mock.MagicMock()
+    mock_ser = MagicMock()
     mock_ser.return_value = b"\xaa\x55"
     monkeypatch.setattr(t, "serialize", mock_ser)
-    zdo_f.reply(mock.sentinel.cmd, mock.sentinel.arg1, mock.sentinel.arg2)
+    zdo_f.reply(sentinel.cmd, sentinel.arg1, sentinel.arg2)
     seq = zdo_f.device.request.call_args[0][4]
     data = zdo_f.device.request.call_args[0][5]
     assert seq == DEFAULT_SEQUENCE
@@ -206,7 +207,7 @@ async def test_reply_tsn_override(zdo_f, monkeypatch):
 
     # override tsn
     tsn = 0x23
-    zdo_f.reply(mock.sentinel.cmd, mock.sentinel.arg1, mock.sentinel.arg2, tsn=tsn)
+    zdo_f.reply(sentinel.cmd, sentinel.arg1, sentinel.arg2, tsn=tsn)
     seq = zdo_f.device.request.call_args[0][4]
     data = zdo_f.device.request.call_args[0][5]
     assert seq == tsn
