@@ -198,7 +198,7 @@ async def test_reply_tsn_override(zdo_f, monkeypatch):
     mock_ser = MagicMock()
     mock_ser.return_value = b"\xaa\x55"
     monkeypatch.setattr(t, "serialize", mock_ser)
-    zdo_f.reply(sentinel.cmd, sentinel.arg1, sentinel.arg2)
+    await zdo_f.reply(sentinel.cmd, sentinel.arg1, sentinel.arg2)
     seq = zdo_f.device.request.call_args[0][4]
     data = zdo_f.device.request.call_args[0][5]
     assert seq == DEFAULT_SEQUENCE
@@ -207,7 +207,7 @@ async def test_reply_tsn_override(zdo_f, monkeypatch):
 
     # override tsn
     tsn = 0x23
-    zdo_f.reply(sentinel.cmd, sentinel.arg1, sentinel.arg2, tsn=tsn)
+    await zdo_f.reply(sentinel.cmd, sentinel.arg1, sentinel.arg2, tsn=tsn)
     seq = zdo_f.device.request.call_args[0][4]
     data = zdo_f.device.request.call_args[0][5]
     assert seq == tsn
