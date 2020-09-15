@@ -164,7 +164,7 @@ class GroupCluster(zigpy.zcl.Cluster):
         for cluster in cls._registry.values():
             if hasattr(cluster, "ep_attribute") and cluster.ep_attribute == ep_name:
                 return cluster(group_endpoint, is_server=True)
-        raise AttributeError("Unsupported %s group cluster".format(ep_name))
+        raise AttributeError(f"Unsupported {ep_name} group cluster")
 
 
 class GroupEndpoint(LocalLogMixin):

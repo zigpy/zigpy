@@ -2,6 +2,7 @@ import itertools
 
 from asynctest import CoroutineMock, mock
 import pytest
+
 import zigpy.device
 import zigpy.endpoint
 import zigpy.quirks

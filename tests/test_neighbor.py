@@ -3,6 +3,7 @@ import asyncio
 
 from asynctest import CoroutineMock, mock
 import pytest
+
 import zigpy.device
 import zigpy.exceptions
 import zigpy.neighbor

@@ -2,6 +2,7 @@ import asyncio
 
 from asynctest import CoroutineMock, mock
 import pytest
+
 import zigpy.endpoint
 import zigpy.types as t
 import zigpy.zcl as zcl

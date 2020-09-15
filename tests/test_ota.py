@@ -2,6 +2,7 @@ import datetime
 
 from asynctest import CoroutineMock, mock
 import pytest
+
 import zigpy.application
 import zigpy.ota
 import zigpy.ota.image

@@ -2,6 +2,7 @@ import asyncio
 
 from asynctest import CoroutineMock, mock
 import pytest
+
 from zigpy import endpoint, group
 import zigpy.device
 import zigpy.exceptions

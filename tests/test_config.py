@@ -2,6 +2,7 @@
 
 import pytest
 import voluptuous as vol
+
 import zigpy.config
 import zigpy.config.validators
 

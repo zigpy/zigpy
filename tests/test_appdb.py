@@ -2,6 +2,7 @@ import os
 
 from asynctest import CoroutineMock, mock
 import pytest
+
 from zigpy import profiles
 import zigpy.application
 from zigpy.config import CONF_DATABASE, ZIGPY_SCHEMA

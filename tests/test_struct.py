@@ -2,6 +2,7 @@ import enum
 from unittest import mock
 
 import pytest
+
 import zigpy.types as t
 from zigpy.zcl.foundation import Status
 

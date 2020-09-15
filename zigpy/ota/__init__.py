@@ -4,6 +4,7 @@ import logging
 from typing import Optional
 
 import attr
+
 from zigpy.config import CONF_OTA, CONF_OTA_DIR, CONF_OTA_IKEA, CONF_OTA_LEDVANCE
 from zigpy.ota.image import ImageKey, OTAImage
 import zigpy.ota.provider

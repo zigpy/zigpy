@@ -1,6 +1,7 @@
 """Config schemas and validation."""
 
 import voluptuous as vol
+
 from zigpy.config.defaults import (
     CONF_NWK_CHANNEL_DEFAULT,
     CONF_NWK_CHANNELS_DEFAULT,
