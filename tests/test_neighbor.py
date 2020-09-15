@@ -1,7 +1,6 @@
 """Test Units for neighbors."""
 import asyncio
 
-from asynctest import CoroutineMock, mock
 import pytest
 
 import zigpy.device
@@ -10,15 +9,17 @@ import zigpy.neighbor
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 
+from .async_mock import AsyncMock, MagicMock, patch, sentinel
+
 
 @pytest.fixture
 def device():
     """Device fixture."""
 
     ieee = t.EUI64.convert("01:02:03:04:05:06:07:08")
-    dev = zigpy.device.Device(mock.MagicMock(), ieee, 0x1234)
-    p2 = mock.patch("zigpy.neighbor.REQUEST_DELAY", new=(0, 0))
-    with mock.patch.object(dev.zdo, "request", new=CoroutineMock()), p2:
+    dev = zigpy.device.Device(MagicMock(), ieee, 0x1234)
+    p2 = patch("zigpy.neighbor.REQUEST_DELAY", new=(0, 0))
+    with patch.object(dev.zdo, "request", new=AsyncMock()), p2:
         yield dev
 
 
@@ -51,7 +52,7 @@ async def test_neighbors_scan(neighbours_f, device):
         b'\x00\x10\x0f\x01h\xf1W\xde\xcb\xaf4"\x93\x13\x05\x00\x00\xb8\xd1\xf0\n\xf2%'
         b"\x02\x0f\xfc",
     )
-    listener = mock.MagicMock()
+    listener = MagicMock()
     neighbours_f.add_listener(listener)
     schema = zdo_t.CLUSTERS[zdo_t.ZDOCmd.Mgmt_Lqi_rsp][1]
     device.zdo.request.side_effect = (t.deserialize(d, schema)[0] for d in data_in)
@@ -70,7 +71,7 @@ async def test_neighbors_scan_fail(neighbours_f, device, side_effect):
     """Test scan fail."""
 
     assert neighbours_f.ieee == device.ieee
-    listener = mock.MagicMock()
+    listener = MagicMock()
     neighbours_f.add_listener(listener)
     device.zdo.request.side_effect = side_effect
 
@@ -84,7 +85,7 @@ async def test_neighbors_scan_fail(neighbours_f, device, side_effect):
 async def test_neighbors_unsupported(neighbours_f, device):
     """Test scanning."""
 
-    listener = mock.MagicMock()
+    listener = MagicMock()
     neighbours_f.add_listener(listener)
     device.zdo.request.return_value = (zdo_t.Status.NOT_SUPPORTED, [])
 
@@ -106,7 +107,7 @@ async def test_neighbors_invalid_ieee(neighbours_f, device):
         b"%\x02\x0f\xfe",
     )
 
-    listener = mock.MagicMock()
+    listener = MagicMock()
     neighbours_f.add_listener(listener)
     schema = zdo_t.CLUSTERS[zdo_t.ZDOCmd.Mgmt_Lqi_rsp][1]
     device.zdo.request.side_effect = (t.deserialize(d, schema)[0] for d in data_in)
@@ -131,7 +132,7 @@ def test_neighbor(device):
 def test_neihgbors_magic_methods(neighbours_f):
     """Test neighbors methods."""
 
-    neighbours_f.append(mock.sentinel.other)
-    neighbours_f[0] = mock.sentinel.nei
-    assert neighbours_f[0] is mock.sentinel.nei
-    assert [n for n in neighbours_f] == [mock.sentinel.nei]
+    neighbours_f.append(sentinel.other)
+    neighbours_f[0] = sentinel.nei
+    assert neighbours_f[0] is sentinel.nei
+    assert [n for n in neighbours_f] == [sentinel.nei]
