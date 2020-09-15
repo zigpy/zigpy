@@ -120,7 +120,7 @@ async def test_new_exception(ota_mock):
     p1 = patch.object(App, "_load_db", AsyncMock())
     p2 = patch.object(App, "startup", AsyncMock())
     p3 = patch.object(App, "shutdown", AsyncMock())
-    ota_mock.return_value.initialize.side_effect = AsyncMock()
+    ota_mock.return_value.initialize = AsyncMock()
 
     with p1 as db_mck, p2 as start_mck, p3 as shut_mck:
         await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
@@ -132,8 +132,8 @@ async def test_new_exception(ota_mock):
     assert shut_mck.call_count == 0
     assert shut_mck.await_count == 0
 
-    start_mck.side_effect = asyncio.TimeoutError
     with p1 as db_mck, p2 as start_mck, p3 as shut_mck:
+        start_mck.side_effect = asyncio.TimeoutError()
         with pytest.raises(asyncio.TimeoutError):
             await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
     assert db_mck.call_count == 2
