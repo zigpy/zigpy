@@ -1,6 +1,5 @@
 import datetime
 
-from asynctest import CoroutineMock, mock
 import pytest
 
 import zigpy.application
@@ -8,8 +7,10 @@ import zigpy.ota
 import zigpy.ota.image
 import zigpy.ota.provider
 
-MANUFACTURER_ID = mock.sentinel.manufacturer_id
-IMAGE_TYPE = mock.sentinel.image_type
+from .async_mock import AsyncMock, MagicMock, patch, sentinel
+
+MANUFACTURER_ID = sentinel.manufacturer_id
+IMAGE_TYPE = sentinel.image_type
 
 
 @pytest.fixture
@@ -39,14 +40,14 @@ def key():
 
 @pytest.fixture
 def ota():
-    app = mock.MagicMock(spec_set=zigpy.application.ControllerApplication)
-    tradfri = mock.MagicMock(spec_set=zigpy.ota.provider.Trådfri)
-    with mock.patch("zigpy.ota.provider.Trådfri", tradfri):
+    app = MagicMock(spec_set=zigpy.application.ControllerApplication)
+    tradfri = MagicMock(spec_set=zigpy.ota.provider.Trådfri)
+    with patch("zigpy.ota.provider.Trådfri", tradfri):
         return zigpy.ota.OTA(app)
 
 
 async def test_ota_initialize(ota):
-    ota.async_event = CoroutineMock()
+    ota.async_event = AsyncMock()
     await ota.initialize()
 
     assert ota.async_event.call_count == 1
@@ -55,7 +56,7 @@ async def test_ota_initialize(ota):
 
 
 async def test_get_image_empty(ota, image, key):
-    ota.async_event = CoroutineMock(return_value=[None, None])
+    ota.async_event = AsyncMock(return_value=[None, None])
 
     assert len(ota._image_cache) == 0
     res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
@@ -70,7 +71,7 @@ async def test_get_image_empty(ota, image, key):
 async def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
     newer = image_with_version(image.version + 1)
 
-    ota.async_event = CoroutineMock(return_value=[None, image, newer])
+    ota.async_event = AsyncMock(return_value=[None, image, newer])
 
     assert len(ota._image_cache) == 0
     res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)

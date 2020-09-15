@@ -3,13 +3,14 @@ import os.path
 from unittest import mock
 import uuid
 
-from asynctest import CoroutineMock, patch
 import pytest
 
 from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA, CONF_OTA_LEDVANCE
 import zigpy.ota
 import zigpy.ota.image
 import zigpy.ota.provider as ota_p
+
+from .async_mock import AsyncMock, patch
 
 MANUFACTURER_ID = 4476
 IMAGE_TYPE = mock.sentinel.image_type
@@ -116,10 +117,10 @@ async def test_initialize_provider(basic_prov):
 
 async def test_basic_get_image(basic_prov, key):
     image = mock.MagicMock()
-    image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
+    image.fetch_image = AsyncMock(return_value=mock.sentinel.image)
     basic_prov._cache = mock.MagicMock()
     basic_prov._cache.__getitem__.return_value = image
-    basic_prov.refresh_firmware_list = CoroutineMock()
+    basic_prov.refresh_firmware_list = AsyncMock()
 
     # check when disabled
     basic_prov.disable()
@@ -162,11 +163,11 @@ def test_basic_enable_provider(key, basic_prov):
 
 async def test_basic_get_image_filtered(basic_prov, key):
     image = mock.MagicMock()
-    image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
+    image.fetch_image = AsyncMock(return_value=mock.sentinel.image)
     basic_prov._cache = mock.MagicMock()
     basic_prov._cache.__getitem__.return_value = image
-    basic_prov.refresh_firmware_list = CoroutineMock()
-    basic_prov.filter_get_image = CoroutineMock(return_value=True)
+    basic_prov.refresh_firmware_list = AsyncMock()
+    basic_prov.filter_get_image = AsyncMock(return_value=True)
 
     r = await basic_prov.get_image(key)
     assert r is None
@@ -179,7 +180,7 @@ async def test_basic_get_image_filtered(basic_prov, key):
 
 async def test_ikea_init_ota_dir(ikea_prov, tmpdir):
     ikea_prov.enable = mock.MagicMock()
-    ikea_prov.refresh_firmware_list = CoroutineMock()
+    ikea_prov.refresh_firmware_list = AsyncMock()
 
     r = await ikea_prov.initialize_provider({CONF_OTA_IKEA: True})
     assert r is None
@@ -188,10 +189,10 @@ async def test_ikea_init_ota_dir(ikea_prov, tmpdir):
 
 
 async def test_ikea_get_image_no_cache(ikea_prov, ikea_image):
-    ikea_image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
+    ikea_image.fetch_image = AsyncMock(return_value=mock.sentinel.image)
     ikea_prov._cache = mock.MagicMock()
     ikea_prov._cache.__getitem__.side_effect = KeyError()
-    ikea_prov.refresh_firmware_list = CoroutineMock()
+    ikea_prov.refresh_firmware_list = AsyncMock()
 
     non_ikea = zigpy.ota.image.ImageKey(mock.sentinel.manufacturer, IMAGE_TYPE)
 
@@ -212,10 +213,10 @@ async def test_ikea_get_image_no_cache(ikea_prov, ikea_image):
 
 
 async def test_ikea_get_image(ikea_prov, key, ikea_image):
-    ikea_image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
+    ikea_image.fetch_image = AsyncMock(return_value=mock.sentinel.image)
     ikea_prov._cache = mock.MagicMock()
     ikea_prov._cache.__getitem__.return_value = ikea_image
-    ikea_prov.refresh_firmware_list = CoroutineMock()
+    ikea_prov.refresh_firmware_list = AsyncMock()
 
     r = await ikea_prov.get_image(key)
     assert r is mock.sentinel.image
@@ -231,7 +232,7 @@ async def test_ikea_refresh_list(mock_get, ikea_prov, ikea_image_with_version):
     img1 = ikea_image_with_version(version=ver1, image_type=img_type1)
     img2 = ikea_image_with_version(version=ver2, image_type=img_type2)
 
-    mock_get.return_value.__aenter__.return_value.json = CoroutineMock(
+    mock_get.return_value.__aenter__.return_value.json = AsyncMock(
         side_effect=[
             [
                 {
@@ -287,7 +288,7 @@ async def test_ikea_refresh_list(mock_get, ikea_prov, ikea_image_with_version):
 async def test_ikea_refresh_list_locked(mock_get, ikea_prov, ikea_image_with_version):
     await ikea_prov._locks[ota_p.LOCK_REFRESH].acquire()
 
-    mock_get.return_value.__aenter__.return_value.json = CoroutineMock(side_effect=[[]])
+    mock_get.return_value.__aenter__.return_value.json = AsyncMock(side_effect=[[]])
 
     await ikea_prov.refresh_firmware_list()
     assert mock_get.call_count == 0
@@ -310,7 +311,7 @@ async def test_ikea_fetch_image(mock_get, ikea_image_with_version):
     img = ikea_image_with_version(image_type=0x2101)
     img.url = mock.sentinel.url
 
-    mock_get.return_value.__aenter__.return_value.read = CoroutineMock(
+    mock_get.return_value.__aenter__.return_value.read = AsyncMock(
         side_effect=[container]
     )
 
@@ -341,7 +342,7 @@ def test_filestore_scan(file_image_name):
 
 def test_filestore_scan_exc(file_image_name):
     ota_file = file_image_name()
-    with mock.patch("builtins.open", mock.mock_open()) as mock_file:
+    with patch("builtins.open", mock.mock_open()) as mock_file:
         mock_file.side_effect = IOError()
 
         r = ota_p.FileImage.scan_image(ota_file)
@@ -349,7 +350,7 @@ def test_filestore_scan_exc(file_image_name):
         assert mock_file.call_count == 1
         assert mock_file.call_args[0][0] == ota_file
 
-    with mock.patch("builtins.open", mock.mock_open()) as mock_file:
+    with patch("builtins.open", mock.mock_open()) as mock_file:
         mock_file.side_effect = ValueError()
 
         r = ota_p.FileImage.scan_image(ota_file)
@@ -361,7 +362,7 @@ def test_filestore_scan_exc(file_image_name):
 def test_filestore_scan_uncaught_exc(file_image_name):
     ota_file = file_image_name()
     with pytest.raises(RuntimeError):
-        with mock.patch("builtins.open", mock.mock_open()) as mock_file:
+        with patch("builtins.open", mock.mock_open()) as mock_file:
             mock_file.side_effect = RuntimeError()
 
             ota_p.FileImage.scan_image(ota_file)
@@ -424,7 +425,7 @@ def test_filestore_validate_ota_dir(tmpdir):
 
 async def test_filestore_init_provider_success(file_prov):
     file_prov.enable = mock.MagicMock()
-    file_prov.refresh_firmware_list = CoroutineMock()
+    file_prov.refresh_firmware_list = AsyncMock()
     file_prov.validate_ota_dir = mock.MagicMock(return_value=mock.sentinel.ota_dir)
 
     r = await file_prov.initialize_provider({CONF_OTA_DIR: mock.sentinel.ota_dir})
@@ -437,7 +438,7 @@ async def test_filestore_init_provider_success(file_prov):
 
 async def test_filestore_init_provider_failure(file_prov):
     file_prov.enable = mock.MagicMock()
-    file_prov.refresh_firmware_list = CoroutineMock()
+    file_prov.refresh_firmware_list = AsyncMock()
     file_prov.validate_ota_dir = mock.MagicMock(return_value=None)
 
     r = await file_prov.initialize_provider({CONF_OTA_DIR: mock.sentinel.ota_dir})
@@ -586,7 +587,7 @@ def ledvance_key():
 
 async def test_ledvance_init_ota_dir(ledvance_prov):
     ledvance_prov.enable = mock.MagicMock()
-    ledvance_prov.refresh_firmware_list = CoroutineMock()
+    ledvance_prov.refresh_firmware_list = AsyncMock()
 
     r = await ledvance_prov.initialize_provider({CONF_OTA_LEDVANCE: True})
     assert r is None
@@ -595,10 +596,10 @@ async def test_ledvance_init_ota_dir(ledvance_prov):
 
 
 async def test_ledvance_get_image_no_cache(ledvance_prov, ledvance_image):
-    ledvance_image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
+    ledvance_image.fetch_image = AsyncMock(return_value=mock.sentinel.image)
     ledvance_prov._cache = mock.MagicMock()
     ledvance_prov._cache.__getitem__.side_effect = KeyError()
-    ledvance_prov.refresh_firmware_list = CoroutineMock()
+    ledvance_prov.refresh_firmware_list = AsyncMock()
 
     # LEDVANCE manufacturer_id, but not in cache
     assert ledvance_image.key not in ledvance_prov._cache
@@ -610,10 +611,10 @@ async def test_ledvance_get_image_no_cache(ledvance_prov, ledvance_image):
 
 
 async def test_ledvance_get_image(ledvance_prov, ledvance_key, ledvance_image):
-    ledvance_image.fetch_image = CoroutineMock(return_value=mock.sentinel.image)
+    ledvance_image.fetch_image = AsyncMock(return_value=mock.sentinel.image)
     ledvance_prov._cache = mock.MagicMock()
     ledvance_prov._cache.__getitem__.return_value = ledvance_image
-    ledvance_prov.refresh_firmware_list = CoroutineMock()
+    ledvance_prov.refresh_firmware_list = AsyncMock()
 
     r = await ledvance_prov.get_image(ledvance_key)
     assert r is mock.sentinel.image
@@ -635,7 +636,7 @@ async def test_ledvance_refresh_list(
     fn_1 = "A19 RGBW/00102428/A19_RGBW_IMG0019_00102428-encrypted"
     sha_2 = "fa5ab550bde3e8c877cf40aa460fc9836405a7843df040e75bfdb2f"
     fn_2 = "A19 TW 10 year/00102428/A19_TW_10_year_IMG000D_001024"
-    mock_get.return_value.__aenter__.return_value.json = CoroutineMock(
+    mock_get.return_value.__aenter__.return_value.json = AsyncMock(
         side_effect=[
             {
                 "firmwares": [
@@ -701,7 +702,7 @@ async def test_ledvance_refresh_list_locked(
 ):
     await ledvance_prov._locks[ota_p.LOCK_REFRESH].acquire()
 
-    mock_get.return_value.__aenter__.return_value.json = CoroutineMock(side_effect=[[]])
+    mock_get.return_value.__aenter__.return_value.json = AsyncMock(side_effect=[[]])
 
     await ledvance_prov.refresh_firmware_list()
     assert mock_get.call_count == 0
@@ -718,7 +719,7 @@ async def test_ledvance_fetch_image(mock_get, ledvance_image_with_version):
     img = ledvance_image_with_version(image_type=0x2101)
     img.url = mock.sentinel.url
 
-    mock_get.return_value.__aenter__.return_value.read = CoroutineMock(
+    mock_get.return_value.__aenter__.return_value.read = AsyncMock(
         side_effect=[data + sub_el]
     )
 
