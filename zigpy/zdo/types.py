@@ -57,7 +57,7 @@ class NodeDescriptor(t.Struct):
     def is_valid(self):
         """Return True if all fields were initialized."""
         non_empty_fields = [
-            getattr(self, field.name) is not None for field in self.fields()
+            getattr(self, field.name) is not None for field in self.fields
         ]
         return all(non_empty_fields)
 

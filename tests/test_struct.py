@@ -1,5 +1,4 @@
 import enum
-import typing
 from unittest import mock
 
 import pytest
@@ -10,34 +9,16 @@ from zigpy.zcl.foundation import Status
 def test_struct_fields():
     class TestStruct(t.Struct):
         a: t.uint8_t
-        b: typing.Optional[t.uint8_t]
+        b: t.uint16_t
 
-    assert TestStruct.fields().a.name == "a"
-    assert TestStruct.fields().a.type == t.uint8_t
-    assert TestStruct.fields().a.concrete_type == t.uint8_t
-    assert not TestStruct.fields().a.optional
+    assert TestStruct.fields.a.name == "a"
+    assert TestStruct.fields.a.type == t.uint8_t
 
-    assert TestStruct.fields().b.name == "b"
-    assert TestStruct.fields().b.type == typing.Optional[t.uint8_t]
-    assert TestStruct.fields().b.concrete_type == t.uint8_t
-    assert TestStruct.fields().b.optional
+    assert TestStruct.fields.b.name == "b"
+    assert TestStruct.fields.b.type == t.uint16_t
 
 
 def test_struct_subclass_creation():
-    # Optional fields must all be at the very end
-    with pytest.raises(TypeError):
-
-        class TestStruct1(t.Struct):
-            b: typing.Optional[t.uint8_t]
-            a: t.uint8_t
-
-    with pytest.raises(TypeError):
-
-        class TestStruct2(t.Struct):
-            b: typing.Optional[t.uint8_t]
-            a: t.uint8_t
-            c: typing.Optional[t.uint8_t]
-
     # In-class constants are allowed
     class TestStruct3(t.Struct):
         CONSTANT1: int = 123
@@ -49,7 +30,7 @@ def test_struct_subclass_creation():
         class Test:
             pass
 
-    assert not TestStruct3.fields()
+    assert not TestStruct3.fields
     assert TestStruct3.CONSTANT1 == 123
     assert TestStruct3.CONSTANT2 == 1234
     assert TestStruct3._private1 == 456
@@ -60,80 +41,57 @@ def test_struct_subclass_creation():
     assert TestStruct3().Test
     assert "Test" not in TestStruct3().as_dict()
 
-    # This is fine
-    class TestStruct4(t.Struct):
-        a: typing.Optional[t.uint8_t]
-
     # Still valid
-    class TestStruct5(t.Struct):
+    class TestStruct4(t.Struct):
         pass
 
     # Annotations with values are not fields
-    class TestStruct6(t.Struct):
+    class TestStruct5(t.Struct):
         a: t.uint8_t = 2  # not a field
         b: t.uint16_t  # is a field
 
-    inst6 = TestStruct6(123)
+    inst6 = TestStruct5(123)
     assert "a" not in inst6.as_dict()
     assert "b" in inst6.as_dict()
 
     # unless they are a StructField
-    class TestStruct7(t.Struct):
+    class TestStruct6(t.Struct):
         a: t.uint8_t = t.StructField()
 
-    assert "a" in TestStruct7(2).as_dict()
-
-    # Fields can only have a single concrete type
-    with pytest.raises(TypeError):
-
-        class TestStruct8(t.Struct):
-            bad: typing.Union[t.uint8_t, t.uint16_t]
+    assert "a" in TestStruct6(2).as_dict()
 
 
 def test_struct_construction():
     class TestStruct(t.Struct):
         a: t.uint8_t
-        b: typing.Optional[t.uint8_t]
-
-    """
-    # This breaks many unit tests
-    with pytest.raises(TypeError):
-        TestStruct()
-    """
+        b: t.LVBytes
 
     s1 = TestStruct(a=1)
-    s2 = TestStruct(a=1, b=None)
+    s1.b = b"foo"
+
+    s2 = TestStruct(a=1, b=b"foo")
 
     assert s1 == s2
     assert s1.a == s2.a
-    assert s1.replace(b=2) == s2.replace(b=2)
-    assert s1.replace(b=2).serialize() == s2.replace(b=2).serialize() == b"\x01\x02"
+    assert s1.replace(b=b"foo") == s2.replace(b=b"foo")
+    assert s1.serialize() == s2.serialize() == b"\x01\x03foo"
 
     assert TestStruct(s1) == s1
 
     # You cannot use the copy constructor with other keyword arguments
     with pytest.raises(ValueError):
-        TestStruct(s1, b=2)
+        TestStruct(s1, b=b"foo")
 
     # Types are coerced on construction so you cannot pass bad values
     with pytest.raises(ValueError):
         TestStruct(a=object())
 
-
-def test_struct_attribute_assignment():
-    class TestStruct(t.Struct):
-        a: t.uint8_t
-        b: typing.Optional[t.uint8_t]
-
-    s1 = TestStruct(a=1)
-    s1.a = -1
+    # You can still assign bad values but serialization will fail
+    s1.serialize()
+    s1.b = object()
 
     with pytest.raises(ValueError):
         s1.serialize()
-
-    s1.a = 1
-
-    assert s1.serialize() == TestStruct(a=1).serialize()
 
 
 def test_nested_structs():
@@ -143,28 +101,45 @@ def test_nested_structs():
 
     class OuterStruct(t.Struct):
         a: t.uint8_t
-        inner: typing.Optional[InnerStruct]
-        d: typing.Optional[t.uint8_t]
+        inner: InnerStruct
+        d: t.uint8_t
 
-    s1, remaining = OuterStruct.deserialize(b"\x00\x01\x02")
-    assert not remaining
-    assert s1.a == 0
-    assert s1.inner.b == 1
-    assert s1.inner.c == 2
-    assert s1.d is None
+    assert len(OuterStruct.fields) == 3
+    assert OuterStruct.fields.a.type is t.uint8_t
+    assert OuterStruct.fields.inner.type is InnerStruct
+    assert len(OuterStruct.fields.inner.type.fields) == 2
+    assert OuterStruct.fields.d.type is t.uint8_t
 
-    s2, remaining = OuterStruct.deserialize(b"\x00\x01\x02\x03")
-    assert not remaining
-    assert s2.a == 0
-    assert s2.inner.b == 1
-    assert s2.inner.c == 2
-    assert s2.d == 3
+    s, remaining = OuterStruct.deserialize(b"\x00\x01\x02\x03" + b"asd")
+    assert remaining == b"asd"
+    assert s.a == 0
+    assert s.inner.b == 1
+    assert s.inner.c == 2
+    assert s.d == 3
 
-    s3, remaining = OuterStruct.deserialize(b"\x00")
-    assert not remaining
-    assert s3.a == 0
-    assert s3.inner is None
-    assert s3.d is None
+
+def test_nested_structs2():
+    class OuterStruct(t.Struct):
+        class InnerStruct(t.Struct):
+            b: t.uint8_t
+            c: t.uint8_t
+
+        a: t.uint8_t
+        inner: None = t.StructField(type=InnerStruct)
+        d: t.uint8_t
+
+    assert len(OuterStruct.fields) == 3
+    assert OuterStruct.fields[0].type is t.uint8_t
+    assert OuterStruct.fields[1].type is OuterStruct.InnerStruct
+    assert len(OuterStruct.fields[1].type.fields) == 2
+    assert OuterStruct.fields[2].type is t.uint8_t
+
+    s, remaining = OuterStruct.deserialize(b"\x00\x01\x02\x03" + b"asd")
+    assert remaining == b"asd"
+    assert s.a == 0
+    assert s.inner.b == 1
+    assert s.inner.c == 2
+    assert s.d == 3
 
 
 def test_struct_init():
@@ -205,61 +180,27 @@ def test_struct_string_is_none():
         TestStruct(a=None).serialize()
 
 
-def test_struct_optional_init():
-    class TestStruct(t.Struct):
-        a: t.uint8_t
-        b: t.uint16_t
-        c: typing.Optional[t.CharacterString]
-
-    ts1 = TestStruct(a=1, b=0x0100)
-    ts2 = TestStruct(a=1, b=0x0100, c=b"foo")
-
-    assert ts1.serialize() + t.CharacterString(b"foo").serialize() == ts2.serialize()
-
-
 def test_struct_field_dependencies():
     class TestStruct(t.Struct):
         foo: t.uint8_t
         status: Status
         bar: t.uint8_t = t.StructField(requires=lambda s: s.status == Status.SUCCESS)
-        baz1: t.uint8_t
-        baz2: typing.Optional[t.uint8_t]
-
-    """
-    # bar must be defined because status is SUCCESS
-    with pytest.raises(ValueError):
-        TestStruct(foo=1, status=Status.SUCCESS, baz1=2)
-    """
+        baz: t.uint8_t
 
     # Status is FAILURE so bar is not defined
-    TestStruct(foo=1, status=Status.FAILURE, baz1=2)
-
-    """
-    # In fact, it cannot be defined
-    with pytest.raises(ValueError):
-        TestStruct(foo=1, status=Status.FAILURE, bar=2, baz1=2)
-    """
+    TestStruct(foo=1, status=Status.FAILURE, baz=2)
 
     ts1, remaining = TestStruct.deserialize(
         b"\x01" + Status.SUCCESS.serialize() + b"\x02\x03"
     )
     assert not remaining
-    assert ts1 == TestStruct(foo=1, status=Status.SUCCESS, bar=2, baz1=3, baz2=None)
+    assert ts1 == TestStruct(foo=1, status=Status.SUCCESS, bar=2, baz=3)
 
     ts2, remaining = TestStruct.deserialize(
         b"\x01" + Status.FAILURE.serialize() + b"\x02\x03"
     )
-    assert not remaining
-    assert ts2 == TestStruct(foo=1, status=Status.FAILURE, bar=None, baz1=2, baz2=3)
-
-    # If a struct is created and invalid fields are assigned, they will not show up
-    ts3 = TestStruct()
-    ts3.foo = 1
-    ts3.status = Status.FAILURE
-    ts3.bar = 2
-    ts3.baz1 = 3
-
-    assert ts3 == TestStruct(foo=1, status=Status.FAILURE, baz1=3)
+    assert remaining == b"\x03"
+    assert ts2 == TestStruct(foo=1, status=Status.FAILURE, bar=None, baz=2)
 
 
 def test_struct_field_invalid_dependencies():
@@ -285,7 +226,7 @@ def test_struct_field_invalid_dependencies():
     assert len(ts3.assigned_fields()) == 1
 
 
-def test_struct_optional_dependencies():
+def test_struct_multiple_requires():
     class StrictStatus(t.enum8):
         SUCCESS = 0x00
         FAILURE = 0x01
@@ -296,15 +237,13 @@ def test_struct_optional_dependencies():
     class TestStruct(t.Struct):
         foo: t.uint8_t
 
-        # The first pair of (status, value) is not optional
         status1: StrictStatus
         value1: t.uint8_t = t.StructField(
             requires=lambda s: s.status1 == StrictStatus.SUCCESS
         )
 
-        # The second one is
-        status2: typing.Optional[StrictStatus]
-        value2: typing.Optional[t.uint8_t] = t.StructField(
+        status2: StrictStatus
+        value2: t.uint8_t = t.StructField(
             requires=lambda s: s.status2 == StrictStatus.SUCCESS
         )
 
@@ -359,24 +298,13 @@ def test_struct_optional_dependencies():
         foo=0, status1=StrictStatus.FAILURE, status2=StrictStatus.FAILURE
     )
 
-    # status1: failure
-    ts4, remaining = TestStruct.deserialize(b"\x00" + StrictStatus.FAILURE.serialize())
-    assert not remaining
-    assert ts4 == TestStruct(foo=0, status1=StrictStatus.FAILURE)
+    with pytest.raises(ValueError):
+        # status1: failure
+        TestStruct.deserialize(b"\x00" + StrictStatus.FAILURE.serialize())
 
-    # status1: failure, invalid trailing
-    ts5, remaining = TestStruct.deserialize(
-        b"\x00" + StrictStatus.FAILURE.serialize() + b"\xff"
-    )
-    assert remaining == b"\xff"
-    assert ts5 == TestStruct(foo=0, status1=StrictStatus.FAILURE)
-
-    # status1: success, invalid trailing
-    ts6, remaining = TestStruct.deserialize(
-        b"\x00" + StrictStatus.SUCCESS.serialize() + b"\x01\xff"
-    )
-    assert remaining == b"\xff"
-    assert ts6 == TestStruct(foo=0, status1=StrictStatus.SUCCESS, value1=1)
+    with pytest.raises(ValueError):
+        # status1: failure, invalid trailing
+        TestStruct.deserialize(b"\x00" + StrictStatus.FAILURE.serialize() + b"\xff")
 
 
 def test_struct_equality():
@@ -416,8 +344,8 @@ def test_struct_subclass_extension(data):
         foo: t.uint8_t
         bar: t.uint8_t = t.StructField(requires=lambda s: s.foo == 0x01)
 
-    assert len(TestStructSubclass.fields()) == 2
-    assert len(TestCombinedStruct.fields()) == 2
+    assert len(TestStructSubclass.fields) == 2
+    assert len(TestCombinedStruct.fields) == 2
 
     error1 = None
     error2 = None
@@ -499,19 +427,31 @@ def test_uppercase_field():
         Depth: t.uint8_t
         LQI: t.uint8_t  # this should not be a constant
 
-    assert len(Neighbor.fields()) == 7
-    assert Neighbor.fields()[6].name == "LQI"
-    assert Neighbor.fields()[6].type == t.uint8_t
+    assert len(Neighbor.fields) == 7
+    assert Neighbor.fields[6].name == "LQI"
+    assert Neighbor.fields[6].type == t.uint8_t
 
 
 def test_non_annotated_field():
-    class TestStruct(t.Struct):
-        field1: t.uint8_t
-        field2 = t.StructField(type=t.uint16_t)
+    with pytest.raises(TypeError):
 
-    assert len(TestStruct.fields()) == 2
-    assert TestStruct.fields()[0] == t.StructField(name="field1", type=t.uint8_t)
-    assert TestStruct.fields()[1] == t.StructField(name="field2", type=t.uint16_t)
+        class TestStruct1(t.Struct):
+            field1: t.uint8_t
+
+            # Python does not provide any simple way to get the order of both defined
+            # class attributes and annotations. This is bad.
+            field2 = t.StructField(type=t.uint16_t)
+            field3: t.uint32_t
+
+    class TestStruct2(t.Struct):
+        field1: t.uint8_t
+        field2: None = t.StructField(type=t.uint16_t)
+        field3: t.uint32_t
+
+    assert len(TestStruct2.fields) == 3
+    assert TestStruct2.fields[0] == t.StructField(name="field1", type=t.uint8_t)
+    assert TestStruct2.fields[1] == t.StructField(name="field2", type=t.uint16_t)
+    assert TestStruct2.fields[2] == t.StructField(name="field3", type=t.uint32_t)
 
 
 def test_allowed_non_fields():
@@ -539,7 +479,7 @@ def test_allowed_non_fields():
         CONSTANT1: t.uint8_t = "CONSTANT1"
         CONSTANT2 = "CONSTANT2"
 
-    assert len(TestStruct.fields()) == 1
+    assert len(TestStruct.fields) == 1
     assert TestStruct.CONSTANT1 == "CONSTANT1"
     assert TestStruct.CONSTANT2 == "CONSTANT2"
     assert TestStruct().prop == "prop"
@@ -550,3 +490,48 @@ def test_allowed_non_fields():
     instance = TestStruct()
     instance.prop = None
     assert instance.prop == "prop"
+
+
+def test_as_dict_empty_fields():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+        bar: t.uint8_t = t.StructField(requires=lambda s: s.foo == 0x01)
+
+    assert TestStruct(foo=1, bar=2).as_dict() == {"foo": 1, "bar": 2}
+    assert TestStruct(foo=0, bar=2).as_dict() == {"foo": 0, "bar": 2}
+    assert TestStruct(foo=0).as_dict() == {"foo": 0, "bar": None}
+
+    # Same thing as above but assigned as attributes
+    ts1 = TestStruct()
+    ts1.foo = 1
+    ts1.bar = 2
+    assert ts1.as_dict() == {"foo": 1, "bar": 2}
+
+    ts2 = TestStruct()
+    ts2.foo = 0
+    ts2.bar = 2
+    assert ts2.as_dict() == {"foo": 0, "bar": 2}
+
+    ts3 = TestStruct()
+    ts3.foo = 0
+    assert ts3.as_dict() == {"foo": 0, "bar": None}
+
+
+def test_no_types():
+    with pytest.raises(TypeError):
+
+        class TestBadStruct(t.Struct):
+            field: None = t.StructField()
+
+
+def test_repr():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+
+    assert repr(TestStruct(foo=1)) == "TestStruct(foo=1)"
+    assert repr(TestStruct(foo=None)) == "TestStruct()"
+
+    # Invalid values still work
+    ts = TestStruct()
+    ts.foo = 1j
+    assert repr(ts) == "TestStruct(foo=1j)"

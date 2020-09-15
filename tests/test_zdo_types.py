@@ -86,7 +86,7 @@ def test_node_descriptor():
 
 
 def test_node_descriptor_is_valid():
-    for field in types.NodeDescriptor.fields():
+    for field in types.NodeDescriptor.fields:
         nd = types.NodeDescriptor(0, 1, 2, 0x0303, 0x04, 0x0505, 0x0606, 0x0707, 0x08)
         assert nd.is_valid is True
         setattr(nd, field.name, None)

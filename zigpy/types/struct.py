@@ -12,7 +12,7 @@ class ListSubclass(list):
 
 class Struct:
     @classmethod
-    def real_cls(cls) -> type:
+    def _real_cls(cls) -> type:
         # The "Optional" subclass is dynamically created and breaks types.
         # We have to use a little introspection to find our real class.
         return next(c for c in cls.__mro__ if c.__name__ != "Optional")
@@ -22,7 +22,7 @@ class Struct:
         # First get our proper subclasses
         subclasses = []
 
-        for subcls in cls.real_cls().__mro__:
+        for subcls in cls._real_cls().__mro__:
             if subcls is Struct:
                 break
 
@@ -40,16 +40,16 @@ class Struct:
     def __init_subclass__(cls):
         super().__init_subclass__()
 
-        # Explicitly check for old-style structs and fail very early
+        # Explicitly check for old-style structs
         if hasattr(cls, "_fields"):
             raise TypeError(
                 "Struct subclasses do not use `_fields` anymore."
                 " Use class attributes with type annotations."
             )
 
-        # We generate fields up here to fail early (and cache it)
-        real_cls = cls.real_cls()
-        fields = real_cls.fields()
+        # We generate fields up here to fail early and cache it
+        real_cls = cls._real_cls()
+        cls.fields = real_cls._get_fields()
 
         # We dynamically create our subclass's `__new__` method
         def __new__(cls, *args, **kwargs) -> "Struct":
@@ -72,7 +72,7 @@ class Struct:
                         default=None,
                         annotation=f.type,
                     )
-                    for f in real_cls.fields()
+                    for f in cls.fields
                 ]
             )
 
@@ -81,20 +81,10 @@ class Struct:
 
             instance = super().__new__(real_cls)
 
-            # Set and convert the attributes to their respective types
+            # Set each attributes on the instance
             for name, value in bound.arguments.items():
-                field = getattr(fields, name)
-
-                if value is not None:
-                    try:
-                        value = field.concrete_type(value)
-                    except Exception as e:
-                        raise ValueError(
-                            f"Failed to convert {name}={value!r} from type"
-                            f" {type(value)} to {field.concrete_type}"
-                        ) from e
-
-                setattr(instance, name, value)
+                field = getattr(cls.fields, name)
+                setattr(instance, name, field._convert_type(value))
 
             return instance
 
@@ -102,25 +92,35 @@ class Struct:
         cls.__new__ = __new__
 
     @classmethod
-    def fields(cls) -> typing.List["StructField"]:
+    def _get_fields(cls) -> typing.List["StructField"]:
         fields = ListSubclass()
-        seen_optional = False
 
         # We need both to throw type errors in case a field is not annotated
-        annotations = cls.real_cls()._annotations()
-        variables = vars(cls.real_cls())
+        annotations = cls._real_cls()._annotations()
 
-        # `set(annotations) | set(variables)` doesn't preserve order, which we need
-        for name in list(annotations) + [v for v in variables if v not in annotations]:
+        # Make sure every `StructField` is annotated
+        for name in vars(cls._real_cls()):
+            value = getattr(cls, name)
+
+            if isinstance(value, StructField) and name not in annotations:
+                raise TypeError(
+                    f"Field {name!r}={value} must have some annotation."
+                    f" Use `None` if it is specified in the `StructField`."
+                )
+
+        # XXX: Python doesn't provide a simple way to get all defined attributes *and*
+        #      order them with respect to annotation-only fields.
+        #      Every struct field must be annotated.
+        for name, annotation in annotations.items():
             field = getattr(cls, name, StructField())
+
             if not isinstance(field, StructField):
                 continue
 
             field = field.replace(name=name)
 
-            if name in annotations:
-                annotation = annotations[name]
-
+            # An annotation of `None` means to use the field's type
+            if annotation is not None:
                 if field.type is not None and field.type != annotation:
                     raise TypeError(
                         f"Field {name!r} type annotation conflicts with provided type:"
@@ -128,14 +128,8 @@ class Struct:
                     )
 
                 field = field.replace(type=annotation)
-
-            if field.optional:
-                seen_optional = True
-
-            if seen_optional and not field.optional:
-                raise TypeError(
-                    f"No required fields can come after optional fields: {field!r}"
-                )
+            elif field.type is None:
+                raise TypeError(f"Field {name!r} has no type")
 
             fields.append(field)
             setattr(fields, field.name, field)
@@ -145,19 +139,20 @@ class Struct:
     def assigned_fields(self, *, strict=False) -> typing.List["StructField"]:
         assigned_fields = ListSubclass()
 
-        for field in self.fields():
+        for field in self.fields:
             value = getattr(self, field.name)
 
             # Ignore fields that aren't required
             if field.requires is not None and not field.requires(self):
                 continue
 
-            # Missing non-optional required fields cause an error if strict
+            # Missing fields cause an error if strict
             if value is None:
-                if field.optional or not strict:
-                    continue
-
-                raise ValueError(f"Value for field {field.name} is required")
+                if strict:
+                    raise ValueError(f"Value for field {field.name!r} is required")
+                else:
+                    pass  # Python bug, the following `continue` is never covered
+                    continue  # pragma: no cover
 
             assigned_fields.append((field, value))
             setattr(assigned_fields, field.name, (field, value))
@@ -165,29 +160,22 @@ class Struct:
         return assigned_fields
 
     def as_dict(self) -> typing.Dict[str, typing.Any]:
-        return {f.name: v for f, v in self.assigned_fields()}
+        return {f.name: getattr(self, f.name) for f in self.fields}
 
     def serialize(self) -> bytes:
         return b"".join(
-            f.concrete_type(v).serialize() for f, v in self.assigned_fields(strict=True)
+            f._convert_type(v).serialize() for f, v in self.assigned_fields(strict=True)
         )
 
     @classmethod
     def deserialize(cls, data: bytes) -> "Struct":
         instance = cls()
 
-        for field in cls.fields():
+        for field in cls.fields:
             if field.requires is not None and not field.requires(instance):
                 continue
 
-            try:
-                value, data = field.concrete_type.deserialize(data)
-            except (ValueError, AssertionError):
-                if field.optional:
-                    break
-
-                raise
-
+            value, data = field.type.deserialize(data)
             setattr(instance, field.name, value)
 
         return instance, data
@@ -205,7 +193,7 @@ class Struct:
         return self.as_dict() == other.as_dict()
 
     def __repr__(self) -> str:
-        kwargs = ", ".join([f"{k}={v!r}" for k, v in self.as_dict().items()])
+        kwargs = ", ".join([f"{f.name}={v!r}" for f, v in self.assigned_fields()])
         return f"{type(self).__name__}({kwargs})"
 
 
@@ -216,30 +204,17 @@ class StructField:
 
     requires: typing.Optional[typing.Callable[[Struct], bool]] = None
 
-    def __post_init__(self):
-        # Fail to initialize if the concrete type is invalid
-        self.concrete_type
-
-    @property
-    def optional(self) -> bool:
-        # typing.Optional[Foo] is really typing.Union[Foo, None]
-        if getattr(self.type, "__origin__", None) is not typing.Union:
-            return False
-
-        # I can't think of a case where this is ever False but it's best to be explicit
-        return NoneType in self.type.__args__
-
-    @property
-    def concrete_type(self) -> type:
-        if getattr(self.type, "__origin__", None) is not typing.Union:
-            return self.type
-
-        types = set(self.type.__args__) - {NoneType}
-
-        if len(types) > 1:
-            raise TypeError(f"Struct field cannot have more than one concrete type")
-
-        return tuple(types)[0]
-
     def replace(self, **kwargs) -> "StructField":
         return dataclasses.replace(self, **kwargs)
+
+    def _convert_type(self, value):
+        if value is None or isinstance(value, self.type):
+            return value
+
+        try:
+            return self.type(value)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to convert {self.name}={value!r} from type"
+                f" {type(value)} to {self.type}"
+            ) from e
