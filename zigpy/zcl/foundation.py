@@ -368,7 +368,7 @@ class ConfigureReportingResponse(t.List[ConfigureReportingResponseRecord]):
 
     def serialize(self):
         if not self:
-            raise ValueError(f"Cannot serialize empty list")
+            raise ValueError("Cannot serialize empty list")
 
         failed = [record for record in self if record.status != Status.SUCCESS]
 

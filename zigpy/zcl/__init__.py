@@ -609,4 +609,4 @@ class ClusterPersistingListener:
 
 
 # Import to populate the registry
-from . import clusters  # noqa: F401, F402, isort:skip
+from . import clusters  # noqa: F401, E402, isort:skip
