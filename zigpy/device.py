@@ -7,6 +7,7 @@ from typing import Dict, Optional, Union
 
 import zigpy.endpoint
 import zigpy.exceptions
+import zigpy.neighbor
 from zigpy.types import NWK, BroadcastAddress, Relays
 import zigpy.util
 import zigpy.zcl.foundation as foundation
@@ -52,6 +53,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._manufacturer = None
         self._model = None
         self.node_desc = zdo.types.NodeDescriptor()
+        self.neighbors = zigpy.neighbor.Neighbors(self)
         self._node_handle = None
         self._pending = zigpy.util.Requests()
         self._relays = None

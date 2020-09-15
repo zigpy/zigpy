@@ -61,7 +61,6 @@ def mock_dev_init(status: Status):
     def _initialize(self):
         self.status = status
         self.initializing = False
-        self._application.device_initialized(self)
         self.node_desc = zdo_t.NodeDescriptor(0, 1, 2, 3, 4, 5, 6, 7, 8)
 
     return _initialize
@@ -416,3 +415,73 @@ async def test_attribute_update(tmpdir, status, success):
         assert ieee not in app2.devices
 
     os.unlink(db)
+
+
+@mock.patch.object(
+    Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
+)
+async def test_neighbors(tmpdir):
+    """Test neighbor loading."""
+
+    ext_pid = t.EUI64.convert("aa:bb:cc:dd:ee:ff:01:02")
+    ieee_1 = make_ieee(1)
+    nwk_1 = 0x1111
+    nei_1 = zdo_t.Neighbor(ext_pid, ieee_1, nwk_1, 0x16, 0, 15, 250)
+
+    ieee_2 = make_ieee(2)
+    nwk_2 = 0x2222
+    nei_2 = zdo_t.Neighbor(ext_pid, ieee_2, nwk_2, 0x25, 0, 15, 250)
+
+    ieee_3 = make_ieee(3)
+    nwk_3 = 0x3333
+    nei_3 = zdo_t.Neighbor(ext_pid, ieee_3, nwk_3, 0x25, 0, 15, 250)
+
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+    app.handle_join(nwk_1, ieee_1, 0)
+
+    dev_1 = app.get_device(ieee_1)
+    dev_1.node_desc = zdo_t.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
+    app.device_initialized(dev_1)
+
+    # 2nd device
+    app.handle_join(nwk_2, ieee_2, 0)
+    dev_2 = app.get_device(ieee_2)
+    dev_2.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4476, 82, 82, 0, 82, 0)
+    app.device_initialized(dev_2)
+
+    neighbors = zdo_t.Neighbors(2, 0, [nei_2, nei_3])
+    patch = mock.patch.object(
+        dev_1.zdo,
+        "request",
+        new=CoroutineMock(return_value=(zdo_t.Status.SUCCESS, neighbors)),
+    )
+    with patch:
+        res = await dev_1.neighbors.scan()
+        assert res
+
+    neighbors = zdo_t.Neighbors(2, 0, [nei_1, nei_3])
+    patch = mock.patch.object(
+        dev_2.zdo,
+        "request",
+        new=CoroutineMock(return_value=(zdo_t.Status.SUCCESS, neighbors)),
+    )
+    with patch:
+        res = await dev_2.neighbors.scan()
+        assert res
+
+    del dev_1, dev_2
+    # Everything should've been saved - check that it re-loads
+    app2 = await make_app(db)
+    dev_1 = app2.get_device(ieee_1)
+    dev_2 = app2.get_device(ieee_2)
+
+    assert len(dev_1.neighbors) == 2
+    assert dev_1.neighbors[0].device is dev_2
+    assert dev_1.neighbors[1].device is None
+    assert dev_1.neighbors[1].neighbor.ieee == ieee_3
+
+    assert len(dev_2.neighbors.neighbors) == 2
+    assert dev_2.neighbors[0].device is dev_1
+    assert dev_2.neighbors[1].device is None
+    assert dev_2.neighbors[1].neighbor.ieee == ieee_3

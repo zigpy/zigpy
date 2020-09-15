@@ -312,3 +312,106 @@ def test_status_enum():
     assert status.name not in nwk_names
     assert status.name not in mac_names
     assert status.name == "undefined_0xff"
+
+
+def test_neighbors():
+    """Test ZDO neignbors struct."""
+
+    data = (
+        b"\x05\x00\x03\xa2\xaf\x8cY\xf5\x03\x96\xb4:p\x07\xfe\xffW\xb4\x14\xd1"
+        b"\xb7\x12\x01\x01H\xa2\xaf\x8cY\xf5\x03\x96\xb4X\xb76\x02\x00\x8d\x15\x00=X"
+        b"\x12\x01\x01:\xa2\xaf\x8cY\xf5\x03\x96\xb4\x9b-0\xfe\xff\xbd\x1b\xec$\xcb\x12"
+        b"\x01\x01F"
+    )
+    extra = b"\x55\xaaextra\x00"
+    neigbours, rest = types.Neighbors().deserialize(data + extra)
+    assert rest == extra
+
+
+def test_neighbor():
+    """Test neighbor struct."""
+    data = b"\xa2\xaf\x8cY\xf5\x03\x96\xb4:p\x07\xfe\xffW\xb4\x14\xd1\xb7\x12\x01\x01H"
+    extra = b"\x55\xaaextra\x00"
+
+    neighbor, rest = types.Neighbor.deserialize(data + extra)
+    assert rest == extra
+
+    assert str(neighbor.extended_pan_id) == "b4:96:03:f5:59:8c:af:a2"
+    assert str(neighbor.ieee) == "14:b4:57:ff:fe:07:70:3a"
+    assert neighbor.nwk == 0xB7D1
+    assert neighbor.struct.packed == 18
+    assert neighbor.struct.device_type == types.Neighbor.DeviceType.EndDevice
+    assert neighbor.struct.relationship == types.Neighbor.RelationShip.Child
+    assert neighbor.struct.rx_on_when_idle == types.Neighbor.RxOnWhenIdle.Off
+    assert neighbor.permit_joining == 1
+    assert neighbor.depth == 1
+    assert neighbor.lqi == 72
+
+
+def test_neighbor_struct():
+    """Test neighbor packed struct."""
+
+    extra = b"\x55\xaaextra\x00"
+
+    struct, rest = types._NeighborPackStruct.deserialize(b"\x12" + extra)
+    assert rest == extra
+
+
+def test_neighbor_struct_device_type():
+    """Test neighbor packed struct device_type."""
+
+    for dev_type in range(0, 3):
+        struct = types._NeighborPackStruct()
+        assert struct.device_type is None
+        struct.device_type = dev_type
+        assert struct.device_type == dev_type
+
+    for i in range(0, 127):
+        struct = types._NeighborPackStruct(i)
+        orig_rx = struct.rx_on_when_idle
+        orig_rel = struct.relationship
+        for dev_type in range(0, 3):
+            struct.device_type = dev_type
+            assert struct.rx_on_when_idle == orig_rx
+            assert struct.relationship == orig_rel
+            assert struct.device_type == dev_type
+
+
+def test_neighbor_struct_rx_on_when_idle():
+    """Test neighbor packed struct rx_on_when_idle."""
+
+    for rx_on_when_idle in range(0, 3):
+        struct = types._NeighborPackStruct()
+        assert struct.rx_on_when_idle is None
+        struct.rx_on_when_idle = rx_on_when_idle
+        assert struct.rx_on_when_idle == rx_on_when_idle
+
+    for i in range(0, 127):
+        struct = types._NeighborPackStruct(i)
+        orig_dev_type = struct.device_type
+        orig_rel = struct.relationship
+        for rx_on_when_idle in range(0, 3):
+            struct.rx_on_when_idle = rx_on_when_idle
+            assert struct.device_type == orig_dev_type
+            assert struct.relationship == orig_rel
+            assert struct.rx_on_when_idle == rx_on_when_idle
+
+
+def test_neighbor_struct_relationship():
+    """Test neighbor packed struct relationship."""
+
+    for relationship in range(0, 7):
+        struct = types._NeighborPackStruct()
+        assert struct.relationship is None
+        struct.relationship = relationship
+        assert struct.relationship == relationship
+
+    for i in range(0, 127):
+        struct = types._NeighborPackStruct(i)
+        orig_dev_type = struct.device_type
+        orig_rx = struct.rx_on_when_idle
+        for relationship in range(0, 7):
+            struct.relationship = relationship
+            assert struct.device_type == orig_dev_type
+            assert struct.rx_on_when_idle == orig_rx
+            assert struct.relationship == relationship

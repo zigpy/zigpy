@@ -9,6 +9,7 @@ import zigpy.device
 import zigpy.group
 import zigpy.ota
 import zigpy.quirks
+import zigpy.topology
 import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
@@ -26,6 +27,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def __init__(self, config: Dict):
         self._send_sequence = 0
         self.devices: Dict[t.EUI64, zigpy.device.Device] = {}
+        self.topology = None
         self._listeners = {}
         self._channel = None
         self._channels = None
@@ -60,6 +62,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         app = cls(config)
         await app._load_db()
         await app.ota.initialize()
+        app.topology = zigpy.topology.Topology.new(app)
         if start_radio:
             try:
                 await app.startup(auto_form)
@@ -120,6 +123,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.devices[device.ieee] = device
         if self._dblistener is not None:
             device.add_context_listener(self._dblistener)
+            device.neighbors.add_context_listener(self._dblistener)
         self.listener_event("device_initialized", device)
 
     async def remove(self, ieee):
