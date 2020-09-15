@@ -5,6 +5,7 @@ import uuid
 
 from asynctest import CoroutineMock, patch
 import pytest
+
 from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA, CONF_OTA_LEDVANCE
 import zigpy.ota
 import zigpy.ota.image

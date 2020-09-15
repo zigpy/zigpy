@@ -6,6 +6,7 @@ import time
 
 from asynctest import CoroutineMock, mock
 import pytest
+
 import zigpy.config
 import zigpy.neighbor
 import zigpy.topology

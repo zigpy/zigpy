@@ -3,6 +3,7 @@ import logging
 
 from asynctest import CoroutineMock, mock
 import pytest
+
 from zigpy import device, endpoint
 import zigpy.application
 import zigpy.exceptions

@@ -1,5 +1,6 @@
 from asynctest import CoroutineMock, mock
 import pytest
+
 from zigpy.application import ControllerApplication
 import zigpy.device
 import zigpy.endpoint

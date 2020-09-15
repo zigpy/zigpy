@@ -4,6 +4,7 @@ import asynctest
 from asynctest import CoroutineMock, mock
 import pytest
 import voluptuous as vol
+
 from zigpy import device
 import zigpy.application
 from zigpy.config import (

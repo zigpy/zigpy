@@ -3,6 +3,7 @@ import re
 
 from asynctest import mock
 import pytest
+
 import zigpy.endpoint
 import zigpy.ota as ota
 import zigpy.types as types

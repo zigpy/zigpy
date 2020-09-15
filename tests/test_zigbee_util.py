@@ -4,6 +4,7 @@ import sys
 
 from asynctest import CoroutineMock, mock
 import pytest
+
 from zigpy import util
 from zigpy.exceptions import ControllerException
 
