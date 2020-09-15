@@ -1,6 +1,5 @@
 import os
 
-from asynctest import CoroutineMock, mock
 import pytest
 
 from zigpy import profiles
@@ -13,6 +12,8 @@ import zigpy.types as t
 import zigpy.zcl
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
+
+from tests.async_mock import AsyncMock, MagicMock, patch
 
 
 async def make_app(database_file):
@@ -43,7 +44,7 @@ async def make_app(database_file):
         async def probe(self, config):
             return True
 
-    with mock.patch("zigpy.ota.OTA.initialize", CoroutineMock()):
+    with patch("zigpy.ota.OTA.initialize", AsyncMock()):
         app = await App.new(ZIGPY_SCHEMA({CONF_DATABASE: database_file}))
     return app
 
@@ -74,14 +75,14 @@ def fake_get_device(device):
 
 
 async def test_no_database(tmpdir):
-    with mock.patch("zigpy.appdb.PersistingListener") as db_mock:
-        db_mock.return_value.load.side_effect = CoroutineMock()
+    with patch("zigpy.appdb.PersistingListener") as db_mock:
+        db_mock.return_value.load.side_effect = AsyncMock()
         await make_app(None)
     assert db_mock.return_value.load.call_count == 0
 
     db = os.path.join(str(tmpdir), "test.db")
-    with mock.patch("zigpy.appdb.PersistingListener") as db_mock:
-        db_mock.return_value.load.side_effect = CoroutineMock()
+    with patch("zigpy.appdb.PersistingListener") as db_mock:
+        db_mock.return_value.load.side_effect = AsyncMock()
         await make_app(db)
     assert db_mock.return_value.load.call_count == 1
 
@@ -125,7 +126,7 @@ async def test_database(tmpdir, monkeypatch):
     app.device_initialized(dev)
     ep = dev.add_endpoint(1)
     ep.profile_id = 65535
-    with mock.patch("zigpy.quirks.get_device", fake_get_device):
+    with patch("zigpy.quirks.get_device", fake_get_device):
         app.device_initialized(dev)
     assert isinstance(app.get_device(custom_ieee), FakeCustomDevice)
     assert isinstance(app.get_device(custom_ieee), CustomDevice)
@@ -134,7 +135,7 @@ async def test_database(tmpdir, monkeypatch):
     dev.relays = relays_2
 
     # Everything should've been saved - check that it re-loads
-    with mock.patch("zigpy.quirks.get_device", fake_get_device):
+    with patch("zigpy.quirks.get_device", fake_get_device):
         app2 = await make_app(db)
     dev = app2.get_device(ieee)
     assert dev.endpoints[1].device_type == profiles.zha.DeviceType.PUMP
@@ -172,12 +173,12 @@ async def test_database(tmpdir, monkeypatch):
     os.unlink(db)
 
 
-@mock.patch("zigpy.device.Device.schedule_group_membership_scan", mock.MagicMock())
+@patch("zigpy.device.Device.schedule_group_membership_scan", MagicMock())
 async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
     ieee = make_ieee()
-    with mock.patch(
+    with patch(
         "zigpy.device.Device.schedule_initialize",
         new=mock_dev_init(Status.ENDPOINTS_INIT),
     ):
@@ -260,7 +261,7 @@ async def test_node_descriptor_updated(tmpdir, status, success):
     db = os.path.join(str(tmpdir), "test_nd.db")
     app = await make_app(db)
     nd_ieee = make_ieee(2)
-    with mock.patch.object(Device, "schedule_initialize", new=mock_dev_init(status)):
+    with patch.object(Device, "schedule_initialize", new=mock_dev_init(status)):
         app.handle_join(299, nd_ieee, 0)
 
     dev = app.get_device(nd_ieee)
@@ -277,7 +278,7 @@ async def test_node_descriptor_updated(tmpdir, status, success):
         dev.node_desc = node_desc
         return node_desc
 
-    dev.get_node_descriptor = mock.MagicMock()
+    dev.get_node_descriptor = MagicMock()
     dev.get_node_descriptor.side_effect = mock_get_node_descriptor
     await dev.refresh_node_descriptor()
 
@@ -386,9 +387,7 @@ async def test_attribute_update(tmpdir, status, success):
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
     ieee = make_ieee()
-    with mock.patch(
-        "zigpy.device.Device.schedule_initialize", new=mock_dev_init(status)
-    ):
+    with patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(status)):
         app.handle_join(99, ieee, 0)
 
     test_manufacturer = "Test Manufacturer"
@@ -418,9 +417,7 @@ async def test_attribute_update(tmpdir, status, success):
     os.unlink(db)
 
 
-@mock.patch.object(
-    Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
-)
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT))
 async def test_neighbors(tmpdir):
     """Test neighbor loading."""
 
@@ -452,22 +449,22 @@ async def test_neighbors(tmpdir):
     app.device_initialized(dev_2)
 
     neighbors = zdo_t.Neighbors(2, 0, [nei_2, nei_3])
-    patch = mock.patch.object(
+    p1 = patch.object(
         dev_1.zdo,
         "request",
-        new=CoroutineMock(return_value=(zdo_t.Status.SUCCESS, neighbors)),
+        new=AsyncMock(return_value=(zdo_t.Status.SUCCESS, neighbors)),
     )
-    with patch:
+    with p1:
         res = await dev_1.neighbors.scan()
         assert res
 
     neighbors = zdo_t.Neighbors(2, 0, [nei_1, nei_3])
-    patch = mock.patch.object(
+    p1 = patch.object(
         dev_2.zdo,
         "request",
-        new=CoroutineMock(return_value=(zdo_t.Status.SUCCESS, neighbors)),
+        new=AsyncMock(return_value=(zdo_t.Status.SUCCESS, neighbors)),
     )
-    with patch:
+    with p1:
         res = await dev_2.neighbors.scan()
         assert res
 
