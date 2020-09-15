@@ -4,48 +4,49 @@ import asyncio
 import logging
 import time
 
-from asynctest import CoroutineMock, mock
 import pytest
 
 import zigpy.config
 import zigpy.neighbor
 import zigpy.topology
 
+from .async_mock import AsyncMock, MagicMock, patch, sentinel
+
 
 @pytest.fixture
 def device_1():
-    dev = mock.MagicMock()
-    dev.ieee = mock.sentinel.ieee_1
+    dev = MagicMock()
+    dev.ieee = sentinel.ieee_1
     dev.node_desc.is_end_device = False
     dev.nwk = 0x1111
-    dev.neighbors.scan = CoroutineMock()
+    dev.neighbors.scan = AsyncMock()
     return dev
 
 
 @pytest.fixture
 def device_2():
-    dev = mock.MagicMock()
-    dev.ieee = mock.sentinel.ieee_2
+    dev = MagicMock()
+    dev.ieee = sentinel.ieee_2
     dev.node_desc.is_end_device = False
     dev.nwk = 0x2222
-    dev.neighbors.scan = CoroutineMock()
+    dev.neighbors.scan = AsyncMock()
     return dev
 
 
 @pytest.fixture
 def device_3():
-    dev = mock.MagicMock()
-    dev.ieee = mock.sentinel.ieee_3
+    dev = MagicMock()
+    dev.ieee = sentinel.ieee_3
     dev.node_desc.is_end_device = False
     dev.nwk = 0x3333
-    dev.neighbors.scan = CoroutineMock()
+    dev.neighbors.scan = AsyncMock()
     dev.neighbors.supported = False
     return dev
 
 
 @pytest.fixture
 def topology_f(device_1, device_2, device_3):
-    app = mock.MagicMock()
+    app = MagicMock()
     app.devices = {
         device_1.ieee: device_1,
         device_2.ieee: device_2,
@@ -53,16 +54,16 @@ def topology_f(device_1, device_2, device_3):
     }
     app.config = {zigpy.config.CONF_TOPO_SCAN_PERIOD: 0}
 
-    with mock.patch("zigpy.topology.DELAY_INTER_DEVICE", 0):
+    with patch("zigpy.topology.DELAY_INTER_DEVICE", 0):
         yield zigpy.topology.Topology(app)
 
 
 async def test_new():
     """Test creating new instance."""
 
-    app = mock.MagicMock()
+    app = MagicMock()
     app.config = {zigpy.config.CONF_TOPO_SCAN_PERIOD: 0}
-    with mock.patch("zigpy.topology.Topology.scan", new=CoroutineMock()) as scan:
+    with patch("zigpy.topology.Topology.scan", new=AsyncMock()) as scan:
         zigpy.topology.Topology.new(app)
         await asyncio.sleep(0)
         await asyncio.sleep(0)
