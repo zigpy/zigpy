@@ -267,6 +267,8 @@ async def test_ikea_refresh_list(mock_get, ikea_prov, ikea_image_with_version):
             ]
         ]
     )
+    mock_get.return_value.__aenter__.return_value.status = 202
+    mock_get.return_value.__aenter__.return_value.reason = "OK"
 
     await ikea_prov.refresh_firmware_list()
     assert mock_get.call_count == 1
@@ -289,9 +291,25 @@ async def test_ikea_refresh_list_locked(mock_get, ikea_prov, ikea_image_with_ver
     await ikea_prov._locks[ota_p.LOCK_REFRESH].acquire()
 
     mock_get.return_value.__aenter__.return_value.json = AsyncMock(side_effect=[[]])
+    mock_get.return_value.__aenter__.return_value.status = 434
+    mock_get.return_value.__aenter__.return_value.reason = "UNK"
 
     await ikea_prov.refresh_firmware_list()
     assert mock_get.call_count == 0
+
+
+@patch("aiohttp.ClientSession.get")
+async def test_ikea_refresh_list_failed(mock_get, ikea_prov):
+
+    mock_get.return_value.__aenter__.return_value.json = AsyncMock(side_effect=[[]])
+
+    mock_get.return_value.__aenter__.return_value.status = 434
+    mock_get.return_value.__aenter__.return_value.reason = "UNK"
+
+    with patch.object(ikea_prov, "update_expiration") as update_exp:
+        await ikea_prov.refresh_firmware_list()
+    assert mock_get.call_count == 1
+    assert update_exp.call_count == 0
 
 
 @patch("aiohttp.ClientSession.get")
@@ -678,6 +696,8 @@ async def test_ledvance_refresh_list(
             }
         ]
     )
+    mock_get.return_value.__aenter__.return_value.status = 202
+    mock_get.return_value.__aenter__.return_value.reason = "OK"
 
     await ledvance_prov.refresh_firmware_list()
     assert mock_get.call_count == 1
@@ -706,6 +726,19 @@ async def test_ledvance_refresh_list_locked(
 
     await ledvance_prov.refresh_firmware_list()
     assert mock_get.call_count == 0
+
+
+@patch("aiohttp.ClientSession.get")
+async def test_ledvance_refresh_list_failed(mock_get, ledvance_prov):
+
+    mock_get.return_value.__aenter__.return_value.json = AsyncMock(side_effect=[[]])
+    mock_get.return_value.__aenter__.return_value.status = 434
+    mock_get.return_value.__aenter__.return_value.reason = "UNK"
+
+    with patch.object(ledvance_prov, "update_expiration") as update_exp:
+        await ledvance_prov.refresh_firmware_list()
+    assert mock_get.call_count == 1
+    assert update_exp.call_count == 0
 
 
 @patch("aiohttp.ClientSession.get")
