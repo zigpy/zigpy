@@ -215,9 +215,9 @@ def test_group_cluster_from_cluster_name():
         zigpy.group.GroupCluster.from_attr(MagicMock(), "no_such_cluster")
 
 
-def test_group_ep_request(group_endpoint):
+async def test_group_ep_request(group_endpoint):
     assert group_endpoint.device is not None
-    group_endpoint.request(
+    await group_endpoint.request(
         sentinel.cluster,
         sentinel.seq,
         sentinel.data,
@@ -225,6 +225,7 @@ def test_group_ep_request(group_endpoint):
         extra_kwarg=sentinel.extra_kwarg,
     )
     assert group_endpoint.device.request.call_count == 1
+    assert group_endpoint.device.request.await_count == 1
     assert group_endpoint.device.request.call_args[0][1] is sentinel.cluster
     assert group_endpoint.device.request.call_args[0][2] is sentinel.seq
     assert group_endpoint.device.request.call_args[0][3] is sentinel.data
