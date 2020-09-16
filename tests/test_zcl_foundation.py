@@ -1,4 +1,5 @@
 import pytest
+
 import zigpy.types as t
 from zigpy.zcl import foundation
 

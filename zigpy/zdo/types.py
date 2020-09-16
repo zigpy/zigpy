@@ -57,7 +57,7 @@ class NodeDescriptor(t.Struct):
     def is_valid(self):
         """Return True if all fields were initialized."""
         non_empty_fields = [
-            getattr(self, field.name) is not None for field in self.fields()
+            getattr(self, field.name) is not None for field in self.fields
         ]
         return all(non_empty_fields)
 
@@ -162,24 +162,104 @@ class MultiAddress(t.Struct):
         return super().serialize()
 
 
+class _NeighborEnums:
+    """Types container."""
+
+    class DeviceType(t.enum8):
+        Coordinator = 0x0
+        Router = 0x1
+        EndDevice = 0x2
+        Unknown = 0x3
+
+    class RxOnWhenIdle(t.enum8):
+        Off = 0x0
+        On = 0x1
+        Unknown = 0x2
+
+    class Relationship(t.enum8):
+        Parent = 0x0
+        Child = 0x1
+        Sibling = 0x2
+        NoneOfTheAbove = 0x3
+        PreviousChild = 0x4
+
+
+class _NeighborPackStruct(t.Struct):
+    packed: t.uint8_t
+
+    @property
+    def device_type(self) -> typing.Optional[_NeighborEnums.DeviceType]:
+        """Return neighbor type."""
+        if self.packed is None:
+            return None
+        return _NeighborEnums.DeviceType(self.packed & 0x03)
+
+    @device_type.setter
+    def device_type(self, value: _NeighborEnums.DeviceType) -> None:
+        """Neighbor type setter."""
+        if self.packed is None:
+            self.packed = value
+        self.packed &= 0b0111_1100
+        self.packed |= value & 0x03
+
+    @property
+    def rx_on_when_idle(self) -> typing.Optional[_NeighborEnums.RxOnWhenIdle]:
+        """Return rx_on."""
+        if self.packed is None:
+            return None
+        return _NeighborEnums.RxOnWhenIdle((self.packed >> 2) & 0x03)
+
+    @rx_on_when_idle.setter
+    def rx_on_when_idle(self, value: _NeighborEnums.RxOnWhenIdle) -> None:
+        """Rx on when idle setter."""
+        if self.packed is None:
+            self.packed = value
+        self.packed &= 0b0111_0011
+        self.packed |= (value & 0x03) << 2
+
+    @property
+    def relationship(self) -> typing.Optional[_NeighborEnums.Relationship]:
+        """Return relationship."""
+        if self.packed is None:
+            return None
+        return _NeighborEnums.Relationship((self.packed >> 4) & 0x07)
+
+    @relationship.setter
+    def relationship(self, value: _NeighborEnums.Relationship) -> None:
+        """Relationship setter."""
+        if self.packed is None:
+            self.packed = value
+        self.packed &= 0b0000_1111
+        self.packed |= (value & 0x07) << 4
+
+
 class Neighbor(t.Struct):
     """Neighbor Descriptor"""
 
-    PanId: t.EUI64
-    IEEEAddr: t.EUI64
-    NWKAddr: t.NWK
-    NeighborType: t.uint8_t
-    PermitJoining: t.uint8_t
-    Depth: t.uint8_t
-    LQI: t.uint8_t
+    DeviceType = _NeighborEnums.DeviceType
+    RxOnWhenIdle = _NeighborEnums.RxOnWhenIdle
+    RelationShip = _NeighborEnums.Relationship
+
+    class PermitJoins(t.enum8):
+        NotAccepting = 0x0
+        Accepting = 0x1
+        Unknown = 0x2
+
+    extended_pan_id: t.ExtendedPanId
+    ieee: t.EUI64
+    nwk: t.NWK
+    struct: _NeighborPackStruct
+    permit_joining: PermitJoins
+    depth: t.uint8_t
+    lqi: t.uint8_t
 
 
 class Neighbors(t.Struct):
     """Mgmt_Lqi_rsp"""
 
-    Entries: t.uint8_t
-    StartIndex: t.uint8_t
-    NeighborTableList: t.LVList[Neighbor]
+    entries: t.uint8_t
+    start_index: t.uint8_t
+    neighbor_table_list: t.LVList[Neighbor]
 
 
 class Route(t.Struct):

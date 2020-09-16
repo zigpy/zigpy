@@ -1,9 +1,8 @@
 import asyncio
 
-import asynctest
-from asynctest import CoroutineMock, mock
 import pytest
 import voluptuous as vol
+
 from zigpy import device
 import zigpy.application
 from zigpy.config import (
@@ -18,10 +17,12 @@ from zigpy.exceptions import DeliveryError
 import zigpy.ota
 import zigpy.types as t
 
+from .async_mock import AsyncMock, MagicMock, patch, sentinel
+
 
 @pytest.fixture
-@asynctest.patch("zigpy.ota.OTA", asynctest.MagicMock(spec_set=zigpy.ota.OTA))
-@asynctest.patch("zigpy.device.Device._initialize", asynctest.CoroutineMock())
+@patch("zigpy.ota.OTA", MagicMock(spec_set=zigpy.ota.OTA))
+@patch("zigpy.device.Device._initialize", AsyncMock())
 def app():
     class App(zigpy.application.ControllerApplication):
         async def shutdown(self):
@@ -87,7 +88,7 @@ async def test_startup():
         await App({}).startup()
 
 
-@mock.patch("zigpy.ota.OTA", spec_set=zigpy.ota.OTA)
+@patch("zigpy.ota.OTA", spec_set=zigpy.ota.OTA)
 async def test_new_exception(ota_mock):
     class App(zigpy.application.ControllerApplication):
         async def shutdown(self):
@@ -116,10 +117,10 @@ async def test_new_exception(ota_mock):
         async def probe(self, config):
             return True
 
-    p1 = mock.patch.object(App, "_load_db", CoroutineMock())
-    p2 = mock.patch.object(App, "startup", CoroutineMock())
-    p3 = mock.patch.object(App, "shutdown", CoroutineMock())
-    ota_mock.return_value.initialize.side_effect = CoroutineMock()
+    p1 = patch.object(App, "_load_db", AsyncMock())
+    p2 = patch.object(App, "startup", AsyncMock())
+    p3 = patch.object(App, "shutdown", AsyncMock())
+    ota_mock.return_value.initialize = AsyncMock()
 
     with p1 as db_mck, p2 as start_mck, p3 as shut_mck:
         await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
@@ -131,8 +132,8 @@ async def test_new_exception(ota_mock):
     assert shut_mck.call_count == 0
     assert shut_mck.await_count == 0
 
-    start_mck.side_effect = asyncio.TimeoutError
     with p1 as db_mck, p2 as start_mck, p3 as shut_mck:
+        start_mck.side_effect = asyncio.TimeoutError()
         with pytest.raises(asyncio.TimeoutError):
             await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
     assert db_mck.call_count == 2
@@ -198,11 +199,9 @@ async def test_permit_ncp():
 async def test_permit(app, ieee):
     ncp_ieee = t.EUI64(map(t.uint8_t, range(8, 16)))
     app._ieee = ncp_ieee
-    app.devices[ieee] = mock.MagicMock()
-    app.devices[ieee].zdo.permit = mock.MagicMock(
-        side_effect=asyncio.coroutine(mock.MagicMock())
-    )
-    app.permit_ncp = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    app.devices[ieee] = MagicMock()
+    app.devices[ieee].zdo.permit = MagicMock(side_effect=asyncio.coroutine(MagicMock()))
+    app.permit_ncp = AsyncMock()
     await app.permit(node=(1, 1, 1, 1, 1, 1, 1, 1))
     assert app.devices[ieee].zdo.permit.call_count == 0
     assert app.permit_ncp.call_count == 0
@@ -220,16 +219,16 @@ async def test_permit_delivery_failure(app, ieee):
     def zdo_permit(*args, **kwargs):
         raise DeliveryError
 
-    app.devices[ieee] = mock.MagicMock()
+    app.devices[ieee] = MagicMock()
     app.devices[ieee].zdo.permit = zdo_permit
-    app.permit_ncp = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    app.permit_ncp = AsyncMock()
     await app.permit(node=ieee)
     assert app.permit_ncp.call_count == 0
 
 
 async def test_permit_broadcast(app):
-    app.broadcast = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
-    app.permit_ncp = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    app.broadcast = AsyncMock()
+    app.permit_ncp = AsyncMock()
     await app.permit(time_s=30)
     assert app.broadcast.call_count == 1
     assert app.permit_ncp.call_count == 1
@@ -254,7 +253,7 @@ async def test_join_handler_change_id(app, ieee):
 
 
 async def _remove(app, ieee, retval, zdo_reply=True, delivery_failure=True):
-    app.devices[ieee] = asynctest.MagicMock()
+    app.devices[ieee] = MagicMock()
 
     async def leave():
         if zdo_reply:
@@ -270,13 +269,13 @@ async def _remove(app, ieee, retval, zdo_reply=True, delivery_failure=True):
 
 
 async def test_remove(app, ieee):
-    app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    app.force_remove = AsyncMock()
     await _remove(app, ieee, [0])
     assert app.force_remove.call_count == 0
 
 
 async def test_remove_with_failed_zdo(app, ieee):
-    app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    app.force_remove = AsyncMock()
     await _remove(app, ieee, [1])
     assert app.force_remove.call_count == 1
 
@@ -287,13 +286,13 @@ async def test_remove_nonexistent(app, ieee):
 
 
 async def test_remove_with_unreachable_device(app, ieee):
-    app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    app.force_remove = AsyncMock()
     await _remove(app, ieee, [0], zdo_reply=False)
     assert app.force_remove.call_count == 1
 
 
 async def test_remove_with_reply_timeout(app, ieee):
-    app.force_remove = mock.MagicMock(side_effect=asyncio.coroutine(mock.MagicMock()))
+    app.force_remove = AsyncMock()
     await _remove(app, ieee, [0], zdo_reply=False, delivery_failure=False)
     assert app.force_remove.call_count == 1
 
@@ -337,20 +336,20 @@ def test_config(app):
 
 
 def test_deserialize(app, ieee):
-    dev = mock.MagicMock()
+    dev = MagicMock()
     app.deserialize(dev, 1, 1, b"")
     assert dev.deserialize.call_count == 1
 
 
 def test_handle_message(app, ieee):
-    dev = mock.MagicMock()
+    dev = MagicMock()
     app.handle_message(dev, 260, 1, 1, 1, [])
     assert dev.handle_message.call_count == 1
 
 
 def test_handle_message_uninitialized_dev(app, ieee):
     dev = device.Device(app, ieee, 0x1234)
-    dev.handle_message = mock.MagicMock()
+    dev.handle_message = MagicMock()
     app.handle_message(dev, 260, 1, 1, 1, [])
     assert dev.handle_message.call_count == 0
 
@@ -408,7 +407,7 @@ async def test_shutdown():
 
 
 def test_get_dst_address(app):
-    r = app.get_dst_address(mock.MagicMock())
+    r = app.get_dst_address(MagicMock())
     assert r.addrmode == 3
     assert r.endpoint == 1
 
@@ -427,7 +426,7 @@ def test_props(app):
 
 
 async def test_mrequest(app):
-    s = mock.sentinel
+    s = sentinel
     with pytest.raises(NotImplementedError):
         await app.mrequest(
             s.group_id, s.profile_id, s.cluster, s.src_ep, s.sequence, s.data

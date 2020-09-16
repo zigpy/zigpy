@@ -19,6 +19,7 @@ def _sqlite_adapters():
         return str(eui64)
 
     sqlite3.register_adapter(t.EUI64, adapt_ieee)
+    sqlite3.register_adapter(t.ExtendedPanId, adapt_ieee)
 
     def convert_ieee(s):
         return t.EUI64.convert(s.decode())
@@ -37,6 +38,7 @@ class PersistingListener:
         self._create_table_devices()
         self._create_table_endpoints()
         self._create_table_clusters()
+        self._create_table_neighbors()
         self._create_table_node_descriptors()
         self._create_table_output_clusters()
         self._create_table_attributes()
@@ -86,6 +88,16 @@ class PersistingListener:
 
     def node_descriptor_updated(self, device):
         self._save_node_descriptor(device)
+        self._db.commit()
+
+    def neighbors_updated(self, neighbors):
+        self.execute("DELETE FROM neighbors WHERE device_ieee = ?", (neighbors.ieee,))
+        for nei in neighbors.neighbors:
+            epid, ieee, nwk, struct, prm, depth, lqi = nei.neighbor.as_dict().values()
+            self.execute(
+                "INSERT INTO neighbors VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (neighbors.ieee, epid, ieee, nwk, struct.packed, prm, depth, lqi),
+            )
         self._db.commit()
 
     def group_added(self, group):
@@ -144,6 +156,24 @@ class PersistingListener:
             ),
         )
         self._create_index("cluster_idx", "clusters", "ieee, endpoint_id, cluster")
+
+    def _create_table_neighbors(self):
+        idx_name = "neighbors_idx"
+        idx_table = "neighbors"
+        idx_cols = "device_ieee"
+        self._create_table(
+            idx_table,
+            (
+                "(device_ieee ieee NOT NULL, extended_pan_id ieee NOT NULL,"
+                "ieee ieee NOT NULL, nwk INTEGER NOT NULL, struct INTEGER NOT NULL, "
+                "permit_joining INTEGER NOT NULL, depth INTEGER NOT NULL, "
+                "lqi INTEGER NOT NULL, "
+                "FOREIGN KEY(device_ieee) REFERENCES devices(ieee) ON DELETE CASCADE)"
+            ),
+        )
+        self.execute(
+            f"CREATE INDEX IF NOT EXISTS {idx_name} ON {idx_table}({idx_cols})"
+        )
 
     def _create_table_node_descriptors(self):
         self._create_table(
@@ -210,13 +240,18 @@ class PersistingListener:
         self.execute("PRAGMA foreign_keys = ON")
 
     def _remove_device(self, device):
-        self.execute("DELETE FROM attributes WHERE ieee = ?", (device.ieee,))
-        self.execute("DELETE FROM node_descriptors WHERE ieee = ?", (device.ieee,))
-        self.execute("DELETE FROM clusters WHERE ieee = ?", (device.ieee,))
-        self.execute("DELETE FROM output_clusters WHERE ieee = ?", (device.ieee,))
-        self.execute("DELETE FROM group_members WHERE ieee = ?", (device.ieee,))
-        self.execute("DELETE FROM endpoints WHERE ieee = ?", (device.ieee,))
-        self.execute("DELETE FROM devices WHERE ieee = ?", (device.ieee,))
+        queries = (
+            "DELETE FROM attributes WHERE ieee = ?",
+            "DELETE FROM neighbors WHERE ieee = ?",
+            "DELETE FROM node_descriptors WHERE ieee = ?",
+            "DELETE FROM clusters WHERE ieee = ?",
+            "DELETE FROM output_clusters WHERE ieee = ?",
+            "DELETE FROM group_members WHERE ieee = ?",
+            "DELETE FROM endpoints WHERE ieee = ?",
+            "DELETE FROM devices WHERE ieee = ?",
+        )
+        for query in queries:
+            self.execute(query, (device.ieee,))
         self._db.commit()
 
     def _save_device(self, device):
@@ -362,6 +397,8 @@ class PersistingListener:
         await self._load_groups()
         await self._load_group_members()
         await self._load_relays()
+        await self._load_neighbors()
+        await self._finish_loading()
 
     async def _load_devices(self):
         for (ieee, nwk, status) in self._scan("devices"):
@@ -411,5 +448,16 @@ class PersistingListener:
         for (ieee, value) in self._scan("relays"):
             dev = self._application.get_device(ieee)
             dev.relays = t.Relays.deserialize(value)[0]
+
+    async def _load_neighbors(self):
+        for (dev_ieee, epid, ieee, nwk, struct, prm, depth, lqi) in self._scan(
+            "neighbors"
+        ):
+            dev = self._application.get_device(dev_ieee)
+            nei = zdo_t.Neighbor(epid, ieee, nwk, struct, prm, depth, lqi)
+            dev.neighbors.add_neighbor(nei)
+
+    async def _finish_loading(self):
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
+            dev.neighbors.add_context_listener(self)

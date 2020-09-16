@@ -99,7 +99,7 @@ In general when contributing code to this project it is encouraged that you try 
 It is recommended that code is formatted with `black` and sorted with `isort`. The check format script that runs in CI will ensure that code meets this requirement and that it is correctly formatted with black. Instructions for installing black in many editors can be found here: https://github.com/psf/black#editor-integration
 
 - https://github.com/psf/black
-- https://github.com/timothycrosley/isort
+- https://github.com/PyCQA/isort
 
 #### Setup
 

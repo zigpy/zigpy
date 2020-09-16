@@ -1,6 +1,7 @@
 from typing import List, Union
 
 import voluptuous as vol
+
 import zigpy.types as t
 
 

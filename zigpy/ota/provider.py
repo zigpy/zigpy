@@ -10,6 +10,7 @@ from typing import Dict, Optional
 
 import aiohttp
 import attr
+
 from zigpy.config import CONF_OTA_DIR
 from zigpy.ota.image import ImageKey, OTAImage, OTAImageHeader
 import zigpy.util

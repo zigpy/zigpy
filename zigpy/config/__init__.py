@@ -1,6 +1,7 @@
 """Config schemas and validation."""
 
 import voluptuous as vol
+
 from zigpy.config.defaults import (
     CONF_NWK_CHANNEL_DEFAULT,
     CONF_NWK_CHANNELS_DEFAULT,
@@ -14,6 +15,7 @@ from zigpy.config.defaults import (
     CONF_OTA_IKEA_DEFAULT,
     CONF_OTA_LEDVANCE_DEFAULT,
     CONF_OTA_OTAU_DIR_DEFAULT,
+    CONF_TOPO_SCAN_PERIOD_DEFAULT,
 )
 from zigpy.config.validators import cv_boolean, cv_hex, cv_key
 import zigpy.types as t
@@ -35,6 +37,7 @@ CONF_OTA = "ota"
 CONF_OTA_DIR = "otau_directory"
 CONF_OTA_IKEA = "ikea_provider"
 CONF_OTA_LEDVANCE = "ledvance_provider"
+CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 
 SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): str})
 SCHEMA_NETWORK = vol.Schema(
@@ -77,6 +80,9 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(CONF_DATABASE, default=None): vol.Any(None, str),
         vol.Optional(CONF_NWK, default={}): SCHEMA_NETWORK,
         vol.Optional(CONF_OTA, default={}): SCHEMA_OTA,
+        vol.Optional(
+            CONF_TOPO_SCAN_PERIOD, default=CONF_TOPO_SCAN_PERIOD_DEFAULT
+        ): vol.All(int, vol.Range(min=20)),
     },
     extra=vol.ALLOW_EXTRA,
 )

@@ -1,8 +1,8 @@
 import asyncio
 import logging
 
-from asynctest import CoroutineMock, mock
 import pytest
+
 from zigpy import device, endpoint
 import zigpy.application
 import zigpy.exceptions
@@ -10,11 +10,13 @@ from zigpy.profiles import zha
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
+from .async_mock import AsyncMock, MagicMock, patch, sentinel
+
 
 @pytest.fixture
 def app():
     """Controller Application mock."""
-    return mock.MagicMock(spec_set=zigpy.application.ControllerApplication)
+    return MagicMock(spec_set=zigpy.application.ControllerApplication)
 
 
 @pytest.fixture
@@ -52,7 +54,7 @@ async def test_initialize_fail(dev):
     assert dev.status == device.Status.NEW
 
 
-@mock.patch("zigpy.device.Device.get_node_descriptor", mock.CoroutineMock())
+@patch("zigpy.device.Device.get_node_descriptor", AsyncMock())
 async def test_initialize_ep_failed(monkeypatch, dev):
     async def mockrequest(req, nwk, tries=None, delay=None):
         return [0, None, [1, 2]]
@@ -72,23 +74,23 @@ async def test_initialize_ep_failed(monkeypatch, dev):
 
 
 async def test_request(dev):
-    seq = mock.sentinel.tsn
+    seq = sentinel.tsn
 
     async def mock_req(*args, **kwargs):
-        dev._pending[seq].result.set_result(mock.sentinel.result)
+        dev._pending[seq].result.set_result(sentinel.result)
         return 0, ""
 
     dev.application.request.side_effect = mock_req
     assert dev.last_seen is None
     r = await dev.request(1, 2, 3, 3, seq, b"")
-    assert r is mock.sentinel.result
+    assert r is sentinel.result
     assert dev._application.request.call_count == 1
     assert dev.last_seen is not None
 
 
 async def test_failed_request(dev):
     assert dev.last_seen is None
-    dev._application.request = CoroutineMock(return_value=(1, "error"))
+    dev._application.request = AsyncMock(return_value=(1, "error"))
     with pytest.raises(zigpy.exceptions.DeliveryError):
         await dev.request(1, 2, 3, 4, 5, b"")
     assert dev.last_seen is None
@@ -108,7 +110,7 @@ def test_radio_details(dev):
 
 def test_deserialize(dev):
     ep = dev.add_endpoint(3)
-    ep.deserialize = mock.MagicMock()
+    ep.deserialize = MagicMock()
     dev.deserialize(3, 1, b"")
     assert ep.deserialize.call_count == 1
 
@@ -119,45 +121,45 @@ async def test_handle_message_no_endpoint(dev):
 
 async def test_handle_message(dev):
     ep = dev.add_endpoint(3)
-    hdr = mock.MagicMock()
-    hdr.tsn = mock.sentinel.tsn
-    hdr.is_reply = mock.sentinel.is_reply
-    dev.deserialize = mock.MagicMock(return_value=[hdr, mock.sentinel.args])
-    ep.handle_message = mock.MagicMock()
+    hdr = MagicMock()
+    hdr.tsn = sentinel.tsn
+    hdr.is_reply = sentinel.is_reply
+    dev.deserialize = MagicMock(return_value=[hdr, sentinel.args])
+    ep.handle_message = MagicMock()
     dev.handle_message(99, 98, 3, 3, b"abcd")
     assert ep.handle_message.call_count == 1
 
 
 async def test_handle_message_reply(dev):
     ep = dev.add_endpoint(3)
-    ep.handle_message = mock.MagicMock()
-    tsn = mock.sentinel.tsn
-    req_mock = mock.MagicMock()
+    ep.handle_message = MagicMock()
+    tsn = sentinel.tsn
+    req_mock = MagicMock()
     dev._pending[tsn] = req_mock
-    hdr_1 = mock.MagicMock()
+    hdr_1 = MagicMock()
     hdr_1.tsn = tsn
-    hdr_1.command_id = mock.sentinel.command_id
+    hdr_1.command_id = sentinel.command_id
     hdr_1.is_reply = True
-    hdr_2 = mock.MagicMock()
-    hdr_2.tsn = mock.sentinel.another_tsn
-    hdr_2.command_id = mock.sentinel.command_id
+    hdr_2 = MagicMock()
+    hdr_2.tsn = sentinel.another_tsn
+    hdr_2.command_id = sentinel.command_id
     hdr_2.is_reply = True
-    dev.deserialize = mock.MagicMock(
+    dev.deserialize = MagicMock(
         side_effect=(
-            (hdr_1, mock.sentinel.args),
-            (hdr_2, mock.sentinel.args),
-            (hdr_1, mock.sentinel.args),
+            (hdr_1, sentinel.args),
+            (hdr_2, sentinel.args),
+            (hdr_1, sentinel.args),
         )
     )
     dev.handle_message(99, 98, 3, 3, b"abcd")
     assert ep.handle_message.call_count == 0
     assert req_mock.result.set_result.call_count == 1
-    assert req_mock.result.set_result.call_args[0][0] is mock.sentinel.args
+    assert req_mock.result.set_result.call_args[0][0] is sentinel.args
 
     req_mock.reset_mock()
     dev.handle_message(99, 98, 3, 3, b"abcd")
     assert ep.handle_message.call_count == 1
-    assert ep.handle_message.call_args[0][-1] is mock.sentinel.args
+    assert ep.handle_message.call_args[0][-1] is sentinel.args
     assert req_mock.result.set_result.call_count == 0
 
     req_mock.reset_mock()
@@ -170,8 +172,8 @@ async def test_handle_message_reply(dev):
 
 async def test_handle_message_deserialize_error(dev):
     ep = dev.add_endpoint(3)
-    dev.deserialize = mock.MagicMock(side_effect=ValueError)
-    ep.handle_message = mock.MagicMock()
+    dev.deserialize = MagicMock(side_effect=ValueError)
+    ep.handle_message = MagicMock()
     dev.handle_message(99, 98, 3, 3, b"abcd")
     assert ep.handle_message.call_count == 0
 
@@ -212,7 +214,7 @@ async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
         status = 0 if zdo_success else 1
         return [status, nwk, zdo_t.NodeDescriptor.deserialize(b"abcdefghijklm")[0]]
 
-    dev.zdo.Node_Desc_req = mock.MagicMock(side_effect=mockrequest)
+    dev.zdo.Node_Desc_req = MagicMock(side_effect=mockrequest)
     return await dev.get_node_descriptor()
 
 
@@ -240,9 +242,9 @@ async def test_get_node_descriptor_fail(dev):
 
 async def test_add_to_group(dev, monkeypatch):
     grp_id, grp_name = 0x1234, "test group 0x1234"
-    epmock = mock.MagicMock(spec_set=endpoint.Endpoint)
-    monkeypatch.setattr(endpoint, "Endpoint", mock.MagicMock(return_value=epmock))
-    epmock.add_to_group.side_effect = asyncio.coroutine(mock.MagicMock())
+    epmock = MagicMock(spec_set=endpoint.Endpoint)
+    monkeypatch.setattr(endpoint, "Endpoint", MagicMock(return_value=epmock))
+    epmock.add_to_group.side_effect = asyncio.coroutine(MagicMock())
 
     dev.add_endpoint(3)
     dev.add_endpoint(4)
@@ -255,9 +257,9 @@ async def test_add_to_group(dev, monkeypatch):
 
 async def test_remove_from_group(dev, monkeypatch):
     grp_id = 0x1234
-    epmock = mock.MagicMock(spec_set=endpoint.Endpoint)
-    monkeypatch.setattr(endpoint, "Endpoint", mock.MagicMock(return_value=epmock))
-    epmock.remove_from_group.side_effect = asyncio.coroutine(mock.MagicMock())
+    epmock = MagicMock(spec_set=endpoint.Endpoint)
+    monkeypatch.setattr(endpoint, "Endpoint", MagicMock(return_value=epmock))
+    epmock.remove_from_group = AsyncMock()
 
     dev.add_endpoint(3)
     dev.add_endpoint(4)
@@ -270,7 +272,7 @@ async def test_remove_from_group(dev, monkeypatch):
 async def test_schedule_group_membership(dev, caplog):
     """Test preempting group membership scan."""
 
-    p1 = mock.patch.object(dev, "group_membership_scan", new=CoroutineMock())
+    p1 = patch.object(dev, "group_membership_scan", new=AsyncMock())
     caplog.set_level(logging.DEBUG)
     with p1 as scan_mock:
         dev.schedule_group_membership_scan()

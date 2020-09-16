@@ -1,7 +1,7 @@
 import asyncio
 
-from asynctest import CoroutineMock, mock
 import pytest
+
 from zigpy import endpoint, group
 import zigpy.device
 import zigpy.exceptions
@@ -10,11 +10,13 @@ import zigpy.zcl as zcl
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types
 
+from .async_mock import AsyncMock, MagicMock, sentinel
+
 
 @pytest.fixture
 def ep():
-    dev = mock.MagicMock()
-    dev.request = CoroutineMock()
+    dev = MagicMock()
+    dev.request = AsyncMock()
     return endpoint.Endpoint(dev, 1)
 
 
@@ -81,7 +83,7 @@ def test_add_input_cluster(ep):
 
 
 def test_add_custom_input_cluster(ep):
-    mock_cluster = mock.MagicMock()
+    mock_cluster = MagicMock()
     ep.add_input_cluster(0, mock_cluster)
     assert 0 in ep.in_clusters
     assert ep.in_clusters[0] is mock_cluster
@@ -95,7 +97,7 @@ def test_add_output_cluster(ep):
 
 
 def test_add_custom_output_cluster(ep):
-    mock_cluster = mock.MagicMock()
+    mock_cluster = MagicMock()
     ep.add_output_cluster(0, mock_cluster)
     assert 0 in ep.out_clusters
     assert ep.out_clusters[0] is mock_cluster
@@ -121,22 +123,22 @@ def test_multiple_add_output_cluster(ep):
 
 def test_handle_message(ep):
     c = ep.add_input_cluster(0)
-    c.handle_message = mock.MagicMock()
-    ep.handle_message(mock.sentinel.profile, 0, mock.sentinel.hdr, mock.sentinel.data)
-    c.handle_message.assert_called_once_with(mock.sentinel.hdr, mock.sentinel.data)
+    c.handle_message = MagicMock()
+    ep.handle_message(sentinel.profile, 0, sentinel.hdr, sentinel.data)
+    c.handle_message.assert_called_once_with(sentinel.hdr, sentinel.data)
 
 
 def test_handle_message_output(ep):
     c = ep.add_output_cluster(0)
-    c.handle_message = mock.MagicMock()
-    ep.handle_message(mock.sentinel.profile, 0, mock.sentinel.hdr, mock.sentinel.data)
-    c.handle_message.assert_called_once_with(mock.sentinel.hdr, mock.sentinel.data)
+    c.handle_message = MagicMock()
+    ep.handle_message(sentinel.profile, 0, sentinel.hdr, sentinel.data)
+    c.handle_message.assert_called_once_with(sentinel.hdr, sentinel.data)
 
 
 def test_handle_request_unknown(ep):
-    hdr = mock.MagicMock()
-    hdr.command_id = mock.sentinel.command_id
-    ep.handle_message(mock.sentinel.profile, 99, hdr, mock.sentinel.args)
+    hdr = MagicMock()
+    hdr.command_id = sentinel.command_id
+    ep.handle_message(sentinel.profile, 99, hdr, sentinel.args)
 
 
 def test_cluster_attr(ep):
@@ -146,20 +148,22 @@ def test_cluster_attr(ep):
     ep.basic
 
 
-def test_request(ep):
+async def test_request(ep):
     ep.profile_id = 260
-    ep.request(7, 8, b"")
+    await ep.request(7, 8, b"")
     assert ep._device.request.call_count == 1
+    assert ep._device.request.await_count == 1
 
 
-def test_request_change_profileid(ep):
+async def test_request_change_profileid(ep):
     ep.profile_id = 49246
-    ep.request(7, 9, b"")
+    await ep.request(7, 9, b"")
     ep.profile_id = 49246
-    ep.request(0x1000, 10, b"")
+    await ep.request(0x1000, 10, b"")
     ep.profile_id = 260
-    ep.request(0x1000, 11, b"")
+    await ep.request(0x1000, 11, b"")
     assert ep._device.request.call_count == 3
+    assert ep._device.request.await_count == 3
 
 
 def test_reply(ep):
@@ -300,13 +304,13 @@ async def test_get_model_info_timeout(ep):
 
 def _group_add_mock(ep, status=ZCLStatus.SUCCESS, no_groups_cluster=False):
     async def mock_req(*args, **kwargs):
-        return [status, mock.sentinel.group_id]
+        return [status, sentinel.group_id]
 
     if not no_groups_cluster:
         ep.add_input_cluster(4)
-    ep.request = mock.MagicMock(side_effect=mock_req)
+    ep.request = MagicMock(side_effect=mock_req)
 
-    ep.device.application.groups = mock.MagicMock(spec_set=group.Groups)
+    ep.device.application.groups = MagicMock(spec_set=group.Groups)
     return ep
 
 
@@ -356,15 +360,15 @@ async def test_add_to_group_fail(ep, status):
 def _group_remove_mock(ep, success=True, no_groups_cluster=False, not_member=False):
     async def mock_req(*args, **kwargs):
         if success:
-            return [ZCLStatus.SUCCESS, mock.sentinel.group_id]
-        return [ZCLStatus.DUPLICATE_EXISTS, mock.sentinel.group_id]
+            return [ZCLStatus.SUCCESS, sentinel.group_id]
+        return [ZCLStatus.DUPLICATE_EXISTS, sentinel.group_id]
 
     if not no_groups_cluster:
         ep.add_input_cluster(4)
-    ep.request = mock.MagicMock(side_effect=mock_req)
+    ep.request = MagicMock(side_effect=mock_req)
 
-    ep.device.application.groups = mock.MagicMock(spec_set=group.Groups)
-    grp = mock.MagicMock(spec_set=group.Group)
+    ep.device.application.groups = MagicMock(spec_set=group.Groups)
+    grp = MagicMock(spec_set=group.Group)
     ep.device.application.groups.__contains__.return_value = not not_member
     ep.device.application.groups.__getitem__.return_value = grp
     return ep, grp
@@ -412,25 +416,25 @@ async def test_remove_from_group_fail(ep):
 
 
 def test_ep_manufacturer(ep):
-    ep.device.manufacturer = mock.sentinel.device_manufacturer
-    assert ep.manufacturer is mock.sentinel.device_manufacturer
+    ep.device.manufacturer = sentinel.device_manufacturer
+    assert ep.manufacturer is sentinel.device_manufacturer
 
-    ep.manufacturer = mock.sentinel.ep_manufacturer
-    assert ep.manufacturer is mock.sentinel.ep_manufacturer
+    ep.manufacturer = sentinel.ep_manufacturer
+    assert ep.manufacturer is sentinel.ep_manufacturer
 
 
 def test_ep_model(ep):
-    ep.device.model = mock.sentinel.device_model
-    assert ep.model is mock.sentinel.device_model
+    ep.device.model = sentinel.device_model
+    assert ep.model is sentinel.device_model
 
-    ep.model = mock.sentinel.ep_model
-    assert ep.model is mock.sentinel.ep_model
+    ep.model = sentinel.ep_model
+    assert ep.model is sentinel.ep_model
 
 
 async def test_group_membership_scan(ep):
     """Test group membership scan."""
 
-    ep.device.application.groups.update_group_membership = mock.MagicMock()
+    ep.device.application.groups.update_group_membership = MagicMock()
     await ep.group_membership_scan()
     assert ep.device.application.groups.update_group_membership.call_count == 0
     assert ep.device.request.call_count == 0
@@ -450,7 +454,7 @@ async def test_group_membership_scan(ep):
 async def test_group_membership_scan_fail(ep):
     """Test group membership scan failure."""
 
-    ep.device.application.groups.update_group_membership = mock.MagicMock()
+    ep.device.application.groups.update_group_membership = MagicMock()
     ep.add_input_cluster(4)
     ep.device.request.side_effect = asyncio.TimeoutError
     await ep.group_membership_scan()
@@ -460,5 +464,5 @@ async def test_group_membership_scan_fail(ep):
 
 def test_endpoint_manufacturer_id(ep):
     """Test manufacturer id."""
-    ep.device.manufacturer_id = mock.sentinel.manufacturer_id
-    assert ep.manufacturer_id is mock.sentinel.manufacturer_id
+    ep.device.manufacturer_id = sentinel.manufacturer_id
+    assert ep.manufacturer_id is sentinel.manufacturer_id

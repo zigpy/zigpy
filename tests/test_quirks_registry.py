@@ -1,6 +1,7 @@
 from unittest import mock
 
 import pytest
+
 from zigpy.quirks.registry import SIG_MODELS_INFO, DeviceRegistry
 
 

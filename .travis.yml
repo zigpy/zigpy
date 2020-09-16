@@ -1,4 +1,5 @@
 language: python
+dist: bionic
 matrix:
   fast_finish: true
   include:
@@ -6,7 +7,6 @@ matrix:
       env: TOXENV=lint
     - python: "3.7"
       env: TOXENV=py37
-      dist: xenial
       sudo: true
     - python: "3.8"
       env: TOXENV=py38

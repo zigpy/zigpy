@@ -1,13 +1,15 @@
 import itertools
 
-from asynctest import CoroutineMock, mock
 import pytest
+
 import zigpy.device
 import zigpy.endpoint
 import zigpy.quirks
 from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
 import zigpy.zcl as zcl
+
+from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
 ALLOWED_SIGNATURE = set(
     [
@@ -33,8 +35,8 @@ def test_registry():
 
 @pytest.fixture
 def real_device():
-    application = mock.sentinel.application
-    ieee = mock.sentinel.ieee
+    application = sentinel.application
+    ieee = sentinel.ieee
     nwk = 0x2233
     real_device = zigpy.device.Device(application, ieee, nwk)
 
@@ -196,7 +198,7 @@ def test_custom_device():
 
         class MyEndpoint:
             def __init__(self, device, endpoint_id, *args, **kwargs):
-                assert args == (mock.sentinel.custom_endpoint_arg, replaces)
+                assert args == (sentinel.custom_endpoint_arg, replaces)
 
         class MyCluster(zigpy.quirks.CustomCluster):
             cluster_id = 0x8888
@@ -204,11 +206,11 @@ def test_custom_device():
         replacement = {
             "endpoints": {
                 1: {
-                    "profile_id": mock.sentinel.profile_id,
+                    "profile_id": sentinel.profile_id,
                     "input_clusters": [0x0000, MyCluster],
                     "output_clusters": [0x0001, MyCluster],
                 },
-                2: (MyEndpoint, mock.sentinel.custom_endpoint_arg),
+                2: (MyEndpoint, sentinel.custom_endpoint_arg),
             },
             "model": "Mock Model",
             "manufacturer": "Mock Manufacturer",
@@ -219,7 +221,7 @@ def test_custom_device():
 
         class MyEndpoint:
             def __init__(self, device, endpoint_id, *args, **kwargs):
-                assert args == (mock.sentinel.custom_endpoint_arg, replaces)
+                assert args == (sentinel.custom_endpoint_arg, replaces)
 
         class MyCluster(zigpy.quirks.CustomCluster):
             cluster_id = 0x8888
@@ -227,11 +229,11 @@ def test_custom_device():
         replacement = {
             "endpoints": {
                 1: {
-                    "profile_id": mock.sentinel.profile_id,
+                    "profile_id": sentinel.profile_id,
                     "input_clusters": [0x0000, MyCluster],
                     "output_clusters": [0x0001, MyCluster],
                 },
-                2: (MyEndpoint, mock.sentinel.custom_endpoint_arg),
+                2: (MyEndpoint, sentinel.custom_endpoint_arg),
             },
             "model": "Mock Model",
             "manufacturer": "Mock Manufacturer",
@@ -240,8 +242,8 @@ def test_custom_device():
 
     assert 0x8888 not in zcl.Cluster._registry
 
-    replaces = mock.MagicMock()
-    replaces[1].device_type = mock.sentinel.device_type
+    replaces = MagicMock()
+    replaces[1].device_type = sentinel.device_type
     test_device = Device(None, None, 0x4455, replaces)
     test_device2 = Device2(None, None, 0x4455, replaces)
 
@@ -251,8 +253,8 @@ def test_custom_device():
     assert test_device.model == "Mock Model"
     assert test_device.skip_configuration is False
 
-    assert test_device[1].profile_id == mock.sentinel.profile_id
-    assert test_device[1].device_type == mock.sentinel.device_type
+    assert test_device[1].profile_id == sentinel.profile_id
+    assert test_device[1].device_type == sentinel.device_type
 
     assert 0x0000 in test_device[1].in_clusters
     assert 0x8888 in test_device[1].in_clusters
@@ -331,7 +333,7 @@ async def test_read_attributes_uncached():
         server_commands = {}
         client_commands = {}
 
-    epmock = mock.MagicMock()
+    epmock = MagicMock()
     epmock._device.application.get_sequence.return_value = 123
     epmock.device.application.get_sequence.return_value = 123
     cluster = TestCluster(epmock, True)
@@ -392,7 +394,7 @@ async def test_read_attributes_default_response():
             0x01: ("client_cmd_1", (t.uint8_t,), True),
         }
 
-    epmock = mock.MagicMock()
+    epmock = MagicMock()
     epmock._device.application.get_sequence.return_value = 123
     epmock.device.application.get_sequence.return_value = 123
     cluster = TestCluster(epmock, True)
@@ -435,8 +437,8 @@ class ManufacturerSpecificCluster(zigpy.quirks.CustomCluster):
 def manuf_cluster():
     """Return a manufacturer specific cluster fixture."""
 
-    ep = mock.MagicMock()
-    ep.manufacturer_id = mock.sentinel.manufacturer_id
+    ep = MagicMock()
+    ep.manufacturer_id = sentinel.manufacturer_id
     return ManufacturerSpecificCluster.from_id(ep, 0x2222)
 
 
@@ -448,8 +450,8 @@ def manuf_cluster2():
         ep_attribute = "just_a_manufacturer_specific_cluster"
         cluster_id = 0xFC00
 
-    ep = mock.MagicMock()
-    ep.manufacturer_id = mock.sentinel.manufacturer_id2
+    ep = MagicMock()
+    ep.manufacturer_id = sentinel.manufacturer_id2
     cluster = ManufCluster2(ep)
     cluster.cluster_id = 0xFC00
     return cluster
@@ -459,174 +461,164 @@ def manuf_cluster2():
     "cmd_name, manufacturer",
     (
         ("client_cmd0", None),
-        ("client_cmd1", mock.sentinel.manufacturer_id),
+        ("client_cmd1", sentinel.manufacturer_id),
     ),
 )
 def test_client_cmd_vendor_specific_by_name(
     manuf_cluster, manuf_cluster2, cmd_name, manufacturer
 ):
     """Test manufacturer specific client commands."""
-    with mock.patch.object(manuf_cluster, "reply") as cmd_mock:
+    with patch.object(manuf_cluster, "reply") as cmd_mock:
         getattr(manuf_cluster, cmd_name)()
         assert cmd_mock.call_count == 1
         assert cmd_mock.call_args[1]["manufacturer"] is manufacturer
 
-    with mock.patch.object(manuf_cluster2, "reply") as cmd_mock:
+    with patch.object(manuf_cluster2, "reply") as cmd_mock:
         getattr(manuf_cluster2, cmd_name)()
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.manufacturer_id2
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.manufacturer_id2
 
 
 @pytest.mark.parametrize(
     "cmd_name, manufacturer",
     (
         ("server_cmd0", None),
-        ("server_cmd1", mock.sentinel.manufacturer_id),
+        ("server_cmd1", sentinel.manufacturer_id),
     ),
 )
 def test_srv_cmd_vendor_specific_by_name(
     manuf_cluster, manuf_cluster2, cmd_name, manufacturer
 ):
     """Test manufacturer specific server commands."""
-    with mock.patch.object(manuf_cluster, "request") as cmd_mock:
+    with patch.object(manuf_cluster, "request") as cmd_mock:
         getattr(manuf_cluster, cmd_name)()
         assert cmd_mock.call_count == 1
         assert cmd_mock.call_args[1]["manufacturer"] is manufacturer
 
-    with mock.patch.object(manuf_cluster2, "request") as cmd_mock:
+    with patch.object(manuf_cluster2, "request") as cmd_mock:
         getattr(manuf_cluster2, cmd_name)()
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.manufacturer_id2
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.manufacturer_id2
 
 
 @pytest.mark.parametrize(
     "attr_name, manufacturer",
     (
         ("attr0", None),
-        ("attr1", mock.sentinel.manufacturer_id),
+        ("attr1", sentinel.manufacturer_id),
     ),
 )
 async def test_read_attr_manufacture_specific(
     manuf_cluster, manuf_cluster2, attr_name, manufacturer
 ):
     """Test manufacturer specific read_attributes command."""
-    with mock.patch.object(
-        zcl.Cluster, "_read_attributes", CoroutineMock()
-    ) as cmd_mock:
+    with patch.object(zcl.Cluster, "_read_attributes", AsyncMock()) as cmd_mock:
         await manuf_cluster.read_attributes([attr_name])
         assert cmd_mock.call_count == 1
         assert cmd_mock.call_args[1]["manufacturer"] is manufacturer
         cmd_mock.reset_mock()
         await manuf_cluster.read_attributes(
-            [attr_name], manufacturer=mock.sentinel.another_id
+            [attr_name], manufacturer=sentinel.another_id
         )
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.another_id
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.another_id
 
-    with mock.patch.object(
-        zcl.Cluster, "_read_attributes", CoroutineMock()
-    ) as cmd_mock:
+    with patch.object(zcl.Cluster, "_read_attributes", AsyncMock()) as cmd_mock:
         await manuf_cluster2.read_attributes([attr_name])
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.manufacturer_id2
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.manufacturer_id2
         cmd_mock.reset_mock()
         await manuf_cluster2.read_attributes(
-            [attr_name], manufacturer=mock.sentinel.another_id
+            [attr_name], manufacturer=sentinel.another_id
         )
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.another_id
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.another_id
 
 
 @pytest.mark.parametrize(
     "attr_name, manufacturer",
     (
         ("attr0", None),
-        ("attr1", mock.sentinel.manufacturer_id),
+        ("attr1", sentinel.manufacturer_id),
     ),
 )
 async def test_write_attr_manufacture_specific(
     manuf_cluster, manuf_cluster2, attr_name, manufacturer
 ):
     """Test manufacturer specific write_attributes command."""
-    with mock.patch.object(
-        zcl.Cluster, "_write_attributes", CoroutineMock()
-    ) as cmd_mock:
+    with patch.object(zcl.Cluster, "_write_attributes", AsyncMock()) as cmd_mock:
         await manuf_cluster.write_attributes({attr_name: 0x12})
         assert cmd_mock.call_count == 1
         assert cmd_mock.call_args[1]["manufacturer"] is manufacturer
         cmd_mock.reset_mock()
         await manuf_cluster.write_attributes(
-            {attr_name: 0x12}, manufacturer=mock.sentinel.another_id
+            {attr_name: 0x12}, manufacturer=sentinel.another_id
         )
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.another_id
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.another_id
 
-    with mock.patch.object(
-        zcl.Cluster, "_write_attributes", CoroutineMock()
-    ) as cmd_mock:
+    with patch.object(zcl.Cluster, "_write_attributes", AsyncMock()) as cmd_mock:
         await manuf_cluster2.write_attributes({attr_name: 0x12})
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.manufacturer_id2
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.manufacturer_id2
         cmd_mock.reset_mock()
         await manuf_cluster2.write_attributes(
-            {attr_name: 0x12}, manufacturer=mock.sentinel.another_id
+            {attr_name: 0x12}, manufacturer=sentinel.another_id
         )
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.another_id
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.another_id
 
 
 @pytest.mark.parametrize(
     "attr_name, manufacturer",
     (
         ("attr0", None),
-        ("attr1", mock.sentinel.manufacturer_id),
+        ("attr1", sentinel.manufacturer_id),
     ),
 )
 async def test_write_attr_undivided_manufacture_specific(
     manuf_cluster, manuf_cluster2, attr_name, manufacturer
 ):
     """Test manufacturer specific write_attributes_undivided command."""
-    with mock.patch.object(
-        zcl.Cluster, "_write_attributes_undivided", CoroutineMock()
+    with patch.object(
+        zcl.Cluster, "_write_attributes_undivided", AsyncMock()
     ) as cmd_mock:
         await manuf_cluster.write_attributes_undivided({attr_name: 0x12})
         assert cmd_mock.call_count == 1
         assert cmd_mock.call_args[1]["manufacturer"] is manufacturer
         cmd_mock.reset_mock()
         await manuf_cluster.write_attributes_undivided(
-            {attr_name: 0x12}, manufacturer=mock.sentinel.another_id
+            {attr_name: 0x12}, manufacturer=sentinel.another_id
         )
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.another_id
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.another_id
 
-    with mock.patch.object(
-        zcl.Cluster, "_write_attributes_undivided", CoroutineMock()
+    with patch.object(
+        zcl.Cluster, "_write_attributes_undivided", AsyncMock()
     ) as cmd_mock:
         await manuf_cluster2.write_attributes_undivided({attr_name: 0x12})
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.manufacturer_id2
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.manufacturer_id2
         cmd_mock.reset_mock()
         await manuf_cluster2.write_attributes_undivided(
-            {attr_name: 0x12}, manufacturer=mock.sentinel.another_id
+            {attr_name: 0x12}, manufacturer=sentinel.another_id
         )
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.another_id
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.another_id
 
 
 @pytest.mark.parametrize(
     "attr_name, manufacturer",
     (
         ("attr0", None),
-        ("attr1", mock.sentinel.manufacturer_id),
+        ("attr1", sentinel.manufacturer_id),
     ),
 )
 async def test_configure_reporting_manufacture_specific(
     manuf_cluster, manuf_cluster2, attr_name, manufacturer
 ):
     """Test manufacturer specific configure_reporting command."""
-    with mock.patch.object(
-        zcl.Cluster, "_configure_reporting", CoroutineMock()
-    ) as cmd_mock:
+    with patch.object(zcl.Cluster, "_configure_reporting", AsyncMock()) as cmd_mock:
         await manuf_cluster.configure_reporting(
             attr_name, min_interval=1, max_interval=1, reportable_change=1
         )
@@ -638,26 +630,24 @@ async def test_configure_reporting_manufacture_specific(
             min_interval=1,
             max_interval=1,
             reportable_change=1,
-            manufacturer=mock.sentinel.another_id,
+            manufacturer=sentinel.another_id,
         )
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.another_id
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.another_id
 
-    with mock.patch.object(
-        zcl.Cluster, "_configure_reporting", CoroutineMock()
-    ) as cmd_mock:
+    with patch.object(zcl.Cluster, "_configure_reporting", AsyncMock()) as cmd_mock:
         await manuf_cluster2.configure_reporting(
             attr_name, min_interval=1, max_interval=1, reportable_change=1
         )
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.manufacturer_id2
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.manufacturer_id2
         cmd_mock.reset_mock()
         await manuf_cluster2.configure_reporting(
             attr_name,
             min_interval=1,
             max_interval=1,
             reportable_change=1,
-            manufacturer=mock.sentinel.another_id,
+            manufacturer=sentinel.another_id,
         )
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is mock.sentinel.another_id
+        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.another_id

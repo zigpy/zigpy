@@ -2,10 +2,12 @@ import asyncio
 import logging
 import sys
 
-from asynctest import CoroutineMock, mock
 import pytest
+
 from zigpy import util
 from zigpy.exceptions import ControllerException
+
+from .async_mock import AsyncMock, MagicMock, call, patch, sentinel
 
 
 class Listenable(util.ListenableMixin):
@@ -18,44 +20,36 @@ def test_listenable():
 
     # Python 3.7 guarantees dict ordering so this will be called first to test error
     # handling
-    broken_listener = mock.MagicMock()
+    broken_listener = MagicMock()
     broken_listener.event.side_effect = Exception()
     listen.add_listener(broken_listener)
 
-    listener = mock.MagicMock(spec_set=["event"])
+    listener = MagicMock(spec_set=["event"])
     listen.add_listener(listener)
     listen.add_listener(listener)
 
-    context_listener = mock.MagicMock(spec_set=["event"])
+    context_listener = MagicMock(spec_set=["event"])
     listen.add_context_listener(context_listener)
 
     listen.listener_event("event", "test1")
-    listener.event.assert_has_calls(
-        [mock.call("test1"), mock.call("test1")], any_order=True
-    )
-    context_listener.event.assert_has_calls(
-        [mock.call(listen, "test1")], any_order=True
-    )
-    broken_listener.event.assert_has_calls([mock.call("test1")], any_order=True)
+    listener.event.assert_has_calls([call("test1"), call("test1")], any_order=True)
+    context_listener.event.assert_has_calls([call(listen, "test1")], any_order=True)
+    broken_listener.event.assert_has_calls([call("test1")], any_order=True)
     assert listener.event.call_count == 2
     assert context_listener.event.call_count == 1
     assert broken_listener.event.call_count == 1
 
     listen.listener_event("non_existing_event", "test2")
-    listener.event.assert_has_calls(
-        [mock.call("test1"), mock.call("test1")], any_order=True
-    )
-    context_listener.event.assert_has_calls(
-        [mock.call(listen, "test1")], any_order=True
-    )
-    broken_listener.event.assert_has_calls([mock.call("test1")], any_order=True)
+    listener.event.assert_has_calls([call("test1"), call("test1")], any_order=True)
+    context_listener.event.assert_has_calls([call(listen, "test1")], any_order=True)
+    broken_listener.event.assert_has_calls([call("test1")], any_order=True)
     assert listener.event.call_count == 2
     assert context_listener.event.call_count == 1
     assert broken_listener.event.call_count == 1
 
 
 class Logger(util.LocalLogMixin):
-    log = mock.MagicMock()
+    log = MagicMock()
 
 
 def test_log():
@@ -72,7 +66,7 @@ def test_log():
 )
 def test_log_stacklevel():
     class MockHandler(logging.Handler):
-        emit = mock.Mock()
+        emit = MagicMock()
 
     handler = MockHandler()
 
@@ -369,51 +363,45 @@ def test_fail_convert_install_code():
 async def test_async_listener():
     listenable = Listenable()
 
-    listener_1 = mock.MagicMock(spec=["async_event"])
-    listener_1.async_event.side_effect = CoroutineMock(
-        return_value=mock.sentinel.result_1
-    )
+    listener_1 = MagicMock(spec=["async_event"])
+    listener_1.async_event.side_effect = AsyncMock(return_value=sentinel.result_1)
 
-    listener_2 = mock.MagicMock(spec=["async_event"])
-    listener_2.async_event.side_effect = CoroutineMock(
-        return_value=mock.sentinel.result_2
-    )
+    listener_2 = MagicMock(spec=["async_event"])
+    listener_2.async_event.side_effect = AsyncMock(return_value=sentinel.result_2)
 
-    failed = mock.MagicMock(spec=["async_event"])
-    failed.async_event = CoroutineMock(
-        side_effect=RuntimeError("async listener exception")
-    )
+    failed = MagicMock(spec=["async_event"])
+    failed.async_event = AsyncMock(side_effect=RuntimeError("async listener exception"))
 
     listenable.add_listener(listener_1)
     listenable.add_context_listener(listener_2)
     listenable.add_listener(failed)
 
-    r = await listenable.async_event("async_event", mock.sentinel.data)
+    r = await listenable.async_event("async_event", sentinel.data)
     assert len(r) == 2
-    assert mock.sentinel.result_1 in r
-    assert mock.sentinel.result_2 in r
+    assert sentinel.result_1 in r
+    assert sentinel.result_2 in r
 
     assert listener_1.async_event.call_count == 1
-    assert listener_1.async_event.call_args[0][0] is mock.sentinel.data
+    assert listener_1.async_event.call_args[0][0] is sentinel.data
 
     # context listener
     assert listener_2.async_event.call_count == 1
     assert listener_2.async_event.call_args[0][0] is listenable
-    assert listener_2.async_event.call_args[0][1] is mock.sentinel.data
+    assert listener_2.async_event.call_args[0][1] is sentinel.data
 
     # failed listener
     assert failed.async_event.call_count == 1
-    assert failed.async_event.call_args[0][0] is mock.sentinel.data
+    assert failed.async_event.call_args[0][0] is sentinel.data
 
-    r = await listenable.async_event("no_such_event", mock.sentinel.no_data)
+    r = await listenable.async_event("no_such_event", sentinel.no_data)
     assert r == []
 
 
 def test_requests(monkeypatch):
-    req_mock = mock.MagicMock()
+    req_mock = MagicMock()
     monkeypatch.setattr(util, "Request", req_mock)
     r = util.Requests()
-    r.new(mock.sentinel.seq)
+    r.new(sentinel.seq)
     assert req_mock.call_count == 1
 
 
@@ -432,7 +420,7 @@ async def test_request():
     assert req.result.cancelled() is True
     assert seq not in pending
 
-    seq = mock.sentinel.seq
+    seq = sentinel.seq
     req = pending.new(seq)
     assert seq not in pending
     assert req.result.done() is False
@@ -476,11 +464,11 @@ class _ClusterMock(util.CatchingTaskMixin):
         raise exception()
 
 
-@mock.patch("zigpy.util.CatchingTaskMixin.catching_coro")
+@patch("zigpy.util.CatchingTaskMixin.catching_coro")
 async def test_create_catching_task(catching_coro_mock):
     """Test catching task."""
     mock_cluster = _ClusterMock(logging.getLogger(__name__))
-    coro = CoroutineMock()
+    coro = AsyncMock()
     mock_cluster.create_catching_task(coro)
     assert catching_coro_mock.call_count == 1
     assert catching_coro_mock.call_args[0][0] is coro
