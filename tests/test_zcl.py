@@ -1,6 +1,6 @@
 import asyncio
+from unittest import mock
 
-from asynctest import CoroutineMock, mock
 import pytest
 
 import zigpy.endpoint
@@ -8,12 +8,14 @@ import zigpy.types as t
 import zigpy.zcl as zcl
 import zigpy.zcl.foundation as foundation
 
+from .async_mock import AsyncMock, MagicMock, patch, sentinel
+
 DEFAULT_TSN = 123
 
 
 @pytest.fixture
 def endpoint():
-    ep = zigpy.endpoint.Endpoint(mock.MagicMock(), 1)
+    ep = zigpy.endpoint.Endpoint(MagicMock(), 1)
     ep.add_input_cluster(0)
     ep.add_input_cluster(3)
     return ep
@@ -86,7 +88,7 @@ def test_manufacturer_specific_cluster():
 @pytest.fixture
 def cluster_by_id():
     def _cluster(cluster_id=0):
-        epmock = mock.MagicMock()
+        epmock = MagicMock()
         epmock._device.application.get_sequence.return_value = DEFAULT_TSN
         epmock.device.application.get_sequence.return_value = DEFAULT_TSN
         return zcl.Cluster.from_id(epmock, cluster_id)
@@ -101,7 +103,7 @@ def cluster(cluster_by_id):
 
 @pytest.fixture
 def client_cluster():
-    epmock = mock.MagicMock()
+    epmock = MagicMock()
     epmock._device._application.get_sequence.return_value = DEFAULT_TSN
     return zcl.Cluster.from_id(epmock, 3)
 
@@ -170,7 +172,7 @@ def test_attribute_report(cluster):
     attr.attrid = 4
     attr.value = zcl.foundation.TypeValue()
     attr.value.value = "manufacturer"
-    hdr = mock.MagicMock(auto_spec=foundation.ZCLHeader)
+    hdr = MagicMock(auto_spec=foundation.ZCLHeader)
     hdr.command_id = foundation.Command.Report_Attributes
     hdr.frame_control.is_general = True
     hdr.frame_control.is_cluster = False
@@ -184,22 +186,22 @@ def test_attribute_report(cluster):
     def mock_type(*args, **kwargs):
         raise ValueError
 
-    with mock.patch.dict(cluster.attributes, {0xAAAA: ("Name", mock_type)}):
+    with patch.dict(cluster.attributes, {0xAAAA: ("Name", mock_type)}):
         attr.attrid = 0xAAAA
         cluster.handle_message(hdr, [[attr]])
         assert cluster._attr_cache[attr.attrid] == "manufacturer"
 
 
 def test_handle_request_unknown(cluster):
-    hdr = mock.MagicMock(auto_spec=foundation.ZCLHeader)
-    hdr.command_id = mock.sentinel.command_id
+    hdr = MagicMock(auto_spec=foundation.ZCLHeader)
+    hdr.command_id = sentinel.command_id
     hdr.frame_control.is_general = True
     hdr.frame_control.is_cluster = False
-    cluster.listener_event = mock.MagicMock()
-    cluster._update_attribute = mock.MagicMock()
-    cluster.handle_cluster_general_request = mock.MagicMock()
-    cluster.handle_cluster_request = mock.MagicMock()
-    cluster.handle_message(hdr, mock.sentinel.args)
+    cluster.listener_event = MagicMock()
+    cluster._update_attribute = MagicMock()
+    cluster.handle_cluster_general_request = MagicMock()
+    cluster.handle_cluster_request = MagicMock()
+    cluster.handle_message(hdr, sentinel.args)
 
     assert cluster.listener_event.call_count == 1
     assert cluster.listener_event.call_args[0][0] == "general_command"
@@ -209,16 +211,16 @@ def test_handle_request_unknown(cluster):
 
 
 def test_handle_cluster_request(cluster):
-    hdr = mock.MagicMock(auto_spec=foundation.ZCLHeader)
-    hdr.command_id = mock.sentinel.command_id
+    hdr = MagicMock(auto_spec=foundation.ZCLHeader)
+    hdr.command_id = sentinel.command_id
     hdr.frame_control.is_general = False
     hdr.frame_control.is_cluster = True
     hdr.command_id.is_general = False
-    cluster.listener_event = mock.MagicMock()
-    cluster._update_attribute = mock.MagicMock()
-    cluster.handle_cluster_general_request = mock.MagicMock()
-    cluster.handle_cluster_request = mock.MagicMock()
-    cluster.handle_message(hdr, mock.sentinel.args)
+    cluster.listener_event = MagicMock()
+    cluster._update_attribute = MagicMock()
+    cluster.handle_cluster_general_request = MagicMock()
+    cluster.handle_cluster_request = MagicMock()
+    cluster.handle_message(hdr, sentinel.args)
 
     assert cluster.listener_event.call_count == 1
     assert cluster.listener_event.call_args[0][0] == "cluster_command"
@@ -257,7 +259,7 @@ async def test_read_attributes_uncached(cluster):
 
 
 async def test_read_attributes_cached(cluster):
-    cluster.request = mock.MagicMock()
+    cluster.request = MagicMock()
     cluster._attr_cache[0] = 99
     cluster._attr_cache[4] = "Manufacturer"
     success, failure = await cluster.read_attributes(
@@ -317,27 +319,27 @@ async def test_read_attributes_value_normalization_error(cluster):
         raise ValueError
 
     cluster.request = mockrequest
-    with mock.patch.dict(cluster.attributes, {5: ("Name", mock_type)}):
+    with patch.dict(cluster.attributes, {5: ("Name", mock_type)}):
         success, failure = await cluster.read_attributes(["model"], allow_cache=True)
     assert failure == {}
     assert success["model"] == "Model"
 
 
 async def test_item_access_attributes(cluster):
-    cluster._attr_cache[5] = mock.sentinel.model
+    cluster._attr_cache[5] = sentinel.model
 
-    assert cluster["model"] == mock.sentinel.model
-    assert cluster[5] == mock.sentinel.model
-    assert cluster.get("model") == mock.sentinel.model
-    assert cluster.get(5) == mock.sentinel.model
-    assert cluster.get("model", mock.sentinel.default) == mock.sentinel.model
-    assert cluster.get(5, mock.sentinel.default) == mock.sentinel.model
+    assert cluster["model"] == sentinel.model
+    assert cluster[5] == sentinel.model
+    assert cluster.get("model") == sentinel.model
+    assert cluster.get(5) == sentinel.model
+    assert cluster.get("model", sentinel.default) == sentinel.model
+    assert cluster.get(5, sentinel.default) == sentinel.model
     with pytest.raises(KeyError):
         cluster[4]
     assert cluster.get(4) is None
     assert cluster.get("manufacturer") is None
-    assert cluster.get(4, mock.sentinel.default) is mock.sentinel.default
-    assert cluster.get("manufacturer", mock.sentinel.default) is mock.sentinel.default
+    assert cluster.get(4, sentinel.default) is sentinel.default
+    assert cluster.get("manufacturer", sentinel.default) is sentinel.default
 
     with pytest.raises(KeyError):
         cluster["manufacturer"]
@@ -356,30 +358,30 @@ async def test_item_access_attributes(cluster):
 
 
 async def test_item_set_attributes(cluster):
-    with mock.patch.object(cluster, "write_attributes") as write_mock:
-        cluster["model"] = mock.sentinel.model
+    with patch.object(cluster, "write_attributes") as write_mock:
+        cluster["model"] = sentinel.model
         await asyncio.sleep(0)
     assert write_mock.await_count == 1
-    assert write_mock.call_args[0][0] == {"model": mock.sentinel.model}
+    assert write_mock.call_args[0][0] == {"model": sentinel.model}
 
     with pytest.raises(ValueError):
-        cluster[None] = mock.sentinel.manufacturer
+        cluster[None] = sentinel.manufacturer
 
 
 async def test_write_attributes(cluster):
-    with mock.patch.object(cluster, "_write_attributes", new=CoroutineMock()):
+    with patch.object(cluster, "_write_attributes", new=AsyncMock()):
         await cluster.write_attributes({0: 5, "app_version": 4})
         assert cluster._write_attributes.call_count == 1
 
 
 async def test_write_wrong_attribute(cluster):
-    with mock.patch.object(cluster, "_write_attributes", new=CoroutineMock()):
+    with patch.object(cluster, "_write_attributes", new=AsyncMock()):
         await cluster.write_attributes({0xFF: 5})
         assert cluster._write_attributes.call_count == 1
 
 
 async def test_write_attributes_wrong_type(cluster):
-    with mock.patch.object(cluster, "_write_attributes", new=CoroutineMock()):
+    with patch.object(cluster, "_write_attributes", new=AsyncMock()):
         await cluster.write_attributes({18: 2})
         assert cluster._write_attributes.call_count == 1
 
@@ -398,7 +400,7 @@ async def test_write_attribute_types(
     cluster_id, attr, value, serialized, cluster_by_id
 ):
     cluster = cluster_by_id(cluster_id)
-    with mock.patch.object(cluster.endpoint, "request", new=CoroutineMock()):
+    with patch.object(cluster.endpoint, "request", new=AsyncMock()):
         await cluster.write_attributes({attr: value})
         assert cluster._endpoint.reply.call_count == 0
         assert cluster._endpoint.request.call_count == 1
@@ -409,10 +411,8 @@ async def test_write_attribute_types(
     "status", (foundation.Status.SUCCESS, foundation.Status.UNSUPPORTED_ATTRIBUTE)
 )
 async def test_write_attributes_cache_default_response(cluster, status):
-    write_mock = CoroutineMock(
-        return_value=[foundation.Command.Write_Attributes, status]
-    )
-    with mock.patch.object(cluster, "_write_attributes", write_mock):
+    write_mock = AsyncMock(return_value=[foundation.Command.Write_Attributes, status])
+    with patch.object(cluster, "_write_attributes", write_mock):
         attributes = {4: "manufacturer", 5: "model", 12: 12}
         await cluster.write_attributes(attributes)
         assert cluster._write_attributes.call_count == 1
@@ -432,8 +432,8 @@ async def test_write_attributes_cache_default_response(cluster, status):
 )
 async def test_write_attributes_cache_success(cluster, attributes, result):
     rsp_type = t.List[foundation.WriteAttributesStatusRecord]
-    write_mock = CoroutineMock(return_value=[rsp_type.deserialize(result)[0]])
-    with mock.patch.object(cluster, "_write_attributes", write_mock):
+    write_mock = AsyncMock(return_value=[rsp_type.deserialize(result)[0]])
+    with patch.object(cluster, "_write_attributes", write_mock):
         await cluster.write_attributes(attributes)
         assert cluster._write_attributes.call_count == 1
         for attr_id in attributes:
@@ -465,9 +465,9 @@ async def test_write_attributes_cache_success(cluster, attributes, result):
 )
 async def test_write_attributes_cache_failure(cluster, attributes, result, failed):
     rsp_type = foundation.WriteAttributesResponse
-    write_mock = CoroutineMock(return_value=[rsp_type.deserialize(result)[0]])
+    write_mock = AsyncMock(return_value=[rsp_type.deserialize(result)[0]])
 
-    with mock.patch.object(cluster, "_write_attributes", write_mock):
+    with patch.object(cluster, "_write_attributes", write_mock):
         await cluster.write_attributes(attributes)
         assert cluster._write_attributes.call_count == 1
         for attr_id in attributes:
@@ -502,7 +502,7 @@ def test_read_attributes_resp_str(cluster):
 
 
 def test_read_attributes_resp_exc(cluster):
-    with mock.patch.object(foundation.DATA_TYPES, "pytype_to_datatype_id") as mck:
+    with patch.object(foundation.DATA_TYPES, "pytype_to_datatype_id") as mck:
         mck.side_effect = ValueError
         cluster.read_attributes_rsp({"hw_version": 32})
     assert cluster._endpoint.reply.call_count == 1
@@ -558,9 +558,9 @@ def test_configure_reporting_wrong_attrid(cluster):
 
 
 def test_configure_reporting_manuf():
-    ep = mock.MagicMock()
+    ep = MagicMock()
     cluster = zcl.Cluster.from_id(ep, 6)
-    cluster.request = mock.MagicMock(name="request")
+    cluster.request = MagicMock(name="request")
     cluster.configure_reporting(0, 10, 20, 1)
     cluster.request.assert_called_with(
         True,
@@ -653,11 +653,10 @@ def test_commands(cluster):
 
 
 def test_general_command(cluster):
-    cluster.request = mock.MagicMock()
-    cluster.reply = mock.MagicMock()
-    s = mock.sentinel
+    cluster.request = MagicMock()
+    cluster.reply = MagicMock()
     cmd_id = 0x0C
-    cluster.general_command(cmd_id, s.start, s.items, manufacturer=0x4567)
+    cluster.general_command(cmd_id, sentinel.start, sentinel.items, manufacturer=0x4567)
 
     assert cluster.reply.call_count == 0
     assert cluster.request.call_count == 1
@@ -665,8 +664,8 @@ def test_general_command(cluster):
         True,
         cmd_id,
         mock.ANY,
-        s.start,
-        s.items,
+        sentinel.start,
+        sentinel.items,
         expect_reply=True,
         manufacturer=0x4567,
         tries=1,
@@ -675,8 +674,8 @@ def test_general_command(cluster):
 
 
 def test_general_command_reply(cluster):
-    cluster.request = mock.MagicMock()
-    cluster.reply = mock.MagicMock()
+    cluster.request = MagicMock()
+    cluster.reply = MagicMock()
     cmd_id = 0x0D
     cluster.general_command(cmd_id, True, [], manufacturer=0x4567)
 
@@ -688,21 +687,17 @@ def test_general_command_reply(cluster):
 
     cluster.request.reset_mock()
     cluster.reply.reset_mock()
-    cluster.general_command(
-        cmd_id, True, [], manufacturer=0x4567, tsn=mock.sentinel.tsn
-    )
+    cluster.general_command(cmd_id, True, [], manufacturer=0x4567, tsn=sentinel.tsn)
 
     assert cluster.request.call_count == 0
     assert cluster.reply.call_count == 1
     cluster.reply.assert_called_with(
-        True, cmd_id, mock.ANY, True, [], manufacturer=0x4567, tsn=mock.sentinel.tsn
+        True, cmd_id, mock.ANY, True, [], manufacturer=0x4567, tsn=sentinel.tsn
     )
 
 
 def test_handle_cluster_request_handler(cluster):
-    cluster.handle_cluster_request(
-        mock.sentinel.tsn, mock.sentinel.command_id, mock.sentinel.args
-    )
+    cluster.handle_cluster_request(sentinel.tsn, sentinel.command_id, sentinel.args)
 
 
 async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
@@ -713,8 +708,8 @@ async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
         b"\x01\x00\x0A\x21\x00\x00",
     )
     cluster = endpoint.in_clusters[0]
-    p1 = mock.patch.object(cluster, "_update_attribute")
-    p2 = mock.patch.object(cluster, "general_command")
+    p1 = patch.object(cluster, "_update_attribute")
+    p2 = patch.object(cluster, "general_command")
     with p1 as attr_lst_mock, p2 as general_cmd_mock:
         cluster.handle_cluster_general_request(hdr, values)
         await asyncio.sleep(0)
@@ -732,8 +727,8 @@ async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
 
 async def test_handle_cluster_general_request_not_attr_report(cluster):
     hdr = foundation.ZCLHeader.general(1, foundation.Command.Write_Attributes)
-    p1 = mock.patch.object(cluster, "_update_attribute")
-    p2 = mock.patch.object(cluster, "create_catching_task")
+    p1 = patch.object(cluster, "_update_attribute")
+    p2 = patch.object(cluster, "create_catching_task")
     with p1 as attr_lst_mock, p2 as response_mock:
         cluster.handle_cluster_general_request(hdr, [1, 2, 3])
         await asyncio.sleep(0)
@@ -742,14 +737,14 @@ async def test_handle_cluster_general_request_not_attr_report(cluster):
 
 
 async def test_write_attributes_undivided(cluster):
-    with mock.patch.object(cluster, "request", new=CoroutineMock()):
+    with patch.object(cluster, "request", new=AsyncMock()):
         i = cluster.write_attributes_undivided({0: 5, "app_version": 4})
         await i
         assert cluster.request.call_count == 1
 
 
 async def test_configure_reporting_multiple(cluster):
-    with mock.patch.object(cluster.endpoint, "request", new=CoroutineMock()):
+    with patch.object(cluster.endpoint, "request", new=AsyncMock()):
         await cluster.configure_reporting(3, 5, 15, 20, manufacturer=0x2345)
         await cluster.configure_reporting_multiple(
             {3: (5, 15, 20)}, manufacturer=0x2345
