@@ -157,6 +157,14 @@ class Trådfri(Basic):
                 async with req.get(self.UPDATE_URL) as rsp:
                     # IKEA does not always respond with an appropriate Content-Type
                     # but the response is always JSON
+                    if not (200 <= rsp.status <= 299):
+                        self.warning(
+                            "Couldn't download '%s': %s/%s",
+                            rsp.url,
+                            rsp.status,
+                            rsp.reason,
+                        )
+                        return
                     fw_lst = await rsp.json(content_type=None)
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
@@ -250,6 +258,14 @@ class Ledvance(Basic):
         async with self._locks[LOCK_REFRESH]:
             async with aiohttp.ClientSession(headers=self.HEADERS) as req:
                 async with req.get(self.UPDATE_URL) as rsp:
+                    if not (200 <= rsp.status <= 299):
+                        self.warning(
+                            "Couldn't download '%s': %s/%s",
+                            rsp.url,
+                            rsp.status,
+                            rsp.reason,
+                        )
+                        return
                     fw_lst = await rsp.json()
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
