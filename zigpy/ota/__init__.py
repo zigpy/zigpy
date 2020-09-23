@@ -1,4 +1,5 @@
 """OTA support for Zigbee devices."""
+from collections import defaultdict
 import datetime
 import logging
 from typing import Optional
@@ -51,6 +52,7 @@ class OTA(zigpy.util.ListenableMixin):
         self._image_cache = {}
         self._not_initialized = True
         self._listeners = {}
+        self._successful_upgrades = defaultdict(list)
         ota_config = app.config[CONF_OTA]
         if ota_config[CONF_OTA_IKEA]:
             self.add_listener(zigpy.ota.provider.Trådfri())
@@ -80,3 +82,16 @@ class OTA(zigpy.util.ListenableMixin):
     @property
     def not_initialized(self):
         return self._not_initialized
+
+    def has_performed_upgrade(self, device, image: CachedImage) -> bool:
+        return image in self._successful_upgrades[device.ieee]
+
+    def notify_upgrade_end(self, device, manufacturer_id, image_type, file_version):
+        image = self._image_cache.get(ImageKey(manufacturer_id, image_type))
+
+        if image is None or image.header.file_version != file_version:
+            return
+
+        # Two images with the same header may not be identical so we keep track of
+        # the image itself.
+        self._successful_upgrades[device.ieee].append(image)

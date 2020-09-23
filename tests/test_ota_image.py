@@ -218,6 +218,18 @@ def test_ota_image(raw_header, raw_sub_element):
         firmware.OTAImage.deserialize(raw_header(len(el1 + el2)) + el1 + el2[:-1])
 
 
+def test_ota_image_equality(raw_header, raw_sub_element):
+    el1 = raw_sub_element(0, b"abcd")
+    el2 = raw_sub_element(1, b"4321")
+
+    img1, _ = firmware.OTAImage.deserialize(raw_header(len(el1 + el2)) + el1 + el2)
+    img2, _ = firmware.OTAImage.deserialize(raw_header(len(el1 + el2)) + el1 + el2)
+
+    assert img1 == img2
+    assert img1 in [img2]
+    assert [img1, img2].count(img1) == 2
+
+
 def test_ota_img_should_upgrade():
     manufacturer_id = 0x2345
     image_type = 0x4567

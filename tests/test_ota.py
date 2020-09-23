@@ -111,6 +111,29 @@ async def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
     assert ota.async_event.call_count == 1
 
 
+async def test_has_performed_upgrade(ota, image_with_version):
+    image1 = zigpy.ota.CachedImage.new(image_with_version())
+    image2 = zigpy.ota.CachedImage.new(image_with_version())
+
+    device = MagicMock()
+
+    # Cache only the first image
+    ota._image_cache[image1.key] = image1
+
+    assert not ota.has_performed_upgrade(device, image1)
+    assert not ota.has_performed_upgrade(device, image2)
+
+    ota.notify_upgrade_end(
+        device,
+        image1.header.manufacturer_id,
+        image1.header.image_type,
+        image1.header.file_version,
+    )
+    # Only the first image should have been picked up
+    assert ota.has_performed_upgrade(device, image1)
+    assert not ota.has_performed_upgrade(device, image2)
+
+
 def test_cached_image_expiration(image, monkeypatch):
     cached = zigpy.ota.CachedImage.new(image)
     assert cached.expired is False

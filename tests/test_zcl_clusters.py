@@ -9,7 +9,7 @@ import zigpy.types as types
 import zigpy.zcl as zcl
 import zigpy.zcl.clusters.security as sec
 
-from .async_mock import AsyncMock, MagicMock, sentinel
+from .async_mock import AsyncMock, MagicMock, call, sentinel
 
 IMAGE_SIZE = 0x2345
 IMAGE_OFFSET = 0x2000
@@ -180,6 +180,7 @@ def _ota_next_image(cluster, has_image=True, upgradeable=False):
         return img
 
     cluster.endpoint.device.application.ota.get_ota_image.side_effect = get_ota_mock
+    cluster.endpoint.device.application.ota.has_performed_upgrade.return_value = False
     return cluster._handle_query_next_image(
         sentinel.field_ctrl,
         sentinel.manufacturer_id,
@@ -232,6 +233,54 @@ async def test_ota_handle_query_next_image_upgradeable(ota_cluster):
         ota_cluster.query_next_image_response.call_args[0][3] == sentinel.image_version
     )
     assert ota_cluster.query_next_image_response.call_args[0][4] == sentinel.image_size
+
+
+async def test_ota_handle_query_next_image_upgrade_loop(ota_cluster):
+    ota_cluster.query_next_image_response = AsyncMock()
+    ota_cluster.upgrade_end_response = AsyncMock()
+
+    await _ota_next_image(ota_cluster, has_image=True, upgradeable=True)
+    assert ota_cluster.query_next_image_response.call_count == 1
+    assert (
+        ota_cluster.query_next_image_response.call_args[0][0]
+        == zcl.foundation.Status.SUCCESS
+    )
+
+    # Have the device accept the upgrade
+    await ota_cluster._handle_upgrade_end(
+        status=zcl.foundation.Status.SUCCESS,
+        manufacturer_id=sentinel.manufacturer_id,
+        image_type=sentinel.image_type,
+        file_version=sentinel.file_version,
+        tsn=0x22,
+    )
+
+    # Make sure the OTA object was notified of the upgrade
+    app = ota_cluster.endpoint.device.application
+    app.ota.notify_upgrade_end.assert_called_once_with(
+        ota_cluster.endpoint.device,
+        sentinel.manufacturer_id,
+        sentinel.image_type,
+        sentinel.file_version,
+    )
+    app.ota.has_performed_upgrade.return_value = True
+
+    # And try it again
+    assert ota_cluster.query_next_image_response.call_count == 1
+    await ota_cluster._handle_query_next_image(
+        sentinel.field_ctrl,
+        sentinel.manufacturer_id,
+        sentinel.image_type,
+        sentinel.current_file_version,
+        sentinel.hw_version,
+        tsn=0x23,
+    )
+    assert ota_cluster.query_next_image_response.call_count == 2
+
+    # The same image will not be sent twice
+    assert ota_cluster.query_next_image_response.mock_calls[1] == call(
+        zcl.foundation.Status.NO_IMAGE_AVAILABLE, tsn=0x23
+    )
 
 
 def _ota_image_block(cluster, has_image=True, correct_version=True, wrong_offset=False):

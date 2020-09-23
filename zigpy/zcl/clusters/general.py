@@ -1017,7 +1017,7 @@ class Ota(Cluster):
         self.debug(
             (
                 "OTA query_next_image handler for '%s %s': "
-                "field_control=%s, manufacture_id=%s, image_type=%s, "
+                "field_control=%s, manufacturer_id=%s, image_type=%s, "
                 "current_file_version=%s, hardware_version=%s"
             ),
             self.endpoint.manufacturer,
@@ -1033,33 +1033,47 @@ class Ota(Cluster):
             manufacturer_id, image_type
         )
 
-        if img is not None:
-            should_update = img.should_update(
-                manufacturer_id, image_type, current_file_version, hardware_version
-            )
-            self.debug(
-                "OTA image version: %s, size: %s. Update needed: %s",
-                img.version,
-                img.header.image_size,
-                should_update,
-            )
-            if should_update:
-                self.info(
-                    "Updating: %s %s", self.endpoint.manufacturer, self.endpoint.model
-                )
-                await self.query_next_image_response(
-                    foundation.Status.SUCCESS,
-                    img.key.manufacturer_id,
-                    img.key.image_type,
-                    img.version,
-                    img.header.image_size,
-                    tsn=tsn,
-                )
-                return
-        else:
+        if img is None:
             self.debug("No OTA image is available")
+            await self.query_next_image_response(
+                foundation.Status.NO_IMAGE_AVAILABLE, tsn=tsn
+            )
+            return
+
+        should_update = img.should_update(
+            manufacturer_id, image_type, current_file_version, hardware_version
+        )
+        self.debug(
+            "OTA image version: %s, size: %s. Update needed: %s",
+            img.version,
+            img.header.image_size,
+            should_update,
+        )
+
+        if not should_update:
+            await self.query_next_image_response(
+                foundation.Status.NO_IMAGE_AVAILABLE, tsn=tsn
+            )
+            return
+
+        if self.endpoint.device.application.ota.has_performed_upgrade(
+            device=self.endpoint.device,
+            image=img,
+        ):
+            self.debug("Device has already received this image. Not upgrading again.")
+            await self.query_next_image_response(
+                foundation.Status.NO_IMAGE_AVAILABLE, tsn=tsn
+            )
+            return
+
+        self.info("Updating: %s %s", self.endpoint.manufacturer, self.endpoint.model)
         await self.query_next_image_response(
-            foundation.Status.NO_IMAGE_AVAILABLE, tsn=tsn
+            foundation.Status.SUCCESS,
+            img.key.manufacturer_id,
+            img.key.image_type,
+            img.version,
+            img.header.image_size,
+            tsn=tsn,
         )
 
     async def _handle_image_block(
@@ -1119,7 +1133,7 @@ class Ota(Cluster):
             )
 
     async def _handle_upgrade_end(
-        self, status, manufacturer_id, image_type, file_ver, *, tsn
+        self, status, manufacturer_id, image_type, file_version, *, tsn
     ):
         self.debug(
             (
@@ -1131,10 +1145,18 @@ class Ota(Cluster):
             status,
             manufacturer_id,
             image_type,
-            file_ver,
+            file_version,
         )
+
+        self.endpoint.device.application.ota.notify_upgrade_end(
+            self.endpoint.device,
+            manufacturer_id,
+            image_type,
+            file_version,
+        )
+
         await self.upgrade_end_response(
-            manufacturer_id, image_type, file_ver, 0x00000000, 0x00000000, tsn=tsn
+            manufacturer_id, image_type, file_version, 0x00000000, 0x00000000, tsn=tsn
         )
 
 
