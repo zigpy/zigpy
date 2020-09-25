@@ -6,6 +6,7 @@ import zigpy.application
 import zigpy.ota
 import zigpy.ota.image
 import zigpy.ota.provider
+import zigpy.ota.validators
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
@@ -42,8 +43,14 @@ def key():
 def ota():
     app = MagicMock(spec_set=zigpy.application.ControllerApplication)
     tradfri = MagicMock(spec_set=zigpy.ota.provider.Trådfri)
+    validate_ota_image = MagicMock(
+        spec_set=zigpy.ota.validators.validate_ota_image,
+        return_value=zigpy.ota.validators.ValidationResult.VALID,
+    )
+
     with patch("zigpy.ota.provider.Trådfri", tradfri):
-        return zigpy.ota.OTA(app)
+        with patch("zigpy.ota.validate_ota_image", validate_ota_image):
+            yield zigpy.ota.OTA(app)
 
 
 async def test_ota_initialize(ota):
@@ -109,6 +116,42 @@ async def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
     assert res.header == newer.header
     assert res.subelements == newer.subelements
     assert ota.async_event.call_count == 1
+
+
+async def test_get_image_invalid(ota, image, image_with_version):
+    corrupted = image_with_version(image.version)
+
+    zigpy.ota.validate_ota_image.return_value = (
+        zigpy.ota.validators.ValidationResult.INVALID
+    )
+    ota.async_event = AsyncMock(return_value=[None, corrupted])
+
+    assert len(ota._image_cache) == 0
+    res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
+    assert len(ota._image_cache) == 0
+
+    assert res is None
+
+
+@pytest.mark.parametrize("v1", [0, 1])
+@pytest.mark.parametrize("v2", [0, 1])
+async def test_get_image_invalid_then_valid_versions(v1, v2, ota, image_with_version):
+    image = image_with_version(100 + v1)
+    image.header.header_string = b"\x12" * 32
+
+    corrupted = image_with_version(100 + v2)
+    corrupted.header.header_string = b"\x11" * 32
+
+    ota.async_event = AsyncMock(return_value=[corrupted, image])
+    zigpy.ota.validate_ota_image.side_effect = [
+        zigpy.ota.validators.ValidationResult.INVALID,
+        zigpy.ota.validators.ValidationResult.VALID,
+    ]
+
+    res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
+
+    # The valid image is always picked, even if the versions match
+    assert res.header.header_string == image.header.header_string
 
 
 def test_cached_image_expiration(image, monkeypatch):
