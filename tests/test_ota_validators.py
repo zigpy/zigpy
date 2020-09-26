@@ -75,6 +75,13 @@ def test_parse_silabs_ebl():
     with pytest.raises(AssertionError):
         list(validators.parse_silabs_ebl(image + b"\xFF"))
 
+    # Corrupted images are detected
+    corrupted_image = image.replace(b"foo", b"goo", 1)
+    assert image != corrupted_image
+
+    with pytest.raises(AssertionError):
+        list(validators.parse_silabs_ebl(corrupted_image))
+
 
 def test_parse_silabs_gbl():
     list(validators.parse_silabs_gbl(VALID_GBL_IMAGE))
@@ -90,6 +97,13 @@ def test_parse_silabs_gbl():
     # No padding is allowed
     with pytest.raises(AssertionError):
         list(validators.parse_silabs_gbl(image + b"\xFF"))
+
+    # Corrupted images are detected
+    corrupted_image = image.replace(b"foo", b"goo", 1)
+    assert image != corrupted_image
+
+    with pytest.raises(AssertionError):
+        list(validators.parse_silabs_gbl(corrupted_image))
 
 
 def test_validate_firmware():
