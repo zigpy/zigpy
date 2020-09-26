@@ -1,7 +1,10 @@
 import enum
 import typing
+import zlib
 
 from zigpy.ota.image import ElementTagId, OTAImage
+
+VALID_SILABS_CRC = 0x2144DF1C  # CRC32(anything | CRC32(anything)) == CRC32(0x00000000)
 
 
 class ValidationResult(enum.Enum):
@@ -18,7 +21,9 @@ def parse_silabs_ebl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]
     assert data
     assert len(data) % 64 == 0
 
-    while data:
+    orig_data = data
+
+    while True:
         assert len(data) >= 4
         tag = data[:2]
         length = int.from_bytes(data[2:4], "big")
@@ -29,9 +34,16 @@ def parse_silabs_ebl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]
         data = data[4 + length :]
         yield tag, value
 
-        if tag == b"\xFC\x04":
-            assert not data.strip(b"\xFF")
-            break
+        if tag != b"\xFC\x04":
+            continue
+
+        # At this point the EBL should contain nothing but padding
+        assert not data.strip(b"\xFF")
+
+        unpadded_image = orig_data[: -len(data)] if data else orig_data
+        assert zlib.crc32(unpadded_image) == VALID_SILABS_CRC
+
+        break
 
 
 def parse_silabs_gbl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]:
@@ -41,7 +53,9 @@ def parse_silabs_gbl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]
 
     assert data
 
-    while data:
+    orig_data = data
+
+    while True:
         assert len(data) >= 8
         tag = data[:4]
         length = int.from_bytes(data[4:8], "little")
@@ -52,21 +66,33 @@ def parse_silabs_gbl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]
         data = data[8 + length :]
         yield tag, value
 
+        if tag != b"\xFC\x04\x04\xFC":
+            continue
+
+        assert not data
+
+        # We could replace this entire function with the below line but validating the
+        # image structure along with the checksum is better.
+        assert zlib.crc32(orig_data) == VALID_SILABS_CRC
+        break
+
 
 def validate_firmware(data: bytes) -> ValidationResult:
     """
     Validates a firmware image.
     """
 
+    parser = None
+
     if data.startswith(b"\xEB\x17\xA6\x03"):
-        parsed = parse_silabs_gbl(data)
+        parser = parse_silabs_gbl
     elif data.startswith(b"\x00\x00\x00\x8C"):
-        parsed = parse_silabs_ebl(data)
+        parser = parse_silabs_ebl
     else:
         return ValidationResult.UNKNOWN
 
     try:
-        list(parsed)
+        tuple(parser(data))
         return ValidationResult.VALID
     except Exception:
         return ValidationResult.INVALID
