@@ -184,8 +184,25 @@ class _NeighborEnums:
         PreviousChild = 0x4
 
 
-class _NeighborPackStruct(t.Struct):
+class Neighbor(t.Struct):
+    """Neighbor Descriptor"""
+
+    DeviceType = _NeighborEnums.DeviceType
+    RxOnWhenIdle = _NeighborEnums.RxOnWhenIdle
+    RelationShip = _NeighborEnums.Relationship
+
+    class PermitJoins(t.enum8):
+        NotAccepting = 0x0
+        Accepting = 0x1
+        Unknown = 0x2
+
+    extended_pan_id: t.ExtendedPanId
+    ieee: t.EUI64
+    nwk: t.NWK
     packed: t.uint8_t
+    permit_joining: PermitJoins
+    depth: t.uint8_t
+    lqi: t.uint8_t
 
     @property
     def device_type(self) -> typing.Optional[_NeighborEnums.DeviceType]:
@@ -231,27 +248,6 @@ class _NeighborPackStruct(t.Struct):
             self.packed = value
         self.packed &= 0b0000_1111
         self.packed |= (value & 0x07) << 4
-
-
-class Neighbor(t.Struct):
-    """Neighbor Descriptor"""
-
-    DeviceType = _NeighborEnums.DeviceType
-    RxOnWhenIdle = _NeighborEnums.RxOnWhenIdle
-    RelationShip = _NeighborEnums.Relationship
-
-    class PermitJoins(t.enum8):
-        NotAccepting = 0x0
-        Accepting = 0x1
-        Unknown = 0x2
-
-    extended_pan_id: t.ExtendedPanId
-    ieee: t.EUI64
-    nwk: t.NWK
-    struct: _NeighborPackStruct
-    permit_joining: PermitJoins
-    depth: t.uint8_t
-    lqi: t.uint8_t
 
 
 class Neighbors(t.Struct):
