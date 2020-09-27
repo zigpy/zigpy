@@ -93,10 +93,10 @@ class PersistingListener:
     def neighbors_updated(self, neighbors):
         self.execute("DELETE FROM neighbors WHERE device_ieee = ?", (neighbors.ieee,))
         for nei in neighbors.neighbors:
-            epid, ieee, nwk, struct, prm, depth, lqi = nei.neighbor.as_dict().values()
+            epid, ieee, nwk, packed, prm, depth, lqi = nei.neighbor.as_dict().values()
             self.execute(
                 "INSERT INTO neighbors VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (neighbors.ieee, epid, ieee, nwk, struct.packed, prm, depth, lqi),
+                (neighbors.ieee, epid, ieee, nwk, packed, prm, depth, lqi),
             )
         self._db.commit()
 
@@ -450,11 +450,11 @@ class PersistingListener:
             dev.relays = t.Relays.deserialize(value)[0]
 
     async def _load_neighbors(self):
-        for (dev_ieee, epid, ieee, nwk, struct, prm, depth, lqi) in self._scan(
+        for (dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi) in self._scan(
             "neighbors"
         ):
             dev = self._application.get_device(dev_ieee)
-            nei = zdo_t.Neighbor(epid, ieee, nwk, struct, prm, depth, lqi)
+            nei = zdo_t.Neighbor(epid, ieee, nwk, packed, prm, depth, lqi)
             dev.neighbors.add_neighbor(nei)
 
     async def _finish_loading(self):
