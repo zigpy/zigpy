@@ -340,35 +340,26 @@ def test_neighbor():
     assert str(neighbor.extended_pan_id) == "b4:96:03:f5:59:8c:af:a2"
     assert str(neighbor.ieee) == "14:b4:57:ff:fe:07:70:3a"
     assert neighbor.nwk == 0xB7D1
-    assert neighbor.struct.packed == 18
-    assert neighbor.struct.device_type == types.Neighbor.DeviceType.EndDevice
-    assert neighbor.struct.relationship == types.Neighbor.RelationShip.Child
-    assert neighbor.struct.rx_on_when_idle == types.Neighbor.RxOnWhenIdle.Off
+    assert neighbor.packed == 18
+    assert neighbor.device_type == types.Neighbor.DeviceType.EndDevice
+    assert neighbor.relationship == types.Neighbor.RelationShip.Child
+    assert neighbor.rx_on_when_idle == types.Neighbor.RxOnWhenIdle.Off
     assert neighbor.permit_joining == 1
     assert neighbor.depth == 1
     assert neighbor.lqi == 72
-
-
-def test_neighbor_struct():
-    """Test neighbor packed struct."""
-
-    extra = b"\x55\xaaextra\x00"
-
-    struct, rest = types._NeighborPackStruct.deserialize(b"\x12" + extra)
-    assert rest == extra
 
 
 def test_neighbor_struct_device_type():
     """Test neighbor packed struct device_type."""
 
     for dev_type in range(0, 3):
-        struct = types._NeighborPackStruct()
+        struct = types.Neighbor()
         assert struct.device_type is None
         struct.device_type = dev_type
         assert struct.device_type == dev_type
 
     for i in range(0, 127):
-        struct = types._NeighborPackStruct(i)
+        struct = types.Neighbor(packed=i)
         orig_rx = struct.rx_on_when_idle
         orig_rel = struct.relationship
         for dev_type in range(0, 3):
@@ -382,13 +373,13 @@ def test_neighbor_struct_rx_on_when_idle():
     """Test neighbor packed struct rx_on_when_idle."""
 
     for rx_on_when_idle in range(0, 3):
-        struct = types._NeighborPackStruct()
+        struct = types.Neighbor()
         assert struct.rx_on_when_idle is None
         struct.rx_on_when_idle = rx_on_when_idle
         assert struct.rx_on_when_idle == rx_on_when_idle
 
     for i in range(0, 127):
-        struct = types._NeighborPackStruct(i)
+        struct = types.Neighbor(packed=i)
         orig_dev_type = struct.device_type
         orig_rel = struct.relationship
         for rx_on_when_idle in range(0, 3):
@@ -402,13 +393,13 @@ def test_neighbor_struct_relationship():
     """Test neighbor packed struct relationship."""
 
     for relationship in range(0, 7):
-        struct = types._NeighborPackStruct()
+        struct = types.Neighbor()
         assert struct.relationship is None
         struct.relationship = relationship
         assert struct.relationship == relationship
 
     for i in range(0, 127):
-        struct = types._NeighborPackStruct(i)
+        struct = types.Neighbor(packed=i)
         orig_dev_type = struct.device_type
         orig_rx = struct.rx_on_when_idle
         for relationship in range(0, 7):
