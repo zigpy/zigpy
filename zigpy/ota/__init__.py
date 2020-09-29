@@ -53,10 +53,10 @@ class OTA(zigpy.util.ListenableMixin):
         self._not_initialized = True
         self._listeners = {}
         ota_config = app.config[CONF_OTA]
-        if ota_config[CONF_OTA_IKEA]:
-            self.add_listener(zigpy.ota.provider.Trådfri())
         if ota_config[CONF_OTA_DIR]:
             self.add_listener(zigpy.ota.provider.FileStore())
+        if ota_config[CONF_OTA_IKEA]:
+            self.add_listener(zigpy.ota.provider.Trådfri())
         if ota_config[CONF_OTA_LEDVANCE]:
             self.add_listener(zigpy.ota.provider.Ledvance())
 
