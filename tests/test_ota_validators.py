@@ -4,7 +4,7 @@ import pytest
 
 from zigpy.ota import validators
 from zigpy.ota.image import ElementTagId, OTAImage, SubElement
-from zigpy.ota.validators import ValidationResult
+from zigpy.ota.validators import ValidationError
 
 
 def create_ebl_image(tags):
@@ -69,17 +69,17 @@ def test_parse_silabs_ebl():
     assert checksum[0] == b"\xFC\x04" and len(checksum[1]) == 4
 
     # Padding needs to be a multiple of 64 bytes
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValidationError):
         list(validators.parse_silabs_ebl(image[:-1]))
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValidationError):
         list(validators.parse_silabs_ebl(image + b"\xFF"))
 
     # Corrupted images are detected
     corrupted_image = image.replace(b"foo", b"goo", 1)
     assert image != corrupted_image
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValidationError):
         list(validators.parse_silabs_ebl(corrupted_image))
 
 
@@ -95,33 +95,32 @@ def test_parse_silabs_gbl():
     assert checksum[0] == b"\xFC\x04\x04\xFC" and len(checksum[1]) == 4
 
     # No padding is allowed
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValidationError):
         list(validators.parse_silabs_gbl(image + b"\xFF"))
 
     # Corrupted images are detected
     corrupted_image = image.replace(b"foo", b"goo", 1)
     assert image != corrupted_image
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValidationError):
         list(validators.parse_silabs_gbl(corrupted_image))
 
 
 def test_validate_firmware():
-    assert validators.validate_firmware(VALID_EBL_IMAGE) == ValidationResult.VALID
-    assert (
-        validators.validate_firmware(VALID_EBL_IMAGE[:-1]) == ValidationResult.INVALID
-    )
-    assert (
+    assert validators.validate_firmware(VALID_EBL_IMAGE) is True
+
+    with pytest.raises(ValidationError):
+        validators.validate_firmware(VALID_EBL_IMAGE[:-1])
+
+    with pytest.raises(ValidationError):
         validators.validate_firmware(VALID_EBL_IMAGE + b"\xFF")
-        == ValidationResult.INVALID
-    )
 
-    assert validators.validate_firmware(VALID_GBL_IMAGE) == ValidationResult.VALID
-    assert (
-        validators.validate_firmware(VALID_GBL_IMAGE[:-1]) == ValidationResult.INVALID
-    )
+    assert validators.validate_firmware(VALID_GBL_IMAGE) is True
 
-    assert validators.validate_firmware(b"UNKNOWN") == ValidationResult.UNKNOWN
+    with pytest.raises(ValidationError):
+        validators.validate_firmware(VALID_GBL_IMAGE[:-1])
+
+    assert validators.validate_firmware(b"UNKNOWN") is None
 
 
 def test_validate_ota_image_simple_valid():
@@ -130,7 +129,7 @@ def test_validate_ota_image_simple_valid():
         create_subelement(ElementTagId.UPGRADE_IMAGE, VALID_EBL_IMAGE),
     ]
 
-    assert validators.validate_ota_image(image) == ValidationResult.VALID
+    assert validators.validate_ota_image(image) is True
 
 
 def test_validate_ota_image_complex_valid():
@@ -142,7 +141,7 @@ def test_validate_ota_image_complex_valid():
         create_subelement(ElementTagId.ECDSA_SIGNING_CERTIFICATE, b"foo"),
     ]
 
-    assert validators.validate_ota_image(image) == ValidationResult.VALID
+    assert validators.validate_ota_image(image) is True
 
 
 def test_validate_ota_image_invalid():
@@ -151,7 +150,8 @@ def test_validate_ota_image_invalid():
         create_subelement(ElementTagId.UPGRADE_IMAGE, VALID_EBL_IMAGE[:-1]),
     ]
 
-    assert validators.validate_ota_image(image) == ValidationResult.INVALID
+    with pytest.raises(ValidationError):
+        validators.validate_ota_image(image)
 
 
 def test_validate_ota_image_mixed_invalid():
@@ -161,7 +161,8 @@ def test_validate_ota_image_mixed_invalid():
         create_subelement(ElementTagId.UPGRADE_IMAGE, VALID_EBL_IMAGE[:-1]),
     ]
 
-    assert validators.validate_ota_image(image) == ValidationResult.INVALID
+    with pytest.raises(ValidationError):
+        validators.validate_ota_image(image)
 
 
 def test_validate_ota_image_mixed_valid():
@@ -171,10 +172,10 @@ def test_validate_ota_image_mixed_valid():
         create_subelement(ElementTagId.UPGRADE_IMAGE, VALID_EBL_IMAGE),
     ]
 
-    assert validators.validate_ota_image(image) == ValidationResult.UNKNOWN
+    assert validators.validate_ota_image(image) is None
 
 
 def test_validate_ota_image_empty():
     image = OTAImage()
 
-    assert validators.validate_ota_image(image) == ValidationResult.UNKNOWN
+    assert validators.validate_ota_image(image) is None

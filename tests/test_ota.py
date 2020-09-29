@@ -45,7 +45,7 @@ def ota():
     tradfri = MagicMock(spec_set=zigpy.ota.provider.Trådfri)
     validate_ota_image = MagicMock(
         spec_set=zigpy.ota.validators.validate_ota_image,
-        return_value=zigpy.ota.validators.ValidationResult.VALID,
+        return_value=True,
     )
 
     with patch("zigpy.ota.provider.Trådfri", tradfri):
@@ -121,8 +121,8 @@ async def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
 async def test_get_image_invalid(ota, image, image_with_version):
     corrupted = image_with_version(image.version)
 
-    zigpy.ota.validate_ota_image.return_value = (
-        zigpy.ota.validators.ValidationResult.INVALID
+    zigpy.ota.validate_ota_image.side_effect = zigpy.ota.validators.ValidationError(
+        "Bad image"
     )
     ota.async_event = AsyncMock(return_value=[None, corrupted])
 
@@ -144,8 +144,8 @@ async def test_get_image_invalid_then_valid_versions(v1, v2, ota, image_with_ver
 
     ota.async_event = AsyncMock(return_value=[corrupted, image])
     zigpy.ota.validate_ota_image.side_effect = [
-        zigpy.ota.validators.ValidationResult.INVALID,
-        zigpy.ota.validators.ValidationResult.VALID,
+        zigpy.ota.validators.ValidationError("Bad image"),
+        True,
     ]
 
     res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
