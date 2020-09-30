@@ -8,7 +8,7 @@ import attr
 from zigpy.config import CONF_OTA, CONF_OTA_DIR, CONF_OTA_IKEA, CONF_OTA_LEDVANCE
 from zigpy.ota.image import ImageKey, OTAImage
 import zigpy.ota.provider
-from zigpy.ota.validators import ValidationResult, validate_ota_image
+from zigpy.ota.validators import check_invalid
 from zigpy.typing import ControllerApplicationType
 import zigpy.util
 
@@ -73,14 +73,7 @@ class OTA(zigpy.util.ListenableMixin):
         valid_images = []
 
         for image in images:
-            if image is None:
-                continue
-
-            result = validate_ota_image(image)
-            LOGGER.debug("Validation result for OTA image %s: %s", image, result)
-
-            if result == ValidationResult.INVALID:
-                LOGGER.error("OTA image %s is invalid!", image)
+            if image is None or check_invalid(image):
                 continue
 
             valid_images.append(image)
