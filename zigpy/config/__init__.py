@@ -36,6 +36,7 @@ CONF_NWK_UPDATE_ID = "update_id"
 CONF_OTA = "ota"
 CONF_OTA_DIR = "otau_directory"
 CONF_OTA_IKEA = "ikea_provider"
+CONF_OTA_IKEA_URL = "ikea_update_url"
 CONF_OTA_LEDVANCE = "ledvance_provider"
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 
@@ -72,6 +73,7 @@ SCHEMA_NETWORK = vol.Schema(
 SCHEMA_OTA = {
     vol.Optional(CONF_OTA_DIR, default=CONF_OTA_OTAU_DIR_DEFAULT): vol.Any(None, str),
     vol.Optional(CONF_OTA_IKEA, default=CONF_OTA_IKEA_DEFAULT): cv_boolean,
+    vol.Optional(CONF_OTA_IKEA_URL): vol.Url(),
     vol.Optional(CONF_OTA_LEDVANCE, default=CONF_OTA_LEDVANCE_DEFAULT): cv_boolean,
 }
 
