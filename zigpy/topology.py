@@ -38,7 +38,8 @@ class Topology(zigpy.util.ListenableMixin):
         """Create Topology instance."""
 
         topo = cls(app)
-        asyncio.create_task(topo.scan_loop())
+        if app.config[zigpy.config.CONF_TOPO_SCAN_ENABLED]:
+            asyncio.create_task(topo.scan_loop())
         return topo
 
     async def scan_loop(self) -> None:
@@ -70,6 +71,11 @@ class Topology(zigpy.util.ListenableMixin):
             dev for dev in self._app.devices.values() if not dev.node_desc.is_end_device
         ]
         for device in devices_to_scan:
+            if (
+                self._app.config[zigpy.config.CONF_TOPO_SKIP_COORDINATOR]
+                and device.nwk == 0x0000
+            ):
+                continue
             if not device.neighbors.supported:
                 continue
             LOGGER.debug(
