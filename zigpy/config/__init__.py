@@ -15,7 +15,9 @@ from zigpy.config.defaults import (
     CONF_OTA_IKEA_DEFAULT,
     CONF_OTA_LEDVANCE_DEFAULT,
     CONF_OTA_OTAU_DIR_DEFAULT,
+    CONF_TOPO_SCAN_ENABLED_DEFAULT,
     CONF_TOPO_SCAN_PERIOD_DEFAULT,
+    CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
 )
 from zigpy.config.validators import cv_boolean, cv_hex, cv_key
 import zigpy.types as t
@@ -36,8 +38,12 @@ CONF_NWK_UPDATE_ID = "update_id"
 CONF_OTA = "ota"
 CONF_OTA_DIR = "otau_directory"
 CONF_OTA_IKEA = "ikea_provider"
+CONF_OTA_IKEA_URL = "ikea_update_url"
 CONF_OTA_LEDVANCE = "ledvance_provider"
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
+CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
+CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
+
 
 SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): str})
 SCHEMA_NETWORK = vol.Schema(
@@ -72,6 +78,7 @@ SCHEMA_NETWORK = vol.Schema(
 SCHEMA_OTA = {
     vol.Optional(CONF_OTA_DIR, default=CONF_OTA_OTAU_DIR_DEFAULT): vol.Any(None, str),
     vol.Optional(CONF_OTA_IKEA, default=CONF_OTA_IKEA_DEFAULT): cv_boolean,
+    vol.Optional(CONF_OTA_IKEA_URL): vol.Url(),
     vol.Optional(CONF_OTA_LEDVANCE, default=CONF_OTA_LEDVANCE_DEFAULT): cv_boolean,
 }
 
@@ -83,6 +90,12 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(
             CONF_TOPO_SCAN_PERIOD, default=CONF_TOPO_SCAN_PERIOD_DEFAULT
         ): vol.All(int, vol.Range(min=20)),
+        vol.Optional(
+            CONF_TOPO_SCAN_ENABLED, default=CONF_TOPO_SCAN_ENABLED_DEFAULT
+        ): cv_boolean,
+        vol.Optional(
+            CONF_TOPO_SKIP_COORDINATOR, default=CONF_TOPO_SKIP_COORDINATOR_DEFAULT
+        ): cv_boolean,
     },
     extra=vol.ALLOW_EXTRA,
 )
