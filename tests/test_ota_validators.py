@@ -1,15 +1,16 @@
+from unittest import mock
 import zlib
 
 import pytest
 
 from zigpy.ota import validators
 from zigpy.ota.image import ElementTagId, OTAImage, SubElement
-from zigpy.ota.validators import ValidationError
+from zigpy.ota.validators import ValidationError, ValidationResult
 
 
 def create_ebl_image(tags):
     # All images start with a 140-byte "0x0000" header
-    tags = [(b"\x00\x00", b"test" * 35)] + tags
+    tags = [(b"\x00\x00", b"jklm" * 35)] + tags
 
     assert all([len(tag) == 2 for tag, value in tags])
     image = b"".join(tag + len(value).to_bytes(2, "big") + value for tag, value in tags)
@@ -21,6 +22,8 @@ def create_ebl_image(tags):
 
     if len(image) % 64 != 0:
         image += b"\xFF" * (64 - len(image) % 64)
+
+    assert list(validators.parse_silabs_ebl(image))
 
     return image
 
@@ -42,6 +45,8 @@ def create_gbl_image(tags):
             4, "little"
         )
     )
+
+    assert list(validators.parse_silabs_gbl(image))
 
     return image
 
@@ -75,6 +80,28 @@ def test_parse_silabs_ebl():
     with pytest.raises(ValidationError):
         list(validators.parse_silabs_ebl(image + b"\xFF"))
 
+    # Nothing can come after the padding
+    assert list(validators.parse_silabs_ebl(image[:-1] + b"\xFF"))
+
+    with pytest.raises(ValidationError):
+        list(validators.parse_silabs_ebl(image[:-1] + b"\xAB"))
+
+    # Truncated images are detected
+    with pytest.raises(ValidationError):
+        list(validators.parse_silabs_ebl(image[: image.index(b"test")] + b"\xFF" * 44))
+
+    # As are corrupted images of the correct length but with bad tag lengths
+    with pytest.raises(ValidationError):
+        index = image.index(b"test")
+        bad_image = image[: index - 2] + b"\xFF\xFF" + image[index:]
+        list(validators.parse_silabs_ebl(bad_image))
+
+    # Truncated but at a 64-byte boundary, missing CRC footer
+    with pytest.raises(ValidationError):
+        bad_image = create_ebl_image([(b"AA", b"test" * 11)])
+        bad_image = bad_image[: bad_image.rindex(b"test") + 4]
+        list(validators.parse_silabs_ebl(bad_image))
+
     # Corrupted images are detected
     corrupted_image = image.replace(b"foo", b"goo", 1)
     assert image != corrupted_image
@@ -98,16 +125,27 @@ def test_parse_silabs_gbl():
     with pytest.raises(ValidationError):
         list(validators.parse_silabs_gbl(image + b"\xFF"))
 
-    # Corrupted images are detected
-    corrupted_image = image.replace(b"foo", b"goo", 1)
-    assert image != corrupted_image
-
+    # Normal truncated images are detected
     with pytest.raises(ValidationError):
+        list(validators.parse_silabs_gbl(image[-10:]))
+
+    # Structurally sound but truncated images are detected
+    with pytest.raises(ValidationError):
+        offset = image.index(b"test")
+        bad_image = image[: offset - 8]
+
+        list(validators.parse_silabs_gbl(bad_image))
+
+    # Corrupted images are detected
+    with pytest.raises(ValidationError):
+        corrupted_image = image.replace(b"foo", b"goo", 1)
+        assert image != corrupted_image
+
         list(validators.parse_silabs_gbl(corrupted_image))
 
 
 def test_validate_firmware():
-    assert validators.validate_firmware(VALID_EBL_IMAGE) is True
+    assert validators.validate_firmware(VALID_EBL_IMAGE) == ValidationResult.VALID
 
     with pytest.raises(ValidationError):
         validators.validate_firmware(VALID_EBL_IMAGE[:-1])
@@ -115,12 +153,12 @@ def test_validate_firmware():
     with pytest.raises(ValidationError):
         validators.validate_firmware(VALID_EBL_IMAGE + b"\xFF")
 
-    assert validators.validate_firmware(VALID_GBL_IMAGE) is True
+    assert validators.validate_firmware(VALID_GBL_IMAGE) == ValidationResult.VALID
 
     with pytest.raises(ValidationError):
         validators.validate_firmware(VALID_GBL_IMAGE[:-1])
 
-    assert validators.validate_firmware(b"UNKNOWN") is None
+    assert validators.validate_firmware(b"UNKNOWN") == ValidationResult.UNKNOWN
 
 
 def test_validate_ota_image_simple_valid():
@@ -129,7 +167,7 @@ def test_validate_ota_image_simple_valid():
         create_subelement(ElementTagId.UPGRADE_IMAGE, VALID_EBL_IMAGE),
     ]
 
-    assert validators.validate_ota_image(image) is True
+    assert validators.validate_ota_image(image) == ValidationResult.VALID
 
 
 def test_validate_ota_image_complex_valid():
@@ -141,7 +179,7 @@ def test_validate_ota_image_complex_valid():
         create_subelement(ElementTagId.ECDSA_SIGNING_CERTIFICATE, b"foo"),
     ]
 
-    assert validators.validate_ota_image(image) is True
+    assert validators.validate_ota_image(image) == ValidationResult.VALID
 
 
 def test_validate_ota_image_invalid():
@@ -172,10 +210,26 @@ def test_validate_ota_image_mixed_valid():
         create_subelement(ElementTagId.UPGRADE_IMAGE, VALID_EBL_IMAGE),
     ]
 
-    assert validators.validate_ota_image(image) is None
+    assert validators.validate_ota_image(image) == ValidationResult.UNKNOWN
 
 
 def test_validate_ota_image_empty():
     image = OTAImage()
 
-    assert validators.validate_ota_image(image) is None
+    assert validators.validate_ota_image(image) == ValidationResult.UNKNOWN
+
+
+def test_check_invalid():
+    image = mock.Mock()
+
+    with mock.patch("zigpy.ota.validators.validate_ota_image") as m:
+        m.side_effect = [ValidationResult.VALID]
+        assert not validators.check_invalid(image)
+
+    with mock.patch("zigpy.ota.validators.validate_ota_image") as m:
+        m.side_effect = [ValidationResult.UNKNOWN]
+        assert not validators.check_invalid(image)
+
+    with mock.patch("zigpy.ota.validators.validate_ota_image") as m:
+        m.side_effect = [ValidationError("error")]
+        assert validators.check_invalid(image)

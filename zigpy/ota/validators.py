@@ -1,9 +1,18 @@
+import enum
+import logging
 import typing
 import zlib
 
 from zigpy.ota.image import ElementTagId, OTAImage
 
 VALID_SILABS_CRC = 0x2144DF1C  # CRC32(anything | CRC32(anything)) == CRC32(0x00000000)
+LOGGER = logging.getLogger(__name__)
+
+
+class ValidationResult(enum.Enum):
+    INVALID = 0
+    VALID = 1
+    UNKNOWN = 2
 
 
 class ValidationError(Exception):
@@ -55,7 +64,7 @@ def parse_silabs_ebl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]
                 f" expected 0x{VALID_SILABS_CRC:08X}, got 0x{computed_crc:08X}"
             )
 
-        break
+        break  # pragma: no cover
 
 
 def parse_silabs_gbl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]:
@@ -63,13 +72,7 @@ def parse_silabs_gbl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]
     Parses a Silicon Labs GBL firmware image.
     """
 
-    computed_crc = zlib.crc32(data)
-
-    if computed_crc != VALID_SILABS_CRC:
-        raise ValidationError(
-            f"Image CRC-32 is invalid:"
-            f" expected 0x{VALID_SILABS_CRC:08X}, got 0x{computed_crc:08X}"
-        )
+    orig_data = data
 
     while True:
         if len(data) < 8:
@@ -94,10 +97,18 @@ def parse_silabs_gbl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]
         if data:
             raise ValidationError("Image contains trailing data")
 
-        break
+        computed_crc = zlib.crc32(orig_data)
+
+        if computed_crc != VALID_SILABS_CRC:
+            raise ValidationError(
+                f"Image CRC-32 is invalid:"
+                f" expected 0x{VALID_SILABS_CRC:08X}, got 0x{computed_crc:08X}"
+            )
+
+        break  # pragma: no cover
 
 
-def validate_firmware(data: bytes) -> bool:
+def validate_firmware(data: bytes) -> ValidationResult:
     """
     Validates a firmware image.
     """
@@ -109,15 +120,16 @@ def validate_firmware(data: bytes) -> bool:
     elif data.startswith(b"\x00\x00\x00\x8C"):
         parser = parse_silabs_ebl
     else:
-        return None
+        return ValidationResult.UNKNOWN
 
     tuple(parser(data))
-    return True
+    return ValidationResult.VALID
 
 
-def validate_ota_image(image: OTAImage) -> bool:
+def validate_ota_image(image: OTAImage) -> ValidationResult:
     """
-    Validates a Zigbee OTA image's embedded firmwares.
+    Validates a Zigbee OTA image's embedded firmwares and indicates if an image is
+    valid, invalid, or of an unknown type.
     """
 
     results = []
@@ -126,7 +138,20 @@ def validate_ota_image(image: OTAImage) -> bool:
         if subelement.tag_id == ElementTagId.UPGRADE_IMAGE:
             results.append(validate_firmware(subelement))
 
-    if not results or any(r is None for r in results):
-        return None
+    if not results or any(r == ValidationResult.UNKNOWN for r in results):
+        return ValidationResult.UNKNOWN
 
-    return True
+    return ValidationResult.VALID
+
+
+def check_invalid(image: OTAImage) -> bool:
+    """
+    Checks if an image is invalid or not. Unknown image types are considered valid.
+    """
+
+    try:
+        validate_ota_image(image)
+        return False
+    except ValidationError as e:
+        LOGGER.warning("Image %s is invalid: %s", image.header, e)
+        return True
