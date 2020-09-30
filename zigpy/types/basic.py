@@ -129,25 +129,6 @@ class uint64_t(uint_t, size=8):
     pass
 
 
-class EnumIntFlagMixin:
-    """
-    Enum does not allow multiple base classes. We turn enum.IntFlag into a mixin because
-    it doesn't actualy depend on the base class specifically being `int`.
-    """
-
-    # Rebind classmethods to our own class
-    _missing_ = classmethod(enum.IntFlag._missing_.__func__)
-    _create_pseudo_member_ = classmethod(enum.IntFlag._create_pseudo_member_.__func__)
-
-    __or__ = enum.IntFlag.__or__
-    __and__ = enum.IntFlag.__and__
-    __xor__ = enum.IntFlag.__xor__
-    __ror__ = enum.IntFlag.__ror__
-    __rand__ = enum.IntFlag.__rand__
-    __rxor__ = enum.IntFlag.__rxor__
-    __invert__ = enum.IntFlag.__invert__
-
-
 class _IntEnumMeta(enum.EnumMeta):
     def __call__(cls, value, names=None, *args, **kwargs):
         if isinstance(value, str) and value.startswith("0x"):
@@ -155,6 +136,30 @@ class _IntEnumMeta(enum.EnumMeta):
         else:
             value = int(value)
         return super().__call__(value, names, *args, **kwargs)
+
+
+def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
+    """
+    Mixins are broken by Python 3.8.6 so we must dynamically create the enum with the
+    appropriate methods but with only one non-Enum parent class.
+    """
+
+    class _NewEnum(int_type, enum.Flag):
+        # Rebind classmethods to our own class
+        _missing_ = classmethod(enum.IntFlag._missing_.__func__)
+        _create_pseudo_member_ = classmethod(
+            enum.IntFlag._create_pseudo_member_.__func__
+        )
+
+        __or__ = enum.IntFlag.__or__
+        __and__ = enum.IntFlag.__and__
+        __xor__ = enum.IntFlag.__xor__
+        __ror__ = enum.IntFlag.__ror__
+        __rand__ = enum.IntFlag.__rand__
+        __rxor__ = enum.IntFlag.__rxor__
+        __invert__ = enum.IntFlag.__invert__
+
+    return _NewEnum
 
 
 def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined") -> CALLABLE_T:
@@ -180,35 +185,35 @@ class enum16(enum_factory(uint16_t)):  # noqa: N801
     pass
 
 
-class bitmap8(EnumIntFlagMixin, uint8_t, enum.Flag):
+class bitmap8(bitmap_factory(uint8_t)):
     pass
 
 
-class bitmap16(EnumIntFlagMixin, uint16_t, enum.Flag):
+class bitmap16(bitmap_factory(uint16_t)):
     pass
 
 
-class bitmap24(EnumIntFlagMixin, uint24_t, enum.Flag):
+class bitmap24(bitmap_factory(uint24_t)):
     pass
 
 
-class bitmap32(EnumIntFlagMixin, uint32_t, enum.Flag):
+class bitmap32(bitmap_factory(uint32_t)):
     pass
 
 
-class bitmap40(EnumIntFlagMixin, uint40_t, enum.Flag):
+class bitmap40(bitmap_factory(uint40_t)):
     pass
 
 
-class bitmap48(EnumIntFlagMixin, uint48_t, enum.Flag):
+class bitmap48(bitmap_factory(uint48_t)):
     pass
 
 
-class bitmap56(EnumIntFlagMixin, uint56_t, enum.Flag):
+class bitmap56(bitmap_factory(uint56_t)):
     pass
 
 
-class bitmap64(EnumIntFlagMixin, uint64_t, enum.Flag):
+class bitmap64(bitmap_factory(uint64_t)):
     pass
 
 
