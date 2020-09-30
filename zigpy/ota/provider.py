@@ -11,7 +11,7 @@ from typing import Dict, Optional
 import aiohttp
 import attr
 
-from zigpy.config import CONF_OTA_DIR
+from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA_URL
 from zigpy.ota.image import ImageKey, OTAImage, OTAImageHeader
 import zigpy.util
 
@@ -29,6 +29,7 @@ class Basic(zigpy.util.LocalLogMixin, ABC):
     REFRESH = datetime.timedelta(hours=12)
 
     def __init__(self):
+        self.config = {}
         self._cache = {}
         self._is_enabled = False
         self._locks = defaultdict(asyncio.Semaphore)
@@ -145,6 +146,7 @@ class Trådfri(Basic):
 
     async def initialize_provider(self, ota_config: Dict) -> None:
         self.info("OTA provider enabled")
+        self.config = ota_config
         await self.refresh_firmware_list()
         self.enable()
 
@@ -154,7 +156,8 @@ class Trådfri(Basic):
 
         async with self._locks[LOCK_REFRESH]:
             async with aiohttp.ClientSession(headers=self.HEADERS) as req:
-                async with req.get(self.UPDATE_URL) as rsp:
+                url = self.config.get(CONF_OTA_IKEA_URL, self.UPDATE_URL)
+                async with req.get(url) as rsp:
                     # IKEA does not always respond with an appropriate Content-Type
                     # but the response is always JSON
                     if not (200 <= rsp.status <= 299):
