@@ -263,8 +263,14 @@ class PersistingListener:
                 device.status,
             )
             return
-        q = "INSERT OR REPLACE INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
-        self.execute(q, (device.ieee, device.nwk, device.status))
+
+        try:
+            q = "INSERT INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
+            self.execute(q, (device.ieee, device.nwk, device.status))
+        except sqlite3.IntegrityError:
+            LOGGER.debug("Device %s already exists. Updating it.", device.ieee)
+            q = "UPDATE devices SET nwk=?, status=? WHERE ieee=?"
+            self.execute(q, (device.nwk, device.status, device.ieee))
         self._save_node_descriptor(device)
         if isinstance(device, zigpy.quirks.CustomDevice):
             self._db.commit()
