@@ -54,7 +54,9 @@ def make_ieee(init=0):
 
 
 class FakeCustomDevice(CustomDevice):
-    pass
+    replacement = {
+        "endpoints": {1: {"input_clusters": [0, 1, 3], "output_clusters": [6]}}
+    }
 
 
 def mock_dev_init(status: Status):
@@ -70,7 +72,7 @@ def mock_dev_init(status: Status):
 
 def fake_get_device(device):
     if device.endpoints.get(1) is not None and device[1].profile_id == 65535:
-        return FakeCustomDevice(device.application, make_ieee(1), 199, device)
+        return FakeCustomDevice(device.application, device.ieee, device.nwk, device)
     return device
 
 
@@ -483,3 +485,48 @@ async def test_neighbors(tmpdir):
     assert dev_2.neighbors[0].device is dev_1
     assert dev_2.neighbors[1].device is None
     assert dev_2.neighbors[1].neighbor.ieee == ieee_3
+
+
+@patch(
+    "zigpy.device.Device.schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
+)
+async def test_device_rejoin(tmpdir):
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+    ieee = make_ieee()
+    nwk = 199
+    app.handle_join(nwk, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.profile_id = 65535
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    app.device_initialized(dev)
+    clus._update_attribute(4, "Custom")
+    clus._update_attribute(5, "Model")
+
+    # Everything should've been saved - check that it re-loads
+    with patch("zigpy.quirks.get_device", fake_get_device):
+        app2 = await make_app(db)
+    dev = app2.get_device(ieee)
+    assert dev.nwk == nwk
+    assert dev.endpoints[1].device_type == profiles.zha.DeviceType.PUMP
+    assert dev.endpoints[1].in_clusters[0]._attr_cache[4] == "Custom"
+    assert dev.endpoints[1].in_clusters[0]._attr_cache[5] == "Model"
+    assert dev.endpoints[1].manufacturer == "Custom"
+    assert dev.endpoints[1].model == "Model"
+
+    # device rejoins
+    dev.nwk = nwk + 1
+    with patch("zigpy.quirks.get_device", fake_get_device):
+        app2.device_initialized(dev)
+
+    app3 = await make_app(db)
+    dev = app3.get_device(ieee)
+    assert dev.nwk == nwk + 1
+    assert dev.endpoints[1].device_type == profiles.zha.DeviceType.PUMP
+    assert 0 in dev.endpoints[1].in_clusters
+    assert dev.endpoints[1].manufacturer == "Custom"
+    assert dev.endpoints[1].model == "Model"
