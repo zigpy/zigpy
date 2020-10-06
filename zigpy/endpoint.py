@@ -60,7 +60,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 raise Exception("Failed to retrieve service descriptor: %s", sdr)
         except Exception:
             self.warning(
-                "Failed ZDO request during endpoint initialization", exc_info=True
+                "Failed to discover endpoint_id %s", self.endpoint_id, exc_info=True
             )
             return
 
