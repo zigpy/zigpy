@@ -111,9 +111,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     raise Exception("Endpoint request failed: %s", epr)
             except Exception:
                 self.initializing = False
-                LOGGER.exception(
-                    "Failed ZDO request during device initialization", exc_info=True
-                )
+                self.warning("Failed to discover active endpoints", exc_info=True)
                 return
 
             self.info("Discovered endpoints: %s", epr[2])
@@ -129,7 +127,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             try:
                 await ep.initialize()
             except Exception as exc:
-                self.debug("Endpoint %s initialization failure: %s", endpoint_id, exc)
+                self.warning("Endpoint %s initialization failure: %s", endpoint_id, exc)
                 break
             if self.manufacturer is None or self.model is None:
                 self.model, self.manufacturer = await ep.get_model_info()
