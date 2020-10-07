@@ -1321,7 +1321,7 @@ class GreenPowerProxy(Cluster):
         0x0017: ("gppActiveFunctionality", t.bitmap24),
     }
     server_commands = {
-       0x0000: ("gpsMaxSinkTableEntries", (t.uint8_t), False),
+       0x0000: ("gpsMaxSinkTableEntries", (t.uint8_t,), False),
        0x0001: ("sinkTable", (t.LongOctetString,), False),
        0x0002: ("gpsCommunicationMode", (t.bitmap8,), False),
        0x0003: ("gpsCommissioningExitMode", (t.bitmap8,), False),
