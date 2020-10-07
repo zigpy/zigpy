@@ -1312,7 +1312,7 @@ class GreenPowerProxy(Cluster):
     ep_attribute = "green_power"
     attributes = {
         0x0010: ("gppMaxProxyTableEntries", t.uint8_t),
-        0x0011: ("Proxy_Table", t.LongOctetString),
+        0x0011: ("proxy_Table", t.LongOctetString),
         0x0012: ("gppNotificationRetryNumber", t.uint8_t),
         0x0013: ("gppNotificationRetryTimer", t.uint8_t),
         0x0014: ("gppMaxSearchCounter", t.uint8_t),
@@ -1322,7 +1322,7 @@ class GreenPowerProxy(Cluster):
     }
     server_commands = {
        0x0000: ("gpsMaxSinkTableEntries", (t.uint8_t), False),
-       0x0001: ("SinkTable", (t.LongOctetString,), False),
+       0x0001: ("sinkTable", (t.LongOctetString,), False),
        0x0002: ("gpsCommunicationMode", (t.bitmap8,), False),
        0x0003: ("gpsCommissioningExitMode", (t.bitmap8,), False),
        0x0004: ("gpsCommissioningWindow", (t.uint16_t,), False),
