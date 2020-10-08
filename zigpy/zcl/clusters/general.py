@@ -1303,23 +1303,22 @@ class GreenPowerProxy(Cluster):
     cluster_id = 0x0021
     ep_attribute = "green_power"
     attributes = {
-        0x0010: ("gppMaxProxyTableEntries", t.uint8_t),
-        0x0011: ("proxy_Table", t.LongOctetString),
-        0x0012: ("gppNotificationRetryNumber", t.uint8_t),
-        0x0013: ("gppNotificationRetryTimer", t.uint8_t),
-        0x0014: ("gppMaxSearchCounter", t.uint8_t),
-        0x0015: ("gppBlockedGPDID", t.LongOctetString),
-        0x0016: ("gppFunctionality", t.bitmap24),
-        0x0017: ("gppActiveFunctionality", t.bitmap24),
+        0x0000: ("max_sink_table_entries", (t.uint8_t,), False),
+        0x0001: ("sink_table", (t.LongOctetString,), False),
+        0x0002: ("communication_mode", (t.bitmap8,), False),
+        0x0003: ("commissioning_exit_mode", (t.bitmap8,), False),
+        0x0004: ("commissioning_window", (t.uint16_t,), False),
+        0x0005: ("security_level", (t.bitmap8,), False),
+        0x0006: ("functionality", (t.bitmap24,), False),
+        0x0007: ("active_functionality", (t.bitmap24,), False),
     }
     server_commands = {
-        0x0000: ("gpsMaxSinkTableEntries", (t.uint8_t,), False),
-        0x0001: ("sinkTable", (t.LongOctetString,), False),
-        0x0002: ("gpsCommunicationMode", (t.bitmap8,), False),
-        0x0003: ("gpsCommissioningExitMode", (t.bitmap8,), False),
-        0x0004: ("gpsCommissioningWindow", (t.uint16_t,), False),
-        0x0005: ("gpsSecurityLevel", (t.bitmap8,), False),
-        0x0006: ("gpsFunctionality", (t.bitmap24,), False),
-        0x0007: ("gpsActiveFunctionality", (t.bitmap24,), False),
+        0x0000: ("notification", (), False),
+        0x0001: ("pairing_search ", (), False),
+        0x0003: ("tunneling_stop", (), False),
+        0x0004: ("commissioning_notification", (), False),
+        0x0007: ("translation_table_update_command", (), False),
+        0x0007: ("translation_table_request", (), False),
+        0x0007: ("pairing_configuration", (), False),
     }
     client_commands = {}
