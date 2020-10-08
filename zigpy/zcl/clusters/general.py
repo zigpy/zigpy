@@ -1326,7 +1326,7 @@ class GreenPowerProxy(Cluster):
         0x0003: ("tunneling_stop", (), False),
         0x0004: ("commissioning_notification", (), False),
         0x0007: ("translation_table_update_command", (), False),
-        0x0007: ("translation_table_request", (), False),
-        0x0007: ("pairing_configuration", (), False),
+        0x0008: ("translation_table_request", (), False),
+        0x0009: ("pairing_configuration", (), False),
     }
     client_commands = {}
