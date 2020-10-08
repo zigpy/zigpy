@@ -1306,11 +1306,11 @@ class GreenPowerProxy(Cluster):
         0x0000: ("max_sink_table_entries", t.uint8_t),
         0x0001: ("sink_table", t.LongOctetString),
         0x0002: ("communication_mode", t.bitmap8),
-        0x0003: ("commissioning_exit_mode", t.bitmap8e),
-        0x0004: ("commissioning_window", t.uint16_te),
+        0x0003: ("commissioning_exit_mode", t.bitmap8),
+        0x0004: ("commissioning_window", t.uint16_t),
         0x0005: ("security_level", t.bitmap8),
-        0x0006: ("functionality", t.bitmap24e),
-        0x0007: ("active_functionality", t.bitmap24e),
+        0x0006: ("functionality", t.bitmap24),
+        0x0007: ("active_functionality", t.bitmap24),
     }
     server_commands = {
         0x0000: ("notification", (), False),
