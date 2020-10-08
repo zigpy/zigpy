@@ -1304,7 +1304,7 @@ class GreenPowerProxy(Cluster):
     ep_attribute = "green_power"
     attributes = {
         0x0000: ("max_sink_table_entries", t.uint8_t),
-        0x0001: ("sink_table", t.LongOctetStringe),
+        0x0001: ("sink_table", t.LongOctetString),
         0x0002: ("communication_mode", t.bitmap8),
         0x0003: ("commissioning_exit_mode", t.bitmap8e),
         0x0004: ("commissioning_window", t.uint16_te),
