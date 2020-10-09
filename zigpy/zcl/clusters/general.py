@@ -1321,12 +1321,12 @@ class GreenPowerProxy(Cluster):
         0x0007: ("active_functionality", t.bitmap24),
     }
     server_commands = {
-        0x0000: ("notification", (), False),
-        0x0001: ("pairing_search ", (), False),
-        0x0003: ("tunneling_stop", (), False),
-        0x0004: ("commissioning_notification", (), False),
-        0x0007: ("translation_table_update_command", (), False),
-        0x0008: ("translation_table_request", (), False),
-        0x0009: ("pairing_configuration", (), False),
+        0x0000: ("notification", (t.Struct,), False),
+        0x0001: ("pairing_search ", (t.Struct,), False),
+        0x0003: ("tunneling_stop", (t.Struct,), False),
+        0x0004: ("commissioning_notification", (t.Struct,), False),
+        0x0007: ("translation_table_update_command", (t.Struct,), False),
+        0x0008: ("translation_table_request", (t.bitmap8,), False),
+        0x0009: ("pairing_configuration", (t.Struct,), False),
     }
     client_commands = {}
