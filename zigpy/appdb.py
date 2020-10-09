@@ -422,9 +422,9 @@ class PersistingListener:
             ep = dev.add_endpoint(epid)
             ep.profile_id = profile_id
             ep.device_type = device_type
-            if profile_id == 260:
+            if profile_id == zigpy.profiles.zha.PROFILE_ID:
                 ep.device_type = zigpy.profiles.zha.DeviceType(device_type)
-            elif profile_id == 49246:
+            elif profile_id == zigpy.profiles.zll.PROFILE_ID:
                 ep.device_type = zigpy.profiles.zll.DeviceType(device_type)
             ep.status = zigpy.endpoint.Status(status)
 
