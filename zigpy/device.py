@@ -54,10 +54,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._model = None
         self.node_desc = zdo.types.NodeDescriptor()
         self.neighbors = zigpy.neighbor.Neighbors(self)
-        self._node_handle = None
         self._pending = zigpy.util.Requests()
         self._relays = None
         self._skip_configuration = False
+        self._direct_initialization = False
 
     def schedule_initialize(self):
         if self.initializing:
@@ -100,10 +100,31 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._application.listener_event("node_descriptor_updated", self)
 
     async def _initialize(self):
+        temp_endpoint = self.add_endpoint(1)
+        temp_endpoint.profile_id = 260
+        temp_endpoint.status = Status.ZDO_INIT
+        basic_cluster = temp_endpoint.add_input_cluster(0)
+        basic_cluster.add_listener(InitBasicClusterListener(self))
+        success, failure = await basic_cluster.read_attributes(
+            ["model", "manufacturer"], allow_cache=True, only_cache=False
+        )
+
+        if "model" in success and "manufacturer" in success:
+            LOGGER.debug(
+                "We have a model: %s and a manufacturer: %s",
+                success["model"],
+                success["manufacturer"],
+            )
+        else:
+            LOGGER.error(
+                "Request for model or manufacturer failed. Doing full interview init."
+            )
+            await self._initialize_from_interview()
+
+    async def _initialize_from_interview(self):
+        LOGGER.info("Init with full interview")
         if self.status == Status.NEW:
-            if self._node_handle is None or self._node_handle.done():
-                self._node_handle = asyncio.ensure_future(self.get_node_descriptor())
-            await self._node_handle
+            await asyncio.ensure_future(self.get_node_descriptor())
             self.info("Discovering endpoints")
             try:
                 epr = await self.zdo.Active_EP_req(self.nwk, tries=3, delay=2)
@@ -143,6 +164,32 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             await self.application.remove(self.ieee)
             return
 
+        self._finish_init()
+
+    async def _initialize_from_quirk(self, quirk):
+        signature = quirk.signature
+        LOGGER.info("Init from quirk. Signature: %s", signature)
+
+        if "node_desc" in quirk.signature:
+            self.node_desc = quirk.signature["node_desc"]
+        elif "node_desc" in quirk.replacement:
+            self.node_desc = quirk.replacement["node_desc"]
+
+        if not self.node_desc.is_valid:
+            await asyncio.ensure_future(self.get_node_descriptor())
+
+        model_info = signature["models_info"][0]
+        self.manufacturer = model_info[0]
+        self.model = model_info[1]
+        for endpoint_id, endpoint in signature["endpoints"].items():
+            ep = self.add_endpoint(endpoint_id)
+            ep.model = self.model
+            ep.manufacturer = self.manufacturer
+            ep.initialize_from_quirk(endpoint)
+        self.status = Status.ZDO_INIT
+        self._finish_init()
+
+    def _finish_init(self):
         self.status = Status.ENDPOINTS_INIT
         self.initializing = False
         self._application.device_initialized(self)
@@ -218,10 +265,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def handle_message(self, profile, cluster, src_ep, dst_ep, message):
         self.last_seen = time.time()
-        if not self.node_desc.is_valid and (
-            self._node_handle is None or self._node_handle.done()
-        ):
-            self._node_handle = asyncio.ensure_future(self.refresh_node_descriptor())
 
         try:
             hdr, args = self.deserialize(src_ep, cluster, message)
@@ -319,6 +362,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         else:
             self._skip_configuration = False
 
+    @property
+    def direct_initialization(self):
+        return self._direct_initialization
+
+    @direct_initialization.setter
+    def direct_initialization(self, should_do_direct_initialization):
+        if isinstance(should_do_direct_initialization, bool):
+            self._direct_initialization = should_do_direct_initialization
+        else:
+            self._direct_initialization = False
+
     @model.setter
     def model(self, value):
         if isinstance(value, str):
@@ -389,3 +443,54 @@ async def broadcast(
         broadcast_address=broadcast_address,
     )
     return result
+
+
+class InitBasicClusterListener:
+    def __init__(self, device: Device):
+        self._device = device
+        self._model = None
+        self._manufacturer = None
+        self._init_started = False
+
+    def attribute_updated(self, attrid, value):
+        if self._init_started:
+            return
+
+        if attrid == 4:  # TODO: use named attr
+            self._manufacturer = value
+        elif attrid == 5:
+            self._model = value
+
+        if not self._manufacturer or not self._model:
+            return
+
+        self._init_started = True
+        quirk = self._get_quirk()
+
+        if (
+            quirk
+            and "direct_initialization" in quirk.signature
+            and quirk.signature["direct_initialization"]
+        ):
+            asyncio.ensure_future(self._device._initialize_from_quirk(quirk))
+        else:
+            asyncio.ensure_future(self._device._initialize_from_interview())
+
+    def cluster_command(self, *args, **kwargs):
+        pass
+
+    def general_command(self, *args, **kwargs):
+        pass
+
+    def _get_quirk(self):
+        candidates = self._device.application.quirks.get_device_metadata(
+            self._model, self._manufacturer
+        )
+        if not candidates:
+            return None
+        if not candidates[0]:
+            return None
+
+        device_metadata = candidates[0]
+        LOGGER.debug("Found signature for init: %s", device_metadata.signature)
+        return device_metadata

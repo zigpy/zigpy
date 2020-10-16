@@ -15,6 +15,7 @@ class DeviceRegistry:
     def __init__(self, *args, **kwargs):
         dd = collections.defaultdict
         self._registry = dd(lambda: dd(list))
+        self._model_registry = dd(list)
 
     def add_to_registry(self, custom_device: CustomDeviceType) -> None:
         """Add a device to the registry"""
@@ -22,20 +23,24 @@ class DeviceRegistry:
         if models_info:
             for manuf, model in models_info:
                 self.registry[manuf][model].append(custom_device)
+                self._model_registry[model].append(custom_device)
         else:
             manufacturer = custom_device.signature.get("manufacturer")
             model = custom_device.signature.get("model")
             self.registry[manufacturer][model].append(custom_device)
+            self._model_registry[model].append(custom_device)
 
     def remove(self, custom_device: CustomDeviceType) -> None:
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
         if models_info:
             for manuf, model in models_info:
                 self.registry[manuf][model].remove(custom_device)
+                self._model_registry[model].remove(custom_device)
         else:
             manufacturer = custom_device.signature.get("manufacturer")
             model = custom_device.signature.get("model")
             self.registry[manufacturer][model].remove(custom_device)
+            self._model_registry[model].remove(custom_device)
 
     def get_device(self, device: DeviceType) -> Union[CustomDeviceType, DeviceType]:
         """Get a CustomDevice object, if one is available"""
@@ -135,6 +140,11 @@ class DeviceRegistry:
 
         return device
 
+    def get_device_metadata(self, model, manufacturer=None):
+        if manufacturer:
+            return self.registry[manufacturer][model]
+        return self.model_registry[model]
+
     @staticmethod
     def _match(a, b):
         return set(a) == set(b)
@@ -142,6 +152,10 @@ class DeviceRegistry:
     @property
     def registry(self):
         return self._registry
+
+    @property
+    def model_registry(self):
+        return self._model_registry
 
     def __contains__(self, device: CustomDeviceType) -> bool:
         manufacturer, model = device.signature.get(

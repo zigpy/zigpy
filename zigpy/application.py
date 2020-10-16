@@ -27,6 +27,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def __init__(self, config: Dict):
         self._send_sequence = 0
         self.devices: Dict[t.EUI64, zigpy.device.Device] = {}
+        self.quirks = zigpy.quirks
         self.topology = None
         self._listeners = {}
         self._channel = None

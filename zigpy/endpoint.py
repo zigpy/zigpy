@@ -80,6 +80,26 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.status = Status.ZDO_INIT
 
+    def initialize_from_quirk(self, endpoint):
+        if self.status == Status.ZDO_INIT:
+            return
+        self.profile_id = endpoint["profile_id"]
+        self.device_type = endpoint["device_type"]
+        if self.profile_id == 260:
+            self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
+        elif self.profile_id == 49246:
+            self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
+
+        for cluster in endpoint["input_clusters"]:
+            clus = self.add_input_cluster(cluster)
+            if cluster == 0:
+                clus._attr_cache[4] = self.manufacturer
+                clus._attr_cache[5] = self.model
+        for cluster in endpoint["output_clusters"]:
+            self.add_output_cluster(cluster)
+
+        self.status = Status.ZDO_INIT
+
     def add_input_cluster(self, cluster_id, cluster=None):
         """Adds an endpoint's input cluster
 

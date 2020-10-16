@@ -28,6 +28,11 @@ def get_device(device, registry=_DEVICE_REGISTRY):
     return registry.get_device(device)
 
 
+def get_device_metadata(model, manufacturer=None, registry=_DEVICE_REGISTRY):
+    """Get a CustomDevice object, if one is available"""
+    return registry.get_device_metadata(model, manufacturer)
+
+
 class Registry(type):
     def __init__(cls, name, bases, nmspc):  # noqa: N805
         super(Registry, cls).__init__(name, bases, nmspc)
