@@ -105,20 +105,18 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         temp_endpoint.status = Status.ZDO_INIT
         basic_cluster = temp_endpoint.add_input_cluster(0)
         basic_cluster.add_listener(InitBasicClusterListener(self))
-        success, failure = await basic_cluster.read_attributes(
-            ["model", "manufacturer"], allow_cache=True, only_cache=False
-        )
 
-        if "model" in success and "manufacturer" in success:
-            LOGGER.debug(
-                "We have a model: %s and a manufacturer: %s",
-                success["model"],
-                success["manufacturer"],
+        try:
+            success, _ = await basic_cluster.read_attributes(
+                ["model", "manufacturer"], allow_cache=True, only_cache=False
             )
-        else:
-            LOGGER.error(
-                "Request for model or manufacturer failed. Doing full interview init."
-            )
+            if "model" in success and "manufacturer" in success:
+                return
+        except Exception:
+            LOGGER.warning("Request for model or manufacturer exception.")
+            pass
+
+        if self.status != Status.ENDPOINTS_INIT:
             await self._initialize_from_interview()
 
     async def _initialize_from_interview(self):
@@ -460,9 +458,17 @@ class InitBasicClusterListener:
             self._manufacturer = value
         elif attrid == 5:
             self._model = value
+            if self._model == "lumi.sensor_magnet":
+                self._manufacturer = "LUMI"  # TODO: the sensor only sends model, so search the quirks for model only and remove this
 
         if not self._manufacturer or not self._model:
             return
+
+        LOGGER.debug(
+            "We have a model: %s and a manufacturer: %s",
+            self._model,
+            self._manufacturer,
+        )
 
         self._init_started = True
         quirk = self._get_quirk()
