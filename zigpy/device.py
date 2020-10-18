@@ -124,6 +124,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                         "Endpoint request failed: %s", status
                     )
             except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
+                self.initializing = False
                 self.warning("Failed to discover active endpoints", exc_info=True)
                 return
 

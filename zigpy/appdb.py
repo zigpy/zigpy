@@ -160,9 +160,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             value,
         )
 
-    def neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
-        """Neighbor update from ZDO_Lqi_rsp."""
-        self.enqueue("_neighbors_updated", neighbors)
+    def neighbors_updated(self, neighbors):
+        self.execute("DELETE FROM neighbors WHERE device_ieee = ?", (neighbors.ieee,))
+        for nei in neighbors.neighbors:
+            epid, ieee, nwk, packed, prm, depth, lqi = nei.neighbor.as_dict().values()
+            self.execute(
+                "INSERT INTO neighbors VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (neighbors.ieee, epid, ieee, nwk, packed, prm, depth, lqi),
+            )
+        self._db.commit()
 
     async def _neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
         await self.execute(

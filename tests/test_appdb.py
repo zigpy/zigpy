@@ -273,10 +273,10 @@ async def test_appdb_str_model(tmpdir):
     assert dev.endpoints[3].model == "Mock Model"
 
 
-@patch.object(Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT))
-@patch("zigpy.zcl.Cluster.request", new_callable=AsyncMock)
-async def test_groups(mock_request, tmpdir):
-    """Test group adding/removing."""
+async def test_groups(tmpdir, monkeypatch):
+    monkeypatch.setattr(
+        Device, "schedule_initialize", mock_dev_init(Status.ENDPOINTS_INIT)
+    )
 
     group_id, group_name = 0x1221, "app db Test Group 0x1221"
     mock_request.return_value = [ZCLStatus.SUCCESS, group_id]
