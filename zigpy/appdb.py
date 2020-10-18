@@ -86,10 +86,6 @@ class PersistingListener:
             value,
         )
 
-    def node_descriptor_updated(self, device):
-        self._save_node_descriptor(device)
-        self._db.commit()
-
     def neighbors_updated(self, neighbors):
         self.execute("DELETE FROM neighbors WHERE device_ieee = ?", (neighbors.ieee,))
         for nei in neighbors.neighbors:
