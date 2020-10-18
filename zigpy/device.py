@@ -57,6 +57,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.rssi = None
         self.last_seen = None
         self.status = Status.NEW
+        self.initializing = False
         self._group_scan_handle: Optional[asyncio.Task] = None
         self._listeners = {}
         self._manufacturer = None
@@ -68,20 +69,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._relays = None
         self._skip_configuration = False
 
-    @property
-    def initializing(self) -> bool:
-        """Return True if device is being initialized."""
-        return bool(self._init_handle and not self._init_handle.done())
-
     def schedule_initialize(self):
-        self.cancel_initialization()
-        self._init_handle = asyncio.create_task(self._initialize())
-
-    def cancel_initialization(self) -> None:
-        """Cancel initialization call."""
         if self.initializing:
             LOGGER.debug("Canceling old initialize call")
             self._init_handle.cancel()
+        else:
+            self.initializing = True
+        self._init_handle = asyncio.ensure_future(self._initialize())
 
     def schedule_group_membership_scan(self) -> None:
         """Rescan device group's membership."""
@@ -152,11 +146,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             if epid
         ]
         if any(ep_failed_init):
+            self.initializing = False
             self.application.listener_event("device_init_failure", self)
             await self.application.remove(self.ieee)
             return
 
         self.status = Status.ENDPOINTS_INIT
+        self.initializing = False
         self._application.device_initialized(self)
 
     def add_endpoint(self, endpoint_id):
