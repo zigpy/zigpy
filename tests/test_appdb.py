@@ -255,49 +255,6 @@ async def test_appdb_str_model(tmpdir):
     assert dev.endpoints[3].model == "Mock Model"
 
 
-@pytest.mark.parametrize(
-    "status, success",
-    ((Status.ENDPOINTS_INIT, True), (Status.ZDO_INIT, False), (Status.NEW, False)),
-)
-async def test_node_descriptor_updated(tmpdir, status, success):
-    db = os.path.join(str(tmpdir), "test_nd.db")
-    app = await make_app(db)
-    nd_ieee = make_ieee(2)
-    with patch.object(Device, "schedule_initialize", new=mock_dev_init(status)):
-        app.handle_join(299, nd_ieee, 0)
-
-    dev = app.get_device(nd_ieee)
-    ep = dev.add_endpoint(1)
-    ep.profile_id = 260
-    ep.device_type = profiles.zha.DeviceType.PUMP
-    ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
-    app.device_initialized(dev)
-
-    node_desc = zdo_t.NodeDescriptor.deserialize(b"abcdefghijklm")[0]
-
-    async def mock_get_node_descriptor():
-        dev.node_desc = node_desc
-        return node_desc
-
-    dev.get_node_descriptor = MagicMock()
-    dev.get_node_descriptor.side_effect = mock_get_node_descriptor
-    await dev.refresh_node_descriptor()
-
-    assert dev.get_node_descriptor.call_count == 1
-
-    app2 = await make_app(db)
-    if success:
-        dev = app2.get_device(nd_ieee)
-        assert dev.status == status
-        assert dev.node_desc.is_valid
-        assert dev.node_desc.serialize() == b"abcdefghijklm"
-    else:
-        assert nd_ieee not in app2.devices
-
-    os.unlink(db)
-
-
 async def test_groups(tmpdir, monkeypatch):
     monkeypatch.setattr(
         Device, "schedule_initialize", mock_dev_init(Status.ENDPOINTS_INIT)
