@@ -8,6 +8,7 @@ import zigpy.application
 import zigpy.exceptions
 from zigpy.profiles import zha
 import zigpy.types as t
+from zigpy.zcl.clusters.general import Basic
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -303,3 +304,16 @@ def test_device_manufacture_id_override(dev):
 
     dev.node_desc = zdo_t.NodeDescriptor()
     assert dev.manufacturer_id == 2345
+
+
+def test_device_model_manufacturer(dev):
+    assert dev.manufacturer is None
+    assert dev.model is None
+
+    ep = dev.add_endpoint(1)
+    cluster = ep.add_input_cluster(Basic.cluster_id)
+    cluster._update_attribute(0x0004, b"Manufacturer\x00\x00")
+    cluster._update_attribute(0x0005, b"Model\x00\x00")
+
+    assert dev.manufacturer == "Manufacturer"
+    assert dev.model == "Model"

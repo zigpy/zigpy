@@ -196,9 +196,10 @@ def test_custom_device():
     class Device(zigpy.quirks.CustomDevice):
         signature = {}
 
-        class MyEndpoint:
+        class MyEndpoint(zigpy.endpoint.Endpoint):
             def __init__(self, device, endpoint_id, *args, **kwargs):
                 assert args == (sentinel.custom_endpoint_arg, replaces)
+                super().__init__(device, endpoint_id)
 
         class MyCluster(zigpy.quirks.CustomCluster):
             cluster_id = 0x8888
@@ -219,9 +220,10 @@ def test_custom_device():
     class Device2(zigpy.quirks.CustomDevice):
         signature = {}
 
-        class MyEndpoint:
+        class MyEndpoint(zigpy.endpoint.Endpoint):
             def __init__(self, device, endpoint_id, *args, **kwargs):
                 assert args == (sentinel.custom_endpoint_arg, replaces)
+                super().__init__(device, endpoint_id)
 
         class MyCluster(zigpy.quirks.CustomCluster):
             cluster_id = 0x8888

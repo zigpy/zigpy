@@ -42,38 +42,62 @@ class CustomDevice(zigpy.device.Device, metaclass=Registry):
     def __init__(self, application, ieee, nwk, replaces):
         super().__init__(application, ieee, nwk)
 
+        self.lqi = replaces.lqi
+        self.rssi = replaces.rssi
+        self.last_seen = replaces.last_seen
+        self._listeners = replaces._listeners.copy()
+
+        # Don't execute the `.relays` setter function
+        self._relays = None if replaces._relays is None else replaces._relays.copy()
+
         def set_device_attr(attr):
             if attr in self.replacement:
                 setattr(self, attr, self.replacement[attr])
             else:
                 setattr(self, attr, getattr(replaces, attr))
 
-        for attr in ("lqi", "rssi", "last_seen", "relays"):
-            setattr(self, attr, getattr(replaces, attr))
-
         set_device_attr("status")
         set_device_attr("node_desc")
         set_device_attr("manufacturer")
         set_device_attr("model")
         set_device_attr("skip_configuration")
+
         for endpoint_id, endpoint in self.replacement.get("endpoints", {}).items():
             self.add_endpoint(endpoint_id, replace_device=replaces)
 
     def add_endpoint(self, endpoint_id, replace_device=None):
         if endpoint_id not in self.replacement.get("endpoints", {}):
-            return super().add_endpoint(endpoint_id)
-
-        endpoints = self.replacement["endpoints"]
-
-        if isinstance(endpoints[endpoint_id], tuple):
-            custom_ep_type = endpoints[endpoint_id][0]
-            replacement_data = endpoints[endpoint_id][1]
+            ep = super().add_endpoint(endpoint_id)
         else:
-            custom_ep_type = CustomEndpoint
-            replacement_data = endpoints[endpoint_id]
+            endpoints = self.replacement["endpoints"]
 
-        ep = custom_ep_type(self, endpoint_id, replacement_data, replace_device)
-        self.endpoints[endpoint_id] = ep
+            if isinstance(endpoints[endpoint_id], tuple):
+                custom_ep_type = endpoints[endpoint_id][0]
+                replacement_data = endpoints[endpoint_id][1]
+            else:
+                custom_ep_type = CustomEndpoint
+                replacement_data = endpoints[endpoint_id]
+
+            ep = custom_ep_type(self, endpoint_id, replacement_data, replace_device)
+            self.endpoints[endpoint_id] = ep
+
+        if replace_device is None:
+            return ep
+
+        for cluster in ep.in_clusters.values():
+            orig_ep = replace_device.endpoints.get(endpoint_id)
+
+            if orig_ep is None:
+                continue
+
+            orig_in_clusters = orig_ep.in_clusters
+            orig_cluster = orig_in_clusters.get(cluster.cluster_id)
+
+            if orig_cluster is None:
+                continue
+
+            cluster._attr_cache = orig_cluster._attr_cache.copy()
+
         return ep
 
 
@@ -81,15 +105,19 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
     def __init__(self, device, endpoint_id, replacement_data, replace_device):
         super().__init__(device, endpoint_id)
 
+        replace_ep = replace_device[endpoint_id]
+
         def set_device_attr(attr):
             if attr in replacement_data:
                 setattr(self, attr, replacement_data[attr])
             else:
-                setattr(self, attr, getattr(replace_device[endpoint_id], attr))
+                setattr(self, attr, getattr(replace_ep, attr))
 
         set_device_attr("profile_id")
         set_device_attr("device_type")
+
         self.status = zigpy.endpoint.Status.ZDO_INIT
+        self._listeners = replace_ep._listeners.copy()
 
         for c in replacement_data.get("input_clusters", []):
             if isinstance(c, int):
@@ -98,6 +126,11 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
             else:
                 cluster = c(self, is_server=True)
                 cluster_id = cluster.cluster_id
+
+            if cluster is not None and cluster_id in replace_ep.input_clusters:
+                orig_cluster = replace_ep.input_clusters[cluster_id]
+                cluster._listeners = orig_cluster._listeners.copy()
+
             self.add_input_cluster(cluster_id, cluster)
 
         for c in replacement_data.get("output_clusters", []):
@@ -107,6 +140,11 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
             else:
                 cluster = c(self, is_server=False)
                 cluster_id = cluster.cluster_id
+
+            if cluster is not None and cluster_id in replace_ep.output_clusters:
+                orig_cluster = replace_ep.output_clusters[cluster_id]
+                cluster._listeners = orig_cluster._listeners.copy()
+
             self.add_output_cluster(cluster_id, cluster)
 
 

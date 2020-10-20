@@ -10,6 +10,7 @@ import zigpy.exceptions
 import zigpy.neighbor
 from zigpy.types import NWK, BroadcastAddress, Relays
 import zigpy.util
+from zigpy.zcl.clusters.general import Basic
 import zigpy.zcl.foundation as foundation
 import zigpy.zdo as zdo
 
@@ -292,7 +293,28 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @property
     def manufacturer(self):
-        return self._manufacturer
+        if self._manufacturer is not None:
+            return self._manufacturer
+
+        for endpoint_id, endpoint in self.endpoints.items():
+            if endpoint_id == 0:
+                continue
+
+            if Basic.cluster_id not in endpoint.in_clusters:
+                continue
+
+            cluster = endpoint.in_clusters[Basic.cluster_id]
+
+            if 0x0004 not in cluster._attr_cache:
+                continue
+
+            value = cluster._attr_cache[0x0004]
+
+            if isinstance(value, bytes):
+                value = value.split(b"\x00")[0]
+                return value.decode().strip()
+            else:
+                return value
 
     @manufacturer.setter
     def manufacturer(self, value):
@@ -306,7 +328,28 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @property
     def model(self):
-        return self._model
+        if self._model is not None:
+            return self._model
+
+        for endpoint_id, endpoint in self.endpoints.items():
+            if endpoint_id == 0:
+                continue
+
+            if Basic.cluster_id not in endpoint.in_clusters:
+                continue
+
+            cluster = endpoint.in_clusters[Basic.cluster_id]
+
+            if 0x0005 not in cluster._attr_cache:
+                continue
+
+            value = cluster._attr_cache[0x0005]
+
+            if isinstance(value, bytes):
+                value = value.split(b"\x00")[0]
+                return value.decode().strip()
+            else:
+                return value
 
     @property
     def skip_configuration(self):
@@ -338,16 +381,19 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self.endpoints[key]
 
     def get_signature(self):
-        # return the device signature by providing essential device information
-        #    - Model Identifier ( Attribut 0x0005 of Basic Cluster 0x0000 )
-        #    - Manufacturer Name ( Attribut 0x0004 of Basic Cluster 0x0000 )
-        #    - Endpoint list
-        #        - Profile Id, Device Id, Cluster Out, Cluster In
+        """
+        Returns the device signature by providing essential device information
+           - Model Identifier ( Attribut 0x0005 of Basic Cluster 0x0000 )
+           - Manufacturer Name ( Attribut 0x0004 of Basic Cluster 0x0000 )
+           - Endpoint list
+               - Profile Id, Device Id, Cluster Out, Cluster In
+        """
+
         signature = {}
-        if self._manufacturer is not None:
+        if self.manufacturer is not None:
             signature["manufacturer_name"] = self.manufacturer
-        if self._model is not None:
-            signature["model"] = self._model
+        if self.model is not None:
+            signature["model"] = self.model
         if self.node_desc.is_valid:
             signature["node_descriptor"] = self.node_desc.as_dict()
 

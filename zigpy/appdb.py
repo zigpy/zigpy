@@ -6,7 +6,6 @@ import zigpy.endpoint
 import zigpy.profiles
 import zigpy.quirks
 import zigpy.types as t
-from zigpy.zcl.clusters.general import Basic
 from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
@@ -361,50 +360,11 @@ class PersistingListener:
         await self._load_node_descriptors()
         await self._load_endpoints()
         await self._load_clusters()
-
-        async def _load_attributes(filter: str = None) -> None:
-            for (ieee, endpoint_id, cluster, attrid, value) in self._scan(
-                "attributes", filter
-            ):
-                dev = self._application.get_device(ieee)
-                if endpoint_id in dev.endpoints:
-                    ep = dev.endpoints[endpoint_id]
-                    if cluster in ep.in_clusters:
-                        clus = ep.in_clusters[cluster]
-                        clus._attr_cache[attrid] = value
-                        LOGGER.debug(
-                            "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
-                            dev.nwk,
-                            endpoint_id,
-                            cluster,
-                            attrid,
-                            value,
-                        )
-                        if cluster == Basic.cluster_id and attrid == 4:
-                            if isinstance(value, bytes):
-                                value = value.split(b"\x00")[0]
-                                dev.manufacturer = value.decode().strip()
-                            else:
-                                dev.manufacturer = value
-                        if cluster == Basic.cluster_id and attrid == 5:
-                            if isinstance(value, bytes):
-                                value = value.split(b"\x00")[0]
-                                dev.model = value.decode().strip()
-                            else:
-                                dev.model = value
-
-        await _load_attributes("attrid=4 OR attrid=5")
-
-        for device in self._application.devices.values():
-            device = zigpy.quirks.get_device(device)
-            self._application.devices[device.ieee] = device
-
-        await _load_attributes()
+        await self._load_attributes()
         await self._load_groups()
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
-        await self._finish_loading()
 
     async def _load_devices(self):
         for (ieee, nwk, status) in self._scan("devices"):
@@ -439,6 +399,27 @@ class PersistingListener:
             ep = dev.endpoints[endpoint_id]
             ep.add_output_cluster(cluster)
 
+    async def _load_attributes(self):
+        for (ieee, endpoint_id, cluster, attrid, value) in self._scan("attributes"):
+            dev = self._application.get_device(ieee)
+            if endpoint_id not in dev.endpoints:
+                continue
+
+            ep = dev.endpoints[endpoint_id]
+            if cluster not in ep.in_clusters:
+                continue
+
+            clus = ep.in_clusters[cluster]
+            clus._attr_cache[attrid] = value
+            LOGGER.debug(
+                "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
+                dev.nwk,
+                endpoint_id,
+                cluster,
+                attrid,
+                value,
+            )
+
     async def _load_groups(self):
         for (group_id, name) in self._scan("groups"):
             self._application.groups.add_group(group_id, name, suppress_event=True)
@@ -462,8 +443,3 @@ class PersistingListener:
             dev = self._application.get_device(dev_ieee)
             nei = zdo_t.Neighbor(epid, ieee, nwk, packed, prm, depth, lqi)
             dev.neighbors.add_neighbor(nei)
-
-    async def _finish_loading(self):
-        for dev in self._application.devices.values():
-            dev.add_context_listener(self)
-            dev.neighbors.add_context_listener(self)

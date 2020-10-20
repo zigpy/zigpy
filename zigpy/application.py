@@ -43,6 +43,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._pan_id = None
         self._send_sequence = 0
 
+    def quirk_device(self, device: zigpy.device.Device) -> zigpy.device.Device:
+        """
+        Converts a Device into a CustomDevice if a quirk exists and updates the device
+        mapping. Otherwise, returns the original device object.
+        """
+
+        quirked_device = zigpy.quirks.get_device(device)
+
+        if self.devices[device.ieee] is not quirked_device:
+            self.devices[device.ieee] = quirked_device
+
+        return quirked_device
+
     async def _load_db(self) -> None:
         """Restore save state."""
         database_file = self.config[zigpy.config.CONF_DATABASE]
@@ -53,6 +66,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.add_listener(self._dblistener)
         self.groups.add_listener(self._dblistener)
         await self._dblistener.load()
+
+        # Replace all of the Device objects with CustomDevice objects, if necessary
+        for device in self.devices.values():
+            device = self.quirk_device(device)
+            device.add_context_listener(self._dblistener)
+            device.neighbors.add_context_listener(self._dblistener)
 
     @classmethod
     async def new(
@@ -119,8 +138,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def device_initialized(self, device):
         """Used by a device to signal that it is initialized"""
         self.listener_event("raw_device_initialized", device)
-        device = zigpy.quirks.get_device(device)
-        self.devices[device.ieee] = device
+        device = self.quirk_device(device)
         if self._dblistener is not None:
             device.add_context_listener(self._dblistener)
             device.neighbors.add_context_listener(self._dblistener)
