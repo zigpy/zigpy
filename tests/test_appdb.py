@@ -130,12 +130,10 @@ async def test_database(tmpdir, monkeypatch):
     ep.profile_id = 65535
     with patch("zigpy.quirks.get_device", fake_get_device):
         app.device_initialized(dev)
-
-    dev = app.get_device(custom_ieee)
-    assert isinstance(dev, FakeCustomDevice)
-    assert isinstance(dev, CustomDevice)
+    assert isinstance(app.get_device(custom_ieee), FakeCustomDevice)
+    assert isinstance(app.get_device(custom_ieee), CustomDevice)
     assert ep.endpoint_id in dev.get_signature()
-    app.device_initialized(dev)
+    app.device_initialized(app.get_device(custom_ieee))
     dev.relays = relays_2
 
     # Everything should've been saved - check that it re-loads
@@ -159,20 +157,20 @@ async def test_database(tmpdir, monkeypatch):
 
     app.handle_leave(99, ieee)
 
-    app3 = await make_app(db)
-    dev = app3.get_device(custom_ieee)
-    assert dev.relays is None
-    assert ieee in app3.devices
+    app2 = await make_app(db)
+    assert ieee in app2.devices
 
     async def mockleave(*args, **kwargs):
         return [0]
 
-    app3.devices[ieee].zdo.leave = mockleave
-    await app3.remove(ieee)
-    assert ieee not in app3.devices
+    app2.devices[ieee].zdo.leave = mockleave
+    await app2.remove(ieee)
+    assert ieee not in app2.devices
 
-    app4 = await make_app(db)
-    assert ieee not in app4.devices
+    app3 = await make_app(db)
+    assert ieee not in app3.devices
+    dev = app2.get_device(custom_ieee)
+    assert dev.relays is None
 
     os.unlink(db)
 
