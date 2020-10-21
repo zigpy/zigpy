@@ -349,10 +349,8 @@ class PersistingListener:
         self.execute("DELETE FROM relays WHERE ieee = ?", (ieee,))
         self._db.commit()
 
-    def _scan(self, table, filter=None):
-        if filter is None:
-            return self.execute("SELECT * FROM %s" % (table,))
-        return self.execute("SELECT * FROM %s WHERE %s" % (table, filter))
+    def _scan(self, table):
+        return self.execute("SELECT * FROM %s" % (table,))
 
     async def load(self) -> None:
         LOGGER.debug("Loading application state from %s", self._database_file)
@@ -402,13 +400,7 @@ class PersistingListener:
     async def _load_attributes(self):
         for (ieee, endpoint_id, cluster, attrid, value) in self._scan("attributes"):
             dev = self._application.get_device(ieee)
-            if endpoint_id not in dev.endpoints:
-                continue
-
             ep = dev.endpoints[endpoint_id]
-            if cluster not in ep.in_clusters:
-                continue
-
             clus = ep.in_clusters[cluster]
             clus._attr_cache[attrid] = value
             LOGGER.debug(
