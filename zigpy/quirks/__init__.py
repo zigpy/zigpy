@@ -67,19 +67,19 @@ class CustomDevice(zigpy.device.Device, metaclass=Registry):
 
     def add_endpoint(self, endpoint_id, replace_device=None):
         if endpoint_id not in self.replacement.get("endpoints", {}):
-            ep = super().add_endpoint(endpoint_id)
+            return super().add_endpoint(endpoint_id)
+
+        endpoints = self.replacement["endpoints"]
+
+        if isinstance(endpoints[endpoint_id], tuple):
+            custom_ep_type = endpoints[endpoint_id][0]
+            replacement_data = endpoints[endpoint_id][1]
         else:
-            endpoints = self.replacement["endpoints"]
+            custom_ep_type = CustomEndpoint
+            replacement_data = endpoints[endpoint_id]
 
-            if isinstance(endpoints[endpoint_id], tuple):
-                custom_ep_type = endpoints[endpoint_id][0]
-                replacement_data = endpoints[endpoint_id][1]
-            else:
-                custom_ep_type = CustomEndpoint
-                replacement_data = endpoints[endpoint_id]
-
-            ep = custom_ep_type(self, endpoint_id, replacement_data, replace_device)
-            self.endpoints[endpoint_id] = ep
+        ep = custom_ep_type(self, endpoint_id, replacement_data, replace_device)
+        self.endpoints[endpoint_id] = ep
 
         return ep
 
