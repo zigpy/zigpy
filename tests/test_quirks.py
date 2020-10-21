@@ -653,3 +653,56 @@ async def test_configure_reporting_manufacture_specific(
         )
         assert cmd_mock.call_count == 1
         assert cmd_mock.call_args[1]["manufacturer"] is sentinel.another_id
+
+
+def test_get_device_event_listeners(real_device):
+    class TestDevice(zigpy.quirks.CustomDevice):
+        signature = {
+            "model": "model",
+            "manufacturer": "manufacturer",
+            "endpoints": {
+                1: {
+                    "profile_id": 255,
+                    "device_type": 255,
+                    "input_clusters": [3],
+                    "output_clusters": [6],
+                }
+            },
+        }
+
+        replacement = {
+            "endpoints": {
+                1: {
+                    "profile_id": 255,
+                    "device_type": 255,
+                    "input_clusters": [3],
+                    "output_clusters": [6],
+                }
+            }
+        }
+
+    registry = _dev_reg(TestDevice)
+
+    listener = MagicMock()
+    real_device.add_listener(listener)
+    real_device.endpoints[1].add_listener(listener)
+    real_device.endpoints[1].in_clusters[3].add_listener(listener)
+
+    test_device = registry.get_device(real_device)
+
+    assert isinstance(test_device, TestDevice)
+
+    # Device listeners
+    test_device.relays = [1, 2, 3]
+    listener.device_relays_updated.assert_called_once_with([1, 2, 3])
+
+    # Endpoint listeners
+    hdr = MagicMock()
+    test_device.endpoints[1].handle_message(None, None, hdr, None)
+    listener.unknown_cluster_message.assert_called_with(hdr.command_id, None)
+
+    # Cluster listeners
+    test_device.endpoints[1].in_clusters[3]._update_attribute(1, 2)
+    assert real_device.endpoints[1].in_clusters[3]._listeners
+    assert test_device.endpoints[1].in_clusters[3]._listeners
+    listener.attribute_updated.assert_called_once_with(1, 2)

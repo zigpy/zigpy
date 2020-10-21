@@ -81,23 +81,6 @@ class CustomDevice(zigpy.device.Device, metaclass=Registry):
             ep = custom_ep_type(self, endpoint_id, replacement_data, replace_device)
             self.endpoints[endpoint_id] = ep
 
-        if replace_device is None:
-            return ep
-
-        for cluster in ep.in_clusters.values():
-            orig_ep = replace_device.endpoints.get(endpoint_id)
-
-            if orig_ep is None:
-                continue
-
-            orig_in_clusters = orig_ep.in_clusters
-            orig_cluster = orig_in_clusters.get(cluster.cluster_id)
-
-            if orig_cluster is None:
-                continue
-
-            cluster._attr_cache = orig_cluster._attr_cache.copy()
-
         return ep
 
 
@@ -127,11 +110,12 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                 cluster = c(self, is_server=True)
                 cluster_id = cluster.cluster_id
 
-            if cluster is not None and cluster_id in replace_ep.input_clusters:
-                orig_cluster = replace_ep.input_clusters[cluster_id]
-                cluster._listeners = orig_cluster._listeners.copy()
+            new_cluster = self.add_input_cluster(cluster_id, cluster)
+            orig_cluster = replace_ep.in_clusters.get(cluster_id)
 
-            self.add_input_cluster(cluster_id, cluster)
+            if orig_cluster is not None:
+                new_cluster._listeners = orig_cluster._listeners.copy()
+                new_cluster._attr_cache = orig_cluster._attr_cache.copy()
 
         for c in replacement_data.get("output_clusters", []):
             if isinstance(c, int):
@@ -141,11 +125,12 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                 cluster = c(self, is_server=False)
                 cluster_id = cluster.cluster_id
 
-            if cluster is not None and cluster_id in replace_ep.output_clusters:
-                orig_cluster = replace_ep.output_clusters[cluster_id]
-                cluster._listeners = orig_cluster._listeners.copy()
+            new_cluster = self.add_output_cluster(cluster_id, cluster)
+            orig_cluster = replace_ep.out_clusters.get(cluster_id)
 
-            self.add_output_cluster(cluster_id, cluster)
+            if orig_cluster is not None:
+                new_cluster._listeners = orig_cluster._listeners.copy()
+                new_cluster._attr_cache = orig_cluster._attr_cache.copy()
 
 
 class CustomCluster(zigpy.zcl.Cluster):
