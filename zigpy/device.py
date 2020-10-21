@@ -19,6 +19,28 @@ APS_REPLY_TIMEOUT_EXTENDED = 28
 LOGGER = logging.getLogger(__name__)
 
 
+def find_cached_basic_attribute(device: "Device", attr_id: int) -> Optional[str]:
+    for endpoint_id, endpoint in device.endpoints.items():
+        if endpoint_id == 0:
+            continue
+
+        if Basic.cluster_id not in endpoint.in_clusters:
+            continue
+
+        cluster = endpoint.in_clusters[Basic.cluster_id]
+
+        if attr_id not in cluster._attr_cache:
+            continue
+
+        value = cluster._attr_cache[attr_id]
+
+        if isinstance(value, bytes):
+            value = value.split(b"\x00")[0]
+            return value.decode().strip()
+        else:
+            return value
+
+
 class Status(enum.IntEnum):
     """The status of a Device"""
 
@@ -293,28 +315,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @property
     def manufacturer(self):
-        if self._manufacturer is not None:
-            return self._manufacturer
-
-        for endpoint_id, endpoint in self.endpoints.items():
-            if endpoint_id == 0:
-                continue
-
-            if Basic.cluster_id not in endpoint.in_clusters:
-                continue
-
-            cluster = endpoint.in_clusters[Basic.cluster_id]
-
-            if 0x0004 not in cluster._attr_cache:
-                continue
-
-            value = cluster._attr_cache[0x0004]
-
-            if isinstance(value, bytes):
-                value = value.split(b"\x00")[0]
-                return value.decode().strip()
-            else:
-                return value
+        return self._manufacturer
 
     @manufacturer.setter
     def manufacturer(self, value):
@@ -328,28 +329,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @property
     def model(self):
-        if self._model is not None:
-            return self._model
-
-        for endpoint_id, endpoint in self.endpoints.items():
-            if endpoint_id == 0:
-                continue
-
-            if Basic.cluster_id not in endpoint.in_clusters:
-                continue
-
-            cluster = endpoint.in_clusters[Basic.cluster_id]
-
-            if 0x0005 not in cluster._attr_cache:
-                continue
-
-            value = cluster._attr_cache[0x0005]
-
-            if isinstance(value, bytes):
-                value = value.split(b"\x00")[0]
-                return value.decode().strip()
-            else:
-                return value
+        return self._model
 
     @property
     def skip_configuration(self):
@@ -409,6 +389,16 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 "out_clusters": out_clusters,
             }
         return signature
+
+    def _update_model_manufacturer(self):
+        """
+        Looks for the first Basic cluster with cached "manufacturer" and "model"
+        Zigbee attributes and populates the current device's `model` and `manufacturer`
+        attributes.
+        """
+
+        self.manufacturer = find_cached_basic_attribute(self, 0x0004)
+        self.model = find_cached_basic_attribute(self, 0x0005)
 
 
 async def broadcast(

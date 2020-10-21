@@ -315,5 +315,23 @@ def test_device_model_manufacturer(dev):
     cluster._update_attribute(0x0004, b"Manufacturer\x00\x00")
     cluster._update_attribute(0x0005, b"Model\x00\x00")
 
+    # Nothing is changed until the attributes are reloaded
+    assert dev.manufacturer is None
+    assert dev.model is None
+
+    dev._update_model_manufacturer()
+
     assert dev.manufacturer == "Manufacturer"
     assert dev.model == "Model"
+
+    cluster._update_attribute(0x0004, b"New Manufacturer\x00\x00")
+    cluster._update_attribute(0x0005, b"New Model\x00\x00")
+
+    # Changing the cached attributes will not affect the device's current info
+    assert dev.manufacturer == "Manufacturer"
+    assert dev.model == "Model"
+
+    dev._update_model_manufacturer()
+
+    assert dev.manufacturer == "New Manufacturer"
+    assert dev.model == "New Model"

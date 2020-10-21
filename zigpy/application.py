@@ -70,6 +70,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # Replace all of the Device objects with CustomDevice objects, if necessary
         for device in self.devices.values():
             device = self.quirk_device(device)
+            device._update_model_manufacturer()
             device.add_context_listener(self._dblistener)
             device.neighbors.add_context_listener(self._dblistener)
 
@@ -139,6 +140,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Used by a device to signal that it is initialized"""
         self.listener_event("raw_device_initialized", device)
         device = self.quirk_device(device)
+        device._update_model_manufacturer()
         if self._dblistener is not None:
             device.add_context_listener(self._dblistener)
             device.neighbors.add_context_listener(self._dblistener)
