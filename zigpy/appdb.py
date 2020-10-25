@@ -358,49 +358,49 @@ class PersistingListener:
         await self._load_endpoints()
         await self._load_clusters()
 
-        async def _load_attributes(filter: str = None) -> None:
-            for (ieee, endpoint_id, cluster, attrid, value) in self._scan(
-                "attributes", filter
-            ):
-                dev = self._application.get_device(ieee)
-                if endpoint_id in dev.endpoints:
-                    ep = dev.endpoints[endpoint_id]
-                    if cluster in ep.in_clusters:
-                        clus = ep.in_clusters[cluster]
-                        clus._attr_cache[attrid] = value
-                        LOGGER.debug(
-                            "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
-                            dev.nwk,
-                            endpoint_id,
-                            cluster,
-                            attrid,
-                            value,
-                        )
-                        if cluster == Basic.cluster_id and attrid == 4:
-                            if isinstance(value, bytes):
-                                value = value.split(b"\x00")[0]
-                                dev.manufacturer = value.decode().strip()
-                            else:
-                                dev.manufacturer = value
-                        if cluster == Basic.cluster_id and attrid == 5:
-                            if isinstance(value, bytes):
-                                value = value.split(b"\x00")[0]
-                                dev.model = value.decode().strip()
-                            else:
-                                dev.model = value
-
-        await _load_attributes("attrid=4 OR attrid=5")
+        await self._load_attributes("attrid=4 OR attrid=5")
 
         for device in self._application.devices.values():
             device = zigpy.quirks.get_device(device)
             self._application.devices[device.ieee] = device
 
-        await _load_attributes()
+        await self._load_attributes()
         await self._load_groups()
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
         await self._finish_loading()
+
+    async def _load_attributes(self, filter: str = None) -> None:
+        for (ieee, endpoint_id, cluster, attrid, value) in self._scan(
+            "attributes", filter
+        ):
+            dev = self._application.get_device(ieee)
+            if endpoint_id in dev.endpoints:
+                ep = dev.endpoints[endpoint_id]
+                if cluster in ep.in_clusters:
+                    clus = ep.in_clusters[cluster]
+                    clus._attr_cache[attrid] = value
+                    LOGGER.debug(
+                        "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
+                        dev.nwk,
+                        endpoint_id,
+                        cluster,
+                        attrid,
+                        value,
+                    )
+                    if cluster == Basic.cluster_id and attrid == 4:
+                        if isinstance(value, bytes):
+                            value = value.split(b"\x00")[0]
+                            dev.manufacturer = value.decode().strip()
+                        else:
+                            dev.manufacturer = value
+                    if cluster == Basic.cluster_id and attrid == 5:
+                        if isinstance(value, bytes):
+                            value = value.split(b"\x00")[0]
+                            dev.model = value.decode().strip()
+                        else:
+                            dev.model = value
 
     async def _load_devices(self):
         for (ieee, nwk, status) in self._scan("devices"):
