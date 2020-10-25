@@ -49,7 +49,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if not database_file:
             return
 
-        self._dblistener = zigpy.appdb.PersistingListener(database_file, self)
+        self._dblistener = await zigpy.appdb.PersistingListener.new(database_file, self)
         self.add_listener(self._dblistener)
         self.groups.add_listener(self._dblistener)
         await self._dblistener.load()

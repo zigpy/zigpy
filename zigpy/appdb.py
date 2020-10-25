@@ -1,11 +1,16 @@
 import logging
 import sqlite3
+from typing import Any
+
+import aiosqlite
 
 import zigpy.device
 import zigpy.endpoint
 import zigpy.profiles
 import zigpy.quirks
 import zigpy.types as t
+import zigpy.typing
+import zigpy.util
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zdo import types as zdo_t
 
@@ -18,44 +23,60 @@ def _sqlite_adapters():
     def adapt_ieee(eui64):
         return str(eui64)
 
-    sqlite3.register_adapter(t.EUI64, adapt_ieee)
-    sqlite3.register_adapter(t.ExtendedPanId, adapt_ieee)
+    aiosqlite.register_adapter(t.EUI64, adapt_ieee)
+    aiosqlite.register_adapter(t.ExtendedPanId, adapt_ieee)
 
     def convert_ieee(s):
         return t.EUI64.convert(s.decode())
 
-    sqlite3.register_converter("ieee", convert_ieee)
+    aiosqlite.register_converter("ieee", convert_ieee)
 
 
-class PersistingListener:
-    def __init__(self, database_file, application):
-        self._database_file = database_file
+class PersistingListener(zigpy.util.CatchingTaskMixin):
+    def __init__(
+        self,
+        connection: aiosqlite.Connection,
+        application: zigpy.typing.ControllerApplicationType,
+    ) -> None:
         _sqlite_adapters()
-        self._db = sqlite3.connect(database_file, detect_types=sqlite3.PARSE_DECLTYPES)
+        self._db = connection
         self._cursor = self._db.cursor()
-
-        self._enable_foreign_keys()
-        self._create_table_devices()
-        self._create_table_endpoints()
-        self._create_table_clusters()
-        self._create_table_neighbors()
-        self._create_table_node_descriptors()
-        self._create_table_output_clusters()
-        self._create_table_attributes()
-        self._create_table_groups()
-        self._create_table_group_members()
-        self._create_table_relays()
-
         self._application = application
 
-    def execute(self, *args, **kwargs):
-        return self._cursor.execute(*args, **kwargs)
+    log = LOGGER.log
 
-    def device_joined(self, device):
+    async def initialize_tables(self) -> None:
+        await self._db.execute("PRAGMA foreign_keys = ON")
+        await self._create_table_devices()
+        await self._create_table_endpoints()
+        await self._create_table_clusters()
+        await self._create_table_neighbors()
+        await self._create_table_node_descriptors()
+        await self._create_table_output_clusters()
+        await self._create_table_attributes()
+        await self._create_table_groups()
+        await self._create_table_group_members()
+        await self._create_table_relays()
+        await self._db.commit()
+
+    @classmethod
+    async def new(
+        cls, database_file: str, app: zigpy.typing.ControllerApplicationType
+    ) -> "PersistingListener":
+        """Create an instance of persisting listener."""
+        sqlite_conn = await aiosqlite.connect(
+            database_file, detect_types=sqlite3.PARSE_DECLTYPES
+        )
+        return cls(sqlite_conn, app)
+
+    def execute(self, *args, **kwargs):
+        return self._db.execute(*args, **kwargs)
+
+    def device_joined(self, device: zigpy.typing.DeviceType) -> None:
         pass
 
-    def raw_device_initialized(self, device):
-        self._save_device(device)
+    def raw_device_initialized(self, device: zigpy.typing.DeviceType) -> None:
+        self.create_catching_task(self._save_device(device))
 
     def device_initialized(self, device):
         pass
@@ -64,26 +85,30 @@ class PersistingListener:
         pass
 
     def device_removed(self, device):
-        self._remove_device(device)
+        self.create_catching_task(self._remove_device(device))
 
     def device_relays_updated(self, device, relays):
         """Device relay list is updated."""
         if relays is None:
-            self._save_device_relays_clear(device.ieee)
+            self.create_catching_task(self._save_device_relays_clear(device.ieee))
             return
 
-        self._save_device_relays_update(device.ieee, t.Relays(relays).serialize())
+        self.create_catching_task(
+            self._save_device_relays_update(device.ieee, t.Relays(relays).serialize())
+        )
 
     def attribute_updated(self, cluster, attrid, value):
         if cluster.endpoint.device.status != zigpy.device.Status.ENDPOINTS_INIT:
             return
 
-        self._save_attribute(
-            cluster.endpoint.device.ieee,
-            cluster.endpoint.endpoint_id,
-            cluster.cluster_id,
-            attrid,
-            value,
+        self.create_catching_task(
+            self._save_attribute(
+                cluster.endpoint.device.ieee,
+                cluster.endpoint.endpoint_id,
+                cluster.cluster_id,
+                attrid,
+                value,
+            )
         )
 
     def neighbors_updated(self, neighbors):
@@ -111,39 +136,39 @@ class PersistingListener:
                                                AND ieee=?
                                                AND endpoint_id=?"""
         self.execute(q, (group.group_id, *ep.unique_id))
-        self._db.commit()
+        await self._db.commit()
 
     def group_removed(self, group):
         q = "DELETE FROM groups WHERE group_id=?"
         self.execute(q, (group.group_id,))
         self._db.commit()
 
-    def _create_table(self, table_name, spec):
-        self.execute("CREATE TABLE IF NOT EXISTS %s %s" % (table_name, spec))
-        self.execute("PRAGMA user_version = %s" % (DB_VERSION,))
+    async def _create_table(self, table_name: str, spec: str):
+        await self.execute("CREATE TABLE IF NOT EXISTS %s %s" % (table_name, spec))
+        await self.execute("PRAGMA user_version = %s" % (DB_VERSION,))
 
-    def _create_index(self, index_name, table, columns):
-        self.execute(
+    async def _create_index(self, index_name: str, table: str, columns: str) -> None:
+        await self.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(%s)"
             % (index_name, table, columns)
         )
 
-    def _create_table_devices(self):
-        self._create_table("devices", "(ieee ieee, nwk, status)")
-        self._create_index("ieee_idx", "devices", "ieee")
+    async def _create_table_devices(self) -> None:
+        await self._create_table("devices", "(ieee ieee, nwk, status)")
+        await self._create_index("ieee_idx", "devices", "ieee")
 
-    def _create_table_endpoints(self):
-        self._create_table(
+    async def _create_table_endpoints(self) -> None:
+        await self._create_table(
             "endpoints",
             (
                 "(ieee ieee, endpoint_id, profile_id, device_type device_type, status, "
                 "FOREIGN KEY(ieee) REFERENCES devices(ieee) ON DELETE CASCADE)"
             ),
         )
-        self._create_index("endpoint_idx", "endpoints", "ieee, endpoint_id")
+        await self._create_index("endpoint_idx", "endpoints", "ieee, endpoint_id")
 
-    def _create_table_clusters(self):
-        self._create_table(
+    async def _create_table_clusters(self) -> None:
+        await self._create_table(
             "clusters",
             (
                 "(ieee ieee, endpoint_id, cluster, "
@@ -151,13 +176,15 @@ class PersistingListener:
                 " ON DELETE CASCADE)"
             ),
         )
-        self._create_index("cluster_idx", "clusters", "ieee, endpoint_id, cluster")
+        await self._create_index(
+            "cluster_idx", "clusters", "ieee, endpoint_id, cluster"
+        )
 
-    def _create_table_neighbors(self):
+    async def _create_table_neighbors(self) -> None:
         idx_name = "neighbors_idx"
         idx_table = "neighbors"
         idx_cols = "device_ieee"
-        self._create_table(
+        await self._create_table(
             idx_table,
             (
                 "(device_ieee ieee NOT NULL, extended_pan_id ieee NOT NULL,"
@@ -167,22 +194,20 @@ class PersistingListener:
                 "FOREIGN KEY(device_ieee) REFERENCES devices(ieee) ON DELETE CASCADE)"
             ),
         )
-        self.execute(
-            f"CREATE INDEX IF NOT EXISTS {idx_name} ON {idx_table}({idx_cols})"
-        )
+        await self._create_index(idx_name, idx_table, idx_cols)
 
-    def _create_table_node_descriptors(self):
-        self._create_table(
+    async def _create_table_node_descriptors(self) -> None:
+        await self._create_table(
             "node_descriptors",
             (
                 "(ieee ieee, value, "
                 "FOREIGN KEY(ieee) REFERENCES devices(ieee) ON DELETE CASCADE)"
             ),
         )
-        self._create_index("node_descriptors_idx", "node_descriptors", "ieee")
+        await self._create_index("node_descriptors_idx", "node_descriptors", "ieee")
 
-    def _create_table_output_clusters(self):
-        self._create_table(
+    async def _create_table_output_clusters(self) -> None:
+        await self._create_table(
             "output_clusters",
             (
                 "(ieee ieee, endpoint_id, cluster, "
@@ -190,12 +215,12 @@ class PersistingListener:
                 " ON DELETE CASCADE)"
             ),
         )
-        self._create_index(
+        await self._create_index(
             "output_cluster_idx", "output_clusters", "ieee, endpoint_id, cluster"
         )
 
-    def _create_table_attributes(self):
-        self._create_table(
+    async def _create_table_attributes(self) -> None:
+        await self._create_table(
             "attributes",
             (
                 "(ieee ieee, endpoint_id, cluster, attrid, value, "
@@ -204,38 +229,35 @@ class PersistingListener:
                 "ON DELETE CASCADE)"
             ),
         )
-        self._create_index(
+        await self._create_index(
             "attribute_idx", "attributes", "ieee, endpoint_id, cluster, attrid"
         )
 
-    def _create_table_groups(self):
-        self._create_table("groups", "(group_id, name)")
-        self._create_index("group_idx", "groups", "group_id")
+    async def _create_table_groups(self) -> None:
+        await self._create_table("groups", "(group_id, name)")
+        await self._create_index("group_idx", "groups", "group_id")
 
-    def _create_table_group_members(self):
-        self._create_table(
+    async def _create_table_group_members(self) -> None:
+        await self._create_table(
             "group_members",
             """(group_id, ieee ieee, endpoint_id,
                 FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE CASCADE,
                 FOREIGN KEY(ieee, endpoint_id)
                 REFERENCES endpoints(ieee, endpoint_id) ON DELETE CASCADE)""",
         )
-        self._create_index(
+        await self._create_index(
             "group_members_idx", "group_members", "group_id, ieee, endpoint_id"
         )
 
-    def _create_table_relays(self):
-        self._create_table(
+    async def _create_table_relays(self) -> None:
+        await self._create_table(
             "relays",
             """(ieee ieee, relays,
                 FOREIGN KEY(ieee) REFERENCES devices(ieee) ON DELETE CASCADE)""",
         )
-        self._create_index("relays_idx", "relays", "ieee")
+        await self._create_index("relays_idx", "relays", "ieee")
 
-    def _enable_foreign_keys(self):
-        self.execute("PRAGMA foreign_keys = ON")
-
-    def _remove_device(self, device):
+    async def _remove_device(self, device: zigpy.typing.DeviceType) -> None:
         queries = (
             "DELETE FROM attributes WHERE ieee = ?",
             "DELETE FROM neighbors WHERE ieee = ?",
@@ -247,10 +269,10 @@ class PersistingListener:
             "DELETE FROM devices WHERE ieee = ?",
         )
         for query in queries:
-            self.execute(query, (device.ieee,))
-        self._db.commit()
+            await self.execute(query, (device.ieee,))
+        await self._db.commit()
 
-    def _save_device(self, device):
+    async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
         if device.status != zigpy.device.Status.ENDPOINTS_INIT:
             LOGGER.warning(
                 "Not saving uninitialized %s/%s device: %s",
@@ -261,27 +283,28 @@ class PersistingListener:
             return
         try:
             q = "INSERT INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
-            self.execute(q, (device.ieee, device.nwk, device.status))
+            await self.execute(q, (device.ieee, device.nwk, device.status))
         except sqlite3.IntegrityError:
             LOGGER.debug("Device %s already exists. Updating it.", device.ieee)
             q = "UPDATE devices SET nwk=?, status=? WHERE ieee=?"
-            self.execute(q, (device.nwk, device.status, device.ieee))
+            await self.execute(q, (device.nwk, device.status, device.ieee))
 
-        self._save_node_descriptor(device)
+        await self._save_node_descriptor(device)
         if isinstance(device, zigpy.quirks.CustomDevice):
-            self._db.commit()
+            await self._db.commit()
             return
-        self._save_endpoints(device)
+
+        await self._save_endpoints(device)
         for epid, ep in device.endpoints.items():
             if epid == 0:
                 # ZDO
                 continue
-            self._save_input_clusters(ep)
-            self._save_attribute_cache(ep)
-            self._save_output_clusters(ep)
-        self._db.commit()
+            await self._save_input_clusters(ep)
+            await self._save_attribute_cache(ep)
+            await self._save_output_clusters(ep)
+        await self._db.commit()
 
-    def _save_endpoints(self, device):
+    async def _save_endpoints(self, device: zigpy.typing.DeviceType) -> None:
         q = "INSERT OR REPLACE INTO endpoints VALUES (?, ?, ?, ?, ?)"
         endpoints = []
         for epid, ep in device.endpoints.items():
@@ -296,35 +319,35 @@ class PersistingListener:
                 ep.status,
             )
             endpoints.append(eprow)
-        self._cursor.executemany(q, endpoints)
+        await self._db.executemany(q, endpoints)
 
-    def _save_node_descriptor(self, device):
+    async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
         if (
             device.status != zigpy.device.Status.ENDPOINTS_INIT
             or not device.node_desc.is_valid
         ):
             return
         q = "INSERT OR REPLACE INTO node_descriptors VALUES (?, ?)"
-        self.execute(q, (device.ieee, device.node_desc.serialize()))
+        await self.execute(q, (device.ieee, device.node_desc.serialize()))
 
-    def _save_input_clusters(self, endpoint):
+    async def _save_input_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
         q = "INSERT OR REPLACE INTO clusters VALUES (?, ?, ?)"
         clusters = [
             (endpoint.device.ieee, endpoint.endpoint_id, cluster.cluster_id)
             for cluster in endpoint.in_clusters.values()
         ]
-        self._cursor.executemany(q, clusters)
+        await self._db.executemany(q, clusters)
 
-    def _save_attribute_cache(self, ep):
+    async def _save_attribute_cache(self, ep: zigpy.typing.EndpointType) -> None:
         q = "INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?, ?)"
         clusters = [
             (ep.device.ieee, ep.endpoint_id, cluster.cluster_id, attrid, value)
             for cluster in ep.in_clusters.values()
             for attrid, value in cluster._attr_cache.items()
         ]
-        self._cursor.executemany(q, clusters)
+        await self._db.executemany(q, clusters)
 
-    def _save_output_clusters(self, endpoint):
+    async def _save_output_clusters(self, endpoint: zigpy.typing.DeviceType) -> None:
         q = "INSERT OR REPLACE INTO output_clusters VALUES (?, ?, ?)"
         clusters = [
             (endpoint.device.ieee, endpoint.endpoint_id, cluster.cluster_id)
@@ -332,27 +355,24 @@ class PersistingListener:
         ]
         self._cursor.executemany(q, clusters)
 
-    def _save_attribute(self, ieee, endpoint_id, cluster_id, attrid, value):
+    async def _save_attribute(
+        self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int, value: Any
+    ) -> None:
         q = "INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?, ?)"
-        self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
-        self._db.commit()
+        await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
+        await self._db.commit()
 
-    def _save_device_relays_update(self, ieee, value):
+    async def _save_device_relays_update(self, ieee: t.EUI64, value: bytes) -> None:
         q = "INSERT OR REPLACE INTO relays VALUES (?, ?)"
-        self.execute(q, (ieee, value))
-        self._db.commit()
+        await self.execute(q, (ieee, value))
+        await self._db.commit()
 
-    def _save_device_relays_clear(self, ieee):
-        self.execute("DELETE FROM relays WHERE ieee = ?", (ieee,))
-        self._db.commit()
-
-    def _scan(self, table, filter=None):
-        if filter is None:
-            return self.execute("SELECT * FROM %s" % (table,))
-        return self.execute("SELECT * FROM %s WHERE %s" % (table, filter))
+    async def _save_device_relays_clear(self, ieee: t.EUI64) -> None:
+        await self.execute("DELETE FROM relays WHERE ieee = ?", (ieee,))
+        await self._db.commit()
 
     async def load(self) -> None:
-        LOGGER.debug("Loading application state from %s", self._database_file)
+        LOGGER.debug("Loading application state from %s")
         await self._load_devices()
         await self._load_node_descriptors()
         await self._load_endpoints()
@@ -372,92 +392,103 @@ class PersistingListener:
         await self._finish_loading()
 
     async def _load_attributes(self, filter: str = None) -> None:
-        for (ieee, endpoint_id, cluster, attrid, value) in self._scan(
-            "attributes", filter
-        ):
-            dev = self._application.get_device(ieee)
-            if endpoint_id in dev.endpoints:
+        if filter:
+            query = f"SELECT * FROM attributes WHERE {filter}"
+        else:
+            query = "SELECT * FROM attributes"
+        async with self.execute(query) as cursor:
+            async for (ieee, endpoint_id, cluster, attrid, value) in cursor:
+                dev = self._application.get_device(ieee)
+                if endpoint_id in dev.endpoints:
+                    ep = dev.endpoints[endpoint_id]
+                    if cluster in ep.in_clusters:
+                        clus = ep.in_clusters[cluster]
+                        clus._attr_cache[attrid] = value
+                        LOGGER.debug(
+                            "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
+                            dev.nwk,
+                            endpoint_id,
+                            cluster,
+                            attrid,
+                            value,
+                        )
+                        if cluster == Basic.cluster_id and attrid == 4:
+                            if isinstance(value, bytes):
+                                value = value.split(b"\x00")[0]
+                                dev.manufacturer = value.decode().strip()
+                            else:
+                                dev.manufacturer = value
+                        if cluster == Basic.cluster_id and attrid == 5:
+                            if isinstance(value, bytes):
+                                value = value.split(b"\x00")[0]
+                                dev.model = value.decode().strip()
+                            else:
+                                dev.model = value
+
+    async def _load_devices(self) -> None:
+        async with self.execute("SELECT * FROM devices") as cursor:
+            async for (ieee, nwk, status) in cursor:
+                dev = self._application.add_device(ieee, nwk)
+                dev.status = zigpy.device.Status(status)
+
+    async def _load_node_descriptors(self) -> None:
+        async with self.execute("SELECT * FROM node_descriptors") as cursor:
+            async for (ieee, value) in cursor:
+                dev = self._application.get_device(ieee)
+                dev.node_desc = zdo_t.NodeDescriptor.deserialize(value)[0]
+
+    async def _load_endpoints(self) -> None:
+        async with self.execute("SELECT * FROM endpoints") as cursor:
+            async for (ieee, epid, profile_id, device_type, status) in cursor:
+                dev = self._application.get_device(ieee)
+                ep = dev.add_endpoint(epid)
+                ep.profile_id = profile_id
+                ep.device_type = device_type
+                if profile_id == zigpy.profiles.zha.PROFILE_ID:
+                    ep.device_type = zigpy.profiles.zha.DeviceType(device_type)
+                elif profile_id == zigpy.profiles.zll.PROFILE_ID:
+                    ep.device_type = zigpy.profiles.zll.DeviceType(device_type)
+                ep.status = zigpy.endpoint.Status(status)
+
+    async def _load_clusters(self) -> None:
+        async with self.execute("SELECT * FROM clusters") as cursor:
+            async for (ieee, endpoint_id, cluster) in cursor:
+                dev = self._application.get_device(ieee)
                 ep = dev.endpoints[endpoint_id]
-                if cluster in ep.in_clusters:
-                    clus = ep.in_clusters[cluster]
-                    clus._attr_cache[attrid] = value
-                    LOGGER.debug(
-                        "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
-                        dev.nwk,
-                        endpoint_id,
-                        cluster,
-                        attrid,
-                        value,
-                    )
-                    if cluster == Basic.cluster_id and attrid == 4:
-                        if isinstance(value, bytes):
-                            value = value.split(b"\x00")[0]
-                            dev.manufacturer = value.decode().strip()
-                        else:
-                            dev.manufacturer = value
-                    if cluster == Basic.cluster_id and attrid == 5:
-                        if isinstance(value, bytes):
-                            value = value.split(b"\x00")[0]
-                            dev.model = value.decode().strip()
-                        else:
-                            dev.model = value
+                ep.add_input_cluster(cluster)
 
-    async def _load_devices(self):
-        for (ieee, nwk, status) in self._scan("devices"):
-            dev = self._application.add_device(ieee, nwk)
-            dev.status = zigpy.device.Status(status)
+        async with self.execute("SELECT * FROM output_clusters") as cursor:
+            async for (ieee, endpoint_id, cluster) in cursor:
+                dev = self._application.get_device(ieee)
+                ep = dev.endpoints[endpoint_id]
+                ep.add_output_cluster(cluster)
 
-    async def _load_node_descriptors(self):
-        for (ieee, value) in self._scan("node_descriptors"):
-            dev = self._application.get_device(ieee)
-            dev.node_desc = zdo_t.NodeDescriptor.deserialize(value)[0]
+    async def _load_groups(self) -> None:
+        async with self.execute("SELECT * FROM groups") as cursor:
+            async for (group_id, name) in cursor:
+                self._application.groups.add_group(group_id, name, suppress_event=True)
 
-    async def _load_endpoints(self):
-        for (ieee, epid, profile_id, device_type, status) in self._scan("endpoints"):
-            dev = self._application.get_device(ieee)
-            ep = dev.add_endpoint(epid)
-            ep.profile_id = profile_id
-            ep.device_type = device_type
-            if profile_id == 260:
-                ep.device_type = zigpy.profiles.zha.DeviceType(device_type)
-            elif profile_id == 49246:
-                ep.device_type = zigpy.profiles.zll.DeviceType(device_type)
-            ep.status = zigpy.endpoint.Status(status)
+    async def _load_group_members(self) -> None:
+        async with self.execute("SELECT * FROM group_members") as cursor:
+            async for (group_id, ieee, ep_id) in cursor:
+                group = self._application.groups[group_id]
+                group.add_member(
+                    self._application.get_device(ieee).endpoints[ep_id],
+                    suppress_event=True,
+                )
 
-    async def _load_clusters(self):
-        for (ieee, endpoint_id, cluster) in self._scan("clusters"):
-            dev = self._application.get_device(ieee)
-            ep = dev.endpoints[endpoint_id]
-            ep.add_input_cluster(cluster)
+    async def _load_relays(self) -> None:
+        async with self.execute("SELECT * FROM relays") as cursor:
+            async for (ieee, value) in cursor:
+                dev = self._application.get_device(ieee)
+                dev.relays = t.Relays.deserialize(value)[0]
 
-        for (ieee, endpoint_id, cluster) in self._scan("output_clusters"):
-            dev = self._application.get_device(ieee)
-            ep = dev.endpoints[endpoint_id]
-            ep.add_output_cluster(cluster)
-
-    async def _load_groups(self):
-        for (group_id, name) in self._scan("groups"):
-            self._application.groups.add_group(group_id, name, suppress_event=True)
-
-    async def _load_group_members(self):
-        for (group_id, ieee, ep_id) in self._scan("group_members"):
-            group = self._application.groups[group_id]
-            group.add_member(
-                self._application.get_device(ieee).endpoints[ep_id], suppress_event=True
-            )
-
-    async def _load_relays(self):
-        for (ieee, value) in self._scan("relays"):
-            dev = self._application.get_device(ieee)
-            dev.relays = t.Relays.deserialize(value)[0]
-
-    async def _load_neighbors(self):
-        for (dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi) in self._scan(
-            "neighbors"
-        ):
-            dev = self._application.get_device(dev_ieee)
-            nei = zdo_t.Neighbor(epid, ieee, nwk, packed, prm, depth, lqi)
-            dev.neighbors.add_neighbor(nei)
+    async def _load_neighbors(self) -> None:
+        async with self.execute("SELECT * FROM neighbors") as cursor:
+            async for (dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi) in cursor:
+                dev = self._application.get_device(dev_ieee)
+                nei = zdo_t.Neighbor(epid, ieee, nwk, packed, prm, depth, lqi)
+                dev.neighbors.add_neighbor(nei)
 
     async def _finish_loading(self):
         for dev in self._application.devices.values():

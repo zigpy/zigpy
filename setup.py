@@ -16,7 +16,7 @@ setup(
     author="Russell Cloran",
     author_email="rcloran@gmail.com",
     license="GPL-3.0",
-    packages=find_packages(exclude=["*.tests"]),
-    install_requires=["aiohttp", "crccheck", "pycryptodome", "voluptuous"],
+    packages=find_packages(exclude=["tests"]),
+    install_requires=["aiohttp", "aiosqlite", "crccheck", "pycryptodome", "voluptuous"],
     extras_require={"testing": ["asynctest", "pytest", "pytest-aiohttp"]},
 )
