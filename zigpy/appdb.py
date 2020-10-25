@@ -6,6 +6,7 @@ import aiosqlite
 
 import zigpy.device
 import zigpy.endpoint
+import zigpy.group
 import zigpy.profiles
 import zigpy.quirks
 import zigpy.types as t
@@ -40,7 +41,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     ) -> None:
         _sqlite_adapters()
         self._db = connection
-        self._cursor = self._db.cursor()
         self._application = application
 
     log = LOGGER.log
@@ -67,7 +67,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         sqlite_conn = await aiosqlite.connect(
             database_file, detect_types=sqlite3.PARSE_DECLTYPES
         )
-        return cls(sqlite_conn, app)
+        listener = cls(sqlite_conn, app)
+        await listener.initialize_tables()
+        return listener
 
     def execute(self, *args, **kwargs):
         return self._db.execute(*args, **kwargs)
@@ -78,16 +80,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def raw_device_initialized(self, device: zigpy.typing.DeviceType) -> None:
         self.create_catching_task(self._save_device(device))
 
-    def device_initialized(self, device):
+    def device_initialized(self, device: zigpy.typing.DeviceType) -> None:
         pass
 
-    def device_left(self, device):
+    def device_left(self, device: zigpy.typing.DeviceType) -> None:
         pass
 
-    def device_removed(self, device):
+    def device_removed(self, device: zigpy.typing.DeviceType) -> None:
         self.create_catching_task(self._remove_device(device))
 
-    def device_relays_updated(self, device, relays):
+    def device_relays_updated(
+        self, device: zigpy.typing.DeviceType, relays: bytes
+    ) -> None:
         """Device relay list is updated."""
         if relays is None:
             self.create_catching_task(self._save_device_relays_clear(device.ieee))
@@ -97,7 +101,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             self._save_device_relays_update(device.ieee, t.Relays(relays).serialize())
         )
 
-    def attribute_updated(self, cluster, attrid, value):
+    def attribute_updated(
+        self, cluster: zigpy.typing.ClusterType, attrid: int, value: Any
+    ) -> None:
         if cluster.endpoint.device.status != zigpy.device.Status.ENDPOINTS_INIT:
             return
 
@@ -111,39 +117,69 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             )
         )
 
-    def neighbors_updated(self, neighbors):
-        self.execute("DELETE FROM neighbors WHERE device_ieee = ?", (neighbors.ieee,))
+    def neighbors_updated(self, neighbors: zdo_t.Neighbor) -> None:
+        """Neighbor update from ZDO_Lqi_rsp."""
+        self.create_catching_task(self._neighbors_updated(neighbors))
+
+    async def _neighbors_updated(self, neighbors: zdo_t.Neighbor) -> None:
+        await self.execute(
+            "DELETE FROM neighbors WHERE device_ieee = ?", (neighbors.ieee,)
+        )
         for nei in neighbors.neighbors:
             epid, ieee, nwk, packed, prm, depth, lqi = nei.neighbor.as_dict().values()
-            self.execute(
+            await self.execute(
                 "INSERT INTO neighbors VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (neighbors.ieee, epid, ieee, nwk, packed, prm, depth, lqi),
             )
-        self._db.commit()
+        await self._db.commit()
 
-    def group_added(self, group):
+    def group_added(self, group: zigpy.group.Group) -> None:
+        """Group is added."""
+        self.create_catching_task(self._group_added(group))
+
+    async def _group_added(self, group: zigpy.group.Group) -> None:
         q = "INSERT OR REPLACE INTO groups VALUES (?, ?)"
-        self.execute(q, (group.group_id, group.name))
-        self._db.commit()
+        await self.execute(q, (group.group_id, group.name))
+        await self._db.commit()
 
-    def group_member_added(self, group, ep):
+    def group_member_added(
+        self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
+    ) -> None:
+        """Called when a group member is added."""
+        self.create_catching_task(self._group_member_added(group, ep))
+
+    async def _group_member_added(
+        self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
+    ) -> None:
         q = "INSERT OR REPLACE INTO group_members VALUES (?, ?, ?)"
-        self.execute(q, (group.group_id, *ep.unique_id))
-        self._db.commit()
+        await self.execute(q, (group.group_id, *ep.unique_id))
+        await self._db.commit()
 
-    def group_member_removed(self, group, ep):
+    def group_member_removed(
+        self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
+    ) -> None:
+        """Called when a group member is removed."""
+        self.create_catching_task(self._group_member_removed(group, ep))
+
+    async def _group_member_removed(
+        self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
+    ) -> None:
         q = """DELETE FROM group_members WHERE group_id=?
                                                AND ieee=?
                                                AND endpoint_id=?"""
-        self.execute(q, (group.group_id, *ep.unique_id))
+        await self.execute(q, (group.group_id, *ep.unique_id))
         await self._db.commit()
 
-    def group_removed(self, group):
-        q = "DELETE FROM groups WHERE group_id=?"
-        self.execute(q, (group.group_id,))
-        self._db.commit()
+    def group_removed(self, group: zigpy.group.Group) -> None:
+        """Called when a group is removed."""
+        self.create_catching_task(self._group_removed(group))
 
-    async def _create_table(self, table_name: str, spec: str):
+    async def _group_removed(self, group: zigpy.group.Group) -> None:
+        q = "DELETE FROM groups WHERE group_id=?"
+        await self.execute(q, (group.group_id,))
+        await self._db.commit()
+
+    async def _create_table(self, table_name: str, spec: str) -> None:
         await self.execute("CREATE TABLE IF NOT EXISTS %s %s" % (table_name, spec))
         await self.execute("PRAGMA user_version = %s" % (DB_VERSION,))
 
