@@ -383,13 +383,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         ]
         await self._db.executemany(q, clusters)
 
-    async def _save_output_clusters(self, endpoint: zigpy.typing.DeviceType) -> None:
+    async def _save_output_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
         q = "INSERT OR REPLACE INTO output_clusters VALUES (?, ?, ?)"
         clusters = [
             (endpoint.device.ieee, endpoint.endpoint_id, cluster.cluster_id)
             for cluster in endpoint.out_clusters.values()
         ]
-        self._cursor.executemany(q, clusters)
+        await self._db.executemany(q, clusters)
 
     async def _save_attribute(
         self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int, value: Any
