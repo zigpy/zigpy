@@ -402,6 +402,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_attribute(
         self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int, value: Any
     ) -> None:
+        LOGGER.info("%s updating attr %s on %s to %s", ieee, attrid, cluster_id, value)
         q = "INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?, ?)"
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         await self._db.commit()
