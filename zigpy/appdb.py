@@ -7,6 +7,7 @@ import aiosqlite
 import zigpy.device
 import zigpy.endpoint
 import zigpy.group
+import zigpy.neighbor
 import zigpy.profiles
 import zigpy.quirks
 import zigpy.types as t
@@ -117,20 +118,23 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             )
         )
 
-    def neighbors_updated(self, neighbors: zdo_t.Neighbor) -> None:
+    def neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
         """Neighbor update from ZDO_Lqi_rsp."""
         self.create_catching_task(self._neighbors_updated(neighbors))
 
-    async def _neighbors_updated(self, neighbors: zdo_t.Neighbor) -> None:
+    async def _neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
         await self.execute(
             "DELETE FROM neighbors WHERE device_ieee = ?", (neighbors.ieee,)
         )
-        for nei in neighbors.neighbors:
-            epid, ieee, nwk, packed, prm, depth, lqi = nei.neighbor.as_dict().values()
-            await self.execute(
-                "INSERT INTO neighbors VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (neighbors.ieee, epid, ieee, nwk, packed, prm, depth, lqi),
-            )
+        rows = (
+            (neighbors.ieee, *nei.neighbor.as_dict().values())
+            for nei in neighbors.neighbors
+        )
+
+        await self._db.executemany(
+            "INSERT INTO neighbors VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            rows,
+        )
         await self._db.commit()
 
     def group_added(self, group: zigpy.group.Group) -> None:
