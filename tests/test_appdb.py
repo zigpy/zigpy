@@ -92,7 +92,7 @@ async def test_no_database(tmpdir):
 
 
 async def _wait_till_complete():
-    for i in range(len(asyncio.all_tasks()) * 3):
+    for i in range(len(asyncio.all_tasks()) * 5):
         await asyncio.sleep(0)
 
 
@@ -452,6 +452,7 @@ async def test_neighbors(tmpdir):
     await _wait_till_complete()
 
     del dev_1, dev_2
+
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
     dev_1 = app2.get_device(ieee_1)
