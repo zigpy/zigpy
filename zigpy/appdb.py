@@ -72,6 +72,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await listener.initialize_tables()
         return listener
 
+    async def shutdown(self) -> None:
+        """Shutdown connection."""
+        await self._db.close()
+
     def execute(self, *args, **kwargs):
         return self._db.execute(*args, **kwargs)
 

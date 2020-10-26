@@ -68,10 +68,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 await app.startup(auto_form)
             except Exception:
                 LOGGER.error("Couldn't start application")
-                await app.shutdown()
+                await app.pre_shutdown()
                 raise
 
         return app
+
+    async def pre_shutdown(self) -> None:
+        """Shutdown controller."""
+        if self._dblistener:
+            await self._dblistener.shutdown()
+        await self.shutdown()
 
     @abc.abstractmethod
     async def shutdown(self):
