@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import pytest
@@ -44,7 +45,8 @@ async def make_app(database_file):
         async def probe(self, config):
             return True
 
-    with patch("zigpy.ota.OTA.initialize", AsyncMock()):
+    p2 = patch("zigpy.topology.Topology.scan_loop", AsyncMock())
+    with patch("zigpy.ota.OTA.initialize", AsyncMock()), p2:
         app = await App.new(ZIGPY_SCHEMA({CONF_DATABASE: database_file}))
     return app
 
@@ -77,16 +79,21 @@ def fake_get_device(device):
 
 
 async def test_no_database(tmpdir):
-    with patch("zigpy.appdb.PersistingListener") as db_mock:
+    with patch("zigpy.appdb.PersistingListener.new") as db_mock:
         db_mock.return_value.load.side_effect = AsyncMock()
         await make_app(None)
     assert db_mock.return_value.load.call_count == 0
 
     db = os.path.join(str(tmpdir), "test.db")
-    with patch("zigpy.appdb.PersistingListener") as db_mock:
+    with patch("zigpy.appdb.PersistingListener.new") as db_mock:
         db_mock.return_value.load.side_effect = AsyncMock()
         await make_app(db)
     assert db_mock.return_value.load.call_count == 1
+
+
+async def _wait_till_complete():
+    for i in range(len(asyncio.all_tasks()) * 3):
+        await asyncio.sleep(0)
 
 
 async def test_database(tmpdir, monkeypatch):
@@ -120,6 +127,7 @@ async def test_database(tmpdir, monkeypatch):
     clus.listener_event("cluster_command", 0)
     clus.listener_event("general_command")
     dev.relays = relays_1
+    await _wait_till_complete()
 
     # Test a CustomDevice
     custom_ieee = make_ieee(1)
@@ -135,6 +143,7 @@ async def test_database(tmpdir, monkeypatch):
     assert ep.endpoint_id in dev.get_signature()
     app.device_initialized(app.get_device(custom_ieee))
     dev.relays = relays_2
+    await _wait_till_complete()
 
     # Everything should've been saved - check that it re-loads
     with patch("zigpy.quirks.get_device", fake_get_device):
@@ -156,6 +165,7 @@ async def test_database(tmpdir, monkeypatch):
     dev.relays = None
 
     app.handle_leave(99, ieee)
+    await _wait_till_complete()
 
     app2 = await make_app(db)
     assert ieee in app2.devices
@@ -165,6 +175,7 @@ async def test_database(tmpdir, monkeypatch):
 
     app2.devices[ieee].zdo.leave = mockleave
     await app2.remove(ieee)
+    await _wait_till_complete()
     assert ieee not in app2.devices
 
     app3 = await make_app(db)
@@ -198,6 +209,7 @@ async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     clus._update_attribute(5, test_model)
     clus.listener_event("cluster_command", 0)
     clus.listener_event("zdo_command")
+    await _wait_till_complete()
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -278,6 +290,7 @@ async def test_groups(tmpdir, monkeypatch):
     ep.device_type = profiles.zha.DeviceType.PUMP
     ep.add_input_cluster(4)
     app.device_initialized(dev)
+    await _wait_till_complete()
 
     ieee_b = make_ieee(2)
     app.handle_join(100, ieee_b, 0)
@@ -287,14 +300,18 @@ async def test_groups(tmpdir, monkeypatch):
     ep_b.device_type = profiles.zha.DeviceType.PUMP
     ep_b.add_input_cluster(4)
     app.device_initialized(dev_b)
+    await _wait_till_complete()
 
     await ep.add_to_group(group_id, group_name)
+    await _wait_till_complete()
     await ep_b.add_to_group(group_id, group_name)
+    await _wait_till_complete()
     assert group_id in app.groups
     group = app.groups[group_id]
     assert group.name == group_name
     assert (dev.ieee, ep.endpoint_id) in group
     assert group_id in ep.member_of
+    await _wait_till_complete()
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -311,6 +328,7 @@ async def test_groups(tmpdir, monkeypatch):
 
     # check member removal
     await dev_b.remove_from_group(group_id)
+    await _wait_till_complete()
     app3 = await make_app(db)
     dev3 = app3.get_device(ieee)
     assert group_id in app3.groups
@@ -325,12 +343,14 @@ async def test_groups(tmpdir, monkeypatch):
 
     # check group removal
     await dev3.remove_from_group(group_id)
+    await _wait_till_complete()
     app4 = await make_app(db)
     dev4 = app4.get_device(ieee)
     assert group_id in app4.groups
     assert not app4.groups[group_id]
     assert group_id not in dev4.endpoints[1].member_of
     app4.groups.pop(group_id)
+    await _wait_till_complete()
 
     app5 = await make_app(db)
     assert not app5.groups
@@ -400,12 +420,14 @@ async def test_neighbors(tmpdir):
     dev_1 = app.get_device(ieee_1)
     dev_1.node_desc = zdo_t.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
     app.device_initialized(dev_1)
+    await _wait_till_complete()
 
     # 2nd device
     app.handle_join(nwk_2, ieee_2, 0)
     dev_2 = app.get_device(ieee_2)
     dev_2.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4476, 82, 82, 0, 82, 0)
     app.device_initialized(dev_2)
+    await _wait_till_complete()
 
     neighbors = zdo_t.Neighbors(2, 0, [nei_2, nei_3])
     p1 = patch.object(
@@ -416,6 +438,7 @@ async def test_neighbors(tmpdir):
     with p1:
         res = await dev_1.neighbors.scan()
         assert res
+    await _wait_till_complete()
 
     neighbors = zdo_t.Neighbors(2, 0, [nei_1, nei_3])
     p1 = patch.object(
@@ -426,6 +449,7 @@ async def test_neighbors(tmpdir):
     with p1:
         res = await dev_2.neighbors.scan()
         assert res
+    await _wait_till_complete()
 
     del dev_1, dev_2
     # Everything should've been saved - check that it re-loads
