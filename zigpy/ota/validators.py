@@ -48,6 +48,7 @@ def parse_silabs_ebl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]
         data = data[4 + length :]
         yield tag, value
 
+        # EBL end tag
         if tag != b"\xFC\x04":
             continue
 
@@ -91,13 +92,17 @@ def parse_silabs_gbl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]
         data = data[8 + length :]
         yield tag, value
 
+        # GBL end tag
         if tag != b"\xFC\x04\x04\xFC":
             continue
 
-        if data:
-            raise ValidationError("Image contains trailing data")
+        # GBL images aren't expected to contain padding but Hue images are padded with
+        # null bytes
+        if data.strip(b"\x00"):
+            raise ValidationError("Image padding contains invalid bytes")
 
-        computed_crc = zlib.crc32(orig_data)
+        unpadded_image = orig_data[: -len(data)] if data else orig_data
+        computed_crc = zlib.crc32(unpadded_image)
 
         if computed_crc != VALID_SILABS_CRC:
             raise ValidationError(
