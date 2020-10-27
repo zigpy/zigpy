@@ -262,17 +262,13 @@ async def test_appdb_str_model(tmpdir):
     assert dev.endpoints[3].model == "Mock Model"
 
 
-async def test_groups(tmpdir, monkeypatch):
-    monkeypatch.setattr(
-        Device, "schedule_initialize", mock_dev_init(Status.ENDPOINTS_INIT)
-    )
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT))
+@patch("zigpy.zcl.Cluster.request", new_callable=AsyncMock)
+async def test_groups(mock_request, tmpdir):
+    """Test group adding/removing."""
 
     group_id, group_name = 0x1221, "app db Test Group 0x1221"
-
-    async def mock_request(*args, **kwargs):
-        return [ZCLStatus.SUCCESS, group_id]
-
-    monkeypatch.setattr(zigpy.zcl.Cluster, "request", mock_request)
+    mock_request.return_value = [ZCLStatus.SUCCESS, group_id]
 
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
@@ -285,7 +281,6 @@ async def test_groups(tmpdir, monkeypatch):
     ep.device_type = profiles.zha.DeviceType.PUMP
     ep.add_input_cluster(4)
     app.device_initialized(dev)
-    await app.pre_shutdown()
 
     ieee_b = make_ieee(2)
     app.handle_join(100, ieee_b, 0)
@@ -302,8 +297,11 @@ async def test_groups(tmpdir, monkeypatch):
     group = app.groups[group_id]
     assert group.name == group_name
     assert (dev.ieee, ep.endpoint_id) in group
+    assert (dev_b.ieee, ep_b.endpoint_id) in group
     assert group_id in ep.member_of
+    assert group_id in ep_b.member_of
     await app.pre_shutdown()
+    del app, dev, dev_b, ep, ep_b
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -319,8 +317,9 @@ async def test_groups(tmpdir, monkeypatch):
     assert group_id in dev2_b.endpoints[2].member_of
 
     # check member removal
-    await dev_b.remove_from_group(group_id)
+    await dev2_b.remove_from_group(group_id)
     await app2.pre_shutdown()
+    del app2, dev2, dev2_b
 
     app3 = await make_app(db)
     dev3 = app3.get_device(ieee)
@@ -337,6 +336,7 @@ async def test_groups(tmpdir, monkeypatch):
     # check group removal
     await dev3.remove_from_group(group_id)
     await app3.pre_shutdown()
+    del app3, dev3, dev3_b
 
     app4 = await make_app(db)
     dev4 = app4.get_device(ieee)
@@ -345,10 +345,13 @@ async def test_groups(tmpdir, monkeypatch):
     assert group_id not in dev4.endpoints[1].member_of
     app4.groups.pop(group_id)
     await app4.pre_shutdown()
+    del app4, dev4
 
     app5 = await make_app(db)
     assert not app5.groups
     await app5.pre_shutdown()
+
+    os.unlink(db)
 
 
 @pytest.mark.parametrize(
@@ -394,7 +397,7 @@ async def test_attribute_update(tmpdir, status, success):
 
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT))
-async def test_neighbors(tmpdir, caplog):
+async def test_neighbors(tmpdir):
     """Test neighbor loading."""
 
     ext_pid = t.EUI64.convert("aa:bb:cc:dd:ee:ff:01:02")
