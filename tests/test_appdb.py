@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 import pytest
@@ -91,11 +90,6 @@ async def test_no_database(tmpdir):
     assert db_mock.return_value.load.call_count == 1
 
 
-async def _wait_till_complete():
-    for i in range(len(asyncio.all_tasks()) * 5):
-        await asyncio.sleep(0)
-
-
 async def test_database(tmpdir, monkeypatch):
     monkeypatch.setattr(
         Device, "schedule_initialize", mock_dev_init(Status.ENDPOINTS_INIT)
@@ -127,7 +121,6 @@ async def test_database(tmpdir, monkeypatch):
     clus.listener_event("cluster_command", 0)
     clus.listener_event("general_command")
     dev.relays = relays_1
-    await _wait_till_complete()
 
     # Test a CustomDevice
     custom_ieee = make_ieee(1)
@@ -143,7 +136,7 @@ async def test_database(tmpdir, monkeypatch):
     assert ep.endpoint_id in dev.get_signature()
     app.device_initialized(app.get_device(custom_ieee))
     dev.relays = relays_2
-    await _wait_till_complete()
+    await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads
     with patch("zigpy.quirks.get_device", fake_get_device):
@@ -165,23 +158,24 @@ async def test_database(tmpdir, monkeypatch):
     dev.relays = None
 
     app.handle_leave(99, ieee)
-    await _wait_till_complete()
+    await app2.pre_shutdown()
 
-    app2 = await make_app(db)
-    assert ieee in app2.devices
+    app3 = await make_app(db)
+    assert ieee in app3.devices
 
     async def mockleave(*args, **kwargs):
         return [0]
 
-    app2.devices[ieee].zdo.leave = mockleave
-    await app2.remove(ieee)
-    await _wait_till_complete()
-    assert ieee not in app2.devices
-
-    app3 = await make_app(db)
+    app3.devices[ieee].zdo.leave = mockleave
+    await app3.remove(ieee)
     assert ieee not in app3.devices
-    dev = app2.get_device(custom_ieee)
+    await app3.pre_shutdown()
+
+    app4 = await make_app(db)
+    assert ieee not in app4.devices
+    dev = app4.get_device(custom_ieee)
     assert dev.relays is None
+    await app4.pre_shutdown()
 
     os.unlink(db)
 
@@ -209,7 +203,7 @@ async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     clus._update_attribute(5, test_model)
     clus.listener_event("cluster_command", 0)
     clus.listener_event("zdo_command")
-    await _wait_till_complete()
+    await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -217,6 +211,7 @@ async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
     assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
     assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
+    await app2.pre_shutdown()
 
     os.unlink(db)
 
@@ -290,7 +285,7 @@ async def test_groups(tmpdir, monkeypatch):
     ep.device_type = profiles.zha.DeviceType.PUMP
     ep.add_input_cluster(4)
     app.device_initialized(dev)
-    await _wait_till_complete()
+    await app.pre_shutdown()
 
     ieee_b = make_ieee(2)
     app.handle_join(100, ieee_b, 0)
@@ -300,18 +295,15 @@ async def test_groups(tmpdir, monkeypatch):
     ep_b.device_type = profiles.zha.DeviceType.PUMP
     ep_b.add_input_cluster(4)
     app.device_initialized(dev_b)
-    await _wait_till_complete()
 
     await ep.add_to_group(group_id, group_name)
-    await _wait_till_complete()
     await ep_b.add_to_group(group_id, group_name)
-    await _wait_till_complete()
     assert group_id in app.groups
     group = app.groups[group_id]
     assert group.name == group_name
     assert (dev.ieee, ep.endpoint_id) in group
     assert group_id in ep.member_of
-    await _wait_till_complete()
+    await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -328,7 +320,8 @@ async def test_groups(tmpdir, monkeypatch):
 
     # check member removal
     await dev_b.remove_from_group(group_id)
-    await _wait_till_complete()
+    await app2.pre_shutdown()
+
     app3 = await make_app(db)
     dev3 = app3.get_device(ieee)
     assert group_id in app3.groups
@@ -343,17 +336,19 @@ async def test_groups(tmpdir, monkeypatch):
 
     # check group removal
     await dev3.remove_from_group(group_id)
-    await _wait_till_complete()
+    await app3.pre_shutdown()
+
     app4 = await make_app(db)
     dev4 = app4.get_device(ieee)
     assert group_id in app4.groups
     assert not app4.groups[group_id]
     assert group_id not in dev4.endpoints[1].member_of
     app4.groups.pop(group_id)
-    await _wait_till_complete()
+    await app4.pre_shutdown()
 
     app5 = await make_app(db)
     assert not app5.groups
+    await app5.pre_shutdown()
 
 
 @pytest.mark.parametrize(
@@ -381,6 +376,7 @@ async def test_attribute_update(tmpdir, status, success):
     clus._update_attribute(4, test_manufacturer)
     clus._update_attribute(5, test_model)
     app.device_initialized(dev)
+    await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -392,6 +388,7 @@ async def test_attribute_update(tmpdir, status, success):
         assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
     else:
         assert ieee not in app2.devices
+    await app2.pre_shutdown()
 
     os.unlink(db)
 
@@ -414,9 +411,6 @@ async def test_neighbors(tmpdir, caplog):
     nei_3 = zdo_t.Neighbor(ext_pid, ieee_3, nwk_3, 0x25, 0, 15, 250)
 
     db = os.path.join(str(tmpdir), "test.db")
-    import logging
-
-    caplog.set_level(logging.DEBUG)
     app = await make_app(db)
     app.handle_join(nwk_1, ieee_1, 0)
 
@@ -467,6 +461,8 @@ async def test_neighbors(tmpdir, caplog):
     assert dev_2.neighbors[0].device is dev_1
     assert dev_2.neighbors[1].device is None
     assert dev_2.neighbors[1].neighbor.ieee == ieee_3
+    await app2.pre_shutdown()
+    os.unlink(db)
 
 
 @patch(
@@ -488,6 +484,7 @@ async def test_device_rejoin(tmpdir):
     app.device_initialized(dev)
     clus._update_attribute(4, "Custom")
     clus._update_attribute(5, "Model")
+    await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads
     with patch("zigpy.quirks.get_device", fake_get_device):
@@ -504,6 +501,7 @@ async def test_device_rejoin(tmpdir):
     dev.nwk = nwk + 1
     with patch("zigpy.quirks.get_device", fake_get_device):
         app2.device_initialized(dev)
+    await app2.pre_shutdown()
 
     app3 = await make_app(db)
     dev = app3.get_device(ieee)
@@ -512,3 +510,6 @@ async def test_device_rejoin(tmpdir):
     assert 0 in dev.endpoints[1].in_clusters
     assert dev.endpoints[1].manufacturer == "Custom"
     assert dev.endpoints[1].model == "Model"
+    await app3.pre_shutdown()
+
+    os.unlink(db)
