@@ -90,10 +90,10 @@ async def test_no_database(tmpdir):
     assert db_mock.return_value.load.call_count == 1
 
 
-async def test_database(tmpdir, monkeypatch):
-    monkeypatch.setattr(
-        Device, "schedule_initialize", mock_dev_init(Status.ENDPOINTS_INIT)
-    )
+@patch(
+    "zigpy.device.Device.schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
+)
+async def test_database(tmpdir):
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
     ieee = make_ieee()
