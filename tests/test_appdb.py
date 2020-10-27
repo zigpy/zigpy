@@ -397,7 +397,7 @@ async def test_attribute_update(tmpdir, status, success):
 
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT))
-async def test_neighbors(tmpdir):
+async def test_neighbors(tmpdir, caplog):
     """Test neighbor loading."""
 
     ext_pid = t.EUI64.convert("aa:bb:cc:dd:ee:ff:01:02")
@@ -414,20 +414,21 @@ async def test_neighbors(tmpdir):
     nei_3 = zdo_t.Neighbor(ext_pid, ieee_3, nwk_3, 0x25, 0, 15, 250)
 
     db = os.path.join(str(tmpdir), "test.db")
+    import logging
+
+    caplog.set_level(logging.DEBUG)
     app = await make_app(db)
     app.handle_join(nwk_1, ieee_1, 0)
 
     dev_1 = app.get_device(ieee_1)
     dev_1.node_desc = zdo_t.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
     app.device_initialized(dev_1)
-    await _wait_till_complete()
 
     # 2nd device
     app.handle_join(nwk_2, ieee_2, 0)
     dev_2 = app.get_device(ieee_2)
     dev_2.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4476, 82, 82, 0, 82, 0)
     app.device_initialized(dev_2)
-    await _wait_till_complete()
 
     neighbors = zdo_t.Neighbors(2, 0, [nei_2, nei_3])
     p1 = patch.object(
@@ -438,7 +439,6 @@ async def test_neighbors(tmpdir):
     with p1:
         res = await dev_1.neighbors.scan()
         assert res
-    await _wait_till_complete()
 
     neighbors = zdo_t.Neighbors(2, 0, [nei_1, nei_3])
     p1 = patch.object(
@@ -449,8 +449,8 @@ async def test_neighbors(tmpdir):
     with p1:
         res = await dev_2.neighbors.scan()
         assert res
-    await _wait_till_complete()
 
+    await app.pre_shutdown()
     del dev_1, dev_2
 
     # Everything should've been saved - check that it re-loads

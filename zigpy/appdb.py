@@ -46,6 +46,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self._application = application
         self._callbacks_handlers = asyncio.Queue()
         self.running = False
+        self._worker_task = asyncio.create_task(self._worker())
 
     log = LOGGER.log
 
@@ -76,10 +77,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         listener.running = True
         return listener
 
+    async def _worker(self) -> None:
+        """Process request in the received order."""
+        while True:
+            cb_name, args = await self._callbacks_handlers.get()
+            handler = getattr(self, cb_name)
+            await handler(*args)
+            self._callbacks_handlers.task_done()
+
     async def shutdown(self) -> None:
         """Shutdown connection."""
         self.running = False
         await self._callbacks_handlers.join()
+        if not self._worker_task.done():
+            self._worker_task.cancel()
         await self._db.close()
 
     def enqueue(self, cb_name: str, *args) -> None:
@@ -144,10 +155,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(
             "DELETE FROM neighbors WHERE device_ieee = ?", (neighbors.ieee,)
         )
-        rows = (
+        rows = [
             (neighbors.ieee, *nei.neighbor.as_dict().values())
             for nei in neighbors.neighbors
-        )
+        ]
 
         await self._db.executemany(
             "INSERT INTO neighbors VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
