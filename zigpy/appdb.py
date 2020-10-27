@@ -44,7 +44,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         _sqlite_adapters()
         self._db = connection
         self._application = application
-        self._callbacks_handlers = asyncio.Queue()
+        self._callback_handlers = asyncio.Queue()
         self.running = False
         self._worker_task = asyncio.create_task(self._worker())
 
@@ -80,7 +80,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _worker(self) -> None:
         """Process request in the received order."""
         while True:
-            cb_name, args = await self._callbacks_handlers.get()
+            cb_name, args = await self._callback_handlers.get()
             handler = getattr(self, cb_name)
             assert handler
             try:
@@ -92,12 +92,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     args,
                     str(exc),
                 )
-            self._callbacks_handlers.task_done()
+            self._callback_handlers.task_done()
 
     async def shutdown(self) -> None:
         """Shutdown connection."""
         self.running = False
-        await self._callbacks_handlers.join()
+        await self._callback_handlers.join()
         if not self._worker_task.done():
             self._worker_task.cancel()
         await self._db.close()
@@ -109,7 +109,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "Discarding %s event",
             )
             return
-        self._callbacks_handlers.put_nowait((cb_name, args))
+        self._callback_handlers.put_nowait((cb_name, args))
 
     def execute(self, *args, **kwargs):
         return self._db.execute(*args, **kwargs)
