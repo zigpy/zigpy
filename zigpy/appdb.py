@@ -82,7 +82,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         while True:
             cb_name, args = await self._callbacks_handlers.get()
             handler = getattr(self, cb_name)
-            await handler(*args)
+            assert handler
+            try:
+                await handler(*args)
+            except aiosqlite.Error as exc:
+                LOGGER.debug(
+                    "Error handling '%s' event with %s params: %s",
+                    cb_name,
+                    args,
+                    str(exc),
+                )
             self._callbacks_handlers.task_done()
 
     async def shutdown(self) -> None:
@@ -216,11 +225,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute("CREATE TABLE IF NOT EXISTS %s %s" % (table_name, spec))
         await self.execute("PRAGMA user_version = %s" % (DB_VERSION,))
 
-    async def _create_index(self, index_name: str, table: str, columns: str) -> None:
-        await self.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(%s)"
-            % (index_name, table, columns)
-        )
+    async def _create_index(
+        self, index_name: str, table: str, columns: str, unique: bool = True
+    ) -> None:
+        if unique:
+            query = "CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(%s)"
+        else:
+            query = "CREATE INDEX IF NOT EXISTS %s ON %s(%s)"
+        await self.execute(query % (index_name, table, columns))
 
     async def _create_table_devices(self) -> None:
         await self._create_table("devices", "(ieee ieee, nwk, status)")
@@ -263,7 +275,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "FOREIGN KEY(device_ieee) REFERENCES devices(ieee) ON DELETE CASCADE)"
             ),
         )
-        await self._create_index(idx_name, idx_table, idx_cols)
+        await self._create_index(idx_name, idx_table, idx_cols, unique=False)
 
     async def _create_table_node_descriptors(self) -> None:
         await self._create_table(
@@ -427,7 +439,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_attribute(
         self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int, value: Any
     ) -> None:
-        LOGGER.info("%s updating attr %s on %s to %s", ieee, attrid, cluster_id, value)
         q = "INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?, ?)"
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         await self._db.commit()
