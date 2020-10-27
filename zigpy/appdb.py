@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sqlite3
 from typing import Any
@@ -43,6 +44,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         _sqlite_adapters()
         self._db = connection
         self._application = application
+        self._callbacks_handlers = asyncio.Queue()
+        self.running = False
 
     log = LOGGER.log
 
@@ -70,11 +73,23 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         listener = cls(sqlite_conn, app)
         await listener.initialize_tables()
+        listener.running = True
         return listener
 
     async def shutdown(self) -> None:
         """Shutdown connection."""
+        self.running = False
+        await self._callbacks_handlers.join()
         await self._db.close()
+
+    def enqueue(self, cb_name: str, *args) -> None:
+        """Enqueue an async callback handler action."""
+        if not self.running:
+            LOGGER.warning(
+                "Discarding %s event",
+            )
+            return
+        self._callbacks_handlers.put_nowait((cb_name, args))
 
     def execute(self, *args, **kwargs):
         return self._db.execute(*args, **kwargs)
@@ -83,7 +98,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         pass
 
     def raw_device_initialized(self, device: zigpy.typing.DeviceType) -> None:
-        self.create_catching_task(self._save_device(device))
+        self.enqueue("_save_device", device)
 
     def device_initialized(self, device: zigpy.typing.DeviceType) -> None:
         pass
@@ -92,18 +107,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         pass
 
     def device_removed(self, device: zigpy.typing.DeviceType) -> None:
-        self.create_catching_task(self._remove_device(device))
+        self.enqueue("_remove_device", device)
 
     def device_relays_updated(
         self, device: zigpy.typing.DeviceType, relays: bytes
     ) -> None:
         """Device relay list is updated."""
         if relays is None:
-            self.create_catching_task(self._save_device_relays_clear(device.ieee))
+            self.enqueue("_save_device_relays_clear", device.ieee)
             return
 
-        self.create_catching_task(
-            self._save_device_relays_update(device.ieee, t.Relays(relays).serialize())
+        self.enqueue(
+            "_save_device_relays_update", device.ieee, t.Relays(relays).serialize()
         )
 
     def attribute_updated(
@@ -112,19 +127,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if cluster.endpoint.device.status != zigpy.device.Status.ENDPOINTS_INIT:
             return
 
-        self.create_catching_task(
-            self._save_attribute(
-                cluster.endpoint.device.ieee,
-                cluster.endpoint.endpoint_id,
-                cluster.cluster_id,
-                attrid,
-                value,
-            )
+        self.enqueue(
+            "_save_attribute",
+            cluster.endpoint.device.ieee,
+            cluster.endpoint.endpoint_id,
+            cluster.cluster_id,
+            attrid,
+            value,
         )
 
     def neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
         """Neighbor update from ZDO_Lqi_rsp."""
-        self.create_catching_task(self._neighbors_updated(neighbors))
+        self.enqueue("_neighbors_updated", neighbors)
 
     async def _neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
         await self.execute(
@@ -143,7 +157,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def group_added(self, group: zigpy.group.Group) -> None:
         """Group is added."""
-        self.create_catching_task(self._group_added(group))
+        self.enqueue("_group_added", group)
 
     async def _group_added(self, group: zigpy.group.Group) -> None:
         q = "INSERT OR REPLACE INTO groups VALUES (?, ?)"
@@ -154,7 +168,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
     ) -> None:
         """Called when a group member is added."""
-        self.create_catching_task(self._group_member_added(group, ep))
+        self.enqueue("_group_member_added", group, ep)
 
     async def _group_member_added(
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
@@ -167,7 +181,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
     ) -> None:
         """Called when a group member is removed."""
-        self.create_catching_task(self._group_member_removed(group, ep))
+        self.enqueue("_group_member_removed", group, ep)
 
     async def _group_member_removed(
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
@@ -180,7 +194,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def group_removed(self, group: zigpy.group.Group) -> None:
         """Called when a group is removed."""
-        self.create_catching_task(self._group_removed(group))
+        self.enqueue("_group_removed", group)
 
     async def _group_removed(self, group: zigpy.group.Group) -> None:
         q = "DELETE FROM groups WHERE group_id=?"
