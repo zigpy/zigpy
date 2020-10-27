@@ -78,13 +78,13 @@ def fake_get_device(device):
 
 
 async def test_no_database(tmpdir):
-    with patch("zigpy.appdb.PersistingListener.new") as db_mock:
+    with patch("zigpy.appdb.PersistingListener.new", AsyncMock()) as db_mock:
         db_mock.return_value.load.side_effect = AsyncMock()
         await make_app(None)
     assert db_mock.return_value.load.call_count == 0
 
     db = os.path.join(str(tmpdir), "test.db")
-    with patch("zigpy.appdb.PersistingListener.new") as db_mock:
+    with patch("zigpy.appdb.PersistingListener.new", AsyncMock()) as db_mock:
         db_mock.return_value.load.side_effect = AsyncMock()
         await make_app(db)
     assert db_mock.return_value.load.call_count == 1
