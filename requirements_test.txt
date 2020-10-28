@@ -1,8 +1,15 @@
+<<<<<<< HEAD
 # Test depdencies
+=======
+# Test depdencies.
+>>>>>>> fdcacc4 (Move lint to GitHub Actions (#530))
 
 asynctest
 coveralls
 pytest
 pytest-aiohttp
 pytest-cov
+<<<<<<< HEAD
 pytest-timeout
+=======
+>>>>>>> fdcacc4 (Move lint to GitHub Actions (#530))
