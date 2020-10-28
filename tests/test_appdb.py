@@ -516,3 +516,42 @@ async def test_device_rejoin(tmpdir):
     await app3.pre_shutdown()
 
     os.unlink(db)
+
+
+@patch(
+    "zigpy.device.Device.schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
+)
+async def test_device_cleanup(tmpdir, caplog):
+    """Test the devices without any endpoints are removed from DB on startup."""
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+    ieee_1 = make_ieee()
+    nwk_1 = ieee_1[7]
+    app.handle_join(nwk_1, ieee_1, 0)
+
+    dev_1 = app.get_device(ieee_1)
+    ep = dev_1.add_endpoint(1)
+    ep.profile_id = profiles.zha.PROFILE_ID
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    app.device_initialized(dev_1)
+    clus._update_attribute(4, "Custom")
+    clus._update_attribute(5, "Model")
+
+    for i in range(1, 4):
+        ieee = make_ieee(i)
+        nwk = ieee[7]
+        app.handle_join(nwk, ieee, 0)
+        dev = app.get_device(ieee)
+        app.device_initialized(dev)
+
+    await app.pre_shutdown()
+    assert len(app.devices) == 4
+    del app, dev, dev_1, nwk, ieee
+
+    caplog.set_level(level=10)
+    app_2 = await make_app(db)
+    assert ieee_1 in app_2.devices
+    assert len(app_2.devices) == 1
+    await app_2.pre_shutdown()
