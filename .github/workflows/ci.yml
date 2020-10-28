@@ -224,7 +224,6 @@ jobs:
     needs: prepare-tests
     strategy:
       matrix:
-        group: [1, 2, 3, 4]
         python-version: [3.7, 3.8]
     name: >-
       Run tests Python ${{ matrix.python-version }} (group ${{ matrix.group }})
