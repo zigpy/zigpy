@@ -245,8 +245,6 @@ jobs:
             -qq \
             --timeout=9 \
             --durations=10 \
-            -n auto \
-            --dist=loadfile \
             --cov zigpy \
             -o console_output_style=count \
             -p no:sugar \
