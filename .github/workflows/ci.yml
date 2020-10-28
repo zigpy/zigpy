@@ -40,7 +40,7 @@ jobs:
         run: |
           python -m venv venv
           . venv/bin/activate
-          pip install -U pip setuptools
+          pip install -U pip setuptools pre-commit
       - name: Restore pre-commit environment from cache
         id: cache-precommit
         uses: actions/cache@v2
@@ -193,7 +193,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.7, 3.7.9, 3.8, 3.8.6]
+        python-version: [3.7, 3.8]
     container: homeassistant/ci-azure:${{ matrix.python-version }}
     steps:
       - name: Check out code from GitHub
@@ -287,7 +287,7 @@ jobs:
     needs: pytest
     strategy:
       matrix:
-        python-version: [3.7, 3.7.9, 3.8, 3.8.6]
+        python-version: [3.7, 3.8]
     container: homeassistant/ci-azure:${{ matrix.python-version }}
     steps:
       - name: Check out code from GitHub
