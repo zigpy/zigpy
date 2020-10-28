@@ -299,7 +299,7 @@ jobs:
           path: venv
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-venv-${{
-            matrix.python-version }}-${{ hashFiles('requirements_test.txt')
+            matrix.python-version }}-${{ hashFiles('requirements_test.txt') }}
       - name: Fail job if Python cache restore failed
         if: steps.cache-venv.outputs.cache-hit != 'true'
         run: |
