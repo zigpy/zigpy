@@ -92,10 +92,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     args,
                     str(exc),
                 )
-            except Exception as ex:
-                LOGGER.error(
-                    "Unexpected error while processing %s(%s): %s", cb_name, args, ex
-                )
             self._callback_handlers.task_done()
 
     async def shutdown(self) -> None:
@@ -160,15 +156,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             value,
         )
 
-    def neighbors_updated(self, neighbors):
-        self.execute("DELETE FROM neighbors WHERE device_ieee = ?", (neighbors.ieee,))
-        for nei in neighbors.neighbors:
-            epid, ieee, nwk, packed, prm, depth, lqi = nei.neighbor.as_dict().values()
-            self.execute(
-                "INSERT INTO neighbors VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (neighbors.ieee, epid, ieee, nwk, packed, prm, depth, lqi),
-            )
-        self._db.commit()
+    def neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
+        """Neighbor update from ZDO_Lqi_rsp."""
+        self.enqueue("_neighbors_updated", neighbors)
 
     async def _neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
         await self.execute(
@@ -420,6 +410,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(q, endpoints)
 
     async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
+        if (
+            device.status != zigpy.device.Status.ENDPOINTS_INIT
+            or not device.node_desc.is_valid
+        ):
+            return
         q = "INSERT OR REPLACE INTO node_descriptors VALUES (?, ?)"
         await self.execute(q, (device.ieee, device.node_desc.serialize()))
 
@@ -482,7 +477,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
-        await self._cleanup()
         await self._finish_loading()
 
     async def _load_attributes(self, filter: str = None) -> None:
