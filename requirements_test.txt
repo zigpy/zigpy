@@ -1,4 +1,4 @@
-# Test depdencies.
+# Test depdencies
 
 asynctest
 coveralls
