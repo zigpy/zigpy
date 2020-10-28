@@ -6,7 +6,7 @@ from setuptools import find_packages, setup
 
 import zigpy
 
-REQUIRES = ["aiohttp", "aiosqlite>=0.16.0", "crccheck", "pycryptodome", "voluptuous"]
+REQUIRES = ["aiohttp", "aiosqlite", "crccheck", "pycryptodome", "voluptuous"]
 
 setup(
     name="zigpy",
@@ -18,7 +18,6 @@ setup(
     author="Russell Cloran",
     author_email="rcloran@gmail.com",
     license="GPL-3.0",
-    packages=find_packages(exclude=["tests"]),
-    install_requires=["aiohttp", "aiosqlite", "crccheck", "pycryptodome", "voluptuous"],
-    extras_require={"testing": ["asynctest", "pytest", "pytest-aiohttp"]},
+    packages=find_packages(exclude=["tests", "tests.*"]),
+    install_requires=REQUIRES,
 )
