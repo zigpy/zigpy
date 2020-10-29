@@ -86,7 +86,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.info("Requesting 'Node Descriptor'")
         try:
             status, _, node_desc = await self.zdo.Node_Desc_req(
-                self.nwk, tries=2, delay=1
+                self.nwk, tries=2, delay=0.1
             )
             if status == zdo.types.Status.SUCCESS:
                 self.node_desc = node_desc
@@ -94,18 +94,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 return node_desc
             else:
                 self.warning("Requesting Node Descriptor failed: %s", status)
-        except Exception:
+        except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
             self.warning("Requesting Node Descriptor failed", exc_info=True)
-
-    async def refresh_node_descriptor(self):
-        if await self.get_node_descriptor():
-            self._application.listener_event("node_descriptor_updated", self)
 
     async def _initialize(self):
         if self.status == Status.NEW:
-            if self._node_handle is None or self._node_handle.done():
-                self._node_handle = asyncio.ensure_future(self.get_node_descriptor())
-            await self._node_handle
+            await self.get_node_descriptor()
 
         if self.status != Status.ENDPOINTS_INIT:
             await self._initialize_from_interview()
@@ -116,17 +110,21 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             await asyncio.ensure_future(self.get_node_descriptor())
             self.info("Discovering endpoints")
             try:
-                epr = await self.zdo.Active_EP_req(self.nwk, tries=3, delay=2)
-                if epr[0] != 0:
-                    raise Exception("Endpoint request failed: %s", epr)
-            except Exception:
+                status, _, endpoints = await self.zdo.Active_EP_req(
+                    self.nwk, tries=3, delay=0.5
+                )
+                if status != zdo.types.Status.SUCCESS:
+                    raise zigpy.exceptions.ControllerException(
+                        "Endpoint request failed: %s", status
+                    )
+            except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
                 self.initializing = False
                 self.warning("Failed to discover active endpoints", exc_info=True)
                 return
 
-            self.info("Discovered endpoints: %s", epr[2])
+            self.info("Discovered endpoints: %s", endpoints)
 
-            for endpoint_id in epr[2]:
+            for endpoint_id in endpoints:
                 self.add_endpoint(endpoint_id)
 
             self.status = Status.ZDO_INIT

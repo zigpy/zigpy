@@ -450,6 +450,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         expect_reply: bool = True,
+        tries: int = 1,
         tsn: Optional[Union[int, t.uint8_t]] = None,
     ):
         schema = self.server_commands[command_id][1]
@@ -460,6 +461,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             *args,
             manufacturer=manufacturer,
             expect_reply=expect_reply,
+            tries=tries,
             tsn=tsn,
         )
 

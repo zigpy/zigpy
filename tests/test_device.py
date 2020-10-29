@@ -23,7 +23,12 @@ def app():
 def dev(monkeypatch, app):
     monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
-    return device.Device(app, ieee, 65535)
+    dev = device.Device(app, ieee, 65535)
+    node_desc = zdo_t.NodeDescriptor(1, 2, 3, 4, 5, 6, 7, 8)
+    with patch.object(
+        dev.zdo, "Node_Desc_req", new=AsyncMock(return_value=(0, 0xFFFF, node_desc))
+    ):
+        yield dev
 
 
 async def test_initialize(monkeypatch, dev):
@@ -46,7 +51,7 @@ async def test_initialize(monkeypatch, dev):
 
 async def test_initialize_fail(dev):
     async def mockrequest(nwk, tries=None, delay=None):
-        return [1]
+        return [1, dev.nwk, []]
 
     dev.zdo.Active_EP_req = mockrequest
     await dev._initialize()
