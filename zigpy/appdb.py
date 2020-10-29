@@ -470,6 +470,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
+        await self._cleanup()
         await self._finish_loading()
 
     async def _load_attributes(self, filter: str = None) -> None:
@@ -575,3 +576,24 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
             dev.neighbors.add_context_listener(self)
+
+    async def _cleanup(self) -> None:
+        """Validate and clean-up devices."""
+
+        # remove devices without any endpoints
+        devices_to_remove = []
+        for device in self._application.devices.values():
+            if device.nwk == 0x0000:
+                continue
+            if {ep_id for ep_id in device.endpoints if ep_id != 0x00}:
+                continue
+            # if device has no endpoints but ZDO, then remove this device
+            devices_to_remove.append(device)
+
+        if not devices_to_remove:
+            return
+
+        # remove devices from ControllerApplication
+        for device in devices_to_remove:
+            self._application.devices.pop(device.ieee)
+            await self._remove_device(device)
