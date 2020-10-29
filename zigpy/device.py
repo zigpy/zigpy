@@ -10,6 +10,7 @@ import zigpy.exceptions
 import zigpy.neighbor
 from zigpy.types import NWK, BroadcastAddress, Relays
 import zigpy.util
+import zigpy.zcl.clusters as clusters
 import zigpy.zcl.foundation as foundation
 import zigpy.zdo as zdo
 
@@ -54,6 +55,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._model = None
         self.node_desc = zdo.types.NodeDescriptor()
         self.neighbors = zigpy.neighbor.Neighbors(self)
+        self._node_handle = None
         self._pending = zigpy.util.Requests()
         self._relays = None
         self._skip_configuration = False
@@ -100,21 +102,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._application.listener_event("node_descriptor_updated", self)
 
     async def _initialize(self):
-        temp_endpoint = self.add_endpoint(1)
-        temp_endpoint.profile_id = 260
-        temp_endpoint.status = Status.ZDO_INIT
-        basic_cluster = temp_endpoint.add_input_cluster(0)
-        basic_cluster.add_listener(InitBasicClusterListener(self))
-
-        try:
-            success, _ = await basic_cluster.read_attributes(
-                ["model", "manufacturer"], allow_cache=True, only_cache=False
-            )
-            if "model" in success and "manufacturer" in success:
-                return
-        except Exception:
-            LOGGER.warning("Request for model or manufacturer exception.")
-            pass
+        if self.status == Status.NEW:
+            if self._node_handle is None or self._node_handle.done():
+                self._node_handle = asyncio.ensure_future(self.get_node_descriptor())
+            await self._node_handle
 
         if self.status != Status.ENDPOINTS_INIT:
             await self._initialize_from_interview()
@@ -263,6 +254,19 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def handle_message(self, profile, cluster, src_ep, dst_ep, message):
         self.last_seen = time.time()
+
+        if (
+            self.status == Status.NEW
+            and src_ep == 1
+            and cluster == 0
+            and src_ep not in self.endpoints
+        ):
+            LOGGER.debug("Handling special identification message")
+            ep = self.add_endpoint(1)
+            ep.profile_id = 260  # is this neded?
+            ep.status = Status.ZDO_INIT  # needed?
+            cl = ep.add_input_cluster(0)
+            cl.add_listener(InitBasicClusterListener(self))
 
         try:
             hdr, args = self.deserialize(src_ep, cluster, message)
@@ -447,27 +451,22 @@ class InitBasicClusterListener:
     def __init__(self, device: Device):
         self._device = device
         self._model = None
-        self._manufacturer = None
         self._init_started = False
 
     def attribute_updated(self, attrid, value):
         if self._init_started:
             return
 
-        if attrid == 4:  # TODO: use named attr
-            self._manufacturer = value
-        elif attrid == 5:
-            self._model = value
-            if self._model == "lumi.sensor_magnet":
-                self._manufacturer = "LUMI"  # TODO: the sensor only sends model, so search the quirks for model only and remove this
+        if attrid != clusters.general.Basic.attridx["model"]:
+            return
+        self._model = value
 
-        if not self._manufacturer or not self._model:
+        if not self._model:
             return
 
         LOGGER.debug(
-            "We have a model: %s and a manufacturer: %s",
+            "We have a model: %s",
             self._model,
-            self._manufacturer,
         )
 
         self._init_started = True
@@ -479,8 +478,6 @@ class InitBasicClusterListener:
             and quirk.signature["direct_initialization"]
         ):
             asyncio.ensure_future(self._device._initialize_from_quirk(quirk))
-        else:
-            asyncio.ensure_future(self._device._initialize_from_interview())
 
     def cluster_command(self, *args, **kwargs):
         pass
@@ -489,9 +486,7 @@ class InitBasicClusterListener:
         pass
 
     def _get_quirk(self):
-        candidates = self._device.application.quirks.get_device_metadata(
-            self._model, self._manufacturer
-        )
+        candidates = self._device.application.quirks.get_device_metadata(self._model)
         if not candidates:
             return None
         if not candidates[0]:
