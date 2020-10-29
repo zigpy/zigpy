@@ -477,6 +477,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
+        await self._cleanup()
         await self._finish_loading()
 
     async def _load_attributes(self, filter: str = None) -> None:
