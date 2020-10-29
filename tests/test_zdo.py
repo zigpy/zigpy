@@ -111,14 +111,14 @@ def _handle_match_desc(zdo_f, profile):
 
 async def test_handle_match_desc_zha(zdo_f):
     _handle_match_desc(zdo_f, 260)
-    await asyncio.wait(asyncio.Task.all_tasks(), return_when=asyncio.FIRST_COMPLETED)
+    await asyncio.wait(asyncio.all_tasks(), return_when=asyncio.FIRST_COMPLETED)
     assert zdo_f.reply.await_count == 1
     assert zdo_f.reply.call_args[0][3]
 
 
 async def test_handle_match_desc_generic(zdo_f):
     _handle_match_desc(zdo_f, 0)
-    await asyncio.wait(asyncio.Task.all_tasks(), return_when=asyncio.FIRST_COMPLETED)
+    await asyncio.wait(asyncio.all_tasks(), return_when=asyncio.FIRST_COMPLETED)
     assert zdo_f.reply.await_count == 1
     assert not zdo_f.reply.call_args[0][3]
 
