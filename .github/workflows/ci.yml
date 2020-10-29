@@ -16,8 +16,6 @@ jobs:
   prepare-base:
     name: Prepare base dependencies
     runs-on: ubuntu-latest
-<<<<<<< HEAD
-<<<<<<< HEAD
     strategy:
       matrix:
         python-version: [3.7, 3.8, 3.9]
@@ -29,25 +27,6 @@ jobs:
         uses: actions/setup-python@v2.1.4
         with:
           python-version: ${{ matrix.python-version }}
-=======
-=======
-    strategy:
-      matrix:
-        python-version: [3.7, 3.8]
->>>>>>> 6433a86 (Use GitHub Actions for  builds (#532))
-    steps:
-      - name: Check out code from GitHub
-        uses: actions/checkout@v2
-      - name: Set up Python ${{ matrix.python-version }}
-        id: python
-        uses: actions/setup-python@v2.1.4
-        with:
-<<<<<<< HEAD
-          python-version: ${{ env.DEFAULT_PYTHON }}
->>>>>>> fdcacc4 (Move lint to GitHub Actions (#530))
-=======
-          python-version: ${{ matrix.python-version }}
->>>>>>> 6433a86 (Use GitHub Actions for  builds (#532))
       - name: Restore base Python virtual environment
         id: cache-venv
         uses: actions/cache@v2
@@ -58,25 +37,13 @@ jobs:
             steps.python.outputs.python-version }}-${{
             hashFiles('requirements_test.txt') }}
           restore-keys: |
-<<<<<<< HEAD
-<<<<<<< HEAD
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{ steps.python.outputs.python-version }}-
-=======
-            ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{ steps.python.outputs.python-version }}-{{ hashFiles('requirements_test.txt') }}
->>>>>>> fdcacc4 (Move lint to GitHub Actions (#530))
-=======
-            ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{ steps.python.outputs.python-version }}-
->>>>>>> 6433a86 (Use GitHub Actions for  builds (#532))
       - name: Create Python virtual environment
         if: steps.cache-venv.outputs.cache-hit != 'true'
         run: |
           python -m venv venv
           . venv/bin/activate
           pip install -U pip setuptools pre-commit
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 6433a86 (Use GitHub Actions for  builds (#532))
           pip install -r requirements_test.txt
           pip install -e .
 
@@ -106,11 +73,6 @@ jobs:
         run: |
           echo "Failed to restore Python virtual environment from cache"
           exit 1
-<<<<<<< HEAD
-=======
->>>>>>> fdcacc4 (Move lint to GitHub Actions (#530))
-=======
->>>>>>> 6433a86 (Use GitHub Actions for  builds (#532))
       - name: Restore pre-commit environment from cache
         id: cache-precommit
         uses: actions/cache@v2
@@ -129,15 +91,7 @@ jobs:
   lint-black:
     name: Check black
     runs-on: ubuntu-latest
-<<<<<<< HEAD
-<<<<<<< HEAD
     needs: pre-commit
-=======
-    needs: prepare-base
->>>>>>> fdcacc4 (Move lint to GitHub Actions (#530))
-=======
-    needs: pre-commit
->>>>>>> 6433a86 (Use GitHub Actions for  builds (#532))
     steps:
       - name: Check out code from GitHub
         uses: actions/checkout@v2
@@ -180,15 +134,7 @@ jobs:
   lint-flake8:
     name: Check flake8
     runs-on: ubuntu-latest
-<<<<<<< HEAD
-<<<<<<< HEAD
     needs: pre-commit
-=======
-    needs: prepare-base
->>>>>>> fdcacc4 (Move lint to GitHub Actions (#530))
-=======
-    needs: pre-commit
->>>>>>> 6433a86 (Use GitHub Actions for  builds (#532))
     steps:
       - name: Check out code from GitHub
         uses: actions/checkout@v2
@@ -234,15 +180,7 @@ jobs:
   lint-isort:
     name: Check isort
     runs-on: ubuntu-latest
-<<<<<<< HEAD
-<<<<<<< HEAD
     needs: pre-commit
-=======
-    needs: prepare-base
->>>>>>> fdcacc4 (Move lint to GitHub Actions (#530))
-=======
-    needs: pre-commit
->>>>>>> 6433a86 (Use GitHub Actions for  builds (#532))
     steps:
       - name: Check out code from GitHub
         uses: actions/checkout@v2
@@ -281,21 +219,13 @@ jobs:
         run: |
           . venv/bin/activate
           pre-commit run --hook-stage manual isort --all-files --show-diff-on-failure
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 6433a86 (Use GitHub Actions for  builds (#532))
 
   pytest:
     runs-on: ubuntu-latest
     needs: prepare-base
     strategy:
       matrix:
-<<<<<<< HEAD
         python-version: [3.7, 3.8, 3.9]
-=======
-        python-version: [3.7, 3.8]
->>>>>>> 6433a86 (Use GitHub Actions for  builds (#532))
     name: >-
       Run tests Python ${{ matrix.python-version }}
     steps:
@@ -398,8 +328,3 @@ jobs:
         run: |
           . venv/bin/activate
           coveralls --finish
-<<<<<<< HEAD
-=======
->>>>>>> fdcacc4 (Move lint to GitHub Actions (#530))
-=======
->>>>>>> 6433a86 (Use GitHub Actions for  builds (#532))
