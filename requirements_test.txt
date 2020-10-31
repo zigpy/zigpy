@@ -1,0 +1,8 @@
+# Test depdencies
+
+asynctest
+coveralls
+pytest
+pytest-aiohttp
+pytest-cov
+pytest-timeout

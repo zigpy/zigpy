@@ -44,7 +44,8 @@ async def make_app(database_file):
         async def probe(self, config):
             return True
 
-    with patch("zigpy.ota.OTA.initialize", AsyncMock()):
+    p2 = patch("zigpy.topology.Topology.scan_loop", AsyncMock())
+    with patch("zigpy.ota.OTA.initialize", AsyncMock()), p2:
         app = await App.new(ZIGPY_SCHEMA({CONF_DATABASE: database_file}))
     return app
 
@@ -77,22 +78,22 @@ def fake_get_device(device):
 
 
 async def test_no_database(tmpdir):
-    with patch("zigpy.appdb.PersistingListener") as db_mock:
+    with patch("zigpy.appdb.PersistingListener.new", AsyncMock()) as db_mock:
         db_mock.return_value.load.side_effect = AsyncMock()
         await make_app(None)
     assert db_mock.return_value.load.call_count == 0
 
     db = os.path.join(str(tmpdir), "test.db")
-    with patch("zigpy.appdb.PersistingListener") as db_mock:
+    with patch("zigpy.appdb.PersistingListener.new", AsyncMock()) as db_mock:
         db_mock.return_value.load.side_effect = AsyncMock()
         await make_app(db)
     assert db_mock.return_value.load.call_count == 1
 
 
-async def test_database(tmpdir, monkeypatch):
-    monkeypatch.setattr(
-        Device, "schedule_initialize", mock_dev_init(Status.ENDPOINTS_INIT)
-    )
+@patch(
+    "zigpy.device.Device.schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
+)
+async def test_database(tmpdir):
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
     ieee = make_ieee()
@@ -135,6 +136,7 @@ async def test_database(tmpdir, monkeypatch):
     assert ep.endpoint_id in dev.get_signature()
     app.device_initialized(app.get_device(custom_ieee))
     dev.relays = relays_2
+    await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads
     with patch("zigpy.quirks.get_device", fake_get_device):
@@ -156,21 +158,24 @@ async def test_database(tmpdir, monkeypatch):
     dev.relays = None
 
     app.handle_leave(99, ieee)
+    await app2.pre_shutdown()
 
-    app2 = await make_app(db)
-    assert ieee in app2.devices
+    app3 = await make_app(db)
+    assert ieee in app3.devices
 
     async def mockleave(*args, **kwargs):
         return [0]
 
-    app2.devices[ieee].zdo.leave = mockleave
-    await app2.remove(ieee)
-    assert ieee not in app2.devices
-
-    app3 = await make_app(db)
+    app3.devices[ieee].zdo.leave = mockleave
+    await app3.remove(ieee)
     assert ieee not in app3.devices
-    dev = app2.get_device(custom_ieee)
+    await app3.pre_shutdown()
+
+    app4 = await make_app(db)
+    assert ieee not in app4.devices
+    dev = app4.get_device(custom_ieee)
     assert dev.relays is None
+    await app4.pre_shutdown()
 
     os.unlink(db)
 
@@ -198,6 +203,7 @@ async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     clus._update_attribute(5, test_model)
     clus.listener_event("cluster_command", 0)
     clus.listener_event("zdo_command")
+    await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -205,6 +211,7 @@ async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
     assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
     assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
+    await app2.pre_shutdown()
 
     os.unlink(db)
 
@@ -255,60 +262,13 @@ async def test_appdb_str_model(tmpdir):
     assert dev.endpoints[3].model == "Mock Model"
 
 
-@pytest.mark.parametrize(
-    "status, success",
-    ((Status.ENDPOINTS_INIT, True), (Status.ZDO_INIT, False), (Status.NEW, False)),
-)
-async def test_node_descriptor_updated(tmpdir, status, success):
-    db = os.path.join(str(tmpdir), "test_nd.db")
-    app = await make_app(db)
-    nd_ieee = make_ieee(2)
-    with patch.object(Device, "schedule_initialize", new=mock_dev_init(status)):
-        app.handle_join(299, nd_ieee, 0)
-
-    dev = app.get_device(nd_ieee)
-    ep = dev.add_endpoint(1)
-    ep.profile_id = 260
-    ep.device_type = profiles.zha.DeviceType.PUMP
-    ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
-    app.device_initialized(dev)
-
-    node_desc = zdo_t.NodeDescriptor.deserialize(b"abcdefghijklm")[0]
-
-    async def mock_get_node_descriptor():
-        dev.node_desc = node_desc
-        return node_desc
-
-    dev.get_node_descriptor = MagicMock()
-    dev.get_node_descriptor.side_effect = mock_get_node_descriptor
-    await dev.refresh_node_descriptor()
-
-    assert dev.get_node_descriptor.call_count == 1
-
-    app2 = await make_app(db)
-    if success:
-        dev = app2.get_device(nd_ieee)
-        assert dev.status == status
-        assert dev.node_desc.is_valid
-        assert dev.node_desc.serialize() == b"abcdefghijklm"
-    else:
-        assert nd_ieee not in app2.devices
-
-    os.unlink(db)
-
-
-async def test_groups(tmpdir, monkeypatch):
-    monkeypatch.setattr(
-        Device, "schedule_initialize", mock_dev_init(Status.ENDPOINTS_INIT)
-    )
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT))
+@patch("zigpy.zcl.Cluster.request", new_callable=AsyncMock)
+async def test_groups(mock_request, tmpdir):
+    """Test group adding/removing."""
 
     group_id, group_name = 0x1221, "app db Test Group 0x1221"
-
-    async def mock_request(*args, **kwargs):
-        return [ZCLStatus.SUCCESS, group_id]
-
-    monkeypatch.setattr(zigpy.zcl.Cluster, "request", mock_request)
+    mock_request.return_value = [ZCLStatus.SUCCESS, group_id]
 
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
@@ -337,7 +297,11 @@ async def test_groups(tmpdir, monkeypatch):
     group = app.groups[group_id]
     assert group.name == group_name
     assert (dev.ieee, ep.endpoint_id) in group
+    assert (dev_b.ieee, ep_b.endpoint_id) in group
     assert group_id in ep.member_of
+    assert group_id in ep_b.member_of
+    await app.pre_shutdown()
+    del app, dev, dev_b, ep, ep_b
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -353,7 +317,10 @@ async def test_groups(tmpdir, monkeypatch):
     assert group_id in dev2_b.endpoints[2].member_of
 
     # check member removal
-    await dev_b.remove_from_group(group_id)
+    await dev2_b.remove_from_group(group_id)
+    await app2.pre_shutdown()
+    del app2, dev2, dev2_b
+
     app3 = await make_app(db)
     dev3 = app3.get_device(ieee)
     assert group_id in app3.groups
@@ -368,15 +335,23 @@ async def test_groups(tmpdir, monkeypatch):
 
     # check group removal
     await dev3.remove_from_group(group_id)
+    await app3.pre_shutdown()
+    del app3, dev3, dev3_b
+
     app4 = await make_app(db)
     dev4 = app4.get_device(ieee)
     assert group_id in app4.groups
     assert not app4.groups[group_id]
     assert group_id not in dev4.endpoints[1].member_of
     app4.groups.pop(group_id)
+    await app4.pre_shutdown()
+    del app4, dev4
 
     app5 = await make_app(db)
     assert not app5.groups
+    await app5.pre_shutdown()
+
+    os.unlink(db)
 
 
 @pytest.mark.parametrize(
@@ -404,6 +379,7 @@ async def test_attribute_update(tmpdir, status, success):
     clus._update_attribute(4, test_manufacturer)
     clus._update_attribute(5, test_model)
     app.device_initialized(dev)
+    await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -415,6 +391,7 @@ async def test_attribute_update(tmpdir, status, success):
         assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
     else:
         assert ieee not in app2.devices
+    await app2.pre_shutdown()
 
     os.unlink(db)
 
@@ -442,12 +419,14 @@ async def test_neighbors(tmpdir):
 
     dev_1 = app.get_device(ieee_1)
     dev_1.node_desc = zdo_t.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
+    dev_1.add_endpoint(1)
     app.device_initialized(dev_1)
 
     # 2nd device
     app.handle_join(nwk_2, ieee_2, 0)
     dev_2 = app.get_device(ieee_2)
     dev_2.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4476, 82, 82, 0, 82, 0)
+    dev_2.add_endpoint(1)
     app.device_initialized(dev_2)
 
     neighbors = zdo_t.Neighbors(2, 0, [nei_2, nei_3])
@@ -470,7 +449,9 @@ async def test_neighbors(tmpdir):
         res = await dev_2.neighbors.scan()
         assert res
 
+    await app.pre_shutdown()
     del dev_1, dev_2
+
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
     dev_1 = app2.get_device(ieee_1)
@@ -485,6 +466,8 @@ async def test_neighbors(tmpdir):
     assert dev_2.neighbors[0].device is dev_1
     assert dev_2.neighbors[1].device is None
     assert dev_2.neighbors[1].neighbor.ieee == ieee_3
+    await app2.pre_shutdown()
+    os.unlink(db)
 
 
 @patch(
@@ -506,6 +489,7 @@ async def test_device_rejoin(tmpdir):
     app.device_initialized(dev)
     clus._update_attribute(4, "Custom")
     clus._update_attribute(5, "Model")
+    await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads
     with patch("zigpy.quirks.get_device", fake_get_device):
@@ -522,6 +506,7 @@ async def test_device_rejoin(tmpdir):
     dev.nwk = nwk + 1
     with patch("zigpy.quirks.get_device", fake_get_device):
         app2.device_initialized(dev)
+    await app2.pre_shutdown()
 
     app3 = await make_app(db)
     dev = app3.get_device(ieee)
@@ -530,3 +515,45 @@ async def test_device_rejoin(tmpdir):
     assert 0 in dev.endpoints[1].in_clusters
     assert dev.endpoints[1].manufacturer == "Custom"
     assert dev.endpoints[1].model == "Model"
+    await app3.pre_shutdown()
+
+    os.unlink(db)
+
+
+@patch(
+    "zigpy.device.Device.schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
+)
+async def test_device_cleanup(tmpdir, caplog):
+    """Test the devices without any endpoints are removed from DB on startup."""
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+    ieee_1 = make_ieee()
+    nwk_1 = ieee_1[7]
+    app.handle_join(nwk_1, ieee_1, 0)
+
+    dev_1 = app.get_device(ieee_1)
+    ep = dev_1.add_endpoint(1)
+    ep.profile_id = profiles.zha.PROFILE_ID
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    app.device_initialized(dev_1)
+    clus._update_attribute(4, "Custom")
+    clus._update_attribute(5, "Model")
+
+    for i in range(1, 4):
+        ieee = make_ieee(i)
+        nwk = ieee[7]
+        app.handle_join(nwk, ieee, 0)
+        dev = app.get_device(ieee)
+        app.device_initialized(dev)
+
+    await app.pre_shutdown()
+    assert len(app.devices) == 4
+    del app, dev, dev_1, nwk, ieee
+
+    caplog.set_level(level=10)
+    app_2 = await make_app(db)
+    assert ieee_1 in app_2.devices
+    assert len(app_2.devices) == 1
+    await app_2.pre_shutdown()
