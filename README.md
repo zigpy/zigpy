@@ -4,6 +4,7 @@
 [![Coverage](https://coveralls.io/repos/github/zigpy/zigpy/badge.svg?branch=dev)](https://coveralls.io/github/zigpy/zigpy?branch=dev)
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://GitHub.com/Naereen/StrapDown.js/graphs/commit-activity)
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](http://www.gnu.org/licenses/gpl-3.0)
+[![PyPI version](https://badge.fury.io/py/zigpy.svg)](https://pypi.python.org/pypi/zigpy)
 
 **[zigpy](https://github.com/zigpy/zigpy)** is **[Zigbee protocol stack](https://en.wikipedia.org/wiki/Zigbee)** integration project to implement the **[Zigbee Home Automation](https://www.zigbee.org/)** standard as a Python 3 library. 
 
