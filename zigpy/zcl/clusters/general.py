@@ -1,5 +1,6 @@
 """General Functional Domain"""
 
+import logging
 import collections
 from datetime import datetime
 from typing import Any, List, Optional, Tuple, Union
@@ -8,6 +9,7 @@ import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
 from Crypto.Cipher import AES
 
+LOGGER = logging.getLogger(__name__)
 
 class Basic(Cluster):
     """Attributes for determining basic information about a
@@ -1299,7 +1301,6 @@ class PollControl(Cluster):
     }
     client_commands = {0x0000: ("checkin", (), False)}
 
-
 class GreenPowerProxy(Cluster):
     cluster_id = 0x0021
     ep_attribute = "green_power"
@@ -1322,10 +1323,110 @@ class GreenPowerProxy(Cluster):
         0x0008: ("translation_table_request", (t.bitmap8,), False),
         0x0009: ("pairing_configuration", (t.Struct,), False),
     }
+    command={
+        0x00 : ("Identify",()),
+        0x10 : ("Scene 0",()),
+        0x11 : ("Scene 1",()),
+        0x12 : ("Scene 2",()),
+        0x13 : ("Scene 3",()),
+        0x14 : ("Scene 4",()),
+        0x15 : ("Scene 5",()),
+        0x17 : ("Scene 7",()),
+        0x16 : ("Scene 6",()),
+        0x18 : ("Scene 8",()),
+        0x19 : ("Scene 9",()),
+        0x1A : ("Scene 10",()),
+        0x1B : ("Scene 11",()),
+        0x1C : ("Scene 12",()),
+        0x1D : ("Scene 13",()),
+        0x1F : ("Scene 15",()),
+        0x1E : ("Scene 14",()),
+        0x20 : ("Off",()),
+        0x21 : ("On",()),
+        0x22 : ("Toggle",()),
+        0x23 : ("Release",()),
+        0x30 : ("Move Up",(t.Optional(t.uint8_t),)),
+        0x31 : ("Move Down",(t.Optional(t.uint8_t),)),
+        0x32 : ("Step Up",(t.uint8_t,t.Optional(t.uint16_t))),
+        0x33 : ("Step Down",(t.uint8_t,t.Optional(t.uint16_t))),
+        0x34 : ("Level Control",()),
+        0x35 : ("Move Up (with On/Off)",(t.Optional(t.uint8_t),)),
+        0x36 : ("Move Down (with On/Off)",(t.Optional(t.uint8_t),)),
+        0x37 : ("Step Up (with On/Off)",(t.uint8_t,t.Optional(t.uint16_t))),
+        0x38 : ("Step Down (with On/Off)",(t.uint8_t,t.Optional(t.uint16_t))),
+        0x40 : ("Move Hue Stop",()),
+        0x41 : ("Move Hue Up Color",(t.Optional(t.uint8_t),)),
+        0x42 : ("Move Hue Down Color",(t.Optional(t.uint8_t),)),
+        0x43 : ("Step Hue Up Color",(t.uint8_t,t.Optional(t.uint16_t))),
+        0x44 : ("Step Hue Down Color",(t.uint8_t,t.Optional(t.uint16_t))),
+        0x46 : ("Move Saturation Up",(t.Optional(t.uint8_t),)),
+        0x47 : ("Move Saturation Down",(t.Optional(t.uint8_t),)),
+        0x48 : ("Step Saturation Up",(t.Optional(t.uint8_t),)),
+        0x49 : ("Step Saturation Down",(t.Optional(t.uint8_t),)),
+        0x4A : ("Move Color",(t.uint16_t,t.uint16_t)),
+        0x4B : ("Step Color",(t.uint16_t,t.uint16_t,t.Optional(t.uint16_t))),
+        0x45 : ("Move Saturation Stop",()),
+        0x50 : ("Lock Door",()),
+        0x51 : ("Unlock Door",()),
+        0x60 : ("Press 1 of 1",()),
+        0x61 : ("Release 1 of 1",()),
+        0x62 : ("Press 1 of 2",()),
+        0x63 : ("Release 1 of 2",()),
+        0x64 : ("Press 2 of 2",()),
+        0x65 : ("Release 2 of 2",()),
+        0x66 : ("Short press 1 of 1",()),
+        0x67 : ("Short press 1 of 2",()),
+        0x68 : ("Short press 2 of 2",()),
+    }
 
     zigBeeLinkKey=t.KeyData([0x5A, 0x69, 0x67, 0x42, 0x65, 0x65, 0x41, 0x6C, 0x6C, 0x69, 0x61, 0x6E, 0x63, 0x65, 0x30, 0x39])
 
-    def encryptSecurityKey(cls,sourceID,securityKey):
+    def handle_message(self,data):
+        if data[0][0] == 12 and data[0][5] == 224 :
+            src_id = int.from_bytes(data[0][1:5],byteorder='little')
+            command = data[0][5]
+            type = data[0][6]
+            opt = int.from_bytes(data[0][7:9],byteorder='little')
+            securityKey = data[0][9:25]
+            securityKeyValidation = int.from_bytes(data[0][25:29],byteorder='little')
+            counter=int.from_bytes(data[0][29:33],byteorder='little')
+            LOGGER.debug('GreenPower commissioning frame src_id : 0x%08X, command : 0x%02X, type : 0x%02X, opt : 0x%02X, counter : 0x%04X, securityKey : %s',src_id,command,type,opt,counter,securityKey)
+            payload = (
+                0x00e548,
+                src_id,
+                0x0b84,
+                type,
+                counter,
+                GreenPowerProxy.encryptSecurityKey(src_id, securityKey),
+            )
+            LOGGER.debug('payload : %s',payload)
+            tsn = self.endpoint.device.application.get_sequence()
+            hdr = foundation.ZCLHeader.cluster(tsn,1) # Pairing
+            hdr.frame_control.disable_default_response=True
+            data = hdr.serialize() + t.serialize(payload, (t.bitmap24,t.uint32_t,t.uint16_t,t.enum8,t.uint32_t,t.Struct))
+            asyncio.ensure_future(self.endpoint.device.application.broadcast(
+                profile=260,
+                cluster=33,
+                src_ep=242,
+                dst_ep=242,
+                grpid=None,
+                radius=30,
+                sequence=tsn,
+                data=data,
+            ))
+        else:
+            control =  int.from_bytes(data[0][0:2],byteorder='little')
+            src_id = int.from_bytes(data[0][2:6],byteorder='little')
+            counter = int.from_bytes(data[0][6:10],byteorder='little')
+            command_id = data[0][10]
+            command = ''
+            payload = None
+            if command_id in GreenPowerProxy.command:
+                command, schema = GreenPowerProxy.command[command_id]
+                payload, _ = t.deserialize(data[0][11:], schema)
+            LOGGER.debug('Received green power frame control : 0x%04X, src_id : 0x%08X, command_id : 0x%02X, command : %s, counter : 0x%08X, payload : %s',control,src_id,command_id,command,counter,payload)
+
+    def encryptSecurityKey(sourceID,securityKey):
         sourceIDInBytes = [
             (sourceID & 0x000000ff),
             (sourceID & 0x0000ff00) >> 8,
@@ -1337,36 +1438,12 @@ class GreenPowerProxy(Cluster):
             for j in range(4):
                 nonce[4 * i + j] = sourceIDInBytes[j]
         nonce[12] = 0x05;
-        cipher = AES.new(bytes(cls.zigBeeLinkKey), AES.MODE_CCM, bytes(nonce))
-        return cipher.encrypt(bytes(securityKey))
-
-    async def handle_commisioningNotification(self,data):
-        payload = (
-            0x00e548,
-            data.payload.srcID,
-            0x0b84,
-            data.payload.commandFrame.deviceID,
-            data.payload.commandFrame.outgoingCounter,
-            GreenPowerProxy.encryptSecurityKey(data.payload.srcID, data.payload.commandFrame.securityKey),
-        )
-        tsn = self.endpoint.device.application.get_sequence()
-        hdr = foundation.ZCLHeader.cluster(tsn,1) # Pairing
-        hdr.frame_control.disable_default_response=True
-        data = hdr.serialize() + t.serialize(payload, (t.bitmap24,t.uint32_t,t.uint16_t,t.enum8,t.uint32_t,t.Struct))
-        await self.endpoint.device.application.broadcast(
-            profile=260,
-            cluster=33,
-            src_ep=242,
-            dst_ep=242,
-            grpid=None,
-            radius=30,
-            sequence=tsn,
-            data=data,
-        )
-        # Todo new device joined
+        cipher = AES.new(bytes(GreenPowerProxy.zigBeeLinkKey), AES.MODE_CCM, bytes(nonce))
+        return cipher.encrypt(bytearray(securityKey))
 
     async def permit(self, time_s=60):
         assert 0 <= time_s <= 254
+        LOGGER.debug('Permit green power pairing for %s s',time_s)
         tsn = self.endpoint.device.application.get_sequence()
         hdr = foundation.ZCLHeader.cluster(tsn,2) # commissioning
         hdr.frame_control.disable_default_response=True
