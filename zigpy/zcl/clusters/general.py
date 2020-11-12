@@ -6,6 +6,7 @@ from typing import Any, List, Optional, Tuple, Union
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
+from Crypto.Cipher import AES
 
 
 class Basic(Cluster):
@@ -1321,4 +1322,62 @@ class GreenPowerProxy(Cluster):
         0x0008: ("translation_table_request", (t.bitmap8,), False),
         0x0009: ("pairing_configuration", (t.Struct,), False),
     }
-    client_commands = {}
+
+    zigBeeLinkKey=t.KeyData([0x5A, 0x69, 0x67, 0x42, 0x65, 0x65, 0x41, 0x6C, 0x6C, 0x69, 0x61, 0x6E, 0x63, 0x65, 0x30, 0x39])
+
+    def encryptSecurityKey(cls,sourceID,securityKey):
+        sourceIDInBytes = [
+            (sourceID & 0x000000ff),
+            (sourceID & 0x0000ff00) >> 8,
+            (sourceID & 0x00ff0000) >> 16,
+            (sourceID & 0xff000000) >> 24
+        ]
+        nonce = {};
+        for i in range(3):
+            for j in range(4):
+                nonce[4 * i + j] = sourceIDInBytes[j]
+        nonce[12] = 0x05;
+        cipher = AES.new(bytes(cls.zigBeeLinkKey), AES.MODE_CCM, bytes(nonce))
+        return cipher.encrypt(bytes(securityKey))
+
+    async def handle_commisioningNotification(self,data):
+        payload = (
+            0x00e548,
+            data.payload.srcID,
+            0x0b84,
+            data.payload.commandFrame.deviceID,
+            data.payload.commandFrame.outgoingCounter,
+            GreenPowerProxy.encryptSecurityKey(data.payload.srcID, data.payload.commandFrame.securityKey),
+        )
+        tsn = self.endpoint.device.application.get_sequence()
+        hdr = foundation.ZCLHeader.cluster(tsn,1) # Pairing
+        hdr.frame_control.disable_default_response=True
+        data = hdr.serialize() + t.serialize(payload, (t.bitmap24,t.uint32_t,t.uint16_t,t.enum8,t.uint32_t,t.Struct))
+        await self.endpoint.device.application.broadcast(
+            profile=260,
+            cluster=33,
+            src_ep=242,
+            dst_ep=242,
+            grpid=None,
+            radius=30,
+            sequence=tsn,
+            data=data,
+        )
+        # Todo new device joined
+
+    async def permit(self, time_s=60):
+        assert 0 <= time_s <= 254
+        tsn = self.endpoint.device.application.get_sequence()
+        hdr = foundation.ZCLHeader.cluster(tsn,2) # commissioning
+        hdr.frame_control.disable_default_response=True
+        data = hdr.serialize() + t.serialize((0x0b,time_s), (t.uint8_t,t.uint16_t))
+        return await self.endpoint.device.application.broadcast(
+            profile=260,
+            cluster=33,
+            src_ep=242,
+            dst_ep=242,
+            grpid=None,
+            radius=30,
+            sequence=tsn,
+            data=data,
+        )
