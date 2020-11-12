@@ -12,6 +12,7 @@ from Crypto.Util import Counter
 import zigpy
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
+from Crypto.Cipher import AES
 
 LOGGER = logging.getLogger(__name__)
 
