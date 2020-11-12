@@ -1388,14 +1388,15 @@ class GreenPowerProxy(Cluster):
     zigBeeLinkKey=t.KeyData([0x5A, 0x69, 0x67, 0x42, 0x65, 0x65, 0x41, 0x6C, 0x6C, 0x69, 0x61, 0x6E, 0x63, 0x65, 0x30, 0x39])
 
     def handle_message(self,data):
-        if data[0][0] == 12 and data[0][5] == 224 :
-            src_id = int.from_bytes(data[0][1:5],byteorder='little')
-            command = data[0][5]
-            type = data[0][6]
-            opt = int.from_bytes(data[0][7:9],byteorder='little')
-            securityKey = data[0][9:25]
-            securityKeyValidation = int.from_bytes(data[0][25:29],byteorder='little')
-            counter=int.from_bytes(data[0][29:33],byteorder='little')
+        data = data[0]
+        if data == 12 and data[5] == 224 :
+            src_id = int.from_bytes(data[1:5],byteorder='little')
+            command = data[5]
+            type = data[6]
+            opt = int.from_bytes(data[7:9],byteorder='little')
+            securityKey = data[9:25]
+            securityKeyValidation = int.from_bytes(data[25:29],byteorder='little')
+            counter=int.from_bytes(data[29:33],byteorder='little')
             LOGGER.debug('GreenPower commissioning frame src_id : 0x%08X, command : 0x%02X, type : 0x%02X, opt : 0x%02X, counter : 0x%04X, securityKey : %s',src_id,command,type,opt,counter,securityKey)
             payload = (
                 0x00e548,
@@ -1421,16 +1422,25 @@ class GreenPowerProxy(Cluster):
                 data=data,
             ))
         else:
-            control =  int.from_bytes(data[0][0:2],byteorder='little')
-            src_id = int.from_bytes(data[0][2:6],byteorder='little')
-            counter = int.from_bytes(data[0][6:10],byteorder='little')
-            command_id = data[0][10]
+            options = bin(int.from_bytes(data[0:2],byteorder='little'))[2:].zfill(16)
+            applicationID = options[0:3]
+            unicast = options[3]
+            derived_group = options[4]
+            commissioned_group = options[5]
+            securityLevel = options[6:8]
+            securityKeyType = options[8:11]
+            appointTempMaster = options[11]
+            gppTxQueueFull = options[12]
+            src_id = int.from_bytes(data[2:6],byteorder='little')
+            counter = int.from_bytes(data[6:10],byteorder='little')
+            command_id = data[10]
             command = ''
             payload = None
             if command_id in GreenPowerProxy.command:
                 command, schema = GreenPowerProxy.command[command_id]
-                payload, _ = t.deserialize(data[0][11:], schema)
-            LOGGER.debug('Received green power frame control : 0x%04X, src_id : 0x%08X, command_id : 0x%02X, command : %s, counter : 0x%08X, payload : %s',control,src_id,command_id,command,counter,payload)
+                payload, _ = t.deserialize(data[11:], schema)
+            LOGGER.debug('Received green power frame src_id : 0x%08X, command_id : 0x%02X, command : %s, counter : 0x%08X, payload : %s',src_id,command_id,command,counter,payload)
+            LOGGER.debug('Green power frame options applicationID : %s, unicast : %s, derived_group : %s, commissioned_group : %s, securityLevel : %s, securityKeyType : %s,appointTempMaster : %s, gppTxQueueFull : %s',applicationID,unicast,derived_group,commissioned_group,securityLevel,securityKeyType,appointTempMaster,gppTxQueueFull)
 
     def encryptSecurityKey(sourceID,securityKey):
         sourceIDInBytes = [
