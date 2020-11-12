@@ -1411,7 +1411,7 @@ class GreenPowerProxy(Cluster):
             hdr = foundation.ZCLHeader.cluster(tsn,1) # Pairing
             hdr.frame_control.disable_default_response=True
             data = hdr.serialize() + t.serialize(payload, (t.bitmap24,t.uint32_t,t.uint16_t,t.enum8,t.uint32_t,t.Struct))
-            asyncio.ensure_future(self.endpoint.device.application.broadcast(
+            self.create_catching_task(self.endpoint.device.application.broadcast(
                 profile=260,
                 cluster=33,
                 src_ep=242,
