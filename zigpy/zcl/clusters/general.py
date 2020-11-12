@@ -1,5 +1,6 @@
 """General Functional Domain"""
 
+import logging
 import collections
 from datetime import datetime
 import logging
@@ -15,7 +16,6 @@ from zigpy.zcl import Cluster, foundation
 from Crypto.Cipher import AES
 
 LOGGER = logging.getLogger(__name__)
-
 
 class Basic(Cluster):
     """Attributes for determining basic information about a
@@ -1306,7 +1306,6 @@ class PollControl(Cluster):
         0x0003: ("set_short_poll_interval", (t.uint16_t,), False),
     }
     client_commands = {0x0000: ("checkin", (), False)}
-
 
 class GreenPowerProxy(Cluster):
     cluster_id = 0x0021
