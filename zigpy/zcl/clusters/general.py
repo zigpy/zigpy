@@ -1308,6 +1308,20 @@ class PollControl(Cluster):
     client_commands = {0x0000: ("checkin", (), False)}
 
 class GreenPowerProxy(Cluster):
+
+    class securityLevel():
+            no_security = 0b00
+            lsb_2b = 0b01
+            full = 0b10
+            full_and_encrypt = 0b11
+
+    class securityKeyType():
+            no_key = 0b000
+            zigbee_nwk_key = 0b001
+            gpd_group_key = 0b010
+            nwk_key_derived_gpd_group_key = 0b011
+            gpd_key = 0b100
+
     cluster_id = 0x0021
     ep_attribute = "green_power"
     group = 0x0B84
