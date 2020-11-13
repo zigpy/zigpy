@@ -1397,6 +1397,45 @@ class GreenPowerProxy(Cluster):
         0x68 : ("Short press 2 of 2",(),None,None,()),
     }
 
+    def handle_decode_message(self,applicationID,securityLevel,securityKeyType,ieee,counter,command_id,payload_length,payload):
+        application = self.endpoint.device.application
+        if command_id in GreenPowerProxy.command:
+            command, schema,cluster_id, zcl_command_id,value = GreenPowerProxy.command[command_id]
+            value = value + tuple(payload)
+        LOGGER.debug('Green power frame options applicationID : %s, securityLevel : %s, securityKeyType : %s',applicationID,securityLevel,securityKeyType)
+        LOGGER.debug('Green power frame ieee : %s, command_id : 0x%02X, command : %s, counter : 0x%08X, payload : %s',ieee,command_id,command,counter,payload)
+        if not ieee in application.devices:
+            LOGGER.debug('Device %s not found, create it',ieee)
+            dev = application.add_device(ieee, 32766)
+            dev.initializing = True
+            dev.status = zigpy.device.Status.ENDPOINTS_INIT
+            dev._skip_configuration = True
+            dev.add_endpoint(1)
+            dev.endpoints[1].status =  zigpy.endpoint.Status.ZDO_INIT
+            dev.endpoints[1].profile_id = 0x104
+            dev.endpoints[1].device_type = 0xa1e0
+            dev.endpoints[1].add_input_cluster(0x0000)
+            dev.endpoints[1].in_clusters[0x0000]._update_attribute(0x0004, 'GreenPower')
+            dev.endpoints[1].in_clusters[0x0000]._update_attribute(0x0005, 'GreenPowerDevice')
+            dev.endpoints[1].profile_id = 0x0000
+            dev.add_endpoint(242)
+            dev.endpoints[242].status =  zigpy.endpoint.Status.ZDO_INIT
+            dev.endpoints[242].profile_id = 0x104
+            dev.endpoints[242].device_type = 0xa1e0
+            dev.endpoints[242].add_input_cluster(0x0021)
+            application.device_initialized(dev)
+        else:
+            dev = application.devices[ieee]
+        if 0x9999 in dev.endpoints[242].in_clusters[0x0021]._attr_cache and dev.endpoints[242].in_clusters[0x0021]._attr_cache[0x9999] == counter:
+            LOGGER.debug('Already get this frame counter,I ignoring it')
+            return
+        dev.endpoints[242].in_clusters[0x0021]._update_attribute(0x9999, counter)
+        if cluster_id is not None:
+            if not cluster_id in dev.endpoints[1].out_clusters:
+                dev.endpoints[1].add_output_cluster(cluster_id)
+                application.device_initialized(dev)
+            dev.endpoints[1].out_clusters[cluster_id].handle_message(foundation.ZCLHeader.cluster(application.get_sequence(),zcl_command_id),value)
+
     def handle_message(self,data):
         data = data[0]
         application = self.endpoint.device.application
@@ -1435,69 +1474,24 @@ class GreenPowerProxy(Cluster):
         else:
             options = bin(int.from_bytes(data[0:2],byteorder='little'))[2:].zfill(16)
             applicationID = options[0:3]
-            unicast = options[3]
-            derived_group = options[4]
-            commissioned_group = options[5]
             securityLevel = options[6:8]
             securityKeyType = options[8:11]
-            appointTempMaster = options[11]
-            gppTxQueueFull = options[12]
             if applicationID == '010':
-                src_id = int.from_bytes(data[2:10],byteorder='little')
                 ieee = t.EUI64(data[2:10])
                 counter = int.from_bytes(data[10:14],byteorder='little')
                 command_id = data[14]
                 payload_length = data[15]
             else :
-                src_id = int.from_bytes(data[2:6],byteorder='little')
                 ieee = t.EUI64(data[2:6] + bytearray(4))
                 counter = int.from_bytes(data[6:10],byteorder='little')
                 command_id = data[10]
                 payload_length = data[11]
-            gpp_short_adress = None
-            gpp_distance = None
-            if appointTempMaster == 1:
-                gpp_short_adress = int.from_bytes(data[-3:-1],byteorder='little')
-                gpp_distance = int.from_bytes(data[-1],byteorder='little')
             command = None
             payload = ()
             if command_id in GreenPowerProxy.command:
                 command, schema,cluster_id, zcl_command_id,value = GreenPowerProxy.command[command_id]
                 payload, _ = t.deserialize(data[12:], schema)
-                value = value + tuple(payload)
-            LOGGER.debug('Green power frame options applicationID : %s, unicast : %s, derived_group : %s, commissioned_group : %s, securityLevel : %s, securityKeyType : %s,appointTempMaster : %s, gppTxQueueFull : %s',applicationID,unicast,derived_group,commissioned_group,securityLevel,securityKeyType,appointTempMaster,gppTxQueueFull)
-            LOGGER.debug('Green power frame src_id : 0x%08X (ieee : %s), command_id : 0x%02X, command : %s, counter : 0x%08X, payload : %s, gpp_short_adress : %s, gpp_distance : %s',src_id,ieee,command_id,command,counter,payload,gpp_short_adress,gpp_distance)
-            if not ieee in application.devices:
-                LOGGER.debug('Device %s not found, create it',ieee)
-                dev = application.add_device(ieee, 32766)
-                dev.initializing = True
-                dev.status = zigpy.device.Status.ENDPOINTS_INIT
-                dev._skip_configuration = True
-                dev.add_endpoint(1)
-                dev.endpoints[1].status =  zigpy.endpoint.Status.ZDO_INIT
-                dev.endpoints[1].profile_id = 0x104
-                dev.endpoints[1].device_type = 0xa1e0
-                dev.endpoints[1].add_input_cluster(0x0000)
-                dev.endpoints[1].in_clusters[0x0000]._update_attribute(0x0004, 'GreenPower')
-                dev.endpoints[1].in_clusters[0x0000]._update_attribute(0x0005, 'GreenPowerDevice')
-                dev.endpoints[1].profile_id = 0x0000
-                dev.add_endpoint(242)
-                dev.endpoints[242].status =  zigpy.endpoint.Status.ZDO_INIT
-                dev.endpoints[242].profile_id = 0x104
-                dev.endpoints[242].device_type = 0xa1e0
-                dev.endpoints[242].add_input_cluster(0x0021)
-                application.device_initialized(dev)
-            else:
-                dev = application.devices[ieee]
-            if 0x9999 in dev.endpoints[242].in_clusters[0x0021]._attr_cache and dev.endpoints[242].in_clusters[0x0021]._attr_cache[0x9999] == counter:
-                LOGGER.debug('Already get this frame counter,I ignoring it')
-                return
-            dev.endpoints[242].in_clusters[0x0021]._update_attribute(0x9999, counter)
-            if cluster_id is not None:
-                if not cluster_id in dev.endpoints[1].out_clusters:
-                    dev.endpoints[1].add_output_cluster(cluster_id)
-                    application.device_initialized(dev)
-                dev.endpoints[1].out_clusters[cluster_id].handle_message(foundation.ZCLHeader.cluster(application.get_sequence(),zcl_command_id),value)
+            self.handle_decode_message(applicationID,securityLevel,securityKeyType,ieee,counter,command_id,payload_length,payload)
 
     def encryptSecurityKey(sourceID,securityKey):
         sourceIDInBytes = [
