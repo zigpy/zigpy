@@ -1472,26 +1472,30 @@ class GreenPowerProxy(Cluster):
                 dev.status = zigpy.device.Status.ENDPOINTS_INIT
                 dev._skip_configuration = True
                 dev.add_endpoint(1)
+                dev.endpoints[1].status =  zigpy.endpoint.Status.ZDO_INIT
+                dev.endpoints[1].profile_id = 0x104
+                dev.endpoints[1].device_type = 0xa1e0
                 dev.endpoints[1].add_input_cluster(0x0000)
                 dev.endpoints[1].in_clusters[0x0000]._update_attribute(0x0004, 'GreenPower')
                 dev.endpoints[1].in_clusters[0x0000]._update_attribute(0x0005, 'GreenPowerDevice')
+                dev.endpoints[1].profile_id = 0x0000
+                dev.add_endpoint(242)
+                dev.endpoints[242].status =  zigpy.endpoint.Status.ZDO_INIT
+                dev.endpoints[242].profile_id = 0x104
+                dev.endpoints[242].device_type = 0xa1e0
+                dev.endpoints[242].add_input_cluster(0x0021)
                 application.device_initialized(dev)
             else:
                 dev = application.devices[ieee]
-            if not 1 in dev.endpoints:
-                dev.add_endpoint(1)
-            endpoint = dev.endpoints[1]
-            if not 0x0021 in endpoint.in_clusters:
-                endpoint.add_input_cluster(0x0021)
-            if 0x9999 in endpoint.in_clusters[0x0021]._attr_cache and endpoint.in_clusters[0x0021]._attr_cache[0x9999] == counter:
+            if 0x9999 in dev.endpoints[242].in_clusters[0x0021]._attr_cache and dev.endpoints[242].in_clusters[0x0021]._attr_cache[0x9999] == counter:
                 LOGGER.debug('Already get this frame counter,I ignoring it')
                 return
-            endpoint.in_clusters[0x0021]._update_attribute(0x9999, counter)
+            dev.endpoints[242].in_clusters[0x0021]._update_attribute(0x9999, counter)
             if cluster_id is not None:
-                if not cluster_id in endpoint.out_clusters:
-                    endpoint.add_output_cluster(cluster_id)
+                if not cluster_id in dev.endpoints[1].out_clusters:
+                    dev.endpoints[1].add_output_cluster(cluster_id)
                     application.device_initialized(dev)
-                endpoint.out_clusters[cluster_id].handle_message(foundation.ZCLHeader.cluster(application.get_sequence(),zcl_command_id),value)
+                dev.endpoints[1].out_clusters[cluster_id].handle_message(foundation.ZCLHeader.cluster(application.get_sequence(),zcl_command_id),value)
 
     def encryptSecurityKey(sourceID,securityKey):
         sourceIDInBytes = [
