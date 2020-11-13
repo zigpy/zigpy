@@ -7,9 +7,6 @@ import logging
 import time
 from typing import Tuple
 
-from Crypto.Cipher import AES
-from Crypto.Util import Counter
-
 import zigpy
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
@@ -1308,6 +1305,20 @@ class PollControl(Cluster):
     client_commands = {0x0000: ("checkin", (), False)}
 
 class GreenPowerProxy(Cluster):
+
+    class securityLevel():
+            no_security = 0b00
+            lsb_2b = 0b01
+            full = 0b10
+            full_and_encrypt = 0b11
+
+    class securityKeyType():
+            no_key = 0b000
+            zigbee_nwk_key = 0b001
+            gpd_group_key = 0b010
+            nwk_key_derived_gpd_group_key = 0b011
+            gpd_key = 0b100
+
     cluster_id = 0x0021
     ep_attribute = "green_power"
     attributes = {
@@ -1319,6 +1330,7 @@ class GreenPowerProxy(Cluster):
         0x0005: ("security_level", t.bitmap8),
         0x0006: ("functionality", t.bitmap24),
         0x0007: ("active_functionality", t.bitmap24),
+        0x9999: ("counter", t.uint64_t),
     }
     server_commands = {
         0x0000: ("notification", (t.Struct,), False),
@@ -1331,65 +1343,64 @@ class GreenPowerProxy(Cluster):
     }
     command={
         0x00 : ("Identify",()),
-        0x10 : ("Scene 0",()),
-        0x11 : ("Scene 1",()),
-        0x12 : ("Scene 2",()),
-        0x13 : ("Scene 3",()),
-        0x14 : ("Scene 4",()),
-        0x15 : ("Scene 5",()),
-        0x17 : ("Scene 7",()),
-        0x16 : ("Scene 6",()),
-        0x18 : ("Scene 8",()),
-        0x19 : ("Scene 9",()),
-        0x1A : ("Scene 10",()),
-        0x1B : ("Scene 11",()),
-        0x1C : ("Scene 12",()),
-        0x1D : ("Scene 13",()),
-        0x1F : ("Scene 15",()),
-        0x1E : ("Scene 14",()),
-        0x20 : ("Off",()),
-        0x21 : ("On",()),
-        0x22 : ("Toggle",()),
-        0x23 : ("Release",()),
-        0x30 : ("Move Up",(t.Optional(t.uint8_t),)),
-        0x31 : ("Move Down",(t.Optional(t.uint8_t),)),
-        0x32 : ("Step Up",(t.uint8_t,t.Optional(t.uint16_t))),
-        0x33 : ("Step Down",(t.uint8_t,t.Optional(t.uint16_t))),
-        0x34 : ("Level Control",()),
-        0x35 : ("Move Up (with On/Off)",(t.Optional(t.uint8_t),)),
-        0x36 : ("Move Down (with On/Off)",(t.Optional(t.uint8_t),)),
-        0x37 : ("Step Up (with On/Off)",(t.uint8_t,t.Optional(t.uint16_t))),
-        0x38 : ("Step Down (with On/Off)",(t.uint8_t,t.Optional(t.uint16_t))),
-        0x40 : ("Move Hue Stop",()),
-        0x41 : ("Move Hue Up Color",(t.Optional(t.uint8_t),)),
-        0x42 : ("Move Hue Down Color",(t.Optional(t.uint8_t),)),
-        0x43 : ("Step Hue Up Color",(t.uint8_t,t.Optional(t.uint16_t))),
-        0x44 : ("Step Hue Down Color",(t.uint8_t,t.Optional(t.uint16_t))),
-        0x46 : ("Move Saturation Up",(t.Optional(t.uint8_t),)),
-        0x47 : ("Move Saturation Down",(t.Optional(t.uint8_t),)),
-        0x48 : ("Step Saturation Up",(t.Optional(t.uint8_t),)),
-        0x49 : ("Step Saturation Down",(t.Optional(t.uint8_t),)),
-        0x4A : ("Move Color",(t.uint16_t,t.uint16_t)),
-        0x4B : ("Step Color",(t.uint16_t,t.uint16_t,t.Optional(t.uint16_t))),
-        0x45 : ("Move Saturation Stop",()),
-        0x50 : ("Lock Door",()),
-        0x51 : ("Unlock Door",()),
-        0x60 : ("Press 1 of 1",()),
-        0x61 : ("Release 1 of 1",()),
-        0x62 : ("Press 1 of 2",()),
-        0x63 : ("Release 1 of 2",()),
-        0x64 : ("Press 2 of 2",()),
-        0x65 : ("Release 2 of 2",()),
-        0x66 : ("Short press 1 of 1",()),
-        0x67 : ("Short press 1 of 2",()),
-        0x68 : ("Short press 2 of 2",()),
+        0x10 : ("Scene 0",(),0x0005,0x0001,(0,0)),
+        0x11 : ("Scene 1",(),0x0005,0x0001,(0,1,)),
+        0x12 : ("Scene 2",(),0x0005,0x0001,(0,2)),
+        0x13 : ("Scene 3",(),0x0005,0x0001,(0,3)),
+        0x14 : ("Scene 4",(),0x0005,0x0001,(0,4)),
+        0x15 : ("Scene 5",(),0x0005,0x0001,(0,5)),
+        0x17 : ("Scene 7",(),0x0005,0x0001,(0,6)),
+        0x16 : ("Scene 6",(),0x0005,0x0001,(0,7)),
+        0x18 : ("Scene 8",(),0x0005,0x0001,(0,8)),
+        0x19 : ("Scene 9",(),0x0005,0x0001,(0,9)),
+        0x1A : ("Scene 10",(),0x0005,0x0001,(0,10)),
+        0x1B : ("Scene 11",(),0x0005,0x0001,(0,11)),
+        0x1C : ("Scene 12",(),0x0005,0x0001,(0,12)),
+        0x1D : ("Scene 13",(),0x0005,0x0001,(0,13)),
+        0x1E : ("Scene 14",(),0x0005,0x0001,(0,14)),
+        0x1F : ("Scene 15",(),0x0005,0x0001,(0,15)),
+        0x20 : ("Off",(),0x0006,0x0000,()),
+        0x21 : ("On",(),0x0006,0x0001,()),
+        0x22 : ("Toggle",(),0x0006,0x0002,()),
+        0x23 : ("Release",(),None,None,()),
+        0x30 : ("Move Up",(t.uint8_t,),0x0008,0x0001,(1,)),
+        0x31 : ("Move Down",(t.uint8_t,),0x0008,0x0000,(0,)),
+        0x32 : ("Step Up",(t.uint8_t,t.Optional(t.uint16_t)),0x0008,0x0002,(1,)),
+        0x33 : ("Step Down",(t.uint8_t,t.Optional(t.uint16_t)),0x0008,0x0002,(0,)),
+        0x34 : ("Level Control/Stop",(),0x0008,0x0007,()),
+        0x35 : ("Move Up (with On/Off)",(t.uint8_t,),0x0008,0x0005,(1,)),
+        0x36 : ("Move Down (with On/Off)",(t.uint8_t,),0x0008,0x0005,(0,)),
+        0x37 : ("Step Up (with On/Off)",(t.uint8_t,t.Optional(t.uint16_t)),0x0008,0x0006,(1,)),
+        0x38 : ("Step Down (with On/Off)",(t.uint8_t,t.Optional(t.uint16_t)),0x0008,0x0006,(0,)),
+        0x40 : ("Move Hue Stop",(),0x0300,0x0047,()),
+        0x41 : ("Move Hue Up Color",(t.uint8_t,),0x0300,0x0001,(1,)),
+        0x42 : ("Move Hue Down Color",(t.uint8_t,),0x0300,0x0001,(0,)),
+        0x43 : ("Step Hue Up Color",(t.uint8_t,t.Optional(t.uint16_t)),0x0300,0x0002,(1,)),
+        0x44 : ("Step Hue Down Color",(t.uint8_t,t.Optional(t.uint16_t)),0x0300,0x0002,(0,)),
+        0x46 : ("Move Saturation Up",(t.uint8_t,),0x0300,0x0004,(1,)),
+        0x47 : ("Move Saturation Down",(t.uint8_t,),0x0300,0x0004,(0,)),
+        0x48 : ("Step Saturation Up",(t.uint8_t,),0x0300,0x0005,(1,)),
+        0x49 : ("Step Saturation Down",(t.uint8_t,),0x0300,0x0005,(0,)),
+        0x4A : ("Move Color",(t.uint16_t,t.uint16_t),0x0300,0x0008,()),
+        0x4B : ("Step Color",(t.uint16_t,t.uint16_t,t.Optional(t.uint16_t)),0x0300,0x0009,()),
+        0x45 : ("Move Saturation Stop",(),0x0300,0x0047,()),
+        0x50 : ("Lock Door",(),0x0101,0x0000,()),
+        0x51 : ("Unlock Door",(),0x0101,0x0001,()),
+        0x60 : ("Press 1 of 1",(),None,None,()),
+        0x61 : ("Release 1 of 1",(),None,None,()),
+        0x62 : ("Press 1 of 2",(),None,None,()),
+        0x63 : ("Release 1 of 2",(),None,None,()),
+        0x64 : ("Press 2 of 2",(),None,None,()),
+        0x65 : ("Release 2 of 2",(),None,None,()),
+        0x66 : ("Short press 1 of 1",(),None,None,()),
+        0x67 : ("Short press 1 of 2",(),None,None,()),
+        0x68 : ("Short press 2 of 2",(),None,None,()),
     }
-
-    zigBeeLinkKey=t.KeyData([0x5A, 0x69, 0x67, 0x42, 0x65, 0x65, 0x41, 0x6C, 0x6C, 0x69, 0x61, 0x6E, 0x63, 0x65, 0x30, 0x39])
 
     def handle_message(self,data):
         data = data[0]
-        if data == 12 and data[5] == 224 :
+        application = self.endpoint.device.application
+        if data[0] == 12 and data[5] == 224 :
             src_id = int.from_bytes(data[1:5],byteorder='little')
             command = data[5]
             type = data[6]
@@ -1407,11 +1418,11 @@ class GreenPowerProxy(Cluster):
                 GreenPowerProxy.encryptSecurityKey(src_id, securityKey),
             )
             LOGGER.debug('payload : %s',payload)
-            tsn = self.endpoint.device.application.get_sequence()
+            tsn = application.get_sequence()
             hdr = foundation.ZCLHeader.cluster(tsn,1) # Pairing
             hdr.frame_control.disable_default_response=True
             data = hdr.serialize() + t.serialize(payload, (t.bitmap24,t.uint32_t,t.uint16_t,t.enum8,t.uint32_t,t.Struct))
-            self.create_catching_task(self.endpoint.device.application.broadcast(
+            self.create_catching_task(application.broadcast(
                 profile=260,
                 cluster=33,
                 src_ep=242,
@@ -1431,16 +1442,58 @@ class GreenPowerProxy(Cluster):
             securityKeyType = options[8:11]
             appointTempMaster = options[11]
             gppTxQueueFull = options[12]
-            src_id = int.from_bytes(data[2:6],byteorder='little')
-            counter = int.from_bytes(data[6:10],byteorder='little')
-            command_id = data[10]
-            command = ''
-            payload = None
+            if applicationID == '010':
+                src_id = int.from_bytes(data[2:10],byteorder='little')
+                ieee = t.EUI64(data[2:10])
+                counter = int.from_bytes(data[10:14],byteorder='little')
+                command_id = data[14]
+                payload_length = data[15]
+            else :
+                src_id = int.from_bytes(data[2:6],byteorder='little')
+                ieee = t.EUI64(data[2:6] + bytearray(4))
+                counter = int.from_bytes(data[6:10],byteorder='little')
+                command_id = data[10]
+                payload_length = data[11]
+            gpp_short_adress = None
+            gpp_distance = None
+            if appointTempMaster == 1:
+                gpp_short_adress = int.from_bytes(data[-3:-1],byteorder='little')
+                gpp_distance = int.from_bytes(data[-1],byteorder='little')
+            command = None
+            payload = ()
             if command_id in GreenPowerProxy.command:
-                command, schema = GreenPowerProxy.command[command_id]
-                payload, _ = t.deserialize(data[11:], schema)
-            LOGGER.debug('Received green power frame src_id : 0x%08X, command_id : 0x%02X, command : %s, counter : 0x%08X, payload : %s',src_id,command_id,command,counter,payload)
+                command, schema,cluster_id, zcl_command_id,value = GreenPowerProxy.command[command_id]
+                payload, _ = t.deserialize(data[12:], schema)
+                value = value + tuple(payload)
             LOGGER.debug('Green power frame options applicationID : %s, unicast : %s, derived_group : %s, commissioned_group : %s, securityLevel : %s, securityKeyType : %s,appointTempMaster : %s, gppTxQueueFull : %s',applicationID,unicast,derived_group,commissioned_group,securityLevel,securityKeyType,appointTempMaster,gppTxQueueFull)
+            LOGGER.debug('Green power frame src_id : 0x%08X (ieee : %s), command_id : 0x%02X, command : %s, counter : 0x%08X, payload : %s, gpp_short_adress : %s, gpp_distance : %s',src_id,ieee,command_id,command,counter,payload,gpp_short_adress,gpp_distance)
+            if not ieee in application.devices:
+                LOGGER.debug('Device %s not found, create it',ieee)
+                dev = application.add_device(ieee, 32766)
+                dev.initializing = True
+                dev.status = zigpy.device.Status.ENDPOINTS_INIT
+                dev._skip_configuration = True
+                dev.add_endpoint(1)
+                dev.endpoints[1].add_input_cluster(0x0000)
+                dev.endpoints[1].in_clusters[0x0000]._update_attribute(0x0004, 'GreenPower')
+                dev.endpoints[1].in_clusters[0x0000]._update_attribute(0x0005, 'GreenPowerDevice')
+                application.device_initialized(dev)
+            else:
+                dev = application.devices[ieee]
+            if not 1 in dev.endpoints:
+                dev.add_endpoint(1)
+            endpoint = dev.endpoints[1]
+            if not 0x0021 in endpoint.in_clusters:
+                endpoint.add_input_cluster(0x0021)
+            if 0x9999 in endpoint.in_clusters[0x0021]._attr_cache and endpoint.in_clusters[0x0021]._attr_cache[0x9999] == counter:
+                LOGGER.debug('Already get this frame counter,I ignoring it')
+                return
+            endpoint.in_clusters[0x0021]._update_attribute(0x9999, counter)
+            if cluster_id is not None:
+                if not cluster_id in endpoint.out_clusters:
+                    endpoint.add_output_cluster(cluster_id)
+                    application.device_initialized(dev)
+                endpoint.out_clusters[cluster_id].handle_message(foundation.ZCLHeader.cluster(application.get_sequence(),zcl_command_id),value)
 
     def encryptSecurityKey(sourceID,securityKey):
         sourceIDInBytes = [
@@ -1454,7 +1507,7 @@ class GreenPowerProxy(Cluster):
             for j in range(4):
                 nonce[4 * i + j] = sourceIDInBytes[j]
         nonce[12] = 0x05;
-        cipher = AES.new(bytes(GreenPowerProxy.zigBeeLinkKey), AES.MODE_CCM, bytes(nonce))
+        cipher = AES.new(bytes(t.KeyData([0x5A, 0x69, 0x67, 0x42, 0x65, 0x65, 0x41, 0x6C, 0x6C, 0x69, 0x61, 0x6E, 0x63, 0x65, 0x30, 0x39])), AES.MODE_CCM, bytes(nonce))
         return cipher.encrypt(bytearray(securityKey))
 
     async def permit(self, time_s=60):
