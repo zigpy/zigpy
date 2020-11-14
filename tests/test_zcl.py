@@ -356,6 +356,9 @@ async def test_item_access_attributes(cluster):
         # wrong key type
         cluster.get(None)
 
+    # Test access to cached attribute via wrong attr name
+    assert cluster.get("no_such_attribute", mock.sentinel.attr) is mock.sentinel.attr
+
 
 async def test_item_set_attributes(cluster):
     with patch.object(cluster, "write_attributes") as write_mock:
