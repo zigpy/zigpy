@@ -1397,18 +1397,18 @@ class GreenPowerProxy(Cluster):
             dev.initializing = True
             dev.status = zigpy.device.Status.ENDPOINTS_INIT
             dev._skip_configuration = True
-            dev.add_endpoint(1)
-            dev.endpoints[1].status =  zigpy.endpoint.Status.ZDO_INIT
-            dev.endpoints[1].profile_id = zigpy.profiles.zha.PROFILE_ID
-            dev.endpoints[1].device_type = zigpy.profiles.zha.DeviceType.GREEN_POWER
-            dev.endpoints[1].add_input_cluster(zigpy.zcl.clusters.general.Basic.cluster_id)
-            dev.endpoints[1].in_clusters[zigpy.zcl.clusters.general.Basic.cluster_id]._update_attribute(0x0004, 'GreenPower')
-            dev.endpoints[1].in_clusters[zigpy.zcl.clusters.general.Basic.cluster_id]._update_attribute(0x0005, 'GreenPowerDevice')
-            dev.add_endpoint(242)
-            dev.endpoints[242].status =  zigpy.endpoint.Status.ZDO_INIT
-            dev.endpoints[242].profile_id = zigpy.profiles.zha.PROFILE_ID
-            dev.endpoints[242].device_type = zigpy.profiles.zha.DeviceType.GREEN_POWER
-            dev.endpoints[242].add_input_cluster(zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id)
+            ep = dev.add_endpoint(1)
+            ep.status =  zigpy.endpoint.Status.ZDO_INIT
+            ep.profile_id = zigpy.profiles.zha.PROFILE_ID
+            ep.device_type = zigpy.profiles.zha.DeviceType.GREEN_POWER
+            ep.add_input_cluster(zigpy.zcl.clusters.general.Basic.cluster_id)
+            ep.in_clusters[zigpy.zcl.clusters.general.Basic.cluster_id]._update_attribute(0x0004, 'GreenPower')
+            ep.in_clusters[zigpy.zcl.clusters.general.Basic.cluster_id]._update_attribute(0x0005, 'GreenPowerDevice')
+            ep = dev.add_endpoint(242)
+            ep.status =  zigpy.endpoint.Status.ZDO_INIT
+            ep.profile_id = zigpy.profiles.zha.PROFILE_ID
+            ep.device_type = zigpy.profiles.zha.DeviceType.GREEN_POWER
+            ep.add_input_cluster(zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id)
             application.device_initialized(dev)
         else:
             dev = application.devices[ieee]
