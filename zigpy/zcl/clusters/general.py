@@ -1328,71 +1328,68 @@ class GreenPowerProxy(Cluster):
         0x0009: ("pairing_configuration", (t.Struct,), False),
     }
     command={
-        0x00 : ("Identify",()),
-        0x10 : ("Scene 0",(),0x0005,0x0001,(0,0)),
-        0x11 : ("Scene 1",(),0x0005,0x0001,(0,1,)),
-        0x12 : ("Scene 2",(),0x0005,0x0001,(0,2)),
-        0x13 : ("Scene 3",(),0x0005,0x0001,(0,3)),
-        0x14 : ("Scene 4",(),0x0005,0x0001,(0,4)),
-        0x15 : ("Scene 5",(),0x0005,0x0001,(0,5)),
-        0x17 : ("Scene 7",(),0x0005,0x0001,(0,6)),
-        0x16 : ("Scene 6",(),0x0005,0x0001,(0,7)),
-        0x18 : ("Scene 8",(),0x0005,0x0001,(0,8)),
-        0x19 : ("Scene 9",(),0x0005,0x0001,(0,9)),
-        0x1A : ("Scene 10",(),0x0005,0x0001,(0,10)),
-        0x1B : ("Scene 11",(),0x0005,0x0001,(0,11)),
-        0x1C : ("Scene 12",(),0x0005,0x0001,(0,12)),
-        0x1D : ("Scene 13",(),0x0005,0x0001,(0,13)),
-        0x1E : ("Scene 14",(),0x0005,0x0001,(0,14)),
-        0x1F : ("Scene 15",(),0x0005,0x0001,(0,15)),
-        0x20 : ("Off",(),0x0006,0x0000,()),
-        0x21 : ("On",(),0x0006,0x0001,()),
-        0x22 : ("Toggle",(),0x0006,0x0002,()),
-        0x23 : ("Release",(),None,None,()),
-        0x30 : ("Move Up",(t.uint8_t,),0x0008,0x0001,(1,)),
-        0x31 : ("Move Down",(t.uint8_t,),0x0008,0x0000,(0,)),
-        0x32 : ("Step Up",(t.uint8_t,t.Optional(t.uint16_t)),0x0008,0x0002,(1,)),
-        0x33 : ("Step Down",(t.uint8_t,t.Optional(t.uint16_t)),0x0008,0x0002,(0,)),
-        0x34 : ("Level Control/Stop",(),0x0008,0x0007,()),
-        0x35 : ("Move Up (with On/Off)",(t.uint8_t,),0x0008,0x0005,(1,)),
-        0x36 : ("Move Down (with On/Off)",(t.uint8_t,),0x0008,0x0005,(0,)),
-        0x37 : ("Step Up (with On/Off)",(t.uint8_t,t.Optional(t.uint16_t)),0x0008,0x0006,(1,)),
-        0x38 : ("Step Down (with On/Off)",(t.uint8_t,t.Optional(t.uint16_t)),0x0008,0x0006,(0,)),
-        0x40 : ("Move Hue Stop",(),0x0300,0x0047,()),
-        0x41 : ("Move Hue Up Color",(t.uint8_t,),0x0300,0x0001,(1,)),
-        0x42 : ("Move Hue Down Color",(t.uint8_t,),0x0300,0x0001,(0,)),
-        0x43 : ("Step Hue Up Color",(t.uint8_t,t.Optional(t.uint16_t)),0x0300,0x0002,(1,)),
-        0x44 : ("Step Hue Down Color",(t.uint8_t,t.Optional(t.uint16_t)),0x0300,0x0002,(0,)),
-        0x46 : ("Move Saturation Up",(t.uint8_t,),0x0300,0x0004,(1,)),
-        0x47 : ("Move Saturation Down",(t.uint8_t,),0x0300,0x0004,(0,)),
-        0x48 : ("Step Saturation Up",(t.uint8_t,),0x0300,0x0005,(1,)),
-        0x49 : ("Step Saturation Down",(t.uint8_t,),0x0300,0x0005,(0,)),
-        0x4A : ("Move Color",(t.uint16_t,t.uint16_t),0x0300,0x0008,()),
-        0x4B : ("Step Color",(t.uint16_t,t.uint16_t,t.Optional(t.uint16_t)),0x0300,0x0009,()),
-        0x45 : ("Move Saturation Stop",(),0x0300,0x0047,()),
-        0x50 : ("Lock Door",(),0x0101,0x0000,()),
-        0x51 : ("Unlock Door",(),0x0101,0x0001,()),
-        0x60 : ("Press 1 of 1",(),None,None,()),
-        0x61 : ("Release 1 of 1",(),None,None,()),
-        0x62 : ("Press 1 of 2",(),None,None,()),
-        0x63 : ("Release 1 of 2",(),None,None,()),
-        0x64 : ("Press 2 of 2",(),None,None,()),
-        0x65 : ("Release 2 of 2",(),None,None,()),
-        0x66 : ("Short press 1 of 1",(),None,None,()),
-        0x67 : ("Short press 1 of 2",(),None,None,()),
-        0x68 : ("Short press 2 of 2",(),None,None,()),
+        0x00 : ("Identify",'CLUSTER_COMMAND',(),None,None,()),
+        0x10 : ("Scene 0",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,0)),
+        0x11 : ("Scene 1",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,1,)),
+        0x12 : ("Scene 2",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,2)),
+        0x13 : ("Scene 3",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,3)),
+        0x14 : ("Scene 4",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,4)),
+        0x15 : ("Scene 5",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,5)),
+        0x17 : ("Scene 7",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,6)),
+        0x16 : ("Scene 6",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,7)),
+        0x18 : ("Scene 8",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,8)),
+        0x19 : ("Scene 9",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,9)),
+        0x1A : ("Scene 10",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,10)),
+        0x1B : ("Scene 11",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,11)),
+        0x1C : ("Scene 12",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,12)),
+        0x1D : ("Scene 13",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,13)),
+        0x1E : ("Scene 14",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,14)),
+        0x1F : ("Scene 15",'CLUSTER_COMMAND',(),0x0005,0x0001,(0,15)),
+        0x20 : ("Off",'CLUSTER_COMMAND',(),0x0006,0x0000,()),
+        0x21 : ("On",'CLUSTER_COMMAND',(),0x0006,0x0001,()),
+        0x22 : ("Toggle",'CLUSTER_COMMAND',(),0x0006,0x0002,()),
+        0x23 : ("Release",'CLUSTER_COMMAND',(),None,None,()),
+        0x30 : ("Move Up",'CLUSTER_COMMAND',(t.uint8_t,),0x0008,0x0001,(1,)),
+        0x31 : ("Move Down",'CLUSTER_COMMAND',(t.uint8_t,),0x0008,0x0000,(0,)),
+        0x32 : ("Step Up",'CLUSTER_COMMAND',(t.uint8_t,t.Optional(t.uint16_t)),0x0008,0x0002,(1,)),
+        0x33 : ("Step Down",'CLUSTER_COMMAND',(t.uint8_t,t.Optional(t.uint16_t)),0x0008,0x0002,(0,)),
+        0x34 : ("Level Control/Stop",'CLUSTER_COMMAND',(),0x0008,0x0007,()),
+        0x35 : ("Move Up (with On/Off)",'CLUSTER_COMMAND',(t.uint8_t,),0x0008,0x0005,(1,)),
+        0x36 : ("Move Down (with On/Off)",'CLUSTER_COMMAND',(t.uint8_t,),0x0008,0x0005,(0,)),
+        0x37 : ("Step Up (with On/Off)",'CLUSTER_COMMAND',(t.uint8_t,t.Optional(t.uint16_t)),0x0008,0x0006,(1,)),
+        0x38 : ("Step Down (with On/Off)",'CLUSTER_COMMAND',(t.uint8_t,t.Optional(t.uint16_t)),0x0008,0x0006,(0,)),
+        0x40 : ("Move Hue Stop",'CLUSTER_COMMAND',(),0x0300,0x0047,()),
+        0x41 : ("Move Hue Up Color",'CLUSTER_COMMAND',(t.uint8_t,),0x0300,0x0001,(1,)),
+        0x42 : ("Move Hue Down Color",'CLUSTER_COMMAND',(t.uint8_t,),0x0300,0x0001,(0,)),
+        0x43 : ("Step Hue Up Color",'CLUSTER_COMMAND',(t.uint8_t,t.Optional(t.uint16_t)),0x0300,0x0002,(1,)),
+        0x44 : ("Step Hue Down Color",'CLUSTER_COMMAND',(t.uint8_t,t.Optional(t.uint16_t)),0x0300,0x0002,(0,)),
+        0x46 : ("Move Saturation Up",'CLUSTER_COMMAND',(t.uint8_t,),0x0300,0x0004,(1,)),
+        0x47 : ("Move Saturation Down",'CLUSTER_COMMAND',(t.uint8_t,),0x0300,0x0004,(0,)),
+        0x48 : ("Step Saturation Up",'CLUSTER_COMMAND',(t.uint8_t,),0x0300,0x0005,(1,)),
+        0x49 : ("Step Saturation Down",'CLUSTER_COMMAND',(t.uint8_t,),0x0300,0x0005,(0,)),
+        0x4A : ("Move Color",'CLUSTER_COMMAND',(t.uint16_t,t.uint16_t),0x0300,0x0008,()),
+        0x4B : ("Step Color",'CLUSTER_COMMAND',(t.uint16_t,t.uint16_t,t.Optional(t.uint16_t)),0x0300,0x0009,()),
+        0x45 : ("Move Saturation Stop",'CLUSTER_COMMAND',(),0x0300,0x0047,()),
+        0x50 : ("Lock Door",'CLUSTER_COMMAND',(),0x0101,0x0000,()),
+        0x51 : ("Unlock Door",'CLUSTER_COMMAND',(),0x0101,0x0001,()),
+        0x60 : ("Press 1 of 1",'CLUSTER_COMMAND',(),None,None,()),
+        0x61 : ("Release 1 of 1",'CLUSTER_COMMAND',(),None,None,()),
+        0x62 : ("Press 1 of 2",'CLUSTER_COMMAND',(),None,None,()),
+        0x63 : ("Release 1 of 2",'CLUSTER_COMMAND',(),None,None,()),
+        0x64 : ("Press 2 of 2",'CLUSTER_COMMAND',(),None,None,()),
+        0x65 : ("Release 2 of 2",'CLUSTER_COMMAND',(),None,None,()),
+        0x66 : ("Short press 1 of 1",'CLUSTER_COMMAND',(),None,None,()),
+        0x67 : ("Short press 1 of 2",'CLUSTER_COMMAND',(),None,None,()),
+        0x68 : ("Short press 2 of 2",'CLUSTER_COMMAND',(),None,None,()),
     }
 
-    def handle_notification(self,applicationID,securityLevel,securityKeyType,ieee,counter,command_id,payload_length,payload):
-        application = self.endpoint.device.application
-        command = None
-        if command_id in GreenPowerProxy.command:
-            command, schema,cluster_id, zcl_command_id,value = GreenPowerProxy.command[command_id]
-            value = value + tuple(payload)
-        if command is None:
+    def handle_notification(self,ieee,command_id,payload,counter):
+        LOGGER.debug('Green power frame ieee : %s, command_id : %s, counter : 0x%08X, payload : %s',ieee,command_id,counter,payload)
+        if not command_id in GreenPowerProxy.command:
             return
-        LOGGER.debug('Green power frame options applicationID : %s, securityLevel : %s, securityKeyType : %s',applicationID,securityLevel,securityKeyType)
-        LOGGER.debug('Green power frame ieee : %s, command_id : 0x%02X, command : %s, counter : 0x%08X, payload : %s',ieee,command_id,command,counter,payload)
+        command, type, schema,cluster_id, zcl_command_id,value = GreenPowerProxy.command[command_id]
+        value = value + tuple(payload)
+        application = self.endpoint.device.application
         if not ieee in application.devices:
             LOGGER.debug('Device %s not found, create it',ieee)
             dev = application.add_device(ieee, 32766)
@@ -1418,47 +1415,47 @@ class GreenPowerProxy(Cluster):
             LOGGER.debug('Already get this frame counter,I ignoring it')
             return
         dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.enpoint_id].in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]._update_attribute(0x9999, counter)
-        if cluster_id is not None:
+        if cluster_id is not None and type == 'CLUSTER_COMMAND':
             if not cluster_id in dev.endpoints[1].out_clusters:
                 dev.endpoints[1].add_output_cluster(cluster_id)
                 application.device_initialized(dev)
             dev.endpoints[1].out_clusters[cluster_id].handle_message(foundation.ZCLHeader.cluster(application.get_sequence(),zcl_command_id),value)
 
+    def handle_comissioning(self,src_id,type,counter,securityKey):
+        application = self.endpoint.device.application
+        LOGGER.debug('GreenPower commissioning frame src_id : 0x%08X, type : 0x%02X, counter : 0x%04X, securityKey : %s',src_id,type,counter,securityKey)
+        payload = (
+            0x00e548,
+            src_id,
+            zigpy.zcl.clusters.general.GreenPowerProxy.group,
+            type,
+            counter,
+            GreenPowerProxy.encryptSecurityKey(src_id, securityKey),
+        )
+        LOGGER.debug('payload : %s',payload)
+        tsn = application.get_sequence()
+        hdr = foundation.ZCLHeader.cluster(tsn,1) # Pairing
+        hdr.frame_control.disable_default_response=True
+        data = hdr.serialize() + t.serialize(payload, (t.bitmap24,t.uint32_t,t.uint16_t,t.enum8,t.uint32_t,t.Struct))
+        self.create_catching_task(application.broadcast(
+            profile=zigpy.profiles.zha.PROFILE_ID,
+            cluster=zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id,
+            src_ep=zigpy.zcl.clusters.general.GreenPowerProxy.enpoint_id,
+            dst_ep=zigpy.zcl.clusters.general.GreenPowerProxy.enpoint_id,
+            grpid=None,
+            radius=30,
+            sequence=tsn,
+            data=data,
+        ))
+
     def handle_message(self,data):
         data = data[0]
-        application = self.endpoint.device.application
         if data[0] == 12 and data[5] == 224 :
             src_id = int.from_bytes(data[1:5],byteorder='little')
-            command = data[5]
             type = data[6]
-            opt = int.from_bytes(data[7:9],byteorder='little')
             securityKey = data[9:25]
-            securityKeyValidation = int.from_bytes(data[25:29],byteorder='little')
             counter=int.from_bytes(data[29:33],byteorder='little')
-            LOGGER.debug('GreenPower commissioning frame src_id : 0x%08X, command : 0x%02X, type : 0x%02X, opt : 0x%02X, counter : 0x%04X, securityKey : %s',src_id,command,type,opt,counter,securityKey)
-            payload = (
-                0x00e548,
-                src_id,
-                zigpy.zcl.clusters.general.GreenPowerProxy.group,
-                type,
-                counter,
-                GreenPowerProxy.encryptSecurityKey(src_id, securityKey),
-            )
-            LOGGER.debug('payload : %s',payload)
-            tsn = application.get_sequence()
-            hdr = foundation.ZCLHeader.cluster(tsn,1) # Pairing
-            hdr.frame_control.disable_default_response=True
-            data = hdr.serialize() + t.serialize(payload, (t.bitmap24,t.uint32_t,t.uint16_t,t.enum8,t.uint32_t,t.Struct))
-            self.create_catching_task(application.broadcast(
-                profile=zigpy.profiles.zha.PROFILE_ID,
-                cluster=zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id,
-                src_ep=zigpy.zcl.clusters.general.GreenPowerProxy.enpoint_id,
-                dst_ep=zigpy.zcl.clusters.general.GreenPowerProxy.enpoint_id,
-                grpid=None,
-                radius=30,
-                sequence=tsn,
-                data=data,
-            ))
+            self.handle_comissioning(src_id,type,counter,securityKey)
         else:
             options = bin(int.from_bytes(data[0:2],byteorder='little'))[2:].zfill(16)
             applicationID = options[0:3]
@@ -1477,9 +1474,9 @@ class GreenPowerProxy(Cluster):
             command = None
             payload = ()
             if command_id in GreenPowerProxy.command:
-                command, schema,cluster_id, zcl_command_id,value = GreenPowerProxy.command[command_id]
+                command, type, schema,cluster_id, zcl_command_id,value = GreenPowerProxy.command[command_id]
                 payload, _ = t.deserialize(data[12:], schema)
-            self.handle_notification(applicationID,securityLevel,securityKeyType,ieee,counter,command_id,payload_length,payload)
+            self.handle_notification(ieee,command_id,payload,counter)
 
     def encryptSecurityKey(sourceID,securityKey):
         sourceIDInBytes = [
