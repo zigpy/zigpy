@@ -1531,6 +1531,23 @@ class GreenPowerProxy(Cluster):
         0x32: ("Flow Sensor", [0x0404], []),
         0x33: ("Indoor Environment Sensor", [], []),
     }
+    device={
+        0x00 : ("Simple Generic 1-state Switch",[],[0x0006]),
+        0x01 : ("Simple Generic 2-state Switch",[],[0x0006]),
+        0x02 : ("On/Off Switch",[],[0x0005,0x0006]),
+        0x03 : ("Level Control Switch",[],[0x0008]),
+        0x04 : ("Simple Sensor",[],[]),
+        0x05 : ("Advanced Generic 1-state Switch",[],[0x0005,0x0006]),
+        0x06 : ("Advanced Generic 2-state Switch",[],[0x0005,0x0006]),
+        0x10 : ("Color Dimmer Switch",[],[0x0300]),
+        0x11 : ("Light Sensor",[0x0400],[]),
+        0x12 : ("Occupancy Sensor",[0x0406],[]),
+        0x20 : ("Door Lock Controller",[],[0x0101]),
+        0x30 : ("Temperature Sensor",[0x0402],[]),
+        0x31 : ("Pressure Sensor",[0x0403],[]),
+        0x32 : ("Flow Sensor",[0x0404],[]),
+        0x33 : ("Indoor Environment Sensor",[],[]),
+    }
 
     def create_device(self, ieee, type=None, remoteCommissioning=False):
         application = self.endpoint.device.application
