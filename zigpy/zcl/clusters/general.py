@@ -1440,12 +1440,12 @@ class GreenPowerProxy(Cluster):
 
     def handle_notification(self,ieee,command_id,payload,counter = None):
         LOGGER.debug('Green power frame ieee : %s, command_id : %s, payload : %s, counter : %s',ieee,command_id,counter,payload)
-        if not command_id in GreenPowerProxy.command:
+        if command_id not in GreenPowerProxy.command:
             return
         command, type, schema,cluster_id, zcl_command_id,value = GreenPowerProxy.command[command_id]
         value = value + tuple(payload)
         application = self.endpoint.device.application
-        if not ieee in application.devices:
+        if ieee not in application.devices:
             dev = self.create_device(ieee)
         else:
             dev = application.devices[ieee]
@@ -1455,7 +1455,7 @@ class GreenPowerProxy(Cluster):
                 return
             dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id].in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]._update_attribute(0x9999, counter)
         if cluster_id is not None and type == 'CLUSTER_COMMAND':
-            if not cluster_id in dev.endpoints[1].out_clusters:
+            if cluster_id not in dev.endpoints[1].out_clusters:
                 dev.endpoints[1].add_output_cluster(cluster_id)
                 application.device_initialized(dev)
             dev.endpoints[1].out_clusters[cluster_id].handle_message(foundation.ZCLHeader.cluster(application.get_sequence(),zcl_command_id),value)
@@ -1500,18 +1500,14 @@ class GreenPowerProxy(Cluster):
             return
         options = bin(int.from_bytes(data[0:2],byteorder='little'))[2:].zfill(16)
         applicationID = options[0:3]
-        securityLevel = options[6:8]
-        securityKeyType = options[8:11]
         if applicationID == '010':
             ieee = t.EUI64(data[2:10])
             counter = int.from_bytes(data[10:14],byteorder='little')
             command_id = data[14]
-            payload_length = data[15]
         else :
             ieee = t.EUI64(data[2:6] + bytearray(4))
             counter = int.from_bytes(data[6:10],byteorder='little')
             command_id = data[10]
-            payload_length = data[11]
         command = None
         payload = ()
         if command_id in GreenPowerProxy.command:
