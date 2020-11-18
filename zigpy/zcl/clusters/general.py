@@ -1506,8 +1506,22 @@ class GreenPowerProxy(Cluster):
         0x66: ("Short press 1 of 1", "CLUSTER_COMMAND", (), None, None, ()),
         0x67: ("Short press 1 of 2", "CLUSTER_COMMAND", (), None, None, ()),
         0x68: ("Short press 2 of 2", "CLUSTER_COMMAND", (), None, None, ()),
-        0x69: ("Press", "CLUSTER_COMMAND", (t.uint8_t,), 0x0005, 0x0001, (0,)),
-        0x6A: ("Release", "CLUSTER_COMMAND", (t.uint8_t,), None, None, ()),
+        0x69: (
+            "Press",
+            "CLUSTER_COMMAND",
+            (t.uint8_t,),
+            0x0005,
+            0x0001,
+            (0,)
+        ),
+        0x6A: (
+            "Release",
+            "CLUSTER_COMMAND",
+            (t.uint8_t,),
+            None,
+            None,
+            ()
+        ),
     }
     device = {
         0x00: ("Simple Generic 1-state Switch", [], [0x0006]),
@@ -1517,7 +1531,7 @@ class GreenPowerProxy(Cluster):
         0x04: ("Simple Sensor", [], []),
         0x05: ("Advanced Generic 1-state Switch", [], [0x0005, 0x0006]),
         0x06: ("Advanced Generic 2-state Switch", [], [0x0005, 0x0006]),
-        0x07: ("On/Off Switch", [], [0x0005, 0x0006]),
+        0x07: ("Generic Switch", [], [0x0005, 0x0006]),
         0x10: ("Color Dimmer Switch", [], [0x0300]),
         0x11: ("Light Sensor", [0x0400], []),
         0x12: ("Occupancy Sensor", [0x0406], []),
