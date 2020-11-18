@@ -1510,8 +1510,22 @@ class GreenPowerProxy(Cluster):
         0x66: ("Short press 1 of 1", "CLUSTER_COMMAND", (), None, None, ()),
         0x67: ("Short press 1 of 2", "CLUSTER_COMMAND", (), None, None, ()),
         0x68: ("Short press 2 of 2", "CLUSTER_COMMAND", (), None, None, ()),
-        0x69: ("Press", "CLUSTER_COMMAND", (t.uint8_t,), 0x0005, 0x0001, (0,)),
-        0x6A: ("Release", "CLUSTER_COMMAND", (t.uint8_t,), None, None, ()),
+        0x69: (
+            "Press",
+            "CLUSTER_COMMAND",
+            (t.uint8_t,),
+            0x0005,
+            0x0001,
+            (0,)
+        ),
+        0x6A: (
+            "Release",
+            "CLUSTER_COMMAND",
+            (t.uint8_t,),
+            None,
+            None,
+            ()
+        ),
     }
     device = {
         0x00: ("Simple Generic 1-state Switch", [], [0x0006]),
