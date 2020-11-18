@@ -1506,6 +1506,8 @@ class GreenPowerProxy(Cluster):
         0x66: ("Short press 1 of 1", "CLUSTER_COMMAND", (), None, None, ()),
         0x67: ("Short press 1 of 2", "CLUSTER_COMMAND", (), None, None, ()),
         0x68: ("Short press 2 of 2", "CLUSTER_COMMAND", (), None, None, ()),
+        0x69: ("Press", "CLUSTER_COMMAND", (t.uint8_t,), 0x0005, 0x0001, (0,)),
+        0x6A: ("Release", "CLUSTER_COMMAND", (t.uint8_t,), None, None, ()),
     }
     device = {
         0x00: ("Simple Generic 1-state Switch", [], [0x0006]),
@@ -1573,8 +1575,8 @@ class GreenPowerProxy(Cluster):
             "Green power frame ieee : %s, command_id : %s, payload : %s, counter : %s",
             ieee,
             command_id,
-            counter,
             payload,
+            counter,
         )
         if command_id not in GreenPowerProxy.command:
             return
@@ -1683,16 +1685,25 @@ class GreenPowerProxy(Cluster):
             return
         options = bin(int.from_bytes(data[0:2], byteorder="little"))[2:].zfill(16)
         applicationID = options[0:3]
+        payload = ()
         if applicationID == "010":
             ieee = t.EUI64(data[2:10])
             counter = int.from_bytes(data[10:14], byteorder="little")
             command_id = data[14]
+            payload = data[15:]
         else:
             ieee = t.EUI64(data[2:6] + bytearray(4))
             counter = int.from_bytes(data[6:10], byteorder="little")
             command_id = data[10]
+            payload = data[11:]
+        LOGGER.debug(
+            "GreenPower deconz frame : %s, counter : %s, command_id : %s, payload : %s",
+            ieee,
+            counter,
+            command_id,
+            payload,
+        )
         command = None
-        payload = ()
         if command_id in GreenPowerProxy.command:
             (
                 command,
@@ -1702,8 +1713,8 @@ class GreenPowerProxy(Cluster):
                 zcl_command_id,
                 value,
             ) = GreenPowerProxy.command[command_id]
-            payload, _ = t.deserialize(data[12:], schema)
-        self.handle_notification(ieee, command_id, payload, counter)
+            payload, _ = t.deserialize(data[11:], schema)
+        self.handle_notification(ieee, command_id,payload,counter)
 
     def encryptSecurityKey(sourceID, securityKey):
         sourceIDInBytes = [
