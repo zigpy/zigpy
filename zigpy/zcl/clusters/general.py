@@ -1515,6 +1515,7 @@ class GreenPowerProxy(Cluster):
         0x04: ("Simple Sensor", [], []),
         0x05: ("Advanced Generic 1-state Switch", [], [0x0005, 0x0006]),
         0x06: ("Advanced Generic 2-state Switch", [], [0x0005, 0x0006]),
+        0x07: ("On/Off Switch", [], [0x0005, 0x0006]),
         0x10: ("Color Dimmer Switch", [], [0x0300]),
         0x11: ("Light Sensor", [0x0400], []),
         0x12: ("Occupancy Sensor", [0x0406], []),
