@@ -40,6 +40,13 @@ def get_device(device, registry=_DEVICE_REGISTRY):
     return registry.get_device(device)
 
 
+def get_model_quirks(
+    model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
+) -> List["CustomDevice"]:
+    """Get all quirks for given model."""
+    return registry.model_quirks.get(model)
+
+
 class Registry(type):
     def __init__(cls, name, bases, nmspc):  # noqa: N805
         super(Registry, cls).__init__(name, bases, nmspc)
