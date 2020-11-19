@@ -19,7 +19,7 @@ SIG_MODELS_INFO = "models_info"
 SIG_NODE_DESC = "node_desc"
 SIG_SKIP_CONFIG = "skip_configuration"
 
-TYPE_MODEL_QUIRKS_LIST = Dict[str, List[zigpy.quirks.CustomDevice]]
+TYPE_MODEL_QUIRKS_LIST = Dict[str, List["zigpy.quirks.CustomDevice"]]
 TYPE_MANUF_QUIRKS_DICT = Dict[str, TYPE_MODEL_QUIRKS_LIST]
 
 
