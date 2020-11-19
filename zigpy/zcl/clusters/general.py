@@ -1710,8 +1710,8 @@ class GreenPowerProxy(Cluster):
         X2=cipher.encrypt(X1)
         A0=(0x01).to_bytes(1,'little')+nonce+(0x0000).to_bytes(2,'big')
         cipher = AES.new(key, AES.MODE_CTR,counter=Counter.new(128, initial_value=int.from_bytes(A0, byteorder='big')))
-        AX0=cipher.encrypt(X2[0:4])
-        return AX0
+        U=cipher.encrypt(X2[0:4])
+        return U
 
     async def permit(self, time_s=60):
         assert 0 <= time_s <= 254
