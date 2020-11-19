@@ -1699,11 +1699,9 @@ class GreenPowerProxy(Cluster):
         header=header+src_id+counter
         a=header
         La=len(a).to_bytes(2,'big')
-        AddAuthData=La+a+payload
+        AddAuthData=La+a
         AddAuthData +=(0x00).to_bytes(1,'little')*(16 - len(AddAuthData))
-        PlaintextData=payload + (0x00).to_bytes(1,'little')*(16 - len(payload))
-        AuthData=AddAuthData+PlaintextData
-        B0=(0x49).to_bytes(1,'little')+nonce+(len(payload)).to_bytes(2,'big')
+        B0=(0x49).to_bytes(1,'little')+nonce+(len(payload)-1).to_bytes(2,'big')
         B1=AddAuthData
         X0=(0x00000000000000000000000000000000).to_bytes(16,'big')
         cipher = AES.new(key, AES.MODE_CBC,B0)
