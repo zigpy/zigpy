@@ -1681,6 +1681,8 @@ class GreenPowerProxy(Cluster):
 
     def calcul_mic(self,ieee,header,src_id,counter,payload):
         application = self.endpoint.device.application
+        if ieee not in application.devices:
+            return None
         dev = application.devices[ieee]
         if not 0x9998 in dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id].in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]._attr_cache:
             return None
