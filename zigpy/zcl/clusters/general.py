@@ -6,6 +6,7 @@ import logging
 from typing import Tuple
 
 from Crypto.Cipher import AES
+from Crypto.Util import Counter
 
 import zigpy
 import zigpy.types as t
@@ -1319,6 +1320,7 @@ class GreenPowerProxy(Cluster):
         0x0005: ("security_level", t.bitmap8),
         0x0006: ("functionality", t.bitmap24),
         0x0007: ("active_functionality", t.bitmap24),
+        0x9998: ("key", t.uint32_t),
         0x9999: ("counter", t.uint64_t),
     }
     server_commands = {
@@ -1585,6 +1587,9 @@ class GreenPowerProxy(Cluster):
         return dev
 
     def handle_notification(self, ieee, command_id, payload, counter=None):
+        application = self.endpoint.device.application
+        if ieee not in application.devices:
+            return
         LOGGER.debug(
             "Green power frame ieee : %s, command_id : %s, payload : %s, counter : %s",
             ieee,
@@ -1603,11 +1608,7 @@ class GreenPowerProxy(Cluster):
             value,
         ) = GreenPowerProxy.command[command_id]
         value = value + tuple(payload)
-        application = self.endpoint.device.application
-        if ieee not in application.devices:
-            dev = self.create_device(ieee)
-        else:
-            dev = application.devices[ieee]
+        dev = application.devices[ieee]
         if counter is not None:
             if (
                 0x9999
@@ -1619,7 +1620,7 @@ class GreenPowerProxy(Cluster):
                 ]
                 .in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]
                 ._attr_cache[0x9999]
-                == counter
+                > counter
             ):
                 LOGGER.debug("Already get this frame counter,I ignoring it")
                 return
@@ -1641,82 +1642,39 @@ class GreenPowerProxy(Cluster):
                 value,
             )
 
-    def handle_comissioning(self, ieee, src_id, type, counter, securityKey):
+    def handle_comissioning(self, ieee, type, counter, securityKey):
         application = self.endpoint.device.application
         LOGGER.debug(
-            "GreenPower commissioning frame src_id : 0x%08X, type : 0x%02X, counter : 0x%04X, securityKey : %s",
-            src_id,
+            "GreenPower commissioning frame ieee : %s, type : 0x%02X, counter : 0x%04X, securityKey : %s",
+            ieee,
             type,
             counter,
             securityKey,
         )
-        payload = (
-            0x00E548,
-            src_id,
-            zigpy.zcl.clusters.general.GreenPowerProxy.group,
-            type,
-            counter,
-            GreenPowerProxy.encryptSecurityKey(src_id, securityKey),
-        )
-        LOGGER.debug("payload : %s", payload)
-        tsn = application.get_sequence()
-        hdr = foundation.ZCLHeader.cluster(tsn, 1)  # Pairing
-        hdr.frame_control.disable_default_response = True
-        data = hdr.serialize() + t.serialize(
-            payload,
-            (
-                t.bitmap24,
-                t.uint32_t,
-                t.uint16_t,
-                t.uint8_t,
-                t.uint32_t,
-                t.List[t.uint8_t],
-            ),
-        )
-        self.create_catching_task(
-            application.broadcast(
-                profile=zigpy.profiles.zha.PROFILE_ID,
-                cluster=zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id,
-                src_ep=zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id,
-                dst_ep=zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id,
-                grpid=None,
-                radius=30,
-                sequence=tsn,
-                data=data,
-            )
-        )
         self.create_device(ieee, type)
+        dev = application.devices[ieee]
+        dev.endpoints[
+            zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id
+        ].in_clusters[
+            zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id
+        ]._update_attribute(
+            0x9998, securityKey
+        )
 
     def handle_message(self, data):
         data = data[0]
         if data[0] == 12 and data[5] == 224:
-            ieee = t.EUI64(data[1:5] + bytearray(4))
-            src_id = int.from_bytes(data[1:5], byteorder="little")
+            ieee = t.EUI64(data[1:5] + data[1:5])
             type = data[6]
-            securityKey = data[9:25]
+            securityKey =  int.from_bytes(data[9:25], byteorder="big") 
             counter = int.from_bytes(data[29:33], byteorder="little")
-            self.handle_comissioning(ieee, src_id, type, counter, securityKey)
+            self.handle_comissioning(ieee, type, counter, securityKey)
             return
-        options = bin(int.from_bytes(data[0:2], byteorder="little"))[2:].zfill(16)
-        applicationID = options[0:3]
         payload = ()
-        if applicationID == "010":
-            ieee = t.EUI64(data[2:10])
-            counter = int.from_bytes(data[10:14], byteorder="little")
-            command_id = data[14]
-            payload = data[15:]
-        else:
-            ieee = t.EUI64(data[2:6] + bytearray(4))
-            counter = int.from_bytes(data[6:10], byteorder="little")
-            command_id = data[10]
-            payload = data[11:]
-        LOGGER.debug(
-            "GreenPower deconz frame : %s, counter : %s, command_id : %s, payload : %s",
-            ieee,
-            counter,
-            command_id,
-            payload,
-        )
+        ieee = t.EUI64(data[2:6] + data[2:6])
+        counter = int.from_bytes(data[6:10], byteorder="little")
+        command_id = data[10]
+        payload = data[11:]
         command = None
         if command_id in GreenPowerProxy.command:
             (
@@ -1730,45 +1688,33 @@ class GreenPowerProxy(Cluster):
             payload, _ = t.deserialize(data[11:], schema)
         self.handle_notification(ieee, command_id,payload,counter)
 
-    def encryptSecurityKey(sourceID, securityKey):
-        sourceIDInBytes = [
-            (sourceID & 0x000000FF),
-            (sourceID & 0x0000FF00) >> 8,
-            (sourceID & 0x00FF0000) >> 16,
-            (sourceID & 0xFF000000) >> 24,
-        ]
-        nonce = {}
-        for i in range(3):
-            for j in range(4):
-                nonce[4 * i + j] = sourceIDInBytes[j]
-        nonce[12] = 0x05
-        cipher = AES.new(
-            bytes(
-                t.KeyData(
-                    [
-                        0x5A,
-                        0x69,
-                        0x67,
-                        0x42,
-                        0x65,
-                        0x65,
-                        0x41,
-                        0x6C,
-                        0x6C,
-                        0x69,
-                        0x61,
-                        0x6E,
-                        0x63,
-                        0x65,
-                        0x30,
-                        0x39,
-                    ]
-                )
-            ),
-            AES.MODE_CCM,
-            bytes(nonce),
-        )
-        return cipher.encrypt(bytearray(securityKey))
+    def calcul_mic(self,ieee,header,src_id,frame_counter,payload,payload_len):
+        application = self.endpoint.device.application
+        dev = application.devices[ieee]
+        if not 0x9998 in dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id].in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]._attr_cache:
+            return None
+        key=(dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id].in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]._attr_cache[0x9998]).to_bytes(16,'big')
+        nonce=src_id.to_bytes(4,'little')+src_id.to_bytes(4,'little')+frame_counter.to_bytes(4,'little')+(0x05).to_bytes(1,'little')
+        header=header.to_bytes(2,'little')+src_id.to_bytes(4,'little')+frame_counter.to_bytes(4,'little')
+        a=header
+        La=len(a).to_bytes(2,'big')
+        AddAuthData=La+a+payload.to_bytes(payload_len,'big')
+        AddAuthData +=(0x00).to_bytes(1,'little')*(16 - len(AddAuthData))
+        PlaintextData=payload.to_bytes(payload_len,'big')
+        PlaintextData +=(0x00).to_bytes(1,'little')*(16 - len(PlaintextData))
+        AuthData=AddAuthData+PlaintextData
+        flags=0x49
+        B0=flags.to_bytes(1,'little')+nonce+(payload_len).to_bytes(2,'big')
+        B1=AddAuthData
+        X0=(0x00000000000000000000000000000000).to_bytes(16,'big')
+        cipher = AES.new(key, AES.MODE_CBC,B0)
+        X1=cipher.encrypt(X0)
+        cipher = AES.new(key, AES.MODE_CBC,B1)
+        X2=cipher.encrypt(X1)
+        A0=(0x01).to_bytes(1,'little')+nonce+(0x0000).to_bytes(2,'big')
+        cipher = AES.new(key, AES.MODE_CTR,counter=Counter.new(128, initial_value=int.from_bytes(A0, byteorder='big')))
+        AX0=cipher.encrypt(X2[0:4])
+        return AX0[::-1].hex()
 
     async def permit(self, time_s=60):
         assert 0 <= time_s <= 254
