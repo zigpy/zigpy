@@ -522,7 +522,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         if isinstance(key, int):
             return self._attr_cache.get(key, default)
         elif isinstance(key, str):
-            return self._attr_cache.get(self.attridx[key], default)
+            try:
+                attr_id = self.attridx[key]
+            except KeyError:
+                return default
+            return self._attr_cache.get(attr_id, default)
+
         raise ValueError("attr_name or attr_id are accepted only")
 
     def __getitem__(self, key: Union[int, str]) -> Any:

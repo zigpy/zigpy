@@ -1,6 +1,6 @@
 # coding: utf-8
 MAJOR_VERSION = 0
 MINOR_VERSION = 27
-PATCH_VERSION = "0"
+PATCH_VERSION = "1"
 __short_version__ = f"{MAJOR_VERSION}.{MINOR_VERSION}"
 __version__ = f"{__short_version__}.{PATCH_VERSION}"
