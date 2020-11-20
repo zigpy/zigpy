@@ -15,6 +15,7 @@ from zigpy.config import (
 )
 from zigpy.exceptions import DeliveryError
 import zigpy.ota
+import zigpy.quirks
 import zigpy.types as t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -467,3 +468,27 @@ def test_app_update_config(app):
     with pytest.raises(vol.Invalid):
         app.update_config({CONF_OTA: {CONF_OTA_IKEA: "invalid bool"}})
         assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
+
+
+def test_uninitialized_message_handlers(app, ieee):
+    """Test uninitialized message handlers."""
+    handler_1 = MagicMock(return_value=None)
+    handler_2 = MagicMock(return_value=True)
+
+    zigpy.quirks.register_uninitialized_device_message_handler(handler_1)
+    zigpy.quirks.register_uninitialized_device_message_handler(handler_2)
+
+    device = app.add_device(ieee, 0x1234)
+
+    app.handle_message(device, 0x0260, 0x0000, 0, 0, b"123abcd23")
+    assert handler_1.call_count == 0
+    assert handler_2.call_count == 0
+
+    app.handle_message(device, 0x0260, 0x0000, 1, 1, b"123abcd23")
+    assert handler_1.call_count == 1
+    assert handler_2.call_count == 1
+
+    handler_1.return_value = True
+    app.handle_message(device, 0x0260, 0x0000, 1, 1, b"123abcd23")
+    assert handler_1.call_count == 2
+    assert handler_2.call_count == 1

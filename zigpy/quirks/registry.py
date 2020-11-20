@@ -1,7 +1,7 @@
 import collections
 import itertools
 import logging
-from typing import Union
+from typing import Dict, List, Union
 
 import zigpy.quirks
 from zigpy.typing import CustomDeviceType, DeviceType
@@ -19,11 +19,16 @@ SIG_MODELS_INFO = "models_info"
 SIG_NODE_DESC = "node_desc"
 SIG_SKIP_CONFIG = "skip_configuration"
 
+TYPE_MODEL_QUIRKS_LIST = Dict[str, List["zigpy.quirks.CustomDevice"]]
+TYPE_MANUF_QUIRKS_DICT = Dict[str, TYPE_MODEL_QUIRKS_LIST]
+
 
 class DeviceRegistry:
     def __init__(self, *args, **kwargs):
-        dd = collections.defaultdict
-        self._registry = dd(lambda: dd(list))
+        self._model_quirks: TYPE_MODEL_QUIRKS_LIST = collections.defaultdict(list)
+        self._registry: TYPE_MANUF_QUIRKS_DICT = collections.defaultdict(
+            lambda: self._model_quirks
+        )
 
     def add_to_registry(self, custom_device: CustomDeviceType) -> None:
         """Add a device to the registry"""
@@ -151,6 +156,11 @@ class DeviceRegistry:
     @property
     def registry(self):
         return self._registry
+
+    @property
+    def model_quirks(self) -> TYPE_MODEL_QUIRKS_LIST:
+        """Return a list of quirks for a given model."""
+        return self._model_quirks
 
     def __contains__(self, device: CustomDeviceType) -> bool:
         manufacturer, model = device.signature.get(

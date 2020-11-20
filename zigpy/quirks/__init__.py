@@ -33,11 +33,29 @@ import zigpy.zcl.foundation as foundation
 _LOGGER = logging.getLogger(__name__)
 
 _DEVICE_REGISTRY = DeviceRegistry()
+_uninitialized_device_message_handlers = []
 
 
 def get_device(device, registry=_DEVICE_REGISTRY):
     """Get a CustomDevice object, if one is available"""
     return registry.get_device(device)
+
+
+def get_model_quirks(
+    model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
+) -> List["CustomDevice"]:
+    """Get all quirks for given model."""
+    return registry.model_quirks.get(model)
+
+
+def register_uninitialized_device_message_handler(handler: Callable) -> None:
+    """Register an handler for messages received by uninitialized devices.
+
+    each handler is passed same parameters as
+    zigpy.application.ControllerApplication.handle_message
+    """
+    if handler not in _uninitialized_device_message_handlers:
+        _uninitialized_device_message_handlers.append(handler)
 
 
 class Registry(type):
@@ -249,3 +267,17 @@ class CustomCluster(zigpy.zcl.Cluster):
         if manufacturer is None and self._has_manuf_attr([a.attrid for a in args]):
             manufacturer = self.endpoint.manufacturer_id
         return super()._write_attributes_undivided(args, manufacturer=manufacturer)
+
+
+def handle_message_from_uninitialized_sender(
+    sender: zigpy.device.Device,
+    profile: int,
+    cluster: int,
+    src_ep: int,
+    dst_ep: int,
+    message: bytes,
+) -> None:
+    """Processes message from an uninitialized sender."""
+    for handler in _uninitialized_device_message_handlers:
+        if handler(sender, profile, cluster, src_ep, dst_ep, message):
+            break
