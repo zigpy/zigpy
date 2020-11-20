@@ -1697,11 +1697,12 @@ class GreenPowerProxy(Cluster):
         key=(dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id].in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]._attr_cache[0x9998])
         nonce=src_id+src_id+counter+(0x05).to_bytes(1,'little')
         header=header+src_id+counter
-        a=header
+        a=header+payload
         La=len(a).to_bytes(2,'big')
         AddAuthData=La+a
         AddAuthData +=(0x00).to_bytes(1,'little')*(16 - len(AddAuthData))
-        B0=(0x49).to_bytes(1,'little')+nonce+(len(payload)-1).to_bytes(2,'big')
+        B0=(0x49).to_bytes(1,'little')+nonce
+        B0 +=(0x00).to_bytes(1,'little')*(16 - len(B0))
         B1=AddAuthData
         X0=(0x00000000000000000000000000000000).to_bytes(16,'big')
         cipher = AES.new(key, AES.MODE_CBC,B0)
