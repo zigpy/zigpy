@@ -167,6 +167,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 sender.status,
                 dst_ep,
             )
+            zigpy.quirks.handle_message_from_uninitialized_sender(
+                sender, profile, cluster, src_ep, dst_ep, message
+            )
             return
         elif (
             sender.status == zigpy.device.Status.ZDO_INIT
