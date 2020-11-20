@@ -8,7 +8,16 @@ from zigpy.typing import CustomDeviceType, DeviceType
 
 _LOGGER = logging.getLogger(__name__)
 
+SIG_ENDPOINTS = "endpoints"
+SIG_EP_INPUT = "input_clusters"
+SIG_EP_OUTPUT = "output_clusters"
+SIG_EP_PROFILE = "profile_id"
+SIG_EP_TYPE = "device_type"
+SIG_MANUFACTURER = "manufacturer"
+SIG_MODEL = "model"
 SIG_MODELS_INFO = "models_info"
+SIG_NODE_DESC = "node_desc"
+SIG_SKIP_CONFIG = "skip_configuration"
 
 
 class DeviceRegistry:
@@ -23,8 +32,8 @@ class DeviceRegistry:
             for manuf, model in models_info:
                 self.registry[manuf][model].append(custom_device)
         else:
-            manufacturer = custom_device.signature.get("manufacturer")
-            model = custom_device.signature.get("model")
+            manufacturer = custom_device.signature.get(SIG_MANUFACTURER)
+            model = custom_device.signature.get(SIG_MODEL)
             self.registry[manufacturer][model].append(custom_device)
 
     def remove(self, custom_device: CustomDeviceType) -> None:
@@ -33,8 +42,8 @@ class DeviceRegistry:
             for manuf, model in models_info:
                 self.registry[manuf][model].remove(custom_device)
         else:
-            manufacturer = custom_device.signature.get("manufacturer")
-            model = custom_device.signature.get("model")
+            manufacturer = custom_device.signature.get(SIG_MANUFACTURER)
+            model = custom_device.signature.get(SIG_MODEL)
             self.registry[manufacturer][model].remove(custom_device)
 
     def get_device(self, device: DeviceType) -> Union[CustomDeviceType, DeviceType]:
@@ -55,13 +64,13 @@ class DeviceRegistry:
         ):
             _LOGGER.debug("Considering %s", candidate)
 
-            if not device.model == candidate.signature.get("model", device.model):
+            if not device.model == candidate.signature.get(SIG_MODEL, device.model):
                 _LOGGER.debug("Fail, because device model mismatch: '%s'", device.model)
                 continue
 
             if not (
                 device.manufacturer
-                == candidate.signature.get("manufacturer", device.manufacturer)
+                == candidate.signature.get(SIG_MANUFACTURER, device.manufacturer)
             ):
                 _LOGGER.debug(
                     "Fail, because device manufacturer mismatch: '%s'",
@@ -69,7 +78,7 @@ class DeviceRegistry:
                 )
                 continue
 
-            sig = candidate.signature.get("endpoints")
+            sig = candidate.signature.get(SIG_ENDPOINTS)
             if sig is None:
                 continue
 
@@ -84,7 +93,7 @@ class DeviceRegistry:
             if not all(
                 [
                     device[eid].profile_id
-                    == sig[eid].get("profile_id", device[eid].profile_id)
+                    == sig[eid].get(SIG_EP_PROFILE, device[eid].profile_id)
                     for eid in sig
                 ]
             ):
@@ -96,7 +105,7 @@ class DeviceRegistry:
             if not all(
                 [
                     device[eid].device_type
-                    == sig[eid].get("device_type", device[eid].device_type)
+                    == sig[eid].get(SIG_EP_TYPE, device[eid].device_type)
                     for eid in sig
                 ]
             ):
@@ -107,7 +116,7 @@ class DeviceRegistry:
 
             if not all(
                 [
-                    self._match(device[eid].in_clusters, ep.get("input_clusters", []))
+                    self._match(device[eid].in_clusters, ep.get(SIG_EP_INPUT, []))
                     for eid, ep in sig.items()
                 ]
             ):
@@ -118,7 +127,7 @@ class DeviceRegistry:
 
             if not all(
                 [
-                    self._match(device[eid].out_clusters, ep.get("output_clusters", []))
+                    self._match(device[eid].out_clusters, ep.get(SIG_EP_OUTPUT, []))
                     for eid, ep in sig.items()
                 ]
             ):
@@ -146,7 +155,7 @@ class DeviceRegistry:
     def __contains__(self, device: CustomDeviceType) -> bool:
         manufacturer, model = device.signature.get(
             SIG_MODELS_INFO,
-            [(device.signature.get("manufacturer"), device.signature.get("model"))],
+            [(device.signature.get(SIG_MANUFACTURER), device.signature.get(SIG_MODEL))],
         )[0]
 
         return device in itertools.chain(
