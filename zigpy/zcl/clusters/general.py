@@ -1653,13 +1653,6 @@ class GreenPowerProxy(Cluster):
         )
         self.create_device(ieee, type)
         dev = application.devices[ieee]
-        dev.endpoints[
-            zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id
-        ].in_clusters[
-            zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id
-        ]._update_attribute(
-            0x9998, securityKey
-        )
 
     def handle_message(self, data):
         data = data[0]
@@ -1676,7 +1669,9 @@ class GreenPowerProxy(Cluster):
         payload = data[11:-4]
         mic=data[-4:]
         calcul_mic = self.calcul_mic(ieee,data[0:2],data[2:6],data[6:10],data[10:-4])
-        LOGGER.debug("Mic : 0x%s, calcul mic 0x%s",mic.hex(),calcul_mic.hex())
+        if calcul_mic is not None and calcul_mic != mic:
+            LOGGER.debug("Wrong mic : 0x%s, calcul mic 0x%s, ignore frame",mic.hex(),calcul_mic.hex())
+            return
         self.handle_notification(ieee, command_id,payload,counter)
 
     def calcul_mic(self,ieee,header,src_id,counter,payload):
@@ -1711,8 +1706,7 @@ class GreenPowerProxy(Cluster):
         X2=cipher.encrypt(X1)
         A0=(0x01).to_bytes(1,'little')+nonce+(0x0000).to_bytes(2,'big')
         cipher = AES.new(key, AES.MODE_CTR,counter=Counter.new(128, initial_value=int.from_bytes(A0, byteorder='big')))
-        U=cipher.encrypt(X2[0:4])
-        return U
+        return cipher.encrypt(X2[0:4])
 
     async def permit(self, time_s=60):
         assert 0 <= time_s <= 254
