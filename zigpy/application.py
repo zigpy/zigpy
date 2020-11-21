@@ -158,7 +158,18 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def deserialize(self, sender, endpoint_id, cluster_id, data):
         return sender.deserialize(endpoint_id, cluster_id, data)
 
-    def handle_message(self, sender, profile, cluster, src_ep, dst_ep, message):
+    def handle_message(
+        self,
+        sender: zigpy.device.Device,
+        profile: int,
+        cluster: int,
+        src_ep: int,
+        dst_ep: int,
+        message: bytes,
+    ) -> None:
+        self.listener_event(
+            "handle_message", sender, profile, cluster, src_ep, dst_ep, message
+        )
         if sender.status == zigpy.device.Status.NEW and dst_ep != 0:
             # only allow ZDO responses while initializing device
             LOGGER.debug(
@@ -166,6 +177,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 sender.ieee,
                 sender.status,
                 dst_ep,
+            )
+            zigpy.quirks.handle_message_from_uninitialized_sender(
+                sender, profile, cluster, src_ep, dst_ep, message
             )
             return
         elif (

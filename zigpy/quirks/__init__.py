@@ -13,7 +13,19 @@ from typing import (
 
 import zigpy.device
 import zigpy.endpoint
-from zigpy.quirks.registry import DeviceRegistry
+from zigpy.quirks.registry import (  # noqa: F401
+    SIG_ENDPOINTS,
+    SIG_EP_INPUT,
+    SIG_EP_OUTPUT,
+    SIG_EP_PROFILE,
+    SIG_EP_TYPE,
+    SIG_MANUFACTURER,
+    SIG_MODEL,
+    SIG_MODELS_INFO,
+    SIG_NODE_DESC,
+    SIG_SKIP_CONFIG,
+    DeviceRegistry,
+)
 import zigpy.types as t
 import zigpy.zcl
 import zigpy.zcl.foundation as foundation
@@ -21,11 +33,29 @@ import zigpy.zcl.foundation as foundation
 _LOGGER = logging.getLogger(__name__)
 
 _DEVICE_REGISTRY = DeviceRegistry()
+_uninitialized_device_message_handlers = []
 
 
 def get_device(device, registry=_DEVICE_REGISTRY):
     """Get a CustomDevice object, if one is available"""
     return registry.get_device(device)
+
+
+def get_model_quirks(
+    model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
+) -> List["CustomDevice"]:
+    """Get all quirks for given model."""
+    return registry.model_quirks.get(model)
+
+
+def register_uninitialized_device_message_handler(handler: Callable) -> None:
+    """Register an handler for messages received by uninitialized devices.
+
+    each handler is passed same parameters as
+    zigpy.application.ControllerApplication.handle_message
+    """
+    if handler not in _uninitialized_device_message_handlers:
+        _uninitialized_device_message_handlers.append(handler)
 
 
 class Registry(type):
@@ -52,18 +82,18 @@ class CustomDevice(zigpy.device.Device, metaclass=Registry):
             setattr(self, attr, getattr(replaces, attr))
 
         set_device_attr("status")
-        set_device_attr("node_desc")
-        set_device_attr("manufacturer")
-        set_device_attr("model")
-        set_device_attr("skip_configuration")
-        for endpoint_id, endpoint in self.replacement.get("endpoints", {}).items():
+        set_device_attr(SIG_NODE_DESC)
+        set_device_attr(SIG_MANUFACTURER)
+        set_device_attr(SIG_MODEL)
+        set_device_attr(SIG_SKIP_CONFIG)
+        for endpoint_id, endpoint in self.replacement.get(SIG_ENDPOINTS, {}).items():
             self.add_endpoint(endpoint_id, replace_device=replaces)
 
     def add_endpoint(self, endpoint_id, replace_device=None):
-        if endpoint_id not in self.replacement.get("endpoints", {}):
+        if endpoint_id not in self.replacement.get(SIG_ENDPOINTS, {}):
             return super().add_endpoint(endpoint_id)
 
-        endpoints = self.replacement["endpoints"]
+        endpoints = self.replacement[SIG_ENDPOINTS]
 
         if isinstance(endpoints[endpoint_id], tuple):
             custom_ep_type = endpoints[endpoint_id][0]
@@ -87,11 +117,11 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
             else:
                 setattr(self, attr, getattr(replace_device[endpoint_id], attr))
 
-        set_device_attr("profile_id")
-        set_device_attr("device_type")
+        set_device_attr(SIG_EP_PROFILE)
+        set_device_attr(SIG_EP_TYPE)
         self.status = zigpy.endpoint.Status.ZDO_INIT
 
-        for c in replacement_data.get("input_clusters", []):
+        for c in replacement_data.get(SIG_EP_INPUT, []):
             if isinstance(c, int):
                 cluster = None
                 cluster_id = c
@@ -100,7 +130,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                 cluster_id = cluster.cluster_id
             self.add_input_cluster(cluster_id, cluster)
 
-        for c in replacement_data.get("output_clusters", []):
+        for c in replacement_data.get(SIG_EP_OUTPUT, []):
             if isinstance(c, int):
                 cluster = None
                 cluster_id = c
@@ -237,3 +267,17 @@ class CustomCluster(zigpy.zcl.Cluster):
         if manufacturer is None and self._has_manuf_attr([a.attrid for a in args]):
             manufacturer = self.endpoint.manufacturer_id
         return super()._write_attributes_undivided(args, manufacturer=manufacturer)
+
+
+def handle_message_from_uninitialized_sender(
+    sender: zigpy.device.Device,
+    profile: int,
+    cluster: int,
+    src_ep: int,
+    dst_ep: int,
+    message: bytes,
+) -> None:
+    """Processes message from an uninitialized sender."""
+    for handler in _uninitialized_device_message_handlers:
+        if handler(sender, profile, cluster, src_ep, dst_ep, message):
+            break

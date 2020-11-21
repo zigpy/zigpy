@@ -5,28 +5,36 @@ import pytest
 import zigpy.device
 import zigpy.endpoint
 import zigpy.quirks
-from zigpy.quirks.registry import DeviceRegistry
+from zigpy.quirks.registry import (
+    SIG_ENDPOINTS,
+    SIG_EP_INPUT,
+    SIG_EP_OUTPUT,
+    SIG_EP_PROFILE,
+    SIG_EP_TYPE,
+    SIG_MANUFACTURER,
+    SIG_MODEL,
+    SIG_SKIP_CONFIG,
+    DeviceRegistry,
+)
 import zigpy.types as t
 import zigpy.zcl as zcl
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
-ALLOWED_SIGNATURE = set(
-    [
-        "profile_id",
-        "device_type",
-        "model",
-        "manufacturer",
-        "input_clusters",
-        "output_clusters",
-    ]
-)
-ALLOWED_REPLACEMENT = set(["endpoints"])
+ALLOWED_SIGNATURE = {
+    SIG_EP_PROFILE,
+    SIG_EP_TYPE,
+    SIG_MANUFACTURER,
+    SIG_MODEL,
+    SIG_EP_INPUT,
+    SIG_EP_OUTPUT,
+}
+ALLOWED_REPLACEMENT = {SIG_ENDPOINTS}
 
 
 def test_registry():
     class TestDevice(zigpy.quirks.CustomDevice):
-        signature = {"model": "model"}
+        signature = {SIG_MODEL: "model"}
 
     assert TestDevice in zigpy.quirks._DEVICE_REGISTRY
     assert zigpy.quirks._DEVICE_REGISTRY.remove(TestDevice) is None  # :-/
@@ -70,40 +78,40 @@ def test_get_device_new_sig(real_device):
 
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature["endpoints"] = {1: {"profile_id": 1}}
+    TestDevice.signature[SIG_ENDPOINTS] = {1: {SIG_EP_PROFILE: 1}}
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature["endpoints"][1]["profile_id"] = 255
-    TestDevice.signature["endpoints"][1]["device_type"] = 1
+    TestDevice.signature[SIG_ENDPOINTS][1][SIG_EP_PROFILE] = 255
+    TestDevice.signature[SIG_ENDPOINTS][1][SIG_EP_TYPE] = 1
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature["endpoints"][1]["device_type"] = 255
-    TestDevice.signature["endpoints"][1]["input_clusters"] = [1]
+    TestDevice.signature[SIG_ENDPOINTS][1][SIG_EP_TYPE] = 255
+    TestDevice.signature[SIG_ENDPOINTS][1][SIG_EP_INPUT] = [1]
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature["endpoints"][1]["input_clusters"] = [3]
-    TestDevice.signature["endpoints"][1]["output_clusters"] = [1]
+    TestDevice.signature[SIG_ENDPOINTS][1][SIG_EP_INPUT] = [3]
+    TestDevice.signature[SIG_ENDPOINTS][1][SIG_EP_OUTPUT] = [1]
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature["endpoints"][1]["output_clusters"] = [6]
-    TestDevice.signature["model"] = "x"
+    TestDevice.signature[SIG_ENDPOINTS][1][SIG_EP_OUTPUT] = [6]
+    TestDevice.signature[SIG_MODEL] = "x"
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature["model"] = "model"
-    TestDevice.signature["manufacturer"] = "x"
+    TestDevice.signature[SIG_MODEL] = "model"
+    TestDevice.signature[SIG_MANUFACTURER] = "x"
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature["manufacturer"] = "manufacturer"
+    TestDevice.signature[SIG_MANUFACTURER] = "manufacturer"
     registry = _dev_reg(TestDevice)
     assert isinstance(registry.get_device(real_device), TestDevice)
 
-    TestDevice.signature["endpoints"][2] = {"profile_id": 2}
+    TestDevice.signature[SIG_ENDPOINTS][2] = {SIG_EP_PROFILE: 2}
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
 
@@ -123,23 +131,23 @@ def test_model_manuf_device_sig(real_device):
 
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature["endpoints"] = {
+    TestDevice.signature[SIG_ENDPOINTS] = {
         1: {
-            "profile_id": 255,
-            "device_type": 255,
-            "input_clusters": [3],
-            "output_clusters": [6],
+            SIG_EP_PROFILE: 255,
+            SIG_EP_TYPE: 255,
+            SIG_EP_INPUT: [3],
+            SIG_EP_OUTPUT: [6],
         }
     }
 
-    TestDevice.signature["model"] = "x"
+    TestDevice.signature[SIG_MODEL] = "x"
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature["model"] = "model"
-    TestDevice.signature["manufacturer"] = "x"
+    TestDevice.signature[SIG_MODEL] = "model"
+    TestDevice.signature[SIG_MANUFACTURER] = "x"
     assert registry.get_device(real_device) is real_device
 
-    TestDevice.signature["manufacturer"] = "manufacturer"
+    TestDevice.signature[SIG_MANUFACTURER] = "manufacturer"
     assert isinstance(registry.get_device(real_device), TestDevice)
 
 
@@ -158,32 +166,30 @@ def test_custom_devices():
 
     for device in candidates:
         # enforce new style of signature
-        assert "endpoints" in device.signature
+        assert SIG_ENDPOINTS in device.signature
         numeric = [eid for eid in device.signature if isinstance(eid, int)]
         assert not numeric
 
         # Check that the signature data is OK
-        signature = device.signature["endpoints"]
+        signature = device.signature[SIG_ENDPOINTS]
         for profile_id, profile_data in signature.items():
             assert isinstance(profile_id, int)
             assert set(profile_data.keys()) - ALLOWED_SIGNATURE == set()
 
         # Check that the replacement data is OK
         assert set(device.replacement.keys()) - ALLOWED_REPLACEMENT == set()
-        for epid, epdata in device.replacement.get("endpoints", {}).items():
+        for epid, epdata in device.replacement.get(SIG_ENDPOINTS, {}).items():
             assert (epid in signature) or (
-                "profile" in epdata and "device_type" in epdata
+                "profile" in epdata and SIG_EP_TYPE in epdata
             )
             if "profile" in epdata:
                 profile = epdata["profile"]
                 assert isinstance(profile, int) and 0 <= profile <= 0xFFFF
-            if "device_type" in epdata:
-                device_type = epdata["device_type"]
+            if SIG_EP_TYPE in epdata:
+                device_type = epdata[SIG_EP_TYPE]
                 assert isinstance(device_type, int) and 0 <= device_type <= 0xFFFF
 
-            all_clusters = epdata.get("input_clusters", []) + epdata.get(
-                "output_clusters", []
-            )
+            all_clusters = epdata.get(SIG_EP_INPUT, []) + epdata.get(SIG_EP_OUTPUT, [])
             for cluster in all_clusters:
                 assert (
                     (isinstance(cluster, int) and cluster in zcl.Cluster._registry)
@@ -204,16 +210,16 @@ def test_custom_device():
             cluster_id = 0x8888
 
         replacement = {
-            "endpoints": {
+            SIG_ENDPOINTS: {
                 1: {
-                    "profile_id": sentinel.profile_id,
-                    "input_clusters": [0x0000, MyCluster],
-                    "output_clusters": [0x0001, MyCluster],
+                    SIG_EP_PROFILE: sentinel.profile_id,
+                    SIG_EP_INPUT: [0x0000, MyCluster],
+                    SIG_EP_OUTPUT: [0x0001, MyCluster],
                 },
                 2: (MyEndpoint, sentinel.custom_endpoint_arg),
             },
-            "model": "Mock Model",
-            "manufacturer": "Mock Manufacturer",
+            SIG_MODEL: "Mock Model",
+            SIG_MANUFACTURER: "Mock Manufacturer",
         }
 
     class Device2(zigpy.quirks.CustomDevice):
@@ -227,17 +233,17 @@ def test_custom_device():
             cluster_id = 0x8888
 
         replacement = {
-            "endpoints": {
+            SIG_ENDPOINTS: {
                 1: {
-                    "profile_id": sentinel.profile_id,
-                    "input_clusters": [0x0000, MyCluster],
-                    "output_clusters": [0x0001, MyCluster],
+                    SIG_EP_PROFILE: sentinel.profile_id,
+                    SIG_EP_INPUT: [0x0000, MyCluster],
+                    SIG_EP_OUTPUT: [0x0001, MyCluster],
                 },
                 2: (MyEndpoint, sentinel.custom_endpoint_arg),
             },
-            "model": "Mock Model",
-            "manufacturer": "Mock Manufacturer",
-            "skip_configuration": True,
+            SIG_MODEL: "Mock Model",
+            SIG_MANUFACTURER: "Mock Manufacturer",
+            SIG_SKIP_CONFIG: True,
         }
 
     assert 0x8888 not in zcl.Cluster._registry
@@ -471,12 +477,12 @@ def test_client_cmd_vendor_specific_by_name(
     with patch.object(manuf_cluster, "reply") as cmd_mock:
         getattr(manuf_cluster, cmd_name)()
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is manufacturer
+        assert cmd_mock.call_args[1][SIG_MANUFACTURER] is manufacturer
 
     with patch.object(manuf_cluster2, "reply") as cmd_mock:
         getattr(manuf_cluster2, cmd_name)()
         assert cmd_mock.call_count == 1
-        assert cmd_mock.call_args[1]["manufacturer"] is sentinel.manufacturer_id2
+        assert cmd_mock.call_args[1][SIG_MANUFACTURER] is sentinel.manufacturer_id2
 
 
 @pytest.mark.parametrize(
@@ -651,3 +657,28 @@ async def test_configure_reporting_manufacture_specific(
         )
         assert cmd_mock.call_count == 1
         assert cmd_mock.call_args[1]["manufacturer"] is sentinel.another_id
+
+
+def test_get_model_quirks():
+    """Test model quirk list registry."""
+
+    quirk_list = zigpy.quirks.get_model_quirks("some model")
+    assert not quirk_list
+
+    class SomeModel(zigpy.quirks.CustomDevice):
+        signature = {
+            SIG_MODEL: "some model",
+            SIG_MANUFACTURER: "some manufacturer",
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 0x0260,
+                    SIG_EP_TYPE: 0x0000,
+                    SIG_EP_INPUT: [0, 1, 3, 4],
+                    SIG_EP_OUTPUT: [0x19],
+                }
+            },
+        }
+
+    quirk_list = zigpy.quirks.get_model_quirks("some model")
+    assert quirk_list
+    assert quirk_list[0] is SomeModel
