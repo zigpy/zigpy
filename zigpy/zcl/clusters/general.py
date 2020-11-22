@@ -7,6 +7,7 @@ from typing import Tuple
 
 from Crypto.Cipher import AES
 from Crypto.Util import Counter
+import time
 
 import zigpy
 import zigpy.types as t
@@ -1320,6 +1321,7 @@ class GreenPowerProxy(Cluster):
         0x0005: ("security_level", t.bitmap8),
         0x0006: ("functionality", t.bitmap24),
         0x0007: ("active_functionality", t.bitmap24),
+        0x9997: ("joiningAllowUntil", t.uint32_t),
         0x9998: ("key", t.uint32_t),
         0x9999: ("counter", t.uint64_t),
     }
@@ -1544,10 +1546,13 @@ class GreenPowerProxy(Cluster):
         0x33: ("Indoor Environment Sensor", [], []),
     }
 
-    def create_device(self, ieee, type=None):
+    def create_device(self, ieee, type=None, remoteCommissioning = False):
         application = self.endpoint.device.application
         if ieee in application.devices:
             return application.devices[ieee]
+        if not remoteCommissioning and (0x9997 not in self._attr_cache or self._attr_cache[0x9997] < time.time()):
+            LOGGER.debug("Not in permit joining mode and not in remoteCommissioning")
+            return
         LOGGER.debug("Device %s not found, create it", ieee)
         dev = application.add_device(ieee, 32766)
         dev.initializing = True
@@ -1643,24 +1648,12 @@ class GreenPowerProxy(Cluster):
                 value,
             )
 
-    def handle_comissioning(self, ieee, type, securityKey):
-        application = self.endpoint.device.application
-        LOGGER.debug(
-            "GreenPower commissioning frame ieee : %s, type : 0x%02X, csecurityKey : %s",
-            ieee,
-            type,
-            securityKey,
-        )
-        self.create_device(ieee, type)
-        dev = application.devices[ieee]
-
     def handle_message(self, data):
         data = data[0]
         if data[0] == 12 and data[5] == 224:
             ieee = t.EUI64(data[1:5] + data[1:5])
             type = data[6]
-            securityKey =  int.from_bytes(data[9:25], byteorder="big")
-            self.handle_comissioning(ieee, type, securityKey)
+            self.create_device(ieee, type)
             return
         payload = ()
         ieee = t.EUI64(data[2:6] + data[2:6])
@@ -1719,6 +1712,7 @@ class GreenPowerProxy(Cluster):
     async def permit(self, time_s=60):
         assert 0 <= time_s <= 254
         LOGGER.debug("Permit green power pairing for %s s", time_s)
+        self._attr_cache[0x9997] =  int(time.time() + time_s)
         tsn = self.endpoint.device.application.get_sequence()
         hdr = foundation.ZCLHeader.cluster(tsn, 2)  # commissioning
         hdr.frame_control.disable_default_response = True
