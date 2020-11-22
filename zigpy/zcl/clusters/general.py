@@ -1708,6 +1708,14 @@ class GreenPowerProxy(Cluster):
         cipher = AES.new(key, AES.MODE_CTR,counter=Counter.new(128, initial_value=int.from_bytes(A0, byteorder='big')))
         return cipher.encrypt(X2[0:4])
 
+    def setKey(self,key):
+        if key is None:
+            del self._attr_cache[0x9998]
+            return
+        if not isinstance(key, (bytes)):
+            key = key.to_bytes(16,'big')
+        self._update_attribute(0x9998,key)
+
     async def permit(self, time_s=60):
         assert 0 <= time_s <= 254
         LOGGER.debug("Permit green power pairing for %s s", time_s)
