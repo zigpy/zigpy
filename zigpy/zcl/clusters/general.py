@@ -8,6 +8,7 @@ from typing import Tuple
 
 from Crypto.Cipher import AES
 from Crypto.Util import Counter
+import time
 
 import zigpy
 import zigpy.types as t
