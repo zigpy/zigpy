@@ -1591,11 +1591,15 @@ class GreenPowerProxy(Cluster):
         application.device_initialized(dev)
         return dev
 
-    def handle_notification(self, ieee, command_id, payload,counter=None):
+    def handle_notification(self,ieee,header,counter,command_id,payload,payload_length,mic):
         application = self.endpoint.device.application
         if ieee not in application.devices:
             return
         if command_id not in GreenPowerProxy.command:
+            return
+        calcul_mic = self.calcul_mic(ieee,header,counter,command_id+payload,payload_length+1)
+        if calcul_mic is not None and calcul_mic != mic:
+            LOGGER.debug("Wrong mic : %s, calcul mic %s, ignore frame",hex(mic),hex(calcul_mic))
             return
         (
             command,
@@ -1605,7 +1609,7 @@ class GreenPowerProxy(Cluster):
             zcl_command_id,
             value,
         ) = GreenPowerProxy.command[command_id]
-        payload, _ = t.deserialize(payload, schema)
+        payload, _ = t.deserialize(payload.to_bytes(payload_length,'little'), schema)
         LOGGER.debug(
             "Green power frame ieee : %s, command_id : %s, payload : %s,counter : %s",
             ieee,
@@ -1659,28 +1663,34 @@ class GreenPowerProxy(Cluster):
         ieee = t.EUI64(data[2:6] + data[2:6])
         counter = int.from_bytes(data[6:10], byteorder="little")
         command_id = data[10]
-        payload = data[11:-4]
-        mic=data[-4:]
-        calcul_mic = self.calcul_mic(ieee,data[0:2],data[2:6],data[6:10],data[10:-4])
-        if calcul_mic is not None and calcul_mic != mic:
-            LOGGER.debug("Wrong mic : 0x%s, calcul mic 0x%s, ignore frame",mic.hex(),calcul_mic.hex())
-            return
-        self.handle_notification(ieee, command_id,payload,counter)
+        payload_length = len(data[11:-4])
+        payload = int.from_bytes(data[11:-4], byteorder="little")
+        mic= int.from_bytes(data[-4:], byteorder="little")
+        header = int.from_bytes(data[0:2], byteorder="little")
+        self.handle_notification(ieee,header,counter,command_id,payload,payload_length,mic)
 
-    def calcul_mic(self,ieee,header,src_id,counter,payload):
+    def calcul_mic(self,ieee,header,counter,payload,payload_length):
         application = self.endpoint.device.application
         if ieee not in application.devices:
             return None
         dev = application.devices[ieee]
         if not 0x9998 in dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id].in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]._attr_cache:
             return None
+        src_id = bytearray(ieee[0:4])
+        if not isinstance(header, (bytes)):
+            header = header.to_bytes(2,'little')
+        if not isinstance(counter, (bytes)):
+            counter = counter.to_bytes(4,'little')
+        if not isinstance(payload, (bytes)):
+            payload = payload.to_bytes(payload_length,'little')
         LOGGER.debug(
-            "Calcul mic of green power frame for %s on header : 0x%s, src_id : 0x%s, counter : 0x%s, payload : 0x%s",
+            "Calcul mic of green power frame for %s on header : 0x%s, src_id : 0x%s, counter : 0x%s, payload : 0x%s, payload length : %s",
             ieee,
             header.hex(),
             src_id.hex(),
             counter.hex(),
-            payload.hex()
+            payload.hex(),
+            payload_length
         )
         key=(dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id].in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]._attr_cache[0x9998])
         nonce=src_id+src_id+counter+(0x05).to_bytes(1,'little')
@@ -1699,7 +1709,7 @@ class GreenPowerProxy(Cluster):
         X2=cipher.encrypt(X1)
         A0=(0x01).to_bytes(1,'little')+nonce+(0x0000).to_bytes(2,'big')
         cipher = AES.new(key, AES.MODE_CTR,counter=Counter.new(128, initial_value=int.from_bytes(A0, byteorder='big')))
-        return cipher.encrypt(X2[0:4])
+        return int.from_bytes(cipher.encrypt(X2[0:4]), byteorder="little")
 
     def setKey(self,key):
         if key is None:
