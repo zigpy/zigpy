@@ -1597,7 +1597,7 @@ class GreenPowerProxy(Cluster):
             return
         if command_id not in GreenPowerProxy.command:
             return
-        calcul_mic = self.calcul_mic(ieee,header,counter,command_id+payload,payload_length+1)
+        calcul_mic = self.calcul_mic(ieee,header,counter,command_id.to_bytes(1,'little')+payload.to_bytes(payload_length,'little'),payload_length+1)
         if calcul_mic is not None and calcul_mic != mic:
             LOGGER.debug("Wrong mic : %s, calcul mic %s, ignore frame",hex(mic),hex(calcul_mic))
             return
