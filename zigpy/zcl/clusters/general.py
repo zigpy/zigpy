@@ -3,11 +3,11 @@
 import collections
 from datetime import datetime
 import logging
+import time
 from typing import Tuple
 
 from Crypto.Cipher import AES
 from Crypto.Util import Counter
-import time
 
 import zigpy
 import zigpy.types as t
@@ -1510,22 +1510,8 @@ class GreenPowerProxy(Cluster):
         0x66: ("Short press 1 of 1", "CLUSTER_COMMAND", (), None, None, ()),
         0x67: ("Short press 1 of 2", "CLUSTER_COMMAND", (), None, None, ()),
         0x68: ("Short press 2 of 2", "CLUSTER_COMMAND", (), None, None, ()),
-        0x69: (
-            "Press",
-            "CLUSTER_COMMAND",
-            (t.uint8_t,),
-            0x0005,
-            0x0001,
-            (0,)
-        ),
-        0x6A: (
-            "Release",
-            "CLUSTER_COMMAND",
-            (t.uint8_t,),
-            None,
-            None,
-            ()
-        ),
+        0x69: ("Press", "CLUSTER_COMMAND", (t.uint8_t,), 0x0005, 0x0001, (0,)),
+        0x6A: ("Release", "CLUSTER_COMMAND", (t.uint8_t,), None, None, ()),
     }
     device = {
         0x00: ("Simple Generic 1-state Switch", [], [0x0006]),
@@ -1546,11 +1532,13 @@ class GreenPowerProxy(Cluster):
         0x33: ("Indoor Environment Sensor", [], []),
     }
 
-    def create_device(self, ieee, type=None, remoteCommissioning = False):
+    def create_device(self, ieee, type=None, remoteCommissioning=False):
         application = self.endpoint.device.application
         if ieee in application.devices:
             return application.devices[ieee]
-        if not remoteCommissioning and (0x9997 not in self._attr_cache or self._attr_cache[0x9997] < time.time()):
+        if not remoteCommissioning and (
+            0x9997 not in self._attr_cache or self._attr_cache[0x9997] < time.time()
+        ):
             LOGGER.debug("Not in permit joining mode and not in remoteCommissioning")
             return
         LOGGER.debug("Device %s not found, create it", ieee)
@@ -1591,15 +1579,26 @@ class GreenPowerProxy(Cluster):
         application.device_initialized(dev)
         return dev
 
-    def handle_notification(self,ieee,header,counter,command_id,payload,payload_length,mic):
+    def handle_notification(
+        self, ieee, header, counter, command_id, payload, payload_length, mic
+    ):
         application = self.endpoint.device.application
         if ieee not in application.devices:
             return
         if command_id not in GreenPowerProxy.command:
             return
-        calcul_mic = self.calcul_mic(ieee,header,counter,command_id.to_bytes(1,'little')+payload.to_bytes(payload_length,'little'),payload_length+1)
+        calcul_mic = self.calcul_mic(
+            ieee,
+            header,
+            counter,
+            command_id.to_bytes(1, "little")
+            + payload.to_bytes(payload_length, "little"),
+            payload_length + 1,
+        )
         if calcul_mic is not None and calcul_mic != mic:
-            LOGGER.debug("Wrong mic : %s, calcul mic %s, ignore frame",hex(mic),hex(calcul_mic))
+            LOGGER.debug(
+                "Wrong mic : %s, calcul mic %s, ignore frame", hex(mic), hex(calcul_mic)
+            )
             return
         (
             command,
@@ -1609,7 +1608,7 @@ class GreenPowerProxy(Cluster):
             zcl_command_id,
             value,
         ) = GreenPowerProxy.command[command_id]
-        payload, _ = t.deserialize(payload.to_bytes(payload_length,'little'), schema)
+        payload, _ = t.deserialize(payload.to_bytes(payload_length, "little"), schema)
         LOGGER.debug(
             "Green power frame ieee : %s, command_id : %s, payload : %s,counter : %s",
             ieee,
@@ -1665,24 +1664,31 @@ class GreenPowerProxy(Cluster):
         command_id = data[10]
         payload_length = len(data[11:-4])
         payload = int.from_bytes(data[11:-4], byteorder="little")
-        mic= int.from_bytes(data[-4:], byteorder="little")
+        mic = int.from_bytes(data[-4:], byteorder="little")
         header = int.from_bytes(data[0:2], byteorder="little")
-        self.handle_notification(ieee,header,counter,command_id,payload,payload_length,mic)
+        self.handle_notification(
+            ieee, header, counter, command_id, payload, payload_length, mic
+        )
 
-    def calcul_mic(self,ieee,header,counter,payload,payload_length):
+    def calcul_mic(self, ieee, header, counter, payload, payload_length):
         application = self.endpoint.device.application
         if ieee not in application.devices:
             return None
         dev = application.devices[ieee]
-        if not 0x9998 in dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id].in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]._attr_cache:
+        if (
+            0x9998
+            not in dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id]
+            .in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]
+            ._attr_cache
+        ):
             return None
         src_id = bytearray(ieee[0:4])
         if not isinstance(header, (bytes)):
-            header = header.to_bytes(2,'little')
+            header = header.to_bytes(2, "little")
         if not isinstance(counter, (bytes)):
-            counter = counter.to_bytes(4,'little')
+            counter = counter.to_bytes(4, "little")
         if not isinstance(payload, (bytes)):
-            payload = payload.to_bytes(payload_length,'little')
+            payload = payload.to_bytes(payload_length, "little")
         LOGGER.debug(
             "Calcul mic of green power frame for %s on header : 0x%s, src_id : 0x%s, counter : 0x%s, payload : 0x%s, payload length : %s",
             ieee,
@@ -1690,39 +1696,47 @@ class GreenPowerProxy(Cluster):
             src_id.hex(),
             counter.hex(),
             payload.hex(),
-            payload_length
+            payload_length,
         )
-        key=(dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id].in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]._attr_cache[0x9998])
-        nonce=src_id+src_id+counter+(0x05).to_bytes(1,'little')
-        header=header+src_id+counter
-        a=header+payload
-        La=len(a).to_bytes(2,'big')
-        AddAuthData=La+a
-        AddAuthData +=(0x00).to_bytes(1,'little')*(16 - len(AddAuthData))
-        B0=(0x49).to_bytes(1,'little')+nonce
-        B0 +=(0x00).to_bytes(1,'little')*(16 - len(B0))
-        B1=AddAuthData
-        X0=(0x00000000000000000000000000000000).to_bytes(16,'big')
-        cipher = AES.new(key, AES.MODE_CBC,B0)
-        X1=cipher.encrypt(X0)
-        cipher = AES.new(key, AES.MODE_CBC,B1)
-        X2=cipher.encrypt(X1)
-        A0=(0x01).to_bytes(1,'little')+nonce+(0x0000).to_bytes(2,'big')
-        cipher = AES.new(key, AES.MODE_CTR,counter=Counter.new(128, initial_value=int.from_bytes(A0, byteorder='big')))
+        key = (
+            dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id]
+            .in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]
+            ._attr_cache[0x9998]
+        )
+        nonce = src_id + src_id + counter + (0x05).to_bytes(1, "little")
+        header = header + src_id + counter
+        a = header + payload
+        La = len(a).to_bytes(2, "big")
+        AddAuthData = La + a
+        AddAuthData += (0x00).to_bytes(1, "little") * (16 - len(AddAuthData))
+        B0 = (0x49).to_bytes(1, "little") + nonce
+        B0 += (0x00).to_bytes(1, "little") * (16 - len(B0))
+        B1 = AddAuthData
+        X0 = (0x00000000000000000000000000000000).to_bytes(16, "big")
+        cipher = AES.new(key, AES.MODE_CBC, B0)
+        X1 = cipher.encrypt(X0)
+        cipher = AES.new(key, AES.MODE_CBC, B1)
+        X2 = cipher.encrypt(X1)
+        A0 = (0x01).to_bytes(1, "little") + nonce + (0x0000).to_bytes(2, "big")
+        cipher = AES.new(
+            key,
+            AES.MODE_CTR,
+            counter=Counter.new(128, initial_value=int.from_bytes(A0, byteorder="big")),
+        )
         return int.from_bytes(cipher.encrypt(X2[0:4]), byteorder="little")
 
-    def setKey(self,key):
+    def setKey(self, key):
         if key is None:
             del self._attr_cache[0x9998]
             return
         if not isinstance(key, (bytes)):
-            key = key.to_bytes(16,'big')
-        self._update_attribute(0x9998,key)
+            key = key.to_bytes(16, "big")
+        self._update_attribute(0x9998, key)
 
     async def permit(self, time_s=60):
         assert 0 <= time_s <= 254
         LOGGER.debug("Permit green power pairing for %s s", time_s)
-        self._attr_cache[0x9997] =  int(time.time() + time_s)
+        self._attr_cache[0x9997] = int(time.time() + time_s)
         tsn = self.endpoint.device.application.get_sequence()
         hdr = foundation.ZCLHeader.cluster(tsn, 2)  # commissioning
         hdr.frame_control.disable_default_response = True
