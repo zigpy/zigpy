@@ -8,7 +8,6 @@ from typing import Tuple
 
 from Crypto.Cipher import AES
 from Crypto.Util import Counter
-import time
 
 import zigpy
 import zigpy.types as t
@@ -1511,22 +1510,8 @@ class GreenPowerProxy(Cluster):
         0x66: ("Short press 1 of 1", "CLUSTER_COMMAND", (), None, None, ()),
         0x67: ("Short press 1 of 2", "CLUSTER_COMMAND", (), None, None, ()),
         0x68: ("Short press 2 of 2", "CLUSTER_COMMAND", (), None, None, ()),
-        0x69: (
-            "Press",
-            "CLUSTER_COMMAND",
-            (t.uint8_t,),
-            0x0005,
-            0x0001,
-            (0,)
-        ),
-        0x6A: (
-            "Release",
-            "CLUSTER_COMMAND",
-            (t.uint8_t,),
-            None,
-            None,
-            ()
-        ),
+        0x69: ("Press", "CLUSTER_COMMAND", (t.uint8_t,), 0x0005, 0x0001, (0,)),
+        0x6A: ("Release", "CLUSTER_COMMAND", (t.uint8_t,), None, None, ()),
     }
     device = {
         0x00: ("Simple Generic 1-state Switch", [], [0x0006]),
@@ -1771,8 +1756,8 @@ class GreenPowerProxy(Cluster):
             del self._attr_cache[0x9998]
             return
         if not isinstance(key, (bytes)):
-            key = key.to_bytes(16,'big')
-        self._update_attribute(0x9998,key)
+            key = key.to_bytes(16, "big")
+        self._update_attribute(0x9998, key)
 
     async def permit(self, time_s=60):
         assert 0 <= time_s <= 254
