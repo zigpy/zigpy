@@ -45,7 +45,7 @@ def get_model_quirks(
     model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
 ) -> List["CustomDevice"]:
     """Get all quirks for given model."""
-    return registry.model_quirks.get(model)
+    return registry.model_quirks[model]
 
 
 def register_uninitialized_device_message_handler(handler: Callable) -> None:
