@@ -146,11 +146,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         except (zigpy.exceptions.DeliveryError, asyncio.TimeoutError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
-        if not zdo_worked:
-            await self.force_remove(dev)
-        self.devices.pop(ieee, None)
-
-        self.listener_event("device_removed", dev)
+        try:
+            if not zdo_worked:
+                await self.force_remove(dev)
+        finally:
+            # Remove the device from the database even if `force_remove` fails
+            self.devices.pop(ieee, None)
+            self.listener_event("device_removed", dev)
 
     async def force_remove(self, dev):
         raise NotImplementedError

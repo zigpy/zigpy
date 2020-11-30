@@ -298,6 +298,19 @@ async def test_remove_with_reply_timeout(app, ieee):
     assert app.force_remove.call_count == 1
 
 
+async def test_force_remove_failure(app, ieee):
+    app.force_remove = AsyncMock(side_effect=RuntimeError("Failure"))
+
+    # The application fails to remove the device
+    with pytest.raises(RuntimeError):
+        await _remove(app, ieee, [1])
+
+    assert app.force_remove.call_count == 1
+
+    # But the device was still removed
+    assert ieee not in app.devices
+
+
 def test_add_device(app, ieee):
     app.add_device(ieee, 8)
     app.add_device(ieee, 9)
