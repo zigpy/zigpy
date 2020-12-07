@@ -13,6 +13,7 @@ from zigpy.quirks.registry import (
     SIG_EP_TYPE,
     SIG_MANUFACTURER,
     SIG_MODEL,
+    SIG_MODELS_INFO,
     SIG_SKIP_CONFIG,
     DeviceRegistry,
 )
@@ -53,6 +54,23 @@ def real_device():
     real_device[1].device_type = 255
     real_device.model = "model"
     real_device.manufacturer = "manufacturer"
+    real_device[1].add_input_cluster(3)
+    real_device[1].add_output_cluster(6)
+    return real_device
+
+
+@pytest.fixture
+def real_device_2():
+    application = sentinel.application
+    ieee = sentinel.ieee_2
+    nwk = 0x3344
+    real_device = zigpy.device.Device(application, ieee, nwk)
+
+    real_device.add_endpoint(1)
+    real_device[1].profile_id = 255
+    real_device[1].device_type = 255
+    real_device.model = "model"
+    real_device.manufacturer = "A different manufacturer"
     real_device[1].add_input_cluster(3)
     real_device[1].add_output_cluster(6)
     return real_device
@@ -682,3 +700,48 @@ def test_get_model_quirks():
     quirk_list = zigpy.quirks.get_model_quirks("some model")
     assert quirk_list
     assert quirk_list[0] is SomeModel
+
+
+def test_different_manuf_same_model(real_device, real_device_2):
+    """Test quirk matching for same model, but different manufacturers."""
+
+    class TestDevice_1(zigpy.quirks.CustomDevice):
+        signature = {
+            SIG_MODELS_INFO: (("manufacturer", "model"),),
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 255,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+        def get_signature(self):
+            pass
+
+    class TestDevice_2(zigpy.quirks.CustomDevice):
+        signature = {
+            SIG_MODELS_INFO: (("A different manufacturer", "model"),),
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 255,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+        def get_signature(self):
+            pass
+
+    registry = DeviceRegistry()
+    registry.add_to_registry(TestDevice_1)
+
+    assert isinstance(registry.get_device(real_device), TestDevice_1)
+
+    assert registry.get_device(real_device_2) is real_device_2
+    registry.add_to_registry(TestDevice_2)
+    assert isinstance(registry.get_device(real_device_2), TestDevice_2)
