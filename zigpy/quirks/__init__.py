@@ -36,16 +36,22 @@ _DEVICE_REGISTRY = DeviceRegistry()
 _uninitialized_device_message_handlers = []
 
 
-def get_device(device, registry=_DEVICE_REGISTRY):
+def get_device(device: zigpy.device.Device, registry: Optional[DeviceRegistry] = None):
     """Get a CustomDevice object, if one is available"""
+    if registry is None:
+        return _DEVICE_REGISTRY.get_device(device)
+
     return registry.get_device(device)
 
 
-def get_model_quirks(
-    model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
-) -> List["CustomDevice"]:
-    """Get all quirks for given model."""
-    return registry.model_quirks[model]
+def get_quirk_list(
+    manufacturer: str, model: str, registry: Optional[DeviceRegistry] = None
+):
+    """Get the Quirk list for a given manufacturer and model."""
+    if registry is None:
+        return _DEVICE_REGISTRY.registry[manufacturer][model]
+
+    return registry.registry[manufacturer][model]
 
 
 def register_uninitialized_device_message_handler(handler: Callable) -> None:
