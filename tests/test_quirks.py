@@ -132,6 +132,7 @@ def test_get_device_new_sig(real_device):
     TestDevice.signature[SIG_ENDPOINTS][2] = {SIG_EP_PROFILE: 2}
     registry = _dev_reg(TestDevice)
     assert registry.get_device(real_device) is real_device
+    assert zigpy.quirks.get_device(real_device, registry) is real_device
 
 
 def test_model_manuf_device_sig(real_device):
