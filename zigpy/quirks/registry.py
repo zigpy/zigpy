@@ -25,9 +25,8 @@ TYPE_MANUF_QUIRKS_DICT = Dict[str, TYPE_MODEL_QUIRKS_LIST]
 
 class DeviceRegistry:
     def __init__(self, *args, **kwargs):
-        self._model_quirks: TYPE_MODEL_QUIRKS_LIST = collections.defaultdict(list)
         self._registry: TYPE_MANUF_QUIRKS_DICT = collections.defaultdict(
-            lambda: self._model_quirks
+            lambda: collections.defaultdict(list)
         )
 
     def add_to_registry(self, custom_device: CustomDeviceType) -> None:
@@ -156,11 +155,6 @@ class DeviceRegistry:
     @property
     def registry(self):
         return self._registry
-
-    @property
-    def model_quirks(self) -> TYPE_MODEL_QUIRKS_LIST:
-        """Return a list of quirks for a given model."""
-        return self._model_quirks
 
     def __contains__(self, device: CustomDeviceType) -> bool:
         manufacturer, model = device.signature.get(

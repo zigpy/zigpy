@@ -677,31 +677,6 @@ async def test_configure_reporting_manufacture_specific(
         assert cmd_mock.call_args[1]["manufacturer"] is sentinel.another_id
 
 
-def test_get_model_quirks():
-    """Test model quirk list registry."""
-
-    quirk_list = zigpy.quirks.get_model_quirks("some model")
-    assert not quirk_list
-
-    class SomeModel(zigpy.quirks.CustomDevice):
-        signature = {
-            SIG_MODEL: "some model",
-            SIG_MANUFACTURER: "some manufacturer",
-            SIG_ENDPOINTS: {
-                1: {
-                    SIG_EP_PROFILE: 0x0260,
-                    SIG_EP_TYPE: 0x0000,
-                    SIG_EP_INPUT: [0, 1, 3, 4],
-                    SIG_EP_OUTPUT: [0x19],
-                }
-            },
-        }
-
-    quirk_list = zigpy.quirks.get_model_quirks("some model")
-    assert quirk_list
-    assert quirk_list[0] is SomeModel
-
-
 def test_different_manuf_same_model(real_device, real_device_2):
     """Test quirk matching for same model, but different manufacturers."""
 
@@ -745,3 +720,22 @@ def test_different_manuf_same_model(real_device, real_device_2):
     assert registry.get_device(real_device_2) is real_device_2
     registry.add_to_registry(TestDevice_2)
     assert isinstance(registry.get_device(real_device_2), TestDevice_2)
+
+    assert not zigpy.quirks.get_quirk_list("manufacturer", "no such model")
+    assert not zigpy.quirks.get_quirk_list("manufacturer", "no such model", registry)
+    assert not zigpy.quirks.get_quirk_list("A different manufacturer", "no such model")
+    assert not zigpy.quirks.get_quirk_list(
+        "A different manufacturer", "no such model", registry
+    )
+    assert not zigpy.quirks.get_quirk_list("no such manufacturer", "model")
+    assert not zigpy.quirks.get_quirk_list("no such manufacturer", "model", registry)
+
+    manuf1_list = zigpy.quirks.get_quirk_list("manufacturer", "model", registry)
+    assert len(manuf1_list) == 1
+    assert manuf1_list[0] is TestDevice_1
+
+    manuf2_list = zigpy.quirks.get_quirk_list(
+        "A different manufacturer", "model", registry
+    )
+    assert len(manuf2_list) == 1
+    assert manuf2_list[0] is TestDevice_2
