@@ -91,9 +91,6 @@ ZHA deviation handling in Home Assistant relies on the third-party [ZHA Device H
 ### ZHA integration component for Home Assistant
 [ZHA integration component for Home Assistant](https://www.home-assistant.io/integrations/zha/) is a reference implementation of the zigpy library as integrated into the core of **[Home Assistant](https://www.home-assistant.io)** (a Python based open source home automation software). There are also other GUI and non-GUI projects for Home Assistant's ZHA components which builds on or depends on its features and functions to enhance or improve its user-experience, some of those are listed and linked below.
 
-#### ZHA Custom Radios
-[zha-custom-radios](https://github.com/zha-ng/zha-custom-radios) adds support for custom radio modules for zigpy to [[Home Assistant's ZHA (Zigbee Home Automation) integration component]](https://www.home-assistant.io/integrations/zha/). This custom component for Home Assistant allows users to test out new modules for zigpy in Home Assistant's ZHA integration component before they are integrated into zigpy ZHA and also helps developers new zigpy radio modules without having to modify the Home Assistant's source code.
-
 #### ZHA Custom
 [zha_custom](https://github.com/Adminiuga/zha_custom) is a custom component package for Home Assistant (with its ZHA component for zigpy integration) that acts as zigpy commands service wrapper, when installed it allows you to enter custom commands via to zigy to example change advanced configuration and settings that are not available in the UI.
 
@@ -117,3 +114,6 @@ ZHA deviation handling in Home Assistant relies on the third-party [ZHA Device H
 
 #### Zigpy Deconz Parser
 [zigpy-deconz-parser](https://github.com/zha-ng/zigpy-deconz-parser) allow you to parse Home Assistant's ZHA component debug log using `zigpy-deconz` library if you are using a deCONZ based adapter like ConBee or RaspBee.
+
+### ZigCoHTTP
+[ZigCoHTTP](https://github.com/daniel17903/ZigCoHTTP) is a stand-alone python application project that creates a ZigBee network using zigpy and bellows. ZigBee devices joining this network can be controlled via a HTTP API. It was developed for a Rasperry Pi using a [Matrix Creator Board](https://www.matrix.one/products/creator) but should also work with other computers with Silicon Labs Zigbee hardware, or with other Zigbee hardware if replace bellows with other radio library for zigpy.
