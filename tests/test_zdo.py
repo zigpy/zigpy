@@ -7,7 +7,7 @@ import zigpy.types as t
 import zigpy.zdo as zdo
 import zigpy.zdo.types as zdo_types
 
-from .async_mock import AsyncMock, MagicMock, sentinel
+from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
 DEFAULT_SEQUENCE = 123
 
@@ -81,10 +81,23 @@ async def test_unbind(zdo_f):
     assert zdo_f.device.request.call_args[0][1] == 0x0022
 
 
-async def test_leave(zdo_f):
-    await zdo_f.leave()
-    assert zdo_f.device.request.call_count == 1
-    assert zdo_f.device.request.call_args[0][1] == 0x0034
+@pytest.mark.parametrize(
+    "remove_children, rejoin, flags",
+    (
+        (False, False, 0),
+        (False, True, 1),
+        (True, False, 2),
+        (True, True, 3),
+    ),
+)
+async def test_leave(zdo_f, remove_children, rejoin, flags):
+    """Test ZDO leave request options."""
+    with patch.object(zdo_f, "request", AsyncMock()) as req_mock:
+        await zdo_f.leave(remove_children, rejoin)
+    assert req_mock.await_count == 1
+    assert req_mock.await_args[0][0] == 0x0034
+    assert req_mock.await_args[0][1] == t.EUI64.convert("07:06:05:04:03:02:01:00")
+    assert req_mock.await_args[0][2] == flags
 
 
 async def test_permit(zdo_f):
