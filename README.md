@@ -117,3 +117,6 @@ ZHA deviation handling in Home Assistant relies on the third-party [ZHA Device H
 
 ### ZigCoHTTP
 [ZigCoHTTP](https://github.com/daniel17903/ZigCoHTTP) is a stand-alone python application project that creates a ZigBee network using zigpy and bellows. ZigBee devices joining this network can be controlled via a HTTP API. It was developed for a Rasperry Pi using a [Matrix Creator Board](https://www.matrix.one/products/creator) but should also work with other computers with Silicon Labs Zigbee hardware, or with other Zigbee hardware if replace bellows with other radio library for zigpy.
+
+### Domoticz-Zigpy
+[Domoticz-Zigpy](https://github.com/pipiche38/Domoticz-Zigpy) was a project with the aim to make a Zigbee adapter hardware independent Zigpy plugin for [Domoticz](https://github.com/domoticz/domoticz/) open source home automation software. Unfortunatly this project was abandoned due not being able to make Domoticz's use of its builtin sqlite library compatible with Zigpy's requirement for a sqlite3 database or vice versa.
