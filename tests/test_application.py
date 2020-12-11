@@ -506,3 +506,71 @@ def test_uninitialized_message_handlers(app, ieee):
     app.handle_message(device, 0x0260, 0x0000, 1, 1, b"123abcd23")
     assert handler_1.call_count == 2
     assert handler_2.call_count == 1
+
+
+def _devices(index):
+    """Device factory."""
+
+    start_ieee = 0xFEAB000000
+    start_nwk = 0x1000
+
+    dev = MagicMock()
+    dev.ieee = zigpy.types.EUI64(zigpy.types.uint64_t(start_ieee + index).serialize())
+    dev.nwk = zigpy.types.NWK(start_nwk + index)
+    dev.neighbors = []
+    dev.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4388, 82, 255, 0, 255, 0)
+    dev.zdo = zigpy.zdo.ZDO(dev)
+    return dev
+
+
+async def test_remove_parent_devices(app):
+    """Test removing an end device with parents."""
+
+    end_device = _devices(1)
+    end_device.node_desc.byte1 = 2
+    nei_end_device = MagicMock()
+    nei_end_device.device = end_device
+
+    router_1 = _devices(2)
+    nei_router_1 = MagicMock()
+    nei_router_1.device = router_1
+
+    router_2 = _devices(3)
+    nei_router_2 = MagicMock()
+    nei_router_2.device = router_2
+
+    parent = _devices(4)
+    nei_parent = MagicMock()
+    nei_parent.device = router_1
+
+    router_1.neighbors = [nei_router_2, nei_parent]
+    router_2.neighbors = [nei_parent, nei_router_1]
+    parent.neighbors = [nei_router_2, nei_router_1, nei_end_device]
+
+    app.devices[end_device.ieee] = end_device
+    app.devices[parent.ieee] = parent
+    app.devices[router_1.ieee] = router_1
+    app.devices[router_2.ieee] = router_2
+
+    p1 = patch.object(end_device.zdo, "leave", AsyncMock())
+    p2 = patch.object(end_device.zdo, "request", AsyncMock())
+    p3 = patch.object(parent.zdo, "leave", AsyncMock())
+    p4 = patch.object(parent.zdo, "request", AsyncMock())
+    p5 = patch.object(router_1.zdo, "leave", AsyncMock())
+    p6 = patch.object(router_1.zdo, "request", AsyncMock())
+    p7 = patch.object(router_2.zdo, "leave", AsyncMock())
+    p8 = patch.object(router_2.zdo, "request", AsyncMock())
+
+    with p1, p2, p3, p4, p5, p6, p7, p8:
+        await app.remove(end_device.ieee)
+        for i in range(1, 60):
+            await asyncio.sleep(0)
+
+        assert end_device.zdo.leave.await_count == 1
+        assert end_device.zdo.request.await_count == 0
+        assert router_1.zdo.leave.await_count == 0
+        assert router_1.zdo.request.await_count == 0
+        assert router_2.zdo.leave.await_count == 0
+        assert router_2.zdo.request.await_count == 0
+        assert parent.zdo.leave.await_count == 0
+        assert parent.zdo.request.await_count == 1
