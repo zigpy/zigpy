@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 import zigpy.appdb
 import zigpy.config
 import zigpy.device
+import zigpy.exceptions
 import zigpy.group
 import zigpy.ota
 import zigpy.quirks
@@ -132,25 +133,45 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             device.neighbors.add_context_listener(self._dblistener)
         self.listener_event("device_initialized", device)
 
-    async def remove(self, ieee):
+    async def remove(self, ieee: t.EUI64) -> None:
+        """Try to remove a device from the network.
+
+        :param ieee: address of the device to be removed
+        """
         assert isinstance(ieee, t.EUI64)
         dev = self.devices.get(ieee)
         if not dev:
             LOGGER.debug("Device not found for removal: %s", ieee)
             return
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
-        zdo_worked = False
+        asyncio.create_task(self._remove_device(dev))
+        if dev.node_desc.is_valid and dev.node_desc.is_end_device:
+            parents = [
+                parent
+                for parent in self.devices.values()
+                for nei in parent.neighbors
+                if nei.device is dev
+            ]
+            for parent in parents:
+                LOGGER.debug(
+                    "Sending leave request for %s to %s parent", dev.ieee, parent.ieee
+                )
+                parent.zdo.create_catching_task(
+                    parent.zdo.Mgmt_Leave_req(dev.ieee, 0x02)
+                )
+
+        self.listener_event("device_removed", dev)
+
+    async def _remove_device(self, device: zigpy.device.Device) -> None:
+        """Send a remove request then pop the device."""
         try:
-            resp = await dev.zdo.leave()
-            zdo_worked = resp[0] == 0
+            await asyncio.wait_for(
+                device.zdo.leave(), timeout=30 if device.node_desc.is_end_device else 7
+            )
         except (zigpy.exceptions.DeliveryError, asyncio.TimeoutError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
-        if not zdo_worked:
-            await self.force_remove(dev)
-        self.devices.pop(ieee, None)
-
-        self.listener_event("device_removed", dev)
+        self.devices.pop(device.ieee, None)
 
     async def force_remove(self, dev):
         raise NotImplementedError

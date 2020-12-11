@@ -17,6 +17,7 @@ from zigpy.exceptions import DeliveryError
 import zigpy.ota
 import zigpy.quirks
 import zigpy.types as t
+import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
@@ -254,8 +255,6 @@ async def test_join_handler_change_id(app, ieee):
 
 
 async def _remove(app, ieee, retval, zdo_reply=True, delivery_failure=True):
-    app.devices[ieee] = MagicMock()
-
     async def leave():
         if zdo_reply:
             return retval
@@ -264,38 +263,53 @@ async def _remove(app, ieee, retval, zdo_reply=True, delivery_failure=True):
         else:
             raise asyncio.TimeoutError
 
-    app.devices[ieee].zdo.leave.side_effect = leave
+    device = MagicMock()
+    device.ieee = ieee
+    device.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4388, 82, 255, 0, 255, 0)
+    device.zdo.leave.side_effect = leave
+
+    app.devices[ieee] = device
     await app.remove(ieee)
+    for i in range(1, 20):
+        await asyncio.sleep(0)
     assert ieee not in app.devices
 
 
 async def test_remove(app, ieee):
-    app.force_remove = AsyncMock()
-    await _remove(app, ieee, [0])
-    assert app.force_remove.call_count == 0
+    """Test remove with successful zdo status."""
+
+    with patch.object(app, "_remove_device", wraps=app._remove_device) as remove_device:
+        await _remove(app, ieee, [0])
+        assert remove_device.await_count == 1
 
 
 async def test_remove_with_failed_zdo(app, ieee):
-    app.force_remove = AsyncMock()
-    await _remove(app, ieee, [1])
-    assert app.force_remove.call_count == 1
+    """Test remove with unsuccessful zdo status."""
+
+    with patch.object(app, "_remove_device", wraps=app._remove_device) as remove_device:
+        await _remove(app, ieee, [1])
+        assert remove_device.await_count == 1
 
 
 async def test_remove_nonexistent(app, ieee):
-    await app.remove(ieee)
-    assert ieee not in app.devices
+    with patch.object(app, "_remove_device", AsyncMock()) as remove_device:
+        await app.remove(ieee)
+        for i in range(1, 20):
+            await asyncio.sleep(0)
+        assert ieee not in app.devices
+        assert remove_device.await_count == 0
 
 
 async def test_remove_with_unreachable_device(app, ieee):
-    app.force_remove = AsyncMock()
-    await _remove(app, ieee, [0], zdo_reply=False)
-    assert app.force_remove.call_count == 1
+    with patch.object(app, "_remove_device", wraps=app._remove_device) as remove_device:
+        await _remove(app, ieee, [0], zdo_reply=False)
+        assert remove_device.await_count == 1
 
 
 async def test_remove_with_reply_timeout(app, ieee):
-    app.force_remove = AsyncMock()
-    await _remove(app, ieee, [0], zdo_reply=False, delivery_failure=False)
-    assert app.force_remove.call_count == 1
+    with patch.object(app, "_remove_device", wraps=app._remove_device) as remove_device:
+        await _remove(app, ieee, [0], zdo_reply=False, delivery_failure=False)
+        assert remove_device.await_count == 1
 
 
 def test_add_device(app, ieee):
