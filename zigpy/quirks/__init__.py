@@ -64,6 +64,18 @@ def register_uninitialized_device_message_handler(handler: Callable) -> None:
         _uninitialized_device_message_handlers.append(handler)
 
 
+def register_quirk_matcher(
+    matcher: Callable, registry: Optional[DeviceRegistry] = _DEVICE_REGISTRY
+) -> None:
+    """Registers a callable quirk matcher that accepts a `Device` object and returns a
+    `CustomDevice` subclass, a `CustomDevice` instance, or `None`.
+
+    Takes precedence over any signature-based matches.
+    """
+
+    registry.add_matcher_to_registry(matcher)
+
+
 class Registry(type):
     def __init__(cls, name, bases, nmspc):  # noqa: N805
         super(Registry, cls).__init__(name, bases, nmspc)

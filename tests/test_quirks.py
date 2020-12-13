@@ -740,3 +740,91 @@ def test_different_manuf_same_model(real_device, real_device_2):
     )
     assert len(manuf2_list) == 1
     assert manuf2_list[0] is TestDevice_2
+
+
+@pytest.mark.parametrize("should_match", [True, False])
+def test_quirk_matchers(should_match, real_device, real_device_2):
+    class TestDevice_1(zigpy.quirks.CustomDevice):
+        signature = {
+            SIG_MODELS_INFO: (("manufacturer", "model"),),
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 255,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+        def get_signature(self):
+            pass
+
+    class TestDevice_2(zigpy.quirks.CustomDevice):
+        signature = {
+            SIG_MODELS_INFO: (("A different manufacturer", "model"),),
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 255,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+        def get_signature(self):
+            pass
+
+    registry = DeviceRegistry()
+    registry.add_to_registry(TestDevice_1)
+    registry.add_to_registry(TestDevice_2)
+
+    @registry.add_matcher_to_registry
+    def matcher(device):
+        if should_match and device.ieee == real_device.ieee:
+            return TestDevice_2
+
+    if should_match:
+        assert isinstance(registry.get_device(real_device), TestDevice_2)
+    else:
+        assert isinstance(registry.get_device(real_device), TestDevice_1)
+
+    assert isinstance(registry.get_device(real_device_2), TestDevice_2)
+
+
+def test_quirk_matcher_instance(real_device, real_device_2):
+    class TestDevice_2(zigpy.quirks.CustomDevice):
+        signature = {
+            SIG_MODELS_INFO: (("A different manufacturer", "model"),),
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 255,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+        def get_signature(self):
+            pass
+
+    registry = DeviceRegistry()
+
+    @registry.add_matcher_to_registry
+    def matcher(device):
+        if device.ieee != real_device.ieee:
+            return
+
+        new_device = TestDevice_2(device._application, device.ieee, device.nwk, device)
+        assert device.nwk != 3456
+        new_device.nwk = 3456
+
+        return new_device
+
+    new_real_device = registry.get_device(real_device)
+    assert isinstance(new_real_device, TestDevice_2)
+    assert new_real_device.nwk == 3456
+
+    assert registry.get_device(real_device_2) is real_device_2

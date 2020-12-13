@@ -1,7 +1,8 @@
 import collections
+import inspect
 import itertools
 import logging
-from typing import Dict, List, Union
+from typing import Callable, Dict, List, Union
 
 import zigpy.quirks
 from zigpy.typing import CustomDeviceType, DeviceType
@@ -28,6 +29,7 @@ class DeviceRegistry:
         self._registry: TYPE_MANUF_QUIRKS_DICT = collections.defaultdict(
             lambda: collections.defaultdict(list)
         )
+        self._quirk_matchers: List[Callable] = []
 
     def add_to_registry(self, custom_device: CustomDeviceType) -> None:
         """Add a device to the registry"""
@@ -39,6 +41,10 @@ class DeviceRegistry:
             manufacturer = custom_device.signature.get(SIG_MANUFACTURER)
             model = custom_device.signature.get(SIG_MODEL)
             self.registry[manufacturer][model].append(custom_device)
+
+    def add_matcher_to_registry(self, matcher: Callable) -> None:
+        """Adds a quirk matcher to the registry"""
+        self._quirk_matchers.append(matcher)
 
     def remove(self, custom_device: CustomDeviceType) -> None:
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
@@ -55,6 +61,39 @@ class DeviceRegistry:
         if isinstance(device, zigpy.quirks.CustomDevice):
             return device
         dev_ep = set(device.endpoints) - {0}
+
+        if self._quirk_matchers:
+            _LOGGER.debug(
+                "Checking quirk matchers for %s %s (%s)",
+                device.manufacturer,
+                device.model,
+                device.ieee,
+            )
+
+            for candidate in self._quirk_matchers:
+                _LOGGER.debug("Considering %s", candidate)
+                maybe_device = candidate(device)
+
+                if maybe_device is None:
+                    _LOGGER.debug("Fail because factory did not match device")
+                    continue
+
+                # To simplify quirks, perform the boilerplate initialization in here if
+                # only a CustomDevice subclass is returned.
+                if inspect.isclass(maybe_device) and issubclass(
+                    maybe_device, zigpy.quirks.CustomDevice
+                ):
+                    maybe_device = maybe_device(
+                        device._application, device.ieee, device.nwk, device
+                    )
+
+                _LOGGER.debug(
+                    "Found custom device replacement for %s: %s",
+                    device.ieee,
+                    maybe_device,
+                )
+                return maybe_device
+
         _LOGGER.debug(
             "Checking quirks for %s %s (%s)",
             device.manufacturer,
