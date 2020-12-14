@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import pytest
@@ -167,6 +168,8 @@ async def test_database(tmpdir):
 
     app3.devices[ieee].zdo.leave = mockleave
     await app3.remove(ieee)
+    for i in range(1, 20):
+        await asyncio.sleep(0)
     assert ieee not in app3.devices
     await app3.pre_shutdown()
 

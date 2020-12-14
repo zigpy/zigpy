@@ -1,5 +1,6 @@
 import functools
 import logging
+from typing import Coroutine
 
 import zigpy.types as t
 import zigpy.util
@@ -99,8 +100,14 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             self.device.application.get_dst_address(cluster),
         )
 
-    def leave(self):
-        return self.Mgmt_Leave_req(self._device.ieee, 0x02)
+    def leave(self, remove_children: bool = True, rejoin: bool = False) -> Coroutine:
+        flags = 0x00
+        if remove_children:
+            flags |= 0x02
+        if rejoin:
+            flags |= 0x01
+
+        return self.Mgmt_Leave_req(self._device.ieee, flags)
 
     def permit(self, duration=60, tc_significance=0):
         return self.Mgmt_Permit_Joining_req(duration, tc_significance)
