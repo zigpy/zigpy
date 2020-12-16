@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import pytest
@@ -67,7 +68,6 @@ def mock_dev_init(status: Status):
 
     def _initialize(self):
         self.status = status
-        self.initializing = False
         self.node_desc = zdo_t.NodeDescriptor(0, 1, 2, 3, 4, 5, 6, 7, 8)
 
     return _initialize
@@ -177,6 +177,8 @@ async def test_database(tmpdir):
 
     app3.devices[ieee].zdo.leave = mockleave
     await app3.remove(ieee)
+    for i in range(1, 20):
+        await asyncio.sleep(0)
     assert ieee not in app3.devices
     await app3.pre_shutdown()
 
