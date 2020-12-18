@@ -19,6 +19,10 @@ def test_typevalue():
     assert tv2.type == tv.type
     assert tv2.value == tv.value
 
+    tv3 = foundation.TypeValue(tv2)
+    assert tv3.type == tv.type
+    assert tv3.value == tv.value
+
 
 def test_read_attribute_record():
     orig = b"\x00\x00\x00\x20\x99"
@@ -71,6 +75,7 @@ def test_attribute_reporting_config_1():
     assert data == b""
     assert arc2.direction == arc.direction
     assert arc2.timeout == arc.timeout
+    assert repr(arc)
 
 
 def test_typed_collection():
