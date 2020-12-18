@@ -6,6 +6,7 @@ import pytest
 from zigpy import profiles
 import zigpy.application
 from zigpy.config import CONF_DATABASE, ZIGPY_SCHEMA
+from zigpy.const import SIG_ENDPOINTS, SIG_MANUFACTURER, SIG_MODEL
 from zigpy.device import Device, Status
 import zigpy.ota
 from zigpy.quirks import CustomDevice
@@ -121,6 +122,14 @@ async def test_database(tmpdir):
     clus.listener_event("cluster_command", 0)
     clus.listener_event("general_command")
     dev.relays = relays_1
+    signature = dev.get_signature()
+    assert ep.endpoint_id in signature[SIG_ENDPOINTS]
+    assert SIG_MANUFACTURER not in signature
+    assert SIG_MODEL not in signature
+    dev.manufacturer = "Custom"
+    dev.model = "Model"
+    assert dev.get_signature()[SIG_MANUFACTURER] == "Custom"
+    assert dev.get_signature()[SIG_MODEL] == "Model"
 
     # Test a CustomDevice
     custom_ieee = make_ieee(1)
@@ -133,7 +142,6 @@ async def test_database(tmpdir):
         app.device_initialized(dev)
     assert isinstance(app.get_device(custom_ieee), FakeCustomDevice)
     assert isinstance(app.get_device(custom_ieee), CustomDevice)
-    assert ep.endpoint_id in dev.get_signature()
     app.device_initialized(app.get_device(custom_ieee))
     dev.relays = relays_2
     await app.pre_shutdown()

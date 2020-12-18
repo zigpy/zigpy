@@ -11,9 +11,7 @@ from typing import (
     Union,
 )
 
-import zigpy.device
-import zigpy.endpoint
-from zigpy.quirks.registry import (  # noqa: F401
+from zigpy.const import (  # noqa: F401
     SIG_ENDPOINTS,
     SIG_EP_INPUT,
     SIG_EP_OUTPUT,
@@ -24,8 +22,10 @@ from zigpy.quirks.registry import (  # noqa: F401
     SIG_MODELS_INFO,
     SIG_NODE_DESC,
     SIG_SKIP_CONFIG,
-    DeviceRegistry,
 )
+import zigpy.device
+import zigpy.endpoint
+from zigpy.quirks.registry import DeviceRegistry  # noqa: F401
 import zigpy.types as t
 import zigpy.zcl
 import zigpy.zcl.foundation as foundation
