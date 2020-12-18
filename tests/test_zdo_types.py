@@ -325,7 +325,7 @@ def test_neighbors():
         b"\x01\x01F"
     )
     extra = b"\x55\xaaextra\x00"
-    neigbours, rest = types.Neighbors().deserialize(data + extra)
+    neighbours, rest = types.Neighbors().deserialize(data + extra)
     assert rest == extra
 
 
