@@ -567,3 +567,60 @@ async def test_device_cleanup(tmpdir, caplog):
     assert ieee_1 in app_2.devices
     assert len(app_2.devices) == 1
     await app_2.pre_shutdown()
+
+
+@patch(
+    "zigpy.device.Device.schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
+)
+async def test_stopped_appdb_listener(tmpdir):
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    app.device_initialized(dev)
+
+    with patch("zigpy.appdb.PersistingListener._save_attribute") as mock_attr_save:
+        clus._update_attribute(0, 99)
+        clus._update_attribute(4, bytes("Custom", "ascii"))
+        clus._update_attribute(5, bytes("Model", "ascii"))
+        await app.pre_shutdown()
+        assert mock_attr_save.call_count == 3
+
+        clus._update_attribute(0, 100)
+        for i in range(100):
+            await asyncio.sleep(0)
+        assert mock_attr_save.call_count == 3
+
+
+@patch(
+    "zigpy.device.Device.schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
+)
+async def test_no_ep_device_cleanup(tmpdir):
+    """Test that devices without any endpoints are removed"""
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+
+    ieee = make_ieee()
+    app.handle_join(0x0000, ieee, 0)
+    dev = app.get_device(ieee)
+    app.device_initialized(dev)
+
+    ieee_2 = make_ieee(2)
+    app.handle_join(0x0002, ieee_2, 0)
+    dev = app.get_device(ieee_2)
+    app.device_initialized(dev)
+
+    await app.pre_shutdown()
+    del app, dev
+
+    app_2 = await make_app(db)
+    assert ieee in app_2.devices
+    assert ieee_2 not in app_2.devices
+    await app_2.pre_shutdown()
