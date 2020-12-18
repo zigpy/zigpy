@@ -6,6 +6,7 @@ import logging
 from typing import Any, Optional
 
 import zigpy.appdb
+import zigpy.application.state
 import zigpy.config
 import zigpy.device
 import zigpy.exceptions
@@ -30,6 +31,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def __init__(self, config: dict):
         self._send_sequence = 0
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
+        self.state: zigpy.application.state.State = zigpy.application.state.State()
         self.topology = None
         self._listeners = {}
         self._channel = None
