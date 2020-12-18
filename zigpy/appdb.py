@@ -403,11 +403,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(q, endpoints)
 
     async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
-        if (
-            device.status != zigpy.device.Status.ENDPOINTS_INIT
-            or not device.node_desc.is_valid
-        ):
-            return
         q = "INSERT OR REPLACE INTO node_descriptors VALUES (?, ?)"
         await self.execute(q, (device.ieee, device.node_desc.serialize()))
 

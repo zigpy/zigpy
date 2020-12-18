@@ -2,10 +2,7 @@ import itertools
 
 import pytest
 
-import zigpy.device
-import zigpy.endpoint
-import zigpy.quirks
-from zigpy.quirks.registry import (
+from zigpy.const import (
     SIG_ENDPOINTS,
     SIG_EP_INPUT,
     SIG_EP_OUTPUT,
@@ -15,8 +12,11 @@ from zigpy.quirks.registry import (
     SIG_MODEL,
     SIG_MODELS_INFO,
     SIG_SKIP_CONFIG,
-    DeviceRegistry,
 )
+import zigpy.device
+import zigpy.endpoint
+import zigpy.quirks
+from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
 import zigpy.zcl as zcl
 

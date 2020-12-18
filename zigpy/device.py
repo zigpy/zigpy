@@ -5,6 +5,16 @@ import logging
 import time
 from typing import Dict, Optional, Union
 
+from zigpy.const import (
+    SIG_ENDPOINTS,
+    SIG_EP_INPUT,
+    SIG_EP_OUTPUT,
+    SIG_EP_PROFILE,
+    SIG_EP_TYPE,
+    SIG_MANUFACTURER,
+    SIG_MODEL,
+    SIG_NODE_DESC,
+)
 import zigpy.endpoint
 import zigpy.exceptions
 import zigpy.neighbor
@@ -341,22 +351,23 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         #        - Profile Id, Device Id, Cluster Out, Cluster In
         signature = {}
         if self._manufacturer is not None:
-            signature["manufacturer_name"] = self.manufacturer
+            signature[SIG_MANUFACTURER] = self.manufacturer
         if self._model is not None:
-            signature["model"] = self._model
+            signature[SIG_MODEL] = self._model
         if self.node_desc.is_valid:
-            signature["node_descriptor"] = self.node_desc.as_dict()
+            signature[SIG_NODE_DESC] = self.node_desc.as_dict()
 
         for endpoint_id, endpoint in self.endpoints.items():
             if endpoint_id == 0:  # ZDO
                 continue
+            signature.setdefault(SIG_ENDPOINTS, {})
             in_clusters = [c for c in endpoint.in_clusters]
             out_clusters = [c for c in endpoint.out_clusters]
-            signature[endpoint_id] = {
-                "profileid": endpoint.profile_id,
-                "deviceid": endpoint.device_type,
-                "in_clusters": in_clusters,
-                "out_clusters": out_clusters,
+            signature[SIG_ENDPOINTS][endpoint_id] = {
+                SIG_EP_PROFILE: endpoint.profile_id,
+                SIG_EP_TYPE: endpoint.device_type,
+                SIG_EP_INPUT: in_clusters,
+                SIG_EP_OUTPUT: out_clusters,
             }
         return signature
 
