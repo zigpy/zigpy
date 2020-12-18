@@ -16,7 +16,7 @@ Consider submitting a post on GitHub projects issues tracker about willingness t
 
 ### How to report issues or bugs as a tester
 
-Issues or bugs are normally first to be submitted upstream to the software/project that it utilizing zigpy and its radio libraries, (like for example Home Assistant), however if and when the issue is determined to be in the zigpy or underlying radio library then you should continue by submitting a detailed issue/bug report via the GitHub projects issues tracker.
+Issues or bugs are normally first to be submitted upstream to the software/project that is utilizing zigpy and its radio libraries, (like for example Home Assistant), however if and when the issue is determined to be in the zigpy or underlying radio library then you should continue by submitting a detailed issue/bug report via the GitHub projects issues tracker.
 
 Always be sure to first check if there is not already an existing issue posted with the same description before posting a new issue.
 
@@ -84,7 +84,7 @@ In general when contributing code to this project it is encouraged that you try 
 
 - First [raise issues on GitHub](https://github.com/zigpy/zigpy/issues) before working on an enhancement to provide coordination with other contributors.
 - Try to keep each pull request short and only a single PR per enhancement as this makes tracking and reviewing easier.
-- Ideally, you should aim to acheive full coverage of any code changes with tests.
+- Ideally, you should aim to achieve full coverage of any code changes with tests.
 - Recommend read and follow [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html).
 - Recommend read and follow [Clifford Programming Style](http://www.clifford.at/style.html).
 - Recommend code style use [standard naming conventions for Python](https://medium.com/@dasagrivamanu/python-naming-conventions-the-10-points-you-should-know-149a9aa9f8c7).
