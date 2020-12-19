@@ -1,5 +1,5 @@
 import enum
-import typing
+from typing import Iterable, Tuple, Union
 
 from . import basic
 from .struct import Struct
@@ -73,7 +73,7 @@ class Channels(basic.bitmap32):
     CHANNEL_26 = 0x04000000
 
     @classmethod
-    def from_channel_list(cls, channels: typing.Iterable[int]) -> "Channels":
+    def from_channel_list(cls, channels: Iterable[int]) -> "Channels":
         mask = cls.NO_CHANNELS
 
         for channel in channels:
@@ -475,3 +475,76 @@ class NWKStatus(basic.enum8):
         status._name_ = chained.name
         status._value_ = value
         return status
+
+
+class AddrMode(basic.enum8):
+    """Addressing mode."""
+
+    Group = 0x01
+    NWK = 0x02
+    IEEE = 0x03
+
+
+class _AddressingIEEE(Struct):
+    """Addressing mode is IEEE."""
+
+    addr_mode: AddrMode
+    addr: EUI64
+    endpoint: basic.uint8_t
+
+
+class _AddressingGroup(Struct):
+    """Addressing mode is Group."""
+
+    addr_mode: AddrMode
+    addr: Group
+
+
+class _AddressingNWK(Struct):
+    """Addressing mode is Group."""
+
+    addr_mode: AddrMode
+    addr: NWK
+    endpoint: basic.uint8_t
+
+
+class Addressing:
+    """Addr mode, address (group, node id or ieee) and optionally endpoint id."""
+
+    AddrMode = AddrMode
+    IEEE = _AddressingIEEE
+    Group = _AddressingGroup
+    NWK = _AddressingNWK
+
+    @classmethod
+    def ieee(cls, ieee: EUI64, endpoint: Union[basic.uint8_t, int]) -> _AddressingIEEE:
+        """Return IEEE addressing mode."""
+
+        return cls.IEEE(AddrMode.IEEE, ieee, endpoint)
+
+    @classmethod
+    def group(cls, group: Group) -> _AddressingGroup:
+        """Return Group addressing mode."""
+
+        return cls.Group(AddrMode.Group, group)
+
+    @classmethod
+    def nwk(cls, nwk: NWK, endpoint: Union[basic.uint8_t, int]) -> _AddressingNWK:
+        """Return NWK addressing mode."""
+
+        return cls.NWK(AddrMode.NWK, nwk, endpoint)
+
+    @classmethod
+    def deserialize(
+        cls, data: bytes
+    ) -> Tuple[Union[_AddressingGroup, _AddressingIEEE, _AddressingNWK], bytes]:
+        """Deserialize data."""
+
+        if data[0] == AddrMode.IEEE:
+            return cls.IEEE.deserialize(data)
+        elif data[0] == AddrMode.Group:
+            return cls.Group.deserialize(data)
+        elif data[0] == AddrMode.NWK:
+            return cls.NWK.deserialize(data)
+
+        raise ValueError(f"Invalid '0x{data[0]:02x}' addressing mode")

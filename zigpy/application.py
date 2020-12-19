@@ -1,7 +1,7 @@
 import abc
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import zigpy.appdb
 import zigpy.config
@@ -187,6 +187,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         src_ep: int,
         dst_ep: int,
         message: bytes,
+        *,
+        dst_addressing: Optional[
+            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+        ] = None,
     ) -> None:
         self.listener_event(
             "handle_message", sender, profile, cluster, src_ep, dst_ep, message
@@ -216,7 +220,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 cluster,
             )
             return
-        return sender.handle_message(profile, cluster, src_ep, dst_ep, message)
+        return sender.handle_message(
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            message,
+            dst_addressing=dst_addressing,
+        )
 
     def handle_join(self, nwk, ieee, parent_nwk):
         ieee = t.EUI64(ieee)

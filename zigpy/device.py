@@ -18,7 +18,7 @@ from zigpy.const import (
 import zigpy.endpoint
 import zigpy.exceptions
 import zigpy.neighbor
-from zigpy.types import NWK, BroadcastAddress, Relays
+from zigpy.types import NWK, Addressing, BroadcastAddress, Relays
 import zigpy.util
 import zigpy.zcl.foundation as foundation
 import zigpy.zdo as zdo
@@ -227,7 +227,18 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def deserialize(self, endpoint_id, cluster_id, data):
         return self.endpoints[endpoint_id].deserialize(cluster_id, data)
 
-    def handle_message(self, profile, cluster, src_ep, dst_ep, message):
+    def handle_message(
+        self,
+        profile: int,
+        cluster: int,
+        src_ep: int,
+        dst_ep: int,
+        message: bytes,
+        *,
+        dst_addressing: Optional[
+            Union[Addressing.Group, Addressing.IEEE, Addressing.NWK]
+        ] = None,
+    ):
         self.last_seen = time.time()
         try:
             hdr, args = self.deserialize(src_ep, cluster, message)
@@ -265,7 +276,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 )
                 return
         endpoint = self.endpoints[src_ep]
-        return endpoint.handle_message(profile, cluster, hdr, args)
+        return endpoint.handle_message(
+            profile, cluster, hdr, args, dst_addressing=dst_addressing
+        )
 
     def reply(self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee=False):
         return self.request(
