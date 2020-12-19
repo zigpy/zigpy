@@ -32,18 +32,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.state: zigpy.application.state.State = zigpy.application.state.State()
         self.topology = None
         self._listeners = {}
-        self._channel = None
-        self._channels = None
         self._config = config
         self._dblistener = None
-        self._ext_pan_id = None
         self._groups = zigpy.group.Groups(self)
-        self._ieee = None
         self._listeners = {}
-        self._nwk = None
-        self._nwk_update_id = None
         self._ota = zigpy.ota.OTA(self)
-        self._pan_id = None
         self._send_sequence = 0
 
     async def _load_db(self) -> None:
@@ -345,7 +338,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if node is not None:
             if not isinstance(node, t.EUI64):
                 node = t.EUI64([t.uint8_t(p) for p in node])
-            if node != self._ieee:
+            if node != self.ieee:
                 try:
                     dev = self.get_device(ieee=node)
                     r = await dev.zdo.permit(time_s)
@@ -412,12 +405,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @property
     def channel(self):
         """Current radio channel."""
-        return self._channel
+        return self.state.network_information.channel
 
     @property
     def channels(self):
         """Channel mask."""
-        return self._channels
+        return self.state.network_information.channel_mask
 
     @property
     def config(self) -> dict:
@@ -432,24 +425,40 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @property
     def extended_pan_id(self):
         """Extended PAN Id."""
-        return self._ext_pan_id
+        return self.state.network_information.extended_pan_id
 
     @property
     def groups(self):
         return self._groups
 
     @property
-    def ieee(self):
-        return self._ieee
+    def ieee(self) -> t.EUI64:
+        return self.state.node_information.ieee
+
+    @ieee.setter
+    def ieee(self, value: t.EUI64) -> None:
+        """Setter for IEEEE."""
+        self.state.node_information.ieee = value
+
+    # Backward compatibility
+    _ieee = ieee
 
     @property
-    def nwk(self):
-        return self._nwk
+    def nwk(self) -> t.NWK:
+        return self.state.node_information.nwk
+
+    @nwk.setter
+    def nwk(self, new_nwk: t.NWK) -> None:
+        """NWK setter."""
+        self.state.node_information.nwk = new_nwk
+
+    # backward compatibility
+    _nwk = nwk
 
     @property
     def nwk_update_id(self):
         """NWK Update ID."""
-        return self._nwk_update_id
+        return self.state.network_information.nwk_update_id
 
     @property
     def ota(self):
@@ -458,9 +467,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @property
     def pan_id(self):
         """Network PAN Id."""
-        return self._pan_id
+        return self.state.network_information.pan_id
 
-    @classmethod
     @abc.abstractmethod
     async def probe(cls, device_config: Dict[str, Any]) -> bool:
         """API/Port probe method."""

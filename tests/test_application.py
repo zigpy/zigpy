@@ -5,6 +5,7 @@ import voluptuous as vol
 
 from zigpy import device
 import zigpy.application
+import zigpy.application.state as app_state
 from zigpy.config import (
     CONF_DATABASE,
     CONF_DEVICE,
@@ -20,6 +21,8 @@ import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
+
+NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
 
 
 @pytest.fixture
@@ -56,7 +59,11 @@ def app():
     config = App.SCHEMA(
         {CONF_DATABASE: None, CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"}}
     )
-    return App(config)
+    app = App(config)
+    app.state.node_information = app_state.NodeInfo(
+        t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
+    )
+    return app
 
 
 @pytest.fixture
@@ -199,8 +206,6 @@ async def test_permit_ncp():
 
 
 async def test_permit(app, ieee):
-    ncp_ieee = t.EUI64(map(t.uint8_t, range(8, 16)))
-    app._ieee = ncp_ieee
     app.devices[ieee] = MagicMock()
     app.devices[ieee].zdo.permit = MagicMock(side_effect=asyncio.coroutine(MagicMock()))
     app.permit_ncp = AsyncMock()
@@ -210,7 +215,7 @@ async def test_permit(app, ieee):
     await app.permit(node=ieee)
     assert app.devices[ieee].zdo.permit.call_count == 1
     assert app.permit_ncp.call_count == 0
-    await app.permit(node=ncp_ieee)
+    await app.permit(node=NCP_IEEE)
     assert app.devices[ieee].zdo.permit.call_count == 1
     assert app.permit_ncp.call_count == 1
 
@@ -339,11 +344,11 @@ def test_get_device_missing(app, ieee):
 
 
 def test_ieee(app):
-    assert app.ieee == app._ieee
+    assert app.ieee
 
 
 def test_nwk(app):
-    assert app.nwk == app._nwk
+    assert app.nwk is not None
 
 
 def test_config(app):
@@ -435,9 +440,16 @@ async def test_update_network(app):
 def test_props(app):
     assert app.channel is None
     assert app.channels is None
-    assert app.extended_pan_id is None
-    assert app.pan_id is None
-    assert app.nwk_update_id is None
+    assert app.extended_pan_id
+    assert app.pan_id
+    assert app.nwk_update_id is not None
+
+    new_ieee = t.EUI64.convert("aa:22:11:22:11:22:33:44")
+    app._ieee = new_ieee
+    assert app.state.node_information.ieee == new_ieee
+
+    app._nwk = 0x4321
+    assert app.state.node_information.nwk == 0x4321
 
 
 async def test_mrequest(app):

@@ -28,12 +28,17 @@ class NodeInfo:
 class NetworkInformation:
     """Network information."""
 
-    extended_pan_id: Optional[t.ExtendedPanId] = field(default_factory=t.ExtendedPanId)
+    extended_pan_id: Optional[t.ExtendedPanId] = None
     pan_id: Optional[t.PanId] = 0xFFFE
     nwk_update_id: Optional[t.uint8_t] = 0x00
     nwk_manager_id: Optional[t.NWK] = t.NWK(0xFFFE)
     channel: Optional[t.uint8_t] = None
     channel_mask: Optional[t.Channels] = None
+
+    def __post_init__(self) -> None:
+        """Initialize instance."""
+        if self.extended_pan_id is None:
+            self.extended_pan_id = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
 
 
 @dataclass
