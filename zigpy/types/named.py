@@ -511,23 +511,28 @@ class _AddressingNWK(Struct):
 class Addressing:
     """Addr mode, address (group, node id or ieee) and optionally endpoint id."""
 
-    @staticmethod
-    def ieee(ieee: EUI64, endpoint: Union[basic.uint8_t, int]) -> _AddressingIEEE:
+    AddrMode = AddrMode
+    IEEE = _AddressingIEEE
+    Group = _AddressingGroup
+    NWK = _AddressingNWK
+
+    @classmethod
+    def ieee(cls, ieee: EUI64, endpoint: Union[basic.uint8_t, int]) -> _AddressingIEEE:
         """Return IEEE addressing mode."""
 
-        return _AddressingIEEE(AddrMode.IEEE, ieee, endpoint)
+        return cls.IEEE(AddrMode.IEEE, ieee, endpoint)
 
-    @staticmethod
-    def group(group: Group) -> _AddressingGroup:
+    @classmethod
+    def group(cls, group: Group) -> _AddressingGroup:
         """Return Group addressing mode."""
 
-        return _AddressingGroup(AddrMode.Group, group)
+        return cls.Group(AddrMode.Group, group)
 
-    @staticmethod
-    def nwk(nwk: NWK, endpoint: Union[basic.uint8_t, int]) -> _AddressingNWK:
+    @classmethod
+    def nwk(cls, nwk: NWK, endpoint: Union[basic.uint8_t, int]) -> _AddressingNWK:
         """Return NWK addressing mode."""
 
-        return _AddressingNWK(AddrMode.NWK, nwk, endpoint)
+        return cls.NWK(AddrMode.NWK, nwk, endpoint)
 
     @classmethod
     def deserialize(
@@ -536,10 +541,10 @@ class Addressing:
         """Deserialize data."""
 
         if data[0] == AddrMode.IEEE:
-            return _AddressingIEEE.deserialize(data)
+            return cls.IEEE.deserialize(data)
         elif data[0] == AddrMode.Group:
-            return _AddressingGroup.deserialize(data)
+            return cls.Group.deserialize(data)
         elif data[0] == AddrMode.NWK:
-            return _AddressingNWK.deserialize(data)
+            return cls.NWK.deserialize(data)
 
         raise ValueError(f"Invalid '0x{data[0]:02x}' addressing mode")
