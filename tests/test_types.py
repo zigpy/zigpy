@@ -640,3 +640,10 @@ def test_addressing_nwk():
     assert r.serialize() == data
     dst = t.Addressing.nwk(0x0807, 42)
     assert dst.serialize() == data
+
+
+def test_invalid_addressing():
+    """Invalid addressing mode."""
+
+    with pytest.raises(ValueError):
+        t.Addressing.deserialize(b"\x05invalid")
