@@ -6,7 +6,6 @@ import pytest
 import voluptuous as vol
 
 import zigpy.application
-import zigpy.application.state as app_state
 from zigpy.config import (
     CONF_DATABASE,
     CONF_DEVICE,
@@ -18,6 +17,7 @@ from zigpy.config import (
 from zigpy.exceptions import DeliveryError
 import zigpy.ota
 import zigpy.quirks
+import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 

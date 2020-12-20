@@ -2,7 +2,7 @@
 
 import pytest
 
-import zigpy.application.state as app_state
+import zigpy.state as app_state
 
 COUNTER_NAMES = ["counter_1", "counter_2", "some random name"]
 
