@@ -205,12 +205,15 @@ class Counters:
 class State:
     node_information: NodeInfo = field(default_factory=NodeInfo)
     network_information: NetworkInformation = field(default_factory=NetworkInformation)
-    counters: Optional[Dict[str, Counters]] = None
+    counters: Optional[Dict[str, Counters]] = field(init=False, default=None)
+    broadcast_counters: Optional[Dict[str, Counters]] = field(init=False, default=None)
+    device_counters: Optional[Dict[str, Counters]] = field(init=False, default=None)
+    group_counters: Optional[Dict[str, Counters]] = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         """Initialize default counters."""
-        if self.counters is None:
-            self.counters = {}
+        for col_name in ("", "broadcast_", "device_", "group_"):
+            setattr(self, f"{col_name}counters", {})
 
     def initialize_counters(
         self,
