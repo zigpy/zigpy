@@ -111,16 +111,19 @@ class Counters:
     def __init__(
         self,
         collection_name: str,
-        names: Optional[Iterable[str]],
+        names: Optional[Iterable[str]] = (),
         *,
         counter_class: Counter = Counter,
+        auto_create: bool = False,
     ) -> None:
         """Initialize instance."""
 
+        self._auto_create = auto_create
         self._name = collection_name
         self._counters: Dict[Any, Counter] = {
             name: counter_class(name) for name in names
         }
+        self._counter_class: Counter = counter_class
 
     def __contains__(self, item: Any) -> bool:
         """Is the "counter id/name" in the list."""
@@ -139,7 +142,7 @@ class Counters:
 
     def __str__(self) -> str:
         """String magic method."""
-        counters = [str(counter) for counter in self]
+        counters = [str(counter) for counter in self._counters.values()]
         return f"{self.name}: [{', '.join(counters)}]"
 
     def __repr__(self) -> str:
@@ -171,12 +174,21 @@ class Counters:
     def __getitem__(self, counter_id: Any) -> Counter:
         """Get a counter."""
 
-        return self._counters[counter_id]
+        try:
+            return self._counters[counter_id]
+        except KeyError:
+            if not self._auto_create:
+                raise
+
+        counter = self._counter_class(counter_id)
+        self._counters[counter_id] = counter
+        return counter
 
     def __setitem__(self, counter_id: Any, value: int) -> None:
         """Update specific counter to new value."""
 
-        self._counters[counter_id].update(value)
+        counter = self[counter_id]
+        counter.update(value)
 
     def add_counter(self, name: str, value: int = 0) -> Counter:
         """Add a new counter."""
@@ -184,7 +196,7 @@ class Counters:
         if name in self._counters:
             return self[name]
 
-        counter = Counter(name, initial_value=value)
+        counter = self._counter_class(name, initial_value=value)
         self._counters[counter.name] = counter
         return counter
 
@@ -206,13 +218,19 @@ class State:
         names: Iterable[str],
         *,
         counter_class: Counter = Counter,
+        auto_create: bool = False,
     ) -> Counters:
         """Create or Reset counters."""
 
         try:
             counters = self.counters[collection_name]
         except KeyError:
-            counters = Counters(collection_name, names, counter_class=counter_class)
+            counters = Counters(
+                collection_name,
+                names,
+                counter_class=counter_class,
+                auto_create=auto_create,
+            )
             self.counters[counters.name] = counters
         else:
             counters.reset()

@@ -192,3 +192,34 @@ def test_counters_by_name(counters):
 
     with pytest.raises(AttributeError):
         counters.no_such_counter
+
+
+class NewCounter(app_state.Counter):
+    pass
+
+
+def test_counters_auto_create():
+    """Test auto creation of counters."""
+
+    counters = app_state.Counters(
+        "new_counters",
+        ("counter_x", "counter_y"),
+        counter_class=NewCounter,
+        auto_create=True,
+    )
+
+    assert "counter_x" in counters
+    assert "counter_y" in counters
+    assert "not_yet" not in counters
+    assert "nor_this_one" not in counters
+
+    counters["not_yet"] = 2
+    # auto counter create only works when accessing by index
+    with pytest.raises(AttributeError):
+        new = counters.nor_this_one
+        new.update(3)
+
+    assert "not_yet" in counters
+    assert "nor_this_one" not in counters
+    assert counters["not_yet"].value == 2
+    assert isinstance(counters["not_yet"], NewCounter)
