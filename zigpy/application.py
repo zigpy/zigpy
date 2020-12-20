@@ -6,13 +6,13 @@ import logging
 from typing import Any, Optional
 
 import zigpy.appdb
-import zigpy.application.state
 import zigpy.config
 import zigpy.device
 import zigpy.exceptions
 import zigpy.group
 import zigpy.ota
 import zigpy.quirks
+import zigpy.state
 import zigpy.topology
 import zigpy.types as t
 import zigpy.util
@@ -31,7 +31,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def __init__(self, config: dict):
         self._send_sequence = 0
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
-        self.state: zigpy.application.state.State = zigpy.application.state.State()
+        self.state: zigpy.state.State = zigpy.state.State()
         self.topology = None
         self._listeners = {}
         self._config = config
