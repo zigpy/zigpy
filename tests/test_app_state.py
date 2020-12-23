@@ -198,3 +198,15 @@ def test_counter_nested_groups_increment():
     assert counters["rx"][3][0x0006]["total"] == 1
     assert counters["rx"][3][0x0008]["total"] == 1
     assert counters["rx"][3][0x0300]["total"] == 1
+
+
+def test_counter_groups():
+    """Test CounterGroups."""
+
+    groups = app_state.CounterGroups()
+    assert not [group for group in groups]
+
+    counter_group = groups["ezsp_counters"]
+
+    new_groups = [group for group in groups]
+    assert new_groups == [counter_group]
