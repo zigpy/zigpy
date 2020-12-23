@@ -385,3 +385,8 @@ def test_parse_ota_hue_invalid():
     with pytest.raises(ValueError):
         # Only Hue is known to use these images
         firmware.parse_ota_image(header.replace(manufacturer_id=12).serialize() + rest)
+
+
+def test_cached_image_wrapping(image):
+    cached_img = CachedImage(image)
+    assert cached_img.header is image.header
