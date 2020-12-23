@@ -359,13 +359,13 @@ def create_hue_ota(data):
 
 
 def test_parse_ota_hue():
-    data = create_hue_ota(b"test")
+    data = create_hue_ota(b"test") + b"rest"
     img, rest = firmware.parse_ota_image(data)
 
     assert isinstance(img, firmware.HueSBLOTAImage)
-    assert not rest
+    assert rest == b"rest"
     assert img.data == b"\x2A\x00\x01" + b"test"
-    assert img.serialize() == data
+    assert img.serialize() + b"rest" == data
 
 
 def test_parse_ota_hue_invalid():

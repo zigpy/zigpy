@@ -193,7 +193,7 @@ class HueSBLOTAImage(BaseOTAImage):
     @classmethod
     def deserialize(cls, data) -> typing.Tuple["HueSBLOTAImage", bytes]:
         header, remaining_data = OTAImageHeader.deserialize(data)
-        firmware = remaining_data[: header.image_size]
+        firmware = remaining_data[: header.image_size - len(header.serialize())]
 
         if len(data) < header.image_size:
             raise ValueError(
