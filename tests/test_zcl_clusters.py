@@ -237,7 +237,7 @@ async def test_ota_handle_query_next_image_upgradeable(ota_cluster):
 def _ota_image_block(cluster, has_image=True, correct_version=True, wrong_offset=False):
     async def get_ota_mock(*args):
         if has_image:
-            img = MagicMock()
+            img = MagicMock(spec_set=ota.CachedImage)
             img.should_update.return_value = True
             img.key.manufacturer_id = sentinel.manufacturer_id
             img.key.image_type = sentinel.image_type

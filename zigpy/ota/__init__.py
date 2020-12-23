@@ -6,7 +6,7 @@ from typing import Optional
 import attr
 
 from zigpy.config import CONF_OTA, CONF_OTA_DIR, CONF_OTA_IKEA, CONF_OTA_LEDVANCE
-from zigpy.ota.image import ImageKey
+from zigpy.ota.image import ImageKey, OTAImageHeader
 import zigpy.ota.provider
 from zigpy.ota.validators import check_invalid
 import zigpy.types as t
@@ -42,6 +42,10 @@ class CachedImage:
     @property
     def key(self) -> ImageKey:
         return self.image.header.key
+
+    @property
+    def header(self) -> OTAImageHeader:
+        return self.image.header
 
     @property
     def version(self) -> int:
