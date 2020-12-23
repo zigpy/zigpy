@@ -1,9 +1,8 @@
 """Classes to implement status of the application controller."""
 
-from collections import defaultdict
 from dataclasses import InitVar, dataclass, field
 import functools
-from typing import Any, Dict, Iterable, Optional, Union
+from typing import Any, Iterable, Optional, Union
 
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
@@ -194,13 +193,10 @@ class State:
     network_information: NetworkInformation = field(default_factory=NetworkInformation)
     counters: Optional[CounterGroups] = field(init=False, default=None)
     broadcast_counters: Optional[CounterGroups] = field(init=False, default=None)
-    device_counters: Optional[Dict[str, CounterGroups]] = field(
-        init=False, default=None
-    )
+    device_counters: Optional[CounterGroups] = field(init=False, default=None)
     group_counters: Optional[CounterGroups] = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         """Initialize default counters."""
-        for col_name in ("", "broadcast_", "group_"):
+        for col_name in ("", "broadcast_", "device_", "group_"):
             setattr(self, f"{col_name}counters", CounterGroups())
-        self.device_counters = defaultdict(CounterGroups)
