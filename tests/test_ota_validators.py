@@ -224,6 +224,7 @@ def test_validate_ota_image_mixed_valid():
 
 def test_validate_ota_image_empty():
     image = OTAImage()
+    image.subelements = []
 
     assert validators.validate_ota_image(image) == ValidationResult.UNKNOWN
 

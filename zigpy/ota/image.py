@@ -31,7 +31,7 @@ class HeaderString(str):
     @classmethod
     def deserialize(cls, data):
         if len(data) < cls._size:
-            raise ValueError("Data is too short. Should be at least %s", cls._size)
+            raise ValueError(f"Data is too short. Should be at least {cls._size}")
         raw = data[: cls._size].split(b"\x00")[0]
         return cls(raw.decode("utf8", errors="replace")), data[cls._size :]
 
@@ -93,6 +93,10 @@ class OTAImageHeader(t.Struct):
             return None
         return bool(self.field_control & FieldControl.HARDWARE_VERSIONS_PRESENT)
 
+    @property
+    def key(self):
+        return ImageKey(self.manufacturer_id, self.image_type)
+
     @classmethod
     def deserialize(cls, data) -> tuple:
         hdr, data = super().deserialize(data)
@@ -111,49 +115,30 @@ class ElementTagId(t.enum16):
     IMAGE_INTEGRITY_CODE = 0x0003
 
 
-class SubElement(bytes):
-    @property
-    def data(self):
-        return self
-
-    @property
-    def length(self):
-        return t.uint32_t(len(self))
-
-    @classmethod
-    def deserialize(cls, data) -> tuple:
-        if len(data) < 6:
-            raise ValueError("Data is too short for {}".format(cls.__name__))
-
-        tag_id, rest = ElementTagId.deserialize(data)
-        length, rest = t.uint32_t.deserialize(rest)
-        if length > len(rest):
-            raise ValueError("Data is too short for {}".format(cls.__name__))
-
-        r = cls(rest[:length])
-        r.tag_id = tag_id
-        return r, rest[length:]
-
-    def serialize(self):
-        return self.tag_id.serialize() + self.length.serialize() + self
+class LVBytes32(t.LVBytes):
+    _prefix_length = 4
 
 
-@attr.s
-class OTAImage:
-    MAXIMUM_DATA_SIZE = 40
+class SubElement(t.Struct):
+    tag_id: ElementTagId
+    data: LVBytes32
 
-    header = attr.ib(factory=OTAImageHeader)
-    subelements = attr.ib(factory=list)
+
+class OTAImage(t.Struct):
+    header: OTAImageHeader
+    subelements: t.List[SubElement]
 
     @classmethod
     def deserialize(cls, data):
         hdr, data = OTAImageHeader.deserialize(data)
         elements_len = hdr.image_size - hdr.header_length
-        if elements_len > len(data):
-            raise ValueError("Data is too short for {}".format(cls.__name__))
 
-        image = cls(hdr)
+        if elements_len > len(data):
+            raise ValueError(f"Data is too short for {cls}")
+
+        image = cls(header=hdr, subelements=[])
         element_data, data = data[:elements_len], data[elements_len:]
+
         while element_data:
             element, element_data = SubElement.deserialize(element_data)
             image.subelements.append(element)
@@ -161,35 +146,7 @@ class OTAImage:
         return image, data
 
     def serialize(self):
-        res = self.header.serialize()
-        for element in self.subelements:
-            res += element.serialize()
-
+        res = super().serialize()
         assert len(res) == self.header.image_size
+
         return res
-
-    @property
-    def key(self) -> ImageKey:
-        return ImageKey(self.header.manufacturer_id, self.header.image_type)
-
-    @property
-    def version(self) -> int:
-        return self.header.file_version
-
-    def should_update(self, manufacturer_id, img_type, ver, hw_ver=None) -> bool:
-        """Check if it should upgrade"""
-        key = ImageKey(manufacturer_id, img_type)
-        should_update = [key == self.key, ver < self.version]
-        if hw_ver is not None and self.header.hardware_versions_present:
-            min_ver = self.header.minimum_hardware_version
-            max_ver = self.header.maximum_hardware_version
-            should_update.append(min_ver <= hw_ver <= max_ver)
-
-        return all(should_update)
-
-    def get_image_block(self, offset: t.uint32_t, size: t.uint8_t) -> bytes:
-        data = self.serialize()
-        if offset > len(data):
-            raise ValueError("Offset exceeds image size")
-
-        return data[offset : offset + min(self.MAXIMUM_DATA_SIZE, size)]

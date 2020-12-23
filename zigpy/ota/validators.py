@@ -141,7 +141,7 @@ def validate_ota_image(image: OTAImage) -> ValidationResult:
 
     for subelement in image.subelements:
         if subelement.tag_id == ElementTagId.UPGRADE_IMAGE:
-            results.append(validate_firmware(subelement))
+            results.append(validate_firmware(subelement.data))
 
     if not results or any(r == ValidationResult.UNKNOWN for r in results):
         return ValidationResult.UNKNOWN

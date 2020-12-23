@@ -125,7 +125,7 @@ class IKEAImage:
         assert len(data) > offset + size
 
         ota_image, _ = OTAImage.deserialize(data[offset : offset + size])
-        assert ota_image.key == self.key
+        assert ota_image.header.key == self.key
 
         LOGGER.debug(
             "Finished downloading %s bytes from %s for %s ver %s",
@@ -220,11 +220,11 @@ class LedvanceImage:
                 data = await rsp.read()
 
         img, _ = OTAImage.deserialize(data)
-        assert img.key == self.key
+        assert img.header.key == self.key
 
         LOGGER.debug(
             "%s: version: %s, hw_ver: (%s, %s), OTA string: %s",
-            img.key,
+            img.header.key,
             img.header.file_version,
             img.header.minimum_hardware_version,
             img.header.maximum_hardware_version,

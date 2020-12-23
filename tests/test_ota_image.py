@@ -2,6 +2,7 @@ from unittest import mock
 
 import pytest
 
+from zigpy.ota import CachedImage
 import zigpy.ota.image as firmware
 import zigpy.types as t
 
@@ -154,8 +155,7 @@ def test_subelement():
     assert rest == extra
     assert e.tag_id == firmware.ElementTagId.ECDSA_SIGNATURE
     assert e.data == payload
-    assert e == payload
-    assert e.length == len(payload)
+    assert len(e.data) == len(payload)
 
     assert e.serialize() == data
 
@@ -166,8 +166,7 @@ def test_subelement_too_short():
             firmware.SubElement.deserialize(b"".ljust(i, b"\x00"))
 
     e, rest = firmware.SubElement.deserialize(b"\x00\x00\x00\x00\x00\x00")
-    assert e.length == 0
-    assert e == b""
+    assert e.data == b""
     assert rest == b""
 
     with pytest.raises(ValueError):
@@ -209,8 +208,10 @@ def test_ota_image(raw_header, raw_sub_element):
 
     assert rest == extra
     assert len(img.subelements) == 2
-    assert img.subelements[0] == el1_payload
-    assert img.subelements[1] == el2_payload
+    assert img.subelements[0].tag_id == 0
+    assert img.subelements[0].data == el1_payload
+    assert img.subelements[1].tag_id == 1
+    assert img.subelements[1].data == el2_payload
 
     assert img.serialize() == raw_header(len(el1 + el2)) + el1 + el2
 
@@ -228,7 +229,7 @@ def test_ota_img_should_upgrade():
     hdr.image_type = image_type
     hdr.file_version = version
 
-    img = firmware.OTAImage(hdr)
+    img = CachedImage(firmware.OTAImage(hdr))
     assert img.should_update(manufacturer_id, image_type, version) is False
     assert img.should_update(manufacturer_id, image_type, version - 1) is True
     assert img.should_update(manufacturer_id, image_type - 1, version - 1) is False
@@ -250,7 +251,7 @@ def test_ota_img_should_upgrade_hw_ver():
     hdr.minimum_hardware_version = 2
     hdr.maximum_hardware_version = 4
 
-    img = firmware.OTAImage(hdr)
+    img = CachedImage(firmware.OTAImage(hdr))
     assert img.should_update(manufacturer_id, image_type, version - 1) is True
 
     for hw_ver in range(2, 4):
@@ -268,7 +269,7 @@ def test_get_image_block(raw_header, raw_sub_element):
     el2 = raw_sub_element(1, el2_payload)
 
     raw_data = raw_header(len(el1 + el2)) + el1 + el2
-    img = firmware.OTAImage.deserialize(raw_data)[0]
+    img = CachedImage(firmware.OTAImage.deserialize(raw_data)[0])
 
     offset, size = 28, 20
     block = img.get_image_block(offset, size)
@@ -286,7 +287,7 @@ def test_get_image_block_offset_too_large(raw_header, raw_sub_element):
     el2 = raw_sub_element(1, el2_payload)
 
     raw_data = raw_header(len(el1 + el2)) + el1 + el2
-    img = firmware.OTAImage.deserialize(raw_data)[0]
+    img = CachedImage(firmware.OTAImage.deserialize(raw_data)[0])
 
     offset, size = len(raw_data) + 1, 44
     with pytest.raises(ValueError):
