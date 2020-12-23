@@ -230,7 +230,7 @@ def test_validate_ota_image_empty():
 
 
 def test_check_invalid():
-    image = mock.Mock()
+    image = OTAImage()
 
     with mock.patch("zigpy.ota.validators.validate_ota_image") as m:
         m.side_effect = [ValidationResult.VALID]
@@ -243,3 +243,12 @@ def test_check_invalid():
     with mock.patch("zigpy.ota.validators.validate_ota_image") as m:
         m.side_effect = [ValidationError("error")]
         assert validators.check_invalid(image)
+
+
+def test_check_invalid_special():
+    image = mock.Mock()
+
+    # Unknown OTA image containers are not checked
+    with mock.patch("zigpy.ota.validators.validate_ota_image") as m:
+        assert not validators.check_invalid(image)
+        assert m.call_count == 0

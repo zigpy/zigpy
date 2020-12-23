@@ -1,4 +1,6 @@
 """OTA Firmware handling."""
+import typing
+
 import attr
 
 import zigpy.types as t
@@ -124,7 +126,28 @@ class SubElement(t.Struct):
     data: LVBytes32
 
 
-class OTAImage(t.Struct):
+class BaseOTAImage:
+    """
+    Base OTA image container type. Not all images are valid Zigbee OTA images but are
+    nonetheless accepted by devices. Only requirement is that the image contains a valid
+    OTAImageHeader property and can be serialized/deserialized.
+    """
+
+    header: OTAImageHeader
+
+    @classmethod
+    def deserialize(cls, data):
+        raise NotImplementedError()  # pragma: no cover
+
+    def serialize(self):
+        raise NotImplementedError()  # pragma: no cover
+
+
+class OTAImage(t.Struct, BaseOTAImage):
+    """
+    Zigbee OTA image according to 11.4 of the ZCL specification.
+    """
+
     header: OTAImageHeader
     subelements: t.List[SubElement]
 
@@ -150,3 +173,69 @@ class OTAImage(t.Struct):
         assert len(res) == self.header.image_size
 
         return res
+
+
+@attr.s
+class HueSBLOTAImage(BaseOTAImage):
+    """
+    Unique OTA image format for certain Hue devices. Starts with a valid header but does
+    not contain any valid subelements beyond that point.
+    """
+
+    SUBELEMENTS_MAGIC = b"\x2A\x00\x01"
+
+    header = attr.ib(default=None)
+    data = attr.ib(default=None)
+
+    def serialize(self) -> bytes:
+        return self.header.serialize() + self.data
+
+    @classmethod
+    def deserialize(cls, data) -> typing.Tuple["HueSBLOTAImage", bytes]:
+        header, remaining_data = OTAImageHeader.deserialize(data)
+        firmware = remaining_data[: header.image_size]
+
+        if len(data) < header.image_size:
+            raise ValueError(
+                f"Data is too short to contain image: {len(data)} < {header.image_size}"
+            )
+
+        if not firmware.startswith(cls.SUBELEMENTS_MAGIC):
+            raise ValueError(
+                f"Firmware does not start with expected magic bytes: {firmware[:10]!r}"
+            )
+
+        if header.manufacturer_id != 4107:
+            raise ValueError(
+                f"Only Hue images are expected. Got: {header.manufacturer_id}"
+            )
+
+        return cls(header=header, data=firmware), data[header.image_size :]
+
+
+def parse_ota_image(data: bytes) -> typing.Tuple[BaseOTAImage, bytes]:
+    """
+    Attempts to extract any known OTA image type from data. Does not validate firmware.
+    """
+
+    # IKEA container needs to be unwrapped
+    if data.startswith(b"NGIS"):
+        if len(data) <= 24:
+            raise ValueError(
+                f"Data too short to contain IKEA container header: {len(data)}"
+            )
+
+        offset = int.from_bytes(data[16:20], "little")
+        size = int.from_bytes(data[20:24], "little")
+
+        if len(data) <= offset + size:
+            raise ValueError(f"Data too short to be IKEA container: {len(data)}")
+
+        return parse_ota_image(data[offset : offset + size])
+
+    try:
+        # Hue sbl-ota images start with a Zigbee OTA header but contain no valid
+        # subelements after that. Try it first.
+        return HueSBLOTAImage.deserialize(data)
+    except ValueError:
+        return OTAImage.deserialize(data)

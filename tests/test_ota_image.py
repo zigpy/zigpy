@@ -11,6 +11,26 @@ IMAGE_TYPE = mock.sentinel.image_type
 
 
 @pytest.fixture
+def image():
+    img = firmware.OTAImage()
+    img.header = firmware.OTAImageHeader(
+        upgrade_file_id=firmware.OTAImageHeader.MAGIC_VALUE,
+        header_version=256,
+        header_length=56,
+        field_control=0,
+        manufacturer_id=9876,
+        image_type=123,
+        file_version=12345,
+        stack_version=2,
+        header_string="This is a test header!",
+        image_size=56 + 2 + 4 + 4,
+    )
+    img.subelements = [firmware.SubElement(tag_id=0x0000, data=b"data")]
+
+    return img
+
+
+@pytest.fixture
 def key():
     return firmware.ImageKey(MANUFACTURER_ID, IMAGE_TYPE)
 
@@ -292,3 +312,76 @@ def test_get_image_block_offset_too_large(raw_header, raw_sub_element):
     offset, size = len(raw_data) + 1, 44
     with pytest.raises(ValueError):
         img.get_image_block(offset, size)
+
+
+def wrap_ikea(data):
+    header = bytearray(100)
+    header[0:4] = b"NGIS"
+    header[16:20] = len(header).to_bytes(4, "little")
+    header[20:24] = len(data).to_bytes(4, "little")
+
+    return header + data + b"F" * 512
+
+
+def test_parse_ota_normal(image):
+    assert firmware.parse_ota_image(image.serialize()) == (image, b"")
+
+
+def test_parse_ota_ikea(image):
+    data = wrap_ikea(image.serialize())
+    assert firmware.parse_ota_image(data) == (image, b"")
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"NGIS" + b"truncated",
+        b"NGIS" + b"long enough to container header but not actual image",
+    ],
+)
+def test_parse_ota_ikea_truncated(data):
+    with pytest.raises(ValueError):
+        firmware.parse_ota_image(data)
+
+
+def create_hue_ota(data):
+    data = b"\x2A\x00\x01" + data
+
+    header, _ = firmware.OTAImageHeader.deserialize(
+        bytes.fromhex(
+            "1ef1ee0b0001380000000b100301d5670042020000000000000000000000000000000000000000"
+            "0000000000000000000000000038f00300"
+        )
+    )
+    header.image_size = len(header.serialize()) + len(data)
+
+    return header.serialize() + data
+
+
+def test_parse_ota_hue():
+    data = create_hue_ota(b"test")
+    img, rest = firmware.parse_ota_image(data)
+
+    assert isinstance(img, firmware.HueSBLOTAImage)
+    assert not rest
+    assert img.data == b"\x2A\x00\x01" + b"test"
+    assert img.serialize() == data
+
+
+def test_parse_ota_hue_invalid():
+    data = create_hue_ota(b"test")
+    firmware.parse_ota_image(data)
+
+    with pytest.raises(ValueError):
+        firmware.parse_ota_image(data[:-1])
+
+    header, rest = firmware.OTAImageHeader.deserialize(data)
+    assert data == header.serialize() + rest
+
+    with pytest.raises(ValueError):
+        # Three byte sequence must be the first thing after the header
+        firmware.parse_ota_image(header.serialize() + b"\xFF" + rest[1:])
+
+    with pytest.raises(ValueError):
+        # Only Hue is known to use these images
+        firmware.parse_ota_image(header.replace(manufacturer_id=12).serialize() + rest)
