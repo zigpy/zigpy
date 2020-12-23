@@ -3,7 +3,7 @@
 from collections import defaultdict
 from dataclasses import InitVar, dataclass, field
 import functools
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, Union
 
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
@@ -118,9 +118,17 @@ class CounterGroup(dict):
         self._name = collection_name
         super().__init__()
 
-    def __iter__(self) -> Iterable[Counter]:
+    def counters(self) -> Iterable[Counter]:
         """Return an iterable of the counters"""
-        return (counter for counter in self.values())
+        return (counter for counter in self.values() if isinstance(counter, Counter))
+
+    def groups(self) -> Iterable["CounterGroup"]:
+        """Return an iterable of the counter groups"""
+        return (group for group in self.values() if isinstance(group, CounterGroup))
+
+    def tags(self) -> Iterable[Union[int, str]]:
+        """Return an iterable if tags"""
+        return (group.name for group in self.groups())
 
     def __missing__(self, counter_id: Any) -> Counter:
         """Default counter factory."""
@@ -133,20 +141,30 @@ class CounterGroup(dict):
         """Representation magic method."""
         counters = (
             f"{counter.__class__.__name__}('{counter.name}', {int(counter)})"
-            for counter in self
+            for counter in self.counters()
         )
         counters = ", ".join(counters)
         return f"{self.__class__.__name__}('{self.name}', {{{counters}}})"
 
     def __str__(self) -> str:
         """String magic method."""
-        counters = [str(counter) for counter in self.values()]
+        counters = [str(counter) for counter in self.counters()]
         return f"{self.name}: [{', '.join(counters)}]"
 
     @property
     def name(self) -> str:
         """Return counter collection name."""
         return self._name
+
+    def increment(self, name: Union[int, str], *tags: Union[int, str]) -> None:
+        """Create and Update all counters recursively."""
+
+        if tags:
+            tag, *rest = tags
+            self.setdefault(tag, CounterGroup(tag))
+            self[tag][name].increment()
+            self[tag].increment(name, *rest)
+            return
 
     def reset(self) -> None:
         """Clear and rollover counters."""

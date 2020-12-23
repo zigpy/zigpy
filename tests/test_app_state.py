@@ -84,7 +84,7 @@ def test_counters_init():
         counters[name]
     assert len(counters) == 3
 
-    cnt_1, cnt_2, cnt_3 = [counter for counter in counters]
+    cnt_1, cnt_2, cnt_3 = [counter for counter in counters.counters()]
     assert cnt_1.name == "counter_1"
     assert cnt_2.name == "counter_2"
     assert cnt_3.name == "some random name"
@@ -101,10 +101,10 @@ def test_counters_init():
     assert int(cnt_3) == 2
 
     assert "counter_2" in counters
-    assert [counter.name for counter in counters] == COUNTER_NAMES
+    assert [counter.name for counter in counters.counters()] == COUNTER_NAMES
 
     counters.reset()
-    for counter in counters:
+    for counter in counters.counters():
         assert counter.reset_count == 1
 
 
@@ -170,3 +170,31 @@ def test_counter_incr():
 
     with pytest.raises(AssertionError):
         counter.increment(-1)
+
+
+def test_counter_nested_groups_increment():
+    """Test nested counters."""
+
+    counters = app_state.CounterGroup("device_counters")
+
+    assert len(counters) == 0
+    counters.increment("reply", "rx", "zdo", 0x8031)
+    counters.increment("total", "rx", 3, 0x0006)
+    counters.increment("total", "rx", 3, 0x0008)
+    counters.increment("total", "rx", 3, 0x0300)
+
+    tags = {t for t in counters.tags()}
+    assert {"rx"} == tags
+
+    tags = {t for t in counters["rx"].tags()}
+    assert {"zdo", 3} == tags
+
+    assert counters["rx"]["reply"] == 1
+    assert counters["rx"]["zdo"]["reply"] == 1
+    assert counters["rx"]["zdo"][0x8031]["reply"] == 1
+
+    assert counters["rx"]["total"] == 3
+    assert counters["rx"][3]["total"] == 3
+    assert counters["rx"][3][0x0006]["total"] == 1
+    assert counters["rx"][3][0x0008]["total"] == 1
+    assert counters["rx"][3][0x0300]["total"] == 1
