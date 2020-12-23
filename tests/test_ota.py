@@ -197,3 +197,18 @@ def test_cached_image_expiration_delay():
     cached.expires_on = new_expiration
     cached.get_image_block(0, 40)
     assert cached.expires_on > new_expiration
+
+
+def test_cached_image_serialization_cache(image):
+    image = MagicMock(image)
+    image.serialize.side_effect = [b"data"]
+
+    cached = zigpy.ota.CachedImage.new(image)
+    assert cached.cached_data is None
+    assert image.serialize.call_count == 0
+
+    assert cached.get_image_block(0, 1) == b"d"
+    assert cached.get_image_block(1, 1) == b"a"
+    assert cached.get_image_block(2, 1) == b"t"
+
+    assert image.serialize.call_count == 1

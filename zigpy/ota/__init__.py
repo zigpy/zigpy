@@ -26,6 +26,7 @@ class CachedImage:
 
     image = attr.ib(default=None)
     expires_on = attr.ib(default=None)
+    cached_data = attr.ib(default=None)
 
     @classmethod
     def new(cls, img):
@@ -75,13 +76,13 @@ class CachedImage:
         ):
             self.expires_on += DELAY_EXPIRATION
 
-        # XXX: this should be cached
-        data = self.image.serialize()
+        if self.cached_data is None:
+            self.cached_data = self.image.serialize()
 
-        if offset > len(data):
+        if offset > len(self.cached_data):
             raise ValueError("Offset exceeds image size")
 
-        return data[offset : offset + min(self.MAXIMUM_DATA_SIZE, size)]
+        return self.cached_data[offset : offset + min(self.MAXIMUM_DATA_SIZE, size)]
 
 
 class OTA(zigpy.util.ListenableMixin):
