@@ -126,7 +126,7 @@ class CounterGroup(dict):
         """Default counter factory."""
 
         counter = Counter(counter_id)
-        super().__setitem__(counter_id, counter)
+        self[counter_id] = counter
         return counter
 
     def __repr__(self) -> str:
@@ -137,12 +137,6 @@ class CounterGroup(dict):
         )
         counters = ", ".join(counters)
         return f"{self.__class__.__name__}('{self.name}', {{{counters}}})"
-
-    def __setitem__(self, counter_id: Any, value: int) -> None:
-        """Update specific counter to new value."""
-
-        counter = self[counter_id]
-        counter.update(value)
 
     def __str__(self) -> str:
         """String magic method."""

@@ -93,7 +93,7 @@ def test_counters_init():
     assert cnt_2.value == 0
     assert cnt_3.value == 0
 
-    counters["some random name"] = 2
+    counters["some random name"].update(2)
     assert cnt_3.value == 2
     assert counters["some random name"].value == 2
     assert counters["some random name"] == 2
@@ -111,8 +111,8 @@ def test_counters_init():
 def test_counters_str_and_repr(counters):
     """Test counters str and repr."""
 
-    counters["counter_1"] = 22
-    counters["counter_2"] = 33
+    counters["counter_1"].update(22)
+    counters["counter_2"].update(33)
 
     assert (
         str(counters)
@@ -144,7 +144,7 @@ def test_counters_reset(counters):
     counter = counters["counter_1"]
 
     assert counter.reset_count == 0
-    counters["counter_1"] = 22
+    counters["counter_1"].update(22)
     assert counter.value == 22
     assert counter.reset_count == 0
 
