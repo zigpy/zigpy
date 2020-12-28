@@ -1,9 +1,12 @@
 """OTA Firmware handling."""
+import logging
 import typing
 
 import attr
 
 import zigpy.types as t
+
+LOGGER = logging.getLogger(__name__)
 
 
 @attr.s(frozen=True)
@@ -231,7 +234,25 @@ def parse_ota_image(data: bytes) -> typing.Tuple[BaseOTAImage, bytes]:
         if len(data) <= offset + size:
             raise ValueError(f"Data too short to be IKEA container: {len(data)}")
 
-        return parse_ota_image(data[offset : offset + size])
+        wrapped_data = data[offset : offset + size]
+        image, rest = OTAImage.deserialize(wrapped_data)
+
+        if rest:
+            LOGGER.warning(
+                "Fixing IKEA OTA image with trailing data (%s bytes)",
+                image.header.image_size,
+                size - image.header.image_size,
+            )
+            image.header.image_size += len(rest)
+
+            # No other structure has been observed
+            assert len(image.subelements) == 1
+            assert image.subelements[0].tag_id == ElementTagId.UPGRADE_IMAGE
+
+            image.subelements[0].data += rest
+            rest = b""
+
+        return image, rest
 
     try:
         # Hue sbl-ota images start with a Zigbee OTA header but contain no valid

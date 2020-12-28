@@ -332,6 +332,19 @@ def test_parse_ota_ikea(image):
     assert firmware.parse_ota_image(data) == (image, b"")
 
 
+def test_parse_ota_ikea_trailing(image):
+    data = wrap_ikea(image.serialize() + b"trailing")
+
+    parsed, remaining = firmware.parse_ota_image(data)
+    assert not remaining
+
+    assert parsed.header.image_size == len(image.serialize() + b"trailing")
+    assert parsed.subelements[0].data == b"data" + b"trailing"
+
+    parsed2, remaining2 = firmware.OTAImage.deserialize(parsed.serialize())
+    assert not remaining2
+
+
 @pytest.mark.parametrize(
     "data",
     [
