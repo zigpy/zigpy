@@ -240,7 +240,6 @@ def parse_ota_image(data: bytes) -> typing.Tuple[BaseOTAImage, bytes]:
         if rest:
             LOGGER.warning(
                 "Fixing IKEA OTA image with trailing data (%s bytes)",
-                image.header.image_size,
                 size - image.header.image_size,
             )
             image.header.image_size += len(rest)
