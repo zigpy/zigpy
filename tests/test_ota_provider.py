@@ -1,4 +1,3 @@
-import binascii
 import os.path
 from unittest import mock
 import uuid
@@ -11,25 +10,18 @@ import zigpy.ota.image
 import zigpy.ota.provider as ota_p
 
 from .async_mock import AsyncMock, patch
+from .test_ota_image import image  # noqa: F401
 
 MANUFACTURER_ID = 4476
 IMAGE_TYPE = mock.sentinel.image_type
 
 
 @pytest.fixture
-def file_image_name(tmpdir):
+def file_image_name(tmpdir, image):  # noqa: F811
     def ota_img_filename(name="ota-image"):
-        prefix = b"\x00This is extra data\x00\x55\xaa"
-        data = (
-            "1ef1ee0b0001380000007c11012178563412020054657374204f54412049"
-            "6d61676500000000000000000000000000000000000042000000"
-        )
-        data = binascii.unhexlify(data)
-        sub_el = b"\x00\x00\x04\x00\x00\x00abcd"
-
         file_name = os.path.join(str(tmpdir), name + "-" + str(uuid.uuid4()))
         with open(os.path.join(file_name), mode="bw+") as file:
-            file.write(prefix + data + sub_el)
+            file.write(image.serialize())
         return file_name
 
     return ota_img_filename
@@ -116,7 +108,7 @@ async def test_initialize_provider(basic_prov):
 
 
 async def test_basic_get_image(basic_prov, key):
-    image = mock.MagicMock()
+    image = mock.MagicMock()  # noqa: F811
     image.fetch_image = AsyncMock(return_value=mock.sentinel.image)
     basic_prov._cache = mock.MagicMock()
     basic_prov._cache.__getitem__.return_value = image
@@ -162,7 +154,7 @@ def test_basic_enable_provider(key, basic_prov):
 
 
 async def test_basic_get_image_filtered(basic_prov, key):
-    image = mock.MagicMock()
+    image = mock.MagicMock()  # noqa: F811
     image.fetch_image = AsyncMock(return_value=mock.sentinel.image)
     basic_prov._cache = mock.MagicMock()
     basic_prov._cache.__getitem__.return_value = image
