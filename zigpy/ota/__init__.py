@@ -6,7 +6,7 @@ from typing import Optional
 import attr
 
 from zigpy.config import CONF_OTA, CONF_OTA_DIR, CONF_OTA_IKEA, CONF_OTA_LEDVANCE
-from zigpy.ota.image import ImageKey, OTAImageHeader
+from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader
 import zigpy.ota.provider
 from zigpy.ota.validators import check_invalid
 import zigpy.types as t
@@ -29,7 +29,7 @@ class CachedImage:
     cached_data = attr.ib(default=None)
 
     @classmethod
-    def new(cls, img):
+    def new(cls, img: BaseOTAImage) -> "CachedImage":
         expiration = datetime.datetime.now() + cls.DEFAULT_EXPIRATION
         return cls(img, expiration)
 
