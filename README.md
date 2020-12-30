@@ -25,9 +25,9 @@ You can contribute to this project either as an end-user, a tester (advanced use
 
 ## Compatible Zigbee coordinator hardware
 
-Radio libraries for zigpy are separate projects with their own repositories and these include **[bellows](https://github.com/zigpy/bellows)** (for communicating with Silicon Labs EmberZNet based radios), **[zigpy-deconz](https://github.com/zigpy/zigpy-deconz)** (for communicating with deCONZ based radios from Dresden Elektronik), and **[zigpy-xbee](https://github.com/zigpy/zigpy-xbee)** (for communicating with XBee based Zigbee radios), **[zigpy-znp](https://github.com/zha-ng/zigpy-znp)** and **[zigpy-cc](https://github.com/zigpy/zigpy-cc)** for communicating with newer and older Texas Instruments based radios that have Z-Stack 3.x.x or Z-Stack Home 1.2.x ZNP coordinator firmware respectivly, and **[zigpy-zigate](https://github.com/zigpy/zigpy-zigate)** for communicating with ZiGate based radios.
+Radio libraries for zigpy are separate projects with their own repositories and include **[bellows](https://github.com/zigpy/bellows)** (for communicating with Silicon Labs EmberZNet based radios), **[zigpy-deconz](https://github.com/zigpy/zigpy-deconz)** (for communicating with deCONZ based radios from Dresden Elektronik), and **[zigpy-xbee](https://github.com/zigpy/zigpy-xbee)** (for communicating with XBee based Zigbee radios), **[zigpy-znp](https://github.com/zha-ng/zigpy-znp)** and **[zigpy-cc](https://github.com/zigpy/zigpy-cc)** for communicating with newer and older Texas Instruments based radios that have Z-Stack 3.x.x or Z-Stack Home 1.2.x ZNP coordinator firmware respectively, and **[zigpy-zigate](https://github.com/zigpy/zigpy-zigate)** for communicating with ZiGate based radios.
 
-Note! Zigbee 3.0 support or not in zigpy depends primarly on your Zigbee coordinator hardware and its firmware. Some Zigbee coordinator hardware support Zigbee 3.0 but might be shipped with an older firmware which do not, in which case may want to upgrade the firmware manually yourself. Some other Zigbee coordinator hardware may not support a firmware that is capable of Zigbee 3.0 at all but can still be fully functional and feature complete for your needs, (this is very common as many if not most Zigbee devices do not yet Zigbee 3.0 or are backwards-compable with a Zigbee profile that is support by your Zigbee coordinator hardware and its firmware). As a general rule, newer Zigbee coordinator hardware released can normally support Zigbee 3.0 firmware and it is up to its manufacturer make such firmware available for them.
+Note! Zigbee 3.0 support or not in zigpy depends primarily on your Zigbee coordinator hardware and its firmware. Some Zigbee coordinator hardware support Zigbee 3.0 but might be shipped with an older firmware which do not, in which case may want to upgrade the firmware manually yourself. Some other Zigbee coordinator hardware may not support a firmware that is capable of Zigbee 3.0 at all but can still be fully functional and feature complete for your needs, (this is very common as many if not most Zigbee devices do not yet Zigbee 3.0 or are backwards-compable with a Zigbee profile that is support by your Zigbee coordinator hardware and its firmware). As a general rule, newer Zigbee coordinator hardware released can normally support Zigbee 3.0 firmware and it is up to its manufacturer make such firmware available for them.
 
 ### Known working Zigbee radio modules
 
@@ -36,9 +36,9 @@ Note! Zigbee 3.0 support or not in zigpy depends primarly on your Zigbee coordin
   - [Elelabs Zigbee USB Adapter](https://elelabs.com/products/elelabs_usb_adapter.html)
   - [Elelabs Zigbee Raspberry Pi Shield](https://elelabs.com/products/elelabs_zigbee_shield.html)
   - [Nortek GoControl QuickStick Combo Model HUSBZB-1 (Z-Wave & Zigbee USB Adapter)](https://www.nortekcontrol.com/products/2gig/husbzb-1-gocontrol-quickstick-combo/)
-  - Telegesis ETRX357USB (Note! First have to be flashed with other EmberZNet NCP firmware)
-  - Telegesis ETRX357USB-LRS (Note! First have to be flashed with other EmberZNet NCP firmware)
-  - Telegesis ETRX357USB-LRS+8M (Note! First have to be flashed with other EmberZNet NCP firmware)
+  - Telegesis ETRX357USB (Note! First have to be [flashed with other EmberZNet NCP firmware](https://github.com/walthowd/husbzb-firmware))
+  - Telegesis ETRX357USB-LRS (Note! First have to be [flashed with other EmberZNet NCP firmware](https://github.com/walthowd/husbzb-firmware))
+  - Telegesis ETRX357USB-LRS+8M (Note! First have to be [flashed with other EmberZNet NCP firmware](https://github.com/walthowd/husbzb-firmware))
 - **dresden elektronik deCONZ based radios** (via the [zigpy-deconz](https://github.com/zigpy/zigpy-deconz) library for zigpy)
   - [ConBee II (a.k.a. ConBee 2) USB adapter from dresden dlektronik](https://shop.dresden-elektronik.de/conbee-2.html)
   - [RaspBee II (a.k.a. RaspBee 2)](https://www.dresden-elektronik.com/product/raspbee-II.html) GPIO radio adapter from [dresden elektronik](https://www.dresden-elektronik.de)
@@ -91,9 +91,6 @@ ZHA deviation handling in Home Assistant relies on the third-party [ZHA Device H
 ### ZHA integration component for Home Assistant
 [ZHA integration component for Home Assistant](https://www.home-assistant.io/integrations/zha/) is a reference implementation of the zigpy library as integrated into the core of **[Home Assistant](https://www.home-assistant.io)** (a Python based open source home automation software). There are also other GUI and non-GUI projects for Home Assistant's ZHA components which builds on or depends on its features and functions to enhance or improve its user-experience, some of those are listed and linked below.
 
-#### ZHA Custom Radios
-[zha-custom-radios](https://github.com/zha-ng/zha-custom-radios) adds support for custom radio modules for zigpy to [[Home Assistant's ZHA (Zigbee Home Automation) integration component]](https://www.home-assistant.io/integrations/zha/). This custom component for Home Assistant allows users to test out new modules for zigpy in Home Assistant's ZHA integration component before they are integrated into zigpy ZHA and also helps developers new zigpy radio modules without having to modify the Home Assistant's source code.
-
 #### ZHA Custom
 [zha_custom](https://github.com/Adminiuga/zha_custom) is a custom component package for Home Assistant (with its ZHA component for zigpy integration) that acts as zigpy commands service wrapper, when installed it allows you to enter custom commands via to zigy to example change advanced configuration and settings that are not available in the UI.
 
@@ -107,7 +104,7 @@ ZHA deviation handling in Home Assistant relies on the third-party [ZHA Device H
 [zha-network-card](https://github.com/dmulcahey/zha-network-card) is a custom Lovelace card for Home Assistant that displays ZHA component Zigbee network and device information in Home Assistant
 
 #### Zigzag
-[Zigzag](https://github.com/Samantha-uk/zigzag-v1) is an custom card/panel for [Home Assistant](https://www.home-assistant.io/) that displays a graphical layout of Zigbee devices and the connections between them. Zigzag can be installed as a panel or a custom card and relies on the data provided by the [zha-map](https://github.com/zha-ng/zha-map) integration commponent.
+[Zigzag](https://github.com/Samantha-uk/zigzag-v1) is a custom card/panel for [Home Assistant](https://www.home-assistant.io/) that displays a graphical layout of Zigbee devices and the connections between them. Zigzag can be installed as a panel or a custom card and relies on the data provided by the [zha-map](https://github.com/zha-ng/zha-map) integration component.
 
 #### ZHA Device Exporter
 [zha-device-exporter](https://github.com/dmulcahey/zha-device-exporter) is a custom component for Home Assistant to allow the ZHA component to export lists of Zigbee devices.
@@ -117,3 +114,6 @@ ZHA deviation handling in Home Assistant relies on the third-party [ZHA Device H
 
 #### Zigpy Deconz Parser
 [zigpy-deconz-parser](https://github.com/zha-ng/zigpy-deconz-parser) allow you to parse Home Assistant's ZHA component debug log using `zigpy-deconz` library if you are using a deCONZ based adapter like ConBee or RaspBee.
+
+### ZigCoHTTP
+[ZigCoHTTP](https://github.com/daniel17903/ZigCoHTTP) is a stand-alone python application project that creates a ZigBee network using zigpy and bellows. ZigBee devices joining this network can be controlled via a HTTP API. It was developed for a Rasperry Pi using a [Matrix Creator Board](https://www.matrix.one/products/creator) but should also work with other computers with Silicon Labs Zigbee hardware, or with other Zigbee hardware if replace bellows with other radio library for zigpy.

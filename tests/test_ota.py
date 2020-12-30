@@ -18,12 +18,13 @@ IMAGE_TYPE = sentinel.image_type
 def image_with_version():
     def img(version=100):
         img = zigpy.ota.image.OTAImage()
+        img.header = zigpy.ota.image.OTAImageHeader()
         img.header.manufacturer_id = MANUFACTURER_ID
         img.header.image_type = IMAGE_TYPE
         img.header.file_version = version
-        img.subelements.append(
+        img.subelements = [
             zigpy.ota.image.SubElement.deserialize(b"\x00\x00\x04\x00\x00\x00abcdef")[0]
-        )
+        ]
         return img
 
     return img
@@ -76,7 +77,7 @@ async def test_get_image_empty(ota, image, key):
 
 
 async def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
-    newer = image_with_version(image.version + 1)
+    newer = image_with_version(image.header.file_version + 1)
 
     ota.async_event = AsyncMock(return_value=[None, image, newer])
 
@@ -85,8 +86,8 @@ async def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
 
     # got new image in the cache
     assert len(ota._image_cache) == 1
-    assert res.header == newer.header
-    assert res.subelements == newer.subelements
+    assert res.image.header == newer.header
+    assert res.image.subelements == newer.subelements
     assert ota.async_event.call_count == 1
     assert ota.async_event.call_args[0][0] == "get_image"
     assert ota.async_event.call_args[0][1] == key
@@ -97,8 +98,8 @@ async def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
 
     # should get just the cached image
     assert len(ota._image_cache) == 1
-    assert res.header == newer.header
-    assert res.subelements == newer.subelements
+    assert res.image.header == newer.header
+    assert res.image.subelements == newer.subelements
     assert ota.async_event.call_count == 0
 
     # on cache expiration, ping listeners
@@ -113,13 +114,13 @@ async def test_get_image_new(ota, image, key, image_with_version, monkeypatch):
     res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
     assert len(ota._image_cache) == 1
-    assert res.header == newer.header
-    assert res.subelements == newer.subelements
+    assert res.image.header == newer.header
+    assert res.image.subelements == newer.subelements
     assert ota.async_event.call_count == 1
 
 
 async def test_get_image_invalid(ota, image, image_with_version):
-    corrupted = image_with_version(image.version)
+    corrupted = image_with_version(image.header.file_version)
 
     zigpy.ota.check_invalid.side_effect = [True]
     ota.async_event = AsyncMock(return_value=[None, corrupted])
@@ -146,7 +147,7 @@ async def test_get_image_invalid_then_valid_versions(v1, v2, ota, image_with_ver
     res = await ota.get_ota_image(MANUFACTURER_ID, IMAGE_TYPE)
 
     # The valid image is always picked, even if the versions match
-    assert res.header.header_string == image.header.header_string
+    assert res.image.header.header_string == image.header.header_string
 
 
 def test_cached_image_expiration(image, monkeypatch):
@@ -196,3 +197,18 @@ def test_cached_image_expiration_delay():
     cached.expires_on = new_expiration
     cached.get_image_block(0, 40)
     assert cached.expires_on > new_expiration
+
+
+def test_cached_image_serialization_cache(image):
+    image = MagicMock(image)
+    image.serialize.side_effect = [b"data"]
+
+    cached = zigpy.ota.CachedImage.new(image)
+    assert cached.cached_data is None
+    assert image.serialize.call_count == 0
+
+    assert cached.get_image_block(0, 1) == b"d"
+    assert cached.get_image_block(1, 1) == b"a"
+    assert cached.get_image_block(2, 1) == b"t"
+
+    assert image.serialize.call_count == 1

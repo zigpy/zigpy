@@ -1,5 +1,6 @@
 import functools
 import logging
+from typing import Coroutine, List, Optional, Union
 
 import zigpy.types as t
 import zigpy.util
@@ -50,7 +51,17 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         data = t.uint8_t(tsn).serialize() + data
         return self._device.reply(0, command, 0, 0, tsn, data, use_ieee=use_ieee)
 
-    def handle_message(self, profile, cluster, hdr, args):
+    def handle_message(
+        self,
+        profile: int,
+        cluster: int,
+        hdr: types.ZDOHeader,
+        args: List,
+        *,
+        dst_addressing: Optional[
+            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+        ] = None,
+    ) -> None:
         self.debug("ZDO request %s: %s", hdr.command_id, args)
         app = self._device.application
         if hdr.command_id == types.ZDOCmd.NWK_addr_req:
@@ -99,8 +110,14 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             self.device.application.get_dst_address(cluster),
         )
 
-    def leave(self):
-        return self.Mgmt_Leave_req(self._device.ieee, 0x02)
+    def leave(self, remove_children: bool = True, rejoin: bool = False) -> Coroutine:
+        flags = 0x00
+        if remove_children:
+            flags |= 0x02
+        if rejoin:
+            flags |= 0x01
+
+        return self.Mgmt_Leave_req(self._device.ieee, flags)
 
     def permit(self, duration=60, tc_significance=0):
         return self.Mgmt_Permit_Joining_req(duration, tc_significance)
@@ -131,7 +148,7 @@ def broadcast(
     grpid,
     radius,
     *args,
-    broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE
+    broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
 ):
     sequence = app.get_sequence()
     data = sequence.to_bytes(1, "little")

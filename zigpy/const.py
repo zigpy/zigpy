@@ -1,0 +1,12 @@
+"""Zigpy Constants."""
+
+SIG_ENDPOINTS = "endpoints"
+SIG_EP_INPUT = "input_clusters"
+SIG_EP_OUTPUT = "output_clusters"
+SIG_EP_PROFILE = "profile_id"
+SIG_EP_TYPE = "device_type"
+SIG_MANUFACTURER = "manufacturer"
+SIG_MODEL = "model"
+SIG_MODELS_INFO = "models_info"
+SIG_NODE_DESC = "node_desc"
+SIG_SKIP_CONFIG = "skip_configuration"

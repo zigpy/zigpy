@@ -591,3 +591,59 @@ def test_bitmap_instance_types():
     assert issubclass(TestBitmap, t.uint16_t)
     assert isinstance(TestBitmap(0xFF00), t.uint16_t)
     assert isinstance(TestBitmap(0xFF00), TestBitmap)
+
+
+def test_addressing_ieee():
+    """Test addressing mode ieee."""
+
+    data = b"\x03\x08\x07\x06\x05\x04\x03\x02\x01\x20"
+    extra = b"extra data"
+
+    r, rest = t.Addressing.deserialize(data + extra)
+    assert rest == extra
+    assert r.addr_mode == t.AddrMode.IEEE
+    assert r.addr == t.EUI64.convert("01:02:03:04:05:06:07:08")
+    assert r.endpoint == 32
+
+    assert r.serialize() == data
+    dst = t.Addressing.ieee([8, 7, 6, 5, 4, 3, 2, 1], 32)
+    assert dst.serialize() == data
+
+
+def test_addressing_group():
+    """Test addressing mode group."""
+
+    data = b"\x01\x08\x07"
+    extra = b"extra data"
+
+    r, rest = t.Addressing.deserialize(data + extra)
+    assert rest == extra
+    assert r.addr_mode == t.AddrMode.Group
+    assert r.addr == t.Group(0x0708)
+
+    assert r.serialize() == data
+    dst = t.Addressing.group(0x0708)
+    assert dst.serialize() == data
+
+
+def test_addressing_nwk():
+    """Test addressing mode nwk."""
+
+    data = b"\x02\x07\x08\x2A"
+    extra = b"extra data"
+
+    r, rest = t.Addressing.deserialize(data + extra)
+    assert rest == extra
+    assert r.addr_mode == t.AddrMode.NWK
+    assert r.addr == t.NWK(0x0807)
+
+    assert r.serialize() == data
+    dst = t.Addressing.nwk(0x0807, 42)
+    assert dst.serialize() == data
+
+
+def test_invalid_addressing():
+    """Invalid addressing mode."""
+
+    with pytest.raises(ValueError):
+        t.Addressing.deserialize(b"\x05invalid")

@@ -1,15 +1,16 @@
 import asyncio
 import enum
 import logging
-from typing import Optional
+from typing import List, Optional, Union
 
 import zigpy.exceptions
 import zigpy.profiles
+from zigpy.types import Addressing
 from zigpy.typing import DeviceType
 import zigpy.util
 import zigpy.zcl
 from zigpy.zcl.clusters.general import Basic
-from zigpy.zcl.foundation import Status as ZCLStatus
+from zigpy.zcl.foundation import Status as ZCLStatus, ZCLHeader
 from zigpy.zdo.types import Status as zdo_status
 
 LOGGER = logging.getLogger(__name__)
@@ -193,7 +194,17 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id))
         return cluster.deserialize(data)
 
-    def handle_message(self, profile, cluster, hdr, args):
+    def handle_message(
+        self,
+        profile: int,
+        cluster: int,
+        hdr: ZCLHeader,
+        args: List,
+        *,
+        dst_addressing: Optional[
+            Union[Addressing.Group, Addressing.IEEE, Addressing.NWK]
+        ] = None,
+    ) -> None:
         if cluster in self.in_clusters:
             handler = self.in_clusters[cluster].handle_message
         elif cluster in self.out_clusters:

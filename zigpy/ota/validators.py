@@ -3,7 +3,7 @@ import logging
 import typing
 import zlib
 
-from zigpy.ota.image import ElementTagId, OTAImage
+from zigpy.ota.image import BaseOTAImage, ElementTagId, OTAImage
 
 VALID_SILABS_CRC = 0x2144DF1C  # CRC32(anything | CRC32(anything)) == CRC32(0x00000000)
 LOGGER = logging.getLogger(__name__)
@@ -141,7 +141,7 @@ def validate_ota_image(image: OTAImage) -> ValidationResult:
 
     for subelement in image.subelements:
         if subelement.tag_id == ElementTagId.UPGRADE_IMAGE:
-            results.append(validate_firmware(subelement))
+            results.append(validate_firmware(subelement.data))
 
     if not results or any(r == ValidationResult.UNKNOWN for r in results):
         return ValidationResult.UNKNOWN
@@ -149,10 +149,13 @@ def validate_ota_image(image: OTAImage) -> ValidationResult:
     return ValidationResult.VALID
 
 
-def check_invalid(image: OTAImage) -> bool:
+def check_invalid(image: BaseOTAImage) -> bool:
     """
     Checks if an image is invalid or not. Unknown image types are considered valid.
     """
+
+    if not isinstance(image, OTAImage):
+        return False
 
     try:
         validate_ota_image(image)

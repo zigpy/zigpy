@@ -6,28 +6,32 @@ from typing import Optional
 import attr
 
 from zigpy.config import CONF_OTA, CONF_OTA_DIR, CONF_OTA_IKEA, CONF_OTA_LEDVANCE
-from zigpy.ota.image import ImageKey, OTAImage
+from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader
 import zigpy.ota.provider
 from zigpy.ota.validators import check_invalid
+import zigpy.types as t
 from zigpy.typing import ControllerApplicationType
 import zigpy.util
 
 LOGGER = logging.getLogger(__name__)
 
-DELAY_EXPIRATION = datetime.timedelta(hours=2)
 TIMEDELTA_0 = datetime.timedelta()
+DELAY_EXPIRATION = datetime.timedelta(hours=2)
 
 
 @attr.s
-class CachedImage(OTAImage):
+class CachedImage:
+    MAXIMUM_DATA_SIZE = 40
     DEFAULT_EXPIRATION = datetime.timedelta(hours=18)
 
+    image = attr.ib(default=None)
     expires_on = attr.ib(default=None)
+    cached_data = attr.ib(default=None)
 
     @classmethod
-    def new(cls, img: OTAImage):
+    def new(cls, img: BaseOTAImage) -> "CachedImage":
         expiration = datetime.datetime.now() + cls.DEFAULT_EXPIRATION
-        return cls(img.header, img.subelements, expiration)
+        return cls(img, expiration)
 
     @property
     def expired(self) -> bool:
@@ -35,13 +39,54 @@ class CachedImage(OTAImage):
             return False
         return self.expires_on - datetime.datetime.now() < TIMEDELTA_0
 
-    def get_image_block(self, *args, **kwargs) -> bytes:
+    @property
+    def key(self) -> ImageKey:
+        return self.image.header.key
+
+    @property
+    def header(self) -> OTAImageHeader:
+        return self.image.header
+
+    @property
+    def version(self) -> int:
+        return self.image.header.file_version
+
+    def should_update(self, manufacturer_id, img_type, ver, hw_ver=None) -> bool:
+        """Check if it should upgrade"""
+
+        if self.key != ImageKey(manufacturer_id, img_type):
+            return False
+
+        if ver >= self.version:
+            return False
+
+        if (
+            hw_ver is not None
+            and self.image.header.hardware_versions_present
+            and not (
+                self.image.header.minimum_hardware_version
+                <= hw_ver
+                <= self.image.header.maximum_hardware_version
+            )
+        ):
+            return False
+
+        return True
+
+    def get_image_block(self, offset: t.uint32_t, size: t.uint8_t) -> bytes:
         if (
             self.expires_on is not None
             and self.expires_on - datetime.datetime.now() < DELAY_EXPIRATION
         ):
             self.expires_on += DELAY_EXPIRATION
-        return super().get_image_block(*args, **kwargs)
+
+        if self.cached_data is None:
+            self.cached_data = self.image.serialize()
+
+        if offset > len(self.cached_data):
+            raise ValueError("Offset exceeds image size")
+
+        return self.cached_data[offset : offset + min(self.MAXIMUM_DATA_SIZE, size)]
 
 
 class OTA(zigpy.util.ListenableMixin):
@@ -64,7 +109,7 @@ class OTA(zigpy.util.ListenableMixin):
         await self.async_event("initialize_provider", self._app.config[CONF_OTA])
         self._not_initialized = False
 
-    async def get_ota_image(self, manufacturer_id, image_type) -> Optional[OTAImage]:
+    async def get_ota_image(self, manufacturer_id, image_type) -> Optional[CachedImage]:
         key = ImageKey(manufacturer_id, image_type)
         if key in self._image_cache and not self._image_cache[key].expired:
             return self._image_cache[key]
@@ -81,7 +126,9 @@ class OTA(zigpy.util.ListenableMixin):
         if not valid_images:
             return None
 
-        cached = CachedImage.new(max(valid_images, key=lambda img: img.version))
+        cached = CachedImage.new(
+            max(valid_images, key=lambda img: img.header.file_version)
+        )
         self._image_cache[key] = cached
         return cached
 

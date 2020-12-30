@@ -12,7 +12,13 @@ import aiohttp
 import attr
 
 from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA_URL
-from zigpy.ota.image import ImageKey, OTAImage, OTAImageHeader
+from zigpy.ota.image import (
+    BaseOTAImage,
+    ImageKey,
+    OTAImage,
+    OTAImageHeader,
+    parse_ota_image,
+)
 import zigpy.util
 
 LOGGER = logging.getLogger(__name__)
@@ -47,7 +53,7 @@ class Basic(zigpy.util.LocalLogMixin, ABC):
         """Filter unwanted get_image lookups."""
         return False
 
-    async def get_image(self, key: ImageKey) -> Optional[OTAImage]:
+    async def get_image(self, key: ImageKey) -> Optional[BaseOTAImage]:
         if await self.filter_get_image(key):
             return None
 
@@ -119,13 +125,8 @@ class IKEAImage:
             async with req.get(self.url) as rsp:
                 data = await rsp.read()
 
-        assert len(data) > 24
-        offset = int.from_bytes(data[16:20], "little")
-        size = int.from_bytes(data[20:24], "little")
-        assert len(data) > offset + size
-
-        ota_image, _ = OTAImage.deserialize(data[offset : offset + size])
-        assert ota_image.key == self.key
+        ota_image, _ = parse_ota_image(data)
+        assert ota_image.header.key == self.key
 
         LOGGER.debug(
             "Finished downloading %s bytes from %s for %s ver %s",
@@ -219,12 +220,12 @@ class LedvanceImage:
             async with req.get(self.url) as rsp:
                 data = await rsp.read()
 
-        img, _ = OTAImage.deserialize(data)
-        assert img.key == self.key
+        img, _ = parse_ota_image(data)
+        assert img.header.key == self.key
 
         LOGGER.debug(
             "%s: version: %s, hw_ver: (%s, %s), OTA string: %s",
-            img.key,
+            img.header.key,
             img.header.file_version,
             img.header.minimum_hardware_version,
             img.header.maximum_hardware_version,
@@ -297,43 +298,39 @@ class FileImage:
     def scan_image(cls, file_name: str):
         """Check the header of the image."""
         try:
-            with open(file_name, mode="rb") as file:
-                data = file.read(512)
-                offset = data.index(OTAImageHeader.OTA_HEADER)
-                if offset >= 0:
-                    header, _ = OTAImageHeader.deserialize(data[offset:])
-                    img = cls(file_name=file_name, header=header)
+            with open(file_name, mode="rb") as f:
+                parsed_image, _ = parse_ota_image(f.read())
+                img = cls(file_name=file_name, header=parsed_image.header)
 
-                    LOGGER.debug(
-                        "%s: %s, version: %s, hw_ver: (%s, %s), OTA string: %s",
-                        img.key,
-                        img.file_name,
-                        img.version,
-                        img.header.minimum_hardware_version,
-                        img.header.maximum_hardware_version,
-                        img.header.header_string,
-                    )
-                    return img
+                LOGGER.debug(
+                    "%s: %s, version: %s, hw_ver: (%s, %s), OTA string: %s",
+                    img.key,
+                    img.file_name,
+                    img.version,
+                    img.header.minimum_hardware_version,
+                    img.header.maximum_hardware_version,
+                    img.header.header_string,
+                )
+                return img
         except (OSError, ValueError):
             LOGGER.debug(
                 "File '%s' doesn't appear to be a OTA image", file_name, exc_info=True
             )
         return None
 
-    def fetch_image(self) -> Optional[OTAImage]:
+    def fetch_image(self) -> Optional[BaseOTAImage]:
         """Load image using executor."""
         loop = asyncio.get_event_loop()
         return loop.run_in_executor(None, self._fetch_image)
 
-    def _fetch_image(self) -> Optional[OTAImage]:
+    def _fetch_image(self) -> Optional[BaseOTAImage]:
         """Loads full OTA Image from the file."""
         try:
-            with open(self.file_name, mode="rb") as file:
-                data = file.read()
-                offset = data.index(OTAImageHeader.OTA_HEADER)
-                if offset >= 0:
-                    img = OTAImage.deserialize(data[offset:])[0]
-                    return img
+            with open(self.file_name, mode="rb") as f:
+                data = f.read()
+                img, _ = parse_ota_image(data)
+
+                return img
         except (OSError, ValueError):
             LOGGER.debug("Couldn't load '%s' OTA image", self.file_name, exc_info=True)
         return None

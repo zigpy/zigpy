@@ -3,21 +3,20 @@ import itertools
 import logging
 from typing import Dict, List, Union
 
+from zigpy.const import (
+    SIG_ENDPOINTS,
+    SIG_EP_INPUT,
+    SIG_EP_OUTPUT,
+    SIG_EP_PROFILE,
+    SIG_EP_TYPE,
+    SIG_MANUFACTURER,
+    SIG_MODEL,
+    SIG_MODELS_INFO,
+)
 import zigpy.quirks
 from zigpy.typing import CustomDeviceType, DeviceType
 
 _LOGGER = logging.getLogger(__name__)
-
-SIG_ENDPOINTS = "endpoints"
-SIG_EP_INPUT = "input_clusters"
-SIG_EP_OUTPUT = "output_clusters"
-SIG_EP_PROFILE = "profile_id"
-SIG_EP_TYPE = "device_type"
-SIG_MANUFACTURER = "manufacturer"
-SIG_MODEL = "model"
-SIG_MODELS_INFO = "models_info"
-SIG_NODE_DESC = "node_desc"
-SIG_SKIP_CONFIG = "skip_configuration"
 
 TYPE_MODEL_QUIRKS_LIST = Dict[str, List["zigpy.quirks.CustomDevice"]]
 TYPE_MANUF_QUIRKS_DICT = Dict[str, TYPE_MODEL_QUIRKS_LIST]
