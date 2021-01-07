@@ -64,6 +64,10 @@ Note! Zigbee 3.0 support or not in zigpy depends primarily on your Zigbee coordi
   - [CC2531 USB stick hardware flashed with Z-Stack Home 1.2.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
   - [CC2530 + CC2591/CC2592 USB stick hardware flashed with Z-Stack Home 1.2.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
 
+### Warning about Zigbee to WiFi bridges
+
+zigpy requires a robust connection between the zigpy radio library and the serial port of the Zigbee radio. With solutions such as _ITEAD Sonoff ZBBridge_ or a Ser2Net serial proxy connection over a WiFi network it is expected to see `NCP entered failed state. Requesting APP controller restart` in the logs. This is a normal part of the operation and indicates there was a drop in communication which caused packet loss to occurred between the zigpy radio library and the Zigbee radio. The use of serial network proxies/bridges/servers over WiFi is therefore not recommended when wanting a stable Zigbee environment with zigpy.
+
 ## Release packages available via PyPI
 
 New packages of tagged versions are also released via the "zigpy" project on PyPI
