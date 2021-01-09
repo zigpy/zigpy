@@ -33,11 +33,11 @@ class DeviceRegistry:
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
         if models_info:
             for manuf, model in models_info:
-                self.registry[manuf][model].append(custom_device)
+                self.registry[manuf][model].insert(0, custom_device)
         else:
             manufacturer = custom_device.signature.get(SIG_MANUFACTURER)
             model = custom_device.signature.get(SIG_MODEL)
-            self.registry[manufacturer][model].append(custom_device)
+            self.registry[manufacturer][model].insert(0, custom_device)
 
     def remove(self, custom_device: CustomDeviceType) -> None:
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
