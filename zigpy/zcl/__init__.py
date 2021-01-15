@@ -192,6 +192,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         if hdr.frame_control.is_cluster:
             self.handle_cluster_request(hdr.tsn, hdr.command_id, args)
             self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
+            if not hdr.frame_control.disable_default_response:
+                self.debug("ZCL default response 0x%04x: %d", hdr.command_id, hdr.tsn)
+                schema = foundation.COMMANDS[foundation.Command.Default_Response][0]
+                self.create_catching_task(
+                    self.reply(
+                        True, foundation.Command.Default_Response, schema, hdr.command_id, tsn=hdr.tsn
+                    )
+                )
             return
         self.listener_event("general_command", hdr, args)
         self.handle_cluster_general_request(hdr, args)
