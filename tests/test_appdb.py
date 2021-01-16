@@ -4,6 +4,7 @@ import os
 import pytest
 
 from zigpy import profiles
+import zigpy.appdb
 import zigpy.application
 from zigpy.config import CONF_DATABASE, ZIGPY_SCHEMA
 from zigpy.const import SIG_ENDPOINTS, SIG_MANUFACTURER, SIG_MODEL
@@ -624,3 +625,56 @@ async def test_no_ep_device_cleanup(tmpdir):
     assert ieee in app_2.devices
     assert ieee_2 not in app_2.devices
     await app_2.pre_shutdown()
+
+
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT))
+async def test_invalid_node_desc(tmpdir):
+    """devices without a valid node descriptor should not be saved."""
+
+    ieee_1 = make_ieee(1)
+    nwk_1 = 0x1111
+
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+    app.handle_join(nwk_1, ieee_1, 0)
+
+    dev_1 = app.get_device(ieee_1)
+    dev_1.node_desc = zdo_t.NodeDescriptor()
+    dev_1.add_endpoint(1)
+    app.device_initialized(dev_1)
+
+    await app.pre_shutdown()
+    del dev_1
+
+    # Everything should've been saved - check that it re-loads
+    app2 = await make_app(db)
+    assert ieee_1 not in app2.devices
+
+    await app2.pre_shutdown()
+    os.unlink(db)
+
+
+@patch(
+    "zigpy.appdb.PersistingListener._save_device",
+    wraps=zigpy.appdb.PersistingListener._save_device,
+)
+async def test_appdb_worker_exception(save_mock, tmpdir):
+    """Exceptions should not kill the appdb worker."""
+
+    app_mock = MagicMock(name="ControllerApplication")
+
+    db = os.path.join(str(tmpdir), "test.db")
+
+    ieee_1 = make_ieee(1)
+    dev_1 = zigpy.device.Device(app_mock, ieee_1, 0x1111)
+    dev_1.status = Status.ENDPOINTS_INIT
+    dev_1.node_desc = MagicMock()
+    dev_1.node_desc.is_valid = True
+    dev_1.node_desc.serialize.side_effect = AttributeError
+
+    db_listener = await zigpy.appdb.PersistingListener.new(db, app_mock)
+
+    for _ in range(3):
+        db_listener.raw_device_initialized(dev_1)
+    await db_listener.shutdown()
+    assert save_mock.await_count == 3
