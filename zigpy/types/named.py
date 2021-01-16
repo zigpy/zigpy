@@ -1,4 +1,3 @@
-import enum
 from typing import Iterable, Tuple, Union
 
 from . import basic
@@ -37,7 +36,7 @@ class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
     pass
 
 
-class Bool(basic.uint8_t, enum.Enum):
+class Bool(basic.enum8):
     false = 0
     true = 1
 
