@@ -366,6 +366,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 device.status,
             )
             return
+        if not device.node_desc.is_valid:
+            LOGGER.debug(
+                "[0x%04x]: does not have a valid node descriptor, not saving in appdb",
+                device.nwk,
+            )
+            return
+
         try:
             q = "INSERT INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
             await self.execute(q, (device.ieee, device.nwk, device.status))
