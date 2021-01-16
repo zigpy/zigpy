@@ -740,3 +740,35 @@ def test_different_manuf_same_model(real_device, real_device_2):
     )
     assert len(manuf2_list) == 1
     assert manuf2_list[0] is TestDevice_2
+
+
+def test_quirk_match_order(real_device, real_device_2):
+    """Test quirk matching order to allow user overrides via custom quirks."""
+
+    class BuiltInQuirk(zigpy.quirks.CustomDevice):
+        signature = {
+            SIG_MODELS_INFO: (("manufacturer", "model"),),
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 255,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+        def get_signature(self):
+            pass
+
+    class CustomQuirk(BuiltInQuirk):
+        pass
+
+    registry = DeviceRegistry()
+    registry.add_to_registry(BuiltInQuirk)
+    # With only a single matching quirk there is no choice but to use the first one
+    assert type(registry.get_device(real_device)) is BuiltInQuirk
+
+    registry.add_to_registry(CustomQuirk)
+    # A quirk registered later that also matches the device will be preferred
+    assert type(registry.get_device(real_device)) is CustomQuirk
