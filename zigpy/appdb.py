@@ -92,6 +92,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     args,
                     str(exc),
                 )
+            except Exception as ex:
+                LOGGER.error(
+                    "Unexpected error while processing %s(%s): %s", cb_name, args, ex
+                )
             self._callback_handlers.task_done()
 
     async def shutdown(self) -> None:
