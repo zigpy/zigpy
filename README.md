@@ -13,6 +13,12 @@ zigpy contains common code implementing Zigbee ZCL, ZDO and application state ma
 
 Reference implementation of the zigpy library exist in **[Home Assistant](https://www.home-assistant.io)** (Python based open source home automation software) as part of its **[ZHA integration component](https://www.home-assistant.io/integrations/zha/)**.
 
+### Zigbee device OTA updates
+
+zigpy have code to automatically download and perform OTA (Over-The-Air) firmware updates of Zigbee devices if the OTA firmware image provider source URL for updates is known. The OTA update directory is optional and it can also be used for any offline firmware files that you provide yourself.
+
+Online OTA providers for firmware updates are currently only available for IKEA and LEDVANCE devices. OTA updates for device of other manufactures could possible also be supported by zigpy in the future, if these manufacturers publish their device OTA firmware images publicly.
+
 ## How to install and test, report bugs, or contribute to this project
 
 For specific instructions on how-to install and test zigpy or contribute bug-reports and code to this project please see the guidelines in the CONTRIBUTING.md file:
