@@ -54,6 +54,7 @@ Note! Zigbee 3.0 support or not in zigpy depends primarily on your Zigbee coordi
 - **Texas Instruments based radios with Z-Stack 3.x.x firmware** (via the [zigpy-znp](https://github.com/zha-ng/zigpy-znp) library for zigpy)
   - [CC2652P/CC2652R/CC2652RB USB stick and dev board hardware flashed with Z-Stack 3.x.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
   - [CC1352P/CC1352R USB stick and dev board hardware flashed with Z-Stack 3.x.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
+  - [CC2538/CC2531/CC2530 USB stick and dev board hardware flashed with Z-Stack 3.0.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
 - **Digi XBee Zigbee based radios** (via the [zigpy-xbee](https://github.com/zigpy/zigpy-xbee) library for zigpy)
   - Digi XBee Series 3 (xbee3-24) modules
   - Digi XBee Series 2C (S2C) modules
