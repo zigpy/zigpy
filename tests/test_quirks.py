@@ -772,3 +772,86 @@ def test_quirk_match_order(real_device, real_device_2):
     registry.add_to_registry(CustomQuirk)
     # A quirk registered later that also matches the device will be preferred
     assert type(registry.get_device(real_device)) is CustomQuirk
+
+
+def test_quirk_wildcard_manufacturer(real_device, real_device_2):
+    """Test quirk matching with a wildcard (None) manufacturer."""
+
+    class BaseDev(zigpy.quirks.CustomDevice):
+        def get_signature(self):
+            pass
+
+    class ModelsQuirk(BaseDev):
+        signature = {
+            SIG_MODELS_INFO: (("manufacturer", "model"),),
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 255,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+    class ModelsQuirkNoMatch(BaseDev):
+        # same model and manufacture, different endpoint signature
+        signature = {
+            SIG_MODELS_INFO: (("manufacturer", "model"),),
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 260,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+    class ModelOnlyQuirk(BaseDev):
+        # Wildcard Manufacturer
+        signature = {
+            SIG_MODEL: "model",
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 255,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+    class ModelOnlyQuirkNoMatch(BaseDev):
+        # Wildcard Manufacturer, none matching endpoint signature
+        signature = {
+            SIG_MODEL: "model",
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 260,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+    registry = DeviceRegistry()
+    for quirk in ModelsQuirk, ModelsQuirkNoMatch, ModelOnlyQuirk, ModelOnlyQuirkNoMatch:
+        registry.add_to_registry(quirk)
+
+    quirked = registry.get_device(real_device)
+    assert isinstance(quirked, ModelsQuirk)
+
+    quirked = registry.get_device(real_device_2)
+    assert isinstance(quirked, ModelOnlyQuirk)
+
+    real_device.manufacturer = (
+        "We are expected to match a manufacturer wildcard quirk now"
+    )
+    quirked = registry.get_device(real_device)
+    assert isinstance(quirked, ModelOnlyQuirk)
+
+    real_device.model = "And now we should not match any quirk"
+    quirked = registry.get_device(real_device)
+    assert quirked is real_device

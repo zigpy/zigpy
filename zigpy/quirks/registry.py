@@ -1,7 +1,7 @@
 import collections
 import itertools
 import logging
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -18,8 +18,8 @@ from zigpy.typing import CustomDeviceType, DeviceType
 
 _LOGGER = logging.getLogger(__name__)
 
-TYPE_MODEL_QUIRKS_LIST = Dict[str, List["zigpy.quirks.CustomDevice"]]
-TYPE_MANUF_QUIRKS_DICT = Dict[str, TYPE_MODEL_QUIRKS_LIST]
+TYPE_MODEL_QUIRKS_LIST = Dict[Optional[str], List["zigpy.quirks.CustomDevice"]]
+TYPE_MANUF_QUIRKS_DICT = Dict[Optional[str], TYPE_MODEL_QUIRKS_LIST]
 
 
 class DeviceRegistry:
@@ -33,11 +33,13 @@ class DeviceRegistry:
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
         if models_info:
             for manuf, model in models_info:
-                self.registry[manuf][model].insert(0, custom_device)
+                if custom_device not in self.registry[manuf][model]:
+                    self.registry[manuf][model].insert(0, custom_device)
         else:
             manufacturer = custom_device.signature.get(SIG_MANUFACTURER)
             model = custom_device.signature.get(SIG_MODEL)
-            self.registry[manufacturer][model].insert(0, custom_device)
+            if custom_device not in self.registry[manufacturer][model]:
+                self.registry[manufacturer][model].insert(0, custom_device)
 
     def remove(self, custom_device: CustomDeviceType) -> None:
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
@@ -63,6 +65,7 @@ class DeviceRegistry:
         for candidate in itertools.chain(
             self.registry[device.manufacturer][device.model],
             self.registry[device.manufacturer][None],
+            self.registry[None][device.model],
             self.registry[None][None],
         ):
             _LOGGER.debug("Considering %s", candidate)

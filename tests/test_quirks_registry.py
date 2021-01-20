@@ -44,9 +44,9 @@ def test_add_to_registry_new_sig(fake_dev):
     reg._registry = manuf_dict
 
     reg.add_to_registry(fake_dev)
-    assert manuf_dict.__getitem__.call_count == 1
+    assert manuf_dict.__getitem__.call_count == 2
     assert manuf_dict.__getitem__.call_args[0][0] is mock.sentinel.dev_manufacturer
-    assert model_dict.__getitem__.call_count == 1
+    assert model_dict.__getitem__.call_count == 2
     assert model_dict.__getitem__.call_args[0][0] is mock.sentinel.dev_model
     assert quirk_list.insert.call_count == 1
     assert quirk_list.insert.call_args[0][1] is fake_dev
@@ -85,12 +85,12 @@ def test_add_to_registry_models_info(fake_dev):
     reg._registry = manuf_dict
 
     reg.add_to_registry(fake_dev)
-    assert manuf_dict.__getitem__.call_count == 2
+    assert manuf_dict.__getitem__.call_count == 4
     assert manuf_dict.__getitem__.call_args_list[0][0][0] is mock.sentinel.manuf_1
-    assert manuf_dict.__getitem__.call_args_list[1][0][0] is mock.sentinel.manuf_2
-    assert model_dict.__getitem__.call_count == 2
+    assert manuf_dict.__getitem__.call_args_list[2][0][0] is mock.sentinel.manuf_2
+    assert model_dict.__getitem__.call_count == 4
     assert model_dict.__getitem__.call_args_list[0][0][0] is mock.sentinel.model_1
-    assert model_dict.__getitem__.call_args_list[1][0][0] is mock.sentinel.model_2
+    assert model_dict.__getitem__.call_args_list[2][0][0] is mock.sentinel.model_2
     assert quirk_list.insert.call_count == 2
     assert quirk_list.insert.call_args_list[0][0][1] is fake_dev
     assert quirk_list.insert.call_args_list[1][0][1] is fake_dev
