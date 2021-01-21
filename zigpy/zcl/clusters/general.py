@@ -2,7 +2,7 @@
 
 import collections
 from datetime import datetime
-from typing import Tuple
+from typing import Any, List, Tuple
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
@@ -980,9 +980,9 @@ class Ota(Cluster):
         ),
     }
 
-    def handle_cluster_request(self, tsn, command_id, args):
+    def handle_cluster_request(self, hdr: foundation.ZCLHeader, args: List[Any]):
         self.create_catching_task(
-            self._handle_cluster_request(tsn, command_id, args),
+            self._handle_cluster_request(hdr.tsn, hdr.command_id, args),
         )
 
     async def _handle_cluster_request(self, tsn, command_id, args):

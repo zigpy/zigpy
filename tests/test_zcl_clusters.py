@@ -121,7 +121,8 @@ def ota_cluster():
 async def test_ota_handle_cluster_req(ota_cluster):
     ota_cluster._handle_cluster_request = AsyncMock()
 
-    ota_cluster.handle_cluster_request(sentinel.tsn, sentinel.cmd, sentinel.args)
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(123, 0x00)
+    ota_cluster.handle_cluster_request(hdr, sentinel.args)
     assert ota_cluster._handle_cluster_request.call_count == 1
 
 
