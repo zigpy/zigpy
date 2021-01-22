@@ -202,7 +202,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
             return
         self.listener_event("general_command", hdr, args)
-        self.handle_cluster_general_request(hdr, args)
+        self.handle_cluster_general_request(hdr, args, dst_addressing=dst_addressing)
 
     def handle_cluster_request(
         self,
@@ -216,7 +216,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         self.debug("No handler for cluster command %s", hdr.command_id)
 
     def handle_cluster_general_request(
-        self, hdr: foundation.ZCLHeader, args: List
+        self,
+        hdr: foundation.ZCLHeader,
+        args: List,
+        *,
+        dst_addressing: Optional[
+            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+        ] = None,
     ) -> None:
         if hdr.command_id == foundation.Command.Report_Attributes:
             valuestr = ", ".join(

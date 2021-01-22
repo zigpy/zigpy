@@ -504,7 +504,14 @@ class Time(Cluster):
     server_commands = {}
     client_commands = {}
 
-    def handle_cluster_general_request(self, hdr, *args):
+    def handle_cluster_general_request(
+        self,
+        hdr: foundation.ZCLHeader,
+        *args: List[Any],
+        dst_addressing: Optional[
+            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+        ] = None,
+    ):
         if hdr.command_id == foundation.Command.Read_Attributes:
             # responses should be in the same order. Is it time to ditch py35?
             data = collections.OrderedDict()
@@ -990,22 +997,20 @@ class Ota(Cluster):
         ] = None,
     ):
         self.create_catching_task(
-            self._handle_cluster_request(
-                hdr.tsn, hdr.command_id, args, dst_addressing=dst_addressing
-            ),
+            self._handle_cluster_request(hdr, args, dst_addressing=dst_addressing),
         )
 
     async def _handle_cluster_request(
         self,
-        tsn,
-        command_id,
-        args,
+        hdr: foundation.ZCLHeader,
+        args: List[Any],
         *,
         dst_addressing: Optional[
             Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
         ] = None,
     ):
         """Parse OTA commands."""
+        tsn, command_id = hdr.tsn, hdr.command_id
         cmd_name = self.server_commands.get(command_id, [command_id])[0]
 
         if cmd_name == "query_next_image":
