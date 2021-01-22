@@ -187,20 +187,42 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
         return self._endpoint.reply(self.cluster_id, tsn, data, command_id=command_id)
 
-    def handle_message(self, hdr: foundation.ZCLHeader, args: List[Any]):
+    def handle_message(
+        self,
+        hdr: foundation.ZCLHeader,
+        args: List[Any],
+        *,
+        dst_addressing: Optional[
+            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+        ] = None,
+    ):
         self.debug("ZCL request 0x%04x: %s", hdr.command_id, args)
         if hdr.frame_control.is_cluster:
-            self.handle_cluster_request(hdr, args)
+            self.handle_cluster_request(hdr, args, dst_addressing=dst_addressing)
             self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
             return
         self.listener_event("general_command", hdr, args)
-        self.handle_cluster_general_request(hdr, args)
+        self.handle_cluster_general_request(hdr, args, dst_addressing=dst_addressing)
 
-    def handle_cluster_request(self, hdr: foundation.ZCLHeader, args: List[Any]):
+    def handle_cluster_request(
+        self,
+        hdr: foundation.ZCLHeader,
+        args: List[Any],
+        *,
+        dst_addressing: Optional[
+            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+        ] = None,
+    ):
         self.debug("No handler for cluster command %s", hdr.command_id)
 
     def handle_cluster_general_request(
-        self, hdr: foundation.ZCLHeader, args: List
+        self,
+        hdr: foundation.ZCLHeader,
+        args: List,
+        *,
+        dst_addressing: Optional[
+            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+        ] = None,
     ) -> None:
         if hdr.command_id == foundation.Command.Report_Attributes:
             valuestr = ", ".join(
