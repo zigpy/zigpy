@@ -125,14 +125,18 @@ def test_handle_message(ep):
     c = ep.add_input_cluster(0)
     c.handle_message = MagicMock()
     ep.handle_message(sentinel.profile, 0, sentinel.hdr, sentinel.data)
-    c.handle_message.assert_called_once_with(sentinel.hdr, sentinel.data)
+    c.handle_message.assert_called_once_with(
+        sentinel.hdr, sentinel.data, dst_addressing=None
+    )
 
 
 def test_handle_message_output(ep):
     c = ep.add_output_cluster(0)
     c.handle_message = MagicMock()
     ep.handle_message(sentinel.profile, 0, sentinel.hdr, sentinel.data)
-    c.handle_message.assert_called_once_with(sentinel.hdr, sentinel.data)
+    c.handle_message.assert_called_once_with(
+        sentinel.hdr, sentinel.data, dst_addressing=None
+    )
 
 
 def test_handle_request_unknown(ep):
