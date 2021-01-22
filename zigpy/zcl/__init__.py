@@ -187,17 +187,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
         return self._endpoint.reply(self.cluster_id, tsn, data, command_id=command_id)
 
-    def handle_message(self, hdr, args):
+    def handle_message(self, hdr: foundation.ZCLHeader, args: List[Any]):
         self.debug("ZCL request 0x%04x: %s", hdr.command_id, args)
         if hdr.frame_control.is_cluster:
-            self.handle_cluster_request(hdr.tsn, hdr.command_id, args)
+            self.handle_cluster_request(hdr, args)
             self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
             return
         self.listener_event("general_command", hdr, args)
         self.handle_cluster_general_request(hdr, args)
 
-    def handle_cluster_request(self, tsn, command_id, args):
-        self.debug("No handler for cluster command %s", command_id)
+    def handle_cluster_request(self, hdr: foundation.ZCLHeader, args: List[Any]):
+        self.debug("No handler for cluster command %s", hdr.command_id)
 
     def handle_cluster_general_request(
         self, hdr: foundation.ZCLHeader, args: List

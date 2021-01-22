@@ -700,7 +700,8 @@ def test_general_command_reply(cluster):
 
 
 def test_handle_cluster_request_handler(cluster):
-    cluster.handle_cluster_request(sentinel.tsn, sentinel.command_id, sentinel.args)
+    hdr = foundation.ZCLHeader.cluster(123, 0x00)
+    cluster.handle_cluster_request(hdr, [sentinel.arg1, sentinel.arg2])
 
 
 async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
