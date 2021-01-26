@@ -248,13 +248,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                 self._update_attribute(attr.attrid, value)
 
             if not hdr.frame_control.disable_default_response:
-                self.create_catching_task(
-                    self.general_command(
-                        foundation.Command.Default_Response,
-                        hdr.command_id,
-                        foundation.Status.SUCCESS,
-                        tsn=hdr.tsn,
-                    )
+                self.send_default_rsp(
+                    hdr,
+                    foundation.Status.SUCCESS,
                 )
 
     def read_attributes_raw(self, attributes, manufacturer=None):
@@ -620,6 +616,21 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     discover_commands_generated = functools.partialmethod(
         general_command, foundation.Command.Discover_Commands_Generated
     )
+
+    def send_default_rsp(
+        self,
+        hdr: foundation.ZCLHeader,
+        status: foundation.Status = foundation.Status.SUCCESS,
+    ) -> None:
+        """Send default response unconditionally."""
+        self.create_catching_task(
+            self.general_command(
+                foundation.Command.Default_Response,
+                hdr.command_id,
+                status,
+                tsn=hdr.tsn,
+            )
+        )
 
 
 class ClusterPersistingListener:
