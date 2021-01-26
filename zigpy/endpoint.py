@@ -214,7 +214,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.listener_event("unknown_cluster_message", hdr.command_id, args)
             return
 
-        handler(hdr, args)
+        handler(hdr, args, dst_addressing=dst_addressing)
 
     def request(self, cluster, sequence, data, expect_reply=True, command_id=0x00):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (

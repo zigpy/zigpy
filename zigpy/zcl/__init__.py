@@ -187,20 +187,42 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
         return self._endpoint.reply(self.cluster_id, tsn, data, command_id=command_id)
 
-    def handle_message(self, hdr, args):
+    def handle_message(
+        self,
+        hdr: foundation.ZCLHeader,
+        args: List[Any],
+        *,
+        dst_addressing: Optional[
+            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+        ] = None,
+    ):
         self.debug("ZCL request 0x%04x: %s", hdr.command_id, args)
         if hdr.frame_control.is_cluster:
-            self.handle_cluster_request(hdr.tsn, hdr.command_id, args)
+            self.handle_cluster_request(hdr, args, dst_addressing=dst_addressing)
             self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
             return
         self.listener_event("general_command", hdr, args)
-        self.handle_cluster_general_request(hdr, args)
+        self.handle_cluster_general_request(hdr, args, dst_addressing=dst_addressing)
 
-    def handle_cluster_request(self, tsn, command_id, args):
-        self.debug("No handler for cluster command %s", command_id)
+    def handle_cluster_request(
+        self,
+        hdr: foundation.ZCLHeader,
+        args: List[Any],
+        *,
+        dst_addressing: Optional[
+            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+        ] = None,
+    ):
+        self.debug("No handler for cluster command %s", hdr.command_id)
 
     def handle_cluster_general_request(
-        self, hdr: foundation.ZCLHeader, args: List
+        self,
+        hdr: foundation.ZCLHeader,
+        args: List,
+        *,
+        dst_addressing: Optional[
+            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+        ] = None,
     ) -> None:
         if hdr.command_id == foundation.Command.Report_Attributes:
             valuestr = ", ".join(
@@ -226,13 +248,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                 self._update_attribute(attr.attrid, value)
 
             if not hdr.frame_control.disable_default_response:
-                self.create_catching_task(
-                    self.general_command(
-                        foundation.Command.Default_Response,
-                        hdr.command_id,
-                        foundation.Status.SUCCESS,
-                        tsn=hdr.tsn,
-                    )
+                self.send_default_rsp(
+                    hdr,
+                    foundation.Status.SUCCESS,
                 )
 
     def read_attributes_raw(self, attributes, manufacturer=None):
@@ -598,6 +616,21 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     discover_commands_generated = functools.partialmethod(
         general_command, foundation.Command.Discover_Commands_Generated
     )
+
+    def send_default_rsp(
+        self,
+        hdr: foundation.ZCLHeader,
+        status: foundation.Status = foundation.Status.SUCCESS,
+    ) -> None:
+        """Send default response unconditionally."""
+        self.create_catching_task(
+            self.general_command(
+                foundation.Command.Default_Response,
+                hdr.command_id,
+                status,
+                tsn=hdr.tsn,
+            )
+        )
 
 
 class ClusterPersistingListener:

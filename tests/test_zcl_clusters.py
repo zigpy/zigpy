@@ -121,7 +121,8 @@ def ota_cluster():
 async def test_ota_handle_cluster_req(ota_cluster):
     ota_cluster._handle_cluster_request = AsyncMock()
 
-    ota_cluster.handle_cluster_request(sentinel.tsn, sentinel.cmd, sentinel.args)
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(123, 0x00)
+    ota_cluster.handle_cluster_request(hdr, sentinel.args)
     assert ota_cluster._handle_cluster_request.call_count == 1
 
 
@@ -130,7 +131,8 @@ async def test_ota_handle_cluster_req_wrapper(ota_cluster):
     ota_cluster._handle_image_block = AsyncMock()
     ota_cluster._handle_upgrade_end = AsyncMock()
 
-    await ota_cluster._handle_cluster_request(sentinel.tsn, 0x01, [sentinel.args])
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(123, 0x01)
+    await ota_cluster._handle_cluster_request(hdr, [sentinel.args])
     assert ota_cluster._handle_query_next_image.call_count == 1
     assert ota_cluster._handle_query_next_image.call_args[0][0] == sentinel.args
     assert ota_cluster._handle_image_block.call_count == 0
@@ -139,7 +141,8 @@ async def test_ota_handle_cluster_req_wrapper(ota_cluster):
     ota_cluster._handle_image_block.reset_mock()
     ota_cluster._handle_upgrade_end.reset_mock()
 
-    await ota_cluster._handle_cluster_request(sentinel.tsn, 0x03, [sentinel.block_args])
+    hdr.command_id = 0x03
+    await ota_cluster._handle_cluster_request(hdr, [sentinel.block_args])
     assert ota_cluster._handle_query_next_image.call_count == 0
     assert ota_cluster._handle_image_block.call_count == 1
     assert ota_cluster._handle_image_block.call_args[0][0] == sentinel.block_args
@@ -148,7 +151,8 @@ async def test_ota_handle_cluster_req_wrapper(ota_cluster):
     ota_cluster._handle_image_block.reset_mock()
     ota_cluster._handle_upgrade_end.reset_mock()
 
-    await ota_cluster._handle_cluster_request(sentinel.tsn, 0x06, [sentinel.end_args])
+    hdr.command_id = 0x06
+    await ota_cluster._handle_cluster_request(hdr, [sentinel.end_args])
     assert ota_cluster._handle_query_next_image.call_count == 0
     assert ota_cluster._handle_image_block.call_count == 0
     assert ota_cluster._handle_upgrade_end.call_count == 1
@@ -157,7 +161,8 @@ async def test_ota_handle_cluster_req_wrapper(ota_cluster):
     ota_cluster._handle_image_block.reset_mock()
     ota_cluster._handle_upgrade_end.reset_mock()
 
-    await ota_cluster._handle_cluster_request(sentinel.tsn, 0x78, [sentinel.just_args])
+    hdr.command_id = 0x78
+    await ota_cluster._handle_cluster_request(hdr, [sentinel.just_args])
     assert ota_cluster._handle_query_next_image.call_count == 0
     assert ota_cluster._handle_image_block.call_count == 0
     assert ota_cluster._handle_upgrade_end.call_count == 0
