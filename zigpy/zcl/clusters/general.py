@@ -1750,14 +1750,6 @@ class GreenPowerProxy(Cluster):
             key = key.to_bytes(16, "big")
         self._update_attribute(0x9998, key)
 
-    def setKey(self,key):
-        if key is None:
-            del self._attr_cache[0x9998]
-            return
-        if not isinstance(key, (bytes)):
-            key = key.to_bytes(16, "big")
-        self._update_attribute(0x9998, key)
-
     async def permit(self, time_s=60):
         assert 0 <= time_s <= 254
         LOGGER.debug("Permit green power pairing for %s s", time_s)
