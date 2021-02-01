@@ -1589,11 +1589,11 @@ class GreenPowerProxy(Cluster):
             ep.in_clusters[
                 zigpy.zcl.clusters.general.Basic.cluster_id
             ]._update_attribute(0x0005, "GreenPowerDevice")
-        ep = dev.add_endpoint(zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id)
+        ep = dev.add_endpoint(self.endpoint_id)
         ep.status = zigpy.endpoint.Status.ZDO_INIT
         ep.profile_id = zigpy.profiles.zha.PROFILE_ID
         ep.device_type = zigpy.profiles.zha.DeviceType.GREEN_POWER
-        ep.add_input_cluster(zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id)
+        ep.add_input_cluster(self.cluster_id)
         application.device_initialized(dev)
         return dev
 
@@ -1639,22 +1639,22 @@ class GreenPowerProxy(Cluster):
         if counter is not None:
             if (
                 0x9999
-                in dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id]
-                .in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]
+                in dev.endpoints[self.endpoint_id]
+                .in_clusters[self.cluster_id]
                 ._attr_cache
                 and dev.endpoints[
-                    zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id
+                    self.endpoint_id
                 ]
-                .in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]
+                .in_clusters[self.cluster_id]
                 ._attr_cache[0x9999]
                 > counter
             ):
                 LOGGER.debug("Already get this frame counter,I ignoring it")
                 return
             dev.endpoints[
-                zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id
+                zself.endpoint_id
             ].in_clusters[
-                zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id
+                self.cluster_id
             ]._update_attribute(
                 0x9999, counter
             )
@@ -1695,9 +1695,8 @@ class GreenPowerProxy(Cluster):
         dev = application.devices[ieee]
         if (
             0x9998
-            not in dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id]
-            .in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]
-            ._attr_cache
+            not in dev.endpoints[self.endpoint_id]
+            .in_clusters[self.cluster_id]._attr_cache
         ):
             return None
         src_id = bytearray(ieee[0:4])
@@ -1717,9 +1716,8 @@ class GreenPowerProxy(Cluster):
             payload_length,
         )
         key = (
-            dev.endpoints[zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id]
-            .in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]
-            ._attr_cache[0x9998]
+            dev.endpoints[self.endpoint_id]
+            .in_clusters[self.cluster_id]._attr_cache[0x9998]
         )
         nonce = src_id + src_id + counter + (0x05).to_bytes(1, "little")
         header = header + src_id + counter
@@ -1761,9 +1759,9 @@ class GreenPowerProxy(Cluster):
         data = hdr.serialize() + t.serialize((0x0B, time_s), (t.uint8_t, t.uint16_t))
         return await self.endpoint.device.application.broadcast(
             profile=zigpy.profiles.zha.PROFILE_ID,
-            cluster=zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id,
-            src_ep=zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id,
-            dst_ep=zigpy.zcl.clusters.general.GreenPowerProxy.endpoint_id,
+            cluster=self.cluster_id,
+            src_ep=self.endpoint_id,
+            dst_ep=self.endpoint_id,
             grpid=None,
             radius=30,
             sequence=tsn,
