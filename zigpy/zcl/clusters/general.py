@@ -12,6 +12,7 @@ from Crypto.Util import Counter
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
 
+LOGGER = logging.getLogger(__name__)
 
 class Basic(Cluster):
     """Attributes for determining basic information about a
