@@ -15,6 +15,7 @@ from zigpy.zcl import Cluster, foundation
 
 LOGGER = logging.getLogger(__name__)
 
+
 class Basic(Cluster):
     """Attributes for determining basic information about a
     device, setting user device information such as location,
