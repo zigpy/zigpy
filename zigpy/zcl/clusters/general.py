@@ -1638,18 +1638,8 @@ class GreenPowerProxy(Cluster):
         value = value + tuple(payload)
         dev = application.devices[ieee]
         if counter is not None:
-            if (
-                0x9999
-                in dev.endpoints[self.endpoint_id]
-                .in_clusters[self.cluster_id]
-                ._attr_cache
-                and dev.endpoints[
-                    self.endpoint_id
-                ]
-                .in_clusters[self.cluster_id]
-                ._attr_cache[0x9999]
-                > counter
-            ):
+            attributes = dev.endpoints[self.endpoint_id].in_clusters[self.cluster_id]._attr_cache
+            if (0x9999 in attributes and attributes[0x9999] > counter):
                 LOGGER.debug("Already get this frame counter,I ignoring it")
                 return
             dev.endpoints[
