@@ -67,6 +67,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if start_radio:
             try:
                 await app.startup(auto_form)
+            except asyncio.CancelledError:
+                raise
             except Exception:
                 LOGGER.error("Couldn't start application")
                 await app.pre_shutdown()
