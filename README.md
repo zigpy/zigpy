@@ -46,6 +46,8 @@ Note! Zigbee 3.0 support or not in zigpy depends primarily on your Zigbee coordi
   - Telegesis ETRX357USB-LRS (Note! First have to be [flashed with other EmberZNet NCP firmware](https://github.com/walthowd/husbzb-firmware))
   - Telegesis ETRX357USB-LRS+8M (Note! First have to be [flashed with other EmberZNet NCP firmware](https://github.com/walthowd/husbzb-firmware))
   - Bitron Video/Smabit BV AV2010/10 USB-Stick with Silicon Labs Ember 3587
+  - [IKEA Billy EZSP](https://github.com/MattWestb/IKEA-TRADFRI-ICC-A-1-Module)
+  - [Tuya TYGWZ01 and with labeled (Silvercrest / Lidl) Smart Home Gateway](https://paulbanks.org/projects/lidl-zigbee/)
 - **dresden elektronik deCONZ based radios** (via the [zigpy-deconz](https://github.com/zigpy/zigpy-deconz) library for zigpy)
   - [ConBee II (a.k.a. ConBee 2) USB adapter from dresden dlektronik](https://shop.dresden-elektronik.de/conbee-2.html)
   - [RaspBee II (a.k.a. RaspBee 2)](https://www.dresden-elektronik.com/product/raspbee-II.html) GPIO radio adapter from [dresden elektronik](https://www.dresden-elektronik.de)
