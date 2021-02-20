@@ -40,6 +40,9 @@ class Bits(list):
         return cls(bits), b""
 
 
+NOT_SET = object()
+
+
 class FixedIntType(int):
     _signed = None
     _bits = None
@@ -59,18 +62,18 @@ class FixedIntType(int):
 
     def _hex_repr(self):
         assert self._bits % 4 == 0
-        return f"0x{{:0{self._bits // 4}X}}".format(int(self))
+        return f"0x{{:0{self._bits // 4}x}}".format(int(self))
 
     def _bin_repr(self):
         return f"0b{{:0{self._bits}b}}".format(int(self))
 
-    def __init_subclass__(cls, signed=None, bits=None, repr=None) -> None:
+    def __init_subclass__(cls, signed=NOT_SET, bits=NOT_SET, repr=NOT_SET) -> None:
         super().__init_subclass__()
 
-        if signed is not None:
+        if signed is not NOT_SET:
             cls._signed = signed
 
-        if bits is not None:
+        if bits is not NOT_SET:
             cls._bits = bits
 
         if repr == "hex":
@@ -78,9 +81,11 @@ class FixedIntType(int):
             cls.__str__ = cls.__repr__ = cls._hex_repr
         elif repr == "bin":
             cls.__str__ = cls.__repr__ = cls._bin_repr
-        elif repr is not None and not repr:
+        elif not repr:
             cls.__str__ = super().__str__
             cls.__repr__ = super().__repr__
+        elif repr is not NOT_SET:
+            raise ValueError(f"Invalid repr value {repr!r}. Must be either hex or bin")
 
         # XXX: The enum module uses the first class with __new__ in its __dict__ as the
         #      member type. We have to ensure this is true for every subclass.
