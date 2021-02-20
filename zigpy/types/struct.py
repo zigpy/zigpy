@@ -193,8 +193,27 @@ class Struct:
         return self.as_dict() == other.as_dict()
 
     def __repr__(self) -> str:
-        kwargs = ", ".join([f"{f.name}={v!r}" for f, v in self.assigned_fields()])
-        return f"{type(self).__name__}({kwargs})"
+        fields = []
+
+        # Assigned fields are displayed as `field=value`
+        for f, v in self.assigned_fields():
+            fields.append(f"{f.name}={v!r}")
+
+        cls = type(self)
+
+        # Properties are displayed as `*prop=value`
+        for attr in dir(cls):
+            cls_attr = getattr(cls, attr)
+
+            if not isinstance(cls_attr, property):
+                continue
+
+            value = getattr(self, attr)
+
+            if value is not None:
+                fields.append(f"*{attr}={value!r}")
+
+        return f"{type(self).__name__}({', '.join(fields)})"
 
 
 @dataclasses.dataclass(frozen=True)
