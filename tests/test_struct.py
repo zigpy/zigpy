@@ -536,3 +536,23 @@ def test_repr():
     ts = TestStruct()
     ts.foo = 1j
     assert repr(ts) == "TestStruct(foo=1j)"
+
+
+def test_repr_properties():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+        bar: t.uint8_t
+
+        @property
+        def baz(self):
+            if self.bar is None:
+                return None
+
+            return t.Bool((self.bar & 0xF0) >> 4)
+
+    assert repr(TestStruct(foo=1)) == "TestStruct(foo=1)"
+    assert (
+        repr(TestStruct(foo=1, bar=16))
+        == "TestStruct(foo=1, bar=16, *baz=<Bool.true: 1>)"
+    )
+    assert repr(TestStruct()) == "TestStruct()"

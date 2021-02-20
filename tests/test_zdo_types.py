@@ -151,6 +151,20 @@ def test_node_descriptor_logical_types():
     assert nd.is_router is False
 
 
+def test_node_descriptor_repr():
+    nd = types.NodeDescriptor(
+        0b11111010, 0xFF, 0xFF, 0xFFFF, 0xFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFF
+    )
+    assert nd.is_coordinator is False
+    assert "*is_coordinator=False" in repr(nd)
+
+    assert nd.is_end_device is True
+    assert "*is_end_device=True" in repr(nd)
+
+    assert nd.is_router is False
+    assert "*is_router=False" in repr(nd)
+
+
 def test_size_prefixed_simple_descriptor():
     sd = types.SizePrefixedSimpleDescriptor()
     sd.endpoint = t.uint8_t(1)
