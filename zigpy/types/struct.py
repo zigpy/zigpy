@@ -2,12 +2,35 @@ import dataclasses
 import inspect
 import typing
 
-NoneType = type(None)
+import zigpy.types as t
 
 
 class ListSubclass(list):
     # So we can call `setattr()` on it
     pass
+
+
+@dataclasses.dataclass(frozen=True)
+class StructField:
+    name: typing.Optional[str] = None
+    type: typing.Optional[type] = None
+
+    requires: typing.Optional[typing.Callable[["Struct"], bool]] = None
+
+    def replace(self, **kwargs) -> "StructField":
+        return dataclasses.replace(self, **kwargs)
+
+    def _convert_type(self, value):
+        if value is None or isinstance(value, self.type):
+            return value
+
+        try:
+            return self.type(value)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to convert {self.name}={value!r} from type"
+                f" {type(value)} to {self.type}"
+            ) from e
 
 
 class Struct:
@@ -216,24 +239,53 @@ class Struct:
         return f"{type(self).__name__}({', '.join(fields)})"
 
 
-@dataclasses.dataclass(frozen=True)
-class StructField:
-    name: typing.Optional[str] = None
-    type: typing.Optional[type] = None
+class BitStruct(Struct):
+    def __init_subclass__(cls):
+        super().__init_subclass__()
 
-    requires: typing.Optional[typing.Callable[[Struct], bool]] = None
+        # We know our size in advance
+        cls._bits = sum(f.type._bits for f in cls.fields)
 
-    def replace(self, **kwargs) -> "StructField":
-        return dataclasses.replace(self, **kwargs)
+    @classmethod
+    def _get_fields(cls) -> typing.List["StructField"]:
+        fields = super()._get_fields()
 
-    def _convert_type(self, value):
-        if value is None or isinstance(value, self.type):
-            return value
+        for field in fields:
+            if not hasattr(field.type, "_bits"):
+                raise TypeError(f"Field {field} must be a bit-compatible type")
 
-        try:
-            return self.type(value)
-        except Exception as e:
-            raise ValueError(
-                f"Failed to convert {self.name}={value!r} from type"
-                f" {type(value)} to {self.type}"
-            ) from e
+        return fields
+
+    def bits(self) -> t.Bits:
+        bits = []
+
+        for field, value in self.assigned_fields(strict=True):
+            bits.extend(field._convert_type(value).bits())
+
+        return t.Bits(bits)
+
+    @classmethod
+    def from_bits(cls, bits: t.Bits) -> typing.Tuple["BitStruct", t.Bits]:
+        instance = cls()
+
+        for field in cls.fields:
+            if field.requires is not None and not field.requires(instance):
+                continue
+
+            value, bits = field.type.from_bits(bits)
+            setattr(instance, field.name, value)
+
+        return instance, bits
+
+    def serialize(self) -> bytes:
+        return self.bits().serialize()
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> typing.Tuple["BitStruct", bytes]:
+        if cls._bits % 8 != 0:
+            raise ValueError("{cls} is {cls._bits} bits, cannot deserialize from bytes")
+
+        bits, _ = t.Bits.deserialize(data[: cls._bits // 8])
+        instance, _ = cls.from_bits(bits)
+
+        return instance, data[cls._bits // 8 :]

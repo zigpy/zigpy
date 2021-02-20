@@ -6,32 +6,79 @@ from typing import Callable, Tuple, TypeVar
 CALLABLE_T = TypeVar("CALLABLE_T", bound=Callable)  # pylint: disable=invalid-name
 
 
+class Bits(list):
+    def __getitem__(self, key):
+        if isinstance(key, tuple):
+            return Bits(super().__getitem__(key))
+
+        return super().__getitem__(key)
+
+    def serialize(self) -> bytes:
+        if len(self) % 8 != 0:
+            raise ValueError(f"Cannot serialize {len(self)} bits into bytes: {self}")
+
+        serialized_bytes = []
+
+        for index in range(len(self) // 8):
+            byte = 0
+
+            for bit in self[index : index + 8]:
+                byte <<= 1
+                byte |= bit
+
+            serialized_bytes.append(byte)
+
+        return bytes(serialized_bytes)
+
+    @classmethod
+    def deserialize(cls, data) -> Tuple["Bits", bytes]:
+        bits = []
+
+        for byte in data:
+            bits.extend((byte >> i) & 1 for i in range(7, -1, -1))
+
+        return cls(bits), b""
+
+
 class FixedIntType(int):
     _signed = None
-    _size = None
+    _bits = None
 
     def __new__(cls, *args, **kwargs):
-        if cls._signed is None or cls._size is None:
+        if cls._signed is None or cls._bits is None:
             raise TypeError(f"{cls} is abstract and cannot be created")
 
         instance = super().__new__(cls, *args, **kwargs)
-        instance.serialize()
+
+        if cls._bits % 8 == 0:
+            instance.serialize()
+        else:
+            instance.bits()
 
         return instance
 
-    def __init_subclass__(cls, signed=None, size=None, hex_repr=None) -> None:
+    def _hex_repr(self):
+        assert self._bits % 4 == 0
+        return f"0x{{:0{self._bits // 4}X}}".format(int(self))
+
+    def _bin_repr(self):
+        return f"0b{{:0{self._bits}b}}".format(int(self))
+
+    def __init_subclass__(cls, signed=None, bits=None, repr=None) -> None:
         super().__init_subclass__()
 
         if signed is not None:
             cls._signed = signed
 
-        if size is not None:
-            cls._size = size
+        if bits is not None:
+            cls._bits = bits
 
-        if hex_repr:
-            fmt = f"0x{{:0{cls._size * 2}X}}"
-            cls.__str__ = cls.__repr__ = lambda self: fmt.format(self)
-        elif hex_repr is not None and not hex_repr:
+        if repr == "hex":
+            assert cls._bits % 4 == 0
+            cls.__str__ = cls.__repr__ = cls._hex_repr
+        elif repr == "bin":
+            cls.__str__ = cls.__repr__ = cls._bin_repr
+        elif repr is not None and not repr:
             cls.__str__ = super().__str__
             cls.__repr__ = super().__repr__
 
@@ -41,19 +88,48 @@ class FixedIntType(int):
             cls.__new__ = cls.__new__
 
     def serialize(self) -> bytes:
+        assert self._bits % 8 == 0
+
         try:
-            return self.to_bytes(self._size, "little", signed=self._signed)
+            return self.to_bytes(self._bits // 8, "little", signed=self._signed)
         except OverflowError as e:
             # OverflowError is not a subclass of ValueError, making it annoying to catch
             raise ValueError(str(e)) from e
 
+    def bits(self) -> Bits:
+        if (int(self) & (1 << (self._bits))).bit_length() > self._bits:
+            raise ValueError(
+                f"Value is too large to fit in {self._bits} bits: {int(self)}"
+            )
+
+        return Bits([(self >> n) & 0b1 for n in range(self._bits - 1, -1, -1)])
+
+    @classmethod
+    def from_bits(cls, bits: Bits) -> Tuple["FixedIntType", Bits]:
+        if len(bits) < cls._bits:
+            raise ValueError(f"Not enough bits to decode {cls}: {bits}")
+
+        n = 0
+
+        for bit in bits[: cls._bits]:
+            n <<= 1
+            n |= bit & 1
+
+        if cls._signed:
+            n = ((1 << cls._bits) - 1) ^ (n - 1)
+
+        return cls(n), bits[cls._bits :]
+
     @classmethod
     def deserialize(cls, data: bytes) -> Tuple["FixedIntType", bytes]:
-        if len(data) < cls._size:
-            raise ValueError(f"Data is too short to contain {cls._size} bytes")
+        assert cls._bits % 8 == 0
+        byte_size = cls._bits // 8
 
-        r = cls.from_bytes(data[: cls._size], "little", signed=cls._signed)
-        data = data[cls._size :]
+        if len(data) < byte_size:
+            raise ValueError(f"Data is too short to contain {byte_size} bytes")
+
+        r = cls.from_bytes(data[:byte_size], "little", signed=cls._signed)
+        data = data[byte_size:]
         return r, data
 
 
@@ -65,67 +141,67 @@ class int_t(FixedIntType, signed=True):
     pass
 
 
-class int8s(int_t, size=1):
+class int8s(int_t, bits=8):
     pass
 
 
-class int16s(int_t, size=2):
+class int16s(int_t, bits=16):
     pass
 
 
-class int24s(int_t, size=3):
+class int24s(int_t, bits=24):
     pass
 
 
-class int32s(int_t, size=4):
+class int32s(int_t, bits=32):
     pass
 
 
-class int40s(int_t, size=5):
+class int40s(int_t, bits=40):
     pass
 
 
-class int48s(int_t, size=6):
+class int48s(int_t, bits=48):
     pass
 
 
-class int56s(int_t, size=7):
+class int56s(int_t, bits=56):
     pass
 
 
-class int64s(int_t, size=8):
+class int64s(int_t, bits=64):
     pass
 
 
-class uint8_t(uint_t, size=1):
+class uint8_t(uint_t, bits=8):
     pass
 
 
-class uint16_t(uint_t, size=2):
+class uint16_t(uint_t, bits=16):
     pass
 
 
-class uint24_t(uint_t, size=3):
+class uint24_t(uint_t, bits=24):
     pass
 
 
-class uint32_t(uint_t, size=4):
+class uint32_t(uint_t, bits=32):
     pass
 
 
-class uint40_t(uint_t, size=5):
+class uint40_t(uint_t, bits=40):
     pass
 
 
-class uint48_t(uint_t, size=6):
+class uint48_t(uint_t, bits=48):
     pass
 
 
-class uint56_t(uint_t, size=7):
+class uint56_t(uint_t, bits=56):
     pass
 
 
-class uint64_t(uint_t, size=8):
+class uint64_t(uint_t, bits=64):
     pass
 
 
@@ -169,7 +245,12 @@ def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined") -> CALLABLE
         @classmethod
         def _missing_(cls, value):
             new = cls._member_type_.__new__(cls, value)
-            name = f"{undefined}_0x{{:0{cls._size * 2}x}}"  # pylint: disable=protected-access
+
+            if cls._bits % 8 == 0:
+                name = f"{undefined}_{new._hex_repr()}"
+            else:
+                name = f"{undefined}_{new._bin_repr()}"
+
             new._name_ = name.format(value)
             new._value_ = value
             return new

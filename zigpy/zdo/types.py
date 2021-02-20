@@ -339,7 +339,7 @@ IEEE = ("IEEEAddr", t.EUI64)
 STATUS = ("Status", Status)
 
 
-class _CommandID(t.uint16_t, hex_repr=True):
+class _CommandID(t.uint16_t, repr="hex"):
     pass
 
 

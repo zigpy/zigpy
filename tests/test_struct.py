@@ -556,3 +556,109 @@ def test_repr_properties():
         == "TestStruct(foo=1, bar=16, *baz=<Bool.true: 1>)"
     )
     assert repr(TestStruct()) == "TestStruct()"
+
+
+def test_bitstruct_simple():
+    class BitStruct1(t.BitStruct):
+        foo: t.uint8_t
+
+    assert BitStruct1(foo=1).bits() == t.uint8_t(1).bits() == [0, 0, 0, 0, 0, 0, 0, 1]
+    assert BitStruct1(foo=1).serialize() == b"\x01"
+
+    s, remaining = BitStruct1.deserialize(b"\x01\x02")
+    assert remaining == b"\x02"
+    assert s.foo == 1
+
+
+def test_bitstruct_nested():
+    class uint1_t(t.uint_t, bits=1):
+        pass
+
+    class uint2_t(t.uint_t, bits=2):
+        pass
+
+    class uint3_t(t.uint_t, bits=3):
+        pass
+
+    class FlagsType(t.bitmap_factory(uint2_t)):
+        FOO = 0b01
+        BAR = 0b10
+
+    class InnerBitStruct(t.BitStruct):
+        boolean: uint1_t
+        flags: FlagsType
+        foo: uint3_t
+
+    assert InnerBitStruct._bits == 1 + 2 + 3
+
+    class TestBitStruct(t.BitStruct):
+        leading: uint1_t
+        inner: InnerBitStruct
+        trailing: uint1_t
+
+    assert TestBitStruct._bits == 1 + InnerBitStruct._bits + 1 == 1 + (1 + 2 + 3) + 1
+
+    inner = InnerBitStruct(boolean=1, flags=FlagsType.BAR, foo=0b100)
+    assert inner.boolean == 1
+    assert inner.flags == FlagsType.BAR
+    assert inner.foo == 0b100
+    assert inner.bits() == inner.boolean.bits() + inner.flags.bits() + inner.foo.bits()
+    assert inner.bits() == [1] + [1, 0] + [1, 0, 0]
+
+    inner2, remaining = InnerBitStruct.from_bits([1] + [1, 0] + [1, 0, 0] + [1, 1, 1])
+    assert remaining == [1, 1, 1]
+    assert inner == inner2
+
+    # We can't serialize it to bytes because the BitStruct has a length of 6
+    with pytest.raises(ValueError):
+        inner.serialize()
+
+    outer = TestBitStruct(leading=0, inner=inner, trailing=1)
+
+    # We can, however, serialize the outer struct, as it is exactly 8 bits long
+    assert len(outer.serialize()) == 1
+    assert len(outer.bits()) == 8
+    assert outer.serialize()[0] == 0b0_1_10_100_1
+    assert outer.bits() == [0] + inner.bits() + [1]
+
+    # We can also deserialize it
+    outer2, remaining = TestBitStruct.deserialize(bytes([0b0_1_10_100_1]) + b"foo")
+    assert remaining == b"foo"
+
+    assert outer2 == outer
+
+
+def test_struct_bitstruct_nesting():
+    class uint1_t(t.uint_t, bits=1):
+        pass
+
+    class uint2_t(t.uint_t, bits=2):
+        pass
+
+    class uint3_t(t.uint_t, bits=3):
+        pass
+
+    # BitStructs can only contain other bit-compatible fields
+    with pytest.raises(TypeError):
+
+        class BadBitStruct1(t.BitStruct):
+            foo: t.LVBytes
+
+    class InnerBitStruct(t.BitStruct):
+        baz1: uint1_t
+        baz2: uint3_t
+        baz3: uint1_t
+        baz4: uint3_t
+
+    class OuterStruct(t.Struct):
+        foo: t.LVBytes
+        bar: InnerBitStruct
+        asd: t.uint8_t
+
+    inner = InnerBitStruct(baz1=1, baz2=2, baz3=0, baz4=0b111)
+    s = OuterStruct(foo=b"asd", bar=inner, asd=0xFF)
+    assert s.serialize() == b"\x03asd" + bytes([0b1_010_0_111]) + b"\xFF"
+
+    s2, remaining = OuterStruct.deserialize(s.serialize() + b"test")
+    assert remaining == b"test"
+    assert s == s2

@@ -39,6 +39,47 @@ def test_int_too_short():
         t.uint16_t.deserialize(b"\x00")
 
 
+def test_fractional_ints_corner():
+    class uint1_t(t.uint_t, bits=1):
+        pass
+
+    assert uint1_t(0) == 0
+    assert uint1_t(1) == 1
+
+    with pytest.raises(ValueError):
+        uint1_t(-1)
+
+    with pytest.raises(ValueError):
+        uint1_t(2)
+
+    assert uint1_t(0).bits() == [0]
+    assert uint1_t(1).bits() == [1]
+
+    assert uint1_t.from_bits([1, 1]) == (1, [1])
+    assert uint1_t.from_bits([0, 1]) == (0, [1])
+
+
+def test_fractional_ints_larger():
+    class uint7_t(t.uint_t, bits=7):
+        pass
+
+    assert uint7_t(0) == 0
+    assert uint7_t(1) == 1
+    assert uint7_t(0b1111111) == 0b1111111
+
+    with pytest.raises(ValueError):
+        uint7_t(-1)
+
+    with pytest.raises(ValueError):
+        uint7_t(0b1111111 + 1)
+
+    assert uint7_t(0).bits() == [0, 0, 0, 0, 0, 0, 0]
+    assert uint7_t(1).bits() == [0, 0, 0, 0, 0, 0, 1]
+    assert uint7_t(0b1011111).bits() == [1, 0, 1, 1, 1, 1, 1]
+
+    assert uint7_t.from_bits([1, 0, 1, 1, 1, 1, 0, 1, 1, 1]) == (0b1011110, [1, 1, 1])
+
+
 def compare_with_nan(v1, v2):
     if not math.isnan(v1) ^ math.isnan(v2):
         return True
@@ -324,8 +365,8 @@ def test_lvlist_types():
     assert not isinstance(NewList(), t.LVList[t.uint16_t, t.uint8_t])
 
 
-def test_hex_repr():
-    class NwkAsHex(t.uint16_t, hex_repr=True):
+def test_int_repr():
+    class NwkAsHex(t.uint16_t, repr="hex"):
         pass
 
     nwk = NwkAsHex(0x123A)
@@ -335,8 +376,18 @@ def test_hex_repr():
     assert str([nwk]) == "[0x123A]"
     assert repr([nwk]) == "[0x123A]"
 
+    class NwkAsBin(t.uint16_t, repr="bin"):
+        pass
+
+    nwk = NwkAsBin(0b11110000_10101010)
+    assert str(nwk) == "0b1111000010101010"
+    assert repr(nwk) == "0b1111000010101010"
+
+    assert str([nwk]) == "[0b1111000010101010]"
+    assert repr([nwk]) == "[0b1111000010101010]"
+
     # You can turn it off as well
-    class NwkWithoutHex(NwkAsHex, hex_repr=False):
+    class NwkWithoutHex(NwkAsHex, repr=False):
         pass
 
     nwk = NwkWithoutHex(1234)
