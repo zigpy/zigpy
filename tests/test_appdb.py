@@ -68,7 +68,7 @@ def mock_dev_init(status: Status):
 
     def _initialize(self):
         self.status = status
-        self.node_desc = zdo_t.NodeDescriptor(0, 1, 2, 3, 4, 5, 6, 7, 8)
+        self.node_desc, _ = zdo_t.NodeDescriptor.deserialize(bytes(range(20)))
 
     return _initialize
 
@@ -414,15 +414,51 @@ async def test_neighbors(tmpdir):
     ext_pid = t.EUI64.convert("aa:bb:cc:dd:ee:ff:01:02")
     ieee_1 = make_ieee(1)
     nwk_1 = 0x1111
-    nei_1 = zdo_t.Neighbor(ext_pid, ieee_1, nwk_1, 0x16, 0, 15, 250)
+    nei_1 = zdo_t.Neighbor(
+        extended_pan_id=ext_pid,
+        ieee=ieee_1,
+        nwk=nwk_1,
+        device_type=zdo_t.Neighbor.DeviceType.Coordinator,
+        rx_on_when_idle=zdo_t.Neighbor.RxOnWhenIdle.On,
+        relationship=zdo_t.Neighbor.RelationShip.NoneOfTheAbove,
+        reserved1=0,
+        permit_joining=zdo_t.Neighbor.PermitJoins.NotAccepting,
+        reserved2=0,
+        depth=15,
+        lqi=250,
+    )
 
     ieee_2 = make_ieee(2)
     nwk_2 = 0x2222
-    nei_2 = zdo_t.Neighbor(ext_pid, ieee_2, nwk_2, 0x25, 0, 15, 250)
+    nei_2 = zdo_t.Neighbor(
+        extended_pan_id=ext_pid,
+        ieee=ieee_2,
+        nwk=nwk_2,
+        device_type=zdo_t.Neighbor.DeviceType.Coordinator,
+        rx_on_when_idle=zdo_t.Neighbor.RxOnWhenIdle.Unknown,
+        relationship=zdo_t.Neighbor.RelationShip.Sibling,
+        reserved1=1,
+        permit_joining=zdo_t.Neighbor.PermitJoins.NotAccepting,
+        reserved2=0,
+        depth=15,
+        lqi=250,
+    )
 
     ieee_3 = make_ieee(3)
     nwk_3 = 0x3333
-    nei_3 = zdo_t.Neighbor(ext_pid, ieee_3, nwk_3, 0x25, 0, 15, 250)
+    nei_3 = zdo_t.Neighbor(
+        extended_pan_id=ext_pid,
+        ieee=ieee_3,
+        nwk=nwk_3,
+        device_type=zdo_t.Neighbor.DeviceType.Coordinator,
+        rx_on_when_idle=zdo_t.Neighbor.RxOnWhenIdle.Unknown,
+        relationship=zdo_t.Neighbor.RelationShip.Sibling,
+        reserved1=1,
+        permit_joining=zdo_t.Neighbor.PermitJoins.NotAccepting,
+        reserved2=0,
+        depth=15,
+        lqi=250,
+    )
 
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
@@ -669,7 +705,6 @@ async def test_appdb_worker_exception(save_mock, tmpdir):
     dev_1 = zigpy.device.Device(app_mock, ieee_1, 0x1111)
     dev_1.status = Status.ENDPOINTS_INIT
     dev_1.node_desc = MagicMock()
-    dev_1.node_desc.is_valid = True
     dev_1.node_desc.serialize.side_effect = AttributeError
 
     db_listener = await zigpy.appdb.PersistingListener.new(db, app_mock)

@@ -186,20 +186,87 @@ class Struct:
         return {f.name: getattr(self, f.name) for f in self.fields}
 
     def serialize(self) -> bytes:
-        return b"".join(
-            f._convert_type(v).serialize() for f, v in self.assigned_fields(strict=True)
-        )
+        chunks = []
+
+        bit_offset = 0
+        bitfields = []
+
+        for field, value in self.assigned_fields(strict=True):
+            value = field._convert_type(value)
+
+            # All integral types are compacted into one chunk, unless they start and end
+            # on a byte boundary.
+            if issubclass(field.type, t.FixedIntType) and not (
+                value._bits % 8 == 0 and bit_offset % 8 == 0
+            ):
+                bit_offset += value._bits
+                bitfields.append(value)
+
+                # Serialize the current segment of bitfields once we reach a boundary
+                if bit_offset % 8 == 0:
+                    chunks.append(t.Bits.from_bitfields(bitfields).serialize())
+                    bitfields = []
+
+                continue
+            elif bitfields:
+                raise ValueError(
+                    f"Segment of bitfields did not terminate on a byte boundary: "
+                    f" {bitfields}"
+                )
+
+            chunks.append(value.serialize())
+
+        if bitfields:
+            raise ValueError(
+                f"Trailing segment of bitfields did not terminate on a byte boundary: "
+                f" {bitfields}"
+            )
+
+        return b"".join(chunks)
 
     @classmethod
-    def deserialize(cls, data: bytes) -> "Struct":
+    def deserialize(cls, data: bytes) -> typing.Tuple["Struct", bytes]:
         instance = cls()
+
+        bit_length = 0
+        bitfields = []
 
         for field in cls.fields:
             if field.requires is not None and not field.requires(instance):
                 continue
 
+            if issubclass(field.type, t.FixedIntType) and not (
+                field.type._bits % 8 == 0 and bit_length % 8 == 0
+            ):
+                bit_length += field.type._bits
+                bitfields.append(field)
+
+                if bit_length % 8 == 0:
+                    if len(data) < bit_length // 8:
+                        raise ValueError(f"Data is too short to contain {bitfields}")
+
+                    bits, _ = t.Bits.deserialize(data[: bit_length // 8])
+                    data = data[bit_length // 8 :]
+
+                    for f in bitfields:
+                        value, _ = f.type.from_bits(bits[-f.type._bits :])
+                        bits = bits[: -f.type._bits]
+                        setattr(instance, f.name, value)
+
+                    bit_length = 0
+                    bitfields = []
+
+                continue
+            elif bitfields:
+                raise ValueError(
+                    f"Segment of bitfields did not terminate on a byte boundary: "
+                    f" {bitfields}"
+                )
+
             value, data = field.type.deserialize(data)
             setattr(instance, field.name, value)
+
+        assert not bitfields
 
         return instance, data
 
@@ -237,55 +304,3 @@ class Struct:
                 fields.append(f"*{attr}={value!r}")
 
         return f"{type(self).__name__}({', '.join(fields)})"
-
-
-class BitStruct(Struct):
-    def __init_subclass__(cls):
-        super().__init_subclass__()
-
-        # We know our size in advance
-        cls._bits = sum(f.type._bits for f in cls.fields)
-
-    @classmethod
-    def _get_fields(cls) -> typing.List["StructField"]:
-        fields = super()._get_fields()
-
-        for field in fields:
-            if not hasattr(field.type, "_bits"):
-                raise TypeError(f"Field {field} must be a bit-compatible type")
-
-        return fields
-
-    def bits(self) -> t.Bits:
-        bits = []
-
-        for field, value in self.assigned_fields(strict=True):
-            bits.extend(field._convert_type(value).bits())
-
-        return t.Bits(bits)
-
-    @classmethod
-    def from_bits(cls, bits: t.Bits) -> typing.Tuple["BitStruct", t.Bits]:
-        instance = cls()
-
-        for field in cls.fields:
-            if field.requires is not None and not field.requires(instance):
-                continue
-
-            value, bits = field.type.from_bits(bits)
-            setattr(instance, field.name, value)
-
-        return instance, bits
-
-    def serialize(self) -> bytes:
-        return self.bits().serialize()
-
-    @classmethod
-    def deserialize(cls, data: bytes) -> typing.Tuple["BitStruct", bytes]:
-        if cls._bits % 8 != 0:
-            raise ValueError("{cls} is {cls._bits} bits, cannot deserialize from bytes")
-
-        bits, _ = t.Bits.deserialize(data[: cls._bits // 8])
-        instance, _ = cls.from_bits(bits)
-
-        return instance, data[cls._bits // 8 :]

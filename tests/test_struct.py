@@ -5,6 +5,7 @@ import pytest
 
 import zigpy.types as t
 from zigpy.zcl.foundation import Status
+import zigpy.zdo.types as zdo_t
 
 
 def test_struct_fields():
@@ -559,106 +560,78 @@ def test_repr_properties():
 
 
 def test_bitstruct_simple():
-    class BitStruct1(t.BitStruct):
-        foo: t.uint8_t
+    class BitStruct1(t.Struct):
+        foo: t.uint4_t
+        bar: t.uint4_t
 
-    assert BitStruct1(foo=1).bits() == t.uint8_t(1).bits() == [0, 0, 0, 0, 0, 0, 0, 1]
-    assert BitStruct1(foo=1).serialize() == b"\x01"
+    s = BitStruct1(foo=0b1100, bar=0b1010)
+    assert s.serialize() == bytes([0b1010_1100])
 
-    s, remaining = BitStruct1.deserialize(b"\x01\x02")
+    s2, remaining = BitStruct1.deserialize(b"\x01\x02")
     assert remaining == b"\x02"
-    assert s.foo == 1
+    assert s2.foo == 0b0001
+    assert s2.bar == 0b0000
 
 
-def test_bitstruct_nested():
-    class uint1_t(t.uint_t, bits=1):
-        pass
-
-    class uint2_t(t.uint_t, bits=2):
-        pass
-
-    class uint3_t(t.uint_t, bits=3):
-        pass
-
-    class FlagsType(t.bitmap_factory(uint2_t)):
-        FOO = 0b01
-        BAR = 0b10
-
-    class InnerBitStruct(t.BitStruct):
-        boolean: uint1_t
-        flags: FlagsType
-        foo: uint3_t
-
-    assert InnerBitStruct._bits == 1 + 2 + 3
-
-    class TestBitStruct(t.BitStruct):
-        leading: uint1_t
-        inner: InnerBitStruct
-        trailing: uint1_t
-
-    assert TestBitStruct._bits == 1 + InnerBitStruct._bits + 1 == 1 + (1 + 2 + 3) + 1
-
-    inner = InnerBitStruct(boolean=1, flags=FlagsType.BAR, foo=0b100)
-    assert inner.boolean == 1
-    assert inner.flags == FlagsType.BAR
-    assert inner.foo == 0b100
-    assert inner.bits() == inner.boolean.bits() + inner.flags.bits() + inner.foo.bits()
-    assert inner.bits() == [1] + [1, 0] + [1, 0, 0]
-
-    inner2, remaining = InnerBitStruct.from_bits([1] + [1, 0] + [1, 0, 0] + [1, 1, 1])
-    assert remaining == [1, 1, 1]
-    assert inner == inner2
-
-    # We can't serialize it to bytes because the BitStruct has a length of 6
-    with pytest.raises(ValueError):
-        inner.serialize()
-
-    outer = TestBitStruct(leading=0, inner=inner, trailing=1)
-
-    # We can, however, serialize the outer struct, as it is exactly 8 bits long
-    assert len(outer.serialize()) == 1
-    assert len(outer.bits()) == 8
-    assert outer.serialize()[0] == 0b0_1_10_100_1
-    assert outer.bits() == [0] + inner.bits() + [1]
-
-    # We can also deserialize it
-    outer2, remaining = TestBitStruct.deserialize(bytes([0b0_1_10_100_1]) + b"foo")
-    assert remaining == b"foo"
-
-    assert outer2 == outer
-
-
-def test_struct_bitstruct_nesting():
-    class uint1_t(t.uint_t, bits=1):
-        pass
-
-    class uint2_t(t.uint_t, bits=2):
-        pass
-
-    class uint3_t(t.uint_t, bits=3):
-        pass
-
-    # BitStructs can only contain other bit-compatible fields
-    with pytest.raises(TypeError):
-
-        class BadBitStruct1(t.BitStruct):
-            foo: t.LVBytes
-
-    class InnerBitStruct(t.BitStruct):
-        baz1: uint1_t
-        baz2: uint3_t
-        baz3: uint1_t
-        baz4: uint3_t
+def test_bitstruct_nesting():
+    class InnerBitStruct(t.Struct):
+        baz1: t.uint1_t
+        baz2: t.uint3_t
+        baz3: t.uint1_t
+        baz4: t.uint3_t
 
     class OuterStruct(t.Struct):
         foo: t.LVBytes
         bar: InnerBitStruct
         asd: t.uint8_t
 
-    inner = InnerBitStruct(baz1=1, baz2=2, baz3=0, baz4=0b111)
+    inner = InnerBitStruct(baz1=0b1, baz2=0b010, baz3=0b0, baz4=0b111)
+    assert inner.serialize() == bytes([0b111_0_010_1])
+    assert InnerBitStruct.deserialize(inner.serialize() + b"asd") == (inner, b"asd")
+
     s = OuterStruct(foo=b"asd", bar=inner, asd=0xFF)
-    assert s.serialize() == b"\x03asd" + bytes([0b1_010_0_111]) + b"\xFF"
+    assert s.serialize() == b"\x03asd" + bytes([0b111_0_010_1]) + b"\xFF"
 
     s2, remaining = OuterStruct.deserialize(s.serialize() + b"test")
     assert remaining == b"test"
     assert s == s2
+
+
+def test_bitstruct_misaligned():
+    class TestStruct(t.Struct):
+        foo: t.uint1_t
+        bar: t.uint8_t  # Even though this field is byte-serializable, it is misaligned
+        baz: t.uint7_t
+
+    s = TestStruct(foo=0b1, bar=0b10101010, baz=0b1110111)
+    assert s.serialize() == bytes([0b1110111_1, 0b0101010_1])
+
+    s2, remaining = TestStruct.deserialize(s.serialize() + b"asd")
+    assert s == s2
+
+
+def test_bitstruct_complex():
+    data = (
+        b"\x11\x00\xff\xee\xdd\xcc\xbb\xaa\x08\x07\x06"
+        b"\x05\x04\x03\x02\x01\x00\x00\x24\x02\x00\x7c"
+    )
+
+    neighbor, rest = zdo_t.Neighbor.deserialize(data + b"asd")
+    assert rest == b"asd"
+
+    neighbor2 = zdo_t.Neighbor(
+        extended_pan_id=t.ExtendedPanId.convert("aa:bb:cc:dd:ee:ff:00:11"),
+        ieee=t.EUI64.convert("01:02:03:04:05:06:07:08"),
+        nwk=0x0000,
+        device_type=zdo_t.Neighbor.DeviceType.Coordinator,
+        rx_on_when_idle=zdo_t.Neighbor.RxOnWhenIdle.On,
+        relationship=zdo_t.Neighbor.RelationShip.Sibling,
+        reserved1=0b0,
+        permit_joining=zdo_t.Neighbor.PermitJoins.Unknown,
+        reserved2=0b000000,
+        depth=0,
+        lqi=124,
+    )
+
+    assert neighbor == neighbor2
+    assert neighbor2.serialize() == data

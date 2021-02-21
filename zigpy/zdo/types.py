@@ -162,36 +162,28 @@ class MultiAddress(t.Struct):
         return super().serialize()
 
 
-class _NeighborEnums:
-    """Types container."""
+class Neighbor(t.Struct):
+    """Neighbor Descriptor"""
 
-    class DeviceType(t.enum8):
+    class DeviceType(t.enum2):
         Coordinator = 0x0
         Router = 0x1
         EndDevice = 0x2
         Unknown = 0x3
 
-    class RxOnWhenIdle(t.enum8):
+    class RxOnWhenIdle(t.enum2):
         Off = 0x0
         On = 0x1
         Unknown = 0x2
 
-    class Relationship(t.enum8):
+    class RelationShip(t.enum3):
         Parent = 0x0
         Child = 0x1
         Sibling = 0x2
         NoneOfTheAbove = 0x3
         PreviousChild = 0x4
 
-
-class Neighbor(t.Struct):
-    """Neighbor Descriptor"""
-
-    DeviceType = _NeighborEnums.DeviceType
-    RxOnWhenIdle = _NeighborEnums.RxOnWhenIdle
-    RelationShip = _NeighborEnums.Relationship
-
-    class PermitJoins(t.enum8):
+    class PermitJoins(t.enum2):
         NotAccepting = 0x0
         Accepting = 0x1
         Unknown = 0x2
@@ -199,55 +191,42 @@ class Neighbor(t.Struct):
     extended_pan_id: t.ExtendedPanId
     ieee: t.EUI64
     nwk: t.NWK
-    packed: t.uint8_t
+
+    device_type: DeviceType
+    rx_on_when_idle: RxOnWhenIdle
+    relationship: RelationShip
+    reserved1: t.uint1_t
+
     permit_joining: PermitJoins
+    reserved2: t.uint6_t
+
     depth: t.uint8_t
     lqi: t.uint8_t
 
     @property
-    def device_type(self) -> typing.Optional[_NeighborEnums.DeviceType]:
-        """Return neighbor type."""
-        if self.packed is None:
-            return None
-        return _NeighborEnums.DeviceType(self.packed & 0x03)
+    def packed(self):
+        packed = t.Bits.from_bitfields(
+            [
+                self.device_type,
+                self.rx_on_when_idle,
+                self.relationship,
+                self.reserved1,
+            ]
+        ).serialize()
 
-    @device_type.setter
-    def device_type(self, value: _NeighborEnums.DeviceType) -> None:
-        """Neighbor type setter."""
-        if self.packed is None:
-            self.packed = value
-        self.packed &= 0b0111_1100
-        self.packed |= value & 0x03
+        return t.uint8_t.deserialize(packed)[0]
 
-    @property
-    def rx_on_when_idle(self) -> typing.Optional[_NeighborEnums.RxOnWhenIdle]:
-        """Return rx_on."""
-        if self.packed is None:
-            return None
-        return _NeighborEnums.RxOnWhenIdle((self.packed >> 2) & 0x03)
+    @classmethod
+    def packed_to_dict(cls, packed):
+        data = 18 * b"\x00" + t.uint16_t(packed).serialize() + 3 * b"\x00"
+        neighbor, _ = cls.deserialize(data)
 
-    @rx_on_when_idle.setter
-    def rx_on_when_idle(self, value: _NeighborEnums.RxOnWhenIdle) -> None:
-        """Rx on when idle setter."""
-        if self.packed is None:
-            self.packed = value
-        self.packed &= 0b0111_0011
-        self.packed |= (value & 0x03) << 2
-
-    @property
-    def relationship(self) -> typing.Optional[_NeighborEnums.Relationship]:
-        """Return relationship."""
-        if self.packed is None:
-            return None
-        return _NeighborEnums.Relationship((self.packed >> 4) & 0x07)
-
-    @relationship.setter
-    def relationship(self, value: _NeighborEnums.Relationship) -> None:
-        """Relationship setter."""
-        if self.packed is None:
-            self.packed = value
-        self.packed &= 0b0000_1111
-        self.packed |= (value & 0x07) << 4
+        return {
+            "device_type": neighbor.device_type,
+            "rx_on_when_idle": neighbor.rx_on_when_idle,
+            "relationship": neighbor.relationship,
+            "reserved1": neighbor.reserved1,
+        }
 
 
 class Neighbors(t.Struct):

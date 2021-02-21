@@ -13,14 +13,25 @@ class Bits(list):
 
         return super().__getitem__(key)
 
+    @classmethod
+    def from_bitfields(cls, fields):
+        instance = cls()
+
+        # Little endian, so [11, 1000, 00] will be packed as 00_1000_11
+        for field in fields:
+            for bit in field.bits()[::-1]:
+                instance.insert(0, bit)
+
+        return instance
+
     def serialize(self) -> bytes:
         if len(self) % 8 != 0:
             raise ValueError(f"Cannot serialize {len(self)} bits into bytes: {self}")
 
         serialized_bytes = []
 
-        for index in range(len(self) // 8):
-            byte = 0
+        for index in range(0, len(self), 8):
+            byte = 0x00
 
             for bit in self[index : index + 8]:
                 byte <<= 1
@@ -178,6 +189,34 @@ class int64s(int_t, bits=64):
     pass
 
 
+class uint1_t(uint_t, bits=1):
+    pass
+
+
+class uint2_t(uint_t, bits=2):
+    pass
+
+
+class uint3_t(uint_t, bits=3):
+    pass
+
+
+class uint4_t(uint_t, bits=4):
+    pass
+
+
+class uint5_t(uint_t, bits=5):
+    pass
+
+
+class uint6_t(uint_t, bits=6):
+    pass
+
+
+class uint7_t(uint_t, bits=7):
+    pass
+
+
 class uint8_t(uint_t, bits=8):
     pass
 
@@ -263,11 +302,27 @@ def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined") -> CALLABLE
     return _NewEnum
 
 
+class enum2(enum_factory(uint2_t)):  # noqa: N801
+    pass
+
+
+class enum3(enum_factory(uint3_t)):  # noqa: N801
+    pass
+
+
+class enum4(enum_factory(uint4_t)):  # noqa: N801
+    pass
+
+
 class enum8(enum_factory(uint8_t)):  # noqa: N801
     pass
 
 
 class enum16(enum_factory(uint16_t)):  # noqa: N801
+    pass
+
+
+class bitmap5(bitmap_factory(uint5_t)):
     pass
 
 

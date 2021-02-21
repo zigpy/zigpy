@@ -168,8 +168,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(
             "DELETE FROM neighbors WHERE device_ieee = ?", (neighbors.ieee,)
         )
+
         rows = [
-            (neighbors.ieee, *nei.neighbor.as_dict().values())
+            (
+                neighbors.ieee,
+                nei.neighbor.extended_pan_id,
+                nei.neighbor.ieee,
+                nei.neighbor.nwk,
+                nei.neighbor.packed,  # XXX: only for backwards compatibility
+                nei.neighbor.permit_joining,
+                nei.neighbor.depth,
+                nei.neighbor.lqi,
+            )
             for nei in neighbors.neighbors
         ]
 
@@ -575,7 +585,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute("SELECT * FROM neighbors") as cursor:
             async for (dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi) in cursor:
                 dev = self._application.get_device(dev_ieee)
-                nei = zdo_t.Neighbor(epid, ieee, nwk, packed, prm, depth, lqi)
+                nei = zdo_t.Neighbor(
+                    extended_pan_id=epid,
+                    ieee=ieee,
+                    nwk=nwk,
+                    permit_joining=prm,
+                    depth=depth,
+                    lqi=lqi,
+                    **zdo_t.Neighbor.packed_to_dict(packed),
+                )
                 dev.neighbors.add_neighbor(nei)
 
     async def _finish_loading(self):
