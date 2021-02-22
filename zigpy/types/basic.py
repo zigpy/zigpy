@@ -12,9 +12,8 @@ class Bits(list):
         instance = cls()
 
         # Little endian, so [11, 1000, 00] will be packed as 00_1000_11
-        for field in fields:
-            for bit in field.bits()[::-1]:
-                instance.insert(0, bit)
+        for field in fields[::-1]:
+            instance.extend(field.bits())
 
         return instance
 
@@ -120,18 +119,14 @@ class FixedIntType(int):
 
     def serialize(self) -> bytes:
         if self._bits % 8 != 0:
-            raise ValueError(f"Integer type with {self._bits} bits is not byte aligned")
+            raise TypeError(f"Integer type with {self._bits} bits is not byte aligned")
 
-        try:
-            return self.to_bytes(self._bits // 8, "little", signed=self._signed)
-        except OverflowError as e:
-            # OverflowError is not a subclass of ValueError, making it annoying to catch
-            raise ValueError(str(e)) from e
+        return self.to_bytes(self._bits // 8, "little", signed=self._signed)
 
     @classmethod
     def deserialize(cls, data: bytes) -> Tuple["FixedIntType", bytes]:
         if cls._bits % 8 != 0:
-            raise ValueError(f"Integer type with {cls._bits} bits is not byte aligned")
+            raise TypeError(f"Integer type with {cls._bits} bits is not byte aligned")
 
         byte_size = cls._bits // 8
 

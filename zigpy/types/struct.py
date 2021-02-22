@@ -267,7 +267,11 @@ class Struct:
             value, data = field.type.deserialize(data)
             setattr(instance, field.name, value)
 
-        assert not bitfields
+        if bitfields:
+            raise ValueError(
+                f"Trailing segment of bitfields did not terminate on a byte boundary: "
+                f" {bitfields}"
+            )
 
         return instance, data
 

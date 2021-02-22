@@ -51,7 +51,7 @@ def test_fractional_ints_corner():
 
     n = t.uint1_t(0b1)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         n.serialize()
 
     assert t.uint1_t(0).bits() == [0]
@@ -74,7 +74,7 @@ def test_fractional_ints_larger():
 
     n = t.uint7_t(0b1111111)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         n.serialize()
 
     assert t.uint7_t(0).bits() == [0, 0, 0, 0, 0, 0, 0]
@@ -83,8 +83,11 @@ def test_fractional_ints_larger():
 
     assert t.uint7_t.from_bits([1, 0, 1, 1, 1, 1, 0, 1, 1, 1]) == (0b1110111, [1, 0, 1])
 
+    with pytest.raises(ValueError):
+        assert t.uint7_t.from_bits([1] * 6)
 
-def test_fractional_ints_signed():
+
+def test_ints_signed():
     class int7s(t.int_t, bits=7):
         pass
 
@@ -102,7 +105,7 @@ def test_fractional_ints_signed():
 
     n = int7s(2 ** 6 - 1)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         n.serialize()
 
     assert int7s(0).bits() == [0, 0, 0, 0, 0, 0, 0]
@@ -111,6 +114,26 @@ def test_fractional_ints_signed():
     assert int7s(2 ** 6 - 1).bits() == [0, 1, 1, 1, 1, 1, 1]
 
     assert int7s.from_bits([1, 0, 1, 0, 1, 1, 0, 1, 1, 1]) == (0b0110111, [1, 0, 1])
+
+    with pytest.raises(TypeError):
+        int7s.deserialize(b"\xFF")
+
+    t.int8s.deserialize(b"\xFF")
+
+    n = t.int8s(-126)
+    bits = [1, 0] + t.Bits.deserialize(n.serialize())[0]
+    assert t.int8s.from_bits(bits) == (n, [1, 0])
+
+
+def test_bits():
+    assert t.Bits() == []
+    assert t.Bits([1] + [0] * 15).serialize() == b"\x80\x00"
+    assert t.Bits.deserialize(b"\x80\x00") == ([1] + [0] * 15, b"")
+
+    bits = t.Bits([0] * 7)
+
+    with pytest.raises(ValueError):
+        assert bits.serialize()
 
 
 def compare_with_nan(v1, v2):
