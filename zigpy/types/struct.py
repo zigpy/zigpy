@@ -295,7 +295,7 @@ class Struct:
         for attr in dir(cls):
             cls_attr = getattr(cls, attr)
 
-            if not isinstance(cls_attr, property):
+            if not isinstance(cls_attr, property) or hasattr(Struct, attr):
                 continue
 
             value = getattr(self, attr)
@@ -304,3 +304,11 @@ class Struct:
                 fields.append(f"*{attr}={value!r}")
 
         return f"{type(self).__name__}({', '.join(fields)})"
+
+    @property
+    def is_valid(self) -> bool:
+        try:
+            self.serialize()
+            return True
+        except ValueError:
+            return False

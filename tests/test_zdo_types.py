@@ -72,8 +72,12 @@ def test_node_descriptor():
     assert rest == b"\xff"
 
     new_node_desc = types.NodeDescriptor(nd)
-    assert new_node_desc.byte1 == 0
-    assert new_node_desc.byte2 == 1
+    assert new_node_desc.logical_type == 0
+    assert new_node_desc.complex_descriptor_available == 0
+    assert new_node_desc.user_descriptor_available == 0
+    assert new_node_desc.reserved == 0
+    assert new_node_desc.aps_flags == 1
+    assert new_node_desc.frequency_band == 0
     assert new_node_desc.mac_capability_flags == 0x02
     assert new_node_desc.manufacturer_code == 0x0303
     assert new_node_desc.maximum_buffer_size == 0x04
@@ -82,13 +86,17 @@ def test_node_descriptor():
     assert new_node_desc.maximum_outgoing_transfer_size == 0x0707
     assert new_node_desc.descriptor_capability_field == 0x08
 
-    nd2 = types.NodeDescriptor(0, 1, 2, 0x0303, 0x04, 0x0505, 0x0606, 0x0707, 0x08)
+    nd2 = types.NodeDescriptor.old_new(
+        0, 1, 2, 0x0303, 0x04, 0x0505, 0x0606, 0x0707, 0x08
+    )
     assert nd2.serialize() == new_node_desc.serialize()
 
 
 def test_node_descriptor_is_valid():
     for field in types.NodeDescriptor.fields:
-        nd = types.NodeDescriptor(0, 1, 2, 0x0303, 0x04, 0x0505, 0x0606, 0x0707, 0x08)
+        nd = types.NodeDescriptor.old_new(
+            0, 1, 2, 0x0303, 0x04, 0x0505, 0x0606, 0x0707, 0x08
+        )
         assert nd.is_valid is True
         setattr(nd, field.name, None)
         assert nd.is_valid is False
@@ -112,15 +120,14 @@ def test_node_descriptor_props():
         value = getattr(empty_nd, prop)
         assert value is None
 
-    nd = types.NodeDescriptor(
+    nd = types.NodeDescriptor.old_new(
         0b11111000, 0xFF, 0xFF, 0xFFFF, 0xFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFF
     )
     assert nd.logical_type is not None
     for prop in props:
         if prop == "logical_type":
             continue
-        value = getattr(nd, prop)
-        assert value is True
+        assert getattr(nd, prop)
 
 
 def test_node_descriptor_logical_types():
@@ -129,21 +136,21 @@ def test_node_descriptor_logical_types():
     assert nd.is_end_device is None
     assert nd.is_router is None
 
-    nd = types.NodeDescriptor(
+    nd = types.NodeDescriptor.old_new(
         0b11111000, 0xFF, 0xFF, 0xFFFF, 0xFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFF
     )
     assert nd.is_coordinator is True
     assert nd.is_end_device is False
     assert nd.is_router is False
 
-    nd = types.NodeDescriptor(
+    nd = types.NodeDescriptor.old_new(
         0b11111001, 0xFF, 0xFF, 0xFFFF, 0xFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFF
     )
     assert nd.is_coordinator is False
     assert nd.is_end_device is False
     assert nd.is_router is True
 
-    nd = types.NodeDescriptor(
+    nd = types.NodeDescriptor.old_new(
         0b11111010, 0xFF, 0xFF, 0xFFFF, 0xFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFF
     )
     assert nd.is_coordinator is False
@@ -152,7 +159,7 @@ def test_node_descriptor_logical_types():
 
 
 def test_node_descriptor_repr():
-    nd = types.NodeDescriptor(
+    nd = types.NodeDescriptor.old_new(
         0b11111010, 0xFF, 0xFF, 0xFFFF, 0xFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFF
     )
     assert nd.is_coordinator is False

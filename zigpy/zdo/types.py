@@ -31,7 +31,7 @@ class SizePrefixedSimpleDescriptor(SimpleDescriptor):
         return super().deserialize(data[1:])
 
 
-class LogicalType(t.enum8):
+class LogicalType(t.enum3):
     Coordinator = 0b000
     Router = 0b001
     EndDevice = 0b010
@@ -42,10 +42,35 @@ class LogicalType(t.enum8):
     Reserved7 = 0b111
 
 
+class MACCapabilityFlags(t.bitmap8):
+    AlternatePanCoordinator = 0b00000001
+    FullFunctionDevice = 0b00000010
+    MainsPowered = 0b00000100
+    RxOnWhenIdle = 0b00001000
+    Reserved4 = 0b00010000
+    Reserved5 = 0b00100000
+    SecurityCapable = 0b01000000
+    AllocateAddress = 0b10000000
+
+
+class FrequencyBand(t.bitmap5):
+    Freq868MHz = 0b00001
+    Reserved1 = 0b00010
+    Freq902MHz = 0b00100
+    Freq2400MHz = 0b01000
+    Reserved4 = 0b10000
+
+
 class NodeDescriptor(t.Struct):
-    byte1: t.uint8_t
-    byte2: t.uint8_t
-    mac_capability_flags: t.uint8_t
+    logical_type: LogicalType
+    complex_descriptor_available: t.uint1_t
+    user_descriptor_available: t.uint1_t
+    reserved: t.uint3_t
+
+    aps_flags: t.uint3_t
+    frequency_band: FrequencyBand
+
+    mac_capability_flags: MACCapabilityFlags
     manufacturer_code: t.uint16_t
     maximum_buffer_size: t.uint8_t
     maximum_incoming_transfer_size: t.uint16_t
@@ -53,89 +78,123 @@ class NodeDescriptor(t.Struct):
     maximum_outgoing_transfer_size: t.uint16_t
     descriptor_capability_field: t.uint8_t
 
-    @property
-    def is_valid(self):
-        """Return True if all fields were initialized."""
-        non_empty_fields = [
-            getattr(self, field.name) is not None for field in self.fields
-        ]
-        return all(non_empty_fields)
+    @classmethod
+    def old_new(
+        cls: "NodeDescriptor",
+        byte1: t.uint8_t = None,
+        byte2: t.uint8_t = None,
+        mac_capability_flags: MACCapabilityFlags = None,
+        manufacturer_code: t.uint16_t = None,
+        maximum_buffer_size: t.uint8_t = None,
+        maximum_incoming_transfer_size: t.uint16_t = None,
+        server_mask: t.uint16_t = None,
+        maximum_outgoing_transfer_size: t.uint16_t = None,
+        descriptor_capability_field: t.uint8_t = None,
+    ) -> "NodeDescriptor":
+        logical_type = None
+        complex_descriptor_available = None
+        user_descriptor_available = None
+        reserved = None
+
+        if byte1 is not None:
+            bits, _ = t.Bits.deserialize(bytes([byte1]))
+            reserved, bits = t.uint3_t.from_bits(bits)
+            user_descriptor_available, bits = t.uint1_t.from_bits(bits)
+            complex_descriptor_available, bits = t.uint1_t.from_bits(bits)
+            logical_type, bits = LogicalType.from_bits(bits)
+
+            assert not bits
+
+        aps_flags = None
+        frequency_band = None
+
+        if byte2 is not None:
+            bits, _ = t.Bits.deserialize(bytes([byte2]))
+            frequency_band, bits = FrequencyBand.from_bits(bits)
+            aps_flags, bits = t.uint3_t.from_bits(bits)
+
+            assert not bits
+
+        return cls(
+            logical_type=logical_type,
+            complex_descriptor_available=complex_descriptor_available,
+            user_descriptor_available=user_descriptor_available,
+            reserved=reserved,
+            aps_flags=aps_flags,
+            frequency_band=frequency_band,
+            mac_capability_flags=mac_capability_flags,
+            manufacturer_code=manufacturer_code,
+            maximum_buffer_size=maximum_buffer_size,
+            maximum_incoming_transfer_size=maximum_incoming_transfer_size,
+            server_mask=server_mask,
+            maximum_outgoing_transfer_size=maximum_outgoing_transfer_size,
+            descriptor_capability_field=descriptor_capability_field,
+        )
 
     @property
-    def logical_type(self):
-        """Return logical type of the device"""
-        if self.byte1 is None:
-            return None
-        return LogicalType(self.byte1 & 0x07)
-
-    @property
-    def is_coordinator(self):
-        """Return True whether this is a coordinator."""
+    def is_end_device(self) -> bool:
         if self.logical_type is None:
             return None
-        return self.logical_type == LogicalType.Coordinator
 
-    @property
-    def is_end_device(self):
-        """Return True whether this is an end device."""
-        if self.logical_type is None:
-            return None
         return self.logical_type == LogicalType.EndDevice
 
     @property
-    def is_router(self):
-        """Return True whether this is a router."""
+    def is_router(self) -> bool:
         if self.logical_type is None:
             return None
+
         return self.logical_type == LogicalType.Router
 
     @property
-    def complex_descriptor_available(self):
-        if self.byte1 is None:
+    def is_coordinator(self) -> bool:
+        if self.logical_type is None:
             return None
-        return bool(self.byte1 & 0b00001000)
 
-    @property
-    def user_descriptor_available(self):
-        if self.byte1 is None:
-            return None
-        return bool(self.byte1 & 0b00010000)
+        return self.logical_type == LogicalType.Coordinator
 
     @property
     def is_alternate_pan_coordinator(self):
         if self.mac_capability_flags is None:
             return None
-        return bool(self.mac_capability_flags & 0b00000001)
+
+        return bool(
+            self.mac_capability_flags & MACCapabilityFlags.AlternatePanCoordinator
+        )
 
     @property
     def is_full_function_device(self):
         if self.mac_capability_flags is None:
             return None
-        return bool(self.mac_capability_flags & 0b00000010)
+
+        return bool(self.mac_capability_flags & MACCapabilityFlags.FullFunctionDevice)
 
     @property
     def is_mains_powered(self):
         if self.mac_capability_flags is None:
             return None
-        return bool(self.mac_capability_flags & 0b00000100)
+
+        return bool(self.mac_capability_flags & MACCapabilityFlags.MainsPowered)
 
     @property
     def is_receiver_on_when_idle(self):
         if self.mac_capability_flags is None:
             return None
-        return bool(self.mac_capability_flags & 0b00001000)
+
+        return bool(self.mac_capability_flags & MACCapabilityFlags.RxOnWhenIdle)
 
     @property
     def is_security_capable(self):
         if self.mac_capability_flags is None:
             return None
-        return bool(self.mac_capability_flags & 0b01000000)
+
+        return bool(self.mac_capability_flags & MACCapabilityFlags.SecurityCapable)
 
     @property
     def allocate_address(self):
         if self.mac_capability_flags is None:
             return None
-        return bool(self.mac_capability_flags & 0b10000000)
+
+        return bool(self.mac_capability_flags & MACCapabilityFlags.AllocateAddress)
 
 
 class MultiAddress(t.Struct):
