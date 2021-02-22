@@ -249,9 +249,10 @@ class Struct:
                     data = data[bit_length // 8 :]
 
                     for f in bitfields:
-                        value, _ = f.type.from_bits(bits[-f.type._bits :])
-                        bits = bits[: -f.type._bits]
+                        value, bits = f.type.from_bits(bits)
                         setattr(instance, f.name, value)
+
+                    assert not bits
 
                     bit_length = 0
                     bitfields = []

@@ -7,12 +7,6 @@ CALLABLE_T = TypeVar("CALLABLE_T", bound=Callable)  # pylint: disable=invalid-na
 
 
 class Bits(list):
-    def __getitem__(self, key):
-        if isinstance(key, tuple):
-            return Bits(super().__getitem__(key))
-
-        return super().__getitem__(key)
-
     @classmethod
     def from_bitfields(cls, fields):
         instance = cls()
@@ -62,14 +56,16 @@ class FixedIntType(int):
         if cls._signed is None or cls._bits is None:
             raise TypeError(f"{cls} is abstract and cannot be created")
 
-        instance = super().__new__(cls, *args, **kwargs)
+        n = super().__new__(cls, *args, **kwargs)
 
-        if cls._bits % 8 == 0:
-            instance.serialize()
-        else:
-            instance.bits()
+        if not cls._signed and not 0 <= n <= 2 ** cls._bits - 1:
+            raise ValueError(f"{int(n)} is not an unsigned {cls._bits} bit integer")
+        elif (
+            cls._signed and not -(2 ** (cls._bits - 1)) <= n <= 2 ** (cls._bits - 1) - 1
+        ):
+            raise ValueError(f"{int(n)} is not a signed {cls._bits} bit integer")
 
-        return instance
+        return n
 
     def _hex_repr(self):
         assert self._bits % 4 == 0
@@ -103,21 +99,7 @@ class FixedIntType(int):
         if "__new__" not in cls.__dict__:
             cls.__new__ = cls.__new__
 
-    def serialize(self) -> bytes:
-        assert self._bits % 8 == 0
-
-        try:
-            return self.to_bytes(self._bits // 8, "little", signed=self._signed)
-        except OverflowError as e:
-            # OverflowError is not a subclass of ValueError, making it annoying to catch
-            raise ValueError(str(e)) from e
-
     def bits(self) -> Bits:
-        if (int(self) & (1 << (self._bits))).bit_length() > self._bits:
-            raise ValueError(
-                f"Value is too large to fit in {self._bits} bits: {int(self)}"
-            )
-
         return Bits([(self >> n) & 0b1 for n in range(self._bits - 1, -1, -1)])
 
     @classmethod
@@ -127,18 +109,30 @@ class FixedIntType(int):
 
         n = 0
 
-        for bit in bits[: cls._bits]:
+        for bit in bits[-cls._bits :]:
             n <<= 1
             n |= bit & 1
 
-        if cls._signed:
-            n = ((1 << cls._bits) - 1) ^ (n - 1)
+        if cls._signed and n >= 2 ** (cls._bits - 1):
+            n -= 2 ** cls._bits
 
-        return cls(n), bits[cls._bits :]
+        return cls(n), bits[: -cls._bits]
+
+    def serialize(self) -> bytes:
+        if self._bits % 8 != 0:
+            raise ValueError(f"Integer type with {self._bits} bits is not byte aligned")
+
+        try:
+            return self.to_bytes(self._bits // 8, "little", signed=self._signed)
+        except OverflowError as e:
+            # OverflowError is not a subclass of ValueError, making it annoying to catch
+            raise ValueError(str(e)) from e
 
     @classmethod
     def deserialize(cls, data: bytes) -> Tuple["FixedIntType", bytes]:
-        assert cls._bits % 8 == 0
+        if cls._bits % 8 != 0:
+            raise ValueError(f"Integer type with {cls._bits} bits is not byte aligned")
+
         byte_size = cls._bits // 8
 
         if len(data) < byte_size:

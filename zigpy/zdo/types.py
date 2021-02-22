@@ -98,10 +98,10 @@ class NodeDescriptor(t.Struct):
 
         if byte1 is not None:
             bits, _ = t.Bits.deserialize(bytes([byte1]))
-            reserved, bits = t.uint3_t.from_bits(bits)
-            user_descriptor_available, bits = t.uint1_t.from_bits(bits)
-            complex_descriptor_available, bits = t.uint1_t.from_bits(bits)
             logical_type, bits = LogicalType.from_bits(bits)
+            complex_descriptor_available, bits = t.uint1_t.from_bits(bits)
+            user_descriptor_available, bits = t.uint1_t.from_bits(bits)
+            reserved, bits = t.uint3_t.from_bits(bits)
 
             assert not bits
 
@@ -110,8 +110,8 @@ class NodeDescriptor(t.Struct):
 
         if byte2 is not None:
             bits, _ = t.Bits.deserialize(bytes([byte2]))
-            frequency_band, bits = FrequencyBand.from_bits(bits)
             aps_flags, bits = t.uint3_t.from_bits(bits)
+            frequency_band, bits = FrequencyBand.from_bits(bits)
 
             assert not bits
 

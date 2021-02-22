@@ -40,44 +40,77 @@ def test_int_too_short():
 
 
 def test_fractional_ints_corner():
-    class uint1_t(t.uint_t, bits=1):
-        pass
-
-    assert uint1_t(0) == 0
-    assert uint1_t(1) == 1
+    assert t.uint1_t(0) == 0
+    assert t.uint1_t(1) == 1
 
     with pytest.raises(ValueError):
-        uint1_t(-1)
+        t.uint1_t(-1)
 
     with pytest.raises(ValueError):
-        uint1_t(2)
+        t.uint1_t(2)
 
-    assert uint1_t(0).bits() == [0]
-    assert uint1_t(1).bits() == [1]
+    n = t.uint1_t(0b1)
 
-    assert uint1_t.from_bits([1, 1]) == (1, [1])
-    assert uint1_t.from_bits([0, 1]) == (0, [1])
+    with pytest.raises(ValueError):
+        n.serialize()
+
+    assert t.uint1_t(0).bits() == [0]
+    assert t.uint1_t(1).bits() == [1]
+
+    assert t.uint1_t.from_bits([1, 1]) == (1, [1])
+    assert t.uint1_t.from_bits([0, 1]) == (1, [0])
 
 
 def test_fractional_ints_larger():
-    class uint7_t(t.uint_t, bits=7):
+    assert t.uint7_t(0) == 0
+    assert t.uint7_t(1) == 1
+    assert t.uint7_t(0b1111111) == 0b1111111
+
+    with pytest.raises(ValueError):
+        t.uint7_t(-1)
+
+    with pytest.raises(ValueError):
+        t.uint7_t(0b1111111 + 1)
+
+    n = t.uint7_t(0b1111111)
+
+    with pytest.raises(ValueError):
+        n.serialize()
+
+    assert t.uint7_t(0).bits() == [0, 0, 0, 0, 0, 0, 0]
+    assert t.uint7_t(1).bits() == [0, 0, 0, 0, 0, 0, 1]
+    assert t.uint7_t(0b1011111).bits() == [1, 0, 1, 1, 1, 1, 1]
+
+    assert t.uint7_t.from_bits([1, 0, 1, 1, 1, 1, 0, 1, 1, 1]) == (0b1110111, [1, 0, 1])
+
+
+def test_fractional_ints_signed():
+    class int7s(t.int_t, bits=7):
         pass
 
-    assert uint7_t(0) == 0
-    assert uint7_t(1) == 1
-    assert uint7_t(0b1111111) == 0b1111111
+    assert int7s(0) == 0
+    assert int7s(1) == 1
+    assert int7s(-1) == -1
+    assert int7s(2 ** 6 - 1) == 2 ** 6 - 1
+    assert int7s(-(2 ** 6)) == -(2 ** 6)
 
     with pytest.raises(ValueError):
-        uint7_t(-1)
+        int7s(2 ** 6)
 
     with pytest.raises(ValueError):
-        uint7_t(0b1111111 + 1)
+        int7s(-(2 ** 6) - 1)
 
-    assert uint7_t(0).bits() == [0, 0, 0, 0, 0, 0, 0]
-    assert uint7_t(1).bits() == [0, 0, 0, 0, 0, 0, 1]
-    assert uint7_t(0b1011111).bits() == [1, 0, 1, 1, 1, 1, 1]
+    n = int7s(2 ** 6 - 1)
 
-    assert uint7_t.from_bits([1, 0, 1, 1, 1, 1, 0, 1, 1, 1]) == (0b1011110, [1, 1, 1])
+    with pytest.raises(ValueError):
+        n.serialize()
+
+    assert int7s(0).bits() == [0, 0, 0, 0, 0, 0, 0]
+    assert int7s(1).bits() == [0, 0, 0, 0, 0, 0, 1]
+    assert int7s(-1).bits() == [1, 1, 1, 1, 1, 1, 1]
+    assert int7s(2 ** 6 - 1).bits() == [0, 1, 1, 1, 1, 1, 1]
+
+    assert int7s.from_bits([1, 0, 1, 0, 1, 1, 0, 1, 1, 1]) == (0b0110111, [1, 0, 1])
 
 
 def compare_with_nan(v1, v2):
@@ -396,6 +429,11 @@ def test_int_repr():
 
     assert str([nwk]) == "[1234]"
     assert repr([nwk]) == "[1234]"
+
+    with pytest.raises(ValueError):
+        # Invalid values are not allowed
+        class NwkWithoutHex(NwkAsHex, repr=True):
+            pass
 
 
 def test_optional():
