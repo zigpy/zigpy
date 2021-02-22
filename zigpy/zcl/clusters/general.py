@@ -1641,7 +1641,7 @@ class GreenPowerProxy(Cluster):
             attributes = (
                 dev.endpoints[self.endpoint_id].in_clusters[self.cluster_id]._attr_cache
             )
-            if 0x9999 in attributes and attributes[0x9999] > counter:
+            if 0x9999 in attributes and attributes[0x9999] >= counter:
                 LOGGER.debug("Already get this frame counter,I ignoring it")
                 return
             attributes._update_attribute(0x9999, counter)
