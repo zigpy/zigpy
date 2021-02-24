@@ -85,6 +85,16 @@ class Channels(basic.bitmap32):
 
         return mask
 
+    def __iter__(self):
+        cls = type(self)
+
+        channels = [c for c in range(11, 26 + 1) if self & cls[f"CHANNEL_{c}"]]
+
+        if self != cls.from_channel_list(channels):
+            raise ValueError(f"Channels bitmap has unexpected members: {self}")
+
+        return iter(channels)
+
 
 class ClusterId(basic.uint16_t):
     pass
