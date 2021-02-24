@@ -68,7 +68,7 @@ class FixedIntType(int):
 
     def _hex_repr(self):
         assert self._bits % 4 == 0
-        return f"0x{{:0{self._bits // 4}x}}".format(int(self))
+        return f"0x{{:0{self._bits // 4}X}}".format(int(self))
 
     def _bin_repr(self):
         return f"0b{{:0{self._bits}b}}".format(int(self))
@@ -280,7 +280,7 @@ def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined") -> CALLABLE
             new = cls._member_type_.__new__(cls, value)
 
             if cls._bits % 8 == 0:
-                name = f"{undefined}_{new._hex_repr()}"
+                name = f"{undefined}_{new._hex_repr().lower()}"
             else:
                 name = f"{undefined}_{new._bin_repr()}"
 

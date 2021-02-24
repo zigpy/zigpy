@@ -426,11 +426,11 @@ def test_int_repr():
         pass
 
     nwk = NwkAsHex(0x123A)
-    assert str(nwk) == "0x123a"
-    assert repr(nwk) == "0x123a"
+    assert str(nwk) == "0x123A"
+    assert repr(nwk) == "0x123A"
 
-    assert str([nwk]) == "[0x123a]"
-    assert repr([nwk]) == "[0x123a]"
+    assert str([nwk]) == "[0x123A]"
+    assert repr([nwk]) == "[0x123A]"
 
     class NwkAsBin(t.uint16_t, repr="bin"):
         pass
