@@ -425,22 +425,22 @@ def test_int_repr():
     class NwkAsHex(t.uint16_t, repr="hex"):
         pass
 
-    nwk = NwkAsHex(0x123A)
-    assert str(nwk) == "0x123A"
-    assert repr(nwk) == "0x123A"
+    nwk = NwkAsHex(0x023A)
+    assert str(nwk) == "0x023A"
+    assert repr(nwk) == "0x023A"
 
-    assert str([nwk]) == "[0x123A]"
-    assert repr([nwk]) == "[0x123A]"
+    assert str([nwk]) == "[0x023A]"
+    assert repr([nwk]) == "[0x023A]"
 
     class NwkAsBin(t.uint16_t, repr="bin"):
         pass
 
-    nwk = NwkAsBin(0b11110000_10101010)
-    assert str(nwk) == "0b1111000010101010"
-    assert repr(nwk) == "0b1111000010101010"
+    nwk = NwkAsBin(0b01110000_10101010)
+    assert str(nwk) == "0b0111000010101010"
+    assert repr(nwk) == "0b0111000010101010"
 
-    assert str([nwk]) == "[0b1111000010101010]"
-    assert repr([nwk]) == "[0b1111000010101010]"
+    assert str([nwk]) == "[0b0111000010101010]"
+    assert repr([nwk]) == "[0b0111000010101010]"
 
     # You can turn it off as well
     class NwkWithoutHex(NwkAsHex, repr=False):
@@ -455,7 +455,7 @@ def test_int_repr():
 
     with pytest.raises(ValueError):
         # Invalid values are not allowed
-        class NwkWithoutHex(NwkAsHex, repr=True):
+        class NwkWithoutHex(NwkAsHex, repr="foo"):
             pass
 
 
