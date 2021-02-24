@@ -68,7 +68,7 @@ def mock_dev_init(status: Status):
 
     def _initialize(self):
         self.status = status
-        self.node_desc, _ = zdo_t.NodeDescriptor.deserialize(bytes(range(20)))
+        self.node_desc = zdo_t.NodeDescriptor.old_new(0, 1, 2, 3, 4, 5, 6, 7, 8)
 
     return _initialize
 
@@ -705,6 +705,7 @@ async def test_appdb_worker_exception(save_mock, tmpdir):
     dev_1 = zigpy.device.Device(app_mock, ieee_1, 0x1111)
     dev_1.status = Status.ENDPOINTS_INIT
     dev_1.node_desc = MagicMock()
+    dev_1.node_desc.is_valid = True
     dev_1.node_desc.serialize.side_effect = AttributeError
 
     db_listener = await zigpy.appdb.PersistingListener.new(db, app_mock)
