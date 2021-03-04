@@ -118,6 +118,13 @@ class OccupancySensing(Cluster):
     client_commands = {}
 
 
+# TODO: 0x0407: Leaf Wetness
+# TODO: 0x0408: Soil Moisture
+# TODO: 0x0409: pH Measurement
+# TODO: 0x040A: Electrical Conductivity
+# TODO: 0x040B: Wind Speed Measurement
+
+
 class ConcentrationMeasurement:
     """Mixin for the common attributes of the concentration measurement clusters"""
 
