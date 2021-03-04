@@ -139,131 +139,132 @@ class _ConcentrationMixin:
     client_commands = {}
 
 
-class CarbonMonoxideMeasurement(_ConcentrationMixin, Cluster):
+class CarbonMonoxideConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x040C
-    name = "Carbon Monoxide (CO)"
-    ep_attribute = "carbon_monoxide"
+    name = "Carbon Monoxide (CO) Concentration"
+    ep_attribute = "carbon_monoxide_concentration"
 
 
-class CarbonDioxideMeasurement(_ConcentrationMixin, Cluster):
+class CarbonDioxideConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x040D
-    name = "Carbon Dioxide (CO₂)"
-    ep_attribute = "carbon_dioxide"
+    name = "Carbon Dioxide (CO₂) Concentration"
+    ep_attribute = "carbon_dioxide_concentration"
 
 
-class EthyleneMeasurement(_ConcentrationMixin, Cluster):
+class EthyleneConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x040E
-    name = "Ethylene (CH₂)"
-    ep_attribute = "ethylene"
+    name = "Ethylene (CH₂) Concentration"
+    ep_attribute = "ethylene_concentration"
 
 
-class EthyleneOxideMeasurement(_ConcentrationMixin, Cluster):
+class EthyleneOxideConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x040F
-    name = "Ethylene Oxide (C₂H₄O)"
-    ep_attribute = "ethylene_oxide"
+    name = "Ethylene Oxide (C₂H₄O) Concentration"
+    ep_attribute = "ethylene_oxide_concentration"
 
 
-class HydrogenMeasurement(_ConcentrationMixin, Cluster):
+class HydrogenConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0410
-    name = "Hydrogen (H)"
-    ep_attribute = "hydrogen"
+    name = "Hydrogen (H) Concentration"
+    ep_attribute = "hydrogen_concentration"
 
 
-class HydrogenSulfideMeasurement(_ConcentrationMixin, Cluster):
+class HydrogenSulfideConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0411
-    name = "Hydrogen Sulfide (H₂S)"
-    ep_attribute = "hydrogen_sulfide"
+    name = "Hydrogen Sulfide (H₂S) Concentration"
+    ep_attribute = "hydrogen_sulfide_concentration"
 
 
-class NitricOxideMeasurement(_ConcentrationMixin, Cluster):
+class NitricOxideConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0412
-    name = "Nitric Oxide (NO)"
-    ep_attribute = "nitric_oxide"
+    name = "Nitric Oxide (NO) Concentration"
+    ep_attribute = "nitric_oxide_concentration"
 
 
-class NitrogenDioxideMeasurement(_ConcentrationMixin, Cluster):
+class NitrogenDioxideConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0413
-    name = "Nitrogen Dioxide (NO₂)"
-    ep_attribute = "nitrogen_dioxide"
+    name = "Nitrogen Dioxide (NO₂) Concentration"
+    ep_attribute = "nitrogen_dioxide_concentration"
 
 
-class OxygenMeasurement(_ConcentrationMixin, Cluster):
+class OxygenConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0414
-    name = "Oxygen (O₂)"
-    ep_attribute = "oxygen"
+    name = "Oxygen (O₂) Concentration"
+    ep_attribute = "oxygen_concentration"
 
 
-class OzoneMeasurement(_ConcentrationMixin, Cluster):
+class OzoneConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0415
-    name = "Ozone (O₃)"
-    ep_attribute = "ozone"
+    name = "Ozone (O₃) Concentration"
+    ep_attribute = "ozone_concentration"
 
 
-class SulfurDioxideMeasurement(_ConcentrationMixin, Cluster):
+class SulfurDioxideConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0416
-    name = "Sulfur Dioxide (SO₂)"
-    ep_attribute = "sulfur_dioxide"
+    name = "Sulfur Dioxide (SO₂) Concentration"
+    ep_attribute = "sulfur_dioxide_concentration"
 
 
-class DissolvedOxygenMeasurement(_ConcentrationMixin, Cluster):
+class DissolvedOxygenConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0417
-    name = "Dissolved Oxygen (DO)"
-    ep_attribute = "dissolved_oxygen"
+    name = "Dissolved Oxygen (DO) Concentration"
+    ep_attribute = "dissolved_oxygen_concentration"
 
 
-class BromateMeasurement(_ConcentrationMixin, Cluster):
+class BromateConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0418
-    name = "Bromate"
-    ep_attribute = "bromate"
+    name = "Bromate Concentration"
+    ep_attribute = "bromate_concentration"
 
 
-class ChloraminesMeasurement(_ConcentrationMixin, Cluster):
+class ChloraminesConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0419
-    name = "Chloramines"
-    ep_attribute = "chloramines"
+    name = "Chloramines Concentration"
+    ep_attribute = "chloramines_concentration"
 
 
-class ChlorineMeasurement(_ConcentrationMixin, Cluster):
+class ChlorineConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x041A
-    name = "Chlorine"
-    ep_attribute = "chlorine"
+    name = "Chlorine Concentration"
+    ep_attribute = "chlorine_concentration"
 
 
-class FecalColiformAndEColiMeasurement(_ConcentrationMixin, Cluster):
+class FecalColiformAndEColiFraction(_ConcentrationMixin, Cluster):
     """
     Percent of positive samples
     """
 
     cluster_id = 0x041B
-    name = "Fecal coliform & E. Coli"
-    ep_attribute = "fecal_coliform_and_e_coli"
+    name = "Fecal coliform & E. Coli Fraction"
+    ep_attribute = "fecal_coliform_and_e_coli_fraction"
 
 
-class FluorideMeasurement(_ConcentrationMixin, Cluster):
+class FluorideConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x041C  # XXX: spec repeats 0x041B but this seems like a mistake
-    name = "Fluoride"
-    ep_attribute = "fluoride"
+    name = "Fluoride Concentration"
+    ep_attribute = "fluoride_concentration"
 
 
-class HaloaceticAcidsMeasurement(_ConcentrationMixin, Cluster):
+class HaloaceticAcidsConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x041D
-    name = "Haloacetic Acids"
-    ep_attribute = "haloacetic_acids"
+    name = "Haloacetic Acids Concentration"
+    ep_attribute = "haloacetic_acids_concentration"
 
 
-class TotalTrihalomethanesMeasurement(_ConcentrationMixin, Cluster):
+class TotalTrihalomethanesConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x041E
-    name = "Total Trihalomethanes"
-    ep_attribute = "total_trihalomethanes"
+    name = "Total Trihalomethanes Concentration"
+    ep_attribute = "total_trihalomethanes_concentration"
 
 
-class TotalColiformBacteriaMeasurement(_ConcentrationMixin, Cluster):
+class TotalColiformBacteriaFraction(_ConcentrationMixin, Cluster):
     cluster_id = 0x041F
-    name = "Total Coliform Bacteria"
-    ep_attribute = "total_coliform_bacteria"
+    name = "Total Coliform Bacteria Fraction"
+    ep_attribute = "total_coliform_bacteria_fraction"
 
 
-class TurbidityMeasurement(_ConcentrationMixin, Cluster):
+# XXX: is this a concentration? What are the units?
+class Turbidity(_ConcentrationMixin, Cluster):
     """
     Cloudiness of particles in water where an average person would notice a 5 or higher
     """
@@ -273,61 +274,62 @@ class TurbidityMeasurement(_ConcentrationMixin, Cluster):
     ep_attribute = "turbidity"
 
 
-class CopperMeasurement(_ConcentrationMixin, Cluster):
+class CopperConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0421
-    name = "Copper"
-    ep_attribute = "copper"
+    name = "Copper Concentration"
+    ep_attribute = "copper_concentration"
 
 
-class LeadMeasurement(_ConcentrationMixin, Cluster):
+class LeadConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0422
-    name = "Lead"
-    ep_attribute = "lead"
+    name = "Lead Concentration"
+    ep_attribute = "lead_concentration"
 
 
-class ManganeseMeasurement(_ConcentrationMixin, Cluster):
+class ManganeseConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0423
-    name = "Manganese"
-    ep_attribute = "manganese"
+    name = "Manganese Concentration"
+    ep_attribute = "manganese_concentration"
 
 
-class SulfateMeasurement(_ConcentrationMixin, Cluster):
+class SulfateConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0424
-    name = "Sulfate"
-    ep_attribute = "sulfate"
+    name = "Sulfate Concentration"
+    ep_attribute = "sulfate_concentration"
 
 
-class BromodichloromethaneMeasurement(_ConcentrationMixin, Cluster):
+class BromodichloromethaneConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0425
-    name = "Bromodichloromethane"
-    ep_attribute = "bromodichloromethane"
+    name = "Bromodichloromethane Concentration"
+    ep_attribute = "bromodichloromethane_concentration"
 
 
-class BromoformMeasurement(_ConcentrationMixin, Cluster):
+class BromoformConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0426
-    name = "Bromoform"
-    ep_attribute = "bromoform"
+    name = "Bromoform Concentration"
+    ep_attribute = "bromoform_concentration"
 
 
-class ChlorodibromomethaneMeasurement(_ConcentrationMixin, Cluster):
+class ChlorodibromomethaneConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0427
-    name = "Chlorodibromomethane"
-    ep_attribute = "chlorodibromomethane"
+    name = "Chlorodibromomethane Concentration"
+    ep_attribute = "chlorodibromomethane_concentration"
 
 
-class ChloroformMeasurement(_ConcentrationMixin, Cluster):
+class ChloroformConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0428
-    name = "Chloroform"
-    ep_attribute = "chloroform"
+    name = "Chloroform Concentration"
+    ep_attribute = "chloroform_concentration"
 
 
-class SodiumMeasurement(_ConcentrationMixin, Cluster):
+class SodiumConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x0429
-    name = "Sodium"
-    ep_attribute = "sodium"
+    name = "Sodium Concentration"
+    ep_attribute = "sodium_concentration"
 
 
-class PM25Measurement(_ConcentrationMixin, Cluster):
+# XXX: is this a concentration? What are the units?
+class PM25(_ConcentrationMixin, Cluster):
     """
     Particulate Matter 2.5 microns or less
     """
@@ -337,7 +339,7 @@ class PM25Measurement(_ConcentrationMixin, Cluster):
     ep_attribute = "pm25"
 
 
-class FormaldehydeMeasurement(_ConcentrationMixin, Cluster):
+class FormaldehydeConcentration(_ConcentrationMixin, Cluster):
     cluster_id = 0x042B
-    name = "Formaldehyde"
-    ep_attribute = "formaldehyde"
+    name = "Formaldehyde Concentration"
+    ep_attribute = "formaldehyde_concentration"
