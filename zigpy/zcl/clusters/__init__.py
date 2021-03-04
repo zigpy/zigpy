@@ -1,6 +1,7 @@
 # flake8: noqa
 from . import (
     closures,
+    concentration_measurement,
     general,
     homeautomation,
     hvac,
