@@ -129,10 +129,10 @@ class ConcentrationMeasurement:
     """Mixin for the common attributes of the concentration measurement clusters"""
 
     attributes = {
-        0x0000: ("measured_value", t.single),  # fraction of 1 (one)
-        0x0001: ("min_measured_value", t.single),
-        0x0002: ("max_measured_value", t.single),
-        0x0003: ("tolerance", t.single),
+        0x0000: ("measured_value", t.Single),  # fraction of 1 (one)
+        0x0001: ("min_measured_value", t.Single),
+        0x0002: ("max_measured_value", t.Single),
+        0x0003: ("tolerance", t.Single),
     }
 
     server_commands = {}
