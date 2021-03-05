@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import dataclasses
 import inspect
 import typing
@@ -16,26 +18,6 @@ class Struct:
         # The "Optional" subclass is dynamically created and breaks types.
         # We have to use a little introspection to find our real class.
         return next(c for c in cls.__mro__ if c.__name__ != "Optional")
-
-    @classmethod
-    def _annotations(cls) -> typing.List[type]:
-        # First get our proper subclasses
-        subclasses = []
-
-        for subcls in cls._real_cls().__mro__:
-            if subcls is Struct:
-                break
-
-            subclasses.append(subcls)
-
-        annotations = {}
-
-        # Iterate over the annotations *backwards*.
-        # We want subclasses' annotations to override their parent classes'.
-        for subcls in subclasses[::-1]:
-            annotations.update(getattr(subcls, "__annotations__", {}))
-
-        return annotations
 
     def __init_subclass__(cls):
         super().__init_subclass__()
@@ -96,7 +78,7 @@ class Struct:
         fields = ListSubclass()
 
         # We need both to throw type errors in case a field is not annotated
-        annotations = cls._real_cls()._annotations()
+        annotations = typing.get_type_hints(cls._real_cls())
 
         # Make sure every `StructField` is annotated
         for name in vars(cls._real_cls()):
@@ -120,7 +102,7 @@ class Struct:
             field = field.replace(name=name)
 
             # An annotation of `None` means to use the field's type
-            if annotation is not None:
+            if annotation is not NoneType:
                 if field.type is not None and field.type != annotation:
                     raise TypeError(
                         f"Field {name!r} type annotation conflicts with provided type:"
@@ -193,8 +175,27 @@ class Struct:
         return self.as_dict() == other.as_dict()
 
     def __repr__(self) -> str:
-        kwargs = ", ".join([f"{f.name}={v!r}" for f, v in self.assigned_fields()])
-        return f"{type(self).__name__}({kwargs})"
+        fields = []
+
+        # Assigned fields are displayed as `field=value`
+        for f, v in self.assigned_fields():
+            fields.append(f"{f.name}={v!r}")
+
+        cls = type(self)
+
+        # Properties are displayed as `*prop=value`
+        for attr in dir(cls):
+            cls_attr = getattr(cls, attr)
+
+            if not isinstance(cls_attr, property):
+                continue
+
+            value = getattr(self, attr)
+
+            if value is not None:
+                fields.append(f"*{attr}={value!r}")
+
+        return f"{type(self).__name__}({', '.join(fields)})"
 
 
 @dataclasses.dataclass(frozen=True)

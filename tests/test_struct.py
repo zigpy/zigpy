@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 from unittest import mock
 
@@ -5,6 +7,28 @@ import pytest
 
 import zigpy.types as t
 from zigpy.zcl.foundation import Status
+
+
+@pytest.fixture
+def expose_global():
+    """
+    `typing.get_type_hints` does not work for types defined within functions
+    """
+
+    objects = []
+
+    def inner(obj):
+        assert obj.__name__ not in globals()
+        globals()[obj.__name__] = obj
+
+        objects.append(obj)
+
+        return obj
+
+    yield inner
+
+    for obj in objects:
+        del globals()[obj.__name__]
 
 
 def test_struct_fields():
@@ -95,7 +119,8 @@ def test_struct_construction():
         s1.serialize()
 
 
-def test_nested_structs():
+def test_nested_structs(expose_global):
+    @expose_global
     class InnerStruct(t.Struct):
         b: t.uint8_t
         c: t.uint8_t
@@ -119,11 +144,14 @@ def test_nested_structs():
     assert s.d == 3
 
 
-def test_nested_structs2():
+def test_nested_structs2(expose_global):
+    @expose_global
+    class InnerStruct(t.Struct):
+        b: t.uint8_t
+        c: t.uint8_t
+
     class OuterStruct(t.Struct):
-        class InnerStruct(t.Struct):
-            b: t.uint8_t
-            c: t.uint8_t
+        InnerStruct = InnerStruct
 
         a: t.uint8_t
         inner: None = t.StructField(type=InnerStruct)
@@ -227,7 +255,8 @@ def test_struct_field_invalid_dependencies():
     assert len(ts3.assigned_fields()) == 1
 
 
-def test_struct_multiple_requires():
+def test_struct_multiple_requires(expose_global):
+    @expose_global
     class StrictStatus(t.enum8):
         SUCCESS = 0x00
         FAILURE = 0x01
@@ -536,3 +565,23 @@ def test_repr():
     ts = TestStruct()
     ts.foo = 1j
     assert repr(ts) == "TestStruct(foo=1j)"
+
+
+def test_repr_properties():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+        bar: t.uint8_t
+
+        @property
+        def baz(self):
+            if self.bar is None:
+                return None
+
+            return t.Bool((self.bar & 0xF0) >> 4)
+
+    assert repr(TestStruct(foo=1)) == "TestStruct(foo=1)"
+    assert (
+        repr(TestStruct(foo=1, bar=16))
+        == "TestStruct(foo=1, bar=16, *baz=<Bool.true: 1>)"
+    )
+    assert repr(TestStruct()) == "TestStruct()"

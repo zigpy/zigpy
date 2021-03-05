@@ -58,7 +58,7 @@ def test_ep_attributes():
     seen = set()
     for cluster_id, cluster in zcl.Cluster._registry.items():
         assert isinstance(cluster.ep_attribute, str)
-        assert re.match("^[a-z_]+$", cluster.ep_attribute)
+        assert re.match(r"^[a-z_][a-z0-9_]*$", cluster.ep_attribute)
         assert cluster.ep_attribute not in seen
         seen.add(cluster.ep_attribute)
 
