@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import dataclasses
 import inspect
 import typing
@@ -96,7 +98,7 @@ class Struct:
         fields = ListSubclass()
 
         # We need both to throw type errors in case a field is not annotated
-        annotations = cls._real_cls()._annotations()
+        annotations = typing.get_type_hints(cls._real_cls())
 
         # Make sure every `StructField` is annotated
         for name in vars(cls._real_cls()):
@@ -120,7 +122,7 @@ class Struct:
             field = field.replace(name=name)
 
             # An annotation of `None` means to use the field's type
-            if annotation is not None:
+            if annotation is not NoneType:
                 if field.type is not None and field.type != annotation:
                     raise TypeError(
                         f"Field {name!r} type annotation conflicts with provided type:"
