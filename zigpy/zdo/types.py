@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import typing
 
 import zigpy.types as t
@@ -184,17 +186,19 @@ class _NeighborEnums:
         PreviousChild = 0x4
 
 
+class PermitJoins(t.enum8):
+    NotAccepting = 0x0
+    Accepting = 0x1
+    Unknown = 0x2
+
+
 class Neighbor(t.Struct):
     """Neighbor Descriptor"""
 
+    PermitJoins = PermitJoins
     DeviceType = _NeighborEnums.DeviceType
     RxOnWhenIdle = _NeighborEnums.RxOnWhenIdle
     RelationShip = _NeighborEnums.Relationship
-
-    class PermitJoins(t.enum8):
-        NotAccepting = 0x0
-        Accepting = 0x1
-        Unknown = 0x2
 
     extended_pan_id: t.ExtendedPanId
     ieee: t.EUI64
@@ -248,6 +252,10 @@ class Neighbor(t.Struct):
             self.packed = value
         self.packed &= 0b0000_1111
         self.packed |= (value & 0x07) << 4
+
+
+# It's exposed only as `Neighbor.PermitJoins`
+del PermitJoins
 
 
 class Neighbors(t.Struct):

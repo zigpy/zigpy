@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from zigpy import types as t
 from zigpy.zcl import Cluster, foundation
 

@@ -1,5 +1,7 @@
 """General Functional Domain"""
 
+from __future__ import annotations
+
 import collections
 from datetime import datetime
 from typing import Any, List, Optional, Tuple, Union
