@@ -59,6 +59,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 return
             elif sdr[0] != zdo_status.SUCCESS:
                 raise Exception("Failed to retrieve service descriptor: %s", sdr)
+        except asyncio.CancelledError:
+            raise
         except Exception:
             self.warning(
                 "Failed to discover endpoint_id %s", self.endpoint_id, exc_info=True
