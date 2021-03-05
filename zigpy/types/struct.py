@@ -19,26 +19,6 @@ class Struct:
         # We have to use a little introspection to find our real class.
         return next(c for c in cls.__mro__ if c.__name__ != "Optional")
 
-    @classmethod
-    def _annotations(cls) -> typing.List[type]:
-        # First get our proper subclasses
-        subclasses = []
-
-        for subcls in cls._real_cls().__mro__:
-            if subcls is Struct:
-                break
-
-            subclasses.append(subcls)
-
-        annotations = {}
-
-        # Iterate over the annotations *backwards*.
-        # We want subclasses' annotations to override their parent classes'.
-        for subcls in subclasses[::-1]:
-            annotations.update(getattr(subcls, "__annotations__", {}))
-
-        return annotations
-
     def __init_subclass__(cls):
         super().__init_subclass__()
 
