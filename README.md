@@ -38,7 +38,6 @@ Note! Zigbee 3.0 support or not in zigpy depends primarily on your Zigbee coordi
 ### Known working Zigbee radio modules
 
 - **Silicon Labs EmberZNet based radios** using the EZSP protocol (via the [bellows](https://github.com/zigpy/bellows) library for zigpy)
-  - [ITEAD Sonoff ZBBridge WiFi-bridge](https://www.itead.cc/smart-home/sonoff-zbbridge.html) (Note! This first have to be flashed with [Tasmota firmware and EmberZNet firmware](https://www.digiblur.com/2020/07/how-to-use-sonoff-zigbee-bridge-with.html))
   - [Elelabs Zigbee USB Adapter](https://elelabs.com/products/elelabs_usb_adapter.html)
   - [Elelabs Zigbee Raspberry Pi Shield](https://elelabs.com/products/elelabs_zigbee_shield.html)
   - [Nortek GoControl QuickStick Combo Model HUSBZB-1 (Z-Wave & Zigbee USB Adapter)](https://www.nortekcontrol.com/products/2gig/husbzb-1-gocontrol-quickstick-combo/)
