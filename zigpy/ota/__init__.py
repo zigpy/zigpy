@@ -57,7 +57,7 @@ class CachedImage:
         if self.key != ImageKey(manufacturer_id, img_type):
             return False
 
-        if ver >= self.version:
+        if ver == self.version:
             return False
 
         if (
