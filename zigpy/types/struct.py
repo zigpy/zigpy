@@ -55,48 +55,43 @@ class Struct:
             )
 
         # We generate fields up here to fail early and cache it
+        cls.fields = cls._real_cls()._get_fields()
+
+    def __new__(cls, *args, **kwargs) -> Struct:
         real_cls = cls._real_cls()
-        cls.fields = real_cls._get_fields()
 
-        # We dynamically create our subclass's `__new__` method
-        def __new__(cls, *args, **kwargs) -> "Struct":
-            # Like a copy constructor
-            if len(args) == 1 and isinstance(args[0], real_cls):
-                if kwargs:
-                    raise ValueError(
-                        f"Cannot use copy constructor with kwargs: " f"{kwargs!r}"
-                    )
+        # Like a copy constructor
+        if len(args) == 1 and isinstance(args[0], real_cls):
+            if kwargs:
+                raise ValueError(f"Cannot use copy constructor with kwargs: {kwargs!r}")
 
-                kwargs = args[0].as_dict()
-                args = ()
+            kwargs = args[0].as_dict()
+            args = ()
 
-            # Pretend our signature is `__new__(cls, p1: t1, p2: t2, ...)`
-            signature = inspect.Signature(
-                parameters=[
-                    inspect.Parameter(
-                        name=f.name,
-                        kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                        default=None,
-                        annotation=f.type,
-                    )
-                    for f in cls.fields
-                ]
-            )
+        # Pretend our signature is `__new__(cls, p1: t1, p2: t2, ...)`
+        signature = inspect.Signature(
+            parameters=[
+                inspect.Parameter(
+                    name=f.name,
+                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    default=None,
+                    annotation=f.type,
+                )
+                for f in cls.fields
+            ]
+        )
 
-            bound = signature.bind(*args, **kwargs)
-            bound.apply_defaults()
+        bound = signature.bind(*args, **kwargs)
+        bound.apply_defaults()
 
-            instance = super().__new__(real_cls)
+        instance = super().__new__(real_cls)
 
-            # Set each attributes on the instance
-            for name, value in bound.arguments.items():
-                field = getattr(cls.fields, name)
-                setattr(instance, name, field._convert_type(value))
+        # Set each attributes on the instance
+        for name, value in bound.arguments.items():
+            field = getattr(cls.fields, name)
+            setattr(instance, name, field._convert_type(value))
 
-            return instance
-
-        # Finally, attach the above __new__ classmethod to our subclass
-        cls.__new__ = __new__
+        return instance
 
     @classmethod
     def _get_fields(cls) -> typing.List["StructField"]:

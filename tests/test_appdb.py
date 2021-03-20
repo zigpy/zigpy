@@ -68,7 +68,7 @@ def mock_dev_init(status: Status):
 
     def _initialize(self):
         self.status = status
-        self.node_desc = zdo_t.NodeDescriptor.old_new(0, 1, 2, 3, 4, 5, 6, 7, 8)
+        self.node_desc = zdo_t.NodeDescriptor(0, 1, 2, 3, 4, 5, 6, 7, 8)
 
     return _initialize
 
@@ -465,14 +465,14 @@ async def test_neighbors(tmpdir):
     app.handle_join(nwk_1, ieee_1, 0)
 
     dev_1 = app.get_device(ieee_1)
-    dev_1.node_desc = zdo_t.NodeDescriptor.old_new(2, 64, 128, 4174, 82, 82, 0, 82, 0)
+    dev_1.node_desc = zdo_t.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
     dev_1.add_endpoint(1)
     app.device_initialized(dev_1)
 
     # 2nd device
     app.handle_join(nwk_2, ieee_2, 0)
     dev_2 = app.get_device(ieee_2)
-    dev_2.node_desc = zdo_t.NodeDescriptor.old_new(1, 64, 142, 4476, 82, 82, 0, 82, 0)
+    dev_2.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4476, 82, 82, 0, 82, 0)
     dev_2.add_endpoint(1)
     app.device_initialized(dev_2)
 

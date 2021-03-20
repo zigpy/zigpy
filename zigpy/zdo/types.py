@@ -100,8 +100,15 @@ class NodeDescriptor(t.Struct):
     maximum_outgoing_transfer_size: t.uint16_t
     descriptor_capability_field: DescriptorCapability
 
+    def __new__(cls, *args, **kwargs):
+        # Old style constructor
+        if len(args) == 9 or "byte1" in kwargs or "byte2" in kwargs:
+            return cls._old_constructor(*args, **kwargs)
+
+        return super().__new__(cls, *args, **kwargs)
+
     @classmethod
-    def old_new(
+    def _old_constructor(
         cls: "NodeDescriptor",
         byte1: t.uint8_t = None,
         byte2: t.uint8_t = None,

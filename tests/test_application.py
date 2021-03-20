@@ -265,9 +265,7 @@ async def _remove(app, ieee, retval, zdo_reply=True, delivery_failure=True):
 
     device = MagicMock()
     device.ieee = ieee
-    device.node_desc = zdo_t.NodeDescriptor.old_new(
-        1, 64, 142, 4388, 82, 255, 0, 255, 0
-    )
+    device.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4388, 82, 255, 0, 255, 0)
     device.zdo.leave.side_effect = leave
 
     app.devices[ieee] = device
@@ -520,7 +518,7 @@ def _devices(index):
     dev.ieee = zigpy.types.EUI64(zigpy.types.uint64_t(start_ieee + index).serialize())
     dev.nwk = zigpy.types.NWK(start_nwk + index)
     dev.neighbors = []
-    dev.node_desc = zdo_t.NodeDescriptor.old_new(1, 64, 142, 4388, 82, 255, 0, 255, 0)
+    dev.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4388, 82, 255, 0, 255, 0)
     dev.zdo = zigpy.zdo.ZDO(dev)
     return dev
 
