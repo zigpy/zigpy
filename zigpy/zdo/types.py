@@ -66,11 +66,6 @@ class LogicalType(t.enum3):
     Coordinator = 0b000
     Router = 0b001
     EndDevice = 0b010
-    Reserved3 = 0b011
-    Reserved4 = 0b100
-    Reserved5 = 0b101
-    Reserved6 = 0b110
-    Reserved7 = 0b111
 
 
 class MACCapabilityFlags(t.bitmap8):
@@ -78,18 +73,14 @@ class MACCapabilityFlags(t.bitmap8):
     FullFunctionDevice = 0b00000010
     MainsPowered = 0b00000100
     RxOnWhenIdle = 0b00001000
-    Reserved4 = 0b00010000
-    Reserved5 = 0b00100000
     SecurityCapable = 0b01000000
     AllocateAddress = 0b10000000
 
 
 class FrequencyBand(t.bitmap5):
     Freq868MHz = 0b00001
-    Reserved1 = 0b00010
     Freq902MHz = 0b00100
     Freq2400MHz = 0b01000
-    Reserved4 = 0b10000
 
 
 class DescriptorCapability(t.bitmap8):
