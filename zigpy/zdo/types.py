@@ -36,11 +36,6 @@ class PowerDescriptor(t.Struct):
     current_power_source_level: PowerSourceLevel
 
 
-del CurrentPowerMode
-del PowerSources
-del PowerSourceLevel
-
-
 class SimpleDescriptor(t.Struct):
     endpoint: t.uint8_t
     profile: t.uint16_t
@@ -322,13 +317,6 @@ class Neighbor(t.Struct):
             "relationship": neighbor.relationship,
             "reserved1": neighbor.reserved1,
         }
-
-
-# XXX: These objects are exposed as Neighbor.DeviceType, ...
-del DeviceType
-del RxOnWhenIdle
-del RelationShip
-del PermitJoins
 
 
 class Neighbors(t.Struct):
@@ -728,3 +716,17 @@ class ZDOHeader:
         """Serialize header."""
 
         return self.tsn.serialize()
+
+
+# XXX: These objects are effectively internal to their corresponding type and exist in
+# the global scope only because postponed type annotation evaluation cannot handle
+# nested classes. They must be deleted at the end of the module in order for above
+# `t.Optional` "calls" to be able to resolve them.
+del CurrentPowerMode
+del PowerSources
+del PowerSourceLevel
+
+del DeviceType
+del RxOnWhenIdle
+del RelationShip
+del PermitJoins
