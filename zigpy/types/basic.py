@@ -303,6 +303,18 @@ class enum4(enum_factory(uint4_t)):  # noqa: N801
     pass
 
 
+class enum5(enum_factory(uint5_t)):  # noqa: N801
+    pass
+
+
+class enum6(enum_factory(uint6_t)):  # noqa: N801
+    pass
+
+
+class enum7(enum_factory(uint7_t)):  # noqa: N801
+    pass
+
+
 class enum8(enum_factory(uint8_t)):  # noqa: N801
     pass
 
@@ -311,7 +323,27 @@ class enum16(enum_factory(uint16_t)):  # noqa: N801
     pass
 
 
+class bitmap2(bitmap_factory(uint2_t)):
+    pass
+
+
+class bitmap3(bitmap_factory(uint3_t)):
+    pass
+
+
+class bitmap4(bitmap_factory(uint4_t)):
+    pass
+
+
 class bitmap5(bitmap_factory(uint5_t)):
+    pass
+
+
+class bitmap6(bitmap_factory(uint6_t)):
+    pass
+
+
+class bitmap7(bitmap_factory(uint7_t)):
     pass
 
 
