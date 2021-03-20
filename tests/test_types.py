@@ -21,6 +21,9 @@ def test_abstract_ints():
 
 
 def test_int_out_of_bounds():
+    assert t.uint8_t._size == 1
+    assert t.uint8_t._bits == 8
+
     t.uint8_t(0)
 
     with pytest.raises(ValueError):
@@ -40,6 +43,9 @@ def test_int_too_short():
 
 
 def test_fractional_ints_corner():
+    assert t.uint1_t._size is None
+    assert t.uint1_t._bits == 1
+
     assert t.uint1_t(0) == 0
     assert t.uint1_t(1) == 1
 
@@ -62,6 +68,9 @@ def test_fractional_ints_corner():
 
 
 def test_fractional_ints_larger():
+    assert t.uint7_t._size is None
+    assert t.uint7_t._bits == 7
+
     assert t.uint7_t(0) == 0
     assert t.uint7_t(1) == 1
     assert t.uint7_t(0b1111111) == 0b1111111
@@ -90,6 +99,9 @@ def test_fractional_ints_larger():
 def test_ints_signed():
     class int7s(t.int_t, bits=7):
         pass
+
+    assert int7s._size is None
+    assert int7s._bits == 7
 
     assert int7s(0) == 0
     assert int7s(1) == 1

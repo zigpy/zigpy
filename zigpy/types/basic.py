@@ -50,6 +50,7 @@ NOT_SET = object()
 class FixedIntType(int):
     _signed = None
     _bits = None
+    _size = None  # Only for backwards compatibility, not set for smaller ints
 
     def __new__(cls, *args, **kwargs):
         if cls._signed is None or cls._bits is None:
@@ -81,6 +82,11 @@ class FixedIntType(int):
 
         if bits is not NOT_SET:
             cls._bits = bits
+
+            if bits % 8 == 0:
+                cls._size = bits // 8
+            else:
+                cls._size = None
 
         if repr == "hex":
             assert cls._bits % 4 == 0
