@@ -139,6 +139,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 continue
             try:
                 await ep.initialize()
+            except asyncio.CancelledError:
+                raise
             except Exception as exc:
                 self.warning("Endpoint %s initialization failure: %s", endpoint_id, exc)
                 break

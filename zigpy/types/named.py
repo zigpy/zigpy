@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Iterable, Tuple, Union
 
 from . import basic
@@ -84,6 +86,16 @@ class Channels(basic.bitmap32):
             mask |= cls[f"CHANNEL_{channel}"]
 
         return mask
+
+    def __iter__(self):
+        cls = type(self)
+
+        channels = [c for c in range(11, 26 + 1) if self & cls[f"CHANNEL_{c}"]]
+
+        if self != cls.from_channel_list(channels):
+            raise ValueError(f"Channels bitmap has unexpected members: {self}")
+
+        return iter(channels)
 
 
 class ClusterId(basic.uint16_t):

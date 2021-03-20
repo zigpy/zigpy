@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 from unittest import mock
 
@@ -6,6 +8,28 @@ import pytest
 import zigpy.types as t
 from zigpy.zcl.foundation import Status
 import zigpy.zdo.types as zdo_t
+
+
+@pytest.fixture
+def expose_global():
+    """
+    `typing.get_type_hints` does not work for types defined within functions
+    """
+
+    objects = []
+
+    def inner(obj):
+        assert obj.__name__ not in globals()
+        globals()[obj.__name__] = obj
+
+        objects.append(obj)
+
+        return obj
+
+    yield inner
+
+    for obj in objects:
+        del globals()[obj.__name__]
 
 
 def test_struct_fields():
@@ -96,7 +120,8 @@ def test_struct_construction():
         s1.serialize()
 
 
-def test_nested_structs():
+def test_nested_structs(expose_global):
+    @expose_global
     class InnerStruct(t.Struct):
         b: t.uint8_t
         c: t.uint8_t
@@ -120,11 +145,14 @@ def test_nested_structs():
     assert s.d == 3
 
 
-def test_nested_structs2():
+def test_nested_structs2(expose_global):
+    @expose_global
+    class InnerStruct(t.Struct):
+        b: t.uint8_t
+        c: t.uint8_t
+
     class OuterStruct(t.Struct):
-        class InnerStruct(t.Struct):
-            b: t.uint8_t
-            c: t.uint8_t
+        InnerStruct = InnerStruct
 
         a: t.uint8_t
         inner: None = t.StructField(type=InnerStruct)
@@ -228,7 +256,8 @@ def test_struct_field_invalid_dependencies():
     assert len(ts3.assigned_fields()) == 1
 
 
-def test_struct_multiple_requires():
+def test_struct_multiple_requires(expose_global):
+    @expose_global
     class StrictStatus(t.enum8):
         SUCCESS = 0x00
         FAILURE = 0x01
@@ -573,7 +602,8 @@ def test_bitstruct_simple():
     assert s2.bar == 0b0000
 
 
-def test_bitstruct_nesting():
+def test_bitstruct_nesting(expose_global):
+    @expose_global
     class InnerBitStruct(t.Struct):
         baz1: t.uint1_t
         baz2: t.uint3_t

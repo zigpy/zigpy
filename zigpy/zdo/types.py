@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import typing
 
 import zigpy.types as t
@@ -221,31 +223,40 @@ class MultiAddress(t.Struct):
         return super().serialize()
 
 
+class DeviceType(t.enum2):
+    Coordinator = 0x0
+    Router = 0x1
+    EndDevice = 0x2
+    Unknown = 0x3
+
+
+class RxOnWhenIdle(t.enum2):
+    Off = 0x0
+    On = 0x1
+    Unknown = 0x2
+
+
+class RelationShip(t.enum3):
+    Parent = 0x0
+    Child = 0x1
+    Sibling = 0x2
+    NoneOfTheAbove = 0x3
+    PreviousChild = 0x4
+
+
+class PermitJoins(t.enum2):
+    NotAccepting = 0x0
+    Accepting = 0x1
+    Unknown = 0x2
+
+
 class Neighbor(t.Struct):
     """Neighbor Descriptor"""
 
-    class DeviceType(t.enum2):
-        Coordinator = 0x0
-        Router = 0x1
-        EndDevice = 0x2
-        Unknown = 0x3
-
-    class RxOnWhenIdle(t.enum2):
-        Off = 0x0
-        On = 0x1
-        Unknown = 0x2
-
-    class RelationShip(t.enum3):
-        Parent = 0x0
-        Child = 0x1
-        Sibling = 0x2
-        NoneOfTheAbove = 0x3
-        PreviousChild = 0x4
-
-    class PermitJoins(t.enum2):
-        NotAccepting = 0x0
-        Accepting = 0x1
-        Unknown = 0x2
+    PermitJoins = PermitJoins
+    DeviceType = DeviceType
+    RxOnWhenIdle = RxOnWhenIdle
+    RelationShip = RelationShip
 
     extended_pan_id: t.ExtendedPanId
     ieee: t.EUI64
@@ -286,6 +297,13 @@ class Neighbor(t.Struct):
             "relationship": neighbor.relationship,
             "reserved1": neighbor.reserved1,
         }
+
+
+# XXX: These objects are exposed as Neighbor.DeviceType, ...
+del DeviceType
+del RxOnWhenIdle
+del RelationShip
+del PermitJoins
 
 
 class Neighbors(t.Struct):

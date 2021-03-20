@@ -1,5 +1,7 @@
 """Protocol Interfaces Functional Domain"""
 
+from __future__ import annotations
+
 import zigpy.types as t
 from zigpy.zcl import Cluster
 

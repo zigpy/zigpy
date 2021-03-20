@@ -64,6 +64,23 @@ def test_channels():
     with pytest.raises(ValueError):
         t.Channels.from_channel_list([27, 13, 15, 18])  # 27 is not a valid channel
 
+    assert list(t.Channels.from_channel_list([11, 13, 25])) == [11, 13, 25]
+    assert list(t.Channels.ALL_CHANNELS) == list(range(11, 26 + 1))
+    assert list(t.Channels.NO_CHANNELS) == []
+
+    for expected, channel in zip(t.Channels.ALL_CHANNELS, range(11, 26 + 1)):
+        assert expected == channel
+
+    # t.Channels.from_channel_list(another_channel) should be idempotent
+    channels = t.Channels.from_channel_list([11, 13, 25])
+    assert channels == t.Channels.from_channel_list(channels)
+
+    # Even though this is a "valid" channels bitmap, it has unknown channels
+    invalid_channels = t.Channels(0xFFFFFFFF)
+
+    with pytest.raises(ValueError):
+        list(invalid_channels)
+
 
 def test_node_descriptor():
     data = b"\x00\x01\x02\x03\x03\x04\x05\x05\x06\x06\x07\x07\x08\xff"
