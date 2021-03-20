@@ -5,11 +5,40 @@ import typing
 import zigpy.types as t
 
 
-class PowerDescriptor(t.Struct):
-    byte_1: t.uint8_t
-    byte_2: t.uint8_t
+class CurrentPowerMode(t.enum4):
+    RxOnSyncedWithNodeDesc = 0b0000
+    RxOnPeriodically = 0b0001
+    RxOnWhenStimulated = 0b0010
 
-    # TODO: interpret the four 4-bit fields
+
+class PowerSources(t.bitmap4):
+    MainsPower = 0b0001
+    RechargeableBattery = 0b0010
+    DisposableBattery = 0b0100
+    Reserved = 0b1000
+
+
+class PowerSourceLevel(t.enum4):
+    Critical = 0b0000
+    Percent33 = 0b0100
+    Percent66 = 0b1000
+    Percent100 = 0b1100
+
+
+class PowerDescriptor(t.Struct):
+    CurrentPowerMode = CurrentPowerMode
+    PowerSources = PowerSources
+    PowerSourceLevel = PowerSourceLevel
+
+    current_power_mode: CurrentPowerMode
+    available_power_sources: PowerSources
+    current_power_source: PowerSources
+    current_power_source_level: PowerSourceLevel
+
+
+del CurrentPowerMode
+del PowerSources
+del PowerSourceLevel
 
 
 class SimpleDescriptor(t.Struct):
@@ -63,6 +92,11 @@ class FrequencyBand(t.bitmap5):
     Reserved4 = 0b10000
 
 
+class DescriptorCapability(t.bitmap8):
+    ExtendedActiveEndpointListAvailable = 0b00000001
+    ExtendedSimpleDescriptorListAvailable = 0b00000010
+
+
 class NodeDescriptor(t.Struct):
     logical_type: LogicalType
     complex_descriptor_available: t.uint1_t
@@ -78,7 +112,7 @@ class NodeDescriptor(t.Struct):
     maximum_incoming_transfer_size: t.uint16_t
     server_mask: t.uint16_t
     maximum_outgoing_transfer_size: t.uint16_t
-    descriptor_capability_field: t.uint8_t
+    descriptor_capability_field: DescriptorCapability
 
     @classmethod
     def old_new(
