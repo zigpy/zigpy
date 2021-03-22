@@ -5,35 +5,34 @@ import typing
 import zigpy.types as t
 
 
-class CurrentPowerMode(t.enum4):
-    RxOnSyncedWithNodeDesc = 0b0000
-    RxOnPeriodically = 0b0001
-    RxOnWhenStimulated = 0b0010
+class _PowerDescriptorEnums:
+    class CurrentPowerMode(t.enum4):
+        RxOnSyncedWithNodeDesc = 0b0000
+        RxOnPeriodically = 0b0001
+        RxOnWhenStimulated = 0b0010
 
+    class PowerSources(t.bitmap4):
+        MainsPower = 0b0001
+        RechargeableBattery = 0b0010
+        DisposableBattery = 0b0100
+        Reserved = 0b1000
 
-class PowerSources(t.bitmap4):
-    MainsPower = 0b0001
-    RechargeableBattery = 0b0010
-    DisposableBattery = 0b0100
-    Reserved = 0b1000
-
-
-class PowerSourceLevel(t.enum4):
-    Critical = 0b0000
-    Percent33 = 0b0100
-    Percent66 = 0b1000
-    Percent100 = 0b1100
+    class PowerSourceLevel(t.enum4):
+        Critical = 0b0000
+        Percent33 = 0b0100
+        Percent66 = 0b1000
+        Percent100 = 0b1100
 
 
 class PowerDescriptor(t.Struct):
-    CurrentPowerMode = CurrentPowerMode
-    PowerSources = PowerSources
-    PowerSourceLevel = PowerSourceLevel
+    CurrentPowerMode = _PowerDescriptorEnums.CurrentPowerMode
+    PowerSources = _PowerDescriptorEnums.PowerSources
+    PowerSourceLevel = _PowerDescriptorEnums.PowerSourceLevel
 
-    current_power_mode: CurrentPowerMode
-    available_power_sources: PowerSources
-    current_power_source: PowerSources
-    current_power_source_level: PowerSourceLevel
+    current_power_mode: _PowerDescriptorEnums.CurrentPowerMode
+    available_power_sources: _PowerDescriptorEnums.PowerSources
+    current_power_source: _PowerDescriptorEnums.PowerSources
+    current_power_source_level: _PowerDescriptorEnums.PowerSourceLevel
 
 
 class SimpleDescriptor(t.Struct):
@@ -63,42 +62,45 @@ class LogicalType(t.enum3):
     EndDevice = 0b010
 
 
-class MACCapabilityFlags(t.bitmap8):
-    AlternatePanCoordinator = 0b00000001
-    FullFunctionDevice = 0b00000010
-    MainsPowered = 0b00000100
-    RxOnWhenIdle = 0b00001000
-    SecurityCapable = 0b01000000
-    AllocateAddress = 0b10000000
+class _NodeDescriptorEnums:
+    class MACCapabilityFlags(t.bitmap8):
+        AlternatePanCoordinator = 0b00000001
+        FullFunctionDevice = 0b00000010
+        MainsPowered = 0b00000100
+        RxOnWhenIdle = 0b00001000
+        SecurityCapable = 0b01000000
+        AllocateAddress = 0b10000000
 
+    class FrequencyBand(t.bitmap5):
+        Freq868MHz = 0b00001
+        Freq902MHz = 0b00100
+        Freq2400MHz = 0b01000
 
-class FrequencyBand(t.bitmap5):
-    Freq868MHz = 0b00001
-    Freq902MHz = 0b00100
-    Freq2400MHz = 0b01000
-
-
-class DescriptorCapability(t.bitmap8):
-    ExtendedActiveEndpointListAvailable = 0b00000001
-    ExtendedSimpleDescriptorListAvailable = 0b00000010
+    class DescriptorCapability(t.bitmap8):
+        ExtendedActiveEndpointListAvailable = 0b00000001
+        ExtendedSimpleDescriptorListAvailable = 0b00000010
 
 
 class NodeDescriptor(t.Struct):
+    FrequencyBand = _NodeDescriptorEnums.FrequencyBand
+    MACCapabilityFlags = _NodeDescriptorEnums.MACCapabilityFlags
+    DescriptorCapability = _NodeDescriptorEnums.DescriptorCapability
+
     logical_type: LogicalType
     complex_descriptor_available: t.uint1_t
     user_descriptor_available: t.uint1_t
     reserved: t.uint3_t
 
     aps_flags: t.uint3_t
-    frequency_band: FrequencyBand
+    frequency_band: _NodeDescriptorEnums.FrequencyBand
 
-    mac_capability_flags: MACCapabilityFlags
+    mac_capability_flags: _NodeDescriptorEnums.MACCapabilityFlags
     manufacturer_code: t.uint16_t
     maximum_buffer_size: t.uint8_t
     maximum_incoming_transfer_size: t.uint16_t
     server_mask: t.uint16_t
     maximum_outgoing_transfer_size: t.uint16_t
-    descriptor_capability_field: DescriptorCapability
+    descriptor_capability_field: _NodeDescriptorEnums.DescriptorCapability
 
     def __new__(cls, *args, **kwargs):
         # Old style constructor
@@ -119,7 +121,7 @@ class NodeDescriptor(t.Struct):
         server_mask: t.uint16_t = None,
         maximum_outgoing_transfer_size: t.uint16_t = None,
         descriptor_capability_field: t.uint8_t = None,
-    ) -> "NodeDescriptor":
+    ) -> NodeDescriptor:
         logical_type = None
         complex_descriptor_available = None
         user_descriptor_available = None
@@ -140,7 +142,7 @@ class NodeDescriptor(t.Struct):
         if byte2 is not None:
             bits, _ = t.Bits.deserialize(bytes([byte2]))
             aps_flags, bits = t.uint3_t.from_bits(bits)
-            frequency_band, bits = FrequencyBand.from_bits(bits)
+            frequency_band, bits = cls.FrequencyBand.from_bits(bits)
 
             assert not bits
 
@@ -161,69 +163,71 @@ class NodeDescriptor(t.Struct):
         )
 
     @property
-    def is_end_device(self) -> bool:
+    def is_end_device(self) -> bool | None:
         if self.logical_type is None:
             return None
 
         return self.logical_type == LogicalType.EndDevice
 
     @property
-    def is_router(self) -> bool:
+    def is_router(self) -> bool | None:
         if self.logical_type is None:
             return None
 
         return self.logical_type == LogicalType.Router
 
     @property
-    def is_coordinator(self) -> bool:
+    def is_coordinator(self) -> bool | None:
         if self.logical_type is None:
             return None
 
         return self.logical_type == LogicalType.Coordinator
 
     @property
-    def is_alternate_pan_coordinator(self):
+    def is_alternate_pan_coordinator(self) -> bool | None:
         if self.mac_capability_flags is None:
             return None
 
         return bool(
-            self.mac_capability_flags & MACCapabilityFlags.AlternatePanCoordinator
+            self.mac_capability_flags & self.MACCapabilityFlags.AlternatePanCoordinator
         )
 
     @property
-    def is_full_function_device(self):
+    def is_full_function_device(self) -> bool | None:
         if self.mac_capability_flags is None:
             return None
 
-        return bool(self.mac_capability_flags & MACCapabilityFlags.FullFunctionDevice)
+        return bool(
+            self.mac_capability_flags & self.MACCapabilityFlags.FullFunctionDevice
+        )
 
     @property
-    def is_mains_powered(self):
+    def is_mains_powered(self) -> bool | None:
         if self.mac_capability_flags is None:
             return None
 
-        return bool(self.mac_capability_flags & MACCapabilityFlags.MainsPowered)
+        return bool(self.mac_capability_flags & self.MACCapabilityFlags.MainsPowered)
 
     @property
-    def is_receiver_on_when_idle(self):
+    def is_receiver_on_when_idle(self) -> bool | None:
         if self.mac_capability_flags is None:
             return None
 
-        return bool(self.mac_capability_flags & MACCapabilityFlags.RxOnWhenIdle)
+        return bool(self.mac_capability_flags & self.MACCapabilityFlags.RxOnWhenIdle)
 
     @property
-    def is_security_capable(self):
+    def is_security_capable(self) -> bool | None:
         if self.mac_capability_flags is None:
             return None
 
-        return bool(self.mac_capability_flags & MACCapabilityFlags.SecurityCapable)
+        return bool(self.mac_capability_flags & self.MACCapabilityFlags.SecurityCapable)
 
     @property
-    def allocate_address(self):
+    def allocate_address(self) -> bool | None:
         if self.mac_capability_flags is None:
             return None
 
-        return bool(self.mac_capability_flags & MACCapabilityFlags.AllocateAddress)
+        return bool(self.mac_capability_flags & self.MACCapabilityFlags.AllocateAddress)
 
 
 class MultiAddress(t.Struct):
@@ -250,51 +254,49 @@ class MultiAddress(t.Struct):
         return super().serialize()
 
 
-class DeviceType(t.enum2):
-    Coordinator = 0x0
-    Router = 0x1
-    EndDevice = 0x2
-    Unknown = 0x3
+class _NeighborEnums:
+    class DeviceType(t.enum2):
+        Coordinator = 0x0
+        Router = 0x1
+        EndDevice = 0x2
+        Unknown = 0x3
 
+    class RxOnWhenIdle(t.enum2):
+        Off = 0x0
+        On = 0x1
+        Unknown = 0x2
 
-class RxOnWhenIdle(t.enum2):
-    Off = 0x0
-    On = 0x1
-    Unknown = 0x2
+    class RelationShip(t.enum3):
+        Parent = 0x0
+        Child = 0x1
+        Sibling = 0x2
+        NoneOfTheAbove = 0x3
+        PreviousChild = 0x4
 
-
-class RelationShip(t.enum3):
-    Parent = 0x0
-    Child = 0x1
-    Sibling = 0x2
-    NoneOfTheAbove = 0x3
-    PreviousChild = 0x4
-
-
-class PermitJoins(t.enum2):
-    NotAccepting = 0x0
-    Accepting = 0x1
-    Unknown = 0x2
+    class PermitJoins(t.enum2):
+        NotAccepting = 0x0
+        Accepting = 0x1
+        Unknown = 0x2
 
 
 class Neighbor(t.Struct):
     """Neighbor Descriptor"""
 
-    PermitJoins = PermitJoins
-    DeviceType = DeviceType
-    RxOnWhenIdle = RxOnWhenIdle
-    RelationShip = RelationShip
+    PermitJoins = _NeighborEnums.PermitJoins
+    DeviceType = _NeighborEnums.DeviceType
+    RxOnWhenIdle = _NeighborEnums.RxOnWhenIdle
+    RelationShip = _NeighborEnums.RelationShip
 
     extended_pan_id: t.ExtendedPanId
     ieee: t.EUI64
     nwk: t.NWK
 
-    device_type: DeviceType
-    rx_on_when_idle: RxOnWhenIdle
-    relationship: RelationShip
+    device_type: _NeighborEnums.DeviceType
+    rx_on_when_idle: _NeighborEnums.RxOnWhenIdle
+    relationship: _NeighborEnums.RelationShip
     reserved1: t.uint1_t
 
-    permit_joining: PermitJoins
+    permit_joining: _NeighborEnums.PermitJoins
     reserved2: t.uint6_t
 
     depth: t.uint8_t
@@ -723,17 +725,3 @@ class ZDOHeader:
         """Serialize header."""
 
         return self.tsn.serialize()
-
-
-# XXX: These objects are effectively internal to their corresponding type and exist in
-# the global scope only because postponed type annotation evaluation cannot handle
-# nested classes. They must be deleted at the end of the module in order for above
-# `t.Optional` "calls" to be able to resolve them.
-del CurrentPowerMode
-del PowerSources
-del PowerSourceLevel
-
-del DeviceType
-del RxOnWhenIdle
-del RelationShip
-del PermitJoins
