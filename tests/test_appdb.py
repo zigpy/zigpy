@@ -414,51 +414,15 @@ async def test_neighbors(tmpdir):
     ext_pid = t.EUI64.convert("aa:bb:cc:dd:ee:ff:01:02")
     ieee_1 = make_ieee(1)
     nwk_1 = 0x1111
-    nei_1 = zdo_t.Neighbor(
-        extended_pan_id=ext_pid,
-        ieee=ieee_1,
-        nwk=nwk_1,
-        device_type=zdo_t.Neighbor.DeviceType.Coordinator,
-        rx_on_when_idle=zdo_t.Neighbor.RxOnWhenIdle.On,
-        relationship=zdo_t.Neighbor.RelationShip.NoneOfTheAbove,
-        reserved1=0,
-        permit_joining=zdo_t.Neighbor.PermitJoins.NotAccepting,
-        reserved2=0,
-        depth=15,
-        lqi=250,
-    )
+    nei_1 = zdo_t.Neighbor(ext_pid, ieee_1, nwk_1, 0x16, 0, 15, 250)
 
     ieee_2 = make_ieee(2)
     nwk_2 = 0x2222
-    nei_2 = zdo_t.Neighbor(
-        extended_pan_id=ext_pid,
-        ieee=ieee_2,
-        nwk=nwk_2,
-        device_type=zdo_t.Neighbor.DeviceType.Coordinator,
-        rx_on_when_idle=zdo_t.Neighbor.RxOnWhenIdle.Unknown,
-        relationship=zdo_t.Neighbor.RelationShip.Sibling,
-        reserved1=1,
-        permit_joining=zdo_t.Neighbor.PermitJoins.NotAccepting,
-        reserved2=0,
-        depth=15,
-        lqi=250,
-    )
+    nei_2 = zdo_t.Neighbor(ext_pid, ieee_2, nwk_2, 0x25, 0, 15, 250)
 
     ieee_3 = make_ieee(3)
     nwk_3 = 0x3333
-    nei_3 = zdo_t.Neighbor(
-        extended_pan_id=ext_pid,
-        ieee=ieee_3,
-        nwk=nwk_3,
-        device_type=zdo_t.Neighbor.DeviceType.Coordinator,
-        rx_on_when_idle=zdo_t.Neighbor.RxOnWhenIdle.Unknown,
-        relationship=zdo_t.Neighbor.RelationShip.Sibling,
-        reserved1=1,
-        permit_joining=zdo_t.Neighbor.PermitJoins.NotAccepting,
-        reserved2=0,
-        depth=15,
-        lqi=250,
-    )
+    nei_3 = zdo_t.Neighbor(ext_pid, ieee_3, nwk_3, 0x25, 0, 15, 250)
 
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
