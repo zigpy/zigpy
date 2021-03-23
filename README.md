@@ -51,9 +51,10 @@ Note! Zigbee 3.0 support or not in zigpy depends primarily on your Zigbee coordi
   - [RaspBee II (a.k.a. RaspBee 2)](https://www.dresden-elektronik.com/product/raspbee-II.html) GPIO radio adapter from [dresden elektronik](https://www.dresden-elektronik.de)
   - [ConBee](https://www.dresden-elektronik.de/conbee/) USB radio adapter from [dresden elektronik](https://www.dresden-elektronik.de)
   - [RaspBee](https://www.dresden-elektronik.de/raspbee/) GPIO radio adapter from [dresden elektronik](https://www.dresden-elektronik.de)
-- **Texas Instruments based radios with Z-Stack 3.x.x firmware** (via the [zigpy-znp](https://github.com/zha-ng/zigpy-znp) library for zigpy)
-  - [CC2652P/CC2652R/CC2652RB USB stick and dev board hardware flashed with Z-Stack 3.x.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
-  - [CC1352P/CC1352R USB stick and dev board hardware flashed with Z-Stack 3.x.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
+- **Texas Instruments based radios with all compatible Z-Stack firmware** (via the [zigpy-znp](https://github.com/zha-ng/zigpy-znp) library for zigpy)
+  - [CC2652P/CC2652R/CC2652RB USB stick and dev board hardware flashed with Z-Stack firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
+  - [CC1352P/CC1352R USB stick and dev board hardware flashed with Z-Stack firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
+  - [CC2530/CC2531/CC2538 USB stick and dev board hardware flashed with Z-Stack firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
 - **Digi XBee Zigbee based radios** (via the [zigpy-xbee](https://github.com/zigpy/zigpy-xbee) library for zigpy)
   - Digi XBee Series 3 (xbee3-24) modules
   - Digi XBee Series 2C (S2C) modules
@@ -64,12 +65,10 @@ Note! Zigbee 3.0 support or not in zigpy depends primarily on your Zigbee coordi
   - [PiZiGate (ZiGate module for Raspberry Pi GPIO)](https://zigate.fr/produit/pizigate-v1-0/) (Note! Requires ZiGate firmware 3.1d or later)
   - [ZiGate Pack WiFi](https://zigate.fr/produit/zigate-pack-wifi-v1-3/) (Note! Requires ZiGate firmware 3.1d or later)
 
-### Experimental support for additional Zigbee radio modules
+### Legacy support for obsolete zigpy radio libraires
 
-- **Texas Instruments with Z-Stack Home 1.2.x firmware** (via the [zigpy-cc](https://github.com/zigpy/zigpy-cc) library for zigpy)
-  - [CC2538 + CC2592 dev board hardware flashed with Z-Stack Home 1.2.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
-  - [CC2531 USB stick hardware flashed with Z-Stack Home 1.2.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
-  - [CC2530 + CC2591/CC2592 USB stick hardware flashed with Z-Stack Home 1.2.x firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
+- **Texas Instruments with Z-Stack legacy firmware** (via the [zigpy-cc](https://github.com/zigpy/zigpy-cc) library for zigpy)
+  - [CC253x USB and dev board hardware flashed with Z-Stack legacy firmware](https://www.zigbee2mqtt.io/information/supported_adapters)
 
 ## Release packages available via PyPI
 
