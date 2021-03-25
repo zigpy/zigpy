@@ -398,7 +398,7 @@ def test_neighbor_struct_device_type():
         assert struct.device_type == dev_type
 
     for i in range(0, 127):
-        struct = types.Neighbor(packed=i)
+        struct = types.Neighbor(**types.Neighbor._parse_packed(i))
         orig_rx = struct.rx_on_when_idle
         orig_rel = struct.relationship
         for dev_type in range(0, 3):
@@ -418,7 +418,7 @@ def test_neighbor_struct_rx_on_when_idle():
         assert struct.rx_on_when_idle == rx_on_when_idle
 
     for i in range(0, 127):
-        struct = types.Neighbor(packed=i)
+        struct = types.Neighbor(**types.Neighbor._parse_packed(i))
         orig_dev_type = struct.device_type
         orig_rel = struct.relationship
         for rx_on_when_idle in range(0, 3):
@@ -438,7 +438,7 @@ def test_neighbor_struct_relationship():
         assert struct.relationship == relationship
 
     for i in range(0, 127):
-        struct = types.Neighbor(packed=i)
+        struct = types.Neighbor(**types.Neighbor._parse_packed(i))
         orig_dev_type = struct.device_type
         orig_rx = struct.rx_on_when_idle
         for relationship in range(0, 7):

@@ -414,15 +414,15 @@ async def test_neighbors(tmpdir):
     ext_pid = t.EUI64.convert("aa:bb:cc:dd:ee:ff:01:02")
     ieee_1 = make_ieee(1)
     nwk_1 = 0x1111
-    nei_1 = zdo_t.Neighbor(ext_pid, ieee_1, nwk_1, 0x16, 0, 15, 250)
+    nei_1 = zdo_t.Neighbor(ext_pid, ieee_1, nwk_1, 2, 1, 1, 0, 0, 0, 15, 250)
 
     ieee_2 = make_ieee(2)
     nwk_2 = 0x2222
-    nei_2 = zdo_t.Neighbor(ext_pid, ieee_2, nwk_2, 0x25, 0, 15, 250)
+    nei_2 = zdo_t.Neighbor(ext_pid, ieee_2, nwk_2, 1, 1, 2, 0, 0, 0, 15, 250)
 
     ieee_3 = make_ieee(3)
     nwk_3 = 0x3333
-    nei_3 = zdo_t.Neighbor(ext_pid, ieee_3, nwk_3, 0x25, 0, 15, 250)
+    nei_3 = zdo_t.Neighbor(ext_pid, ieee_3, nwk_3, 1, 1, 2, 0, 0, 0, 15, 250)
 
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)

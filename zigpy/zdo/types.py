@@ -302,51 +302,17 @@ class Neighbor(t.Struct):
     depth: t.uint8_t
     lqi: t.uint8_t
 
-    def __new__(cls, *args, **kwargs):
-        # Old style constructor
-        if len(args) == 7 or "packed" in kwargs:
-            return cls._old_constructor(*args, **kwargs)
-
-        return super().__new__(cls, *args, **kwargs)
-
     @classmethod
-    def _old_constructor(
-        cls: type[Neighbor] = None,
-        extended_pan_id: t.ExtendedPanId = None,
-        ieee: t.EUI64 = None,
-        nwk: t.NWK = None,
-        packed: t.uint8_t = None,
-        permit_joining: PermitJoins = None,
-        depth: t.uint8_t = None,
-        lqi: t.uint8_t = None,
-    ) -> Neighbor:
-        device_type = None
-        rx_on_when_idle = None
-        relationship = None
-        reserved1 = None
+    def _parse_packed(cls, packed: t.uint8_t) -> dict[str, typing.Any]:
+        data = 18 * b"\x00" + t.uint16_t(packed).serialize() + 3 * b"\x00"
+        tmp_neighbor, _ = cls.deserialize(data)
 
-        if packed is not None:
-            data = 18 * b"\x00" + t.uint16_t(packed).serialize() + 3 * b"\x00"
-            tmp_neighbor, _ = cls.deserialize(data)
-
-            device_type = tmp_neighbor.device_type
-            rx_on_when_idle = tmp_neighbor.rx_on_when_idle
-            relationship = tmp_neighbor.relationship
-            reserved1 = tmp_neighbor.reserved1
-
-        return cls(
-            extended_pan_id=extended_pan_id,
-            ieee=ieee,
-            nwk=nwk,
-            device_type=device_type,
-            rx_on_when_idle=rx_on_when_idle,
-            relationship=relationship,
-            reserved1=reserved1,
-            permit_joining=permit_joining,
-            reserved2=0b000000,
-            depth=depth,
-            lqi=lqi,
-        )
+        return {
+            "device_type": tmp_neighbor.device_type,
+            "rx_on_when_idle": tmp_neighbor.rx_on_when_idle,
+            "relationship": tmp_neighbor.relationship,
+            "reserved1": tmp_neighbor.reserved1,
+        }
 
 
 class Neighbors(t.Struct):

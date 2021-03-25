@@ -123,7 +123,7 @@ def test_neighbor(device):
     """Test neighbor struct."""
 
     nei = zigpy.neighbor.Neighbor(
-        zdo_t.Neighbor(device.ieee, device.ieee, 1, 2, 3, 4, 5), device
+        zdo_t.Neighbor(device.ieee, device.ieee, 1, 0, 0, 0, 0, 0, 3, 4, 5), device
     )
     assert nei.device is device
     assert nei.neighbor.ieee == device.ieee

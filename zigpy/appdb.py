@@ -640,10 +640,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                                 extended_pan_id=epid,
                                 ieee=ieee,
                                 nwk=nwk,
-                                packed=packed,  # relies on the "old" constructor
                                 permit_joining=prm,
                                 depth=depth,
                                 lqi=lqi,
+                                reserved2=0b000000,
+                                **zdo_t.Neighbor._parse_packed(packed),
                             ),
                         )
                     )
