@@ -374,7 +374,12 @@ def test_neighbor():
     assert str(neighbor.extended_pan_id) == "b4:96:03:f5:59:8c:af:a2"
     assert str(neighbor.ieee) == "14:b4:57:ff:fe:07:70:3a"
     assert neighbor.nwk == 0xB7D1
-    assert neighbor.packed == 18
+    assert neighbor.device_type == types.Neighbor.DeviceType.EndDevice
+    assert neighbor.rx_on_when_idle == types.Neighbor.RxOnWhenIdle.Off
+    assert neighbor.relationship == types.Neighbor.RelationShip.Child
+    assert neighbor.reserved1 == 0
+    assert neighbor.permit_joining == types.Neighbor.PermitJoins.Accepting
+    assert neighbor.reserved2 == 0
     assert neighbor.device_type == types.Neighbor.DeviceType.EndDevice
     assert neighbor.relationship == types.Neighbor.RelationShip.Child
     assert neighbor.rx_on_when_idle == types.Neighbor.RxOnWhenIdle.Off

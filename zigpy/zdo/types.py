@@ -348,19 +348,6 @@ class Neighbor(t.Struct):
             lqi=lqi,
         )
 
-    @property
-    def packed(self):
-        packed = t.Bits.from_bitfields(
-            [
-                self.device_type,
-                self.rx_on_when_idle,
-                self.relationship,
-                self.reserved1,
-            ]
-        ).serialize()
-
-        return t.uint8_t.deserialize(packed)[0]
-
 
 class Neighbors(t.Struct):
     """Mgmt_Lqi_rsp"""
