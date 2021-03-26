@@ -118,3 +118,17 @@ async def test_migration_rollback(test_db_v3):
         neighbors_rows_success = list(cur.execute("SELECT * FROM neighbors"))
 
     assert neighbors_rows_before != neighbors_rows_success
+
+
+async def test_migration_missing_neighbors_v3(test_db_v3):
+    with sqlite3.connect(test_db_v3) as conn:
+        cur = conn.cursor()
+        cur.execute("DROP TABLE neighbors")
+
+        # Ensure the table doesn't exist
+        with pytest.raises(sqlite3.OperationalError):
+            cur.execute("SELECT * FROM neighbors")
+
+    # Migration won't fail even though the database version number is 3
+    app = await make_app(test_db_v3)
+    await app.pre_shutdown()

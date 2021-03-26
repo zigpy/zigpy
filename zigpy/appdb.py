@@ -630,8 +630,17 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if db_version == 0:
             return
 
+        try:
+            # The `neighbors` table was added in v3 but the version number was not
+            # incremented. It will cause the subsequent migration to fail. Instead,
+            # allow the table creation logic that is run after the migrations to create
+            # the missing table.
+            await self.execute("SELECT * FROM neighbors")
+        except aiosqlite.OperationalError:
+            return
+
         # Version 4 introduced migrations and expanded columns of `neighbors` table
-        if db_version < 4:
+        if db_version == 3:
             await self.execute("BEGIN TRANSACTION")
 
             # This query cannot be parameterized
