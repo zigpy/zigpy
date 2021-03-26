@@ -75,7 +75,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             database_file, detect_types=sqlite3.PARSE_DECLTYPES
         )
         listener = cls(sqlite_conn, app)
-        await listener.initialize_tables()
+
+        try:
+            await listener.initialize_tables()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            await listener.shutdown()
+            raise
+
         listener.running = True
         return listener
 

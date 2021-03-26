@@ -6,6 +6,7 @@ import pytest
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
+from tests.async_mock import AsyncMock, patch
 from tests.test_appdb import make_app
 
 
@@ -29,6 +30,13 @@ def test_db_v3(tmpdir):
 
 @pytest.mark.parametrize("open_twice", [False, True])
 async def test_migration_3_to_4(open_twice, test_db_v3):
+    with sqlite3.connect(test_db_v3) as conn:
+        cur = conn.cursor()
+        neighbors_rows_before = list(cur.execute("SELECT * FROM neighbors"))
+
+    assert len(neighbors_rows_before) == 2
+    assert all([len(row) == 8 for row in neighbors_rows_before])
+
     # Ensure migration works on first run, and after shutdown
     if open_twice:
         app = await make_app(test_db_v3)
@@ -71,3 +79,42 @@ async def test_migration_3_to_4(open_twice, test_db_v3):
     )
 
     await app.pre_shutdown()
+
+    with sqlite3.connect(test_db_v3) as conn:
+        cur = conn.cursor()
+        neighbors_rows_after = list(cur.execute("SELECT * FROM neighbors"))
+
+    assert len(neighbors_rows_after) == 2
+    assert all([len(row) == 12 for row in neighbors_rows_after])
+
+
+async def test_migration_rollback(test_db_v3):
+    with sqlite3.connect(test_db_v3) as conn:
+        cur = conn.cursor()
+        neighbors_rows_before = list(cur.execute("SELECT * FROM neighbors"))
+        assert len(neighbors_rows_before) == 2
+
+    # It will fail once
+    with patch(
+        "zigpy.appdb.PersistingListener._create_table_neighbors",
+        AsyncMock(side_effect=[RuntimeError()]),
+    ):
+        with pytest.raises(RuntimeError):
+            app = await make_app(test_db_v3)
+
+    # Ensure nothing was touched
+    with sqlite3.connect(test_db_v3) as conn:
+        cur = conn.cursor()
+        neighbors_rows_after = list(cur.execute("SELECT * FROM neighbors"))
+
+    assert neighbors_rows_before == neighbors_rows_after
+
+    # The second time it will work
+    app = await make_app(test_db_v3)
+    await app.pre_shutdown()
+
+    with sqlite3.connect(test_db_v3) as conn:
+        cur = conn.cursor()
+        neighbors_rows_success = list(cur.execute("SELECT * FROM neighbors"))
+
+    assert neighbors_rows_before != neighbors_rows_success
