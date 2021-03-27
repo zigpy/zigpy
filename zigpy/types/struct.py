@@ -164,6 +164,9 @@ class Struct:
     def as_dict(self) -> typing.Dict[str, typing.Any]:
         return {f.name: getattr(self, f.name) for f in self.fields}
 
+    def as_tuple(self) -> typing.Tuple:
+        return tuple(getattr(self, f.name) for f in self.fields)
+
     def serialize(self) -> bytes:
         chunks = []
 
