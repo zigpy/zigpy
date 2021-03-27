@@ -52,7 +52,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def initialize_tables(self) -> None:
         await self._db.execute("PRAGMA foreign_keys = ON")
-        await self._run_migrations()
         await self._create_table_devices()
         await self._create_table_endpoints()
         await self._create_table_clusters()
@@ -63,6 +62,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._create_table_groups()
         await self._create_table_group_members()
         await self._create_table_relays()
+        await self._run_migrations()
         await self._db.execute("PRAGMA user_version = %s" % (DB_VERSION,))
         await self._db.commit()
 
@@ -178,13 +178,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
         await self.execute(
-            "DELETE FROM neighbors WHERE device_ieee = ?", (neighbors.ieee,)
+            "DELETE FROM new_neighbors WHERE device_ieee = ?", (neighbors.ieee,)
         )
 
         rows = [(neighbors.ieee,) + n.neighbor.as_tuple() for n in neighbors.neighbors]
 
         await self._db.executemany(
-            "INSERT INTO neighbors VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO new_neighbors VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,
         )
         await self._db.commit()
@@ -275,8 +275,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
 
     async def _create_table_neighbors(self) -> None:
-        idx_name = "neighbors_idx"
-        idx_table = "neighbors"
+        idx_name = "new_neighbors_idx"
+        idx_table = "new_neighbors"
         idx_cols = "device_ieee"
         await self._create_table(
             idx_table,
@@ -299,13 +299,30 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _create_table_node_descriptors(self) -> None:
         await self._create_table(
-            "node_descriptors",
-            (
-                "(ieee ieee, value, "
-                "FOREIGN KEY(ieee) REFERENCES devices(ieee) ON DELETE CASCADE)"
-            ),
+            "new_node_descriptors",
+            """(
+                ieee ieee,
+
+                logical_type INTEGER NOT NULL,
+                complex_descriptor_available INTEGER NOT NULL,
+                user_descriptor_available INTEGER NOT NULL,
+                reserved INTEGER NOT NULL,
+                aps_flags INTEGER NOT NULL,
+                frequency_band INTEGER NOT NULL,
+                mac_capability_flags INTEGER NOT NULL,
+                manufacturer_code INTEGER NOT NULL,
+                maximum_buffer_size INTEGER NOT NULL,
+                maximum_incoming_transfer_size INTEGER NOT NULL,
+                server_mask INTEGER NOT NULL,
+                maximum_outgoing_transfer_size INTEGER NOT NULL,
+                descriptor_capability_field INTEGER NOT NULL,
+
+                FOREIGN KEY(ieee) REFERENCES devices(ieee) ON DELETE CASCADE
+            )""",
         )
-        await self._create_index("node_descriptors_idx", "node_descriptors", "ieee")
+        await self._create_index(
+            "new_node_descriptors_idx", "new_node_descriptors", "ieee"
+        )
 
     async def _create_table_output_clusters(self) -> None:
         await self._create_table(
@@ -361,8 +378,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _remove_device(self, device: zigpy.typing.DeviceType) -> None:
         queries = (
             "DELETE FROM attributes WHERE ieee = ?",
-            "DELETE FROM neighbors WHERE ieee = ?",
-            "DELETE FROM node_descriptors WHERE ieee = ?",
+            "DELETE FROM new_neighbors WHERE ieee = ?",
+            "DELETE FROM new_node_descriptors WHERE ieee = ?",
             "DELETE FROM clusters WHERE ieee = ?",
             "DELETE FROM output_clusters WHERE ieee = ?",
             "DELETE FROM group_members WHERE ieee = ?",
@@ -430,8 +447,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(q, endpoints)
 
     async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
-        q = "INSERT OR REPLACE INTO node_descriptors VALUES (?, ?)"
-        await self.execute(q, (device.ieee, device.node_desc.serialize()))
+        await self.execute(
+            "INSERT OR REPLACE INTO new_node_descriptors"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (device.ieee,) + device.node_desc.as_tuple(),
+        )
 
     async def _save_input_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
         q = "INSERT OR REPLACE INTO clusters VALUES (?, ?, ?)"
@@ -536,10 +556,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 dev.status = zigpy.device.Status(status)
 
     async def _load_node_descriptors(self) -> None:
-        async with self.execute("SELECT * FROM node_descriptors") as cursor:
-            async for (ieee, value) in cursor:
+        async with self.execute("SELECT * FROM new_node_descriptors") as cursor:
+            async for (ieee, *fields) in cursor:
                 dev = self._application.get_device(ieee)
-                dev.node_desc = zdo_t.NodeDescriptor.deserialize(value)[0]
+                dev.node_desc = zdo_t.NodeDescriptor(*fields)
+                assert dev.node_desc.is_valid
 
     async def _load_endpoints(self) -> None:
         async with self.execute("SELECT * FROM endpoints") as cursor:
@@ -588,10 +609,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 dev.relays = t.Relays.deserialize(value)[0]
 
     async def _load_neighbors(self) -> None:
-        async with self.execute("SELECT * FROM neighbors") as cursor:
-            async for dev_ieee, *neighbor_fields in cursor:
-                dev = self._application.get_device(dev_ieee)
-                neighbor = zdo_t.Neighbor(*neighbor_fields)
+        async with self.execute("SELECT * FROM new_neighbors") as cursor:
+            async for ieee, *fields in cursor:
+                dev = self._application.get_device(ieee)
+                neighbor = zdo_t.Neighbor(*fields)
                 assert neighbor.is_valid
                 dev.neighbors.add_neighbor(neighbor)
 
@@ -630,53 +651,48 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if db_version == 0:
             return
 
-        try:
-            # The `neighbors` table was added in v3 but the version number was not
-            # incremented. It will cause the subsequent migration to fail. Instead,
-            # allow the table creation logic that is run after the migrations to create
-            # the missing table.
-            await self.execute("SELECT * FROM neighbors")
-        except aiosqlite.OperationalError:
-            return
-
-        # Version 4 introduced migrations and expanded columns of `neighbors` table
-        if db_version == 3:
+        # Version 4 introduced migrations and expanded tables
+        if db_version < 4:
             await self.execute("BEGIN TRANSACTION")
+            await self.execute("PRAGMA user_version = 4")
 
-            # This query cannot be parameterized
-            await self.execute(f"PRAGMA user_version = {DB_VERSION}")
+            async with self.execute("SELECT * FROM node_descriptors") as cur:
+                async for dev_ieee, value in cur:
+                    node_desc, rest = zdo_t.NodeDescriptor.deserialize(value)
+                    assert not rest
 
-            neighbors = []
-
-            async with self.execute("SELECT * FROM neighbors") as cursor:
-                async for dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi in cursor:
-                    neighbors.append(
-                        (
-                            dev_ieee,
-                            zdo_t.Neighbor(
-                                extended_pan_id=epid,
-                                ieee=ieee,
-                                nwk=nwk,
-                                permit_joining=prm,
-                                depth=depth,
-                                lqi=lqi,
-                                reserved2=0b000000,
-                                **zdo_t.Neighbor._parse_packed(packed),
-                            ),
-                        )
+                    await self.execute(
+                        "INSERT INTO new_node_descriptors"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (dev_ieee,) + node_desc.as_tuple(),
                     )
 
-            await self.execute("DROP INDEX neighbors_idx")
-            await self.execute("DROP TABLE neighbors")
+            try:
+                # The `neighbors` table was added in v3 but the version number was not
+                # incremented. It will cause the subsequent migration to fail. Instead,
+                # allow the table creation logic that is run after the migrations to
+                # create the missing table.
+                await self.execute("SELECT * FROM neighbors")
+            except aiosqlite.OperationalError:
+                pass
+            else:
+                async with self.execute("SELECT * FROM neighbors") as cur:
+                    async for dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi in cur:
+                        neighbor = zdo_t.Neighbor(
+                            extended_pan_id=epid,
+                            ieee=ieee,
+                            nwk=nwk,
+                            permit_joining=prm,
+                            depth=depth,
+                            lqi=lqi,
+                            reserved2=0b000000,
+                            **zdo_t.Neighbor._parse_packed(packed),
+                        )
 
-            await self._create_table_neighbors()
-
-            for ieee, neighbor in neighbors:
-                await self.execute(
-                    "INSERT INTO neighbors VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (ieee,) + neighbor.as_tuple(),
-                )
+                        await self.execute(
+                            "INSERT INTO new_neighbors"
+                            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                            (dev_ieee,) + neighbor.as_tuple(),
+                        )
 
             await self.execute("COMMIT")
-
-            db_version = 4
