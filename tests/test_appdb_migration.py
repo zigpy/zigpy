@@ -105,11 +105,11 @@ async def test_migration_3_to_4(open_twice, test_db_v3):
         assert node_descs_before == list(cur.execute("SELECT * FROM node_descriptors"))
 
         # New tables exist
-        neighbors_after = list(cur.execute("SELECT * FROM new_neighbors"))
+        neighbors_after = list(cur.execute("SELECT * FROM neighbors_v4"))
         assert len(neighbors_after) == 2
         assert all([len(row) == 12 for row in neighbors_after])
 
-        node_descs_after = list(cur.execute("SELECT * FROM new_node_descriptors"))
+        node_descs_after = list(cur.execute("SELECT * FROM node_descriptors_v4"))
         assert len(node_descs_after) == 2
         assert all([len(row) == 14 for row in node_descs_after])
 

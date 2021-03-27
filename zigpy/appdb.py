@@ -178,13 +178,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
         await self.execute(
-            "DELETE FROM new_neighbors WHERE device_ieee = ?", (neighbors.ieee,)
+            "DELETE FROM neighbors_v4 WHERE device_ieee = ?", (neighbors.ieee,)
         )
 
         rows = [(neighbors.ieee,) + n.neighbor.as_tuple() for n in neighbors.neighbors]
 
         await self._db.executemany(
-            "INSERT INTO new_neighbors VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO neighbors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,
         )
         await self._db.commit()
@@ -275,8 +275,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
 
     async def _create_table_neighbors(self) -> None:
-        idx_name = "new_neighbors_idx"
-        idx_table = "new_neighbors"
+        idx_name = "neighbors_idx_v4"
+        idx_table = "neighbors_v4"
         idx_cols = "device_ieee"
         await self._create_table(
             idx_table,
@@ -299,7 +299,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _create_table_node_descriptors(self) -> None:
         await self._create_table(
-            "new_node_descriptors",
+            "node_descriptors_v4",
             """(
                 ieee ieee,
 
@@ -321,7 +321,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             )""",
         )
         await self._create_index(
-            "new_node_descriptors_idx", "new_node_descriptors", "ieee"
+            "node_descriptors_idx_v4", "node_descriptors_v4", "ieee"
         )
 
     async def _create_table_output_clusters(self) -> None:
@@ -378,8 +378,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _remove_device(self, device: zigpy.typing.DeviceType) -> None:
         queries = (
             "DELETE FROM attributes WHERE ieee = ?",
-            "DELETE FROM new_neighbors WHERE ieee = ?",
-            "DELETE FROM new_node_descriptors WHERE ieee = ?",
+            "DELETE FROM neighbors_v4 WHERE ieee = ?",
+            "DELETE FROM node_descriptors_v4 WHERE ieee = ?",
             "DELETE FROM clusters WHERE ieee = ?",
             "DELETE FROM output_clusters WHERE ieee = ?",
             "DELETE FROM group_members WHERE ieee = ?",
@@ -448,7 +448,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
         await self.execute(
-            "INSERT OR REPLACE INTO new_node_descriptors"
+            "INSERT OR REPLACE INTO node_descriptors_v4"
             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (device.ieee,) + device.node_desc.as_tuple(),
         )
@@ -556,7 +556,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 dev.status = zigpy.device.Status(status)
 
     async def _load_node_descriptors(self) -> None:
-        async with self.execute("SELECT * FROM new_node_descriptors") as cursor:
+        async with self.execute("SELECT * FROM node_descriptors_v4") as cursor:
             async for (ieee, *fields) in cursor:
                 dev = self._application.get_device(ieee)
                 dev.node_desc = zdo_t.NodeDescriptor(*fields)
@@ -609,7 +609,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 dev.relays = t.Relays.deserialize(value)[0]
 
     async def _load_neighbors(self) -> None:
-        async with self.execute("SELECT * FROM new_neighbors") as cursor:
+        async with self.execute("SELECT * FROM neighbors_v4") as cursor:
             async for ieee, *fields in cursor:
                 dev = self._application.get_device(ieee)
                 neighbor = zdo_t.Neighbor(*fields)
@@ -662,7 +662,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     assert not rest
 
                     await self.execute(
-                        "INSERT INTO new_node_descriptors"
+                        "INSERT INTO node_descriptors_v4"
                         " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (dev_ieee,) + node_desc.as_tuple(),
                     )
@@ -690,7 +690,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         )
 
                         await self.execute(
-                            "INSERT INTO new_neighbors"
+                            "INSERT INTO neighbors_v4"
                             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                             (dev_ieee,) + neighbor.as_tuple(),
                         )
