@@ -527,7 +527,7 @@ async def test_remove_parent_devices(app):
     """Test removing an end device with parents."""
 
     end_device = _devices(1)
-    end_device.node_desc.byte1 = 2
+    end_device.node_desc.logical_type = zdo_t.LogicalType.EndDevice
     nei_end_device = MagicMock()
     nei_end_device.device = end_device
 

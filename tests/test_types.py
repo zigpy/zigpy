@@ -21,6 +21,9 @@ def test_abstract_ints():
 
 
 def test_int_out_of_bounds():
+    assert t.uint8_t._size == 1
+    assert t.uint8_t._bits == 8
+
     t.uint8_t(0)
 
     with pytest.raises(ValueError):
@@ -37,6 +40,112 @@ def test_int_too_short():
 
     with pytest.raises(ValueError):
         t.uint16_t.deserialize(b"\x00")
+
+
+def test_fractional_ints_corner():
+    assert t.uint1_t._size is None
+    assert t.uint1_t._bits == 1
+
+    assert t.uint1_t(0) == 0
+    assert t.uint1_t(1) == 1
+
+    with pytest.raises(ValueError):
+        t.uint1_t(-1)
+
+    with pytest.raises(ValueError):
+        t.uint1_t(2)
+
+    n = t.uint1_t(0b1)
+
+    with pytest.raises(TypeError):
+        n.serialize()
+
+    assert t.uint1_t(0).bits() == [0]
+    assert t.uint1_t(1).bits() == [1]
+
+    assert t.uint1_t.from_bits([1, 1]) == (1, [1])
+    assert t.uint1_t.from_bits([0, 1]) == (1, [0])
+
+
+def test_fractional_ints_larger():
+    assert t.uint7_t._size is None
+    assert t.uint7_t._bits == 7
+
+    assert t.uint7_t(0) == 0
+    assert t.uint7_t(1) == 1
+    assert t.uint7_t(0b1111111) == 0b1111111
+
+    with pytest.raises(ValueError):
+        t.uint7_t(-1)
+
+    with pytest.raises(ValueError):
+        t.uint7_t(0b1111111 + 1)
+
+    n = t.uint7_t(0b1111111)
+
+    with pytest.raises(TypeError):
+        n.serialize()
+
+    assert t.uint7_t(0).bits() == [0, 0, 0, 0, 0, 0, 0]
+    assert t.uint7_t(1).bits() == [0, 0, 0, 0, 0, 0, 1]
+    assert t.uint7_t(0b1011111).bits() == [1, 0, 1, 1, 1, 1, 1]
+
+    assert t.uint7_t.from_bits([1, 0, 1, 1, 1, 1, 0, 1, 1, 1]) == (0b1110111, [1, 0, 1])
+
+    with pytest.raises(ValueError):
+        assert t.uint7_t.from_bits([1] * 6)
+
+
+def test_ints_signed():
+    class int7s(t.int_t, bits=7):
+        pass
+
+    assert int7s._size is None
+    assert int7s._bits == 7
+
+    assert int7s(0) == 0
+    assert int7s(1) == 1
+    assert int7s(-1) == -1
+    assert int7s(2 ** 6 - 1) == 2 ** 6 - 1
+    assert int7s(-(2 ** 6)) == -(2 ** 6)
+
+    with pytest.raises(ValueError):
+        int7s(2 ** 6)
+
+    with pytest.raises(ValueError):
+        int7s(-(2 ** 6) - 1)
+
+    n = int7s(2 ** 6 - 1)
+
+    with pytest.raises(TypeError):
+        n.serialize()
+
+    assert int7s(0).bits() == [0, 0, 0, 0, 0, 0, 0]
+    assert int7s(1).bits() == [0, 0, 0, 0, 0, 0, 1]
+    assert int7s(-1).bits() == [1, 1, 1, 1, 1, 1, 1]
+    assert int7s(2 ** 6 - 1).bits() == [0, 1, 1, 1, 1, 1, 1]
+
+    assert int7s.from_bits([1, 0, 1, 0, 1, 1, 0, 1, 1, 1]) == (0b0110111, [1, 0, 1])
+
+    with pytest.raises(TypeError):
+        int7s.deserialize(b"\xFF")
+
+    t.int8s.deserialize(b"\xFF")
+
+    n = t.int8s(-126)
+    bits = [1, 0] + t.Bits.deserialize(n.serialize())[0]
+    assert t.int8s.from_bits(bits) == (n, [1, 0])
+
+
+def test_bits():
+    assert t.Bits() == []
+    assert t.Bits([1] + [0] * 15).serialize() == b"\x80\x00"
+    assert t.Bits.deserialize(b"\x80\x00") == ([1] + [0] * 15, b"")
+
+    bits = t.Bits([0] * 7)
+
+    with pytest.raises(ValueError):
+        assert bits.serialize()
 
 
 def compare_with_nan(v1, v2):
@@ -324,19 +433,29 @@ def test_lvlist_types():
     assert not isinstance(NewList(), t.LVList[t.uint16_t, t.uint8_t])
 
 
-def test_hex_repr():
-    class NwkAsHex(t.uint16_t, hex_repr=True):
+def test_int_repr():
+    class NwkAsHex(t.uint16_t, repr="hex"):
         pass
 
-    nwk = NwkAsHex(0x123A)
-    assert str(nwk) == "0x123A"
-    assert repr(nwk) == "0x123A"
+    nwk = NwkAsHex(0x023A)
+    assert str(nwk) == "0x023A"
+    assert repr(nwk) == "0x023A"
 
-    assert str([nwk]) == "[0x123A]"
-    assert repr([nwk]) == "[0x123A]"
+    assert str([nwk]) == "[0x023A]"
+    assert repr([nwk]) == "[0x023A]"
+
+    class NwkAsBin(t.uint16_t, repr="bin"):
+        pass
+
+    nwk = NwkAsBin(0b01110000_10101010)
+    assert str(nwk) == "0b0111000010101010"
+    assert repr(nwk) == "0b0111000010101010"
+
+    assert str([nwk]) == "[0b0111000010101010]"
+    assert repr([nwk]) == "[0b0111000010101010]"
 
     # You can turn it off as well
-    class NwkWithoutHex(NwkAsHex, hex_repr=False):
+    class NwkWithoutHex(NwkAsHex, repr=False):
         pass
 
     nwk = NwkWithoutHex(1234)
@@ -345,6 +464,11 @@ def test_hex_repr():
 
     assert str([nwk]) == "[1234]"
     assert repr([nwk]) == "[1234]"
+
+    with pytest.raises(ValueError):
+        # Invalid values are not allowed
+        class NwkWithoutHex(NwkAsHex, repr="foo"):
+            pass
 
 
 def test_optional():
