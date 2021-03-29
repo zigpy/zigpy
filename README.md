@@ -37,11 +37,11 @@ Note! Zigbee 3.0 support or not in zigpy depends primarily on your Zigbee coordi
 
 ### Compatible zigpy radio libraires
 
-- Digi XBee Zigbee based radios** via the [zigpy-xbee](https://github.com/zigpy/zigpy-xbee) library for zigpy.
-- dresden elektronik deCONZ based radios via the [zigpy-deconz](https://github.com/zigpy/zigpy-deconz) library for zigpy.
-- Silicon Labs EmberZNet based radios** using the EZSP protocol via the [bellows](https://github.com/zigpy/bellows) library for zigpy.
-- Texas Instruments based radios with all compatible Z-Stack firmware via the [zigpy-znp](https://github.com/zha-ng/zigpy-znp) library for zigpy.
-- ZiGate open source ZigBee adapter hardware** via the [zigpy-zigate](https://github.com/zigpy/zigpy-zigate) library for zigpy.
+- **Digi XBee** based Zigbee radios via the [zigpy-xbee](https://github.com/zigpy/zigpy-xbee) library for zigpy.
+- **dresden elektronik** deCONZ based Zigbee radios via the [zigpy-deconz](https://github.com/zigpy/zigpy-deconz) library for zigpy.
+- **Silicon Labs** (EmberZNet) based Zigbee radios using the EZSP protocol via the [bellows](https://github.com/zigpy/bellows) library for zigpy.
+- **Texas Instruments** based Zigbee radios with all compatible Z-Stack firmware via the [zigpy-znp](https://github.com/zha-ng/zigpy-znp) library for zigpy.
+- **ZiGate** based ZigBee radios via the [zigpy-zigate](https://github.com/zigpy/zigpy-zigate) library for zigpy.
 
 ### Legacy or obsolete zigpy radio libraires
 
