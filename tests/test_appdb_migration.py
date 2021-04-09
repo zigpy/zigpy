@@ -3,6 +3,7 @@ import sqlite3
 
 import pytest
 
+import zigpy.appdb
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
@@ -131,4 +132,4 @@ async def test_migration_missing_neighbors_v3(test_db_v3):
     with sqlite3.connect(test_db_v3) as conn:
         cur = conn.cursor()
         cur.execute("PRAGMA user_version")
-        assert cur.fetchone() == (4,)
+        assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
