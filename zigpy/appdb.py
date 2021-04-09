@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import asyncio
 import logging
+import pathlib
 import sqlite3
 from typing import Any
 
@@ -19,7 +22,8 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 4
+DB_VERSION = 5
+DB_V = f"_v{DB_VERSION}"
 
 
 def _sqlite_adapters():
@@ -52,18 +56,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def initialize_tables(self) -> None:
         await self._db.execute("PRAGMA foreign_keys = ON")
-        await self._create_table_devices()
-        await self._create_table_endpoints()
-        await self._create_table_clusters()
-        await self._create_table_neighbors()
-        await self._create_table_node_descriptors()
-        await self._create_table_output_clusters()
-        await self._create_table_attributes()
-        await self._create_table_groups()
-        await self._create_table_group_members()
-        await self._create_table_relays()
         await self._run_migrations()
-        await self._db.execute("PRAGMA user_version = %s" % (DB_VERSION,))
         await self._db.commit()
 
     @classmethod
@@ -96,7 +89,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             try:
                 await handler(*args)
             except aiosqlite.Error as exc:
-                LOGGER.debug(
+                LOGGER.error(
                     "Error handling '%s' event with %s params: %s",
                     cb_name,
                     args,
@@ -123,12 +116,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if not self.running:
             LOGGER.warning(
                 "Discarding %s event",
+                cb_name,
             )
             return
         self._callback_handlers.put_nowait((cb_name, args))
 
     def execute(self, *args, **kwargs):
         return self._db.execute(*args, **kwargs)
+
+    def get_device(self, ieee: t.EUI64) -> zigpy.typing.DeviceType | None:
+        try:
+            return self._application.get_device(ieee)
+        except KeyError:
+            LOGGER.warning("Device %s does not exist", ieee)
+            return None
 
     def device_joined(self, device: zigpy.typing.DeviceType) -> None:
         pass
@@ -178,13 +179,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
         await self.execute(
-            "DELETE FROM neighbors_v4 WHERE device_ieee = ?", (neighbors.ieee,)
+            f"DELETE FROM neighbors{DB_V} WHERE device_ieee = ?", (neighbors.ieee,)
         )
 
         rows = [(neighbors.ieee,) + n.neighbor.as_tuple() for n in neighbors.neighbors]
 
         await self._db.executemany(
-            "INSERT INTO neighbors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            f"INSERT INTO neighbors{DB_V} VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             rows,
         )
         await self._db.commit()
@@ -194,7 +195,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_group_added", group)
 
     async def _group_added(self, group: zigpy.group.Group) -> None:
-        q = "INSERT OR REPLACE INTO groups VALUES (?, ?)"
+        q = f"INSERT OR REPLACE INTO groups{DB_V} VALUES (?, ?)"
         await self.execute(q, (group.group_id, group.name))
         await self._db.commit()
 
@@ -207,7 +208,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _group_member_added(
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
     ) -> None:
-        q = "INSERT OR REPLACE INTO group_members VALUES (?, ?, ?)"
+        q = f"INSERT OR REPLACE INTO group_members{DB_V} VALUES (?, ?, ?)"
         await self.execute(q, (group.group_id, *ep.unique_id))
         await self._db.commit()
 
@@ -220,9 +221,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _group_member_removed(
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
     ) -> None:
-        q = """DELETE FROM group_members WHERE group_id=?
-                                               AND ieee=?
-                                               AND endpoint_id=?"""
+        q = f"""DELETE FROM group_members{DB_V} WHERE group_id=?
+                                                AND ieee=?
+                                                AND endpoint_id=?"""
         await self.execute(q, (group.group_id, *ep.unique_id))
         await self._db.commit()
 
@@ -231,163 +232,25 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_group_removed", group)
 
     async def _group_removed(self, group: zigpy.group.Group) -> None:
-        q = "DELETE FROM groups WHERE group_id=?"
+        q = f"DELETE FROM groups{DB_V} WHERE group_id=?"
         await self.execute(q, (group.group_id,))
         await self._db.commit()
 
-    async def _create_table(self, table_name: str, spec: str) -> None:
-        await self.execute("CREATE TABLE IF NOT EXISTS %s %s" % (table_name, spec))
-
-    async def _create_index(
-        self, index_name: str, table: str, columns: str, unique: bool = True
-    ) -> None:
-        if unique:
-            query = "CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(%s)"
-        else:
-            query = "CREATE INDEX IF NOT EXISTS %s ON %s(%s)"
-        await self.execute(query % (index_name, table, columns))
-
-    async def _create_table_devices(self) -> None:
-        await self._create_table("devices", "(ieee ieee, nwk, status)")
-        await self._create_index("ieee_idx", "devices", "ieee")
-
-    async def _create_table_endpoints(self) -> None:
-        await self._create_table(
-            "endpoints",
-            (
-                "(ieee ieee, endpoint_id, profile_id, device_type device_type, status, "
-                "FOREIGN KEY(ieee) REFERENCES devices(ieee) ON DELETE CASCADE)"
-            ),
-        )
-        await self._create_index("endpoint_idx", "endpoints", "ieee, endpoint_id")
-
-    async def _create_table_clusters(self) -> None:
-        await self._create_table(
-            "clusters",
-            (
-                "(ieee ieee, endpoint_id, cluster, "
-                "FOREIGN KEY(ieee, endpoint_id) REFERENCES endpoints(ieee, endpoint_id)"
-                " ON DELETE CASCADE)"
-            ),
-        )
-        await self._create_index(
-            "cluster_idx", "clusters", "ieee, endpoint_id, cluster"
-        )
-
-    async def _create_table_neighbors(self) -> None:
-        idx_name = "neighbors_idx_v4"
-        idx_table = "neighbors_v4"
-        idx_cols = "device_ieee"
-        await self._create_table(
-            idx_table,
-            """(
-                device_ieee ieee NOT NULL,
-                extended_pan_id ieee NOT NULL,
-                ieee ieee NOT NULL,
-                nwk INTEGER NOT NULL,
-                device_type INTEGER NOT NULL,
-                rx_on_when_idle INTEGER NOT NULL,
-                relationship INTEGER NOT NULL,
-                reserved1 INTEGER NOT NULL,
-                permit_joining INTEGER NOT NULL,
-                reserved2 INTEGER NOT NULL,
-                depth INTEGER NOT NULL,
-                lqi INTEGER NOT NULL
-            )""",
-        )
-        await self._create_index(idx_name, idx_table, idx_cols, unique=False)
-
-    async def _create_table_node_descriptors(self) -> None:
-        await self._create_table(
-            "node_descriptors_v4",
-            """(
-                ieee ieee,
-
-                logical_type INTEGER NOT NULL,
-                complex_descriptor_available INTEGER NOT NULL,
-                user_descriptor_available INTEGER NOT NULL,
-                reserved INTEGER NOT NULL,
-                aps_flags INTEGER NOT NULL,
-                frequency_band INTEGER NOT NULL,
-                mac_capability_flags INTEGER NOT NULL,
-                manufacturer_code INTEGER NOT NULL,
-                maximum_buffer_size INTEGER NOT NULL,
-                maximum_incoming_transfer_size INTEGER NOT NULL,
-                server_mask INTEGER NOT NULL,
-                maximum_outgoing_transfer_size INTEGER NOT NULL,
-                descriptor_capability_field INTEGER NOT NULL,
-
-                FOREIGN KEY(ieee) REFERENCES devices(ieee) ON DELETE CASCADE
-            )""",
-        )
-        await self._create_index(
-            "node_descriptors_idx_v4", "node_descriptors_v4", "ieee"
-        )
-
-    async def _create_table_output_clusters(self) -> None:
-        await self._create_table(
-            "output_clusters",
-            (
-                "(ieee ieee, endpoint_id, cluster, "
-                "FOREIGN KEY(ieee, endpoint_id) REFERENCES endpoints(ieee, endpoint_id)"
-                " ON DELETE CASCADE)"
-            ),
-        )
-        await self._create_index(
-            "output_cluster_idx", "output_clusters", "ieee, endpoint_id, cluster"
-        )
-
-    async def _create_table_attributes(self) -> None:
-        await self._create_table(
-            "attributes",
-            (
-                "(ieee ieee, endpoint_id, cluster, attrid, value, "
-                "FOREIGN KEY(ieee) "
-                "REFERENCES devices(ieee) "
-                "ON DELETE CASCADE)"
-            ),
-        )
-        await self._create_index(
-            "attribute_idx", "attributes", "ieee, endpoint_id, cluster, attrid"
-        )
-
-    async def _create_table_groups(self) -> None:
-        await self._create_table("groups", "(group_id, name)")
-        await self._create_index("group_idx", "groups", "group_id")
-
-    async def _create_table_group_members(self) -> None:
-        await self._create_table(
-            "group_members",
-            """(group_id, ieee ieee, endpoint_id,
-                FOREIGN KEY(group_id) REFERENCES groups(group_id) ON DELETE CASCADE,
-                FOREIGN KEY(ieee, endpoint_id)
-                REFERENCES endpoints(ieee, endpoint_id) ON DELETE CASCADE)""",
-        )
-        await self._create_index(
-            "group_members_idx", "group_members", "group_id, ieee, endpoint_id"
-        )
-
-    async def _create_table_relays(self) -> None:
-        await self._create_table(
-            "relays",
-            """(ieee ieee, relays,
-                FOREIGN KEY(ieee) REFERENCES devices(ieee) ON DELETE CASCADE)""",
-        )
-        await self._create_index("relays_idx", "relays", "ieee")
-
     async def _remove_device(self, device: zigpy.typing.DeviceType) -> None:
-        queries = (
-            "DELETE FROM attributes WHERE ieee = ?",
-            "DELETE FROM neighbors_v4 WHERE ieee = ?",
-            "DELETE FROM node_descriptors_v4 WHERE ieee = ?",
-            "DELETE FROM clusters WHERE ieee = ?",
-            "DELETE FROM output_clusters WHERE ieee = ?",
-            "DELETE FROM group_members WHERE ieee = ?",
-            "DELETE FROM endpoints WHERE ieee = ?",
-            "DELETE FROM devices WHERE ieee = ?",
-        )
-        for query in queries:
-            await self.execute(query, (device.ieee,))
+        for table in (
+            "attributes",
+            "neighbors",
+            "node_descriptors",
+            "clusters",
+            "output_clusters",
+            "group_members",
+            "endpoints",
+            "devices",
+        ):
+            await self.execute(
+                f"DELETE FROM {table}{DB_V} WHERE ieee = ?", (device.ieee,)
+            )
+
         await self._db.commit()
 
     async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
@@ -407,11 +270,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             return
 
         try:
-            q = "INSERT INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
+            q = f"INSERT INTO devices{DB_V} (ieee, nwk, status) VALUES (?, ?, ?)"
             await self.execute(q, (device.ieee, device.nwk, device.status))
         except sqlite3.IntegrityError:
             LOGGER.debug("Device %s already exists. Updating it.", device.ieee)
-            q = "UPDATE devices SET nwk=?, status=? WHERE ieee=?"
+            q = f"UPDATE devices{DB_V} SET nwk=?, status=? WHERE ieee=?"
             await self.execute(q, (device.nwk, device.status, device.ieee))
 
         await self._save_node_descriptor(device)
@@ -430,7 +293,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     async def _save_endpoints(self, device: zigpy.typing.DeviceType) -> None:
-        q = "INSERT OR REPLACE INTO endpoints VALUES (?, ?, ?, ?, ?)"
         endpoints = []
         for epid, ep in device.endpoints.items():
             if epid == 0:
@@ -444,54 +306,56 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 ep.status,
             )
             endpoints.append(eprow)
+
+        q = f"INSERT OR REPLACE INTO endpoints{DB_V} VALUES (?, ?, ?, ?, ?)"
         await self._db.executemany(q, endpoints)
 
     async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
         await self.execute(
-            "INSERT OR REPLACE INTO node_descriptors_v4"
+            f"INSERT OR REPLACE INTO node_descriptors{DB_V}"
             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (device.ieee,) + device.node_desc.as_tuple(),
         )
 
     async def _save_input_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
-        q = "INSERT OR REPLACE INTO clusters VALUES (?, ?, ?)"
         clusters = [
             (endpoint.device.ieee, endpoint.endpoint_id, cluster.cluster_id)
             for cluster in endpoint.in_clusters.values()
         ]
+        q = f"INSERT OR REPLACE INTO clusters{DB_V} VALUES (?, ?, ?)"
         await self._db.executemany(q, clusters)
 
     async def _save_attribute_cache(self, ep: zigpy.typing.EndpointType) -> None:
-        q = "INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?, ?)"
         clusters = [
             (ep.device.ieee, ep.endpoint_id, cluster.cluster_id, attrid, value)
             for cluster in ep.in_clusters.values()
             for attrid, value in cluster._attr_cache.items()
         ]
+        q = f"INSERT OR REPLACE INTO attributes{DB_V} VALUES (?, ?, ?, ?, ?)"
         await self._db.executemany(q, clusters)
 
     async def _save_output_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
-        q = "INSERT OR REPLACE INTO output_clusters VALUES (?, ?, ?)"
         clusters = [
             (endpoint.device.ieee, endpoint.endpoint_id, cluster.cluster_id)
             for cluster in endpoint.out_clusters.values()
         ]
+        q = f"INSERT OR REPLACE INTO output_clusters{DB_V} VALUES (?, ?, ?)"
         await self._db.executemany(q, clusters)
 
     async def _save_attribute(
         self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int, value: Any
     ) -> None:
-        q = "INSERT OR REPLACE INTO attributes VALUES (?, ?, ?, ?, ?)"
+        q = f"INSERT OR REPLACE INTO attributes{DB_V} VALUES (?, ?, ?, ?, ?)"
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         await self._db.commit()
 
     async def _save_device_relays_update(self, ieee: t.EUI64, value: bytes) -> None:
-        q = "INSERT OR REPLACE INTO relays VALUES (?, ?)"
+        q = f"INSERT OR REPLACE INTO relays{DB_V} VALUES (?, ?)"
         await self.execute(q, (ieee, value))
         await self._db.commit()
 
     async def _save_device_relays_clear(self, ieee: t.EUI64) -> None:
-        await self.execute("DELETE FROM relays WHERE ieee = ?", (ieee,))
+        await self.execute(f"DELETE FROM relays{DB_V} WHERE ieee = ?", (ieee,))
         await self._db.commit()
 
     async def load(self) -> None:
@@ -517,12 +381,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _load_attributes(self, filter: str = None) -> None:
         if filter:
-            query = f"SELECT * FROM attributes WHERE {filter}"
+            query = f"SELECT * FROM attributes{DB_V} WHERE {filter}"
         else:
-            query = "SELECT * FROM attributes"
+            query = f"SELECT * FROM attributes{DB_V}"
         async with self.execute(query) as cursor:
             async for (ieee, endpoint_id, cluster, attrid, value) in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self.get_device(ieee)
+
+                if dev is None:
+                    continue
+
                 if endpoint_id in dev.endpoints:
                     ep = dev.endpoints[endpoint_id]
                     if cluster in ep.in_clusters:
@@ -550,22 +418,30 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                                 dev.model = value
 
     async def _load_devices(self) -> None:
-        async with self.execute("SELECT * FROM devices") as cursor:
+        async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:
             async for (ieee, nwk, status) in cursor:
                 dev = self._application.add_device(ieee, nwk)
                 dev.status = zigpy.device.Status(status)
 
     async def _load_node_descriptors(self) -> None:
-        async with self.execute("SELECT * FROM node_descriptors_v4") as cursor:
+        async with self.execute(f"SELECT * FROM node_descriptors{DB_V}") as cursor:
             async for (ieee, *fields) in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self.get_device(ieee)
+
+                if dev is None:
+                    continue
+
                 dev.node_desc = zdo_t.NodeDescriptor(*fields)
                 assert dev.node_desc.is_valid
 
     async def _load_endpoints(self) -> None:
-        async with self.execute("SELECT * FROM endpoints") as cursor:
+        async with self.execute(f"SELECT * FROM endpoints{DB_V}") as cursor:
             async for (ieee, epid, profile_id, device_type, status) in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self.get_device(ieee)
+
+                if dev is None:
+                    continue
+
                 ep = dev.add_endpoint(epid)
                 ep.profile_id = profile_id
                 ep.device_type = device_type
@@ -576,42 +452,63 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 ep.status = zigpy.endpoint.Status(status)
 
     async def _load_clusters(self) -> None:
-        async with self.execute("SELECT * FROM clusters") as cursor:
+        async with self.execute(f"SELECT * FROM clusters{DB_V}") as cursor:
             async for (ieee, endpoint_id, cluster) in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self.get_device(ieee)
+
+                if dev is None:
+                    continue
+
                 ep = dev.endpoints[endpoint_id]
                 ep.add_input_cluster(cluster)
 
-        async with self.execute("SELECT * FROM output_clusters") as cursor:
+        async with self.execute(f"SELECT * FROM output_clusters{DB_V}") as cursor:
             async for (ieee, endpoint_id, cluster) in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self.get_device(ieee)
+
+                if dev is None:
+                    continue
+
                 ep = dev.endpoints[endpoint_id]
                 ep.add_output_cluster(cluster)
 
     async def _load_groups(self) -> None:
-        async with self.execute("SELECT * FROM groups") as cursor:
+        async with self.execute(f"SELECT * FROM groups{DB_V}") as cursor:
             async for (group_id, name) in cursor:
                 self._application.groups.add_group(group_id, name, suppress_event=True)
 
     async def _load_group_members(self) -> None:
-        async with self.execute("SELECT * FROM group_members") as cursor:
+        async with self.execute(f"SELECT * FROM group_members{DB_V}") as cursor:
             async for (group_id, ieee, ep_id) in cursor:
+                dev = self.get_device(ieee)
+
+                if dev is None:
+                    continue
+
                 group = self._application.groups[group_id]
                 group.add_member(
-                    self._application.get_device(ieee).endpoints[ep_id],
+                    dev.endpoints[ep_id],
                     suppress_event=True,
                 )
 
     async def _load_relays(self) -> None:
-        async with self.execute("SELECT * FROM relays") as cursor:
+        async with self.execute(f"SELECT * FROM relays{DB_V}") as cursor:
             async for (ieee, value) in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self.get_device(ieee)
+
+                if dev is None:
+                    continue
+
                 dev.relays = t.Relays.deserialize(value)[0]
 
     async def _load_neighbors(self) -> None:
-        async with self.execute("SELECT * FROM neighbors_v4") as cursor:
+        async with self.execute(f"SELECT * FROM neighbors{DB_V}") as cursor:
             async for ieee, *fields in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self.get_device(ieee)
+
+                if dev is None:
+                    continue
+
                 neighbor = zdo_t.Neighbor(*fields)
                 assert neighbor.is_valid
                 dev.neighbors.add_neighbor(neighbor)
@@ -643,19 +540,34 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self._remove_device(device)
 
     async def _run_migrations(self):
+        # Map each schema version to its SQL
+        schemas = {
+            int(f.stem.replace("schema_v", ""), 10): f.read_text()
+            for f in (pathlib.Path(__file__).parent / "appdb_schemas").glob(
+                "schema_v*.sql"
+            )
+        }
+
         async with self._db.execute("PRAGMA user_version") as cursor:
             (db_version,) = await cursor.fetchone()
 
-        # If this is a new database, do not run migrations. They will fail due to
-        # missing tables
         if db_version == 0:
+            # If this is a brand new database, just load the latest schema
+            await self._db.executescript(schemas[max(schemas)])
             return
 
         # Version 4 introduced migrations and expanded tables
         if db_version < 4:
             await self.execute("BEGIN TRANSACTION")
-            await self.execute("PRAGMA user_version = 4")
+            await self._db.executescript(schemas[4])
 
+            # Delete all existing v4 entries, in case a user upgraded once before
+            try:
+                await self.execute("DELETE FROM node_descriptors_v4")
+            except aiosqlite.OperationalError:
+                pass
+
+            # Migrate node descriptors
             async with self.execute("SELECT * FROM node_descriptors") as cur:
                 async for dev_ieee, value in cur:
                     node_desc, rest = zdo_t.NodeDescriptor.deserialize(value)
@@ -676,6 +588,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             except aiosqlite.OperationalError:
                 pass
             else:
+                try:
+                    await self.execute("DELETE FROM neighbors_v4")
+                except aiosqlite.OperationalError:
+                    pass
+
                 async with self.execute("SELECT * FROM neighbors") as cur:
                     async for dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi in cur:
                         neighbor = zdo_t.Neighbor(
@@ -696,3 +613,31 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         )
 
             await self.execute("COMMIT")
+            db_version = 4
+
+        # Version 5 introduced global table version suffixes and removed stale rows
+        if db_version < 5:
+            await self.execute("BEGIN TRANSACTION")
+            await self._db.executescript(schemas[5])
+
+            # The order matters for foreign key constraints
+            for old_table, new_table in {
+                "devices": "devices_v5",
+                "endpoints": "endpoints_v5",
+                "clusters": "clusters_v5",
+                "output_clusters": "output_clusters_v5",
+                "attributes": "attributes_v5",
+                "groups": "groups_v5",
+                "group_members": "group_members_v5",
+                "relays": "relays_v5",
+                # These were migrated in v4
+                "neighbors_v4": "neighbors_v5",
+                "node_descriptors_v4": "node_descriptors_v5",
+            }.items():
+                await self.execute(f"DELETE FROM {new_table}")
+                await self.execute(
+                    f"INSERT OR IGNORE INTO {new_table} SELECT * FROM {old_table}"
+                )
+
+            await self.execute("COMMIT")
+            db_version = 5
