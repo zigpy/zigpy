@@ -552,12 +552,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             (db_version,) = await cursor.fetchone()
 
         if db_version == 0:
+            LOGGER.debug("Creating new database")
+
             # If this is a brand new database, just load the latest schema
             await self._db.executescript(schemas[max(schemas)])
             return
 
         # Version 4 introduced migrations and expanded tables
         if db_version < 4:
+            LOGGER.debug("Migrating from database version %d to %d", db_version, 4)
             await self.execute("BEGIN TRANSACTION")
             await self._db.executescript(schemas[4])
 
@@ -617,16 +620,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Version 5 introduced global table version suffixes and removed stale rows
         if db_version < 5:
+            LOGGER.debug("Migrating from database version %d to %d", db_version, 5)
             await self.execute("BEGIN TRANSACTION")
             await self._db.executescript(schemas[5])
 
-            # The order matters for foreign key constraints
+            # Copy the devices table first, it should have no conflicts
+            await self.execute("DELETE FROM devices_v5")
+            await self.execute("INSERT INTO devices_v5 SELECT * FROM devices")
+
+            # Insertion order matters for foreign key constraints but any rows that fail
+            # to insert due to constraint violations can be discarded
             for old_table, new_table in {
-                "devices": "devices_v5",
                 "endpoints": "endpoints_v5",
                 "clusters": "clusters_v5",
                 "output_clusters": "output_clusters_v5",
-                "attributes": "attributes_v5",
                 "groups": "groups_v5",
                 "group_members": "group_members_v5",
                 "relays": "relays_v5",
@@ -635,9 +642,19 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "node_descriptors_v4": "node_descriptors_v5",
             }.items():
                 await self.execute(f"DELETE FROM {new_table}")
-                await self.execute(
-                    f"INSERT OR IGNORE INTO {new_table} SELECT * FROM {old_table}"
-                )
+
+                async with self.execute(f"SELECT * from {old_table}") as cursor:
+                    async for row in cursor:
+                        placeholders = ",".join("?" * len(row))
+
+                        try:
+                            await self.execute(
+                                f"INSERT INTO {new_table} VALUES({placeholders})", row
+                            )
+                        except aiosqlite.IntegrityError as e:
+                            LOGGER.warning(
+                                "Failed to migrate %s row %s: %s", old_table, row, e
+                            )
 
             await self.execute("COMMIT")
             db_version = 5

@@ -1,4 +1,4 @@
-PRAGMA user_version = 3;
+PRAGMA user_version = 1;
 
 CREATE TABLE IF NOT EXISTS devices (ieee ieee, nwk, status);
 CREATE TABLE IF NOT EXISTS endpoints (ieee ieee, endpoint_id, profile_id, device_type device_type, status);
@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS group_members (group_id, ieee ieee, endpoint_id,
                 REFERENCES endpoints(ieee, endpoint_id));
 CREATE TABLE IF NOT EXISTS relays (ieee ieee, relays,
                 FOREIGN KEY(ieee) REFERENCES devices(ieee) ON DELETE CASCADE);
-CREATE TABLE IF NOT EXISTS neighbors (device_ieee ieee NOT NULL, extended_pan_id ieee NOT NULL,ieee ieee NOT NULL, nwk INTEGER NOT NULL, struct INTEGER NOT NULL, permit_joining INTEGER NOT NULL, depth INTEGER NOT NULL, lqi INTEGER NOT NULL, FOREIGN KEY(device_ieee) REFERENCES devices(ieee) ON DELETE CASCADE);
 CREATE UNIQUE INDEX IF NOT EXISTS ieee_idx ON devices(ieee);
 CREATE UNIQUE INDEX IF NOT EXISTS endpoint_idx ON endpoints(ieee, endpoint_id);
 CREATE UNIQUE INDEX IF NOT EXISTS cluster_idx ON clusters(ieee, endpoint_id, cluster);
@@ -23,4 +22,3 @@ CREATE UNIQUE INDEX IF NOT EXISTS attribute_idx ON attributes(ieee, endpoint_id,
 CREATE UNIQUE INDEX IF NOT EXISTS group_idx ON groups(group_id);
 CREATE UNIQUE INDEX IF NOT EXISTS group_members_idx ON group_members(group_id, ieee, endpoint_id);
 CREATE UNIQUE INDEX IF NOT EXISTS relays_idx ON relays(ieee);
-CREATE INDEX IF NOT EXISTS neighbors_idx ON neighbors(device_ieee);

@@ -11,25 +11,32 @@ from tests.test_appdb import make_app
 
 
 @pytest.fixture
-def test_db_v3(tmpdir):
-    db_path = str(tmpdir / "zigbee.db")
+def test_db(tmpdir):
+    def inner(filename):
+        databases = pathlib.Path(__file__).parent / "databases"
+        db_path = pathlib.Path(tmpdir / filename)
 
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
+        if filename.endswith(".db"):
+            db_path.write_bytes((databases / filename).read_bytes())
+            return str(db_path)
 
-    sql = (pathlib.Path(__file__).parent / "database_v3.sql").read_text()
+        conn = sqlite3.connect(str(db_path))
 
-    for statement in sql.split(";"):
-        cur.execute(statement)
+        sql = (databases / filename).read_text()
+        conn.executescript(sql)
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
 
-    yield db_path
+        return str(db_path)
+
+    return inner
 
 
 @pytest.mark.parametrize("open_twice", [False, True])
-async def test_migration_3_to_4(open_twice, test_db_v3):
+async def test_migration_from_3_to_4(open_twice, test_db):
+    test_db_v3 = test_db("simple_v3.sql")
+
     with sqlite3.connect(test_db_v3) as conn:
         cur = conn.cursor()
 
@@ -115,7 +122,9 @@ async def test_migration_3_to_4(open_twice, test_db_v3):
         assert all([len(row) == 14 for row in node_descs_after])
 
 
-async def test_migration_missing_neighbors_v3(test_db_v3):
+async def test_migration_missing_neighbors_v3(test_db):
+    test_db_v3 = test_db("simple_v3.sql")
+
     with sqlite3.connect(test_db_v3) as conn:
         cur = conn.cursor()
         cur.execute("DROP TABLE neighbors")
@@ -133,3 +142,25 @@ async def test_migration_missing_neighbors_v3(test_db_v3):
         cur = conn.cursor()
         cur.execute("PRAGMA user_version")
         assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
+
+
+async def test_migration_bad_attributes(test_db):
+    test_db_bad_attrs = test_db("bad_attrs_v3.db")
+
+    # Migration will handle invalid attributes entries
+    app = await make_app(test_db_bad_attrs)
+    await app.pre_shutdown()
+
+    # Version was upgraded
+    with sqlite3.connect(test_db_bad_attrs) as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA user_version")
+        assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
+
+    # All devices still exist
+    app2 = await make_app(test_db_bad_attrs)
+    await app2.pre_shutdown()
+
+    assert len(app2.devices) == 29
+    assert sum(len(d.endpoints) - 1 for d in app2.devices.values()) == 54
+    assert sum(len(d.endpoints) - 1 for d in app2.devices.values()) == 54
