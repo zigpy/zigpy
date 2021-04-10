@@ -1,6 +1,5 @@
 import asyncio
 import os
-import sqlite3
 
 import pytest
 
@@ -679,48 +678,3 @@ async def test_appdb_worker_exception(save_mock, tmpdir):
         db_listener.raw_device_initialized(dev_1)
     await db_listener.shutdown()
     assert save_mock.await_count == 3
-
-
-@patch.object(Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT))
-async def test_stray_rows(tmpdir):
-    """Test that stray table rows don't cause a startup failure"""
-    db = os.path.join(str(tmpdir), "test.db")
-
-    # Create a populated db
-    app = await make_app(db)
-
-    ieee = make_ieee()
-    nwk = 199
-    app.handle_join(nwk, ieee, 0)
-
-    dev = app.get_device(ieee)
-    ep = dev.add_endpoint(1)
-    ep.profile_id = 65535
-    ep.device_type = profiles.zha.DeviceType.PUMP
-    clus = ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
-    app.device_initialized(dev)
-    clus._update_attribute(4, "Custom")
-    clus._update_attribute(5, "Model")
-
-    await ep.add_to_group(0x0001, "Group name")
-    dev.relays = [t.NWK(0x1234), t.NWK(0x2345)]
-
-    await app.pre_shutdown()
-
-    # Delete the device entry but leave all the other junk around
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
-    cur.execute("PRAGMA foreign_keys=OFF")
-    cur.execute(f"DELETE FROM devices{zigpy.appdb.DB_V} WHERE ieee=?", [ieee])
-    conn.commit()
-
-    cur.execute(f"SELECT * FROM attributes{zigpy.appdb.DB_V} WHERE ieee=?", [ieee])
-    assert cur.fetchall()
-
-    conn.close()
-
-    # No startup failure should occur
-    app_2 = await make_app(db)
-    assert not app_2.devices
-    await app_2.pre_shutdown()

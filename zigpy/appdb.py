@@ -124,13 +124,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def execute(self, *args, **kwargs):
         return self._db.execute(*args, **kwargs)
 
-    def get_device(self, ieee: t.EUI64) -> zigpy.typing.DeviceType | None:
-        try:
-            return self._application.get_device(ieee)
-        except KeyError:
-            LOGGER.warning("Device %s does not exist", ieee)
-            return None
-
     def device_joined(self, device: zigpy.typing.DeviceType) -> None:
         pass
 
@@ -386,11 +379,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             query = f"SELECT * FROM attributes{DB_V}"
         async with self.execute(query) as cursor:
             async for (ieee, endpoint_id, cluster, attrid, value) in cursor:
-                dev = self.get_device(ieee)
-
-                if dev is None:
-                    continue
-
+                dev = self._application.get_device(ieee)
                 if endpoint_id in dev.endpoints:
                     ep = dev.endpoints[endpoint_id]
                     if cluster in ep.in_clusters:
@@ -426,22 +415,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_node_descriptors(self) -> None:
         async with self.execute(f"SELECT * FROM node_descriptors{DB_V}") as cursor:
             async for (ieee, *fields) in cursor:
-                dev = self.get_device(ieee)
-
-                if dev is None:
-                    continue
-
+                dev = self._application.get_device(ieee)
                 dev.node_desc = zdo_t.NodeDescriptor(*fields)
                 assert dev.node_desc.is_valid
 
     async def _load_endpoints(self) -> None:
         async with self.execute(f"SELECT * FROM endpoints{DB_V}") as cursor:
             async for (ieee, epid, profile_id, device_type, status) in cursor:
-                dev = self.get_device(ieee)
-
-                if dev is None:
-                    continue
-
+                dev = self._application.get_device(ieee)
                 ep = dev.add_endpoint(epid)
                 ep.profile_id = profile_id
                 ep.device_type = device_type
@@ -454,21 +435,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_clusters(self) -> None:
         async with self.execute(f"SELECT * FROM clusters{DB_V}") as cursor:
             async for (ieee, endpoint_id, cluster) in cursor:
-                dev = self.get_device(ieee)
-
-                if dev is None:
-                    continue
-
+                dev = self._application.get_device(ieee)
                 ep = dev.endpoints[endpoint_id]
                 ep.add_input_cluster(cluster)
 
         async with self.execute(f"SELECT * FROM output_clusters{DB_V}") as cursor:
             async for (ieee, endpoint_id, cluster) in cursor:
-                dev = self.get_device(ieee)
-
-                if dev is None:
-                    continue
-
+                dev = self._application.get_device(ieee)
                 ep = dev.endpoints[endpoint_id]
                 ep.add_output_cluster(cluster)
 
@@ -480,11 +453,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_group_members(self) -> None:
         async with self.execute(f"SELECT * FROM group_members{DB_V}") as cursor:
             async for (group_id, ieee, ep_id) in cursor:
-                dev = self.get_device(ieee)
-
-                if dev is None:
-                    continue
-
+                dev = self._application.get_device(ieee)
                 group = self._application.groups[group_id]
                 group.add_member(
                     dev.endpoints[ep_id],
@@ -494,21 +463,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_relays(self) -> None:
         async with self.execute(f"SELECT * FROM relays{DB_V}") as cursor:
             async for (ieee, value) in cursor:
-                dev = self.get_device(ieee)
-
-                if dev is None:
-                    continue
-
+                dev = self._application.get_device(ieee)
                 dev.relays = t.Relays.deserialize(value)[0]
 
     async def _load_neighbors(self) -> None:
         async with self.execute(f"SELECT * FROM neighbors{DB_V}") as cursor:
             async for ieee, *fields in cursor:
-                dev = self.get_device(ieee)
-
-                if dev is None:
-                    continue
-
+                dev = self._application.get_device(ieee)
                 neighbor = zdo_t.Neighbor(*fields)
                 assert neighbor.is_valid
                 dev.neighbors.add_neighbor(neighbor)
