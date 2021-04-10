@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import pathlib
 import sqlite3
 from typing import Any
 
 import aiosqlite
 
+import zigpy.appdb_schemas
 import zigpy.device
 import zigpy.endpoint
 import zigpy.group
@@ -501,29 +501,21 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self._remove_device(device)
 
     async def _run_migrations(self):
-        # Map each schema version to its SQL
-        schemas = {
-            int(f.stem.replace("schema_v", ""), 10): f.read_text()
-            for f in (pathlib.Path(__file__).parent / "appdb_schemas").glob(
-                "schema_v*.sql"
-            )
-        }
-
         async with self._db.execute("PRAGMA user_version") as cursor:
             (db_version,) = await cursor.fetchone()
 
         if db_version == 0:
             LOGGER.debug("Creating new database")
 
-            # If this is a brand new database, just load the latest schema
-            await self._db.executescript(schemas[max(schemas)])
+            # If this is a brand new database, just load the current schema
+            await self._db.executescript(zigpy.appdb_schemas.SCHEMAS[DB_VERSION])
             return
 
         # Version 4 introduced migrations and expanded tables
         if db_version < 4:
             LOGGER.debug("Migrating from database version %d to %d", db_version, 4)
             await self.execute("BEGIN TRANSACTION")
-            await self._db.executescript(schemas[4])
+            await self._db.executescript(zigpy.appdb_schemas.SCHEMAS[4])
 
             # Delete all existing v4 entries, in case a user downgraded and is upgrading
             await self.execute("DELETE FROM node_descriptors_v4")
@@ -576,7 +568,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if db_version < 5:
             LOGGER.debug("Migrating from database version %d to %d", db_version, 5)
             await self.execute("BEGIN TRANSACTION")
-            await self._db.executescript(schemas[5])
+            await self._db.executescript(zigpy.appdb_schemas.SCHEMAS[5])
 
             # Copy the devices table first, it should have no conflicts
             await self.execute("DELETE FROM devices_v5")
