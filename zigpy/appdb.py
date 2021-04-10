@@ -598,6 +598,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "groups": "groups_v5",
                 "group_members": "group_members_v5",
                 "relays": "relays_v5",
+                "attributes": "attributes_v5",
                 # These were migrated in v4
                 "neighbors_v4": "neighbors_v5",
                 "node_descriptors_v4": "node_descriptors_v5",
