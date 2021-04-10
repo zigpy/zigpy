@@ -144,18 +144,22 @@ async def test_migration_missing_neighbors_v3(test_db):
         assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
 
 
-async def test_migration_bad_attributes(test_db):
+@pytest.mark.parametrize("downgrade", [None, 3, 4])
+async def test_migration_bad_attributes(test_db, downgrade):
     test_db_bad_attrs = test_db("bad_attrs_v3.db")
 
     # Migration will handle invalid attributes entries
     app = await make_app(test_db_bad_attrs)
     await app.pre_shutdown()
 
-    # Version was upgraded
+    # Version was upgraded (and then downgraded)
     with sqlite3.connect(test_db_bad_attrs) as conn:
         cur = conn.cursor()
         cur.execute("PRAGMA user_version")
         assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
+
+        if downgrade is not None:
+            cur.execute(f"PRAGMA user_version={downgrade}")
 
     # All devices still exist
     app2 = await make_app(test_db_bad_attrs)

@@ -89,7 +89,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             try:
                 await handler(*args)
             except aiosqlite.Error as exc:
-                LOGGER.error(
+                LOGGER.debug(
                     "Error handling '%s' event with %s params: %s",
                     cb_name,
                     args,
@@ -525,11 +525,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self.execute("BEGIN TRANSACTION")
             await self._db.executescript(schemas[4])
 
-            # Delete all existing v4 entries, in case a user upgraded once before
-            try:
-                await self.execute("DELETE FROM node_descriptors_v4")
-            except aiosqlite.OperationalError:
-                pass
+            # Delete all existing v4 entries, in case a user downgraded and is upgrading
+            await self.execute("DELETE FROM node_descriptors_v4")
+            await self.execute("DELETE FROM neighbors_v4")
 
             # Migrate node descriptors
             async with self.execute("SELECT * FROM node_descriptors") as cur:
@@ -552,11 +550,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             except aiosqlite.OperationalError:
                 pass
             else:
-                try:
-                    await self.execute("DELETE FROM neighbors_v4")
-                except aiosqlite.OperationalError:
-                    pass
-
                 async with self.execute("SELECT * FROM neighbors") as cur:
                     async for dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi in cur:
                         neighbor = zdo_t.Neighbor(
@@ -603,6 +596,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "neighbors_v4": "neighbors_v5",
                 "node_descriptors_v4": "node_descriptors_v5",
             }.items():
+                # Delete existing entries, in case a user downgraded
                 await self.execute(f"DELETE FROM {new_table}")
 
                 async with self.execute(f"SELECT * from {old_table}") as cursor:
