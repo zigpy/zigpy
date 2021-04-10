@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS devices (
     status
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS devices_idx
+CREATE UNIQUE INDEX IF NOT EXISTS ieee_idx
     ON devices(ieee);
 
 
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS output_clusters (
         ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS output_clusters_idx
+CREATE UNIQUE INDEX IF NOT EXISTS output_cluster_idx
     ON output_clusters(ieee, endpoint_id, cluster);
 
 
@@ -117,7 +117,8 @@ CREATE TABLE IF NOT EXISTS attributes (
         ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS attributes_idx
+
+CREATE UNIQUE INDEX IF NOT EXISTS attribute_idx
     ON attributes(ieee, endpoint_id, cluster, attrid);
 
 
@@ -127,7 +128,7 @@ CREATE TABLE IF NOT EXISTS groups (
     name
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS groups_idx
+CREATE UNIQUE INDEX IF NOT EXISTS group_idx
     ON groups(group_id);
 
 
