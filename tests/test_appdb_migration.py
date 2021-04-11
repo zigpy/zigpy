@@ -144,9 +144,9 @@ async def test_migration_missing_neighbors_v3(test_db):
         assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
 
 
-@pytest.mark.parametrize("downgrade", [None, 3, 4])
+@pytest.mark.parametrize("force_version", [None, 3, 4, 9999])
 @pytest.mark.parametrize("corrupt_device", [False, True])
-async def test_migration_bad_attributes(test_db, downgrade, corrupt_device):
+async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
     test_db_bad_attrs = test_db("bad_attrs_v3.db")
 
     if corrupt_device:
@@ -166,8 +166,8 @@ async def test_migration_bad_attributes(test_db, downgrade, corrupt_device):
         cur.execute("PRAGMA user_version")
         assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
 
-        if downgrade is not None:
-            cur.execute(f"PRAGMA user_version={downgrade}")
+        if force_version is not None:
+            cur.execute(f"PRAGMA user_version={force_version}")
 
     app2 = await make_app(test_db_bad_attrs)
     await app2.pre_shutdown()
@@ -180,3 +180,10 @@ async def test_migration_bad_attributes(test_db, downgrade, corrupt_device):
         # All devices still exist
         assert len(app2.devices) == 29
         assert sum(len(d.endpoints) - 1 for d in app2.devices.values()) == 54
+
+    with sqlite3.connect(test_db_bad_attrs) as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA user_version")
+
+        # Ensure the final database schema version number does not decrease
+        assert cur.fetchone()[0] == max(zigpy.appdb.DB_VERSION, force_version or 0)
