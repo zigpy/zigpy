@@ -55,7 +55,14 @@ CREATE TABLE IF NOT EXISTS neighbors_v5 (
     permit_joining INTEGER NOT NULL,
     reserved2 INTEGER NOT NULL,
     depth INTEGER NOT NULL,
-    lqi INTEGER NOT NULL
+    lqi INTEGER NOT NULL,
+
+    FOREIGN KEY(device_ieee)
+        REFERENCES devices_v5(ieee)
+        ON DELETE CASCADE,
+    FOREIGN KEY(ieee)
+        REFERENCES devices_v5(ieee)
+        ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS neighbors_idx_v5
