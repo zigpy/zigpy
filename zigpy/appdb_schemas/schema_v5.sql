@@ -59,9 +59,6 @@ CREATE TABLE IF NOT EXISTS neighbors_v5 (
 
     FOREIGN KEY(device_ieee)
         REFERENCES devices_v5(ieee)
-        ON DELETE CASCADE,
-    FOREIGN KEY(ieee)
-        REFERENCES devices_v5(ieee)
         ON DELETE CASCADE
 );
 
