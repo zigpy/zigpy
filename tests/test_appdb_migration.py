@@ -145,8 +145,16 @@ async def test_migration_missing_neighbors_v3(test_db):
 
 
 @pytest.mark.parametrize("downgrade", [None, 3, 4])
-async def test_migration_bad_attributes(test_db, downgrade):
+@pytest.mark.parametrize("corrupt_device", [False, True])
+async def test_migration_bad_attributes(test_db, downgrade, corrupt_device):
     test_db_bad_attrs = test_db("bad_attrs_v3.db")
+
+    if corrupt_device:
+        with sqlite3.connect(test_db_bad_attrs) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "DELETE FROM node_descriptors WHERE ieee='60:a4:23:ff:fe:02:39:7b'"
+            )
 
     # Migration will handle invalid attributes entries
     app = await make_app(test_db_bad_attrs)
@@ -161,10 +169,14 @@ async def test_migration_bad_attributes(test_db, downgrade):
         if downgrade is not None:
             cur.execute(f"PRAGMA user_version={downgrade}")
 
-    # All devices still exist
     app2 = await make_app(test_db_bad_attrs)
     await app2.pre_shutdown()
 
-    assert len(app2.devices) == 29
-    assert sum(len(d.endpoints) - 1 for d in app2.devices.values()) == 54
-    assert sum(len(d.endpoints) - 1 for d in app2.devices.values()) == 54
+    if corrupt_device:
+        # All devices still exist but the broken device without a node desc was removed
+        assert len(app2.devices) == 28
+        assert sum(len(d.endpoints) - 1 for d in app2.devices.values()) == 52
+    else:
+        # All devices still exist
+        assert len(app2.devices) == 29
+        assert sum(len(d.endpoints) - 1 for d in app2.devices.values()) == 54

@@ -52,8 +52,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.running = False
         self._worker_task = asyncio.create_task(self._worker())
 
-    log = LOGGER.log
-
     async def initialize_tables(self) -> None:
         await self._db.execute("PRAGMA foreign_keys = ON")
         await self._run_migrations()
@@ -480,129 +478,150 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             dev.neighbors.add_context_listener(self)
 
     async def _cleanup(self) -> None:
-        """Validate and clean-up devices."""
+        """Validate and clean-up broken devices."""
 
-        # remove devices without any endpoints
-        devices_to_remove = []
-        for device in self._application.devices.values():
+        # Clone the list of devices so the dict doesn't change size during iteration
+        for device in list(self._application.devices.values()):
             if device.nwk == 0x0000:
                 continue
-            if {ep_id for ep_id in device.endpoints if ep_id != 0x00}:
+
+            # Remove devices without any non-ZDO endpoints or no node descriptor
+            if set(device.endpoints) - {0x00} and device.node_desc.is_valid:
                 continue
-            # if device has no endpoints but ZDO, then remove this device
-            devices_to_remove.append(device)
 
-        if not devices_to_remove:
-            return
+            LOGGER.warning(
+                "Removing incomplete device %s (%s, %s)",
+                device.ieee,
+                device.node_desc,
+                device.endpoints,
+            )
 
-        # remove devices from ControllerApplication
-        for device in devices_to_remove:
+            # Remove the device from ControllerApplication as well
             self._application.devices.pop(device.ieee)
             await self._remove_device(device)
 
     async def _run_migrations(self):
-        async with self._db.execute("PRAGMA user_version") as cursor:
+        """Migrates the database to the newest schema."""
+
+        async with self.execute("PRAGMA user_version") as cursor:
             (db_version,) = await cursor.fetchone()
 
-        if db_version == 0:
-            LOGGER.debug("Creating new database")
+        LOGGER.debug("Current database version is v%s", db_version)
 
+        if db_version == 0:
             # If this is a brand new database, just load the current schema
             await self._db.executescript(zigpy.appdb_schemas.SCHEMAS[DB_VERSION])
             return
+        elif db_version > DB_VERSION:
+            LOGGER.error(
+                "This zigpy release uses database schema v%s but the database is v%s."
+                " Downgrading zigpy is *not* recommended and may result in data loss."
+                " Use at your own risk.",
+                DB_VERSION,
+                db_version,
+            )
+            return
 
-        # Version 4 introduced migrations and expanded tables
-        if db_version < 4:
-            LOGGER.debug("Migrating from database version %d to %d", db_version, 4)
+        for from_db_version, (migration, to_db_version) in {
+            0: (self._migrate_to_v4, 4),
+            1: (self._migrate_to_v4, 4),
+            2: (self._migrate_to_v4, 4),
+            3: (self._migrate_to_v4, 4),
+            4: (self._migrate_to_v5, 5),
+        }.items():
+            if db_version > from_db_version:
+                continue
+
+            LOGGER.info("Migrating database from v%d to v%d", db_version, to_db_version)
+
             await self.execute("BEGIN TRANSACTION")
-            await self._db.executescript(zigpy.appdb_schemas.SCHEMAS[4])
+            await migration()
+            await self.execute(f"PRAGMA user_version={to_db_version}")
+            await self.execute("COMMIT")
 
-            # Delete all existing v4 entries, in case a user downgraded and is upgrading
-            await self.execute("DELETE FROM node_descriptors_v4")
-            await self.execute("DELETE FROM neighbors_v4")
+            db_version = to_db_version
 
-            # Migrate node descriptors
-            async with self.execute("SELECT * FROM node_descriptors") as cur:
-                async for dev_ieee, value in cur:
-                    node_desc, rest = zdo_t.NodeDescriptor.deserialize(value)
-                    assert not rest
+    async def _migrate_to_v4(self):
+        """Schema v4 expanded the node descriptor and neighbor table columns"""
+        await self._db.executescript(zigpy.appdb_schemas.SCHEMAS[4])
 
-                    await self.execute(
-                        "INSERT INTO node_descriptors_v4"
-                        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (dev_ieee,) + node_desc.as_tuple(),
+        # Delete all existing v4 entries, in case a user downgraded and is upgrading
+        await self.execute("DELETE FROM node_descriptors_v4")
+        await self.execute("DELETE FROM neighbors_v4")
+
+        # Migrate node descriptors
+        async with self.execute("SELECT * FROM node_descriptors") as cur:
+            async for dev_ieee, value in cur:
+                node_desc, rest = zdo_t.NodeDescriptor.deserialize(value)
+                assert not rest
+
+                await self.execute(
+                    "INSERT INTO node_descriptors_v4"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (dev_ieee,) + node_desc.as_tuple(),
+                )
+
+        try:
+            # The `neighbors` table was added in v3 but the version number was not
+            # incremented. It will cause the subsequent migration to fail. Instead,
+            # allow the table creation logic that is run after the migrations to
+            # create the missing table.
+            await self.execute("SELECT * FROM neighbors")
+        except aiosqlite.OperationalError:
+            pass
+        else:
+            async with self.execute("SELECT * FROM neighbors") as cur:
+                async for dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi in cur:
+                    neighbor = zdo_t.Neighbor(
+                        extended_pan_id=epid,
+                        ieee=ieee,
+                        nwk=nwk,
+                        permit_joining=prm,
+                        depth=depth,
+                        lqi=lqi,
+                        reserved2=0b000000,
+                        **zdo_t.Neighbor._parse_packed(packed),
                     )
 
-            try:
-                # The `neighbors` table was added in v3 but the version number was not
-                # incremented. It will cause the subsequent migration to fail. Instead,
-                # allow the table creation logic that is run after the migrations to
-                # create the missing table.
-                await self.execute("SELECT * FROM neighbors")
-            except aiosqlite.OperationalError:
-                pass
-            else:
-                async with self.execute("SELECT * FROM neighbors") as cur:
-                    async for dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi in cur:
-                        neighbor = zdo_t.Neighbor(
-                            extended_pan_id=epid,
-                            ieee=ieee,
-                            nwk=nwk,
-                            permit_joining=prm,
-                            depth=depth,
-                            lqi=lqi,
-                            reserved2=0b000000,
-                            **zdo_t.Neighbor._parse_packed(packed),
-                        )
+                    await self.execute(
+                        "INSERT INTO neighbors_v4" " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (dev_ieee,) + neighbor.as_tuple(),
+                    )
 
+    async def _migrate_to_v5(self):
+        """Schema v5 introduced global table version suffixes and removed stale rows"""
+        await self._db.executescript(zigpy.appdb_schemas.SCHEMAS[5])
+
+        # Copy the devices table first, it should have no conflicts
+        await self.execute("DELETE FROM devices_v5")
+        await self.execute("INSERT INTO devices_v5 SELECT * FROM devices")
+
+        # Insertion order matters for foreign key constraints but any rows that fail
+        # to insert due to constraint violations can be discarded
+        for old_table, new_table in {
+            "endpoints": "endpoints_v5",
+            "clusters": "clusters_v5",
+            "output_clusters": "output_clusters_v5",
+            "groups": "groups_v5",
+            "group_members": "group_members_v5",
+            "relays": "relays_v5",
+            "attributes": "attributes_v5",
+            # These were migrated in v4
+            "neighbors_v4": "neighbors_v5",
+            "node_descriptors_v4": "node_descriptors_v5",
+        }.items():
+            # Delete existing entries, in case a user downgraded
+            await self.execute(f"DELETE FROM {new_table}")
+
+            async with self.execute(f"SELECT * from {old_table}") as cursor:
+                async for row in cursor:
+                    placeholders = ",".join("?" * len(row))
+
+                    try:
                         await self.execute(
-                            "INSERT INTO neighbors_v4"
-                            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                            (dev_ieee,) + neighbor.as_tuple(),
+                            f"INSERT INTO {new_table} VALUES({placeholders})", row
                         )
-
-            await self.execute("COMMIT")
-            db_version = 4
-
-        # Version 5 introduced global table version suffixes and removed stale rows
-        if db_version < 5:
-            LOGGER.debug("Migrating from database version %d to %d", db_version, 5)
-            await self.execute("BEGIN TRANSACTION")
-            await self._db.executescript(zigpy.appdb_schemas.SCHEMAS[5])
-
-            # Copy the devices table first, it should have no conflicts
-            await self.execute("DELETE FROM devices_v5")
-            await self.execute("INSERT INTO devices_v5 SELECT * FROM devices")
-
-            # Insertion order matters for foreign key constraints but any rows that fail
-            # to insert due to constraint violations can be discarded
-            for old_table, new_table in {
-                "endpoints": "endpoints_v5",
-                "clusters": "clusters_v5",
-                "output_clusters": "output_clusters_v5",
-                "groups": "groups_v5",
-                "group_members": "group_members_v5",
-                "relays": "relays_v5",
-                "attributes": "attributes_v5",
-                # These were migrated in v4
-                "neighbors_v4": "neighbors_v5",
-                "node_descriptors_v4": "node_descriptors_v5",
-            }.items():
-                # Delete existing entries, in case a user downgraded
-                await self.execute(f"DELETE FROM {new_table}")
-
-                async with self.execute(f"SELECT * from {old_table}") as cursor:
-                    async for row in cursor:
-                        placeholders = ",".join("?" * len(row))
-
-                        try:
-                            await self.execute(
-                                f"INSERT INTO {new_table} VALUES({placeholders})", row
-                            )
-                        except aiosqlite.IntegrityError as e:
-                            LOGGER.warning(
-                                "Failed to migrate %s row %s: %s", old_table, row, e
-                            )
-
-            await self.execute("COMMIT")
-            db_version = 5
+                    except aiosqlite.IntegrityError as e:
+                        LOGGER.warning(
+                            "Failed to migrate row %s%s: %s", old_table, row, e
+                        )
