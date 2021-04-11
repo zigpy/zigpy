@@ -53,7 +53,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self._worker_task = asyncio.create_task(self._worker())
 
     async def initialize_tables(self) -> None:
-        await self._db.execute("PRAGMA foreign_keys = ON")
+        async with self.execute("PRAGMA integrity_check") as cursor:
+            rows = await cursor.fetchall()
+            status = "\n".join(row[0] for row in rows)
+
+            if status != "ok":
+                LOGGER.error("SQLite database file is corrupted!\n%s", status)
+
+        await self.execute("PRAGMA foreign_keys = ON")
         await self._run_migrations()
         await self._db.commit()
 
