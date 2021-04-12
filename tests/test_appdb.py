@@ -138,6 +138,7 @@ async def test_database(tmpdir):
     dev = app.get_device(custom_ieee)
     app.device_initialized(dev)
     ep = dev.add_endpoint(1)
+    ep.device_type = profiles.zll.DeviceType.COLOR_LIGHT
     ep.profile_id = 65535
     with patch("zigpy.quirks.get_device", fake_get_device):
         app.device_initialized(dev)
@@ -430,14 +431,18 @@ async def test_neighbors(tmpdir):
 
     dev_1 = app.get_device(ieee_1)
     dev_1.node_desc = zdo_t.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
-    dev_1.add_endpoint(1)
+    ep1 = dev_1.add_endpoint(1)
+    ep1.profile_id = 260
+    ep1.device_type = 0x1234
     app.device_initialized(dev_1)
 
     # 2nd device
     app.handle_join(nwk_2, ieee_2, 0)
     dev_2 = app.get_device(ieee_2)
     dev_2.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4476, 82, 82, 0, 82, 0)
-    dev_2.add_endpoint(1)
+    ep2 = dev_2.add_endpoint(1)
+    ep2.profile_id = 260
+    ep2.device_type = 0x1234
     app.device_initialized(dev_2)
 
     neighbors = zdo_t.Neighbors(2, 0, [nei_2, nei_3])

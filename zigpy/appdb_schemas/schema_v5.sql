@@ -2,9 +2,9 @@ PRAGMA user_version = 5;
 
 -- devices
 CREATE TABLE IF NOT EXISTS devices_v5 (
-    ieee ieee,
-    nwk,
-    status
+    ieee ieee NOT NULL,
+    nwk INTEGER NOT NULL,
+    status INTEGER NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS devices_idx_v5
@@ -13,11 +13,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS devices_idx_v5
 
 -- endpoints
 CREATE TABLE IF NOT EXISTS endpoints_v5 (
-    ieee ieee,
-    endpoint_id,
-    profile_id,
-    device_type device_type,
-    status,
+    ieee ieee NOT NULL,
+    endpoint_id INTEGER NOT NULL,
+    profile_id INTEGER NOT NULL,
+    device_type INTEGER NOT NULL,
+    status INTEGER NOT NULL,
+
     FOREIGN KEY(ieee)
         REFERENCES devices_v5(ieee)
         ON DELETE CASCADE
@@ -29,9 +30,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS endpoint_idx_v5
 
 -- clusters
 CREATE TABLE IF NOT EXISTS clusters_v5 (
-    ieee ieee,
-    endpoint_id,
-    cluster,
+    ieee ieee NOT NULL,
+    endpoint_id INTEGER NOT NULL,
+    cluster INTEGER NOT NULL,
 
     FOREIGN KEY(ieee, endpoint_id)
         REFERENCES endpoints_v5(ieee, endpoint_id)
@@ -68,7 +69,7 @@ CREATE INDEX IF NOT EXISTS neighbors_idx_v5
 
 -- node descriptors
 CREATE TABLE IF NOT EXISTS node_descriptors_v5 (
-    ieee ieee,
+    ieee ieee NOT NULL,
 
     logical_type INTEGER NOT NULL,
     complex_descriptor_available INTEGER NOT NULL,
@@ -95,9 +96,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS node_descriptors_idx_v5
 
 -- output clusters
 CREATE TABLE IF NOT EXISTS output_clusters_v5 (
-    ieee ieee,
-    endpoint_id,
-    cluster,
+    ieee ieee NOT NULL,
+    endpoint_id INTEGER NOT NULL,
+    cluster INTEGER NOT NULL,
 
     FOREIGN KEY(ieee, endpoint_id)
         REFERENCES endpoints_v5(ieee, endpoint_id)
@@ -110,11 +111,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS output_clusters_idx_v5
 
 -- attributes
 CREATE TABLE IF NOT EXISTS attributes_v5 (
-    ieee ieee,
-    endpoint_id,
-    cluster,
-    attrid,
-    value,
+    ieee ieee NOT NULL,
+    endpoint_id INTEGER NOT NULL,
+    cluster INTEGER NOT NULL,
+    attrid INTEGER NOT NULL,
+    value BLOB NOT NULL,
 
     FOREIGN KEY(ieee)
         REFERENCES devices_v5(ieee)
@@ -127,8 +128,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS attributes_idx_v5
 
 -- groups
 CREATE TABLE IF NOT EXISTS groups_v5 (
-    group_id,
-    name
+    group_id INTEGER NOT NULL,
+    name TEXT NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS groups_idx_v5
@@ -137,9 +138,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS groups_idx_v5
 
 -- group members
 CREATE TABLE IF NOT EXISTS group_members_v5 (
-    group_id,
-    ieee ieee,
-    endpoint_id,
+    group_id INTEGER NOT NULL,
+    ieee ieee NOT NULL,
+    endpoint_id INTEGER NOT NULL,
 
     FOREIGN KEY(group_id)
         REFERENCES groups_v5(group_id)
@@ -155,8 +156,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS group_members_idx_v5
 
 -- relays
 CREATE TABLE IF NOT EXISTS relays_v5 (
-    ieee ieee,
-    relays,
+    ieee ieee NOT NULL,
+    relays BLOB NOT NULL,
 
     FOREIGN KEY(ieee)
         REFERENCES devices_v5(ieee)
