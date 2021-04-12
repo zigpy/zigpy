@@ -7,7 +7,7 @@ import zigpy.appdb
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
-from tests.test_appdb import make_app
+from tests.test_appdb import auto_kill_aiosqlite, make_app  # noqa: F401
 
 
 @pytest.fixture

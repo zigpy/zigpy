@@ -1,6 +1,8 @@
 import asyncio
 import os
+import threading
 
+import aiosqlite
 import pytest
 
 from zigpy import profiles
@@ -17,6 +19,25 @@ from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
 from tests.async_mock import AsyncMock, MagicMock, patch
+
+
+@pytest.fixture(autouse=True)
+def auto_kill_aiosqlite():
+    """aiosqlite's background thread does not let pytest exit when a failure occurs"""
+    yield
+
+    for thread in threading.enumerate():
+        if not isinstance(thread, aiosqlite.core.Connection):
+            continue
+
+        try:
+            conn = thread._conn
+        except ValueError:
+            pass
+        else:
+            conn.close()
+
+        thread._running = False
 
 
 async def make_app(database_file):
