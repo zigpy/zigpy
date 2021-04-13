@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS in_clusters_v5 (
         ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS cluster_idx_v5
+CREATE UNIQUE INDEX IF NOT EXISTS in_clusters_idx_v5
     ON in_clusters_v5(ieee, endpoint_id, cluster);
 
 
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS out_clusters_v5 (
         ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS output_clusters_idx_v5
+CREATE UNIQUE INDEX IF NOT EXISTS out_clusters_idx_v5
     ON out_clusters_v5(ieee, endpoint_id, cluster);
 
 

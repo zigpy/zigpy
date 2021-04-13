@@ -590,7 +590,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     )
 
                     await self.execute(
-                        "INSERT INTO neighbors_v4" " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "INSERT INTO neighbors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                         (dev_ieee,) + neighbor.as_tuple(),
                     )
 
