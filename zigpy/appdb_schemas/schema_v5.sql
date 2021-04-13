@@ -117,8 +117,8 @@ CREATE TABLE IF NOT EXISTS attributes_cache_v5 (
     attrid INTEGER NOT NULL,
     value BLOB NOT NULL,
 
-    FOREIGN KEY(ieee)
-        REFERENCES devices_v5(ieee)
+    FOREIGN KEY(ieee, endpoint_id, cluster)
+        REFERENCES in_clusters_v5(ieee, endpoint_id, cluster)
         ON DELETE CASCADE
 );
 

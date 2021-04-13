@@ -39,6 +39,13 @@ def _sqlite_adapters():
     aiosqlite.register_converter("ieee", convert_ieee)
 
 
+def decode_str_attribute(value: str | bytes) -> str:
+    if isinstance(value, str):
+        return value
+
+    return value.split(b"\x00", 1)[0].decode("utf-8")
+
+
 class PersistingListener(zigpy.util.CatchingTaskMixin):
     def __init__(
         self,
@@ -386,31 +393,23 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(query) as cursor:
             async for (ieee, endpoint_id, cluster, attrid, value) in cursor:
                 dev = self._application.get_device(ieee)
-                if endpoint_id in dev.endpoints:
-                    ep = dev.endpoints[endpoint_id]
-                    if cluster in ep.in_clusters:
-                        clus = ep.in_clusters[cluster]
-                        clus._attr_cache[attrid] = value
-                        LOGGER.debug(
-                            "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
-                            dev.nwk,
-                            endpoint_id,
-                            cluster,
-                            attrid,
-                            value,
-                        )
-                        if cluster == Basic.cluster_id and attrid == 4:
-                            if isinstance(value, bytes):
-                                value = value.split(b"\x00")[0]
-                                dev.manufacturer = value.decode().strip()
-                            else:
-                                dev.manufacturer = value
-                        if cluster == Basic.cluster_id and attrid == 5:
-                            if isinstance(value, bytes):
-                                value = value.split(b"\x00")[0]
-                                dev.model = value.decode().strip()
-                            else:
-                                dev.model = value
+                ep = dev.endpoints[endpoint_id]
+                ep.in_clusters[cluster]._attr_cache[attrid] = value
+
+                LOGGER.debug(
+                    "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
+                    dev.nwk,
+                    endpoint_id,
+                    cluster,
+                    attrid,
+                    value,
+                )
+
+                # Populate the device's manufacturer and model attributes
+                if cluster == Basic.cluster_id and attrid == 4:
+                    dev.manufacturer = decode_str_attribute(value)
+                elif cluster == Basic.cluster_id and attrid == 5:
+                    dev.model = decode_str_attribute(value)
 
     async def _load_devices(self) -> None:
         async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:
@@ -471,7 +470,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(f"SELECT * FROM relays{DB_V}") as cursor:
             async for (ieee, value) in cursor:
                 dev = self._application.get_device(ieee)
-                dev.relays = t.Relays.deserialize(value)[0]
+                dev.relays, _ = t.Relays.deserialize(value)
 
     async def _load_neighbors(self) -> None:
         async with self.execute(f"SELECT * FROM neighbors{DB_V}") as cursor:
@@ -494,7 +493,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             if device.nwk == 0x0000:
                 continue
 
-            # Remove devices without any non-ZDO endpoints or no node descriptor
+            # Keep devices with non-ZDO endpoints and a node descriptor
             if set(device.endpoints) - {0x00} and device.node_desc.is_valid:
                 continue
 
@@ -572,9 +571,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         try:
             # The `neighbors` table was added in v3 but the version number was not
-            # incremented. It will cause the subsequent migration to fail. Instead,
-            # allow the table creation logic that is run after the migrations to
-            # create the missing table.
+            # incremented. It may not exist.
             await self.execute("SELECT * FROM neighbors")
         except aiosqlite.OperationalError:
             pass
