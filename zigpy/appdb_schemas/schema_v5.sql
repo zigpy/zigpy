@@ -29,7 +29,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS endpoint_idx_v5
 
 
 -- clusters
-CREATE TABLE IF NOT EXISTS clusters_v5 (
+CREATE TABLE IF NOT EXISTS in_clusters_v5 (
     ieee ieee NOT NULL,
     endpoint_id INTEGER NOT NULL,
     cluster INTEGER NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS clusters_v5 (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS cluster_idx_v5
-    ON clusters_v5(ieee, endpoint_id, cluster);
+    ON in_clusters_v5(ieee, endpoint_id, cluster);
 
 
 -- neighbors
@@ -95,7 +95,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS node_descriptors_idx_v5
 
 
 -- output clusters
-CREATE TABLE IF NOT EXISTS output_clusters_v5 (
+CREATE TABLE IF NOT EXISTS out_clusters_v5 (
     ieee ieee NOT NULL,
     endpoint_id INTEGER NOT NULL,
     cluster INTEGER NOT NULL,
@@ -106,11 +106,11 @@ CREATE TABLE IF NOT EXISTS output_clusters_v5 (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS output_clusters_idx_v5
-    ON output_clusters_v5(ieee, endpoint_id, cluster);
+    ON out_clusters_v5(ieee, endpoint_id, cluster);
 
 
 -- attributes
-CREATE TABLE IF NOT EXISTS attributes_v5 (
+CREATE TABLE IF NOT EXISTS attributes_cache_v5 (
     ieee ieee NOT NULL,
     endpoint_id INTEGER NOT NULL,
     cluster INTEGER NOT NULL,
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS attributes_v5 (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS attributes_idx_v5
-    ON attributes_v5(ieee, endpoint_id, cluster, attrid);
+    ON attributes_cache_v5(ieee, endpoint_id, cluster, attrid);
 
 
 -- groups

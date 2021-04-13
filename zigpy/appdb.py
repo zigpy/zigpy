@@ -236,11 +236,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _remove_device(self, device: zigpy.typing.DeviceType) -> None:
         for table in (
-            "attributes",
+            "attributes_cache",
             "neighbors",
             "node_descriptors",
-            "clusters",
-            "output_clusters",
+            "in_clusters",
+            "out_clusters",
             "group_members",
             "endpoints",
             "devices",
@@ -320,7 +320,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             (endpoint.device.ieee, endpoint.endpoint_id, cluster.cluster_id)
             for cluster in endpoint.in_clusters.values()
         ]
-        q = f"INSERT OR REPLACE INTO clusters{DB_V} VALUES (?, ?, ?)"
+        q = f"INSERT OR REPLACE INTO in_clusters{DB_V} VALUES (?, ?, ?)"
         await self._db.executemany(q, clusters)
 
     async def _save_attribute_cache(self, ep: zigpy.typing.EndpointType) -> None:
@@ -329,7 +329,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             for cluster in ep.in_clusters.values()
             for attrid, value in cluster._attr_cache.items()
         ]
-        q = f"INSERT OR REPLACE INTO attributes{DB_V} VALUES (?, ?, ?, ?, ?)"
+        q = f"INSERT OR REPLACE INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)"
         await self._db.executemany(q, clusters)
 
     async def _save_output_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
@@ -337,13 +337,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             (endpoint.device.ieee, endpoint.endpoint_id, cluster.cluster_id)
             for cluster in endpoint.out_clusters.values()
         ]
-        q = f"INSERT OR REPLACE INTO output_clusters{DB_V} VALUES (?, ?, ?)"
+        q = f"INSERT OR REPLACE INTO out_clusters{DB_V} VALUES (?, ?, ?)"
         await self._db.executemany(q, clusters)
 
     async def _save_attribute(
         self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int, value: Any
     ) -> None:
-        q = f"INSERT OR REPLACE INTO attributes{DB_V} VALUES (?, ?, ?, ?, ?)"
+        q = f"INSERT OR REPLACE INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)"
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         await self._db.commit()
 
@@ -379,9 +379,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _load_attributes(self, filter: str = None) -> None:
         if filter:
-            query = f"SELECT * FROM attributes{DB_V} WHERE {filter}"
+            query = f"SELECT * FROM attributes_cache{DB_V} WHERE {filter}"
         else:
-            query = f"SELECT * FROM attributes{DB_V}"
+            query = f"SELECT * FROM attributes_cache{DB_V}"
+
         async with self.execute(query) as cursor:
             async for (ieee, endpoint_id, cluster, attrid, value) in cursor:
                 dev = self._application.get_device(ieee)
@@ -430,21 +431,22 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 dev = self._application.get_device(ieee)
                 ep = dev.add_endpoint(epid)
                 ep.profile_id = profile_id
-                ep.device_type = device_type
                 if profile_id == zigpy.profiles.zha.PROFILE_ID:
                     ep.device_type = zigpy.profiles.zha.DeviceType(device_type)
                 elif profile_id == zigpy.profiles.zll.PROFILE_ID:
                     ep.device_type = zigpy.profiles.zll.DeviceType(device_type)
+                else:
+                    ep.device_type = device_type
                 ep.status = zigpy.endpoint.Status(status)
 
     async def _load_clusters(self) -> None:
-        async with self.execute(f"SELECT * FROM clusters{DB_V}") as cursor:
+        async with self.execute(f"SELECT * FROM in_clusters{DB_V}") as cursor:
             async for (ieee, endpoint_id, cluster) in cursor:
                 dev = self._application.get_device(ieee)
                 ep = dev.endpoints[endpoint_id]
                 ep.add_input_cluster(cluster)
 
-        async with self.execute(f"SELECT * FROM output_clusters{DB_V}") as cursor:
+        async with self.execute(f"SELECT * FROM out_clusters{DB_V}") as cursor:
             async for (ieee, endpoint_id, cluster) in cursor:
                 dev = self._application.get_device(ieee)
                 ep = dev.endpoints[endpoint_id]
@@ -607,12 +609,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         # to insert due to constraint violations can be discarded
         for old_table, new_table in {
             "endpoints": "endpoints_v5",
-            "clusters": "clusters_v5",
-            "output_clusters": "output_clusters_v5",
+            "clusters": "in_clusters_v5",
+            "output_clusters": "out_clusters_v5",
             "groups": "groups_v5",
             "group_members": "group_members_v5",
             "relays": "relays_v5",
-            "attributes": "attributes_v5",
+            "attributes": "attributes_cache_v5",
             # These were migrated in v4
             "neighbors_v4": "neighbors_v5",
             "node_descriptors_v4": "node_descriptors_v5",
