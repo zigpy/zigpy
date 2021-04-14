@@ -364,7 +364,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     async def load(self) -> None:
-        LOGGER.debug("Loading application state from %s")
+        LOGGER.debug("Loading application state")
         await self._load_devices()
         await self._load_node_descriptors()
         await self._load_endpoints()
@@ -394,6 +394,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             async for (ieee, endpoint_id, cluster, attrid, value) in cursor:
                 dev = self._application.get_device(ieee)
                 ep = dev.endpoints[endpoint_id]
+
+                if cluster not in ep.in_clusters:
+                    continue
+
                 ep.in_clusters[cluster]._attr_cache[attrid] = value
 
                 LOGGER.debug(

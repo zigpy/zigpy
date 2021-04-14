@@ -117,8 +117,10 @@ CREATE TABLE IF NOT EXISTS attributes_cache_v5 (
     attrid INTEGER NOT NULL,
     value BLOB NOT NULL,
 
-    FOREIGN KEY(ieee, endpoint_id, cluster)
-        REFERENCES in_clusters_v5(ieee, endpoint_id, cluster)
+    -- Quirks can create "virtual" clusters that won't be present in the DB but whose
+    -- values still need to be cached
+    FOREIGN KEY(ieee, endpoint_id)
+        REFERENCES endpoints_v5(ieee, endpoint_id)
         ON DELETE CASCADE
 );
 

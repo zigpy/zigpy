@@ -80,7 +80,7 @@ def make_ieee(init=0):
 
 class FakeCustomDevice(CustomDevice):
     replacement = {
-        "endpoints": {1: {"input_clusters": [0, 1, 3], "output_clusters": [6]}}
+        "endpoints": {1: {"input_clusters": [0, 1, 3, 0x0008], "output_clusters": [6]}}
     }
 
 
@@ -165,8 +165,11 @@ async def test_database(tmpdir):
         app.device_initialized(dev)
     assert isinstance(app.get_device(custom_ieee), FakeCustomDevice)
     assert isinstance(app.get_device(custom_ieee), CustomDevice)
-    app.device_initialized(app.get_device(custom_ieee))
+    dev = app.get_device(custom_ieee)
+    app.device_initialized(dev)
     dev.relays = relays_2
+    dev.endpoints[1].level._update_attribute(0x0011, 17)
+    assert dev.endpoints[1].in_clusters[0x0008]._attr_cache[0x0011] == 17
     await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads
@@ -185,6 +188,9 @@ async def test_database(tmpdir):
     assert dev.relays == relays_1
 
     dev = app2.get_device(custom_ieee)
+    # This virtual attribute is added by the quirk, there is no corresponding cluster
+    # stored in the database
+    assert dev.endpoints[1].in_clusters[0x0008]._attr_cache[0x0011] == 17
     assert dev.relays == relays_2
     dev.relays = None
 
