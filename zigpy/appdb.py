@@ -252,20 +252,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     async def _remove_device(self, device: zigpy.typing.DeviceType) -> None:
-        for table in (
-            "attributes_cache",
-            "neighbors",
-            "node_descriptors",
-            "in_clusters",
-            "out_clusters",
-            "group_members",
-            "endpoints",
-            "devices",
-        ):
-            await self.execute(
-                f"DELETE FROM {table}{DB_V} WHERE ieee = ?", (device.ieee,)
-            )
-
+        await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,))
         await self._db.commit()
 
     async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
