@@ -35,7 +35,7 @@ Radio libraries for zigpy are separate projects with their own repositories and 
 
 Note! Zigbee 3.0 support or not in zigpy depends primarily on your Zigbee coordinator hardware and its firmware. Some Zigbee coordinator hardware support Zigbee 3.0 but might be shipped with an older firmware which does not, in which case may want to upgrade the firmware manually yourself. Some other Zigbee coordinator hardware may not support a firmware that is capable of Zigbee 3.0 at all but can still be fully functional and feature complete for your needs, (this is very common as many if not most Zigbee devices do not yet Zigbee 3.0 or are backwards-compable with a Zigbee profile that is support by your Zigbee coordinator hardware and its firmware). As a general rule, newer Zigbee coordinator hardware released can normally support Zigbee 3.0 firmware and it is up to its manufacturer to make such firmware available for them.
 
-### Compatible zigpy radio libraires
+### Compatible zigpy radio libraries
 
 - **Digi XBee** based Zigbee radios via the [zigpy-xbee](https://github.com/zigpy/zigpy-xbee) library for zigpy.
 - **dresden elektronik** deCONZ based Zigbee radios via the [zigpy-deconz](https://github.com/zigpy/zigpy-deconz) library for zigpy.
@@ -43,7 +43,7 @@ Note! Zigbee 3.0 support or not in zigpy depends primarily on your Zigbee coordi
 - **Texas Instruments** based Zigbee radios with all compatible Z-Stack firmware via the [zigpy-znp](https://github.com/zha-ng/zigpy-znp) library for zigpy.
 - **ZiGate** based ZigBee radios via the [zigpy-zigate](https://github.com/zigpy/zigpy-zigate) library for zigpy.
 
-### Legacy or obsolete zigpy radio libraires
+### Legacy or obsolete zigpy radio libraries
 
 - Texas Instruments with Z-Stack legacy firmware via the [zigpy-cc](https://github.com/zigpy/zigpy-cc) library for zigpy.
 
