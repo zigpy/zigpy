@@ -7,6 +7,7 @@ import zigpy.appdb
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
+from tests.async_mock import patch
 from tests.test_appdb import auto_kill_aiosqlite, make_app  # noqa: F401
 
 
@@ -187,3 +188,56 @@ async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
 
         # Ensure the final database schema version number does not decrease
         assert cur.fetchone()[0] == max(zigpy.appdb.DB_VERSION, force_version or 0)
+
+
+def dump_db(path):
+    with sqlite3.connect(path) as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA user_version")
+        (user_version,) = cur.fetchone()
+
+        sql = "\n".join(conn.iterdump())
+
+    return user_version, sql
+
+
+@pytest.mark.parametrize(
+    "fail_on_sql,fail_on_count",
+    [
+        ("INSERT INTO node_descriptors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 0),
+        ("INSERT INTO neighbors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 5),
+        ("SELECT * FROM output_clusters", 0),
+        ("INSERT INTO neighbors_v5 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 5),
+    ],
+)
+async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
+    test_db_bad_attrs = test_db("bad_attrs_v3.db")
+
+    before = dump_db(test_db_bad_attrs)
+    assert before[0] == 3
+
+    count = 0
+    sql_seen = False
+    execute = zigpy.appdb.PersistingListener.execute
+
+    def patched_execute(self, sql, *args, **kwargs):
+        nonlocal count, sql_seen
+
+        if sql == fail_on_sql:
+            sql_seen = True
+
+            if count == fail_on_count:
+                raise sqlite3.ProgrammingError("Uh oh")
+
+            count += 1
+
+        return execute(self, sql, *args, **kwargs)
+
+    with patch("zigpy.appdb.PersistingListener.execute", new=patched_execute):
+        with pytest.raises(sqlite3.ProgrammingError):
+            await make_app(test_db_bad_attrs)
+
+    assert sql_seen
+
+    after = dump_db(test_db_bad_attrs)
+    assert before == after

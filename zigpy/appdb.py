@@ -69,7 +69,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         await self.execute("PRAGMA foreign_keys = ON")
         await self._run_migrations()
-        await self._db.commit()
 
     @classmethod
     async def new(
@@ -135,6 +134,17 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def execute(self, *args, **kwargs):
         return self._db.execute(*args, **kwargs)
+
+    async def executescript(self, sql):
+        """
+        Naive replacement for `sqlite3.Cursor.executescript` that does not execute a
+        `COMMIT` before running the script. This extra `COMMIT` breaks transactions that
+        run scripts.
+        """
+
+        # XXX: This will break if you use a semicolon anywhere but at the end of a line
+        for statement in sql.split(";"):
+            await self.execute(statement)
 
     def device_joined(self, device: zigpy.typing.DeviceType) -> None:
         pass
@@ -522,7 +532,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         if db_version == 0:
             # If this is a brand new database, just load the current schema
-            await self._db.executescript(zigpy.appdb_schemas.SCHEMAS[DB_VERSION])
+            await self.executescript(zigpy.appdb_schemas.SCHEMAS[DB_VERSION])
             return
         elif db_version > DB_VERSION:
             LOGGER.error(
@@ -534,28 +544,37 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             )
             return
 
-        for from_db_version, (migration, to_db_version) in {
-            0: (self._migrate_to_v4, 4),
-            1: (self._migrate_to_v4, 4),
-            2: (self._migrate_to_v4, 4),
-            3: (self._migrate_to_v4, 4),
-            4: (self._migrate_to_v5, 5),
-        }.items():
-            if db_version > from_db_version:
-                continue
+        # All migrations must succeed. If any fail, the database is not touched.
+        await self.execute("BEGIN TRANSACTION")
 
-            LOGGER.info("Migrating database from v%d to v%d", db_version, to_db_version)
+        try:
+            for from_db_version, (migration, to_db_version) in {
+                0: (self._migrate_to_v4, 4),
+                1: (self._migrate_to_v4, 4),
+                2: (self._migrate_to_v4, 4),
+                3: (self._migrate_to_v4, 4),
+                4: (self._migrate_to_v5, 5),
+            }.items():
+                if db_version > from_db_version:
+                    continue
 
-            await self.execute("BEGIN TRANSACTION")
-            await migration()
-            await self.execute(f"PRAGMA user_version={to_db_version}")
+                LOGGER.info(
+                    "Migrating database from v%d to v%d", db_version, to_db_version
+                )
+                await migration()
+
+                db_version = to_db_version
+        except Exception:
+            await self.execute("ROLLBACK")
+            raise
+        else:
             await self.execute("COMMIT")
-
-            db_version = to_db_version
+        finally:
+            pass
 
     async def _migrate_to_v4(self):
         """Schema v4 expanded the node descriptor and neighbor table columns"""
-        await self._db.executescript(zigpy.appdb_schemas.SCHEMAS[4])
+        await self.executescript(zigpy.appdb_schemas.SCHEMAS[4])
 
         # Delete all existing v4 entries, in case a user downgraded and is upgrading
         await self.execute("DELETE FROM node_descriptors_v4")
@@ -600,7 +619,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _migrate_to_v5(self):
         """Schema v5 introduced global table version suffixes and removed stale rows"""
-        await self._db.executescript(zigpy.appdb_schemas.SCHEMAS[5])
+        await self.executescript(zigpy.appdb_schemas.SCHEMAS[5])
 
         # Copy the devices table first, it should have no conflicts
         await self.execute("DELETE FROM devices_v5")
@@ -623,13 +642,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             # Delete existing entries, in case a user downgraded
             await self.execute(f"DELETE FROM {new_table}")
 
-            async with self.execute(f"SELECT * from {old_table}") as cursor:
+            async with self.execute(f"SELECT * FROM {old_table}") as cursor:
                 async for row in cursor:
                     placeholders = ",".join("?" * len(row))
 
                     try:
                         await self.execute(
-                            f"INSERT INTO {new_table} VALUES({placeholders})", row
+                            f"INSERT INTO {new_table} VALUES ({placeholders})", row
                         )
                     except aiosqlite.IntegrityError as e:
                         LOGGER.warning(

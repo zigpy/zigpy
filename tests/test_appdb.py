@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sqlite3
 import threading
 
 import aiosqlite
@@ -35,7 +36,10 @@ def auto_kill_aiosqlite():
         except ValueError:
             pass
         else:
-            conn.close()
+            try:
+                conn.close()
+            except sqlite3.ProgrammingError:
+                pass
 
         thread._running = False
 
