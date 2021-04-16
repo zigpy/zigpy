@@ -569,8 +569,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             raise
         else:
             await self.execute("COMMIT")
-        finally:
-            pass
 
     async def _migrate_to_v4(self):
         """Schema v4 expanded the node descriptor and neighbor table columns"""
