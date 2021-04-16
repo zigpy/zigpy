@@ -299,12 +299,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for epid, ep in device.endpoints.items():
             if epid == 0:
                 continue  # Skip zdo
-            device_type = getattr(ep, "device_type", None)
             eprow = (
                 device.ieee,
                 ep.endpoint_id,
-                getattr(ep, "profile_id", None),
-                device_type,
+                ep.profile_id,
+                ep.device_type,
                 ep.status,
             )
             endpoints.append(eprow)
