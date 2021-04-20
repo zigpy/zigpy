@@ -73,7 +73,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     @classmethod
     async def new(
         cls, database_file: str, app: zigpy.typing.ControllerApplicationType
-    ) -> "PersistingListener":
+    ) -> PersistingListener:
         """Create an instance of persisting listener."""
         sqlite_conn = await aiosqlite.connect(
             database_file, detect_types=sqlite3.PARSE_DECLTYPES
@@ -162,16 +162,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_remove_device", device)
 
     def device_relays_updated(
-        self, device: zigpy.typing.DeviceType, relays: bytes
+        self, device: zigpy.typing.DeviceType, relays: t.Relays | None
     ) -> None:
         """Device relay list is updated."""
-        if relays is None:
-            self.enqueue("_save_device_relays_clear", device.ieee)
-            return
-
-        self.enqueue(
-            "_save_device_relays_update", device.ieee, t.Relays(relays).serialize()
-        )
+        self.enqueue("_save_device_relays", device.ieee, relays)
 
     def attribute_updated(
         self, cluster: zigpy.typing.ClusterType, attrid: int, value: Any
@@ -350,13 +344,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         await self._db.commit()
 
-    async def _save_device_relays_update(self, ieee: t.EUI64, value: bytes) -> None:
-        q = f"INSERT OR REPLACE INTO relays{DB_V} VALUES (?, ?)"
-        await self.execute(q, (ieee, value))
-        await self._db.commit()
+    async def _save_device_relays(self, ieee: t.EUI64, relays: t.Relays | None) -> None:
+        if relays is None:
+            await self.execute(f"DELETE FROM relays{DB_V} WHERE ieee = ?", (ieee,))
+        else:
+            q = f"INSERT OR REPLACE INTO relays{DB_V} VALUES (?, ?)"
+            await self.execute(q, (ieee, relays.serialize()))
 
-    async def _save_device_relays_clear(self, ieee: t.EUI64) -> None:
-        await self.execute(f"DELETE FROM relays{DB_V} WHERE ieee = ?", (ieee,))
         await self._db.commit()
 
     async def load(self) -> None:
@@ -378,7 +372,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_relays()
         await self._load_neighbors()
         await self._cleanup()
-        await self._finish_loading()
+        await self._register_device_listeners()
 
     async def _load_attributes(self, filter: str = None) -> None:
         if filter:
@@ -430,13 +424,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 dev = self._application.get_device(ieee)
                 ep = dev.add_endpoint(epid)
                 ep.profile_id = profile_id
+                ep.status = zigpy.endpoint.Status(status)
+
                 if profile_id == zigpy.profiles.zha.PROFILE_ID:
                     ep.device_type = zigpy.profiles.zha.DeviceType(device_type)
                 elif profile_id == zigpy.profiles.zll.PROFILE_ID:
                     ep.device_type = zigpy.profiles.zll.DeviceType(device_type)
                 else:
                     ep.device_type = device_type
-                ep.status = zigpy.endpoint.Status(status)
 
     async def _load_clusters(self) -> None:
         async with self.execute(f"SELECT * FROM in_clusters{DB_V}") as cursor:
@@ -480,7 +475,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 assert neighbor.is_valid
                 dev.neighbors.add_neighbor(neighbor)
 
-    async def _finish_loading(self):
+    async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
             dev.neighbors.add_context_listener(self)
