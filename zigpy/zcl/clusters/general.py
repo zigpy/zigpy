@@ -1741,17 +1741,18 @@ class GreenPowerProxy(Cluster):
         assert 0 <= time_s <= 254
         LOGGER.debug("Permit green power pairing for %s s", time_s)
         self._attr_cache[0x9997] = int(time.time() + time_s)
-        tsn = self.endpoint.device.application.get_sequence()
-        hdr = foundation.ZCLHeader.cluster(tsn, 2)  # commissioning
-        hdr.frame_control.disable_default_response = True
-        data = hdr.serialize() + t.serialize((0x0B, time_s), (t.uint8_t, t.uint16_t))
-        return await self.endpoint.device.application.broadcast(
-            profile=zigpy.profiles.zha.PROFILE_ID,
-            cluster=self.cluster_id,
-            src_ep=self.endpoint_id,
-            dst_ep=self.endpoint_id,
-            grpid=None,
-            radius=30,
-            sequence=tsn,
-            data=data,
-        )
+        #tsn = self.endpoint.device.application.get_sequence()
+        #hdr = foundation.ZCLHeader.cluster(tsn, 2)  # commissioning
+        #hdr.frame_control.disable_default_response = True
+        #data = hdr.serialize() + t.serialize((0x0B, time_s), (t.uint8_t, t.uint16_t))
+        #return await self.endpoint.device.application.broadcast(
+        #    profile=zigpy.profiles.zha.PROFILE_ID,
+        #    cluster=self.cluster_id,
+        #    src_ep=self.endpoint_id,
+        #    dst_ep=self.endpoint_id,
+        #    grpid=None,
+        #    radius=30,
+        #    sequence=tsn,
+        #    data=data,
+        #)
+        return
