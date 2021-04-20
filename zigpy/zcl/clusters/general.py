@@ -1561,7 +1561,6 @@ class GreenPowerProxy(Cluster):
             return
         LOGGER.debug("Device %s not found, create it", ieee)
         dev = application.add_device(ieee, 32766)
-        dev.initializing = True
         dev.status = zigpy.device.Status.ENDPOINTS_INIT
         dev._skip_configuration = True
         ep = dev.add_endpoint(1)
