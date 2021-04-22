@@ -26,7 +26,7 @@ DB_VERSION = 5
 DB_V = f"_v{DB_VERSION}"
 
 
-def _sqlite_adapters():
+def _register_sqlite_adapters():
     def adapt_ieee(eui64):
         return str(eui64)
 
@@ -52,7 +52,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         connection: aiosqlite.Connection,
         application: zigpy.typing.ControllerApplicationType,
     ) -> None:
-        _sqlite_adapters()
+        _register_sqlite_adapters()
+
         self._db = connection
         self._application = application
         self._callback_handlers = asyncio.Queue()
@@ -149,23 +150,26 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def device_joined(self, device: zigpy.typing.DeviceType) -> None:
         pass
 
-    def raw_device_initialized(self, device: zigpy.typing.DeviceType) -> None:
-        self.enqueue("_save_device", device)
-
     def device_initialized(self, device: zigpy.typing.DeviceType) -> None:
         pass
 
     def device_left(self, device: zigpy.typing.DeviceType) -> None:
         pass
 
-    def device_removed(self, device: zigpy.typing.DeviceType) -> None:
-        self.enqueue("_remove_device", device)
-
     def device_relays_updated(
         self, device: zigpy.typing.DeviceType, relays: t.Relays | None
     ) -> None:
         """Device relay list is updated."""
         self.enqueue("_save_device_relays", device.ieee, relays)
+
+    async def _save_device_relays(self, ieee: t.EUI64, relays: t.Relays | None) -> None:
+        if relays is None:
+            await self.execute(f"DELETE FROM relays{DB_V} WHERE ieee = ?", (ieee,))
+        else:
+            q = f"INSERT OR REPLACE INTO relays{DB_V} VALUES (?, ?)"
+            await self.execute(q, (ieee, relays.serialize()))
+
+        await self._db.commit()
 
     def attribute_updated(
         self, cluster: zigpy.typing.ClusterType, attrid: int, value: Any
@@ -245,9 +249,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(q, (group.group_id,))
         await self._db.commit()
 
+    def device_removed(self, device: zigpy.typing.DeviceType) -> None:
+        self.enqueue("_remove_device", device)
+
     async def _remove_device(self, device: zigpy.typing.DeviceType) -> None:
         await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,))
         await self._db.commit()
+
+    def raw_device_initialized(self, device: zigpy.typing.DeviceType) -> None:
+        self.enqueue("_save_device", device)
 
     async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
         if device.status != zigpy.device.Status.ENDPOINTS_INIT:
@@ -342,15 +352,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     ) -> None:
         q = f"INSERT OR REPLACE INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)"
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
-        await self._db.commit()
-
-    async def _save_device_relays(self, ieee: t.EUI64, relays: t.Relays | None) -> None:
-        if relays is None:
-            await self.execute(f"DELETE FROM relays{DB_V} WHERE ieee = ?", (ieee,))
-        else:
-            q = f"INSERT OR REPLACE INTO relays{DB_V} VALUES (?, ?)"
-            await self.execute(q, (ieee, relays.serialize()))
-
         await self._db.commit()
 
     async def load(self) -> None:
