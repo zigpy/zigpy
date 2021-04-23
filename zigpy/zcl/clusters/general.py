@@ -9,11 +9,6 @@ import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
 
 
-class AttributeReportingStatus(t.enum8):
-    Pending = 0x00
-    Attribute_Reporting_Complete = 0x01
-
-
 class Basic(Cluster):
     """Attributes for determining basic information about a
     device, setting user device information such as location,
@@ -227,7 +222,7 @@ class Basic(Cluster):
         0x0014: ("disable_local_config", DisableLocalConfig),
         0x4000: ("sw_build_id", t.CharacterString),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {0x0000: ("reset_fact_default", (), False)}
     client_commands = {}
@@ -325,7 +320,7 @@ class PowerConfiguration(Cluster):
         0x007D: ("battery_3_percent_thres3", t.uint8_t),
         0x007E: ("battery_3_alarm_state", t.bitmap32),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -356,7 +351,7 @@ class DeviceTemperature(Cluster):
         0x0013: ("low_temp_dwell_trip_point", t.uint24_t),
         0x0014: ("high_temp_dwell_trip_point", t.uint24_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -383,7 +378,7 @@ class Identify(Cluster):
         0x0000: ("identify_time", t.uint16_t),
         # 0x0001: ("identify_commission_state", t.bitmap8),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
         0x0000: ("identify", (t.uint16_t,), False),
@@ -407,7 +402,7 @@ class Groups(Cluster):
     attributes = {
         0x0000: ("name_support", NameSupport),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
         0x0000: ("add", (t.Group, t.LimitedCharString(16)), False),
@@ -447,7 +442,7 @@ class Scenes(Cluster):
         0x0004: ("name_support", NameSupport),
         0x0005: ("last_configured_by", t.EUI64),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
         0x0000: (
@@ -515,7 +510,7 @@ class OnOff(Cluster):
         0x4002: ("off_wait_time", t.uint16_t),
         0x4003: ("start_up_on_off", StartUpOnOff),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
         0x0000: ("off", (), False),
@@ -549,7 +544,7 @@ class OnOffConfiguration(Cluster):
         0x0000: ("switch_type", SwitchType),
         0x0010: ("switch_actions", SwitchActions),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -566,6 +561,10 @@ class LevelControl(Cluster):
     class StepMode(t.enum8):
         Up = 0x00
         Down = 0x01
+
+    class StartUpCurrentLevel(t.enum8):
+        Minimum = 0x00
+        PreviousValue = 0xFF
 
     cluster_id = 0x0008
     name = "Level control"
@@ -584,9 +583,9 @@ class LevelControl(Cluster):
         0x0013: ("off_transition_time", t.uint16_t),
         0x0014: ("default_move_rate", t.uint8_t),
         0x000F: ("options", t.bitmap8),
-        0x4000: ("start_up_current_level", t.uint8_t),
+        0x4000: ("start_up_current_level", StartUpCurrentLevel),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
         0x0000: (
@@ -630,7 +629,7 @@ class Alarms(Cluster):
         # Alarm Information
         0x0000: ("alarm_count", t.uint16_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
         0x0000: ("reset", (t.uint8_t, t.uint16_t), False),
@@ -679,7 +678,7 @@ class Time(Cluster):
         0x0008: ("last_set_time", t.UTCTime),
         0x0009: ("valid_until_time", t.UTCTime),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -739,7 +738,7 @@ class RSSILocation(Cluster):
         0x0016: ("calc_period", t.uint16_t),
         0x0017: ("num_rssi_measurements", t.uint8_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
         0x0000: (
@@ -827,7 +826,7 @@ class AnalogInput(Cluster):
         0x0075: ("engineering_units", t.enum16),
         0x0100: ("application_type", t.uint32_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -851,7 +850,7 @@ class AnalogOutput(Cluster):
         0x0075: ("engineering_units", t.enum16),
         0x0100: ("application_type", t.uint32_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -872,7 +871,7 @@ class AnalogValue(Cluster):
         0x0075: ("engineering_units", t.enum16),
         0x0100: ("application_type", t.uint32_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -893,7 +892,7 @@ class BinaryInput(Cluster):
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -918,7 +917,7 @@ class BinaryOutput(Cluster):
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -942,7 +941,7 @@ class BinaryValue(Cluster):
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -963,7 +962,7 @@ class MultistateInput(Cluster):
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -985,7 +984,7 @@ class MultistateOutput(Cluster):
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -1007,7 +1006,7 @@ class MultistateValue(Cluster):
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -1049,7 +1048,7 @@ class Commissioning(Cluster):
         0x0041: ("concentrator_radius", t.uint8_t),
         0x0042: ("concentrator_discovery_time", t.uint8_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
         0x0000: ("restart_device", (t.uint8_t, t.uint8_t, t.uint8_t), False),
@@ -1070,7 +1069,7 @@ class Partition(Cluster):
     ep_attribute = "partition"
     attributes = {
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -1111,7 +1110,7 @@ class Ota(Cluster):
         0x000B: ("upgrade_activation_policy", UpgradeActivationPolicy),
         0x000C: ("upgrade_timeout_policy", UpgradeTimeoutPolicy),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
         0x0001: (
@@ -1397,7 +1396,7 @@ class PowerProfile(Cluster):
         0x0003: ("energy_remote", t.Bool),
         0x0004: ("schedule_mode", t.bitmap8),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
 
     class ScheduleRecord(t.Struct):
@@ -1501,7 +1500,7 @@ class ApplianceControl(Cluster):
     ep_attribute = "appliance_control"
     attributes = {
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -1520,7 +1519,7 @@ class PollControl(Cluster):
         0x0005: ("long_poll_interval_min", t.uint32_t),
         0x0006: ("fast_poll_timeout_max", t.uint16_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", AttributeReportingStatus),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
         0x0000: ("checkin_response", (t.uint8_t, t.uint16_t), True),

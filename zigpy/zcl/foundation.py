@@ -261,6 +261,11 @@ class ReportingDirection(t.enum8):
     ReceiveReports = 0x01
 
 
+class AttributeReportingStatus(t.enum8):
+    Pending = 0x00
+    Attribute_Reporting_Complete = 0x01
+
+
 class AttributeReportingConfig:
     def __init__(self, other=None):
         if isinstance(other, self.__class__):
