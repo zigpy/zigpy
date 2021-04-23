@@ -39,7 +39,7 @@ class Color(Cluster):
 
     class StepMode(t.enum8):
         Up = 0x01
-        Up = 0x03
+        Down = 0x03
 
     class ColorLoopUpdateFlags(t.bitmap8):
         Action = 0b0000_0001
