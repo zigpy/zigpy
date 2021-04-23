@@ -556,7 +556,7 @@ def test_configure_reporting_wrong_named(cluster):
 
 def test_configure_reporting_wrong_attrid(cluster):
     with pytest.raises(ValueError):
-        cluster.configure_reporting(0xFFFE, 10, 20, 1)
+        cluster.configure_reporting(0xABCD, 10, 20, 1)
         assert cluster._endpoint.request.call_count == 0
 
 
