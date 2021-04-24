@@ -123,174 +123,207 @@ class Color(Cluster):
     server_commands = {
         0x00: (
             "move_to_hue",
-            (
-                t.uint8_t,
-                Direction,
-                t.uint16_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "hue": t.uint8_t,
+                "direction": Direction,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # hue, direction, duration
+        ),
         0x01: (
             "move_hue",
-            (MoveMode, t.uint8_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
+            {
+                "move_mode": MoveMode,
+                "rate": t.uint8_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # move mode, rate
+        ),
         0x02: (
             "step_hue",
-            (
-                StepMode,
-                t.uint8_t,
-                t.uint8_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "setp_mode": StepMode,
+                "step_size": t.uint8_t,
+                "transition_time": t.uint8_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # mode, size, duration
+        ),
         0x03: (
             "move_to_saturation",
-            (t.uint8_t, t.uint16_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
+            {
+                "saturation": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # saturation, duration
+        ),
         0x04: (
             "move_saturation",
-            (MoveMode, t.uint8_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
+            {
+                "move_mode": MoveMode,
+                "rate": t.uint8_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # mode, rate
+        ),
         0x05: (
             "step_saturation",
-            (
-                StepMode,
-                t.uint8_t,
-                t.uint8_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "step_mode": StepMode,
+                "step_size": t.uint8_t,
+                "transition_time": t.uint8_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # mode, size, duration
+        ),
         0x06: (
             "move_to_hue_and_saturation",
-            (
-                t.uint8_t,
-                t.uint8_t,
-                t.uint16_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "hue": t.uint8_t,
+                "saturation": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # hue, saturation, duration
+        ),
         0x07: (
             "move_to_color",
-            (
-                t.uint16_t,
-                t.uint16_t,
-                t.uint16_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "color_x": t.uint16_t,
+                "color_y": t.uint16_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # x, y, duration
+        ),
         0x08: (
             "move_color",
-            (t.uint16_t, t.uint16_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
+            {
+                "rate_x": t.uint16_t,
+                "rate_y": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # ratex, ratey
+        ),
         0x09: (
             "step_color",
-            (
-                t.uint16_t,
-                t.uint16_t,
-                t.uint16_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "step_x": t.uint16_t,
+                "step_y": t.uint16_t,
+                "duration": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # stepx, stepy, duration
+        ),
         0x0A: (
             "move_to_color_temp",
-            (t.uint16_t, t.uint16_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
+            {
+                "color_temp_mireds": t.uint16_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # temperature, duration
+        ),
         0x40: (
             "enhanced_move_to_hue",
-            (
-                t.uint16_t,
-                Direction,
-                t.uint16_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "enhanced_hue": t.uint16_t,
+                "direction": Direction,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
         ),
         0x41: (
             "enhanced_move_hue",
-            (MoveMode, t.uint16_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
+            {
+                "move_mode": MoveMode,
+                "rate": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
         ),
         0x42: (
             "enhanced_step_hue",
-            (
-                StepMode,
-                t.uint16_t,
-                t.uint16_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "step_mode": StepMode,
+                "step_size": t.uint16_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
         ),
         0x43: (
             "enhanced_move_to_hue_and_saturation",
-            (
-                t.uint16_t,
-                t.uint8_t,
-                t.uint16_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "enhanced_hue": t.uint16_t,
+                "saturation": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
         ),
         0x44: (
             "color_loop_set",
-            (
-                ColorLoopUpdateFlags,
-                ColorLoopAction,
-                ColorLoopDirection,
-                t.uint16_t,
-                t.uint16_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "update_flags": ColorLoopUpdateFlags,
+                "action": ColorLoopAction,
+                "direction": ColorLoopDirection,
+                "time": t.uint16_t,
+                "start_hue": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
         ),
         0x47: (
             "stop_move_step",
-            (t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
+            {
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
         ),
         0x4B: (
             "move_color_temp",
-            (
-                MoveMode,
-                t.uint16_t,
-                t.uint16_t,
-                t.uint16_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "move_mode": MoveMode,
+                "rate": t.uint16_t,
+                "color_temp_min_mireds": t.uint16_t,
+                "color_temp_max_mireds": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
         ),
         0x4C: (
             "step_color_temp",
-            (
-                StepMode,
-                t.uint16_t,
-                t.uint16_t,
-                t.uint16_t,
-                t.uint16_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "step_mode": StepMode,
+                "step_size": t.uint16_t,
+                "transition_time": t.uint16_t,
+                "color_temp_min_mireds": t.uint16_t,
+                "color_temp_max_mireds": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
         ),
     }
