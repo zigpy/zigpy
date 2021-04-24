@@ -318,23 +318,23 @@ class Thermostat(Cluster):
         0x0047: ("ac_capacity_format", ACCapacityFormat),
     }
     server_commands = {
-        0x0000: ("setpoint_raise_lower", (SetpointMode, t.int8s), False),
-        0x0001: (
+        0x00: ("setpoint_raise_lower", (SetpointMode, t.int8s), False),
+        0x01: (
             "set_weekly_schedule",
             (t.enum8, SeqDayOfWeek, SeqMode, t.List[t.int16s]),
             False,
         ),
-        0x0002: ("get_weekly_schedule", (SeqDayOfWeek, SeqMode), False),
-        0x0003: ("clear_weekly_schedule", (), False),
-        0x0004: ("get_relay_status_log", (), False),
+        0x02: ("get_weekly_schedule", (SeqDayOfWeek, SeqMode), False),
+        0x03: ("clear_weekly_schedule", (), False),
+        0x04: ("get_relay_status_log", (), False),
     }
     client_commands = {
-        0x0000: (
+        0x00: (
             "get_weekly_schedule_response",
             (t.enum8, SeqDayOfWeek, SeqMode, t.List[t.int16s]),
             True,
         ),
-        0x0001: (
+        0x01: (
             "get_relay_status_log_response",
             (t.uint16_t, t.bitmap8, t.int16s, t.uint8_t, t.int16s, t.uint16_t),
             True,

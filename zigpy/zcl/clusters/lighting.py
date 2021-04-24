@@ -121,7 +121,7 @@ class Color(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x0000: (
+        0x00: (
             "move_to_hue",
             (
                 t.uint8_t,
@@ -132,12 +132,12 @@ class Color(Cluster):
             ),
             False,
         ),  # hue, direction, duration
-        0x0001: (
+        0x01: (
             "move_hue",
             (MoveMode, t.uint8_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
             False,
         ),  # move mode, rate
-        0x0002: (
+        0x02: (
             "step_hue",
             (
                 StepMode,
@@ -148,17 +148,17 @@ class Color(Cluster):
             ),
             False,
         ),  # mode, size, duration
-        0x0003: (
+        0x03: (
             "move_to_saturation",
             (t.uint8_t, t.uint16_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
             False,
         ),  # saturation, duration
-        0x0004: (
+        0x04: (
             "move_saturation",
             (MoveMode, t.uint8_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
             False,
         ),  # mode, rate
-        0x0005: (
+        0x05: (
             "step_saturation",
             (
                 StepMode,
@@ -169,7 +169,7 @@ class Color(Cluster):
             ),
             False,
         ),  # mode, size, duration
-        0x0006: (
+        0x06: (
             "move_to_hue_and_saturation",
             (
                 t.uint8_t,
@@ -180,7 +180,7 @@ class Color(Cluster):
             ),
             False,
         ),  # hue, saturation, duration
-        0x0007: (
+        0x07: (
             "move_to_color",
             (
                 t.uint16_t,
@@ -191,12 +191,12 @@ class Color(Cluster):
             ),
             False,
         ),  # x, y, duration
-        0x0008: (
+        0x08: (
             "move_color",
             (t.uint16_t, t.uint16_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
             False,
         ),  # ratex, ratey
-        0x0009: (
+        0x09: (
             "step_color",
             (
                 t.uint16_t,
@@ -207,12 +207,12 @@ class Color(Cluster):
             ),
             False,
         ),  # stepx, stepy, duration
-        0x000A: (
+        0x0A: (
             "move_to_color_temp",
             (t.uint16_t, t.uint16_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
             False,
         ),  # temperature, duration
-        0x0040: (
+        0x40: (
             "enhanced_move_to_hue",
             (
                 t.uint16_t,
@@ -223,12 +223,12 @@ class Color(Cluster):
             ),
             False,
         ),
-        0x0041: (
+        0x41: (
             "enhanced_move_hue",
             (MoveMode, t.uint16_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
             False,
         ),
-        0x0042: (
+        0x42: (
             "enhanced_step_hue",
             (
                 StepMode,
@@ -239,7 +239,7 @@ class Color(Cluster):
             ),
             False,
         ),
-        0x0043: (
+        0x43: (
             "enhanced_move_to_hue_and_saturation",
             (
                 t.uint16_t,
@@ -250,7 +250,7 @@ class Color(Cluster):
             ),
             False,
         ),
-        0x0044: (
+        0x44: (
             "color_loop_set",
             (
                 ColorLoopUpdateFlags,
@@ -263,12 +263,12 @@ class Color(Cluster):
             ),
             False,
         ),
-        0x0047: (
+        0x47: (
             "stop_move_step",
             (t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
             False,
         ),
-        0x004B: (
+        0x4B: (
             "move_color_temp",
             (
                 MoveMode,
@@ -280,7 +280,7 @@ class Color(Cluster):
             ),
             False,
         ),
-        0x004C: (
+        0x4C: (
             "step_color_temp",
             (
                 StepMode,

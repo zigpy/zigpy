@@ -147,20 +147,20 @@ class Metering(Cluster):
         0x0A03: ("projected_bill_time_stamp", t.uint32_t),
     }
     server_commands = {
-        0x0000: ("get_profile", (), False),
-        0x0001: ("req_mirror", (), False),
-        0x0002: ("mirror_rem", (), False),
-        0x0003: ("req_fast_poll_mode", (), False),
-        0x0004: ("get_snapshot", (), False),
-        0x0005: ("take_snapshot", (), False),
-        0x0006: ("mirror_report_attr_response", (), True),
+        0x00: ("get_profile", (), False),
+        0x01: ("req_mirror", (), False),
+        0x02: ("mirror_rem", (), False),
+        0x03: ("req_fast_poll_mode", (), False),
+        0x04: ("get_snapshot", (), False),
+        0x05: ("take_snapshot", (), False),
+        0x06: ("mirror_report_attr_response", (), True),
     }
     client_commands = {
-        0x0000: ("get_profile_response", (), True),
-        0x0001: ("req_mirror_response", (), True),
-        0x0002: ("mirror_rem_response", (), True),
-        0x0003: ("req_fast_poll_mode_response", (), True),
-        0x0004: ("get_snapshot_response", (), True),
+        0x00: ("get_profile_response", (), True),
+        0x01: ("req_mirror_response", (), True),
+        0x02: ("mirror_rem_response", (), True),
+        0x03: ("req_fast_poll_mode_response", (), True),
+        0x04: ("get_snapshot_response", (), True),
     }
 
 

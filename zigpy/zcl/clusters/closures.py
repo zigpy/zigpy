@@ -455,12 +455,12 @@ class WindowCovering(Cluster):
         0x0019: ("intermediate_setpoints_tilt", t.CharacterString),
     }
     server_commands = {
-        0x0000: ("up_open", (), False),
-        0x0001: ("down_close", (), False),
-        0x0002: ("stop", (), False),
-        0x0004: ("go_to_lift_value", (t.uint16_t,), False),
-        0x0005: ("go_to_lift_percentage", (t.uint8_t,), False),
-        0x0007: ("go_to_tilt_value", (t.uint16_t,), False),
-        0x0008: ("go_to_tilt_percentage", (t.uint8_t,), False),
+        0x00: ("up_open", (), False),
+        0x01: ("down_close", (), False),
+        0x02: ("stop", (), False),
+        0x04: ("go_to_lift_value", (t.uint16_t,), False),
+        0x05: ("go_to_lift_percentage", (t.uint8_t,), False),
+        0x07: ("go_to_tilt_value", (t.uint16_t,), False),
+        0x08: ("go_to_tilt_percentage", (t.uint8_t,), False),
     }
     client_commands = {}

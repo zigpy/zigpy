@@ -73,17 +73,17 @@ class IasZone(Cluster):
         0x0013: ("current_zone_sensitivity_level", t.uint8_t),
     }
     server_commands = {
-        0x0000: ("enroll_response", (EnrollResponse, t.uint8_t), True),
-        0x0001: ("init_normal_op_mode", (), False),
-        0x0002: ("init_test_mode", (t.uint8_t, t.uint8_t), False),
+        0x00: ("enroll_response", (EnrollResponse, t.uint8_t), True),
+        0x01: ("init_normal_op_mode", (), False),
+        0x02: ("init_test_mode", (t.uint8_t, t.uint8_t), False),
     }
     client_commands = {
-        0x0000: (
+        0x00: (
             "status_change_notification",
             (ZoneStatus, t.bitmap8, t.uint8_t, t.uint16_t),
             False,
         ),
-        0x0001: ("enroll", (ZoneType, t.uint16_t), False),
+        0x01: ("enroll", (ZoneType, t.uint16_t), False),
     }
 
 
@@ -163,43 +163,43 @@ class IasAce(Cluster):
     ep_attribute = "ias_ace"
     attributes = {}
     server_commands = {
-        0x0000: ("arm", (ArmMode, t.CharacterString, t.uint8_t), False),
-        0x0001: ("bypass", (t.LVList[t.uint8_t], t.CharacterString), False),
-        0x0002: ("emergency", (), False),
-        0x0003: ("fire", (), False),
-        0x0004: ("panic", (), False),
-        0x0005: ("get_zone_id_map", (), False),
-        0x0006: ("get_zone_info", (t.uint8_t,), False),
-        0x0007: ("get_panel_status", (), False),
-        0x0008: ("get_bypassed_zone_list", (), False),
-        0x0009: ("get_zone_status", (t.uint8_t, t.uint8_t, t.Bool, ZoneStatus), False),
+        0x00: ("arm", (ArmMode, t.CharacterString, t.uint8_t), False),
+        0x01: ("bypass", (t.LVList[t.uint8_t], t.CharacterString), False),
+        0x02: ("emergency", (), False),
+        0x03: ("fire", (), False),
+        0x04: ("panic", (), False),
+        0x05: ("get_zone_id_map", (), False),
+        0x06: ("get_zone_info", (t.uint8_t,), False),
+        0x07: ("get_panel_status", (), False),
+        0x08: ("get_bypassed_zone_list", (), False),
+        0x09: ("get_zone_status", (t.uint8_t, t.uint8_t, t.Bool, ZoneStatus), False),
     }
     client_commands = {
-        0x0000: ("arm_response", (ArmNotification,), True),
-        0x0001: ("get_zone_id_map_response", (t.List[t.bitmap16],), True),
-        0x0002: (
+        0x00: ("arm_response", (ArmNotification,), True),
+        0x01: ("get_zone_id_map_response", (t.List[t.bitmap16],), True),
+        0x02: (
             "get_zone_info_response",
             (t.uint8_t, ZoneType, t.EUI64, t.CharacterString),
             True,
         ),
-        0x0003: (
+        0x03: (
             "zone_status_changed",
             (t.uint8_t, ZoneStatus, AudibleNotification, t.CharacterString),
             False,
         ),
-        0x0004: (
+        0x04: (
             "panel_status_changed",
             (PanelStatus, t.uint8_t, AudibleNotification, AlarmStatus),
             False,
         ),
-        0x0005: (
+        0x05: (
             "panel_status_response",
             (PanelStatus, t.uint8_t, AudibleNotification, AlarmStatus),
             True,
         ),
-        0x0006: ("set_bypassed_zone_list", (t.LVList[t.uint8_t],), False),
-        0x0007: ("bypass_response", (t.LVList[BypassResponse],), True),
-        0x0008: ("get_zone_status_response", (t.Bool, t.LVList[ZoneStatusRsp]), True),
+        0x06: ("set_bypassed_zone_list", (t.LVList[t.uint8_t],), False),
+        0x07: ("bypass_response", (t.LVList[BypassResponse],), True),
+        0x08: ("get_zone_status_response", (t.Bool, t.LVList[ZoneStatusRsp]), True),
     }
 
 
@@ -329,7 +329,7 @@ class IasWd(Cluster):
     ep_attribute = "ias_wd"
     attributes = {0x0000: ("max_duration", t.uint16_t)}
     server_commands = {
-        0x0000: ("start_warning", (Warning, t.uint16_t, t.uint8_t, StrobeLevel), False),
-        0x0001: ("squawk", (Squawk,), False),
+        0x00: ("start_warning", (Warning, t.uint16_t, t.uint8_t, StrobeLevel), False),
+        0x01: ("squawk", (Squawk,), False),
     }
     client_commands = {}
