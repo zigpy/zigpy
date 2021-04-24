@@ -441,38 +441,74 @@ class Command(t.enum8):
 
 COMMANDS = {
     # id: (params, is_response)
-    Command.Configure_Reporting: ((t.List[AttributeReportingConfig],), False),
-    Command.Configure_Reporting_rsp: ((ConfigureReportingResponse,), True),
-    Command.Default_Response: ((t.uint8_t, Status), True),
-    Command.Discover_Attributes: ((t.uint16_t, t.uint8_t), False),
-    Command.Discover_Attributes_rsp: (
-        (t.Bool, t.List[DiscoverAttributesResponseRecord]),
+    Command.Read_Attributes: ({"attribute_ids": t.List[t.uint16_t]}, False),
+    Command.Read_Attributes_rsp: (
+        {"status_records": t.List[ReadAttributeRecord]},
         True,
     ),
-    Command.Discover_Attribute_Extended: ((t.uint16_t, t.uint8_t), False),
-    Command.Discover_Attribute_Extended_rsp: (
-        (t.Bool, t.List[DiscoverAttributesExtendedResponseRecord]),
+    Command.Write_Attributes: ({"attributes": t.List[Attribute]}, False),
+    Command.Write_Attributes_Undivided: ({"attributes": t.List[Attribute]}, False),
+    Command.Write_Attributes_rsp: ({"status_records": WriteAttributesResponse}, True),
+    Command.Write_Attributes_No_Response: ({"attributes": t.List[Attribute]}, False),
+    Command.Configure_Reporting: (
+        {"config_records": t.List[AttributeReportingConfig]},
+        False,
+    ),
+    Command.Configure_Reporting_rsp: (
+        {"status_records": ConfigureReportingResponse},
         True,
     ),
-    Command.Discover_Commands_Generated: ((t.uint8_t, t.uint8_t), False),
-    Command.Discover_Commands_Generated_rsp: ((t.Bool, t.List[t.uint8_t]), True),
-    Command.Discover_Commands_Received: ((t.uint8_t, t.uint8_t), False),
-    Command.Discover_Commands_Received_rsp: ((t.Bool, t.List[t.uint8_t]), True),
-    Command.Read_Attributes: ((t.List[t.uint16_t],), False),
-    Command.Read_Attributes_rsp: ((t.List[ReadAttributeRecord],), True),
-    # Command.Read_Attributes_Structured: ((, ), False),
-    Command.Read_Reporting_Configuration: ((t.List[ReadReportingConfigRecord],), False),
+    Command.Read_Reporting_Configuration: (
+        {"attribute_records": t.List[ReadReportingConfigRecord]},
+        False,
+    ),
     Command.Read_Reporting_Configuration_rsp: (
-        (t.List[AttributeReportingConfig],),
+        {"attribute_configs": t.List[AttributeReportingConfig]},
         True,
     ),
-    Command.Report_Attributes: ((t.List[Attribute],), False),
-    Command.Write_Attributes: ((t.List[Attribute],), False),
-    Command.Write_Attributes_No_Response: ((t.List[Attribute],), False),
-    Command.Write_Attributes_rsp: ((WriteAttributesResponse,), True),
+    Command.Report_Attributes: ({"attribute_reports": t.List[Attribute]}, False),
+    Command.Default_Response: ({"command_id": t.uint8_t, "status": Status}, True),
+    Command.Discover_Attributes: (
+        {"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
+        False,
+    ),
+    Command.Discover_Attributes_rsp: (
+        {
+            "discovery_complete": t.Bool,
+            "attribute_info": t.List[DiscoverAttributesResponseRecord],
+        },
+        True,
+    ),
+    # Command.Read_Attributes_Structured: ((, ), False),
     # Command.Write_Attributes_Structured: ((, ), False),
     # Command.Write_Attributes_Structured_rsp: ((, ), True),
-    Command.Write_Attributes_Undivided: ((t.List[Attribute],), False),
+    Command.Discover_Commands_Received: (
+        {"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
+        False,
+    ),
+    Command.Discover_Commands_Received_rsp: (
+        {"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
+        True,
+    ),
+    Command.Discover_Commands_Generated: (
+        {"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
+        False,
+    ),
+    Command.Discover_Commands_Generated_rsp: (
+        {"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
+        True,
+    ),
+    Command.Discover_Attribute_Extended: (
+        {"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
+        False,
+    ),
+    Command.Discover_Attribute_Extended_rsp: (
+        {
+            "discovery_complete": t.Bool,
+            "extended_attr_info": t.List[DiscoverAttributesExtendedResponseRecord],
+        },
+        True,
+    ),
 }
 
 

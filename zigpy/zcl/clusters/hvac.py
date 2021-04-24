@@ -1,7 +1,7 @@
 """HVAC Functional Domain"""
 
 import zigpy.types as t
-from zigpy.zcl import Cluster
+from zigpy.zcl import Cluster, ZCLCommand
 
 
 class Pump(Cluster):
@@ -318,25 +318,48 @@ class Thermostat(Cluster):
         0x0047: ("ac_capacity_format", ACCapacityFormat),
     }
     server_commands = {
-        0x00: ("setpoint_raise_lower", (SetpointMode, t.int8s), False),
-        0x01: (
+        0x00: ZCLCommand(
+            "setpoint_raise_lower", {"mode": SetpointMode, "amount": t.int8s}, False
+        ),
+        0x01: ZCLCommand(
             "set_weekly_schedule",
-            (t.enum8, SeqDayOfWeek, SeqMode, t.List[t.int16s]),
+            {
+                "num_transitions_for_sequence": t.enum8,
+                "day_of_week_for_sequence": SeqDayOfWeek,
+                "mode_for_sequence": SeqMode,
+                "values": t.List[t.int16s],
+            },  # TODO: properly parse values
             False,
         ),
-        0x02: ("get_weekly_schedule", (SeqDayOfWeek, SeqMode), False),
-        0x03: ("clear_weekly_schedule", (), False),
-        0x04: ("get_relay_status_log", (), False),
+        0x02: ZCLCommand(
+            "get_weekly_schedule",
+            {"days_to_return": SeqDayOfWeek, "mode_to_return": SeqMode},
+            False,
+        ),
+        0x03: ZCLCommand("clear_weekly_schedule", {}, False),
+        0x04: ZCLCommand("get_relay_status_log", {}, False),
     }
     client_commands = {
-        0x00: (
+        0x00: ZCLCommand(
             "get_weekly_schedule_response",
-            (t.enum8, SeqDayOfWeek, SeqMode, t.List[t.int16s]),
+            {
+                "num_transitions_for_sequence": t.enum8,
+                "day_of_week_for_sequence": SeqDayOfWeek,
+                "mode_for_sequence": SeqMode,
+                "values": t.List[t.int16s],
+            },  # TODO: properly parse values
             True,
         ),
-        0x01: (
+        0x01: ZCLCommand(
             "get_relay_status_log_response",
-            (t.uint16_t, t.bitmap8, t.int16s, t.uint8_t, t.int16s, t.uint16_t),
+            {
+                "time_of_day": t.uint16_t,
+                "relay_status": t.bitmap8,
+                "local_temperature": t.int16s,
+                "humidity_in_percentage": t.uint8_t,
+                "set_point": t.int16s,
+                "unread_entries": t.uint16_t,
+            },
             True,
         ),
     }

@@ -1,5 +1,5 @@
 import zigpy.types as t
-from zigpy.zcl import Cluster
+from zigpy.zcl import Cluster, ZCLCommand
 
 
 class Price(Cluster):
@@ -147,20 +147,20 @@ class Metering(Cluster):
         0x0A03: ("projected_bill_time_stamp", t.uint32_t),
     }
     server_commands = {
-        0x00: ("get_profile", (), False),
-        0x01: ("req_mirror", (), False),
-        0x02: ("mirror_rem", (), False),
-        0x03: ("req_fast_poll_mode", (), False),
-        0x04: ("get_snapshot", (), False),
-        0x05: ("take_snapshot", (), False),
-        0x06: ("mirror_report_attr_response", (), True),
+        0x00: ZCLCommand("get_profile", {}, False),
+        0x01: ZCLCommand("req_mirror", {}, False),
+        0x02: ZCLCommand("mirror_rem", {}, False),
+        0x03: ZCLCommand("req_fast_poll_mode", {}, False),
+        0x04: ZCLCommand("get_snapshot", {}, False),
+        0x05: ZCLCommand("take_snapshot", {}, False),
+        0x06: ZCLCommand("mirror_report_attr_response", {}, True),
     }
     client_commands = {
-        0x00: ("get_profile_response", (), True),
-        0x01: ("req_mirror_response", (), True),
-        0x02: ("mirror_rem_response", (), True),
-        0x03: ("req_fast_poll_mode_response", (), True),
-        0x04: ("get_snapshot_response", (), True),
+        0x00: ZCLCommand("get_profile_response", {}, True),
+        0x01: ZCLCommand("req_mirror_response", {}, True),
+        0x02: ZCLCommand("mirror_rem_response", {}, True),
+        0x03: ZCLCommand("req_fast_poll_mode_response", {}, True),
+        0x04: ZCLCommand("get_snapshot_response", {}, True),
     }
 
 

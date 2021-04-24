@@ -1,6 +1,8 @@
 import asyncio
+import dataclasses
 import enum
 import functools
+import inspect
 import logging
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Set, Tuple, Union
 
@@ -10,6 +12,49 @@ from zigpy.typing import EndpointType
 from zigpy.zcl import foundation
 
 LOGGER = logging.getLogger(__name__)
+
+AddressingMode = Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+
+
+def serialize_schema(schema, *args, **kwargs) -> bytes:
+    signature = inspect.Signature(
+        parameters=[
+            inspect.Parameter(
+                name=name.rstrip("?"),
+                annotation=param_type,
+                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default=(None if name.endswith("?") else inspect.Parameter.empty),
+            )
+            for name, param_type in schema.items()
+        ]
+    )
+
+    bound = signature.bind(*args, **kwargs)
+    bound.apply_defaults()
+
+    params = []
+
+    for name, value in bound.arguments.items():
+        if value is None:
+            continue
+
+        params.append(signature.parameters[name].annotation(value).serialize())
+
+    return b"".join(params)
+
+
+@dataclasses.dataclass(frozen=True)
+class ZCLCommand:
+    name: str
+    schema: dict
+    is_reply: bool
+
+    id: int = None
+    cluster_id: int = None
+    type: str = None
+
+    def replace(self, **kwargs):
+        return dataclasses.replace(self, **kwargs)
 
 
 class Registry(type):
@@ -26,14 +71,21 @@ class Registry(type):
         }
 
         for commands_type in ("server_commands", "client_commands"):
-            commands = getattr(cls, commands_type, None)
+            commands = getattr(cls, commands_type)
             manufacturer_specific = getattr(cls, f"manufacturer_{commands_type}", {})
             commands_idx = {}
+
             if manufacturer_specific:
                 commands = {**commands, **manufacturer_specific}
                 setattr(cls, commands_type, commands)
-            for command_id, (command_name, _, _) in commands.items():
-                commands_idx[command_name] = command_id
+
+            for command_id, command in list(commands.items()):
+                commands[command_id] = commands[command_id].replace(
+                    id=command_id,
+                    cluster_id=cls.cluster_id,
+                    type="server" if commands_type == "server_commands" else "client",
+                )
+
             setattr(cls, f"_{commands_type}_idx", commands_idx)
 
         if getattr(cls, "_skip_registry", False):
@@ -94,8 +146,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         return c
 
     def deserialize(self, data):
+        orig_data = data
         hdr, data = foundation.ZCLHeader.deserialize(data)
         self.debug("ZCL deserialize: %s", hdr)
+
         if hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND:
             # Cluster command
             if hdr.is_reply:
@@ -103,58 +157,72 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             else:
                 commands = self.server_commands
 
-            try:
-                schema = commands[hdr.command_id][1]
-                hdr.frame_control.is_reply = commands[hdr.command_id][2]
-            except KeyError:
+            if hdr.command_id not in commands:
                 self.warning("Unknown cluster-specific command %s", hdr.command_id)
                 return hdr, data
+
+            command = commands[hdr.command_id]
+            schema = command.schema
+            is_reply = command.is_reply
         else:
             # General command
             try:
-                schema = foundation.COMMANDS[hdr.command_id][0]
-                hdr.frame_control.is_reply = foundation.COMMANDS[hdr.command_id][1]
+                schema, is_reply = foundation.COMMANDS[hdr.command_id]
             except KeyError:
                 self.warning("Unknown foundation command %s", hdr.command_id)
                 return hdr, data
 
-        value, data = t.deserialize(data, schema)
-        if data != b"":
-            self.warning("Data remains after deserializing ZCL frame")
+        response = {name.rstrip("?"): None for name in schema.keys()}
 
-        return hdr, value
+        for name, param_type in schema.items():
+            try:
+                value, data = param_type.deserialize(data)
+            except ValueError:
+                if name.endswith("?"):
+                    break
+
+                raise
+
+            response[name.rstrip("?")] = value
+
+        if data != b"":
+            self.warning(
+                "Data remains after deserializing ZCL frame %s: %s", orig_data, data
+            )
+
+        hdr.frame_control.is_reply = is_reply
+
+        return hdr, response
 
     @util.retryable_request
     def request(
         self,
         general: bool,
         command_id: Union[foundation.Command, int, t.uint8_t],
-        schema: Tuple,
+        schema: dict,
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         expect_reply: bool = True,
         tsn: Optional[Union[int, t.uint8_t]] = None,
+        **kwargs,
     ):
-        optional = len([s for s in schema if hasattr(s, "optional") and s.optional])
-        if len(schema) < len(args) or len(args) < len(schema) - optional:
-            self.error("Schema and args lengths do not match in request")
+        try:
+            params = serialize_schema(schema, *args, **kwargs)
+        except (TypeError, ValueError) as e:
             error = asyncio.Future()
-            error.set_exception(
-                ValueError(
-                    "Wrong number of parameters for request, expected %d argument(s)"
-                    % len(schema)
-                )
-            )
+            error.set_exception(e)
             return error
 
         if tsn is None:
             tsn = self._endpoint.device.application.get_sequence()
+
         if general:
             hdr = foundation.ZCLHeader.general(tsn, command_id, manufacturer)
         else:
             hdr = foundation.ZCLHeader.cluster(tsn, command_id, manufacturer)
+
         hdr.manufacturer = manufacturer
-        data = hdr.serialize() + t.serialize(args, schema)
+        data = hdr.serialize() + params
 
         return self._endpoint.request(
             self.cluster_id, tsn, data, expect_reply=expect_reply, command_id=command_id
@@ -164,13 +232,18 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         self,
         general: bool,
         command_id: Union[foundation.Command, int, t.uint8_t],
-        schema: Tuple,
+        schema: dict,
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         tsn: Optional[Union[int, t.uint8_t]] = None,
+        **kwargs,
     ):
-        if len(schema) != len(args) and foundation.Status not in schema:
-            self.debug("Schema and args lengths do not match in reply")
+        try:
+            params = serialize_schema(schema, *args, **kwargs)
+        except (TypeError, ValueError) as e:
+            error = asyncio.Future()
+            error.set_exception(e)
+            return error
 
         if tsn is None:
             tsn = self._endpoint.device.application.get_sequence()
@@ -183,7 +256,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                 tsn, command_id, manufacturer, is_reply=True
             )
         hdr.manufacturer = manufacturer
-        data = hdr.serialize() + t.serialize(args, schema)
+        data = hdr.serialize() + params
 
         return self._endpoint.reply(self.cluster_id, tsn, data, command_id=command_id)
 
@@ -192,9 +265,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         hdr: foundation.ZCLHeader,
         args: List[Any],
         *,
-        dst_addressing: Optional[
-            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
-        ] = None,
+        dst_addressing: Optional[AddressingMode] = None,
     ):
         self.debug("ZCL request 0x%04x: %s", hdr.command_id, args)
         if hdr.frame_control.is_cluster:
@@ -209,9 +280,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         hdr: foundation.ZCLHeader,
         args: List[Any],
         *,
-        dst_addressing: Optional[
-            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
-        ] = None,
+        dst_addressing: Optional[AddressingMode] = None,
     ):
         self.debug("No handler for cluster command %s", hdr.command_id)
 
@@ -220,9 +289,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         hdr: foundation.ZCLHeader,
         args: List,
         *,
-        dst_addressing: Optional[
-            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
-        ] = None,
+        dst_addressing: Optional[AddressingMode] = None,
     ) -> None:
         if hdr.command_id == foundation.Command.Report_Attributes:
             valuestr = ", ".join(
@@ -465,6 +532,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         expect_reply: bool = True,
         tries: int = 1,
         tsn: Optional[Union[int, t.uint8_t]] = None,
+        **kwargs,
     ):
         schema = self.server_commands[command_id][1]
         return self.request(
@@ -476,6 +544,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             expect_reply=expect_reply,
             tries=tries,
             tsn=tsn,
+            **kwargs,
         )
 
     def client_command(
@@ -570,12 +639,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         expect_reply: bool = True,
         tries: int = 1,
         tsn: Optional[Union[int, t.uint8_t]] = None,
+        **kwargs,
     ):
-        schema = foundation.COMMANDS[command_id][0]
-        if foundation.COMMANDS[command_id][1]:
+        schema, is_reply = foundation.COMMANDS[command_id]
+        if is_reply:
             # should reply be retryable?
             return self.reply(
-                True, command_id, schema, *args, manufacturer=manufacturer, tsn=tsn
+                True,
+                command_id,
+                schema,
+                *args,
+                manufacturer=manufacturer,
+                tsn=tsn,
+                **kwargs,
             )
 
         return self.request(
@@ -587,6 +663,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             expect_reply=expect_reply,
             tries=tries,
             tsn=tsn,
+            **kwargs,
         )
 
     _configure_reporting = functools.partialmethod(

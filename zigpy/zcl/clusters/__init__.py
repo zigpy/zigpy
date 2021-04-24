@@ -5,10 +5,10 @@ from . import (
     homeautomation,
     hvac,
     lighting,
-    lightlink,
     manufacturer_specific,
     measurement,
     protocol,
     security,
     smartenergy,
+    touchlink,
 )

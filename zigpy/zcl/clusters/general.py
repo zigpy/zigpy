@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 import zigpy.types as t
-from zigpy.zcl import Cluster, foundation
+from zigpy.zcl import Cluster, ZCLCommand, foundation
 
 
 class Basic(Cluster):
@@ -224,7 +224,7 @@ class Basic(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {0x00: ("reset_fact_default", {}, False)}
+    server_commands = {0x00: ZCLCommand("reset_fact_default", {}, False)}
     client_commands = {}
 
 
@@ -381,17 +381,19 @@ class Identify(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: ("identify", {"identify_time": t.uint16_t}, False),
-        0x01: ("identify_query", {}, False),
+        0x00: ZCLCommand("identify", {"identify_time": t.uint16_t}, False),
+        0x01: ZCLCommand("identify_query", {}, False),
         # 0x02: ("ezmode_invoke", (t.bitmap8,), False),
         # 0x03: ("update_commission_state", (t.bitmap8,), False),
-        0x40: (
+        0x40: ZCLCommand(
             "trigger_effect",
             {"effect_id": EffectIdentifier, "effect_variant": EffectVariant},
             False,
         ),
     }
-    client_commands = {0x00: ("identify_query_response", {"timeout": t.uint16_t}, True)}
+    client_commands = {
+        0x00: ZCLCommand("identify_query_response", {"timeout": t.uint16_t}, True)
+    }
 
 
 class Groups(Cluster):
@@ -409,28 +411,28 @@ class Groups(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: (
+        0x00: ZCLCommand(
             "add",
             {"group_id": t.Group, "group_name": t.LimitedCharString(16)},
             False,
         ),
-        0x01: ("view", {"group_id": t.Group}, False),
-        0x02: ("get_membership", {"groups": t.LVList[t.Group]}, False),
-        0x03: ("remove", {"group_id": t.Group}, False),
-        0x04: ("remove_all", {}, False),
-        0x05: (
+        0x01: ZCLCommand("view", {"group_id": t.Group}, False),
+        0x02: ZCLCommand("get_membership", {"groups": t.LVList[t.Group]}, False),
+        0x03: ZCLCommand("remove", {"group_id": t.Group}, False),
+        0x04: ZCLCommand("remove_all", {}, False),
+        0x05: ZCLCommand(
             "add_if_identifying",
             {"group_id": t.Group, "group_name": t.LimitedCharString(16)},
             False,
         ),
     }
     client_commands = {
-        0x00: (
+        0x00: ZCLCommand(
             "add_response",
             {"status": foundation.Status, "group_id": t.Group},
             True,
         ),
-        0x01: (
+        0x01: ZCLCommand(
             "view_response",
             {
                 "status": foundation.Status,
@@ -439,12 +441,12 @@ class Groups(Cluster):
             },
             True,
         ),
-        0x02: (
+        0x02: ZCLCommand(
             "get_membership_response",
             {"capacity": t.uint8_t, "groups": t.LVList[t.Group]},
             True,
         ),
-        0x03: (
+        0x03: ZCLCommand(
             "remove_response",
             {"status": foundation.Status, "group_id": t.Group},
             True,
@@ -473,7 +475,7 @@ class Scenes(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: (
+        0x00: ZCLCommand(
             "add",
             {
                 "group_id": t.Group,
@@ -483,11 +485,11 @@ class Scenes(Cluster):
             },
             False,
         ),  # TODO: + extension field sets
-        0x01: ("view", {"group_id": t.Group, "scene_id": t.uint8_t}, False),
-        0x02: ("remove", {"group_id": t.Group, "scene_id": t.uint8_t}, False),
-        0x03: ("remove_all", {"group_id": t.Group}, False),
-        0x04: ("store", {"group_id": t.Group, "scene_id": t.uint8_t}, False),
-        0x05: (
+        0x01: ZCLCommand("view", {"group_id": t.Group, "scene_id": t.uint8_t}, False),
+        0x02: ZCLCommand("remove", {"group_id": t.Group, "scene_id": t.uint8_t}, False),
+        0x03: ZCLCommand("remove_all", {"group_id": t.Group}, False),
+        0x04: ZCLCommand("store", {"group_id": t.Group, "scene_id": t.uint8_t}, False),
+        0x05: ZCLCommand(
             "recall",
             {
                 "group_id": t.Group,
@@ -496,8 +498,8 @@ class Scenes(Cluster):
             },
             False,
         ),
-        0x06: ("get_scene_membership", {"group_id": t.Group}, False),
-        0x40: (
+        0x06: ZCLCommand("get_scene_membership", {"group_id": t.Group}, False),
+        0x40: ZCLCommand(
             "enhanced_add",
             {
                 "group_id": t.Group,
@@ -507,8 +509,10 @@ class Scenes(Cluster):
             },
             False,
         ),
-        0x41: ("enhanced_view", {"group_id": t.Group, "scene_id": t.uint8_t}, False),
-        0x42: (
+        0x41: ZCLCommand(
+            "enhanced_view", {"group_id": t.Group, "scene_id": t.uint8_t}, False
+        ),
+        0x42: ZCLCommand(
             "copy",
             {
                 "mode": t.uint8_t,
@@ -521,12 +525,12 @@ class Scenes(Cluster):
         ),
     }
     client_commands = {
-        0x00: (
+        0x00: ZCLCommand(
             "add_response",
             {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
             True,
         ),
-        0x01: (
+        0x01: ZCLCommand(
             "view_response",
             {
                 "status": foundation.Status,
@@ -537,22 +541,22 @@ class Scenes(Cluster):
             },
             True,
         ),  # TODO: + extension field sets
-        0x02: (
+        0x02: ZCLCommand(
             "remove_response",
             {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
             True,
         ),
-        0x03: (
+        0x03: ZCLCommand(
             "remove_all_response",
             {"status": foundation.Status, "group_id": t.Group},
             True,
         ),
-        0x04: (
+        0x04: ZCLCommand(
             "store_response",
             {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
             True,
         ),
-        0x06: (
+        0x06: ZCLCommand(
             "get_scene_membership_response",
             {
                 "status": foundation.Status,
@@ -562,12 +566,12 @@ class Scenes(Cluster):
             },
             True,
         ),
-        0x40: (
+        0x40: ZCLCommand(
             "enhanced_add_response",
             {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
             True,
         ),
-        0x41: (
+        0x41: ZCLCommand(
             "enhanced_view_response",
             {
                 "status": foundation.Status,
@@ -578,7 +582,7 @@ class Scenes(Cluster):
             },
             True,
         ),  # TODO: + extension field sets
-        0x42: (
+        0x42: ZCLCommand(
             "copy_response",
             {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
             True,
@@ -613,16 +617,16 @@ class OnOff(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: ("off", {}, False),
-        0x01: ("on", {}, False),
-        0x02: ("toggle", {}, False),
-        0x40: (
+        0x00: ZCLCommand("off", {}, False),
+        0x01: ZCLCommand("on", {}, False),
+        0x02: ZCLCommand("toggle", {}, False),
+        0x40: ZCLCommand(
             "off_with_effect",
             {"effect_id": OffEffectIdentifier, "effect_variant": t.uint8_t},
             False,
         ),
-        0x41: ("on_with_recall_global_scene", {}, False),
-        0x42: (
+        0x41: ZCLCommand("on_with_recall_global_scene", {}, False),
+        0x42: ZCLCommand(
             "on_with_timed_off",
             {
                 "on_off_control": t.uint8_t,
@@ -700,7 +704,7 @@ class LevelControl(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: (
+        0x00: ZCLCommand(
             "move_to_level",
             {
                 "level": t.uint8_t,
@@ -710,7 +714,7 @@ class LevelControl(Cluster):
             },
             False,
         ),
-        0x01: (
+        0x01: ZCLCommand(
             "move",
             {
                 "move_mode": MoveMode,
@@ -720,7 +724,7 @@ class LevelControl(Cluster):
             },
             False,
         ),
-        0x02: (
+        0x02: ZCLCommand(
             "step",
             {
                 "step_mode": StepMode,
@@ -731,7 +735,7 @@ class LevelControl(Cluster):
             },
             False,
         ),
-        0x03: (
+        0x03: ZCLCommand(
             "stop",
             {
                 "options_mask?": t.bitmap8,
@@ -739,13 +743,15 @@ class LevelControl(Cluster):
             },
             False,
         ),
-        0x04: (
+        0x04: ZCLCommand(
             "move_to_level_with_on_off",
             {"level": t.uint8_t, "transition_time": t.uint16_t},
             False,
         ),
-        0x05: ("move_with_on_off", {"move_mode": MoveMode, "rate": t.uint8_t}, False),
-        0x06: (
+        0x05: ZCLCommand(
+            "move_with_on_off", {"move_mode": MoveMode, "rate": t.uint8_t}, False
+        ),
+        0x06: ZCLCommand(
             "step_with_on_off",
             {
                 "step_mode": StepMode,
@@ -754,8 +760,8 @@ class LevelControl(Cluster):
             },
             False,
         ),
-        0x07: ("stop_with_on_off", {}, False),
-        0x08: ("move_to_closest_frequency", {"frequency": t.uint16_t}, False),
+        0x07: ZCLCommand("stop_with_on_off", {}, False),
+        0x08: ZCLCommand("move_to_closest_frequency", {"frequency": t.uint16_t}, False),
     }
     client_commands = {}
 
@@ -773,15 +779,19 @@ class Alarms(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: ("reset", {"alarm_code": t.uint8_t, "cluster_id": t.uint16_t}, False),
-        0x01: ("reset_all", {}, False),
-        0x02: ("get_alarm", {}, False),
-        0x03: ("reset_log", {}, False),
+        0x00: ZCLCommand(
+            "reset", {"alarm_code": t.uint8_t, "cluster_id": t.uint16_t}, False
+        ),
+        0x01: ZCLCommand("reset_all", {}, False),
+        0x02: ZCLCommand("get_alarm", {}, False),
+        0x03: ZCLCommand("reset_log", {}, False),
         # 0x04: ("publish_event_log", {}, False),
     }
     client_commands = {
-        0x00: ("alarm", {"alarm_code": t.uint8_t, "cluster_id": t.uint16_t}, False),
-        0x01: (
+        0x00: ZCLCommand(
+            "alarm", {"alarm_code": t.uint8_t, "cluster_id": t.uint16_t}, False
+        ),
+        0x01: ZCLCommand(
             "get_alarm_response",
             {
                 "status": foundation.Status,
@@ -882,7 +892,7 @@ class RSSILocation(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: (
+        0x00: ZCLCommand(
             "set_absolute_location",
             {
                 "coordinate1": t.int16s,
@@ -893,7 +903,7 @@ class RSSILocation(Cluster):
             },
             False,
         ),
-        0x01: (
+        0x01: ZCLCommand(
             "set_dev_config",
             {
                 "power": t.int16s,
@@ -904,13 +914,13 @@ class RSSILocation(Cluster):
             },
             False,
         ),
-        0x02: ("get_dev_config", {"target_addr": t.EUI64}, False),
-        0x03: (
+        0x02: ZCLCommand("get_dev_config", {"target_addr": t.EUI64}, False),
+        0x03: ZCLCommand(
             "get_location_data",
             {"packed": t.bitmap8, "num_responses": t.uint8_t, "target_addr": t.EUI64},
             False,
         ),
-        0x04: (
+        0x04: ZCLCommand(
             "rssi_response",
             {
                 "replying_device": t.EUI64,
@@ -922,7 +932,7 @@ class RSSILocation(Cluster):
             },
             True,
         ),
-        0x05: (
+        0x05: ZCLCommand(
             "send_pings",
             {
                 "target_addr": t.EUI64,
@@ -931,7 +941,7 @@ class RSSILocation(Cluster):
             },
             False,
         ),
-        0x06: (
+        0x06: ZCLCommand(
             "anchor_node_announce",
             {
                 "anchor_node_ieee_addr": t.EUI64,
@@ -952,7 +962,7 @@ class RSSILocation(Cluster):
         num_measurements: t.uint8_t
 
     client_commands = {
-        0x00: (
+        0x00: ZCLCommand(
             "dev_config_response",
             {
                 "status": foundation.Status,
@@ -964,7 +974,7 @@ class RSSILocation(Cluster):
             },
             True,
         ),
-        0x01: (
+        0x01: ZCLCommand(
             "location_data_response",
             {
                 "status": foundation.Status,
@@ -972,7 +982,7 @@ class RSSILocation(Cluster):
                 "coordinate1?": t.int16s,
                 "coordinate2?": t.int16s,
                 "coordinate3?": t.int16s,
-                "power?": t.int16_t,
+                "power?": t.uint16_t,
                 "path_loss_exponent?": t.uint8_t,
                 "location_method?": t.uint8_t,
                 "quality_measure?": t.uint8_t,
@@ -980,16 +990,18 @@ class RSSILocation(Cluster):
             },
             True,
         ),
-        0x02: ("location_data_notification", {}, False),
-        0x03: ("compact_location_data_notification", {}, False),
-        0x04: ("rssi_ping", {"location_type": t.uint8_t}, False),  # data8
-        0x05: ("rssi_req", {}, False),
-        0x06: (
+        0x02: ZCLCommand("location_data_notification", {}, False),
+        0x03: ZCLCommand("compact_location_data_notification", {}, False),
+        0x04: ZCLCommand("rssi_ping", {"location_type": t.uint8_t}, False),  # data8
+        0x05: ZCLCommand("rssi_req", {}, False),
+        0x06: ZCLCommand(
             "report_rssi_measurements",
             {"measuring_device": t.EUI64, "neighbors": t.LVList[NeighborInfo]},
             False,
         ),
-        0x07: ("request_own_location", {"ieee_of_blind_node": t.EUI64}, False),
+        0x07: ZCLCommand(
+            "request_own_location", {"ieee_of_blind_node": t.EUI64}, False
+        ),
     }
 
 
@@ -1205,7 +1217,7 @@ class Commissioning(Cluster):
         0x0000: ("short_address", t.uint16_t),
         0x0001: ("extended_pan_id", t.EUI64),
         0x0002: ("pan_id", t.uint16_t),
-        0x0003: ("channelmask", t.bitmap32),
+        0x0003: ("channelmask", t.Channels),
         0x0004: ("protocol_version", t.uint8_t),
         0x0005: ("stack_profile", t.uint8_t),
         0x0006: ("startup_control", t.enum8),
@@ -1233,16 +1245,38 @@ class Commissioning(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: ("restart_device", (t.uint8_t, t.uint8_t, t.uint8_t), False),
-        0x01: ("save_startup_parameters", (t.uint8_t, t.uint8_t), False),
-        0x02: ("restore_startup_parameters", (t.uint8_t, t.uint8_t), False),
-        0x03: ("reset_startup_parameters", (t.uint8_t, t.uint8_t), False),
+        0x00: ZCLCommand(
+            "restart_device",
+            {"options": t.bitmap8, "delay": t.uint8_t, "jitter": t.uint8_t},
+            False,
+        ),
+        0x01: ZCLCommand(
+            "save_startup_parameters", {"options": t.bitmap8, "index": t.uint8_t}, False
+        ),
+        0x02: ZCLCommand(
+            "restore_startup_parameters",
+            {"options": t.bitmap8, "index": t.uint8_t},
+            False,
+        ),
+        0x03: ZCLCommand(
+            "reset_startup_parameters",
+            {"options": t.bitmap8, "index": t.uint8_t},
+            False,
+        ),
     }
     client_commands = {
-        0x00: ("restart_device_response", (t.uint8_t,), True),
-        0x01: ("save_startup_params_response", (t.uint8_t,), True),
-        0x02: ("restore_startup_params_response", (t.uint8_t,), True),
-        0x03: ("reset_startup_params_response", (t.uint8_t,), True),
+        0x00: ZCLCommand(
+            "restart_device_response", {"status": foundation.Status}, True
+        ),
+        0x01: ZCLCommand(
+            "save_startup_params_response", {"status": foundation.Status}, True
+        ),
+        0x02: ZCLCommand(
+            "restore_startup_params_response", {"status": foundation.Status}, True
+        ),
+        0x03: ZCLCommand(
+            "reset_startup_params_response", {"status": foundation.Status}, True
+        ),
     }
 
 
@@ -1295,7 +1329,7 @@ class Ota(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x01: (
+        0x01: ZCLCommand(
             "query_next_image",
             {
                 "field_control": t.uint8_t,
@@ -1306,7 +1340,7 @@ class Ota(Cluster):
             },
             False,
         ),
-        0x03: (
+        0x03: ZCLCommand(
             "image_block",
             {
                 "field_control": t.uint8_t,
@@ -1320,7 +1354,7 @@ class Ota(Cluster):
             },
             False,
         ),
-        0x04: (
+        0x04: ZCLCommand(
             "image_page",
             {
                 "field_control": t.uint8_t,
@@ -1335,7 +1369,7 @@ class Ota(Cluster):
             },
             False,
         ),
-        0x06: (
+        0x06: ZCLCommand(
             "upgrade_end",
             {
                 "status": foundation.Status,
@@ -1345,7 +1379,7 @@ class Ota(Cluster):
             },
             False,
         ),
-        0x08: (
+        0x08: ZCLCommand(
             "query_specific_file",
             {
                 "request_node_addr": t.EUI64,
@@ -1358,7 +1392,7 @@ class Ota(Cluster):
         ),
     }
     client_commands = {
-        0x00: (
+        0x00: ZCLCommand(
             "image_notify",
             {
                 "payload_type": t.uint8_t,
@@ -1369,7 +1403,7 @@ class Ota(Cluster):
             },
             False,
         ),
-        0x02: (
+        0x02: ZCLCommand(
             "query_next_image_response",
             {
                 "status": foundation.Status,
@@ -1381,7 +1415,7 @@ class Ota(Cluster):
             True,
         ),
         # XXX: the response format completely changes if the status is WAIT_FOR_DATA!
-        0x05: (
+        0x05: ZCLCommand(
             "image_block_response",
             {
                 "status": foundation.Status,
@@ -1393,7 +1427,7 @@ class Ota(Cluster):
             },
             True,
         ),
-        0x07: (
+        0x07: ZCLCommand(
             "upgrade_end_response",
             {
                 "manufacturer_code": t.uint16_t,
@@ -1404,7 +1438,7 @@ class Ota(Cluster):
             },
             True,
         ),
-        0x09: (
+        0x09: ZCLCommand(
             "query_specific_file_response",
             {
                 "status": foundation.Status,
@@ -1624,9 +1658,11 @@ class PowerProfile(Cluster):
 
     # XXX: are these flipped?
     server_commands = {
-        0x00: ("power_profile_request", {"power_profile_id": t.uint8_t}, False),
-        0x01: ("power_profile_state_request", {}, False),
-        0x02: (
+        0x00: ZCLCommand(
+            "power_profile_request", {"power_profile_id": t.uint8_t}, False
+        ),
+        0x01: ZCLCommand("power_profile_state_request", {}, False),
+        0x02: ZCLCommand(
             "get_power_profile_price_response",
             {
                 "power_profile_id": t.uint8_t,
@@ -1636,7 +1672,7 @@ class PowerProfile(Cluster):
             },
             True,
         ),
-        0x03: (
+        0x03: ZCLCommand(
             "get_overall_schedule_price_response",
             {
                 "currency": t.uint16_t,
@@ -1645,7 +1681,7 @@ class PowerProfile(Cluster):
             },
             True,
         ),
-        0x04: (
+        0x04: ZCLCommand(
             "energy_phases_schedule_notification",
             {
                 "power_profile_id": t.uint8_t,
@@ -1653,7 +1689,7 @@ class PowerProfile(Cluster):
             },
             False,
         ),
-        0x05: (
+        0x05: ZCLCommand(
             "energy_phases_schedule_response",
             {
                 "power_profile_id": t.uint8_t,
@@ -1661,17 +1697,17 @@ class PowerProfile(Cluster):
             },
             True,
         ),
-        0x06: (
+        0x06: ZCLCommand(
             "power_profile_schedule_constraints_request",
             {"power_profile_id": t.uint8_t},
             False,
         ),
-        0x07: (
+        0x07: ZCLCommand(
             "energy_phases_schedule_state_request",
             {"power_profile_id": t.uint8_t},
             False,
         ),
-        0x08: (
+        0x08: ZCLCommand(
             "get_power_profile_price_extended_response",
             {
                 "power_profile_id": t.uint8_t,
@@ -1683,7 +1719,7 @@ class PowerProfile(Cluster):
         ),
     }
     client_commands = {
-        0x00: (
+        0x00: ZCLCommand(
             "power_profile_notification",
             {
                 "total_profile_num": t.uint8_t,
@@ -1692,7 +1728,7 @@ class PowerProfile(Cluster):
             },
             False,
         ),
-        0x01: (
+        0x01: ZCLCommand(
             "power_profile_response",
             {
                 "total_profile_num": t.uint8_t,
@@ -1701,34 +1737,36 @@ class PowerProfile(Cluster):
             },
             True,
         ),
-        0x02: (
+        0x02: ZCLCommand(
             "power_profile_state_response",
             {"power_profiles": t.LVList[PowerProfile]},
             True,
         ),
-        0x03: ("get_power_profile_price", {"power_profile_id": t.uint8_t}, False),
-        0x04: (
+        0x03: ZCLCommand(
+            "get_power_profile_price", {"power_profile_id": t.uint8_t}, False
+        ),
+        0x04: ZCLCommand(
             "power_profile_state_notification",
             {"power_profiles": t.LVList[PowerProfile]},
             False,
         ),
-        0x05: ("get_overall_schedule_price", {}, False),
-        0x06: (
+        0x05: ZCLCommand("get_overall_schedule_price", {}, False),
+        0x06: ZCLCommand(
             "energy_phases_schedule_request",
             {"power_profile_id": t.uint8_t},
             False,
         ),
-        0x07: (
+        0x07: ZCLCommand(
             "energy_phases_schedule_state_response",
             {"power_profile_id": t.uint8_t, "num_scheduled_energy_phases": t.uint8_t},
             True,
         ),
-        0x08: (
+        0x08: ZCLCommand(
             "energy_phases_schedule_state_notification",
             {"power_profile_id": t.uint8_t, "num_scheduled_energy_phases": t.uint8_t},
             False,
         ),
-        0x09: (
+        0x09: ZCLCommand(
             "power_profile_schedule_constraints_notification",
             {
                 "power_profile_id": t.uint8_t,
@@ -1737,7 +1775,7 @@ class PowerProfile(Cluster):
             },
             False,
         ),
-        0x0A: (
+        0x0A: ZCLCommand(
             "power_profile_schedule_constraints_response",
             {
                 "power_profile_id": t.uint8_t,
@@ -1746,7 +1784,7 @@ class PowerProfile(Cluster):
             },
             True,
         ),
-        0x0B: (
+        0x0B: ZCLCommand(
             "get_power_profile_price_extended",
             {
                 "options": t.bitmap8,
@@ -1785,20 +1823,22 @@ class PollControl(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: (
+        0x00: ZCLCommand(
             "checkin_response",
             {"start_fast_polling": t.Bool, "fast_poll_timeout": t.uint16_t},
             True,
         ),
-        0x01: ("fast_poll_stop", {}, False),
-        0x02: ("set_long_poll_interval", {"new_long_poll_interval": t.uint32_t}, False),
-        0x03: (
+        0x01: ZCLCommand("fast_poll_stop", {}, False),
+        0x02: ZCLCommand(
+            "set_long_poll_interval", {"new_long_poll_interval": t.uint32_t}, False
+        ),
+        0x03: ZCLCommand(
             "set_short_poll_interval",
             {"new_short_poll_interval": t.uint16_t},
             False,
         ),
     }
-    client_commands = {0x0000: ("checkin", {}, False)}
+    client_commands = {0x0000: ZCLCommand("checkin", {}, False)}
 
 
 class GreenPowerProxy(Cluster):

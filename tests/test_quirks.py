@@ -452,10 +452,10 @@ class ManufacturerSpecificCluster(zigpy.quirks.CustomCluster):
     ep_attribute = "just_a_cluster"
     attributes = {0: ("attr0", t.uint8_t)}
     manufacturer_attributes = {1: ("attr1", t.uint16_t)}
-    client_commands = {0: ("client_cmd0", (), False)}
-    manufacturer_client_commands = {1: ("client_cmd1", (), False)}
-    server_commands = {0: ("server_cmd0", (), False)}
-    manufacturer_server_commands = {1: ("server_cmd1", (), False)}
+    client_commands = {0: zcl.ZCLCommand("client_cmd0", {}, False)}
+    manufacturer_client_commands = {1: zcl.ZCLCommand("client_cmd1", {}, False)}
+    server_commands = {0: zcl.ZCLCommand("server_cmd0", {}, False)}
+    manufacturer_server_commands = {1: zcl.ZCLCommand("server_cmd1", {}, False)}
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 """Lighting Functional Domain"""
 
 import zigpy.types as t
-from zigpy.zcl import Cluster, foundation
+from zigpy.zcl import Cluster, ZCLCommand, foundation
 
 
 class Color(Cluster):
@@ -121,7 +121,7 @@ class Color(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: (
+        0x00: ZCLCommand(
             "move_to_hue",
             {
                 "hue": t.uint8_t,
@@ -132,7 +132,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x01: (
+        0x01: ZCLCommand(
             "move_hue",
             {
                 "move_mode": MoveMode,
@@ -142,7 +142,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x02: (
+        0x02: ZCLCommand(
             "step_hue",
             {
                 "setp_mode": StepMode,
@@ -153,7 +153,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x03: (
+        0x03: ZCLCommand(
             "move_to_saturation",
             {
                 "saturation": t.uint8_t,
@@ -163,7 +163,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x04: (
+        0x04: ZCLCommand(
             "move_saturation",
             {
                 "move_mode": MoveMode,
@@ -173,7 +173,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x05: (
+        0x05: ZCLCommand(
             "step_saturation",
             {
                 "step_mode": StepMode,
@@ -184,7 +184,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x06: (
+        0x06: ZCLCommand(
             "move_to_hue_and_saturation",
             {
                 "hue": t.uint8_t,
@@ -195,7 +195,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x07: (
+        0x07: ZCLCommand(
             "move_to_color",
             {
                 "color_x": t.uint16_t,
@@ -206,7 +206,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x08: (
+        0x08: ZCLCommand(
             "move_color",
             {
                 "rate_x": t.uint16_t,
@@ -216,7 +216,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x09: (
+        0x09: ZCLCommand(
             "step_color",
             {
                 "step_x": t.uint16_t,
@@ -227,7 +227,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x0A: (
+        0x0A: ZCLCommand(
             "move_to_color_temp",
             {
                 "color_temp_mireds": t.uint16_t,
@@ -237,7 +237,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x40: (
+        0x40: ZCLCommand(
             "enhanced_move_to_hue",
             {
                 "enhanced_hue": t.uint16_t,
@@ -248,7 +248,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x41: (
+        0x41: ZCLCommand(
             "enhanced_move_hue",
             {
                 "move_mode": MoveMode,
@@ -258,7 +258,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x42: (
+        0x42: ZCLCommand(
             "enhanced_step_hue",
             {
                 "step_mode": StepMode,
@@ -269,7 +269,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x43: (
+        0x43: ZCLCommand(
             "enhanced_move_to_hue_and_saturation",
             {
                 "enhanced_hue": t.uint16_t,
@@ -280,7 +280,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x44: (
+        0x44: ZCLCommand(
             "color_loop_set",
             {
                 "update_flags": ColorLoopUpdateFlags,
@@ -293,7 +293,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x47: (
+        0x47: ZCLCommand(
             "stop_move_step",
             {
                 "options_mask?": t.bitmap8,
@@ -301,7 +301,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x4B: (
+        0x4B: ZCLCommand(
             "move_color_temp",
             {
                 "move_mode": MoveMode,
@@ -313,7 +313,7 @@ class Color(Cluster):
             },
             False,
         ),
-        0x4C: (
+        0x4C: ZCLCommand(
             "step_color_temp",
             {
                 "step_mode": StepMode,

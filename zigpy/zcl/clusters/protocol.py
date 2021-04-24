@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import zigpy.types as t
-from zigpy.zcl import Cluster
+from zigpy.zcl import Cluster, ZCLCommand
 
 
 class DateTime(t.Struct):
@@ -19,10 +19,10 @@ class GenericTunnel(Cluster):
         0x0002: ("max_outgo_trans_size", t.uint16_t),
         0x0003: ("protocol_addr", t.LVBytes),
     }
-    server_commands = {0x00: ("match_protocol_addr", (), False)}
+    server_commands = {0x00: ZCLCommand("match_protocol_addr", {}, False)}
     client_commands = {
-        0x00: ("match_protocol_addr_response", (), True),
-        0x01: ("advertise_protocol_address", (), False),
+        0x00: ZCLCommand("match_protocol_addr_response", {}, True),
+        0x01: ZCLCommand("advertise_protocol_address", {}, False),
     }
 
 
@@ -30,7 +30,7 @@ class BacnetProtocolTunnel(Cluster):
     cluster_id = 0x0601
     ep_attribute = "bacnet_tunnel"
     attributes = {}
-    server_commands = {0x00: ("transfer_npdu", (t.LVBytes,), False)}
+    server_commands = {0x00: ZCLCommand("transfer_npdu", {"npdu": t.LVBytes}, False)}
     client_commands = {}
 
 
@@ -68,10 +68,10 @@ class AnalogInputExtended(Cluster):
         # integer, time of day, or structure of (date, time of day))
     }
     server_commands = {
-        0x00: ("transfer_apdu", (), False),
-        0x01: ("connect_req", (), False),
-        0x02: ("disconnect_req", (), False),
-        0x03: ("connect_status_noti", (), False),
+        0x00: ZCLCommand("transfer_apdu", {}, False),
+        0x01: ZCLCommand("connect_req", {}, False),
+        0x02: ZCLCommand("disconnect_req", {}, False),
+        0x03: ZCLCommand("connect_status_noti", {}, False),
     }
     client_commands = {}
 

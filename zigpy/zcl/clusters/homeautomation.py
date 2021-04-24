@@ -1,5 +1,5 @@
 import zigpy.types as t
-from zigpy.zcl import Cluster
+from zigpy.zcl import Cluster, ZCLCommand
 
 
 class ApplianceIdentification(Cluster):
@@ -51,11 +51,11 @@ class ApplianceEventAlerts(Cluster):
     name = "Appliance Event Alerts"
     ep_attribute = "appliance_event"
     attributes = {}
-    server_commands = {0x00: ("get_alerts", (), False)}
+    server_commands = {0x00: ZCLCommand("get_alerts", {}, False)}
     client_commands = {
-        0x00: ("get_alarts_response", (), True),
-        0x01: ("alerts_notification", (), False),
-        0x02: ("event_notification", (), False),
+        0x00: ZCLCommand("get_alarts_response", {}, True),
+        0x01: ZCLCommand("alerts_notification", {}, False),
+        0x02: ZCLCommand("event_notification", {}, False),
     }
 
 
@@ -67,12 +67,15 @@ class ApplianceStatistics(Cluster):
         0x0000: ("log_max_size", t.uint32_t),
         0x0001: ("log_queue_max_size", t.uint8_t),
     }
-    server_commands = {0x00: ("log", (), False), 0x0001: ("log_queue", (), False)}
+    server_commands = {
+        0x00: ZCLCommand("log", {}, False),
+        0x01: ZCLCommand("log_queue", {}, False),
+    }
     client_commands = {
-        0x00: ("log_notification", (), False),
-        0x01: ("log_response", (), True),
-        0x02: ("log_queue_response", (), True),
-        0x03: ("statistics_available", (), False),
+        0x00: ZCLCommand("log_notification", {}, False),
+        0x01: ZCLCommand("log_response", {}, True),
+        0x02: ZCLCommand("log_queue_response", {}, True),
+        0x03: ZCLCommand("statistics_available", {}, False),
     }
 
 
@@ -223,12 +226,12 @@ class ElectricalMeasurement(Cluster):
         0x0A17: ("rms_voltage_swell_period_ph__c", t.uint16_t),
     }
     server_commands = {
-        0x00: ("get_profile_info", (), False),
-        0x01: ("get_measurement_profile", (), False),
+        0x00: ZCLCommand("get_profile_info", {}, False),
+        0x01: ZCLCommand("get_measurement_profile", {}, False),
     }
     client_commands = {
-        0x00: ("get_profile_info_response", (), True),
-        0x01: ("get_measurement_profile_response", (), True),
+        0x00: ZCLCommand("get_profile_info_response", {}, True),
+        0x01: ZCLCommand("get_measurement_profile_response", {}, True),
     }
 
 
