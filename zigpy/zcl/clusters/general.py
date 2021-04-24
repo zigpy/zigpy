@@ -224,7 +224,7 @@ class Basic(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {0x00: ("reset_fact_default", (), False)}
+    server_commands = {0x00: ("reset_fact_default", {}, False)}
     client_commands = {}
 
 
@@ -381,13 +381,17 @@ class Identify(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: ("identify", (t.uint16_t,), False),
-        0x01: ("identify_query", (), False),
+        0x00: ("identify", {"identify_time": t.uint16_t}, False),
+        0x01: ("identify_query", {}, False),
         # 0x02: ("ezmode_invoke", (t.bitmap8,), False),
         # 0x03: ("update_commission_state", (t.bitmap8,), False),
-        0x40: ("trigger_effect", (EffectIdentifier, EffectVariant), False),
+        0x40: (
+            "trigger_effect",
+            {"effect_id": EffectIdentifier, "effect_variant": EffectVariant},
+            False,
+        ),
     }
-    client_commands = {0x00: ("identify_query_response", (t.uint16_t,), True)}
+    client_commands = {0x00: ("identify_query_response", {"timeout": t.uint16_t}, True)}
 
 
 class Groups(Cluster):
@@ -405,22 +409,46 @@ class Groups(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: ("add", (t.Group, t.LimitedCharString(16)), False),
-        0x01: ("view", (t.Group,), False),
-        0x02: ("get_membership", (t.LVList[t.Group],), False),
-        0x03: ("remove", (t.Group,), False),
-        0x04: ("remove_all", (), False),
-        0x05: ("add_if_identifying", (t.Group, t.LimitedCharString(16)), False),
+        0x00: (
+            "add",
+            {"group_id": t.Group, "group_name": t.LimitedCharString(16)},
+            False,
+        ),
+        0x01: ("view", {"group_id": t.Group}, False),
+        0x02: ("get_membership", {"groups": t.LVList[t.Group]}, False),
+        0x03: ("remove", {"group_id": t.Group}, False),
+        0x04: ("remove_all", {}, False),
+        0x05: (
+            "add_if_identifying",
+            {"group_id": t.Group, "group_name": t.LimitedCharString(16)},
+            False,
+        ),
     }
     client_commands = {
-        0x00: ("add_response", (foundation.Status, t.Group), True),
-        0x01: (
-            "view_response",
-            (foundation.Status, t.Group, t.LimitedCharString(16)),
+        0x00: (
+            "add_response",
+            {"status": foundation.Status, "group_id": t.Group},
             True,
         ),
-        0x02: ("get_membership_response", (t.uint8_t, t.LVList[t.Group]), True),
-        0x03: ("remove_response", (foundation.Status, t.Group), True),
+        0x01: (
+            "view_response",
+            {
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "group_name": t.LimitedCharString(16),
+            },
+            True,
+        ),
+        0x02: (
+            "get_membership_response",
+            {"capacity": t.uint8_t, "groups": t.LVList[t.Group]},
+            True,
+        ),
+        0x03: (
+            "remove_response",
+            {"status": foundation.Status, "group_id": t.Group},
+            True,
+        ),
     }
 
 
@@ -447,42 +475,114 @@ class Scenes(Cluster):
     server_commands = {
         0x00: (
             "add",
-            (t.uint16_t, t.uint8_t, t.uint16_t, t.LimitedCharString(16)),
+            {
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "scene_name": t.LimitedCharString(16),
+            },
             False,
-        ),  # + extension field sets
-        0x01: ("view", (t.uint16_t, t.uint8_t), False),
-        0x02: ("remove", (t.uint16_t, t.uint8_t), False),
-        0x03: ("remove_all", (t.uint16_t,), False),
-        0x04: ("store", (t.uint16_t, t.uint8_t), False),
-        0x05: ("recall", (t.uint16_t, t.uint8_t, t.Optional(t.uint16_t)), False),
-        0x06: ("get_scene_membership", (t.uint16_t,), False),
-        0x40: ("enhanced_add", (), False),
-        0x41: ("enhanced_view", (), False),
+        ),  # TODO: + extension field sets
+        0x01: ("view", {"group_id": t.Group, "scene_id": t.uint8_t}, False),
+        0x02: ("remove", {"group_id": t.Group, "scene_id": t.uint8_t}, False),
+        0x03: ("remove_all", {"group_id": t.Group}, False),
+        0x04: ("store", {"group_id": t.Group, "scene_id": t.uint8_t}, False),
+        0x05: (
+            "recall",
+            {
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time": t.Optional(t.uint16_t),
+            },
+            False,
+        ),
+        0x06: ("get_scene_membership", {"group_id": t.Group}, False),
+        0x40: (
+            "enhanced_add",
+            {
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "scene_name": t.LimitedCharString(16),
+            },
+            False,
+        ),
+        0x41: ("enhanced_view", {"group_id": t.Group, "scene_id": t.uint8_t}, False),
         0x42: (
             "copy",
-            (t.uint8_t, t.uint16_t, t.uint8_t, t.uint16_t, t.uint8_t),
+            {
+                "mode": t.uint8_t,
+                "group_id_from": t.uint16_t,
+                "scene_id_from": t.uint8_t,
+                "group_id_to": t.uint16_t,
+                "scene_id_to": t.uint8_t,
+            },
             False,
         ),
     }
     client_commands = {
-        0x00: ("add_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
-        0x01: (
-            "view_response",
-            (t.uint8_t, t.uint16_t, t.uint8_t),
-            True,
-        ),  # + 3 more optionals
-        0x02: ("remove_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
-        0x03: ("remove_all_response", (t.uint8_t, t.uint16_t), True),
-        0x04: ("store_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
-        0x06: (
-            "get_scene_membership_response",
-            (t.uint8_t, t.uint8_t, t.uint16_t, t.Optional(t.LVList[t.uint8_t])),
+        0x00: (
+            "add_response",
+            {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
             True,
         ),
-        0x40: ("enhanced_add_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
-        # The Transition Time field SHALL be measured in tenths of a second
-        0x41: ("enhanced_view_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
-        0x42: ("copy_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
+        0x01: (
+            "view_response",
+            {
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time": t.Optional(t.uint16_t),
+                "scene_name": t.Optional(t.LimitedCharString(16)),
+            },
+            True,
+        ),  # TODO: + extension field sets
+        0x02: (
+            "remove_response",
+            {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
+            True,
+        ),
+        0x03: (
+            "remove_all_response",
+            {"status": foundation.Status, "group_id": t.Group},
+            True,
+        ),
+        0x04: (
+            "store_response",
+            {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
+            True,
+        ),
+        0x06: (
+            "get_scene_membership_response",
+            {
+                "status": foundation.Status,
+                "capacity": t.uint8_t,
+                "group_id": t.Group,
+                "scenes": t.Optional(t.LVList[t.uint8_t]),
+            },
+            True,
+        ),
+        0x40: (
+            "enhanced_add_response",
+            {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
+            True,
+        ),
+        0x41: (
+            "enhanced_view_response",
+            {
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time": t.Optional(t.uint16_t),
+                "scene_name": t.Optional(t.LimitedCharString(16)),
+            },
+            True,
+        ),  # TODO: + extension field sets
+        0x42: (
+            "copy_response",
+            {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
+            True,
+        ),
     }
 
 
@@ -513,12 +613,24 @@ class OnOff(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: ("off", (), False),
-        0x01: ("on", (), False),
-        0x02: ("toggle", (), False),
-        0x40: ("off_with_effect", (OffEffectIdentifier, t.uint8_t), False),
-        0x41: ("on_with_recall_global_scene", (), False),
-        0x42: ("on_with_timed_off", (t.uint8_t, t.uint16_t, t.uint16_t), False),
+        0x00: ("off", {}, False),
+        0x01: ("on", {}, False),
+        0x02: ("toggle", {}, False),
+        0x40: (
+            "off_with_effect",
+            {"effect_id": OffEffectIdentifier, "effect_variant": t.uint8_t},
+            False,
+        ),
+        0x41: ("on_with_recall_global_scene", {}, False),
+        0x42: (
+            "on_with_timed_off",
+            {
+                "on_off_control": t.uint8_t,
+                "on_time": t.uint16_t,
+                "off_wait_time": t.uint16_t,
+            },
+            False,
+        ),
     }
     client_commands = {}
 
@@ -590,31 +702,60 @@ class LevelControl(Cluster):
     server_commands = {
         0x00: (
             "move_to_level",
-            (t.uint8_t, t.uint16_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
+            {
+                "level": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask": t.Optional(t.bitmap8),
+                "options_override": t.Optional(t.bitmap8),
+            },
             False,
         ),
         0x01: (
             "move",
-            (MoveMode, t.uint8_t, t.Optional(t.bitmap8), t.Optional(t.bitmap8)),
+            {
+                "move_mode": MoveMode,
+                "rate": t.uint8_t,
+                "options_mask": t.Optional(t.bitmap8),
+                "options_override": t.Optional(t.bitmap8),
+            },
             False,
         ),
         0x02: (
             "step",
-            (
-                StepMode,
-                t.uint8_t,
-                t.uint16_t,
-                t.Optional(t.bitmap8),
-                t.Optional(t.bitmap8),
-            ),
+            {
+                "step_mode": StepMode,
+                "step_size": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask": t.Optional(t.bitmap8),
+                "options_override": t.Optional(t.bitmap8),
+            },
             False,
         ),
-        0x03: ("stop", (t.Optional(t.bitmap8), t.Optional(t.bitmap8)), False),
-        0x04: ("move_to_level_with_on_off", (t.uint8_t, t.uint16_t), False),
-        0x05: ("move_with_on_off", (MoveMode, t.uint8_t), False),
-        0x06: ("step_with_on_off", (StepMode, t.uint8_t, t.uint16_t), False),
-        0x07: ("stop_with_on_off", (), False),
-        0x08: ("move_to_closest_frequency", (t.uint16_t,), False),
+        0x03: (
+            "stop",
+            {
+                "options_mask": t.Optional(t.bitmap8),
+                "options_override": t.Optional(t.bitmap8),
+            },
+            False,
+        ),
+        0x04: (
+            "move_to_level_with_on_off",
+            {"level": t.uint8_t, "transition_time": t.uint16_t},
+            False,
+        ),
+        0x05: ("move_with_on_off", {"move_mode": MoveMode, "rate": t.uint8_t}, False),
+        0x06: (
+            "step_with_on_off",
+            {
+                "step_mode": StepMode,
+                "step_size": t.uint8_t,
+                "transition_time": t.uint16_t,
+            },
+            False,
+        ),
+        0x07: ("stop_with_on_off", {}, False),
+        0x08: ("move_to_closest_frequency", {"frequency": t.uint16_t}, False),
     }
     client_commands = {}
 
@@ -632,25 +773,25 @@ class Alarms(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: ("reset", (t.uint8_t, t.uint16_t), False),
-        0x01: ("reset_all", (), False),
-        0x02: ("get_alarm", (), False),
-        0x03: ("reset_log", (), False),
-        # 0x04: ("publish_event_log", (), False),
+        0x00: ("reset", {"alarm_code": t.uint8_t, "cluster_id": t.uint16_t}, False),
+        0x01: ("reset_all", {}, False),
+        0x02: ("get_alarm", {}, False),
+        0x03: ("reset_log", {}, False),
+        # 0x04: ("publish_event_log", {}, False),
     }
     client_commands = {
-        0x00: ("alarm", (t.uint8_t, t.uint16_t), False),
+        0x00: ("alarm", {"alarm_code": t.uint8_t, "cluster_id": t.uint16_t}, False),
         0x01: (
             "get_alarm_response",
-            (
-                t.uint8_t,
-                t.Optional(t.uint8_t),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint32_t),
-            ),
+            {
+                "status": foundation.Status,
+                "alarm_code": t.Optional(t.uint8_t),
+                "cluster_id": t.Optional(t.uint16_t),
+                "timestamp": t.Optional(t.uint32_t),
+            },
             True,
         ),
-        # 0x02: ("get_event_log", (), False),
+        # 0x02: ("get_event_log", {}, False),
     }
 
 
@@ -743,25 +884,61 @@ class RSSILocation(Cluster):
     server_commands = {
         0x00: (
             "set_absolute_location",
-            (t.int16s, t.int16s, t.int16s, t.int8s, t.uint16_t),
+            {
+                "coordinate1": t.int16s,
+                "coordinate2": t.int16s,
+                "coordinate3": t.int16s,
+                "power": t.int16s,
+                "path_loss_exponent": t.uint16_t,
+            },
             False,
         ),
         0x01: (
             "set_dev_config",
-            (t.int16s, t.uint16_t, t.uint16_t, t.uint8_t, t.uint16_t),
+            {
+                "power": t.int16s,
+                "path_loss_exponent": t.uint16_t,
+                "calculation_period": t.uint16_t,
+                "num_rssi_measurements": t.uint8_t,
+                "reporting_period": t.uint16_t,
+            },
             False,
         ),
-        0x02: ("get_dev_config", (t.EUI64,), False),
-        0x03: ("get_location_data", (t.bitmap8, t.uint8_t, t.EUI64), False),
+        0x02: ("get_dev_config", {"target_addr": t.EUI64}, False),
+        0x03: (
+            "get_location_data",
+            {"packed": t.bitmap8, "num_responses": t.uint8_t, "target_addr": t.EUI64},
+            False,
+        ),
         0x04: (
             "rssi_response",
-            (t.EUI64, t.int16s, t.int16s, t.int16s, t.int8s, t.uint8_t),
+            {
+                "replying_device": t.EUI64,
+                "x": t.int16s,
+                "y": t.int16s,
+                "z": t.int16s,
+                "rssi": t.int8s,
+                "num_rssi_measurements": t.uint8_t,
+            },
             True,
         ),
-        0x05: ("send_pings", (t.EUI64, t.uint8_t, t.uint16_t), False),
+        0x05: (
+            "send_pings",
+            {
+                "target_addr": t.EUI64,
+                "num_rssi_measurements": t.uint8_t,
+                "calculation_period": t.uint16_t,
+            },
+            False,
+        ),
         0x06: (
             "anchor_node_announce",
-            (t.EUI64, t.int16s, t.int16s, t.int16s),
+            {
+                "anchor_node_ieee_addr": t.EUI64,
+                "x": t.int16s,
+                "y": t.int16s,
+                "z": t.int16s,
+            },
             False,
         ),
     }
@@ -777,37 +954,42 @@ class RSSILocation(Cluster):
     client_commands = {
         0x00: (
             "dev_config_response",
-            (
-                foundation.Status,
-                t.Optional(t.int16s),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint8_t),
-                t.Optional(t.uint16_t),
-            ),
+            {
+                "status": foundation.Status,
+                "power": t.Optional(t.int16s),
+                "path_loss_exponent": t.Optional(t.uint16_t),
+                "calculation_period": t.Optional(t.uint16_t),
+                "num_rssi_measurements": t.Optional(t.uint8_t),
+                "reporting_period": t.Optional(t.uint16_t),
+            },
             True,
         ),
         0x01: (
             "location_data_response",
-            (
-                foundation.Status,
-                t.Optional(t.uint8_t),
-                t.Optional(t.int16s),
-                t.Optional(t.int16s),
-                t.Optional(t.int16s),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint8_t),
-                t.Optional(t.uint8_t),
-                t.Optional(t.uint16_t),
-            ),
+            {
+                "status": foundation.Status,
+                "location_type": t.Optional(t.uint8_t),
+                "coordinate1": t.Optional(t.int16s),
+                "coordinate2": t.Optional(t.int16s),
+                "coordinate3": t.Optional(t.int16s),
+                "power": t.Optional(t.int16_t),
+                "path_loss_exponent": t.Optional(t.uint8_t),
+                "location_method": t.Optional(t.uint8_t),
+                "quality_measure": t.Optional(t.uint8_t),
+                "location_age": t.Optional(t.uint16_t),
+            },
             True,
         ),
-        0x02: ("location_data_notification", (), False),
-        0x03: ("compact_location_data_notification", (), False),
-        0x04: ("rssi_ping", (t.uint8_t,), False),  # data8
-        0x05: ("rssi_req", (), False),
-        0x06: ("report_rssi_measurements", (t.EUI64, t.LVList[NeighborInfo]), False),
-        0x07: ("request_own_location", (t.EUI64,), False),
+        0x02: ("location_data_notification", {}, False),
+        0x03: ("compact_location_data_notification", {}, False),
+        0x04: ("rssi_ping", {"location_type": t.uint8_t}, False),  # data8
+        0x05: ("rssi_req", {}, False),
+        0x06: (
+            "report_rssi_measurements",
+            {"measuring_device": t.EUI64, "neighbors": t.LVList[NeighborInfo]},
+            False,
+        ),
+        0x07: ("request_own_location", {"ieee_of_blind_node": t.EUI64}, False),
     }
 
 
@@ -1115,98 +1297,122 @@ class Ota(Cluster):
     server_commands = {
         0x01: (
             "query_next_image",
-            (t.uint8_t, t.uint16_t, t.uint16_t, t.uint32_t, t.Optional(t.uint16_t)),
+            {
+                "field_control": t.uint8_t,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "current_file_version": t.uint32_t,
+                "hardware_version": t.Optional(t.uint16_t),
+            },
             False,
         ),
         0x03: (
             "image_block",
-            (
-                t.uint8_t,
-                t.uint16_t,
-                t.uint16_t,
-                t.uint32_t,
-                t.uint32_t,
-                t.uint8_t,
-                t.Optional(t.EUI64),
-                t.Optional(t.uint16_t),
-            ),
+            {
+                "field_control": t.uint8_t,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+                "file_offset": t.uint32_t,
+                "maximum_data_size": t.uint8_t,
+                "request_node_addr": t.Optional(t.EUI64),
+                "minumum_block_period": t.Optional(t.uint16_t),
+            },
             False,
         ),
         0x04: (
             "image_page",
-            (
-                t.uint8_t,
-                t.uint16_t,
-                t.uint16_t,
-                t.uint32_t,
-                t.uint32_t,
-                t.uint8_t,
-                t.uint16_t,
-                t.uint16_t,
-                t.Optional(t.EUI64),
-            ),
+            {
+                "field_control": t.uint8_t,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+                "file_offset": t.uint32_t,
+                "maximum_data_size": t.uint8_t,
+                "page_size": t.uint16_t,
+                "response_spacing": t.uint16_t,
+                "request_node_addr": t.Optional(t.EUI64),
+            },
             False,
         ),
         0x06: (
             "upgrade_end",
-            (foundation.Status, t.uint16_t, t.uint16_t, t.uint32_t),
+            {
+                "status": foundation.Status,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+            },
             False,
         ),
         0x08: (
             "query_specific_file",
-            (t.EUI64, t.uint16_t, t.uint16_t, t.uint32_t, t.uint16_t),
+            {
+                "request_node_addr": t.EUI64,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+                "current_zigbee_stack_version": t.uint16_t,
+            },
             False,
         ),
     }
     client_commands = {
         0x00: (
             "image_notify",
-            (
-                t.uint8_t,
-                t.uint8_t,
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint32_t),
-            ),
+            {
+                "payload_type": t.uint8_t,
+                "query_jitter": t.uint8_t,
+                "manufacturer_code": t.Optional(t.uint16_t),
+                "image_type": t.Optional(t.uint16_t),
+                "new_file_version": t.Optional(t.uint32_t),
+            },
             False,
         ),
         0x02: (
             "query_next_image_response",
-            (
-                foundation.Status,
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint32_t),
-                t.Optional(t.uint32_t),
-            ),
+            {
+                "status": foundation.Status,
+                "manufacturer_code": t.Optional(t.uint16_t),
+                "image_type": t.Optional(t.uint16_t),
+                "file_version": t.Optional(t.uint32_t),
+                "image_size": t.Optional(t.uint32_t),
+            },
             True,
         ),
+        # XXX: the response format completely changes if the status is WAIT_FOR_DATA!
         0x05: (
             "image_block_response",
-            (
-                foundation.Status,
-                t.uint16_t,
-                t.uint16_t,
-                t.uint32_t,
-                t.uint32_t,
-                t.LVBytes,
-            ),
+            {
+                "status": foundation.Status,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+                "file_offset": t.uint32_t,
+                "image_data": t.LVBytes,
+            },
             True,
         ),
         0x07: (
             "upgrade_end_response",
-            (t.uint16_t, t.uint16_t, t.uint32_t, t.uint32_t, t.uint32_t),
+            {
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+                "current_time": t.UTC,
+                "upgrade_time": t.UTC,
+            },
             True,
         ),
         0x09: (
             "query_specific_file_response",
-            (
-                foundation.Status,
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint32_t),
-                t.Optional(t.uint32_t),
-            ),
+            {
+                "status": foundation.Status,
+                "manufacturer_code": t.Optional(t.uint16_t),
+                "image_type": t.Optional(t.uint16_t),
+                "file_version": t.Optional(t.uint32_t),
+                "image_size": t.Optional(t.uint32_t),
+            },
             True,
         ),
     }
@@ -1391,7 +1597,7 @@ class PowerProfile(Cluster):
     ep_attribute = "power_profile"
     attributes = {
         0x0000: ("total_profile_num", t.uint8_t),
-        0x0001: ("multiple_scheduling", t.uint8_t),
+        0x0001: ("multiple_scheduling", t.Bool),
         0x0002: ("energy_formatting", t.bitmap8),
         0x0003: ("energy_remote", t.Bool),
         0x0004: ("schedule_mode", t.bitmap8),
@@ -1416,80 +1622,137 @@ class PowerProfile(Cluster):
         power_profile_remote_control: t.Bool
         power_profile_state: t.uint8_t
 
+    # XXX: are these flipped?
     server_commands = {
-        0x00: ("power_profile_request", (t.uint8_t,), False),
-        0x01: ("power_profile_state_request", (), False),
+        0x00: ("power_profile_request", {"power_profile_id": t.uint8_t}, False),
+        0x01: ("power_profile_state_request", {}, False),
         0x02: (
             "get_power_profile_price_response",
-            (t.uint8_t, t.uint16_t, t.uint32_t, t.uint8_t),
+            {
+                "power_profile_id": t.uint8_t,
+                "currency": t.uint16_t,
+                "price": t.uint32_t,
+                "price_trailing_digit": t.uint8_t,
+            },
             True,
         ),
         0x03: (
             "get_overall_schedule_price_response",
-            (t.uint16_t, t.uint32_t, t.uint8_t),
+            {
+                "currency": t.uint16_t,
+                "price": t.uint32_t,
+                "price_trailing_digit": t.uint8_t,
+            },
             True,
         ),
         0x04: (
             "energy_phases_schedule_notification",
-            (t.uint8_t, t.LVList[ScheduleRecord]),
+            {
+                "power_profile_id": t.uint8_t,
+                "scheduled_phases": t.LVList[ScheduleRecord],
+            },
             False,
         ),
         0x05: (
             "energy_phases_schedule_response",
-            (t.uint8_t, t.LVList[ScheduleRecord]),
+            {
+                "power_profile_id": t.uint8_t,
+                "scheduled_phases": t.LVList[ScheduleRecord],
+            },
             True,
         ),
-        0x06: ("power_profile_schedule_constraints_request", (t.uint8_t,), False),
-        0x07: ("energy_phases_schedule_state_request", (t.uint8_t,), False),
+        0x06: (
+            "power_profile_schedule_constraints_request",
+            {"power_profile_id": t.uint8_t},
+            False,
+        ),
+        0x07: (
+            "energy_phases_schedule_state_request",
+            {"power_profile_id": t.uint8_t},
+            False,
+        ),
         0x08: (
             "get_power_profile_price_extended_response",
-            (t.uint8_t, t.uint16_t, t.uint32_t, t.uint8_t),
+            {
+                "power_profile_id": t.uint8_t,
+                "currency": t.uint16_t,
+                "price": t.uint32_t,
+                "price_trailing_digit": t.uint8_t,
+            },
             True,
         ),
     }
     client_commands = {
         0x00: (
             "power_profile_notification",
-            (t.uint8_t, t.uint8_t, t.LVList[PowerProfilePhase]),
+            {
+                "total_profile_num": t.uint8_t,
+                "power_profile_id": t.uint8_t,
+                "transfer_phases": t.LVList[PowerProfilePhase],
+            },
             False,
         ),
         0x01: (
             "power_profile_response",
-            (t.uint8_t, t.uint8_t, t.LVList[PowerProfilePhase]),
+            {
+                "total_profile_num": t.uint8_t,
+                "power_profile_id": t.uint8_t,
+                "transfer_phases": t.LVList[PowerProfilePhase],
+            },
             True,
         ),
         0x02: (
             "power_profile_state_response",
-            (t.LVList[PowerProfile],),
+            {"power_profiles": t.LVList[PowerProfile]},
             True,
         ),
-        0x03: ("get_power_profile_price", (t.uint8_t,), False),
+        0x03: ("get_power_profile_price", {"power_profile_id": t.uint8_t}, False),
         0x04: (
             "power_profile_state_notification",
-            (t.LVList[PowerProfile],),
+            {"power_profiles": t.LVList[PowerProfile]},
             False,
         ),
-        0x05: ("get_overall_schedule_price", (), False),
-        0x06: ("energy_phases_schedule_request", (), False),
-        0x07: ("energy_phases_schedule_state_response", (t.uint8_t, t.uint8_t), True),
+        0x05: ("get_overall_schedule_price", {}, False),
+        0x06: (
+            "energy_phases_schedule_request",
+            {"power_profile_id": t.uint8_t},
+            False,
+        ),
+        0x07: (
+            "energy_phases_schedule_state_response",
+            {"power_profile_id": t.uint8_t, "num_scheduled_energy_phases": t.uint8_t},
+            True,
+        ),
         0x08: (
             "energy_phases_schedule_state_notification",
-            (t.uint8_t, t.uint8_t),
+            {"power_profile_id": t.uint8_t, "num_scheduled_energy_phases": t.uint8_t},
             False,
         ),
         0x09: (
             "power_profile_schedule_constraints_notification",
-            (t.uint8_t, t.uint16_t, t.uint16_t),
+            {
+                "power_profile_id": t.uint8_t,
+                "start_after": t.uint16_t,
+                "stop_before": t.uint16_t,
+            },
             False,
         ),
         0x0A: (
             "power_profile_schedule_constraints_response",
-            (t.uint8_t, t.uint16_t, t.uint16_t),
+            {
+                "power_profile_id": t.uint8_t,
+                "start_after": t.uint16_t,
+                "stop_before": t.uint16_t,
+            },
             True,
         ),
         0x0B: (
             "get_power_profile_price_extended",
-            (t.bitmap8, t.uint8_t, t.Optional(t.uint16_t)),
+            {
+                "options": t.bitmap8,
+                "power_profile_id": t.uint8_t,
+                "power_profile_start_time": t.Optional(t.uint16_t),
+            },
             False,
         ),
     }
@@ -1522,12 +1785,20 @@ class PollControl(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x00: ("checkin_response", (t.uint8_t, t.uint16_t), True),
-        0x01: ("fast_poll_stop", (), False),
-        0x02: ("set_long_poll_interval", (t.uint32_t,), False),
-        0x03: ("set_short_poll_interval", (t.uint16_t,), False),
+        0x00: (
+            "checkin_response",
+            {"start_fast_polling": t.Bool, "fast_poll_timeout": t.uint16_t},
+            True,
+        ),
+        0x01: ("fast_poll_stop", {}, False),
+        0x02: ("set_long_poll_interval", {"new_long_poll_interval": t.uint32_t}, False),
+        0x03: (
+            "set_short_poll_interval",
+            {"new_short_poll_interval": t.uint16_t},
+            False,
+        ),
     }
-    client_commands = {0x0000: ("checkin", (), False)}
+    client_commands = {0x0000: ("checkin", {}, False)}
 
 
 class GreenPowerProxy(Cluster):
