@@ -195,6 +195,12 @@ def test_frame_control():
     assert rest == extra
     assert frc.frame_type == foundation.FrameType.CLUSTER_COMMAND
 
+    assert frc.direction == frc.is_reply
+    frc.direction = not frc.direction
+    assert frc.direction == frc.is_reply
+    frc.is_reply = not frc.is_reply
+    assert frc.direction == frc.is_reply
+
     r = repr(frc)
     assert isinstance(r, str)
 
@@ -550,3 +556,51 @@ def test_status_enum():
     assert status.name not in nwk_names
     assert status.name not in mac_names
     assert status.name == "undefined_0xff"
+
+
+def test_schema():
+    """Test schema parameter parsing"""
+
+    bad_s = foundation.ZCLCommandDef(
+        id=0x12,
+        name="test",
+        schema={
+            "uh oh": t.uint16_t,
+        },
+        is_reply=False,
+    )
+
+    with pytest.raises(ValueError):
+        bad_s.compile_schema()
+
+    s = foundation.ZCLCommandDef(
+        id=0x12,
+        name="test",
+        schema={
+            "foo": t.uint8_t,
+            "bar?": t.uint16_t,
+            "baz?": t.uint8_t,
+        },
+        is_reply=False,
+    )
+    s.compile_schema()
+
+    assert s.schema.foo.type is t.uint8_t
+    assert not s.schema.foo.optional
+
+    assert s.schema.bar.type is t.uint16_t
+    assert s.schema.bar.optional
+
+    assert s.schema.baz.type is t.uint8_t
+    assert s.schema.baz.optional
+
+    assert "test" in str(s) and "is_reply=False" in str(s)
+
+    for kwargs, value in [
+        (dict(foo=1), b"\x01"),
+        (dict(foo=1, bar=2), b"\x01\x02\x00"),
+        (dict(foo=1, bar=2, baz=3), b"\x01\x02\x00\x03"),
+    ]:
+        assert s.schema(**kwargs) == s.schema(*kwargs.values())
+        assert s.schema(**kwargs).serialize() == value
+        assert s.schema.deserialize(value) == (s.schema(**kwargs), b"")

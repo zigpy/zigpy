@@ -700,6 +700,12 @@ def test_bitstruct_complex():
 
 
 def test_int_struct():
+    class NonIntegralStruct(t.Struct):
+        foo: t.uint8_t
+
+    with pytest.raises(TypeError):
+        int(NonIntegralStruct(123))
+
     class IntegralStruct(t.Struct, t.uint32_t):
         foo: t.uint8_t
         bar: t.uint16_t
@@ -740,3 +746,20 @@ def test_int_struct():
 
     assert isinstance(IntegralStruct(), t.uint32_t)
     assert isinstance(IntegralStruct(), int)
+
+
+def test_struct_optional():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+        bar: t.uint16_t
+        baz: t.uint8_t = t.StructField(requires=lambda s: s.bar == 2, optional=True)
+
+    s1 = TestStruct(foo=1, bar=2, baz=3)
+    assert s1.serialize() == b"\x01\x02\x00\x03"
+    assert TestStruct.deserialize(s1.serialize() + b"asd") == (s1, b"asd")
+    assert s1.replace(baz=None).serialize() == b"\x01\x02\x00"
+    assert s1.replace(bar=4).serialize() == b"\x01\x04\x00"
+    assert TestStruct.deserialize(b"\x01\x03\x00\x04") == (
+        TestStruct(foo=1, bar=3),
+        b"\x04",
+    )

@@ -57,6 +57,10 @@ async def test_initialize_zll(ep):
     return await _test_initialize(ep, 49246)
 
 
+async def test_initialize_other(ep):
+    return await _test_initialize(ep, 0x1234)
+
+
 async def test_initialize_fail(ep):
     async def mockrequest(nwk, epid, tries=None, delay=None):
         return [1, None, None]
