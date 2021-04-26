@@ -25,7 +25,7 @@ def test_deserialize_general(endpoint):
     hdr, args = endpoint.deserialize(0, b"\x00\x01\x00")
     assert hdr.tsn == 1
     assert hdr.command_id == 0
-    assert hdr.is_reply is False
+    assert not hdr.is_reply
 
 
 def test_deserialize_general_unknown(endpoint):
@@ -34,7 +34,7 @@ def test_deserialize_general_unknown(endpoint):
     assert hdr.frame_control.is_general is True
     assert hdr.frame_control.is_cluster is False
     assert hdr.command_id == 255
-    assert hdr.is_reply is False
+    assert not hdr.is_reply
 
 
 def test_deserialize_cluster(endpoint):
@@ -43,7 +43,7 @@ def test_deserialize_cluster(endpoint):
     assert hdr.frame_control.is_general is False
     assert hdr.frame_control.is_cluster is True
     assert hdr.command_id == 0
-    assert hdr.is_reply is False
+    assert not hdr.is_reply
 
 
 def test_deserialize_cluster_client(endpoint):
@@ -52,8 +52,8 @@ def test_deserialize_cluster_client(endpoint):
     assert hdr.frame_control.is_general is False
     assert hdr.frame_control.is_cluster is True
     assert hdr.command_id == 0
-    assert hdr.is_reply is True
     assert args == [0x4241]
+    assert hdr.is_reply
 
 
 def test_deserialize_cluster_unknown(endpoint):
@@ -65,7 +65,7 @@ def test_deserialize_cluster_command_unknown(endpoint):
     hdr, args = endpoint.deserialize(0, b"\x01\x01\xff")
     assert hdr.tsn == 1
     assert hdr.command_id == 255
-    assert hdr.is_reply is False
+    assert not hdr.is_reply
 
 
 def test_unknown_cluster():
@@ -148,7 +148,7 @@ async def test_request_optional(cluster):
     cluster._endpoint.request.reset_mock()
 
     res = cluster.request(True, 0, schema, 1, 2, 3, 4, 5)
-    assert isinstance(res.exception(), ValueError)
+    assert isinstance(res.exception(), TypeError)
     assert cluster._endpoint.request.call_count == 0
     cluster._endpoint.request.reset_mock()
 
@@ -639,12 +639,12 @@ def test_command_invalid_attr(cluster):
 
 async def test_invalid_arguments_cluster_command(cluster):
     res = cluster.command(0x00, 1)
-    assert isinstance(res.exception(), ValueError)
+    assert isinstance(res.exception(), TypeError)
 
 
-def test_invalid_arguments_cluster_client_command(client_cluster):
-    client_cluster.client_command(0, 0, 0)
-    assert client_cluster._endpoint.reply.call_count == 1
+async def test_invalid_arguments_cluster_client_command(client_cluster):
+    res = client_cluster.client_command(0, 0, 0)
+    assert isinstance(res.exception(), TypeError)
 
 
 def test_name(cluster):

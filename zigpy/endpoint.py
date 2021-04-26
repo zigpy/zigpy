@@ -70,11 +70,13 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.info("Discovered endpoint information: %s", sdr[2])
         sd = sdr[2]
         self.profile_id = sd.profile
-        self.device_type = sd.device_type
-        if self.profile_id == 260:
-            self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
-        elif self.profile_id == 49246:
-            self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
+
+        if self.profile_id == zigpy.profiles.zha.PROFILE_ID:
+            self.device_type = zigpy.profiles.zha.DeviceType(sd.device_type)
+        elif self.profile_id == zigpy.profiles.zll.PROFILE_ID:
+            self.device_type = zigpy.profiles.zll.DeviceType(sd.device_type)
+        else:
+            self.device_type = sd.device_type
 
         for cluster in sd.input_clusters:
             self.add_input_cluster(cluster)
@@ -88,12 +90,14 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         (a server cluster supported by the device)
         """
-        if cluster_id in self.in_clusters and cluster is None:
-            return self.in_clusters[cluster_id]
-
         if cluster is None:
+            if cluster_id in self.in_clusters:
+                return self.in_clusters[cluster_id]
+
             cluster = zigpy.zcl.Cluster.from_id(self, cluster_id, is_server=True)
+
         self.in_clusters[cluster_id] = cluster
+
         if hasattr(cluster, "ep_attribute"):
             self._cluster_attr[cluster.ep_attribute] = cluster
 
@@ -110,11 +114,12 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         (a client cluster supported by the device)
         """
-        if cluster_id in self.out_clusters and cluster is None:
-            return self.out_clusters[cluster_id]
-
         if cluster is None:
+            if cluster_id in self.out_clusters:
+                return self.out_clusters[cluster_id]
+
             cluster = zigpy.zcl.Cluster.from_id(self, cluster_id, is_server=False)
+
         self.out_clusters[cluster_id] = cluster
         return cluster
 
@@ -220,7 +225,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def request(self, cluster, sequence, data, expect_reply=True, command_id=0x00):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
-            cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
+            cluster == zigpy.zcl.clusters.touchlink.TouchlinkCommissioning.cluster_id
             and command_id < 0x40
         ):
             profile_id = zigpy.profiles.zha.PROFILE_ID
@@ -239,7 +244,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def reply(self, cluster, sequence, data, command_id=0x00):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
-            cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
+            cluster == zigpy.zcl.clusters.touchlink.TouchlinkCommissioning.cluster_id
             and command_id < 0x40
         ):
             profile_id = zigpy.profiles.zha.PROFILE_ID

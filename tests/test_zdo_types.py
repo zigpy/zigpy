@@ -235,10 +235,10 @@ def test_zdo_header():
     assert rest == extra
     assert hdr.tsn == tsn
     assert hdr.command_id == cmd_id
-    assert hdr.is_reply is False
+    assert not hdr.is_reply
 
     hdr.command_id = types.ZDOCmd.Bind_rsp
-    assert hdr.is_reply is True
+    assert hdr.is_reply
 
     assert hdr.serialize() == data
 

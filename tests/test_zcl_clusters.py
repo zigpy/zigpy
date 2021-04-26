@@ -36,14 +36,10 @@ def _test_commands(cmdattr):
     for cluster_id, cluster in zcl.Cluster._registry.items():
         for cmdid, cmdspec in getattr(cluster, cmdattr).items():
             assert 0 <= cmdid <= 0xFF
-            assert isinstance(cmdspec, tuple), "Cluster %s" % (cluster_id,)
-            assert len(cmdspec) == 3
-            assert isinstance(cmdspec[0], str)
-            assert isinstance(cmdspec[1], tuple)
-            assert isinstance(cmdspec[2], bool)
-            for t in cmdspec[1]:
-                assert hasattr(t, "serialize")
-                assert hasattr(t, "deserialize")
+
+            assert cmdspec.id == cmdid
+            assert isinstance(cmdspec, zcl.foundation.ZCLCommandDef)
+            assert issubclass(cmdspec.schema, types.Struct)
 
 
 def test_server_commands():

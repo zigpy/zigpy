@@ -1,7 +1,8 @@
 """Closures Functional Domain"""
 
 import zigpy.types as t
-from zigpy.zcl import Cluster, ZCLCommand, foundation
+from zigpy.zcl import Cluster, foundation
+from zigpy.zcl.foundation import ZCLCommandDef
 
 
 class Shade(Cluster):
@@ -260,16 +261,16 @@ class DoorLock(Cluster):
         0x0047: ("rfid_programming_event_mask", RFIDProgrammingEventMask),
     }
     server_commands = {
-        0x00: ZCLCommand("lock_door", {"pin_code?": t.CharacterString}, False),
-        0x01: ZCLCommand("unlock_door", {"pin_code?": t.CharacterString}, False),
-        0x02: ZCLCommand("toggle_door", {"pin_code?": t.CharacterString}, False),
-        0x03: ZCLCommand(
+        0x00: ZCLCommandDef("lock_door", {"pin_code?": t.CharacterString}, False),
+        0x01: ZCLCommandDef("unlock_door", {"pin_code?": t.CharacterString}, False),
+        0x02: ZCLCommandDef("toggle_door", {"pin_code?": t.CharacterString}, False),
+        0x03: ZCLCommandDef(
             "unlock_with_timeout",
             {"timeout": t.uint16_t, "pin_code?": t.CharacterString},
             False,
         ),
-        0x04: ZCLCommand("get_log_record", {"log_index": t.uint16_t}, False),
-        0x05: ZCLCommand(
+        0x04: ZCLCommandDef("get_log_record", {"log_index": t.uint16_t}, False),
+        0x05: ZCLCommandDef(
             "set_pin_code",
             {
                 "user_id": t.uint16_t,
@@ -279,14 +280,14 @@ class DoorLock(Cluster):
             },
             False,
         ),
-        0x06: ZCLCommand("get_pin_code", {"user_id": t.uint16_t}, False),
-        0x07: ZCLCommand("clear_pin_code", {"user_id": t.uint16_t}, False),
-        0x08: ZCLCommand("clear_all_pin_codes", {}, False),
-        0x09: ZCLCommand(
+        0x06: ZCLCommandDef("get_pin_code", {"user_id": t.uint16_t}, False),
+        0x07: ZCLCommandDef("clear_pin_code", {"user_id": t.uint16_t}, False),
+        0x08: ZCLCommandDef("clear_all_pin_codes", {}, False),
+        0x09: ZCLCommandDef(
             "set_user_status", {"user_id": t.uint16_t, "user_status": UserStatus}, False
         ),
-        0x0A: ZCLCommand("get_user_status", {"user_id": t.uint16_t}, False),
-        0x0B: ZCLCommand(
+        0x0A: ZCLCommandDef("get_user_status", {"user_id": t.uint16_t}, False),
+        0x0B: ZCLCommandDef(
             "set_week_day_schedule",
             {
                 "schedule_id": t.uint8_t,
@@ -299,17 +300,17 @@ class DoorLock(Cluster):
             },
             False,
         ),
-        0x0C: ZCLCommand(
+        0x0C: ZCLCommandDef(
             "get_week_day_schedule",
             {"schedule_id": t.uint8_t, "user_id": t.uint16_t},
             False,
         ),
-        0x0D: ZCLCommand(
+        0x0D: ZCLCommandDef(
             "clear_week_day_schedule",
             {"schedule_id": t.uint8_t, "user_id": t.uint16_t},
             False,
         ),
-        0x0E: ZCLCommand(
+        0x0E: ZCLCommandDef(
             "set_year_day_schedule",
             {
                 "schedule_id": t.uint8_t,
@@ -319,17 +320,17 @@ class DoorLock(Cluster):
             },
             False,
         ),
-        0x0F: ZCLCommand(
+        0x0F: ZCLCommandDef(
             "get_year_day_schedule",
             {"schedule_id": t.uint8_t, "user_id": t.uint16_t},
             False,
         ),
-        0x10: ZCLCommand(
+        0x10: ZCLCommandDef(
             "clear_year_day_schedule",
             {"schedule_id": t.uint8_t, "user_id": t.uint16_t},
             False,
         ),
-        0x11: ZCLCommand(
+        0x11: ZCLCommandDef(
             "set_holiday_schedule",
             {
                 "holiday_schedule_id": t.uint8_t,
@@ -339,17 +340,17 @@ class DoorLock(Cluster):
             },
             False,
         ),
-        0x12: ZCLCommand(
+        0x12: ZCLCommandDef(
             "get_holiday_schedule", {"holiday_schedule_id": t.uint8_t}, False
         ),
-        0x13: ZCLCommand(
+        0x13: ZCLCommandDef(
             "clear_holiday_schedule", {"holiday_schedule_id": t.uint8_t}, False
         ),
-        0x14: ZCLCommand(
+        0x14: ZCLCommandDef(
             "set_user_type", {"user_id": t.uint16_t, "user_type": UserType}, False
         ),
-        0x15: ZCLCommand("get_user_type", {"user_id": t.uint16_t}, False),
-        0x16: ZCLCommand(
+        0x15: ZCLCommandDef("get_user_type", {"user_id": t.uint16_t}, False),
+        0x16: ZCLCommandDef(
             "set_rfid_code",
             {
                 "user_id": t.uint16_t,
@@ -359,18 +360,22 @@ class DoorLock(Cluster):
             },
             False,
         ),
-        0x17: ZCLCommand("get_rfid_code", {"user_id": t.uint16_t}, False),
-        0x18: ZCLCommand("clear_rfid_code", {"user_id": t.uint16_t}, False),
-        0x19: ZCLCommand("clear_all_rfid_codes", {}, False),
+        0x17: ZCLCommandDef("get_rfid_code", {"user_id": t.uint16_t}, False),
+        0x18: ZCLCommandDef("clear_rfid_code", {"user_id": t.uint16_t}, False),
+        0x19: ZCLCommandDef("clear_all_rfid_codes", {}, False),
     }
     client_commands = {
-        0x00: ZCLCommand("lock_door_response", {"status": foundation.Status}, True),
-        0x01: ZCLCommand("unlock_door_response", {"status": foundation.Status}, True),
-        0x02: ZCLCommand("toggle_door_response", {"status": foundation.Status}, True),
-        0x03: ZCLCommand(
+        0x00: ZCLCommandDef("lock_door_response", {"status": foundation.Status}, True),
+        0x01: ZCLCommandDef(
+            "unlock_door_response", {"status": foundation.Status}, True
+        ),
+        0x02: ZCLCommandDef(
+            "toggle_door_response", {"status": foundation.Status}, True
+        ),
+        0x03: ZCLCommandDef(
             "unlock_with_timeout_response", {"status": foundation.Status}, True
         ),
-        0x04: ZCLCommand(
+        0x04: ZCLCommandDef(
             "get_log_record_response",
             {
                 "log_entry_id": t.uint16_t,
@@ -383,8 +388,10 @@ class DoorLock(Cluster):
             },
             True,
         ),
-        0x05: ZCLCommand("set_pin_code_response", {"status": foundation.Status}, True),
-        0x06: ZCLCommand(
+        0x05: ZCLCommandDef(
+            "set_pin_code_response", {"status": foundation.Status}, True
+        ),
+        0x06: ZCLCommandDef(
             "get_pin_code_response",
             {
                 "user_id": t.uint16_t,
@@ -394,24 +401,24 @@ class DoorLock(Cluster):
             },
             True,
         ),
-        0x07: ZCLCommand(
+        0x07: ZCLCommandDef(
             "clear_pin_code_response", {"status": foundation.Status}, True
         ),
-        0x08: ZCLCommand(
+        0x08: ZCLCommandDef(
             "clear_all_pin_codes_response", {"status": foundation.Status}, True
         ),
-        0x09: ZCLCommand(
+        0x09: ZCLCommandDef(
             "set_user_status_response", {"status": foundation.Status}, True
         ),
-        0x0A: ZCLCommand(
+        0x0A: ZCLCommandDef(
             "get_user_status_response",
             {"user_id": t.uint16_t, "user_status": UserStatus},
             True,
         ),
-        0x0B: ZCLCommand(
+        0x0B: ZCLCommandDef(
             "set_week_day_schedule_response", {"status": foundation.Status}, True
         ),
-        0x0C: ZCLCommand(
+        0x0C: ZCLCommandDef(
             "get_week_day_schedule_response",
             {
                 "schedule_id": t.uint8_t,
@@ -425,13 +432,13 @@ class DoorLock(Cluster):
             },
             True,
         ),
-        0x0D: ZCLCommand(
+        0x0D: ZCLCommandDef(
             "clear_week_day_schedule_response", {"status": foundation.Status}, True
         ),
-        0x0E: ZCLCommand(
+        0x0E: ZCLCommandDef(
             "set_year_day_schedule_response", {"status": foundation.Status}, True
         ),
-        0x0F: ZCLCommand(
+        0x0F: ZCLCommandDef(
             "get_year_day_schedule_response",
             {
                 "schedule_id": t.uint8_t,
@@ -442,13 +449,13 @@ class DoorLock(Cluster):
             },
             True,
         ),
-        0x10: ZCLCommand(
+        0x10: ZCLCommandDef(
             "clear_year_day_schedule_response", {"status": foundation.Status}, True
         ),
-        0x11: ZCLCommand(
+        0x11: ZCLCommandDef(
             "set_holiday_schedule_response", {"status": foundation.Status}, True
         ),
-        0x12: ZCLCommand(
+        0x12: ZCLCommandDef(
             "get_holiday_schedule_response",
             {
                 "holiday_schedule_id": t.uint8_t,
@@ -459,17 +466,21 @@ class DoorLock(Cluster):
             },
             True,
         ),
-        0x13: ZCLCommand(
+        0x13: ZCLCommandDef(
             "clear_holiday_schedule_response", {"status": foundation.Status}, True
         ),
-        0x14: ZCLCommand("set_user_type_response", {"status": foundation.Status}, True),
-        0x15: ZCLCommand(
+        0x14: ZCLCommandDef(
+            "set_user_type_response", {"status": foundation.Status}, True
+        ),
+        0x15: ZCLCommandDef(
             "get_user_type_response",
             {"user_id": t.uint16_t, "user_type": UserType},
             True,
         ),
-        0x16: ZCLCommand("set_rfid_code_response", {"status": foundation.Status}, True),
-        0x17: ZCLCommand(
+        0x16: ZCLCommandDef(
+            "set_rfid_code_response", {"status": foundation.Status}, True
+        ),
+        0x17: ZCLCommandDef(
             "get_rfid_code_response",
             {
                 "user_id": t.uint16_t,
@@ -479,13 +490,13 @@ class DoorLock(Cluster):
             },
             True,
         ),
-        0x18: ZCLCommand(
+        0x18: ZCLCommandDef(
             "clear_rfid_code_response", {"status": foundation.Status}, True
         ),
-        0x19: ZCLCommand(
+        0x19: ZCLCommandDef(
             "clear_all_rfid_codes_response", {"status": foundation.Status}, True
         ),
-        0x20: ZCLCommand(
+        0x20: ZCLCommandDef(
             "operation_event_notification",
             {
                 "operation_event_source": OperationEventSource,
@@ -497,7 +508,7 @@ class DoorLock(Cluster):
             },
             False,
         ),
-        0x21: ZCLCommand(
+        0x21: ZCLCommandDef(
             "programming_event_notification",
             {
                 "program_event_source": OperationEventSource,
@@ -542,15 +553,15 @@ class WindowCovering(Cluster):
         0x0019: ("intermediate_setpoints_tilt", t.CharacterString),
     }
     server_commands = {
-        0x00: ZCLCommand("up_open", {}, False),
-        0x01: ZCLCommand("down_close", {}, False),
-        0x02: ZCLCommand("stop", {}, False),
-        0x04: ZCLCommand("go_to_lift_value", {"lift_value": t.uint16_t}, False),
-        0x05: ZCLCommand(
+        0x00: ZCLCommandDef("up_open", {}, False),
+        0x01: ZCLCommandDef("down_close", {}, False),
+        0x02: ZCLCommandDef("stop", {}, False),
+        0x04: ZCLCommandDef("go_to_lift_value", {"lift_value": t.uint16_t}, False),
+        0x05: ZCLCommandDef(
             "go_to_lift_percentage", {"percentage_lift_value": t.uint8_t}, False
         ),
-        0x07: ZCLCommand("go_to_tilt_value", {"tilt_value": t.uint16_t}, False),
-        0x08: ZCLCommand(
+        0x07: ZCLCommandDef("go_to_tilt_value", {"tilt_value": t.uint16_t}, False),
+        0x08: ZCLCommandDef(
             "go_to_tilt_percentage", {"percentage_tilt_value": t.uint8_t}, False
         ),
     }

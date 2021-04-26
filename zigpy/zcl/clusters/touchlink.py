@@ -1,5 +1,6 @@
 import zigpy.types as t
-from zigpy.zcl import Cluster, ZCLCommand
+from zigpy.zcl import Cluster
+from zigpy.zcl.foundation import ZCLCommandDef
 
 
 class LogicalType(t.enum2):
@@ -78,7 +79,7 @@ class TouchlinkCommissioning(Cluster):
     attributes = {}
     server_commands = {
         # Touchlink
-        0x00: ZCLCommand(
+        0x00: ZCLCommandDef(
             "scan_request",
             {
                 "inter_pan_transaction_id": t.uint32_t,
@@ -87,22 +88,22 @@ class TouchlinkCommissioning(Cluster):
             },
             False,
         ),
-        0x02: ZCLCommand(
+        0x02: ZCLCommandDef(
             "device_info_request",
             {"inter_pan_transaction_id": t.uint32_t, "start_index": t.uint8_t},
             False,
         ),
-        0x06: ZCLCommand(
+        0x06: ZCLCommandDef(
             "identify_request",
             {"inter_pan_transaction_id": t.uint32_t, "identify_duration": t.uint16_t},
             False,
         ),
-        0x07: ZCLCommand(
+        0x07: ZCLCommandDef(
             "reset_to_factory_new_request",
             {"inter_pan_transaction_id": t.uint32_t},
             False,
         ),
-        0x10: ZCLCommand(
+        0x10: ZCLCommandDef(
             "network_start_request",
             {
                 "inter_pan_transaction_id": t.uint32_t,
@@ -123,7 +124,7 @@ class TouchlinkCommissioning(Cluster):
             },
             False,
         ),
-        0x12: ZCLCommand(
+        0x12: ZCLCommandDef(
             "network_join_router_request",
             {
                 "inter_pan_transaction_id": t.uint32_t,
@@ -143,7 +144,7 @@ class TouchlinkCommissioning(Cluster):
             },
             False,
         ),
-        0x14: ZCLCommand(
+        0x14: ZCLCommandDef(
             "network_join_end_device_request",
             {
                 "inter_pan_transaction_id": t.uint32_t,
@@ -163,7 +164,7 @@ class TouchlinkCommissioning(Cluster):
             },
             False,
         ),
-        0x16: ZCLCommand(
+        0x16: ZCLCommandDef(
             "network_update_request",
             {
                 "inter_pan_transaction_id": t.uint32_t,
@@ -176,14 +177,14 @@ class TouchlinkCommissioning(Cluster):
             False,
         ),
         # Utility
-        0x41: ZCLCommand(
+        0x41: ZCLCommandDef(
             "get_group_identifiers_request",
             {
                 "start_index": t.uint8_t,
             },
             False,
         ),
-        0x42: ZCLCommand(
+        0x42: ZCLCommandDef(
             "get_endpoint_list_request",
             {
                 "start_index": t.uint8_t,
@@ -193,7 +194,7 @@ class TouchlinkCommissioning(Cluster):
     }
     client_commands = {
         # Touchlink
-        0x01: ZCLCommand(
+        0x01: ZCLCommandDef(
             "scan_response",
             {
                 "inter_pan_transaction_id": t.uint32_t,
@@ -217,7 +218,7 @@ class TouchlinkCommissioning(Cluster):
             },
             True,
         ),
-        0x03: ZCLCommand(
+        0x03: ZCLCommandDef(
             "device_info_response",
             {
                 "inter_pan_transaction_id": t.uint32_t,
@@ -227,7 +228,7 @@ class TouchlinkCommissioning(Cluster):
             },
             True,
         ),
-        0x11: ZCLCommand(
+        0x11: ZCLCommandDef(
             "network_start_response",
             {
                 "inter_pan_transaction_id": t.uint32_t,
@@ -239,7 +240,7 @@ class TouchlinkCommissioning(Cluster):
             },
             True,
         ),
-        0x13: ZCLCommand(
+        0x13: ZCLCommandDef(
             "network_join_router_response",
             {
                 "inter_pan_transaction_id": t.uint32_t,
@@ -247,7 +248,7 @@ class TouchlinkCommissioning(Cluster):
             },
             True,
         ),
-        0x15: ZCLCommand(
+        0x15: ZCLCommandDef(
             "network_join_end_device_response",
             {
                 "inter_pan_transaction_id": t.uint32_t,
@@ -256,7 +257,7 @@ class TouchlinkCommissioning(Cluster):
             True,
         ),
         # Utility
-        0x40: ZCLCommand(
+        0x40: ZCLCommandDef(
             "endpoint_info",
             {
                 "ieee_addr": t.EUI64,
@@ -268,7 +269,7 @@ class TouchlinkCommissioning(Cluster):
             },
             True,
         ),
-        0x41: ZCLCommand(
+        0x41: ZCLCommandDef(
             "get_group_identifiers_response",
             {
                 "total": t.uint8_t,
@@ -277,7 +278,7 @@ class TouchlinkCommissioning(Cluster):
             },
             True,
         ),
-        0x42: ZCLCommand(
+        0x42: ZCLCommandDef(
             "get_endpoint_list_response",
             {
                 "total": t.uint8_t,

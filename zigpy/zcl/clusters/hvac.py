@@ -1,7 +1,8 @@
 """HVAC Functional Domain"""
 
 import zigpy.types as t
-from zigpy.zcl import Cluster, ZCLCommand
+from zigpy.zcl import Cluster
+from zigpy.zcl.foundation import ZCLCommandDef
 
 
 class Pump(Cluster):
@@ -318,10 +319,10 @@ class Thermostat(Cluster):
         0x0047: ("ac_capacity_format", ACCapacityFormat),
     }
     server_commands = {
-        0x00: ZCLCommand(
+        0x00: ZCLCommandDef(
             "setpoint_raise_lower", {"mode": SetpointMode, "amount": t.int8s}, False
         ),
-        0x01: ZCLCommand(
+        0x01: ZCLCommandDef(
             "set_weekly_schedule",
             {
                 "num_transitions_for_sequence": t.enum8,
@@ -331,16 +332,16 @@ class Thermostat(Cluster):
             },  # TODO: properly parse values
             False,
         ),
-        0x02: ZCLCommand(
+        0x02: ZCLCommandDef(
             "get_weekly_schedule",
             {"days_to_return": SeqDayOfWeek, "mode_to_return": SeqMode},
             False,
         ),
-        0x03: ZCLCommand("clear_weekly_schedule", {}, False),
-        0x04: ZCLCommand("get_relay_status_log", {}, False),
+        0x03: ZCLCommandDef("clear_weekly_schedule", {}, False),
+        0x04: ZCLCommandDef("get_relay_status_log", {}, False),
     }
     client_commands = {
-        0x00: ZCLCommand(
+        0x00: ZCLCommandDef(
             "get_weekly_schedule_response",
             {
                 "num_transitions_for_sequence": t.enum8,
@@ -350,7 +351,7 @@ class Thermostat(Cluster):
             },  # TODO: properly parse values
             True,
         ),
-        0x01: ZCLCommand(
+        0x01: ZCLCommandDef(
             "get_relay_status_log_response",
             {
                 "time_of_day": t.uint16_t,

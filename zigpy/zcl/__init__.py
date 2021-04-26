@@ -1,10 +1,10 @@
+from __future__ import annotations
+
 import asyncio
-import dataclasses
 import enum
 import functools
-import inspect
 import logging
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Coroutine, List, Optional, Sequence, Set, Union
 
 from zigpy import util
 import zigpy.types as t
@@ -16,87 +16,33 @@ LOGGER = logging.getLogger(__name__)
 AddressingMode = Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
 
 
-def serialize_schema(schema, *args, **kwargs) -> bytes:
-    signature = inspect.Signature(
-        parameters=[
-            inspect.Parameter(
-                name=name.rstrip("?"),
-                annotation=param_type,
-                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                default=(None if name.endswith("?") else inspect.Parameter.empty),
-            )
-            for name, param_type in schema.items()
-        ]
+def convert_list_schema(
+    schema: Sequence[type], command_id: int, is_reply: bool
+) -> type[t.Struct]:
+    schema_dict = {}
+
+    for i, param_type in enumerate(schema, start=1):
+        name = f"param{i}"
+        real_type = next(c for c in param_type.__mro__ if c.__name__ != "Optional")
+
+        if real_type is not param_type:
+            name += "?"
+
+        schema_dict[name] = real_type
+
+    temp = foundation.ZCLCommandDef(
+        schema=schema_dict, is_reply=is_reply, id=command_id, name="schema"
     )
+    temp.compile_schema()
 
-    bound = signature.bind(*args, **kwargs)
-    bound.apply_defaults()
-
-    params = []
-
-    for name, value in bound.arguments.items():
-        if value is None:
-            continue
-
-        params.append(signature.parameters[name].annotation(value).serialize())
-
-    return b"".join(params)
+    return temp.schema
 
 
-@dataclasses.dataclass(frozen=True)
-class ZCLCommand:
-    name: str
-    schema: dict
-    is_reply: bool
+def future_exception(e):
+    future = asyncio.Future()
+    future.set_exception(e)
 
-    id: int = None
-    cluster_id: int = None
-    type: str = None
-
-    def replace(self, **kwargs):
-        return dataclasses.replace(self, **kwargs)
-
-
-class Registry(type):
-    def __init__(cls, name, bases, nmspc):  # noqa: N805
-        super(Registry, cls).__init__(name, bases, nmspc)
-
-        if hasattr(cls, "cluster_id"):
-            cls.cluster_id = t.ClusterId(cls.cluster_id)
-        manufacturer_attributes = getattr(cls, "manufacturer_attributes", None)
-        if manufacturer_attributes:
-            cls.attributes = {**cls.attributes, **manufacturer_attributes}
-        cls.attridx: Dict[str, int] = {
-            attr_name: attr_id for attr_id, (attr_name, _) in cls.attributes.items()
-        }
-
-        for commands_type in ("server_commands", "client_commands"):
-            commands = getattr(cls, commands_type)
-            manufacturer_specific = getattr(cls, f"manufacturer_{commands_type}", {})
-            commands_idx = {}
-
-            if manufacturer_specific:
-                commands = {**commands, **manufacturer_specific}
-                setattr(cls, commands_type, commands)
-
-            for command_id, command in list(commands.items()):
-                commands[command_id] = commands[command_id].replace(
-                    id=command_id,
-                    cluster_id=cls.cluster_id,
-                    type="server" if commands_type == "server_commands" else "client",
-                )
-
-            setattr(cls, f"_{commands_type}_idx", commands_idx)
-
-        if getattr(cls, "_skip_registry", False):
-            if cls.__name__ != "CustomCluster":
-                cls._registry_custom_clusters.add(cls)
-            return
-
-        if hasattr(cls, "cluster_id"):
-            cls._registry[cls.cluster_id] = cls
-        if hasattr(cls, "cluster_id_range"):
-            cls._registry_range[cls.cluster_id_range] = cls
+    return future
 
 
 class ClusterType(enum.IntEnum):
@@ -104,23 +50,74 @@ class ClusterType(enum.IntEnum):
     Client = 1
 
 
-class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
+class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     """A cluster on an endpoint"""
 
-    _registry: Dict = {}
+    _skip_registry = False
+
+    cluster_id = None
+    cluster_id_range = None
+    attributes: dict[int, tuple[str, Callable]] = {}
+
+    manufacturer_client_commands: dict[int, foundation.ZCLCommandDef] = {}
+    manufacturer_server_commands: dict[int, foundation.ZCLCommandDef] = {}
+
+    client_commands: dict[int, foundation.ZCLCommandDef] = {}
+    server_commands: dict[int, foundation.ZCLCommandDef] = {}
+
+    # Internal caches and indices
+    _registry: dict = {}
     _registry_custom_clusters: Set = set()
-    _registry_range: Dict = {}
-    _server_commands_idx: Dict[str, int] = {}
-    _client_commands_idx: Dict[str, int] = {}
-    attridx: Dict[str, int]
-    attributes: Dict[int, Tuple[str, Callable]] = {}
-    client_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
-    server_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
+    _registry_range: dict = {}
+
+    _server_commands_idx: dict[str, int] = {}
+    _client_commands_idx: dict[str, int] = {}
+
+    attridx: dict[str, int] = {}
+
+    def __init_subclass__(cls):
+        if cls.cluster_id is not None:
+            cls.cluster_id = t.ClusterId(cls.cluster_id)
+
+        cls.attributes.update(getattr(cls, "manufacturer_attributes", {}))
+
+        cls.attridx = {
+            attr_name: attr_id for attr_id, (attr_name, _) in cls.attributes.items()
+        }
+
+        for commands_type in ("server_commands", "client_commands"):
+            commands = getattr(cls, commands_type)
+
+            manufacturer_specific = getattr(cls, f"manufacturer_{commands_type}", {})
+            commands.update(manufacturer_specific)
+
+            commands_idx = {}
+
+            for command_id, command in commands.items():
+                command.id = command_id
+                command.compile_schema()
+
+                commands_idx[command.name] = command.id
+
+            setattr(cls, f"_{commands_type}_idx", commands_idx)
+
+        if cls._skip_registry:
+            if cls.__name__ != "CustomCluster":
+                cls._registry_custom_clusters.add(cls)
+
+            return
+
+        if cls.cluster_id is not None:
+            cls._registry[cls.cluster_id] = cls
+
+        if cls.cluster_id_range is not None:
+            cls._registry_range[cls.cluster_id_range] = cls
 
     def __init__(self, endpoint: EndpointType, is_server: bool = True):
         self._endpoint: EndpointType = endpoint
-        self._attr_cache: Dict[int, Any] = {}
+        self._attr_cache: dict[int, Any] = {}
         self._listeners = {}
+
         if is_server:
             self._type: ClusterType = ClusterType.Server
         else:
@@ -129,26 +126,27 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     @classmethod
     def from_id(
         cls, endpoint: EndpointType, cluster_id: int, is_server: bool = True
-    ) -> ClusterType:
+    ) -> Cluster:
+        cluster_id = t.ClusterId(cluster_id)
+
         if cluster_id in cls._registry:
-            c = cls._registry[cluster_id](endpoint, is_server)
-            return c
+            return cls._registry[cluster_id](endpoint, is_server)
         else:
-            for cluster_id_range, cluster in cls._registry_range.items():
-                if cluster_id_range[0] <= cluster_id <= cluster_id_range[1]:
-                    c = cluster(endpoint, is_server)
-                    c.cluster_id = t.ClusterId(cluster_id)
-                    return c
+            for (start, end), cluster in cls._registry_range.items():
+                if start <= cluster_id <= end:
+                    return cluster(endpoint, is_server)
 
         LOGGER.warning("Unknown cluster %s", cluster_id)
-        c = cls(endpoint, is_server)
-        c.cluster_id = t.ClusterId(cluster_id)
-        return c
 
-    def deserialize(self, data):
+        cluster = cls(endpoint, is_server)
+        cluster.cluster_id = cluster_id
+
+        return cluster
+
+    def deserialize(self, data: bytes) -> tuple[foundation.ZCLHeader, ...]:
         orig_data = data
         hdr, data = foundation.ZCLHeader.deserialize(data)
-        self.debug("ZCL deserialize: %s", hdr)
+        self.debug("ZCL header: %s", hdr)
 
         if hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND:
             # Cluster command
@@ -158,60 +156,51 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                 commands = self.server_commands
 
             if hdr.command_id not in commands:
-                self.warning("Unknown cluster-specific command %s", hdr.command_id)
+                self.warning("Unknown cluster command %s %s", hdr.command_id, data)
                 return hdr, data
 
             command = commands[hdr.command_id]
-            schema = command.schema
-            is_reply = command.is_reply
         else:
             # General command
-            try:
-                schema, is_reply = foundation.COMMANDS[hdr.command_id]
-            except KeyError:
-                self.warning("Unknown foundation command %s", hdr.command_id)
+            if hdr.command_id not in foundation.COMMANDS:
+                self.warning("Unknown foundation command %s %s", hdr.command_id, data)
                 return hdr, data
 
-        response = {name.rstrip("?"): None for name in schema.keys()}
+            command = foundation.COMMANDS[hdr.command_id]
 
-        for name, param_type in schema.items():
-            try:
-                value, data = param_type.deserialize(data)
-            except ValueError:
-                if name.endswith("?"):
-                    break
+        response, data = command.schema.deserialize(data)
 
-                raise
-
-            response[name.rstrip("?")] = value
-
-        if data != b"":
+        if data:
             self.warning(
                 "Data remains after deserializing ZCL frame %s: %s", orig_data, data
             )
 
-        hdr.frame_control.is_reply = is_reply
+        hdr.frame_control.is_reply = command.is_reply
 
-        return hdr, response
+        return hdr, [k for k in response.as_tuple() if k is not None]
 
     @util.retryable_request
     def request(
         self,
         general: bool,
         command_id: Union[foundation.Command, int, t.uint8_t],
-        schema: dict,
+        schema: dict | t.Struct,
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         expect_reply: bool = True,
         tsn: Optional[Union[int, t.uint8_t]] = None,
         **kwargs,
     ):
+        # Convert out-of-band dict schemas to struct schemas
+        if isinstance(schema, (tuple, list)):
+            schema = convert_list_schema(
+                command_id=command_id, schema=schema, is_reply=False
+            )
+
         try:
-            params = serialize_schema(schema, *args, **kwargs)
-        except (TypeError, ValueError) as e:
-            error = asyncio.Future()
-            error.set_exception(e)
-            return error
+            payload = schema(*args, **kwargs).serialize()
+        except (ValueError, TypeError) as e:
+            return future_exception(e)
 
         if tsn is None:
             tsn = self._endpoint.device.application.get_sequence()
@@ -221,8 +210,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         else:
             hdr = foundation.ZCLHeader.cluster(tsn, command_id, manufacturer)
 
-        hdr.manufacturer = manufacturer
-        data = hdr.serialize() + params
+        data = hdr.serialize() + payload
 
         return self._endpoint.request(
             self.cluster_id, tsn, data, expect_reply=expect_reply, command_id=command_id
@@ -232,21 +220,26 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         self,
         general: bool,
         command_id: Union[foundation.Command, int, t.uint8_t],
-        schema: dict,
+        schema: dict | t.Struct,
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         tsn: Optional[Union[int, t.uint8_t]] = None,
         **kwargs,
     ):
+        # Convert out-of-band dict schemas to struct schemas
+        if isinstance(schema, (tuple, list)):
+            schema = convert_list_schema(
+                command_id=command_id, schema=schema, is_reply=True
+            )
+
         try:
-            params = serialize_schema(schema, *args, **kwargs)
-        except (TypeError, ValueError) as e:
-            error = asyncio.Future()
-            error.set_exception(e)
-            return error
+            payload = schema(*args, **kwargs).serialize()
+        except (ValueError, TypeError) as e:
+            return future_exception(e)
 
         if tsn is None:
             tsn = self._endpoint.device.application.get_sequence()
+
         if general:
             hdr = foundation.ZCLHeader.general(
                 tsn, command_id, manufacturer, is_reply=True
@@ -255,8 +248,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             hdr = foundation.ZCLHeader.cluster(
                 tsn, command_id, manufacturer, is_reply=True
             )
-        hdr.manufacturer = manufacturer
-        data = hdr.serialize() + params
+
+        data = hdr.serialize() + payload
 
         return self._endpoint.reply(self.cluster_id, tsn, data, command_id=command_id)
 
@@ -409,7 +402,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         return self._read_attributes_rsp(args, manufacturer=manufacturer, tsn=tsn)
 
     def _write_attr_records(
-        self, attributes: Dict[Union[str, int], Any]
+        self, attributes: dict[Union[str, int], Any]
     ) -> List[foundation.Attribute]:
         args = []
         for attrid, value in attributes.items():
@@ -431,7 +424,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         return args
 
     async def write_attributes(
-        self, attributes: Dict[Union[str, int], Any], manufacturer: Optional[int] = None
+        self, attributes: dict[Union[str, int], Any], manufacturer: Optional[int] = None
     ) -> List:
         args = self._write_attr_records(attributes)
         result = await self._write_attributes(args, manufacturer=manufacturer)
@@ -451,7 +444,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         return result
 
     def write_attributes_undivided(
-        self, attributes: Dict[Union[str, int], Any], manufacturer: Optional[int] = None
+        self, attributes: dict[Union[str, int], Any], manufacturer: Optional[int] = None
     ) -> List:
         """Either all or none of the attributes are written by the device."""
         args = self._write_attr_records(attributes)
@@ -504,14 +497,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
     def configure_reporting_multiple(
         self,
-        attributes: Dict[Union[int, str], Tuple[int, int, int]],
+        attributes: dict[Union[int, str], tuple[int, int, int]],
         manufacturer: Optional[int] = None,
     ) -> Coroutine:
         """Configure attribute reporting for multiple attributes in the same request.
 
         :param attributes: dict of attributes to configure attribute reporting.
         Key is either int or str for attribute id or attribute name.
-        Value is a Tuple of:
+        Value is a tuple of:
         - minimum reporting interval
         - maximum reporting interval
         - reportable change
@@ -534,11 +527,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         tsn: Optional[Union[int, t.uint8_t]] = None,
         **kwargs,
     ):
-        schema = self.server_commands[command_id][1]
+        command = self.server_commands[command_id]
+
         return self.request(
             False,
             command_id,
-            schema,
+            command.schema,
             *args,
             manufacturer=manufacturer,
             expect_reply=expect_reply,
@@ -553,10 +547,18 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         tsn: Optional[Union[int, t.uint8_t]] = None,
+        **kwargs,
     ):
-        schema = self.client_commands[command_id][1]
+        command = self.client_commands[command_id]
+
         return self.reply(
-            False, command_id, schema, *args, manufacturer=manufacturer, tsn=tsn
+            False,
+            command_id,
+            command.schema,
+            *args,
+            manufacturer=manufacturer,
+            tsn=tsn,
+            **kwargs,
         )
 
     @property
@@ -641,13 +643,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         tsn: Optional[Union[int, t.uint8_t]] = None,
         **kwargs,
     ):
-        schema, is_reply = foundation.COMMANDS[command_id]
-        if is_reply:
+        command = foundation.COMMANDS[command_id]
+
+        if command.is_reply:
             # should reply be retryable?
             return self.reply(
                 True,
-                command_id,
-                schema,
+                command.id,
+                command.schema,
                 *args,
                 manufacturer=manufacturer,
                 tsn=tsn,
@@ -656,8 +659,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
         return self.request(
             True,
-            command_id,
-            schema,
+            command.id,
+            command.schema,
             *args,
             manufacturer=manufacturer,
             expect_reply=expect_reply,

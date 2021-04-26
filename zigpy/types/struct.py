@@ -20,6 +20,7 @@ class StructField:
     type: typing.Optional[type] = None
 
     requires: typing.Optional[typing.Callable[[Struct], bool]] = None
+    optional: typing.Optional[bool] = False
 
     def replace(self, **kwargs) -> StructField:
         return dataclasses.replace(self, **kwargs)
@@ -162,7 +163,7 @@ class Struct:
                 continue
 
             # Missing fields cause an error if strict
-            if value is None:
+            if value is None and not field.optional:
                 if strict:
                     raise ValueError(f"Value for field {field.name!r} is required")
                 else:
@@ -187,6 +188,9 @@ class Struct:
         bitfields = []
 
         for field, value in self.assigned_fields(strict=True):
+            if value is None and field.optional:
+                continue
+
             value = field._convert_type(value)
 
             # All integral types are compacted into one chunk, unless they start and end
@@ -228,6 +232,8 @@ class Struct:
 
         for field in cls.fields:
             if field.requires is not None and not field.requires(instance):
+                continue
+            elif not data and field.optional:
                 continue
 
             if issubclass(field.type, t.FixedIntType) and not (

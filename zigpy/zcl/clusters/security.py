@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Tuple
 
 import zigpy.types as t
-from zigpy.zcl import Cluster, ZCLCommand
+from zigpy.zcl import Cluster
+from zigpy.zcl.foundation import ZCLCommandDef
 
 
 class IasZone(Cluster):
@@ -73,13 +74,13 @@ class IasZone(Cluster):
         0x0013: ("current_zone_sensitivity_level", t.uint8_t),
     }
     server_commands = {
-        0x00: ZCLCommand(
+        0x00: ZCLCommandDef(
             "enroll_response",
             {"enroll_response_code": EnrollResponse, "zone_id": t.uint8_t},
             True,
         ),
-        0x01: ZCLCommand("init_normal_op_mode", {}, False),
-        0x02: ZCLCommand(
+        0x01: ZCLCommandDef("init_normal_op_mode", {}, False),
+        0x02: ZCLCommandDef(
             "init_test_mode",
             {
                 "test_mode_duration": t.uint8_t,
@@ -89,7 +90,7 @@ class IasZone(Cluster):
         ),
     }
     client_commands = {
-        0x00: ZCLCommand(
+        0x00: ZCLCommandDef(
             "status_change_notification",
             {
                 "zone_status": ZoneStatus,
@@ -99,7 +100,7 @@ class IasZone(Cluster):
             },
             False,
         ),
-        0x01: ZCLCommand(
+        0x01: ZCLCommandDef(
             "enroll", {"zone_type": ZoneType, "manufacturer_code": t.uint16_t}, False
         ),
     }
@@ -181,7 +182,7 @@ class IasAce(Cluster):
     ep_attribute = "ias_ace"
     attributes = {}
     server_commands = {
-        0x00: ZCLCommand(
+        0x00: ZCLCommandDef(
             "arm",
             {
                 "arm_mode": ArmMode,
@@ -190,19 +191,19 @@ class IasAce(Cluster):
             },
             False,
         ),
-        0x01: ZCLCommand(
+        0x01: ZCLCommandDef(
             "bypass",
             {"zones_ids": t.LVList[t.uint8_t], "arm_disarm_code": t.CharacterString},
             False,
         ),
-        0x02: ZCLCommand("emergency", {}, False),
-        0x03: ZCLCommand("fire", {}, False),
-        0x04: ZCLCommand("panic", {}, False),
-        0x05: ZCLCommand("get_zone_id_map", {}, False),
-        0x06: ZCLCommand("get_zone_info", {"zone_id": t.uint8_t}, False),
-        0x07: ZCLCommand("get_panel_status", {}, False),
-        0x08: ZCLCommand("get_bypassed_zone_list", {}, False),
-        0x09: ZCLCommand(
+        0x02: ZCLCommandDef("emergency", {}, False),
+        0x03: ZCLCommandDef("fire", {}, False),
+        0x04: ZCLCommandDef("panic", {}, False),
+        0x05: ZCLCommandDef("get_zone_id_map", {}, False),
+        0x06: ZCLCommandDef("get_zone_info", {"zone_id": t.uint8_t}, False),
+        0x07: ZCLCommandDef("get_panel_status", {}, False),
+        0x08: ZCLCommandDef("get_bypassed_zone_list", {}, False),
+        0x09: ZCLCommandDef(
             "get_zone_status",
             {
                 "starting_zone_id": t.uint8_t,
@@ -214,13 +215,15 @@ class IasAce(Cluster):
         ),
     }
     client_commands = {
-        0x00: ZCLCommand("arm_response", {"arm_notification": ArmNotification}, True),
-        0x01: ZCLCommand(
+        0x00: ZCLCommandDef(
+            "arm_response", {"arm_notification": ArmNotification}, True
+        ),
+        0x01: ZCLCommandDef(
             "get_zone_id_map_response",
             {"zone_id_map_sections": t.List[t.bitmap16]},
             True,
         ),
-        0x02: ZCLCommand(
+        0x02: ZCLCommandDef(
             "get_zone_info_response",
             {
                 "zone_id": t.uint8_t,
@@ -230,7 +233,7 @@ class IasAce(Cluster):
             },
             True,
         ),
-        0x03: ZCLCommand(
+        0x03: ZCLCommandDef(
             "zone_status_changed",
             {
                 "zone_id": t.uint8_t,
@@ -240,7 +243,7 @@ class IasAce(Cluster):
             },
             False,
         ),
-        0x04: ZCLCommand(
+        0x04: ZCLCommandDef(
             "panel_status_changed",
             {
                 "panel_status": PanelStatus,
@@ -250,7 +253,7 @@ class IasAce(Cluster):
             },
             False,
         ),
-        0x05: ZCLCommand(
+        0x05: ZCLCommandDef(
             "panel_status_response",
             {
                 "panel_status": PanelStatus,
@@ -260,13 +263,13 @@ class IasAce(Cluster):
             },
             True,
         ),
-        0x06: ZCLCommand(
+        0x06: ZCLCommandDef(
             "set_bypassed_zone_list", {"zone_ids": t.LVList[t.uint8_t]}, False
         ),
-        0x07: ZCLCommand(
+        0x07: ZCLCommandDef(
             "bypass_response", {"bypass_results": t.LVList[BypassResponse]}, True
         ),
-        0x08: ZCLCommand(
+        0x08: ZCLCommandDef(
             "get_zone_status_response",
             {"zone_status_complete": t.Bool, "zone_statuses": t.LVList[ZoneStatusRsp]},
             True,
@@ -400,7 +403,7 @@ class IasWd(Cluster):
     ep_attribute = "ias_wd"
     attributes = {0x0000: ("max_duration", t.uint16_t)}
     server_commands = {
-        0x00: ZCLCommand(
+        0x00: ZCLCommandDef(
             "start_warning",
             {
                 "warning": Warning,
@@ -410,6 +413,6 @@ class IasWd(Cluster):
             },
             False,
         ),
-        0x01: ZCLCommand("squawk", {"squawk": Squawk}, False),
+        0x01: ZCLCommandDef("squawk", {"squawk": Squawk}, False),
     }
     client_commands = {}
