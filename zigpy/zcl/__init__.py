@@ -81,6 +81,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         if cls.cluster_id is not None:
             cls.cluster_id = t.ClusterId(cls.cluster_id)
 
+        # The dictionary is copied to ensure that subclass updates don't affect parents
         cls.attributes = cls.attributes.copy()
         cls.attributes.update(cls.manufacturer_attributes)
 
@@ -89,7 +90,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         }
 
         for commands_type in ("server_commands", "client_commands"):
-            commands = getattr(cls, commands_type)
+            commands = getattr(cls, commands_type).copy()
 
             manufacturer_specific = getattr(cls, f"manufacturer_{commands_type}", {})
             commands.update(manufacturer_specific)
@@ -114,6 +115,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 commands_idx[command.name] = command.id
 
             setattr(cls, f"_{commands_type}_idx", commands_idx)
+            setattr(cls, commands_type, commands)
 
         if cls._skip_registry:
             if cls.__name__ != "CustomCluster":
