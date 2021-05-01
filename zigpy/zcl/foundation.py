@@ -485,8 +485,8 @@ class ZCLCommandDef:
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
-            f"id={self.id}, "
-            f"name={self.name}, "
+            f"id=0x{self.id:02X}, "
+            f"name={self.name!r}, "
             f"is_reply={self.is_reply}, "
             f"schema={self.schema}"
             f")"

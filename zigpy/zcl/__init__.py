@@ -412,15 +412,25 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 self.error("%d is not a valid attribute id", attrid)
                 continue
 
-            a = foundation.Attribute(attrid, foundation.TypeValue())
+            attr = foundation.Attribute(attrid, foundation.TypeValue())
+
+            python_type = self.attributes[attrid][1]
+            attr.value.type = foundation.DATA_TYPES.pytype_to_datatype_id(python_type)
 
             try:
-                python_type = self.attributes[attrid][1]
-                a.value.type = foundation.DATA_TYPES.pytype_to_datatype_id(python_type)
-                a.value.value = python_type(value)
-                args.append(a)
+                attr.value.value = python_type(value)
             except ValueError as e:
-                self.error(str(e))
+                self.error(
+                    "Failed to convert attribute 0x%04X from %s (%s) to type %s: %s",
+                    attrid,
+                    value,
+                    type(value),
+                    python_type,
+                    e,
+                )
+            else:
+                args.append(attr)
+
         return args
 
     async def write_attributes(
