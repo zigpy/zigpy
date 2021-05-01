@@ -198,7 +198,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         hdr.frame_control.is_reply = command.is_reply
 
-        return hdr, [k for k in response.as_tuple() if k is not None]
+        return hdr, list(response.as_tuple())
 
     @util.retryable_request
     def request(
