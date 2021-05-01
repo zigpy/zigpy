@@ -611,6 +611,12 @@ class OnOff(Cluster):
         Delayed_All_Off = 0x00
         Dying_Light = 0x01
 
+    DELAYED_ALL_OFF_FADE_TO_OFF = 0x00
+    DELAYED_ALL_OFF_NO_FADE = 0x01
+    DELAYED_ALL_OFF_DIM_THEN_FADE_TO_OFF = 0x02
+
+    DYING_LIGHT_DIM_UP_THEN_FADE_TO_OFF = 0x00
+
     cluster_id = 0x0006
     name = "On/Off"
     ep_attribute = "on_off"
@@ -1318,6 +1324,12 @@ class Ota(Cluster):
         Apply_after_timeout = 0x00
         Do_not_apply_after_timeout = 0x01
 
+    class ImageNotifyPayloadType(t.enum8):
+        QueryJitter = 0x00
+        QueryJitter_ManufacturerCode = 0x01
+        QueryJitter_ManufacturerCode_ImageType = 0x02
+        QueryJitter_ManufacturerCode_ImageType_NewFileVersion = 0x03
+
     cluster_id = 0x0019
     ep_attribute = "ota"
     attributes = {
@@ -1404,7 +1416,7 @@ class Ota(Cluster):
         0x00: ZCLCommandDef(
             "image_notify",
             {
-                "payload_type": t.uint8_t,
+                "payload_type": ImageNotifyPayloadType,
                 "query_jitter": t.uint8_t,
                 "manufacturer_code?": t.uint16_t,
                 "image_type?": t.uint16_t,
