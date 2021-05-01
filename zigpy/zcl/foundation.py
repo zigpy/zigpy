@@ -599,7 +599,7 @@ class FrameControl(t.Struct, t.uint8_t):
 
     frame_type: FrameType
     is_manufacturer_specific: t.uint1_t
-    is_reply: t.uint1_t
+    is_reply: t.uint1_t  # "direction" in the ZCL spec
     disable_default_response: t.uint1_t
     reserved: t.uint3_t
 
@@ -622,15 +622,6 @@ class FrameControl(t.Struct, t.uint8_t):
             disable_default_response=is_reply,
             reserved=0,
         )
-
-    # in ZCL specs "is_reply" is "direction"
-    @property
-    def direction(self):
-        return self.is_reply
-
-    @direction.setter
-    def direction(self, value):
-        self.is_reply = value
 
     @property
     def is_cluster(self) -> bool:

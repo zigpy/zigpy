@@ -195,12 +195,6 @@ def test_frame_control():
     assert rest == extra
     assert frc.frame_type == foundation.FrameType.CLUSTER_COMMAND
 
-    assert frc.direction == frc.is_reply
-    frc.direction = not frc.direction
-    assert frc.direction == frc.is_reply
-    frc.is_reply = not frc.is_reply
-    assert frc.direction == frc.is_reply
-
     r = repr(frc)
     assert isinstance(r, str)
 
