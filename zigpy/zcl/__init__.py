@@ -4,7 +4,7 @@ import asyncio
 import enum
 import functools
 import logging
-from typing import Any, Callable, Coroutine, List, Optional, Sequence, Set, Union
+from typing import Any, Callable, Coroutine, List, Optional, Sequence, Union
 
 from zigpy import util
 import zigpy.types as t
@@ -53,11 +53,13 @@ class ClusterType(enum.IntEnum):
 class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     """A cluster on an endpoint"""
 
-    _skip_registry = False
+    _skip_registry: bool = False
 
-    cluster_id = None
-    cluster_id_range = None
+    cluster_id: t.uint16_t = None
+    cluster_id_range: tuple[t.uint16_t, t.uint16_t] = None
     attributes: dict[int, tuple[str, Callable]] = {}
+
+    manufacturer_attributes: dict[int, tuple[str, Callable]] = {}
 
     manufacturer_client_commands: dict[int, foundation.ZCLCommandDef] = {}
     manufacturer_server_commands: dict[int, foundation.ZCLCommandDef] = {}
@@ -67,7 +69,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     # Internal caches and indices
     _registry: dict = {}
-    _registry_custom_clusters: Set = set()
+    _registry_custom_clusters: set = set()
     _registry_range: dict = {}
 
     _server_commands_idx: dict[str, int] = {}
@@ -79,7 +81,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         if cls.cluster_id is not None:
             cls.cluster_id = t.ClusterId(cls.cluster_id)
 
-        cls.attributes.update(getattr(cls, "manufacturer_attributes", {}))
+        cls.attributes = cls.attributes.copy()
+        cls.attributes.update(cls.manufacturer_attributes)
 
         cls.attridx = {
             attr_name: attr_id for attr_id, (attr_name, _) in cls.attributes.items()
@@ -93,8 +96,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
             commands_idx = {}
 
-            for command_id, command in commands.items():
-                command.id = command_id
+            for command_id, command in list(commands.items()):
+                if isinstance(command, tuple):
+                    # Backwards compatibility with old command tuples
+                    name, schema, is_reply = command
+                    commands[command_id] = command = foundation.ZCLCommandDef(
+                        id=command_id,
+                        name=name,
+                        schema=convert_list_schema(schema, command_id, is_reply),
+                        is_reply=is_reply,
+                    )
+                else:
+                    command.id = command_id
+
                 command.compile_schema()
 
                 commands_idx[command.name] = command.id
@@ -131,16 +145,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         if cluster_id in cls._registry:
             return cls._registry[cluster_id](endpoint, is_server)
-        else:
-            for (start, end), cluster in cls._registry_range.items():
-                if start <= cluster_id <= end:
-                    return cluster(endpoint, is_server)
 
-        LOGGER.warning("Unknown cluster %s", cluster_id)
+        for (start, end), cluster in cls._registry_range.items():
+            if start <= cluster_id <= end:
+                cluster = cluster(endpoint, is_server)
+                cluster.cluster_id = cluster_id
+                return cluster
+
+        LOGGER.warning("Unknown cluster 0x%04X", cluster_id)
 
         cluster = cls(endpoint, is_server)
         cluster.cluster_id = cluster_id
-
         return cluster
 
     def deserialize(self, data: bytes) -> tuple[foundation.ZCLHeader, ...]:
