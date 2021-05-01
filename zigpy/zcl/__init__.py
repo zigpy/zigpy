@@ -57,15 +57,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     cluster_id: t.uint16_t = None
     cluster_id_range: tuple[t.uint16_t, t.uint16_t] = None
+
     attributes: dict[int, tuple[str, Callable]] = {}
-
-    manufacturer_attributes: dict[int, tuple[str, Callable]] = {}
-
-    manufacturer_client_commands: dict[int, foundation.ZCLCommandDef] = {}
-    manufacturer_server_commands: dict[int, foundation.ZCLCommandDef] = {}
-
     client_commands: dict[int, foundation.ZCLCommandDef] = {}
     server_commands: dict[int, foundation.ZCLCommandDef] = {}
+
+    manufacturer_attributes: dict[int, tuple[str, Callable]] = {}
+    manufacturer_client_commands: dict[int, foundation.ZCLCommandDef] = {}
+    manufacturer_server_commands: dict[int, foundation.ZCLCommandDef] = {}
 
     # Internal caches and indices
     _registry: dict = {}
@@ -81,19 +80,22 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         if cls.cluster_id is not None:
             cls.cluster_id = t.ClusterId(cls.cluster_id)
 
-        # The dictionary is copied to ensure that subclass updates don't affect parents
-        cls.attributes = cls.attributes.copy()
-        cls.attributes.update(cls.manufacturer_attributes)
+        if cls.manufacturer_attributes:
+            # A new dictionary is made. Otherwise, the update affects the parent class.
+            cls.attributes = {**cls.attributes, **cls.manufacturer_attributes}
 
         cls.attridx = {
             attr_name: attr_id for attr_id, (attr_name, _) in cls.attributes.items()
         }
 
         for commands_type in ("server_commands", "client_commands"):
-            commands = getattr(cls, commands_type).copy()
+            commands = getattr(cls, commands_type)
 
             manufacturer_specific = getattr(cls, f"manufacturer_{commands_type}", {})
-            commands.update(manufacturer_specific)
+
+            # Only change the attribute if manufacturer-specific commands exist
+            if manufacturer_specific:
+                commands = {**commands, **manufacturer_specific}
 
             commands_idx = {}
 
@@ -115,7 +117,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 commands_idx[command.name] = command.id
 
             setattr(cls, f"_{commands_type}_idx", commands_idx)
-            setattr(cls, commands_type, commands)
+
+            if manufacturer_specific:
+                setattr(cls, commands_type, commands)
 
         if cls._skip_registry:
             if cls.__name__ != "CustomCluster":
