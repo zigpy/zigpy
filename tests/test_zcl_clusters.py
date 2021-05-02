@@ -24,12 +24,12 @@ def test_registry():
 
 def test_attributes():
     for cluster_id, cluster in zcl.Cluster._registry.items():
-        for attrid, attrspec in cluster.attributes.items():
+        for attrid, attr in cluster.attributes.items():
             assert 0 <= attrid <= 0xFFFF
-            assert isinstance(attrspec, tuple)
-            assert isinstance(attrspec[0], str)
-            assert hasattr(attrspec[1], "serialize")
-            assert hasattr(attrspec[1], "deserialize")
+            assert isinstance(attr, zcl.foundation.ZCLAttributeDef)
+            assert attr.id == attrid
+            assert attr.name
+            assert attr.type
 
 
 def _test_commands(cmdattr):

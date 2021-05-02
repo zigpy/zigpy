@@ -330,12 +330,12 @@ def test_custom_cluster_idx():
         for cmd_name, cmd_id in getattr(TestClusterIdx, cmd_set_idx).items():
             assert getattr(TestClusterIdx, cmd_set)[cmd_id][0] == cmd_name
 
-    assert hasattr(TestClusterIdx, "attridx")
-    attr_idx_len = len(TestClusterIdx.attridx)
+    assert hasattr(TestClusterIdx, "attributes_by_name")
+    attr_idx_len = len(TestClusterIdx.attributes_by_name)
     attrs_len = len(TestClusterIdx.attributes)
     assert attr_idx_len == attrs_len
-    for attr_name, attr_id in TestClusterIdx.attridx.items():
-        assert TestClusterIdx.attributes[attr_id][0] == attr_name
+    for attr_name, attr in TestClusterIdx.attributes_by_name.items():
+        assert TestClusterIdx.attributes[attr.id].name == attr_name
 
     _test_cmd("server_commands", "_server_commands_idx")
     _test_cmd("client_commands", "_client_commands_idx")
@@ -474,15 +474,23 @@ def _mk_rar(attrid, value, status=0):
 class ManufacturerSpecificCluster(zigpy.quirks.CustomCluster):
     cluster_id = 0x2222
     ep_attribute = "just_a_cluster"
-    attributes = {0: ("attr0", t.uint8_t)}
-    manufacturer_attributes = {1: ("attr1", t.uint16_t)}
-    client_commands = {0: zcl.foundation.ZCLCommandDef("client_cmd0", {}, False)}
-    manufacturer_client_commands = {
-        1: zcl.foundation.ZCLCommandDef("client_cmd1", {}, False)
+    attributes = {
+        0: ("attr0", t.uint8_t),
+        1: ("attr1", t.uint16_t, True),
     }
-    server_commands = {0: zcl.foundation.ZCLCommandDef("server_cmd0", {}, False)}
-    manufacturer_server_commands = {
-        1: zcl.foundation.ZCLCommandDef("server_cmd1", {}, False)
+
+    client_commands = {
+        0: zcl.foundation.ZCLCommandDef("client_cmd0", {}, False),
+        1: zcl.foundation.ZCLCommandDef(
+            "client_cmd1", {}, False, is_manufacturer_specific=True
+        ),
+    }
+
+    server_commands = {
+        0: zcl.foundation.ZCLCommandDef("server_cmd0", {}, False),
+        1: zcl.foundation.ZCLCommandDef(
+            "server_cmd1", {}, False, is_manufacturer_specific=True
+        ),
     }
 
 

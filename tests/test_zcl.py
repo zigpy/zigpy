@@ -186,7 +186,10 @@ def test_attribute_report(cluster):
     def mock_type(*args, **kwargs):
         raise ValueError
 
-    with patch.dict(cluster.attributes, {0xAAAA: ("Name", mock_type)}):
+    with patch.dict(
+        cluster.attributes,
+        {0xAAAA: foundation.ZCLAttributeDef(id=0xAAAA, name="Name", type=mock_type)},
+    ):
         attr.attrid = 0xAAAA
         cluster.handle_message(hdr, [[attr]])
         assert cluster._attr_cache[attr.attrid] == "manufacturer"
@@ -319,7 +322,10 @@ async def test_read_attributes_value_normalization_error(cluster):
         raise ValueError
 
     cluster.request = mockrequest
-    with patch.dict(cluster.attributes, {5: ("Name", mock_type)}):
+    with patch.dict(
+        cluster.attributes,
+        {5: foundation.ZCLAttributeDef(id=5, name="Name", type=mock_type)},
+    ):
         success, failure = await cluster.read_attributes(["model"], allow_cache=True)
     assert failure == {}
     assert success["model"] == "Model"

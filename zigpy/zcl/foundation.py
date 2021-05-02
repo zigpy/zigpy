@@ -441,11 +441,19 @@ class Command(t.enum8):
 
 
 class ZCLCommandDef:
-    def __init__(self, name=None, schema=None, is_reply=None, id=None):
+    def __init__(
+        self,
+        name=None,
+        schema=None,
+        is_reply=None,
+        id=None,
+        is_manufacturer_specific=None,
+    ):
         self.id = id
         self.name = name
         self.is_reply = is_reply
         self.schema = schema
+        self.is_manufacturer_specific = is_manufacturer_specific
 
     def compile_schema(self):
         # Dict schemas get converted into struct schemas internally
@@ -488,7 +496,32 @@ class ZCLCommandDef:
             f"id=0x{self.id:02X}, "
             f"name={self.name!r}, "
             f"is_reply={self.is_reply}, "
-            f"schema={self.schema}"
+            f"schema={self.schema}, "
+            f"is_manufacturer_specific={self.is_manufacturer_specific}"
+            f")"
+        )
+
+
+class ZCLAttributeDef:
+    def __init__(
+        self, name=None, type=None, is_manufacturer_specific=False, id=None, access="rw"
+    ):
+        assert access in {None, "r", "w", "rw"}
+
+        self.id = id
+        self.name = name
+        self.type = type
+        self.access = access
+        self.is_manufacturer_specific = is_manufacturer_specific
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"id=0x{self.id:04X}, "
+            f"name={self.name!r}, "
+            f"type={self.type}, "
+            f"access={self.access!r}, "
+            f"is_manufacturer_specific={self.is_manufacturer_specific}"
             f")"
         )
 

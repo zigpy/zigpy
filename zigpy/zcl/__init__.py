@@ -4,7 +4,7 @@ import asyncio
 import enum
 import functools
 import logging
-from typing import Any, Callable, Coroutine, List, Optional, Sequence, Union
+from typing import Any, Coroutine, Optional, Sequence, Union
 
 from zigpy import util
 import zigpy.types as t
@@ -53,52 +53,46 @@ class ClusterType(enum.IntEnum):
 class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     """A cluster on an endpoint"""
 
+    # Custom clusters for quirks subclass Cluster but should not be stored in any global
+    # registries, since they're device-specific and collide with existing clusters.
     _skip_registry: bool = False
 
+    # Most clusters are identified by a single cluster ID
     cluster_id: t.uint16_t = None
+
+    # Manufacturer specific clusters exist between 0xFC00 and 0xFFFF. This exists solely
+    # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
     cluster_id_range: tuple[t.uint16_t, t.uint16_t] = None
 
-    attributes: dict[int, tuple[str, Callable]] = {}
+    # Clusters contain attributes and both client and server commands
+    attributes: dict[int, foundation.ZCLAttributeDef] = {}
     client_commands: dict[int, foundation.ZCLCommandDef] = {}
     server_commands: dict[int, foundation.ZCLCommandDef] = {}
 
-    manufacturer_attributes: dict[int, tuple[str, Callable]] = {}
-    manufacturer_client_commands: dict[int, foundation.ZCLCommandDef] = {}
-    manufacturer_server_commands: dict[int, foundation.ZCLCommandDef] = {}
-
     # Internal caches and indices
     _registry: dict = {}
-    _registry_custom_clusters: set = set()
     _registry_range: dict = {}
 
     _server_commands_idx: dict[str, int] = {}
     _client_commands_idx: dict[str, int] = {}
 
-    attridx: dict[str, int] = {}
+    attributes_by_name: dict[str, int] = {}
 
     def __init_subclass__(cls):
         if cls.cluster_id is not None:
             cls.cluster_id = t.ClusterId(cls.cluster_id)
 
-        if cls.manufacturer_attributes:
-            # A new dictionary is made. Otherwise, the update affects the parent class.
-            cls.attributes = {**cls.attributes, **cls.manufacturer_attributes}
+        # Clear the caches and lookup tables. Their contents should correspond exactly
+        # to what's in their respective command/attribute dictionaries.
+        cls.attributes_by_name = {}
+        cls._server_commands_idx = {}
+        cls._client_commands_idx = {}
 
-        cls.attridx = {
-            attr_name: attr_id for attr_id, (attr_name, _) in cls.attributes.items()
-        }
-
-        for commands_type in ("server_commands", "client_commands"):
-            commands = getattr(cls, commands_type)
-
-            manufacturer_specific = getattr(cls, f"manufacturer_{commands_type}", {})
-
-            # Only change the attribute if manufacturer-specific commands exist
-            if manufacturer_specific:
-                commands = {**commands, **manufacturer_specific}
-
-            commands_idx = {}
-
+        # Compile command definitions
+        for commands, index in [
+            (cls.server_commands, cls._server_commands_idx),
+            (cls.client_commands, cls._client_commands_idx),
+        ]:
             for command_id, command in list(commands.items()):
                 if isinstance(command, tuple):
                     # Backwards compatibility with old command tuples
@@ -113,18 +107,30 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                     command.id = command_id
 
                 command.compile_schema()
+                index[command.name] = command.id
 
-                commands_idx[command.name] = command.id
+        # Compile attributes
+        for attr_id, attr in list(cls.attributes.items()):
+            if isinstance(attr, tuple):
+                if len(attr) == 2:
+                    attr_name, attr_type = attr
+                    attr_manuf_specific = False
+                else:
+                    attr_name, attr_type, attr_manuf_specific = attr
 
-            setattr(cls, f"_{commands_type}_idx", commands_idx)
+                attr = foundation.ZCLAttributeDef(
+                    id=attr_id,
+                    name=attr_name,
+                    type=attr_type,
+                    is_manufacturer_specific=attr_manuf_specific,
+                )
+            else:
+                attr.id = attr_id
 
-            if manufacturer_specific:
-                setattr(cls, commands_type, commands)
+            cls.attributes[attr.id] = attr
+            cls.attributes_by_name[attr.name] = attr
 
         if cls._skip_registry:
-            if cls.__name__ != "CustomCluster":
-                cls._registry_custom_clusters.add(cls)
-
             return
 
         if cls.cluster_id is not None:
@@ -277,7 +283,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def handle_message(
         self,
         hdr: foundation.ZCLHeader,
-        args: List[Any],
+        args: list[Any],
         *,
         dst_addressing: Optional[AddressingMode] = None,
     ):
@@ -292,7 +298,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def handle_cluster_request(
         self,
         hdr: foundation.ZCLHeader,
-        args: List[Any],
+        args: list[Any],
         *,
         dst_addressing: Optional[AddressingMode] = None,
     ):
@@ -301,21 +307,23 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def handle_cluster_general_request(
         self,
         hdr: foundation.ZCLHeader,
-        args: List,
+        args: list,
         *,
         dst_addressing: Optional[AddressingMode] = None,
     ) -> None:
         if hdr.command_id == foundation.Command.Report_Attributes:
-            valuestr = ", ".join(
-                [
-                    f"{self.attributes.get(a.attrid, [a.attrid])[0]}={a.value.value}"
-                    for a in args[0]
-                ]
-            )
-            self.debug("Attribute report received: %s", valuestr)
+            values = []
+
+            for a in args[0]:
+                if a.attrid in self.attributes:
+                    values.append(f"{self.attributes[a.attrid].name}={a.value.value}")
+                else:
+                    values.append(f"0x{a.attrid:04X}={a.value.value}")
+
+            self.debug("Attribute report received: %s", ", ".join(values))
             for attr in args[0]:
                 try:
-                    value = self.attributes[attr.attrid][1](attr.value.value)
+                    value = self.attributes[attr.attrid].type(attr.value.value)
                 except KeyError:
                     value = attr.value.value
                 except ValueError:
@@ -350,7 +358,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         orig_attributes = {}
         for attribute in attributes:
             if isinstance(attribute, str):
-                attrid = self.attridx[attribute]
+                attrid = self.attributes_by_name[attribute].id
             else:
                 attrid = attribute
             attribute_ids.append(attrid)
@@ -379,7 +387,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 orig_attribute = orig_attributes[record.attrid]
                 if record.status == foundation.Status.SUCCESS:
                     try:
-                        value = self.attributes[record.attrid][1](record.value.value)
+                        value = self.attributes[record.attrid].type(record.value.value)
                     except KeyError:
                         value = record.value.value
                     except ValueError:
@@ -401,7 +409,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         args = []
         for attrid, value in attributes.items():
             if isinstance(attrid, str):
-                attrid = self.attridx[attrid]
+                attrid = self.attributes_by_name[attrid].id
 
             a = foundation.ReadAttributeRecord(
                 attrid, foundation.Status.UNSUPPORTED_ATTRIBUTE, foundation.TypeValue()
@@ -413,7 +421,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
             try:
                 a.status = foundation.Status.SUCCESS
-                python_type = self.attributes[attrid][1]
+                python_type = self.attributes[attrid].type
                 a.value.type = foundation.DATA_TYPES.pytype_to_datatype_id(python_type)
                 a.value.value = python_type(value)
             except ValueError as e:
@@ -424,18 +432,18 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def _write_attr_records(
         self, attributes: dict[Union[str, int], Any]
-    ) -> List[foundation.Attribute]:
+    ) -> list[foundation.Attribute]:
         args = []
         for attrid, value in attributes.items():
             if isinstance(attrid, str):
-                attrid = self.attridx[attrid]
+                attrid = self.attributes_by_name[attrid].id
             if attrid not in self.attributes:
                 self.error("%d is not a valid attribute id", attrid)
                 continue
 
             attr = foundation.Attribute(attrid, foundation.TypeValue())
 
-            python_type = self.attributes[attrid][1]
+            python_type = self.attributes[attrid].type
             attr.value.type = foundation.DATA_TYPES.pytype_to_datatype_id(python_type)
 
             try:
@@ -456,7 +464,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     async def write_attributes(
         self, attributes: dict[Union[str, int], Any], manufacturer: Optional[int] = None
-    ) -> List:
+    ) -> list:
         args = self._write_attr_records(attributes)
         result = await self._write_attributes(args, manufacturer=manufacturer)
         if not isinstance(result[0], list):
@@ -476,7 +484,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def write_attributes_undivided(
         self, attributes: dict[Union[str, int], Any], manufacturer: Optional[int] = None
-    ) -> List:
+    ) -> list:
         """Either all or none of the attributes are written by the device."""
         args = self._write_attr_records(attributes)
         return self._write_attributes_undivided(args, manufacturer=manufacturer)
@@ -496,7 +504,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         direction: int = 0x00,
     ) -> foundation.ConfigureReportingResponseRecord:
         if isinstance(attribute, str):
-            attrid = self.attridx.get(attribute)
+            if attribute in self.attributes_by_name:
+                attrid = self.attributes_by_name[attribute].id
+            else:
+                attrid = None
         else:
             attrid = attribute
         if attrid is None or attrid not in self.attributes:
@@ -505,9 +516,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = direction
         cfg.attrid = attrid
-        cfg.datatype = foundation.DATA_TYPES.pytype_to_datatype_id(
-            self.attributes.get(attrid, (None, foundation.Unknown))[1]
-        )
+
+        if attrid in self.attributes:
+            attr_type = self.attributes[attrid].type
+        else:
+            attr_type = foundation.Unknown
+
+        cfg.datatype = foundation.DATA_TYPES.pytype_to_datatype_id(attr_type)
+
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change
@@ -643,7 +659,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             return self._attr_cache.get(key, default)
         elif isinstance(key, str):
             try:
-                attr_id = self.attridx[key]
+                attr_id = self.attributes_by_name[key].id
             except KeyError:
                 return default
             return self._attr_cache.get(attr_id, default)
@@ -655,7 +671,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         if isinstance(key, int):
             return self._attr_cache[key]
         elif isinstance(key, str):
-            return self._attr_cache[self.attridx[key]]
+            return self._attr_cache[self.attributes_by_name[key].id]
         raise ValueError("attr_name or attr_id are accepted only")
 
     def __setitem__(self, key: Union[int, str], value: Any) -> None:
