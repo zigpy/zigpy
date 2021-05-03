@@ -891,3 +891,20 @@ def test_quirk_wildcard_manufacturer(real_device, real_device_2):
     real_device.model = "And now we should not match any quirk"
     quirked = registry.get_device(real_device)
     assert quirked is real_device
+
+
+def test_quirk_deprecated_manufacturer_prefixes():
+    class GoodCluster(zigpy.quirks.CustomCluster):
+        server_commands = {
+            0x1233: ("foo1", (), False),
+            0x1234: zcl.foundation.ZCLCommandDef(
+                "foo2", {}, False, is_manufacturer_specific=True
+            ),
+        }
+
+    with pytest.raises(TypeError):
+
+        class BadCluster(zigpy.quirks.CustomCluster):
+            manufacturer_server_commands = {
+                0x1234: ("foo3", {}, False),
+            }

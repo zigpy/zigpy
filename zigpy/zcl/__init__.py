@@ -78,6 +78,18 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     attributes_by_name: dict[str, int] = {}
 
     def __init_subclass__(cls):
+        # Fail on deprecated attribute presence
+        for a in ("attributes", "client_commands", "server_commands"):
+            if not hasattr(cls, f"manufacturer_{a}"):
+                continue
+
+            raise TypeError(
+                f"`manufacturer_{a}` is deprecated. Copy the parent class's `{a}`"
+                f" dictionary and update it with your manufacturer-specific `{a}`. Make"
+                f" sure to specify that it is manufacturer-specific through the "
+                f" appropriate constructor or tuple!"
+            )
+
         if cls.cluster_id is not None:
             cls.cluster_id = t.ClusterId(cls.cluster_id)
 
