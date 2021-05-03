@@ -579,6 +579,8 @@ def test_schema():
     )
     s = s.with_compiled_schema()
 
+    str(s)
+
     assert s.schema.foo.type is t.uint8_t
     assert not s.schema.foo.optional
 
@@ -598,3 +600,22 @@ def test_schema():
         assert s.schema(**kwargs) == s.schema(*kwargs.values())
         assert s.schema(**kwargs).serialize() == value
         assert s.schema.deserialize(value) == (s.schema(**kwargs), b"")
+
+
+def test_zcl_attribute_definition():
+    a = foundation.ZCLAttributeDef(
+        id=0x1234,
+        name="test",
+        type=t.uint16_t,
+    )
+
+    assert "0x1234" in str(a)
+    assert "'test'" in str(a)
+    assert "uint16_t" in str(a)
+    assert not a.is_manufacturer_specific  # default
+    assert a.access == "rw"  # also default
+
+    with pytest.raises(AssertionError):
+        a.replace(access="x")
+
+    assert a.replace(access="w").access == "w"

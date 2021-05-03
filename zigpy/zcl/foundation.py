@@ -578,7 +578,7 @@ class ZCLCommandDef:
             f")"
         )
 
-    def replace(self, **kwargs):
+    def replace(self, **kwargs) -> ZCLCommandDef:
         return dataclasses.replace(self, **kwargs)
 
 
@@ -593,8 +593,19 @@ class ZCLAttributeDef:
     def __post_init__(self):
         assert self.access in {None, "r", "w", "rw"}
 
-    def replace(self, **kwargs):
+    def replace(self, **kwargs) -> ZCLAttributeDef:
         return dataclasses.replace(self, **kwargs)
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"id=0x{self.id:04X}, "
+            f"name={self.name!r}, "
+            f"type={self.type}, "
+            f"access={self.access!r}, "
+            f"is_manufacturer_specific={self.is_manufacturer_specific}"
+            f")"
+        )
 
 
 class GeneralCommand(t.enum8):
