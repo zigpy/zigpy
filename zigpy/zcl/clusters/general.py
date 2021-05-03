@@ -857,7 +857,7 @@ class Time(Cluster):
             t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
         ] = None,
     ):
-        if hdr.command_id == foundation.Command.Read_Attributes:
+        if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
             data = {}
             for attr in args[0][0]:
                 if attr == 0:

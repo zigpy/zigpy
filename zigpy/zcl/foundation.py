@@ -413,192 +413,6 @@ class DiscoverAttributesExtendedResponseRecord(t.Struct):
     acl: AttributeAccessControl
 
 
-class Command(t.enum8):
-    """ZCL Foundation Global Command IDs."""
-
-    Read_Attributes = 0x00
-    Read_Attributes_rsp = 0x01
-    Write_Attributes = 0x02
-    Write_Attributes_Undivided = 0x03
-    Write_Attributes_rsp = 0x04
-    Write_Attributes_No_Response = 0x05
-    Configure_Reporting = 0x06
-    Configure_Reporting_rsp = 0x07
-    Read_Reporting_Configuration = 0x08
-    Read_Reporting_Configuration_rsp = 0x09
-    Report_Attributes = 0x0A
-    Default_Response = 0x0B
-    Discover_Attributes = 0x0C
-    Discover_Attributes_rsp = 0x0D
-    # Read_Attributes_Structured = 0x0e
-    # Write_Attributes_Structured = 0x0f
-    # Write_Attributes_Structured_rsp = 0x10
-    Discover_Commands_Received = 0x11
-    Discover_Commands_Received_rsp = 0x12
-    Discover_Commands_Generated = 0x13
-    Discover_Commands_Generated_rsp = 0x14
-    Discover_Attribute_Extended = 0x15
-    Discover_Attribute_Extended_rsp = 0x16
-
-
-@dataclasses.dataclass(frozen=True)
-class ZCLCommandDef:
-    name: str = None
-    schema: t.Struct = None
-    is_reply: bool = None
-    id: t.uint8_t = None
-    is_manufacturer_specific: bool = None
-
-    def with_compiled_schema(self):
-        # Dict schemas get converted into struct schemas internally
-        if not isinstance(self.schema, dict):
-            return self
-
-        assert self.id is not None
-        assert self.name is not None
-
-        cls_attrs = {"__annotations__": {}}
-
-        for name, param_type in self.schema.items():
-            plain_name = name.rstrip("?")
-
-            # Make sure parameters with names like "foo bar" and "class" can't exist
-            if not plain_name.isidentifier() or keyword.iskeyword(plain_name):
-                raise ValueError(
-                    f"Schema parameter {name} must be a valid Python identifier"
-                )
-
-            cls_attrs["__annotations__"][plain_name] = "None"
-            cls_attrs[plain_name] = t.StructField(
-                type=param_type,
-                optional=name.endswith("?"),
-            )
-
-        schema = type(f"{self.name}_{self.id:02X}_Schema", (t.Struct,), cls_attrs)
-
-        return self.replace(schema=schema)
-
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}("
-            f"id=0x{self.id:02X}, "
-            f"name={self.name!r}, "
-            f"is_reply={self.is_reply}, "
-            f"schema={self.schema}, "
-            f"is_manufacturer_specific={self.is_manufacturer_specific}"
-            f")"
-        )
-
-    def replace(self, **kwargs):
-        return dataclasses.replace(self, **kwargs)
-
-
-@dataclasses.dataclass(frozen=True)
-class ZCLAttributeDef:
-    id: t.uint16_t = None
-    name: str = None
-    type: type = None
-    access: str = "rw"
-    is_manufacturer_specific: bool = False
-
-    def __post_init__(self):
-        assert self.access in {None, "r", "w", "rw"}
-
-    def replace(self, **kwargs):
-        return dataclasses.replace(self, **kwargs)
-
-
-GENERAL_COMMANDS = COMMANDS = {
-    Command.Read_Attributes: ZCLCommandDef(
-        schema={"attribute_ids": t.List[t.uint16_t]}, is_reply=False
-    ),
-    Command.Read_Attributes_rsp: ZCLCommandDef(
-        schema={"status_records": t.List[ReadAttributeRecord]},
-        is_reply=True,
-    ),
-    Command.Write_Attributes: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, is_reply=False
-    ),
-    Command.Write_Attributes_Undivided: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, is_reply=False
-    ),
-    Command.Write_Attributes_rsp: ZCLCommandDef(
-        schema={"status_records": WriteAttributesResponse}, is_reply=True
-    ),
-    Command.Write_Attributes_No_Response: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, is_reply=False
-    ),
-    Command.Configure_Reporting: ZCLCommandDef(
-        schema={"config_records": t.List[AttributeReportingConfig]},
-        is_reply=False,
-    ),
-    Command.Configure_Reporting_rsp: ZCLCommandDef(
-        schema={"status_records": ConfigureReportingResponse},
-        is_reply=True,
-    ),
-    Command.Read_Reporting_Configuration: ZCLCommandDef(
-        schema={"attribute_records": t.List[ReadReportingConfigRecord]},
-        is_reply=False,
-    ),
-    Command.Read_Reporting_Configuration_rsp: ZCLCommandDef(
-        schema={"attribute_configs": t.List[AttributeReportingConfig]},
-        is_reply=True,
-    ),
-    Command.Report_Attributes: ZCLCommandDef(
-        schema={"attribute_reports": t.List[Attribute]}, is_reply=False
-    ),
-    Command.Default_Response: ZCLCommandDef(
-        schema={"command_id": t.uint8_t, "status": Status}, is_reply=True
-    ),
-    Command.Discover_Attributes: ZCLCommandDef(
-        schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
-        is_reply=False,
-    ),
-    Command.Discover_Attributes_rsp: ZCLCommandDef(
-        schema={
-            "discovery_complete": t.Bool,
-            "attribute_info": t.List[DiscoverAttributesResponseRecord],
-        },
-        is_reply=True,
-    ),
-    # Command.Read_Attributes_Structured: ZCLCommandDef(schema=(, ), is_reply=False),
-    # Command.Write_Attributes_Structured: ZCLCommandDef(schema=(, ), is_reply=False),
-    # Command.Write_Attributes_Structured_rsp: ZCLCommandDef(schema=(, ), is_reply=True),
-    Command.Discover_Commands_Received: ZCLCommandDef(
-        schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
-        is_reply=False,
-    ),
-    Command.Discover_Commands_Received_rsp: ZCLCommandDef(
-        schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
-        is_reply=True,
-    ),
-    Command.Discover_Commands_Generated: ZCLCommandDef(
-        schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
-        is_reply=False,
-    ),
-    Command.Discover_Commands_Generated_rsp: ZCLCommandDef(
-        schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
-        is_reply=True,
-    ),
-    Command.Discover_Attribute_Extended: ZCLCommandDef(
-        schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
-        is_reply=False,
-    ),
-    Command.Discover_Attribute_Extended_rsp: ZCLCommandDef(
-        schema={
-            "discovery_complete": t.Bool,
-            "extended_attr_info": t.List[DiscoverAttributesExtendedResponseRecord],
-        },
-        is_reply=True,
-    ),
-}
-
-for command_id, command_def in list(GENERAL_COMMANDS.items()):
-    GENERAL_COMMANDS[command_id] = command_def.replace(
-        id=command_id, name=command_id.name
-    ).with_compiled_schema()
-
-
 class FrameType(t.enum2):
     """ZCL Frame Type."""
 
@@ -709,3 +523,194 @@ class ZCLHeader(t.Struct):
             tsn=tsn,
             command_id=command_id,
         )
+
+
+@dataclasses.dataclass(frozen=True)
+class ZCLCommandDef:
+    name: str = None
+    schema: t.Struct = None
+    is_reply: bool = None
+    id: t.uint8_t = None
+    is_manufacturer_specific: bool = None
+
+    def with_compiled_schema(self):
+        """
+        Return a copy of the ZCL command definition object with its dictionary command
+        schema converted into a `t.Struct` subclass.
+        """
+
+        # If the schema is already a struct, do nothing
+        if not isinstance(self.schema, dict):
+            return self
+
+        assert self.id is not None
+        assert self.name is not None
+
+        cls_attrs = {"__annotations__": {}}
+
+        for name, param_type in self.schema.items():
+            plain_name = name.rstrip("?")
+
+            # Make sure parameters with names like "foo bar" and "class" can't exist
+            if not plain_name.isidentifier() or keyword.iskeyword(plain_name):
+                raise ValueError(
+                    f"Schema parameter {name} must be a valid Python identifier"
+                )
+
+            cls_attrs["__annotations__"][plain_name] = "None"
+            cls_attrs[plain_name] = t.StructField(
+                type=param_type,
+                optional=name.endswith("?"),
+            )
+
+        schema = type(f"{self.name}_{self.id:02X}_Schema", (t.Struct,), cls_attrs)
+
+        return self.replace(schema=schema)
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"id=0x{self.id:02X}, "
+            f"name={self.name!r}, "
+            f"is_reply={self.is_reply}, "
+            f"schema={self.schema}, "
+            f"is_manufacturer_specific={self.is_manufacturer_specific}"
+            f")"
+        )
+
+    def replace(self, **kwargs):
+        return dataclasses.replace(self, **kwargs)
+
+
+@dataclasses.dataclass(frozen=True)
+class ZCLAttributeDef:
+    id: t.uint16_t = None
+    name: str = None
+    type: type = None
+    access: str = "rw"
+    is_manufacturer_specific: bool = False
+
+    def __post_init__(self):
+        assert self.access in {None, "r", "w", "rw"}
+
+    def replace(self, **kwargs):
+        return dataclasses.replace(self, **kwargs)
+
+
+class GeneralCommand(t.enum8):
+    """ZCL Foundation General Command IDs."""
+
+    Read_Attributes = 0x00
+    Read_Attributes_rsp = 0x01
+    Write_Attributes = 0x02
+    Write_Attributes_Undivided = 0x03
+    Write_Attributes_rsp = 0x04
+    Write_Attributes_No_Response = 0x05
+    Configure_Reporting = 0x06
+    Configure_Reporting_rsp = 0x07
+    Read_Reporting_Configuration = 0x08
+    Read_Reporting_Configuration_rsp = 0x09
+    Report_Attributes = 0x0A
+    Default_Response = 0x0B
+    Discover_Attributes = 0x0C
+    Discover_Attributes_rsp = 0x0D
+    # Read_Attributes_Structured = 0x0e
+    # Write_Attributes_Structured = 0x0f
+    # Write_Attributes_Structured_rsp = 0x10
+    Discover_Commands_Received = 0x11
+    Discover_Commands_Received_rsp = 0x12
+    Discover_Commands_Generated = 0x13
+    Discover_Commands_Generated_rsp = 0x14
+    Discover_Attribute_Extended = 0x15
+    Discover_Attribute_Extended_rsp = 0x16
+
+
+GENERAL_COMMANDS = COMMANDS = {
+    GeneralCommand.Read_Attributes: ZCLCommandDef(
+        schema={"attribute_ids": t.List[t.uint16_t]}, is_reply=False
+    ),
+    GeneralCommand.Read_Attributes_rsp: ZCLCommandDef(
+        schema={"status_records": t.List[ReadAttributeRecord]},
+        is_reply=True,
+    ),
+    GeneralCommand.Write_Attributes: ZCLCommandDef(
+        schema={"attributes": t.List[Attribute]}, is_reply=False
+    ),
+    GeneralCommand.Write_Attributes_Undivided: ZCLCommandDef(
+        schema={"attributes": t.List[Attribute]}, is_reply=False
+    ),
+    GeneralCommand.Write_Attributes_rsp: ZCLCommandDef(
+        schema={"status_records": WriteAttributesResponse}, is_reply=True
+    ),
+    GeneralCommand.Write_Attributes_No_Response: ZCLCommandDef(
+        schema={"attributes": t.List[Attribute]}, is_reply=False
+    ),
+    GeneralCommand.Configure_Reporting: ZCLCommandDef(
+        schema={"config_records": t.List[AttributeReportingConfig]},
+        is_reply=False,
+    ),
+    GeneralCommand.Configure_Reporting_rsp: ZCLCommandDef(
+        schema={"status_records": ConfigureReportingResponse},
+        is_reply=True,
+    ),
+    GeneralCommand.Read_Reporting_Configuration: ZCLCommandDef(
+        schema={"attribute_records": t.List[ReadReportingConfigRecord]},
+        is_reply=False,
+    ),
+    GeneralCommand.Read_Reporting_Configuration_rsp: ZCLCommandDef(
+        schema={"attribute_configs": t.List[AttributeReportingConfig]},
+        is_reply=True,
+    ),
+    GeneralCommand.Report_Attributes: ZCLCommandDef(
+        schema={"attribute_reports": t.List[Attribute]}, is_reply=False
+    ),
+    GeneralCommand.Default_Response: ZCLCommandDef(
+        schema={"command_id": t.uint8_t, "status": Status}, is_reply=True
+    ),
+    GeneralCommand.Discover_Attributes: ZCLCommandDef(
+        schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
+        is_reply=False,
+    ),
+    GeneralCommand.Discover_Attributes_rsp: ZCLCommandDef(
+        schema={
+            "discovery_complete": t.Bool,
+            "attribute_info": t.List[DiscoverAttributesResponseRecord],
+        },
+        is_reply=True,
+    ),
+    # Command.Read_Attributes_Structured: ZCLCommandDef(schema=(, ), is_reply=False),
+    # Command.Write_Attributes_Structured: ZCLCommandDef(schema=(, ), is_reply=False),
+    # Command.Write_Attributes_Structured_rsp: ZCLCommandDef(schema=(, ), is_reply=True),
+    GeneralCommand.Discover_Commands_Received: ZCLCommandDef(
+        schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
+        is_reply=False,
+    ),
+    GeneralCommand.Discover_Commands_Received_rsp: ZCLCommandDef(
+        schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
+        is_reply=True,
+    ),
+    GeneralCommand.Discover_Commands_Generated: ZCLCommandDef(
+        schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
+        is_reply=False,
+    ),
+    GeneralCommand.Discover_Commands_Generated_rsp: ZCLCommandDef(
+        schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
+        is_reply=True,
+    ),
+    GeneralCommand.Discover_Attribute_Extended: ZCLCommandDef(
+        schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
+        is_reply=False,
+    ),
+    GeneralCommand.Discover_Attribute_Extended_rsp: ZCLCommandDef(
+        schema={
+            "discovery_complete": t.Bool,
+            "extended_attr_info": t.List[DiscoverAttributesExtendedResponseRecord],
+        },
+        is_reply=True,
+    ),
+}
+
+for command_id, command_def in list(GENERAL_COMMANDS.items()):
+    GENERAL_COMMANDS[command_id] = command_def.replace(
+        id=command_id, name=command_id.name
+    ).with_compiled_schema()

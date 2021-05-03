@@ -173,7 +173,7 @@ def test_attribute_report(cluster):
     attr.value = zcl.foundation.TypeValue()
     attr.value.value = "manufacturer"
     hdr = MagicMock(auto_spec=foundation.ZCLHeader)
-    hdr.command_id = foundation.Command.Report_Attributes
+    hdr.command_id = foundation.GeneralCommand.Report_Attributes
     hdr.frame_control.is_general = True
     hdr.frame_control.is_cluster = False
     cluster.handle_message(hdr, [[attr]])
@@ -420,7 +420,9 @@ async def test_write_attribute_types(
     "status", (foundation.Status.SUCCESS, foundation.Status.UNSUPPORTED_ATTRIBUTE)
 )
 async def test_write_attributes_cache_default_response(cluster, status):
-    write_mock = AsyncMock(return_value=[foundation.Command.Write_Attributes, status])
+    write_mock = AsyncMock(
+        return_value=[foundation.GeneralCommand.Write_Attributes, status]
+    )
     with patch.object(cluster, "_write_attributes", write_mock):
         attributes = {4: "manufacturer", 5: "model", 12: 12}
         await cluster.write_attributes(attributes)
@@ -736,7 +738,7 @@ async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
 
 
 async def test_handle_cluster_general_request_not_attr_report(cluster):
-    hdr = foundation.ZCLHeader.general(1, foundation.Command.Write_Attributes)
+    hdr = foundation.ZCLHeader.general(1, foundation.GeneralCommand.Write_Attributes)
     p1 = patch.object(cluster, "_update_attribute")
     p2 = patch.object(cluster, "create_catching_task")
     with p1 as attr_lst_mock, p2 as response_mock:

@@ -209,7 +209,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def request(
         self,
         general: bool,
-        command_id: Union[foundation.Command, int, t.uint8_t],
+        command_id: Union[foundation.GeneralCommand, int, t.uint8_t],
         schema: dict | t.Struct,
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
@@ -245,7 +245,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def reply(
         self,
         general: bool,
-        command_id: Union[foundation.Command, int, t.uint8_t],
+        command_id: Union[foundation.GeneralCommand, int, t.uint8_t],
         schema: dict | t.Struct,
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
@@ -310,7 +310,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *,
         dst_addressing: Optional[AddressingMode] = None,
     ) -> None:
-        if hdr.command_id == foundation.Command.Report_Attributes:
+        if hdr.command_id == foundation.GeneralCommand.Report_Attributes:
             values = []
 
             for a in args[0]:
@@ -565,7 +565,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def command(
         self,
-        command_id: Union[foundation.Command, int, t.uint8_t],
+        command_id: Union[foundation.GeneralCommand, int, t.uint8_t],
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         expect_reply: bool = True,
@@ -589,7 +589,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def client_command(
         self,
-        command_id: Union[foundation.Command, int, t.uint8_t],
+        command_id: Union[foundation.GeneralCommand, int, t.uint8_t],
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         tsn: Optional[Union[int, t.uint8_t]] = None,
@@ -681,7 +681,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def general_command(
         self,
-        command_id: Union[foundation.Command, int, t.uint8_t],
+        command_id: Union[foundation.GeneralCommand, int, t.uint8_t],
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         expect_reply: bool = True,
@@ -716,31 +716,31 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         )
 
     _configure_reporting = functools.partialmethod(
-        general_command, foundation.Command.Configure_Reporting
+        general_command, foundation.GeneralCommand.Configure_Reporting
     )
     _read_attributes = functools.partialmethod(
-        general_command, foundation.Command.Read_Attributes
+        general_command, foundation.GeneralCommand.Read_Attributes
     )
     _read_attributes_rsp = functools.partialmethod(
-        general_command, foundation.Command.Read_Attributes_rsp
+        general_command, foundation.GeneralCommand.Read_Attributes_rsp
     )
     _write_attributes = functools.partialmethod(
-        general_command, foundation.Command.Write_Attributes
+        general_command, foundation.GeneralCommand.Write_Attributes
     )
     _write_attributes_undivided = functools.partialmethod(
-        general_command, foundation.Command.Write_Attributes_Undivided
+        general_command, foundation.GeneralCommand.Write_Attributes_Undivided
     )
     discover_attributes = functools.partialmethod(
-        general_command, foundation.Command.Discover_Attributes
+        general_command, foundation.GeneralCommand.Discover_Attributes
     )
     discover_attributes_extended = functools.partialmethod(
-        general_command, foundation.Command.Discover_Attribute_Extended
+        general_command, foundation.GeneralCommand.Discover_Attribute_Extended
     )
     discover_commands_received = functools.partialmethod(
-        general_command, foundation.Command.Discover_Commands_Received
+        general_command, foundation.GeneralCommand.Discover_Commands_Received
     )
     discover_commands_generated = functools.partialmethod(
-        general_command, foundation.Command.Discover_Commands_Generated
+        general_command, foundation.GeneralCommand.Discover_Commands_Generated
     )
 
     def send_default_rsp(
@@ -751,7 +751,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         """Send default response unconditionally."""
         self.create_catching_task(
             self.general_command(
-                foundation.Command.Default_Response,
+                foundation.GeneralCommand.Default_Response,
                 hdr.command_id,
                 status,
                 tsn=hdr.tsn,
