@@ -328,7 +328,7 @@ def test_custom_cluster_idx():
         cmd_set_len = len(getattr(TestClusterIdx, cmd_set))
         assert idx_len == cmd_set_len
         for cmd_name, cmd_id in getattr(TestClusterIdx, cmd_set_idx).items():
-            assert getattr(TestClusterIdx, cmd_set)[cmd_id][0] == cmd_name
+            assert getattr(TestClusterIdx, cmd_set)[cmd_id].name == cmd_name
 
     assert hasattr(TestClusterIdx, "attributes_by_name")
     attr_idx_len = len(TestClusterIdx.attributes_by_name)

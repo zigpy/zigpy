@@ -33,9 +33,8 @@ def convert_list_schema(
     temp = foundation.ZCLCommandDef(
         schema=schema_dict, is_reply=is_reply, id=command_id, name="schema"
     )
-    temp.compile_schema()
 
-    return temp.schema
+    return temp.with_compiled_schema().schema
 
 
 def future_exception(e):
@@ -97,16 +96,16 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 if isinstance(command, tuple):
                     # Backwards compatibility with old command tuples
                     name, schema, is_reply = command
-                    commands[command_id] = command = foundation.ZCLCommandDef(
+                    command = foundation.ZCLCommandDef(
                         id=command_id,
                         name=name,
                         schema=convert_list_schema(schema, command_id, is_reply),
                         is_reply=is_reply,
                     )
                 else:
-                    command.id = command_id
+                    command = command.replace(id=command_id)
 
-                command.compile_schema()
+                commands[command.id] = command.with_compiled_schema()
                 index[command.name] = command.id
 
         # Compile attributes
@@ -125,7 +124,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                     is_manufacturer_specific=attr_manuf_specific,
                 )
             else:
-                attr.id = attr_id
+                attr = attr.replace(id=attr_id)
 
             cls.attributes[attr.id] = attr
             cls.attributes_by_name[attr.name] = attr
@@ -189,11 +188,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             command = commands[hdr.command_id]
         else:
             # General command
-            if hdr.command_id not in foundation.COMMANDS:
+            if hdr.command_id not in foundation.GENERAL_COMMANDS:
                 self.warning("Unknown foundation command %s %s", hdr.command_id, data)
                 return hdr, data
 
-            command = foundation.COMMANDS[hdr.command_id]
+            command = foundation.GENERAL_COMMANDS[hdr.command_id]
 
         response, data = command.schema.deserialize(data)
 
@@ -690,7 +689,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         tsn: Optional[Union[int, t.uint8_t]] = None,
         **kwargs,
     ):
-        command = foundation.COMMANDS[command_id]
+        command = foundation.GENERAL_COMMANDS[command_id]
 
         if command.is_reply:
             # should reply be retryable?

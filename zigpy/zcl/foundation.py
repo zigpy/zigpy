@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import keyword
 from typing import Optional, Tuple
 
@@ -440,25 +441,18 @@ class Command(t.enum8):
     Discover_Attribute_Extended_rsp = 0x16
 
 
+@dataclasses.dataclass(frozen=True)
 class ZCLCommandDef:
-    def __init__(
-        self,
-        name=None,
-        schema=None,
-        is_reply=None,
-        id=None,
-        is_manufacturer_specific=None,
-    ):
-        self.id = id
-        self.name = name
-        self.is_reply = is_reply
-        self.schema = schema
-        self.is_manufacturer_specific = is_manufacturer_specific
+    name: str = None
+    schema: t.Struct = None
+    is_reply: bool = None
+    id: t.uint8_t = None
+    is_manufacturer_specific: bool = None
 
-    def compile_schema(self):
+    def with_compiled_schema(self):
         # Dict schemas get converted into struct schemas internally
         if not isinstance(self.schema, dict):
-            return
+            return self
 
         assert self.id is not None
         assert self.name is not None
@@ -480,15 +474,9 @@ class ZCLCommandDef:
                 optional=name.endswith("?"),
             )
 
-        self.schema = type(f"{self.name}_{self.id:02X}_Schema", (t.Struct,), cls_attrs)
+        schema = type(f"{self.name}_{self.id:02X}_Schema", (t.Struct,), cls_attrs)
 
-    def __iter__(self):
-        # Backwards compatibility with old command tuples
-        return iter((self.name, self.schema, self.is_reply))
-
-    def __getitem__(self, value):
-        # Backwards compatibility with old command tuples
-        return list(self)[value]
+        return self.replace(schema=schema)
 
     def __repr__(self) -> str:
         return (
@@ -501,32 +489,26 @@ class ZCLCommandDef:
             f")"
         )
 
+    def replace(self, **kwargs):
+        return dataclasses.replace(self, **kwargs)
 
+
+@dataclasses.dataclass(frozen=True)
 class ZCLAttributeDef:
-    def __init__(
-        self, name=None, type=None, is_manufacturer_specific=False, id=None, access="rw"
-    ):
-        assert access in {None, "r", "w", "rw"}
+    id: t.uint16_t = None
+    name: str = None
+    type: type = None
+    access: str = "rw"
+    is_manufacturer_specific: bool = False
 
-        self.id = id
-        self.name = name
-        self.type = type
-        self.access = access
-        self.is_manufacturer_specific = is_manufacturer_specific
+    def __post_init__(self):
+        assert self.access in {None, "r", "w", "rw"}
 
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}("
-            f"id=0x{self.id:04X}, "
-            f"name={self.name!r}, "
-            f"type={self.type}, "
-            f"access={self.access!r}, "
-            f"is_manufacturer_specific={self.is_manufacturer_specific}"
-            f")"
-        )
+    def replace(self, **kwargs):
+        return dataclasses.replace(self, **kwargs)
 
 
-COMMANDS = {
+GENERAL_COMMANDS = COMMANDS = {
     Command.Read_Attributes: ZCLCommandDef(
         schema={"attribute_ids": t.List[t.uint16_t]}, is_reply=False
     ),
@@ -611,10 +593,10 @@ COMMANDS = {
     ),
 }
 
-for command_id, command_def in COMMANDS.items():
-    command_def.id = command_id
-    command_def.name = command_id.name
-    command_def.compile_schema()
+for command_id, command_def in list(GENERAL_COMMANDS.items()):
+    GENERAL_COMMANDS[command_id] = command_def.replace(
+        id=command_id, name=command_id.name
+    ).with_compiled_schema()
 
 
 class FrameType(t.enum2):

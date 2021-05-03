@@ -565,7 +565,7 @@ def test_schema():
     )
 
     with pytest.raises(ValueError):
-        bad_s.compile_schema()
+        bad_s.with_compiled_schema()
 
     s = foundation.ZCLCommandDef(
         id=0x12,
@@ -577,7 +577,7 @@ def test_schema():
         },
         is_reply=False,
     )
-    s.compile_schema()
+    s = s.with_compiled_schema()
 
     assert s.schema.foo.type is t.uint8_t
     assert not s.schema.foo.optional
