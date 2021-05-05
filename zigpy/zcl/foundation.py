@@ -94,11 +94,11 @@ class TypeValue:
         self.value, data = python_type.deserialize(data)
         return self, data
 
-    def __repr__(self):
-        return "<%s type=%s, value=%s>" % (
-            self.__class__.__name__,
-            self.value.__class__.__name__,
-            self.value,
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}("
+            f"type={type(self.value).__name__}, value={self.value!r}"
+            f")"
         )
 
 
@@ -222,6 +222,11 @@ class ReadAttributeRecord(t.Struct):
 class Attribute(t.Struct):
     attrid: t.uint16_t
     value: TypeValue
+
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}(attrid=0x{self.attrid:04x}, value={self.value!r})"
+        )
 
 
 class WriteAttributesStatusRecord(t.Struct):

@@ -10,7 +10,7 @@ def test_typevalue():
     tv.value = t.uint8_t(99)
     ser = tv.serialize()
     r = repr(tv)
-    assert r.startswith("<") and r.endswith(">")
+    assert r.startswith("TypeValue(") and r.endswith(")")
     assert "type=uint8_t" in r
     assert "value=99" in r
 
@@ -22,6 +22,12 @@ def test_typevalue():
     tv3 = foundation.TypeValue(tv2)
     assert tv3.type == tv.type
     assert tv3.value == tv.value
+
+    tv4 = foundation.TypeValue()
+    tv4.type = 0x42
+    tv4.value = t.CharacterString("test")
+    assert "CharacterString" in str(tv4)
+    assert "'test'" in str(tv4)
 
 
 def test_read_attribute_record():

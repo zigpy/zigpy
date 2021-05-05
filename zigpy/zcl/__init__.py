@@ -313,7 +313,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *,
         dst_addressing: Optional[AddressingMode] = None,
     ):
-        self.debug("No handler for cluster command %s", hdr.command_id)
+        self.debug(
+            "No explicit handler for cluster command 0x%02x %s",
+            hdr.command_id,
+            args,
+        )
 
     def handle_cluster_general_request(
         self,
