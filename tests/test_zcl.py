@@ -52,7 +52,7 @@ def test_deserialize_cluster_client(endpoint):
     assert hdr.frame_control.is_general is False
     assert hdr.frame_control.is_cluster is True
     assert hdr.command_id == 0
-    assert args == [0x4241]
+    assert list(args) == [0x4241]
     assert hdr.is_reply
 
 

@@ -5,6 +5,7 @@ import enum
 import functools
 import logging
 from typing import Any, Coroutine, Optional, Sequence, Union
+import warnings
 
 from zigpy import util
 import zigpy.types as t
@@ -160,6 +161,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         else:
             self._type: ClusterType = ClusterType.Client
 
+    @property
+    def attridx(self):
+        warnings.warn(
+            "`attridx` has been replaced by `attributes_by_name`", DeprecationWarning
+        )
+
+        return self.attributes_by_name
+
     @classmethod
     def from_id(
         cls, endpoint: EndpointType, cluster_id: int, is_server: bool = True
@@ -215,7 +224,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         hdr.frame_control.is_reply = command.is_reply
 
-        return hdr, list(response.as_tuple())
+        return hdr, response
 
     @util.retryable_request
     def request(

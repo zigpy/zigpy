@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import keyword
 from typing import Optional, Tuple
+import warnings
 
 import zigpy.types as t
 
@@ -533,15 +534,24 @@ class ZCLHeader(t.Struct):
 @dataclasses.dataclass(frozen=True)
 class ZCLCommandDef:
     name: str = None
-    schema: t.Struct = None
+    schema: CommandSchema = None
     is_reply: bool = None
     id: t.uint8_t = None
     is_manufacturer_specific: bool = None
 
+    def __getitem__(self, key):
+        warnings.warn(
+            "ZCL command definitions are no longer tuples, use the appropriate"
+            " ZCLCommandDef attribute",
+            DeprecationWarning,
+        )
+
+        return (self.name, self.schema, self.is_reply)[key]
+
     def with_compiled_schema(self):
         """
         Return a copy of the ZCL command definition object with its dictionary command
-        schema converted into a `t.Struct` subclass.
+        schema converted into a `CommandSchema` subclass.
         """
 
         # If the schema is already a struct, do nothing
@@ -551,7 +561,10 @@ class ZCLCommandDef:
         assert self.id is not None
         assert self.name is not None
 
-        cls_attrs = {"__annotations__": {}}
+        cls_attrs = {
+            "__annotations__": {},
+            "command": self,
+        }
 
         for name, param_type in self.schema.items():
             plain_name = name.rstrip("?")
@@ -568,7 +581,7 @@ class ZCLCommandDef:
                 optional=name.endswith("?"),
             )
 
-        schema = type(f"{self.name}_{self.id:02X}_Schema", (t.Struct,), cls_attrs)
+        schema = type(self.name, (CommandSchema,), cls_attrs)
 
         return self.replace(schema=schema)
 
@@ -587,6 +600,29 @@ class ZCLCommandDef:
         return dataclasses.replace(self, **kwargs)
 
 
+class CommandSchema(t.Struct, tuple):
+    """
+    Struct subclass that behaves more like a tuple.
+    """
+
+    command: ZCLCommandDef = None
+
+    def __iter__(self):
+        return iter(self.as_tuple())
+
+    def __getitem__(self, item):
+        return self.as_tuple()[item]
+
+    def __len__(self) -> int:
+        return len(self.as_tuple())
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, tuple) and not isinstance(other, type(self)):
+            return self.as_tuple() == other
+
+        return super().__eq__(other)
+
+
 @dataclasses.dataclass(frozen=True)
 class ZCLAttributeDef:
     id: t.uint16_t = None
@@ -600,6 +636,14 @@ class ZCLAttributeDef:
 
     def replace(self, **kwargs) -> ZCLAttributeDef:
         return dataclasses.replace(self, **kwargs)
+
+    def __getitem__(self, key):
+        warnings.warn(
+            "ZCL attribute definitions are no longer tuples, use the appropriate"
+            " ZCLAttributeDef attribute",
+            DeprecationWarning,
+        )
+        return (self.name, self.type)[key]
 
     def __repr__(self) -> str:
         return (
