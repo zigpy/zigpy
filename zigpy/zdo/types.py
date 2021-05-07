@@ -352,11 +352,13 @@ class NwkUpdate(t.Struct):
         requires=lambda s: s.ScanDuration == s.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ
     )
 
+
 class Binding(t.Struct):
     SrcAddress: t.EUI64
     SrcEndpoint: t.uint8_t
     ClusterId: t.uint16_t
     DstAddress: MultiAddress
+
 
 class Status(t.enum8):
     # The requested operation or transmission was completed successfully.
