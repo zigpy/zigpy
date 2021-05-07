@@ -661,8 +661,7 @@ CLUSTERS = {
         STATUS,
         ("BindingTableEntries", t.uint8_t),
         ("StartIndex", t.uint8_t),
-        ("BindingTableListCount", t.uint8_t),
-        ("BindingTableList", t.List[Binding]),
+        ("BindingTableList", t.LVList[Binding]),
     ),
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Leave_rsp: (STATUS,),
