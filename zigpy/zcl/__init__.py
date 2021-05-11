@@ -338,14 +338,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         if hdr.command_id == foundation.GeneralCommand.Report_Attributes:
             values = []
 
-            for a in args[0]:
+            for a in args.attribute_reports:
                 if a.attrid in self.attributes:
                     values.append(f"{self.attributes[a.attrid].name}={a.value.value}")
                 else:
                     values.append(f"0x{a.attrid:04X}={a.value.value}")
 
             self.debug("Attribute report received: %s", ", ".join(values))
-            for attr in args[0]:
+
+            for attr in args.attribute_reports:
                 try:
                     value = self.attributes[attr.attrid].type(attr.value.value)
                 except KeyError:

@@ -176,11 +176,16 @@ def test_attribute_report(cluster):
     hdr.command_id = foundation.GeneralCommand.Report_Attributes
     hdr.frame_control.is_general = True
     hdr.frame_control.is_cluster = False
-    cluster.handle_message(hdr, [[attr]])
+
+    cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Report_Attributes
+    ].schema([attr])
+    cluster.handle_message(hdr, cmd)
+
     assert cluster._attr_cache[4] == "manufacturer"
 
     attr.attrid = 0x89AB
-    cluster.handle_message(hdr, [[attr]])
+    cluster.handle_message(hdr, cmd)
     assert cluster._attr_cache[attr.attrid] == "manufacturer"
 
     def mock_type(*args, **kwargs):
@@ -191,7 +196,7 @@ def test_attribute_report(cluster):
         {0xAAAA: foundation.ZCLAttributeDef(id=0xAAAA, name="Name", type=mock_type)},
     ):
         attr.attrid = 0xAAAA
-        cluster.handle_message(hdr, [[attr]])
+        cluster.handle_message(hdr, cmd)
         assert cluster._attr_cache[attr.attrid] == "manufacturer"
 
 
