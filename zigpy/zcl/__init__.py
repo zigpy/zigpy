@@ -77,6 +77,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     _client_commands_idx: dict[str, int] = {}
 
     attributes_by_name: dict[str, int] = {}
+    commands_by_name: dict[str, foundation.ZCLCommandDef] = {}
 
     def __init_subclass__(cls):
         # Fail on deprecated attribute presence
@@ -97,6 +98,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         # Clear the caches and lookup tables. Their contents should correspond exactly
         # to what's in their respective command/attribute dictionaries.
         cls.attributes_by_name = {}
+        cls.commands_by_name = {}
         cls._server_commands_idx = {}
         cls._client_commands_idx = {}
 
@@ -120,6 +122,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
                 commands[command.id] = command.with_compiled_schema()
                 index[command.name] = command.id
+
+                if command.name in cls.commands_by_name:
+                    raise TypeError(
+                        f"Command name {command} is not unique in {cls}: {cls.commands_by_name}"
+                    )
+
+                cls.commands_by_name[command.name] = command
 
         # Compile attributes
         for attr_id, attr in list(cls.attributes.items()):
