@@ -763,3 +763,14 @@ def test_struct_optional():
         TestStruct(foo=1, bar=3),
         b"\x04",
     )
+
+
+def test_struct_field_repr():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t = t.StructField(repr=lambda v: v + 1)
+        bar: t.uint16_t = t.StructField(repr=lambda v: "bar")
+        baz: t.CharacterString = t.StructField(repr=lambda v: "baz")
+
+    s1 = TestStruct(foo=1, bar=2, baz="asd")
+
+    assert repr(s1) == "TestStruct(foo=2, bar=bar, baz=baz)"

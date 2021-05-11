@@ -19,8 +19,14 @@ class StructField:
     name: typing.Optional[str] = None
     type: typing.Optional[type] = None
 
-    requires: typing.Optional[typing.Callable[[Struct], bool]] = None
+    requires: typing.Optional[typing.Callable[[Struct], bool]] = dataclasses.field(
+        default=None, repr=False
+    )
     optional: typing.Optional[bool] = False
+
+    repr: typing.Optional[typing.Callable[[typing.Any], str]] = dataclasses.field(
+        default=repr, repr=False
+    )
 
     def replace(self, **kwargs) -> StructField:
         return dataclasses.replace(self, **kwargs)
@@ -304,7 +310,7 @@ class Struct:
 
         # Assigned fields are displayed as `field=value`
         for f, v in self.assigned_fields():
-            fields.append(f"{f.name}={v!r}")
+            fields.append(f"{f.name}={f.repr(v)}")
 
         cls = type(self)
 

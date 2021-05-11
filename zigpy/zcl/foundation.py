@@ -215,24 +215,21 @@ DATA_TYPES = DataTypes(
 class ReadAttributeRecord(t.Struct):
     """Read Attribute Record."""
 
-    attrid: t.uint16_t
+    attrid: t.uint16_t = t.StructField(repr=t.uint16_t._hex_repr)
     status: Status
     value: TypeValue = t.StructField(requires=lambda s: s.status == Status.SUCCESS)
 
 
 class Attribute(t.Struct):
-    attrid: t.uint16_t
+    attrid: t.uint16_t = t.StructField(repr=t.uint16_t._hex_repr)
     value: TypeValue
-
-    def __repr__(self) -> str:
-        return (
-            f"{type(self).__name__}(attrid=0x{self.attrid:04x}, value={self.value!r})"
-        )
 
 
 class WriteAttributesStatusRecord(t.Struct):
     status: Status
-    attrid: t.uint16_t = t.StructField(requires=lambda s: s.status != Status.SUCCESS)
+    attrid: t.uint16_t = t.StructField(
+        requires=lambda s: s.status != Status.SUCCESS, repr=t.uint16_t._hex_repr
+    )
 
 
 class WriteAttributesResponse(list):
@@ -324,7 +321,7 @@ class AttributeReportingConfig:
     def __repr__(self):
         r = f"{self.__class__.__name__}("
         r += f"direction={self.direction}"
-        r += f", attrid={self.attrid}"
+        r += f", attrid=0x{self.attrid:04X}"
 
         if self.direction == ReportingDirection.ReceiveReports:
             r += f", timeout={self.timeout}"
@@ -344,7 +341,7 @@ class AttributeReportingConfig:
 class ConfigureReportingResponseRecord(t.Struct):
     status: Status
     direction: ReportingDirection
-    attrid: t.uint16_t
+    attrid: t.uint16_t = t.StructField(repr=t.uint16_t._hex_repr)
 
     @classmethod
     def deserialize(cls, data):
