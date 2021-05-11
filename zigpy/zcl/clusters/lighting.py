@@ -113,7 +113,7 @@ class Color(Cluster):
         0x4004: ("color_loop_time", t.uint16_t),
         0x4005: ("color_loop_start_enhanced_hue", t.uint16_t),
         0x4006: ("color_loop_stored_enhanced_hue", t.uint16_t),
-        0x400A: ("color_capabilities", t.bitmap16),
+        0x400A: ("color_capabilities", ColorCapabilities),
         0x400B: ("color_temp_physical_min", t.uint16_t),
         0x400C: ("color_temp_physical_max", t.uint16_t),
         0x400D: ("couple_color_temp_to_level_min", t.uint16_t),
