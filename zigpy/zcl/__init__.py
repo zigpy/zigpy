@@ -60,6 +60,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     # Most clusters are identified by a single cluster ID
     cluster_id: t.uint16_t = None
 
+    # Clusters are accessible by name from their endpoint as an attribute
+    ep_attribute: str = None
+
     # Manufacturer specific clusters exist between 0xFC00 and 0xFFFF. This exists solely
     # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
     cluster_id_range: tuple[t.uint16_t, t.uint16_t] = None
