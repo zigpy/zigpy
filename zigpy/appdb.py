@@ -302,6 +302,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self.execute(q, (device.nwk, device.status, device.ieee))
 
         await self._save_node_descriptor(device)
+
         if isinstance(device, zigpy.quirks.CustomDevice):
             await self._db.commit()
             return
@@ -334,6 +335,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(q, endpoints)
 
     async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
+        if device.node_desc == DUMMY_NODE_DESC:
+            LOGGER.warning(
+                "Device %s has an invalid node descriptor, not saving it to the DB."
+                " Remove the device from your network and re-join it.",
+                device.ieee,
+            )
+            return
+
         await self.execute(
             f"INSERT OR REPLACE INTO node_descriptors{DB_V}"
             f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -516,7 +525,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     " deleted from your device database.",
                     device.ieee,
                 )
-                device.node_desc = DUMMY_NODE_DESC
+
+                # Structs are mutable so it's safer to make a copy
+                device.node_desc = DUMMY_NODE_DESC.copy()
 
             # Keep devices with non-ZDO endpoints
             if set(device.endpoints) - {0x00}:

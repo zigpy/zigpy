@@ -173,7 +173,7 @@ async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
     await app2.pre_shutdown()
 
     if corrupt_device:
-        # All devices still exist but the broken device without a node desc was removed
+        # All devices still exist but the broken device without endpoints was removed
         assert len(app2.devices) == 28
         assert sum(len(d.endpoints) - 1 for d in app2.devices.values()) == 52
     else:
@@ -191,10 +191,11 @@ async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
 
 async def test_migration_missing_node_descriptor(test_db, caplog):
     test_db_v3 = test_db("simple_v3.sql")
+    ieee = "ec:1b:bd:ff:fe:54:4f:40"
 
     with sqlite3.connect(test_db_v3) as conn:
         cur = conn.cursor()
-        cur.execute("DELETE FROM node_descriptors WHERE ieee='ec:1b:bd:ff:fe:54:4f:40'")
+        cur.execute("DELETE FROM node_descriptors WHERE ieee=?", [ieee])
 
     with caplog.at_level(logging.ERROR):
         # The invalid device will still be loaded, for now
@@ -202,14 +203,31 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
 
     rec = caplog.records[0]
     assert rec.levelname == "ERROR"
-    assert "ec:1b:bd:ff:fe:54:4f:40 has no node descriptor" in rec.getMessage()
+    assert f"{ieee} has no node descriptor" in rec.getMessage()
 
     assert len(app.devices) == 2
 
-    bad_dev = app.devices[t.EUI64.convert("ec:1b:bd:ff:fe:54:4f:40")]
-    assert bad_dev.node_desc is zigpy.appdb.DUMMY_NODE_DESC
+    bad_dev = app.devices[t.EUI64.convert(ieee)]
+    assert bad_dev.node_desc == zigpy.appdb.DUMMY_NODE_DESC
+
+    caplog.clear()
+
+    # Saving the device should cause the node descriptor to not be saved
+    with caplog.at_level(logging.WARNING):
+        await app._dblistener._save_device(bad_dev)
+
+    rec = caplog.records[0]
+    assert rec.levelname == "WARNING"
+    assert f"{ieee} has an invalid node descriptor" in rec.getMessage()
 
     await app.pre_shutdown()
+
+    # The node descriptor is not in the database
+    with sqlite3.connect(test_db_v3) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM node_descriptors WHERE ieee=?", [ieee])
+
+        assert not cur.fetchall()
 
 
 def dump_db(path):
