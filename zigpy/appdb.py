@@ -25,6 +25,23 @@ LOGGER = logging.getLogger(__name__)
 DB_VERSION = 5
 DB_V = f"_v{DB_VERSION}"
 
+# Devices without a valid node descriptor are present in the database
+DUMMY_NODE_DESC = zdo_t.NodeDescriptor(
+    logical_type=zdo_t.LogicalType.EndDevice,
+    complex_descriptor_available=False,
+    user_descriptor_available=False,
+    reserved=0b000,
+    aps_flags=0b000,
+    frequency_band=zdo_t.NodeDescriptor.FrequencyBand.Freq2400MHz,
+    mac_capability_flags=zdo_t.NodeDescriptor.MACCapabilityFlags.NONE,
+    manufacturer_code=0x0000,
+    maximum_buffer_size=64,
+    maximum_incoming_transfer_size=64,
+    server_mask=0b00000000_00000000,
+    maximum_outgoing_transfer_size=64,
+    descriptor_capability_field=zdo_t.NodeDescriptor.DescriptorCapability.NONE,
+)
+
 
 def _register_sqlite_adapters():
     def adapt_ieee(eui64):
@@ -268,6 +285,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 device.status,
             )
             return
+
         if not device.node_desc.is_valid:
             LOGGER.debug(
                 "[0x%04x]: does not have a valid node descriptor, not saving in appdb",
@@ -318,7 +336,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
         await self.execute(
             f"INSERT OR REPLACE INTO node_descriptors{DB_V}"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (device.ieee,) + device.node_desc.as_tuple(),
         )
 
@@ -361,6 +379,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_endpoints()
         await self._load_clusters()
 
+        # Quirks require the manufacturer and model name to be populated
         await self._load_attributes("attrid=4 OR attrid=5")
 
         for device in self._application.devices.values():
@@ -489,8 +508,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             if device.nwk == 0x0000:
                 continue
 
-            # Keep devices with non-ZDO endpoints and a node descriptor
-            if set(device.endpoints) - {0x00} and device.node_desc.is_valid:
+            # XXX: Devices without a valid node descriptor are given a fake one, for now
+            if not device.node_desc.is_valid:
+                LOGGER.error(
+                    "Device %s has no node descriptor! Remove it from your network and"
+                    " rejoin it. In a future zigpy release it will be automatically"
+                    " deleted from your device database.",
+                    device.ieee,
+                )
+                device.node_desc = DUMMY_NODE_DESC
+
+            # Keep devices with non-ZDO endpoints
+            if set(device.endpoints) - {0x00}:
                 continue
 
             LOGGER.warning(

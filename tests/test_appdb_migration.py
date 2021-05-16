@@ -1,3 +1,4 @@
+import logging
 import pathlib
 import sqlite3
 
@@ -153,9 +154,7 @@ async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
     if corrupt_device:
         with sqlite3.connect(test_db_bad_attrs) as conn:
             cur = conn.cursor()
-            cur.execute(
-                "DELETE FROM node_descriptors WHERE ieee='60:a4:23:ff:fe:02:39:7b'"
-            )
+            cur.execute("DELETE FROM endpoints WHERE ieee='60:a4:23:ff:fe:02:39:7b'")
 
     # Migration will handle invalid attributes entries
     app = await make_app(test_db_bad_attrs)
@@ -188,6 +187,29 @@ async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
 
         # Ensure the final database schema version number does not decrease
         assert cur.fetchone()[0] == max(zigpy.appdb.DB_VERSION, force_version or 0)
+
+
+async def test_migration_missing_node_descriptor(test_db, caplog):
+    test_db_v3 = test_db("simple_v3.sql")
+
+    with sqlite3.connect(test_db_v3) as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM node_descriptors WHERE ieee='ec:1b:bd:ff:fe:54:4f:40'")
+
+    with caplog.at_level(logging.ERROR):
+        # The invalid device will still be loaded, for now
+        app = await make_app(test_db_v3)
+
+    rec = caplog.records[0]
+    assert rec.levelname == "ERROR"
+    assert "ec:1b:bd:ff:fe:54:4f:40 has no node descriptor" in rec.getMessage()
+
+    assert len(app.devices) == 2
+
+    bad_dev = app.devices[t.EUI64.convert("ec:1b:bd:ff:fe:54:4f:40")]
+    assert bad_dev.node_desc is zigpy.appdb.DUMMY_NODE_DESC
+
+    await app.pre_shutdown()
 
 
 def dump_db(path):
