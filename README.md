@@ -100,3 +100,7 @@ ZHA deviation handling in Home Assistant relies on the third-party [ZHA Device H
 
 ### ZigCoHTTP
 [ZigCoHTTP](https://github.com/daniel17903/ZigCoHTTP) is a stand-alone python application project that creates a ZigBee network using zigpy and bellows. ZigBee devices joining this network can be controlled via a HTTP API. It was developed for a Raspberry Pi using a [Matrix Creator Board](https://www.matrix.one/products/creator) but should also work with other computers with Silicon Labs Zigbee hardware, or with other Zigbee hardware if replace bellows with other radio library for zigpy.
+
+### Jeedom Zigbee Plugin
+
+The new official [Zigbee plugin for Jeedom](https://doc.jeedom.com/en_US/plugins/automation%20protocol/zigbee/) is a Zigbee addon integration implementation based on zigpy, all radio libraries, and ZHA Device Handlers. To get access to its source code you need to install Jeedom and then [purchase the "Zigbee" plugin from the Jeedom market (online marketplace)](https://market.jeedom.com/index.php?v=d&p=market_display&id=4050). Much more information about the features, functions and workings of this Jeedom Zigbee Plugin is available in [this blog post (link to blog written in French)](https://blog.jeedom.com/5183-tout-ce-quil-faut-savoir-sur-le-plugin-officiel-zigbee/).
