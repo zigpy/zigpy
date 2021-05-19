@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import asyncio
 import binascii
 import enum
 import logging
 import time
-from typing import Dict, Optional, Union
+from typing import Optional
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -33,8 +35,13 @@ class Status(enum.IntEnum):
 
     # No initialization done
     NEW = 0
+
+    # Node descriptor has been read
+    NODE_DESC = 3
+
     # ZDO endpoint discovery done
     ZDO_INIT = 1
+
     # Endpoints initialized
     ENDPOINTS_INIT = 2
 
@@ -47,48 +54,33 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __init__(self, application, ieee, nwk):
         self._application = application
         self._ieee = ieee
-        self._init_handle = None
+        self._initialize_task = None
         self.nwk = NWK(nwk)
         self.zdo = zdo.ZDO(self)
-        self.endpoints: Dict[int, Union[zdo.ZDO, zigpy.endpoint.Endpoint]] = {
-            0: self.zdo
-        }
+        self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
         self.lqi = None
         self.rssi = None
         self.last_seen = None
         self.status = Status.NEW
-        self._group_scan_handle: Optional[asyncio.Task] = None
+        self._initialize_task: Optional[asyncio.Task] = None
+        self._group_scan_task: Optional[asyncio.Task] = None
         self._listeners = {}
         self._manufacturer = None
         self._model = None
         self.node_desc = zdo.types.NodeDescriptor()
         self.neighbors = zigpy.neighbor.Neighbors(self)
-        self._node_handle = None
         self._pending = zigpy.util.Requests()
         self._relays = None
         self._skip_configuration = False
 
-    @property
-    def initializing(self) -> bool:
-        """Return True if device is being initialized."""
-        return bool(self._init_handle and not self._init_handle.done())
-
-    def schedule_initialize(self):
-        self.cancel_initialization()
-        self._init_handle = asyncio.create_task(self._initialize())
-
-    def cancel_initialization(self) -> None:
-        """Cancel initialization call."""
-        if self.initializing:
-            LOGGER.debug("Canceling old initialize call")
-            self._init_handle.cancel()
-
-    def schedule_group_membership_scan(self) -> None:
+    def schedule_group_membership_scan(self) -> asyncio.Task:
         """Rescan device group's membership."""
-        if self._group_scan_handle and not self._group_scan_handle.done():
+        if self._group_scan_task and not self._group_scan_task.done():
             self.debug("Cancelling old group rescan")
-            self._group_scan_handle.cancel()
-        self._group_scan_handle = asyncio.ensure_future(self.group_membership_scan())
+            self._group_scan_task.cancel()
+
+        self._group_scan_task = asyncio.create_task(self.group_membership_scan())
+        return self._group_scan_task
 
     async def group_membership_scan(self) -> None:
         """Sync up group membership."""
@@ -96,68 +88,116 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             if ep_id:
                 await ep.group_membership_scan()
 
-    async def get_node_descriptor(self):
+    @property
+    def initializing(self) -> bool:
+        """Return True if device is being initialized."""
+        return self._initialize_task is not None and not self._initialize_task.done()
+
+    def cancel_initialization(self) -> None:
+        """Cancel initialization call."""
+        if self.initializing:
+            self.debug("Canceling old initialize call")
+            self._initialize_task.cancel()
+
+    def schedule_initialize(self) -> Optional[asyncio.Task]:
+        # Already-initialized devices don't need to be re-initialized
+        if not self.is_partially_initialized:
+            self.debug("Skipping initialization, device is fully initialized")
+            self._application.device_initialized(self)
+            return None
+
+        self.debug("Scheduling initialization")
+
+        self.cancel_initialization()
+        self._initialize_task = asyncio.create_task(self._initialize())
+
+        return self._initialize_task
+
+    @property
+    def is_partially_initialized(self):
+        """
+        Some devices were not properly initialized and need to have more information
+        requested after they have been joined.
+        """
+
+        if self.node_desc is None or not self.node_desc.is_valid:
+            return True
+
+        if self.status != Status.ENDPOINTS_INIT:
+            return True
+
+        return False
+
+    async def get_node_descriptor(self) -> zdo.types.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
-        try:
-            status, _, node_desc = await self.zdo.Node_Desc_req(
-                self.nwk, tries=2, delay=0.1
+
+        status, _, node_desc = await self.zdo.Node_Desc_req(
+            self.nwk, tries=2, delay=0.1
+        )
+
+        if status != zdo.types.Status.SUCCESS:
+            raise zigpy.exceptions.InvalidResponse(
+                f"Requesting Node Descriptor failed: {status}"
             )
-            if status == zdo.types.Status.SUCCESS:
-                self.node_desc = node_desc
-                self.info("Node Descriptor: %s", node_desc)
-                return node_desc
-            else:
-                self.warning("Requesting Node Descriptor failed: %s", status)
-        except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
-            self.warning("Requesting Node Descriptor failed", exc_info=True)
+
+        self.node_desc = node_desc
+        self.info("Got Node Descriptor: %s", node_desc)
+
+        return node_desc
 
     async def _initialize(self):
-        if self.status == Status.NEW:
+        """
+        Discover all basic information about a device.
+        Can be called multiple times and should be reentrant.
+        """
+
+        # Some devices are improperly initialized and are missing a node descriptor
+        if self.node_desc is None or not self.node_desc.is_valid:
             await self.get_node_descriptor()
+
+        if self.status == Status.NEW:
+            self.status = Status.NODE_DESC
+            self.listener_event("status_changed", self.status)
+
+        # Devices should have endpoints other than ZDO
+        if list(self.endpoints.keys()) == [0]:
             self.info("Discovering endpoints")
-            try:
-                status, _, endpoints = await self.zdo.Active_EP_req(
-                    self.nwk, tries=3, delay=0.5
+
+            status, _, endpoints = await self.zdo.Active_EP_req(
+                self.nwk, tries=3, delay=0.5
+            )
+
+            if status != zdo.types.Status.SUCCESS:
+                raise zigpy.exceptions.InvalidResponse(
+                    f"Endpoint request failed: {status}"
                 )
-                if status != zdo.types.Status.SUCCESS:
-                    raise zigpy.exceptions.ControllerException(
-                        "Endpoint request failed: %s", status
-                    )
-            except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
-                self.warning("Failed to discover active endpoints", exc_info=True)
-                return
 
             self.info("Discovered endpoints: %s", endpoints)
 
             for endpoint_id in endpoints:
                 self.add_endpoint(endpoint_id)
 
+        if self.status == Status.NODE_DESC:
             self.status = Status.ZDO_INIT
+            self.listener_event("status_changed", self.status)
 
+        # Initialize all of the discovered endpoints
         for endpoint_id, ep in self.endpoints.items():
-            if endpoint_id == 0:  # ZDO
+            if endpoint_id == 0:  # Skip ZDO
                 continue
-            try:
+
+            if ep.status == zigpy.endpoint.Status.NEW:
                 await ep.initialize()
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                self.warning("Endpoint %s initialization failure: %s", endpoint_id, exc)
-                break
+
             if self.manufacturer is None or self.model is None:
                 self.model, self.manufacturer = await ep.get_model_info()
 
-        ep_failed_init = [
-            ep.status == zigpy.endpoint.Status.NEW
-            for epid, ep in self.endpoints.items()
-            if epid
-        ]
-        if any(ep_failed_init):
-            self.application.listener_event("device_init_failure", self)
-            await self.application.remove(self.ieee)
-            return
+        self.info("Discovered basic device information")
 
-        self.status = Status.ENDPOINTS_INIT
+        if self.status == Status.ZDO_INIT:
+            self.status = Status.ENDPOINTS_INIT
+            self.listener_event("status_changed", self.status)
+
         self._application.device_initialized(self)
 
     def add_endpoint(self, endpoint_id):
@@ -238,10 +278,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         message: bytes,
         *,
         dst_addressing: Optional[
-            Union[Addressing.Group, Addressing.IEEE, Addressing.NWK]
+            Addressing.Group | Addressing.IEEE | Addressing.NWK
         ] = None,
     ):
         self.last_seen = time.time()
+
+        if self.is_partially_initialized and not self.initializing:
+            self.warning("Received a message from a partially-initialized device")
+            self.schedule_initialize()
+
         try:
             hdr, args = self.deserialize(src_ep, cluster, message)
         except ValueError as e:
@@ -277,6 +322,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     hdr.tsn,
                 )
                 return
+
         endpoint = self.endpoints[src_ep]
         return endpoint.handle_message(
             profile, cluster, hdr, args, dst_addressing=dst_addressing
@@ -385,6 +431,18 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 SIG_EP_OUTPUT: out_clusters,
             }
         return signature
+
+    def __repr__(self):
+        return (
+            f"<"
+            f"{type(self).__name__}"
+            f" model={self.model!r}"
+            f" manuf={self.manufacturer!r}"
+            f" nwk={NWK(self.nwk)}"
+            f" ieee={self.ieee}"
+            f" status={self.status}"
+            f">"
+        )
 
 
 async def broadcast(

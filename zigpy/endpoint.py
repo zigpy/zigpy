@@ -45,39 +45,36 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.profile_id = None
 
     async def initialize(self):
-        if self.status == Status.ZDO_INIT:
+        if self.status != Status.NEW:
             return
 
         self.info("Discovering endpoint information")
-        try:
-            sdr = await self._device.zdo.Simple_Desc_req(
-                self._device.nwk, self._endpoint_id, tries=3, delay=2
-            )
-            if sdr[0] == zdo_status.NOT_ACTIVE:
-                # These endpoints are essentially junk but this lets the device join
-                self.status = Status.ENDPOINT_INACTIVE
-                return
-            elif sdr[0] != zdo_status.SUCCESS:
-                raise Exception("Failed to retrieve service descriptor: %s", sdr)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            self.warning(
-                "Failed to discover endpoint_id %s", self.endpoint_id, exc_info=True
-            )
-            return
 
-        self.info("Discovered endpoint information: %s", sdr[2])
-        sd = sdr[2]
+        status, _, sd = await self._device.zdo.Simple_Desc_req(
+            self._device.nwk, self._endpoint_id, tries=3, delay=2
+        )
+
+        if status == zdo_status.NOT_ACTIVE:
+            # These endpoints are essentially junk but this lets the device join
+            self.status = Status.ENDPOINT_INACTIVE
+            return
+        elif status != zdo_status.SUCCESS:
+            raise zigpy.exceptions.InvalidResponse(
+                "Failed to retrieve service descriptor: %s", status
+            )
+
+        self.info("Discovered endpoint information: %s", sd)
         self.profile_id = sd.profile
         self.device_type = sd.device_type
-        if self.profile_id == 260:
+
+        if self.profile_id == zigpy.profiles.zha.PROFILE_ID:
             self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
-        elif self.profile_id == 49246:
+        elif self.profile_id == zigpy.profiles.zll.PROFILE_ID:
             self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
 
         for cluster in sd.input_clusters:
             self.add_input_cluster(cluster)
+
         for cluster in sd.output_clusters:
             self.add_output_cluster(cluster)
 

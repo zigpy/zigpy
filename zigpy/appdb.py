@@ -131,7 +131,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         return self._db.execute(*args, **kwargs)
 
     def device_joined(self, device: zigpy.typing.DeviceType) -> None:
-        pass
+        self.enqueue("_update_device_nwk", device.ieee, device.nwk)
+
+    async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
+        try:
+            await self.execute("UPDATE devices SET nwk=? WHERE ieee=?", (nwk, ieee))
+        except aiosqlite.OperationalError:
+            pass
+        else:
+            await self._db.commit()
 
     def raw_device_initialized(self, device: zigpy.typing.DeviceType) -> None:
         self.enqueue("_save_device", device)

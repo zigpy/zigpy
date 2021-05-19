@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import abc
 import asyncio
 import logging
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional
 
 import zigpy.appdb
 import zigpy.config
@@ -25,9 +27,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     SCHEMA = zigpy.config.CONFIG_SCHEMA
     SCHEMA_DEVICE = zigpy.config.SCHEMA_DEVICE
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: dict):
         self._send_sequence = 0
-        self.devices: Dict[t.EUI64, zigpy.device.Device] = {}
+        self.devices: dict[t.EUI64, zigpy.device.Device] = {}
         self.topology = None
         self._listeners = {}
         self._channel = None
@@ -57,22 +59,31 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     @classmethod
     async def new(
-        cls, config: Dict, auto_form: bool = False, start_radio: bool = True
-    ) -> "ControllerApplication":
+        cls, config: dict, auto_form: bool = False, start_radio: bool = True
+    ) -> ControllerApplication:
         """Create new instance of application controller."""
         app = cls(config)
         await app._load_db()
         await app.ota.initialize()
         app.topology = zigpy.topology.Topology.new(app)
-        if start_radio:
-            try:
-                await app.startup(auto_form)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                LOGGER.error("Couldn't start application")
-                await app.pre_shutdown()
-                raise
+
+        if not start_radio:
+            return app
+
+        try:
+            await app.startup(auto_form)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            LOGGER.error("Couldn't start application")
+            await app.pre_shutdown()
+            raise
+
+        # Re-initialize partially-initialized devices
+        for device in app.devices.values():
+            if device.is_partially_initialized:
+                LOGGER.warning("Device is partially initialized: %s", device)
+                device.schedule_initialize()
 
         return app
 
@@ -127,6 +138,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def device_initialized(self, device):
         """Used by a device to signal that it is initialized"""
+        LOGGER.debug("Device is initialized %s", self)
+
         self.listener_event("raw_device_initialized", device)
         device = zigpy.quirks.get_device(device)
         self.devices[device.ieee] = device
@@ -191,7 +204,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         message: bytes,
         *,
         dst_addressing: Optional[
-            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+            t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
         ] = None,
     ) -> None:
         self.listener_event(
@@ -231,31 +244,41 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             dst_addressing=dst_addressing,
         )
 
-    def handle_join(self, nwk, ieee, parent_nwk):
+    def handle_join(self, nwk: t.NWK, ieee: t.EUI64, parent_nwk: t.NWK) -> None:
+        """
+        Called when a device joins or announces itself on the network.
+        """
+
         ieee = t.EUI64(ieee)
         LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
-        if ieee in self.devices:
+
+        try:
             dev = self.get_device(ieee)
-            if dev.nwk != nwk:
-                LOGGER.debug(
-                    "Device %s changed id (0x%04x => 0x%04x)", ieee, dev.nwk, nwk
-                )
-                dev.nwk = nwk
-                dev.schedule_group_membership_scan()
-            elif dev.initializing or dev.status == zigpy.device.Status.ENDPOINTS_INIT:
-                LOGGER.debug("Skip initialization for existing device %s", ieee)
-                dev.schedule_group_membership_scan()
-                return
-        else:
+            LOGGER.debug("Device already exists")
+        except KeyError:
+            LOGGER.debug("Device is unknown, creating a new one")
             dev = self.add_device(ieee, nwk)
 
+        if dev.nwk != nwk:
+            dev.nwk = nwk
+            LOGGER.debug("Device %s changed id (0x%04x => 0x%04x)", ieee, dev.nwk, nwk)
+
         self.listener_event("device_joined", dev)
+
         dev.schedule_initialize()
+
+        # Rescan groups for devices that are already initialized
+        if dev.status == zigpy.device.Status.ENDPOINTS_INIT:
+            dev.schedule_group_membership_scan()
 
     def handle_leave(self, nwk, ieee):
         LOGGER.info("Device 0x%04x (%s) left the network", nwk, ieee)
-        dev = self.devices.get(ieee, None)
-        if dev is not None:
+
+        try:
+            dev = self.get_device(ieee)
+        except KeyError:
+            return
+        else:
             self.listener_event("device_left", dev)
 
     async def mrequest(
@@ -416,7 +439,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dstaddr.endpoint = self.get_endpoint_id(cluster.cluster_id, cluster.is_server)
         return dstaddr
 
-    def update_config(self, partial_config: Dict[str, Any]) -> None:
+    def update_config(self, partial_config: dict[str, Any]) -> None:
         """Update existing config."""
         self.config = {**self.config, **partial_config}
 
@@ -473,5 +496,5 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    async def probe(cls, device_config: Dict[str, Any]) -> bool:
+    async def probe(cls, device_config: dict[str, Any]) -> bool:
         """API/Port probe method."""
