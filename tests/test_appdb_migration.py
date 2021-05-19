@@ -124,6 +124,22 @@ async def test_migration_from_3_to_4(open_twice, test_db):
         assert all([len(row) == 14 for row in node_descs_after])
 
 
+async def test_migration_0_to_5(test_db):
+    test_db_v0 = test_db("zigbee_20190417_v0.db")
+
+    app1 = await make_app(test_db_v0)
+    await app1.pre_shutdown()
+
+    # 00:15:8d:00:02:05:a6:41 has no node descriptor or endpoints, it can't be migrated
+    assert len(app1.devices) == 26
+
+    app2 = await make_app(test_db_v0)
+    await app2.pre_shutdown()
+
+    # All 27 devices migrated
+    assert len(app2.devices) == 26
+
+
 async def test_migration_missing_neighbors_v3(test_db):
     test_db_v3 = test_db("simple_v3.sql")
 

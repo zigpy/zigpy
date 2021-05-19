@@ -552,7 +552,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         LOGGER.debug("Current database version is v%s", db_version)
 
-        if db_version == 0:
+        async with self.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ) as cursor:
+            db_tables = [row async for (row,) in cursor]
+
+        LOGGER.debug("Current table names are %s", db_tables)
+
+        # Very old databases did not set `user_version` but still should be migrated
+        if db_version == 0 and "devices" not in db_tables:
             # If this is a brand new database, just load the current schema
             await self.executescript(zigpy.appdb_schemas.SCHEMAS[DB_VERSION])
             return
@@ -600,17 +608,22 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute("DELETE FROM node_descriptors_v4")
         await self.execute("DELETE FROM neighbors_v4")
 
-        # Migrate node descriptors
-        async with self.execute("SELECT * FROM node_descriptors") as cur:
-            async for dev_ieee, value in cur:
-                node_desc, rest = zdo_t.NodeDescriptor.deserialize(value)
-                assert not rest
+        try:
+            # The `node_descriptors` table was added in v1
+            await self.execute("SELECT * FROM node_descriptors")
+        except aiosqlite.OperationalError:
+            pass
+        else:
+            async with self.execute("SELECT * FROM node_descriptors") as cur:
+                async for dev_ieee, value in cur:
+                    node_desc, rest = zdo_t.NodeDescriptor.deserialize(value)
+                    assert not rest
 
-                await self.execute(
-                    "INSERT INTO node_descriptors_v4"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (dev_ieee,) + node_desc.as_tuple(),
-                )
+                    await self.execute(
+                        "INSERT INTO node_descriptors_v4"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (dev_ieee,) + node_desc.as_tuple(),
+                    )
 
         try:
             # The `neighbors` table was added in v3 but the version number was not
