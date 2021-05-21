@@ -83,7 +83,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         for device in app.devices.values():
             if device.is_partially_initialized:
                 LOGGER.warning("Device is partially initialized: %s", device)
-                device.schedule_initialize()
 
         return app
 
