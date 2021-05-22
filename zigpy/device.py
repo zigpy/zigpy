@@ -138,6 +138,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return node_desc
 
+    @zigpy.util.retryable(
+        (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException), tries=3, delay=0.5
+    )
     async def _initialize(self):
         """
         Discover all basic information about a device.
