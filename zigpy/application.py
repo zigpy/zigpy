@@ -81,7 +81,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         # Re-initialize partially-initialized devices
         for device in app.devices.values():
-            if device.is_partially_initialized:
+            if not device.is_initialized:
                 LOGGER.warning("Device is partially initialized: %s", device)
 
         return app
@@ -137,7 +137,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def device_initialized(self, device):
         """Used by a device to signal that it is initialized"""
-        LOGGER.debug("Device is initialized %s", self)
+        LOGGER.debug("Device is initialized %s", device)
 
         self.listener_event("raw_device_initialized", device)
         device = zigpy.quirks.get_device(device)
@@ -209,31 +209,28 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.listener_event(
             "handle_message", sender, profile, cluster, src_ep, dst_ep, message
         )
-        if sender.status == zigpy.device.Status.NEW and dst_ep != 0:
-            # only allow ZDO responses while initializing device
-            LOGGER.debug(
-                "Received frame on uninitialized device %s (%s) for endpoint: %s",
-                sender.ieee,
-                sender.status,
-                dst_ep,
-            )
-            zigpy.quirks.handle_message_from_uninitialized_sender(
-                sender, profile, cluster, src_ep, dst_ep, message
-            )
-            return
-        elif (
-            sender.status == zigpy.device.Status.ZDO_INIT
-            and dst_ep != 0
-            and cluster != 0
-        ):
-            # only allow access to basic cluster while initializing endpoints
-            LOGGER.debug(
-                "Received frame on uninitialized device %s endpoint %s for cluster: %s",
-                sender.ieee,
-                dst_ep,
-                cluster,
-            )
-            return
+        if sender.is_partially_initialized:
+            if not sender.has_node_descriptor and dst_ep != 0:
+                # only allow ZDO responses while initializing device
+                LOGGER.debug(
+                    "Received frame on uninitialized device %s for endpoint: %s",
+                    sender,
+                    dst_ep,
+                )
+                zigpy.quirks.handle_message_from_uninitialized_sender(
+                    sender, profile, cluster, src_ep, dst_ep, message
+                )
+                return
+            elif dst_ep != 0 and cluster != 0:
+                # only allow access to basic cluster while initializing endpoints
+                LOGGER.debug(
+                    "Received frame on uninitialized device %s endpoint %s for cluster: %s",
+                    sender,
+                    dst_ep,
+                    cluster,
+                )
+                return
+
         return sender.handle_message(
             profile,
             cluster,
@@ -267,7 +264,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dev.schedule_initialize()
 
         # Rescan groups for devices that are already initialized
-        if dev.status == zigpy.device.Status.ENDPOINTS_INIT:
+        if dev.is_initialized:
             dev.schedule_group_membership_scan()
 
     def handle_leave(self, nwk, ieee):

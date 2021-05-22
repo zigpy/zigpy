@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import binascii
-import enum
 import logging
 import time
 from typing import Optional
@@ -30,22 +29,6 @@ APS_REPLY_TIMEOUT_EXTENDED = 28
 LOGGER = logging.getLogger(__name__)
 
 
-class Status(enum.IntEnum):
-    """The status of a Device"""
-
-    # No initialization done
-    NEW = 0
-
-    # Node descriptor has been read
-    NODE_DESC = 3
-
-    # ZDO endpoint discovery done
-    ZDO_INIT = 1
-
-    # Endpoints initialized
-    ENDPOINTS_INIT = 2
-
-
 class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """A device on the network"""
 
@@ -61,7 +44,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.lqi = None
         self.rssi = None
         self.last_seen = None
-        self.status = Status.NEW
         self._initialize_task: Optional[asyncio.Task] = None
         self._group_scan_task: Optional[asyncio.Task] = None
         self._listeners = {}
@@ -72,6 +54,32 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._pending = zigpy.util.Requests()
         self._relays = None
         self._skip_configuration = False
+
+    @property
+    def _non_zdo_endpoints(self):
+        return [ep for epid, ep in self.endpoints.items() if epid != 0]
+
+    @property
+    def has_node_descriptor(self) -> bool:
+        return self.node_desc is not None and self.node_desc.is_valid
+
+    @property
+    def did_zdo_init(self) -> bool:
+        return bool(self._non_zdo_endpoints)
+
+    @property
+    def all_endpoints_init(self) -> bool:
+        return self.did_zdo_init and all(
+            ep.status != zigpy.endpoint.Status.NEW for ep in self._non_zdo_endpoints
+        )
+
+    @property
+    def is_initialized(self) -> bool:
+        return self.has_node_descriptor and self.all_endpoints_init
+
+    @property
+    def is_partially_initialized(self) -> bool:
+        return not self.is_initialized and self.all_endpoints_init
 
     def schedule_group_membership_scan(self) -> asyncio.Task:
         """Rescan device group's membership."""
@@ -101,7 +109,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def schedule_initialize(self) -> Optional[asyncio.Task]:
         # Already-initialized devices don't need to be re-initialized
-        if not self.is_partially_initialized:
+        if self.is_initialized:
             self.debug("Skipping initialization, device is fully initialized")
             self._application.device_initialized(self)
             return None
@@ -112,21 +120,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._initialize_task = asyncio.create_task(self._initialize())
 
         return self._initialize_task
-
-    @property
-    def is_partially_initialized(self):
-        """
-        Some devices were not properly initialized and need to have more information
-        requested after they have been joined.
-        """
-
-        if self.node_desc is None or not self.node_desc.is_valid:
-            return True
-
-        if self.status != Status.ENDPOINTS_INIT:
-            return True
-
-        return False
 
     async def get_node_descriptor(self) -> zdo.types.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
@@ -152,15 +145,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         """
 
         # Some devices are improperly initialized and are missing a node descriptor
-        if self.node_desc is None or not self.node_desc.is_valid:
+        if not self.has_node_descriptor:
             await self.get_node_descriptor()
 
-        if self.status == Status.NEW:
-            self.status = Status.NODE_DESC
-            self.listener_event("status_changed", self.status)
-
         # Devices should have endpoints other than ZDO
-        if list(self.endpoints.keys()) == [0]:
+        if self.did_zdo_init:
+            self.info("Already have endpoints: %s", self.endpoints)
+        else:
             self.info("Discovering endpoints")
 
             status, _, endpoints = await self.zdo.Active_EP_req(
@@ -177,27 +168,20 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             for endpoint_id in endpoints:
                 self.add_endpoint(endpoint_id)
 
-        if self.status == Status.NODE_DESC:
-            self.status = Status.ZDO_INIT
-            self.listener_event("status_changed", self.status)
-
         # Initialize all of the discovered endpoints
-        for endpoint_id, ep in self.endpoints.items():
-            if endpoint_id == 0:  # Skip ZDO
-                continue
+        if self.all_endpoints_init:
+            self.info("All endpoints are already initialized")
+        else:
+            for ep in self._non_zdo_endpoints:
+                if ep.status == zigpy.endpoint.Status.NEW:
+                    await ep.initialize()
 
-            if ep.status == zigpy.endpoint.Status.NEW:
-                await ep.initialize()
-
-            if self.manufacturer is None or self.model is None:
-                self.model, self.manufacturer = await ep.get_model_info()
+                if self.manufacturer is None or self.model is None:
+                    self.model, self.manufacturer = await ep.get_model_info()
 
         self.info("Discovered basic device information")
 
-        if self.status == Status.ZDO_INIT:
-            self.status = Status.ENDPOINTS_INIT
-            self.listener_event("status_changed", self.status)
-
+        # Signal to the application that the device is ready
         self._application.device_initialized(self)
 
     def add_endpoint(self, endpoint_id):
@@ -440,7 +424,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             f" manuf={self.manufacturer!r}"
             f" nwk={NWK(self.nwk)}"
             f" ieee={self.ieee}"
-            f" status={self.status}"
+            f" is_initialized={self.is_initialized}"
             f">"
         )
 

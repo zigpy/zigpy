@@ -168,7 +168,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def attribute_updated(
         self, cluster: zigpy.typing.ClusterType, attrid: int, value: Any
     ) -> None:
-        if cluster.endpoint.device.status != zigpy.device.Status.ENDPOINTS_INIT:
+        if cluster.endpoint.device.is_initialized:
             return
 
         self.enqueue(
@@ -399,28 +399,17 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
-        if device.status != zigpy.device.Status.ENDPOINTS_INIT:
-            LOGGER.warning(
-                "Not saving uninitialized %s/%s device: %s",
-                device.ieee,
-                device.nwk,
-                device.status,
-            )
-            return
-        if not device.node_desc.is_valid:
-            LOGGER.debug(
-                "[0x%04x]: does not have a valid node descriptor, not saving in appdb",
-                device.nwk,
-            )
+        if not device.is_initialized:
+            LOGGER.debug("Not saving uninitialized device: %s", device)
             return
 
         try:
             q = "INSERT INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
-            await self.execute(q, (device.ieee, device.nwk, device.status))
+            await self.execute(q, (device.ieee, device.nwk, 2))
         except sqlite3.IntegrityError:
             LOGGER.debug("Device %s already exists. Updating it.", device.ieee)
-            q = "UPDATE devices SET nwk=?, status=? WHERE ieee=?"
-            await self.execute(q, (device.nwk, device.status, device.ieee))
+            q = "UPDATE devices SET nwk=? WHERE ieee=?"
+            await self.execute(q, (device.nwk, device.ieee))
 
         await self._save_node_descriptor(device)
         if isinstance(device, zigpy.quirks.CustomDevice):
@@ -428,10 +417,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             return
 
         await self._save_endpoints(device)
-        for epid, ep in device.endpoints.items():
-            if epid == 0:
-                # ZDO
-                continue
+        for ep in device._non_zdo_endpoints:
             await self._save_input_clusters(ep)
             await self._save_attribute_cache(ep)
             await self._save_output_clusters(ep)
@@ -440,9 +426,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_endpoints(self, device: zigpy.typing.DeviceType) -> None:
         q = "INSERT OR REPLACE INTO endpoints VALUES (?, ?, ?, ?, ?)"
         endpoints = []
-        for epid, ep in device.endpoints.items():
-            if epid == 0:
-                continue  # Skip zdo
+        for ep in device._non_zdo_endpoints:
             device_type = getattr(ep, "device_type", None)
             eprow = (
                 device.ieee,
@@ -559,9 +543,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _load_devices(self) -> None:
         async with self.execute("SELECT * FROM devices") as cursor:
-            async for (ieee, nwk, status) in cursor:
-                dev = self._application.add_device(ieee, nwk)
-                dev.status = zigpy.device.Status(status)
+            async for (ieee, nwk, _) in cursor:
+                self._application.add_device(ieee, nwk)
 
     async def _load_node_descriptors(self) -> None:
         async with self.execute("SELECT * FROM node_descriptors_v4") as cursor:
