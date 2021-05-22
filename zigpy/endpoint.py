@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import enum
 import logging
@@ -33,52 +35,64 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __init__(self, device: DeviceType, endpoint_id: int):
         self._device = device
         self._endpoint_id = endpoint_id
+        self._listeners = {}
+
+        self.status = Status.NEW
+        self.profile_id = None
         self.device_type = None
         self.in_clusters = {}
         self.out_clusters = {}
         self._cluster_attr = {}
-        self.status = Status.NEW
-        self._listeners = {}
-        self._manufacturer = None
-        self._member_of = {}
-        self._model = None
-        self.profile_id = None
 
-    async def initialize(self):
+        self._member_of = {}
+
+        self._manufacturer = None
+        self._model = None
+
+    async def initialize(
+        self, *, query_model_info=False
+    ) -> tuple[str | None, str | None]:
         if self.status != Status.NEW:
-            return
+            return self._model, self._manufacturer
 
         self.info("Discovering endpoint information")
 
-        status, _, sd = await self._device.zdo.Simple_Desc_req(
-            self._device.nwk, self._endpoint_id, tries=3, delay=2
-        )
-
-        if status == zdo_status.NOT_ACTIVE:
-            # These endpoints are essentially junk but this lets the device join
-            self.status = Status.ENDPOINT_INACTIVE
-            return
-        elif status != zdo_status.SUCCESS:
-            raise zigpy.exceptions.InvalidResponse(
-                "Failed to retrieve service descriptor: %s", status
+        if self.profile_id is not None or self.status == Status.ENDPOINT_INACTIVE:
+            self.info("Endpoint descriptor already queried")
+        else:
+            status, _, sd = await self._device.zdo.Simple_Desc_req(
+                self._device.nwk, self._endpoint_id, tries=3, delay=2
             )
 
-        self.info("Discovered endpoint information: %s", sd)
-        self.profile_id = sd.profile
-        self.device_type = sd.device_type
+            if status == zdo_status.NOT_ACTIVE:
+                # These endpoints are essentially junk but this lets the device join
+                self.status = Status.ENDPOINT_INACTIVE
+                return None, None
+            elif status != zdo_status.SUCCESS:
+                raise zigpy.exceptions.InvalidResponse(
+                    "Failed to retrieve service descriptor: %s", status
+                )
 
-        if self.profile_id == zigpy.profiles.zha.PROFILE_ID:
-            self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
-        elif self.profile_id == zigpy.profiles.zll.PROFILE_ID:
-            self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
+            self.info("Discovered endpoint information: %s", sd)
+            self.profile_id = sd.profile
+            self.device_type = sd.device_type
 
-        for cluster in sd.input_clusters:
-            self.add_input_cluster(cluster)
+            if self.profile_id == zigpy.profiles.zha.PROFILE_ID:
+                self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
+            elif self.profile_id == zigpy.profiles.zll.PROFILE_ID:
+                self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
 
-        for cluster in sd.output_clusters:
-            self.add_output_cluster(cluster)
+            for cluster in sd.input_clusters:
+                self.add_input_cluster(cluster)
+
+            for cluster in sd.output_clusters:
+                self.add_output_cluster(cluster)
+
+        if query_model_info:
+            await self.get_model_info()
 
         self.status = Status.ZDO_INIT
+        return self._model, self._manufacturer
 
     def add_input_cluster(self, cluster_id, cluster=None):
         """Adds an endpoint's input cluster
@@ -183,7 +197,11 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.debug("Manufacturer: %s", attributes["manufacturer"])
         self.debug("Model: %s", attributes["model"])
-        return attributes["model"], attributes["manufacturer"]
+
+        self._model = attributes["model"]
+        self._manufacturer = attributes["manufacturer"]
+
+        return self._model, self._manufacturer
 
     def deserialize(self, cluster_id, data):
         """Deserialize data for ZCL"""

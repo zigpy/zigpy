@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import binascii
+import enum
 import logging
 import time
 from typing import Optional
@@ -29,6 +30,17 @@ APS_REPLY_TIMEOUT_EXTENDED = 28
 LOGGER = logging.getLogger(__name__)
 
 
+class Status(enum.IntEnum):
+    """The status of a Device. Maintained for backwards compatibility."""
+
+    # No initialization done
+    NEW = 0
+    # ZDO endpoint discovery done
+    ZDO_INIT = 1
+    # Endpoints initialized
+    ENDPOINTS_INIT = 2
+
+
 class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """A device on the network"""
 
@@ -54,6 +66,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._pending = zigpy.util.Requests()
         self._relays = None
         self._skip_configuration = False
+
+        self.status = Status.NEW
 
     @property
     def _non_zdo_endpoints(self):
@@ -117,7 +131,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.debug("Scheduling initialization")
 
         self.cancel_initialization()
-        self._initialize_task = asyncio.create_task(self._initialize())
+        self._initialize_task = asyncio.create_task(self.initialize())
 
         return self._initialize_task
 
@@ -138,9 +152,38 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return node_desc
 
-    @zigpy.util.retryable(
-        (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException), tries=3, delay=0.5
-    )
+    async def initialize(self, *, tries=3, delay=0.5):
+        """
+        Attempts multiple times to discover all basic information about a device: namely
+        its node descriptor, all endpoints and clusters, and the model and manufacturer
+        attributes from any Basic cluster exposing those attributes.
+        """
+
+        for attempt in range(1, tries + 1):
+            try:
+                await self._initialize()
+                break
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.error(
+                    "Initialization failed (attempt %s of %s)",
+                    attempt,
+                    tries,
+                    exc_info=True,
+                )
+
+                if attempt < tries:
+                    await asyncio.sleep(delay)
+                    continue
+
+                self.application.listener_event("device_init_failure", self)
+                await self.application.remove(self.ieee)
+                raise
+
+        # Signal to the application that the device is ready
+        self._application.device_initialized(self)
+
     async def _initialize(self):
         """
         Discover all basic information about a device.
@@ -171,21 +214,26 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             for endpoint_id in endpoints:
                 self.add_endpoint(endpoint_id)
 
+        self.status = Status.ZDO_INIT
+
         # Initialize all of the discovered endpoints
         if self.all_endpoints_init:
             self.info("All endpoints are already initialized")
         else:
             for ep in self._non_zdo_endpoints:
-                if ep.status == zigpy.endpoint.Status.NEW:
-                    await ep.initialize()
+                if ep.status != zigpy.endpoint.Status.NEW:
+                    continue
 
                 if self.manufacturer is None or self.model is None:
-                    self.model, self.manufacturer = await ep.get_model_info()
+                    self.model, self.manufacturer = await ep.initialize(
+                        query_model_info=True
+                    )
+                else:
+                    await ep.initialize(query_model_info=False)
+
+        self.status = Status.ENDPOINTS_INIT
 
         self.info("Discovered basic device information")
-
-        # Signal to the application that the device is ready
-        self._application.device_initialized(self)
 
     def add_endpoint(self, endpoint_id):
         ep = zigpy.endpoint.Endpoint(self, endpoint_id)

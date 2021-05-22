@@ -405,7 +405,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         try:
             q = "INSERT INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
-            await self.execute(q, (device.ieee, device.nwk, 2))
+            await self.execute(
+                q, (device.ieee, device.nwk, zigpy.device.Status.ENDPOINTS_INIT)
+            )
         except sqlite3.IntegrityError:
             LOGGER.debug("Device %s already exists. Updating it.", device.ieee)
             q = "UPDATE devices SET nwk=? WHERE ieee=?"
@@ -543,8 +545,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _load_devices(self) -> None:
         async with self.execute("SELECT * FROM devices") as cursor:
-            async for (ieee, nwk, _) in cursor:
-                self._application.add_device(ieee, nwk)
+            async for (ieee, nwk, status) in cursor:
+                dev = self._application.add_device(ieee, nwk)
+                dev.status = status
 
     async def _load_node_descriptors(self) -> None:
         async with self.execute("SELECT * FROM node_descriptors_v4") as cursor:
