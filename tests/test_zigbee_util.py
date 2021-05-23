@@ -131,10 +131,12 @@ async def test_retry_once():
     assert counter == 2
 
 
-async def _test_retryable(exception, retry_exceptions, n, tries=3, delay=0.001):
+async def _test_retryable(
+    exception, retry_exceptions, n, tries=3, delay=0.001, async_cb=None
+):
     counter = 0
 
-    @util.retryable(retry_exceptions)
+    @util.retryable(retry_exceptions, async_on_failure=async_cb)
     async def count(x, y, z):
         assert x == y == z == 9
         nonlocal counter
@@ -173,6 +175,19 @@ async def test_retryable_always():
 async def test_retryable_once():
     counter = await _test_retryable(ValueError, ValueError, 1)
     assert counter == 2
+
+
+async def test_retryable_failure_callback():
+    async_fail_callback = AsyncMock()
+    with pytest.raises(ValueError):
+        await _test_retryable(
+            ValueError,
+            (IndexError, ValueError),
+            999,
+            async_cb=async_fail_callback(sentinel.async_callback_params),
+        )
+    assert async_fail_callback.await_count == 1
+    assert async_fail_callback.call_args_list[0][0][0] is sentinel.async_callback_params
 
 
 def test_zigbee_security_hash():

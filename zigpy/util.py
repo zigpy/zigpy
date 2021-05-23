@@ -99,7 +99,7 @@ class LocalLogMixin:
         return self._log(logging.ERROR, msg, *args, **kwargs)
 
 
-async def retry(func, retry_exceptions, tries=3, delay=0.1):
+async def retry(func, retry_exceptions, tries=3, delay=0.1, async_on_failure=None):
     """Retry a function in case of exception
 
     Only exceptions in `retry_exceptions` will be retried.
@@ -111,12 +111,14 @@ async def retry(func, retry_exceptions, tries=3, delay=0.1):
             return r
         except retry_exceptions:
             if tries <= 1:
+                if async_on_failure is not None:
+                    await async_on_failure
                 raise
             tries -= 1
             await asyncio.sleep(delay)
 
 
-def retryable(retry_exceptions, tries=1, delay=0.1):
+def retryable(retry_exceptions, tries=1, delay=0.1, async_on_failure=None):
     """Return a decorator which makes a function able to be retried
 
     This adds "tries" and "delay" keyword arguments to the function. Only
@@ -135,6 +137,7 @@ def retryable(retry_exceptions, tries=1, delay=0.1):
                 retry_exceptions,
                 tries=tries,
                 delay=delay,
+                async_on_failure=async_on_failure,
             )
 
         return wrapper
