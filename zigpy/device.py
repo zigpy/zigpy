@@ -152,42 +152,30 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return node_desc
 
-    async def initialize(self, *, tries=3, delay=0.5):
+    async def initialize(self):
+        try:
+            await self._initialize()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            if not isinstance(
+                e, (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException)
+            ):
+                LOGGER.warning(
+                    "Device failed to initialize due to unexpected error", exc_info=True
+                )
+
+            self.application.listener_event("device_init_failure", self)
+            await self.application.remove(self.ieee)
+
+    @zigpy.util.retryable(
+        (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException), tries=3, delay=0.5
+    )
+    async def _initialize(self):
         """
         Attempts multiple times to discover all basic information about a device: namely
         its node descriptor, all endpoints and clusters, and the model and manufacturer
         attributes from any Basic cluster exposing those attributes.
-        """
-
-        for attempt in range(1, tries + 1):
-            try:
-                await self._initialize()
-                break
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                self.error(
-                    "Initialization failed (attempt %s of %s)",
-                    attempt,
-                    tries,
-                    exc_info=True,
-                )
-
-                if attempt < tries:
-                    await asyncio.sleep(delay)
-                    continue
-
-                self.application.listener_event("device_init_failure", self)
-                await self.application.remove(self.ieee)
-                raise
-
-        # Signal to the application that the device is ready
-        self._application.device_initialized(self)
-
-    async def _initialize(self):
-        """
-        Discover all basic information about a device.
-        Can be called multiple times and should be reentrant.
         """
 
         # Some devices are improperly initialized and are missing a node descriptor
@@ -234,6 +222,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status = Status.ENDPOINTS_INIT
 
         self.info("Discovered basic device information")
+
+        # Signal to the application that the device is ready
+        self._application.device_initialized(self)
 
     def add_endpoint(self, endpoint_id):
         ep = zigpy.endpoint.Endpoint(self, endpoint_id)
