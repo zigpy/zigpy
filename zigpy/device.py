@@ -166,7 +166,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 )
 
             self.application.listener_event("device_init_failure", self)
-            await self.application.remove(self.ieee)
 
     @zigpy.util.retryable(
         (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException), tries=3, delay=0.5
