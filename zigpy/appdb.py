@@ -415,7 +415,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             return
 
         await self._save_endpoints(device)
-        for ep in device._non_zdo_endpoints:
+        for ep in device.non_zdo_endpoints:
             await self._save_input_clusters(ep)
             await self._save_attribute_cache(ep)
             await self._save_output_clusters(ep)
@@ -424,7 +424,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_endpoints(self, device: zigpy.typing.DeviceType) -> None:
         q = "INSERT OR REPLACE INTO endpoints VALUES (?, ?, ?, ?, ?)"
         endpoints = []
-        for ep in device._non_zdo_endpoints:
+        for ep in device.non_zdo_endpoints:
             device_type = getattr(ep, "device_type", None)
             eprow = (
                 device.ieee,

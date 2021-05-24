@@ -63,7 +63,7 @@ async def test_initialize_fail(dev):
     await dev.initialize()
 
     assert not dev.is_initialized
-    assert not dev.did_zdo_init
+    assert not dev.has_non_zdo_endpoints
 
 
 @patch("zigpy.device.Device.get_node_descriptor", AsyncMock())

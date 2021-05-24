@@ -71,7 +71,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status = Status.NEW
 
     @property
-    def _non_zdo_endpoints(self):
+    def non_zdo_endpoints(self):
         return [ep for epid, ep in self.endpoints.items() if epid != 0]
 
     @property
@@ -79,13 +79,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self.node_desc is not None and self.node_desc.is_valid
 
     @property
-    def did_zdo_init(self) -> bool:
-        return bool(self._non_zdo_endpoints)
+    def has_non_zdo_endpoints(self) -> bool:
+        return bool(self.non_zdo_endpoints)
 
     @property
     def all_endpoints_init(self) -> bool:
-        return self.did_zdo_init and all(
-            ep.status != zigpy.endpoint.Status.NEW for ep in self._non_zdo_endpoints
+        return self.has_non_zdo_endpoints and all(
+            ep.status != zigpy.endpoint.Status.NEW for ep in self.non_zdo_endpoints
         )
 
     @property
@@ -103,7 +103,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     async def group_membership_scan(self) -> None:
         """Sync up group membership."""
-        for ep in self._non_zdo_endpoints:
+        for ep in self.non_zdo_endpoints:
             await ep.group_membership_scan()
 
     @property
@@ -178,7 +178,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             await self.get_node_descriptor()
 
         # Devices should have endpoints other than ZDO
-        if self.did_zdo_init:
+        if self.has_non_zdo_endpoints:
             self.info("Already have endpoints: %s", self.endpoints)
         else:
             self.info("Discovering endpoints")
@@ -203,7 +203,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if self.all_endpoints_init:
             self.info("All endpoints are already initialized")
         else:
-            for ep in self._non_zdo_endpoints:
+            for ep in self.non_zdo_endpoints:
                 if ep.status != zigpy.endpoint.Status.NEW:
                     continue
 
@@ -227,11 +227,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return ep
 
     async def add_to_group(self, grp_id: int, name: str = None):
-        for ep in self._non_zdo_endpoints:
+        for ep in self.non_zdo_endpoints:
             await ep.add_to_group(grp_id, name)
 
     async def remove_from_group(self, grp_id: int):
-        for ep in self._non_zdo_endpoints:
+        for ep in self.non_zdo_endpoints:
             await ep.remove_from_group(grp_id)
 
     async def request(
