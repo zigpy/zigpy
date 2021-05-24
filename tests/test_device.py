@@ -35,18 +35,24 @@ async def test_initialize(monkeypatch, dev):
     async def mockrequest(nwk, tries=None, delay=None):
         return [0, None, [1, 2]]
 
-    async def mockepinit(self):
+    async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
-        return
+        return None, None
 
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
     dev.zdo.Active_EP_req = mockrequest
-    await dev._initialize()
+    await dev.initialize()
 
-    assert dev.status > device.Status.NEW
     assert 1 in dev.endpoints
     assert 2 in dev.endpoints
     assert dev._application.device_initialized.call_count == 1
+    assert dev.is_initialized
+
+    dev.schedule_initialize()
+    assert dev._application.device_initialized.call_count == 2
+
+    await dev.initialize()
+    assert dev._application.device_initialized.call_count == 3
 
 
 async def test_initialize_fail(dev):
@@ -54,9 +60,10 @@ async def test_initialize_fail(dev):
         return [1, dev.nwk, []]
 
     dev.zdo.Active_EP_req = mockrequest
-    await dev._initialize()
+    await dev.initialize()
 
-    assert dev.status == device.Status.NEW
+    assert not dev.is_initialized
+    assert not dev.did_zdo_init
 
 
 @patch("zigpy.device.Device.get_node_descriptor", AsyncMock())
@@ -70,12 +77,11 @@ async def test_initialize_ep_failed(monkeypatch, dev):
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
 
     dev.zdo.request = mockrequest
-    await dev._initialize()
+    await dev.initialize()
 
-    assert dev.status == device.Status.ZDO_INIT
+    assert not dev.is_initialized
     assert dev.application.listener_event.call_count == 1
     assert dev.application.listener_event.call_args[0][0] == "device_init_failure"
-    assert dev.application.remove.call_count == 1
 
 
 async def test_request(dev):
@@ -232,16 +238,16 @@ async def test_get_node_descriptor(dev):
 
 
 async def test_get_node_descriptor_no_reply(dev):
-    nd = await _get_node_descriptor(dev, zdo_success=True, request_success=False)
+    with pytest.raises(asyncio.TimeoutError):
+        await _get_node_descriptor(dev, zdo_success=True, request_success=False)
 
-    assert nd is None
     assert dev.zdo.Node_Desc_req.call_count == 1
 
 
 async def test_get_node_descriptor_fail(dev):
-    nd = await _get_node_descriptor(dev, zdo_success=False, request_success=True)
+    with pytest.raises(zigpy.exceptions.InvalidResponse):
+        await _get_node_descriptor(dev, zdo_success=False, request_success=True)
 
-    assert nd is None
     assert dev.zdo.Node_Desc_req.call_count == 1
 
 
@@ -292,6 +298,15 @@ async def test_schedule_group_membership(dev, caplog):
         await asyncio.sleep(0)
         assert scan_mock.await_count == 1
         assert "Cancelling old group rescan" in caplog.text
+
+
+async def test_group_membership_scan(dev):
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+
+    with patch.object(ep, "group_membership_scan", new=AsyncMock()):
+        await dev.group_membership_scan()
+        assert ep.group_membership_scan.await_count == 1
 
 
 def test_device_manufacture_id_override(dev):

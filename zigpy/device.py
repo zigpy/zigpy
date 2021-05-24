@@ -67,6 +67,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._relays = None
         self._skip_configuration = False
 
+        # Retained for backwards compatibility, will be removed in a future release
         self.status = Status.NEW
 
     @property
@@ -91,10 +92,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def is_initialized(self) -> bool:
         return self.has_node_descriptor and self.all_endpoints_init
 
-    @property
-    def is_partially_initialized(self) -> bool:
-        return not self.is_initialized and self.all_endpoints_init
-
     def schedule_group_membership_scan(self) -> asyncio.Task:
         """Rescan device group's membership."""
         if self._group_scan_task and not self._group_scan_task.done():
@@ -106,9 +103,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     async def group_membership_scan(self) -> None:
         """Sync up group membership."""
-        for ep_id, ep in self.endpoints.items():
-            if ep_id:
-                await ep.group_membership_scan()
+        for ep in self._non_zdo_endpoints:
+            await ep.group_membership_scan()
 
     @property
     def initializing(self) -> bool:
@@ -231,14 +227,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return ep
 
     async def add_to_group(self, grp_id: int, name: str = None):
-        for ep_id, ep in self.endpoints.items():
-            if ep_id:
-                await ep.add_to_group(grp_id, name)
+        for ep in self._non_zdo_endpoints:
+            await ep.add_to_group(grp_id, name)
 
     async def remove_from_group(self, grp_id: int):
-        for ep_id, ep in self.endpoints.items():
-            if ep_id:
-                await ep.remove_from_group(grp_id)
+        for ep in self._non_zdo_endpoints:
+            await ep.remove_from_group(grp_id)
 
     async def request(
         self,
@@ -308,8 +302,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     ):
         self.last_seen = time.time()
 
-        if self.is_partially_initialized and not self.initializing:
-            self.warning("Received a message from a partially-initialized device")
+        if not self.is_initialized and not self.initializing:
+            self.warning("Received a message from an uninitialized device")
             self.schedule_initialize()
 
         try:

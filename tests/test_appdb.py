@@ -9,6 +9,7 @@ import zigpy.application
 from zigpy.config import CONF_DATABASE, ZIGPY_SCHEMA
 from zigpy.const import SIG_ENDPOINTS, SIG_MANUFACTURER, SIG_MODEL
 from zigpy.device import Device, Status
+import zigpy.endpoint
 import zigpy.ota
 from zigpy.quirks import CustomDevice
 import zigpy.types as t
@@ -63,12 +64,12 @@ class FakeCustomDevice(CustomDevice):
     }
 
 
-def mock_dev_init(status: Status):
+def mock_dev_init(initialize: bool):
     """Device schedule_initialize mock factory."""
 
     def _initialize(self):
-        self.status = status
-        self.node_desc = zdo_t.NodeDescriptor(0, 1, 2, 3, 4, 5, 6, 7, 8)
+        if initialize:
+            self.node_desc = zdo_t.NodeDescriptor(0, 1, 2, 3, 4, 5, 6, 7, 8)
 
     return _initialize
 
@@ -92,9 +93,7 @@ async def test_no_database(tmpdir):
     assert db_mock.return_value.load.call_count == 1
 
 
-@patch(
-    "zigpy.device.Device.schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
-)
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
 async def test_database(tmpdir):
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
@@ -106,14 +105,17 @@ async def test_database(tmpdir):
 
     dev = app.get_device(ieee)
     ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
     ep = dev.add_endpoint(2)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = 0xFFFD  # Invalid
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
     ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 49246
     ep.device_type = profiles.zll.DeviceType.COLOR_LIGHT
     app.device_initialized(dev)
@@ -138,6 +140,7 @@ async def test_database(tmpdir):
     dev = app.get_device(custom_ieee)
     app.device_initialized(dev)
     ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 65535
     with patch("zigpy.quirks.get_device", fake_get_device):
         app.device_initialized(dev)
@@ -198,13 +201,14 @@ async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     ieee = make_ieee()
     with patch(
         "zigpy.device.Device.schedule_initialize",
-        new=mock_dev_init(Status.ENDPOINTS_INIT),
+        new=mock_dev_init(True),
     ):
         app.handle_join(99, ieee, 0)
         app.handle_join(99, ieee, 0)
 
     dev = app.get_device(ieee)
     ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0)
@@ -273,7 +277,7 @@ async def test_appdb_str_model(tmpdir):
     assert dev.endpoints[3].model == "Mock Model"
 
 
-@patch.object(Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT))
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
 @patch("zigpy.zcl.Cluster.request", new_callable=AsyncMock)
 async def test_groups(mock_request, tmpdir):
     """Test group adding/removing."""
@@ -288,6 +292,7 @@ async def test_groups(mock_request, tmpdir):
 
     dev = app.get_device(ieee)
     ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
     ep.add_input_cluster(4)
@@ -297,6 +302,7 @@ async def test_groups(mock_request, tmpdir):
     app.handle_join(100, ieee_b, 0)
     dev_b = app.get_device(ieee_b)
     ep_b = dev_b.add_endpoint(2)
+    ep_b.status = zigpy.endpoint.Status.ZDO_INIT
     ep_b.profile_id = 260
     ep_b.device_type = profiles.zha.DeviceType.PUMP
     ep_b.add_input_cluster(4)
@@ -365,17 +371,17 @@ async def test_groups(mock_request, tmpdir):
     os.unlink(db)
 
 
-@pytest.mark.parametrize(
-    "status, success",
-    ((Status.ENDPOINTS_INIT, True), (Status.ZDO_INIT, False), (Status.NEW, False)),
-)
-async def test_attribute_update(tmpdir, status, success):
+@pytest.mark.parametrize("dev_init", (True, False))
+async def test_attribute_update(tmpdir, dev_init):
     """Test attribute update for initialized and uninitialized devices."""
 
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
     ieee = make_ieee()
-    with patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(status)):
+    with patch(
+        "zigpy.device.Device.schedule_initialize",
+        new=mock_dev_init(initialize=dev_init),
+    ):
         app.handle_join(99, ieee, 0)
 
     test_manufacturer = "Test Manufacturer"
@@ -383,6 +389,7 @@ async def test_attribute_update(tmpdir, status, success):
 
     dev = app.get_device(ieee)
     ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0)
@@ -394,9 +401,9 @@ async def test_attribute_update(tmpdir, status, success):
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
-    if success:
+    if dev_init:
         dev = app2.get_device(ieee)
-        assert dev.status == status
+        assert dev.is_initialized
         assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
         assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
         assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
@@ -407,7 +414,7 @@ async def test_attribute_update(tmpdir, status, success):
     os.unlink(db)
 
 
-@patch.object(Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT))
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
 async def test_neighbors(tmpdir):
     """Test neighbor loading."""
 
@@ -430,14 +437,16 @@ async def test_neighbors(tmpdir):
 
     dev_1 = app.get_device(ieee_1)
     dev_1.node_desc = zdo_t.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
-    dev_1.add_endpoint(1)
+    ep1 = dev_1.add_endpoint(1)
+    ep1.status = zigpy.endpoint.Status.ZDO_INIT
     app.device_initialized(dev_1)
 
     # 2nd device
     app.handle_join(nwk_2, ieee_2, 0)
     dev_2 = app.get_device(ieee_2)
     dev_2.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4476, 82, 82, 0, 82, 0)
-    dev_2.add_endpoint(1)
+    ep2 = dev_2.add_endpoint(1)
+    ep2.status = zigpy.endpoint.Status.ZDO_INIT
     app.device_initialized(dev_2)
 
     neighbors = zdo_t.Neighbors(2, 0, [nei_2, nei_3])
@@ -481,9 +490,7 @@ async def test_neighbors(tmpdir):
     os.unlink(db)
 
 
-@patch(
-    "zigpy.device.Device.schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
-)
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
 async def test_device_rejoin(tmpdir):
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
@@ -493,6 +500,7 @@ async def test_device_rejoin(tmpdir):
 
     dev = app.get_device(ieee)
     ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 65535
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0)
@@ -531,48 +539,7 @@ async def test_device_rejoin(tmpdir):
     os.unlink(db)
 
 
-@patch(
-    "zigpy.device.Device.schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
-)
-async def test_device_cleanup(tmpdir, caplog):
-    """Test the devices without any endpoints are removed from DB on startup."""
-    db = os.path.join(str(tmpdir), "test.db")
-    app = await make_app(db)
-    ieee_1 = make_ieee()
-    nwk_1 = ieee_1[7]
-    app.handle_join(nwk_1, ieee_1, 0)
-
-    dev_1 = app.get_device(ieee_1)
-    ep = dev_1.add_endpoint(1)
-    ep.profile_id = profiles.zha.PROFILE_ID
-    ep.device_type = profiles.zha.DeviceType.PUMP
-    clus = ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
-    app.device_initialized(dev_1)
-    clus._update_attribute(4, "Custom")
-    clus._update_attribute(5, "Model")
-
-    for i in range(1, 4):
-        ieee = make_ieee(i)
-        nwk = ieee[7]
-        app.handle_join(nwk, ieee, 0)
-        dev = app.get_device(ieee)
-        app.device_initialized(dev)
-
-    await app.pre_shutdown()
-    assert len(app.devices) == 4
-    del app, dev, dev_1, nwk, ieee
-
-    caplog.set_level(level=10)
-    app_2 = await make_app(db)
-    assert ieee_1 in app_2.devices
-    assert len(app_2.devices) == 1
-    await app_2.pre_shutdown()
-
-
-@patch(
-    "zigpy.device.Device.schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
-)
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
 async def test_stopped_appdb_listener(tmpdir):
     db = os.path.join(str(tmpdir), "test.db")
     app = await make_app(db)
@@ -581,6 +548,7 @@ async def test_stopped_appdb_listener(tmpdir):
 
     dev = app.get_device(ieee)
     ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0)
@@ -600,34 +568,7 @@ async def test_stopped_appdb_listener(tmpdir):
         assert mock_attr_save.call_count == 3
 
 
-@patch(
-    "zigpy.device.Device.schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT)
-)
-async def test_no_ep_device_cleanup(tmpdir):
-    """Test that devices without any endpoints are removed"""
-    db = os.path.join(str(tmpdir), "test.db")
-    app = await make_app(db)
-
-    ieee = make_ieee()
-    app.handle_join(0x0000, ieee, 0)
-    dev = app.get_device(ieee)
-    app.device_initialized(dev)
-
-    ieee_2 = make_ieee(2)
-    app.handle_join(0x0002, ieee_2, 0)
-    dev = app.get_device(ieee_2)
-    app.device_initialized(dev)
-
-    await app.pre_shutdown()
-    del app, dev
-
-    app_2 = await make_app(db)
-    assert ieee in app_2.devices
-    assert ieee_2 not in app_2.devices
-    await app_2.pre_shutdown()
-
-
-@patch.object(Device, "schedule_initialize", new=mock_dev_init(Status.ENDPOINTS_INIT))
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
 async def test_invalid_node_desc(tmpdir):
     """devices without a valid node descriptor should not be saved."""
 
@@ -640,7 +581,8 @@ async def test_invalid_node_desc(tmpdir):
 
     dev_1 = app.get_device(ieee_1)
     dev_1.node_desc = zdo_t.NodeDescriptor()
-    dev_1.add_endpoint(1)
+    ep = dev_1.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
     app.device_initialized(dev_1)
 
     await app.pre_shutdown()

@@ -79,7 +79,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             await app.pre_shutdown()
             raise
 
-        # Re-initialize partially-initialized devices
         for device in app.devices.values():
             if not device.is_initialized:
                 LOGGER.warning("Device is partially initialized: %s", device)
@@ -212,7 +211,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.listener_event(
             "handle_message", sender, profile, cluster, src_ep, dst_ep, message
         )
-        if sender.is_partially_initialized:
+
+        if not sender.is_initialized:
             if not sender.has_node_descriptor and dst_ep != 0:
                 # only allow ZDO responses while initializing device
                 LOGGER.debug(

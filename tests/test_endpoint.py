@@ -62,7 +62,10 @@ async def test_initialize_fail(ep):
         return [1, None, None]
 
     ep._device.zdo.Simple_Desc_req = mockrequest
-    await ep.initialize()
+
+    # The request succeeds but the response is invalid
+    with pytest.raises(zigpy.exceptions.InvalidResponse):
+        await ep.initialize()
 
     assert ep.status == endpoint.Status.NEW
 
