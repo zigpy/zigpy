@@ -396,7 +396,7 @@ def test_handle_message(app, ieee):
 
 
 @patch("zigpy.device.Device.has_node_descriptor", new_callable=PropertyMock)
-def test_handle_message_uninitialized_dev(mock1, app, ieee):
+async def test_handle_message_uninitialized_dev(mock1, app, ieee):
     dev = device.Device(app, ieee, 0x1234)
     dev.handle_message = MagicMock()
 
@@ -415,6 +415,8 @@ def test_handle_message_uninitialized_dev(mock1, app, ieee):
     # Basic cluster is allowed
     app.handle_message(dev, 260, 0, 1, 1, [])
     assert dev.handle_message.call_count == 1
+
+    assert dev.initializing
 
 
 async def test_broadcast(app):

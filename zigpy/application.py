@@ -213,6 +213,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         )
 
         if not sender.is_initialized:
+            if not sender.initializing:
+                sender.schedule_initialize()
+
             if not sender.has_node_descriptor and dst_ep != 0:
                 # only allow ZDO responses while initializing device
                 LOGGER.debug(
