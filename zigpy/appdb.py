@@ -493,7 +493,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     async def load(self) -> None:
-        LOGGER.debug("Loading application state from %s")
+        LOGGER.debug("Loading application state")
         await self._load_devices()
         await self._load_node_descriptors()
         await self._load_endpoints()
