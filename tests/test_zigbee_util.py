@@ -177,17 +177,48 @@ async def test_retryable_once():
     assert counter == 2
 
 
+class _TestDevice:
+    something = sentinel.something
+
+    def __init__(self, init_handler):
+        self.failed = False
+        self.init_count = 0
+        self.event_handler = AsyncMock()
+        self.init_handler = init_handler
+
+    async def _init_fail(self):
+        self.failed = True
+        await self.event_handler()
+
+    @util.retryable(
+        (IndexError, ValueError),
+        tries=3,
+        delay=0,
+        async_on_failure="_init_fail",
+    )
+    async def initialize(self):
+        self.init_count += 1
+        await self.init_handler()
+
+
 async def test_retryable_failure_callback():
-    async_fail_callback = AsyncMock()
+    mock_device = _TestDevice(AsyncMock(side_effect=ValueError))
+
     with pytest.raises(ValueError):
-        await _test_retryable(
-            ValueError,
-            (IndexError, ValueError),
-            999,
-            async_cb=async_fail_callback(sentinel.async_callback_params),
-        )
-    assert async_fail_callback.await_count == 1
-    assert async_fail_callback.call_args_list[0][0][0] is sentinel.async_callback_params
+        await mock_device.initialize()
+
+    assert mock_device.failed is True
+    assert mock_device.init_count == 3
+    assert mock_device.event_handler.await_count == 1
+    assert mock_device.init_handler.await_count == 3
+
+    good_device = _TestDevice(AsyncMock())
+    await good_device.initialize()
+
+    assert good_device.failed is False
+    assert good_device.init_count == 1
+    assert good_device.event_handler.await_count == 0
+    assert good_device.init_handler.await_count == 1
 
 
 def test_zigbee_security_hash():

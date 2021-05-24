@@ -112,7 +112,7 @@ async def retry(func, retry_exceptions, tries=3, delay=0.1, async_on_failure=Non
         except retry_exceptions:
             if tries <= 1:
                 if async_on_failure is not None:
-                    await async_on_failure
+                    await async_on_failure()
                 raise
             tries -= 1
             await asyncio.sleep(delay)
@@ -132,12 +132,21 @@ def retryable(retry_exceptions, tries=1, delay=0.1, async_on_failure=None):
         def wrapper(*args, tries=tries, delay=delay, **kwargs):
             if tries <= 1:
                 return func(*args, **kwargs)
+            try:
+                cb = (
+                    functools.partial(getattr(args[0], async_on_failure))
+                    if args and async_on_failure
+                    else None
+                )
+            except AttributeError:
+                cb = None
+
             return retry(
                 functools.partial(func, *args, **kwargs),
                 retry_exceptions,
                 tries=tries,
                 delay=delay,
-                async_on_failure=async_on_failure,
+                async_on_failure=cb,
             )
 
         return wrapper
