@@ -157,6 +157,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if not dev:
             LOGGER.debug("Device not found for removal: %s", ieee)
             return
+
+        dev.cancel_initialization()
+
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
         asyncio.create_task(self._remove_device(dev))
         if dev.node_desc.is_valid and dev.node_desc.is_end_device:
