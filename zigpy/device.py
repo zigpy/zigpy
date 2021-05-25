@@ -318,10 +318,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     ):
         self.last_seen = time.time()
 
-        if not self.is_initialized and not self.initializing:
-            self.warning("Received a message from an uninitialized device")
-            self.schedule_initialize()
-
         try:
             hdr, args = self.deserialize(src_ep, cluster, message)
         except ValueError as e:

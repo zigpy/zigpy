@@ -5,7 +5,6 @@ from unittest.mock import PropertyMock
 import pytest
 import voluptuous as vol
 
-from zigpy import device
 import zigpy.application
 from zigpy.config import (
     CONF_DATABASE,
@@ -395,28 +394,46 @@ def test_handle_message(app, ieee):
     assert dev.handle_message.call_count == 1
 
 
+@patch("zigpy.device.Device.is_initialized", new_callable=PropertyMock)
 @patch("zigpy.device.Device.has_node_descriptor", new_callable=PropertyMock)
-async def test_handle_message_uninitialized_dev(mock1, app, ieee):
-    dev = device.Device(app, ieee, 0x1234)
+@patch("zigpy.quirks.handle_message_from_uninitialized_sender", new=MagicMock())
+async def test_handle_message_uninitialized_dev(
+    has_node_desc_mock, is_init_mock, app, ieee
+):
+    dev = app.add_device(ieee, 0x1234)
     dev.handle_message = MagicMock()
+    has_node_desc_mock.return_value = False
+    is_init_mock.return_value = False
 
-    dev.has_node_descriptor.return_value = False
+    assert not dev.initializing
 
-    # Power Configuration cluster, not allowed
-    app.handle_message(dev, 260, 1, 1, 1, [])
+    # Power Configuration cluster not allowed, no endpoints
+    app.handle_message(dev, 260, cluster=0x0001, src_ep=1, dst_ep=1, message=b"")
     assert dev.handle_message.call_count == 0
+    assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 1
 
-    dev.has_node_descriptor.return_value = True
+    # Device should be completing initialization
+    assert dev.initializing
 
-    # Power Configuration cluster still not allowed
-    app.handle_message(dev, 260, 1, 1, 1, [])
-    assert dev.handle_message.call_count == 0
-
-    # Basic cluster is allowed
-    app.handle_message(dev, 260, 0, 1, 1, [])
+    # ZDO is allowed
+    app.handle_message(dev, 260, cluster=0x0000, src_ep=0, dst_ep=0, message=b"")
     assert dev.handle_message.call_count == 1
 
-    assert dev.initializing
+    # Endpoint is uninitialized but Basic attribute read responses still work
+    ep = dev.add_endpoint(1)
+    app.handle_message(dev, 260, cluster=0x0000, src_ep=1, dst_ep=1, message=b"")
+    assert dev.handle_message.call_count == 2
+
+    # Others still do not
+    app.handle_message(dev, 260, cluster=0x0001, src_ep=1, dst_ep=1, message=b"")
+    assert dev.handle_message.call_count == 2
+    assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 2
+
+    # They work after the endpoint is initialized
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    app.handle_message(dev, 260, cluster=0x0001, src_ep=1, dst_ep=1, message=b"")
+    assert dev.handle_message.call_count == 3
+    assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 2
 
 
 async def test_broadcast(app):

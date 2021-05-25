@@ -212,39 +212,62 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             "handle_message", sender, profile, cluster, src_ep, dst_ep, message
         )
 
-        if not sender.is_initialized:
+        if sender.is_initialized:
+            return sender.handle_message(
+                profile,
+                cluster,
+                src_ep,
+                dst_ep,
+                message,
+                dst_addressing=dst_addressing,
+            )
+
+        LOGGER.debug(
+            "Received frame on uninitialized device %s"
+            " from ep %s to ep %s, cluster %s: %r",
+            sender,
+            src_ep,
+            dst_ep,
+            cluster,
+            message,
+        )
+
+        if (
+            dst_ep == 0
+            or sender.all_endpoints_init
+            or (
+                sender.has_non_zdo_endpoints
+                and cluster == zigpy.zcl.clusters.general.Basic.cluster_id
+            )
+        ):
+            # Allow the following responses:
+            #  - any ZDO
+            #  - ZCL if endpoints are initialized
+            #  - ZCL from Basic cluster if endpoints are initializing
+
             if not sender.initializing:
                 sender.schedule_initialize()
 
-            if not sender.has_node_descriptor and dst_ep != 0:
-                # only allow ZDO responses while initializing device
-                LOGGER.debug(
-                    "Received frame on uninitialized device %s for endpoint: %s",
-                    sender,
-                    dst_ep,
-                )
-                zigpy.quirks.handle_message_from_uninitialized_sender(
-                    sender, profile, cluster, src_ep, dst_ep, message
-                )
-                return
-            elif dst_ep != 0 and cluster != 0:
-                # only allow access to basic cluster while initializing endpoints
-                LOGGER.debug(
-                    "Received frame on uninitialized device %s endpoint %s for cluster: %s",
-                    sender,
-                    dst_ep,
-                    cluster,
-                )
-                return
+            return sender.handle_message(
+                profile,
+                cluster,
+                src_ep,
+                dst_ep,
+                message,
+                dst_addressing=dst_addressing,
+            )
 
-        return sender.handle_message(
-            profile,
-            cluster,
-            src_ep,
-            dst_ep,
-            message,
-            dst_addressing=dst_addressing,
+        # Give quirks a chance to fast-initialize the device (at the moment only Xiaomi)
+        zigpy.quirks.handle_message_from_uninitialized_sender(
+            sender, profile, cluster, src_ep, dst_ep, message
         )
+
+        # Reload the sender device object, in it was replaced by the quirk
+        sender = self.get_device(ieee=sender.ieee)
+
+        # If the quirk did not fast-initialize the device, start initialization
+        if not sender.initializing and not sender.is_initialized:
+            sender.schedule_initialize()
 
     def handle_join(self, nwk: t.NWK, ieee: t.EUI64, parent_nwk: t.NWK) -> None:
         """
