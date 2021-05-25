@@ -696,6 +696,7 @@ async def test_stray_rows(tmpdir, caplog):
         cur.execute(f"INSERT INTO output_clusters VALUES({ieee},1,10);")
         cur.execute(f"INSERT INTO attributes VALUES({ieee},1,0,5,'SP 224');")
         cur.execute(f"INSERT INTO relays VALUES({ieee},X'01f2fb');")
+        cur.execute(f"INSERT INTO group_members VALUES(123,{ieee},456);")
         cur.execute(
             f"INSERT INTO node_descriptors_v4"
             f" VALUES({ieee},1,0,0,0,0,8,142,4454,82,82,11264,82,0);"
