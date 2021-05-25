@@ -401,16 +401,13 @@ async def test_attribute_update(tmpdir, dev_init):
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
-    if dev_init:
-        dev = app2.get_device(ieee)
-        assert dev.is_initialized
-        assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
-        assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
-        assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
-    else:
-        assert ieee not in app2.devices
-    await app2.pre_shutdown()
+    dev = app2.get_device(ieee)
+    assert dev.is_initialized == dev_init
+    assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
+    assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
+    assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
 
+    await app2.pre_shutdown()
     os.unlink(db)
 
 
@@ -570,7 +567,7 @@ async def test_stopped_appdb_listener(tmpdir):
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
 async def test_invalid_node_desc(tmpdir):
-    """devices without a valid node descriptor should not be saved."""
+    """devices without a valid node descriptor should not save the node descriptor."""
 
     ieee_1 = make_ieee(1)
     nwk_1 = 0x1111
@@ -586,11 +583,14 @@ async def test_invalid_node_desc(tmpdir):
     app.device_initialized(dev_1)
 
     await app.pre_shutdown()
-    del dev_1
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
-    assert ieee_1 not in app2.devices
+    dev_2 = app2.get_device(ieee=ieee_1)
+    assert dev_2.node_desc == dev_1.node_desc
+    assert dev_2.nwk == dev_1.nwk
+    assert dev_2.ieee == dev_1.ieee
+    assert dev_2.status == dev_1.status
 
     await app2.pre_shutdown()
     os.unlink(db)

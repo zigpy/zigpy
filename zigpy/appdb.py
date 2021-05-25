@@ -395,21 +395,17 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
-        if not device.is_initialized:
-            LOGGER.debug("Not saving uninitialized device: %s", device)
-            return
-
         try:
             q = "INSERT INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
-            await self.execute(
-                q, (device.ieee, device.nwk, zigpy.device.Status.ENDPOINTS_INIT)
-            )
+            await self.execute(q, (device.ieee, device.nwk, device.status))
         except sqlite3.IntegrityError:
             LOGGER.debug("Device %s already exists. Updating it.", device.ieee)
-            q = "UPDATE devices SET nwk=? WHERE ieee=?"
-            await self.execute(q, (device.nwk, device.ieee))
+            q = "UPDATE devices SET nwk=?, status=? WHERE ieee=?"
+            await self.execute(q, (device.nwk, device.status, device.ieee))
 
-        await self._save_node_descriptor(device)
+        if device.has_node_descriptor:
+            await self._save_node_descriptor(device)
+
         if isinstance(device, zigpy.quirks.CustomDevice):
             await self._db.commit()
             return
@@ -540,9 +536,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _load_devices(self) -> None:
         async with self.execute("SELECT * FROM devices") as cursor:
-            async for (ieee, nwk, _) in cursor:
+            async for (ieee, nwk, status) in cursor:
                 dev = self._application.add_device(ieee, nwk)
-                dev.status = zigpy.device.Status.ENDPOINTS_INIT  # DB status is ignored
+                dev.status = zigpy.device.Status(status)
 
     async def _load_node_descriptors(self) -> None:
         async with self.execute("SELECT * FROM node_descriptors_v4") as cursor:
