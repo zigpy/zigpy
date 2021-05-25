@@ -252,14 +252,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """
 
         ieee = t.EUI64(ieee)
-        LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
 
         try:
             dev = self.get_device(ieee)
-            LOGGER.debug("Device already exists")
+            LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
         except KeyError:
-            LOGGER.debug("Device is unknown, creating a new one")
             dev = self.add_device(ieee, nwk)
+            LOGGER.info("New device 0x%04x (%s) joined the network", nwk, ieee)
 
         if dev.nwk != nwk:
             dev.nwk = nwk
