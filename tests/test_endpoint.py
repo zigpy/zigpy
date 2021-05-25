@@ -294,19 +294,17 @@ async def test_init_endpoint_info_null_padded_manuf_model(ep):
 async def test_get_model_info_delivery_error(ep):
     manufacturer = b"Mock Manufacturer"
     model = b"Mock Model"
-    mod, man = await _get_model_info(ep, manufacturer, model, fail=True)
 
-    assert man is None
-    assert mod is None
+    with pytest.raises(zigpy.exceptions.ZigbeeException):
+        await _get_model_info(ep, manufacturer, model, fail=True)
 
 
 async def test_get_model_info_timeout(ep):
     manufacturer = b"Mock Manufacturer"
     model = b"Mock Model"
-    mod, man = await _get_model_info(ep, manufacturer, model, fail=True, timeout=True)
 
-    assert man is None
-    assert mod is None
+    with pytest.raises(asyncio.TimeoutError):
+        await _get_model_info(ep, manufacturer, model, fail=True, timeout=True)
 
 
 def _group_add_mock(ep, status=ZCLStatus.SUCCESS, no_groups_cluster=False):

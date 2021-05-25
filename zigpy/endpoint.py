@@ -49,9 +49,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._manufacturer = None
         self._model = None
 
-    async def initialize(
-        self, *, query_model_info=False
-    ) -> tuple[str | None, str | None]:
+    async def initialize(self):
         if self.status != Status.NEW:
             return self._model, self._manufacturer
 
@@ -88,11 +86,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             for cluster in sd.output_clusters:
                 self.add_output_cluster(cluster)
 
-        if query_model_info:
-            await self.get_model_info()
-
         self.status = Status.ZDO_INIT
-        return self._model, self._manufacturer
 
     def add_input_cluster(self, cluster_id, cluster=None):
         """Adds an endpoint's input cluster
@@ -172,34 +166,21 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         groups = {group for group in res[1]}
         self.device.application.groups.update_group_membership(self, groups)
 
-    async def get_model_info(self):
+    async def get_model_info(self) -> tuple[str | None, str | None]:
         if Basic.cluster_id not in self.in_clusters:
             return None, None
 
-        attributes = {"manufacturer": None, "model": None}
+        # Some devices can't handle multiple attributes in the same read request
+        for names in (["manufacturer", "model"], ["manufacturer"], ["model"]):
+            success, failure = await self.basic.read_attributes(names, allow_cache=True)
 
-        async def read(attribute_names):
-            """Read attributes and update extra_info convenience function."""
-            try:
-                result, _ = await self.basic.read_attributes(
-                    attribute_names, allow_cache=True
-                )
-                attributes.update(result)
-            except (zigpy.exceptions.ZigbeeException, asyncio.TimeoutError):
-                pass
+            LOGGER.warning("%s %s", success, failure)
 
-        await read(["manufacturer", "model"])
+            if "model" in success:
+                self._model = success["model"]
 
-        if attributes["manufacturer"] is None or attributes["model"] is None:
-            # Some devices fail at returning multiple results. Attempt separately.
-            await read(["manufacturer"])
-            await read(["model"])
-
-        self.debug("Manufacturer: %s", attributes["manufacturer"])
-        self.debug("Model: %s", attributes["model"])
-
-        self._model = attributes["model"]
-        self._manufacturer = attributes["manufacturer"]
+            if "manufacturer" in success:
+                self._manufacturer = success["manufacturer"]
 
         return self._model, self._manufacturer
 
@@ -328,3 +309,18 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return self._cluster_attr[name]
         except KeyError:
             raise AttributeError
+
+    def __repr__(self) -> str:
+        def cluster_repr(clusters):
+            return ", ".join(
+                [f"{c.ep_attribute}:0x{c.cluster_id:04X}" for c in clusters]
+            )
+
+        return (
+            f"<{type(self).__name__}"
+            f" id={self.endpoint_id}"
+            f" in=[{cluster_repr(self.in_clusters.values())}]"
+            f" out=[{cluster_repr(self.out_clusters.values())}]"
+            f" status={self.status}"
+            f">"
+        )

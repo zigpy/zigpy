@@ -201,22 +201,38 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         # Initialize all of the discovered endpoints
         if self.all_endpoints_init:
-            self.info("All endpoints are already initialized")
+            self.info(
+                "All endpoints are already initialized: %s", self.non_zdo_endpoints
+            )
+        else:
+            self.info("Initializing endpoints %s", self.non_zdo_endpoints)
+
+            for ep in self.non_zdo_endpoints:
+                await ep.initialize()
+
+        # Query model info
+        if self.model is not None and self.manufacturer is not None:
+            self.info("Already have model and manufacturer info")
         else:
             for ep in self.non_zdo_endpoints:
-                if ep.status != zigpy.endpoint.Status.NEW:
-                    continue
-
-                if self.manufacturer is None or self.model is None:
-                    self.model, self.manufacturer = await ep.initialize(
-                        query_model_info=True
+                if self.model is None or self.manufacturer is None:
+                    model, manufacturer = await ep.get_model_info()
+                    self.info(
+                        "Read model %r and manufacturer %r from %s",
+                        model,
+                        manufacturer,
+                        ep,
                     )
-                else:
-                    await ep.initialize(query_model_info=False)
+
+                    if model is not None:
+                        self.model = model
+
+                    if manufacturer is not None:
+                        self.manufacturer = manufacturer
 
         self.status = Status.ENDPOINTS_INIT
 
-        self.info("Discovered basic device information")
+        self.info("Discovered basic device information for %s", self)
 
         # Signal to the application that the device is ready
         self._application.device_initialized(self)
