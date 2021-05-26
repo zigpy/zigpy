@@ -121,9 +121,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def enqueue(self, cb_name: str, *args) -> None:
         """Enqueue an async callback handler action."""
         if not self.running:
-            LOGGER.warning(
-                "Discarding %s event",
-            )
+            LOGGER.warning("Discarding %s event", cb_name)
             return
         self._callback_handlers.put_nowait((cb_name, args))
 
@@ -481,7 +479,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     async def load(self) -> None:
-        LOGGER.debug("Loading application state from %s")
+        LOGGER.debug("Loading application state")
         await self._load_devices()
         await self._load_node_descriptors()
         await self._load_endpoints()
@@ -507,7 +505,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             query = "SELECT * FROM attributes"
         async with self.execute(query) as cursor:
             async for (ieee, endpoint_id, cluster, attrid, value) in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid attributes row: %r",
+                        (ieee, endpoint_id, cluster, attrid, value),
+                    )
+                    continue
+
                 if endpoint_id in dev.endpoints:
                     ep = dev.endpoints[endpoint_id]
                     if cluster in ep.in_clusters:
@@ -543,14 +549,30 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_node_descriptors(self) -> None:
         async with self.execute("SELECT * FROM node_descriptors_v4") as cursor:
             async for (ieee, *fields) in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid node_descriptors_v4 row: %r",
+                        (ieee,) + tuple(fields),
+                    )
+                    continue
+
                 dev.node_desc = zdo_t.NodeDescriptor(*fields)
                 assert dev.node_desc.is_valid
 
     async def _load_endpoints(self) -> None:
         async with self.execute("SELECT * FROM endpoints") as cursor:
             async for (ieee, epid, profile_id, device_type, status) in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid endpoints row: %r",
+                        (ieee, epid, profile_id, device_type, status),
+                    )
+                    continue
+
                 ep = dev.add_endpoint(epid)
                 ep.profile_id = profile_id
                 ep.device_type = device_type
@@ -563,13 +585,29 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_clusters(self) -> None:
         async with self.execute("SELECT * FROM clusters") as cursor:
             async for (ieee, endpoint_id, cluster) in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid clusters row: %r",
+                        (ieee, endpoint_id, cluster),
+                    )
+                    continue
+
                 ep = dev.endpoints[endpoint_id]
                 ep.add_input_cluster(cluster)
 
         async with self.execute("SELECT * FROM output_clusters") as cursor:
             async for (ieee, endpoint_id, cluster) in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid output_clusters row: %r",
+                        (ieee, endpoint_id, cluster),
+                    )
+                    continue
+
                 ep = dev.endpoints[endpoint_id]
                 ep.add_output_cluster(cluster)
 
@@ -581,22 +619,40 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_group_members(self) -> None:
         async with self.execute("SELECT * FROM group_members") as cursor:
             async for (group_id, ieee, ep_id) in cursor:
-                group = self._application.groups[group_id]
-                group.add_member(
-                    self._application.get_device(ieee).endpoints[ep_id],
-                    suppress_event=True,
-                )
+                try:
+                    group = self._application.groups[group_id]
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid group_members row: %r",
+                        (group_id, ieee, ep_id),
+                    )
+                    continue
+
+                group.add_member(dev.endpoints[ep_id], suppress_event=True)
 
     async def _load_relays(self) -> None:
         async with self.execute("SELECT * FROM relays") as cursor:
             async for (ieee, value) in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning("Skipping invalid relays row: %r", (ieee, value))
+                    continue
+
                 dev.relays = t.Relays.deserialize(value)[0]
 
     async def _load_neighbors(self) -> None:
         async with self.execute("SELECT * FROM neighbors_v4") as cursor:
             async for ieee, *fields in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid neighbors_v4 row: %r", (ieee,) + tuple(fields)
+                    )
+                    continue
+
                 neighbor = zdo_t.Neighbor(*fields)
                 assert neighbor.is_valid
                 dev.neighbors.add_neighbor(neighbor)
