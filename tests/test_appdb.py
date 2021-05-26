@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sqlite3
 
 import pytest
 
@@ -678,3 +679,46 @@ async def test_appdb_worker_exception(save_mock, tmpdir):
         db_listener.raw_device_initialized(dev_1)
     await db_listener.shutdown()
     assert save_mock.await_count == 3
+
+
+async def test_stray_rows(tmpdir, caplog):
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+    await app.pre_shutdown()
+
+    with sqlite3.connect(db) as conn:
+        cur = conn.cursor()
+
+        # All these rows exist without a `device`
+        ieee = "'90:fd:9f:ff:fe:61:64:ab'"
+        cur.execute(f"INSERT INTO endpoints VALUES({ieee},1,260,266,1);")
+        cur.execute(f"INSERT INTO clusters VALUES({ieee},1,0);")
+        cur.execute(f"INSERT INTO output_clusters VALUES({ieee},1,10);")
+        cur.execute(f"INSERT INTO attributes VALUES({ieee},1,0,5,'SP 224');")
+        cur.execute(f"INSERT INTO relays VALUES({ieee},X'01f2fb');")
+        cur.execute(f"INSERT INTO group_members VALUES(123,{ieee},456);")
+        cur.execute(
+            f"INSERT INTO node_descriptors_v4"
+            f" VALUES({ieee},1,0,0,0,0,8,142,4454,82,82,11264,82,0);"
+        )
+        cur.execute(
+            f"INSERT INTO neighbors_v4"
+            f" VALUES({ieee},'8d:b4:1f:73:e7:35:93:1b',"
+            f"'00:0d:6f:00:0a:ff:73:23',0,0,1,2,0,2,0,0,144);"
+        )
+        conn.commit()
+
+    app2 = await make_app(db)
+    assert not app2.devices
+    await app2.pre_shutdown()
+
+    for table in (
+        "endpoints",
+        "clusters",
+        "output_clusters",
+        "attributes",
+        "relays",
+        "node_descriptors_v4",
+        "neighbors_v4",
+    ):
+        assert f"Skipping invalid {table}" in caplog.text
