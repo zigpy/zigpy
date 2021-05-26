@@ -174,8 +174,6 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         for names in (["manufacturer", "model"], ["manufacturer"], ["model"]):
             success, failure = await self.basic.read_attributes(names, allow_cache=True)
 
-            LOGGER.warning("%s %s", success, failure)
-
             if "model" in success:
                 self._model = success["model"]
 
