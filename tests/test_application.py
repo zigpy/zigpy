@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from unittest.mock import PropertyMock
+from unittest.mock import ANY, PropertyMock
 
 import pytest
 import voluptuous as vol
@@ -255,21 +255,6 @@ async def test_join_handler_change_id(app, ieee):
     app.handle_join(1, ieee, None)
     app.handle_join(2, ieee, None)
     assert app.devices[ieee].nwk == 2
-
-
-@pytest.mark.parametrize("initialized", (True, False))
-async def test_join_handler_rescan_groups(initialized, app, ieee):
-    dev = _devices(1)
-    dev.is_initialized = initialized
-    app.devices[dev.ieee] = dev
-
-    assert dev.schedule_initialize.call_count == 0
-    app.handle_join(dev.nwk, dev.ieee, None)
-
-    if initialized:
-        assert dev.schedule_initialize.call_count == 1
-    else:
-        assert dev.schedule_initialize.call_count == 1
 
 
 async def test_unknown_device_left(app, ieee):
@@ -636,7 +621,7 @@ async def test_remove_parent_devices(app):
         assert parent.zdo.request.await_count == 1
 
 
-async def test_startup_log_on_uninitialized_device(app, ieee, caplog):
+async def test_startup_log_on_uninitialized_device(ieee, caplog):
     class App(zigpy.application.ControllerApplication):
         async def _noop(self, *args, **kwargs):
             pass
@@ -651,3 +636,35 @@ async def test_startup_log_on_uninitialized_device(app, ieee, caplog):
     await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
     assert len(caplog.records) == 1
     assert "Device is partially initialized" in caplog.text
+
+
+@patch("zigpy.device.Device.schedule_initialize", new_callable=MagicMock)
+@patch("zigpy.device.Device.schedule_group_membership_scan", new_callable=MagicMock)
+@patch("zigpy.device.Device.is_initialized", new_callable=PropertyMock)
+async def test_device_join_rejoin(is_init_mock, group_scan_mock, init_mock, app, ieee):
+    app.listener_event = MagicMock()
+    is_init_mock.return_value = False
+
+    # First join is treated as a new join
+    app.handle_join(0x0001, ieee, None)
+    app.listener_event.assert_called_once_with("device_joined", ANY)
+    app.listener_event.reset_mock()
+
+    # Second join with the same NWK is just a reset, not a join
+    app.handle_join(0x0001, ieee, None)
+    app.listener_event.assert_not_called()
+    group_scan_mock.assert_not_called()
+
+    is_init_mock.return_value = True
+
+    # Another join with the same NWK but initialized will trigger a group re-scan
+    app.handle_join(0x0001, ieee, None)
+    is_init_mock.return_value = True
+    app.listener_event.assert_not_called()
+    group_scan_mock.assert_called_once()
+    group_scan_mock.reset_mock()
+
+    # Join with a different NWK but the same IEEE is a re-join
+    app.handle_join(0x0002, ieee, None)
+    app.listener_event.assert_called_once_with("device_joined", ANY)
+    group_scan_mock.assert_called_once()

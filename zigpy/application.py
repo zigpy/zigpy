@@ -279,17 +279,20 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         try:
             dev = self.get_device(ieee)
             LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
+            new_join = False
         except KeyError:
             dev = self.add_device(ieee, nwk)
             LOGGER.info("New device 0x%04x (%s) joined the network", nwk, ieee)
+            new_join = True
 
         if dev.nwk != nwk:
             dev.nwk = nwk
             LOGGER.debug("Device %s changed id (0x%04x => 0x%04x)", ieee, dev.nwk, nwk)
+            new_join = True
 
-        self.listener_event("device_joined", dev)
-
-        dev.schedule_initialize()
+        if new_join:
+            self.listener_event("device_joined", dev)
+            dev.schedule_initialize()
 
         # Rescan groups for devices that are already initialized
         if dev.is_initialized:
