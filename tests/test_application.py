@@ -649,22 +649,30 @@ async def test_device_join_rejoin(is_init_mock, group_scan_mock, init_mock, app,
     app.handle_join(0x0001, ieee, None)
     app.listener_event.assert_called_once_with("device_joined", ANY)
     app.listener_event.reset_mock()
+    init_mock.assert_called_once()
+    init_mock.reset_mock()
 
     # Second join with the same NWK is just a reset, not a join
     app.handle_join(0x0001, ieee, None)
     app.listener_event.assert_not_called()
     group_scan_mock.assert_not_called()
 
-    is_init_mock.return_value = True
+    # Since the device is still partially initialized, re-initialize it
+    init_mock.assert_called_once()
+    init_mock.reset_mock()
 
     # Another join with the same NWK but initialized will trigger a group re-scan
+    is_init_mock.return_value = True
+
     app.handle_join(0x0001, ieee, None)
     is_init_mock.return_value = True
     app.listener_event.assert_not_called()
     group_scan_mock.assert_called_once()
     group_scan_mock.reset_mock()
+    init_mock.assert_not_called()
 
     # Join with a different NWK but the same IEEE is a re-join
     app.handle_join(0x0002, ieee, None)
     app.listener_event.assert_called_once_with("device_joined", ANY)
-    group_scan_mock.assert_called_once()
+    group_scan_mock.assert_not_called()
+    init_mock.assert_called_once()

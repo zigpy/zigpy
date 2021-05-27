@@ -293,9 +293,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if new_join:
             self.listener_event("device_joined", dev)
             dev.schedule_initialize()
-
-        # Rescan groups for devices that are already initialized
-        if dev.is_initialized:
+        elif not dev.is_initialized:
+            # Re-initialize partially-initialized devices but don't emit "device_joined"
+            dev.schedule_initialize()
+        else:
+            # Rescan groups for devices that are not newly joining and initialized
             dev.schedule_group_membership_scan()
 
     def handle_leave(self, nwk, ieee):
