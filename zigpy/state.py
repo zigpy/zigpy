@@ -21,7 +21,7 @@ class NodeInfo:
         if self.ieee is None:
             self.ieee = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
         if self.logical_type is None:
-            self.logical_type = zdo_t.LogicalType.Reserved7
+            self.logical_type = zdo_t.LogicalType.Coordinator
 
 
 @dataclass
