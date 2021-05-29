@@ -357,6 +357,13 @@ class NwkUpdate(t.Struct):
     )
 
 
+class Binding(t.Struct):
+    SrcAddress: t.EUI64
+    SrcEndpoint: t.uint8_t
+    ClusterId: t.uint16_t
+    DstAddress: MultiAddress
+
+
 class Status(t.enum8):
     # The requested operation or transmission was completed successfully.
     SUCCESS = 0x00
@@ -444,6 +451,7 @@ class ZDOCmd(t.enum_factory(_CommandID)):
     # ... TODO optional stuff ...
     Mgmt_Lqi_req = 0x0031
     Mgmt_Rtg_req = 0x0032
+    Mgmt_Bind_req = 0x0033
     # ... TODO optional stuff ...
     Mgmt_Leave_req = 0x0034
     Mgmt_Permit_Joining_req = 0x0036
@@ -482,6 +490,7 @@ class ZDOCmd(t.enum_factory(_CommandID)):
     # Network Management Server Services Responses
     Mgmt_Lqi_rsp = 0x8031
     Mgmt_Rtg_rsp = 0x8032
+    Mgmt_Bind_rsp = 0x8033
     # ... TODO optional stuff ...
     Mgmt_Leave_rsp = 0x8034
     Mgmt_Permit_Joining_rsp = 0x8036
@@ -561,6 +570,7 @@ CLUSTERS = {
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Lqi_req: (("StartIndex", t.uint8_t),),
     ZDOCmd.Mgmt_Rtg_req: (("StartIndex", t.uint8_t),),
+    ZDOCmd.Mgmt_Bind_req: (("StartIndex", t.uint8_t),),
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Leave_req: (("DeviceAddress", t.EUI64), ("Options", t.bitmap8)),
     ZDOCmd.Mgmt_Permit_Joining_req: (
@@ -651,6 +661,12 @@ CLUSTERS = {
     # Network Management Server Services Responses
     ZDOCmd.Mgmt_Lqi_rsp: (STATUS, ("Neighbors", t.Optional(Neighbors))),
     ZDOCmd.Mgmt_Rtg_rsp: (STATUS, ("Routes", t.Optional(Routes))),
+    ZDOCmd.Mgmt_Bind_rsp: (
+        STATUS,
+        ("BindingTableEntries", t.uint8_t),
+        ("StartIndex", t.uint8_t),
+        ("BindingTableList", t.LVList[Binding]),
+    ),
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Leave_rsp: (STATUS,),
     ZDOCmd.Mgmt_Permit_Joining_rsp: (STATUS,),
