@@ -50,9 +50,6 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._model = None
 
     async def initialize(self):
-        if self.status != Status.NEW:
-            return self._model, self._manufacturer
-
         self.info("Discovering endpoint information")
 
         if self.profile_id is not None or self.status == Status.ENDPOINT_INACTIVE:

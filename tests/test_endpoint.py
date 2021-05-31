@@ -264,6 +264,15 @@ async def test_init_endpoint_info_none(ep):
     assert mod is None
 
 
+async def test_get_model_info_missing_basic_cluster(ep):
+    assert zcl.clusters.general.Basic.cluster_id not in ep.in_clusters
+
+    model, manuf = await ep.get_model_info()
+
+    assert model is None
+    assert manuf is None
+
+
 async def test_init_endpoint_info_null_padded_manuf(ep):
     manufacturer = b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07"
     model = b"Mock Model"
