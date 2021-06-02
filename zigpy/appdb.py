@@ -129,7 +129,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         return self._db.execute(*args, **kwargs)
 
     def device_joined(self, device: zigpy.typing.DeviceType) -> None:
-        pass
+        self.enqueue("_update_device_nwk", device.ieee, device.nwk)
+
+    async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
+        await self.execute("UPDATE devices SET nwk=? WHERE ieee=?", (nwk, ieee))
+        await self._db.commit()
 
     def raw_device_initialized(self, device: zigpy.typing.DeviceType) -> None:
         self.enqueue("_save_device", device)
@@ -158,7 +162,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def attribute_updated(
         self, cluster: zigpy.typing.ClusterType, attrid: int, value: Any
     ) -> None:
-        if cluster.endpoint.device.status != zigpy.device.Status.ENDPOINTS_INIT:
+        if not cluster.endpoint.device.is_initialized:
             return
 
         self.enqueue(
@@ -389,21 +393,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
-        if device.status != zigpy.device.Status.ENDPOINTS_INIT:
-            LOGGER.warning(
-                "Not saving uninitialized %s/%s device: %s",
-                device.ieee,
-                device.nwk,
-                device.status,
-            )
-            return
-        if not device.node_desc.is_valid:
-            LOGGER.debug(
-                "[0x%04x]: does not have a valid node descriptor, not saving in appdb",
-                device.nwk,
-            )
-            return
-
         try:
             q = "INSERT INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
             await self.execute(q, (device.ieee, device.nwk, device.status))
@@ -412,16 +401,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             q = "UPDATE devices SET nwk=?, status=? WHERE ieee=?"
             await self.execute(q, (device.nwk, device.status, device.ieee))
 
-        await self._save_node_descriptor(device)
+        if device.has_node_descriptor:
+            await self._save_node_descriptor(device)
+
         if isinstance(device, zigpy.quirks.CustomDevice):
             await self._db.commit()
             return
 
         await self._save_endpoints(device)
-        for epid, ep in device.endpoints.items():
-            if epid == 0:
-                # ZDO
-                continue
+        for ep in device.non_zdo_endpoints:
             await self._save_input_clusters(ep)
             await self._save_attribute_cache(ep)
             await self._save_output_clusters(ep)
@@ -430,9 +418,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_endpoints(self, device: zigpy.typing.DeviceType) -> None:
         q = "INSERT OR REPLACE INTO endpoints VALUES (?, ?, ?, ?, ?)"
         endpoints = []
-        for epid, ep in device.endpoints.items():
-            if epid == 0:
-                continue  # Skip zdo
+        for ep in device.non_zdo_endpoints:
             device_type = getattr(ep, "device_type", None)
             eprow = (
                 device.ieee,
@@ -510,7 +496,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
-        await self._cleanup()
         await self._finish_loading()
 
     async def _load_attributes(self, filter: str = None) -> None:
@@ -676,27 +661,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
             dev.neighbors.add_context_listener(self)
-
-    async def _cleanup(self) -> None:
-        """Validate and clean-up devices."""
-
-        # remove devices without any endpoints
-        devices_to_remove = []
-        for device in self._application.devices.values():
-            if device.nwk == 0x0000:
-                continue
-            if {ep_id for ep_id in device.endpoints if ep_id != 0x00}:
-                continue
-            # if device has no endpoints but ZDO, then remove this device
-            devices_to_remove.append(device)
-
-        if not devices_to_remove:
-            return
-
-        # remove devices from ControllerApplication
-        for device in devices_to_remove:
-            self._application.devices.pop(device.ieee)
-            await self._remove_device(device)
 
     async def _run_migrations(self):
         async with self._db.execute("PRAGMA user_version") as cursor:
