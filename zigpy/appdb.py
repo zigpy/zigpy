@@ -162,7 +162,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self.execute(statement)
 
     def device_joined(self, device: zigpy.typing.DeviceType) -> None:
-        pass
+        self.enqueue("_update_device_nwk", device.ieee, device.nwk)
+
+    async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
+        await self.execute(f"UPDATE devices{DB_V} SET nwk=? WHERE ieee=?", (nwk, ieee))
+        await self._db.commit()
 
     def device_initialized(self, device: zigpy.typing.DeviceType) -> None:
         pass
@@ -188,7 +192,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def attribute_updated(
         self, cluster: zigpy.typing.ClusterType, attrid: int, value: Any
     ) -> None:
-        if cluster.endpoint.device.status != zigpy.device.Status.ENDPOINTS_INIT:
+        if not cluster.endpoint.device.is_initialized:
             return
 
         self.enqueue(
@@ -274,22 +278,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_save_device", device)
 
     async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
-        if device.status != zigpy.device.Status.ENDPOINTS_INIT:
-            LOGGER.warning(
-                "Not saving uninitialized %s/%s device: %s",
-                device.ieee,
-                device.nwk,
-                device.status,
-            )
-            return
-
-        if not device.node_desc.is_valid:
-            LOGGER.debug(
-                "[0x%04x]: does not have a valid node descriptor, not saving in appdb",
-                device.nwk,
-            )
-            return
-
         try:
             q = f"INSERT INTO devices{DB_V} (ieee, nwk, status) VALUES (?, ?, ?)"
             await self.execute(q, (device.ieee, device.nwk, device.status))
@@ -298,17 +286,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             q = f"UPDATE devices{DB_V} SET nwk=?, status=? WHERE ieee=?"
             await self.execute(q, (device.nwk, device.status, device.ieee))
 
-        await self._save_node_descriptor(device)
+        if device.has_node_descriptor:
+            await self._save_node_descriptor(device)
 
         if isinstance(device, zigpy.quirks.CustomDevice):
             await self._db.commit()
             return
 
         await self._save_endpoints(device)
-        for epid, ep in device.endpoints.items():
-            if epid == 0:
-                # ZDO
-                continue
+        for ep in device.non_zdo_endpoints:
             await self._save_input_clusters(ep)
             await self._save_attribute_cache(ep)
             await self._save_output_clusters(ep)
@@ -316,9 +302,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _save_endpoints(self, device: zigpy.typing.DeviceType) -> None:
         endpoints = []
-        for epid, ep in device.endpoints.items():
-            if epid == 0:
-                continue  # Skip zdo
+        for ep in device.non_zdo_endpoints:
             eprow = (
                 device.ieee,
                 ep.endpoint_id,
@@ -397,7 +381,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
-        await self._cleanup()
         await self._register_device_listeners()
 
     async def _load_attributes(self, filter: str = None) -> None:
@@ -505,41 +488,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
             dev.neighbors.add_context_listener(self)
-
-    async def _cleanup(self) -> None:
-        """Validate and clean-up broken devices."""
-
-        # Clone the list of devices so the dict doesn't change size during iteration
-        for device in list(self._application.devices.values()):
-            if device.nwk == 0x0000:
-                continue
-
-            # XXX: Devices without a valid node descriptor are given a fake one, for now
-            if not device.node_desc.is_valid:
-                LOGGER.error(
-                    "Device %s has no node descriptor! Remove it from your network and"
-                    " rejoin it. In a future zigpy release it will be automatically"
-                    " deleted from your device database.",
-                    device.ieee,
-                )
-
-                # Structs are mutable so it's safer to make a copy
-                device.node_desc = DUMMY_NODE_DESC.copy()
-
-            # Keep devices with non-ZDO endpoints
-            if set(device.endpoints) - {0x00}:
-                continue
-
-            LOGGER.warning(
-                "Removing incomplete device %s (%s, %s)",
-                device.ieee,
-                device.node_desc,
-                device.endpoints,
-            )
-
-            # Remove the device from ControllerApplication as well
-            self._application.devices.pop(device.ieee)
-            await self._remove_device(device)
 
     async def _run_migrations(self):
         """Migrates the database to the newest schema."""
