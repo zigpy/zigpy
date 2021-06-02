@@ -316,14 +316,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(q, endpoints)
 
     async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
-        if device.node_desc == DUMMY_NODE_DESC:
-            LOGGER.warning(
-                "Device %s has an invalid node descriptor, not saving it to the DB."
-                " Remove the device from your network and re-join it.",
-                device.ieee,
-            )
-            return
-
         await self.execute(
             f"INSERT OR REPLACE INTO node_descriptors{DB_V}"
             f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -426,6 +418,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 dev = self._application.get_device(ieee)
                 dev.node_desc = zdo_t.NodeDescriptor(*fields)
                 assert dev.node_desc.is_valid
+
+        # Give devices without a node descriptor the dummy node descriptor for now
+        for device in self._application.devices.values():
+            if device.node_desc is None:
+                device.node_desc = DUMMY_NODE_DESC.copy()
 
     async def _load_endpoints(self) -> None:
         async with self.execute(f"SELECT * FROM endpoints{DB_V}") as cursor:

@@ -127,17 +127,22 @@ async def test_migration_from_3_to_4(open_twice, test_db):
 async def test_migration_0_to_5(test_db):
     test_db_v0 = test_db("zigbee_20190417_v0.db")
 
+    with sqlite3.connect(test_db_v0) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM devices")
+        (num_devices_before_migration,) = cur.fetchone()
+
+    assert num_devices_before_migration == 27
+
     app1 = await make_app(test_db_v0)
     await app1.pre_shutdown()
-
-    # 00:15:8d:00:02:05:a6:41 has no node descriptor or endpoints, it can't be migrated
-    assert len(app1.devices) == 26
+    assert len(app1.devices) == 27
 
     app2 = await make_app(test_db_v0)
     await app2.pre_shutdown()
 
     # All 27 devices migrated
-    assert len(app2.devices) == 26
+    assert len(app2.devices) == 27
 
 
 async def test_migration_missing_neighbors_v3(test_db):
@@ -167,14 +172,32 @@ async def test_migration_missing_neighbors_v3(test_db):
 async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
     test_db_bad_attrs = test_db("bad_attrs_v3.db")
 
+    with sqlite3.connect(test_db_bad_attrs) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM devices")
+        (num_devices_before_migration,) = cur.fetchone()
+
+        cur.execute("SELECT count(*) FROM endpoints")
+        (num_ep_before_migration,) = cur.fetchone()
+
     if corrupt_device:
         with sqlite3.connect(test_db_bad_attrs) as conn:
             cur = conn.cursor()
             cur.execute("DELETE FROM endpoints WHERE ieee='60:a4:23:ff:fe:02:39:7b'")
+            cur.execute("SELECT changes()")
+            (deleted_eps,) = cur.fetchone()
+    else:
+        deleted_eps = 0
 
     # Migration will handle invalid attributes entries
     app = await make_app(test_db_bad_attrs)
     await app.pre_shutdown()
+
+    assert len(app.devices) == num_devices_before_migration
+    assert (
+        sum(len(d.non_zdo_endpoints) for d in app.devices.values())
+        == num_ep_before_migration - deleted_eps
+    )
 
     # Version was upgraded (and then downgraded)
     with sqlite3.connect(test_db_bad_attrs) as conn:
@@ -188,14 +211,12 @@ async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
     app2 = await make_app(test_db_bad_attrs)
     await app2.pre_shutdown()
 
-    if corrupt_device:
-        # All devices still exist but the broken device without endpoints was removed
-        assert len(app2.devices) == 28
-        assert sum(len(d.endpoints) - 1 for d in app2.devices.values()) == 52
-    else:
-        # All devices still exist
-        assert len(app2.devices) == 29
-        assert sum(len(d.endpoints) - 1 for d in app2.devices.values()) == 54
+    # All devices still exist
+    assert len(app2.devices) == num_devices_before_migration
+    assert (
+        sum(len(d.non_zdo_endpoints) for d in app2.devices.values())
+        == num_ep_before_migration - deleted_eps
+    )
 
     with sqlite3.connect(test_db_bad_attrs) as conn:
         cur = conn.cursor()
@@ -213,13 +234,11 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
         cur = conn.cursor()
         cur.execute("DELETE FROM node_descriptors WHERE ieee=?", [ieee])
 
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(logging.WARNING):
         # The invalid device will still be loaded, for now
         app = await make_app(test_db_v3)
 
-    rec = caplog.records[0]
-    assert rec.levelname == "ERROR"
-    assert f"{ieee} has no node descriptor" in rec.getMessage()
+    assert "partially initialized" in caplog.text
 
     assert len(app.devices) == 2
 
@@ -229,19 +248,15 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
     caplog.clear()
 
     # Saving the device should cause the node descriptor to not be saved
-    with caplog.at_level(logging.WARNING):
-        await app._dblistener._save_device(bad_dev)
-
-    rec = caplog.records[0]
-    assert rec.levelname == "WARNING"
-    assert f"{ieee} has an invalid node descriptor" in rec.getMessage()
-
+    await app._dblistener._save_device(bad_dev)
     await app.pre_shutdown()
 
     # The node descriptor is not in the database
     with sqlite3.connect(test_db_v3) as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM node_descriptors WHERE ieee=?", [ieee])
+        cur.execute(
+            f"SELECT * FROM node_descriptors{zigpy.appdb.DB_V} WHERE ieee=?", [ieee]
+        )
 
         assert not cur.fetchall()
 

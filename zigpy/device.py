@@ -61,7 +61,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._listeners = {}
         self._manufacturer = None
         self._model = None
-        self.node_desc = zdo.types.NodeDescriptor()
+        self.node_desc = None
         self.neighbors = zigpy.neighbor.Neighbors(self)
         self._pending = zigpy.util.Requests()
         self._relays = None
@@ -76,7 +76,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @property
     def has_node_descriptor(self) -> bool:
-        return self.node_desc is not None and self.node_desc.is_valid
+        import zigpy.appdb
+
+        return (
+            self.node_desc is not None
+            and self.node_desc.is_valid
+            and self.node_desc != zigpy.appdb.DUMMY_NODE_DESC
+        )
 
     @property
     def has_non_zdo_endpoints(self) -> bool:
@@ -262,7 +268,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         timeout=APS_REPLY_TIMEOUT,
         use_ieee=False,
     ):
-        if expect_reply and self.node_desc.is_end_device in (True, None):
+        if expect_reply and self.has_node_descriptor and self.node_desc.is_end_device:
             self.debug("Extending timeout for 0x%02x request", sequence)
             timeout = APS_REPLY_TIMEOUT_EXTENDED
         with self._pending.new(sequence) as req:
@@ -400,7 +406,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def manufacturer_id(self) -> Optional[int]:
         """Return manufacturer id."""
-        return self.manufacturer_id_override or self.node_desc.manufacturer_code
+        if self.manufacturer_id_override is not None:
+            return self.manufacturer_id_override
+
+        if self.has_node_descriptor:
+            return self.node_desc.manufacturer_code
+
+        return None
 
     @property
     def model(self):

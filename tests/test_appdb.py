@@ -613,7 +613,7 @@ async def test_invalid_node_desc(tmpdir):
     app.handle_join(nwk_1, ieee_1, 0)
 
     dev_1 = app.get_device(ieee_1)
-    dev_1.node_desc = zdo_t.NodeDescriptor()
+    dev_1.node_desc = None
     ep = dev_1.add_endpoint(1)
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
@@ -625,7 +625,7 @@ async def test_invalid_node_desc(tmpdir):
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
     dev_2 = app2.get_device(ieee=ieee_1)
-    assert dev_2.node_desc == dev_1.node_desc
+    assert dev_2.node_desc in (None, zigpy.appdb.DUMMY_NODE_DESC)
     assert dev_2.nwk == dev_1.nwk
     assert dev_2.ieee == dev_1.ieee
     assert dev_2.status == dev_1.status
