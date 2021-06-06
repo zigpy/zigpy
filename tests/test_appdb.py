@@ -625,7 +625,7 @@ async def test_invalid_node_desc(tmpdir):
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
     dev_2 = app2.get_device(ieee=ieee_1)
-    assert dev_2.node_desc in (None, zigpy.appdb.DUMMY_NODE_DESC)
+    assert dev_2.node_desc is None
     assert dev_2.nwk == dev_1.nwk
     assert dev_2.ieee == dev_1.ieee
     assert dev_2.status == dev_1.status

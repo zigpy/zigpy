@@ -76,13 +76,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @property
     def has_node_descriptor(self) -> bool:
-        import zigpy.appdb
-
-        return (
-            self.node_desc is not None
-            and self.node_desc.is_valid
-            and self.node_desc != zigpy.appdb.DUMMY_NODE_DESC
-        )
+        return self.node_desc is not None and self.node_desc.is_valid
 
     @property
     def has_non_zdo_endpoints(self) -> bool:

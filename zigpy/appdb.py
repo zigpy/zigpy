@@ -25,23 +25,6 @@ LOGGER = logging.getLogger(__name__)
 DB_VERSION = 5
 DB_V = f"_v{DB_VERSION}"
 
-# Devices without a valid node descriptor are present in the database
-DUMMY_NODE_DESC = zdo_t.NodeDescriptor(
-    logical_type=zdo_t.LogicalType.EndDevice,
-    complex_descriptor_available=False,
-    user_descriptor_available=False,
-    reserved=0b000,
-    aps_flags=0b000,
-    frequency_band=zdo_t.NodeDescriptor.FrequencyBand.Freq2400MHz,
-    mac_capability_flags=zdo_t.NodeDescriptor.MACCapabilityFlags.NONE,
-    manufacturer_code=0x0000,
-    maximum_buffer_size=64,
-    maximum_incoming_transfer_size=64,
-    server_mask=0b00000000_00000000,
-    maximum_outgoing_transfer_size=64,
-    descriptor_capability_field=zdo_t.NodeDescriptor.DescriptorCapability.NONE,
-)
-
 
 def _register_sqlite_adapters():
     def adapt_ieee(eui64):
@@ -418,11 +401,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 dev = self._application.get_device(ieee)
                 dev.node_desc = zdo_t.NodeDescriptor(*fields)
                 assert dev.node_desc.is_valid
-
-        # Give devices without a node descriptor the dummy node descriptor for now
-        for device in self._application.devices.values():
-            if device.node_desc is None:
-                device.node_desc = DUMMY_NODE_DESC.copy()
 
     async def _load_endpoints(self) -> None:
         async with self.execute(f"SELECT * FROM endpoints{DB_V}") as cursor:

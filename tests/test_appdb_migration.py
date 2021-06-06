@@ -243,7 +243,7 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
     assert len(app.devices) == 2
 
     bad_dev = app.devices[t.EUI64.convert(ieee)]
-    assert bad_dev.node_desc == zigpy.appdb.DUMMY_NODE_DESC
+    assert bad_dev.node_desc is None
 
     caplog.clear()
 
