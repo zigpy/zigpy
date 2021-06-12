@@ -5,11 +5,34 @@ import typing
 import zigpy.types as t
 
 
-class PowerDescriptor(t.Struct):
-    byte_1: t.uint8_t
-    byte_2: t.uint8_t
+class _PowerDescriptorEnums:
+    class CurrentPowerMode(t.enum4):
+        RxOnSyncedWithNodeDesc = 0b0000
+        RxOnPeriodically = 0b0001
+        RxOnWhenStimulated = 0b0010
 
-    # TODO: interpret the four 4-bit fields
+    class PowerSources(t.bitmap4):
+        MainsPower = 0b0001
+        RechargeableBattery = 0b0010
+        DisposableBattery = 0b0100
+        Reserved = 0b1000
+
+    class PowerSourceLevel(t.enum4):
+        Critical = 0b0000
+        Percent33 = 0b0100
+        Percent66 = 0b1000
+        Percent100 = 0b1100
+
+
+class PowerDescriptor(t.Struct):
+    CurrentPowerMode = _PowerDescriptorEnums.CurrentPowerMode
+    PowerSources = _PowerDescriptorEnums.PowerSources
+    PowerSourceLevel = _PowerDescriptorEnums.PowerSourceLevel
+
+    current_power_mode: _PowerDescriptorEnums.CurrentPowerMode
+    available_power_sources: _PowerDescriptorEnums.PowerSources
+    current_power_source: _PowerDescriptorEnums.PowerSources
+    current_power_source_level: _PowerDescriptorEnums.PowerSourceLevel
 
 
 class SimpleDescriptor(t.Struct):
@@ -33,111 +56,178 @@ class SizePrefixedSimpleDescriptor(SimpleDescriptor):
         return super().deserialize(data[1:])
 
 
-class LogicalType(t.enum8):
+class LogicalType(t.enum3):
     Coordinator = 0b000
     Router = 0b001
     EndDevice = 0b010
-    Reserved3 = 0b011
-    Reserved4 = 0b100
-    Reserved5 = 0b101
-    Reserved6 = 0b110
-    Reserved7 = 0b111
+
+
+class _NodeDescriptorEnums:
+    class MACCapabilityFlags(t.bitmap8):
+        AlternatePanCoordinator = 0b00000001
+        FullFunctionDevice = 0b00000010
+        MainsPowered = 0b00000100
+        RxOnWhenIdle = 0b00001000
+        SecurityCapable = 0b01000000
+        AllocateAddress = 0b10000000
+
+    class FrequencyBand(t.bitmap5):
+        Freq868MHz = 0b00001
+        Freq902MHz = 0b00100
+        Freq2400MHz = 0b01000
+
+    class DescriptorCapability(t.bitmap8):
+        ExtendedActiveEndpointListAvailable = 0b00000001
+        ExtendedSimpleDescriptorListAvailable = 0b00000010
 
 
 class NodeDescriptor(t.Struct):
-    byte1: t.uint8_t
-    byte2: t.uint8_t
-    mac_capability_flags: t.uint8_t
+    FrequencyBand = _NodeDescriptorEnums.FrequencyBand
+    MACCapabilityFlags = _NodeDescriptorEnums.MACCapabilityFlags
+    DescriptorCapability = _NodeDescriptorEnums.DescriptorCapability
+
+    logical_type: LogicalType
+    complex_descriptor_available: t.uint1_t
+    user_descriptor_available: t.uint1_t
+    reserved: t.uint3_t
+
+    aps_flags: t.uint3_t
+    frequency_band: _NodeDescriptorEnums.FrequencyBand
+
+    mac_capability_flags: _NodeDescriptorEnums.MACCapabilityFlags
     manufacturer_code: t.uint16_t
     maximum_buffer_size: t.uint8_t
     maximum_incoming_transfer_size: t.uint16_t
     server_mask: t.uint16_t
     maximum_outgoing_transfer_size: t.uint16_t
-    descriptor_capability_field: t.uint8_t
+    descriptor_capability_field: _NodeDescriptorEnums.DescriptorCapability
+
+    def __new__(cls, *args, **kwargs):
+        # Old style constructor
+        if len(args) == 9 or "byte1" in kwargs or "byte2" in kwargs:
+            return cls._old_constructor(*args, **kwargs)
+
+        return super().__new__(cls, *args, **kwargs)
+
+    @classmethod
+    def _old_constructor(
+        cls: "NodeDescriptor",
+        byte1: t.uint8_t = None,
+        byte2: t.uint8_t = None,
+        mac_capability_flags: MACCapabilityFlags = None,
+        manufacturer_code: t.uint16_t = None,
+        maximum_buffer_size: t.uint8_t = None,
+        maximum_incoming_transfer_size: t.uint16_t = None,
+        server_mask: t.uint16_t = None,
+        maximum_outgoing_transfer_size: t.uint16_t = None,
+        descriptor_capability_field: t.uint8_t = None,
+    ) -> NodeDescriptor:
+        logical_type = None
+        complex_descriptor_available = None
+        user_descriptor_available = None
+        reserved = None
+
+        if byte1 is not None:
+            bits, _ = t.Bits.deserialize(bytes([byte1]))
+            logical_type, bits = LogicalType.from_bits(bits)
+            complex_descriptor_available, bits = t.uint1_t.from_bits(bits)
+            user_descriptor_available, bits = t.uint1_t.from_bits(bits)
+            reserved, bits = t.uint3_t.from_bits(bits)
+
+            assert not bits
+
+        aps_flags = None
+        frequency_band = None
+
+        if byte2 is not None:
+            bits, _ = t.Bits.deserialize(bytes([byte2]))
+            aps_flags, bits = t.uint3_t.from_bits(bits)
+            frequency_band, bits = cls.FrequencyBand.from_bits(bits)
+
+            assert not bits
+
+        return cls(
+            logical_type=logical_type,
+            complex_descriptor_available=complex_descriptor_available,
+            user_descriptor_available=user_descriptor_available,
+            reserved=reserved,
+            aps_flags=aps_flags,
+            frequency_band=frequency_band,
+            mac_capability_flags=mac_capability_flags,
+            manufacturer_code=manufacturer_code,
+            maximum_buffer_size=maximum_buffer_size,
+            maximum_incoming_transfer_size=maximum_incoming_transfer_size,
+            server_mask=server_mask,
+            maximum_outgoing_transfer_size=maximum_outgoing_transfer_size,
+            descriptor_capability_field=descriptor_capability_field,
+        )
 
     @property
-    def is_valid(self):
-        """Return True if all fields were initialized."""
-        non_empty_fields = [
-            getattr(self, field.name) is not None for field in self.fields
-        ]
-        return all(non_empty_fields)
-
-    @property
-    def logical_type(self):
-        """Return logical type of the device"""
-        if self.byte1 is None:
-            return None
-        return LogicalType(self.byte1 & 0x07)
-
-    @property
-    def is_coordinator(self):
-        """Return True whether this is a coordinator."""
+    def is_end_device(self) -> bool | None:
         if self.logical_type is None:
             return None
-        return self.logical_type == LogicalType.Coordinator
 
-    @property
-    def is_end_device(self):
-        """Return True whether this is an end device."""
-        if self.logical_type is None:
-            return None
         return self.logical_type == LogicalType.EndDevice
 
     @property
-    def is_router(self):
-        """Return True whether this is a router."""
+    def is_router(self) -> bool | None:
         if self.logical_type is None:
             return None
+
         return self.logical_type == LogicalType.Router
 
     @property
-    def complex_descriptor_available(self):
-        if self.byte1 is None:
+    def is_coordinator(self) -> bool | None:
+        if self.logical_type is None:
             return None
-        return bool(self.byte1 & 0b00001000)
+
+        return self.logical_type == LogicalType.Coordinator
 
     @property
-    def user_descriptor_available(self):
-        if self.byte1 is None:
-            return None
-        return bool(self.byte1 & 0b00010000)
-
-    @property
-    def is_alternate_pan_coordinator(self):
+    def is_alternate_pan_coordinator(self) -> bool | None:
         if self.mac_capability_flags is None:
             return None
-        return bool(self.mac_capability_flags & 0b00000001)
+
+        return bool(
+            self.mac_capability_flags & self.MACCapabilityFlags.AlternatePanCoordinator
+        )
 
     @property
-    def is_full_function_device(self):
+    def is_full_function_device(self) -> bool | None:
         if self.mac_capability_flags is None:
             return None
-        return bool(self.mac_capability_flags & 0b00000010)
+
+        return bool(
+            self.mac_capability_flags & self.MACCapabilityFlags.FullFunctionDevice
+        )
 
     @property
-    def is_mains_powered(self):
+    def is_mains_powered(self) -> bool | None:
         if self.mac_capability_flags is None:
             return None
-        return bool(self.mac_capability_flags & 0b00000100)
+
+        return bool(self.mac_capability_flags & self.MACCapabilityFlags.MainsPowered)
 
     @property
-    def is_receiver_on_when_idle(self):
+    def is_receiver_on_when_idle(self) -> bool | None:
         if self.mac_capability_flags is None:
             return None
-        return bool(self.mac_capability_flags & 0b00001000)
+
+        return bool(self.mac_capability_flags & self.MACCapabilityFlags.RxOnWhenIdle)
 
     @property
-    def is_security_capable(self):
+    def is_security_capable(self) -> bool | None:
         if self.mac_capability_flags is None:
             return None
-        return bool(self.mac_capability_flags & 0b01000000)
+
+        return bool(self.mac_capability_flags & self.MACCapabilityFlags.SecurityCapable)
 
     @property
-    def allocate_address(self):
+    def allocate_address(self) -> bool | None:
         if self.mac_capability_flags is None:
             return None
-        return bool(self.mac_capability_flags & 0b10000000)
+
+        return bool(self.mac_capability_flags & self.MACCapabilityFlags.AllocateAddress)
 
 
 class MultiAddress(t.Struct):
@@ -165,97 +255,64 @@ class MultiAddress(t.Struct):
 
 
 class _NeighborEnums:
-    """Types container."""
-
-    class DeviceType(t.enum8):
+    class DeviceType(t.enum2):
         Coordinator = 0x0
         Router = 0x1
         EndDevice = 0x2
         Unknown = 0x3
 
-    class RxOnWhenIdle(t.enum8):
+    class RxOnWhenIdle(t.enum2):
         Off = 0x0
         On = 0x1
         Unknown = 0x2
 
-    class Relationship(t.enum8):
+    class RelationShip(t.enum3):
         Parent = 0x0
         Child = 0x1
         Sibling = 0x2
         NoneOfTheAbove = 0x3
         PreviousChild = 0x4
 
-
-class PermitJoins(t.enum8):
-    NotAccepting = 0x0
-    Accepting = 0x1
-    Unknown = 0x2
+    class PermitJoins(t.enum2):
+        NotAccepting = 0x0
+        Accepting = 0x1
+        Unknown = 0x2
 
 
 class Neighbor(t.Struct):
     """Neighbor Descriptor"""
 
-    PermitJoins = PermitJoins
+    PermitJoins = _NeighborEnums.PermitJoins
     DeviceType = _NeighborEnums.DeviceType
     RxOnWhenIdle = _NeighborEnums.RxOnWhenIdle
-    RelationShip = _NeighborEnums.Relationship
+    RelationShip = _NeighborEnums.RelationShip
 
     extended_pan_id: t.ExtendedPanId
     ieee: t.EUI64
     nwk: t.NWK
-    packed: t.uint8_t
-    permit_joining: PermitJoins
+
+    device_type: _NeighborEnums.DeviceType
+    rx_on_when_idle: _NeighborEnums.RxOnWhenIdle
+    relationship: _NeighborEnums.RelationShip
+    reserved1: t.uint1_t
+
+    permit_joining: _NeighborEnums.PermitJoins
+    reserved2: t.uint6_t
+
     depth: t.uint8_t
     lqi: t.uint8_t
 
-    @property
-    def device_type(self) -> typing.Optional[_NeighborEnums.DeviceType]:
-        """Return neighbor type."""
-        if self.packed is None:
-            return None
-        return _NeighborEnums.DeviceType(self.packed & 0x03)
+    @classmethod
+    def _parse_packed(cls, packed: t.uint8_t) -> dict[str, typing.Any]:
+        data = 18 * b"\x00" + t.uint16_t(packed).serialize() + 3 * b"\x00"
+        tmp_neighbor, _ = cls.deserialize(data)
 
-    @device_type.setter
-    def device_type(self, value: _NeighborEnums.DeviceType) -> None:
-        """Neighbor type setter."""
-        if self.packed is None:
-            self.packed = value
-        self.packed &= 0b0111_1100
-        self.packed |= value & 0x03
-
-    @property
-    def rx_on_when_idle(self) -> typing.Optional[_NeighborEnums.RxOnWhenIdle]:
-        """Return rx_on."""
-        if self.packed is None:
-            return None
-        return _NeighborEnums.RxOnWhenIdle((self.packed >> 2) & 0x03)
-
-    @rx_on_when_idle.setter
-    def rx_on_when_idle(self, value: _NeighborEnums.RxOnWhenIdle) -> None:
-        """Rx on when idle setter."""
-        if self.packed is None:
-            self.packed = value
-        self.packed &= 0b0111_0011
-        self.packed |= (value & 0x03) << 2
-
-    @property
-    def relationship(self) -> typing.Optional[_NeighborEnums.Relationship]:
-        """Return relationship."""
-        if self.packed is None:
-            return None
-        return _NeighborEnums.Relationship((self.packed >> 4) & 0x07)
-
-    @relationship.setter
-    def relationship(self, value: _NeighborEnums.Relationship) -> None:
-        """Relationship setter."""
-        if self.packed is None:
-            self.packed = value
-        self.packed &= 0b0000_1111
-        self.packed |= (value & 0x07) << 4
-
-
-# It's exposed only as `Neighbor.PermitJoins`
-del PermitJoins
+        return {
+            "device_type": tmp_neighbor.device_type,
+            "rx_on_when_idle": tmp_neighbor.rx_on_when_idle,
+            "relationship": tmp_neighbor.relationship,
+            "reserved1": tmp_neighbor.reserved1,
+        }
 
 
 class Neighbors(t.Struct):
@@ -294,6 +351,13 @@ class NwkUpdate(t.Struct):
     nwkManagerAddr: t.NWK = t.StructField(
         requires=lambda s: s.ScanDuration == s.CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ
     )
+
+
+class Binding(t.Struct):
+    SrcAddress: t.EUI64
+    SrcEndpoint: t.uint8_t
+    ClusterId: t.uint16_t
+    DstAddress: MultiAddress
 
 
 class Status(t.enum8):
@@ -347,7 +411,7 @@ IEEE = ("IEEEAddr", t.EUI64)
 STATUS = ("Status", Status)
 
 
-class _CommandID(t.uint16_t, hex_repr=True):
+class _CommandID(t.uint16_t, repr="hex"):
     pass
 
 
@@ -383,6 +447,7 @@ class ZDOCmd(t.enum_factory(_CommandID)):
     # ... TODO optional stuff ...
     Mgmt_Lqi_req = 0x0031
     Mgmt_Rtg_req = 0x0032
+    Mgmt_Bind_req = 0x0033
     # ... TODO optional stuff ...
     Mgmt_Leave_req = 0x0034
     Mgmt_Permit_Joining_req = 0x0036
@@ -421,6 +486,7 @@ class ZDOCmd(t.enum_factory(_CommandID)):
     # Network Management Server Services Responses
     Mgmt_Lqi_rsp = 0x8031
     Mgmt_Rtg_rsp = 0x8032
+    Mgmt_Bind_rsp = 0x8033
     # ... TODO optional stuff ...
     Mgmt_Leave_rsp = 0x8034
     Mgmt_Permit_Joining_rsp = 0x8036
@@ -500,6 +566,7 @@ CLUSTERS = {
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Lqi_req: (("StartIndex", t.uint8_t),),
     ZDOCmd.Mgmt_Rtg_req: (("StartIndex", t.uint8_t),),
+    ZDOCmd.Mgmt_Bind_req: (("StartIndex", t.uint8_t),),
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Leave_req: (("DeviceAddress", t.EUI64), ("Options", t.bitmap8)),
     ZDOCmd.Mgmt_Permit_Joining_req: (
@@ -590,6 +657,12 @@ CLUSTERS = {
     # Network Management Server Services Responses
     ZDOCmd.Mgmt_Lqi_rsp: (STATUS, ("Neighbors", t.Optional(Neighbors))),
     ZDOCmd.Mgmt_Rtg_rsp: (STATUS, ("Routes", t.Optional(Routes))),
+    ZDOCmd.Mgmt_Bind_rsp: (
+        STATUS,
+        ("BindingTableEntries", t.uint8_t),
+        ("StartIndex", t.uint8_t),
+        ("BindingTableList", t.LVList[Binding]),
+    ),
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Leave_rsp: (STATUS,),
     ZDOCmd.Mgmt_Permit_Joining_rsp: (STATUS,),

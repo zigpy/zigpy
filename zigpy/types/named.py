@@ -43,7 +43,7 @@ class Bool(basic.enum8):
     true = 1
 
 
-class AttributeId(basic.uint16_t, hex_repr=True):
+class AttributeId(basic.uint16_t, repr="hex"):
     pass
 
 
@@ -121,7 +121,7 @@ class Date(Struct):
         self.years_since_1900 = years - 1900
 
 
-class NWK(basic.uint16_t, hex_repr=True):
+class NWK(basic.uint16_t, repr="hex"):
     pass
 
 
@@ -133,7 +133,7 @@ class ExtendedPanId(EUI64):
     pass
 
 
-class Group(basic.uint16_t, hex_repr=True):
+class Group(basic.uint16_t, repr="hex"):
     pass
 
 

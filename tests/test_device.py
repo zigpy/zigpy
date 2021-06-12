@@ -24,7 +24,7 @@ def dev(monkeypatch, app):
     monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     dev = device.Device(app, ieee, 65535)
-    node_desc = zdo_t.NodeDescriptor(1, 2, 3, 4, 5, 6, 7, 8)
+    node_desc = zdo_t.NodeDescriptor(0, 1, 2, 3, 4, 5, 6, 7, 8)
     with patch.object(
         dev.zdo, "Node_Desc_req", new=AsyncMock(return_value=(0, 0xFFFF, node_desc))
     ):
@@ -33,20 +33,43 @@ def dev(monkeypatch, app):
 
 async def test_initialize(monkeypatch, dev):
     async def mockrequest(nwk, tries=None, delay=None):
-        return [0, None, [1, 2]]
+        return [0, None, [1, 2, 3, 4]]
 
-    async def mockepinit(self):
+    async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
-        return
+        self.add_input_cluster(0x0001)  # Basic
+
+    async def mock_ep_get_model_info(self):
+        if self.endpoint_id == 1:
+            return None, None
+        elif self.endpoint_id == 2:
+            return "Model", None
+        elif self.endpoint_id == 3:
+            return None, "Manufacturer"
+        else:
+            return "Model2", "Manufacturer2"
 
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
     dev.zdo.Active_EP_req = mockrequest
-    await dev._initialize()
+    await dev.initialize()
 
-    assert dev.status > device.Status.NEW
     assert 1 in dev.endpoints
     assert 2 in dev.endpoints
+    assert 3 in dev.endpoints
+    assert 4 in dev.endpoints
     assert dev._application.device_initialized.call_count == 1
+    assert dev.is_initialized
+
+    # First one for each is chosen
+    assert dev.model == "Model"
+    assert dev.manufacturer == "Manufacturer"
+
+    dev.schedule_initialize()
+    assert dev._application.device_initialized.call_count == 2
+
+    await dev.initialize()
+    assert dev._application.device_initialized.call_count == 3
 
 
 async def test_initialize_fail(dev):
@@ -54,9 +77,10 @@ async def test_initialize_fail(dev):
         return [1, dev.nwk, []]
 
     dev.zdo.Active_EP_req = mockrequest
-    await dev._initialize()
+    await dev.initialize()
 
-    assert dev.status == device.Status.NEW
+    assert not dev.is_initialized
+    assert not dev.has_non_zdo_endpoints
 
 
 @patch("zigpy.device.Device.get_node_descriptor", AsyncMock())
@@ -70,12 +94,11 @@ async def test_initialize_ep_failed(monkeypatch, dev):
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
 
     dev.zdo.request = mockrequest
-    await dev._initialize()
+    await dev.initialize()
 
-    assert dev.status == device.Status.ZDO_INIT
+    assert not dev.is_initialized
     assert dev.application.listener_event.call_count == 1
     assert dev.application.listener_event.call_args[0][0] == "device_init_failure"
-    assert dev.application.remove.call_count == 1
 
 
 async def test_request(dev):
@@ -232,16 +255,16 @@ async def test_get_node_descriptor(dev):
 
 
 async def test_get_node_descriptor_no_reply(dev):
-    nd = await _get_node_descriptor(dev, zdo_success=True, request_success=False)
+    with pytest.raises(asyncio.TimeoutError):
+        await _get_node_descriptor(dev, zdo_success=True, request_success=False)
 
-    assert nd is None
     assert dev.zdo.Node_Desc_req.call_count == 1
 
 
 async def test_get_node_descriptor_fail(dev):
-    nd = await _get_node_descriptor(dev, zdo_success=False, request_success=True)
+    with pytest.raises(zigpy.exceptions.InvalidResponse):
+        await _get_node_descriptor(dev, zdo_success=False, request_success=True)
 
-    assert nd is None
     assert dev.zdo.Node_Desc_req.call_count == 1
 
 
@@ -292,6 +315,15 @@ async def test_schedule_group_membership(dev, caplog):
         await asyncio.sleep(0)
         assert scan_mock.await_count == 1
         assert "Cancelling old group rescan" in caplog.text
+
+
+async def test_group_membership_scan(dev):
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+
+    with patch.object(ep, "group_membership_scan", new=AsyncMock()):
+        await dev.group_membership_scan()
+        assert ep.group_membership_scan.await_count == 1
 
 
 def test_device_manufacture_id_override(dev):

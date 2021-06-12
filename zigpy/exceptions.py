@@ -16,3 +16,7 @@ class APIException(ZigbeeException):
 
 class DeliveryError(ZigbeeException):
     """Message delivery failed in some way"""
+
+
+class InvalidResponse(ZigbeeException):
+    """A ZDO or ZCL response has an unsuccessful status code"""

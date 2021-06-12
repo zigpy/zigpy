@@ -7,6 +7,7 @@ import pytest
 
 import zigpy.types as t
 from zigpy.zcl.foundation import Status
+import zigpy.zdo.types as zdo_t
 
 
 @pytest.fixture
@@ -585,3 +586,114 @@ def test_repr_properties():
         == "TestStruct(foo=1, bar=16, *baz=<Bool.true: 1>)"
     )
     assert repr(TestStruct()) == "TestStruct()"
+
+
+def test_bitstruct_simple():
+    class BitStruct1(t.Struct):
+        foo: t.uint4_t
+        bar: t.uint4_t
+
+    s = BitStruct1(foo=0b1100, bar=0b1010)
+    assert s.serialize() == bytes([0b1010_1100])
+
+    s2, remaining = BitStruct1.deserialize(b"\x01\x02")
+    assert remaining == b"\x02"
+    assert s2.foo == 0b0001
+    assert s2.bar == 0b0000
+
+
+def test_bitstruct_nesting(expose_global):
+    @expose_global
+    class InnerBitStruct(t.Struct):
+        baz1: t.uint1_t
+        baz2: t.uint3_t
+        baz3: t.uint1_t
+        baz4: t.uint3_t
+
+    class OuterStruct(t.Struct):
+        foo: t.LVBytes
+        bar: InnerBitStruct
+        asd: t.uint8_t
+
+    inner = InnerBitStruct(baz1=0b1, baz2=0b010, baz3=0b0, baz4=0b111)
+    assert inner.serialize() == bytes([0b111_0_010_1])
+    assert InnerBitStruct.deserialize(inner.serialize() + b"asd") == (inner, b"asd")
+
+    s = OuterStruct(foo=b"asd", bar=inner, asd=0xFF)
+    assert s.serialize() == b"\x03asd" + bytes([0b111_0_010_1]) + b"\xFF"
+
+    s2, remaining = OuterStruct.deserialize(s.serialize() + b"test")
+    assert remaining == b"test"
+    assert s == s2
+
+
+def test_bitstruct_misaligned():
+    class TestStruct(t.Struct):
+        foo: t.uint1_t
+        bar: t.uint8_t  # Even though this field is byte-serializable, it is misaligned
+        baz: t.uint7_t
+
+    s = TestStruct(foo=0b1, bar=0b10101010, baz=0b1110111)
+    assert s.serialize() == bytes([0b1110111_1, 0b0101010_1])
+
+    s2, remaining = TestStruct.deserialize(s.serialize() + b"asd")
+    assert s == s2
+
+    with pytest.raises(ValueError):
+        TestStruct.deserialize(b"\xFF")
+
+
+def test_non_byte_sized_struct():
+    class TestStruct(t.Struct):
+        foo: t.uint1_t
+        bar: t.uint8_t
+
+    s = TestStruct(foo=1, bar=2)
+
+    with pytest.raises(ValueError):
+        s.serialize()
+
+    with pytest.raises(ValueError):
+        TestStruct.deserialize(b"\x00\x00\x00\x00")
+
+
+def test_non_aligned_struct_non_integer_types():
+    class TestStruct(t.Struct):
+        foo: t.uint1_t
+        bar: t.data8
+        foo: t.uint7_t
+
+    s = TestStruct(foo=1, bar=[2])
+
+    with pytest.raises(ValueError):
+        s.serialize()
+
+    with pytest.raises(ValueError):
+        TestStruct.deserialize(b"\x00\x00\x00\x00")
+
+
+def test_bitstruct_complex():
+    data = (
+        b"\x11\x00\xff\xee\xdd\xcc\xbb\xaa\x08\x07\x06"
+        b"\x05\x04\x03\x02\x01\x00\x00\x24\x02\x00\x7c"
+    )
+
+    neighbor, rest = zdo_t.Neighbor.deserialize(data + b"asd")
+    assert rest == b"asd"
+
+    neighbor2 = zdo_t.Neighbor(
+        extended_pan_id=t.ExtendedPanId.convert("aa:bb:cc:dd:ee:ff:00:11"),
+        ieee=t.EUI64.convert("01:02:03:04:05:06:07:08"),
+        nwk=0x0000,
+        device_type=zdo_t.Neighbor.DeviceType.Coordinator,
+        rx_on_when_idle=zdo_t.Neighbor.RxOnWhenIdle.On,
+        relationship=zdo_t.Neighbor.RelationShip.Sibling,
+        reserved1=0b0,
+        permit_joining=zdo_t.Neighbor.PermitJoins.Unknown,
+        reserved2=0b000000,
+        depth=0,
+        lqi=124,
+    )
+
+    assert neighbor == neighbor2
+    assert neighbor2.serialize() == data

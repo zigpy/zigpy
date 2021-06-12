@@ -1,9 +1,10 @@
 import asyncio
+import logging
+from unittest.mock import ANY, PropertyMock
 
 import pytest
 import voluptuous as vol
 
-from zigpy import device
 import zigpy.application
 from zigpy.config import (
     CONF_DATABASE,
@@ -241,17 +242,33 @@ def test_permit_with_key(app):
         app.permit_with_key(None, None)
 
 
-async def test_join_handler_skip(app, ieee):
+@patch("zigpy.device.Device.initialize", new_callable=AsyncMock)
+async def test_join_handler_skip(init_mock, app, ieee):
     app.handle_join(1, ieee, None)
-    app.devices[ieee].status = device.Status.ZDO_INIT
+    app.get_device(ieee).node_desc = _devices(1).node_desc
+
     app.handle_join(1, ieee, None)
-    assert app.devices[ieee].status == device.Status.ZDO_INIT
+    assert app.get_device(ieee).node_desc == _devices(1).node_desc
 
 
 async def test_join_handler_change_id(app, ieee):
     app.handle_join(1, ieee, None)
     app.handle_join(2, ieee, None)
     assert app.devices[ieee].nwk == 2
+
+
+async def test_unknown_device_left(app, ieee):
+    with patch.object(app, "listener_event", wraps=app.listener_event):
+        app.handle_leave(0x1234, ieee)
+        app.listener_event.assert_not_called()
+
+
+async def test_known_device_left(app, ieee):
+    dev = app.add_device(ieee, 0x1234)
+
+    with patch.object(app, "listener_event", wraps=app.listener_event):
+        app.handle_leave(0x1234, ieee)
+        app.listener_event.assert_called_once_with("device_left", dev)
 
 
 async def _remove(app, ieee, retval, zdo_reply=True, delivery_failure=True):
@@ -362,18 +379,46 @@ def test_handle_message(app, ieee):
     assert dev.handle_message.call_count == 1
 
 
-def test_handle_message_uninitialized_dev(app, ieee):
-    dev = device.Device(app, ieee, 0x1234)
+@patch("zigpy.device.Device.is_initialized", new_callable=PropertyMock)
+@patch("zigpy.device.Device.has_node_descriptor", new_callable=PropertyMock)
+@patch("zigpy.quirks.handle_message_from_uninitialized_sender", new=MagicMock())
+async def test_handle_message_uninitialized_dev(
+    has_node_desc_mock, is_init_mock, app, ieee
+):
+    dev = app.add_device(ieee, 0x1234)
     dev.handle_message = MagicMock()
-    app.handle_message(dev, 260, 1, 1, 1, [])
-    assert dev.handle_message.call_count == 0
+    has_node_desc_mock.return_value = False
+    is_init_mock.return_value = False
 
-    dev.status = device.Status.ZDO_INIT
-    app.handle_message(dev, 260, 1, 1, 1, [])
-    assert dev.handle_message.call_count == 0
+    assert not dev.initializing
 
-    app.handle_message(dev, 260, 0, 1, 1, [])
+    # Power Configuration cluster not allowed, no endpoints
+    app.handle_message(dev, 260, cluster=0x0001, src_ep=1, dst_ep=1, message=b"")
+    assert dev.handle_message.call_count == 0
+    assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 1
+
+    # Device should be completing initialization
+    assert dev.initializing
+
+    # ZDO is allowed
+    app.handle_message(dev, 260, cluster=0x0000, src_ep=0, dst_ep=0, message=b"")
     assert dev.handle_message.call_count == 1
+
+    # Endpoint is uninitialized but Basic attribute read responses still work
+    ep = dev.add_endpoint(1)
+    app.handle_message(dev, 260, cluster=0x0000, src_ep=1, dst_ep=1, message=b"")
+    assert dev.handle_message.call_count == 2
+
+    # Others still do not
+    app.handle_message(dev, 260, cluster=0x0001, src_ep=1, dst_ep=1, message=b"")
+    assert dev.handle_message.call_count == 2
+    assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 2
+
+    # They work after the endpoint is initialized
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    app.handle_message(dev, 260, cluster=0x0001, src_ep=1, dst_ep=1, message=b"")
+    assert dev.handle_message.call_count == 3
+    assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 2
 
 
 async def test_broadcast(app):
@@ -484,7 +529,7 @@ def test_app_update_config(app):
         assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
 
 
-def test_uninitialized_message_handlers(app, ieee):
+async def test_uninitialized_message_handlers(app, ieee):
     """Test uninitialized message handlers."""
     handler_1 = MagicMock(return_value=None)
     handler_2 = MagicMock(return_value=True)
@@ -527,7 +572,7 @@ async def test_remove_parent_devices(app):
     """Test removing an end device with parents."""
 
     end_device = _devices(1)
-    end_device.node_desc.byte1 = 2
+    end_device.node_desc.logical_type = zdo_t.LogicalType.EndDevice
     nei_end_device = MagicMock()
     nei_end_device.device = end_device
 
@@ -574,3 +619,60 @@ async def test_remove_parent_devices(app):
         assert router_2.zdo.request.await_count == 0
         assert parent.zdo.leave.await_count == 0
         assert parent.zdo.request.await_count == 1
+
+
+async def test_startup_log_on_uninitialized_device(ieee, caplog):
+    class App(zigpy.application.ControllerApplication):
+        async def _noop(self, *args, **kwargs):
+            pass
+
+        startup = request = permit_ncp = probe = shutdown = _noop
+
+        async def _load_db(self):
+            self.add_device(ieee, 1)
+
+    caplog.set_level(logging.WARNING)
+
+    await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
+    assert len(caplog.records) == 1
+    assert "Device is partially initialized" in caplog.text
+
+
+@patch("zigpy.device.Device.schedule_initialize", new_callable=MagicMock)
+@patch("zigpy.device.Device.schedule_group_membership_scan", new_callable=MagicMock)
+@patch("zigpy.device.Device.is_initialized", new_callable=PropertyMock)
+async def test_device_join_rejoin(is_init_mock, group_scan_mock, init_mock, app, ieee):
+    app.listener_event = MagicMock()
+    is_init_mock.return_value = False
+
+    # First join is treated as a new join
+    app.handle_join(0x0001, ieee, None)
+    app.listener_event.assert_called_once_with("device_joined", ANY)
+    app.listener_event.reset_mock()
+    init_mock.assert_called_once()
+    init_mock.reset_mock()
+
+    # Second join with the same NWK is just a reset, not a join
+    app.handle_join(0x0001, ieee, None)
+    app.listener_event.assert_not_called()
+    group_scan_mock.assert_not_called()
+
+    # Since the device is still partially initialized, re-initialize it
+    init_mock.assert_called_once()
+    init_mock.reset_mock()
+
+    # Another join with the same NWK but initialized will trigger a group re-scan
+    is_init_mock.return_value = True
+
+    app.handle_join(0x0001, ieee, None)
+    is_init_mock.return_value = True
+    app.listener_event.assert_not_called()
+    group_scan_mock.assert_called_once()
+    group_scan_mock.reset_mock()
+    init_mock.assert_not_called()
+
+    # Join with a different NWK but the same IEEE is a re-join
+    app.handle_join(0x0002, ieee, None)
+    app.listener_event.assert_called_once_with("device_joined", ANY)
+    group_scan_mock.assert_not_called()
+    init_mock.assert_called_once()

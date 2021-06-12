@@ -89,8 +89,12 @@ def test_node_descriptor():
     assert rest == b"\xff"
 
     new_node_desc = types.NodeDescriptor(nd)
-    assert new_node_desc.byte1 == 0
-    assert new_node_desc.byte2 == 1
+    assert new_node_desc.logical_type == 0
+    assert new_node_desc.complex_descriptor_available == 0
+    assert new_node_desc.user_descriptor_available == 0
+    assert new_node_desc.reserved == 0
+    assert new_node_desc.aps_flags == 1
+    assert new_node_desc.frequency_band == 0
     assert new_node_desc.mac_capability_flags == 0x02
     assert new_node_desc.manufacturer_code == 0x0303
     assert new_node_desc.maximum_buffer_size == 0x04
@@ -136,8 +140,7 @@ def test_node_descriptor_props():
     for prop in props:
         if prop == "logical_type":
             continue
-        value = getattr(nd, prop)
-        assert value is True
+        assert getattr(nd, prop)
 
 
 def test_node_descriptor_logical_types():
@@ -371,7 +374,12 @@ def test_neighbor():
     assert str(neighbor.extended_pan_id) == "b4:96:03:f5:59:8c:af:a2"
     assert str(neighbor.ieee) == "14:b4:57:ff:fe:07:70:3a"
     assert neighbor.nwk == 0xB7D1
-    assert neighbor.packed == 18
+    assert neighbor.device_type == types.Neighbor.DeviceType.EndDevice
+    assert neighbor.rx_on_when_idle == types.Neighbor.RxOnWhenIdle.Off
+    assert neighbor.relationship == types.Neighbor.RelationShip.Child
+    assert neighbor.reserved1 == 0
+    assert neighbor.permit_joining == types.Neighbor.PermitJoins.Accepting
+    assert neighbor.reserved2 == 0
     assert neighbor.device_type == types.Neighbor.DeviceType.EndDevice
     assert neighbor.relationship == types.Neighbor.RelationShip.Child
     assert neighbor.rx_on_when_idle == types.Neighbor.RxOnWhenIdle.Off
@@ -390,7 +398,7 @@ def test_neighbor_struct_device_type():
         assert struct.device_type == dev_type
 
     for i in range(0, 127):
-        struct = types.Neighbor(packed=i)
+        struct = types.Neighbor(**types.Neighbor._parse_packed(i))
         orig_rx = struct.rx_on_when_idle
         orig_rel = struct.relationship
         for dev_type in range(0, 3):
@@ -410,7 +418,7 @@ def test_neighbor_struct_rx_on_when_idle():
         assert struct.rx_on_when_idle == rx_on_when_idle
 
     for i in range(0, 127):
-        struct = types.Neighbor(packed=i)
+        struct = types.Neighbor(**types.Neighbor._parse_packed(i))
         orig_dev_type = struct.device_type
         orig_rel = struct.relationship
         for rx_on_when_idle in range(0, 3):
@@ -430,7 +438,7 @@ def test_neighbor_struct_relationship():
         assert struct.relationship == relationship
 
     for i in range(0, 127):
-        struct = types.Neighbor(packed=i)
+        struct = types.Neighbor(**types.Neighbor._parse_packed(i))
         orig_dev_type = struct.device_type
         orig_rx = struct.rx_on_when_idle
         for relationship in range(0, 7):
