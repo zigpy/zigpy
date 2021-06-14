@@ -43,7 +43,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS cluster_idx
 
 
 -- neighbors
-CREATE TABLE IF NOT EXISTS neighbors_v4 (
+DROP TABLE IF EXISTS neighbors_v4;
+CREATE TABLE neighbors_v4 (
     device_ieee ieee NOT NULL,
     extended_pan_id ieee NOT NULL,
     ieee ieee NOT NULL,
@@ -58,12 +59,13 @@ CREATE TABLE IF NOT EXISTS neighbors_v4 (
     lqi INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS neighbors_idx_v4
+CREATE INDEX neighbors_idx_v4
     ON neighbors_v4(device_ieee);
 
 
 -- node descriptors
-CREATE TABLE IF NOT EXISTS node_descriptors_v4 (
+DROP TABLE IF EXISTS node_descriptors_v4;
+CREATE TABLE node_descriptors_v4 (
     ieee ieee,
 
     logical_type INTEGER NOT NULL,
@@ -85,7 +87,7 @@ CREATE TABLE IF NOT EXISTS node_descriptors_v4 (
         ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS node_descriptors_idx_v4
+CREATE UNIQUE INDEX node_descriptors_idx_v4
     ON node_descriptors_v4(ieee);
 
 

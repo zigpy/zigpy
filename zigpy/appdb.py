@@ -524,10 +524,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         """Schema v4 expanded the node descriptor and neighbor table columns"""
         await self.executescript(zigpy.appdb_schemas.SCHEMAS[4])
 
-        # Delete all existing v4 entries, in case a user downgraded and is upgrading
-        await self.execute("DELETE FROM node_descriptors_v4")
-        await self.execute("DELETE FROM neighbors_v4")
-
         try:
             # The `node_descriptors` table was added in v1
             await self.execute("SELECT * FROM node_descriptors")
@@ -575,7 +571,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.executescript(zigpy.appdb_schemas.SCHEMAS[5])
 
         # Copy the devices table first, it should have no conflicts
-        await self.execute("DELETE FROM devices_v5")
         await self.execute("INSERT INTO devices_v5 SELECT * FROM devices")
 
         # Insertion order matters for foreign key constraints but any rows that fail
@@ -592,9 +587,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             "neighbors_v4": "neighbors_v5",
             "node_descriptors_v4": "node_descriptors_v5",
         }.items():
-            # Delete existing entries, in case a user downgraded
-            await self.execute(f"DELETE FROM {new_table}")
-
             async with self.execute(f"SELECT * FROM {old_table}") as cursor:
                 async for row in cursor:
                     placeholders = ",".join("?" * len(row))
