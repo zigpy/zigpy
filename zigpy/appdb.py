@@ -498,19 +498,17 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute("BEGIN TRANSACTION")
 
         try:
-            for from_db_version, (migration, to_db_version) in {
-                0: (self._migrate_to_v4, 4),
-                1: (self._migrate_to_v4, 4),
-                2: (self._migrate_to_v4, 4),
-                3: (self._migrate_to_v4, 4),
-                4: (self._migrate_to_v5, 5),
-            }.items():
-                if db_version > from_db_version:
+            for migration, to_db_version in [
+                (self._migrate_to_v4, 4),
+                (self._migrate_to_v5, 5),
+            ]:
+                if db_version >= to_db_version:
                     continue
 
                 LOGGER.info(
                     "Migrating database from v%d to v%d", db_version, to_db_version
                 )
+                await self.executescript(zigpy.appdb_schemas.SCHEMAS[to_db_version])
                 await migration()
 
                 db_version = to_db_version
@@ -522,8 +520,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _migrate_to_v4(self):
         """Schema v4 expanded the node descriptor and neighbor table columns"""
-        await self.executescript(zigpy.appdb_schemas.SCHEMAS[4])
-
         try:
             # The `node_descriptors` table was added in v1
             await self.execute("SELECT * FROM node_descriptors")
@@ -568,7 +564,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _migrate_to_v5(self):
         """Schema v5 introduced global table version suffixes and removed stale rows"""
-        await self.executescript(zigpy.appdb_schemas.SCHEMAS[5])
 
         # Copy the devices table first, it should have no conflicts
         await self.execute("INSERT INTO devices_v5 SELECT * FROM devices")
