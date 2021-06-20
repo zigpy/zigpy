@@ -316,6 +316,6 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             f" id={self.endpoint_id}"
             f" in=[{cluster_repr(self.in_clusters.values())}]"
             f" out=[{cluster_repr(self.out_clusters.values())}]"
-            f" status={self.status}"
+            f" status={self.status!r}"
             f">"
         )
