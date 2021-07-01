@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import sqlite3
 from typing import Any
 
@@ -464,23 +465,39 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             dev.add_context_listener(self)
             dev.neighbors.add_context_listener(self)
 
-    async def _run_migrations(self):
-        """Migrates the database to the newest schema."""
+    async def _get_versions(self) -> tuple[int, int | None]:
+        """Extracts the schema version of the current database."""
 
         async with self.execute("PRAGMA user_version") as cursor:
             (db_version,) = await cursor.fetchone()
 
-        LOGGER.debug("Current database version is v%s", db_version)
+        LOGGER.debug("Database user_version: v%s", db_version)
 
         async with self.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         ) as cursor:
             db_tables = [row async for (row,) in cursor]
 
-        LOGGER.debug("Current table names are %s", db_tables)
+        LOGGER.debug("Current table names: %s", db_tables)
 
-        # Very old databases did not set `user_version` but still should be migrated
+        # Very old databases did not set a `user_version` but still have tables
         if db_version == 0 and "devices" not in db_tables:
+            return None, None
+
+        tables_version = max(
+            [int(t.rsplit("_v", 1)[1]) for t in db_tables if re.search(r"_v\d+$", t)],
+            default=None,
+        )
+
+        LOGGER.debug("Tables version: %s", db_tables)
+
+        return db_version, tables_version
+
+    async def _run_migrations(self):
+        """Migrates the database to the newest schema."""
+        db_version, tables_version = await self._get_versions()
+
+        if db_version is None:
             # If this is a brand new database, just load the current schema
             await self.executescript(zigpy.appdb_schemas.SCHEMAS[DB_VERSION])
             return
@@ -493,6 +510,17 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 db_version,
             )
             return
+        elif tables_version is not None and tables_version > db_version:
+            LOGGER.warning(
+                "Database tables are v%s but the database version is v%s",
+                tables_version,
+                db_version,
+            )
+
+            # Older Zigpy releases downgraded the `user_version` at startup but kept the
+            # new tables, resulting in a mismatch
+            await self.execute(f"PRAGMA user_version={tables_version}")
+            db_version = tables_version
 
         # All migrations must succeed. If any fail, the database is not touched.
         await self.execute("BEGIN TRANSACTION")
