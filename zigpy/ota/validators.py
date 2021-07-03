@@ -96,11 +96,7 @@ def parse_silabs_gbl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]
         if tag != b"\xFC\x04\x04\xFC":
             continue
 
-        # GBL images aren't expected to contain padding but Hue images are padded with
-        # null bytes
-        if data.strip(b"\x00"):
-            raise ValidationError("Image padding contains invalid bytes")
-
+        # GBL images aren't expected to contain padding but some are (i.e. Hue)
         unpadded_image = orig_data[: -len(data)] if data else orig_data
         computed_crc = zlib.crc32(unpadded_image)
 
