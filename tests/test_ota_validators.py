@@ -122,17 +122,10 @@ def test_parse_silabs_gbl():
     assert tag2 == (b"BBBB", b"foo" * 20)
     assert checksum[0] == b"\xFC\x04\x04\xFC" and len(checksum[1]) == 4
 
-    # No padding is allowed
-    with pytest.raises(ValidationError):
-        list(validators.parse_silabs_gbl(image + b"\xFF"))
-
-    # Unless the padding is entirely null bytes
+    # Arbitrary padding is allowed
     parsed_image = [header, tag1, tag2, checksum]
     assert list(validators.parse_silabs_gbl(image + b"\x00")) == parsed_image
-    assert list(validators.parse_silabs_gbl(image + b"\x00" * 10)) == parsed_image
-
-    with pytest.raises(ValidationError):
-        list(validators.parse_silabs_gbl(image + b"\x00\x01\x00"))
+    assert list(validators.parse_silabs_gbl(image + b"\xAB\xCD\xEF")) == parsed_image
 
     # Normal truncated images are detected
     with pytest.raises(ValidationError):
