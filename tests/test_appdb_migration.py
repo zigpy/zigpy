@@ -28,7 +28,7 @@ def test_db_v3(tmpdir):
 
 
 @pytest.fixture
-async def test_db_v4_downgraded_to_v3(test_db_v3):
+async def test_db_v4_downgraded_to_v3(test_db_v3, loop):
     """V4 database forcibly downgraded to v3."""
 
     app = await make_app(test_db_v3)
