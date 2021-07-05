@@ -674,6 +674,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         # Version 4 introduced migrations and expanded tables
         if db_version < 4:
             await self.execute("BEGIN TRANSACTION")
+            await self.execute("DROP TABLE IF EXISTS node_descriptors_v4")
+            await self.execute("DROP TABLE IF EXISTS neighbors_v4")
+            await self._create_table_node_descriptors()
+            await self._create_table_neighbors()
             await self.execute("PRAGMA user_version = 4")
 
             async with self.execute("SELECT * FROM node_descriptors") as cur:
