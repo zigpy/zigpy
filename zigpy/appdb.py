@@ -471,7 +471,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute("PRAGMA user_version") as cursor:
             (db_version,) = await cursor.fetchone()
 
-        LOGGER.debug("Database user_version: %s", db_version)
+        LOGGER.debug("Database user_version: v%s", db_version)
 
         async with self.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
@@ -489,7 +489,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             default=None,
         )
 
-        LOGGER.debug("Tables version: %s", tables_version)
+        LOGGER.debug("Tables version: %s", db_tables)
 
         return db_version, tables_version
 
