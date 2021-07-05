@@ -27,6 +27,29 @@ def test_db_v3(tmpdir):
     yield db_path
 
 
+@pytest.fixture
+async def test_db_v4_downgraded_to_v3(test_db_v3):
+    """V4 database forcibly downgraded to v3."""
+
+    app = await make_app(test_db_v3)
+    await app.pre_shutdown()
+
+    with sqlite3.connect(test_db_v3) as conn:
+        # new neighbor
+        conn.execute(
+            """INSERT INTO neighbors VALUES(
+                   'ec:1b:bd:ff:fe:54:4f:40',
+                   '81:b1:12:dc:9f:bd:f4:b6',
+                   '00:0d:6f:ff:fe:a6:11:7b',
+                   48462,
+                   37,2,15,132)
+            """
+        )
+        conn.execute("PRAGMA user_version=3")
+    conn.close()
+    yield test_db_v3
+
+
 @pytest.mark.parametrize("open_twice", [False, True])
 async def test_migration_3_to_4(open_twice, test_db_v3):
     with sqlite3.connect(test_db_v3) as conn:
@@ -132,3 +155,30 @@ async def test_migration_missing_neighbors_v3(test_db_v3):
         cur = conn.cursor()
         cur.execute("PRAGMA user_version")
         assert cur.fetchone() == (4,)
+
+
+async def test_remigrate_forcibly_downgraded_v4(test_db_v4_downgraded_to_v3):
+    """Test V4 re-migration which was forcibly downgraded to v3."""
+
+    with sqlite3.connect(test_db_v4_downgraded_to_v3) as conn:
+        cur = conn.cursor()
+
+        neighbors_v3 = list(cur.execute("SELECT * FROM neighbors"))
+        assert len(neighbors_v3) == 3
+        neighbors_v4 = list(cur.execute("SELECT * FROM neighbors_v4"))
+        assert len(neighbors_v4) == 2
+
+        (ver,) = cur.execute("PRAGMA user_version").fetchone()
+        assert ver == 3
+
+    app = await make_app(test_db_v4_downgraded_to_v3)
+    await app.pre_shutdown()
+
+    with sqlite3.connect(test_db_v4_downgraded_to_v3) as conn:
+        cur = conn.cursor()
+
+        neighbors_v4 = list(cur.execute("SELECT * FROM neighbors_v4"))
+        assert len(neighbors_v4) == 3
+
+        (ver,) = cur.execute("PRAGMA user_version").fetchone()
+        assert ver == 4
