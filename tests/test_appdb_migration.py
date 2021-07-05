@@ -8,18 +8,15 @@ import zigpy.appdb
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
-from tests.async_mock import AsyncMock, patch
-from tests.test_appdb import auto_kill_aiosqlite, make_app, make_ieee  # noqa: F401
+from tests.async_mock import patch
+from tests.test_appdb import auto_kill_aiosqlite, make_app  # noqa: F401
 
 
 @pytest.fixture
 def test_db(tmpdir):
-    def inner(filename, *, create=False):
+    def inner(filename):
         databases = pathlib.Path(__file__).parent / "databases"
-        db_path = pathlib.Path(tmpdir / filename).with_suffix(".db")
-
-        if create:
-            return str(db_path)
+        db_path = pathlib.Path(tmpdir / filename)
 
         if filename.endswith(".db"):
             db_path.write_bytes((databases / filename).read_bytes())
@@ -36,27 +33,6 @@ def test_db(tmpdir):
         return str(db_path)
 
     return inner
-
-
-async def get_db_versions(database_file):
-    with patch("zigpy.appdb.PersistingListener.initialize_tables", new=AsyncMock()):
-        listener = await zigpy.appdb.PersistingListener.new(database_file, app=None)
-
-        try:
-            return await listener._get_versions()
-        finally:
-            await listener.shutdown()
-
-
-def dump_db(path):
-    with sqlite3.connect(path) as conn:
-        cur = conn.cursor()
-        cur.execute("PRAGMA user_version")
-        (user_version,) = cur.fetchone()
-
-        sql = "\n".join(conn.iterdump())
-
-    return user_version, sql
 
 
 @pytest.mark.parametrize("open_twice", [False, True])
@@ -185,10 +161,10 @@ async def test_migration_missing_neighbors_v3(test_db):
     await app.pre_shutdown()
 
     # Version was upgraded
-    assert (await get_db_versions(test_db_v3)) == (
-        zigpy.appdb.DB_VERSION,
-        zigpy.appdb.DB_VERSION,
-    )
+    with sqlite3.connect(test_db_v3) as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA user_version")
+        assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
 
 
 @pytest.mark.parametrize("force_version", [None, 3, 4, 9999])
@@ -223,15 +199,13 @@ async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
         == num_ep_before_migration - deleted_eps
     )
 
-    # Version was upgraded
-    user_version, tables_version = await get_db_versions(test_db_bad_attrs)
-    assert user_version >= zigpy.appdb.DB_VERSION
-    assert tables_version >= zigpy.appdb.DB_VERSION
+    # Version was upgraded (and then downgraded)
+    with sqlite3.connect(test_db_bad_attrs) as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA user_version")
+        assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
 
-    # Then maybe downgraded
-    if force_version is not None:
-        with sqlite3.connect(test_db_bad_attrs) as conn:
-            cur = conn.cursor()
+        if force_version is not None:
             cur.execute(f"PRAGMA user_version={force_version}")
 
     app2 = await make_app(test_db_bad_attrs)
@@ -244,12 +218,12 @@ async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
         == num_ep_before_migration - deleted_eps
     )
 
-    # Ensure the final database schema version number does not decrease
-    user_version, tables_version = await get_db_versions(test_db_bad_attrs)
-    expected_version = max(zigpy.appdb.DB_VERSION, force_version or 0)
+    with sqlite3.connect(test_db_bad_attrs) as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA user_version")
 
-    assert user_version == expected_version
-    assert tables_version >= zigpy.appdb.DB_VERSION
+        # Ensure the final database schema version number does not decrease
+        assert cur.fetchone()[0] == max(zigpy.appdb.DB_VERSION, force_version or 0)
 
 
 async def test_migration_missing_node_descriptor(test_db, caplog):
@@ -285,6 +259,17 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
         )
 
         assert not cur.fetchall()
+
+
+def dump_db(path):
+    with sqlite3.connect(path) as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA user_version")
+        (user_version,) = cur.fetchone()
+
+        sql = "\n".join(conn.iterdump())
+
+    return user_version, sql
 
 
 @pytest.mark.parametrize(
@@ -326,40 +311,4 @@ async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
     assert sql_seen
 
     after = dump_db(test_db_bad_attrs)
-    assert before == after
-
-
-async def test_old_downgrade_no_table_deletion(test_db):
-    db = test_db("test.db", create=True)
-
-    assert (await get_db_versions(db)) == (None, None)
-
-    # Make a database with a single device
-    app = await make_app(db)
-    ieee = make_ieee()
-    app.handle_join(99, ieee, 0)
-    dev = app.get_device(ieee=ieee)
-    dev.node_desc = zdo_t.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
-    app.device_initialized(dev)
-    await app.pre_shutdown()
-
-    # Ensure the database isn't empty
-    app = await make_app(db)
-    dev = app.get_device(ieee=ieee)
-    assert dev.node_desc is not None
-    await app.pre_shutdown()
-
-    before = dump_db(db)
-    assert 'INSERT INTO "devices' in before[1]
-
-    # Force downgrade to a very old version of zigpy that overwrote `user_version`
-    with sqlite3.connect(db) as conn:
-        cur = conn.cursor()
-        cur.execute("PRAGMA user_version=3")
-
-    # Starting up zigpy and "migrating" should not lose data
-    app = await make_app(db)
-    await app.pre_shutdown()
-
-    after = dump_db(db)
     assert before == after
