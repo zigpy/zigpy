@@ -480,3 +480,27 @@ def test_endpoint_manufacturer_id(ep):
     """Test manufacturer id."""
     ep.device.manufacturer_id = sentinel.manufacturer_id
     assert ep.manufacturer_id is sentinel.manufacturer_id
+
+
+def test_endpoint_repr(ep):
+    ep.status = endpoint.Status.ZDO_INIT
+
+    # All standard
+    ep.add_input_cluster(0x0001)
+    ep.add_input_cluster(0x0002)
+
+    ep.add_output_cluster(0x0006)
+    ep.add_output_cluster(0x0008)
+
+    # Spec-violating but still happens (https://github.com/zigpy/zigpy/issues/758)
+    ep.add_input_cluster(0xEF00)
+
+    assert "ZDO_INIT" in repr(ep)
+
+    assert "power:0x0001" in repr(ep)
+    assert "device_temperature:0x0002" in repr(ep)
+
+    assert "on_off:0x0006" in repr(ep)
+    assert "level:0x0008" in repr(ep)
+
+    assert "0xEF00" in repr(ep)

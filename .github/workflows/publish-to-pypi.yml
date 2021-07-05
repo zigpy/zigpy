@@ -1,8 +1,8 @@
 name: Publish distributions to PyPI and TestPyPI
 on:
-  push:
-    tags:
-      - "*"
+  release:
+    types:
+      - released
 
 jobs:
   build-and-publish:

@@ -62,6 +62,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     _client_commands_idx: Dict[str, int] = {}
     attridx: Dict[str, int]
     attributes: Dict[int, Tuple[str, Callable]] = {}
+    ep_attribute: str = None
     client_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
     server_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
 

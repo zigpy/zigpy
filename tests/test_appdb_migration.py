@@ -312,3 +312,50 @@ async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
 
     after = dump_db(test_db_bad_attrs)
     assert before == after
+
+
+async def test_remigrate_forcibly_downgraded_v4(test_db):
+    """Test V4 re-migration which was forcibly downgraded to v3."""
+
+    test_db_v4_downgraded_to_v3 = test_db("simple_v3.sql")
+
+    # Migrate it to the latest version
+    app = await make_app(test_db_v4_downgraded_to_v3)
+    await app.pre_shutdown()
+
+    # Downgrade it back to v3
+    with sqlite3.connect(test_db_v4_downgraded_to_v3) as conn:
+        # new neighbor
+        conn.execute(
+            """INSERT INTO neighbors VALUES(
+                   'ec:1b:bd:ff:fe:54:4f:40',
+                   '81:b1:12:dc:9f:bd:f4:b6',
+                   '00:0d:6f:ff:fe:a6:11:7b',
+                   48462,
+                   37,2,15,132)
+            """
+        )
+        conn.execute("PRAGMA user_version=3")
+
+    with sqlite3.connect(test_db_v4_downgraded_to_v3) as conn:
+        cur = conn.cursor()
+
+        neighbors_v3 = list(cur.execute("SELECT * FROM neighbors"))
+        assert len(neighbors_v3) == 3
+        neighbors_v4 = list(cur.execute("SELECT * FROM neighbors_v4"))
+        assert len(neighbors_v4) == 2
+
+        (ver,) = cur.execute("PRAGMA user_version").fetchone()
+        assert ver == 3
+
+    app = await make_app(test_db_v4_downgraded_to_v3)
+    await app.pre_shutdown()
+
+    with sqlite3.connect(test_db_v4_downgraded_to_v3) as conn:
+        cur = conn.cursor()
+
+        neighbors_v4 = list(cur.execute("SELECT * FROM neighbors_v4"))
+        assert len(neighbors_v4) == 3
+
+        (ver,) = cur.execute("PRAGMA user_version").fetchone()
+        assert ver == zigpy.appdb.DB_VERSION
