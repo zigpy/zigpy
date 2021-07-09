@@ -32,7 +32,8 @@ def app():
             pass
 
         async def startup(self, auto_form=False):
-            pass
+            self._ieee = t.EUI64.convert("aa:de:de:be:ef:11:22:11")
+            self._nwk = t.NWK(0x0000)
 
         async def request(
             self,
@@ -676,3 +677,15 @@ async def test_device_join_rejoin(is_init_mock, group_scan_mock, init_mock, app,
     app.listener_event.assert_called_once_with("device_joined", ANY)
     group_scan_mock.assert_not_called()
     init_mock.assert_called_once()
+
+
+async def test_get_device(app):
+    """Test get_device."""
+
+    await app.startup()
+
+    app.add_device(t.EUI64.convert("11:11:11:11:22:22:22:22"), 0x0000)
+    dev_2 = app.add_device(app.ieee, 0x0000)
+    app.add_device(t.EUI64.convert("11:11:11:11:22:22:22:33"), 0x0000)
+
+    assert app.get_device(nwk=0x0000) is dev_2

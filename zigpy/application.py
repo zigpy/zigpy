@@ -443,6 +443,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if ieee is not None:
             return self.devices[ieee]
 
+        if nwk == self.nwk:
+            return self.devices[self.ieee]
+
         for dev in self.devices.values():
             # TODO: Make this not terrible
             if dev.nwk == nwk:
