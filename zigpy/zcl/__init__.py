@@ -79,7 +79,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     _server_commands_idx: dict[str, int] = {}
     _client_commands_idx: dict[str, int] = {}
 
-    attributes_by_name: dict[str, int] = {}
+    attributes_by_name: dict[str, foundation.ZCLAttributeDef] = {}
     commands_by_name: dict[str, foundation.ZCLCommandDef] = {}
 
     def __init_subclass__(cls):
@@ -541,30 +541,22 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         reportable_change: int = 1,
         direction: int = 0x00,
     ) -> foundation.ConfigureReportingResponseRecord:
-        if isinstance(attribute, str):
-            if attribute in self.attributes_by_name:
-                attrid = self.attributes_by_name[attribute].id
+        try:
+            if isinstance(attribute, str):
+                attr = self.attributes_by_name[attribute]
             else:
-                attrid = None
-        else:
-            attrid = attribute
-        if attrid is None or attrid not in self.attributes:
-            raise ValueError(f"Unknown {attribute} name of {self.ep_attribute} cluster")
+                attr = self.attributes[attribute]
+        except KeyError:
+            raise ValueError(f"Unknown attribute {attribute!r} of {self} cluster")
 
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = direction
-        cfg.attrid = attrid
-
-        if attrid in self.attributes:
-            attr_type = self.attributes[attrid].type
-        else:
-            attr_type = foundation.Unknown
-
-        cfg.datatype = foundation.DATA_TYPES.pytype_to_datatype_id(attr_type)
-
+        cfg.attrid = attr.id
+        cfg.datatype = foundation.DATA_TYPES.pytype_to_datatype_id(attr.type)
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change
+
         return cfg
 
     def configure_reporting(
