@@ -182,6 +182,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         return self.attributes_by_name
 
+    def find_attribute(self, name_or_id: int | str) -> foundation.ZCLAttributeDef:
+        if isinstance(name_or_id, str):
+            return self.attributes_by_name[name_or_id]
+        elif isinstance(name_or_id, int):
+            return self.attributes[name_or_id]
+        else:
+            raise ValueError(
+                f"Attribute must be either a string or an integer,"
+                f" not {name_or_id!r} ({type(name_or_id)!r}"
+            )
+
     @classmethod
     def from_id(
         cls, endpoint: EndpointType, cluster_id: int, is_server: bool = True
@@ -394,11 +405,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         success, failure = {}, {}
         attribute_ids = []
         orig_attributes = {}
+
         for attribute in attributes:
             if isinstance(attribute, str):
                 attrid = self.attributes_by_name[attribute].id
             else:
+                # Allow reading attributes that aren't defined
                 attrid = attribute
+
             attribute_ids.append(attrid)
             orig_attributes[attrid] = attribute
 
@@ -473,26 +487,24 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     ) -> list[foundation.Attribute]:
         args = []
         for attrid, value in attributes.items():
-            if isinstance(attrid, str):
-                attrid = self.attributes_by_name[attrid].id
-            if attrid not in self.attributes:
+            try:
+                attr_def = self.find_attribute(attrid)
+            except KeyError:
                 self.error("%d is not a valid attribute id", attrid)
                 continue
 
-            attr = foundation.Attribute(attrid, foundation.TypeValue())
-
-            python_type = self.attributes[attrid].type
-            attr.value.type = foundation.DATA_TYPES.pytype_to_datatype_id(python_type)
+            attr = foundation.Attribute(attr_def.id, foundation.TypeValue())
+            attr.value.type = foundation.DATA_TYPES.pytype_to_datatype_id(attr_def.type)
 
             try:
-                attr.value.value = python_type(value)
+                attr.value.value = attr_def.type(value)
             except ValueError as e:
                 self.error(
                     "Failed to convert attribute 0x%04X from %s (%s) to type %s: %s",
                     attrid,
                     value,
                     type(value),
-                    python_type,
+                    attr_def.type,
                     e,
                 )
             else:
@@ -542,17 +554,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         direction: int = 0x00,
     ) -> foundation.ConfigureReportingResponseRecord:
         try:
-            if isinstance(attribute, str):
-                attr = self.attributes_by_name[attribute]
-            else:
-                attr = self.attributes[attribute]
+            attr_def = self.find_attribute(attribute)
         except KeyError:
             raise ValueError(f"Unknown attribute {attribute!r} of {self} cluster")
 
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = direction
-        cfg.attrid = attr.id
-        cfg.datatype = foundation.DATA_TYPES.pytype_to_datatype_id(attr.type)
+        cfg.attrid = attr_def.id
+        cfg.datatype = foundation.DATA_TYPES.pytype_to_datatype_id(attr_def.type)
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change
@@ -685,24 +694,16 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def get(self, key: Union[int, str], default: Optional[Any] = None) -> Any:
         """Get cached attribute."""
-        if isinstance(key, int):
-            return self._attr_cache.get(key, default)
-        elif isinstance(key, str):
-            try:
-                attr_id = self.attributes_by_name[key].id
-            except KeyError:
-                return default
-            return self._attr_cache.get(attr_id, default)
+        try:
+            attr_def = self.find_attribute(key)
+        except KeyError:
+            return default
 
-        raise ValueError("attr_name or attr_id are accepted only")
+        return self._attr_cache.get(attr_def.id, default)
 
     def __getitem__(self, key: Union[int, str]) -> Any:
         """Return cached value of the attr."""
-        if isinstance(key, int):
-            return self._attr_cache[key]
-        elif isinstance(key, str):
-            return self._attr_cache[self.attributes_by_name[key].id]
-        raise ValueError("attr_name or attr_id are accepted only")
+        return self._attr_cache[self.find_attribute(key).id]
 
     def __setitem__(self, key: Union[int, str], value: Any) -> None:
         """Set cached value through attribute write."""
