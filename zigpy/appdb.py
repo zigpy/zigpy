@@ -121,9 +121,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def enqueue(self, cb_name: str, *args) -> None:
         """Enqueue an async callback handler action."""
         if not self.running:
-            LOGGER.warning(
-                "Discarding %s event",
-            )
+            LOGGER.warning("Discarding %s event", cb_name)
             return
         self._callback_handlers.put_nowait((cb_name, args))
 
@@ -131,7 +129,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         return self._db.execute(*args, **kwargs)
 
     def device_joined(self, device: zigpy.typing.DeviceType) -> None:
-        pass
+        self.enqueue("_update_device_nwk", device.ieee, device.nwk)
+
+    async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
+        await self.execute("UPDATE devices SET nwk=? WHERE ieee=?", (nwk, ieee))
+        await self._db.commit()
 
     def raw_device_initialized(self, device: zigpy.typing.DeviceType) -> None:
         self.enqueue("_save_device", device)
@@ -160,7 +162,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def attribute_updated(
         self, cluster: zigpy.typing.ClusterType, attrid: int, value: Any
     ) -> None:
-        if cluster.endpoint.device.status != zigpy.device.Status.ENDPOINTS_INIT:
+        if not cluster.endpoint.device.is_initialized:
             return
 
         self.enqueue(
@@ -391,21 +393,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
-        if device.status != zigpy.device.Status.ENDPOINTS_INIT:
-            LOGGER.warning(
-                "Not saving uninitialized %s/%s device: %s",
-                device.ieee,
-                device.nwk,
-                device.status,
-            )
-            return
-        if not device.node_desc.is_valid:
-            LOGGER.debug(
-                "[0x%04x]: does not have a valid node descriptor, not saving in appdb",
-                device.nwk,
-            )
-            return
-
         try:
             q = "INSERT INTO devices (ieee, nwk, status) VALUES (?, ?, ?)"
             await self.execute(q, (device.ieee, device.nwk, device.status))
@@ -414,16 +401,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             q = "UPDATE devices SET nwk=?, status=? WHERE ieee=?"
             await self.execute(q, (device.nwk, device.status, device.ieee))
 
-        await self._save_node_descriptor(device)
+        if device.has_node_descriptor:
+            await self._save_node_descriptor(device)
+
         if isinstance(device, zigpy.quirks.CustomDevice):
             await self._db.commit()
             return
 
         await self._save_endpoints(device)
-        for epid, ep in device.endpoints.items():
-            if epid == 0:
-                # ZDO
-                continue
+        for ep in device.non_zdo_endpoints:
             await self._save_input_clusters(ep)
             await self._save_attribute_cache(ep)
             await self._save_output_clusters(ep)
@@ -432,9 +418,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_endpoints(self, device: zigpy.typing.DeviceType) -> None:
         q = "INSERT OR REPLACE INTO endpoints VALUES (?, ?, ?, ?, ?)"
         endpoints = []
-        for epid, ep in device.endpoints.items():
-            if epid == 0:
-                continue  # Skip zdo
+        for ep in device.non_zdo_endpoints:
             device_type = getattr(ep, "device_type", None)
             eprow = (
                 device.ieee,
@@ -495,7 +479,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     async def load(self) -> None:
-        LOGGER.debug("Loading application state from %s")
+        LOGGER.debug("Loading application state")
         await self._load_devices()
         await self._load_node_descriptors()
         await self._load_endpoints()
@@ -512,7 +496,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
-        await self._cleanup()
         await self._finish_loading()
 
     async def _load_attributes(self, filter: str = None) -> None:
@@ -522,7 +505,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             query = "SELECT * FROM attributes"
         async with self.execute(query) as cursor:
             async for (ieee, endpoint_id, cluster, attrid, value) in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid attributes row: %r",
+                        (ieee, endpoint_id, cluster, attrid, value),
+                    )
+                    continue
+
                 if endpoint_id in dev.endpoints:
                     ep = dev.endpoints[endpoint_id]
                     if cluster in ep.in_clusters:
@@ -558,14 +549,30 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_node_descriptors(self) -> None:
         async with self.execute("SELECT * FROM node_descriptors_v4") as cursor:
             async for (ieee, *fields) in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid node_descriptors_v4 row: %r",
+                        (ieee,) + tuple(fields),
+                    )
+                    continue
+
                 dev.node_desc = zdo_t.NodeDescriptor(*fields)
                 assert dev.node_desc.is_valid
 
     async def _load_endpoints(self) -> None:
         async with self.execute("SELECT * FROM endpoints") as cursor:
             async for (ieee, epid, profile_id, device_type, status) in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid endpoints row: %r",
+                        (ieee, epid, profile_id, device_type, status),
+                    )
+                    continue
+
                 ep = dev.add_endpoint(epid)
                 ep.profile_id = profile_id
                 ep.device_type = device_type
@@ -578,13 +585,29 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_clusters(self) -> None:
         async with self.execute("SELECT * FROM clusters") as cursor:
             async for (ieee, endpoint_id, cluster) in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid clusters row: %r",
+                        (ieee, endpoint_id, cluster),
+                    )
+                    continue
+
                 ep = dev.endpoints[endpoint_id]
                 ep.add_input_cluster(cluster)
 
         async with self.execute("SELECT * FROM output_clusters") as cursor:
             async for (ieee, endpoint_id, cluster) in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid output_clusters row: %r",
+                        (ieee, endpoint_id, cluster),
+                    )
+                    continue
+
                 ep = dev.endpoints[endpoint_id]
                 ep.add_output_cluster(cluster)
 
@@ -596,22 +619,40 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_group_members(self) -> None:
         async with self.execute("SELECT * FROM group_members") as cursor:
             async for (group_id, ieee, ep_id) in cursor:
-                group = self._application.groups[group_id]
-                group.add_member(
-                    self._application.get_device(ieee).endpoints[ep_id],
-                    suppress_event=True,
-                )
+                try:
+                    group = self._application.groups[group_id]
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid group_members row: %r",
+                        (group_id, ieee, ep_id),
+                    )
+                    continue
+
+                group.add_member(dev.endpoints[ep_id], suppress_event=True)
 
     async def _load_relays(self) -> None:
         async with self.execute("SELECT * FROM relays") as cursor:
             async for (ieee, value) in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning("Skipping invalid relays row: %r", (ieee, value))
+                    continue
+
                 dev.relays = t.Relays.deserialize(value)[0]
 
     async def _load_neighbors(self) -> None:
         async with self.execute("SELECT * FROM neighbors_v4") as cursor:
             async for ieee, *fields in cursor:
-                dev = self._application.get_device(ieee)
+                try:
+                    dev = self._application.get_device(ieee)
+                except KeyError:
+                    LOGGER.warning(
+                        "Skipping invalid neighbors_v4 row: %r", (ieee,) + tuple(fields)
+                    )
+                    continue
+
                 neighbor = zdo_t.Neighbor(*fields)
                 assert neighbor.is_valid
                 dev.neighbors.add_neighbor(neighbor)
@@ -620,27 +661,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
             dev.neighbors.add_context_listener(self)
-
-    async def _cleanup(self) -> None:
-        """Validate and clean-up devices."""
-
-        # remove devices without any endpoints
-        devices_to_remove = []
-        for device in self._application.devices.values():
-            if device.nwk == 0x0000:
-                continue
-            if {ep_id for ep_id in device.endpoints if ep_id != 0x00}:
-                continue
-            # if device has no endpoints but ZDO, then remove this device
-            devices_to_remove.append(device)
-
-        if not devices_to_remove:
-            return
-
-        # remove devices from ControllerApplication
-        for device in devices_to_remove:
-            self._application.devices.pop(device.ieee)
-            await self._remove_device(device)
 
     async def _run_migrations(self):
         async with self._db.execute("PRAGMA user_version") as cursor:
@@ -654,6 +674,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         # Version 4 introduced migrations and expanded tables
         if db_version < 4:
             await self.execute("BEGIN TRANSACTION")
+            await self.execute("DROP TABLE IF EXISTS node_descriptors_v4")
+            await self.execute("DROP TABLE IF EXISTS neighbors_v4")
+            await self._create_table_node_descriptors()
+            await self._create_table_neighbors()
             await self.execute("PRAGMA user_version = 4")
 
             async with self.execute("SELECT * FROM node_descriptors") as cur:

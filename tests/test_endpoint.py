@@ -66,7 +66,10 @@ async def test_initialize_fail(ep):
         return [1, None, None]
 
     ep._device.zdo.Simple_Desc_req = mockrequest
-    await ep.initialize()
+
+    # The request succeeds but the response is invalid
+    with pytest.raises(zigpy.exceptions.InvalidResponse):
+        await ep.initialize()
 
     assert ep.status == endpoint.Status.NEW
 
@@ -265,6 +268,15 @@ async def test_init_endpoint_info_none(ep):
     assert mod is None
 
 
+async def test_get_model_info_missing_basic_cluster(ep):
+    assert zcl.clusters.general.Basic.cluster_id not in ep.in_clusters
+
+    model, manuf = await ep.get_model_info()
+
+    assert model is None
+    assert manuf is None
+
+
 async def test_init_endpoint_info_null_padded_manuf(ep):
     manufacturer = b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07"
     model = b"Mock Model"
@@ -295,19 +307,17 @@ async def test_init_endpoint_info_null_padded_manuf_model(ep):
 async def test_get_model_info_delivery_error(ep):
     manufacturer = b"Mock Manufacturer"
     model = b"Mock Model"
-    mod, man = await _get_model_info(ep, manufacturer, model, fail=True)
 
-    assert man is None
-    assert mod is None
+    with pytest.raises(zigpy.exceptions.ZigbeeException):
+        await _get_model_info(ep, manufacturer, model, fail=True)
 
 
 async def test_get_model_info_timeout(ep):
     manufacturer = b"Mock Manufacturer"
     model = b"Mock Model"
-    mod, man = await _get_model_info(ep, manufacturer, model, fail=True, timeout=True)
 
-    assert man is None
-    assert mod is None
+    with pytest.raises(asyncio.TimeoutError):
+        await _get_model_info(ep, manufacturer, model, fail=True, timeout=True)
 
 
 def _group_add_mock(ep, status=ZCLStatus.SUCCESS, no_groups_cluster=False):
@@ -474,3 +484,27 @@ def test_endpoint_manufacturer_id(ep):
     """Test manufacturer id."""
     ep.device.manufacturer_id = sentinel.manufacturer_id
     assert ep.manufacturer_id is sentinel.manufacturer_id
+
+
+def test_endpoint_repr(ep):
+    ep.status = endpoint.Status.ZDO_INIT
+
+    # All standard
+    ep.add_input_cluster(0x0001)
+    ep.add_input_cluster(0x0002)
+
+    ep.add_output_cluster(0x0006)
+    ep.add_output_cluster(0x0008)
+
+    # Spec-violating but still happens (https://github.com/zigpy/zigpy/issues/758)
+    ep.add_input_cluster(0xEF00)
+
+    assert "ZDO_INIT" in repr(ep)
+
+    assert "power:0x0001" in repr(ep)
+    assert "device_temperature:0x0002" in repr(ep)
+
+    assert "on_off:0x0006" in repr(ep)
+    assert "level:0x0008" in repr(ep)
+
+    assert "0xEF00" in repr(ep)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import enum
 import logging
@@ -33,55 +35,53 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __init__(self, device: DeviceType, endpoint_id: int):
         self._device = device
         self._endpoint_id = endpoint_id
+        self._listeners = {}
+
+        self.status = Status.NEW
+        self.profile_id = None
         self.device_type = None
         self.in_clusters = {}
         self.out_clusters = {}
         self._cluster_attr = {}
-        self.status = Status.NEW
-        self._listeners = {}
-        self._manufacturer = None
+
         self._member_of = {}
+
+        self._manufacturer = None
         self._model = None
-        self.profile_id = None
 
     async def initialize(self):
-        if self.status == Status.ZDO_INIT:
-            return
-
         self.info("Discovering endpoint information")
-        try:
-            sdr = await self._device.zdo.Simple_Desc_req(
+
+        if self.profile_id is not None or self.status == Status.ENDPOINT_INACTIVE:
+            self.info("Endpoint descriptor already queried")
+        else:
+            status, _, sd = await self._device.zdo.Simple_Desc_req(
                 self._device.nwk, self._endpoint_id, tries=3, delay=2
             )
-            if sdr[0] == zdo_status.NOT_ACTIVE:
+
+            if status == zdo_status.NOT_ACTIVE:
                 # These endpoints are essentially junk but this lets the device join
                 self.status = Status.ENDPOINT_INACTIVE
-                return
-            elif sdr[0] != zdo_status.SUCCESS:
-                raise Exception("Failed to retrieve service descriptor: %s", sdr)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            self.warning(
-                "Failed to discover endpoint_id %s", self.endpoint_id, exc_info=True
-            )
-            return
+                return None, None
+            elif status != zdo_status.SUCCESS:
+                raise zigpy.exceptions.InvalidResponse(
+                    "Failed to retrieve service descriptor: %s", status
+                )
 
-        self.info("Discovered endpoint information: %s", sdr[2])
-        sd = sdr[2]
-        self.profile_id = sd.profile
-
-        if self.profile_id == zigpy.profiles.zha.PROFILE_ID:
-            self.device_type = zigpy.profiles.zha.DeviceType(sd.device_type)
-        elif self.profile_id == zigpy.profiles.zll.PROFILE_ID:
-            self.device_type = zigpy.profiles.zll.DeviceType(sd.device_type)
-        else:
+            self.info("Discovered endpoint information: %s", sd)
+            self.profile_id = sd.profile
             self.device_type = sd.device_type
 
-        for cluster in sd.input_clusters:
-            self.add_input_cluster(cluster)
-        for cluster in sd.output_clusters:
-            self.add_output_cluster(cluster)
+            if self.profile_id == zigpy.profiles.zha.PROFILE_ID:
+                self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
+            elif self.profile_id == zigpy.profiles.zll.PROFILE_ID:
+                self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
+
+            for cluster in sd.input_clusters:
+                self.add_input_cluster(cluster)
+
+            for cluster in sd.output_clusters:
+                self.add_output_cluster(cluster)
 
         self.status = Status.ZDO_INIT
 
@@ -166,32 +166,21 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         groups = {group for group in res[1]}
         self.device.application.groups.update_group_membership(self, groups)
 
-    async def get_model_info(self):
+    async def get_model_info(self) -> tuple[str | None, str | None]:
         if Basic.cluster_id not in self.in_clusters:
             return None, None
 
-        attributes = {"manufacturer": None, "model": None}
+        # Some devices can't handle multiple attributes in the same read request
+        for names in (["manufacturer", "model"], ["manufacturer"], ["model"]):
+            success, failure = await self.basic.read_attributes(names, allow_cache=True)
 
-        async def read(attribute_names):
-            """Read attributes and update extra_info convenience function."""
-            try:
-                result, _ = await self.basic.read_attributes(
-                    attribute_names, allow_cache=True
-                )
-                attributes.update(result)
-            except (zigpy.exceptions.ZigbeeException, asyncio.TimeoutError):
-                pass
+            if "model" in success:
+                self._model = success["model"]
 
-        await read(["manufacturer", "model"])
+            if "manufacturer" in success:
+                self._manufacturer = success["manufacturer"]
 
-        if attributes["manufacturer"] is None or attributes["model"] is None:
-            # Some devices fail at returning multiple results. Attempt separately.
-            await read(["manufacturer"])
-            await read(["model"])
-
-        self.debug("Manufacturer: %s", attributes["manufacturer"])
-        self.debug("Model: %s", attributes["model"])
-        return attributes["model"], attributes["manufacturer"]
+        return self._model, self._manufacturer
 
     def deserialize(self, cluster_id, data):
         """Deserialize data for ZCL"""
@@ -318,3 +307,18 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return self._cluster_attr[name]
         except KeyError:
             raise AttributeError
+
+    def __repr__(self) -> str:
+        def cluster_repr(clusters):
+            return ", ".join(
+                [f"{c.ep_attribute}:0x{c.cluster_id:04X}" for c in clusters]
+            )
+
+        return (
+            f"<{type(self).__name__}"
+            f" id={self.endpoint_id}"
+            f" in=[{cluster_repr(self.in_clusters.values())}]"
+            f" out=[{cluster_repr(self.out_clusters.values())}]"
+            f" status={self.status!r}"
+            f">"
+        )
