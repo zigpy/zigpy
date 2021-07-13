@@ -771,3 +771,46 @@ async def test_configure_reporting_multiple(cluster):
             cluster.endpoint.request.call_args_list[0][0][2]
             == cluster.endpoint.request.call_args_list[1][0][2]
         )
+
+
+def test_zcl_command_duplicate_name_prevention():
+    assert 0x1234 not in zcl.clusters.CLUSTERS_BY_ID
+
+    with pytest.raises(TypeError):
+
+        class TestCluster(zcl.Cluster):
+            cluster_id = 0x1234
+            ep_attribute = "test_cluster"
+            server_commands = {
+                0x00: foundation.ZCLCommandDef("command1", {}, False),
+                0x01: foundation.ZCLCommandDef("command1", {}, False),
+            }
+
+
+def test_zcl_attridx_deprecation(cluster):
+    with pytest.deprecated_call():
+        cluster.attridx
+
+    with pytest.deprecated_call():
+        assert cluster.attridx is cluster.attributes_by_name
+
+
+def test_zcl_response_type_tuple_like():
+    req = (
+        zcl.clusters.general.OnOff(None)
+        .commands_by_name["on_with_timed_off"]
+        .schema(
+            on_off_control=0,
+            on_time=1,
+            off_wait_time=2,
+        )
+    )
+
+    on_off_control, on_time, off_wait_time = req
+    assert req.on_off_control == on_off_control == req[0] == 0
+    assert req.on_time == on_time == req[1] == 1
+    assert req.off_wait_time == off_wait_time == req[2] == 2
+
+    assert req == (0, 1, 2)
+    assert req == req
+    assert req == req.replace()

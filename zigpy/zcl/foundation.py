@@ -3,7 +3,6 @@ from __future__ import annotations
 import dataclasses
 import keyword
 from typing import Optional, Tuple
-import warnings
 
 import zigpy.types as t
 
@@ -536,15 +535,6 @@ class ZCLCommandDef:
     id: t.uint8_t = None
     is_manufacturer_specific: bool = None
 
-    def __getitem__(self, key):
-        warnings.warn(
-            "ZCL command definitions are no longer tuples, use the appropriate"
-            " ZCLCommandDef attribute",
-            DeprecationWarning,
-        )
-
-        return (self.name, self.schema, self.is_reply)[key]
-
     def with_compiled_schema(self):
         """
         Return a copy of the ZCL command definition object with its dictionary command
@@ -633,14 +623,6 @@ class ZCLAttributeDef:
 
     def replace(self, **kwargs) -> ZCLAttributeDef:
         return dataclasses.replace(self, **kwargs)
-
-    def __getitem__(self, key):
-        warnings.warn(
-            "ZCL attribute definitions are no longer tuples, use the appropriate"
-            " ZCLAttributeDef attribute",
-            DeprecationWarning,
-        )
-        return (self.name, self.type)[key]
 
     def __repr__(self) -> str:
         return (

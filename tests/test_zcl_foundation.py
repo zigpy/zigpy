@@ -607,6 +607,8 @@ def test_schema():
         assert s.schema(**kwargs).serialize() == value
         assert s.schema.deserialize(value) == (s.schema(**kwargs), b"")
 
+    assert issubclass(s.schema, tuple)
+
 
 def test_zcl_attribute_definition():
     a = foundation.ZCLAttributeDef(

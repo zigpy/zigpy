@@ -123,14 +123,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 else:
                     command = command.replace(id=command_id)
 
-                commands[command.id] = command.with_compiled_schema()
-                index[command.name] = command.id
-
                 if command.name in cls.commands_by_name:
                     raise TypeError(
                         f"Command name {command} is not unique in {cls}: {cls.commands_by_name}"
                     )
 
+                index[command.name] = command.id
+
+                command = command.with_compiled_schema()
+                commands[command.id] = command
                 cls.commands_by_name[command.name] = command
 
         # Compile attributes
