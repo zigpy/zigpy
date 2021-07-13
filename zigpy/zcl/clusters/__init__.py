@@ -37,7 +37,11 @@ for cls in (
         obj = getattr(cls, name)
 
         # Object must be a concrete Cluster subclass
-        if not (inspect.isclass(obj) and issubclass(obj, Cluster) and obj.cluster_id):
+        if (
+            not inspect.isclass(obj)
+            or not issubclass(obj, Cluster)
+            or obj.cluster_id is None
+        ):
             continue
 
         assert CLUSTERS_BY_ID.get(obj.cluster_id, obj) is obj
