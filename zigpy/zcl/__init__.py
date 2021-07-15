@@ -364,9 +364,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
             for a in args.attribute_reports:
                 if a.attrid in self.attributes:
-                    values.append(f"{self.attributes[a.attrid].name}={a.value.value}")
+                    values.append(f"{self.attributes[a.attrid].name}={a.value.value!r}")
                 else:
-                    values.append(f"0x{a.attrid:04X}={a.value.value}")
+                    values.append(f"0x{a.attrid:04X}={a.value.value!r}")
 
             self.debug("Attribute report received: %s", ", ".join(values))
 
