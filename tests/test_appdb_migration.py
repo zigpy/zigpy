@@ -35,6 +35,17 @@ def test_db(tmpdir):
     return inner
 
 
+def dump_db(path):
+    with sqlite3.connect(path) as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA user_version")
+        (user_version,) = cur.fetchone()
+
+        sql = "\n".join(conn.iterdump())
+
+    return user_version, sql
+
+
 @pytest.mark.parametrize("open_twice", [False, True])
 async def test_migration_from_3_to_4(open_twice, test_db):
     test_db_v3 = test_db("simple_v3.sql")
@@ -261,17 +272,6 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
         assert not cur.fetchall()
 
 
-def dump_db(path):
-    with sqlite3.connect(path) as conn:
-        cur = conn.cursor()
-        cur.execute("PRAGMA user_version")
-        (user_version,) = cur.fetchone()
-
-        sql = "\n".join(conn.iterdump())
-
-    return user_version, sql
-
-
 @pytest.mark.parametrize(
     "fail_on_sql,fail_on_count",
     [
@@ -359,3 +359,46 @@ async def test_remigrate_forcibly_downgraded_v4(test_db):
 
         (ver,) = cur.execute("PRAGMA user_version").fetchone()
         assert ver == zigpy.appdb.DB_VERSION
+
+
+@pytest.mark.parametrize("with_bad_neighbor", [False, True])
+async def test_v4_to_v5_migration_bad_neighbors(test_db, with_bad_neighbor):
+    """V4 migration has no `neighbors_v4` foreign key and no `ON DELETE CASCADE`"""
+
+    test_db_v4 = test_db("simple_v3_to_v4.sql")
+
+    with sqlite3.connect(test_db_v4) as conn:
+        cur = conn.cursor()
+
+        if with_bad_neighbor:
+            # Row refers to an invalid device, left behind by a bad `DELETE`
+            cur.execute(
+                """
+                INSERT INTO neighbors_v4
+                VALUES (
+                    '11:aa:bb:cc:dd:ee:ff:00',
+                    '22:aa:bb:cc:dd:ee:ff:00',
+                    '33:aa:bb:cc:dd:ee:ff:00',
+                    12345,
+                    1,1,2,0,2,0,15,132
+                )
+            """
+            )
+
+        (num_v4_neighbors,) = cur.execute(
+            "SELECT count(*) FROM neighbors_v4"
+        ).fetchone()
+
+    app = await make_app(test_db_v4)
+    await app.pre_shutdown()
+
+    with sqlite3.connect(test_db_v4) as conn:
+        (num_new_neighbors,) = cur.execute(
+            f"SELECT count(*) FROM neighbors{zigpy.appdb.DB_V}"
+        ).fetchone()
+
+    # Only the invalid row was not migrated
+    if with_bad_neighbor:
+        assert num_new_neighbors == num_v4_neighbors - 1
+    else:
+        assert num_new_neighbors == num_v4_neighbors
