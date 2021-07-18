@@ -338,5 +338,5 @@ def test_device_manufacture_id_override(dev):
     dev.manufacturer_id_override = 2345
     assert dev.manufacturer_id == 2345
 
-    dev.node_desc = zdo_t.NodeDescriptor()
+    dev.node_desc = None
     assert dev.manufacturer_id == 2345
