@@ -381,14 +381,10 @@ def test_handle_message(app, ieee):
 
 
 @patch("zigpy.device.Device.is_initialized", new_callable=PropertyMock)
-@patch("zigpy.device.Device.has_node_descriptor", new_callable=PropertyMock)
 @patch("zigpy.quirks.handle_message_from_uninitialized_sender", new=MagicMock())
-async def test_handle_message_uninitialized_dev(
-    has_node_desc_mock, is_init_mock, app, ieee
-):
+async def test_handle_message_uninitialized_dev(is_init_mock, app, ieee):
     dev = app.add_device(ieee, 0x1234)
     dev.handle_message = MagicMock()
-    has_node_desc_mock.return_value = False
     is_init_mock.return_value = False
 
     assert not dev.initializing

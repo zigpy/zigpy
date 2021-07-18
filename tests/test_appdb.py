@@ -578,7 +578,7 @@ async def test_invalid_node_desc(tmpdir):
     app.handle_join(nwk_1, ieee_1, 0)
 
     dev_1 = app.get_device(ieee_1)
-    dev_1.node_desc = zdo_t.NodeDescriptor()
+    dev_1.node_desc = None
     ep = dev_1.add_endpoint(1)
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     app.device_initialized(dev_1)
