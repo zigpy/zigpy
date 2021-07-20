@@ -619,6 +619,9 @@ class ZCLAttributeDef:
     is_manufacturer_specific: bool = False
 
     def __post_init__(self):
+        if not isinstance(self.id, t.uint16_t):
+            object.__setattr__(self, "id", t.uint16_t(self.id))
+
         assert self.access in {None, "r", "w", "rw"}
 
     def replace(self, **kwargs) -> ZCLAttributeDef:
