@@ -12,7 +12,6 @@ from . import (
     protocol,
     security,
     smartenergy,
-    touchlink,
 )
 from .. import Cluster
 
@@ -31,7 +30,6 @@ for cls in (
     protocol,
     security,
     smartenergy,
-    touchlink,
 ):
     for name in dir(cls):
         obj = getattr(cls, name)
