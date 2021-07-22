@@ -269,7 +269,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             q = f"UPDATE devices{DB_V} SET nwk=?, status=? WHERE ieee=?"
             await self.execute(q, (device.nwk, device.status, device.ieee))
 
-        if device.has_node_descriptor:
+        if device.node_desc is not None:
             await self._save_node_descriptor(device)
 
         if isinstance(device, zigpy.quirks.CustomDevice):

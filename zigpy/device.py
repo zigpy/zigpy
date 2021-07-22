@@ -75,10 +75,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return [ep for epid, ep in self.endpoints.items() if epid != 0]
 
     @property
-    def has_node_descriptor(self) -> bool:
-        return self.node_desc is not None and self.node_desc.is_valid
-
-    @property
     def has_non_zdo_endpoints(self) -> bool:
         return bool(self.non_zdo_endpoints)
 
@@ -90,7 +86,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @property
     def is_initialized(self) -> bool:
-        return self.has_node_descriptor and self.all_endpoints_init
+        return self.node_desc is not None and self.all_endpoints_init
 
     def schedule_group_membership_scan(self) -> asyncio.Task:
         """Rescan device group's membership."""
@@ -174,7 +170,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         """
 
         # Some devices are improperly initialized and are missing a node descriptor
-        if not self.has_node_descriptor:
+        if self.node_desc is None:
             await self.get_node_descriptor()
 
         # Devices should have endpoints other than ZDO
@@ -262,7 +258,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         timeout=APS_REPLY_TIMEOUT,
         use_ieee=False,
     ):
-        if expect_reply and self.has_node_descriptor and self.node_desc.is_end_device:
+        if expect_reply and (self.node_desc is None or self.node_desc.is_end_device):
             self.debug("Extending timeout for 0x%02x request", sequence)
             timeout = APS_REPLY_TIMEOUT_EXTENDED
         with self._pending.new(sequence) as req:
@@ -400,13 +396,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def manufacturer_id(self) -> Optional[int]:
         """Return manufacturer id."""
-        if self.manufacturer_id_override is not None:
+        if self.manufacturer_id_override:
             return self.manufacturer_id_override
-
-        if self.has_node_descriptor:
+        elif self.node_desc is not None:
             return self.node_desc.manufacturer_code
-
-        return None
+        else:
+            return None
 
     @property
     def model(self):
