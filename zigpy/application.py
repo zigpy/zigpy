@@ -528,5 +528,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    async def probe(cls, device_config: dict[str, Any]) -> bool:
+    async def probe(
+        cls, device_config: dict[str, Any]
+    ) -> bool | dict[str, int | str | bool]:
         """API/Port probe method."""

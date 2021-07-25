@@ -263,6 +263,9 @@ class Struct:
 
         return type(self)(**d)
 
+    def copy(self) -> Struct:
+        return type(self)(**self.as_dict())
+
     def __eq__(self, other: "Struct") -> bool:
         if not isinstance(self, type(other)) and not isinstance(other, type(self)):
             return False
