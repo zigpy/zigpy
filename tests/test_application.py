@@ -631,7 +631,6 @@ async def test_startup_log_on_uninitialized_device(ieee, caplog):
     caplog.set_level(logging.WARNING)
 
     await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
-    assert len(caplog.records) == 1
     assert "Device is partially initialized" in caplog.text
 
 

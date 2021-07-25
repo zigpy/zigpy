@@ -64,6 +64,8 @@ class LogicalType(t.enum3):
 
 class _NodeDescriptorEnums:
     class MACCapabilityFlags(t.bitmap8):
+        NONE = 0
+
         AlternatePanCoordinator = 0b00000001
         FullFunctionDevice = 0b00000010
         MainsPowered = 0b00000100
@@ -77,6 +79,8 @@ class _NodeDescriptorEnums:
         Freq2400MHz = 0b01000
 
     class DescriptorCapability(t.bitmap8):
+        NONE = 0
+
         ExtendedActiveEndpointListAvailable = 0b00000001
         ExtendedSimpleDescriptorListAvailable = 0b00000010
 

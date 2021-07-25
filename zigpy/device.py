@@ -430,6 +430,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @relays.setter
     def relays(self, relays: Optional[Relays]) -> None:
+        if relays is None:
+            pass
+        elif not isinstance(relays, Relays):
+            relays = Relays(relays)
+
         self._relays = relays
         self.listener_event("device_relays_updated", relays)
 
