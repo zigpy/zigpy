@@ -421,11 +421,24 @@ async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribut
                     123,
                     456,
                     789,
-                    'endpoint, cluster, and attrid do not exist'
+                    'test'
                 )
             """
             )
 
+    def get_device(dev):
+        if dev.ieee == t.EUI64.convert("00:0d:6f:ff:fe:a6:11:7a"):
+            ep = dev.add_endpoint(123)
+            ep.add_input_cluster(456)
+
+        return dev
+
     # Migrate to v5 and then v6
-    app = await make_app(test_db_v3)
+    with patch("zigpy.quirks.get_device", get_device):
+        app = await make_app(test_db_v3)
+
+    if with_quirk_attribute:
+        dev = app.get_device(ieee=t.EUI64.convert("00:0d:6f:ff:fe:a6:11:7a"))
+        assert dev.endpoints[123].in_clusters[456]._attr_cache[789] == "test"
+
     await app.pre_shutdown()

@@ -367,6 +367,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(query) as cursor:
             async for (ieee, endpoint_id, cluster, attrid, value) in cursor:
                 dev = self._application.get_device(ieee)
+
+                # Some quirks create endpoints and clusters that do not exist
+                if endpoint_id not in dev.endpoints:
+                    continue
+
                 ep = dev.endpoints[endpoint_id]
 
                 if cluster not in ep.in_clusters:
@@ -563,7 +568,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         (dev_ieee,) + neighbor.as_tuple(),
                     )
 
-    async def _migrate_tables(self, table_map: dict[str, str], *, allow_errors=False):
+    async def _migrate_tables(
+        self, table_map: dict[str, str], *, errors: str = "raise"
+    ):
         """Copy rows from one set of tables into another."""
 
         # Insertion order matters for foreign key constraints but any rows that fail
@@ -578,12 +585,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                             f"INSERT INTO {new_table} VALUES ({placeholders})", row
                         )
                     except aiosqlite.IntegrityError as e:
-                        if not allow_errors:
+                        if errors == "raise":
                             raise
-
-                        LOGGER.warning(
-                            "Failed to migrate row %s%s: %s", old_table, row, e
-                        )
+                        elif errors == "warn":
+                            LOGGER.warning(
+                                "Failed to migrate row %s%s: %s", old_table, row, e
+                            )
+                        elif errors == "ignore":
+                            pass
+                        else:
+                            raise ValueError(
+                                f"Invalid value for `errors`: {errors}!r"
+                            )  # noqa
 
     async def _migrate_to_v5(self):
         """Schema v5 introduced global table version suffixes and removed stale rows"""
@@ -603,7 +616,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "neighbors_v4": "neighbors_v5",
                 "node_descriptors_v4": "node_descriptors_v5",
             },
-            allow_errors=True,
+            errors="warn",
         )
 
     async def _migrate_to_v6(self):
@@ -625,7 +638,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             }
         )
 
-        # See if we can migrate over rows skipped by the v5 migration
+        # See if we can migrate over any rows skipped by the v5 migration
         try:
             async with self.execute("SELECT count(*) FROM attributes") as cursor:
                 (num_attrs_v4,) = await cursor.fetchone()
@@ -635,13 +648,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute("SELECT count(*) FROM attributes_cache_v6") as cursor:
             (num_attrs_v6,) = await cursor.fetchone()
 
-        if num_attrs_v4 >= num_attrs_v6:
+        if num_attrs_v6 == num_attrs_v4:
             return
 
         LOGGER.warning(
-            "Migrating %d rows skipped by v5 migration."
-            " Ignore any previous warnings mentioning the `attributes` table",
-            num_attrs_v6 - num_attrs_v4,
+            "Migrating up to %d rows skipped by v5 migration",
+            num_attrs_v4 - num_attrs_v6,
         )
 
         # Pull in the skipped rows from v4 table
@@ -649,11 +661,5 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             {
                 "attributes": "attributes_cache_v6",
             },
-            allow_errors=True,
+            errors="ignore",
         )
-
-        async with self.execute("SELECT count(*) FROM attributes_cache_v6") as cursor:
-            (num_attrs_v6,) = await cursor.fetchone()
-
-        # Ensure they were all migrated
-        assert num_attrs_v4 == num_attrs_v6
