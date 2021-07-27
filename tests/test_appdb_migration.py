@@ -402,3 +402,30 @@ async def test_v4_to_v5_migration_bad_neighbors(test_db, with_bad_neighbor):
         assert num_new_neighbors == num_v4_neighbors - 1
     else:
         assert num_new_neighbors == num_v4_neighbors
+
+
+@pytest.mark.parametrize("with_quirk_attribute", [False, True])
+async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribute):
+    """V5's schema was too rigid and failed to migrate endpoints created by quirks"""
+
+    test_db_v3 = test_db("simple_v3.sql")
+
+    if with_quirk_attribute:
+        with sqlite3.connect(test_db_v3) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO attributes
+                VALUES (
+                    '00:0d:6f:ff:fe:a6:11:7a',
+                    123,
+                    456,
+                    789,
+                    'endpoint, cluster, and attrid do not exist'
+                )
+            """
+            )
+
+    # Migrate to v5 and then v6
+    app = await make_app(test_db_v3)
+    await app.pre_shutdown()

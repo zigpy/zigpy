@@ -22,7 +22,7 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 5
+DB_VERSION = 6
 DB_V = f"_v{DB_VERSION}"
 
 
@@ -264,7 +264,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         try:
             q = f"INSERT INTO devices{DB_V} (ieee, nwk, status) VALUES (?, ?, ?)"
             await self.execute(q, (device.ieee, device.nwk, device.status))
-        except sqlite3.IntegrityError:
+        except aiosqlite.IntegrityError:
             LOGGER.debug("Device %s already exists. Updating it.", device.ieee)
             q = f"UPDATE devices{DB_V} SET nwk=?, status=? WHERE ieee=?"
             await self.execute(q, (device.nwk, device.status, device.ieee))
@@ -501,6 +501,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             for migration, to_db_version in [
                 (self._migrate_to_v4, 4),
                 (self._migrate_to_v5, 5),
+                (self._migrate_to_v6, 6),
             ]:
                 if db_version >= to_db_version:
                     continue
@@ -562,26 +563,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         (dev_ieee,) + neighbor.as_tuple(),
                     )
 
-    async def _migrate_to_v5(self):
-        """Schema v5 introduced global table version suffixes and removed stale rows"""
-
-        # Copy the devices table first, it should have no conflicts
-        await self.execute("INSERT INTO devices_v5 SELECT * FROM devices")
+    async def _migrate_tables(self, table_map: dict[str, str], *, allow_errors=False):
+        """Copy rows from one set of tables into another."""
 
         # Insertion order matters for foreign key constraints but any rows that fail
         # to insert due to constraint violations can be discarded
-        for old_table, new_table in {
-            "endpoints": "endpoints_v5",
-            "clusters": "in_clusters_v5",
-            "output_clusters": "out_clusters_v5",
-            "groups": "groups_v5",
-            "group_members": "group_members_v5",
-            "relays": "relays_v5",
-            "attributes": "attributes_cache_v5",
-            # These were migrated in v4
-            "neighbors_v4": "neighbors_v5",
-            "node_descriptors_v4": "node_descriptors_v5",
-        }.items():
+        for old_table, new_table in table_map.items():
             async with self.execute(f"SELECT * FROM {old_table}") as cursor:
                 async for row in cursor:
                     placeholders = ",".join("?" * len(row))
@@ -591,6 +578,82 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                             f"INSERT INTO {new_table} VALUES ({placeholders})", row
                         )
                     except aiosqlite.IntegrityError as e:
+                        if not allow_errors:
+                            raise
+
                         LOGGER.warning(
                             "Failed to migrate row %s%s: %s", old_table, row, e
                         )
+
+    async def _migrate_to_v5(self):
+        """Schema v5 introduced global table version suffixes and removed stale rows"""
+
+        # Copy the devices table first, it should have no conflicts
+        await self.execute("INSERT INTO devices_v5 SELECT * FROM devices")
+        await self._migrate_tables(
+            {
+                "endpoints": "endpoints_v5",
+                "clusters": "in_clusters_v5",
+                "output_clusters": "out_clusters_v5",
+                "groups": "groups_v5",
+                "group_members": "group_members_v5",
+                "relays": "relays_v5",
+                "attributes": "attributes_cache_v5",
+                # These were migrated in v4
+                "neighbors_v4": "neighbors_v5",
+                "node_descriptors_v4": "node_descriptors_v5",
+            },
+            allow_errors=True,
+        )
+
+    async def _migrate_to_v6(self):
+        """Schema v6 relaxed the `attribute_cache` table schema to ignore endpoints"""
+
+        # Copy the devices table first, it should have no conflicts
+        await self.execute("INSERT INTO devices_v6 SELECT * FROM devices_v5")
+        await self._migrate_tables(
+            {
+                "endpoints_v5": "endpoints_v6",
+                "in_clusters_v5": "in_clusters_v6",
+                "out_clusters_v5": "out_clusters_v6",
+                "groups_v5": "groups_v6",
+                "group_members_v5": "group_members_v6",
+                "relays_v5": "relays_v6",
+                "attributes_cache_v5": "attributes_cache_v6",
+                "neighbors_v5": "neighbors_v6",
+                "node_descriptors_v5": "node_descriptors_v6",
+            }
+        )
+
+        # See if we can migrate over rows skipped by the v5 migration
+        try:
+            async with self.execute("SELECT count(*) FROM attributes") as cursor:
+                (num_attrs_v4,) = await cursor.fetchone()
+        except aiosqlite.OperationalError:
+            return
+
+        async with self.execute("SELECT count(*) FROM attributes_cache_v6") as cursor:
+            (num_attrs_v6,) = await cursor.fetchone()
+
+        if num_attrs_v4 >= num_attrs_v6:
+            return
+
+        LOGGER.warning(
+            "Migrating %d rows skipped by v5 migration."
+            " Ignore any previous warnings mentioning the `attributes` table",
+            num_attrs_v6 - num_attrs_v4,
+        )
+
+        # Pull in the skipped rows from v4 table
+        await self._migrate_tables(
+            {
+                "attributes": "attributes_cache_v6",
+            },
+            allow_errors=True,
+        )
+
+        async with self.execute("SELECT count(*) FROM attributes_cache_v6") as cursor:
+            (num_attrs_v6,) = await cursor.fetchone()
+
+        # Ensure they were all migrated
+        assert num_attrs_v4 == num_attrs_v6
