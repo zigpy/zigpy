@@ -638,7 +638,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             }
         )
 
-        # See if we can migrate over any rows skipped by the v5 migration
+        # See if we can migrate any `attributes_cache` rows skipped by the v5 migration
         try:
             async with self.execute("SELECT count(*) FROM attributes") as cursor:
                 (num_attrs_v4,) = await cursor.fetchone()

@@ -404,6 +404,13 @@ async def test_v4_to_v5_migration_bad_neighbors(test_db, with_bad_neighbor):
         assert num_new_neighbors == num_v4_neighbors
 
 
+async def test_v5_to_v6_migration(test_db):
+    test_db_v5 = test_db("simple_v5.sql")
+
+    app = await make_app(test_db_v5)
+    await app.pre_shutdown()
+
+
 @pytest.mark.parametrize("with_quirk_attribute", [False, True])
 async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribute):
     """V5's schema was too rigid and failed to migrate endpoints created by quirks"""
