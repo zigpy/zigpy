@@ -469,6 +469,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             dev.add_context_listener(self)
             dev.neighbors.add_context_listener(self)
 
+    async def _table_exists(self, name: str) -> bool:
+        async with self.execute(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?",
+            [name],
+        ) as cursor:
+            (count,) = await cursor.fetchone()
+
+        return bool(count)
+
     async def _run_migrations(self):
         """Migrates the database to the newest schema."""
 
@@ -477,15 +486,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         LOGGER.debug("Current database version is v%s", db_version)
 
-        async with self.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ) as cursor:
-            db_tables = [row async for (row,) in cursor]
-
-        LOGGER.debug("Current table names are %s", db_tables)
-
         # Very old databases did not set `user_version` but still should be migrated
-        if db_version == 0 and "devices" not in db_tables:
+        if db_version == 0 and not await self._table_exists("devices"):
             # If this is a brand new database, just load the current schema
             await self.executescript(zigpy.appdb_schemas.SCHEMAS[DB_VERSION])
             return
@@ -524,50 +526,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         else:
             await self.execute("COMMIT")
 
-    async def _migrate_to_v4(self):
-        """Schema v4 expanded the node descriptor and neighbor table columns"""
-        try:
-            # The `node_descriptors` table was added in v1
-            await self.execute("SELECT * FROM node_descriptors")
-        except aiosqlite.OperationalError:
-            pass
-        else:
-            async with self.execute("SELECT * FROM node_descriptors") as cur:
-                async for dev_ieee, value in cur:
-                    node_desc, rest = zdo_t.NodeDescriptor.deserialize(value)
-                    assert not rest
-
-                    await self.execute(
-                        "INSERT INTO node_descriptors_v4"
-                        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (dev_ieee,) + node_desc.as_tuple(),
-                    )
-
-        try:
-            # The `neighbors` table was added in v3 but the version number was not
-            # incremented. It may not exist.
-            await self.execute("SELECT * FROM neighbors")
-        except aiosqlite.OperationalError:
-            pass
-        else:
-            async with self.execute("SELECT * FROM neighbors") as cur:
-                async for dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi in cur:
-                    neighbor = zdo_t.Neighbor(
-                        extended_pan_id=epid,
-                        ieee=ieee,
-                        nwk=nwk,
-                        permit_joining=prm,
-                        depth=depth,
-                        lqi=lqi,
-                        reserved2=0b000000,
-                        **zdo_t.Neighbor._parse_packed(packed),
-                    )
-
-                    await self.execute(
-                        "INSERT INTO neighbors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (dev_ieee,) + neighbor.as_tuple(),
-                    )
-
     async def _migrate_tables(
         self, table_map: dict[str, str], *, errors: str = "raise"
     ):
@@ -597,6 +555,42 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                             raise ValueError(
                                 f"Invalid value for `errors`: {errors}!r"
                             )  # noqa
+
+    async def _migrate_to_v4(self):
+        """Schema v4 expanded the node descriptor and neighbor table columns"""
+        # The `node_descriptors` table was added in v1
+        if await self._table_exists("node_descriptors"):
+            async with self.execute("SELECT * FROM node_descriptors") as cur:
+                async for dev_ieee, value in cur:
+                    node_desc, rest = zdo_t.NodeDescriptor.deserialize(value)
+                    assert not rest
+
+                    await self.execute(
+                        "INSERT INTO node_descriptors_v4"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (dev_ieee,) + node_desc.as_tuple(),
+                    )
+
+        # The `neighbors` table was added in v3 but the version number was not
+        # incremented. It may not exist.
+        if await self._table_exists("neighbors"):
+            async with self.execute("SELECT * FROM neighbors") as cur:
+                async for dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi in cur:
+                    neighbor = zdo_t.Neighbor(
+                        extended_pan_id=epid,
+                        ieee=ieee,
+                        nwk=nwk,
+                        permit_joining=prm,
+                        depth=depth,
+                        lqi=lqi,
+                        reserved2=0b000000,
+                        **zdo_t.Neighbor._parse_packed(packed),
+                    )
+
+                    await self.execute(
+                        "INSERT INTO neighbors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (dev_ieee,) + neighbor.as_tuple(),
+                    )
 
     async def _migrate_to_v5(self):
         """Schema v5 introduced global table version suffixes and removed stale rows"""
@@ -639,27 +633,19 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
 
         # See if we can migrate any `attributes_cache` rows skipped by the v5 migration
-        try:
-            async with self.execute("SELECT count(*) FROM attributes") as cursor:
-                (num_attrs_v4,) = await cursor.fetchone()
-        except aiosqlite.OperationalError:
-            return
+        if await self._table_exists("attributes"):
+            async with self.execute("SELECT count(*) FROM attributes") as cur:
+                (num_attrs_v4,) = await cur.fetchone()
 
-        async with self.execute("SELECT count(*) FROM attributes_cache_v6") as cursor:
-            (num_attrs_v6,) = await cursor.fetchone()
+            async with self.execute("SELECT count(*) FROM attributes_cache_v6") as cur:
+                (num_attrs_v6,) = await cur.fetchone()
 
-        if num_attrs_v6 == num_attrs_v4:
-            return
+            if num_attrs_v6 < num_attrs_v4:
+                LOGGER.warning(
+                    "Migrating up to %d rows skipped by v5 migration",
+                    num_attrs_v4 - num_attrs_v6,
+                )
 
-        LOGGER.warning(
-            "Migrating up to %d rows skipped by v5 migration",
-            num_attrs_v4 - num_attrs_v6,
-        )
-
-        # Pull in the skipped rows from v4 table
-        await self._migrate_tables(
-            {
-                "attributes": "attributes_cache_v6",
-            },
-            errors="ignore",
-        )
+                await self._migrate_tables(
+                    {"attributes": "attributes_cache_v6"}, errors="ignore"
+                )
