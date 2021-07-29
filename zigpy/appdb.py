@@ -510,7 +510,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v5, 5),
                 (self._migrate_to_v6, 6),
             ]:
-                if db_version >= to_db_version:
+                if db_version >= min(to_db_version, DB_VERSION):
                     continue
 
                 LOGGER.info(
