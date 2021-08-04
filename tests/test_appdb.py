@@ -1,7 +1,9 @@
 import asyncio
 import os
 import sqlite3
+import threading
 
+import aiosqlite
 import pytest
 
 from zigpy import profiles
@@ -19,6 +21,28 @@ from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
 from tests.async_mock import AsyncMock, MagicMock, patch
+
+
+@pytest.fixture(autouse=True)
+def auto_kill_aiosqlite():
+    """aiosqlite's background thread does not let pytest exit when a failure occurs"""
+    yield
+
+    for thread in threading.enumerate():
+        if not isinstance(thread, aiosqlite.core.Connection):
+            continue
+
+        try:
+            conn = thread._conn
+        except ValueError:
+            pass
+        else:
+            try:
+                conn.close()
+            except sqlite3.ProgrammingError:
+                pass
+
+        thread._running = False
 
 
 async def make_app(database_file):
@@ -61,7 +85,20 @@ def make_ieee(init=0):
 
 class FakeCustomDevice(CustomDevice):
     replacement = {
-        "endpoints": {1: {"input_clusters": [0, 1, 3], "output_clusters": [6]}}
+        "endpoints": {
+            # Endpoint exists on original device
+            1: {
+                "input_clusters": [0, 1, 3, 0x0008],
+                "output_clusters": [6],
+            },
+            # Endpoint is created only at runtime by the quirk
+            99: {
+                "input_clusters": [0, 1, 3, 0x0008],
+                "output_clusters": [6],
+                "profile_id": 65535,
+                "device_type": 123,
+            },
+        }
     }
 
 
@@ -142,13 +179,19 @@ async def test_database(tmpdir):
     app.device_initialized(dev)
     ep = dev.add_endpoint(1)
     ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.device_type = profiles.zll.DeviceType.COLOR_LIGHT
     ep.profile_id = 65535
     with patch("zigpy.quirks.get_device", fake_get_device):
         app.device_initialized(dev)
     assert isinstance(app.get_device(custom_ieee), FakeCustomDevice)
     assert isinstance(app.get_device(custom_ieee), CustomDevice)
-    app.device_initialized(app.get_device(custom_ieee))
+    dev = app.get_device(custom_ieee)
+    app.device_initialized(dev)
     dev.relays = relays_2
+    dev.endpoints[1].level._update_attribute(0x0011, 17)
+    dev.endpoints[99].level._update_attribute(0x0011, 17)
+    assert dev.endpoints[1].in_clusters[0x0008]._attr_cache[0x0011] == 17
+    assert dev.endpoints[99].in_clusters[0x0008]._attr_cache[0x0011] == 17
     await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads
@@ -167,6 +210,10 @@ async def test_database(tmpdir):
     assert dev.relays == relays_1
 
     dev = app2.get_device(custom_ieee)
+    # This virtual attribute is added by the quirk, there is no corresponding cluster
+    # stored in the database, nor is there a corresponding endpoint 99
+    assert dev.endpoints[1].in_clusters[0x0008]._attr_cache[0x0011] == 17
+    assert dev.endpoints[99].in_clusters[0x0008]._attr_cache[0x0011] == 17
     assert dev.relays == relays_2
     dev.relays = None
 
@@ -437,6 +484,8 @@ async def test_neighbors(tmpdir):
     dev_1.node_desc = zdo_t.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
     ep1 = dev_1.add_endpoint(1)
     ep1.status = zigpy.endpoint.Status.ZDO_INIT
+    ep1.profile_id = 260
+    ep1.device_type = 0x1234
     app.device_initialized(dev_1)
 
     # 2nd device
@@ -445,6 +494,8 @@ async def test_neighbors(tmpdir):
     dev_2.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4476, 82, 82, 0, 82, 0)
     ep2 = dev_2.add_endpoint(1)
     ep2.status = zigpy.endpoint.Status.ZDO_INIT
+    ep2.profile_id = 260
+    ep2.device_type = 0x1234
     app.device_initialized(dev_2)
 
     neighbors = zdo_t.Neighbors(2, 0, [nei_2, nei_3])
@@ -578,8 +629,10 @@ async def test_invalid_node_desc(tmpdir):
     app.handle_join(nwk_1, ieee_1, 0)
 
     dev_1 = app.get_device(ieee_1)
-    dev_1.node_desc = zdo_t.NodeDescriptor()
+    dev_1.node_desc = None
     ep = dev_1.add_endpoint(1)
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     app.device_initialized(dev_1)
 
@@ -588,7 +641,7 @@ async def test_invalid_node_desc(tmpdir):
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
     dev_2 = app2.get_device(ieee=ieee_1)
-    assert dev_2.node_desc == dev_1.node_desc
+    assert dev_2.node_desc is None
     assert dev_2.nwk == dev_1.nwk
     assert dev_2.ieee == dev_1.ieee
     assert dev_2.status == dev_1.status
@@ -621,46 +674,3 @@ async def test_appdb_worker_exception(save_mock, tmpdir):
         db_listener.raw_device_initialized(dev_1)
     await db_listener.shutdown()
     assert save_mock.await_count == 3
-
-
-async def test_stray_rows(tmpdir, caplog):
-    db = os.path.join(str(tmpdir), "test.db")
-    app = await make_app(db)
-    await app.pre_shutdown()
-
-    with sqlite3.connect(db) as conn:
-        cur = conn.cursor()
-
-        # All these rows exist without a `device`
-        ieee = "'90:fd:9f:ff:fe:61:64:ab'"
-        cur.execute(f"INSERT INTO endpoints VALUES({ieee},1,260,266,1);")
-        cur.execute(f"INSERT INTO clusters VALUES({ieee},1,0);")
-        cur.execute(f"INSERT INTO output_clusters VALUES({ieee},1,10);")
-        cur.execute(f"INSERT INTO attributes VALUES({ieee},1,0,5,'SP 224');")
-        cur.execute(f"INSERT INTO relays VALUES({ieee},X'01f2fb');")
-        cur.execute(f"INSERT INTO group_members VALUES(123,{ieee},456);")
-        cur.execute(
-            f"INSERT INTO node_descriptors_v4"
-            f" VALUES({ieee},1,0,0,0,0,8,142,4454,82,82,11264,82,0);"
-        )
-        cur.execute(
-            f"INSERT INTO neighbors_v4"
-            f" VALUES({ieee},'8d:b4:1f:73:e7:35:93:1b',"
-            f"'00:0d:6f:00:0a:ff:73:23',0,0,1,2,0,2,0,0,144);"
-        )
-        conn.commit()
-
-    app2 = await make_app(db)
-    assert not app2.devices
-    await app2.pre_shutdown()
-
-    for table in (
-        "endpoints",
-        "clusters",
-        "output_clusters",
-        "attributes",
-        "relays",
-        "node_descriptors_v4",
-        "neighbors_v4",
-    ):
-        assert f"Skipping invalid {table}" in caplog.text

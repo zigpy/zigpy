@@ -1,57 +1,55 @@
+import logging
 import pathlib
 import sqlite3
 
 import pytest
 
+import zigpy.appdb
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
-from tests.test_appdb import make_app
+from tests.async_mock import patch
+from tests.test_appdb import auto_kill_aiosqlite, make_app  # noqa: F401
 
 
 @pytest.fixture
-def test_db_v3(tmpdir):
-    db_path = str(tmpdir / "zigbee.db")
+def test_db(tmpdir):
+    def inner(filename):
+        databases = pathlib.Path(__file__).parent / "databases"
+        db_path = pathlib.Path(tmpdir / filename)
 
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
+        if filename.endswith(".db"):
+            db_path.write_bytes((databases / filename).read_bytes())
+            return str(db_path)
 
-    sql = (pathlib.Path(__file__).parent / "database_v3.sql").read_text()
+        conn = sqlite3.connect(str(db_path))
 
-    for statement in sql.split(";"):
-        cur.execute(statement)
+        sql = (databases / filename).read_text()
+        conn.executescript(sql)
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
 
-    yield db_path
+        return str(db_path)
+
+    return inner
 
 
-@pytest.fixture
-async def test_db_v4_downgraded_to_v3(test_db_v3, loop):
-    """V4 database forcibly downgraded to v3."""
+def dump_db(path):
+    with sqlite3.connect(path) as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA user_version")
+        (user_version,) = cur.fetchone()
 
-    app = await make_app(test_db_v3)
-    await app.pre_shutdown()
+        sql = "\n".join(conn.iterdump())
 
-    with sqlite3.connect(test_db_v3) as conn:
-        # new neighbor
-        conn.execute(
-            """INSERT INTO neighbors VALUES(
-                   'ec:1b:bd:ff:fe:54:4f:40',
-                   '81:b1:12:dc:9f:bd:f4:b6',
-                   '00:0d:6f:ff:fe:a6:11:7b',
-                   48462,
-                   37,2,15,132)
-            """
-        )
-        conn.execute("PRAGMA user_version=3")
-    conn.close()
-    yield test_db_v3
+    return user_version, sql
 
 
 @pytest.mark.parametrize("open_twice", [False, True])
-async def test_migration_3_to_4(open_twice, test_db_v3):
+async def test_migration_from_3_to_4(open_twice, test_db):
+    test_db_v3 = test_db("simple_v3.sql")
+
     with sqlite3.connect(test_db_v3) as conn:
         cur = conn.cursor()
 
@@ -137,7 +135,30 @@ async def test_migration_3_to_4(open_twice, test_db_v3):
         assert all([len(row) == 14 for row in node_descs_after])
 
 
-async def test_migration_missing_neighbors_v3(test_db_v3):
+async def test_migration_0_to_5(test_db):
+    test_db_v0 = test_db("zigbee_20190417_v0.db")
+
+    with sqlite3.connect(test_db_v0) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM devices")
+        (num_devices_before_migration,) = cur.fetchone()
+
+    assert num_devices_before_migration == 27
+
+    app1 = await make_app(test_db_v0)
+    await app1.pre_shutdown()
+    assert len(app1.devices) == 27
+
+    app2 = await make_app(test_db_v0)
+    await app2.pre_shutdown()
+
+    # All 27 devices migrated
+    assert len(app2.devices) == 27
+
+
+async def test_migration_missing_neighbors_v3(test_db):
+    test_db_v3 = test_db("simple_v3.sql")
+
     with sqlite3.connect(test_db_v3) as conn:
         cur = conn.cursor()
         cur.execute("DROP TABLE neighbors")
@@ -154,11 +175,167 @@ async def test_migration_missing_neighbors_v3(test_db_v3):
     with sqlite3.connect(test_db_v3) as conn:
         cur = conn.cursor()
         cur.execute("PRAGMA user_version")
-        assert cur.fetchone() == (4,)
+        assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
 
 
-async def test_remigrate_forcibly_downgraded_v4(test_db_v4_downgraded_to_v3):
+@pytest.mark.parametrize("force_version", [None, 3, 4, 9999])
+@pytest.mark.parametrize("corrupt_device", [False, True])
+async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
+    test_db_bad_attrs = test_db("bad_attrs_v3.db")
+
+    with sqlite3.connect(test_db_bad_attrs) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM devices")
+        (num_devices_before_migration,) = cur.fetchone()
+
+        cur.execute("SELECT count(*) FROM endpoints")
+        (num_ep_before_migration,) = cur.fetchone()
+
+    if corrupt_device:
+        with sqlite3.connect(test_db_bad_attrs) as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM endpoints WHERE ieee='60:a4:23:ff:fe:02:39:7b'")
+            cur.execute("SELECT changes()")
+            (deleted_eps,) = cur.fetchone()
+    else:
+        deleted_eps = 0
+
+    # Migration will handle invalid attributes entries
+    app = await make_app(test_db_bad_attrs)
+    await app.pre_shutdown()
+
+    assert len(app.devices) == num_devices_before_migration
+    assert (
+        sum(len(d.non_zdo_endpoints) for d in app.devices.values())
+        == num_ep_before_migration - deleted_eps
+    )
+
+    # Version was upgraded (and then downgraded)
+    with sqlite3.connect(test_db_bad_attrs) as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA user_version")
+        assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
+
+        if force_version is not None:
+            cur.execute(f"PRAGMA user_version={force_version}")
+
+    app2 = await make_app(test_db_bad_attrs)
+    await app2.pre_shutdown()
+
+    # All devices still exist
+    assert len(app2.devices) == num_devices_before_migration
+    assert (
+        sum(len(d.non_zdo_endpoints) for d in app2.devices.values())
+        == num_ep_before_migration - deleted_eps
+    )
+
+    with sqlite3.connect(test_db_bad_attrs) as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA user_version")
+
+        # Ensure the final database schema version number does not decrease
+        assert cur.fetchone()[0] == max(zigpy.appdb.DB_VERSION, force_version or 0)
+
+
+async def test_migration_missing_node_descriptor(test_db, caplog):
+    test_db_v3 = test_db("simple_v3.sql")
+    ieee = "ec:1b:bd:ff:fe:54:4f:40"
+
+    with sqlite3.connect(test_db_v3) as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM node_descriptors WHERE ieee=?", [ieee])
+
+    with caplog.at_level(logging.WARNING):
+        # The invalid device will still be loaded, for now
+        app = await make_app(test_db_v3)
+
+    assert "partially initialized" in caplog.text
+
+    assert len(app.devices) == 2
+
+    bad_dev = app.devices[t.EUI64.convert(ieee)]
+    assert bad_dev.node_desc is None
+
+    caplog.clear()
+
+    # Saving the device should cause the node descriptor to not be saved
+    await app._dblistener._save_device(bad_dev)
+    await app.pre_shutdown()
+
+    # The node descriptor is not in the database
+    with sqlite3.connect(test_db_v3) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT * FROM node_descriptors{zigpy.appdb.DB_V} WHERE ieee=?", [ieee]
+        )
+
+        assert not cur.fetchall()
+
+
+@pytest.mark.parametrize(
+    "fail_on_sql,fail_on_count",
+    [
+        ("INSERT INTO node_descriptors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 0),
+        ("INSERT INTO neighbors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 5),
+        ("SELECT * FROM output_clusters", 0),
+        ("INSERT INTO neighbors_v5 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 5),
+    ],
+)
+async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
+    test_db_bad_attrs = test_db("bad_attrs_v3.db")
+
+    before = dump_db(test_db_bad_attrs)
+    assert before[0] == 3
+
+    count = 0
+    sql_seen = False
+    execute = zigpy.appdb.PersistingListener.execute
+
+    def patched_execute(self, sql, *args, **kwargs):
+        nonlocal count, sql_seen
+
+        if sql == fail_on_sql:
+            sql_seen = True
+
+            if count == fail_on_count:
+                raise sqlite3.ProgrammingError("Uh oh")
+
+            count += 1
+
+        return execute(self, sql, *args, **kwargs)
+
+    with patch("zigpy.appdb.PersistingListener.execute", new=patched_execute):
+        with pytest.raises(sqlite3.ProgrammingError):
+            await make_app(test_db_bad_attrs)
+
+    assert sql_seen
+
+    after = dump_db(test_db_bad_attrs)
+    assert before == after
+
+
+async def test_remigrate_forcibly_downgraded_v4(test_db):
     """Test V4 re-migration which was forcibly downgraded to v3."""
+
+    test_db_v4_downgraded_to_v3 = test_db("simple_v3.sql")
+
+    # Migrate it to the latest version
+    app = await make_app(test_db_v4_downgraded_to_v3)
+    await app.pre_shutdown()
+
+    # Downgrade it back to v3
+    with sqlite3.connect(test_db_v4_downgraded_to_v3) as conn:
+        # new neighbor
+        conn.execute(
+            """INSERT INTO neighbors VALUES(
+                   'ec:1b:bd:ff:fe:54:4f:40',
+                   '81:b1:12:dc:9f:bd:f4:b6',
+                   '00:0d:6f:ff:fe:a6:11:7b',
+                   48462,
+                   37,2,15,132)
+            """
+        )
+        conn.execute("PRAGMA user_version=3")
 
     with sqlite3.connect(test_db_v4_downgraded_to_v3) as conn:
         cur = conn.cursor()
@@ -181,4 +358,94 @@ async def test_remigrate_forcibly_downgraded_v4(test_db_v4_downgraded_to_v3):
         assert len(neighbors_v4) == 3
 
         (ver,) = cur.execute("PRAGMA user_version").fetchone()
-        assert ver == 4
+        assert ver == zigpy.appdb.DB_VERSION
+
+
+@pytest.mark.parametrize("with_bad_neighbor", [False, True])
+async def test_v4_to_v5_migration_bad_neighbors(test_db, with_bad_neighbor):
+    """V4 migration has no `neighbors_v4` foreign key and no `ON DELETE CASCADE`"""
+
+    test_db_v4 = test_db("simple_v3_to_v4.sql")
+
+    with sqlite3.connect(test_db_v4) as conn:
+        cur = conn.cursor()
+
+        if with_bad_neighbor:
+            # Row refers to an invalid device, left behind by a bad `DELETE`
+            cur.execute(
+                """
+                INSERT INTO neighbors_v4
+                VALUES (
+                    '11:aa:bb:cc:dd:ee:ff:00',
+                    '22:aa:bb:cc:dd:ee:ff:00',
+                    '33:aa:bb:cc:dd:ee:ff:00',
+                    12345,
+                    1,1,2,0,2,0,15,132
+                )
+            """
+            )
+
+        (num_v4_neighbors,) = cur.execute(
+            "SELECT count(*) FROM neighbors_v4"
+        ).fetchone()
+
+    app = await make_app(test_db_v4)
+    await app.pre_shutdown()
+
+    with sqlite3.connect(test_db_v4) as conn:
+        (num_new_neighbors,) = cur.execute(
+            f"SELECT count(*) FROM neighbors{zigpy.appdb.DB_V}"
+        ).fetchone()
+
+    # Only the invalid row was not migrated
+    if with_bad_neighbor:
+        assert num_new_neighbors == num_v4_neighbors - 1
+    else:
+        assert num_new_neighbors == num_v4_neighbors
+
+
+async def test_v5_to_v6_migration(test_db):
+    test_db_v5 = test_db("simple_v5.sql")
+
+    app = await make_app(test_db_v5)
+    await app.pre_shutdown()
+
+
+@pytest.mark.parametrize("with_quirk_attribute", [False, True])
+async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribute):
+    """V5's schema was too rigid and failed to migrate endpoints created by quirks"""
+
+    test_db_v3 = test_db("simple_v3.sql")
+
+    if with_quirk_attribute:
+        with sqlite3.connect(test_db_v3) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO attributes
+                VALUES (
+                    '00:0d:6f:ff:fe:a6:11:7a',
+                    123,
+                    456,
+                    789,
+                    'test'
+                )
+            """
+            )
+
+    def get_device(dev):
+        if dev.ieee == t.EUI64.convert("00:0d:6f:ff:fe:a6:11:7a"):
+            ep = dev.add_endpoint(123)
+            ep.add_input_cluster(456)
+
+        return dev
+
+    # Migrate to v5 and then v6
+    with patch("zigpy.quirks.get_device", get_device):
+        app = await make_app(test_db_v3)
+
+    if with_quirk_attribute:
+        dev = app.get_device(ieee=t.EUI64.convert("00:0d:6f:ff:fe:a6:11:7a"))
+        assert dev.endpoints[123].in_clusters[456]._attr_cache[789] == "test"
+
+    await app.pre_shutdown()
