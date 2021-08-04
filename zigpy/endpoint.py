@@ -214,7 +214,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def request(self, cluster, sequence, data, expect_reply=True, command_id=0x00):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
-            cluster == zigpy.zcl.clusters.touchlink.TouchlinkCommissioning.cluster_id
+            cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
             and command_id < 0x40
         ):
             profile_id = zigpy.profiles.zha.PROFILE_ID
@@ -233,7 +233,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def reply(self, cluster, sequence, data, command_id=0x00):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
-            cluster == zigpy.zcl.clusters.touchlink.TouchlinkCommissioning.cluster_id
+            cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
             and command_id < 0x40
         ):
             profile_id = zigpy.profiles.zha.PROFILE_ID
