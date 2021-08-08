@@ -272,7 +272,9 @@ async def test_known_device_left(app, ieee):
         app.listener_event.assert_called_once_with("device_left", dev)
 
 
-async def _remove(app, ieee, retval, zdo_reply=True, delivery_failure=True):
+async def _remove(
+    app, ieee, retval, zdo_reply=True, delivery_failure=True, has_node_desc=True
+):
     async def leave():
         if zdo_reply:
             return retval
@@ -283,8 +285,12 @@ async def _remove(app, ieee, retval, zdo_reply=True, delivery_failure=True):
 
     device = MagicMock()
     device.ieee = ieee
-    device.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4388, 82, 255, 0, 255, 0)
     device.zdo.leave.side_effect = leave
+
+    if has_node_desc:
+        device.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4388, 82, 255, 0, 255, 0)
+    else:
+        device.node_desc = None
 
     app.devices[ieee] = device
     await app.remove(ieee)
@@ -327,6 +333,12 @@ async def test_remove_with_unreachable_device(app, ieee):
 async def test_remove_with_reply_timeout(app, ieee):
     with patch.object(app, "_remove_device", wraps=app._remove_device) as remove_device:
         await _remove(app, ieee, [0], zdo_reply=False, delivery_failure=False)
+        assert remove_device.await_count == 1
+
+
+async def test_remove_without_node_desc(app, ieee):
+    with patch.object(app, "_remove_device", wraps=app._remove_device) as remove_device:
+        await _remove(app, ieee, [0], has_node_desc=False)
         assert remove_device.await_count == 1
 
 
