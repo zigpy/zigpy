@@ -161,7 +161,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
         asyncio.create_task(self._remove_device(dev))
-        if dev.node_desc.is_valid and dev.node_desc.is_end_device:
+        if dev.node_desc is not None and dev.node_desc.is_end_device:
             parents = [
                 parent
                 for parent in self.devices.values()
@@ -182,7 +182,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Send a remove request then pop the device."""
         try:
             await asyncio.wait_for(
-                device.zdo.leave(), timeout=30 if device.node_desc.is_end_device else 7
+                device.zdo.leave(),
+                timeout=30
+                if device.node_desc is not None and device.node_desc.is_end_device
+                else 7,
             )
         except (zigpy.exceptions.DeliveryError, asyncio.TimeoutError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
