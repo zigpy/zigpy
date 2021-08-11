@@ -201,14 +201,17 @@ class Counters:
         return counter
 
 
+NESTED_COUNTERS = Dict[str, Dict[str, Counters]]
+
+
 @dataclass
 class State:
     node_information: NodeInfo = field(default_factory=NodeInfo)
     network_information: NetworkInformation = field(default_factory=NetworkInformation)
     counters: Optional[Dict[str, Counters]] = field(init=False, default=None)
-    broadcast_counters: Optional[Dict[str, Counters]] = field(init=False, default=None)
-    device_counters: Optional[Dict[str, Counters]] = field(init=False, default=None)
-    group_counters: Optional[Dict[str, Counters]] = field(init=False, default=None)
+    broadcast_counters: Optional[NESTED_COUNTERS] = field(init=False, default=None)
+    device_counters: Optional[NESTED_COUNTERS] = field(init=False, default=None)
+    group_counters: Optional[NESTED_COUNTERS] = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         """Initialize default counters."""
