@@ -10,7 +10,10 @@ COUNTER_NAMES = ["counter_1", "counter_2", "some random name"]
 @pytest.fixture
 def counters():
     """Counters fixture."""
-    return app_state.Counters("ezsp_counters", COUNTER_NAMES)
+    counters = app_state.CounterGroup("ezsp_counters")
+    for name in COUNTER_NAMES:
+        counters[name]
+    return counters
 
 
 def test_counter():
@@ -71,10 +74,9 @@ def test_counters_init(counters):
     """Test counters initialization."""
 
     assert counters.name == "ezsp_counters"
-    assert counters.list
-    assert len(counters.list) == 3
+    assert len(counters) == 3
 
-    cnt_1, cnt_2, cnt_3 = counters.list
+    cnt_1, cnt_2, cnt_3 = [counter for counter in counters]
     assert cnt_1.name == "counter_1"
     assert cnt_2.name == "counter_2"
     assert cnt_3.name == "some random name"
@@ -82,9 +84,6 @@ def test_counters_init(counters):
     assert cnt_1.value == 0
     assert cnt_2.value == 0
     assert cnt_3.value == 0
-
-    with pytest.raises(KeyError):
-        counters["no such counter"]
 
     counters["some random name"] = 2
     assert cnt_3.value == 2
@@ -96,20 +95,9 @@ def test_counters_init(counters):
     assert "counter_2" in counters
     assert [counter.name for counter in counters] == COUNTER_NAMES
 
-    with pytest.raises(KeyError):
-        counters["no such counter"] = 2
-
     counters.reset()
     for counter in counters:
         assert counter.reset_count == 1
-
-    existing = counters.add_counter("some random name")
-    assert existing.value == 2
-    assert len(counters.list) == 3
-
-    new = counters.add_counter("new_counter", 42)
-    assert new.value == 42
-    assert len(counters.list) == 4
 
 
 def test_counters_str_and_repr(counters):
@@ -124,7 +112,8 @@ def test_counters_str_and_repr(counters):
     )
 
     assert (
-        repr(counters) == """Counters('ezsp_counters', {Counter('counter_1', 22), """
+        repr(counters)
+        == """CounterGroup('ezsp_counters', {Counter('counter_1', 22), """
         """Counter('counter_2', 33), Counter('some random name', 0)})"""
     )
 
@@ -135,17 +124,10 @@ def test_state():
     assert state
     assert state.counters == {}
 
-    state.initialize_counters("new_collection", ("counter_2", "counter_3"))
     assert state.counters["new_collection"]["counter_2"] == 0
     assert state.counters["new_collection"]["counter_2"].reset_count == 0
     assert state.counters["new_collection"]["counter_3"].reset_count == 0
     state.counters["new_collection"]["counter_2"] = 2
-
-    state.initialize_counters("new_collection", ("counter_2", "counter_3"))
-    assert state.counters["new_collection"]["counter_2"] == 2
-    assert state.counters["new_collection"]["counter_2"].reset_count == 1
-    assert state.counters["new_collection"]["counter_3"] == 0
-    assert state.counters["new_collection"]["counter_3"].reset_count == 1
 
 
 def test_counters_reset(counters):
@@ -180,46 +162,3 @@ def test_counter_incr():
 
     with pytest.raises(AssertionError):
         counter.increment(-1)
-
-
-def test_counters_by_name(counters):
-    """Test accessing individual counters by name."""
-    counters["counter_2"] = 22
-    counter = counters["counter_2"]
-    assert counters.counter_2 is counter
-    assert counter == 22
-    assert counters.counter_2 == 22
-
-    with pytest.raises(AttributeError):
-        counters.no_such_counter
-
-
-class NewCounter(app_state.Counter):
-    pass
-
-
-def test_counters_auto_create():
-    """Test auto creation of counters."""
-
-    counters = app_state.Counters(
-        "new_counters",
-        ("counter_x", "counter_y"),
-        counter_class=NewCounter,
-        auto_create=True,
-    )
-
-    assert "counter_x" in counters
-    assert "counter_y" in counters
-    assert "not_yet" not in counters
-    assert "nor_this_one" not in counters
-
-    counters["not_yet"] = 2
-    # auto counter create only works when accessing by index
-    with pytest.raises(AttributeError):
-        new = counters.nor_this_one
-        new.update(3)
-
-    assert "not_yet" in counters
-    assert "nor_this_one" not in counters
-    assert counters["not_yet"].value == 2
-    assert isinstance(counters["not_yet"], NewCounter)

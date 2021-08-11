@@ -1,8 +1,9 @@
 """Classes to implement status of the application controller."""
 
+from collections import defaultdict
 from dataclasses import InitVar, dataclass, field
 import functools
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, Optional
 
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
@@ -105,45 +106,28 @@ class Counter:
     reset = functools.partialmethod(reset_and_update, 0)
 
 
-class Counters:
+class CounterGroup(dict):
     """Named collection of counters."""
 
     def __init__(
         self,
-        collection_name: str,
-        names: Optional[Iterable[str]] = (),
-        *,
-        counter_class: Counter = Counter,
-        auto_create: bool = False,
+        collection_name: str = None,
     ) -> None:
         """Initialize instance."""
 
-        self._auto_create = auto_create
         self._name = collection_name
-        self._counters: Dict[Any, Counter] = {
-            name: counter_class(name) for name in names
-        }
-        self._counter_class: Counter = counter_class
-
-    def __contains__(self, item: Any) -> bool:
-        """Is the "counter id/name" in the list."""
-        return item in self._counters
-
-    def __getattr__(self, counter_id: str) -> Counter:
-        """Get specific counter."""
-        try:
-            return self._counters[counter_id]
-        except KeyError as exc:
-            raise AttributeError(f"{counter_id} counter does not exist") from exc
+        super().__init__()
 
     def __iter__(self) -> Iterable[Counter]:
         """Return an iterable of the counters"""
-        return (counter for counter in self._counters.values())
+        return (counter for counter in self.values())
 
-    def __str__(self) -> str:
-        """String magic method."""
-        counters = [str(counter) for counter in self._counters.values()]
-        return f"{self.name}: [{', '.join(counters)}]"
+    def __missing__(self, counter_id: Any) -> Counter:
+        """Default counter factory."""
+
+        counter = Counter(counter_id)
+        super().__setitem__(counter_id, counter)
+        return counter
 
     def __repr__(self) -> str:
         """Representation magic method."""
@@ -154,91 +138,45 @@ class Counters:
         counters = ", ".join(counters)
         return f"{self.__class__.__name__}('{self.name}', {{{counters}}})"
 
-    @property
-    def name(self) -> str:
-        """Return counter collection name."""
-        return self._name
-
-    @property
-    def list(self) -> List[Counter]:
-        """Return list of counters."""
-
-        return [counter for counter in self._counters.values()]
-
-    def reset(self) -> None:
-        """Clear and rollover counters."""
-
-        for counter in self._counters.values():
-            counter.reset()
-
-    def __getitem__(self, counter_id: Any) -> Counter:
-        """Get a counter."""
-
-        try:
-            return self._counters[counter_id]
-        except KeyError:
-            if not self._auto_create:
-                raise
-
-        counter = self._counter_class(counter_id)
-        self._counters[counter_id] = counter
-        return counter
-
     def __setitem__(self, counter_id: Any, value: int) -> None:
         """Update specific counter to new value."""
 
         counter = self[counter_id]
         counter.update(value)
 
-    def add_counter(self, name: str, value: int = 0) -> Counter:
-        """Add a new counter."""
+    def __str__(self) -> str:
+        """String magic method."""
+        counters = [str(counter) for counter in self.values()]
+        return f"{self.name}: [{', '.join(counters)}]"
 
-        if name in self._counters:
-            return self[name]
+    @property
+    def name(self) -> str:
+        """Return counter collection name."""
+        return self._name
 
-        counter = self._counter_class(name, initial_value=value)
-        self._counters[counter.name] = counter
-        return counter
+    def reset(self) -> None:
+        """Clear and rollover counters."""
+
+        for counter in self.values():
+            counter.reset()
 
 
-NESTED_COUNTERS = Dict[str, Dict[str, Counters]]
+NESTED_CNT_GROUPS = Dict[str, Dict[str, CounterGroup]]
 
 
 @dataclass
 class State:
     node_information: NodeInfo = field(default_factory=NodeInfo)
     network_information: NetworkInformation = field(default_factory=NetworkInformation)
-    counters: Optional[Dict[str, Counters]] = field(init=False, default=None)
-    broadcast_counters: Optional[NESTED_COUNTERS] = field(init=False, default=None)
-    device_counters: Optional[NESTED_COUNTERS] = field(init=False, default=None)
-    group_counters: Optional[NESTED_COUNTERS] = field(init=False, default=None)
+    counters: Optional[Dict[str, CounterGroup]] = field(init=False, default=None)
+    broadcast_counters: Optional[Dict[str, CounterGroup]] = field(
+        init=False, default=None
+    )
+    device_counters: Optional[NESTED_CNT_GROUPS] = field(init=False, default=None)
+    group_counters: Optional[Dict[str, CounterGroup]] = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         """Initialize default counters."""
-        for col_name in ("", "broadcast_", "device_", "group_"):
-            setattr(self, f"{col_name}counters", {})
-
-    def initialize_counters(
-        self,
-        collection_name: str,
-        names: Iterable[str],
-        *,
-        counter_class: Counter = Counter,
-        auto_create: bool = False,
-    ) -> Counters:
-        """Create or Reset counters."""
-
-        try:
-            counters = self.counters[collection_name]
-        except KeyError:
-            counters = Counters(
-                collection_name,
-                names,
-                counter_class=counter_class,
-                auto_create=auto_create,
-            )
-            self.counters[counters.name] = counters
-        else:
-            counters.reset()
-
-        return counters
+        for col_name in ("", "broadcast_", "group_"):
+            setattr(self, f"{col_name}counters", defaultdict(CounterGroup))
+        self.device_counters = defaultdict(lambda: defaultdict(CounterGroup))
