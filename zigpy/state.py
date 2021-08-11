@@ -107,7 +107,7 @@ class Counter:
 
 
 class CounterGroup(dict):
-    """Named collection of counters."""
+    """Named collection of related counters."""
 
     def __init__(
         self,
@@ -161,22 +161,34 @@ class CounterGroup(dict):
             counter.reset()
 
 
-NESTED_CNT_GROUPS = Dict[str, Dict[str, CounterGroup]]
+class CounterGroups(dict):
+    """A collection of unrelated counter groups in a dict."""
+
+    def __iter__(self) -> Iterable[CounterGroup]:
+        """Return an iterable of the counters"""
+        return (counter_group for counter_group in self.values())
+
+    def __missing__(self, counter_group_name: Any) -> CounterGroup:
+        """Default counter factory."""
+
+        counter_group = CounterGroup(counter_group_name)
+        super().__setitem__(counter_group_name, counter_group)
+        return counter_group
 
 
 @dataclass
 class State:
     node_information: NodeInfo = field(default_factory=NodeInfo)
     network_information: NetworkInformation = field(default_factory=NetworkInformation)
-    counters: Optional[Dict[str, CounterGroup]] = field(init=False, default=None)
-    broadcast_counters: Optional[Dict[str, CounterGroup]] = field(
+    counters: Optional[CounterGroups] = field(init=False, default=None)
+    broadcast_counters: Optional[CounterGroups] = field(init=False, default=None)
+    device_counters: Optional[Dict[str, CounterGroups]] = field(
         init=False, default=None
     )
-    device_counters: Optional[NESTED_CNT_GROUPS] = field(init=False, default=None)
-    group_counters: Optional[Dict[str, CounterGroup]] = field(init=False, default=None)
+    group_counters: Optional[CounterGroups] = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         """Initialize default counters."""
         for col_name in ("", "broadcast_", "group_"):
-            setattr(self, f"{col_name}counters", defaultdict(CounterGroup))
-        self.device_counters = defaultdict(lambda: defaultdict(CounterGroup))
+            setattr(self, f"{col_name}counters", CounterGroups())
+        self.device_counters = defaultdict(CounterGroups)

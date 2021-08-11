@@ -70,10 +70,18 @@ def test_counter_str():
     assert str(counter) == "some_counter = 8"
 
 
-def test_counters_init(counters):
+def test_counters_init():
     """Test counters initialization."""
 
+    counter_groups = app_state.CounterGroups()
+    assert len(counter_groups) == 0
+    counters = counter_groups["ezsp_counters"]
+    assert len(counter_groups) == 1
+
+    assert len(counters) == 0
     assert counters.name == "ezsp_counters"
+    for name in COUNTER_NAMES:
+        counters[name]
     assert len(counters) == 3
 
     cnt_1, cnt_2, cnt_3 = [counter for counter in counters]
