@@ -12,7 +12,7 @@ import zigpy.zdo.types as zdo_t
 
 
 @dataclass
-class LinkKey:
+class Key:
     """APS/TC Link key."""
 
     key: t.KeyData | None = None
@@ -28,8 +28,6 @@ class NodeInfo:
     nwk: t.NWK = t.NWK(0xFFFE)
     ieee: t.EUI64 | None = None
     logical_type: zdo_t.LogicalType | None = None
-    tc_link_key: LinkKey | None = None
-    key_table: dict[t.EUI64, LinkKey] | None = None
 
     def __post_init__(self) -> None:
         """Initialize instance."""
@@ -37,8 +35,6 @@ class NodeInfo:
             self.ieee = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
         if self.logical_type is None:
             self.logical_type = zdo_t.LogicalType.Coordinator
-        if self.key_table is None:
-            self.key_table = {}
 
 
 @dataclass
@@ -51,11 +47,23 @@ class NetworkInformation:
     nwk_manager_id: t.NWK | None = t.NWK(0xFFFE)
     channel: t.uint8_t | None = None
     channel_mask: t.Channels | None = None
+    security_level: t.uint8_t | None = None
+    network_key: Key | None = None
+    tc_link_key: Key | None = None
+    key_table: dict[t.EUI64, Key] | None = None
+
+    # Dict to keep track of stack-specific network stuff.
+    # Z-Stack, for example, has a TCLK_SEED that should be backed up.
+    stack_specific: dict[int | str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Initialize instance."""
         if self.extended_pan_id is None:
             self.extended_pan_id = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
+        if self.key_table is None:
+            self.key_table = {}
+        if self.stack_specific is None:
+            self.stack_specific = {}
 
 
 @dataclass
