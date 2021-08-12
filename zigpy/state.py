@@ -1,8 +1,11 @@
 """Classes to implement status of the application controller."""
 
+from __future__ import annotations
+
+from collections.abc import Iterable
 from dataclasses import InitVar, dataclass, field
 import functools
-from typing import Any, Iterable, Optional, Union
+from typing import Any
 
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
@@ -13,8 +16,8 @@ class NodeInfo:
     """Controller Application network Node information."""
 
     nwk: t.NWK = t.NWK(0xFFFE)
-    ieee: Optional[t.EUI64] = None
-    logical_type: Optional[zdo_t.LogicalType] = None
+    ieee: t.EUI64 | None = None
+    logical_type: zdo_t.LogicalType | None = None
 
     def __post_init__(self) -> None:
         """Initialize instance."""
@@ -28,12 +31,12 @@ class NodeInfo:
 class NetworkInformation:
     """Network information."""
 
-    extended_pan_id: Optional[t.ExtendedPanId] = None
-    pan_id: Optional[t.PanId] = 0xFFFE
-    nwk_update_id: Optional[t.uint8_t] = 0x00
-    nwk_manager_id: Optional[t.NWK] = t.NWK(0xFFFE)
-    channel: Optional[t.uint8_t] = None
-    channel_mask: Optional[t.Channels] = None
+    extended_pan_id: t.ExtendedPanId | None = None
+    pan_id: t.PanId | None = 0xFFFE
+    nwk_update_id: t.uint8_t | None = 0x00
+    nwk_manager_id: t.NWK | None = t.NWK(0xFFFE)
+    channel: t.uint8_t | None = None
+    channel_mask: t.Channels | None = None
 
     def __post_init__(self) -> None:
         """Initialize instance."""
@@ -110,22 +113,22 @@ class CounterGroup(dict):
 
     def __init__(
         self,
-        collection_name: str = None,
+        collection_name: str | None = None,
     ) -> None:
         """Initialize instance."""
 
-        self._name = collection_name
+        self._name: str | None = collection_name
         super().__init__()
 
     def counters(self) -> Iterable[Counter]:
         """Return an iterable of the counters"""
         return (counter for counter in self.values() if isinstance(counter, Counter))
 
-    def groups(self) -> Iterable["CounterGroup"]:
+    def groups(self) -> Iterable[CounterGroup]:
         """Return an iterable of the counter groups"""
         return (group for group in self.values() if isinstance(group, CounterGroup))
 
-    def tags(self) -> Iterable[Union[int, str]]:
+    def tags(self) -> Iterable[int | str]:
         """Return an iterable if tags"""
         return (group.name for group in self.groups())
 
@@ -155,7 +158,7 @@ class CounterGroup(dict):
         """Return counter collection name."""
         return self._name
 
-    def increment(self, name: Union[int, str], *tags: Union[int, str]) -> None:
+    def increment(self, name: int | str, *tags: int | str) -> None:
         """Create and Update all counters recursively."""
 
         if tags:
@@ -191,10 +194,10 @@ class CounterGroups(dict):
 class State:
     node_information: NodeInfo = field(default_factory=NodeInfo)
     network_information: NetworkInformation = field(default_factory=NetworkInformation)
-    counters: Optional[CounterGroups] = field(init=False, default=None)
-    broadcast_counters: Optional[CounterGroups] = field(init=False, default=None)
-    device_counters: Optional[CounterGroups] = field(init=False, default=None)
-    group_counters: Optional[CounterGroups] = field(init=False, default=None)
+    counters: CounterGroups | None = field(init=False, default=None)
+    broadcast_counters: CounterGroups | None = field(init=False, default=None)
+    device_counters: CounterGroups | None = field(init=False, default=None)
+    group_counters: CounterGroups | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         """Initialize default counters."""
