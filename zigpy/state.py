@@ -12,12 +12,24 @@ import zigpy.zdo.types as zdo_t
 
 
 @dataclass
+class LinkKey:
+    """APS/TC Link key."""
+
+    key: t.KeyData | None = None
+    tx_counter: t.uint32_t | None = 0
+    rx_counter: t.uin32_t | None = 0
+    seq: t.uint8_t | None = 0
+
+
+@dataclass
 class NodeInfo:
     """Controller Application network Node information."""
 
     nwk: t.NWK = t.NWK(0xFFFE)
     ieee: t.EUI64 | None = None
     logical_type: zdo_t.LogicalType | None = None
+    tc_link_key: LinkKey | None = None
+    key_table: dict[t.EUI64, LinkKey] | None = None
 
     def __post_init__(self) -> None:
         """Initialize instance."""
@@ -25,6 +37,8 @@ class NodeInfo:
             self.ieee = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
         if self.logical_type is None:
             self.logical_type = zdo_t.LogicalType.Coordinator
+        if self.key_table is None:
+            self.key_table = {}
 
 
 @dataclass
