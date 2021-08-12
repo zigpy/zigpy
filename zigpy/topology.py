@@ -68,7 +68,9 @@ class Topology(zigpy.util.ListenableMixin):
         """Scan topology."""
 
         devices_to_scan = [
-            dev for dev in self._app.devices.values() if not dev.node_desc.is_end_device
+            dev
+            for dev in self._app.devices.values()
+            if dev.node_desc is not None and not dev.node_desc.is_end_device
         ]
         for device in devices_to_scan:
             if (

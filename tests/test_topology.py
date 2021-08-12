@@ -45,6 +45,16 @@ def device_3():
 
 
 @pytest.fixture
+def device_4():
+    dev = MagicMock()
+    dev.ieee = sentinel.ieee_4
+    dev.node_desc = None
+    dev.nwk = 0x4444
+    dev.neighbors.scan = AsyncMock()
+    return dev
+
+
+@pytest.fixture
 def coordinator():
     dev = MagicMock()
     dev.ieee = sentinel.ieee_4
@@ -56,9 +66,10 @@ def coordinator():
 
 
 @pytest.fixture
-def topology_f(coordinator, device_1, device_2, device_3):
+def topology_f(coordinator, device_1, device_2, device_3, device_4):
     app = MagicMock()
     app.devices = {
+        device_4.ieee: device_4,
         device_1.ieee: device_1,
         device_2.ieee: device_2,
         device_3.ieee: device_3,
@@ -143,3 +154,15 @@ async def test_scan_coordinator_skip(
     assert coordinator.neighbors.scan.call_count == 0
     assert coordinator.neighbors.scan.await_count == 0
     assert topology_f.timestamp != ts
+
+
+async def test_scan_missing_node_desc_skip(
+    device_1, device_2, device_3, device_4, topology_f
+):
+    """Explicitly check that devices without node descriptors aren't scanned."""
+
+    await topology_f.scan()
+    assert device_1.neighbors.scan.await_count == 1
+    assert device_2.neighbors.scan.await_count == 1
+    assert device_3.neighbors.scan.await_count == 0
+    assert device_4.neighbors.scan.await_count == 0
