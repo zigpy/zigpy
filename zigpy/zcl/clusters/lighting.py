@@ -66,6 +66,7 @@ class Color(Cluster):
         0x400A: ("color_capabilities", t.bitmap16),
         0x400B: ("color_temp_physical_min", t.uint16_t),
         0x400C: ("color_temp_physical_max", t.uint16_t),
+        0x4010: ("start_up_color_temperature", t.uint16_t),
     }
     server_commands = {
         0x0000: (
