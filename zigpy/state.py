@@ -19,6 +19,12 @@ class Key:
     tx_counter: t.uint32_t | None = 0
     rx_counter: t.uin32_t | None = 0
     seq: t.uint8_t | None = 0
+    partner_ieee: t.EUI64 | None = None
+
+    def __post_init__(self) -> None:
+        """Initialize instance."""
+        if self.ieee is None:
+            self.ieee = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
 
 
 @dataclass
@@ -50,7 +56,7 @@ class NetworkInformation:
     security_level: t.uint8_t | None = None
     network_key: Key | None = None
     tc_link_key: Key | None = None
-    key_table: dict[t.EUI64, Key] | None = None
+    key_table: list[Key] | None = None
 
     # Dict to keep track of stack-specific network stuff.
     # Z-Stack, for example, has a TCLK_SEED that should be backed up.
@@ -61,7 +67,7 @@ class NetworkInformation:
         if self.extended_pan_id is None:
             self.extended_pan_id = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
         if self.key_table is None:
-            self.key_table = {}
+            self.key_table = []
         if self.stack_specific is None:
             self.stack_specific = {}
 
