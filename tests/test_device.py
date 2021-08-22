@@ -7,6 +7,7 @@ from zigpy import device, endpoint
 import zigpy.application
 import zigpy.exceptions
 from zigpy.profiles import zha
+import zigpy.state
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
@@ -14,17 +15,11 @@ from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
 
 @pytest.fixture
-def app():
-    """Controller Application mock."""
-    return MagicMock(spec_set=zigpy.application.ControllerApplication)
-
-
-@pytest.fixture
-def dev(monkeypatch, app):
+def dev(monkeypatch, app_mock):
     monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
-    dev = device.Device(app, ieee, 65535)
-    node_desc = zdo_t.NodeDescriptor(0, 1, 2, 3, 4, 5, 6, 7, 8)
+    dev = device.Device(app_mock, ieee, 65535)
+    node_desc = zdo_t.NodeDescriptor(1, 1, 1, 4, 5, 6, 7, 8)
     with patch.object(
         dev.zdo, "Node_Desc_req", new=AsyncMock(return_value=(0, 0xFFFF, node_desc))
     ):
@@ -214,8 +209,8 @@ def test_endpoint_getitem(dev):
         dev[1]
 
 
-async def test_broadcast(app):
-    app.ieee = t.EUI64(map(t.uint8_t, [8, 9, 10, 11, 12, 13, 14, 15]))
+async def test_broadcast(app_mock):
+    app_mock.ieee = t.EUI64(map(t.uint8_t, [8, 9, 10, 11, 12, 13, 14, 15]))
 
     (profile, cluster, src_ep, dst_ep, data) = (
         zha.PROFILE_ID,
@@ -224,14 +219,14 @@ async def test_broadcast(app):
         3,
         b"\x02\x01\x00",
     )
-    await device.broadcast(app, profile, cluster, src_ep, dst_ep, 0, 0, 123, data)
+    await device.broadcast(app_mock, profile, cluster, src_ep, dst_ep, 0, 0, 123, data)
 
-    assert app.broadcast.call_count == 1
-    assert app.broadcast.call_args[0][0] == profile
-    assert app.broadcast.call_args[0][1] == cluster
-    assert app.broadcast.call_args[0][2] == src_ep
-    assert app.broadcast.call_args[0][3] == dst_ep
-    assert app.broadcast.call_args[0][7] == data
+    assert app_mock.broadcast.call_count == 1
+    assert app_mock.broadcast.call_args[0][0] == profile
+    assert app_mock.broadcast.call_args[0][1] == cluster
+    assert app_mock.broadcast.call_args[0][2] == src_ep
+    assert app_mock.broadcast.call_args[0][3] == dst_ep
+    assert app_mock.broadcast.call_args[0][7] == data
 
 
 async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
