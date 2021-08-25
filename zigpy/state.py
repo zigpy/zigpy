@@ -23,8 +23,8 @@ class Key:
 
     def __post_init__(self) -> None:
         """Initialize instance."""
-        if self.ieee is None:
-            self.ieee = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
+        if self.partner_ieee is None:
+            self.partner_ieee = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
 
 
 @dataclass
