@@ -432,22 +432,23 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
     def configure_reporting(
         self,
-        attribute: Union[int, str],
+        attribute: int | str,
         min_interval: int,
         max_interval: int,
         reportable_change: int,
-        manufacturer: Optional[int] = None,
+        manufacturer: int | None = None,
     ) -> Coroutine:
-        cfg = self._attr_reporting_rec(
-            attribute, min_interval, max_interval, reportable_change
+        """Configure attribute reporting for a single attribute."""
+        return self.configure_reporting_multiple(
+            {attribute: (min_interval, max_interval, reportable_change)},
+            manufacturer=manufacturer,
         )
-        return self._configure_reporting([cfg], manufacturer=manufacturer)
 
-    def configure_reporting_multiple(
+    async def configure_reporting_multiple(
         self,
-        attributes: Dict[Union[int, str], Tuple[int, int, int]],
-        manufacturer: Optional[int] = None,
-    ) -> Coroutine:
+        attributes: dict[int | str, tuple[int, int, int]],
+        manufacturer: int | None = None,
+    ) -> list[foundation.ConfigureReportingResponseRecord]:
         """Configure attribute reporting for multiple attributes in the same request.
 
         :param attributes: dict of attributes to configure attribute reporting.
@@ -463,7 +464,22 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             self._attr_reporting_rec(attr, rep[0], rep[1], rep[2])
             for attr, rep in attributes.items()
         ]
-        return self._configure_reporting(cfg, manufacturer=manufacturer)
+        res = await self._configure_reporting(cfg, manufacturer=manufacturer)
+
+        # Parse configure reporting result for unsupported attributes
+        if (
+            isinstance(res, list)
+            and not (res[0].status == foundation.Status.SUCCESS and len(res) == 1)
+            and len(res) >= 0
+        ):
+            failed = [
+                r.attrid
+                for r in res
+                if r.status == foundation.Status.UNSUPPORTED_ATTRIBUTE
+            ]
+            for attr in failed:
+                self.add_unsupported_attribute(attr)
+        return res
 
     def command(
         self,
