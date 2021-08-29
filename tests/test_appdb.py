@@ -715,3 +715,44 @@ async def test_unsupported_attribute(tmpdir, dev_init):
 
     await app2.pre_shutdown()
     os.unlink(db)
+
+
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
+async def test_load_unsupp_attr_wrong_cluster(tmpdir):
+    """Test loading unsupported attribute from the wrong cluster."""
+
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    clus._update_attribute(4, "Custom")
+    clus._update_attribute(5, "Model")
+    app.device_initialized(dev)
+    await app.pre_shutdown()
+    del clus
+    del ep
+    del dev
+
+    # add unsupported attr for missing endpoint
+    app = await make_app(db)
+    dev = app.get_device(ieee)
+    ep = dev.endpoints[3]
+    clus = ep.add_input_cluster(2)
+    clus.add_unsupported_attribute(0)
+    await app.pre_shutdown()
+    del clus
+    del ep
+    del dev
+
+    # reload
+    app = await make_app(db)
+    await app.pre_shutdown()
