@@ -758,3 +758,33 @@ async def test_configure_reporting_multiple(cluster):
             cluster.endpoint.request.call_args_list[0][0][2]
             == cluster.endpoint.request.call_args_list[1][0][2]
         )
+
+
+def test_unsupported_attr_add(cluster):
+    """Test adding unsupported attributes."""
+
+    assert "manufacturer" not in cluster.unsupported_attributes
+    assert 4 not in cluster.unsupported_attributes
+    assert "model" not in cluster.unsupported_attributes
+    assert 5 not in cluster.unsupported_attributes
+
+    cluster.add_unsupported_attribute(4)
+    assert "manufacturer" in cluster.unsupported_attributes
+    assert 4 in cluster.unsupported_attributes
+
+    cluster.add_unsupported_attribute("model")
+    assert "model" in cluster.unsupported_attributes
+    assert 5 in cluster.unsupported_attributes
+
+
+def test_unsupported_attr_add_no_reverse_attr_name(cluster):
+    """Test adding unsupported attributes without corresponding reverse attr name."""
+
+    assert "no_such_attr" not in cluster.unsupported_attributes
+    assert 0xDEED not in cluster.unsupported_attributes
+
+    cluster.add_unsupported_attribute("no_such_attr")
+    assert "no_such_attr" in cluster.unsupported_attributes
+
+    cluster.add_unsupported_attribute(0xDEED)
+    assert 0xDEED in cluster.unsupported_attributes

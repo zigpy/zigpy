@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import enum
 import functools
@@ -69,6 +71,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     def __init__(self, endpoint: EndpointType, is_server: bool = True):
         self._endpoint: EndpointType = endpoint
         self._attr_cache: Dict[int, Any] = {}
+        self.unsupported_attributes: set[int | str] = set()
         self._listeners = {}
         if is_server:
             self._type: ClusterType = ClusterType.Server
@@ -632,6 +635,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                 tsn=hdr.tsn,
             )
         )
+
+    def add_unsupported_attribute(self, attr: int | str) -> None:
+        """Adds unsupported attribute."""
+
+        self.unsupported_attributes.add(attr)
+        if isinstance(attr, int):
+            reverse_attr = self.attributes.get(attr, (None,))[0]
+        else:
+            reverse_attr = self.attridx.get(attr)
+        if reverse_attr is not None:
+            self.unsupported_attributes.add(reverse_attr)
 
 
 class ClusterPersistingListener:
