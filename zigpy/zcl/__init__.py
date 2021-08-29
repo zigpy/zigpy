@@ -284,6 +284,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             for idx, attribute in enumerate(attribute_ids):
                 if attribute in self._attr_cache:
                     success[attributes[idx]] = self._attr_cache[attribute]
+                elif attribute in self.unsupported_attributes:
+                    failure[attributes[idx]] = foundation.Status.UNSUPPORTED_ATTRIBUTE
                 else:
                     to_read.append(attribute)
         else:
