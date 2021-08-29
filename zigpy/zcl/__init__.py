@@ -263,14 +263,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
     async def read_attributes(
         self,
-        attributes,
-        allow_cache=False,
-        only_cache=False,
-        manufacturer=None,
+        attributes: list[int | str],
+        allow_cache: bool = False,
+        only_cache: bool = False,
+        manufacturer: int | t.uint16_t | None = None,
     ):
         success, failure = {}, {}
-        attribute_ids = []
-        orig_attributes = {}
+        attribute_ids: list[int] = []
+        orig_attributes: dict[int, int | str] = {}
         for attribute in attributes:
             if isinstance(attribute, str):
                 attrid = self.attridx[attribute]
@@ -316,6 +316,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                     self._update_attribute(record.attrid, value)
                     success[orig_attribute] = value
                 else:
+                    if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
+                        self.unsupported_attributes.add(record.attrid)
                     failure[orig_attribute] = record.status
 
         return success, failure
