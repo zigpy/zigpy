@@ -640,7 +640,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
             )
         )
 
-    def add_unsupported_attribute(self, attr: int | str) -> None:
+    def add_unsupported_attribute(
+        self, attr: int | str, inhibit_events: bool = False
+    ) -> None:
         """Adds unsupported attribute."""
 
         if attr in self.unsupported_attributes:
@@ -648,12 +650,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
 
         self.unsupported_attributes.add(attr)
         if isinstance(attr, int):
-            self.listener_event("unsupported_attribute_added", attr)
+            if not inhibit_events:
+                self.listener_event("unsupported_attribute_added", attr)
             reverse_attr = self.attributes.get(attr, (None,))[0]
         else:
             reverse_attr = self.attridx.get(attr)
-        if reverse_attr is not None:
-            self.add_unsupported_attribute(reverse_attr)
+        if not (reverse_attr is None or reverse_attr in self.unsupported_attributes):
+            self.add_unsupported_attribute(reverse_attr, inhibit_events)
 
 
 class ClusterPersistingListener:

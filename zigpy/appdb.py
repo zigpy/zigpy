@@ -346,9 +346,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _save_unsupported_attributes(self, ep: zigpy.typing.EndpointType) -> None:
         clusters = [
-            (ep.device.ieee, ep.endpoint_id, cluster.cluster_id, attrid)
+            (ep.device.ieee, ep.endpoint_id, cluster.cluster_id, attr)
             for cluster in ep.in_clusters.values()
-            for attrid in cluster._attr_cache
+            for attr in cluster.unsupported_attributes
+            if isinstance(attr, int)
         ]
         q = f"INSERT OR REPLACE INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?)"
         await self._db.executemany(q, clusters)
@@ -383,6 +384,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             self._application.devices[device.ieee] = device
 
         await self._load_attributes()
+        await self._load_unsupported_attributes()
         await self._load_groups()
         await self._load_group_members()
         await self._load_relays()
@@ -424,6 +426,23 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     dev.manufacturer = decode_str_attribute(value)
                 elif cluster == Basic.cluster_id and attrid == 5:
                     dev.model = decode_str_attribute(value)
+
+    async def _load_unsupported_attributes(self) -> None:
+        """Load unsuppoted attributes."""
+
+        async with self.execute(
+            f"SELECT * FROM unsupported_attributes{DB_V}"
+        ) as cursor:
+            async for (ieee, endpoint_id, cluster_id, attrid) in cursor:
+                dev = self._application.get_device(ieee)
+                ep = dev.endpoints[endpoint_id]
+
+                try:
+                    cluster = ep.in_clusters[cluster_id]
+                except KeyError:
+                    continue
+
+                cluster.add_unsupported_attribute(attrid, inhibit_events=True)
 
     async def _load_devices(self) -> None:
         async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:

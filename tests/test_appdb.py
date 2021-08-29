@@ -696,9 +696,11 @@ async def test_unsupported_attribute(tmpdir, dev_init):
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
+    clus._update_attribute(4, "Custom")
+    clus._update_attribute(5, "Model")
     app.device_initialized(dev)
-    clus.add_unsupported_attribute(4)
-    clus.add_unsupported_attribute("model")
+    clus.add_unsupported_attribute(0x0010)
+    clus.add_unsupported_attribute("physical_env")
     await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads
@@ -706,10 +708,10 @@ async def test_unsupported_attribute(tmpdir, dev_init):
     dev = app2.get_device(ieee)
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
-    assert 4 in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "manufacturer" in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert 5 in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "model" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert 0x0010 in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "location_desc" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
 
     await app2.pre_shutdown()
     os.unlink(db)
