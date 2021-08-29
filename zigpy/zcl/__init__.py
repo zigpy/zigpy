@@ -639,6 +639,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     def add_unsupported_attribute(self, attr: int | str) -> None:
         """Adds unsupported attribute."""
 
+        if attr in self.unsupported_attributes:
+            return
+
         self.unsupported_attributes.add(attr)
         if isinstance(attr, int):
             self.listener_event("unsupported_attribute_added", attr)

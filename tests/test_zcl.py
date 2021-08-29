@@ -784,6 +784,7 @@ def test_unsupported_attr_add_no_reverse_attr_name(cluster):
     assert 0xDEED not in cluster.unsupported_attributes
 
     cluster.add_unsupported_attribute("no_such_attr")
+    cluster.add_unsupported_attribute("no_such_attr")
     assert "no_such_attr" in cluster.unsupported_attributes
 
     cluster.add_unsupported_attribute(0xDEED)
