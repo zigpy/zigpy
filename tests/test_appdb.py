@@ -674,3 +674,42 @@ async def test_appdb_worker_exception(save_mock, tmpdir):
         db_listener.raw_device_initialized(dev_1)
     await db_listener.shutdown()
     assert save_mock.await_count == 3
+
+
+@pytest.mark.parametrize("dev_init", (True, False))
+async def test_unsupported_attribute(tmpdir, dev_init):
+    """Test adding unsupported attributes for initialized and uninitialized devices."""
+
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+    ieee = make_ieee()
+    with patch(
+        "zigpy.device.Device.schedule_initialize",
+        new=mock_dev_init(initialize=dev_init),
+    ):
+        app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    clus.add_unsupported_attribute(4)
+    clus.add_unsupported_attribute("model")
+    app.device_initialized(dev)
+    await app.pre_shutdown()
+
+    # Everything should've been saved - check that it re-loads
+    app2 = await make_app(db)
+    dev = app2.get_device(ieee)
+    assert dev.is_initialized == dev_init
+    assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
+    assert 4 in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "manufacturer" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert 5 in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "model" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+
+    await app2.pre_shutdown()
+    os.unlink(db)

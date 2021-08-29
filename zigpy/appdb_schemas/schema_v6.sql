@@ -178,3 +178,22 @@ CREATE TABLE relays_v6 (
 
 CREATE UNIQUE INDEX relays_idx_v6
     ON relays_v6(ieee);
+
+
+-- unsupported attributes
+DROP TABLE IF EXISTS unsupported_attributes_v6;
+CREATE TABLE unsupported_attributes_v6 (
+    ieee ieee NOT NULL,
+    endpoint_id INTEGER NOT NULL,
+    cluster INTEGER NOT NULL,
+    attrid INTEGER NOT NULL,
+
+    -- Quirks can create "virtual" clusters and endpoints that won't be present in the
+    -- DB but whose values still need to be cached
+    FOREIGN KEY(ieee)
+        REFERENCES devices_v6(ieee)
+        ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX unsupported_attributes_idx_v6
+    ON unsupported_attributes_v6(ieee, endpoint_id, cluster, attrid);

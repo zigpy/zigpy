@@ -187,6 +187,27 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             value,
         )
 
+    def unsupported_attribute_added(
+        self, cluster: zigpy.typing.ClusterType, attrid: int
+    ) -> None:
+        if not cluster.endpoint.device.is_initialized:
+            return
+
+        self.enqueue(
+            "_unsupported_attribute_added",
+            cluster.endpoint.device.ieee,
+            cluster.endpoint.endpoint_id,
+            cluster.cluster_id,
+            attrid,
+        )
+
+    async def _unsupported_attribute_added(
+        self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int
+    ) -> None:
+        q = f"INSERT OR REPLACE INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?)"
+        await self.execute(q, (ieee, endpoint_id, cluster_id, attrid))
+        await self._db.commit()
+
     def neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
         """Neighbor update from ZDO_Lqi_rsp."""
         self.enqueue("_neighbors_updated", neighbors)
@@ -280,6 +301,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for ep in device.non_zdo_endpoints:
             await self._save_input_clusters(ep)
             await self._save_attribute_cache(ep)
+            await self._save_unsupported_attributes(ep)
             await self._save_output_clusters(ep)
         await self._db.commit()
 
@@ -320,6 +342,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             for attrid, value in cluster._attr_cache.items()
         ]
         q = f"INSERT OR REPLACE INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)"
+        await self._db.executemany(q, clusters)
+
+    async def _save_unsupported_attributes(self, ep: zigpy.typing.EndpointType) -> None:
+        clusters = [
+            (ep.device.ieee, ep.endpoint_id, cluster.cluster_id, attrid)
+            for cluster in ep.in_clusters.values()
+            for attrid in cluster._attr_cache
+        ]
+        q = f"INSERT OR REPLACE INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?)"
         await self._db.executemany(q, clusters)
 
     async def _save_output_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
