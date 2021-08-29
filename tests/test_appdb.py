@@ -696,9 +696,9 @@ async def test_unsupported_attribute(tmpdir, dev_init):
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
+    app.device_initialized(dev)
     clus.add_unsupported_attribute(4)
     clus.add_unsupported_attribute("model")
-    app.device_initialized(dev)
     await app.pre_shutdown()
 
     # Everything should've been saved - check that it re-loads

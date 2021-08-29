@@ -649,7 +649,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         else:
             reverse_attr = self.attridx.get(attr)
         if reverse_attr is not None:
-            self.unsupported_attributes.add(reverse_attr)
+            self.add_unsupported_attribute(reverse_attr)
 
 
 class ClusterPersistingListener:
