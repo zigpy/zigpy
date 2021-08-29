@@ -240,56 +240,57 @@ def _mk_rar(attrid, value, status=0):
 
 async def test_read_attributes_uncached(cluster):
     async def mockrequest(
-        foundation, command, schema, args, manufacturer=None, **kwargs
+        is_general_req, command, schema, args, manufacturer=None, **kwargs
     ):
-        assert foundation is True
+        assert is_general_req is True
         assert command == 0
         rar0 = _mk_rar(0, 99)
         rar4 = _mk_rar(4, "Manufacturer")
         rar99 = _mk_rar(99, None, 1)
         rar199 = _mk_rar(199, 199)
-        return [[rar0, rar4, rar99, rar199]]
+        rar16 = _mk_rar(0x0010, None, zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE)
+        return [[rar0, rar4, rar99, rar199, rar16]]
 
     cluster.request = mockrequest
-    success, failure = await cluster.read_attributes([0, "manufacturer", 99, 199])
+    success, failure = await cluster.read_attributes([0, "manufacturer", 99, 199, 16])
     assert success[0] == 99
     assert success["manufacturer"] == "Manufacturer"
     assert failure[99] == 1
+    assert {99, 0x0010} == failure.keys()
     assert success[199] == 199
+    assert cluster.unsupported_attributes == {0x0010}
 
 
 async def test_read_attributes_cached(cluster):
     cluster.request = MagicMock()
     cluster._attr_cache[0] = 99
     cluster._attr_cache[4] = "Manufacturer"
+    cluster.unsupported_attributes.add(0x0010)
     success, failure = await cluster.read_attributes(
-        [0, "manufacturer"], allow_cache=True
+        [0, "manufacturer", 0x0010], allow_cache=True
     )
     assert cluster.request.call_count == 0
     assert success[0] == 99
     assert success["manufacturer"] == "Manufacturer"
-    assert failure == {}
+    assert failure == {0x0010: zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE}
 
 
 async def test_read_attributes_mixed_cached(cluster):
-    async def mockrequest(
-        foundation, command, schema, args, manufacturer=None, **kwargs
-    ):
-        assert foundation is True
-        assert command == 0
-        rar5 = _mk_rar(5, "Model")
-        return [[rar5]]
+    """Reading cached and uncached attributes."""
 
-    cluster.request = mockrequest
+    cluster.request = AsyncMock(return_value=[[_mk_rar(5, "Model")]])
     cluster._attr_cache[0] = 99
     cluster._attr_cache[4] = "Manufacturer"
+    cluster.unsupported_attributes.add(0x0010)
     success, failure = await cluster.read_attributes(
-        [0, "manufacturer", "model"], allow_cache=True
+        [0, "manufacturer", "model", 0x0010], allow_cache=True
     )
     assert success[0] == 99
     assert success["manufacturer"] == "Manufacturer"
     assert success["model"] == "Model"
-    assert failure == {}
+    assert cluster.request.await_count == 1
+    assert cluster.request.call_args[0][3] == [0x0005]
+    assert failure == {0x0010: zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE}
 
 
 async def test_read_attributes_default_response(cluster):
