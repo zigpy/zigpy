@@ -260,7 +260,7 @@ async def test_read_attributes_uncached(cluster):
     assert failure[99] == 1
     assert {99, 0x0010} == failure.keys()
     assert success[199] == 199
-    assert cluster.unsupported_attributes == {0x0010}
+    assert cluster.unsupported_attributes == {0x0010, "location_desc"}
 
 
 async def test_read_attributes_cached(cluster):

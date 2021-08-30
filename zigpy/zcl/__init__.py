@@ -319,7 +319,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
                     success[orig_attribute] = value
                 else:
                     if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
-                        self.unsupported_attributes.add(record.attrid)
+                        self.add_unsupported_attribute(record.attrid)
                     failure[orig_attribute] = record.status
 
         return success, failure
