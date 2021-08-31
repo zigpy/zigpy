@@ -449,3 +449,10 @@ async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribut
         assert dev.endpoints[123].in_clusters[456]._attr_cache[789] == "test"
 
     await app.pre_shutdown()
+
+
+async def test_v5_to_v7_migration(test_db):
+    test_db_v5 = test_db("simple_v5.sql")
+
+    app = await make_app(test_db_v5)
+    await app.pre_shutdown()

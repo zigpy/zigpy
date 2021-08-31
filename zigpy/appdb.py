@@ -22,7 +22,7 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 6
+DB_VERSION = 7
 DB_V = f"_v{DB_VERSION}"
 
 
@@ -187,6 +187,27 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             value,
         )
 
+    def unsupported_attribute_added(
+        self, cluster: zigpy.typing.ClusterType, attrid: int
+    ) -> None:
+        if not cluster.endpoint.device.is_initialized:
+            return
+
+        self.enqueue(
+            "_unsupported_attribute_added",
+            cluster.endpoint.device.ieee,
+            cluster.endpoint.endpoint_id,
+            cluster.cluster_id,
+            attrid,
+        )
+
+    async def _unsupported_attribute_added(
+        self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int
+    ) -> None:
+        q = f"INSERT OR REPLACE INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?)"
+        await self.execute(q, (ieee, endpoint_id, cluster_id, attrid))
+        await self._db.commit()
+
     def neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
         """Neighbor update from ZDO_Lqi_rsp."""
         self.enqueue("_neighbors_updated", neighbors)
@@ -280,6 +301,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for ep in device.non_zdo_endpoints:
             await self._save_input_clusters(ep)
             await self._save_attribute_cache(ep)
+            await self._save_unsupported_attributes(ep)
             await self._save_output_clusters(ep)
         await self._db.commit()
 
@@ -322,6 +344,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         q = f"INSERT OR REPLACE INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)"
         await self._db.executemany(q, clusters)
 
+    async def _save_unsupported_attributes(self, ep: zigpy.typing.EndpointType) -> None:
+        clusters = [
+            (ep.device.ieee, ep.endpoint_id, cluster.cluster_id, attr)
+            for cluster in ep.in_clusters.values()
+            for attr in cluster.unsupported_attributes
+            if isinstance(attr, int)
+        ]
+        q = f"INSERT OR REPLACE INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?)"
+        await self._db.executemany(q, clusters)
+
     async def _save_output_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
         clusters = [
             (endpoint.device.ieee, endpoint.endpoint_id, cluster.cluster_id)
@@ -352,6 +384,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             self._application.devices[device.ieee] = device
 
         await self._load_attributes()
+        await self._load_unsupported_attributes()
         await self._load_groups()
         await self._load_group_members()
         await self._load_relays()
@@ -393,6 +426,23 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     dev.manufacturer = decode_str_attribute(value)
                 elif cluster == Basic.cluster_id and attrid == 5:
                     dev.model = decode_str_attribute(value)
+
+    async def _load_unsupported_attributes(self) -> None:
+        """Load unsuppoted attributes."""
+
+        async with self.execute(
+            f"SELECT * FROM unsupported_attributes{DB_V}"
+        ) as cursor:
+            async for (ieee, endpoint_id, cluster_id, attrid) in cursor:
+                dev = self._application.get_device(ieee)
+                ep = dev.endpoints[endpoint_id]
+
+                try:
+                    cluster = ep.in_clusters[cluster_id]
+                except KeyError:
+                    continue
+
+                cluster.add_unsupported_attribute(attrid, inhibit_events=True)
 
     async def _load_devices(self) -> None:
         async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:
@@ -509,6 +559,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v4, 4),
                 (self._migrate_to_v5, 5),
                 (self._migrate_to_v6, 6),
+                (self._migrate_to_v7, 7),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -649,3 +700,22 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 await self._migrate_tables(
                     {"attributes": "attributes_cache_v6"}, errors="ignore"
                 )
+
+    async def _migrate_to_v7(self):
+        """Schema v7 just adds a new table."""
+
+        # Copy the devices table first, it should have no conflicts
+        await self.execute("INSERT INTO devices_v7 SELECT * FROM devices_v6")
+        await self._migrate_tables(
+            {
+                "endpoints_v6": "endpoints_v7",
+                "in_clusters_v6": "in_clusters_v7",
+                "out_clusters_v6": "out_clusters_v7",
+                "groups_v6": "groups_v7",
+                "group_members_v6": "group_members_v7",
+                "relays_v6": "relays_v7",
+                "attributes_cache_v6": "attributes_cache_v7",
+                "neighbors_v6": "neighbors_v7",
+                "node_descriptors_v6": "node_descriptors_v7",
+            }
+        )
