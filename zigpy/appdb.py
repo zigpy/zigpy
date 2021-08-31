@@ -22,7 +22,7 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 6
+DB_VERSION = 7
 DB_V = f"_v{DB_VERSION}"
 
 
@@ -559,6 +559,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v4, 4),
                 (self._migrate_to_v5, 5),
                 (self._migrate_to_v6, 6),
+                (self._migrate_to_v7, 7),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -699,3 +700,22 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 await self._migrate_tables(
                     {"attributes": "attributes_cache_v6"}, errors="ignore"
                 )
+
+    async def _migrate_to_v7(self):
+        """Schema v7 just adds a new table."""
+
+        # Copy the devices table first, it should have no conflicts
+        await self.execute("INSERT INTO devices_v7 SELECT * FROM devices_v6")
+        await self._migrate_tables(
+            {
+                "endpoints_v6": "endpoints_v7",
+                "in_clusters_v6": "in_clusters_v7",
+                "out_clusters_v6": "out_clusters_v7",
+                "groups_v6": "groups_v7",
+                "group_members_v6": "group_members_v7",
+                "relays_v6": "relays_v7",
+                "attributes_cache_v6": "attributes_cache_v7",
+                "neighbors_v6": "neighbors_v7",
+                "node_descriptors_v6": "node_descriptors_v7",
+            }
+        )
