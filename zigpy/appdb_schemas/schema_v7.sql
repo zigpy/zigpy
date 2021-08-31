@@ -188,8 +188,6 @@ CREATE TABLE unsupported_attributes_v7 (
     cluster INTEGER NOT NULL,
     attrid INTEGER NOT NULL,
 
-    -- Quirks can create "virtual" clusters and endpoints that won't be present in the
-    -- DB but whose values still need to be cached
     FOREIGN KEY(ieee)
         REFERENCES devices_v7(ieee)
         ON DELETE CASCADE,
