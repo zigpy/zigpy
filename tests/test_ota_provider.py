@@ -655,7 +655,12 @@ async def test_ledvance_refresh_list(
                         "identity": {
                             "company": 4489,
                             "product": 25,
-                            "version": {"major": 1, "minor": 2, "build": 428},
+                            "version": {
+                                "major": 1,
+                                "minor": 2,
+                                "build": 428,
+                                "revision": 40,
+                            },
                         },
                         "releaseNotes": "",
                         "shA256": sha_1,
@@ -672,7 +677,12 @@ async def test_ledvance_refresh_list(
                         "identity": {
                             "company": 4489,
                             "product": 13,
-                            "version": {"major": 1, "minor": 2, "build": 428},
+                            "version": {
+                                "major": 1,
+                                "minor": 2,
+                                "build": 428,
+                                "revision": 40,
+                            },
                         },
                         "releaseNotes": "",
                         "shA256": sha_2,
@@ -699,11 +709,11 @@ async def test_ledvance_refresh_list(
     cached_1 = ledvance_prov._cache[img1.key]
     assert cached_1.image_type == img1.image_type
     base = "https://api.update.ledvance.com/v1/zigbee/firmwares/download"
-    assert cached_1.url == base + "?Company=4489&Product=25&Version=1.2.428"
+    assert cached_1.url == base + "?Company=4489&Product=25&Version=1.2.428.40"
 
     cached_2 = ledvance_prov._cache[img2.key]
     assert cached_2.image_type == img2.image_type
-    assert cached_2.url == base + "?Company=4489&Product=13&Version=1.2.428"
+    assert cached_2.url == base + "?Company=4489&Product=13&Version=1.2.428.40"
 
     assert not ledvance_prov.expired
 
