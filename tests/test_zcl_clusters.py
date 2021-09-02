@@ -576,22 +576,28 @@ async def test_ias_zone(send_rsp_mock):
 
     ep = MagicMock()
     ep.reply = AsyncMock()
-    t = zcl.Cluster._registry[sec.IasZone.cluster_id](ep)
-
-    hdr_cluster = zcl.foundation.ZCLHeader.cluster
-    tsn = 123
-
-    # this is an enroll_response cmd client -> server
-    t.handle_message(hdr_cluster(tsn, 0), [0, 1, 2, 3])
-    assert send_rsp_mock.call_count == 0
+    t = zcl.Cluster._registry[sec.IasZone.cluster_id](ep, is_server=False)
 
     # suppress default response
-    hdr = hdr_cluster(tsn, 0, is_reply=True)
+    hdr, args = t.deserialize(b"\tK\x00&\x00\x00\x00\x00\x00")
     hdr.frame_control.disable_default_response = True
-    t.handle_message(hdr, [0, 1, 2, 3])
+    t.handle_message(hdr, args)
     assert send_rsp_mock.call_count == 0
 
     # this should generate a default response
     hdr.frame_control.disable_default_response = False
-    t.handle_message(hdr, [0, 1, 2, 3])
+    t.handle_message(hdr, args)
+    assert send_rsp_mock.call_count == 0
+
+    t = zcl.Cluster._registry[sec.IasZone.cluster_id](ep, is_server=True)
+
+    # suppress default response
+    hdr, args = t.deserialize(b"\tK\x00&\x00\x00\x00\x00\x00")
+    hdr.frame_control.disable_default_response = True
+    t.handle_message(hdr, args)
+    assert send_rsp_mock.call_count == 0
+
+    # this should generate a default response
+    hdr.frame_control.disable_default_response = False
+    t.handle_message(hdr, args)
     assert send_rsp_mock.call_count == 1

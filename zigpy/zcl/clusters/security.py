@@ -98,8 +98,8 @@ class IasZone(Cluster):
         | None = None,
     ):
         if (
-            hdr.frame_control.is_reply  # is server to client
-            and hdr.command_id == 0
+            hdr.command_id == 0
+            and self.is_server
             and not hdr.frame_control.disable_default_response
         ):
             self.send_default_rsp(hdr, zigpy.zcl.foundation.Status.SUCCESS)
