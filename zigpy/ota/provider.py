@@ -199,7 +199,7 @@ class LedvanceImage:
         identity = data["identity"]
         ver = identity["version"]
 
-        res = cls(identity["company"], identity["product"])
+        res = cls(manufacturer_id=identity["company"], image_type=identity["product"])
         res.file_version = int(data["fullName"].split("/")[1], 16)
         res.image_size = data["length"]
         res.url = (
