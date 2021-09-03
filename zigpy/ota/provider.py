@@ -7,6 +7,7 @@ import logging
 import os
 import os.path
 from typing import Dict, Optional
+import urllib.parse
 
 import aiohttp
 import attr
@@ -195,17 +196,24 @@ class LedvanceImage:
 
     @classmethod
     def new(cls, data):
-        ident = data["identity"]
-        company, product, ver = (ident["company"], ident["product"], ident["version"])
-        major, minor, build = (ver["major"], ver["minor"], ver["build"])
+        identity = data["identity"]
+        ver = identity["version"]
 
-        res = cls(company, product)
+        res = cls(manufacturer_id=identity["company"], image_type=identity["product"])
         res.file_version = int(data["fullName"].split("/")[1], 16)
         res.image_size = data["length"]
-
         res.url = (
-            f"https://api.update.ledvance.com/v1/zigbee/firmwares/download"
-            f"?Company={company}&Product={product}&Version={major}.{minor}.{build}"
+            "https://api.update.ledvance.com/v1/zigbee/firmwares/download?"
+            + urllib.parse.urlencode(
+                {
+                    "Company": identity["company"],
+                    "Product": identity["product"],
+                    "Version": (
+                        f"{ver['major']}.{ver['minor']}"
+                        f".{ver['build']}.{ver['revision']}"
+                    ),
+                }
+            )
         )
 
         return res
