@@ -9,7 +9,7 @@ import zigpy.types as types
 import zigpy.zcl as zcl
 import zigpy.zcl.clusters.security as sec
 
-from .async_mock import AsyncMock, MagicMock, sentinel
+from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
 IMAGE_SIZE = 0x2345
 IMAGE_OFFSET = 0x2000
@@ -568,3 +568,36 @@ def test_hvac_thermostat_system_type():
     assert sys_type.heating_system_stage == hvac.HeatingSystemStage.Heat_Stage_2
     assert sys_type.heating_fuel_source == hvac.HeatingFuelSource.Gas
     assert sys_type.heating_system_type == hvac.HeatingSystemType.Heat_Pump
+
+
+@patch("zigpy.zcl.Cluster.send_default_rsp")
+async def test_ias_zone(send_rsp_mock):
+    """Test sending default response on zone status notification."""
+
+    ep = MagicMock()
+    ep.reply = AsyncMock()
+    t = zcl.Cluster._registry[sec.IasZone.cluster_id](ep, is_server=False)
+
+    # suppress default response
+    hdr, args = t.deserialize(b"\tK\x00&\x00\x00\x00\x00\x00")
+    hdr.frame_control.disable_default_response = True
+    t.handle_message(hdr, args)
+    assert send_rsp_mock.call_count == 0
+
+    # this should generate a default response
+    hdr.frame_control.disable_default_response = False
+    t.handle_message(hdr, args)
+    assert send_rsp_mock.call_count == 0
+
+    t = zcl.Cluster._registry[sec.IasZone.cluster_id](ep, is_server=True)
+
+    # suppress default response
+    hdr, args = t.deserialize(b"\tK\x00&\x00\x00\x00\x00\x00")
+    hdr.frame_control.disable_default_response = True
+    t.handle_message(hdr, args)
+    assert send_rsp_mock.call_count == 0
+
+    # this should generate a default response
+    hdr.frame_control.disable_default_response = False
+    t.handle_message(hdr, args)
+    assert send_rsp_mock.call_count == 1

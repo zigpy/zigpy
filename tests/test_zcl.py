@@ -91,6 +91,7 @@ def cluster_by_id():
         epmock = MagicMock()
         epmock._device.application.get_sequence.return_value = DEFAULT_TSN
         epmock.device.application.get_sequence.return_value = DEFAULT_TSN
+        epmock.request = AsyncMock()
         return zcl.Cluster.from_id(epmock, cluster_id)
 
     return _cluster
@@ -124,6 +125,7 @@ def test_request_manufacturer(cluster):
 
 async def test_request_optional(cluster):
     schema = [t.uint8_t, t.uint16_t, t.Optional(t.uint16_t), t.Optional(t.uint8_t)]
+    cluster.endpoint.request = MagicMock()
 
     res = cluster.request(True, 0, schema)
     assert isinstance(res.exception(), ValueError)
@@ -240,56 +242,57 @@ def _mk_rar(attrid, value, status=0):
 
 async def test_read_attributes_uncached(cluster):
     async def mockrequest(
-        foundation, command, schema, args, manufacturer=None, **kwargs
+        is_general_req, command, schema, args, manufacturer=None, **kwargs
     ):
-        assert foundation is True
+        assert is_general_req is True
         assert command == 0
         rar0 = _mk_rar(0, 99)
         rar4 = _mk_rar(4, "Manufacturer")
         rar99 = _mk_rar(99, None, 1)
         rar199 = _mk_rar(199, 199)
-        return [[rar0, rar4, rar99, rar199]]
+        rar16 = _mk_rar(0x0010, None, zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE)
+        return [[rar0, rar4, rar99, rar199, rar16]]
 
     cluster.request = mockrequest
-    success, failure = await cluster.read_attributes([0, "manufacturer", 99, 199])
+    success, failure = await cluster.read_attributes([0, "manufacturer", 99, 199, 16])
     assert success[0] == 99
     assert success["manufacturer"] == "Manufacturer"
     assert failure[99] == 1
+    assert {99, 0x0010} == failure.keys()
     assert success[199] == 199
+    assert cluster.unsupported_attributes == {0x0010, "location_desc"}
 
 
 async def test_read_attributes_cached(cluster):
     cluster.request = MagicMock()
     cluster._attr_cache[0] = 99
     cluster._attr_cache[4] = "Manufacturer"
+    cluster.unsupported_attributes.add(0x0010)
     success, failure = await cluster.read_attributes(
-        [0, "manufacturer"], allow_cache=True
+        [0, "manufacturer", 0x0010], allow_cache=True
     )
     assert cluster.request.call_count == 0
     assert success[0] == 99
     assert success["manufacturer"] == "Manufacturer"
-    assert failure == {}
+    assert failure == {0x0010: zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE}
 
 
 async def test_read_attributes_mixed_cached(cluster):
-    async def mockrequest(
-        foundation, command, schema, args, manufacturer=None, **kwargs
-    ):
-        assert foundation is True
-        assert command == 0
-        rar5 = _mk_rar(5, "Model")
-        return [[rar5]]
+    """Reading cached and uncached attributes."""
 
-    cluster.request = mockrequest
+    cluster.request = AsyncMock(return_value=[[_mk_rar(5, "Model")]])
     cluster._attr_cache[0] = 99
     cluster._attr_cache[4] = "Manufacturer"
+    cluster.unsupported_attributes.add(0x0010)
     success, failure = await cluster.read_attributes(
-        [0, "manufacturer", "model"], allow_cache=True
+        [0, "manufacturer", "model", 0x0010], allow_cache=True
     )
     assert success[0] == 99
     assert success["manufacturer"] == "Manufacturer"
     assert success["model"] == "Model"
-    assert failure == {}
+    assert cluster.request.await_count == 1
+    assert cluster.request.call_args[0][3] == [0x0005]
+    assert failure == {0x0010: zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE}
 
 
 async def test_read_attributes_default_response(cluster):
@@ -539,32 +542,32 @@ def test_unbind(cluster):
     cluster.unbind()
 
 
-def test_configure_reporting(cluster):
-    cluster.configure_reporting(0, 10, 20, 1)
+async def test_configure_reporting(cluster):
+    await cluster.configure_reporting(0, 10, 20, 1)
 
 
-def test_configure_reporting_named(cluster):
-    cluster.configure_reporting("zcl_version", 10, 20, 1)
+async def test_configure_reporting_named(cluster):
+    await cluster.configure_reporting("zcl_version", 10, 20, 1)
     assert cluster._endpoint.request.call_count == 1
 
 
-def test_configure_reporting_wrong_named(cluster):
+async def test_configure_reporting_wrong_named(cluster):
     with pytest.raises(ValueError):
-        cluster.configure_reporting("wrong_attr_name", 10, 20, 1)
+        await cluster.configure_reporting("wrong_attr_name", 10, 20, 1)
         assert cluster._endpoint.request.call_count == 0
 
 
-def test_configure_reporting_wrong_attrid(cluster):
+async def test_configure_reporting_wrong_attrid(cluster):
     with pytest.raises(ValueError):
-        cluster.configure_reporting(0xFFFE, 10, 20, 1)
+        await cluster.configure_reporting(0xFFFE, 10, 20, 1)
         assert cluster._endpoint.request.call_count == 0
 
 
-def test_configure_reporting_manuf():
+async def test_configure_reporting_manuf():
     ep = MagicMock()
     cluster = zcl.Cluster.from_id(ep, 6)
-    cluster.request = MagicMock(name="request")
-    cluster.configure_reporting(0, 10, 20, 1)
+    cluster.request = AsyncMock(name="request")
+    await cluster.configure_reporting(0, 10, 20, 1)
     cluster.request.assert_called_with(
         True,
         0x06,
@@ -578,7 +581,7 @@ def test_configure_reporting_manuf():
 
     cluster.request.reset_mock()
     manufacturer_id = 0xFCFC
-    cluster.configure_reporting(0, 10, 20, 1, manufacturer=manufacturer_id)
+    await cluster.configure_reporting(0, 10, 20, 1, manufacturer=manufacturer_id)
     cluster.request.assert_called_with(
         True,
         0x06,
@@ -602,9 +605,9 @@ def test_configure_reporting_manuf():
         (0x0202, "fan_mode", 0x30),
     ),
 )
-def test_configure_reporting_types(cluster_id, attr, data_type, cluster_by_id):
+async def test_configure_reporting_types(cluster_id, attr, data_type, cluster_by_id):
     cluster = cluster_by_id(cluster_id)
-    cluster.configure_reporting(attr, 0x1234, 0x2345, 0xAA)
+    await cluster.configure_reporting(attr, 0x1234, 0x2345, 0xAA)
     assert cluster._endpoint.reply.call_count == 0
     assert cluster._endpoint.request.call_count == 1
     assert cluster.endpoint.request.call_args[0][2][6] == data_type
@@ -748,13 +751,114 @@ async def test_write_attributes_undivided(cluster):
 
 
 async def test_configure_reporting_multiple(cluster):
-    with patch.object(cluster.endpoint, "request", new=AsyncMock()):
-        await cluster.configure_reporting(3, 5, 15, 20, manufacturer=0x2345)
-        await cluster.configure_reporting_multiple(
-            {3: (5, 15, 20)}, manufacturer=0x2345
-        )
-        assert cluster.endpoint.request.call_count == 2
-        assert (
-            cluster.endpoint.request.call_args_list[0][0][2]
-            == cluster.endpoint.request.call_args_list[1][0][2]
-        )
+    await cluster.configure_reporting(3, 5, 15, 20, manufacturer=0x2345)
+    await cluster.configure_reporting_multiple({3: (5, 15, 20)}, manufacturer=0x2345)
+    assert cluster.endpoint.request.call_count == 2
+    assert (
+        cluster.endpoint.request.call_args_list[0][0][2]
+        == cluster.endpoint.request.call_args_list[1][0][2]
+    )
+
+
+async def test_configure_reporting_multiple_def_rsp(cluster):
+    """Configure reporting returned a default response. May happen."""
+    cluster.endpoint.request.return_value = (
+        zcl.foundation.Command.Configure_Reporting,
+        zcl.foundation.Status.UNSUP_GENERAL_COMMAND,
+    )
+    await cluster.configure_reporting_multiple(
+        {3: (5, 15, 20), 4: (6, 16, 26)}, manufacturer=0x2345
+    )
+    assert cluster.endpoint.request.await_count == 1
+    assert cluster.unsupported_attributes == set()
+
+
+def _mk_cfg_rsp(
+    attrid: int, status: zcl.foundation.Status = zcl.foundation.Status.SUCCESS
+):
+    """A helper to create a configure response record."""
+    return zcl.foundation.ConfigureReportingResponseRecord(
+        status, zcl.foundation.ReportingDirection.ReceiveReports, attrid
+    )
+
+
+async def test_configure_reporting_multiple_single_success(cluster):
+    """Configure reporting returned a single success response."""
+    cluster.endpoint.request.return_value = [_mk_cfg_rsp(0, 0)]
+
+    await cluster.configure_reporting_multiple(
+        {3: (5, 15, 20), 4: (6, 16, 26)}, manufacturer=0x2345
+    )
+    assert cluster.endpoint.request.await_count == 1
+    assert cluster.unsupported_attributes == set()
+
+
+async def test_configure_reporting_multiple_single_fail(cluster):
+    """Configure reporting returned a single failure response."""
+    cluster.endpoint.request.return_value = [
+        _mk_cfg_rsp(3, zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE)
+    ]
+
+    await cluster.configure_reporting_multiple(
+        {3: (5, 15, 20), 4: (6, 16, 26)}, manufacturer=0x2345
+    )
+    assert cluster.endpoint.request.await_count == 1
+    assert cluster.unsupported_attributes == {"hw_version", 3}
+
+
+async def test_configure_reporting_multiple_single_unreportable(cluster):
+    """Configure reporting returned a single failure response for unreportable attribute."""
+    cluster.endpoint.request.return_value = [
+        _mk_cfg_rsp(4, zcl.foundation.Status.UNREPORTABLE_ATTRIBUTE)
+    ]
+
+    await cluster.configure_reporting_multiple(
+        {3: (5, 15, 20), 4: (6, 16, 26)}, manufacturer=0x2345
+    )
+    assert cluster.endpoint.request.await_count == 1
+    assert cluster.unsupported_attributes == set()
+
+
+async def test_configure_reporting_multiple_both_unsupp(cluster):
+    """Configure reporting returned unsupported attributes for both."""
+    cluster.endpoint.request.return_value = [
+        _mk_cfg_rsp(3, zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE),
+        _mk_cfg_rsp(4, zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE),
+    ]
+
+    await cluster.configure_reporting_multiple(
+        {3: (5, 15, 20), 4: (6, 16, 26)}, manufacturer=0x2345
+    )
+    assert cluster.endpoint.request.await_count == 1
+    assert cluster.unsupported_attributes == {"hw_version", 3, "manufacturer", 4}
+
+
+def test_unsupported_attr_add(cluster):
+    """Test adding unsupported attributes."""
+
+    assert "manufacturer" not in cluster.unsupported_attributes
+    assert 4 not in cluster.unsupported_attributes
+    assert "model" not in cluster.unsupported_attributes
+    assert 5 not in cluster.unsupported_attributes
+
+    cluster.add_unsupported_attribute(4)
+    assert "manufacturer" in cluster.unsupported_attributes
+    assert 4 in cluster.unsupported_attributes
+
+    cluster.add_unsupported_attribute("model")
+    assert "model" in cluster.unsupported_attributes
+    assert 5 in cluster.unsupported_attributes
+
+
+def test_unsupported_attr_add_no_reverse_attr_name(cluster):
+    """Test adding unsupported attributes without corresponding reverse attr name."""
+
+    assert "no_such_attr" not in cluster.unsupported_attributes
+    assert 0xDEED not in cluster.unsupported_attributes
+
+    cluster.add_unsupported_attribute("no_such_attr")
+    cluster.add_unsupported_attribute("no_such_attr")
+    assert "no_such_attr" in cluster.unsupported_attributes
+
+    cluster.add_unsupported_attribute(0xDEED)
+    assert 0xDEED in cluster.unsupported_attributes
