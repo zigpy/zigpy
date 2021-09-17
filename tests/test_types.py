@@ -547,6 +547,19 @@ def test_eui64_convert():
     assert t.EUI64.convert(None) is None
 
 
+def test_keydata():
+    data = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F"
+    extra = b"extra"
+
+    key, rest = t.KeyData.deserialize(data + extra)
+    assert rest == extra
+    assert key == t.KeyData.convert("00:01:02:03:04:05:06:07:08:09:0a:0b:0c:0d:0e:0f")
+    assert repr(key) == "00:01:02:03:04:05:06:07:08:09:0a:0b:0c:0d:0e:0f"
+    assert list(key) == list(data)
+    assert key.serialize() == data
+    assert t.KeyData(key) == key
+
+
 def test_enum_uint():
     class TestBitmap(t.bitmap16):
         ALL = 0xFFFF
