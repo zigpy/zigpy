@@ -5,7 +5,13 @@ from typing import Optional
 
 import attr
 
-from zigpy.config import CONF_OTA, CONF_OTA_DIR, CONF_OTA_IKEA, CONF_OTA_LEDVANCE
+from zigpy.config import (
+    CONF_OTA,
+    CONF_OTA_DIR,
+    CONF_OTA_IKEA,
+    CONF_OTA_LEDVANCE,
+    CONF_OTA_SALUS,
+)
 from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader
 import zigpy.ota.provider
 from zigpy.ota.validators import check_invalid
@@ -104,13 +110,21 @@ class OTA(zigpy.util.ListenableMixin):
             self.add_listener(zigpy.ota.provider.Trådfri())
         if ota_config[CONF_OTA_LEDVANCE]:
             self.add_listener(zigpy.ota.provider.Ledvance())
+        if ota_config[CONF_OTA_SALUS]:
+            self.add_listener(zigpy.ota.provider.Salus())
 
     async def initialize(self) -> None:
         await self.async_event("initialize_provider", self._app.config[CONF_OTA])
         self._not_initialized = False
 
-    async def get_ota_image(self, manufacturer_id, image_type) -> Optional[CachedImage]:
-        key = ImageKey(manufacturer_id, image_type)
+    async def get_ota_image(
+        self, manufacturer_id, image_type, model
+    ) -> Optional[CachedImage]:
+        if manufacturer_id == 4216:  # Salus/computime does not pass a useful image_type
+            # in the message from the device. So construct key based on model name.
+            key = ImageKey(manufacturer_id, model)
+        else:
+            key = ImageKey(manufacturer_id, image_type)
         if key in self._image_cache and not self._image_cache[key].expired:
             return self._image_cache[key]
 
