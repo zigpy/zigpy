@@ -467,14 +467,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         res = await self._configure_reporting(cfg, manufacturer=manufacturer)
 
         # Parse configure reporting result for unsupported attributes
+        records = res[0]
         if (
-            isinstance(res, list)
-            and not (res[0].status == foundation.Status.SUCCESS and len(res) == 1)
-            and len(res) >= 0
+            isinstance(records, list)
+            and not (
+                len(records) == 1 and records[0].status == foundation.Status.SUCCESS
+            )
+            and len(records) >= 0
         ):
             failed = [
                 r.attrid
-                for r in res
+                for r in records
                 if r.status == foundation.Status.UNSUPPORTED_ATTRIBUTE
             ]
             for attr in failed:
