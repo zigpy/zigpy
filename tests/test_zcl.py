@@ -773,18 +773,23 @@ async def test_configure_reporting_multiple_def_rsp(cluster):
     assert cluster.unsupported_attributes == set()
 
 
-def _mk_cfg_rsp(
-    attrid: int, status: zcl.foundation.Status = zcl.foundation.Status.SUCCESS
-):
+def _mk_cfg_rsp(responses: dict[int, zcl.foundation.Status]):
     """A helper to create a configure response record."""
-    return zcl.foundation.ConfigureReportingResponseRecord(
-        status, zcl.foundation.ReportingDirection.ReceiveReports, attrid
-    )
+    cfg_response = zcl.foundation.ConfigureReportingResponse()
+    for attrid, status in responses.items():
+        cfg_response.append(
+            zcl.foundation.ConfigureReportingResponseRecord(
+                status, zcl.foundation.ReportingDirection.ReceiveReports, attrid
+            )
+        )
+    return [cfg_response]
 
 
 async def test_configure_reporting_multiple_single_success(cluster):
     """Configure reporting returned a single success response."""
-    cluster.endpoint.request.return_value = [_mk_cfg_rsp(0, 0)]
+    cluster.endpoint.request.return_value = _mk_cfg_rsp(
+        {0: zcl.foundation.Status.SUCCESS}
+    )
 
     await cluster.configure_reporting_multiple(
         {3: (5, 15, 20), 4: (6, 16, 26)}, manufacturer=0x2345
@@ -795,9 +800,9 @@ async def test_configure_reporting_multiple_single_success(cluster):
 
 async def test_configure_reporting_multiple_single_fail(cluster):
     """Configure reporting returned a single failure response."""
-    cluster.endpoint.request.return_value = [
-        _mk_cfg_rsp(3, zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE)
-    ]
+    cluster.endpoint.request.return_value = _mk_cfg_rsp(
+        {3: zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE}
+    )
 
     await cluster.configure_reporting_multiple(
         {3: (5, 15, 20), 4: (6, 16, 26)}, manufacturer=0x2345
@@ -808,9 +813,9 @@ async def test_configure_reporting_multiple_single_fail(cluster):
 
 async def test_configure_reporting_multiple_single_unreportable(cluster):
     """Configure reporting returned a single failure response for unreportable attribute."""
-    cluster.endpoint.request.return_value = [
-        _mk_cfg_rsp(4, zcl.foundation.Status.UNREPORTABLE_ATTRIBUTE)
-    ]
+    cluster.endpoint.request.return_value = _mk_cfg_rsp(
+        {4: zcl.foundation.Status.UNREPORTABLE_ATTRIBUTE}
+    )
 
     await cluster.configure_reporting_multiple(
         {3: (5, 15, 20), 4: (6, 16, 26)}, manufacturer=0x2345
@@ -821,10 +826,12 @@ async def test_configure_reporting_multiple_single_unreportable(cluster):
 
 async def test_configure_reporting_multiple_both_unsupp(cluster):
     """Configure reporting returned unsupported attributes for both."""
-    cluster.endpoint.request.return_value = [
-        _mk_cfg_rsp(3, zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE),
-        _mk_cfg_rsp(4, zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE),
-    ]
+    cluster.endpoint.request.return_value = _mk_cfg_rsp(
+        {
+            3: zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE,
+            4: zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE,
+        }
+    )
 
     await cluster.configure_reporting_multiple(
         {3: (5, 15, 20), 4: (6, 16, 26)}, manufacturer=0x2345
