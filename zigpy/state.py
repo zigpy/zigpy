@@ -59,6 +59,9 @@ class NetworkInformation:
     key_table: list[Key] | None = None
     children: list[NodeInfo] | None = None
 
+    # If exposed by the stack, NWK addresses of other connected devices on the network
+    nwk_addresses: dict[t.EUI64, t.NWK] | None = None
+
     # Dict to keep track of stack-specific network stuff.
     # Z-Stack, for example, has a TCLK_SEED that should be backed up.
     stack_specific: dict[int | str, Any] | None = None
@@ -73,6 +76,8 @@ class NetworkInformation:
             self.stack_specific = {}
         if self.children is None:
             self.children = []
+        if self.nwk_addresses is None:
+            self.nwk_addresses = {}
 
 
 @dataclass
