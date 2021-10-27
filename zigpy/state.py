@@ -57,7 +57,10 @@ class NetworkInformation:
     network_key: Key | None = None
     tc_link_key: Key | None = None
     key_table: list[Key] | None = None
-    neighbor_table: list[NodeInfo] | None = None
+    children: list[NodeInfo] | None = None
+
+    # If exposed by the stack, NWK addresses of other connected devices on the network
+    nwk_addresses: dict[t.EUI64, t.NWK] | None = None
 
     # Dict to keep track of stack-specific network stuff.
     # Z-Stack, for example, has a TCLK_SEED that should be backed up.
@@ -71,8 +74,10 @@ class NetworkInformation:
             self.key_table = []
         if self.stack_specific is None:
             self.stack_specific = {}
-        if self.neighbor_table is None:
-            self.neighbor_table = []
+        if self.children is None:
+            self.children = []
+        if self.nwk_addresses is None:
+            self.nwk_addresses = {}
 
 
 @dataclass
