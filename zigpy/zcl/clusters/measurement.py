@@ -118,11 +118,79 @@ class OccupancySensing(Cluster):
     client_commands = {}
 
 
-# TODO: 0x0407: Leaf Wetness
-# TODO: 0x0408: Soil Moisture
-# TODO: 0x0409: pH Measurement
-# TODO: 0x040A: Electrical Conductivity
-# TODO: 0x040B: Wind Speed Measurement
+class LeafWetness(Cluster):
+    cluster_id = 0x0407
+    name = "Leaf Wetness Measurement"
+    ep_attribute = "leaf_wetness"
+    attributes = {
+        # Leaf Wetness Measurement Information
+        0x0000: ("measured_value", t.uint16_t),
+        0x0001: ("min_measured_value", t.uint16_t),
+        0x0002: ("max_measured_value", t.uint16_t),
+        0x0003: ("tolerance", t.uint16_t),
+    }
+    server_commands = {}
+    client_commands = {}
+
+
+class SoilMoisture(Cluster):
+    cluster_id = 0x0408
+    name = "Soil Moisture Measurement"
+    ep_attribute = "soil_moisture"
+    attributes = {
+        # Soil Moisture Measurement Information
+        0x0000: ("measured_value", t.uint16_t),
+        0x0001: ("min_measured_value", t.uint16_t),
+        0x0002: ("max_measured_value", t.uint16_t),
+        0x0003: ("tolerance", t.uint16_t),
+    }
+    server_commands = {}
+    client_commands = {}
+
+
+class PH(Cluster):
+    cluster_id = 0x0409
+    name = "pH Measurement"
+    ep_attribute = "ph"
+    attributes = {
+        # pH Measurement Information
+        0x0000: ("measured_value", t.uint16_t),
+        0x0001: ("min_measured_value", t.uint16_t),
+        0x0002: ("max_measured_value", t.uint16_t),
+        0x0003: ("tolerance", t.uint16_t),
+    }
+    server_commands = {}
+    client_commands = {}
+
+
+class ElectricalConductivity(Cluster):
+    cluster_id = 0x040A
+    name = "Electrical Conductivity"
+    ep_attribute = "electrical_conductivity"
+    attributes = {
+        # Electrical Conductivity Information
+        0x0000: ("measured_value", t.uint16_t),
+        0x0001: ("min_measured_value", t.uint16_t),
+        0x0002: ("max_measured_value", t.uint16_t),
+        0x0003: ("tolerance", t.uint16_t),
+    }
+    server_commands = {}
+    client_commands = {}
+
+
+class WindSpeed(Cluster):
+    cluster_id = 0x040B
+    name = "Wind Speed Measurement"
+    ep_attribute = "wind_speed"
+    attributes = {
+        # Wind Speed Measurement Information
+        0x0000: ("measured_value", t.uint16_t),
+        0x0001: ("min_measured_value", t.uint16_t),
+        0x0002: ("max_measured_value", t.uint16_t),
+        0x0003: ("tolerance", t.uint16_t),
+    }
+    server_commands = {}
+    client_commands = {}
 
 
 class _ConcentrationMixin:
