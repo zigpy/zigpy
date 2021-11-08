@@ -396,6 +396,7 @@ class OnOff(Cluster):
     name = "On/Off"
     ep_attribute = "on_off"
     attributes = {
+        0x001C: ("description", t.CharacterString),
         0x0000: ("on_off", t.Bool),
         0x4000: ("global_scene_control", t.Bool),
         0x4001: ("on_time", t.uint16_t),
