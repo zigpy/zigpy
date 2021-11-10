@@ -131,7 +131,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         nwk = 0x0000
         ieee = None
 
-        network_info = zigpy.state.NetworkInformation(
+        network_info = zigpy.state.NetworkInfo(
             extended_pan_id=extended_pan_id,
             pan_id=pan_id,
             nwk_update_id=self.config[conf.CONF_NWK][conf.CONF_NWK_UPDATE_ID],
@@ -508,7 +508,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def write_network_info(
         self,
         *,
-        network_info: zigpy.state.NetworkInformation,
+        network_info: zigpy.state.NetworkInfo,
         node_info: zigpy.state.NodeInfo,
     ) -> None:
         """

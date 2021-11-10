@@ -44,7 +44,7 @@ class NodeInfo:
 
 
 @dataclass
-class NetworkInformation:
+class NetworkInfo:
     """Network information."""
 
     extended_pan_id: t.ExtendedPanId | None = None
@@ -228,8 +228,8 @@ class CounterGroups(dict):
 
 @dataclass
 class State:
-    node_information: NodeInfo = field(default_factory=NodeInfo)
-    network_information: NetworkInformation = field(default_factory=NetworkInformation)
+    node_info: NodeInfo = field(default_factory=NodeInfo)
+    network_info: NetworkInfo = field(default_factory=NetworkInfo)
     counters: CounterGroups | None = field(init=False, default=None)
     broadcast_counters: CounterGroups | None = field(init=False, default=None)
     device_counters: CounterGroups | None = field(init=False, default=None)
