@@ -9,10 +9,10 @@ import os.path
 from typing import Dict, Optional
 import urllib.parse
 
-import aiohttp
 import attr
 
 from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA_URL
+from zigpy.ota.cached_client import ConcurrentCachedClient
 from zigpy.ota.image import (
     BaseOTAImage,
     ImageKey,
@@ -28,6 +28,8 @@ LOCK_REFRESH = "firmware_list"
 ENABLE_IKEA_OTA = "enable_ikea_ota"
 ENABLE_LEDVANCE_OTA = "enable_ledvance_ota"
 SKIP_OTA_FILES = (ENABLE_IKEA_OTA, ENABLE_LEDVANCE_OTA)
+
+CACHED_HTTP_CLIENT = ConcurrentCachedClient()
 
 
 class Basic(zigpy.util.LocalLogMixin, ABC):
@@ -121,10 +123,9 @@ class IKEAImage:
         return ImageKey(self.manufacturer_id, self.image_type)
 
     async def fetch_image(self) -> Optional[OTAImage]:
-        async with aiohttp.ClientSession() as req:
-            LOGGER.debug("Downloading %s for %s", self.url, self.key)
-            async with req.get(self.url) as rsp:
-                data = await rsp.read()
+        LOGGER.debug("Downloading %s for %s", self.url, self.key)
+        rsp = await CACHED_HTTP_CLIENT.get(self.url, cache_for=0)
+        data = await rsp.read()
 
         ota_image, _ = parse_ota_image(data)
         assert ota_image.header.key == self.key
@@ -153,24 +154,22 @@ class Trådfri(Basic):
         self.enable()
 
     async def refresh_firmware_list(self) -> None:
-        if self._locks[LOCK_REFRESH].locked():
+        url = self.config.get(CONF_OTA_IKEA_URL, self.UPDATE_URL)
+        rsp = await CACHED_HTTP_CLIENT.get(url, headers=self.HEADERS, cache_for=0)
+
+        # IKEA does not always respond with an appropriate Content-Type
+        # but the response is always JSON
+        if not (200 <= rsp.status <= 299):
+            self.warning(
+                "Couldn't download '%s': %s/%s",
+                rsp.url,
+                rsp.status,
+                rsp.reason,
+            )
             return
 
-        async with self._locks[LOCK_REFRESH]:
-            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
-                url = self.config.get(CONF_OTA_IKEA_URL, self.UPDATE_URL)
-                async with req.get(url) as rsp:
-                    # IKEA does not always respond with an appropriate Content-Type
-                    # but the response is always JSON
-                    if not (200 <= rsp.status <= 299):
-                        self.warning(
-                            "Couldn't download '%s': %s/%s",
-                            rsp.url,
-                            rsp.status,
-                            rsp.reason,
-                        )
-                        return
-                    fw_lst = await rsp.json(content_type=None)
+        fw_lst = await rsp.json(content_type=None)
+
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
         for fw in fw_lst:
@@ -223,10 +222,10 @@ class LedvanceImage:
         return ImageKey(self.manufacturer_id, self.image_type)
 
     async def fetch_image(self) -> Optional[OTAImage]:
-        async with aiohttp.ClientSession() as req:
-            LOGGER.debug("Downloading %s for %s", self.url, self.key)
-            async with req.get(self.url) as rsp:
-                data = await rsp.read()
+        LOGGER.debug("Downloading %s for %s", self.url, self.key)
+
+        rsp = await CACHED_HTTP_CLIENT.get(self.url, cache_for=0)
+        data = await rsp.read()
 
         img, _ = parse_ota_image(data)
         assert img.header.key == self.key
@@ -264,21 +263,18 @@ class Ledvance(Basic):
         self.enable()
 
     async def refresh_firmware_list(self) -> None:
-        if self._locks[LOCK_REFRESH].locked():
+        rsp = await CACHED_HTTP_CLIENT.get(self.UPDATE_URL)
+        if not (200 <= rsp.status <= 299):
+            self.warning(
+                "Couldn't download '%s': %s/%s",
+                rsp.url,
+                rsp.status,
+                rsp.reason,
+            )
             return
 
-        async with self._locks[LOCK_REFRESH]:
-            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
-                async with req.get(self.UPDATE_URL) as rsp:
-                    if not (200 <= rsp.status <= 299):
-                        self.warning(
-                            "Couldn't download '%s': %s/%s",
-                            rsp.url,
-                            rsp.status,
-                            rsp.reason,
-                        )
-                        return
-                    fw_lst = await rsp.json()
+        fw_lst = await rsp.json()
+
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
         for fw in fw_lst["firmwares"]:
