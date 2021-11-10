@@ -20,3 +20,15 @@ class DeliveryError(ZigbeeException):
 
 class InvalidResponse(ZigbeeException):
     """A ZDO or ZCL response has an unsuccessful status code"""
+
+
+class RadioException(Exception):
+    """Base exception class for radio exceptions"""
+
+    pass
+
+
+class NetworkNotFormed(RadioException):
+    """A network cannot be started because the radio has no stored network info"""
+
+    pass
