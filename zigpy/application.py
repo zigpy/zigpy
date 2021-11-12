@@ -534,7 +534,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if node is not None:
             if not isinstance(node, t.EUI64):
                 node = t.EUI64([t.uint8_t(p) for p in node])
-            if node != self.ieee:
+            if node != self.state.node_info.ieee:
                 try:
                     dev = self.get_device(ieee=node)
                     r = await dev.zdo.permit(time_s)
@@ -566,8 +566,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if ieee is not None:
             return self.devices[ieee]
 
-        if nwk == self.nwk:
-            return self.devices[self.ieee]
+        if nwk == self.state.node_info.nwk:
+            return self.devices[self.state.node_info.ieee]
 
         for dev in self.devices.values():
             # TODO: Make this not terrible
@@ -590,7 +590,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """
         dstaddr = zdo_types.MultiAddress()
         dstaddr.addrmode = 3
-        dstaddr.ieee = self.ieee
+        dstaddr.ieee = self.state.node_info.ieee
         dstaddr.endpoint = self.get_endpoint_id(cluster.cluster_id, cluster.is_server)
         return dstaddr
 
