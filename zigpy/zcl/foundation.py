@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import keyword
 from typing import Optional, Tuple
+import warnings
 
 import zigpy.types as t
 
@@ -637,6 +638,10 @@ class ZCLAttributeDef:
             f"is_manufacturer_specific={self.is_manufacturer_specific}"
             f")"
         )
+
+    def __getitem__(self, key):
+        warnings.warn("Attributes should be accessed by name", DeprecationWarning)
+        return (self.name, self.type)[key]
 
 
 class GeneralCommand(t.enum8):

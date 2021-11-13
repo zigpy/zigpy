@@ -627,3 +627,15 @@ def test_zcl_attribute_definition():
         a.replace(access="x")
 
     assert a.replace(access="w").access == "w"
+
+
+def test_zcl_attribute_item_access_warning():
+    a = foundation.ZCLAttributeDef(
+        id=0x1234,
+        name="test",
+        type=t.uint16_t,
+    )
+
+    with pytest.deprecated_call():
+        assert a[0] == a.name
+        assert a[1] == a.type
