@@ -452,7 +452,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             signature[SIG_MANUFACTURER] = self.manufacturer
         if self._model is not None:
             signature[SIG_MODEL] = self._model
-        if self.node_desc.is_valid:
+        if self.node_desc is not None:
             signature[SIG_NODE_DESC] = self.node_desc.as_dict()
 
         for endpoint_id, endpoint in self.endpoints.items():

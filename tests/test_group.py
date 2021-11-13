@@ -1,6 +1,5 @@
 import pytest
 
-from zigpy.application import ControllerApplication
 import zigpy.device
 import zigpy.endpoint
 import zigpy.group
@@ -14,16 +13,14 @@ FIXTURE_GRP_NAME = "fixture group"
 
 
 @pytest.fixture
-def endpoint():
-    app_mock = MagicMock(spec_set=ControllerApplication)
+def endpoint(app_mock):
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     dev = zigpy.device.Device(app_mock, ieee, 65535)
     return zigpy.endpoint.Endpoint(dev, 3)
 
 
 @pytest.fixture
-def groups():
-    app_mock = MagicMock(spec_set=ControllerApplication)
+def groups(app_mock):
     groups = zigpy.group.Groups(app_mock)
     groups.listener_event = MagicMock()
     groups.add_group(FIXTURE_GRP_ID, FIXTURE_GRP_NAME, suppress_event=True)

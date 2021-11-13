@@ -35,7 +35,14 @@ class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
 
 
 class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
-    pass
+    def __repr__(self):
+        return ":".join(f"{i:02x}" for i in self)
+
+    @classmethod
+    def convert(cls, key: str) -> KeyData:
+        key = [basic.uint8_t(p, base=16) for p in key.split(":")]
+        assert len(key) == cls._length
+        return cls(key)
 
 
 class Bool(basic.enum8):

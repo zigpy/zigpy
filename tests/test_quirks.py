@@ -43,11 +43,10 @@ def test_registry():
 
 
 @pytest.fixture
-def real_device():
-    application = sentinel.application
+def real_device(app_mock):
     ieee = sentinel.ieee
     nwk = 0x2233
-    real_device = zigpy.device.Device(application, ieee, nwk)
+    real_device = zigpy.device.Device(app_mock, ieee, nwk)
 
     real_device.add_endpoint(1)
     real_device[1].profile_id = 255
@@ -60,11 +59,10 @@ def real_device():
 
 
 @pytest.fixture
-def real_device_2():
-    application = sentinel.application
+def real_device_2(app_mock):
     ieee = sentinel.ieee_2
     nwk = 0x3344
-    real_device = zigpy.device.Device(application, ieee, nwk)
+    real_device = zigpy.device.Device(app_mock, ieee, nwk)
 
     real_device.add_endpoint(1)
     real_device[1].profile_id = 255
@@ -217,7 +215,7 @@ def test_custom_devices():
                 )
 
 
-def test_custom_device():
+def test_custom_device(app_mock):
     class Device(zigpy.quirks.CustomDevice):
         signature = {}
 
@@ -269,8 +267,8 @@ def test_custom_device():
 
     replaces = MagicMock()
     replaces[1].device_type = sentinel.device_type
-    test_device = Device(None, None, 0x4455, replaces)
-    test_device2 = Device2(None, None, 0x4455, replaces)
+    test_device = Device(app_mock, None, 0x4455, replaces)
+    test_device2 = Device2(app_mock, None, 0x4455, replaces)
 
     assert test_device2.skip_configuration is True
 

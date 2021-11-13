@@ -674,3 +674,85 @@ async def test_appdb_worker_exception(save_mock, tmpdir):
         db_listener.raw_device_initialized(dev_1)
     await db_listener.shutdown()
     assert save_mock.await_count == 3
+
+
+@pytest.mark.parametrize("dev_init", (True, False))
+async def test_unsupported_attribute(tmpdir, dev_init):
+    """Test adding unsupported attributes for initialized and uninitialized devices."""
+
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+    ieee = make_ieee()
+    with patch(
+        "zigpy.device.Device.schedule_initialize",
+        new=mock_dev_init(initialize=dev_init),
+    ):
+        app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    clus._update_attribute(4, "Custom")
+    clus._update_attribute(5, "Model")
+    app.device_initialized(dev)
+    clus.add_unsupported_attribute(0x0010)
+    clus.add_unsupported_attribute("physical_env")
+    await app.pre_shutdown()
+
+    # Everything should've been saved - check that it re-loads
+    app2 = await make_app(db)
+    dev = app2.get_device(ieee)
+    assert dev.is_initialized == dev_init
+    assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
+    assert 0x0010 in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "location_desc" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+
+    await app2.pre_shutdown()
+    os.unlink(db)
+
+
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
+async def test_load_unsupp_attr_wrong_cluster(tmpdir):
+    """Test loading unsupported attribute from the wrong cluster."""
+
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    clus._update_attribute(4, "Custom")
+    clus._update_attribute(5, "Model")
+    app.device_initialized(dev)
+    await app.pre_shutdown()
+    del clus
+    del ep
+    del dev
+
+    # add unsupported attr for missing endpoint
+    app = await make_app(db)
+    dev = app.get_device(ieee)
+    ep = dev.endpoints[3]
+    clus = ep.add_input_cluster(2)
+    clus.add_unsupported_attribute(0)
+    await app.pre_shutdown()
+    del clus
+    del ep
+    del dev
+
+    # reload
+    app = await make_app(db)
+    await app.pre_shutdown()

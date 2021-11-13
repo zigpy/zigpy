@@ -167,6 +167,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def __init__(self, endpoint: EndpointType, is_server: bool = True):
         self._endpoint: EndpointType = endpoint
         self._attr_cache: dict[int, Any] = {}
+        self.unsupported_attributes: set[int | str] = set()
         self._listeners = {}
 
         if is_server:
@@ -397,14 +398,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     async def read_attributes(
         self,
-        attributes,
-        allow_cache=False,
-        only_cache=False,
-        manufacturer=None,
+        attributes: list[int | str],
+        allow_cache: bool = False,
+        only_cache: bool = False,
+        manufacturer: int | t.uint16_t | None = None,
     ):
         success, failure = {}, {}
-        attribute_ids = []
-        orig_attributes = {}
+        attribute_ids: list[int] = []
+        orig_attributes: dict[int, int | str] = {}
 
         for attribute in attributes:
             if isinstance(attribute, str):
@@ -421,6 +422,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             for idx, attribute in enumerate(attribute_ids):
                 if attribute in self._attr_cache:
                     success[attributes[idx]] = self._attr_cache[attribute]
+                elif attribute in self.unsupported_attributes:
+                    failure[attributes[idx]] = foundation.Status.UNSUPPORTED_ATTRIBUTE
                 else:
                     to_read.append(attribute)
         else:
@@ -453,6 +456,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                     self._update_attribute(record.attrid, value)
                     success[orig_attribute] = value
                 else:
+                    if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
+                        self.add_unsupported_attribute(record.attrid)
                     failure[orig_attribute] = record.status
 
         return success, failure
@@ -568,24 +573,25 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         return cfg
 
-    def configure_reporting(
+    async def configure_reporting(
         self,
-        attribute: Union[int, str],
+        attribute: int | str,
         min_interval: int,
         max_interval: int,
         reportable_change: int,
-        manufacturer: Optional[int] = None,
+        manufacturer: int | None = None,
     ) -> Coroutine:
-        cfg = self._attr_reporting_rec(
-            attribute, min_interval, max_interval, reportable_change
+        """Configure attribute reporting for a single attribute."""
+        return await self.configure_reporting_multiple(
+            {attribute: (min_interval, max_interval, reportable_change)},
+            manufacturer=manufacturer,
         )
-        return self._configure_reporting([cfg], manufacturer=manufacturer)
 
-    def configure_reporting_multiple(
+    async def configure_reporting_multiple(
         self,
-        attributes: dict[Union[int, str], tuple[int, int, int]],
-        manufacturer: Optional[int] = None,
-    ) -> Coroutine:
+        attributes: dict[int | str, tuple[int, int, int]],
+        manufacturer: int | None = None,
+    ) -> list[foundation.ConfigureReportingResponseRecord]:
         """Configure attribute reporting for multiple attributes in the same request.
 
         :param attributes: dict of attributes to configure attribute reporting.
@@ -601,7 +607,25 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             self._attr_reporting_rec(attr, rep[0], rep[1], rep[2])
             for attr, rep in attributes.items()
         ]
-        return self._configure_reporting(cfg, manufacturer=manufacturer)
+        res = await self._configure_reporting(cfg, manufacturer=manufacturer)
+
+        # Parse configure reporting result for unsupported attributes
+        records = res[0]
+        if (
+            isinstance(records, list)
+            and not (
+                len(records) == 1 and records[0].status == foundation.Status.SUCCESS
+            )
+            and len(records) >= 0
+        ):
+            failed = [
+                r.attrid
+                for r in records
+                if r.status == foundation.Status.UNSUPPORTED_ATTRIBUTE
+            ]
+            for attr in failed:
+                self.add_unsupported_attribute(attr)
+        return res
 
     def command(
         self,
@@ -790,6 +814,29 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             )
         )
 
+    def add_unsupported_attribute(
+        self, attr: int | str, inhibit_events: bool = False
+    ) -> None:
+        """Adds unsupported attribute."""
+
+        if attr in self.unsupported_attributes:
+            return
+
+        self.unsupported_attributes.add(attr)
+
+        if isinstance(attr, int) and not inhibit_events:
+            self.listener_event("unsupported_attribute_added", attr)
+
+        try:
+            attrdef = self.find_attribute(attr)
+        except KeyError:
+            pass
+        else:
+            if isinstance(attr, int):
+                self.add_unsupported_attribute(attrdef.name, inhibit_events)
+            else:
+                self.add_unsupported_attribute(attrdef.id, inhibit_events)
+
 
 class ClusterPersistingListener:
     def __init__(self, applistener, cluster):
@@ -804,6 +851,10 @@ class ClusterPersistingListener:
 
     def general_command(self, *args, **kwargs):
         pass
+
+    def unsupported_attribute_added(self, attrid: int) -> None:
+        """An unsupported attribute was added."""
+        self._applistener.unsupported_attribute_added(self._cluster, attrid)
 
 
 # Import to populate the registry

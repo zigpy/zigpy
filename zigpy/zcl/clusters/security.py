@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Any, Tuple
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
+import zigpy.zcl.foundation
 from zigpy.zcl.foundation import ZCLCommandDef
 
 
@@ -104,6 +105,24 @@ class IasZone(Cluster):
             "enroll", {"zone_type": ZoneType, "manufacturer_code": t.uint16_t}, False
         ),
     }
+
+    def handle_cluster_request(
+        self,
+        hdr: zigpy.zcl.foundation.ZCLHeader,
+        args: list[Any],
+        *,
+        dst_addressing: t.Addressing.Group
+        | t.Addressing.IEEE
+        | t.Addressing.NWK
+        | None = None,
+    ):
+        if (
+            hdr.command_id == 0
+            and self.is_server
+            and not hdr.frame_control.disable_default_response
+        ):
+            hdr.frame_control.is_reply = False  # this is a client -> server cmd
+            self.send_default_rsp(hdr, zigpy.zcl.foundation.Status.SUCCESS)
 
 
 class IasAce(Cluster):
