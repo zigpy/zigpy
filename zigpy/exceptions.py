@@ -32,3 +32,9 @@ class NetworkNotFormed(RadioException):
     """A network cannot be started because the radio has no stored network info"""
 
     pass
+
+
+class FormationFailure(RadioException):
+    """Network settings could not be written to the radio"""
+
+    pass
