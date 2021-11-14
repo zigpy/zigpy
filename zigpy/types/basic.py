@@ -104,6 +104,10 @@ class FixedIntType(int):
         if "__new__" not in cls.__dict__:
             cls.__new__ = cls.__new__
 
+        # XXX: The enum module sabotages pickling using the same logic.
+        if "__reduce_ex__" not in cls.__dict__:
+            cls.__reduce_ex__ = cls.__reduce_ex__
+
     def bits(self) -> Bits:
         return Bits([(self >> n) & 0b1 for n in range(self._bits - 1, -1, -1)])
 
