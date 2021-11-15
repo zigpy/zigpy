@@ -639,3 +639,19 @@ def test_zcl_attribute_item_access_warning():
     with pytest.deprecated_call():
         assert a[0] == a.name
         assert a[1] == a.type
+
+
+def test_zcl_command_item_access_warning():
+    s = foundation.ZCLCommandDef(
+        id=0x12,
+        name="test",
+        schema={
+            "foo": t.uint8_t,
+        },
+        is_reply=False,
+    )
+
+    with pytest.deprecated_call():
+        assert s[0] == s.name
+        assert s[1] == s.schema
+        assert s[2] == s.is_reply

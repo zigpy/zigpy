@@ -587,6 +587,10 @@ class ZCLCommandDef:
     def replace(self, **kwargs) -> ZCLCommandDef:
         return dataclasses.replace(self, **kwargs)
 
+    def __getitem__(self, key):
+        warnings.warn("Attributes should be accessed by name", DeprecationWarning)
+        return (self.name, self.schema, self.is_reply)[key]
+
 
 class CommandSchema(t.Struct, tuple):
     """
