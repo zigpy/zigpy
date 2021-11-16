@@ -14,7 +14,7 @@ from zigpy.config import (
     CONF_OTA_IKEA,
     ZIGPY_SCHEMA,
 )
-from zigpy.exceptions import DeliveryError
+from zigpy.exceptions import DeliveryError, NetworkNotFormed
 import zigpy.ota
 import zigpy.quirks
 import zigpy.state as app_state
@@ -503,3 +503,86 @@ async def test_get_device(app):
     app.add_device(t.EUI64.convert("11:11:11:11:22:22:22:33"), 0x0000)
 
     assert app.get_device(nwk=0x0000) is dev_2
+
+
+async def test_probe_success():
+    config = {"path": "/dev/test"}
+
+    with patch.object(App, "connect") as connect, patch.object(
+        App, "disconnect"
+    ) as disconnect:
+        result = await App.probe(config)
+
+    assert result == config
+
+    assert connect.await_count == 1
+    assert disconnect.await_count == 1
+
+
+async def test_probe_failure():
+    config = {"path": "/dev/test"}
+
+    with patch.object(
+        App, "connect", side_effect=asyncio.TimeoutError
+    ) as connect, patch.object(App, "disconnect") as disconnect:
+        result = await App.probe(config)
+
+    assert result is False
+
+    assert connect.await_count == 1
+    assert disconnect.await_count == 1
+
+
+async def test_form_network(app):
+    with patch.object(app, "write_network_info") as write1:
+        await app.form_network()
+
+    with patch.object(app, "write_network_info") as write2:
+        await app.form_network()
+
+    nwk_info1 = write1.mock_calls[0].kwargs["network_info"]
+    node_info1 = write1.mock_calls[0].kwargs["node_info"]
+
+    nwk_info2 = write2.mock_calls[0].kwargs["network_info"]
+    node_info2 = write2.mock_calls[0].kwargs["node_info"]
+
+    assert node_info1 == node_info2
+
+    # Critical network settings are randomized
+    assert nwk_info1.extended_pan_id != nwk_info2.extended_pan_id
+    assert nwk_info1.pan_id != nwk_info2.pan_id
+    assert nwk_info1.network_key != nwk_info2.network_key
+
+    assert nwk_info1.channel == 15
+
+
+async def test_startup_formed(app):
+    app.start_network = AsyncMock()
+    app.form_network = AsyncMock()
+    app.permit = AsyncMock()
+
+    await app.startup(auto_form=False)
+
+    assert app.start_network.await_count == 1
+    assert app.form_network.await_count == 0
+    assert app.permit.await_count == 1
+
+
+async def test_startup_not_formed(app):
+    app.start_network = AsyncMock()
+    app.form_network = AsyncMock()
+    app.load_network_info = AsyncMock(side_effect=NetworkNotFormed())
+    app.permit = AsyncMock()
+
+    with pytest.raises(NetworkNotFormed):
+        await app.startup(auto_form=False)
+
+    assert app.start_network.await_count == 0
+    assert app.form_network.await_count == 0
+    assert app.permit.await_count == 0
+
+    await app.startup(auto_form=True)
+
+    assert app.start_network.await_count == 1
+    assert app.form_network.await_count == 1
+    assert app.permit.await_count == 1

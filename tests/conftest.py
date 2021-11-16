@@ -38,9 +38,6 @@ def raise_on_bad_log_formatting():
 
 
 class App(zigpy.application.ControllerApplication):
-    async def startup(self, auto_form=False):
-        pass
-
     async def request(
         self,
         device,
@@ -54,10 +51,6 @@ class App(zigpy.application.ControllerApplication):
         use_ieee=False,
     ):
         pass
-
-    @classmethod
-    async def probe(cls, config):
-        return True
 
     async def connect(self):
         pass
