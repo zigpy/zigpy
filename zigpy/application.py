@@ -369,6 +369,32 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         else:
             self.listener_event("device_left", dev)
 
+    @classmethod
+    async def probe(
+        cls, device_config: dict[str, Any]
+    ) -> bool | dict[str, int | str | bool]:
+        """
+        Probes the device specified by `device_config` and returns valid device settings
+        if the radio supports the device. If the device is not supported, `False` is
+        returned.
+        """
+
+        app = cls(device_config)
+
+        try:
+            await app.connect()
+        except Exception:
+            LOGGER.debug(
+                "Failed to probe with config %s: %s",
+                device_config,
+                exc_info=True,
+            )
+            return False
+        else:
+            return device_config
+        finally:
+            await app.disconnect()
+
     @abc.abstractmethod
     async def connect(self):
         """

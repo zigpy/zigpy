@@ -1,6 +1,8 @@
 """Typing helpers for Zigpy."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
+
+ConfigType = Dict[str, Any]
 
 # pylint: disable=invalid-name
 ClusterType = "Cluster"
