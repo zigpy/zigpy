@@ -401,21 +401,21 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         Connect to the radio hardware and verify that it is compatible with the library.
         This method should be stateless if the connection attempt fails.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
     async def disconnect(self):
         """
         Disconnects from the radio hardware and shuts down the network.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
     async def start_network(self):
         """
         Starts a Zigbee network with settings currently stored in the radio hardware.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
     async def force_remove(self, dev):
@@ -423,7 +423,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         Instructs the radio to remove a device with a lower-level leave command. Not all
         radios implement this.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     async def mrequest(
         self,
@@ -453,7 +453,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         :returns: return a tuple of a status and an error_message. Original requestor
                   has more context to provide a more meaningful error message
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
     @zigpy.util.retryable_request
@@ -483,7 +483,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         :returns: return a tuple of a status and an error_message. Original requestor
                   has more context to provide a more meaningful error message
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
     async def broadcast(
@@ -513,7 +513,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         :returns: return a tuple of a status and an error_message. Original requestor
                   has more context to provide a more meaningful error message
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
     async def permit_ncp(self, time_s: int = 60):
@@ -521,14 +521,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         Permit joining on NCP.
         Not all radios will require this method.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
     async def permit_with_key(self, node: t.EUI64, code: bytes, time_s: int = 60):
         """
         Permit a node to join with the provided install code bytes.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
     async def write_network_info(
@@ -541,7 +541,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         Writes network and node state to the radio hardware.
         Any information not supported by the radio should be logged as a warning.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
     async def load_network_info(self, *, load_devices=False) -> None:
@@ -552,7 +552,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                              a while to load should be skipped. For example, device NWK
                              addresses and link keys.
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     async def permit(self, time_s=60, node=None):
         """Permit joining on a specific node or all router nodes."""
