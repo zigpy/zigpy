@@ -22,6 +22,7 @@ from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
 from tests.async_mock import AsyncMock, MagicMock, patch
+from tests.conftest import App
 
 
 @pytest.fixture(autouse=True)
@@ -47,33 +48,6 @@ def auto_kill_aiosqlite():
 
 
 async def make_app(database_file):
-    class App(zigpy.application.ControllerApplication):
-        async def shutdown(self):
-            pass
-
-        async def startup(self, auto_form=False):
-            pass
-
-        async def request(
-            self,
-            device,
-            profile,
-            cluster,
-            src_ep,
-            dst_ep,
-            sequence,
-            data,
-            expect_reply=True,
-            use_ieee=False,
-        ):
-            pass
-
-        async def permit_ncp(self, time_s=60):
-            pass
-
-        async def probe(self, config):
-            return True
-
     p2 = patch("zigpy.topology.Topology.scan_loop", AsyncMock())
     with patch("zigpy.ota.OTA.initialize", AsyncMock()), p2:
         app = await App.new(ZIGPY_SCHEMA({CONF_DATABASE: database_file}))
@@ -193,7 +167,7 @@ async def test_database(tmpdir):
     dev.endpoints[99].level._update_attribute(0x0011, 17)
     assert dev.endpoints[1].in_clusters[0x0008]._attr_cache[0x0011] == 17
     assert dev.endpoints[99].in_clusters[0x0008]._attr_cache[0x0011] == 17
-    await app.pre_shutdown()
+    await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
     with patch("zigpy.quirks.get_device", fake_get_device):
@@ -219,7 +193,7 @@ async def test_database(tmpdir):
     dev.relays = None
 
     app.handle_leave(99, ieee)
-    await app2.pre_shutdown()
+    await app2.shutdown()
 
     app3 = await make_app(db)
     assert ieee in app3.devices
@@ -232,13 +206,13 @@ async def test_database(tmpdir):
     for i in range(1, 20):
         await asyncio.sleep(0)
     assert ieee not in app3.devices
-    await app3.pre_shutdown()
+    await app3.shutdown()
 
     app4 = await make_app(db)
     assert ieee not in app4.devices
     dev = app4.get_device(custom_ieee)
     assert dev.relays is None
-    await app4.pre_shutdown()
+    await app4.shutdown()
 
     os.unlink(db)
 
@@ -267,7 +241,7 @@ async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     clus._update_attribute(5, test_model)
     clus.listener_event("cluster_command", 0)
     clus.listener_event("zdo_command")
-    await app.pre_shutdown()
+    await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -275,7 +249,7 @@ async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
     assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
     assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
-    await app2.pre_shutdown()
+    await app2.shutdown()
 
     os.unlink(db)
 
@@ -366,7 +340,7 @@ async def test_groups(mock_request, tmpdir):
     assert (dev_b.ieee, ep_b.endpoint_id) in group
     assert group_id in ep.member_of
     assert group_id in ep_b.member_of
-    await app.pre_shutdown()
+    await app.shutdown()
     del app, dev, dev_b, ep, ep_b
 
     # Everything should've been saved - check that it re-loads
@@ -384,7 +358,7 @@ async def test_groups(mock_request, tmpdir):
 
     # check member removal
     await dev2_b.remove_from_group(group_id)
-    await app2.pre_shutdown()
+    await app2.shutdown()
     del app2, dev2, dev2_b
 
     app3 = await make_app(db)
@@ -401,7 +375,7 @@ async def test_groups(mock_request, tmpdir):
 
     # check group removal
     await dev3.remove_from_group(group_id)
-    await app3.pre_shutdown()
+    await app3.shutdown()
     del app3, dev3, dev3_b
 
     app4 = await make_app(db)
@@ -410,12 +384,12 @@ async def test_groups(mock_request, tmpdir):
     assert not app4.groups[group_id]
     assert group_id not in dev4.endpoints[1].member_of
     app4.groups.pop(group_id)
-    await app4.pre_shutdown()
+    await app4.shutdown()
     del app4, dev4
 
     app5 = await make_app(db)
     assert not app5.groups
-    await app5.pre_shutdown()
+    await app5.shutdown()
 
     os.unlink(db)
 
@@ -446,7 +420,7 @@ async def test_attribute_update(tmpdir, dev_init):
     clus._update_attribute(4, test_manufacturer)
     clus._update_attribute(5, test_model)
     app.device_initialized(dev)
-    await app.pre_shutdown()
+    await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -456,7 +430,7 @@ async def test_attribute_update(tmpdir, dev_init):
     assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
     assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
 
-    await app2.pre_shutdown()
+    await app2.shutdown()
     os.unlink(db)
 
 
@@ -519,7 +493,7 @@ async def test_neighbors(tmpdir):
         res = await dev_2.neighbors.scan()
         assert res
 
-    await app.pre_shutdown()
+    await app.shutdown()
     del dev_1, dev_2
 
     # Everything should've been saved - check that it re-loads
@@ -536,7 +510,7 @@ async def test_neighbors(tmpdir):
     assert dev_2.neighbors[0].device is dev_1
     assert dev_2.neighbors[1].device is None
     assert dev_2.neighbors[1].neighbor.ieee == ieee_3
-    await app2.pre_shutdown()
+    await app2.shutdown()
     os.unlink(db)
 
 
@@ -558,7 +532,7 @@ async def test_device_rejoin(tmpdir):
     app.device_initialized(dev)
     clus._update_attribute(4, "Custom")
     clus._update_attribute(5, "Model")
-    await app.pre_shutdown()
+    await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
     with patch("zigpy.quirks.get_device", fake_get_device):
@@ -575,7 +549,7 @@ async def test_device_rejoin(tmpdir):
     dev.nwk = nwk + 1
     with patch("zigpy.quirks.get_device", fake_get_device):
         app2.device_initialized(dev)
-    await app2.pre_shutdown()
+    await app2.shutdown()
 
     app3 = await make_app(db)
     dev = app3.get_device(ieee)
@@ -584,7 +558,7 @@ async def test_device_rejoin(tmpdir):
     assert 0 in dev.endpoints[1].in_clusters
     assert dev.endpoints[1].manufacturer == "Custom"
     assert dev.endpoints[1].model == "Model"
-    await app3.pre_shutdown()
+    await app3.shutdown()
 
     os.unlink(db)
 
@@ -609,7 +583,7 @@ async def test_stopped_appdb_listener(tmpdir):
         clus._update_attribute(0, 99)
         clus._update_attribute(4, bytes("Custom", "ascii"))
         clus._update_attribute(5, bytes("Model", "ascii"))
-        await app.pre_shutdown()
+        await app.shutdown()
         assert mock_attr_save.call_count == 3
 
         clus._update_attribute(0, 100)
@@ -637,7 +611,7 @@ async def test_invalid_node_desc(tmpdir):
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     app.device_initialized(dev_1)
 
-    await app.pre_shutdown()
+    await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -647,7 +621,7 @@ async def test_invalid_node_desc(tmpdir):
     assert dev_2.ieee == dev_1.ieee
     assert dev_2.status == dev_1.status
 
-    await app2.pre_shutdown()
+    await app2.shutdown()
     os.unlink(db)
 
 
@@ -703,7 +677,7 @@ async def test_unsupported_attribute(tmpdir, dev_init):
     app.device_initialized(dev)
     clus.add_unsupported_attribute(0x0010)
     clus.add_unsupported_attribute("physical_env")
-    await app.pre_shutdown()
+    await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
@@ -715,7 +689,7 @@ async def test_unsupported_attribute(tmpdir, dev_init):
     assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
 
-    await app2.pre_shutdown()
+    await app2.shutdown()
     os.unlink(db)
 
 
@@ -739,7 +713,7 @@ async def test_load_unsupp_attr_wrong_cluster(tmpdir):
     clus._update_attribute(4, "Custom")
     clus._update_attribute(5, "Model")
     app.device_initialized(dev)
-    await app.pre_shutdown()
+    await app.shutdown()
     del clus
     del ep
     del dev
@@ -750,14 +724,14 @@ async def test_load_unsupp_attr_wrong_cluster(tmpdir):
     ep = dev.endpoints[3]
     clus = ep.add_input_cluster(2)
     clus.add_unsupported_attribute(0)
-    await app.pre_shutdown()
+    await app.shutdown()
     del clus
     del ep
     del dev
 
     # reload
     app = await make_app(db)
-    await app.pre_shutdown()
+    await app.shutdown()
 
 
 @pytest.mark.parametrize(

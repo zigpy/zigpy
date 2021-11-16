@@ -38,9 +38,6 @@ def raise_on_bad_log_formatting():
 
 
 class App(zigpy.application.ControllerApplication):
-    async def shutdown(self):
-        pass
-
     async def startup(self, auto_form=False):
         pass
 
@@ -58,11 +55,61 @@ class App(zigpy.application.ControllerApplication):
     ):
         pass
 
+    @classmethod
+    async def probe(cls, config):
+        return True
+
+    async def connect(self):
+        pass
+
+    async def disconnect(self):
+        pass
+
+    async def start_network(self):
+        pass
+
+    async def force_remove(self, dev):
+        pass
+
     async def permit_ncp(self, time_s=60):
         pass
 
-    async def probe(self, config):
-        return True
+    async def broadcast(
+        self,
+        profile,
+        cluster,
+        src_ep,
+        dst_ep,
+        grpid,
+        radius,
+        sequence,
+        data,
+        broadcast_address,
+    ):
+        pass
+
+    async def mrequest(
+        self,
+        group_id,
+        profile,
+        cluster,
+        src_ep,
+        sequence,
+        data,
+        *,
+        hops=0,
+        non_member_radius=3,
+    ):
+        pass
+
+    async def permit_with_key(self, node, code, time_s=60):
+        pass
+
+    async def write_network_info(self, *, network_info, node_info):
+        pass
+
+    async def load_network_info(self, *, load_devices=False):
+        pass
 
 
 @pytest.fixture
@@ -73,7 +120,7 @@ def app_mock():
         {CONF_DATABASE: None, CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"}}
     )
     app_mock = MagicMock(spec_set=App(config))
-    app_mock.state.node_information = app_state.NodeInfo(
+    app_mock.state.node_info = app_state.NodeInfo(
         t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
     )
     return app_mock

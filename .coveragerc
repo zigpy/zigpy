@@ -3,3 +3,7 @@ source = zigpy
 
 omit =
     zigpy/typing.py
+
+[report]
+exclude_lines =
+    @abc.abstractmethod
