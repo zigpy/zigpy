@@ -539,6 +539,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     def commands(self):
         return list(self._server_commands_idx.keys())
 
+    def update_attribute(self, attrid, value):
+        """Update specified attribute with specified value"""
+        self._update_attribute(attrid, value)
+
     def _update_attribute(self, attrid, value):
         self._attr_cache[attrid] = value
         self.listener_event("attribute_updated", attrid, value)
