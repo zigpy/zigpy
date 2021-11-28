@@ -3,16 +3,16 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections import defaultdict
 import datetime
+import io
 import logging
 import os
 import os.path
+import tarfile
 from typing import Dict, Optional
 import urllib.parse
 
 import aiohttp
 import attr
-import io
-import tarfile
 
 from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA_URL
 from zigpy.ota.image import (
@@ -338,7 +338,7 @@ class SalusImage:
             # we can't check assert img.header.key == self.key because
             # self.key does not include any valid image_type data for salus
             # devices.  It is not known at the point of generating the FW
-            # list cache, so it cant be checked here (Ikea and ledvance have
+            # list cache, so it can't be checked here (Ikea and ledvance have
             # this listed in the JSON, so they already know and can do this).
 
         LOGGER.debug(
