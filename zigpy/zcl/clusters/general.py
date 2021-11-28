@@ -1053,7 +1053,7 @@ class Ota(Cluster):
         hardware_version,
         *,
         tsn,
-        model,
+        model=None,
     ):
         self.debug(
             (
@@ -1116,7 +1116,7 @@ class Ota(Cluster):
         block_request_delay,
         *,
         tsn=None,
-        model,
+        model=None,
     ):
         self.debug(
             (

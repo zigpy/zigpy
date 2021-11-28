@@ -118,7 +118,7 @@ class OTA(zigpy.util.ListenableMixin):
         self._not_initialized = False
 
     async def get_ota_image(
-        self, manufacturer_id, image_type, model
+        self, manufacturer_id, image_type, model=None
     ) -> Optional[CachedImage]:
         if manufacturer_id == 4216:  # Salus/computime does not pass a useful image_type
             # in the message from the device. So construct key based on model name.
