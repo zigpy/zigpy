@@ -141,7 +141,7 @@ async def test_handle_nwk_addr(zdo_f):
     zdo_f.reply = MagicMock()
     hdr = MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.NWK_addr_req
-    zdo_f.handle_message(5, 0x0000, hdr, [ieee])
+    zdo_f.handle_message(5, 0x0000, hdr, [ieee, 0x00])
     assert zdo_f.reply.call_count == 1
 
 
@@ -150,38 +150,51 @@ async def test_handle_ieee_addr(zdo_f):
     zdo_f.reply = MagicMock()
     hdr = MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.IEEE_addr_req
-    zdo_f.handle_message(5, 0x0001, hdr, [nwk])
+    zdo_f.handle_message(5, 0x0001, hdr, [nwk, 0x00])
     assert zdo_f.reply.call_count == 1
 
 
 def test_handle_announce(zdo_f):
     dev = zdo_f._device
-    zdo_f.listener_event = MagicMock()
+    listener = MagicMock()
+    zdo_f.add_listener(listener)
+
     dev._application.devices.pop(dev.ieee)
     hdr = MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.Device_annce
-    zdo_f.handle_message(5, 0x0013, hdr, [0, dev.ieee, dev.nwk])
-    assert zdo_f.listener_event.call_count == 1
+    zdo_f.handle_message(
+        5, 0x0013, hdr, [dev.nwk, dev.ieee, 0], dst_addressing=sentinel.dst_addr
+    )
+
+    assert listener.device_announce.call_count == 1
+    assert listener.device_announce.call_args[0][0] is dev
+
+    assert listener.zdo_device_annce.call_count == 1
+    assert listener.zdo_device_annce.call_args[0][0] is dev
+    assert listener.zdo_device_annce.call_args[0][1] is sentinel.dst_addr
+    assert listener.zdo_device_annce.call_args[0][2] == [dev.nwk, dev.ieee, 0]
 
 
 def test_handle_permit_join(zdo_f):
-    zdo_f.listener_event = MagicMock()
+    listener = MagicMock()
+    zdo_f.add_listener(listener)
     hdr = MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.Mgmt_Permit_Joining_req
     zdo_f.handle_message(5, 0x0036, hdr, [100, 1])
-    assert zdo_f.listener_event.call_count == 1
+    assert listener.permit_duration.call_count == 1
 
 
 def test_handle_unsupported(zdo_f):
-    zdo_f.listener_event = MagicMock()
+    listener = MagicMock()
+    zdo_f.add_listener(listener)
     hdr = MagicMock()
-    hdr.command_id = 0xFFFF
+    hdr.command_id = zdo_types.ZDOCmd(0xFFFF)
     assert hdr.command_id not in list(zdo_types.ZDOCmd)
     zdo_f.request = MagicMock()
     zdo_f.reply = MagicMock()
     zdo_f.handle_message(5, 0xFFFF, hdr, [])
 
-    assert zdo_f.listener_event.call_count == 0
+    assert listener.zdo_undefined_0xffff.call_count == 1
     assert zdo_f.request.call_count == 0
     assert zdo_f.reply.call_count == 0
 
