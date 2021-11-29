@@ -172,7 +172,8 @@ def test_handle_announce(zdo_f):
     assert listener.zdo_device_annce.call_count == 1
     assert listener.zdo_device_annce.call_args[0][0] is dev
     assert listener.zdo_device_annce.call_args[0][1] is sentinel.dst_addr
-    assert listener.zdo_device_annce.call_args[0][2] == [dev.nwk, dev.ieee, 0]
+    assert listener.zdo_device_annce.call_args[0][2] is hdr
+    assert listener.zdo_device_annce.call_args[0][3] == [dev.nwk, dev.ieee, 0]
 
 
 def test_handle_permit_join(zdo_f):

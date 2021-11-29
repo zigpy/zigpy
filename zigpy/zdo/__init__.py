@@ -75,7 +75,11 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             self.debug("No handler for ZDO request:%s(%s)", hdr.command_id, args)
 
         self.listener_event(
-            f"zdo_{hdr.command_id.name.lower()}", self._device, dst_addressing, args
+            f"zdo_{hdr.command_id.name.lower()}",
+            self._device,
+            dst_addressing,
+            hdr,
+            args,
         )
 
     def handle_nwk_addr_req(
