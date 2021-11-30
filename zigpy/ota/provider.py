@@ -305,7 +305,9 @@ class SalusImage:
         ver = data["version"]
         url = data["url"]
 
-        res = cls(manufacturer_id=4216, model=mod, version=ver, url=url)
+        res = cls(
+            manufacturer_id=Salus.MANUFACTURER_ID, model=mod, version=ver, url=url
+        )
 
         return res
 
