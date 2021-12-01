@@ -839,6 +839,76 @@ async def test_salus_get_image(salus_prov, salus_key, salus_image):
 
 
 @patch("aiohttp.ClientSession.get")
+async def test_salus_refresh_list(
+    mock_get, salus_prov, salus_image_with_version
+):
+    img1 = salus_image_with_version(version="00000006", model="45856")
+    img2 = salus_image_with_version(version="00000006", model="45857")
+
+    mock_get.return_value.__aenter__.return_value.json = AsyncMock(
+        side_effect=[
+            {
+                "versions": [
+                    {
+                        "model": "45856",
+                        "version": "00000006",
+                        "url": "http://eu.salusconnect.io/download/firmware/a65779cd-13cd-41e5-a7e0-5346f24a0f62/45856_00000006.tar.gz"
+                    },
+                    {
+                        "model": "45857",
+                        "version": "00000006",
+                        "url": "http://eu.salusconnect.io/download/firmware/3319b501-98f3-4337-afbe-8d04bb9938bc/45857_00000006.tar.gz"
+                    },
+                ]
+            }
+        ]
+    )
+    mock_get.return_value.__aenter__.return_value.status = 202
+    mock_get.return_value.__aenter__.return_value.reason = "OK"
+
+    await salus_prov.refresh_firmware_list()
+    assert mock_get.call_count == 1
+    assert len(salus_prov._cache) == 2
+    assert img1.key in salus_prov._cache
+    assert img2.key in salus_prov._cache
+    cached_1 = salus_prov._cache[img1.key]
+    assert cached_1.model == img1.model
+    base = "http://eu.salusconnect.io/download/firmware/"
+    assert cached_1.url == base + "a65779cd-13cd-41e5-a7e0-5346f24a0f62/45856_00000006.tar.gz"
+
+    cached_2 = salus_prov._cache[img2.key]
+    assert cached_2.model == img2.model
+    assert cached_2.url == base + "3319b501-98f3-4337-afbe-8d04bb9938bc/45857_00000006.tar.gz"
+
+    assert not salus_prov.expired
+
+
+@patch("aiohttp.ClientSession.get")
+async def test_salus_refresh_list_locked(
+    mock_get, salus_prov, salus_image_with_version
+):
+    await salus_prov._locks[ota_p.LOCK_REFRESH].acquire()
+
+    mock_get.return_value.__aenter__.return_value.json = AsyncMock(side_effect=[[]])
+
+    await salus_prov.refresh_firmware_list()
+    assert mock_get.call_count == 0
+
+
+@patch("aiohttp.ClientSession.get")
+async def test_salus_refresh_list_failed(mock_get, salus_prov):
+
+    mock_get.return_value.__aenter__.return_value.json = AsyncMock(side_effect=[[]])
+    mock_get.return_value.__aenter__.return_value.status = 434
+    mock_get.return_value.__aenter__.return_value.reason = "UNK"
+
+    with patch.object(salus_prov, "update_expiration") as update_exp:
+        await salus_prov.refresh_firmware_list()
+    assert mock_get.call_count == 1
+    assert update_exp.call_count == 0
+
+
+@patch("aiohttp.ClientSession.get")
 async def test_salus_fetch_image(mock_get, salus_image_with_version):
     data = bytes.fromhex( #based on ikea sample but modded mfr code
         "1ef1ee0b0001380000007810012178563412020054657374204f544120496d61"
