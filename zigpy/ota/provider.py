@@ -321,11 +321,11 @@ class SalusImage:
             async with req.get(self.url) as rsp:
                 data = await rsp.read()
             img_tgz = io.BytesIO(data)
-            tar = tarfile.open(fileobj=img_tgz)  # Unpack tar
-            for item in tar:
-                if item.name.endswith(".ota"):
-                    file_bytes = tar.extractfile(item).read()
-                    break
+            with tarfile.open(fileobj=img_tgz) as tar:  # Unpack tar
+                for item in tar:
+                    if item.name.endswith(".ota"):
+                        file_bytes = tar.extractfile(item).read()
+                        break
             img, _ = parse_ota_image(file_bytes)
 
             LOGGER.debug(

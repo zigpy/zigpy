@@ -1,10 +1,14 @@
+import binascii
+import io
 import os.path
+import tarfile
 from unittest import mock
 import uuid
 
+
 import pytest
 
-from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA, CONF_OTA_LEDVANCE
+from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA, CONF_OTA_LEDVANCE, CONF_OTA_SALUS
 import zigpy.ota
 import zigpy.ota.image
 import zigpy.ota.provider as ota_p
@@ -756,6 +760,105 @@ async def test_ledvance_fetch_image(mock_get, ledvance_image_with_version):
 
     mock_get.return_value.__aenter__.return_value.read = AsyncMock(
         side_effect=[data + sub_el]
+    )
+
+    r = await img.fetch_image()
+    assert isinstance(r, zigpy.ota.image.OTAImage)
+    assert mock_get.call_count == 1
+    assert mock_get.call_args[0][0] == mock.sentinel.url
+    assert r.serialize() == data + sub_el
+
+
+SALUS_ID = 4216
+SALUS_MODEL = "XY123"
+
+@pytest.fixture
+def salus_prov():
+    p = ota_p.Salus()
+    p.enable()
+    return p
+
+
+@pytest.fixture
+def salus_image_with_version():
+    def img(version=100, model=SALUS_MODEL):
+        img = zigpy.ota.provider.SalusImage(
+            SALUS_ID, model, version, 180052, mock.sentinel.url
+        )
+        return img
+
+    return img
+
+
+@pytest.fixture
+def salus_image(salus_image_with_version):
+    return salus_image_with_version()
+
+
+@pytest.fixture
+def salus_key():
+    return zigpy.ota.image.ImageKey(SALUS_ID, SALUS_MODEL)
+
+
+async def test_salus_init_ota_dir(salus_prov):
+    salus_prov.enable = mock.MagicMock()
+    salus_prov.refresh_firmware_list = AsyncMock()
+
+    r = await salus_prov.initialize_provider({CONF_OTA_SALUS: True})
+    assert r is None
+    assert salus_prov.enable.call_count == 1
+    assert salus_prov.refresh_firmware_list.call_count == 1
+
+
+async def test_salus_get_image_no_cache(salus_prov, salus_image):
+    salus_image.fetch_image = AsyncMock(return_value=mock.sentinel.image)
+    salus_prov._cache = mock.MagicMock()
+    salus_prov._cache.__getitem__.side_effect = KeyError()
+    salus_prov.refresh_firmware_list = AsyncMock()
+
+    # salus manufacturer_id, but not in cache
+    assert salus_image.key not in salus_prov._cache
+    r = await salus_prov.get_image(salus_image.key)
+    assert r is None
+    assert salus_prov.refresh_firmware_list.call_count == 1
+    assert salus_prov._cache.__getitem__.call_count == 1
+    assert salus_image.fetch_image.call_count == 0
+
+
+async def test_salus_get_image(salus_prov, salus_key, salus_image):
+    salus_image.fetch_image = AsyncMock(return_value=mock.sentinel.image)
+    salus_prov._cache = mock.MagicMock()
+    salus_prov._cache.__getitem__.return_value = salus_image
+    salus_prov.refresh_firmware_list = AsyncMock()
+
+    r = await salus_prov.get_image(salus_key)
+    assert r is mock.sentinel.image
+    assert salus_prov._cache.__getitem__.call_count == 1
+    assert salus_prov._cache.__getitem__.call_args[0][0] == salus_image.key
+    assert salus_image.fetch_image.call_count == 1
+
+
+@patch("aiohttp.ClientSession.get")
+async def test_salus_fetch_image(mock_get, salus_image_with_version):
+    data = bytes.fromhex( #based on ikea sample but modded mfr code
+        "1ef1ee0b0001380000007810012178563412020054657374204f544120496d61"
+        "676500000000000000000000000000000000000042000000"
+    )
+
+    sub_el = b"\x00\x00\x04\x00\x00\x00abcd"
+    # construct tar.gz from header + sub_el
+    binstr = data + sub_el
+    fh = io.BytesIO() # don't create a real file on disk, just in RAM.
+    with tarfile.open(fileobj=fh, mode="w:gz") as tar:
+        info = tarfile.TarInfo("salus_sample.ota")
+        info.size = len(binstr)
+        tar.addfile(info, io.BytesIO(binstr))
+
+    img = salus_image_with_version(model=SALUS_MODEL)
+    img.url = mock.sentinel.url
+
+    mock_get.return_value.__aenter__.return_value.read = AsyncMock(
+        side_effect=[fh.getvalue()]
     )
 
     r = await img.fetch_image()
