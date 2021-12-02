@@ -1,10 +1,8 @@
-import binascii
 import io
 import os.path
 import tarfile
 from unittest import mock
 import uuid
-
 
 import pytest
 
@@ -772,6 +770,7 @@ async def test_ledvance_fetch_image(mock_get, ledvance_image_with_version):
 SALUS_ID = 4216
 SALUS_MODEL = "XY123"
 
+
 @pytest.fixture
 def salus_prov():
     p = ota_p.Salus()
@@ -839,9 +838,7 @@ async def test_salus_get_image(salus_prov, salus_key, salus_image):
 
 
 @patch("aiohttp.ClientSession.get")
-async def test_salus_refresh_list(
-    mock_get, salus_prov, salus_image_with_version
-):
+async def test_salus_refresh_list(mock_get, salus_prov, salus_image_with_version):
     img1 = salus_image_with_version(version="00000006", model="45856")
     img2 = salus_image_with_version(version="00000006", model="45857")
 
@@ -852,12 +849,12 @@ async def test_salus_refresh_list(
                     {
                         "model": "45856",
                         "version": "00000006",
-                        "url": "http://eu.salusconnect.io/download/firmware/a65779cd-13cd-41e5-a7e0-5346f24a0f62/45856_00000006.tar.gz"
+                        "url": "http://eu.salusconnect.io/download/firmware/a65779cd-13cd-41e5-a7e0-5346f24a0f62/45856_00000006.tar.gz",
                     },
                     {
                         "model": "45857",
                         "version": "00000006",
-                        "url": "http://eu.salusconnect.io/download/firmware/3319b501-98f3-4337-afbe-8d04bb9938bc/45857_00000006.tar.gz"
+                        "url": "http://eu.salusconnect.io/download/firmware/3319b501-98f3-4337-afbe-8d04bb9938bc/45857_00000006.tar.gz",
                     },
                 ]
             }
@@ -874,11 +871,17 @@ async def test_salus_refresh_list(
     cached_1 = salus_prov._cache[img1.key]
     assert cached_1.model == img1.model
     base = "http://eu.salusconnect.io/download/firmware/"
-    assert cached_1.url == base + "a65779cd-13cd-41e5-a7e0-5346f24a0f62/45856_00000006.tar.gz"
+    assert (
+        cached_1.url
+        == base + "a65779cd-13cd-41e5-a7e0-5346f24a0f62/45856_00000006.tar.gz"
+    )
 
     cached_2 = salus_prov._cache[img2.key]
     assert cached_2.model == img2.model
-    assert cached_2.url == base + "3319b501-98f3-4337-afbe-8d04bb9938bc/45857_00000006.tar.gz"
+    assert (
+        cached_2.url
+        == base + "3319b501-98f3-4337-afbe-8d04bb9938bc/45857_00000006.tar.gz"
+    )
 
     assert not salus_prov.expired
 
@@ -910,7 +913,7 @@ async def test_salus_refresh_list_failed(mock_get, salus_prov):
 
 @patch("aiohttp.ClientSession.get")
 async def test_salus_fetch_image(mock_get, salus_image_with_version):
-    data = bytes.fromhex( #based on ikea sample but modded mfr code
+    data = bytes.fromhex(  # based on ikea sample but modded mfr code
         "1ef1ee0b0001380000007810012178563412020054657374204f544120496d61"
         "676500000000000000000000000000000000000042000000"
     )
@@ -918,7 +921,7 @@ async def test_salus_fetch_image(mock_get, salus_image_with_version):
     sub_el = b"\x00\x00\x04\x00\x00\x00abcd"
     # construct tar.gz from header + sub_el
     binstr = data + sub_el
-    fh = io.BytesIO() # don't create a real file on disk, just in RAM.
+    fh = io.BytesIO()  # don't create a real file on disk, just in RAM.
     with tarfile.open(fileobj=fh, mode="w:gz") as tar:
         info = tarfile.TarInfo("salus_sample.ota")
         info.size = len(binstr)
