@@ -2,21 +2,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sqlite3
 from typing import Any
 
 import aiosqlite
 
-try:
-    import pysqlite3 as sqlite3
-except ImportError:
-    import sqlite3
-
-
 if sqlite3.sqlite_version_info < (3, 24, 0):
-    raise RuntimeError(
-        "zigpy requires SQLite 3.24.0 or newer. If you cannot install a newer version"
-        " with your distribution's package manager, run `pip install pysqlite3-binary`."
-    )
+    try:
+        import pysqlite3 as sqlite3
+    except ImportError:
+        raise RuntimeError(
+            "zigpy requires SQLite 3.24.0 or newer. If you cannot install a newer"
+            " version with your distribution's package manager, run"
+            " `pip install pysqlite3-binary`."
+        )
 
 import zigpy.appdb_schemas
 import zigpy.device
