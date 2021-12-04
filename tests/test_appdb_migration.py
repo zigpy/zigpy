@@ -1,10 +1,11 @@
 import logging
 import pathlib
-import sqlite3
+from sqlite3.dump import _iterdump as iterdump
 
 import pytest
 
 import zigpy.appdb
+from zigpy.appdb import sqlite3
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
@@ -41,7 +42,7 @@ def dump_db(path):
         cur.execute("PRAGMA user_version")
         (user_version,) = cur.fetchone()
 
-        sql = "\n".join(conn.iterdump())
+        sql = "\n".join(iterdump(conn))
 
     return user_version, sql
 

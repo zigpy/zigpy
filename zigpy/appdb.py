@@ -2,10 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sqlite3
 from typing import Any
 
 import aiosqlite
+
+try:
+    import pysqlite3 as sqlite3
+except ImportError:
+    import sqlite3
+
+
+if sqlite3.sqlite_version_info < (3, 24, 0):
+    raise RuntimeError(
+        "zigpy requires SQLite 3.24.0 or newer. If you cannot install a newer version"
+        " with your distribution's package manager, run `pip install pysqlite3-binary`."
+    )
 
 import zigpy.appdb_schemas
 import zigpy.device
@@ -30,13 +41,20 @@ def _register_sqlite_adapters():
     def adapt_ieee(eui64):
         return str(eui64)
 
-    aiosqlite.register_adapter(t.EUI64, adapt_ieee)
-    aiosqlite.register_adapter(t.ExtendedPanId, adapt_ieee)
+    sqlite3.register_adapter(t.EUI64, adapt_ieee)
+    sqlite3.register_adapter(t.ExtendedPanId, adapt_ieee)
 
     def convert_ieee(s):
         return t.EUI64.convert(s.decode())
 
-    aiosqlite.register_converter("ieee", convert_ieee)
+    sqlite3.register_converter("ieee", convert_ieee)
+
+
+def aiosqlite_connect(database: str, iter_chunk_size: int = 64, **kwargs):
+    def connector():
+        return sqlite3.connect(str(database), **kwargs)
+
+    return aiosqlite.Connection(connector, iter_chunk_size)
 
 
 def decode_str_attribute(value: str | bytes) -> str:
@@ -76,7 +94,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         cls, database_file: str, app: zigpy.typing.ControllerApplicationType
     ) -> PersistingListener:
         """Create an instance of persisting listener."""
-        sqlite_conn = await aiosqlite.connect(
+        sqlite_conn = await aiosqlite_connect(
             database_file, detect_types=sqlite3.PARSE_DECLTYPES
         )
         listener = cls(sqlite_conn, app)
@@ -100,7 +118,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             assert handler
             try:
                 await handler(*args)
-            except aiosqlite.Error as exc:
+            except sqlite3.Error as exc:
                 LOGGER.debug(
                     "Error handling '%s' event with %s params: %s",
                     cb_name,
@@ -167,7 +185,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if relays is None:
             await self.execute(f"DELETE FROM relays{DB_V} WHERE ieee = ?", (ieee,))
         else:
-            q = f"INSERT OR REPLACE INTO relays{DB_V} VALUES (?, ?)"
+            q = f"INSERT INTO relays{DB_V} VALUES (?, ?) ON CONFLICT (ieee) DO UPDATE SET relays=excluded.relays"
             await self.execute(q, (ieee, relays.serialize()))
 
         await self._db.commit()
@@ -285,7 +303,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         try:
             q = f"INSERT INTO devices{DB_V} (ieee, nwk, status) VALUES (?, ?, ?)"
             await self.execute(q, (device.ieee, device.nwk, device.status))
-        except aiosqlite.IntegrityError:
+        except sqlite3.IntegrityError:
             LOGGER.debug("Device %s already exists. Updating it.", device.ieee)
             q = f"UPDATE devices{DB_V} SET nwk=?, status=? WHERE ieee=?"
             await self.execute(q, (device.nwk, device.status, device.ieee))
@@ -593,7 +611,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         await self.execute(
                             f"INSERT INTO {new_table} VALUES ({placeholders})", row
                         )
-                    except aiosqlite.IntegrityError as e:
+                    except sqlite3.IntegrityError as e:
                         if errors == "raise":
                             raise
                         elif errors == "warn":

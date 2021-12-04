@@ -1,6 +1,5 @@
 import asyncio
 import os
-import sqlite3
 import threading
 
 import aiosqlite
@@ -39,7 +38,7 @@ def auto_kill_aiosqlite():
         else:
             try:
                 conn.close()
-            except sqlite3.ProgrammingError:
+            except zigpy.appdb.sqlite3.ProgrammingError:
                 pass
 
         thread._running = False
