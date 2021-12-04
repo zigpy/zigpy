@@ -185,7 +185,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if relays is None:
             await self.execute(f"DELETE FROM relays{DB_V} WHERE ieee = ?", (ieee,))
         else:
-            q = f"INSERT INTO relays{DB_V} VALUES (?, ?) ON CONFLICT (ieee) DO UPDATE SET relays=excluded.relays"
+            q = (
+                f"INSERT INTO relays{DB_V} VALUES (?, ?)"
+                f"ON CONFLICT (ieee) DO UPDATE SET relays=excluded.relays"
+            )
             await self.execute(q, (ieee, relays.serialize()))
 
         await self._db.commit()
@@ -222,7 +225,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _unsupported_attribute_added(
         self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int
     ) -> None:
-        q = f"INSERT OR REPLACE INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?)"
+        q = (
+            f"INSERT INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(ieee, endoint_id, cluster) DO UPDATE SET attrid=excluded.attrid"
+        )
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid))
         await self._db.commit()
 
@@ -248,7 +254,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_group_added", group)
 
     async def _group_added(self, group: zigpy.group.Group) -> None:
-        q = f"INSERT OR REPLACE INTO groups{DB_V} VALUES (?, ?)"
+        q = (
+            f"INSERT INTO groups{DB_V} VALUES (?, ?)"
+            f"ON CONFLICT(group_id) DO UPDATE SET name=excluded.name"
+        )
         await self.execute(q, (group.group_id, group.name))
         await self._db.commit()
 
@@ -261,7 +270,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _group_member_added(
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
     ) -> None:
-        q = f"INSERT OR REPLACE INTO group_members{DB_V} VALUES (?, ?, ?)"
+        q = f"INSERT INTO group_members{DB_V} VALUES (?, ?, ?)"
         await self.execute(q, (group.group_id, *ep.unique_id))
         await self._db.commit()
 
@@ -300,13 +309,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_save_device", device)
 
     async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
-        try:
-            q = f"INSERT INTO devices{DB_V} (ieee, nwk, status) VALUES (?, ?, ?)"
-            await self.execute(q, (device.ieee, device.nwk, device.status))
-        except sqlite3.IntegrityError:
-            LOGGER.debug("Device %s already exists. Updating it.", device.ieee)
-            q = f"UPDATE devices{DB_V} SET nwk=?, status=? WHERE ieee=?"
-            await self.execute(q, (device.nwk, device.status, device.ieee))
+        q = (
+            f"INSERT INTO devices{DB_V} (ieee, nwk, status) VALUES (?, ?, ?)"
+            f"ON CONFLICT(ieee) DO UPDATE SET nwk=excluded.nwk, status=excluded.status"
+        )
+        await self.execute(q, (device.ieee, device.nwk, device.status))
 
         if device.node_desc is not None:
             await self._save_node_descriptor(device)
@@ -335,13 +342,31 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             )
             endpoints.append(eprow)
 
-        q = f"INSERT OR REPLACE INTO endpoints{DB_V} VALUES (?, ?, ?, ?, ?)"
+        q = f"INSERT INTO endpoints{DB_V} VALUES (?, ?, ?, ?, ?)"
+        " ON CONFLICT(ieee, endpoint_id)"
+        " DO UPDATE SET profile_id=excluded.profile_id"
+        ", device_type=excluded.device_type, status=excluded.status"
+
         await self._db.executemany(q, endpoints)
 
     async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
         await self.execute(
-            f"INSERT OR REPLACE INTO node_descriptors{DB_V}"
-            f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO node_descriptors{DB_V}"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT(ieee) DO UPDATE SET"
+            " logical_type=excluded.logical_type"
+            ", complex_descriptor_available=excluded.complex_descriptor_available"
+            ", user_descriptor_available=excluded.user_descriptor_available"
+            ", reserved=excluded.reserved"
+            ", aps_flags=excluded.aps_flags"
+            ", frequency_band=excluded.frequency_band"
+            ", mac_capability_flags=excluded.mac_capability_flags"
+            ", manufacturer_code=excluded.manufacturer_code"
+            ", maximum_buffer_size=excluded.maximum_buffer_size"
+            ", maximum_incoming_transfer_size=excluded.maximum_incoming_transfer_size"
+            ", server_mask=excluded.server_mask"
+            ", maximum_outgoing_transfer_size=excluded.maximum_outgoing_transfer_size"
+            ", descriptor_capability_field=excluded.descriptor_capability_field",
             (device.ieee,) + device.node_desc.as_tuple(),
         )
 
@@ -350,7 +375,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             (endpoint.device.ieee, endpoint.endpoint_id, cluster.cluster_id)
             for cluster in endpoint.in_clusters.values()
         ]
-        q = f"INSERT OR REPLACE INTO in_clusters{DB_V} VALUES (?, ?, ?)"
+        q = (
+            f"INSERT INTO in_clusters{DB_V} VALUES (?, ?, ?)"
+            " ON CONFLICT(ieee, endpoint_id, cluster) DO NOTHING"
+        )
         await self._db.executemany(q, clusters)
 
     async def _save_attribute_cache(self, ep: zigpy.typing.EndpointType) -> None:
@@ -359,7 +387,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             for cluster in ep.in_clusters.values()
             for attrid, value in cluster._attr_cache.items()
         ]
-        q = f"INSERT OR REPLACE INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)"
+        q = (
+            f"INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT(ieee, endpoint_id, cluster, attrid)"
+            " DO UPDATE SET value=excluded.value"
+        )
         await self._db.executemany(q, clusters)
 
     async def _save_unsupported_attributes(self, ep: zigpy.typing.EndpointType) -> None:
@@ -369,7 +401,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             for attr in cluster.unsupported_attributes
             if isinstance(attr, int)
         ]
-        q = f"INSERT OR REPLACE INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?)"
+        q = (
+            f"INSERT INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(ieee, endpoint_id, cluster, attrid) DO NOTHING"
+        )
         await self._db.executemany(q, clusters)
 
     async def _save_output_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
@@ -377,13 +412,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             (endpoint.device.ieee, endpoint.endpoint_id, cluster.cluster_id)
             for cluster in endpoint.out_clusters.values()
         ]
-        q = f"INSERT OR REPLACE INTO out_clusters{DB_V} VALUES (?, ?, ?)"
+        q = (
+            f"INSERT INTO out_clusters{DB_V} VALUES (?, ?, ?)"
+            " ON CONFLICT(ieee, endpoint_id, cluster) DO NOTHING"
+        )
         await self._db.executemany(q, clusters)
 
     async def _save_attribute(
         self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int, value: Any
     ) -> None:
-        q = f"INSERT OR REPLACE INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)"
+        q = (
+            f"INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT(ieee, endpoint_id, cluster, attrid)"
+            " DO UPDATE SET value=excluded.value"
+        )
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         await self._db.commit()
 
