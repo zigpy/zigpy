@@ -342,10 +342,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             )
             endpoints.append(eprow)
 
-        q = f"INSERT INTO endpoints{DB_V} VALUES (?, ?, ?, ?, ?)"
-        " ON CONFLICT(ieee, endpoint_id)"
-        " DO UPDATE SET profile_id=excluded.profile_id"
-        ", device_type=excluded.device_type, status=excluded.status"
+        q = (
+            f"INSERT INTO endpoints{DB_V} VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT(ieee, endpoint_id)"
+            " DO UPDATE SET profile_id=excluded.profile_id"
+            ", device_type=excluded.device_type, status=excluded.status"
+        )
 
         await self._db.executemany(q, endpoints)
 
