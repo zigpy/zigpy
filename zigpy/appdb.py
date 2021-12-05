@@ -255,7 +255,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int
     ) -> None:
         q = f"""INSERT INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?)
-                   ON CONFLICT (ieee, endoint_id, cluster)
+                   ON CONFLICT (ieee, endpoint_id, cluster)
                    DO UPDATE SET attrid=excluded.attrid"""
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid))
         await self._db.commit()
