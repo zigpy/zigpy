@@ -1,5 +1,7 @@
 import asyncio
 import os
+import sqlite3
+import sys
 import threading
 
 import aiosqlite
@@ -755,3 +757,58 @@ async def test_load_unsupp_attr_wrong_cluster(tmpdir):
     # reload
     app = await make_app(db)
     await app.pre_shutdown()
+
+
+@pytest.mark.parametrize(
+    "stdlib_version,use_sqlite",
+    [
+        ((1, 0, 0), False),
+        ((2, 0, 0), False),
+        ((3, 0, 0), False),
+        ((3, 24, 0), True),
+        ((4, 0, 0), True),
+    ],
+)
+async def test_pysqlite_load_success(stdlib_version, use_sqlite):
+    """Test that the internal import SQLite helper picks the correct module."""
+    pysqlite3 = MagicMock()
+    pysqlite3.sqlite_version_info = (3, 30, 0)
+
+    with (
+        patch.dict(sys.modules, {"pysqlite3": pysqlite3}),
+        patch.object(sys.modules["sqlite3"], "sqlite_version_info", new=stdlib_version),
+    ):
+        module = zigpy.appdb._import_compatible_sqlite3(zigpy.appdb.MIN_SQLITE_VERSION)
+
+    if use_sqlite:
+        assert module is sqlite3
+    else:
+        assert module is pysqlite3
+
+
+@pytest.mark.parametrize(
+    "stdlib_version,pysqlite3_version",
+    [
+        ((1, 0, 0), None),
+        ((1, 0, 0), (1, 0, 1)),
+    ],
+)
+async def test_pysqlite_load_failure(stdlib_version, pysqlite3_version):
+    """
+    Test that the internal import SQLite helper will throw an error when no compatible
+    module can be found.
+    """
+
+    if pysqlite3_version is not None:
+        pysqlite3 = MagicMock()
+        pysqlite3.sqlite_version_info = pysqlite3_version
+        pysqlite3_patch = patch.dict(sys.modules, {"pysqlite3": pysqlite3})
+    else:
+        pysqlite3_patch = patch.dict(sys.modules, {"pysqlite3": None})
+
+    with (
+        pysqlite3_patch,
+        patch.object(sys.modules["sqlite3"], "sqlite_version_info", new=stdlib_version),
+    ):
+        with pytest.raises(RuntimeError):
+            zigpy.appdb._import_compatible_sqlite3(zigpy.appdb.MIN_SQLITE_VERSION)

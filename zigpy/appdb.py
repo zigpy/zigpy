@@ -2,21 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sqlite3
+import types
 from typing import Any
 
 import aiosqlite
-
-# Upserting was added in SQLite 3.24.0
-if sqlite3.sqlite_version_info < (3, 24, 0):
-    try:
-        import pysqlite3 as sqlite3
-    except ImportError:
-        raise RuntimeError(
-            f"zigpy requires SQLite 3.24.0 or newer but your installed version is"
-            f" {sqlite3.sqlite_version}. If your distribution does not provide a more"
-            f" recent release, install pysqlite3 with `pip install pysqlite3-binary`"
-        )
 
 import zigpy.appdb_schemas
 import zigpy.device
@@ -35,6 +24,40 @@ LOGGER = logging.getLogger(__name__)
 
 DB_VERSION = 7
 DB_V = f"_v{DB_VERSION}"
+MIN_SQLITE_VERSION = (3, 24, 0)
+
+
+def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.ModuleType:
+    """
+    Loads an SQLite module with a library version matching the provided constraint.
+    """
+
+    import sqlite3
+
+    try:
+        import pysqlite3
+    except ImportError:
+        pysqlite3 = None
+
+    for module in [sqlite3, pysqlite3]:
+        if module is None:
+            continue
+
+        LOGGER.debug("SQLite version for %s: %s", module, module.sqlite_version)
+
+        if module.sqlite_version_info >= min_version:
+            return module
+    else:
+        min_ver = ".".join(map(str, min_version))
+
+        raise RuntimeError(
+            f"zigpy requires SQLite {min_ver} or newer. If your distribution does not"
+            f" provide a more recent release, install pysqlite3 with"
+            f" `pip install pysqlite3-binary`"
+        )
+
+
+sqlite3 = _import_compatible_sqlite3(min_version=MIN_SQLITE_VERSION)
 
 
 def _register_sqlite_adapters():
