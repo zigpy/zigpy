@@ -8,6 +8,10 @@ import warnings
 import zigpy.types as t
 
 
+def _hex_uint16_repr(v: int) -> str:
+    return t.uint16_t(v)._hex_repr()
+
+
 class Status(t.enum8):
     SUCCESS = 0x00  # Operation was successful.
     FAILURE = 0x01  # Operation was not successful
@@ -215,20 +219,20 @@ DATA_TYPES = DataTypes(
 class ReadAttributeRecord(t.Struct):
     """Read Attribute Record."""
 
-    attrid: t.uint16_t = t.StructField(repr=t.uint16_t._hex_repr)
+    attrid: t.uint16_t = t.StructField(repr=_hex_uint16_repr)
     status: Status
     value: TypeValue = t.StructField(requires=lambda s: s.status == Status.SUCCESS)
 
 
 class Attribute(t.Struct):
-    attrid: t.uint16_t = t.StructField(repr=t.uint16_t._hex_repr)
+    attrid: t.uint16_t = t.StructField(repr=_hex_uint16_repr)
     value: TypeValue
 
 
 class WriteAttributesStatusRecord(t.Struct):
     status: Status
     attrid: t.uint16_t = t.StructField(
-        requires=lambda s: s.status != Status.SUCCESS, repr=t.uint16_t._hex_repr
+        requires=lambda s: s.status != Status.SUCCESS, repr=_hex_uint16_repr
     )
 
 
@@ -341,7 +345,7 @@ class AttributeReportingConfig:
 class ConfigureReportingResponseRecord(t.Struct):
     status: Status
     direction: ReportingDirection
-    attrid: t.uint16_t = t.StructField(repr=t.uint16_t._hex_repr)
+    attrid: t.uint16_t = t.StructField(repr=_hex_uint16_repr)
 
     @classmethod
     def deserialize(cls, data):
