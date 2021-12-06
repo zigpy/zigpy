@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import functools
 import logging
-from typing import Coroutine, List, Optional, Union
+from typing import Coroutine, List
 
+import zigpy.profiles
 import zigpy.types as t
 import zigpy.util
 
@@ -58,40 +61,116 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         hdr: types.ZDOHeader,
         args: List,
         *,
-        dst_addressing: Optional[
-            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
-        ] = None,
+        dst_addressing: t.Addressing.Group
+        | t.Addressing.IEEE
+        | t.Addressing.NWK
+        | None = None,
     ) -> None:
         self.debug("ZDO request %s: %s", hdr.command_id, args)
-        app = self._device.application
-        if hdr.command_id == types.ZDOCmd.NWK_addr_req:
-            if app.ieee == args[0]:
-                self.create_catching_task(
-                    self.NWK_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
-                )
-        elif hdr.command_id == types.ZDOCmd.IEEE_addr_req:
-            broadcast = (0xFFFF, 0xFFFD, 0xFFFC)
-            if args[0] in broadcast or app.nwk == args[0]:
-                self.create_catching_task(
-                    self.IEEE_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
-                )
-        elif hdr.command_id == types.ZDOCmd.Match_Desc_req:
-            self.handle_match_desc(*args, tsn=hdr.tsn)
-        elif hdr.command_id == types.ZDOCmd.Device_annce:
-            self.listener_event("device_announce", self._device)
-        elif hdr.command_id == types.ZDOCmd.Mgmt_Permit_Joining_req:
-            self.listener_event("permit_duration", args[0])
-        else:
-            self.debug("Unsupported ZDO request:%s", hdr.command_id)
 
-    def handle_match_desc(self, addr, profile, in_clusters, out_clusters, *, tsn=None):
+        handler = getattr(self, f"handle_{hdr.command_id.name.lower()}", None)
+        if handler is not None:
+            handler(hdr, *args, dst_addressing=dst_addressing)
+        else:
+            self.debug("No handler for ZDO request:%s(%s)", hdr.command_id, args)
+
+        self.listener_event(
+            f"zdo_{hdr.command_id.name.lower()}",
+            self._device,
+            dst_addressing,
+            hdr,
+            args,
+        )
+
+    def handle_nwk_addr_req(
+        self,
+        hdr: types.ZDOHeader,
+        ieee: t.EUI64,
+        request_type: int,
+        start_index: int | None = None,
+        dst_addressing: t.Addressing.Group
+        | t.Addressing.IEEE
+        | t.Addressing.NWK
+        | None = None,
+    ):
+        """Handle ZDO NWK Address request."""
+
+        app = self._device.application
+        if ieee == app.ieee:
+            self.create_catching_task(
+                self.NWK_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
+            )
+
+    def handle_ieee_addr_req(
+        self,
+        hdr: types.ZDOHeader,
+        nwk: t.NWK,
+        request_type: int,
+        start_index: int | None = None,
+        dst_addressing: t.Addressing.Group
+        | t.Addressing.IEEE
+        | t.Addressing.NWK
+        | None = None,
+    ):
+        """Handle ZDO IEEE Address request."""
+
+        app = self._device.application
+        if nwk in (0xFFFF, 0xFFFD, 0xFFFC, app.nwk):
+            self.create_catching_task(
+                self.IEEE_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
+            )
+
+    def handle_device_annce(
+        self,
+        hdr: types.ZDOHeader,
+        nwk: t.NWK,
+        ieee: t.EUI64,
+        capability: int,
+        dst_addressing: t.Addressing.Group
+        | t.Addressing.IEEE
+        | t.Addressing.NWK
+        | None = None,
+    ):
+        """Handle ZDO device announcement request."""
+        self.listener_event("device_announce", self._device)
+
+    def handle_mgmt_permit_joining_req(
+        self,
+        hdr: types.ZDOHeader,
+        permit_duration: int,
+        tc_significance: int,
+        dst_addressing: t.Addressing.Group
+        | t.Addressing.IEEE
+        | t.Addressing.NWK
+        | None = None,
+    ):
+        """Handle ZDO permit joining request."""
+
+        self.listener_event("permit_duration", permit_duration)
+
+    def handle_match_desc_req(
+        self,
+        hdr: types.ZDOHeader,
+        addr: t.NWK,
+        profile: int,
+        in_clusters: list,
+        out_cluster: list,
+        dst_addressing: t.Addressing.Group
+        | t.Addressing.IEEE
+        | t.Addressing.NWK
+        | None = None,
+    ):
+        """Handle ZDO Match_desc_req request."""
+
         local_addr = self._device.application.nwk
-        if profile != 260:
-            self.create_catching_task(self.Match_Desc_rsp(0, local_addr, [], tsn=tsn))
+        if profile != zigpy.profiles.zha.PROFILE_ID:
+            self.create_catching_task(
+                self.Match_Desc_rsp(0, local_addr, [], tsn=hdr.tsn)
+            )
             return
 
         self.create_catching_task(
-            self.Match_Desc_rsp(0, local_addr, [t.uint8_t(1)], tsn=tsn)
+            self.Match_Desc_rsp(0, local_addr, [t.uint8_t(1)], tsn=hdr.tsn)
         )
 
     def bind(self, cluster):
