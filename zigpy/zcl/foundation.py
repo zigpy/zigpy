@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import keyword
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 import warnings
 
 import zigpy.types as t
@@ -765,3 +765,14 @@ for command_id, command_def in list(GENERAL_COMMANDS.items()):
     GENERAL_COMMANDS[command_id] = command_def.replace(
         id=command_id, name=command_id.name
     ).with_compiled_schema()
+
+
+def __getattr__(name: str) -> Any:
+    if name == "Command":
+        warnings.warn(
+            f"`{__name__}.Command` has been renamed to `{__name__}.GeneralCommand",
+            DeprecationWarning,
+        )
+        return GeneralCommand
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

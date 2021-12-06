@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 import zigpy.types as t
@@ -655,3 +657,11 @@ def test_zcl_command_item_access_warning():
         assert s[0] == s.name
         assert s[1] == s.schema
         assert s[2] == s.is_reply
+
+
+@pytest.mark.skipif(sys.version_info < (3, 8), reason="3.8 added module __getattr__")
+def test_command_warning():
+    GeneralCommand = foundation.GeneralCommand
+
+    with pytest.deprecated_call():
+        assert foundation.Command is GeneralCommand
