@@ -216,9 +216,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         return cluster
 
     def deserialize(self, data: bytes) -> tuple[foundation.ZCLHeader, ...]:
-        orig_data = data
+        self.debug("Received ZCL frame: %r", data)
+
         hdr, data = foundation.ZCLHeader.deserialize(data)
-        self.debug("ZCL header: %s", hdr)
+        self.debug("Decoded ZCL frame header: %r", hdr)
 
         if hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND:
             # Cluster command
@@ -240,14 +241,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
             command = foundation.GENERAL_COMMANDS[hdr.command_id]
 
+        hdr.frame_control.is_reply = command.is_reply
         response, data = command.schema.deserialize(data)
 
-        if data:
-            self.warning(
-                "Data remains after deserializing ZCL frame %s: %s", orig_data, data
-            )
+        self.debug("Decoded ZCL frame: %r", response)
 
-        hdr.frame_control.is_reply = command.is_reply
+        if data:
+            self.warning("Data remains after deserializing ZCL frame: %r", data)
 
         return hdr, response
 
@@ -270,7 +270,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             )
 
         try:
-            payload = schema(*args, **kwargs).serialize()
+            request = schema(*args, **kwargs)
+            payload = request.serialize()
         except (ValueError, TypeError) as e:
             return future_exception(e)
 
@@ -282,6 +283,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         else:
             hdr = foundation.ZCLHeader.cluster(tsn, command_id, manufacturer)
 
+        self.debug("Sending request header: %r", hdr)
+        self.debug("Sending request: %r", request)
         data = hdr.serialize() + payload
 
         return self._endpoint.request(
@@ -305,7 +308,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             )
 
         try:
-            payload = schema(*args, **kwargs).serialize()
+            request = schema(*args, **kwargs)
+            payload = request.serialize()
         except (ValueError, TypeError) as e:
             return future_exception(e)
 
@@ -321,6 +325,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 tsn, command_id, manufacturer, is_reply=True
             )
 
+        self.debug("Sending reply header: %r", hdr)
+        self.debug("Sending reply: %r", request)
         data = hdr.serialize() + payload
 
         return self._endpoint.reply(self.cluster_id, tsn, data, command_id=command_id)
@@ -332,7 +338,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *,
         dst_addressing: Optional[AddressingMode] = None,
     ):
-        self.debug("ZCL request 0x%04x: %s", hdr.command_id, args)
+        self.debug(
+            "Received command 0x%02X (TSN %d): %s", hdr.command_id, hdr.tsn, args
+        )
         if hdr.frame_control.is_cluster:
             self.handle_cluster_request(hdr, args, dst_addressing=dst_addressing)
             self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
