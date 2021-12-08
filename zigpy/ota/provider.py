@@ -3,9 +3,11 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections import defaultdict
 import datetime
+import io
 import logging
 import os
 import os.path
+import tarfile
 from typing import Dict, Optional
 import urllib.parse
 
@@ -251,7 +253,7 @@ class LedvanceImage:
 
 
 class Ledvance(Basic):
-    """ Ledvance firmware provider """
+    """Ledvance firmware provider"""
 
     # documentation: https://portal.update.ledvance.com/docs/services/firmware-rest-api/
 
@@ -283,6 +285,108 @@ class Ledvance(Basic):
         self._cache.clear()
         for fw in fw_lst["firmwares"]:
             img = LedvanceImage.new(fw)
+            self._cache[img.key] = img
+        self.update_expiration()
+
+
+@attr.s
+class SalusImage:
+    """Salus image handler."""
+
+    manufacturer_id = attr.ib()
+    model = attr.ib()
+    version = attr.ib(default=None)
+    image_size = attr.ib(default=None)
+    url = attr.ib(default=None)
+
+    @classmethod
+    def new(cls, data):
+        mod = data["model"]
+        ver = data["version"]
+        url = data["url"]
+
+        res = cls(
+            manufacturer_id=Salus.MANUFACTURER_ID, model=mod, version=ver, url=url
+        )
+
+        return res
+
+    @property
+    def key(self):
+        return ImageKey(self.manufacturer_id, self.model)
+
+    async def fetch_image(self) -> Optional[OTAImage]:
+        async with aiohttp.ClientSession() as req:
+            LOGGER.debug("Downloading %s for %s", self.url, self.key)
+            async with req.get(self.url) as rsp:
+                data = await rsp.read()
+            img_tgz = io.BytesIO(data)
+            with tarfile.open(fileobj=img_tgz) as tar:  # Unpack tar
+                for item in tar:
+                    if item.name.endswith(".ota"):
+                        file_bytes = tar.extractfile(item).read()
+                        break
+            img, _ = parse_ota_image(file_bytes)
+
+            LOGGER.debug(
+                "%s: version: %s, hw_ver: (%s, %s), OTA string: %s",
+                img.header.key,
+                img.header.file_version,
+                img.header.minimum_hardware_version,
+                img.header.maximum_hardware_version,
+                img.header.header_string,
+            )
+            assert img.header.manufacturer_id == self.manufacturer_id
+            # we can't check assert img.header.key == self.key because
+            # self.key does not include any valid image_type data for salus
+            # devices.  It is not known at the point of generating the FW
+            # list cache, so it can't be checked here (Ikea and ledvance have
+            # this listed in the JSON, so they already know and can do this).
+
+        LOGGER.debug(
+            "Finished downloading %s bytes from %s for %s ver %s",
+            self.image_size,
+            self.url,
+            self.key,
+            self.version,
+        )
+        return img
+
+
+class Salus(Basic):
+    """Salus firmware provider"""
+
+    # documentation: none known.
+
+    UPDATE_URL = "https://eu.salusconnect.io/demo/default/status/firmware"
+    MANUFACTURER_ID = 4216
+    HEADERS = {"accept": "application/json"}
+
+    async def initialize_provider(self, ota_config: Dict) -> None:
+        self.info("OTA provider enabled")
+        await self.refresh_firmware_list()
+        self.enable()
+
+    async def refresh_firmware_list(self) -> None:
+        if self._locks[LOCK_REFRESH].locked():
+            return
+
+        async with self._locks[LOCK_REFRESH]:
+            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
+                async with req.get(self.UPDATE_URL) as rsp:
+                    if not (200 <= rsp.status <= 299):
+                        self.warning(
+                            "Couldn't download '%s': %s/%s",
+                            rsp.url,
+                            rsp.status,
+                            rsp.reason,
+                        )
+                        return
+                    fw_lst = await rsp.json()
+        self.debug("Finished downloading firmware update list")
+        self._cache.clear()
+        for fw in fw_lst["versions"]:
+            img = SalusImage.new(fw)
             self._cache[img.key] = img
         self.update_expiration()
 
