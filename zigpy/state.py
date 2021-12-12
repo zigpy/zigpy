@@ -55,11 +55,8 @@ class NetworkInfo:
     channel: t.uint8_t | None = None
     channel_mask: t.Channels | None = None
     security_level: t.uint8_t | None = None
-    network_key: t.KeyData | None = None
-    network_key_seq: t.uint8_t | None = None
-    network_key_counter: t.uint32_t | None = None
-    tc_link_key: t.KeyData | None = None
-    tc_address: t.EUI64 | None = None
+    network_key: Key | None = None
+    tc_link_key: Key | None = None
     key_table: list[Key] | None = None
     children: list[t.EUI64] | None = None
 
@@ -303,8 +300,13 @@ def network_state_to_json(
                     "type": LOGICAL_TYPE_TO_JSON[node_info.logical_type],
                 },
                 "network": {
-                    "tc_link_key": network_info.tc_link_key.serialize().hex(),
-                    "tc_address": network_info.tc_address.serialize()[::-1].hex(),
+                    "tc_link_key": {
+                        "key": network_info.tc_link_key.key.serialize().hex(),
+                        "frame_counter": network_info.tc_link_key.tx_counter,
+                    },
+                    "tc_address": network_info.tc_link_key.partner_ieee.serialize()[
+                        ::-1
+                    ].hex(),
                     "nwk_manager": network_info.nwk_manager_id.serialize()[::-1].hex(),
                 },
                 "link_key_seqs": {
@@ -322,9 +324,9 @@ def network_state_to_json(
         "channel": network_info.channel,
         "channel_mask": list(network_info.channel_mask),
         "network_key": {
-            "key": network_info.network_key.serialize().hex(),
-            "sequence_number": network_info.network_key_seq or 0,
-            "frame_counter": network_info.network_key_counter,
+            "key": network_info.network_key.key.serialize().hex(),
+            "sequence_number": network_info.network_key.seq or 0,
+            "frame_counter": network_info.network_key.tx_counter or 0,
         },
         "devices": sorted(devices.values(), key=lambda d: d["ieee_address"]),
     }
@@ -369,25 +371,28 @@ def json_to_network_state(obj: dict[str, Any]) -> tuple[NetworkInfo, NodeInfo]:
     if obj.get("stack_specific"):
         network_info.stack_specific = obj.get("stack_specific")
 
-    if "tc_link_key" in network_meta:
-        network_info.tc_link_key, _ = t.KeyData.deserialize(
-            bytes.fromhex(network_meta["tc_link_key"])
-        )
-    else:
-        network_info.tc_link_key = conf.CONF_NWK_TC_LINK_KEY_DEFAULT
+    network_info.tc_link_key = Key()
 
-    if "tc_address" in network_meta:
-        network_info.tc_address, _ = t.EUI64.deserialize(
+    if "tc_link_key" in network_meta:
+        network_info.tc_link_key.key, _ = t.KeyData.deserialize(
+            bytes.fromhex(network_meta["tc_link_key"]["key"])
+        )
+        network_info.tc_link_key.tx_counter = network_meta["tc_link_key"].get(
+            "frame_counter", 0
+        )
+        network_info.tc_link_key.partner_ieee, _ = t.EUI64.deserialize(
             bytes.fromhex(network_meta["tc_address"])[::-1]
         )
     else:
+        network_info.tc_link_key.key = conf.CONF_NWK_TC_LINK_KEY_DEFAULT
         network_info.tc_address = node_info.ieee
 
-    network_info.network_key, _ = t.KeyData.deserialize(
+    network_info.network_key = Key()
+    network_info.network_key.key, _ = t.KeyData.deserialize(
         bytes.fromhex(obj["network_key"]["key"])
     )
-    network_info.network_key_counter = obj["network_key"]["frame_counter"]
-    network_info.network_key_seq = obj["network_key"]["sequence_number"]
+    network_info.network_key.tx_counter = obj["network_key"]["frame_counter"]
+    network_info.network_key.seq = obj["network_key"]["sequence_number"]
 
     network_info.children = []
     network_info.nwk_addresses = {}

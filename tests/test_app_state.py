@@ -233,13 +233,16 @@ def network_info(node_info):
         channel=t.uint8_t(15),
         channel_mask=t.Channels.from_channel_list([15, 20, 25]),
         security_level=t.uint8_t(5),
-        network_key=t.KeyData.convert(
-            "9A:79:D6:9A:DA:EC:45:C6:F2:EF:EB:AF:DA:A3:07:B6"
+        network_key=app_state.Key(
+            key=t.KeyData.convert("9A:79:D6:9A:DA:EC:45:C6:F2:EF:EB:AF:DA:A3:07:B6"),
+            seq=108,
+            tx_counter=39009277,
         ),
-        network_key_seq=108,
-        network_key_counter=39009277,
-        tc_link_key=t.KeyData(b"ZigBeeAlliance09"),
-        tc_address=node_info.ieee,
+        tc_link_key=app_state.Key(
+            key=t.KeyData(b"ZigBeeAlliance09"),
+            partner_ieee=node_info.ieee,
+            tx_counter=8712428,
+        ),
         key_table=[
             app_state.Key(
                 key=t.KeyData.convert(
