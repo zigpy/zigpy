@@ -385,7 +385,7 @@ def json_to_network_state(obj: dict[str, Any]) -> tuple[NetworkInfo, NodeInfo]:
         )
     else:
         network_info.tc_link_key.key = conf.CONF_NWK_TC_LINK_KEY_DEFAULT
-        network_info.tc_address = node_info.ieee
+        network_info.tc_link_key.partner_ieee = node_info.ieee
 
     network_info.network_key = Key()
     network_info.network_key.key, _ = t.KeyData.deserialize(
