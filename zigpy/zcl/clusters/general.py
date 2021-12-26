@@ -401,6 +401,8 @@ class OnOff(Cluster):
         0x4001: ("on_time", t.uint16_t),
         0x4002: ("off_wait_time", t.uint16_t),
         0x4003: ("start_up_on_off", StartUpOnOff),
+        0x8001: ("light_mode", t.enum8),
+        0x8002: ("power_on_state", t.enum8),
     }
     server_commands = {
         0x0000: ("off", (), False),
