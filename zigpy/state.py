@@ -65,7 +65,7 @@ class NetworkInfo:
 
     # Dict to keep track of stack-specific network stuff.
     # Z-Stack, for example, has a TCLK_SEED that should be backed up.
-    stack_specific: dict[int | str, Any] | None = None
+    stack_specific: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Initialize instance."""

@@ -173,7 +173,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             await self._dblistener.shutdown()
         await self.disconnect()
 
-    def add_device(self, ieee, nwk):
+    def add_device(self, ieee: t.EUI64, nwk: t.NWK):
+        """
+        Creates a zigpy `Device` object with the provided IEEE and NWK addresses.
+        """
+
         assert isinstance(ieee, t.EUI64)
         # TODO: Shut down existing device
 
@@ -251,7 +255,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         self.devices.pop(device.ieee, None)
 
-    def deserialize(self, sender, endpoint_id, cluster_id, data):
+    def deserialize(
+        self,
+        sender: zigpy.device.Device,
+        endpoint_id: t.uint8_t,
+        cluster_id: t.uint16_t,
+        data: bytes,
+    ) -> tuple[Any, bytes]:
         return sender.deserialize(endpoint_id, cluster_id, data)
 
     def handle_message(
@@ -267,6 +277,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
         ] = None,
     ) -> None:
+        """
+        Called when the radio library receives a packet
+        """
         self.listener_event(
             "handle_message", sender, profile, cluster, src_ep, dst_ep, message
         )
@@ -359,7 +372,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             # Rescan groups for devices that are not newly joining and initialized
             dev.schedule_group_membership_scan()
 
-    def handle_leave(self, nwk, ieee):
+    def handle_leave(self, nwk: t.NWK, ieee: t.EUI64):
+        """
+        Called when a device has left the network.
+        """
         LOGGER.info("Device 0x%04x (%s) left the network", nwk, ieee)
 
         try:
@@ -370,9 +386,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             self.listener_event("device_left", dev)
 
     @classmethod
-    async def probe(
-        cls, device_config: dict[str, Any]
-    ) -> bool | dict[str, int | str | bool]:
+    async def probe(cls, device_config: dict[str, Any]) -> bool | dict[str, Any]:
         """
         Probes the device specified by `device_config` and returns valid device settings
         if the radio supports the device. If the device is not supported, `False` is
@@ -428,15 +442,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def mrequest(
         self,
-        group_id,
-        profile,
-        cluster,
-        src_ep,
-        sequence,
-        data,
+        group_id: t.uint16_t,
+        profile: t.uint8_t,
+        cluster: t.uint16_t,
+        src_ep: t.uint8_t,
+        sequence: t.uint8_t,
+        data: bytes,
         *,
-        hops=0,
-        non_member_radius=3,
+        hops: int = 0,
+        non_member_radius: int = 3,
     ):
         """Submit and send data out as a multicast transmission.
 
@@ -460,15 +474,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @zigpy.util.retryable_request
     async def request(
         self,
-        device,
-        profile,
-        cluster,
-        src_ep,
-        dst_ep,
-        sequence,
-        data,
-        expect_reply=True,
-        use_ieee=False,
+        device: zigpy.device.Device,
+        profile: t.uint16_t,
+        cluster: t.uint16_t,
+        src_ep: t.uint8_t,
+        dst_ep: t.uint8_t,
+        sequence: t.uint8_t,
+        data: bytes,
+        expect_reply: bool = True,
+        use_ieee: bool = False,
     ):
         """Submit and send data out as an unicast transmission.
 
@@ -489,15 +503,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @abc.abstractmethod
     async def broadcast(
         self,
-        profile,
-        cluster,
-        src_ep,
-        dst_ep,
-        grpid,
-        radius,
-        sequence,
-        data,
-        broadcast_address,
+        profile: t.uint16_t,
+        cluster: t.uint16_t,
+        src_ep: t.uint8_t,
+        dst_ep: t.uint8_t,
+        grpid: t.uint16_t,
+        radius: int,
+        sequence: t.uint8_t,
+        data: bytes,
+        broadcast_address: t.BroadcastAddress,
     ):
         """Submit and send data out as an unicast transmission.
 
@@ -545,7 +559,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
-    async def load_network_info(self, *, load_devices=False) -> None:
+    async def load_network_info(self, *, load_devices: bool = False) -> None:
         """
         Loads network and node information from the radio hardware.
 
@@ -555,7 +569,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """
         raise NotImplementedError()  # pragma: no cover
 
-    async def permit(self, time_s=60, node=None):
+    async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None):
         """Permit joining on a specific node or all router nodes."""
         assert 0 <= time_s <= 254
         if node is not None:
@@ -575,39 +589,49 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             return
 
         await zigpy.zdo.broadcast(
-            self,
-            0x0036,
-            0x0000,
-            0x00,
+            self,  # app
+            zdo_types.ZDOCmd.Mgmt_Permit_Joining_req,  # command
+            0x0000,  # grpid
+            0x00,  # radius
             time_s,
             0,
             broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
         )
         return await self.permit_ncp(time_s)
 
-    def get_sequence(self):
+    def get_sequence(self) -> t.uint8_t:
         self._send_sequence = (self._send_sequence + 1) % 256
         return self._send_sequence
 
-    def get_device(self, ieee=None, nwk=None):
+    def get_device(
+        self, ieee: t.EUI64 = None, nwk: t.NWK | int = None
+    ) -> zigpy.device.Device:
+        """
+        Looks up a device in the `devices` dictionary based either on its NWK or IEEE
+        address.
+        """
+
         if ieee is not None:
             return self.devices[ieee]
 
+        # If there two coordinators are loaded from the database, we want the active one
         if nwk == self.state.node_info.nwk:
             return self.devices[self.state.node_info.ieee]
 
+        # TODO: Make this not terrible
+        # Unlike its IEEE address, a device's NWK address can change at runtime so this
+        # is not as simple as building a second mapping
         for dev in self.devices.values():
-            # TODO: Make this not terrible
             if dev.nwk == nwk:
                 return dev
 
-        raise KeyError
+        raise KeyError("Device not found: nwk={nwk!r}, ieee={ieee!r}")
 
-    def get_endpoint_id(self, cluster_id: int, is_server_cluster: bool = False):
+    def get_endpoint_id(self, cluster_id: int, is_server_cluster: bool = False) -> int:
         """Returns coordinator endpoint id for specified cluster id."""
         return DEFAULT_ENDPOINT_ID
 
-    def get_dst_address(self, cluster):
+    def get_dst_address(self, cluster) -> zdo_types.MultiAddress:
         """Helper to get a dst address for bind/unbind operations.
 
         Allows radios to provide correct information especially for radios which listen
