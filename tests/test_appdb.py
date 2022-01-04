@@ -651,11 +651,7 @@ async def test_invalid_node_desc(tmpdir):
     os.unlink(db)
 
 
-@patch(
-    "zigpy.appdb.PersistingListener._save_device",
-    wraps=zigpy.appdb.PersistingListener._save_device,
-)
-async def test_appdb_worker_exception(save_mock, tmpdir):
+async def test_appdb_worker_exception(tmpdir):
     """Exceptions should not kill the appdb worker."""
 
     app_mock = MagicMock(name="ControllerApplication")
@@ -669,11 +665,16 @@ async def test_appdb_worker_exception(save_mock, tmpdir):
     dev_1.node_desc.is_valid = True
     dev_1.node_desc.serialize.side_effect = AttributeError
 
-    db_listener = await zigpy.appdb.PersistingListener.new(db, app_mock)
+    with patch(
+        "zigpy.appdb.PersistingListener._save_device",
+        wraps=zigpy.appdb.PersistingListener._save_device,
+    ) as save_mock:
+        db_listener = await zigpy.appdb.PersistingListener.new(db, app_mock)
 
-    for _ in range(3):
-        db_listener.raw_device_initialized(dev_1)
-    await db_listener.shutdown()
+        for _ in range(3):
+            db_listener.raw_device_initialized(dev_1)
+        await db_listener.shutdown()
+
     assert save_mock.await_count == 3
 
 
