@@ -434,10 +434,6 @@ class LevelControl(Cluster):
     """Attributes and commands for controlling devices that
     can be set to a level between fully ‘On’ and fully ‘Off’."""
 
-    class StartUpCurrentLevel(t.enum8):
-        Minimum = 0x00
-        PreviousValue = 0xFF
-
     cluster_id = 0x0008
     name = "Level control"
     ep_attribute = "level"
@@ -449,7 +445,7 @@ class LevelControl(Cluster):
         0x0012: ("on_transition_time", t.uint16_t),
         0x0013: ("off_transition_time", t.uint16_t),
         0x0014: ("default_move_rate", t.uint8_t),
-        0x4000: ("start_up_current_level", StartUpCurrentLevel),
+        0x4000: ("start_up_current_level", t.uint8_t),
     }
     server_commands = {
         0x0000: ("move_to_level", (t.uint8_t, t.uint16_t), False),
