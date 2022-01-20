@@ -375,8 +375,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
         self, attributes: Dict[Union[str, int], Any], manufacturer: Optional[int] = None
     ) -> List:
         """Write attributes to device with internal 'attributes' validation"""
-        args = self._write_attr_records(attributes)
-        return await self.write_attributes_raw(args, manufacturer)
+        attrs = self._write_attr_records(attributes)
+        return await self.write_attributes_raw(attrs, manufacturer)
 
     async def write_attributes_raw(
         self, attrs: List[foundation.Attribute], manufacturer: Optional[int] = None
