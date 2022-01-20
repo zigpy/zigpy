@@ -391,7 +391,8 @@ async def test_write_wrong_attribute(cluster):
 async def test_write_unknown_attribute(cluster):
     with patch.object(cluster, "_write_attributes", new=AsyncMock()):
         # Using an invalid attribute name, the call should fail
-        await cluster.write_attributes({"dummy_attribute": 5})
+        res = await cluster.write_attributes({"dummy_attribute": 5})
+        assert isinstance(res.exception(), KeyError)
         assert cluster._write_attributes.call_count == 0
 
 
