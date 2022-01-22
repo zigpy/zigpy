@@ -374,18 +374,25 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, metaclass=Registry):
     async def write_attributes(
         self, attributes: Dict[Union[str, int], Any], manufacturer: Optional[int] = None
     ) -> List:
-        args = self._write_attr_records(attributes)
-        result = await self._write_attributes(args, manufacturer=manufacturer)
+        """Write attributes to device with internal 'attributes' validation"""
+        attrs = self._write_attr_records(attributes)
+        return await self.write_attributes_raw(attrs, manufacturer)
+
+    async def write_attributes_raw(
+        self, attrs: List[foundation.Attribute], manufacturer: Optional[int] = None
+    ) -> List:
+        """Write attributes to device without internal 'attributes' validation"""
+        result = await self._write_attributes(attrs, manufacturer=manufacturer)
         if not isinstance(result[0], list):
             return result
 
         records = result[0]
         if len(records) == 1 and records[0].status == foundation.Status.SUCCESS:
-            for attr_rec in args:
+            for attr_rec in attrs:
                 self._attr_cache[attr_rec.attrid] = attr_rec.value.value
         else:
             failed = [rec.attrid for rec in records]
-            for attr_rec in args:
+            for attr_rec in attrs:
                 if attr_rec.attrid not in failed:
                     self._attr_cache[attr_rec.attrid] = attr_rec.value.value
 
