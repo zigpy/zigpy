@@ -6,3 +6,5 @@ pytest
 pytest-aiohttp
 pytest-cov
 pytest-timeout
+
+pysqlite3-binary; platform_system=="Linux"
