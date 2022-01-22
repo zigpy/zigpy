@@ -60,8 +60,8 @@ Older packages of tagged versions are still available on the "zigpy-homeassistan
 Packages of tagged versions of the radio libraries are released via separate projects on PyPI
 - https://pypi.org/project/zigpy/
   - https://pypi.org/project/bellows/
-  - https://pypi.org/project/zigpy-deconz/
   - https://pypi.org/project/zigpy-cc/
+  - https://pypi.org/project/zigpy-deconz/
   - https://pypi.org/project/zigpy-xbee/
   - https://pypi.org/project/zigpy-zigate/
   - https://pypi.org/project/zigpy-znp/
