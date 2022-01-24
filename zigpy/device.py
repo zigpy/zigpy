@@ -71,6 +71,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status = Status.NEW
 
     @property
+    def name(self) -> str:
+        return f"0x{self.nwk:04X}"
+
+    @property
     def non_zdo_endpoints(self):
         return [ep for epid, ep in self.endpoints.items() if epid != 0]
 

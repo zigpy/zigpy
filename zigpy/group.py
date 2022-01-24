@@ -180,6 +180,10 @@ class GroupEndpoint(LocalLogMixin):
         self._cluster_by_attr = {}
 
     @property
+    def endpoint_id(self) -> None:
+        return None
+
+    @property
     def clusters(self):
         """Group clusters.
 

@@ -722,9 +722,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self.listener_event("attribute_updated", attrid, value)
 
     def log(self, lvl, msg, *args, **kwargs):
-        msg = "[0x%04x:%s:0x%04x] " + msg
+        msg = "[%s:%s:0x%04x] " + msg
         args = (
-            self._endpoint.device.nwk,
+            self._endpoint.device.name,
             self._endpoint.endpoint_id,
             self.cluster_id,
         ) + args
