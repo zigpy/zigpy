@@ -6,9 +6,7 @@ import functools
 import logging
 import random
 import time
-from typing import Iterator, List, Optional
-
-from black import Any
+from typing import Any, Iterator, List, Optional
 
 import zigpy.exceptions
 import zigpy.types
