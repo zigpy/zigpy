@@ -212,3 +212,16 @@ def test_cached_image_serialization_cache(image):
     assert cached.get_image_block(2, 1) == b"t"
 
     assert image.serialize.call_count == 1
+
+
+async def test_get_image_salus(ota, image, image_with_version):
+    SALUS_ID = 4216
+    newer = image_with_version(image.header.file_version + 1)
+
+    ota.async_event = AsyncMock(return_value=[None, image, newer])
+
+    assert len(ota._image_cache) == 0
+    await ota.get_ota_image(SALUS_ID, "model123")
+
+    # got new image in the cache
+    assert len(ota._image_cache) == 1

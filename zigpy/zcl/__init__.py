@@ -503,7 +503,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             try:
                 attr_def = self.find_attribute(attrid)
             except KeyError:
-                self.error("%d is not a valid attribute id", attrid)
+                self.error("%s is not a valid attribute id", attrid)
+
+                # Throw an error if it's an unknown attribute name, without an ID
+                if isinstance(attrid, str):
+                    raise
+
                 continue
 
             attr = foundation.Attribute(attr_def.id, foundation.TypeValue())
@@ -528,18 +533,25 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     async def write_attributes(
         self, attributes: dict[Union[str, int], Any], manufacturer: Optional[int] = None
     ) -> list:
-        args = self._write_attr_records(attributes)
-        result = await self._write_attributes(args, manufacturer=manufacturer)
+        """Write attributes to device with internal 'attributes' validation"""
+        attrs = self._write_attr_records(attributes)
+        return await self.write_attributes_raw(attrs, manufacturer)
+
+    async def write_attributes_raw(
+        self, attrs: list[foundation.Attribute], manufacturer: Optional[int] = None
+    ) -> list:
+        """Write attributes to device without internal 'attributes' validation"""
+        result = await self._write_attributes(attrs, manufacturer=manufacturer)
         if not isinstance(result[0], list):
             return result
 
         records = result[0]
         if len(records) == 1 and records[0].status == foundation.Status.SUCCESS:
-            for attr_rec in args:
+            for attr_rec in attrs:
                 self._attr_cache[attr_rec.attrid] = attr_rec.value.value
         else:
             failed = [rec.attrid for rec in records]
-            for attr_rec in args:
+            for attr_rec in attrs:
                 if attr_rec.attrid not in failed:
                     self._attr_cache[attr_rec.attrid] = attr_rec.value.value
 

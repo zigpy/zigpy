@@ -691,10 +691,6 @@ class LevelControl(Cluster):
         Up = 0x00
         Down = 0x01
 
-    class StartUpCurrentLevel(t.enum8):
-        Minimum = 0x00
-        PreviousValue = 0xFF
-
     cluster_id = 0x0008
     name = "Level control"
     ep_attribute = "level"
@@ -712,7 +708,7 @@ class LevelControl(Cluster):
         0x0013: ("off_transition_time", t.uint16_t),
         0x0014: ("default_move_rate", t.uint8_t),
         0x000F: ("options", t.bitmap8),
-        0x4000: ("start_up_current_level", StartUpCurrentLevel),
+        0x4000: ("start_up_current_level", t.uint8_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
@@ -1504,9 +1500,11 @@ class Ota(Cluster):
             return
 
         if cmd_name == "query_next_image":
-            await self._handle_query_next_image(*args, tsn=tsn)
+            await self._handle_query_next_image(
+                *args, tsn=tsn, model=self.endpoint.model
+            )
         elif cmd_name == "image_block":
-            await self._handle_image_block(*args, tsn=tsn)
+            await self._handle_image_block(*args, tsn=tsn, model=self.endpoint.model)
         elif cmd_name == "upgrade_end":
             await self._handle_upgrade_end(*args, tsn=tsn)
         else:
@@ -1527,12 +1525,13 @@ class Ota(Cluster):
         hardware_version,
         *,
         tsn,
+        model=None,
     ):
         self.debug(
             (
                 "OTA query_next_image handler for '%s %s': "
                 "field_control=%s, manufacture_id=%s, image_type=%s, "
-                "current_file_version=%s, hardware_version=%s"
+                "current_file_version=%s, hardware_version=%s, model=%s"
             ),
             self.endpoint.manufacturer,
             self.endpoint.model,
@@ -1541,10 +1540,11 @@ class Ota(Cluster):
             image_type,
             current_file_version,
             hardware_version,
+            model,
         )
 
         img = await self.endpoint.device.application.ota.get_ota_image(
-            manufacturer_id, image_type
+            manufacturer_id, image_type, model
         )
 
         if img is not None:
@@ -1588,6 +1588,7 @@ class Ota(Cluster):
         block_request_delay,
         *,
         tsn=None,
+        model=None,
     ):
         self.debug(
             (
@@ -1608,7 +1609,7 @@ class Ota(Cluster):
             block_request_delay,
         )
         img = await self.endpoint.device.application.ota.get_ota_image(
-            manufacturer_id, image_type
+            manufacturer_id, image_type, model
         )
         if img is None or img.version != file_version:
             self.debug("OTA image is not available")
