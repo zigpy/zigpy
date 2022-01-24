@@ -665,3 +665,34 @@ def test_command_warning():
 
     with pytest.deprecated_call():
         assert foundation.Command is GeneralCommand
+
+
+def test_invalid_command_def_name():
+    command = foundation.ZCLCommandDef(
+        id=0x12,
+        name="test",
+        schema={
+            "foo": t.uint8_t,
+        },
+        is_reply=False,
+    )
+
+    with pytest.raises(ValueError):
+        command.replace(name="bad name")
+
+    with pytest.raises(ValueError):
+        command.replace(name="123name")
+
+
+def test_invalid_attribute_def_name():
+    attr = foundation.ZCLAttributeDef(
+        id=0x1234,
+        name="test",
+        type=t.uint16_t,
+    )
+
+    with pytest.raises(ValueError):
+        attr.replace(name="bad name")
+
+    with pytest.raises(ValueError):
+        attr.replace(name="123name")

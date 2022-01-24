@@ -12,6 +12,14 @@ def _hex_uint16_repr(v: int) -> str:
     return t.uint16_t(v)._hex_repr()
 
 
+def ensure_valid_name(name: str | None) -> None:
+    """
+    Ensures that the name of an attribute or command is valid.
+    """
+    if name is not None and not name.isidentifier():
+        raise ValueError(f"{name!r} is not a valid identifier name.")
+
+
 class Status(t.enum8):
     SUCCESS = 0x00  # Operation was successful.
     FAILURE = 0x01  # Operation was not successful
@@ -540,6 +548,9 @@ class ZCLCommandDef:
     id: t.uint8_t = None
     is_manufacturer_specific: bool = None
 
+    def __post_init__(self):
+        ensure_valid_name(self.name)
+
     def with_compiled_schema(self):
         """
         Return a copy of the ZCL command definition object with its dictionary command
@@ -632,6 +643,7 @@ class ZCLAttributeDef:
             object.__setattr__(self, "id", t.uint16_t(self.id))
 
         assert self.access in {None, "r", "w", "rw"}
+        ensure_valid_name(self.name)
 
     def replace(self, **kwargs) -> ZCLAttributeDef:
         return dataclasses.replace(self, **kwargs)

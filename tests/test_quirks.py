@@ -301,7 +301,7 @@ def test_custom_cluster_idx():
         cluster_id = 0x1234
         attributes = {
             0x0000: ("first_attribute", t.uint8_t),
-            0x00FF: ("2nd_attribute", t.enum8),
+            0x00FF: ("second_attribute", t.enum8),
         }
         server_commands = {
             0x00: zcl.foundation.ZCLCommandDef(
@@ -345,9 +345,9 @@ async def test_read_attributes_uncached():
         _CONSTANT_ATTRIBUTES = {0x0001: 5}
         attributes = {
             0x0000: ("first_attribute", t.uint8_t),
-            0x0001: ("2nd_attribute", t.uint8_t),
-            0x0002: ("3rd_attribute", t.uint8_t),
-            0x0003: ("4th_attribute", t.enum8),
+            0x0001: ("second_attribute", t.uint8_t),
+            0x0002: ("third_attribute", t.uint8_t),
+            0x0003: ("fouth_attribute", t.enum8),
         }
         server_commands = {
             0x00: zcl.foundation.ZCLCommandDef(
@@ -420,9 +420,9 @@ async def test_read_attributes_default_response():
         _CONSTANT_ATTRIBUTES = {0x0001: 5}
         attributes = {
             0x0000: ("first_attribute", t.uint8_t),
-            0x0001: ("2nd_attribute", t.uint8_t),
-            0x0002: ("3rd_attribute", t.uint8_t),
-            0x0003: ("4th_attribute", t.enum8),
+            0x0001: ("second_attribute", t.uint8_t),
+            0x0002: ("third_attribute", t.uint8_t),
+            0x0003: ("fouth_attribute", t.enum8),
         }
         server_commands = {
             0x00: zcl.foundation.ZCLCommandDef(
