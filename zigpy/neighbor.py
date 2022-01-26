@@ -1,10 +1,12 @@
 """Neighbor list container."""
+from __future__ import annotations
+
 import asyncio
 import functools
 import logging
 import random
 import time
-from typing import Iterator, List, Optional
+from typing import Any, Iterator, List, Optional
 
 import zigpy.exceptions
 import zigpy.types
@@ -22,8 +24,8 @@ class Neighbor:
 
     def __init__(self, neighbor: zigpy.zdo.types.Neighbor, device: DeviceType):
         """Initialize neighbor instance."""
-        self._device = device
-        self._neighbor = neighbor
+        self._device: DeviceType = device
+        self._neighbor: zigpy.zdo.types.Neighbor = neighbor
 
     @property
     def device(self) -> zigpy.typing.DeviceType:
@@ -41,22 +43,22 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
 
     def __init__(self, device: DeviceType) -> None:
         """Initialize instance."""
-        self._device = device
+        self._device: DeviceType = device
         self._neighbors: NeighborListType = []
         self._staging: NeighborListType = []
         self._supported: bool = True
-        self._listeners = {}
-        self.last_scan = None
+        self._listeners: dict = {}
+        self.last_scan: float | None = None
 
-    def append(self, *args, **kwargs) -> None:
+    def append(self, *args: Any, **kwargs: Any) -> None:
         """Append method."""
         return self.neighbors.append(*args, **kwargs)
 
-    def __getitem__(self, *args, **kwargs) -> Neighbor:
+    def __getitem__(self, *args: Any, **kwargs: Any) -> Neighbor:
         """Get item method."""
         return self.neighbors.__getitem__(*args, **kwargs)
 
-    def __setitem__(self, *args, **kwargs) -> None:
+    def __setitem__(self, *args: Any, **kwargs: Any) -> None:
         """Set item method."""
         return self.neighbors.__setitem__(*args, **kwargs)
 
@@ -86,7 +88,7 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
     def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
         msg = "[0x%04x] " + msg
         args = (self._device.nwk,) + args
-        return LOGGER.log(lvl, msg, *args, **kwargs)
+        LOGGER.log(lvl, msg, *args, **kwargs)
 
     async def scan(self) -> Optional[NeighborListType]:
         """Scan device for neighbors."""

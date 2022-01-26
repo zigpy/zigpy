@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import enum
 import logging
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 import zigpy.exceptions
 import zigpy.profiles
 from zigpy.types import Addressing
+from zigpy.types.named import EUI64
 from zigpy.typing import DeviceType
 import zigpy.util
 import zigpy.zcl
@@ -33,23 +34,23 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """An endpoint on a device on the network"""
 
     def __init__(self, device: DeviceType, endpoint_id: int):
-        self._device = device
-        self._endpoint_id = endpoint_id
-        self._listeners = {}
+        self._device: DeviceType = device
+        self._endpoint_id: int = endpoint_id
+        self._listeners: dict = {}
 
-        self.status = Status.NEW
-        self.profile_id = None
-        self.device_type = None
-        self.in_clusters = {}
-        self.out_clusters = {}
-        self._cluster_attr = {}
+        self.status: Status = Status.NEW
+        self.profile_id: int | None = None
+        self.device_type: zigpy.profiles.zha.DeviceType | None = None
+        self.in_clusters: dict = {}
+        self.out_clusters: dict = {}
+        self._cluster_attr: dict = {}
 
-        self._member_of = {}
+        self._member_of: dict = {}
 
-        self._manufacturer = None
-        self._model = None
+        self._manufacturer: str | None = None
+        self._model: str | None = None
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         self.info("Discovering endpoint information")
 
         if self.profile_id is not None or self.status == Status.ENDPOINT_INACTIVE:
@@ -85,7 +86,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.status = Status.ZDO_INIT
 
-    def add_input_cluster(self, cluster_id, cluster=None):
+    def add_input_cluster(
+        self, cluster_id: int, cluster: zigpy.zcl.Cluster | None = None
+    ) -> zigpy.zcl.Cluster:
         """Adds an endpoint's input cluster
 
         (a server cluster supported by the device)
@@ -107,7 +110,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return cluster
 
-    def add_output_cluster(self, cluster_id, cluster=None):
+    def add_output_cluster(
+        self, cluster_id: int, cluster: zigpy.zcl.Cluster | None = None
+    ) -> zigpy.zcl.Cluster:
         """Adds an endpoint's output cluster
 
         (a client cluster supported by the device)
@@ -120,7 +125,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.out_clusters[cluster_id] = cluster
         return cluster
 
-    async def add_to_group(self, grp_id: int, name: str = None):
+    async def add_to_group(self, grp_id: int, name: str | None = None) -> ZCLStatus:
         try:
             res = await self.groups.add(grp_id, name)
         except AttributeError:
@@ -135,7 +140,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         group.add_member(self)
         return res[0]
 
-    async def remove_from_group(self, grp_id: int):
+    async def remove_from_group(self, grp_id: int) -> ZCLStatus:
         try:
             res = await self.groups.remove(grp_id)
         except AttributeError:
@@ -241,27 +246,27 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             profile_id, cluster, self._endpoint_id, self._endpoint_id, sequence, data
         )
 
-    def log(self, lvl, msg, *args, **kwargs):
+    def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:
         msg = "[0x%04x:%s] " + msg
         args = (self._device.nwk, self._endpoint_id) + args
-        return LOGGER.log(lvl, msg, *args, **kwargs)
+        LOGGER.log(lvl, msg, *args, **kwargs)
 
     @property
     def device(self) -> DeviceType:
         return self._device
 
     @property
-    def endpoint_id(self):
+    def endpoint_id(self) -> int:
         return self._endpoint_id
 
     @property
-    def manufacturer(self):
+    def manufacturer(self) -> str:
         if self._manufacturer is not None:
             return self._manufacturer
         return self.device.manufacturer
 
     @manufacturer.setter
-    def manufacturer(self, value):
+    def manufacturer(self, value) -> None:
         self.warning(
             (
                 "Overriding manufacturer from quirks is not supported and "
@@ -276,17 +281,17 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self.device.manufacturer_id
 
     @property
-    def member_of(self):
+    def member_of(self) -> dict:
         return self._member_of
 
     @property
-    def model(self):
+    def model(self) -> str:
         if self._model is not None:
             return self._model
         return self.device.model
 
     @model.setter
-    def model(self, value):
+    def model(self, value) -> None:
         self.warning(
             (
                 "Overriding model from quirks is not supported and "
@@ -296,7 +301,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._model = value
 
     @property
-    def unique_id(self):
+    def unique_id(self) -> tuple[EUI64, int]:
         return self.device.ieee, self.endpoint_id
 
     def __getattr__(self, name):
