@@ -85,9 +85,9 @@ async def test_unbind(zdo_f):
     "remove_children, rejoin, flags",
     (
         (False, False, 0),
-        (False, True, 1),
-        (True, False, 2),
-        (True, True, 3),
+        (False, True, 0x80),
+        (True, False, 0x40),
+        (True, True, 0xC0),
     ),
 )
 async def test_leave(zdo_f, remove_children, rejoin, flags):

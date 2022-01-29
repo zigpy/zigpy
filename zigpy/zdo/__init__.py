@@ -16,6 +16,13 @@ LOGGER = logging.getLogger(__name__)
 class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
     """The ZDO endpoint of a device"""
 
+    class LeaveOptions(t.bitmap8):
+        """ZDO Mgmt_Leave_req Options."""
+
+        NONE = 0
+        RemoveChildren = 1 << 6
+        Rejoin = 1 << 7
+
     def __init__(self, device):
         self._device = device
         self._listeners = {}
@@ -190,13 +197,13 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         )
 
     def leave(self, remove_children: bool = True, rejoin: bool = False) -> Coroutine:
-        flags = 0x00
+        opts = self.LeaveOptions.NONE
         if remove_children:
-            flags |= 0x02
+            opts |= self.LeaveOptions.RemoveChildren
         if rejoin:
-            flags |= 0x01
+            opts |= self.LeaveOptions.Rejoin
 
-        return self.Mgmt_Leave_req(self._device.ieee, flags)
+        return self.Mgmt_Leave_req(self._device.ieee, opts)
 
     def permit(self, duration=60, tc_significance=0):
         return self.Mgmt_Permit_Joining_req(duration, tc_significance)
