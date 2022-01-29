@@ -244,7 +244,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         hdr.frame_control.is_reply = command.is_reply
         response, data = command.schema.deserialize(data)
 
-        self.debug("Decoded ZCL frame: %r", response)
+        self.debug("Decoded ZCL frame: %s:%r", type(self).__name__, response)
 
         if data:
             self.warning("Data remains after deserializing ZCL frame: %r", data)
@@ -356,7 +356,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         dst_addressing: Optional[AddressingMode] = None,
     ):
         self.debug(
-            "No explicit handler for cluster command 0x%02x %s",
+            "No explicit handler for cluster command 0x%02x: %s",
             hdr.command_id,
             args,
         )
