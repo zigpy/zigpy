@@ -280,7 +280,7 @@ async def test_known_device_left(app, ieee):
 async def _remove(
     app, ieee, retval, zdo_reply=True, delivery_failure=True, has_node_desc=True
 ):
-    async def leave():
+    async def leave(*args, **kwargs):
         if zdo_reply:
             return retval
         elif delivery_failure:

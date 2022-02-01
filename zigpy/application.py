@@ -141,7 +141,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             device.neighbors.add_context_listener(self._dblistener)
         self.listener_event("device_initialized", device)
 
-    async def remove(self, ieee: t.EUI64) -> None:
+    async def remove(
+        self, ieee: t.EUI64, remove_children: bool = True, rejoin: bool = False
+    ) -> None:
         """Try to remove a device from the network.
 
         :param ieee: address of the device to be removed
@@ -155,7 +157,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dev.cancel_initialization()
 
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
-        asyncio.create_task(self._remove_device(dev))
+        asyncio.create_task(
+            self._remove_device(dev, remove_children=remove_children, rejoin=rejoin)
+        )
         if dev.node_desc is not None and dev.node_desc.is_end_device:
             parents = [
                 parent
@@ -167,17 +171,25 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 LOGGER.debug(
                     "Sending leave request for %s to %s parent", dev.ieee, parent.ieee
                 )
+                opts = parent.zdo.LeaveOptions.RemoveChildren
+                if rejoin:
+                    opts |= parent.zdo.LeaveOptions.Rejoin
                 parent.zdo.create_catching_task(
-                    parent.zdo.Mgmt_Leave_req(dev.ieee, 0x02)
+                    parent.zdo.Mgmt_Leave_req(dev.ieee, opts)
                 )
 
         self.listener_event("device_removed", dev)
 
-    async def _remove_device(self, device: zigpy.device.Device) -> None:
+    async def _remove_device(
+        self,
+        device: zigpy.device.Device,
+        remove_children: bool = True,
+        rejoin: bool = False,
+    ) -> None:
         """Send a remove request then pop the device."""
         try:
             await asyncio.wait_for(
-                device.zdo.leave(),
+                device.zdo.leave(remove_children=remove_children, rejoin=rejoin),
                 timeout=30
                 if device.node_desc is not None and device.node_desc.is_end_device
                 else 7,
