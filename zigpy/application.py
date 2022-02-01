@@ -142,7 +142,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.listener_event("device_initialized", device)
 
     async def remove(
-        self, ieee: t.EUI64, remove_children: bool = True, rejoin: bool = False
+        self, ieee: t.EUI64, remove_children: bool = False, rejoin: bool = False
     ) -> None:
         """Try to remove a device from the network.
 
