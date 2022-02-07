@@ -40,7 +40,7 @@ class Basic(Cluster):
     class PhysicalEnvironment(t.enum8):
         Unspecified_environment = 0x00
         Mirror = 0x01
-        Atrium = 0x01
+        AtriumRevision1 = 0x01  # Depends on profile id, deprecated
         Bar = 0x02
         Courtyard = 0x03
         Bathroom = 0x04
