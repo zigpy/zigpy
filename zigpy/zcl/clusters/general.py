@@ -164,9 +164,9 @@ class Basic(Cluster):
         0x0001: ("app_version", t.uint8_t),
         0x0002: ("stack_version", t.uint8_t),
         0x0003: ("hw_version", t.uint8_t),
-        0x0004: ("manufacturer", t.CharacterString),
-        0x0005: ("model", t.CharacterString),
-        0x0006: ("date_code", t.CharacterString),
+        0x0004: ("manufacturer", t.LimitedCharString(32)),
+        0x0005: ("model", t.LimitedCharString(32)),
+        0x0006: ("date_code", t.LimitedCharString(16)),
         0x0007: ("power_source", PowerSource),
         0x0008: ("generic_device_class", t.enum8),  # Was app_profile_version
         0x0009: ("generic_device_type", t.enum8),
@@ -462,7 +462,7 @@ class LevelControl(Cluster):
         0x4000: ("start_up_current_level", t.uint8_t),
     }
     server_commands = {
-        0x0000: ("move_to_level", (t.uint8_t, t.uint16_t), False),
+        0x0000: ("move_to_level", (t.uint8_t, t.uint16_t), False),  # + 2 optionals
         0x0001: ("move", (t.uint8_t, t.uint8_t), False),
         0x0002: ("step", (t.uint8_t, t.uint8_t, t.uint16_t), False),
         0x0003: ("stop", (), False),
@@ -470,7 +470,7 @@ class LevelControl(Cluster):
         0x0005: ("move_with_on_off", (t.uint8_t, t.uint8_t), False),
         0x0006: ("step_with_on_off", (t.uint8_t, t.uint8_t, t.uint16_t), False),
         0x0007: ("stop", (), False),
-        0x0008: ("move_to_closest_frequency", (t.uint16_t), False),
+        # 0x0008: ("move_to_closest_frequency", (t.uint16_t), False),
     }
     client_commands = {}
 
