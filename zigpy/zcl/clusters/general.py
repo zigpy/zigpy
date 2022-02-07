@@ -144,6 +144,8 @@ class Basic(Cluster):
         Dental_Surgery_Room = 0x6D
         Medical_Imaging_Room = 0x6E
         Decontamination_Room = 0x6F
+        Atrium = 0x70
+        Mirror = 0x71
         Unknown_environment = 0xFF
 
     class AlarmMask(t.bitmap8):
@@ -166,7 +168,13 @@ class Basic(Cluster):
         0x0005: ("model", t.CharacterString),
         0x0006: ("date_code", t.CharacterString),
         0x0007: ("power_source", PowerSource),
-        0x0008: ("app_profile_version", t.enum8),
+        0x0008: ("generic_device_class", t.enum8),  # Was app_profile_version
+        0x0009: ("generic_device_type", t.enum8),
+        0x000A: ("product_code", t.LVBytes),
+        0x000B: ("product_url", t.CharacterString),
+        0x000C: ("manufacturer_version_details", t.CharacterString),
+        0x000D: ("serial_number", t.CharacterString),
+        0x000E: ("product_label", t.CharacterString),
         # Basic Device Settings
         0x0010: ("location_desc", t.LimitedCharString(16)),
         0x0011: ("physical_env", PhysicalEnvironment),
@@ -362,15 +370,15 @@ class Scenes(Cluster):
         0x0042: ("copy", (), False),
     }
     client_commands = {
-        0x0000: ("add_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
+        0x0000: ("add_scene_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
         0x0001: (
-            "view_response",
+            "view_scene_response",
             (t.uint8_t, t.uint16_t, t.uint8_t),
             True,
         ),  # + 3 more optionals
-        0x0002: ("remove_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
-        0x0003: ("remove_all_response", (t.uint8_t, t.uint16_t), True),
-        0x0004: ("store_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
+        0x0002: ("remove_scene_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
+        0x0003: ("remove_all_scenes_response", (t.uint8_t, t.uint16_t), True),
+        0x0004: ("store_scenes_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
         0x0006: (
             "get_scene_membership_response",
             (t.uint8_t, t.uint8_t, t.uint16_t, t.Optional(t.LVList[t.uint8_t])),
@@ -440,6 +448,12 @@ class LevelControl(Cluster):
     attributes = {
         0x0000: ("current_level", t.uint8_t),
         0x0001: ("remaining_time", t.uint16_t),
+        0x0002: ("min_level", t.uint8_t),
+        0x0003: ("max_level", t.uint8_t),
+        0x0004: ("current_frequency", t.uint16_t),
+        0x0005: ("min_frequency", t.uint16_t),
+        0x0006: ("max_frequency", t.uint16_t),
+        0x000F: ("options", t.bitmap8),
         0x0010: ("on_off_transition_time", t.uint16_t),
         0x0011: ("on_level", t.uint8_t),
         0x0012: ("on_transition_time", t.uint16_t),
@@ -456,6 +470,7 @@ class LevelControl(Cluster):
         0x0005: ("move_with_on_off", (t.uint8_t, t.uint8_t), False),
         0x0006: ("step_with_on_off", (t.uint8_t, t.uint8_t, t.uint16_t), False),
         0x0007: ("stop", (), False),
+        0x0008: ("move_to_closest_frequency", (t.uint16_t), False),
     }
     client_commands = {}
 
@@ -471,10 +486,10 @@ class Alarms(Cluster):
         0x0000: ("alarm_count", t.uint16_t)
     }
     server_commands = {
-        0x0000: ("reset", (t.uint8_t, t.uint16_t), False),
-        0x0001: ("reset_all", (), False),
+        0x0000: ("reset_alarm", (t.uint8_t, t.uint16_t), False),
+        0x0001: ("reset_all_alarms", (), False),
         0x0002: ("get_alarm", (), False),
-        0x0003: ("reset_log", (), False),
+        0x0003: ("reset_alarm_log", (), False),
         0x0004: ("publish_event_log", (), False),
     }
     client_commands = {
@@ -508,8 +523,8 @@ class Time(Cluster):
         0x0005: ("dst_shift", t.int32s),
         0x0006: ("standard_time", t.StandardTime),
         0x0007: ("local_time", t.LocalTime),
-        0x0008: ("last_set_time", t.uint32_t),
-        0x0009: ("valid_until_time", t.uint32_t),
+        0x0008: ("last_set_time", t.UTCTime),
+        0x0009: ("valid_until_time", t.UTCTime),
     }
     server_commands = {}
     client_commands = {}
@@ -567,8 +582,8 @@ class RSSILocation(Cluster):
         0x0013: ("power", t.int16s),
         0x0014: ("path_loss_exponent", t.uint16_t),
         0x0015: ("reporting_period", t.uint16_t),
-        0x0016: ("calc_period", t.uint16_t),
-        0x0017: ("num_rssi_measurements", t.uint16_t),
+        0x0016: ("calculation_period", t.uint16_t),
+        0x0017: ("number_rssi_measurements", t.uint16_t),
     }
     server_commands = {
         0x0000: (
@@ -736,7 +751,9 @@ class BinaryOutput(Cluster):
         # single precision)
         0x0067: ("reliability", t.enum8),
         0x0068: ("relinquish_default", t.Bool),
+        0x006A: ("resolution", t.Single),
         0x006F: ("status_flags", t.bitmap8),
+        0x0075: ("engineering_units", t.enum16),  # Does not seem to be in binary_output
         0x0100: ("application_type", t.uint32_t),
     }
     server_commands = {}
@@ -877,7 +894,18 @@ class Commissioning(Cluster):
 class Partition(Cluster):
     cluster_id = 0x0016
     ep_attribute = "partition"
-    attributes = {}
+    attributes = {
+        0x0000: ("maximum_incoming_transfer_size", t.uint16_t),
+        0x0001: ("maximum_outgoing_transfer_size", t.uint16_t),
+        0x0002: ("partitioned_frame_size", t.uint8_t),
+        0x0003: ("large_frame_size", t.uint16_t),
+        0x0004: ("number_of_ack_frame", t.uint8_t),
+        0x0005: ("nack_timeout", t.uint16_t),
+        0x0006: ("interframe_delay", t.uint8_t),
+        0x0007: ("number_of_send_retries", t.uint8_t),
+        0x0008: ("sender_timeout", t.uint16_t),
+        0x0009: ("receiver_timeout", t.uint16_t),
+    }
     server_commands = {}
     client_commands = {}
 
@@ -1182,7 +1210,7 @@ class PowerProfile(Cluster):
     ep_attribute = "power_profile"
     attributes = {
         0x0000: ("total_profile_num", t.uint8_t),
-        0x0001: ("multiple_scheduling", t.uint8_t),
+        0x0001: ("multiple_scheduling", t.Bool),
         0x0002: ("energy_formatting", t.bitmap8),
         0x0003: ("energy_remote", t.Bool),
         0x0004: ("schedule_mode", t.bitmap8),
@@ -1287,7 +1315,11 @@ class PowerProfile(Cluster):
 class ApplianceControl(Cluster):
     cluster_id = 0x001B
     ep_attribute = "appliance_control"
-    attributes = {}
+    attributes = {
+        0x0000: ("start_time", t.uint16_t),
+        0x0001: ("finish_time", t.uint16_t),
+        0x0002: ("remaining_time", t.uint16_t),
+    }
     server_commands = {}
     client_commands = {}
 

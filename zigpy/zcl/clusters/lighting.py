@@ -22,6 +22,7 @@ class Color(Cluster):
         0x0006: ("compensation_text", t.CharacterString),
         0x0007: ("color_temperature", t.uint16_t),
         0x0008: ("color_mode", t.enum8),
+        0x000F: ("options", t.bitmap8),
         # Defined Primaries Information
         0x0010: ("num_primaries", t.uint8_t),
         0x0011: ("primary1_x", t.uint16_t),
@@ -66,6 +67,7 @@ class Color(Cluster):
         0x400A: ("color_capabilities", t.bitmap16),
         0x400B: ("color_temp_physical_min", t.uint16_t),
         0x400C: ("color_temp_physical_max", t.uint16_t),
+        0x400D: ("couple_color_temp_to_level_min", t.uint16_t),
         0x4010: ("start_up_color_temperature", t.uint16_t),
     }
     server_commands = {
