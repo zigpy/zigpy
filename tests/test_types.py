@@ -258,7 +258,7 @@ def test_limited_lvbytes():
         t.LimitedLVBytes(5)(b"123456").serialize()
 
 
-def test_limited_lvbytes_size2():
+def test_lvbytes_size2():
     # Deserialize tests
     d, r = t.LVBytesSize2().deserialize(b"\x02123")
     assert d == b"12"  # Accepted data
