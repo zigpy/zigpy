@@ -451,7 +451,7 @@ class WindowCovering(Cluster):
         0x0014: ("velocity_lift", t.uint16_t),
         0x0015: ("acceleration_time_lift", t.uint16_t),
         0x0016: ("deceleration_time_lift", t.uint16_t),
-        0x0017: ("window_covering_mode", t.bitmap8_t),
+        0x0017: ("window_covering_mode", t.bitmap8),
         0x0018: ("intermediate_setpoints_lift", t.LVBytes),
         0x0019: ("intermediate_setpoints_tilt", t.LVBytes),
     }
