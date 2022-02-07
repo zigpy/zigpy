@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import logging
-from typing import Optional, Set
+from typing import TYPE_CHECKING, Any, Optional, Set
 
 from zigpy import types as t
 from zigpy.endpoint import Endpoint
@@ -7,21 +9,31 @@ import zigpy.profiles.zha as zha_profile
 from zigpy.util import ListenableMixin, LocalLogMixin
 import zigpy.zcl
 
+if TYPE_CHECKING:
+    from zigpy.application import ControllerApplication
+
 LOGGER = logging.getLogger(__name__)
 
 
 class Group(ListenableMixin, dict):
-    def __init__(self, group_id, name=None, groups=None, *args, **kwargs):
-        self._groups = groups
-        self._group_id = t.Group(group_id)
-        self._listeners = {}
-        self._name = name
-        self._endpoint = GroupEndpoint(self)
+    def __init__(
+        self,
+        group_id: int,
+        name: str | None = None,
+        groups: Groups | None = None,
+        *args: Any,
+        **kwargs: Any,
+    ):
+        self._groups: Groups = groups
+        self._group_id: t.Group = t.Group(group_id)
+        self._listeners: dict = {}
+        self._name: str = name
+        self._endpoint: GroupEndpoint = GroupEndpoint(self)
         if groups is not None:
             self.add_listener(groups)
         super().__init__(*args, **kwargs)
 
-    def add_member(self, ep: Endpoint, suppress_event=False):
+    def add_member(self, ep: Endpoint, suppress_event: bool = False) -> Group:
         if not isinstance(ep, Endpoint):
             raise ValueError("%s is not %s class" % (ep, Endpoint.__class__.__name__))
         if ep.unique_id in self:
@@ -32,7 +44,7 @@ class Group(ListenableMixin, dict):
             self.listener_event("member_added", self, ep)
         return self
 
-    def remove_member(self, ep: Endpoint, suppress_event=False):
+    def remove_member(self, ep: Endpoint, suppress_event: bool = False) -> Group:
         self.pop(ep.unique_id, None)
         ep.member_of.pop(self.group_id, None)
         if not suppress_event:
@@ -51,47 +63,47 @@ class Group(ListenableMixin, dict):
         )
         return [data[2], zigpy.zcl.foundation.Status(res[0])]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "<{} group_id={} name='{}' members={}>".format(
             self.__class__.__name__, self.group_id, self.name, super().__repr__()
         )
 
     @property
-    def application(self):
+    def application(self) -> ControllerApplication:
         """Expose application to FakeEndpoint/GroupCluster."""
         return self.groups.application
 
     @property
-    def groups(self):
+    def groups(self) -> Groups:
         return self._groups
 
     @property
-    def group_id(self):
+    def group_id(self) -> t.Group:
         return self._group_id
 
     @property
-    def members(self):
+    def members(self) -> Group:
         return self
 
     @property
-    def name(self):
+    def name(self) -> str:
         if self._name is None:
             return "No name group {}".format(self.group_id)
         return self._name
 
     @property
-    def endpoint(self):
+    def endpoint(self) -> GroupEndpoint:
         return self._endpoint
 
 
 class Groups(ListenableMixin, dict):
-    def __init__(self, app, *args, **kwargs):
-        self._application = app
-        self._listeners = {}
+    def __init__(self, app: ControllerApplication, *args: Any, **kwargs: Any):
+        self._application: ControllerApplication = app
+        self._listeners: dict = {}
         super().__init__(*args, **kwargs)
 
     def add_group(
-        self, group_id: int, name: str = None, suppress_event: bool = False
+        self, group_id: int, name: str | None = None, suppress_event: bool = False
     ) -> Optional[Group]:
         if group_id in self:
             return self[group_id]
@@ -102,13 +114,13 @@ class Groups(ListenableMixin, dict):
             self.listener_event("group_added", group)
         return group
 
-    def member_added(self, group: Group, ep: Endpoint):
+    def member_added(self, group: Group, ep: Endpoint) -> None:
         self.listener_event("group_member_added", group, ep)
 
-    def member_removed(self, group: Group, ep: Endpoint):
+    def member_removed(self, group: Group, ep: Endpoint) -> None:
         self.listener_event("group_member_removed", group, ep)
 
-    def pop(self, item, *args) -> Optional[Group]:
+    def pop(self, item, *args: Any) -> Optional[Group]:
         if isinstance(item, Group):
             group = super().pop(item.group_id, *args)
             if isinstance(group, Group):
@@ -139,16 +151,16 @@ class Groups(ListenableMixin, dict):
             group.add_member(ep)
 
     @property
-    def application(self):
+    def application(self) -> ControllerApplication:
         """Return application controller."""
         return self._application
 
 
 class GroupCluster(zigpy.zcl.Cluster):
-    """Virtual cluster for group requests. """
+    """Virtual cluster for group requests."""
 
     @classmethod
-    def from_id(cls, group_endpoint, cluster_id: int):
+    def from_id(cls, group_endpoint: GroupEndpoint, cluster_id: int):
         """Instantiate from ZCL cluster by cluster id."""
         if cluster_id in cls._registry:
             return cls._registry[cluster_id](group_endpoint, is_server=True)
@@ -158,7 +170,7 @@ class GroupCluster(zigpy.zcl.Cluster):
         raise KeyError("Unsupported 0x{:04x} cluster id for groups".format(cluster_id))
 
     @classmethod
-    def from_attr(cls, group_endpoint, ep_name: str):
+    def from_attr(cls, group_endpoint: GroupEndpoint, ep_name: str):
         """Instantiate by Cluster name."""
 
         for cluster in cls._registry.values():
@@ -175,12 +187,12 @@ class GroupEndpoint(LocalLogMixin):
 
     def __init__(self, group: Group):
         """Instantiate GroupRequest."""
-        self._group = group
-        self._clusters = {}
-        self._cluster_by_attr = {}
+        self._group: Group = group
+        self._clusters: dict = {}
+        self._cluster_by_attr: dict = {}
 
     @property
-    def clusters(self):
+    def clusters(self) -> dict:
         """Group clusters.
 
         most of the times, group requests are addressed from client -> server clusters.
@@ -188,7 +200,7 @@ class GroupEndpoint(LocalLogMixin):
         return self._clusters
 
     @property
-    def device(self):
+    def device(self) -> Group:
         """Group is our fake zigpy device"""
         return self._group
 
@@ -203,10 +215,10 @@ class GroupEndpoint(LocalLogMixin):
         """
         return self.request(cluster, sequence, data, *args, **kwargs)
 
-    def log(self, lvl, msg, *args, **kwargs):
+    def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:
         msg = "[0x%04x] " + msg
         args = (self._group.group_id,) + args
-        return LOGGER.log(lvl, msg, *args, **kwargs)
+        LOGGER.log(lvl, msg, *args, **kwargs)
 
     def __getitem__(self, item: int):
         """Return or instantiate a group cluster."""
