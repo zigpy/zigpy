@@ -504,7 +504,7 @@ def LimitedLVBytes(max_len):  # noqa: N802
 class LVBytesSize2(LVBytes):
     def serialize(self):
         if len(self) != 2:
-                raise ValueError("LVBytes must be of size 2")
+            raise ValueError("LVBytes must be of size 2")
         return super().serialize()
 
 
