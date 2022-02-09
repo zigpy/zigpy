@@ -26,7 +26,7 @@ class IasZone(Cluster):
         Contact_Switch = 0x0015
         Fire_Sensor = 0x0028
         Water_Sensor = 0x002A
-        Carbon_Monoxide_Sensor = 0x002B
+        Gas_Sensor = 0x002B
         Personal_Emergency_Device = 0x002C
         Vibration_Movement_Sensor = 0x002D
         Remote_Control = 0x010F
