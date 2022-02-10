@@ -470,7 +470,7 @@ class LevelControl(Cluster):
         0x0005: ("move_with_on_off", (t.uint8_t, t.uint8_t), False),
         0x0006: ("step_with_on_off", (t.uint8_t, t.uint8_t, t.uint16_t), False),
         0x0007: ("stop", (), False),
-        # 0x0008: ("move_to_closest_frequency", (t.uint16_t), False),
+        0x0008: ("move_to_closest_frequency", (t.uint16_t,), False),
     }
     client_commands = {}
 
