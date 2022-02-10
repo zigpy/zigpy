@@ -301,15 +301,23 @@ def test_custom_cluster_idx():
         cluster_id = 0x1234
         attributes = {
             0x0000: ("first_attribute", t.uint8_t),
-            0x00FF: ("2nd_attribute", t.enum8),
+            0x00FF: ("second_attribute", t.enum8),
         }
         server_commands = {
-            0x00: ("server_cmd_0", (t.uint8_t, t.uint8_t), False),
-            0x01: ("server_cmd_2", (t.uint8_t, t.uint8_t), False),
+            0x00: zcl.foundation.ZCLCommandDef(
+                "server_cmd_0", {"param1": t.uint8_t, "param2": t.uint8_t}, False
+            ),
+            0x01: zcl.foundation.ZCLCommandDef(
+                "server_cmd_2", {"param1": t.uint8_t, "param2": t.uint8_t}, False
+            ),
         }
         client_commands = {
-            0x00: ("client_cmd_0", (t.uint8_t,), True),
-            0x01: ("client_cmd_1", (t.uint8_t,), True),
+            0x00: zcl.foundation.ZCLCommandDef(
+                "client_cmd_0", {"param1": t.uint8_t}, True
+            ),
+            0x01: zcl.foundation.ZCLCommandDef(
+                "client_cmd_1", {"param1": t.uint8_t}, True
+            ),
         }
 
     def _test_cmd(cmd_set, cmd_set_idx):
@@ -318,14 +326,14 @@ def test_custom_cluster_idx():
         cmd_set_len = len(getattr(TestClusterIdx, cmd_set))
         assert idx_len == cmd_set_len
         for cmd_name, cmd_id in getattr(TestClusterIdx, cmd_set_idx).items():
-            assert getattr(TestClusterIdx, cmd_set)[cmd_id][0] == cmd_name
+            assert getattr(TestClusterIdx, cmd_set)[cmd_id].name == cmd_name
 
-    assert hasattr(TestClusterIdx, "attridx")
-    attr_idx_len = len(TestClusterIdx.attridx)
+    assert hasattr(TestClusterIdx, "attributes_by_name")
+    attr_idx_len = len(TestClusterIdx.attributes_by_name)
     attrs_len = len(TestClusterIdx.attributes)
     assert attr_idx_len == attrs_len
-    for attr_name, attr_id in TestClusterIdx.attridx.items():
-        assert TestClusterIdx.attributes[attr_id][0] == attr_name
+    for attr_name, attr in TestClusterIdx.attributes_by_name.items():
+        assert TestClusterIdx.attributes[attr.id].name == attr_name
 
     _test_cmd("server_commands", "_server_commands_idx")
     _test_cmd("client_commands", "_client_commands_idx")
@@ -337,17 +345,25 @@ async def test_read_attributes_uncached():
         _CONSTANT_ATTRIBUTES = {0x0001: 5}
         attributes = {
             0x0000: ("first_attribute", t.uint8_t),
-            0x0001: ("2nd_attribute", t.uint8_t),
-            0x0002: ("3rd_attribute", t.uint8_t),
-            0x0003: ("4th_attribute", t.enum8),
+            0x0001: ("second_attribute", t.uint8_t),
+            0x0002: ("third_attribute", t.uint8_t),
+            0x0003: ("fouth_attribute", t.enum8),
         }
         server_commands = {
-            0x00: ("server_cmd_0", (t.uint8_t, t.uint8_t), False),
-            0x01: ("server_cmd_2", (t.uint8_t, t.uint8_t), False),
+            0x00: zcl.foundation.ZCLCommandDef(
+                "server_cmd_0", {"param1": t.uint8_t, "param2": t.uint8_t}, False
+            ),
+            0x01: zcl.foundation.ZCLCommandDef(
+                "server_cmd_2", {"param1": t.uint8_t, "param2": t.uint8_t}, False
+            ),
         }
         client_commands = {
-            0x00: ("client_cmd_0", (t.uint8_t,), True),
-            0x01: ("client_cmd_1", (t.uint8_t,), True),
+            0x00: zcl.foundation.ZCLCommandDef(
+                "client_cmd_0", {"param1": t.uint8_t}, True
+            ),
+            0x01: zcl.foundation.ZCLCommandDef(
+                "client_cmd_1", {"param1": t.uint8_t}, True
+            ),
         }
 
     class TestCluster2(zigpy.quirks.CustomCluster):
@@ -404,17 +420,25 @@ async def test_read_attributes_default_response():
         _CONSTANT_ATTRIBUTES = {0x0001: 5}
         attributes = {
             0x0000: ("first_attribute", t.uint8_t),
-            0x0001: ("2nd_attribute", t.uint8_t),
-            0x0002: ("3rd_attribute", t.uint8_t),
-            0x0003: ("4th_attribute", t.enum8),
+            0x0001: ("second_attribute", t.uint8_t),
+            0x0002: ("third_attribute", t.uint8_t),
+            0x0003: ("fouth_attribute", t.enum8),
         }
         server_commands = {
-            0x00: ("server_cmd_0", (t.uint8_t, t.uint8_t), False),
-            0x01: ("server_cmd_2", (t.uint8_t, t.uint8_t), False),
+            0x00: zcl.foundation.ZCLCommandDef(
+                "server_cmd_0", {"param1": t.uint8_t, "param2": t.uint8_t}, False
+            ),
+            0x01: zcl.foundation.ZCLCommandDef(
+                "server_cmd_2", {"param1": t.uint8_t, "param2": t.uint8_t}, False
+            ),
         }
         client_commands = {
-            0x00: ("client_cmd_0", (t.uint8_t,), True),
-            0x01: ("client_cmd_1", (t.uint8_t,), True),
+            0x00: zcl.foundation.ZCLCommandDef(
+                "client_cmd_0", {"param1": t.uint8_t}, True
+            ),
+            0x01: zcl.foundation.ZCLCommandDef(
+                "client_cmd_1", {"param1": t.uint8_t}, True
+            ),
         }
 
     epmock = MagicMock()
@@ -448,12 +472,24 @@ def _mk_rar(attrid, value, status=0):
 class ManufacturerSpecificCluster(zigpy.quirks.CustomCluster):
     cluster_id = 0x2222
     ep_attribute = "just_a_cluster"
-    attributes = {0: ("attr0", t.uint8_t)}
-    manufacturer_attributes = {1: ("attr1", t.uint16_t)}
-    client_commands = {0: ("client_cmd0", (), False)}
-    manufacturer_client_commands = {1: ("client_cmd1", (), False)}
-    server_commands = {0: ("server_cmd0", (), False)}
-    manufacturer_server_commands = {1: ("server_cmd1", (), False)}
+    attributes = {
+        0: ("attr0", t.uint8_t),
+        1: ("attr1", t.uint16_t, True),
+    }
+
+    client_commands = {
+        0: zcl.foundation.ZCLCommandDef("client_cmd0", {}, False),
+        1: zcl.foundation.ZCLCommandDef(
+            "client_cmd1", {}, False, is_manufacturer_specific=True
+        ),
+    }
+
+    server_commands = {
+        0: zcl.foundation.ZCLCommandDef("server_cmd0", {}, False),
+        1: zcl.foundation.ZCLCommandDef(
+            "server_cmd1", {}, False, is_manufacturer_specific=True
+        ),
+    }
 
 
 @pytest.fixture
@@ -853,3 +889,20 @@ def test_quirk_wildcard_manufacturer(real_device, real_device_2):
     real_device.model = "And now we should not match any quirk"
     quirked = registry.get_device(real_device)
     assert quirked is real_device
+
+
+def test_quirk_deprecated_manufacturer_prefixes():
+    class GoodCluster(zigpy.quirks.CustomCluster):
+        server_commands = {
+            0x1233: ("foo1", (), False),
+            0x1234: zcl.foundation.ZCLCommandDef(
+                "foo2", {}, False, is_manufacturer_specific=True
+            ),
+        }
+
+    with pytest.raises(TypeError):
+
+        class BadCluster(zigpy.quirks.CustomCluster):
+            manufacturer_server_commands = {
+                0x1234: ("foo3", {}, False),
+            }

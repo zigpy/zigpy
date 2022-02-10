@@ -1,8 +1,23 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple, Union
+import dataclasses
+import keyword
+from typing import Any, Optional, Tuple
+import warnings
 
 import zigpy.types as t
+
+
+def _hex_uint16_repr(v: int) -> str:
+    return t.uint16_t(v)._hex_repr()
+
+
+def ensure_valid_name(name: str | None) -> None:
+    """
+    Ensures that the name of an attribute or command is valid.
+    """
+    if name is not None and not name.isidentifier():
+        raise ValueError(f"{name!r} is not a valid identifier name.")
 
 
 class Status(t.enum8):
@@ -92,11 +107,11 @@ class TypeValue:
         self.value, data = python_type.deserialize(data)
         return self, data
 
-    def __repr__(self):
-        return "<%s type=%s, value=%s>" % (
-            self.__class__.__name__,
-            self.value.__class__.__name__,
-            self.value,
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}("
+            f"type={type(self.value).__name__}, value={self.value!r}"
+            f")"
         )
 
 
@@ -212,19 +227,21 @@ DATA_TYPES = DataTypes(
 class ReadAttributeRecord(t.Struct):
     """Read Attribute Record."""
 
-    attrid: t.uint16_t
+    attrid: t.uint16_t = t.StructField(repr=_hex_uint16_repr)
     status: Status
     value: TypeValue = t.StructField(requires=lambda s: s.status == Status.SUCCESS)
 
 
 class Attribute(t.Struct):
-    attrid: t.uint16_t
+    attrid: t.uint16_t = t.StructField(repr=_hex_uint16_repr)
     value: TypeValue
 
 
 class WriteAttributesStatusRecord(t.Struct):
     status: Status
-    attrid: t.uint16_t = t.StructField(requires=lambda s: s.status != Status.SUCCESS)
+    attrid: t.uint16_t = t.StructField(
+        requires=lambda s: s.status != Status.SUCCESS, repr=_hex_uint16_repr
+    )
 
 
 class WriteAttributesResponse(list):
@@ -259,6 +276,11 @@ class WriteAttributesResponse(list):
 class ReportingDirection(t.enum8):
     SendReports = 0x00
     ReceiveReports = 0x01
+
+
+class AttributeReportingStatus(t.enum8):
+    Pending = 0x00
+    Attribute_Reporting_Complete = 0x01
 
 
 class AttributeReportingConfig:
@@ -311,7 +333,7 @@ class AttributeReportingConfig:
     def __repr__(self):
         r = f"{self.__class__.__name__}("
         r += f"direction={self.direction}"
-        r += f", attrid={self.attrid}"
+        r += f", attrid=0x{self.attrid:04X}"
 
         if self.direction == ReportingDirection.ReceiveReports:
             r += f", timeout={self.timeout}"
@@ -331,7 +353,7 @@ class AttributeReportingConfig:
 class ConfigureReportingResponseRecord(t.Struct):
     status: Status
     direction: ReportingDirection
-    attrid: t.uint16_t
+    attrid: t.uint16_t = t.StructField(repr=_hex_uint16_repr)
 
     @classmethod
     def deserialize(cls, data):
@@ -406,8 +428,244 @@ class DiscoverAttributesExtendedResponseRecord(t.Struct):
     acl: AttributeAccessControl
 
 
-class Command(t.enum8):
-    """ZCL Foundation Global Command IDs."""
+class FrameType(t.enum2):
+    """ZCL Frame Type."""
+
+    GLOBAL_COMMAND = 0b00
+    CLUSTER_COMMAND = 0b01
+    RESERVED_2 = 0b10
+    RESERVED_3 = 0b11
+
+
+class FrameControl(t.Struct, t.uint8_t):
+    """The frame control field contains information defining the command type
+    and other control flags."""
+
+    frame_type: FrameType
+    is_manufacturer_specific: t.uint1_t
+    is_reply: t.uint1_t  # "direction" in the ZCL spec
+    disable_default_response: t.uint1_t
+    reserved: t.uint3_t
+
+    @classmethod
+    def cluster(cls, is_reply: bool = False, is_manufacturer_specific: bool = False):
+        return cls(
+            frame_type=FrameType.CLUSTER_COMMAND,
+            is_manufacturer_specific=is_manufacturer_specific,
+            is_reply=is_reply,
+            disable_default_response=is_reply,
+            reserved=0,
+        )
+
+    @classmethod
+    def general(cls, is_reply: bool = False, is_manufacturer_specific: bool = False):
+        return cls(
+            frame_type=FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=is_manufacturer_specific,
+            is_reply=is_reply,
+            disable_default_response=is_reply,
+            reserved=0,
+        )
+
+    @property
+    def is_cluster(self) -> bool:
+        """Return True if command is a local cluster specific command."""
+        return bool(self.frame_type == FrameType.CLUSTER_COMMAND)
+
+    @property
+    def is_general(self) -> bool:
+        """Return True if command is a global ZCL command."""
+        return bool(self.frame_type == FrameType.GLOBAL_COMMAND)
+
+
+class ZCLHeader(t.Struct):
+    frame_control: FrameControl
+    manufacturer: t.uint16_t = t.StructField(
+        requires=lambda hdr: hdr.frame_control.is_manufacturer_specific
+    )
+    tsn: t.uint8_t
+    command_id: t.uint8_t
+
+    def __new__(
+        cls, frame_control=None, manufacturer=None, tsn=None, command_id=None
+    ) -> ZCLHeader:
+        if frame_control is not None and manufacturer is not None:
+            frame_control.is_manufacturer_specific = True
+
+        return super().__new__(cls, frame_control, manufacturer, tsn, command_id)
+
+    @property
+    def is_reply(self) -> bool:
+        """Return direction of Frame Control."""
+        return self.frame_control.is_reply
+
+    def __setattr__(self, name, value) -> None:
+        super().__setattr__(name, value)
+
+        if name == "manufacturer" and self.frame_control is not None:
+            self.frame_control.is_manufacturer_specific = value is not None
+
+    @classmethod
+    def general(
+        cls,
+        tsn: int | t.uint8_t,
+        command_id: int | t.uint8_t,
+        manufacturer: Optional[int | t.uint16_t] = None,
+        is_reply: bool = False,
+    ) -> ZCLHeader:
+        return cls(
+            frame_control=FrameControl.general(
+                is_reply=is_reply, is_manufacturer_specific=(manufacturer is not None)
+            ),
+            manufacturer=manufacturer,
+            tsn=tsn,
+            command_id=command_id,
+        )
+
+    @classmethod
+    def cluster(
+        cls,
+        tsn: int | t.uint8_t,
+        command_id: int | t.uint8_t,
+        manufacturer: Optional[int | t.uint16_t] = None,
+        is_reply: bool = False,
+    ) -> ZCLHeader:
+        return cls(
+            frame_control=FrameControl.cluster(
+                is_reply=is_reply, is_manufacturer_specific=(manufacturer is not None)
+            ),
+            manufacturer=manufacturer,
+            tsn=tsn,
+            command_id=command_id,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class ZCLCommandDef:
+    name: str = None
+    schema: CommandSchema = None
+    is_reply: bool = None
+    id: t.uint8_t = None
+    is_manufacturer_specific: bool = None
+
+    def __post_init__(self):
+        ensure_valid_name(self.name)
+
+    def with_compiled_schema(self):
+        """
+        Return a copy of the ZCL command definition object with its dictionary command
+        schema converted into a `CommandSchema` subclass.
+        """
+
+        # If the schema is already a struct, do nothing
+        if not isinstance(self.schema, dict):
+            return self
+
+        assert self.id is not None
+        assert self.name is not None
+
+        cls_attrs = {
+            "__annotations__": {},
+            "command": self,
+        }
+
+        for name, param_type in self.schema.items():
+            plain_name = name.rstrip("?")
+
+            # Make sure parameters with names like "foo bar" and "class" can't exist
+            if not plain_name.isidentifier() or keyword.iskeyword(plain_name):
+                raise ValueError(
+                    f"Schema parameter {name} must be a valid Python identifier"
+                )
+
+            cls_attrs["__annotations__"][plain_name] = "None"
+            cls_attrs[plain_name] = t.StructField(
+                type=param_type,
+                optional=name.endswith("?"),
+            )
+
+        schema = type(self.name, (CommandSchema,), cls_attrs)
+
+        return self.replace(schema=schema)
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"id=0x{self.id:02X}, "
+            f"name={self.name!r}, "
+            f"is_reply={self.is_reply}, "
+            f"schema={self.schema}, "
+            f"is_manufacturer_specific={self.is_manufacturer_specific}"
+            f")"
+        )
+
+    def replace(self, **kwargs) -> ZCLCommandDef:
+        return dataclasses.replace(self, **kwargs)
+
+    def __getitem__(self, key):
+        warnings.warn("Attributes should be accessed by name", DeprecationWarning)
+        return (self.name, self.schema, self.is_reply)[key]
+
+
+class CommandSchema(t.Struct, tuple):
+    """
+    Struct subclass that behaves more like a tuple.
+    """
+
+    command: ZCLCommandDef = None
+
+    def __iter__(self):
+        return iter(self.as_tuple())
+
+    def __getitem__(self, item):
+        return self.as_tuple()[item]
+
+    def __len__(self) -> int:
+        return len(self.as_tuple())
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, tuple) and not isinstance(other, type(self)):
+            return self.as_tuple() == other
+
+        return super().__eq__(other)
+
+
+@dataclasses.dataclass(frozen=True)
+class ZCLAttributeDef:
+    id: t.uint16_t = None
+    name: str = None
+    type: type = None
+    access: str = "rw"
+    is_manufacturer_specific: bool = False
+
+    def __post_init__(self):
+        if not isinstance(self.id, t.uint16_t):
+            object.__setattr__(self, "id", t.uint16_t(self.id))
+
+        assert self.access in {None, "r", "w", "rw"}
+        ensure_valid_name(self.name)
+
+    def replace(self, **kwargs) -> ZCLAttributeDef:
+        return dataclasses.replace(self, **kwargs)
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"id=0x{self.id:04X}, "
+            f"name={self.name!r}, "
+            f"type={self.type}, "
+            f"access={self.access!r}, "
+            f"is_manufacturer_specific={self.is_manufacturer_specific}"
+            f")"
+        )
+
+    def __getitem__(self, key):
+        warnings.warn("Attributes should be accessed by name", DeprecationWarning)
+        return (self.name, self.type)[key]
+
+
+class GeneralCommand(t.enum8):
+    """ZCL Foundation General Command IDs."""
 
     Read_Attributes = 0x00
     Read_Attributes_rsp = 0x01
@@ -434,280 +692,103 @@ class Command(t.enum8):
     Discover_Attribute_Extended_rsp = 0x16
 
 
-COMMANDS = {
-    # id: (params, is_response)
-    Command.Configure_Reporting: ((t.List[AttributeReportingConfig],), False),
-    Command.Configure_Reporting_rsp: ((ConfigureReportingResponse,), True),
-    Command.Default_Response: ((t.uint8_t, Status), True),
-    Command.Discover_Attributes: ((t.uint16_t, t.uint8_t), False),
-    Command.Discover_Attributes_rsp: (
-        (t.Bool, t.List[DiscoverAttributesResponseRecord]),
-        True,
+GENERAL_COMMANDS = COMMANDS = {
+    GeneralCommand.Read_Attributes: ZCLCommandDef(
+        schema={"attribute_ids": t.List[t.uint16_t]}, is_reply=False
     ),
-    Command.Discover_Attribute_Extended: ((t.uint16_t, t.uint8_t), False),
-    Command.Discover_Attribute_Extended_rsp: (
-        (t.Bool, t.List[DiscoverAttributesExtendedResponseRecord]),
-        True,
+    GeneralCommand.Read_Attributes_rsp: ZCLCommandDef(
+        schema={"status_records": t.List[ReadAttributeRecord]},
+        is_reply=True,
     ),
-    Command.Discover_Commands_Generated: ((t.uint8_t, t.uint8_t), False),
-    Command.Discover_Commands_Generated_rsp: ((t.Bool, t.List[t.uint8_t]), True),
-    Command.Discover_Commands_Received: ((t.uint8_t, t.uint8_t), False),
-    Command.Discover_Commands_Received_rsp: ((t.Bool, t.List[t.uint8_t]), True),
-    Command.Read_Attributes: ((t.List[t.uint16_t],), False),
-    Command.Read_Attributes_rsp: ((t.List[ReadAttributeRecord],), True),
-    # Command.Read_Attributes_Structured: ((, ), False),
-    Command.Read_Reporting_Configuration: ((t.List[ReadReportingConfigRecord],), False),
-    Command.Read_Reporting_Configuration_rsp: (
-        (t.List[AttributeReportingConfig],),
-        True,
+    GeneralCommand.Write_Attributes: ZCLCommandDef(
+        schema={"attributes": t.List[Attribute]}, is_reply=False
     ),
-    Command.Report_Attributes: ((t.List[Attribute],), False),
-    Command.Write_Attributes: ((t.List[Attribute],), False),
-    Command.Write_Attributes_No_Response: ((t.List[Attribute],), False),
-    Command.Write_Attributes_rsp: ((WriteAttributesResponse,), True),
-    # Command.Write_Attributes_Structured: ((, ), False),
-    # Command.Write_Attributes_Structured_rsp: ((, ), True),
-    Command.Write_Attributes_Undivided: ((t.List[Attribute],), False),
+    GeneralCommand.Write_Attributes_Undivided: ZCLCommandDef(
+        schema={"attributes": t.List[Attribute]}, is_reply=False
+    ),
+    GeneralCommand.Write_Attributes_rsp: ZCLCommandDef(
+        schema={"status_records": WriteAttributesResponse}, is_reply=True
+    ),
+    GeneralCommand.Write_Attributes_No_Response: ZCLCommandDef(
+        schema={"attributes": t.List[Attribute]}, is_reply=False
+    ),
+    GeneralCommand.Configure_Reporting: ZCLCommandDef(
+        schema={"config_records": t.List[AttributeReportingConfig]},
+        is_reply=False,
+    ),
+    GeneralCommand.Configure_Reporting_rsp: ZCLCommandDef(
+        schema={"status_records": ConfigureReportingResponse},
+        is_reply=True,
+    ),
+    GeneralCommand.Read_Reporting_Configuration: ZCLCommandDef(
+        schema={"attribute_records": t.List[ReadReportingConfigRecord]},
+        is_reply=False,
+    ),
+    GeneralCommand.Read_Reporting_Configuration_rsp: ZCLCommandDef(
+        schema={"attribute_configs": t.List[AttributeReportingConfig]},
+        is_reply=True,
+    ),
+    GeneralCommand.Report_Attributes: ZCLCommandDef(
+        schema={"attribute_reports": t.List[Attribute]}, is_reply=False
+    ),
+    GeneralCommand.Default_Response: ZCLCommandDef(
+        schema={"command_id": t.uint8_t, "status": Status}, is_reply=True
+    ),
+    GeneralCommand.Discover_Attributes: ZCLCommandDef(
+        schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
+        is_reply=False,
+    ),
+    GeneralCommand.Discover_Attributes_rsp: ZCLCommandDef(
+        schema={
+            "discovery_complete": t.Bool,
+            "attribute_info": t.List[DiscoverAttributesResponseRecord],
+        },
+        is_reply=True,
+    ),
+    # Command.Read_Attributes_Structured: ZCLCommandDef(schema=(, ), is_reply=False),
+    # Command.Write_Attributes_Structured: ZCLCommandDef(schema=(, ), is_reply=False),
+    # Command.Write_Attributes_Structured_rsp: ZCLCommandDef(schema=(, ), is_reply=True),
+    GeneralCommand.Discover_Commands_Received: ZCLCommandDef(
+        schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
+        is_reply=False,
+    ),
+    GeneralCommand.Discover_Commands_Received_rsp: ZCLCommandDef(
+        schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
+        is_reply=True,
+    ),
+    GeneralCommand.Discover_Commands_Generated: ZCLCommandDef(
+        schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
+        is_reply=False,
+    ),
+    GeneralCommand.Discover_Commands_Generated_rsp: ZCLCommandDef(
+        schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
+        is_reply=True,
+    ),
+    GeneralCommand.Discover_Attribute_Extended: ZCLCommandDef(
+        schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
+        is_reply=False,
+    ),
+    GeneralCommand.Discover_Attribute_Extended_rsp: ZCLCommandDef(
+        schema={
+            "discovery_complete": t.Bool,
+            "extended_attr_info": t.List[DiscoverAttributesExtendedResponseRecord],
+        },
+        is_reply=True,
+    ),
 }
 
-
-class FrameType(t.enum8):
-    """ZCL Frame Type."""
-
-    GLOBAL_COMMAND = 0b00
-    CLUSTER_COMMAND = 0b01
-    RESERVED_2 = 0b10
-    RESERVED_3 = 0b11
+for command_id, command_def in list(GENERAL_COMMANDS.items()):
+    GENERAL_COMMANDS[command_id] = command_def.replace(
+        id=command_id, name=command_id.name
+    ).with_compiled_schema()
 
 
-class FrameControl:
-    """The frame control field contains information defining the command type
-    and other control flags."""
-
-    def __init__(self, frame_control: int = 0x00) -> None:
-        self.value = frame_control
-
-    @property
-    def disable_default_response(self) -> bool:
-        """Return True if default response is disabled."""
-        return bool(self.value & 0b10000)
-
-    @disable_default_response.setter
-    def disable_default_response(self, value: bool) -> None:
-        """Disable the default response."""
-        if value:
-            self.value |= 0b10000
-            return
-        self.value &= 0b11101111
-
-    @property
-    def frame_type(self) -> FrameType:
-        """Return frame type."""
-        return FrameType(self.value & 0b00000011)
-
-    @frame_type.setter
-    def frame_type(self, value: FrameType) -> None:
-        """Sets frame type to Global general command."""
-        self.value &= 0b11111100
-        self.value |= value
-
-    @property
-    def is_cluster(self) -> bool:
-        """Return True if command is a local cluster specific command."""
-        return bool(self.frame_type == FrameType.CLUSTER_COMMAND)
-
-    @property
-    def is_general(self) -> bool:
-        """Return True if command is a global ZCL command."""
-        return bool(self.frame_type == FrameType.GLOBAL_COMMAND)
-
-    @property
-    def is_manufacturer_specific(self) -> bool:
-        """Return True if manufacturer code is present."""
-        return bool(self.value & 0b100)
-
-    @is_manufacturer_specific.setter
-    def is_manufacturer_specific(self, value: bool) -> None:
-        """Sets manufacturer specific code."""
-        if value:
-            self.value |= 0b100
-            return
-        self.value &= 0b11111011
-
-    @property
-    def is_reply(self) -> bool:
-        """Return True if is a reply (server cluster -> client cluster."""
-        return bool(self.value & 0b1000)
-
-    # in ZCL specs the above is the "direction" field
-    direction = is_reply
-
-    @is_reply.setter
-    def is_reply(self, value: bool) -> None:
-        """Sets the direction."""
-        if value:
-            self.value |= 0b1000
-            return
-        self.value &= 0b11110111
-
-    def __repr__(self) -> str:
-        """Representation."""
-        return (
-            "<{} frame_type={} manufacturer_specific={} is_reply={} "
-            "disable_default_response={}>"
-        ).format(
-            self.__class__.__name__,
-            self.frame_type.name,
-            self.is_manufacturer_specific,
-            self.is_reply,
-            self.disable_default_response,
+def __getattr__(name: str) -> Any:
+    if name == "Command":
+        warnings.warn(
+            f"`{__name__}.Command` has been renamed to `{__name__}.GeneralCommand",
+            DeprecationWarning,
         )
+        return GeneralCommand
 
-    def serialize(self) -> bytes:
-        return t.uint8_t(self.value).serialize()
-
-    @classmethod
-    def cluster(cls, is_reply: bool = False):
-        """New Local Cluster specific command frame control."""
-        r = cls(FrameType.CLUSTER_COMMAND)
-        r.is_reply = is_reply
-        if is_reply:
-            r.disable_default_response = True
-        return r
-
-    @classmethod
-    def deserialize(cls, data):
-        frc, data = t.uint8_t.deserialize(data)
-        return cls(frc), data
-
-    @classmethod
-    def general(cls, is_reply: bool = False):
-        """New General ZCL command frame control."""
-        r = cls(FrameType.GLOBAL_COMMAND)
-        r.is_reply = is_reply
-        if is_reply:
-            r.disable_default_response = True
-        return r
-
-
-class ZCLHeader:
-    """ZCL Header."""
-
-    def __init__(
-        self,
-        frame_control: FrameControl,
-        tsn: Union[int, t.uint8_t] = 0,
-        command_id: Union[Command, int, t.uint8_t] = 0,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
-    ) -> None:
-        """Initialize ZCL Frame instance."""
-        self._frc = frame_control
-        if frame_control.is_general:
-            self._cmd_id = Command(command_id)
-        else:
-            self._cmd_id = t.uint8_t(command_id)
-        self._manufacturer = manufacturer
-        if manufacturer is not None:
-            self.frame_control.is_manufacturer_specific = True
-        self._tsn = t.uint8_t(tsn)
-
-    @property
-    def frame_control(self) -> FrameControl:
-        """Return frame control."""
-        return self._frc
-
-    @property
-    def command_id(self) -> Command:
-        """Return command identifier."""
-        return self._cmd_id
-
-    @command_id.setter
-    def command_id(self, value: Command) -> None:
-        """Setter for command identifier."""
-        if self.frame_control.is_general:
-            self._cmd_id = Command(value)
-            return
-        self._cmd_id = t.uint8_t(value)
-
-    @property
-    def is_reply(self) -> bool:
-        """Return direction of Frame Control."""
-        return self.frame_control.is_reply
-
-    @property
-    def manufacturer(self) -> Optional[t.uint16_t]:
-        """Return manufacturer id."""
-        if self._manufacturer is None:
-            return None
-        return t.uint16_t(self._manufacturer)
-
-    @manufacturer.setter
-    def manufacturer(self, value: t.uint16_t) -> None:
-        self.frame_control.is_manufacturer_specific = bool(value)
-        self._manufacturer = value
-
-    @property
-    def tsn(self) -> t.uint8_t:
-        """Return transaction seq number."""
-        return self._tsn
-
-    @tsn.setter
-    def tsn(self, value: t.uint8_t) -> None:
-        """Setter for tsn."""
-        self._tsn = t.uint8_t(value)
-
-    @classmethod
-    def deserialize(cls, data):
-        """Deserialize from bytes."""
-        frc, data = FrameControl.deserialize(data)
-        r = cls(frc)
-        if frc.is_manufacturer_specific:
-            r.manufacturer, data = t.uint16_t.deserialize(data)
-        r.tsn, data = t.uint8_t.deserialize(data)
-        r.command_id, data = Command.deserialize(data)
-        return r, data
-
-    def serialize(self):
-        """Serialize to bytes."""
-        d = self.frame_control.serialize()
-        if self.frame_control.is_manufacturer_specific:
-            d += self.manufacturer.serialize()
-        d += self.tsn.serialize()
-        d += self.command_id.serialize()
-        return d
-
-    @classmethod
-    def general(
-        cls,
-        tsn: Union[int, t.uint8_t],
-        command_id: Union[int, t.uint8_t],
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
-        is_reply: bool = False,
-    ) -> "ZCLHeader":
-        r = cls(FrameControl.general(is_reply), tsn, command_id, manufacturer)
-        if manufacturer is not None:
-            r.frame_control.is_manufacturer_specific = True
-        return r
-
-    @classmethod
-    def cluster(
-        cls,
-        tsn: Union[int, t.uint8_t],
-        command_id: Union[int, t.uint8_t],
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
-        is_reply: bool = False,
-    ) -> "ZCLHeader":
-        r = cls(FrameControl.cluster(is_reply), tsn, command_id, manufacturer)
-        if manufacturer is not None:
-            r.frame_control.is_manufacturer_specific = True
-        return r
-
-    def __repr__(self) -> str:
-        """Representation."""
-        return "<{} frame_control={} manufacturer={} tsn={} command_id={}>".format(
-            self.__class__.__name__,
-            self.frame_control,
-            self.manufacturer,
-            self.tsn,
-            str(self.command_id),
-        )
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

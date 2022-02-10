@@ -1,7 +1,7 @@
 """Measurement & Sensing Functional Domain"""
 
 import zigpy.types as t
-from zigpy.zcl import Cluster
+from zigpy.zcl import Cluster, foundation
 
 
 class IlluminanceMeasurement(Cluster):
@@ -15,6 +15,8 @@ class IlluminanceMeasurement(Cluster):
         0x0002: ("max_measured_value", t.uint16_t),
         0x0003: ("tolerance", t.uint16_t),
         0x0004: ("light_sensor_type", t.enum8),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -30,6 +32,8 @@ class IlluminanceLevelSensing(Cluster):
         0x0001: ("light_sensor_type", t.enum8),
         # Illuminance Level Sensing Settings
         0x0010: ("illuminance_target_level", t.uint16_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -47,6 +51,8 @@ class TemperatureMeasurement(Cluster):
         0x0003: ("tolerance", t.uint16_t),
         # 0x0010: ('min_percent_change', UNKNOWN),
         # 0x0011: ('min_absolute_change', UNKNOWN),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -62,6 +68,8 @@ class PressureMeasurement(Cluster):
         0x0001: ("min_measured_value", t.int16s),
         0x0002: ("max_measured_value", t.int16s),
         0x0003: ("tolerance", t.uint16_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -77,6 +85,8 @@ class FlowMeasurement(Cluster):
         0x0001: ("min_measured_value", t.uint16_t),
         0x0002: ("max_measured_value", t.uint16_t),
         0x0003: ("tolerance", t.uint16_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -92,6 +102,8 @@ class RelativeHumidity(Cluster):
         0x0001: ("min_measured_value", t.uint16_t),
         0x0002: ("max_measured_value", t.uint16_t),
         0x0003: ("tolerance", t.uint16_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -113,6 +125,8 @@ class OccupancySensing(Cluster):
         0x0020: ("ultrasonic_o_to_u_delay", t.uint16_t),
         0x0021: ("ultrasonic_u_to_o_delay", t.uint16_t),
         0x0022: ("ultrasonic_u_to_o_threshold", t.uint8_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -201,6 +215,8 @@ class _ConcentrationMixin:
         0x0001: ("min_measured_value", t.Single),
         0x0002: ("max_measured_value", t.Single),
         0x0003: ("tolerance", t.Single),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
 
     server_commands = {}

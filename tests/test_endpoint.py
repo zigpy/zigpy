@@ -57,6 +57,10 @@ async def test_initialize_zll(ep):
     return await _test_initialize(ep, 49246)
 
 
+async def test_initialize_other(ep):
+    return await _test_initialize(ep, 0x1234)
+
+
 async def test_initialize_fail(ep):
     async def mockrequest(nwk, epid, tries=None, delay=None):
         return [1, None, None]
@@ -332,7 +336,7 @@ def _group_add_mock(ep, status=ZCLStatus.SUCCESS, no_groups_cluster=False):
 async def test_add_to_group(ep, status):
     ep = _group_add_mock(ep, status=status)
 
-    grp_id, grp_name = 0x1234, "Group name 0x1234**"
+    grp_id, grp_name = 0x1234, "Group 0x1234**"
     res = await ep.add_to_group(grp_id, grp_name)
     assert res == status
     assert ep.request.call_count == 1
@@ -346,7 +350,7 @@ async def test_add_to_group(ep, status):
 async def test_add_to_group_no_groups(ep):
     ep = _group_add_mock(ep, no_groups_cluster=True)
 
-    grp_id, grp_name = 0x1234, "Group name 0x1234**"
+    grp_id, grp_name = 0x1234, "Group 0x1234**"
     res = await ep.add_to_group(grp_id, grp_name)
     assert res != ZCLStatus.SUCCESS
     assert ep.request.call_count == 0
@@ -362,7 +366,7 @@ async def test_add_to_group_no_groups(ep):
 async def test_add_to_group_fail(ep, status):
     ep = _group_add_mock(ep, status=status)
 
-    grp_id, grp_name = 0x1234, "Group name 0x1234**"
+    grp_id, grp_name = 0x1234, "Group 0x1234**"
     res = await ep.add_to_group(grp_id, grp_name)
     assert res != ZCLStatus.SUCCESS
     assert ep.request.call_count == 1

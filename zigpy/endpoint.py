@@ -93,12 +93,14 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         (a server cluster supported by the device)
         """
-        if cluster_id in self.in_clusters and cluster is None:
-            return self.in_clusters[cluster_id]
-
         if cluster is None:
+            if cluster_id in self.in_clusters:
+                return self.in_clusters[cluster_id]
+
             cluster = zigpy.zcl.Cluster.from_id(self, cluster_id, is_server=True)
+
         self.in_clusters[cluster_id] = cluster
+
         if hasattr(cluster, "ep_attribute"):
             self._cluster_attr[cluster.ep_attribute] = cluster
 
@@ -117,11 +119,12 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         (a client cluster supported by the device)
         """
-        if cluster_id in self.out_clusters and cluster is None:
-            return self.out_clusters[cluster_id]
-
         if cluster is None:
+            if cluster_id in self.out_clusters:
+                return self.out_clusters[cluster_id]
+
             cluster = zigpy.zcl.Cluster.from_id(self, cluster_id, is_server=False)
+
         self.out_clusters[cluster_id] = cluster
         return cluster
 
