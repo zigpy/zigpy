@@ -1,12 +1,61 @@
 """Lighting Functional Domain"""
 
 import zigpy.types as t
-from zigpy.zcl import Cluster
+from zigpy.zcl import Cluster, foundation
+from zigpy.zcl.foundation import ZCLCommandDef
 
 
 class Color(Cluster):
     """Attributes and commands for controlling the color
     properties of a color-capable light"""
+
+    class ColorMode(t.enum8):
+        Hue_and_saturation = 0x00
+        X_and_Y = 0x01
+        Color_temperature = 0x02
+
+    class EnhancedColorMode(t.enum8):
+        Hue_and_saturation = 0x00
+        X_and_Y = 0x01
+        Color_temperature = 0x02
+        Enhanced_hue_and_saturation = 0x03
+
+    class ColorCapabilities(t.bitmap16):
+        Hue_and_saturation = 0b00000000_00000001
+        Enhanced_hue = 0b00000000_00000010
+        Color_loop = 0b00000000_00000100
+        XY_attributes = 0b00000000_00001000
+        Color_temperature = 0b00000000_00010000
+
+    class Direction(t.enum8):
+        Shortest_distance = 0x00
+        Longest_distance = 0x01
+        Up = 0x02
+        Down = 0x03
+
+    class MoveMode(t.enum8):
+        Stop = 0x00
+        Up = 0x01
+        Down = 0x03
+
+    class StepMode(t.enum8):
+        Up = 0x01
+        Down = 0x03
+
+    class ColorLoopUpdateFlags(t.bitmap8):
+        Action = 0b0000_0001
+        Direction = 0b0000_0010
+        Time = 0b0000_0100
+        Start_Hue = 0b0000_1000
+
+    class ColorLoopAction(t.enum8):
+        Deactivate = 0x00
+        Activate_from_color_loop_hue = 0x01
+        Activate_from_current_hue = 0x02
+
+    class ColorLoopDirection(t.enum8):
+        Decrement = 0x00
+        Increment = 0x01
 
     cluster_id = 0x0300
     name = "Color Control"
@@ -22,6 +71,7 @@ class Color(Cluster):
         0x0006: ("compensation_text", t.CharacterString),
         0x0007: ("color_temperature", t.uint16_t),
         0x0008: ("color_mode", t.enum8),
+        0x000F: ("options", t.bitmap8),
         # Defined Primaries Information
         0x0010: ("num_primaries", t.uint8_t),
         0x0011: ("primary1_x", t.uint16_t),
@@ -57,79 +107,224 @@ class Color(Cluster):
         0x003C: ("color_point_b_intensity", t.uint8_t),
         # ...
         0x4000: ("enhanced_current_hue", t.uint16_t),
-        0x4001: ("enhanced_color_mode", t.enum8),
+        0x4001: ("enhanced_color_mode", EnhancedColorMode),
         0x4002: ("color_loop_active", t.uint8_t),
         0x4003: ("color_loop_direction", t.uint8_t),
         0x4004: ("color_loop_time", t.uint16_t),
         0x4005: ("color_loop_start_enhanced_hue", t.uint16_t),
         0x4006: ("color_loop_stored_enhanced_hue", t.uint16_t),
-        0x400A: ("color_capabilities", t.bitmap16),
+        0x400A: ("color_capabilities", ColorCapabilities),
         0x400B: ("color_temp_physical_min", t.uint16_t),
         0x400C: ("color_temp_physical_max", t.uint16_t),
+        0x400D: ("couple_color_temp_to_level_min", t.uint16_t),
         0x4010: ("start_up_color_temperature", t.uint16_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x0000: (
+        0x00: ZCLCommandDef(
             "move_to_hue",
-            (t.uint8_t, t.uint8_t, t.uint16_t),
+            {
+                "hue": t.uint8_t,
+                "direction": Direction,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # hue, direction, duration
-        0x0001: ("move_hue", (t.uint8_t, t.uint8_t), False),  # move mode, rate
-        0x0002: (
+        ),
+        0x01: ZCLCommandDef(
+            "move_hue",
+            {
+                "move_mode": MoveMode,
+                "rate": t.uint8_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            False,
+        ),
+        0x02: ZCLCommandDef(
             "step_hue",
-            (t.uint8_t, t.uint8_t, t.uint8_t),
+            {
+                "setp_mode": StepMode,
+                "step_size": t.uint8_t,
+                "transition_time": t.uint8_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # mode, size, duration
-        0x0003: (
+        ),
+        0x03: ZCLCommandDef(
             "move_to_saturation",
-            (t.uint8_t, t.uint16_t),
+            {
+                "saturation": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # saturation, duration
-        0x0004: ("move_saturation", (t.uint8_t, t.uint8_t), False),  # mode, rate
-        0x0005: (
+        ),
+        0x04: ZCLCommandDef(
+            "move_saturation",
+            {
+                "move_mode": MoveMode,
+                "rate": t.uint8_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            False,
+        ),
+        0x05: ZCLCommandDef(
             "step_saturation",
-            (t.uint8_t, t.uint8_t, t.uint8_t),
+            {
+                "step_mode": StepMode,
+                "step_size": t.uint8_t,
+                "transition_time": t.uint8_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # mode, size, duration
-        0x0006: (
+        ),
+        0x06: ZCLCommandDef(
             "move_to_hue_and_saturation",
-            (t.uint8_t, t.uint8_t, t.uint16_t),
+            {
+                "hue": t.uint8_t,
+                "saturation": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # hue, saturation, duration
-        0x0007: (
+        ),
+        0x07: ZCLCommandDef(
             "move_to_color",
-            (t.uint16_t, t.uint16_t, t.uint16_t),
+            {
+                "color_x": t.uint16_t,
+                "color_y": t.uint16_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # x, y, duration
-        0x0008: ("move_color", (t.uint16_t, t.uint16_t), False),  # ratex, ratey
-        0x0009: (
+        ),
+        0x08: ZCLCommandDef(
+            "move_color",
+            {
+                "rate_x": t.uint16_t,
+                "rate_y": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            False,
+        ),
+        0x09: ZCLCommandDef(
             "step_color",
-            (t.uint16_t, t.uint16_t, t.uint16_t),
+            {
+                "step_x": t.uint16_t,
+                "step_y": t.uint16_t,
+                "duration": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # stepx, stepy, duration
-        0x000A: (
+        ),
+        0x0A: ZCLCommandDef(
             "move_to_color_temp",
-            (t.uint16_t, t.uint16_t),
+            {
+                "color_temp_mireds": t.uint16_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
-        ),  # temperature, duration
-        0x0040: ("enhanced_move_to_hue", (), False),
-        0x0041: ("enhanced_move_hue", (), False),
-        0x0042: ("enhanced_step_hue", (), False),
-        0x0043: ("enhanced_move_to_hue_and_saturation", (), False),
-        0x0044: (
+        ),
+        0x40: ZCLCommandDef(
+            "enhanced_move_to_hue",
+            {
+                "enhanced_hue": t.uint16_t,
+                "direction": Direction,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            False,
+        ),
+        0x41: ZCLCommandDef(
+            "enhanced_move_hue",
+            {
+                "move_mode": MoveMode,
+                "rate": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            False,
+        ),
+        0x42: ZCLCommandDef(
+            "enhanced_step_hue",
+            {
+                "step_mode": StepMode,
+                "step_size": t.uint16_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            False,
+        ),
+        0x43: ZCLCommandDef(
+            "enhanced_move_to_hue_and_saturation",
+            {
+                "enhanced_hue": t.uint16_t,
+                "saturation": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            False,
+        ),
+        0x44: ZCLCommandDef(
             "color_loop_set",
-            (t.bitmap8, t.enum8, t.enum8, t.uint16_t, t.uint16_t),
+            {
+                "update_flags": ColorLoopUpdateFlags,
+                "action": ColorLoopAction,
+                "direction": ColorLoopDirection,
+                "time": t.uint16_t,
+                "start_hue": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
         ),
-        0x0047: ("stop_move_step", (), False),
-        0x004B: (
+        0x47: ZCLCommandDef(
+            "stop_move_step",
+            {
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            False,
+        ),
+        0x4B: ZCLCommandDef(
             "move_color_temp",
-            (t.bitmap8, t.uint16_t, t.uint16_t, t.uint16_t),
+            {
+                "move_mode": MoveMode,
+                "rate": t.uint16_t,
+                "color_temp_min_mireds": t.uint16_t,
+                "color_temp_max_mireds": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
         ),
-        0x004C: (
+        0x4C: ZCLCommandDef(
             "step_color_temp",
-            (t.bitmap8, t.uint16_t, t.uint16_t, t.uint16_t, t.uint16_t),
+            {
+                "step_mode": StepMode,
+                "step_size": t.uint16_t,
+                "transition_time": t.uint16_t,
+                "color_temp_min_mireds": t.uint16_t,
+                "color_temp_max_mireds": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
             False,
         ),
     }
@@ -163,6 +358,8 @@ class Ballast(Cluster):
         0x0033: ("lamp_burn_hours", t.uint24_t),
         0x0034: ("lamp_alarm_mode", t.bitmap8),
         0x0035: ("lamp_burn_hours_trip_point", t.uint24_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}

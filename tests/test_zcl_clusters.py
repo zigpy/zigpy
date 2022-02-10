@@ -24,26 +24,22 @@ def test_registry():
 
 def test_attributes():
     for cluster_id, cluster in zcl.Cluster._registry.items():
-        for attrid, attrspec in cluster.attributes.items():
+        for attrid, attr in cluster.attributes.items():
             assert 0 <= attrid <= 0xFFFF
-            assert isinstance(attrspec, tuple)
-            assert isinstance(attrspec[0], str)
-            assert hasattr(attrspec[1], "serialize")
-            assert hasattr(attrspec[1], "deserialize")
+            assert isinstance(attr, zcl.foundation.ZCLAttributeDef)
+            assert attr.id == attrid
+            assert attr.name
+            assert attr.type
 
 
 def _test_commands(cmdattr):
     for cluster_id, cluster in zcl.Cluster._registry.items():
         for cmdid, cmdspec in getattr(cluster, cmdattr).items():
             assert 0 <= cmdid <= 0xFF
-            assert isinstance(cmdspec, tuple), "Cluster %s" % (cluster_id,)
-            assert len(cmdspec) == 3
-            assert isinstance(cmdspec[0], str)
-            assert isinstance(cmdspec[1], tuple)
-            assert isinstance(cmdspec[2], bool)
-            for t in cmdspec[1]:
-                assert hasattr(t, "serialize")
-                assert hasattr(t, "deserialize")
+
+            assert cmdspec.id == cmdid
+            assert isinstance(cmdspec, zcl.foundation.ZCLCommandDef)
+            assert issubclass(cmdspec.schema, types.Struct)
 
 
 def test_server_commands():
@@ -162,6 +158,13 @@ async def test_ota_handle_cluster_req_wrapper(ota_cluster):
     ota_cluster._handle_upgrade_end.reset_mock()
 
     hdr.command_id = 0x78
+    await ota_cluster._handle_cluster_request(hdr, [sentinel.just_args])
+    assert ota_cluster._handle_query_next_image.call_count == 0
+    assert ota_cluster._handle_image_block.call_count == 0
+    assert ota_cluster._handle_upgrade_end.call_count == 0
+
+    # This command isn't currently handled
+    hdr.command_id = 0x08
     await ota_cluster._handle_cluster_request(hdr, [sentinel.just_args])
     assert ota_cluster._handle_query_next_image.call_count == 0
     assert ota_cluster._handle_image_block.call_count == 0

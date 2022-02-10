@@ -1,17 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import (
-    Any,
-    Callable,
-    Coroutine,
-    Dict,
-    Iterable,
-    List,
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import Any, Callable, Coroutine, Iterable, Optional, Union
 
 from zigpy.const import (  # noqa: F401
     SIG_ENDPOINTS,
@@ -66,16 +56,13 @@ def register_uninitialized_device_message_handler(handler: Callable) -> None:
         _uninitialized_device_message_handlers.append(handler)
 
 
-class Registry(type):
-    def __init__(cls, name, bases, nmspc):  # noqa: N805
-        super(Registry, cls).__init__(name, bases, nmspc)
-        if getattr(cls, "signature", None) is not None:
-            _DEVICE_REGISTRY.add_to_registry(cls)
-
-
-class CustomDevice(zigpy.device.Device, metaclass=Registry):
+class CustomDevice(zigpy.device.Device):
     replacement = {}
     signature = None
+
+    def __init_subclass__(cls):
+        if getattr(cls, "signature", None) is not None:
+            _DEVICE_REGISTRY.add_to_registry(cls)
 
     def __init__(self, application, ieee, nwk, replaces):
         super().__init__(application, ieee, nwk)
@@ -150,21 +137,28 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
 
 class CustomCluster(zigpy.zcl.Cluster):
     _skip_registry = True
-    _CONSTANT_ATTRIBUTES: Optional[Dict[int, Any]] = None
-    manufacturer_attributes: Dict[int, Tuple[str, Callable]] = {}
-    manufacturer_client_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
-    manufacturer_server_commands: Dict[int, Tuple[str, Tuple, bool]] = {}
+    _CONSTANT_ATTRIBUTES: Optional[dict[int, Any]] = None
+
+    manufacturer_id_override: t.uint16_t | None = None
 
     @property
     def _is_manuf_specific(self) -> bool:
         """Return True if cluster_id is within manufacturer specific range."""
         return 0xFC00 <= self.cluster_id <= 0xFFFF
 
-    def _has_manuf_attr(self, attrs_to_process: Union[Iterable, List, Dict]) -> bool:
+    def _has_manuf_attr(self, attrs_to_process: Union[Iterable, list, dict]) -> bool:
         """Return True if contains a manufacturer specific attribute."""
-        return self._is_manuf_specific or (
-            set.intersection(set(self.manufacturer_attributes), attrs_to_process)
-        )
+        if self._is_manuf_specific:
+            return True
+
+        for attr_id in attrs_to_process:
+            if (
+                attr_id in self.attributes
+                and self.attributes[attr_id].is_manufacturer_specific
+            ):
+                return True
+
+        return False
 
     def command(
         self,
@@ -175,15 +169,17 @@ class CustomCluster(zigpy.zcl.Cluster):
         tries: int = 1,
         tsn: Optional[Union[int, t.uint8_t]] = None,
     ) -> Coroutine:
-        schema = self.server_commands[command_id][1]
+        command = self.server_commands[command_id]
+
         if manufacturer is None and (
-            command_id in self.manufacturer_server_commands or self._is_manuf_specific
+            self._is_manuf_specific or command.is_manufacturer_specific
         ):
             manufacturer = self.endpoint.manufacturer_id
+
         return self.request(
             False,
-            command_id,
-            schema,
+            command.id,
+            command.schema,
             *args,
             manufacturer=manufacturer,
             expect_reply=expect_reply,
@@ -198,13 +194,15 @@ class CustomCluster(zigpy.zcl.Cluster):
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         tsn: Optional[Union[int, t.uint8_t]] = None,
     ) -> Coroutine:
-        schema = self.client_commands[command_id][1]
+        command = self.client_commands[command_id]
+
         if manufacturer is None and (
-            command_id in self.manufacturer_client_commands or self._is_manuf_specific
+            self._is_manuf_specific or command.is_manufacturer_specific
         ):
             manufacturer = self.endpoint.manufacturer_id
+
         return self.reply(
-            False, command_id, schema, *args, manufacturer=manufacturer, tsn=tsn
+            False, command.id, command.schema, *args, manufacturer=manufacturer, tsn=tsn
         )
 
     async def read_attributes_raw(self, attributes, manufacturer=None):
@@ -247,7 +245,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         return [succeeded]
 
     def _configure_reporting(
-        self, args: List[foundation.Attribute], manufacturer: Optional[int] = None
+        self, args: list[foundation.Attribute], manufacturer: Optional[int] = None
     ):
         """Configure reporting ZCL foundation command."""
         if manufacturer is None and self._has_manuf_attr([a.attrid for a in args]):
@@ -255,7 +253,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         return super()._configure_reporting(args, manufacturer=manufacturer)
 
     def _read_attributes(
-        self, args: List[t.uint16_t], manufacturer: Optional[int] = None
+        self, args: list[t.uint16_t], manufacturer: Optional[int] = None
     ):
         """Read attributes ZCL foundation command."""
         if manufacturer is None and self._has_manuf_attr(args):
@@ -263,7 +261,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         return super()._read_attributes(args, manufacturer=manufacturer)
 
     def _write_attributes(
-        self, args: List[foundation.Attribute], manufacturer: Optional[int] = None
+        self, args: list[foundation.Attribute], manufacturer: Optional[int] = None
     ):
         """Write attribute ZCL foundation command."""
         if manufacturer is None and self._has_manuf_attr([a.attrid for a in args]):
@@ -271,7 +269,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         return super()._write_attributes(args, manufacturer=manufacturer)
 
     def _write_attributes_undivided(
-        self, args: List[foundation.Attribute], manufacturer: Optional[int] = None
+        self, args: list[foundation.Attribute], manufacturer: Optional[int] = None
     ):
         """Write attribute undivided ZCL foundation command."""
         if manufacturer is None and self._has_manuf_attr([a.attrid for a in args]):

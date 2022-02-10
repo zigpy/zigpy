@@ -1,4 +1,5 @@
-# flake8: noqa
+import inspect
+
 from . import (
     closures,
     general,
@@ -12,3 +13,37 @@ from . import (
     security,
     smartenergy,
 )
+from .. import Cluster
+
+CLUSTERS_BY_ID = {}
+CLUSTERS_BY_NAME = {}
+
+for cls in (
+    closures,
+    general,
+    homeautomation,
+    hvac,
+    lighting,
+    lightlink,
+    manufacturer_specific,
+    measurement,
+    protocol,
+    security,
+    smartenergy,
+):
+    for name in dir(cls):
+        obj = getattr(cls, name)
+
+        # Object must be a concrete Cluster subclass
+        if (
+            not inspect.isclass(obj)
+            or not issubclass(obj, Cluster)
+            or obj.cluster_id is None
+        ):
+            continue
+
+        assert CLUSTERS_BY_ID.get(obj.cluster_id, obj) is obj
+        assert CLUSTERS_BY_NAME.get(obj.ep_attribute, obj) is obj
+
+        CLUSTERS_BY_ID[obj.cluster_id] = obj
+        CLUSTERS_BY_NAME[obj.ep_attribute] = obj

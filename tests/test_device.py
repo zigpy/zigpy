@@ -335,3 +335,10 @@ def test_device_manufacture_id_override(dev):
 
     dev.node_desc = None
     assert dev.manufacturer_id == 2345
+
+
+def test_device_name(dev):
+    """Test device name property."""
+
+    assert dev.nwk == 0xFFFF
+    assert dev.name == "0xFFFF"

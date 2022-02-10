@@ -2,6 +2,7 @@
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
+from zigpy.zcl.foundation import ZCLCommandDef
 
 
 class Shade(Cluster):
@@ -260,168 +261,265 @@ class DoorLock(Cluster):
         0x0047: ("rfid_programming_event_mask", RFIDProgrammingEventMask),
     }
     server_commands = {
-        0x0000: ("lock_door", (t.Optional(t.CharacterString),), False),
-        0x0001: ("unlock_door", (t.Optional(t.CharacterString),), False),
-        0x0002: ("toggle_door", (t.Optional(t.CharacterString),), False),
-        0x0003: (
+        0x00: ZCLCommandDef("lock_door", {"pin_code?": t.CharacterString}, False),
+        0x01: ZCLCommandDef("unlock_door", {"pin_code?": t.CharacterString}, False),
+        0x02: ZCLCommandDef("toggle_door", {"pin_code?": t.CharacterString}, False),
+        0x03: ZCLCommandDef(
             "unlock_with_timeout",
-            (t.uint16_t, t.Optional(t.CharacterString)),
+            {"timeout": t.uint16_t, "pin_code?": t.CharacterString},
             False,
         ),
-        0x0004: ("get_log_record", (t.uint16_t,), False),
-        0x0005: (
+        0x04: ZCLCommandDef("get_log_record", {"log_index": t.uint16_t}, False),
+        0x05: ZCLCommandDef(
             "set_pin_code",
-            (t.uint16_t, UserStatus, UserType, t.CharacterString),
+            {
+                "user_id": t.uint16_t,
+                "user_status": UserStatus,
+                "user_type": UserType,
+                "pin_code": t.CharacterString,
+            },
             False,
         ),
-        0x0006: ("get_pin_code", (t.uint16_t,), False),
-        0x0007: ("clear_pin_code", (t.uint16_t,), False),
-        0x0008: ("clear_all_pin_codes", (), False),
-        0x0009: ("set_user_status", (t.uint16_t, UserStatus), False),
-        0x000A: ("get_user_status", (t.uint16_t,), False),
-        0x000B: (
+        0x06: ZCLCommandDef("get_pin_code", {"user_id": t.uint16_t}, False),
+        0x07: ZCLCommandDef("clear_pin_code", {"user_id": t.uint16_t}, False),
+        0x08: ZCLCommandDef("clear_all_pin_codes", {}, False),
+        0x09: ZCLCommandDef(
+            "set_user_status", {"user_id": t.uint16_t, "user_status": UserStatus}, False
+        ),
+        0x0A: ZCLCommandDef("get_user_status", {"user_id": t.uint16_t}, False),
+        0x0B: ZCLCommandDef(
             "set_week_day_schedule",
-            (
-                t.uint8_t,
-                t.uint16_t,
-                DayMask,
-                t.uint8_t,
-                t.uint8_t,
-                t.uint8_t,
-                t.uint8_t,
-            ),
+            {
+                "schedule_id": t.uint8_t,
+                "user_id": t.uint16_t,
+                "days_mask": DayMask,
+                "start_hour": t.uint8_t,
+                "start_minute": t.uint8_t,
+                "end_hour": t.uint8_t,
+                "end_minute": t.uint8_t,
+            },
             False,
         ),
-        0x000C: ("get_week_day_schedule", (t.uint8_t, t.uint16_t), False),
-        0x000D: ("clear_week_day_schedule", (t.uint8_t, t.uint16_t), False),
-        0x000E: (
+        0x0C: ZCLCommandDef(
+            "get_week_day_schedule",
+            {"schedule_id": t.uint8_t, "user_id": t.uint16_t},
+            False,
+        ),
+        0x0D: ZCLCommandDef(
+            "clear_week_day_schedule",
+            {"schedule_id": t.uint8_t, "user_id": t.uint16_t},
+            False,
+        ),
+        0x0E: ZCLCommandDef(
             "set_year_day_schedule",
-            (t.uint8_t, t.uint16_t, t.LocalTime, t.LocalTime),
+            {
+                "schedule_id": t.uint8_t,
+                "user_id": t.uint16_t,
+                "local_start_time": t.LocalTime,
+                "local_end_time": t.LocalTime,
+            },
             False,
         ),
-        0x000F: ("get_year_day_schedule", (t.uint8_t, t.uint16_t), False),
-        0x0010: ("clear_year_day_schedule", (t.uint8_t, t.uint16_t), False),
-        0x0011: (
+        0x0F: ZCLCommandDef(
+            "get_year_day_schedule",
+            {"schedule_id": t.uint8_t, "user_id": t.uint16_t},
+            False,
+        ),
+        0x10: ZCLCommandDef(
+            "clear_year_day_schedule",
+            {"schedule_id": t.uint8_t, "user_id": t.uint16_t},
+            False,
+        ),
+        0x11: ZCLCommandDef(
             "set_holiday_schedule",
-            (t.uint8_t, t.LocalTime, t.LocalTime, OperatingMode),
+            {
+                "holiday_schedule_id": t.uint8_t,
+                "loca_start_time": t.LocalTime,
+                "local_end_time": t.LocalTime,
+                "operating_mode_during_holiday": OperatingMode,
+            },
             False,
         ),
-        0x0012: ("get_holiday_schedule", (t.uint8_t,), False),
-        0x0013: ("clear_holiday_schedule", (t.uint8_t,), False),
-        0x0014: ("set_user_type", (t.uint16_t, UserType), False),
-        0x0015: ("get_user_type", (t.uint16_t,), False),
-        0x0016: (
+        0x12: ZCLCommandDef(
+            "get_holiday_schedule", {"holiday_schedule_id": t.uint8_t}, False
+        ),
+        0x13: ZCLCommandDef(
+            "clear_holiday_schedule", {"holiday_schedule_id": t.uint8_t}, False
+        ),
+        0x14: ZCLCommandDef(
+            "set_user_type", {"user_id": t.uint16_t, "user_type": UserType}, False
+        ),
+        0x15: ZCLCommandDef("get_user_type", {"user_id": t.uint16_t}, False),
+        0x16: ZCLCommandDef(
             "set_rfid_code",
-            (t.uint16_t, UserStatus, UserType, t.CharacterString),
+            {
+                "user_id": t.uint16_t,
+                "user_status": UserStatus,
+                "user_type": UserType,
+                "rfid_code": t.CharacterString,
+            },
             False,
         ),
-        0x0017: ("get_rfid_code", (t.uint16_t,), False),
-        0x0018: ("clear_rfid_code", (t.uint16_t,), False),
-        0x0019: ("clear_all_rfid_codes", (), False),
+        0x17: ZCLCommandDef("get_rfid_code", {"user_id": t.uint16_t}, False),
+        0x18: ZCLCommandDef("clear_rfid_code", {"user_id": t.uint16_t}, False),
+        0x19: ZCLCommandDef("clear_all_rfid_codes", {}, False),
     }
     client_commands = {
-        0x0000: ("lock_door_response", (foundation.Status,), True),
-        0x0001: ("unlock_door_response", (foundation.Status,), True),
-        0x0002: ("toggle_door_response", (foundation.Status,), True),
-        0x0003: ("unlock_with_timeout_response", (foundation.Status,), True),
-        0x0004: (
+        0x00: ZCLCommandDef("lock_door_response", {"status": foundation.Status}, True),
+        0x01: ZCLCommandDef(
+            "unlock_door_response", {"status": foundation.Status}, True
+        ),
+        0x02: ZCLCommandDef(
+            "toggle_door_response", {"status": foundation.Status}, True
+        ),
+        0x03: ZCLCommandDef(
+            "unlock_with_timeout_response", {"status": foundation.Status}, True
+        ),
+        0x04: ZCLCommandDef(
             "get_log_record_response",
-            (
-                t.uint16_t,
-                t.uint32_t,
-                EventType,
-                OperationEventSource,
-                t.uint8_t,
-                t.uint16_t,
-                t.Optional(t.CharacterString),
-            ),
+            {
+                "log_entry_id": t.uint16_t,
+                "timestamp": t.uint32_t,
+                "event_type": EventType,
+                "source": OperationEventSource,
+                "event_id_or_alarm_code": t.uint8_t,
+                "user_id": t.uint16_t,
+                "pin?": t.CharacterString,
+            },
             True,
         ),
-        0x0005: ("set_pin_code_response", (foundation.Status,), True),
-        0x0006: (
+        0x05: ZCLCommandDef(
+            "set_pin_code_response", {"status": foundation.Status}, True
+        ),
+        0x06: ZCLCommandDef(
             "get_pin_code_response",
-            (t.uint16_t, UserStatus, UserType, t.CharacterString),
+            {
+                "user_id": t.uint16_t,
+                "user_status": UserStatus,
+                "user_type": UserType,
+                "code": t.CharacterString,
+            },
             True,
         ),
-        0x0007: ("clear_pin_code_response", (foundation.Status,), True),
-        0x0008: ("clear_all_pin_codes_response", (foundation.Status,), True),
-        0x0009: ("set_user_status_response", (foundation.Status,), True),
-        0x000A: ("get_user_status_response", (t.uint16_t, UserStatus), True),
-        0x000B: ("set_week_day_schedule_response", (foundation.Status,), True),
-        0x000C: (
+        0x07: ZCLCommandDef(
+            "clear_pin_code_response", {"status": foundation.Status}, True
+        ),
+        0x08: ZCLCommandDef(
+            "clear_all_pin_codes_response", {"status": foundation.Status}, True
+        ),
+        0x09: ZCLCommandDef(
+            "set_user_status_response", {"status": foundation.Status}, True
+        ),
+        0x0A: ZCLCommandDef(
+            "get_user_status_response",
+            {"user_id": t.uint16_t, "user_status": UserStatus},
+            True,
+        ),
+        0x0B: ZCLCommandDef(
+            "set_week_day_schedule_response", {"status": foundation.Status}, True
+        ),
+        0x0C: ZCLCommandDef(
             "get_week_day_schedule_response",
-            (
-                t.uint8_t,
-                t.uint16_t,
-                foundation.Status,
-                t.Optional(t.uint8_t),
-                t.Optional(t.uint8_t),
-                t.Optional(t.uint8_t),
-                t.Optional(t.uint8_t),
-            ),
+            {
+                "schedule_id": t.uint8_t,
+                "user_id": t.uint16_t,
+                "status": foundation.Status,
+                "days_mask?": t.uint8_t,
+                "start_hour?": t.uint8_t,
+                "start_minute?": t.uint8_t,
+                "end_hour?": t.uint8_t,
+                "end_minute?": t.uint8_t,
+            },
             True,
         ),
-        0x000D: ("clear_week_day_schedule_response", (foundation.Status,), True),
-        0x000E: ("set_year_day_schedule_response", (foundation.Status,), True),
-        0x000F: (
+        0x0D: ZCLCommandDef(
+            "clear_week_day_schedule_response", {"status": foundation.Status}, True
+        ),
+        0x0E: ZCLCommandDef(
+            "set_year_day_schedule_response", {"status": foundation.Status}, True
+        ),
+        0x0F: ZCLCommandDef(
             "get_year_day_schedule_response",
-            (
-                t.uint8_t,
-                t.uint16_t,
-                foundation.Status,
-                t.Optional(t.LocalTime),
-                t.Optional(t.LocalTime),
-            ),
+            {
+                "schedule_id": t.uint8_t,
+                "user_id": t.uint16_t,
+                "status": foundation.Status,
+                "local_start_time?": t.LocalTime,
+                "local_end_time?": t.LocalTime,
+            },
             True,
         ),
-        0x0010: ("clear_year_day_schedule_response", (foundation.Status,), True),
-        0x0011: ("set_holiday_schedule_response", (foundation.Status,), True),
-        0x0012: (
+        0x10: ZCLCommandDef(
+            "clear_year_day_schedule_response", {"status": foundation.Status}, True
+        ),
+        0x11: ZCLCommandDef(
+            "set_holiday_schedule_response", {"status": foundation.Status}, True
+        ),
+        0x12: ZCLCommandDef(
             "get_holiday_schedule_response",
-            (
-                t.uint8_t,
-                foundation.Status,
-                t.Optional(t.LocalTime),
-                t.Optional(t.LocalTime),
-                t.Optional(t.uint8_t),
-            ),
+            {
+                "holiday_schedule_id": t.uint8_t,
+                "status": foundation.Status,
+                "local_start_time?": t.LocalTime,
+                "local_end_time?": t.LocalTime,
+                "operating_mode_during_holiday?": t.uint8_t,
+            },
             True,
         ),
-        0x0013: ("clear_holiday_schedule_response", (foundation.Status,), True),
-        0x0014: ("set_user_type_response", (foundation.Status,), True),
-        0x0015: ("get_user_type_response", (t.uint16_t, UserType), True),
-        0x0016: ("set_rfid_code_response", (t.uint8_t,), True),
-        0x0017: (
+        0x13: ZCLCommandDef(
+            "clear_holiday_schedule_response", {"status": foundation.Status}, True
+        ),
+        0x14: ZCLCommandDef(
+            "set_user_type_response", {"status": foundation.Status}, True
+        ),
+        0x15: ZCLCommandDef(
+            "get_user_type_response",
+            {"user_id": t.uint16_t, "user_type": UserType},
+            True,
+        ),
+        0x16: ZCLCommandDef(
+            "set_rfid_code_response", {"status": foundation.Status}, True
+        ),
+        0x17: ZCLCommandDef(
             "get_rfid_code_response",
-            (t.uint16_t, UserStatus, UserType, t.CharacterString),
+            {
+                "user_id": t.uint16_t,
+                "user_status": UserStatus,
+                "user_type": UserType,
+                "rfid_code": t.CharacterString,
+            },
             True,
         ),
-        0x0018: ("clear_rfid_code_response", (foundation.Status,), True),
-        0x0019: ("clear_all_rfid_codes_response", (foundation.Status,), True),
-        0x0020: (
+        0x18: ZCLCommandDef(
+            "clear_rfid_code_response", {"status": foundation.Status}, True
+        ),
+        0x19: ZCLCommandDef(
+            "clear_all_rfid_codes_response", {"status": foundation.Status}, True
+        ),
+        0x20: ZCLCommandDef(
             "operation_event_notification",
-            (
-                OperationEventSource,
-                OperationEvent,
-                t.uint16_t,
-                t.uint8_t,
-                t.LocalTime,
-                t.CharacterString,
-            ),
+            {
+                "operation_event_source": OperationEventSource,
+                "operation_event_code": OperationEvent,
+                "user_id": t.uint16_t,
+                "pin": t.CharacterString,
+                "local_time": t.LocalTime,
+                "data?": t.CharacterString,
+            },
             False,
         ),
-        0x0021: (
+        0x21: ZCLCommandDef(
             "programming_event_notification",
-            (
-                OperationEventSource,
-                ProgrammingEvent,
-                t.uint16_t,
-                t.uint8_t,
-                UserType,
-                UserStatus,
-                t.LocalTime,
-                t.CharacterString,
-            ),
+            {
+                "program_event_source": OperationEventSource,
+                "program_event_code": ProgrammingEvent,
+                "user_id": t.uint16_t,
+                "pin": t.CharacterString,
+                "user_type": UserType,
+                "user_status": UserStatus,
+                "local_time": t.LocalTime,
+                "data?": t.CharacterString,
+            },
             False,
         ),
     }
@@ -455,12 +553,16 @@ class WindowCovering(Cluster):
         0x0019: ("intermediate_setpoints_tilt", t.CharacterString),
     }
     server_commands = {
-        0x0000: ("up_open", (), False),
-        0x0001: ("down_close", (), False),
-        0x0002: ("stop", (), False),
-        0x0004: ("go_to_lift_value", (t.uint16_t,), False),
-        0x0005: ("go_to_lift_percentage", (t.uint8_t,), False),
-        0x0007: ("go_to_tilt_value", (t.uint16_t,), False),
-        0x0008: ("go_to_tilt_percentage", (t.uint8_t,), False),
+        0x00: ZCLCommandDef("up_open", {}, False),
+        0x01: ZCLCommandDef("down_close", {}, False),
+        0x02: ZCLCommandDef("stop", {}, False),
+        0x04: ZCLCommandDef("go_to_lift_value", {"lift_value": t.uint16_t}, False),
+        0x05: ZCLCommandDef(
+            "go_to_lift_percentage", {"percentage_lift_value": t.uint8_t}, False
+        ),
+        0x07: ZCLCommandDef("go_to_tilt_value", {"tilt_value": t.uint16_t}, False),
+        0x08: ZCLCommandDef(
+            "go_to_tilt_percentage", {"percentage_tilt_value": t.uint8_t}, False
+        ),
     }
     client_commands = {}

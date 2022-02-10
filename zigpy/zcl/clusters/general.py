@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import collections
 from datetime import datetime
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Optional
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
+from zigpy.zcl.foundation import ZCLCommandDef
 
 
 class Basic(Cluster):
@@ -31,7 +31,7 @@ class Basic(Cluster):
             self.battery_backup = False
 
         @classmethod
-        def deserialize(cls, data: bytes) -> Tuple[bytes, bytes]:
+        def deserialize(cls, data: bytes) -> tuple[bytes, bytes]:
             val, data = t.uint8_t.deserialize(data)
             r = cls(val & 0x7F)
             r.battery_backup = bool(val & 0x80)
@@ -39,8 +39,18 @@ class Basic(Cluster):
 
     class PhysicalEnvironment(t.enum8):
         Unspecified_environment = 0x00
-        Mirror = 0x01
-        Atrium = 0x01
+        # Mirror Capacity Available: for 0x0109 Profile Id only; use 0x71 moving forward
+        # Atrium: defined for legacy devices with non-0x0109 Profile Id; use 0x70 moving
+        #         forward
+
+        # Note: This value is deprecated for Profile Id 0x0104. The value 0x01 is
+        #       maintained for historical purposes and SHOULD only be used for backwards
+        #       compatibility with devices developed before this specification. The 0x01
+        #       value MUST be interpreted using the Profile Id of the endpoint upon
+        #       which it is implemented. For endpoints with the Smart Energy Profile Id
+        #       (0x0109) the value 0x01 has a meaning of Mirror. For endpoints with any
+        #       other profile identifier, the value 0x01 has a meaning of Atrium.
+        Mirror_or_atrium_legacy = 0x01
         Bar = 0x02
         Courtyard = 0x03
         Bathroom = 0x04
@@ -144,6 +154,8 @@ class Basic(Cluster):
         Dental_Surgery_Room = 0x6D
         Medical_Imaging_Room = 0x6E
         Decontamination_Room = 0x6F
+        Atrium = 0x70
+        Mirror = 0x71
         Unknown_environment = 0xFF
 
     class AlarmMask(t.bitmap8):
@@ -153,6 +165,35 @@ class Basic(Cluster):
     class DisableLocalConfig(t.bitmap8):
         Reset = 0x01
         Device_Configuration = 0x02
+
+    class GenericDeviceClass(t.enum8):
+        Lighting = 0x00
+
+    class GenericLightingDeviceType(t.enum8):
+        Incandescent = 0x00
+        Spotlight_Halogen = 0x01
+        Halogen_bulb = 0x02
+        CFL = 0x03
+        Linear_Fluorescent = 0x04
+        LED_bulb = 0x05
+        Spotlight_LED = 0x06
+        LED_strip = 0x07
+        LED_tube = 0x08
+        Generic_indoor_luminaire = 0x09
+        Generic_outdoor_luminaire = 0x0A
+        Pendant_luminaire = 0x0B
+        Floor_standing_luminaire = 0x0C
+        Generic_Controller = 0xE0
+        Wall_Switch = 0xE1
+        Portable_remote_controller = 0xE2
+        Motion_sensor = 0xE3
+        # 0xe4 to 0xef Reserved
+        Generic_actuator = 0xF0
+        Wall_socket = 0xF1
+        Gateway_Bridge = 0xF2
+        Plug_in_unit = 0xF3
+        Retrofit_actuator = 0xF4
+        Unspecified = 0xFF
 
     cluster_id = 0x0000
     ep_attribute = "basic"
@@ -166,7 +207,14 @@ class Basic(Cluster):
         0x0005: ("model", t.CharacterString),
         0x0006: ("date_code", t.CharacterString),
         0x0007: ("power_source", PowerSource),
-        0x0008: ("app_profile_version", t.enum8),
+        0x0008: ("generic_device_class", GenericDeviceClass),
+        # Lighting is the only non-reserved device type
+        0x0009: ("generic_device_type", GenericLightingDeviceType),
+        0x000A: ("product_code", t.LVBytes),
+        0x000B: ("product_url", t.CharacterString),
+        0x000C: ("manufacturer_version_details", t.CharacterString),
+        0x000D: ("serial_number", t.CharacterString),
+        0x000E: ("product_label", t.CharacterString),
         # Basic Device Settings
         0x0010: ("location_desc", t.LimitedCharString(16)),
         0x0011: ("physical_env", PhysicalEnvironment),
@@ -174,8 +222,10 @@ class Basic(Cluster):
         0x0013: ("alarm_mask", AlarmMask),
         0x0014: ("disable_local_config", DisableLocalConfig),
         0x4000: ("sw_build_id", t.CharacterString),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {0x0000: ("reset_fact_default", (), False)}
+    server_commands = {0x00: ZCLCommandDef("reset_fact_default", {}, False)}
     client_commands = {}
 
 
@@ -183,6 +233,23 @@ class PowerConfiguration(Cluster):
     """Attributes for determining more detailed information
     about a device’s power source(s), and for configuring
     under/over voltage alarms."""
+
+    class MainsAlarmMask(t.bitmap8):
+        Voltage_Too_Low = 0b00000001
+        Voltage_Too_High = 0b00000010
+        Power_Supply_Unavailable = 0b00000100
+
+    class BatterySize(t.enum8):
+        No_battery = 0x00
+        Built_in = 0x01
+        Other = 0x02
+        AA = 0x03
+        AAA = 0x04
+        C = 0x05
+        D = 0x06
+        CR2 = 0x07
+        CR123A = 0x08
+        Unknown = 0xFF
 
     cluster_id = 0x0001
     name = "Power Configuration"
@@ -192,7 +259,7 @@ class PowerConfiguration(Cluster):
         0x0000: ("mains_voltage", t.uint16_t),
         0x0001: ("mains_frequency", t.uint8_t),
         # Mains Settings
-        0x0010: ("mains_alarm_mask", t.bitmap8),
+        0x0010: ("mains_alarm_mask", MainsAlarmMask),
         0x0011: ("mains_volt_min_thres", t.uint16_t),
         0x0012: ("mains_volt_max_thres", t.uint16_t),
         0x0013: ("mains_voltage_dwell_trip_point", t.uint16_t),
@@ -200,11 +267,11 @@ class PowerConfiguration(Cluster):
         0x0020: ("battery_voltage", t.uint8_t),
         0x0021: ("battery_percentage_remaining", t.uint8_t),
         # Battery Settings
-        0x0030: ("battery_manufacturer", t.CharacterString),
-        0x0031: ("battery_size", t.enum8),
-        0x0032: ("battery_a_hr_rating", t.uint16_t),
+        0x0030: ("battery_manufacturer", t.LimitedCharString(16)),
+        0x0031: ("battery_size", BatterySize),
+        0x0032: ("battery_a_hr_rating", t.uint16_t),  # measured in units of 10mAHr
         0x0033: ("battery_quantity", t.uint8_t),
-        0x0034: ("battery_rated_voltage", t.uint8_t),
+        0x0034: ("battery_rated_voltage", t.uint8_t),  # measured in units of 100mV
         0x0035: ("battery_alarm_mask", t.bitmap8),
         0x0036: ("battery_volt_min_thres", t.uint8_t),
         0x0037: ("battery_volt_thres1", t.uint16_t),
@@ -253,6 +320,8 @@ class PowerConfiguration(Cluster):
         0x007C: ("battery_3_percent_thres2", t.uint8_t),
         0x007D: ("battery_3_percent_thres3", t.uint8_t),
         0x007E: ("battery_3_alarm_state", t.bitmap32),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -262,6 +331,10 @@ class DeviceTemperature(Cluster):
     """Attributes for determining information about a device’s
     internal temperature, and for configuring under/over
     temperature alarms."""
+
+    class DeviceTempAlarmMask(t.bitmap8):
+        Temp_too_low = 0b00000001
+        Temp_too_high = 0b00000010
 
     cluster_id = 0x0002
     name = "Device Temperature"
@@ -273,11 +346,13 @@ class DeviceTemperature(Cluster):
         0x0002: ("max_temp_experienced", t.int16s),
         0x0003: ("over_temp_total_dwell", t.uint16_t),
         # Device Temperature Settings
-        0x0010: ("dev_temp_alarm_mask", t.bitmap8),
+        0x0010: ("dev_temp_alarm_mask", DeviceTempAlarmMask),
         0x0011: ("low_temp_thres", t.int16s),
         0x0012: ("high_temp_thres", t.int16s),
         0x0013: ("low_temp_dwell_trip_point", t.uint24_t),
         0x0014: ("high_temp_dwell_trip_point", t.uint24_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -287,52 +362,105 @@ class Identify(Cluster):
     """Attributes and commands for putting a device into
     Identification mode (e.g. flashing a light)"""
 
+    class EffectIdentifier(t.enum8):
+        Blink = 0x00
+        Breathe = 0x01
+        Okay = 0x02
+        Channel_change = 0x03
+        Finish_effect = 0xFE
+        Stop_effect = 0xFF
+
+    class EffectVariant(t.enum8):
+        Default = 0x00
+
     cluster_id = 0x0003
     ep_attribute = "identify"
     attributes = {
         0x0000: ("identify_time", t.uint16_t),
-        0x0001: ("identify_commission_state", t.bitmap8),
+        # 0x0001: ("identify_commission_state", t.bitmap8),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x0000: ("identify", (t.uint16_t,), False),
-        0x0001: ("identify_query", (), False),
-        0x0002: ("ezmode_invoke", (t.bitmap8,), False),
-        0x0003: ("update_commission_state", (t.bitmap8,), False),
-        0x0040: ("trigger_effect", (t.uint8_t, t.uint8_t), False),
+        0x00: ZCLCommandDef("identify", {"identify_time": t.uint16_t}, False),
+        0x01: ZCLCommandDef("identify_query", {}, False),
+        # 0x02: ("ezmode_invoke", (t.bitmap8,), False),
+        # 0x03: ("update_commission_state", (t.bitmap8,), False),
+        0x40: ZCLCommandDef(
+            "trigger_effect",
+            {"effect_id": EffectIdentifier, "effect_variant": EffectVariant},
+            False,
+        ),
     }
-    client_commands = {0x0000: ("identify_query_response", (t.uint16_t,), True)}
+    client_commands = {
+        0x00: ZCLCommandDef("identify_query_response", {"timeout": t.uint16_t}, True)
+    }
 
 
 class Groups(Cluster):
     """Attributes and commands for group configuration and
     manipulation."""
 
+    class NameSupport(t.bitmap8):
+        Supported = 0b10000000
+
     cluster_id = 0x0004
     ep_attribute = "groups"
-    attributes = {0x0000: ("name_support", t.bitmap8)}
+    attributes = {
+        0x0000: ("name_support", NameSupport),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+    }
     server_commands = {
-        0x0000: ("add", (t.Group, t.CharacterString), False),
-        0x0001: ("view", (t.Group,), False),
-        0x0002: ("get_membership", (t.LVList[t.Group],), False),
-        0x0003: ("remove", (t.Group,), False),
-        0x0004: ("remove_all", (), False),
-        0x0005: ("add_if_identifying", (t.Group, t.CharacterString), False),
+        0x00: ZCLCommandDef(
+            "add",
+            {"group_id": t.Group, "group_name": t.LimitedCharString(16)},
+            False,
+        ),
+        0x01: ZCLCommandDef("view", {"group_id": t.Group}, False),
+        0x02: ZCLCommandDef("get_membership", {"groups": t.LVList[t.Group]}, False),
+        0x03: ZCLCommandDef("remove", {"group_id": t.Group}, False),
+        0x04: ZCLCommandDef("remove_all", {}, False),
+        0x05: ZCLCommandDef(
+            "add_if_identifying",
+            {"group_id": t.Group, "group_name": t.LimitedCharString(16)},
+            False,
+        ),
     }
     client_commands = {
-        0x0000: ("add_response", (foundation.Status, t.Group), True),
-        0x0001: (
-            "view_response",
-            (foundation.Status, t.Group, t.CharacterString),
+        0x00: ZCLCommandDef(
+            "add_response",
+            {"status": foundation.Status, "group_id": t.Group},
             True,
         ),
-        0x0002: ("get_membership_response", (t.uint8_t, t.LVList[t.Group]), True),
-        0x0003: ("remove_response", (foundation.Status, t.Group), True),
+        0x01: ZCLCommandDef(
+            "view_response",
+            {
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "group_name": t.LimitedCharString(16),
+            },
+            True,
+        ),
+        0x02: ZCLCommandDef(
+            "get_membership_response",
+            {"capacity": t.uint8_t, "groups": t.LVList[t.Group]},
+            True,
+        ),
+        0x03: ZCLCommandDef(
+            "remove_response",
+            {"status": foundation.Status, "group_id": t.Group},
+            True,
+        ),
     }
 
 
 class Scenes(Cluster):
     """Attributes and commands for scene configuration and
     manipulation."""
+
+    class NameSupport(t.bitmap8):
+        Supported = 0b10000000
 
     cluster_id = 0x0005
     ep_attribute = "scenes"
@@ -342,43 +470,130 @@ class Scenes(Cluster):
         0x0001: ("current_scene", t.uint8_t),
         0x0002: ("current_group", t.uint16_t),
         0x0003: ("scene_valid", t.Bool),
-        0x0004: ("name_support", t.bitmap8),
+        0x0004: ("name_support", NameSupport),
         0x0005: ("last_configured_by", t.EUI64),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x0000: (
+        0x00: ZCLCommandDef(
             "add",
-            (t.uint16_t, t.uint8_t, t.uint16_t, t.CharacterString),
+            {
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "scene_name": t.LimitedCharString(16),
+            },
             False,
-        ),  # + extension field sets
-        0x0001: ("view", (t.uint16_t, t.uint8_t), False),
-        0x0002: ("remove", (t.uint16_t, t.uint8_t), False),
-        0x0003: ("remove_all", (t.uint16_t,), False),
-        0x0004: ("store", (t.uint16_t, t.uint8_t), False),
-        0x0005: ("recall", (t.uint16_t, t.uint8_t), False),
-        0x0006: ("get_scene_membership", (t.uint16_t,), False),
-        0x0040: ("enhanced_add", (), False),
-        0x0041: ("enhanced_view", (), False),
-        0x0042: ("copy", (), False),
+        ),  # TODO: + extension field sets
+        0x01: ZCLCommandDef(
+            "view", {"group_id": t.Group, "scene_id": t.uint8_t}, False
+        ),
+        0x02: ZCLCommandDef(
+            "remove", {"group_id": t.Group, "scene_id": t.uint8_t}, False
+        ),
+        0x03: ZCLCommandDef("remove_all", {"group_id": t.Group}, False),
+        0x04: ZCLCommandDef(
+            "store", {"group_id": t.Group, "scene_id": t.uint8_t}, False
+        ),
+        0x05: ZCLCommandDef(
+            "recall",
+            {
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time?": t.uint16_t,
+            },
+            False,
+        ),
+        0x06: ZCLCommandDef("get_scene_membership", {"group_id": t.Group}, False),
+        0x40: ZCLCommandDef(
+            "enhanced_add",
+            {
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "scene_name": t.LimitedCharString(16),
+            },
+            False,
+        ),
+        0x41: ZCLCommandDef(
+            "enhanced_view", {"group_id": t.Group, "scene_id": t.uint8_t}, False
+        ),
+        0x42: ZCLCommandDef(
+            "copy",
+            {
+                "mode": t.uint8_t,
+                "group_id_from": t.uint16_t,
+                "scene_id_from": t.uint8_t,
+                "group_id_to": t.uint16_t,
+                "scene_id_to": t.uint8_t,
+            },
+            False,
+        ),
     }
     client_commands = {
-        0x0000: ("add_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
-        0x0001: (
-            "view_response",
-            (t.uint8_t, t.uint16_t, t.uint8_t),
-            True,
-        ),  # + 3 more optionals
-        0x0002: ("remove_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
-        0x0003: ("remove_all_response", (t.uint8_t, t.uint16_t), True),
-        0x0004: ("store_response", (t.uint8_t, t.uint16_t, t.uint8_t), True),
-        0x0006: (
-            "get_scene_membership_response",
-            (t.uint8_t, t.uint8_t, t.uint16_t, t.Optional(t.LVList[t.uint8_t])),
+        0x00: ZCLCommandDef(
+            "add_response",
+            {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
             True,
         ),
-        0x0040: ("enhanced_add_response", (), True),
-        0x0041: ("enhanced_view_response", (), True),
-        0x0042: ("copy_response", (), True),
+        0x01: ZCLCommandDef(
+            "view_response",
+            {
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time?": t.uint16_t,
+                "scene_name?": t.LimitedCharString(16),
+            },
+            True,
+        ),  # TODO: + extension field sets
+        0x02: ZCLCommandDef(
+            "remove_response",
+            {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
+            True,
+        ),
+        0x03: ZCLCommandDef(
+            "remove_all_response",
+            {"status": foundation.Status, "group_id": t.Group},
+            True,
+        ),
+        0x04: ZCLCommandDef(
+            "store_response",
+            {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
+            True,
+        ),
+        0x06: ZCLCommandDef(
+            "get_scene_membership_response",
+            {
+                "status": foundation.Status,
+                "capacity": t.uint8_t,
+                "group_id": t.Group,
+                "scenes?": t.LVList[t.uint8_t],
+            },
+            True,
+        ),
+        0x40: ZCLCommandDef(
+            "enhanced_add_response",
+            {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
+            True,
+        ),
+        0x41: ZCLCommandDef(
+            "enhanced_view_response",
+            {
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time?": t.uint16_t,
+                "scene_name?": t.LimitedCharString(16),
+            },
+            True,
+        ),  # TODO: + extension field sets
+        0x42: ZCLCommandDef(
+            "copy_response",
+            {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
+            True,
+        ),
     }
 
 
@@ -392,6 +607,16 @@ class OnOff(Cluster):
         Toggle = 0x02
         PreviousValue = 0xFF
 
+    class OffEffectIdentifier(t.enum8):
+        Delayed_All_Off = 0x00
+        Dying_Light = 0x01
+
+    DELAYED_ALL_OFF_FADE_TO_OFF = 0x00
+    DELAYED_ALL_OFF_NO_FADE = 0x01
+    DELAYED_ALL_OFF_DIM_THEN_FADE_TO_OFF = 0x02
+
+    DYING_LIGHT_DIM_UP_THEN_FADE_TO_OFF = 0x00
+
     cluster_id = 0x0006
     name = "On/Off"
     ep_attribute = "on_off"
@@ -401,14 +626,28 @@ class OnOff(Cluster):
         0x4001: ("on_time", t.uint16_t),
         0x4002: ("off_wait_time", t.uint16_t),
         0x4003: ("start_up_on_off", StartUpOnOff),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x0000: ("off", (), False),
-        0x0001: ("on", (), False),
-        0x0002: ("toggle", (), False),
-        0x0040: ("off_with_effect", (t.uint8_t, t.uint8_t), False),
-        0x0041: ("on_with_recall_global_scene", (), False),
-        0x0042: ("on_with_timed_off", (t.uint8_t, t.uint16_t, t.uint16_t), False),
+        0x00: ZCLCommandDef("off", {}, False),
+        0x01: ZCLCommandDef("on", {}, False),
+        0x02: ZCLCommandDef("toggle", {}, False),
+        0x40: ZCLCommandDef(
+            "off_with_effect",
+            {"effect_id": OffEffectIdentifier, "effect_variant": t.uint8_t},
+            False,
+        ),
+        0x41: ZCLCommandDef("on_with_recall_global_scene", {}, False),
+        0x42: ZCLCommandDef(
+            "on_with_timed_off",
+            {
+                "on_off_control": t.uint8_t,
+                "on_time": t.uint16_t,
+                "off_wait_time": t.uint16_t,
+            },
+            False,
+        ),
     }
     client_commands = {}
 
@@ -417,14 +656,24 @@ class OnOffConfiguration(Cluster):
     """Attributes and commands for configuring On/Off
     switching devices"""
 
+    class SwitchType(t.enum8):
+        Toggle = 0x00
+        Momentary = 0x01
+        Multifunction = 0x02
+
+    class SwitchActions(t.enum8):
+        OnOff = 0x00
+        OffOn = 0x01
+        ToggleToggle = 0x02
+
     cluster_id = 0x0007
     name = "On/Off Switch Configuration"
     ep_attribute = "on_off_config"
     attributes = {
-        # Switch Information
-        0x0000: ("switch_type", t.enum8),
-        # Switch Settings
-        0x0010: ("switch_actions", t.enum8),
+        0x0000: ("switch_type", SwitchType),
+        0x0010: ("switch_actions", SwitchActions),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -434,28 +683,96 @@ class LevelControl(Cluster):
     """Attributes and commands for controlling devices that
     can be set to a level between fully ‘On’ and fully ‘Off’."""
 
+    class MoveMode(t.enum8):
+        Up = 0x00
+        Down = 0x01
+
+    class StepMode(t.enum8):
+        Up = 0x00
+        Down = 0x01
+
     cluster_id = 0x0008
     name = "Level control"
     ep_attribute = "level"
     attributes = {
         0x0000: ("current_level", t.uint8_t),
         0x0001: ("remaining_time", t.uint16_t),
+        0x0002: ("min_level", t.uint8_t),
+        0x0003: ("max_level", t.uint8_t),
+        0x0004: ("current_frequency", t.uint16_t),
+        0x0005: ("min_frequency", t.uint16_t),
+        0x0006: ("max_frequency", t.uint16_t),
         0x0010: ("on_off_transition_time", t.uint16_t),
         0x0011: ("on_level", t.uint8_t),
         0x0012: ("on_transition_time", t.uint16_t),
         0x0013: ("off_transition_time", t.uint16_t),
         0x0014: ("default_move_rate", t.uint8_t),
+        0x000F: ("options", t.bitmap8),
         0x4000: ("start_up_current_level", t.uint8_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x0000: ("move_to_level", (t.uint8_t, t.uint16_t), False),
-        0x0001: ("move", (t.uint8_t, t.uint8_t), False),
-        0x0002: ("step", (t.uint8_t, t.uint8_t, t.uint16_t), False),
-        0x0003: ("stop", (), False),
-        0x0004: ("move_to_level_with_on_off", (t.uint8_t, t.uint16_t), False),
-        0x0005: ("move_with_on_off", (t.uint8_t, t.uint8_t), False),
-        0x0006: ("step_with_on_off", (t.uint8_t, t.uint8_t, t.uint16_t), False),
-        0x0007: ("stop", (), False),
+        0x00: ZCLCommandDef(
+            "move_to_level",
+            {
+                "level": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            False,
+        ),
+        0x01: ZCLCommandDef(
+            "move",
+            {
+                "move_mode": MoveMode,
+                "rate": t.uint8_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            False,
+        ),
+        0x02: ZCLCommandDef(
+            "step",
+            {
+                "step_mode": StepMode,
+                "step_size": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            False,
+        ),
+        0x03: ZCLCommandDef(
+            "stop",
+            {
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            False,
+        ),
+        0x04: ZCLCommandDef(
+            "move_to_level_with_on_off",
+            {"level": t.uint8_t, "transition_time": t.uint16_t},
+            False,
+        ),
+        0x05: ZCLCommandDef(
+            "move_with_on_off", {"move_mode": MoveMode, "rate": t.uint8_t}, False
+        ),
+        0x06: ZCLCommandDef(
+            "step_with_on_off",
+            {
+                "step_mode": StepMode,
+                "step_size": t.uint8_t,
+                "transition_time": t.uint16_t,
+            },
+            False,
+        ),
+        0x07: ZCLCommandDef("stop_with_on_off", {}, False),
+        0x08: ZCLCommandDef(
+            "move_to_closest_frequency", {"frequency": t.uint16_t}, False
+        ),
     }
     client_commands = {}
 
@@ -468,34 +785,46 @@ class Alarms(Cluster):
     ep_attribute = "alarms"
     attributes = {
         # Alarm Information
-        0x0000: ("alarm_count", t.uint16_t)
+        0x0000: ("alarm_count", t.uint16_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x0000: ("reset", (t.uint8_t, t.uint16_t), False),
-        0x0001: ("reset_all", (), False),
-        0x0002: ("get_alarm", (), False),
-        0x0003: ("reset_log", (), False),
-        0x0004: ("publish_event_log", (), False),
+        0x00: ZCLCommandDef(
+            "reset", {"alarm_code": t.uint8_t, "cluster_id": t.uint16_t}, False
+        ),
+        0x01: ZCLCommandDef("reset_all", {}, False),
+        0x02: ZCLCommandDef("get_alarm", {}, False),
+        0x03: ZCLCommandDef("reset_log", {}, False),
+        # 0x04: ("publish_event_log", {}, False),
     }
     client_commands = {
-        0x0000: ("alarm", (t.uint8_t, t.uint16_t), False),
-        0x0001: (
+        0x00: ZCLCommandDef(
+            "alarm", {"alarm_code": t.uint8_t, "cluster_id": t.uint16_t}, False
+        ),
+        0x01: ZCLCommandDef(
             "get_alarm_response",
-            (
-                t.uint8_t,
-                t.Optional(t.uint8_t),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint32_t),
-            ),
+            {
+                "status": foundation.Status,
+                "alarm_code?": t.uint8_t,
+                "cluster_id?": t.uint16_t,
+                "timestamp?": t.uint32_t,
+            },
             True,
         ),
-        0x0002: ("get_event_log", (), False),
+        # 0x02: ("get_event_log", {}, False),
     }
 
 
 class Time(Cluster):
     """Attributes and commands that provide a basic interface
     to a real-time clock."""
+
+    class TimeStatus(t.bitmap8):
+        Master = 0b00000001
+        Synchronized = 0b00000010
+        Master_for_Zone_and_DST = 0b00000100
+        Superseding = 0b00001000
 
     cluster_id = 0x000A
     ep_attribute = "time"
@@ -508,8 +837,10 @@ class Time(Cluster):
         0x0005: ("dst_shift", t.int32s),
         0x0006: ("standard_time", t.StandardTime),
         0x0007: ("local_time", t.LocalTime),
-        0x0008: ("last_set_time", t.uint32_t),
-        0x0009: ("valid_until_time", t.uint32_t),
+        0x0008: ("last_set_time", t.UTCTime),
+        0x0009: ("valid_until_time", t.UTCTime),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -517,14 +848,13 @@ class Time(Cluster):
     def handle_cluster_general_request(
         self,
         hdr: foundation.ZCLHeader,
-        *args: List[Any],
+        *args: list[Any],
         dst_addressing: Optional[
-            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+            t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
         ] = None,
     ):
-        if hdr.command_id == foundation.Command.Read_Attributes:
-            # responses should be in the same order. Is it time to ditch py35?
-            data = collections.OrderedDict()
+        if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
+            data = {}
             for attr in args[0][0]:
                 if attr == 0:
                     epoch = datetime(2000, 1, 1, 0, 0, 0, 0)
@@ -568,30 +898,68 @@ class RSSILocation(Cluster):
         0x0014: ("path_loss_exponent", t.uint16_t),
         0x0015: ("reporting_period", t.uint16_t),
         0x0016: ("calc_period", t.uint16_t),
-        0x0017: ("num_rssi_measurements", t.uint16_t),
+        0x0017: ("num_rssi_measurements", t.uint8_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x0000: (
+        0x00: ZCLCommandDef(
             "set_absolute_location",
-            (t.int16s, t.int16s, t.int16s, t.int8s, t.uint16_t),
+            {
+                "coordinate1": t.int16s,
+                "coordinate2": t.int16s,
+                "coordinate3": t.int16s,
+                "power": t.int16s,
+                "path_loss_exponent": t.uint16_t,
+            },
             False,
         ),
-        0x0001: (
+        0x01: ZCLCommandDef(
             "set_dev_config",
-            (t.int16s, t.uint16_t, t.uint16_t, t.uint8_t, t.uint16_t),
+            {
+                "power": t.int16s,
+                "path_loss_exponent": t.uint16_t,
+                "calculation_period": t.uint16_t,
+                "num_rssi_measurements": t.uint8_t,
+                "reporting_period": t.uint16_t,
+            },
             False,
         ),
-        0x0002: ("get_dev_config", (t.EUI64,), False),
-        0x0003: ("get_location_data", (t.bitmap8, t.uint8_t, t.EUI64), False),
-        0x0004: (
+        0x02: ZCLCommandDef("get_dev_config", {"target_addr": t.EUI64}, False),
+        0x03: ZCLCommandDef(
+            "get_location_data",
+            {"packed": t.bitmap8, "num_responses": t.uint8_t, "target_addr": t.EUI64},
+            False,
+        ),
+        0x04: ZCLCommandDef(
             "rssi_response",
-            (t.EUI64, t.int16s, t.int16s, t.int16s, t.int8s, t.uint8_t),
+            {
+                "replying_device": t.EUI64,
+                "x": t.int16s,
+                "y": t.int16s,
+                "z": t.int16s,
+                "rssi": t.int8s,
+                "num_rssi_measurements": t.uint8_t,
+            },
             True,
         ),
-        0x0005: ("send_pings", (t.EUI64, t.uint8_t, t.uint16_t), False),
-        0x0006: (
+        0x05: ZCLCommandDef(
+            "send_pings",
+            {
+                "target_addr": t.EUI64,
+                "num_rssi_measurements": t.uint8_t,
+                "calculation_period": t.uint16_t,
+            },
+            False,
+        ),
+        0x06: ZCLCommandDef(
             "anchor_node_announce",
-            (t.EUI64, t.int16s, t.int16s, t.int16s),
+            {
+                "anchor_node_ieee_addr": t.EUI64,
+                "x": t.int16s,
+                "y": t.int16s,
+                "z": t.int16s,
+            },
             False,
         ),
     }
@@ -605,39 +973,46 @@ class RSSILocation(Cluster):
         num_measurements: t.uint8_t
 
     client_commands = {
-        0x0000: (
+        0x00: ZCLCommandDef(
             "dev_config_response",
-            (
-                foundation.Status,
-                t.Optional(t.int16s),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint8_t),
-                t.Optional(t.uint16_t),
-            ),
+            {
+                "status": foundation.Status,
+                "power?": t.int16s,
+                "path_loss_exponent?": t.uint16_t,
+                "calculation_period?": t.uint16_t,
+                "num_rssi_measurements?": t.uint8_t,
+                "reporting_period?": t.uint16_t,
+            },
             True,
         ),
-        0x0001: (
+        0x01: ZCLCommandDef(
             "location_data_response",
-            (
-                foundation.Status,
-                t.Optional(t.uint8_t),
-                t.Optional(t.int16s),
-                t.Optional(t.int16s),
-                t.Optional(t.int16s),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint8_t),
-                t.Optional(t.uint8_t),
-                t.Optional(t.uint16_t),
-            ),
+            {
+                "status": foundation.Status,
+                "location_type?": t.uint8_t,
+                "coordinate1?": t.int16s,
+                "coordinate2?": t.int16s,
+                "coordinate3?": t.int16s,
+                "power?": t.uint16_t,
+                "path_loss_exponent?": t.uint8_t,
+                "location_method?": t.uint8_t,
+                "quality_measure?": t.uint8_t,
+                "location_age?": t.uint16_t,
+            },
             True,
         ),
-        0x0002: ("location_data_notification", (), False),
-        0x0003: ("compact_location_data_notification", (), False),
-        0x0004: ("rssi_ping", (t.uint8_t,), False),  # data8
-        0x0005: ("rssi_req", (), False),
-        0x0006: ("report_rssi_measurements", (t.EUI64, t.LVList[NeighborInfo]), False),
-        0x0007: ("request_own_location", (t.EUI64,), False),
+        0x02: ZCLCommandDef("location_data_notification", {}, False),
+        0x03: ZCLCommandDef("compact_location_data_notification", {}, False),
+        0x04: ZCLCommandDef("rssi_ping", {"location_type": t.uint8_t}, False),  # data8
+        0x05: ZCLCommandDef("rssi_req", {}, False),
+        0x06: ZCLCommandDef(
+            "report_rssi_measurements",
+            {"measuring_device": t.EUI64, "neighbors": t.LVList[NeighborInfo]},
+            False,
+        ),
+        0x07: ZCLCommandDef(
+            "request_own_location", {"ieee_of_blind_node": t.EUI64}, False
+        ),
     }
 
 
@@ -655,6 +1030,8 @@ class AnalogInput(Cluster):
         0x006F: ("status_flags", t.bitmap8),
         0x0075: ("engineering_units", t.enum16),
         0x0100: ("application_type", t.uint32_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -677,6 +1054,8 @@ class AnalogOutput(Cluster):
         0x006F: ("status_flags", t.bitmap8),
         0x0075: ("engineering_units", t.enum16),
         0x0100: ("application_type", t.uint32_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -696,6 +1075,8 @@ class AnalogValue(Cluster):
         0x006F: ("status_flags", t.bitmap8),
         0x0075: ("engineering_units", t.enum16),
         0x0100: ("application_type", t.uint32_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -715,6 +1096,8 @@ class BinaryInput(Cluster):
         0x0067: ("reliability", t.enum8),
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -738,6 +1121,8 @@ class BinaryOutput(Cluster):
         0x0068: ("relinquish_default", t.Bool),
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -760,6 +1145,8 @@ class BinaryValue(Cluster):
         0x0068: ("relinquish_default", t.Single),
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -779,6 +1166,8 @@ class MultistateInput(Cluster):
         0x0067: ("reliability", t.enum8),
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -799,6 +1188,8 @@ class MultistateOutput(Cluster):
         0x0068: ("relinquish_default", t.Single),
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -819,6 +1210,8 @@ class MultistateValue(Cluster):
         0x0068: ("relinquish_default", t.Single),
         0x006F: ("status_flags", t.bitmap8),
         0x0100: ("application_type", t.uint32_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {}
     client_commands = {}
@@ -835,15 +1228,15 @@ class Commissioning(Cluster):
         0x0000: ("short_address", t.uint16_t),
         0x0001: ("extended_pan_id", t.EUI64),
         0x0002: ("pan_id", t.uint16_t),
-        0x0003: ("channelmask", t.bitmap32),
+        0x0003: ("channelmask", t.Channels),
         0x0004: ("protocol_version", t.uint8_t),
         0x0005: ("stack_profile", t.uint8_t),
         0x0006: ("startup_control", t.enum8),
         0x0010: ("trust_center_address", t.EUI64),
-        0x0011: ("trust_center_master_key", t.FixedList[16, t.uint8_t]),
-        0x0012: ("network_key", t.FixedList[16, t.uint8_t]),
+        0x0011: ("trust_center_master_key", t.KeyData),
+        0x0012: ("network_key", t.KeyData),
         0x0013: ("use_insecure_join", t.Bool),
-        0x0014: ("preconfigured_link_key", t.FixedList[16, t.uint8_t]),
+        0x0014: ("preconfigured_link_key", t.KeyData),
         0x0015: ("network_key_seq_num", t.uint8_t),
         0x0016: ("network_key_type", t.enum8),
         0x0017: ("network_manager_address", t.uint16_t),
@@ -859,30 +1252,80 @@ class Commissioning(Cluster):
         0x0040: ("concentrator_flag", t.Bool),
         0x0041: ("concentrator_radius", t.uint8_t),
         0x0042: ("concentrator_discovery_time", t.uint8_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x0000: ("restart_device", (t.uint8_t, t.uint8_t, t.uint8_t), False),
-        0x0001: ("save_startup_parameters", (t.uint8_t, t.uint8_t), False),
-        0x0002: ("restore_startup_parameters", (t.uint8_t, t.uint8_t), False),
-        0x0003: ("reset_startup_parameters", (t.uint8_t, t.uint8_t), False),
+        0x00: ZCLCommandDef(
+            "restart_device",
+            {"options": t.bitmap8, "delay": t.uint8_t, "jitter": t.uint8_t},
+            False,
+        ),
+        0x01: ZCLCommandDef(
+            "save_startup_parameters", {"options": t.bitmap8, "index": t.uint8_t}, False
+        ),
+        0x02: ZCLCommandDef(
+            "restore_startup_parameters",
+            {"options": t.bitmap8, "index": t.uint8_t},
+            False,
+        ),
+        0x03: ZCLCommandDef(
+            "reset_startup_parameters",
+            {"options": t.bitmap8, "index": t.uint8_t},
+            False,
+        ),
     }
     client_commands = {
-        0x0000: ("restart_device_response", (t.uint8_t,), True),
-        0x0001: ("save_startup_params_response", (t.uint8_t,), True),
-        0x0002: ("restore_startup_params_response", (t.uint8_t,), True),
-        0x0003: ("reset_startup_params_response", (t.uint8_t,), True),
+        0x00: ZCLCommandDef(
+            "restart_device_response", {"status": foundation.Status}, True
+        ),
+        0x01: ZCLCommandDef(
+            "save_startup_params_response", {"status": foundation.Status}, True
+        ),
+        0x02: ZCLCommandDef(
+            "restore_startup_params_response", {"status": foundation.Status}, True
+        ),
+        0x03: ZCLCommandDef(
+            "reset_startup_params_response", {"status": foundation.Status}, True
+        ),
     }
 
 
 class Partition(Cluster):
     cluster_id = 0x0016
     ep_attribute = "partition"
-    attributes = {}
+    attributes = {
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+    }
     server_commands = {}
     client_commands = {}
 
 
 class Ota(Cluster):
+    class ImageUpgradeStatus(t.enum8):
+        Normal = 0x00
+        Download_in_progress = 0x01
+        Download_complete = 0x02
+        Waiting_to_upgrade = 0x03
+        Count_down = 0x04
+        Wait_for_more = 0x05
+        Waiting_to_Upgrade_via_External_Event = 0x06
+
+    class UpgradeActivationPolicy(t.enum8):
+        OTA_server_allowed = 0x00
+        Out_of_band_allowed = 0x01
+
+    class UpgradeTimeoutPolicy(t.enum8):
+        Apply_after_timeout = 0x00
+        Do_not_apply_after_timeout = 0x01
+
+    class ImageNotifyPayloadType(t.enum8):
+        QueryJitter = 0x00
+        QueryJitter_ManufacturerCode = 0x01
+        QueryJitter_ManufacturerCode_ImageType = 0x02
+        QueryJitter_ManufacturerCode_ImageType_NewFileVersion = 0x03
+
     cluster_id = 0x0019
     ep_attribute = "ota"
     attributes = {
@@ -892,107 +1335,135 @@ class Ota(Cluster):
         0x0003: ("current_zigbee_stack_version", t.uint16_t),
         0x0004: ("downloaded_file_version", t.uint32_t),
         0x0005: ("downloaded_zigbee_stack_version", t.uint16_t),
-        0x0006: ("image_upgrade_status", t.enum8),
+        0x0006: ("image_upgrade_status", ImageUpgradeStatus),
         0x0007: ("manufacturer_id", t.uint16_t),
         0x0008: ("image_type_id", t.uint16_t),
         0x0009: ("minimum_block_req_delay", t.uint16_t),
         0x000A: ("image_stamp", t.uint32_t),
+        0x000B: ("upgrade_activation_policy", UpgradeActivationPolicy),
+        0x000C: ("upgrade_timeout_policy", UpgradeTimeoutPolicy),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x0001: (
+        0x01: ZCLCommandDef(
             "query_next_image",
-            (t.uint8_t, t.uint16_t, t.uint16_t, t.uint32_t, t.Optional(t.uint16_t)),
+            {
+                "field_control": t.uint8_t,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "current_file_version": t.uint32_t,
+                "hardware_version?": t.uint16_t,
+            },
             False,
         ),
-        0x0003: (
+        0x03: ZCLCommandDef(
             "image_block",
-            (
-                t.uint8_t,
-                t.uint16_t,
-                t.uint16_t,
-                t.uint32_t,
-                t.uint32_t,
-                t.uint8_t,
-                t.Optional(t.EUI64),
-                t.Optional(t.uint16_t),
-            ),
+            {
+                "field_control": t.uint8_t,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+                "file_offset": t.uint32_t,
+                "maximum_data_size": t.uint8_t,
+                "request_node_addr?": t.EUI64,
+                "minumum_block_period?": t.uint16_t,
+            },
             False,
         ),
-        0x0004: (
+        0x04: ZCLCommandDef(
             "image_page",
-            (
-                t.uint8_t,
-                t.uint16_t,
-                t.uint16_t,
-                t.uint32_t,
-                t.uint32_t,
-                t.uint8_t,
-                t.uint16_t,
-                t.uint16_t,
-                t.Optional(t.EUI64),
-            ),
+            {
+                "field_control": t.uint8_t,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+                "file_offset": t.uint32_t,
+                "maximum_data_size": t.uint8_t,
+                "page_size": t.uint16_t,
+                "response_spacing": t.uint16_t,
+                "request_node_addr?": t.EUI64,
+            },
             False,
         ),
-        0x0006: (
+        0x06: ZCLCommandDef(
             "upgrade_end",
-            (foundation.Status, t.uint16_t, t.uint16_t, t.uint32_t),
+            {
+                "status": foundation.Status,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+            },
             False,
         ),
-        0x0008: (
+        0x08: ZCLCommandDef(
             "query_specific_file",
-            (t.EUI64, t.uint16_t, t.uint16_t, t.uint32_t, t.uint16_t),
+            {
+                "request_node_addr": t.EUI64,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+                "current_zigbee_stack_version": t.uint16_t,
+            },
             False,
         ),
     }
     client_commands = {
-        0x0000: (
+        0x00: ZCLCommandDef(
             "image_notify",
-            (
-                t.uint8_t,
-                t.uint8_t,
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint32_t),
-            ),
+            {
+                "payload_type": ImageNotifyPayloadType,
+                "query_jitter": t.uint8_t,
+                "manufacturer_code?": t.uint16_t,
+                "image_type?": t.uint16_t,
+                "new_file_version?": t.uint32_t,
+            },
             False,
         ),
-        0x0002: (
+        0x02: ZCLCommandDef(
             "query_next_image_response",
-            (
-                foundation.Status,
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint32_t),
-                t.Optional(t.uint32_t),
-            ),
+            {
+                "status": foundation.Status,
+                "manufacturer_code?": t.uint16_t,
+                "image_type?": t.uint16_t,
+                "file_version?": t.uint32_t,
+                "image_size?": t.uint32_t,
+            },
             True,
         ),
-        0x0005: (
+        # XXX: the response format completely changes if the status is WAIT_FOR_DATA!
+        0x05: ZCLCommandDef(
             "image_block_response",
-            (
-                foundation.Status,
-                t.uint16_t,
-                t.uint16_t,
-                t.uint32_t,
-                t.uint32_t,
-                t.LVBytes,
-            ),
+            {
+                "status": foundation.Status,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+                "file_offset": t.uint32_t,
+                "image_data": t.LVBytes,
+            },
             True,
         ),
-        0x0007: (
+        0x07: ZCLCommandDef(
             "upgrade_end_response",
-            (t.uint16_t, t.uint16_t, t.uint32_t, t.uint32_t, t.uint32_t),
+            {
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+                "current_time": t.UTCTime,
+                "upgrade_time": t.UTCTime,
+            },
             True,
         ),
-        0x0009: (
+        0x09: ZCLCommandDef(
             "query_specific_file_response",
-            (
-                foundation.Status,
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint16_t),
-                t.Optional(t.uint32_t),
-                t.Optional(t.uint32_t),
-            ),
+            {
+                "status": foundation.Status,
+                "manufacturer_code?": t.uint16_t,
+                "image_type?": t.uint16_t,
+                "file_version?": t.uint32_t,
+                "image_size?": t.uint32_t,
+            },
             True,
         ),
     }
@@ -1000,10 +1471,10 @@ class Ota(Cluster):
     def handle_cluster_request(
         self,
         hdr: foundation.ZCLHeader,
-        args: List[Any],
+        args: list[Any],
         *,
         dst_addressing: Optional[
-            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+            t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
         ] = None,
     ):
         self.create_catching_task(
@@ -1013,15 +1484,20 @@ class Ota(Cluster):
     async def _handle_cluster_request(
         self,
         hdr: foundation.ZCLHeader,
-        args: List[Any],
+        args: list[Any],
         *,
         dst_addressing: Optional[
-            Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
+            t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
         ] = None,
     ):
         """Parse OTA commands."""
         tsn, command_id = hdr.tsn, hdr.command_id
-        cmd_name = self.server_commands.get(command_id, [command_id])[0]
+
+        try:
+            cmd_name = self.server_commands[command_id].name
+        except KeyError:
+            self.warning("Unknown OTA command id %d (%s)", command_id, args)
+            return
 
         if cmd_name == "query_next_image":
             await self._handle_query_next_image(
@@ -1182,10 +1658,12 @@ class PowerProfile(Cluster):
     ep_attribute = "power_profile"
     attributes = {
         0x0000: ("total_profile_num", t.uint8_t),
-        0x0001: ("multiple_scheduling", t.uint8_t),
+        0x0001: ("multiple_scheduling", t.Bool),
         0x0002: ("energy_formatting", t.bitmap8),
         0x0003: ("energy_remote", t.Bool),
         0x0004: ("schedule_mode", t.bitmap8),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
 
     class ScheduleRecord(t.Struct):
@@ -1205,80 +1683,141 @@ class PowerProfile(Cluster):
         power_profile_remote_control: t.Bool
         power_profile_state: t.uint8_t
 
+    # XXX: are these flipped?
     server_commands = {
-        0x0000: ("power_profile_request", (t.uint8_t,), False),
-        0x0001: ("power_profile_state_request", (), False),
-        0x0002: (
+        0x00: ZCLCommandDef(
+            "power_profile_request", {"power_profile_id": t.uint8_t}, False
+        ),
+        0x01: ZCLCommandDef("power_profile_state_request", {}, False),
+        0x02: ZCLCommandDef(
             "get_power_profile_price_response",
-            (t.uint8_t, t.uint16_t, t.uint32_t, t.uint8_t),
+            {
+                "power_profile_id": t.uint8_t,
+                "currency": t.uint16_t,
+                "price": t.uint32_t,
+                "price_trailing_digit": t.uint8_t,
+            },
             True,
         ),
-        0x0003: (
+        0x03: ZCLCommandDef(
             "get_overall_schedule_price_response",
-            (t.uint16_t, t.uint32_t, t.uint8_t),
+            {
+                "currency": t.uint16_t,
+                "price": t.uint32_t,
+                "price_trailing_digit": t.uint8_t,
+            },
             True,
         ),
-        0x0004: (
+        0x04: ZCLCommandDef(
             "energy_phases_schedule_notification",
-            (t.uint8_t, t.LVList[ScheduleRecord]),
+            {
+                "power_profile_id": t.uint8_t,
+                "scheduled_phases": t.LVList[ScheduleRecord],
+            },
             False,
         ),
-        0x0005: (
+        0x05: ZCLCommandDef(
             "energy_phases_schedule_response",
-            (t.uint8_t, t.LVList[ScheduleRecord]),
+            {
+                "power_profile_id": t.uint8_t,
+                "scheduled_phases": t.LVList[ScheduleRecord],
+            },
             True,
         ),
-        0x0006: ("power_profile_schedule_constraints_request", (t.uint8_t,), False),
-        0x0007: ("energy_phases_schedule_state_request", (t.uint8_t,), False),
-        0x0008: (
+        0x06: ZCLCommandDef(
+            "power_profile_schedule_constraints_request",
+            {"power_profile_id": t.uint8_t},
+            False,
+        ),
+        0x07: ZCLCommandDef(
+            "energy_phases_schedule_state_request",
+            {"power_profile_id": t.uint8_t},
+            False,
+        ),
+        0x08: ZCLCommandDef(
             "get_power_profile_price_extended_response",
-            (t.uint8_t, t.uint16_t, t.uint32_t, t.uint8_t),
+            {
+                "power_profile_id": t.uint8_t,
+                "currency": t.uint16_t,
+                "price": t.uint32_t,
+                "price_trailing_digit": t.uint8_t,
+            },
             True,
         ),
     }
     client_commands = {
-        0x0000: (
+        0x00: ZCLCommandDef(
             "power_profile_notification",
-            (t.uint8_t, t.uint8_t, t.LVList[PowerProfilePhase]),
+            {
+                "total_profile_num": t.uint8_t,
+                "power_profile_id": t.uint8_t,
+                "transfer_phases": t.LVList[PowerProfilePhase],
+            },
             False,
         ),
-        0x0001: (
+        0x01: ZCLCommandDef(
             "power_profile_response",
-            (t.uint8_t, t.uint8_t, t.LVList[PowerProfilePhase]),
+            {
+                "total_profile_num": t.uint8_t,
+                "power_profile_id": t.uint8_t,
+                "transfer_phases": t.LVList[PowerProfilePhase],
+            },
             True,
         ),
-        0x0002: (
+        0x02: ZCLCommandDef(
             "power_profile_state_response",
-            (t.LVList[PowerProfile],),
+            {"power_profiles": t.LVList[PowerProfile]},
             True,
         ),
-        0x0003: ("get_power_profile_price", (t.uint8_t,), False),
-        0x0004: (
+        0x03: ZCLCommandDef(
+            "get_power_profile_price", {"power_profile_id": t.uint8_t}, False
+        ),
+        0x04: ZCLCommandDef(
             "power_profile_state_notification",
-            (t.LVList[PowerProfile],),
+            {"power_profiles": t.LVList[PowerProfile]},
             False,
         ),
-        0x0005: ("get_overall_schedule_price", (), False),
-        0x0006: ("energy_phases_schedule_request", (), False),
-        0x0007: ("energy_phases_schedule_state_response", (t.uint8_t, t.uint8_t), True),
-        0x0008: (
-            "energy_phases_schedule_state_notification",
-            (t.uint8_t, t.uint8_t),
+        0x05: ZCLCommandDef("get_overall_schedule_price", {}, False),
+        0x06: ZCLCommandDef(
+            "energy_phases_schedule_request",
+            {"power_profile_id": t.uint8_t},
             False,
         ),
-        0x0009: (
-            "power_profile_schedule_constraints_notification",
-            (t.uint8_t, t.uint16_t, t.uint16_t),
-            False,
-        ),
-        0x000A: (
-            "power_profile_schedule_constraints_response",
-            (t.uint8_t, t.uint16_t, t.uint16_t),
+        0x07: ZCLCommandDef(
+            "energy_phases_schedule_state_response",
+            {"power_profile_id": t.uint8_t, "num_scheduled_energy_phases": t.uint8_t},
             True,
         ),
-        0x000B: (
+        0x08: ZCLCommandDef(
+            "energy_phases_schedule_state_notification",
+            {"power_profile_id": t.uint8_t, "num_scheduled_energy_phases": t.uint8_t},
+            False,
+        ),
+        0x09: ZCLCommandDef(
+            "power_profile_schedule_constraints_notification",
+            {
+                "power_profile_id": t.uint8_t,
+                "start_after": t.uint16_t,
+                "stop_before": t.uint16_t,
+            },
+            False,
+        ),
+        0x0A: ZCLCommandDef(
+            "power_profile_schedule_constraints_response",
+            {
+                "power_profile_id": t.uint8_t,
+                "start_after": t.uint16_t,
+                "stop_before": t.uint16_t,
+            },
+            True,
+        ),
+        0x0B: ZCLCommandDef(
             "get_power_profile_price_extended",
-            (t.bitmap8, t.uint8_t, t.Optional(t.uint16_t)),
+            {
+                "options": t.bitmap8,
+                "power_profile_id": t.uint8_t,
+                "power_profile_start_time?": t.uint16_t,
+            },
             False,
         ),
     }
@@ -1287,7 +1826,10 @@ class PowerProfile(Cluster):
 class ApplianceControl(Cluster):
     cluster_id = 0x001B
     ep_attribute = "appliance_control"
-    attributes = {}
+    attributes = {
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+    }
     server_commands = {}
     client_commands = {}
 
@@ -1304,14 +1846,26 @@ class PollControl(Cluster):
         0x0004: ("checkin_interval_min", t.uint32_t),
         0x0005: ("long_poll_interval_min", t.uint32_t),
         0x0006: ("fast_poll_timeout_max", t.uint16_t),
+        0xFFFD: ("cluster_revision", t.uint16_t),
+        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands = {
-        0x0000: ("checkin_response", (t.uint8_t, t.uint16_t), True),
-        0x0001: ("fast_poll_stop", (), False),
-        0x0002: ("set_long_poll_interval", (t.uint32_t,), False),
-        0x0003: ("set_short_poll_interval", (t.uint16_t,), False),
+        0x00: ZCLCommandDef(
+            "checkin_response",
+            {"start_fast_polling": t.Bool, "fast_poll_timeout": t.uint16_t},
+            True,
+        ),
+        0x01: ZCLCommandDef("fast_poll_stop", {}, False),
+        0x02: ZCLCommandDef(
+            "set_long_poll_interval", {"new_long_poll_interval": t.uint32_t}, False
+        ),
+        0x03: ZCLCommandDef(
+            "set_short_poll_interval",
+            {"new_short_poll_interval": t.uint16_t},
+            False,
+        ),
     }
-    client_commands = {0x0000: ("checkin", (), False)}
+    client_commands = {0x0000: ZCLCommandDef("checkin", {}, False)}
 
 
 class GreenPowerProxy(Cluster):
