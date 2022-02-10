@@ -708,7 +708,6 @@ class LevelControl(Cluster):
         0x0012: ("on_transition_time", t.uint16_t),
         0x0013: ("off_transition_time", t.uint16_t),
         0x0014: ("default_move_rate", t.uint8_t),
-        0x000F: ("options", t.bitmap8),
         0x4000: ("start_up_current_level", t.uint8_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
