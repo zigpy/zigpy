@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+import dataclasses
 from dataclasses import InitVar, dataclass, field
 import functools
 from typing import Any
@@ -27,6 +28,9 @@ class Key:
         if self.partner_ieee is None:
             self.partner_ieee = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
 
+    def replace(self, **kwargs) -> Key:
+        return dataclasses.replace(self, **kwargs)
+
 
 @dataclass
 class NodeInfo:
@@ -42,6 +46,9 @@ class NodeInfo:
             self.ieee = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
         if self.logical_type is None:
             self.logical_type = zdo_t.LogicalType.Coordinator
+
+    def replace(self, **kwargs) -> NodeInfo:
+        return dataclasses.replace(self, **kwargs)
 
 
 @dataclass
@@ -79,6 +86,9 @@ class NetworkInfo:
             self.children = []
         if self.nwk_addresses is None:
             self.nwk_addresses = {}
+
+    def replace(self, **kwargs) -> NetworkInfo:
+        return dataclasses.replace(self, **kwargs)
 
 
 @dataclass
