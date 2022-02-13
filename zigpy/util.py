@@ -226,7 +226,7 @@ class Request:
         """Init context manager for requests."""
         assert sequence not in pending
         self._pending = pending
-        self._result = asyncio.Future()
+        self._result: asyncio.Future = asyncio.Future()
         self._sequence = sequence
 
     @property

@@ -1,3 +1,5 @@
+import typing
+
 import zigpy.types as t
 from zigpy.zcl import Cluster
 from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
@@ -6,23 +8,23 @@ from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 class Price(Cluster):
     cluster_id = 0x0700
     ep_attribute = "smartenergy_price"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    attributes: typing.Dict[int, ZCLAttributeDef] = {}
+    server_commands: typing.Dict[int, ZCLCommandDef] = {}
+    client_commands: typing.Dict[int, ZCLCommandDef] = {}
 
 
 class Drlc(Cluster):
     cluster_id = 0x0701
     ep_attribute = "smartenergy_drlc"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    attributes: typing.Dict[int, ZCLAttributeDef] = {}
+    server_commands: typing.Dict[int, ZCLCommandDef] = {}
+    client_commands: typing.Dict[int, ZCLCommandDef] = {}
 
 
 class Metering(Cluster):
     cluster_id = 0x0702
     ep_attribute = "smartenergy_metering"
-    attributes: dict[int, ZCLAttributeDef] = {
+    attributes: typing.Dict[int, ZCLAttributeDef] = {
         0x0000: ("current_summ_delivered", t.uint48_t),
         0x0001: ("current_summ_received", t.uint48_t),
         0x0002: ("current_max_demand_delivered", t.uint48_t),
@@ -147,7 +149,7 @@ class Metering(Cluster):
         0x0A02: ("projected_bill", t.uint32_t),
         0x0A03: ("projected_bill_time_stamp", t.uint32_t),
     }
-    server_commands: dict[int, ZCLCommandDef] = {
+    server_commands: typing.Dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("get_profile", {}, False),
         0x01: ZCLCommandDef("req_mirror", {}, False),
         0x02: ZCLCommandDef("mirror_rem", {}, False),
@@ -156,7 +158,7 @@ class Metering(Cluster):
         0x05: ZCLCommandDef("take_snapshot", {}, False),
         0x06: ZCLCommandDef("mirror_report_attr_response", {}, True),
     }
-    client_commands: dict[int, ZCLCommandDef] = {
+    client_commands: typing.Dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("get_profile_response", {}, True),
         0x01: ZCLCommandDef("req_mirror_response", {}, True),
         0x02: ZCLCommandDef("mirror_rem_response", {}, True),
@@ -168,70 +170,70 @@ class Metering(Cluster):
 class Messaging(Cluster):
     cluster_id = 0x0703
     ep_attribute = "smartenergy_messaging"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    attributes: typing.Dict[int, ZCLAttributeDef] = {}
+    server_commands: typing.Dict[int, ZCLCommandDef] = {}
+    client_commands: typing.Dict[int, ZCLCommandDef] = {}
 
 
 class Tunneling(Cluster):
     cluster_id = 0x0704
     ep_attribute = "smartenergy_tunneling"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    attributes: typing.Dict[int, ZCLAttributeDef] = {}
+    server_commands: typing.Dict[int, ZCLCommandDef] = {}
+    client_commands: typing.Dict[int, ZCLCommandDef] = {}
 
 
 class Prepayment(Cluster):
     cluster_id = 0x0705
     ep_attribute = "smartenergy_prepayment"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    attributes: typing.Dict[int, ZCLAttributeDef] = {}
+    server_commands: typing.Dict[int, ZCLCommandDef] = {}
+    client_commands: typing.Dict[int, ZCLCommandDef] = {}
 
 
 class EnergyManagement(Cluster):
     cluster_id = 0x0706
     ep_attribute = "smartenergy_energy_management"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    attributes: typing.Dict[int, ZCLAttributeDef] = {}
+    server_commands: typing.Dict[int, ZCLCommandDef] = {}
+    client_commands: typing.Dict[int, ZCLCommandDef] = {}
 
 
 class Calendar(Cluster):
     cluster_id = 0x0707
     ep_attribute = "smartenergy_calendar"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    attributes: typing.Dict[int, ZCLAttributeDef] = {}
+    server_commands: typing.Dict[int, ZCLCommandDef] = {}
+    client_commands: typing.Dict[int, ZCLCommandDef] = {}
 
 
 class DeviceManagement(Cluster):
     cluster_id = 0x0708
     ep_attribute = "smartenergy_device_management"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    attributes: typing.Dict[int, ZCLAttributeDef] = {}
+    server_commands: typing.Dict[int, ZCLCommandDef] = {}
+    client_commands: typing.Dict[int, ZCLCommandDef] = {}
 
 
 class Events(Cluster):
     cluster_id = 0x0709
     ep_attribute = "smartenergy_events"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    attributes: typing.Dict[int, ZCLAttributeDef] = {}
+    server_commands: typing.Dict[int, ZCLCommandDef] = {}
+    client_commands: typing.Dict[int, ZCLCommandDef] = {}
 
 
 class MduPairing(Cluster):
     cluster_id = 0x070A
     ep_attribute = "smartenergy_mdu_pairing"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    attributes: typing.Dict[int, ZCLAttributeDef] = {}
+    server_commands: typing.Dict[int, ZCLCommandDef] = {}
+    client_commands: typing.Dict[int, ZCLCommandDef] = {}
 
 
 class KeyEstablishment(Cluster):
     cluster_id = 0x0800
     ep_attribute = "smartenergy_key_establishment"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    attributes: typing.Dict[int, ZCLAttributeDef] = {}
+    server_commands: typing.Dict[int, ZCLCommandDef] = {}
+    client_commands: typing.Dict[int, ZCLCommandDef] = {}

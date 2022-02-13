@@ -1,3 +1,5 @@
+import typing
+
 import zigpy.types as t
 from zigpy.zcl import Cluster
 from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
@@ -76,8 +78,8 @@ class EndpointInfoRecord(t.Struct):
 class LightLink(Cluster):
     cluster_id = 0x1000
     ep_attribute = "lightlink"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {
+    attributes: typing.Dict[int, ZCLAttributeDef] = {}
+    server_commands: typing.Dict[int, ZCLCommandDef] = {
         # Touchlink
         0x00: ZCLCommandDef(
             "scan",
@@ -192,7 +194,7 @@ class LightLink(Cluster):
             False,
         ),
     }
-    client_commands: dict[int, ZCLCommandDef] = {
+    client_commands: typing.Dict[int, ZCLCommandDef] = {
         # Touchlink
         0x01: ZCLCommandDef(
             "scan_rsp",

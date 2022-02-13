@@ -1,4 +1,5 @@
 import inspect
+import typing
 
 from . import (
     closures,
@@ -15,8 +16,8 @@ from . import (
 )
 from .. import Cluster
 
-CLUSTERS_BY_ID: dict[int, Cluster] = {}
-CLUSTERS_BY_NAME: dict[str, Cluster] = {}
+CLUSTERS_BY_ID: typing.Dict[int, Cluster] = {}
+CLUSTERS_BY_NAME: typing.Dict[str, Cluster] = {}
 
 for cls in (
     closures,

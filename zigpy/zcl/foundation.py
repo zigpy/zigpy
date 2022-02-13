@@ -694,7 +694,7 @@ class GeneralCommand(t.enum8):
 
 GENERAL_COMMANDS = COMMANDS = {
     GeneralCommand.Read_Attributes: ZCLCommandDef(
-        schema={"attribute_ids": list[t.uint16_t]}, is_reply=False
+        schema={"attribute_ids": t.List[t.uint16_t]}, is_reply=False
     ),
     GeneralCommand.Read_Attributes_rsp: ZCLCommandDef(
         schema={"status_records": t.List[ReadAttributeRecord]},

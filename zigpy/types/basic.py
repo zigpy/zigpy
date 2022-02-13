@@ -36,7 +36,7 @@ class Bits(list):
 
     @classmethod
     def deserialize(cls, data) -> Tuple["Bits", bytes]:
-        bits = []
+        bits: list[int] = []
 
         for byte in data:
             bits.extend((byte >> i) & 1 for i in range(7, -1, -1))
@@ -495,7 +495,7 @@ class LongOctetString(LVBytes):
 
 class KwargTypeMeta(type):
     # So things like `LVList[NWK, t.uint8_t]` are singletons
-    _anonymous_classes = {}
+    _anonymous_classes = {}  # type:ignore[var-annotated]
 
     def __new__(metaclass, name, bases, namespaces, **kwargs):
         cls_kwarg_attrs = namespaces.get("_getitem_kwargs", {})
