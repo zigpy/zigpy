@@ -7,7 +7,7 @@ from typing import Any, Tuple
 import zigpy.types as t
 from zigpy.zcl import Cluster
 import zigpy.zcl.foundation
-from zigpy.zcl.foundation import ZCLCommandDef
+from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 
 class IasZone(Cluster):
@@ -63,7 +63,7 @@ class IasZone(Cluster):
     cluster_id = 0x0500
     name = "IAS Zone"
     ep_attribute = "ias_zone"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Zone Information
         0x0000: ("zone_state", ZoneState),
         0x0001: ("zone_type", ZoneType),
@@ -74,7 +74,7 @@ class IasZone(Cluster):
         0x0012: ("num_zone_sensitivity_levels_supported", t.uint8_t),
         0x0013: ("current_zone_sensitivity_level", t.uint8_t),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "enroll_response",
             {"enroll_response_code": EnrollResponse, "zone_id": t.uint8_t},
@@ -90,7 +90,7 @@ class IasZone(Cluster):
             False,
         ),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "status_change_notification",
             {
@@ -199,8 +199,8 @@ class IasAce(Cluster):
     cluster_id = 0x0501
     name = "IAS Ancillary Control Equipment"
     ep_attribute = "ias_ace"
-    attributes = {}
-    server_commands = {
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "arm",
             {
@@ -233,7 +233,7 @@ class IasAce(Cluster):
             False,
         ),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "arm_response", {"arm_notification": ArmNotification}, True
         ),
@@ -370,7 +370,9 @@ class IasWd(Cluster):
 
         @strobe.setter
         def strobe(self, strobe: "Strobe") -> None:
-            self.value = (self.value & 0xF7) | ((strobe & 0x01) << 2)
+            self.value = (self.value & 0xF7) | (
+                (strobe & 0x01) << 2  # type:ignore[operator]
+            )
 
         @property
         def level(self) -> "SirenLevel":
@@ -407,7 +409,7 @@ class IasWd(Cluster):
 
         @strobe.setter
         def strobe(self, strobe: Strobe) -> None:
-            self.value = (self.value & 0xF7) | (strobe << 3)
+            self.value = (self.value & 0xF7) | (strobe << 3)  # type:ignore[operator]
 
         @property
         def level(self) -> "SquawkLevel":
@@ -420,8 +422,8 @@ class IasWd(Cluster):
     cluster_id = 0x0502
     name = "IAS Warning Device"
     ep_attribute = "ias_wd"
-    attributes = {0x0000: ("max_duration", t.uint16_t)}
-    server_commands = {
+    attributes: dict[int, ZCLAttributeDef] = {0x0000: ("max_duration", t.uint16_t)}
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "start_warning",
             {
@@ -434,4 +436,4 @@ class IasWd(Cluster):
         ),
         0x01: ZCLCommandDef("squawk", {"squawk": Squawk}, False),
     }
-    client_commands = {}
+    client_commands: dict[int, ZCLCommandDef] = {}

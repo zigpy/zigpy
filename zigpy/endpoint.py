@@ -63,7 +63,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             if status == zdo_status.NOT_ACTIVE:
                 # These endpoints are essentially junk but this lets the device join
                 self.status = Status.ENDPOINT_INACTIVE
-                return None, None
+                return
             elif status != zdo_status.SUCCESS:
                 raise zigpy.exceptions.InvalidResponse(
                     "Failed to retrieve service descriptor: %s", status

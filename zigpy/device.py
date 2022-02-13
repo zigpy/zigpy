@@ -5,7 +5,7 @@ import binascii
 import enum
 import logging
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -79,7 +79,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @property
     def non_zdo_endpoints(self) -> list[zigpy.endpoint.Endpoint]:
-        return [ep for epid, ep in self.endpoints.items() if epid != 0]
+        return [
+            ep
+            for epid, ep in self.endpoints.items()
+            if epid != 0 and not (isinstance(ep, zdo.ZDO))
+        ]
 
     @property
     def has_non_zdo_endpoints(self) -> bool:
@@ -448,13 +452,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __getitem__(self, key):
         return self.endpoints[key]
 
-    def get_signature(self) -> dict[dict]:
+    def get_signature(self) -> dict[str, Any]:
         # return the device signature by providing essential device information
         #    - Model Identifier ( Attribute 0x0005 of Basic Cluster 0x0000 )
         #    - Manufacturer Name ( Attribute 0x0004 of Basic Cluster 0x0000 )
         #    - Endpoint list
         #        - Profile Id, Device Id, Cluster Out, Cluster In
-        signature: dict[dict] = {}
+        signature: dict[str, Any] = {}
         if self._manufacturer is not None:
             signature[SIG_MANUFACTURER] = self.manufacturer
         if self._model is not None:

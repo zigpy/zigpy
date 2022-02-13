@@ -268,7 +268,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             )
 
         try:
-            request = schema(*args, **kwargs)
+            request = schema(*args, **kwargs)  # type:ignore[operator]
             payload = request.serialize()
         except (ValueError, TypeError) as e:
             return future_exception(e)
@@ -306,7 +306,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             )
 
         try:
-            request = schema(*args, **kwargs)
+            request = schema(*args, **kwargs)  # type:ignore[operator]
             payload = request.serialize()
         except (ValueError, TypeError) as e:
             return future_exception(e)

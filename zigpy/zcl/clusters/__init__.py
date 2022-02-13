@@ -15,8 +15,8 @@ from . import (
 )
 from .. import Cluster
 
-CLUSTERS_BY_ID = {}
-CLUSTERS_BY_NAME = {}
+CLUSTERS_BY_ID: dict[int, Cluster] = {}
+CLUSTERS_BY_NAME: dict[str, Cluster] = {}
 
 for cls in (
     closures,

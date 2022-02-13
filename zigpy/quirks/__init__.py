@@ -57,7 +57,7 @@ def register_uninitialized_device_message_handler(handler: Callable) -> None:
 
 
 class CustomDevice(zigpy.device.Device):
-    replacement = {}
+    replacement: dict[str, Any] = {}
     signature = None
 
     def __init_subclass__(cls):
@@ -84,7 +84,7 @@ class CustomDevice(zigpy.device.Device):
         for endpoint_id, endpoint in self.replacement.get(SIG_ENDPOINTS, {}).items():
             self.add_endpoint(endpoint_id, replace_device=replaces)
 
-    def add_endpoint(self, endpoint_id, replace_device=None):
+    def add_endpoint(self, endpoint_id, replace_device=None) -> zigpy.endpoint.Endpoint:
         if endpoint_id not in self.replacement.get(SIG_ENDPOINTS, {}):
             return super().add_endpoint(endpoint_id)
 
@@ -248,7 +248,7 @@ class CustomCluster(zigpy.zcl.Cluster):
 
     def _configure_reporting(  # type:ignore[override]
         self,
-        config_records: t.List[foundation.AttributeReportingConfig],
+        config_records: list[foundation.AttributeReportingConfig],
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         **kwargs,
@@ -267,7 +267,7 @@ class CustomCluster(zigpy.zcl.Cluster):
 
     def _read_attributes(  # type:ignore[override]
         self,
-        attribute_ids: t.List[t.uint16_t],
+        attribute_ids: list[t.uint16_t],
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         **kwargs,
@@ -281,7 +281,7 @@ class CustomCluster(zigpy.zcl.Cluster):
 
     def _write_attributes(  # type:ignore[override]
         self,
-        attributes: t.List[foundation.Attribute],
+        attributes: list[foundation.Attribute],
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         **kwargs,
@@ -297,7 +297,7 @@ class CustomCluster(zigpy.zcl.Cluster):
 
     def _write_attributes_undivided(  # type:ignore[override]
         self,
-        attributes: t.List[foundation.Attribute],
+        attributes: list[foundation.Attribute],
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         **kwargs,
