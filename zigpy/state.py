@@ -214,7 +214,7 @@ class CounterGroup(dict):
 class CounterGroups(dict):
     """A collection of unrelated counter groups in a dict."""
 
-    def __iter__(self) -> Iterable[CounterGroup]:
+    def __iter__(self) -> Iterable[CounterGroup]:  # type:ignore[override]
         """Return an iterable of the counters"""
         return (counter_group for counter_group in self.values())
 

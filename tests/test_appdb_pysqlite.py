@@ -33,7 +33,7 @@ else:
 
     # Re-run most of the appdb tests
     from tests.test_appdb import *  # noqa: F401,F403
-    from tests.test_appdb_migration import *  # noqa: F401,F403
+    from tests.test_appdb_migration import *  # type:ignore[no-redef] # noqa: F401,F403
 
     del test_pysqlite_load_success  # noqa: F821
     del test_pysqlite_load_failure  # noqa: F821

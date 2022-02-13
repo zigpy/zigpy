@@ -324,7 +324,13 @@ class SalusImage:
             with tarfile.open(fileobj=img_tgz) as tar:  # Unpack tar
                 for item in tar:
                     if item.name.endswith(".ota"):
-                        file_bytes = tar.extractfile(item).read()
+                        f = tar.extractfile(item)
+                        if f is None:
+                            msg = f"Issue extracting {item.name} from {self.url}"
+                            LOGGER.error(msg)
+                            raise ValueError(msg)
+                        else:
+                            file_bytes = f.read()
                         break
             img, _ = parse_ota_image(file_bytes)
 

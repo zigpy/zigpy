@@ -168,6 +168,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         expect_reply: bool = True,
         tries: int = 1,
         tsn: Optional[Union[int, t.uint8_t]] = None,
+        **kwargs: Any,
     ) -> Coroutine:
         command = self.server_commands[command_id]
 
@@ -193,6 +194,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         *args,
         manufacturer: Optional[Union[int, t.uint16_t]] = None,
         tsn: Optional[Union[int, t.uint8_t]] = None,
+        **kwargs: Any,
     ) -> Coroutine:
         command = self.client_commands[command_id]
 
@@ -244,37 +246,70 @@ class CustomCluster(zigpy.zcl.Cluster):
             succeeded.extend(results[0])
         return [succeeded]
 
-    def _configure_reporting(
-        self, args: list[foundation.Attribute], manufacturer: Optional[int] = None
+    def _configure_reporting(  # type:ignore[override]
+        self,
+        config_records: t.List[foundation.AttributeReportingConfig],
+        *args,
+        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        **kwargs,
     ):
         """Configure reporting ZCL foundation command."""
-        if manufacturer is None and self._has_manuf_attr([a.attrid for a in args]):
+        if manufacturer is None and self._has_manuf_attr(
+            [a.attrid for a in config_records]
+        ):
             manufacturer = self.endpoint.manufacturer_id
-        return super()._configure_reporting(args, manufacturer=manufacturer)
+        return super()._configure_reporting(
+            config_records,
+            *args,
+            manufacturer=manufacturer,
+            **kwargs,
+        )
 
-    def _read_attributes(
-        self, args: list[t.uint16_t], manufacturer: Optional[int] = None
+    def _read_attributes(  # type:ignore[override]
+        self,
+        attribute_ids: t.List[t.uint16_t],
+        *args,
+        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        **kwargs,
     ):
         """Read attributes ZCL foundation command."""
         if manufacturer is None and self._has_manuf_attr(args):
             manufacturer = self.endpoint.manufacturer_id
-        return super()._read_attributes(args, manufacturer=manufacturer)
+        return super()._read_attributes(
+            attribute_ids, *args, manufacturer=manufacturer, **kwargs
+        )
 
-    def _write_attributes(
-        self, args: list[foundation.Attribute], manufacturer: Optional[int] = None
+    def _write_attributes(  # type:ignore[override]
+        self,
+        attributes: t.List[foundation.Attribute],
+        *args,
+        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        **kwargs,
     ):
         """Write attribute ZCL foundation command."""
-        if manufacturer is None and self._has_manuf_attr([a.attrid for a in args]):
+        if manufacturer is None and self._has_manuf_attr(
+            [a.attrid for a in attributes]
+        ):
             manufacturer = self.endpoint.manufacturer_id
-        return super()._write_attributes(args, manufacturer=manufacturer)
+        return super()._write_attributes(
+            attributes, *args, manufacturer=manufacturer, **kwargs
+        )
 
-    def _write_attributes_undivided(
-        self, args: list[foundation.Attribute], manufacturer: Optional[int] = None
+    def _write_attributes_undivided(  # type:ignore[override]
+        self,
+        attributes: t.List[foundation.Attribute],
+        *args,
+        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        **kwargs,
     ):
         """Write attribute undivided ZCL foundation command."""
-        if manufacturer is None and self._has_manuf_attr([a.attrid for a in args]):
+        if manufacturer is None and self._has_manuf_attr(
+            [a.attrid for a in attributes]
+        ):
             manufacturer = self.endpoint.manufacturer_id
-        return super()._write_attributes_undivided(args, manufacturer=manufacturer)
+        return super()._write_attributes_undivided(
+            attributes, *args, manufacturer=manufacturer, **kwargs
+        )
 
 
 def handle_message_from_uninitialized_sender(
