@@ -273,7 +273,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         **kwargs,
     ):
         """Read attributes ZCL foundation command."""
-        if manufacturer is None and self._has_manuf_attr(args):
+        if manufacturer is None and self._has_manuf_attr(attribute_ids):
             manufacturer = self.endpoint.manufacturer_id
         return super()._read_attributes(
             attribute_ids, *args, manufacturer=manufacturer, **kwargs
