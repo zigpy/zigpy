@@ -104,7 +104,7 @@ class Groups(ListenableMixin, dict):
 
     def add_group(
         self, group_id: int, name: str | None = None, suppress_event: bool = False
-    ) -> Optional[Group]:
+    ) -> Group:
         if group_id in self:
             return self[group_id]
         LOGGER.debug("Adding group: %s, %s", group_id, name)

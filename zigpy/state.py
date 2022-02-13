@@ -17,7 +17,7 @@ class Key:
 
     key: t.KeyData | None = None
     tx_counter: t.uint32_t | None = 0
-    rx_counter: t.uin32_t | None = 0
+    rx_counter: t.uint32_t | None = 0
     seq: t.uint8_t | None = 0
     partner_ieee: t.EUI64 | None = None
 
