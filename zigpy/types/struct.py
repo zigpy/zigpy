@@ -158,7 +158,9 @@ class Struct:
 
         return fields
 
-    def assigned_fields(self, *, strict=False) -> typing.List[StructField]:
+    def assigned_fields(
+        self, *, strict=False
+    ) -> typing.List[(StructField, typing.Any)]:
         assigned_fields = ListSubclass()
 
         for field in self.fields:
@@ -288,8 +290,10 @@ class Struct:
 
         return type(self)(**d)
 
-    def __eq__(self, other: Struct) -> bool:
-        if self._int_type is not None and isinstance(other, int):
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Struct):
+            return NotImplemented
+        elif self._int_type is not None and isinstance(other, int):
             return int(self) == other
         elif not isinstance(self, type(other)) and not isinstance(other, type(self)):
             return NotImplemented
