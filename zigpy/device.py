@@ -118,7 +118,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         """Cancel initialization call."""
         if self.initializing:
             self.debug("Canceling old initialize call")
-            self._initialize_task.cancel()
+            self._initialize_task.cancel()  # type:ignore[union-attr]
 
     def schedule_initialize(self) -> Optional[asyncio.Task]:
         # Already-initialized devices don't need to be re-initialized
@@ -414,6 +414,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def model(self) -> Optional[str]:
         return self._model
 
+    @model.setter
+    def model(self, value) -> None:
+        if isinstance(value, str):
+            self._model = value
+
     @property
     def skip_configuration(self) -> bool:
         return self._skip_configuration
@@ -424,11 +429,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._skip_configuration = should_skip_configuration
         else:
             self._skip_configuration = False
-
-    @model.setter
-    def model(self, value) -> None:
-        if isinstance(value, str):
-            self._model = value
 
     @property
     def relays(self) -> Optional[Relays]:
@@ -448,13 +448,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __getitem__(self, key):
         return self.endpoints[key]
 
-    def get_signature(self) -> dict:
+    def get_signature(self) -> dict[dict]:
         # return the device signature by providing essential device information
         #    - Model Identifier ( Attribute 0x0005 of Basic Cluster 0x0000 )
         #    - Manufacturer Name ( Attribute 0x0004 of Basic Cluster 0x0000 )
         #    - Endpoint list
         #        - Profile Id, Device Id, Cluster Out, Cluster In
-        signature = {}
+        signature: dict[dict] = {}
         if self._manufacturer is not None:
             signature[SIG_MANUFACTURER] = self.manufacturer
         if self._model is not None:

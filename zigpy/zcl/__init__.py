@@ -169,11 +169,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self._attr_cache: dict[int, Any] = {}
         self.unsupported_attributes: set[int | str] = set()
         self._listeners = {}
-
-        if is_server:
-            self._type: ClusterType = ClusterType.Server
-        else:
-            self._type: ClusterType = ClusterType.Client
+        self._type: ClusterType = (
+            ClusterType.Server if is_server else ClusterType.Client
+        )
 
     @property
     def attridx(self):
