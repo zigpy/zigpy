@@ -25,3 +25,25 @@ repos:
           - --ignore-words-list=ser,nd,hass
           - --skip="./.*"
           - --quiet-level=2
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v0.931
+    hooks:
+      - id: mypy
+        args:
+          - --python-version=3.6
+          - --ignore-missing-imports
+          - --install-types
+          - --non-interactive
+          - --show-error-codes
+          - --disable-error-code=attr-defined
+          - --disable-error-code=valid-type
+          - --disable-error-code=var-annotated
+          - --disable-error-code=dict-item
+          - --disable-error-code=misc
+          - --disable-error-code=arg-type
+          - --disable-error-code=assignment
+          - --disable-error-code=return-value
+          - --disable-error-code=operator
+          - --disable-error-code=type-arg
+          - --disable-error-code=has-type
