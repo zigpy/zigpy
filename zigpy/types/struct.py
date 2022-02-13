@@ -291,9 +291,7 @@ class Struct:
         return type(self)(**d)
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Struct):
-            return NotImplemented
-        elif self._int_type is not None and isinstance(other, int):
+        if self._int_type is not None and isinstance(other, int):
             return int(self) == other
         elif not isinstance(self, type(other)) and not isinstance(other, type(self)):
             return NotImplemented
