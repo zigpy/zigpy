@@ -31,7 +31,6 @@ repos:
     hooks:
       - id: mypy
         args:
-          - --python-version=3.6
           - --ignore-missing-imports
           - --install-types
           - --non-interactive
