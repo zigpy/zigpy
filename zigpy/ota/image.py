@@ -106,7 +106,7 @@ class OTAImageHeader(t.Struct):
         return ImageKey(self.manufacturer_id, self.image_type)
 
     @classmethod
-    def deserialize(cls, data) -> tuple:
+    def deserialize(cls, data) -> tuple[t.Struct, bytes]:
         hdr, data = super().deserialize(data)
         if hdr.upgrade_file_id != cls.MAGIC_VALUE:
             raise ValueError(

@@ -160,8 +160,12 @@ class GroupCluster(zigpy.zcl.Cluster):
     """Virtual cluster for group requests."""
 
     @classmethod
-    def from_id(cls, group_endpoint: GroupEndpoint, cluster_id: int):
+    def from_id(
+        cls, group_endpoint: GroupEndpoint, cluster_id: int, is_server=True
+    ) -> zigpy.zcl.Cluster:
         """Instantiate from ZCL cluster by cluster id."""
+        if is_server is not True:
+            raise ValueError("Only server clusters are supported for group requests")
         if cluster_id in cls._registry:
             return cls._registry[cluster_id](group_endpoint, is_server=True)
         group_endpoint.debug(
@@ -170,7 +174,9 @@ class GroupCluster(zigpy.zcl.Cluster):
         raise KeyError("Unsupported 0x{:04x} cluster id for groups".format(cluster_id))
 
     @classmethod
-    def from_attr(cls, group_endpoint: GroupEndpoint, ep_name: str):
+    def from_attr(
+        cls, group_endpoint: GroupEndpoint, ep_name: str
+    ) -> zigpy.zcl.Cluster:
         """Instantiate by Cluster name."""
 
         for cluster in cls._registry.values():
