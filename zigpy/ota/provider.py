@@ -322,9 +322,9 @@ class SalusImage:
                     if item.name.endswith(".ota"):
                         f = tar.extractfile(item)
                         if f is None:
-                            msg = f"Issue extracting {item.name} from {self.url}"
-                            LOGGER.error(msg)
-                            raise ValueError(msg)
+                            raise ValueError(
+                                f"Issue extracting {item.name} from {self.url}"
+                            )
                         else:
                             file_bytes = f.read()
                         break
