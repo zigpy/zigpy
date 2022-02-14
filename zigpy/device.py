@@ -80,9 +80,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def non_zdo_endpoints(self) -> list[zigpy.endpoint.Endpoint]:
         return [
-            ep
-            for epid, ep in self.endpoints.items()
-            if epid != 0 and not (isinstance(ep, zdo.ZDO))
+            ep for epid, ep in self.endpoints.items() if not (isinstance(ep, zdo.ZDO))
         ]
 
     @property
