@@ -253,7 +253,7 @@ class WriteAttributesResponse(list):
     """
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple("WriteAttributesResponse", bytes):
+    def deserialize(cls, data: bytes) -> tuple[WriteAttributesResponse, bytes]:
         record, data = WriteAttributesStatusRecord.deserialize(data)
         r = cls([record])
         if record.status == Status.SUCCESS:
@@ -385,7 +385,7 @@ class ConfigureReportingResponseRecord(t.Struct):
         return r
 
 
-class ConfigureReportingResponse(list[ConfigureReportingResponseRecord]):
+class ConfigureReportingResponse(t.List[ConfigureReportingResponseRecord]):
     # In the case of successful configuration of all attributes, only a single
     # attribute status record SHALL be included in the command, with the status
     # field set to SUCCESS and the direction and attribute identifier fields omitted

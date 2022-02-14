@@ -161,7 +161,7 @@ class Struct:
 
         return fields
 
-    def assigned_fields(self, *, strict=False) -> list[tuple(StructField, typing.Any)]:
+    def assigned_fields(self, *, strict=False) -> list[tuple[StructField, typing.Any]]:
         assigned_fields = ListSubclass()
 
         for field in self.fields:

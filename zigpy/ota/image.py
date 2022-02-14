@@ -154,7 +154,7 @@ class OTAImage(t.Struct, BaseOTAImage):
     """
 
     header: OTAImageHeader
-    subelements: list[SubElement]
+    subelements: t.List[SubElement]
 
     @classmethod
     def deserialize(cls, data) -> tuple[OTAImage, bytes]:
