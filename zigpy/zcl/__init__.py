@@ -4,7 +4,7 @@ import asyncio
 import enum
 import functools
 import logging
-from typing import Any, Coroutine, Optional, Sequence, Union
+from typing import Any, Optional, Sequence, Union
 import warnings
 
 from zigpy import util
@@ -575,7 +575,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         max_interval: int,
         reportable_change: int = 1,
         direction: int = 0x00,
-    ) -> foundation.ConfigureReportingResponseRecord:
+    ) -> foundation.AttributeReportingConfig:
         try:
             attr_def = self.find_attribute(attribute)
         except KeyError:
@@ -598,7 +598,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         max_interval: int,
         reportable_change: int,
         manufacturer: int | None = None,
-    ) -> Coroutine:
+    ) -> list[foundation.ConfigureReportingResponseRecord]:
         """Configure attribute reporting for a single attribute."""
         return await self.configure_reporting_multiple(
             {attribute: (min_interval, max_interval, reportable_change)},

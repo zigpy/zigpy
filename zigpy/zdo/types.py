@@ -40,8 +40,8 @@ class SimpleDescriptor(t.Struct):
     profile: t.uint16_t
     device_type: t.uint16_t
     device_version: t.uint8_t
-    input_clusters: t.LVList[t.uint16_t]
-    output_clusters: t.LVList[t.uint16_t]
+    input_clusters: t.LVList(t.uint16_t)
+    output_clusters: t.LVList(t.uint16_t)
 
 
 class SizePrefixedSimpleDescriptor(SimpleDescriptor):
@@ -324,7 +324,7 @@ class Neighbors(t.Struct):
 
     entries: t.uint8_t
     start_index: t.uint8_t
-    neighbor_table_list: t.LVList[Neighbor]
+    neighbor_table_list: t.LVList(Neighbor)
 
 
 class Route(t.Struct):
@@ -338,7 +338,7 @@ class Route(t.Struct):
 class Routes(t.Struct):
     Entries: t.uint8_t
     StartIndex: t.uint8_t
-    RoutingTableList: t.LVList[Route]
+    RoutingTableList: t.LVList(Route)
 
 
 class NwkUpdate(t.Struct):

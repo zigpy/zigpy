@@ -1,4 +1,6 @@
 """OTA Firmware providers."""
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 import asyncio
 from collections import defaultdict
@@ -15,13 +17,7 @@ import aiohttp
 import attr
 
 from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA_URL
-from zigpy.ota.image import (
-    BaseOTAImage,
-    ImageKey,
-    OTAImage,
-    OTAImageHeader,
-    parse_ota_image,
-)
+from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader, parse_ota_image
 import zigpy.util
 
 LOGGER = logging.getLogger(__name__)
@@ -122,7 +118,7 @@ class IKEAImage:
     def key(self):
         return ImageKey(self.manufacturer_id, self.image_type)
 
-    async def fetch_image(self) -> Optional[OTAImage]:
+    async def fetch_image(self) -> Optional[BaseOTAImage]:
         async with aiohttp.ClientSession() as req:
             LOGGER.debug("Downloading %s for %s", self.url, self.key)
             async with req.get(self.url) as rsp:
@@ -224,7 +220,7 @@ class LedvanceImage:
     def key(self):
         return ImageKey(self.manufacturer_id, self.image_type)
 
-    async def fetch_image(self) -> Optional[OTAImage]:
+    async def fetch_image(self) -> Optional[BaseOTAImage]:
         async with aiohttp.ClientSession() as req:
             LOGGER.debug("Downloading %s for %s", self.url, self.key)
             async with req.get(self.url) as rsp:
@@ -315,7 +311,7 @@ class SalusImage:
     def key(self):
         return ImageKey(self.manufacturer_id, self.model)
 
-    async def fetch_image(self) -> Optional[OTAImage]:
+    async def fetch_image(self) -> Optional[BaseOTAImage]:
         async with aiohttp.ClientSession() as req:
             LOGGER.debug("Downloading %s for %s", self.url, self.key)
             async with req.get(self.url) as rsp:
@@ -460,7 +456,7 @@ class FileStore(Basic):
         self._ota_dir = None
 
     @staticmethod
-    def validate_ota_dir(ota_dir: str) -> str:
+    def validate_ota_dir(ota_dir: str) -> str | None:
         """Return True if exists and is a dir."""
         if ota_dir is None:
             return None

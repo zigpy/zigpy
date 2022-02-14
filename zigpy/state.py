@@ -192,7 +192,7 @@ class CounterGroup(dict):
     @property
     def name(self) -> str:
         """Return counter collection name."""
-        return self._name
+        return self._name if self._name is not None else "No Name"
 
     def increment(self, name: int | str, *tags: int | str) -> None:
         """Create and Update all counters recursively."""

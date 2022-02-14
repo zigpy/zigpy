@@ -97,7 +97,7 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
         except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
             return None
 
-    async def _scan(self) -> NeighborListType:
+    async def _scan(self) -> Optional[NeighborListType]:
         """Scan device."""
 
         idx = 0
@@ -109,7 +109,7 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
             if status != zigpy.zdo.types.Status.SUCCESS:
                 self._supported = False
                 self.debug("does not support 'Mgmt_Lqi_req'")
-                return
+                return None
 
             for neighbor in rsp.neighbor_table_list:
                 if str(neighbor.ieee) in (

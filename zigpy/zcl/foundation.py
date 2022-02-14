@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import keyword
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 import warnings
 
 import zigpy.types as t
@@ -253,7 +253,7 @@ class WriteAttributesResponse(list):
     """
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["WriteAttributesResponse", bytes]:
+    def deserialize(cls, data: bytes) -> tuple("WriteAttributesResponse", bytes):
         record, data = WriteAttributesStatusRecord.deserialize(data)
         r = cls([record])
         if record.status == Status.SUCCESS:
@@ -385,7 +385,7 @@ class ConfigureReportingResponseRecord(t.Struct):
         return r
 
 
-class ConfigureReportingResponse(t.List[ConfigureReportingResponseRecord]):
+class ConfigureReportingResponse(list[ConfigureReportingResponseRecord]):
     # In the case of successful configuration of all attributes, only a single
     # attribute status record SHALL be included in the command, with the status
     # field set to SUCCESS and the direction and attribute identifier fields omitted
@@ -497,7 +497,7 @@ class ZCLHeader(t.Struct):
     @property
     def is_reply(self) -> bool:
         """Return direction of Frame Control."""
-        return self.frame_control.is_reply
+        return self.frame_control.is_reply == 1
 
     def __setattr__(self, name, value) -> None:
         super().__setattr__(name, value)
