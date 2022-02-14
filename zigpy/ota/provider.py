@@ -10,7 +10,6 @@ import logging
 import os
 import os.path
 import tarfile
-from typing import Dict, Optional
 import urllib.parse
 
 import aiohttp
@@ -41,7 +40,7 @@ class Basic(zigpy.util.LocalLogMixin, ABC):
         self._last_refresh = None
 
     @abstractmethod
-    async def initialize_provider(self, ota_config: Dict) -> None:
+    async def initialize_provider(self, ota_config: dict) -> None:
         """Initialize OTA provider."""
 
     @abstractmethod
@@ -52,7 +51,7 @@ class Basic(zigpy.util.LocalLogMixin, ABC):
         """Filter unwanted get_image lookups."""
         return False
 
-    async def get_image(self, key: ImageKey) -> Optional[BaseOTAImage]:
+    async def get_image(self, key: ImageKey) -> BaseOTAImage | None:
         if await self.filter_get_image(key):
             return None
 
@@ -118,7 +117,7 @@ class IKEAImage:
     def key(self):
         return ImageKey(self.manufacturer_id, self.image_type)
 
-    async def fetch_image(self) -> Optional[BaseOTAImage]:
+    async def fetch_image(self) -> BaseOTAImage | None:
         async with aiohttp.ClientSession() as req:
             LOGGER.debug("Downloading %s for %s", self.url, self.key)
             async with req.get(self.url) as rsp:
@@ -144,7 +143,7 @@ class Trådfri(Basic):
     MANUFACTURER_ID = 4476
     HEADERS = {"accept": "application/json;q=0.9,*/*;q=0.8"}
 
-    async def initialize_provider(self, ota_config: Dict) -> None:
+    async def initialize_provider(self, ota_config: dict) -> None:
         self.info("OTA provider enabled")
         self.config = ota_config
         await self.refresh_firmware_list()
@@ -220,7 +219,7 @@ class LedvanceImage:
     def key(self):
         return ImageKey(self.manufacturer_id, self.image_type)
 
-    async def fetch_image(self) -> Optional[BaseOTAImage]:
+    async def fetch_image(self) -> BaseOTAImage | None:
         async with aiohttp.ClientSession() as req:
             LOGGER.debug("Downloading %s for %s", self.url, self.key)
             async with req.get(self.url) as rsp:
@@ -256,7 +255,7 @@ class Ledvance(Basic):
     UPDATE_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
     HEADERS = {"accept": "application/json"}
 
-    async def initialize_provider(self, ota_config: Dict) -> None:
+    async def initialize_provider(self, ota_config: dict) -> None:
         self.info("OTA provider enabled")
         await self.refresh_firmware_list()
         self.enable()
@@ -311,7 +310,7 @@ class SalusImage:
     def key(self):
         return ImageKey(self.manufacturer_id, self.model)
 
-    async def fetch_image(self) -> Optional[BaseOTAImage]:
+    async def fetch_image(self) -> BaseOTAImage | None:
         async with aiohttp.ClientSession() as req:
             LOGGER.debug("Downloading %s for %s", self.url, self.key)
             async with req.get(self.url) as rsp:
@@ -364,7 +363,7 @@ class Salus(Basic):
     MANUFACTURER_ID = 4216
     HEADERS = {"accept": "application/json"}
 
-    async def initialize_provider(self, ota_config: Dict) -> None:
+    async def initialize_provider(self, ota_config: dict) -> None:
         self.info("OTA provider enabled")
         await self.refresh_firmware_list()
         self.enable()
@@ -432,12 +431,12 @@ class FileImage:
             )
         return None
 
-    def fetch_image(self) -> Optional[BaseOTAImage]:
+    def fetch_image(self) -> BaseOTAImage | None:
         """Load image using executor."""
         loop = asyncio.get_event_loop()
         return loop.run_in_executor(None, self._fetch_image)
 
-    def _fetch_image(self) -> Optional[BaseOTAImage]:
+    def _fetch_image(self) -> BaseOTAImage | None:
         """Loads full OTA Image from the file."""
         try:
             with open(self.file_name, mode="rb") as f:
@@ -469,7 +468,7 @@ class FileStore(Basic):
             LOGGER.debug("OTA image directory '%s' does not exist", ota_dir)
         return None
 
-    async def initialize_provider(self, ota_config: Dict) -> None:
+    async def initialize_provider(self, ota_config: dict) -> None:
         ota_dir = ota_config[CONF_OTA_DIR]
         self._ota_dir = self.validate_ota_dir(ota_dir)
 

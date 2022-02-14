@@ -115,7 +115,7 @@ class NodeDescriptor(t.Struct):
 
     @classmethod
     def _old_constructor(
-        cls: "NodeDescriptor",
+        cls: NodeDescriptor,
         byte1: t.uint8_t = None,
         byte2: t.uint8_t = None,
         mac_capability_flags: MACCapabilityFlags = None,
@@ -723,7 +723,7 @@ class ZDOHeader:
     @classmethod
     def deserialize(
         cls, command_id: t.uint16_t, data: bytes
-    ) -> typing.Tuple["ZDOHeader", bytes]:
+    ) -> tuple[ZDOHeader, bytes]:
         """Deserialize data."""
         tsn, data = t.uint8_t.deserialize(data)
         return cls(command_id, tsn), data

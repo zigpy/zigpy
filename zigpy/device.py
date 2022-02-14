@@ -5,7 +5,7 @@ import binascii
 import enum
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -59,15 +59,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.lqi: int | None = None
         self.rssi: int | None = None
         self.last_seen: float | None = None
-        self._initialize_task: Optional[asyncio.Task] = None
-        self._group_scan_task: Optional[asyncio.Task] = None
+        self._initialize_task: asyncio.Task | None = None
+        self._group_scan_task: asyncio.Task | None = None
         self._listeners = {}
         self._manufacturer: str | None = None
         self._model: str | None = None
         self.node_desc: zdo.types.NodeDescriptor | None = None
         self.neighbors: zigpy.neighbor.Neighbors = zigpy.neighbor.Neighbors(self)
         self._pending: zigpy.util.Requests = zigpy.util.Requests()
-        self._relays: Optional[Relays] = None
+        self._relays: Relays | None = None
         self._skip_configuration: bool = False
 
         # Retained for backwards compatibility, will be removed in a future release
@@ -122,7 +122,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.debug("Canceling old initialize call")
             self._initialize_task.cancel()  # type:ignore[union-attr]
 
-    def schedule_initialize(self) -> Optional[asyncio.Task]:
+    def schedule_initialize(self) -> asyncio.Task | None:
         # Already-initialized devices don't need to be re-initialized
         if self.is_initialized:
             self.debug("Skipping initialization, device is fully initialized")
@@ -317,9 +317,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         dst_ep: int,
         message: bytes,
         *,
-        dst_addressing: Optional[
-            Addressing.Group | Addressing.IEEE | Addressing.NWK
-        ] = None,
+        dst_addressing: None
+        | (Addressing.Group | Addressing.IEEE | Addressing.NWK) = None,
     ):
         self.last_seen = time.time()
 
@@ -394,7 +393,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self._ieee
 
     @property
-    def manufacturer(self) -> Optional[str]:
+    def manufacturer(self) -> str | None:
         return self._manufacturer
 
     @manufacturer.setter
@@ -403,7 +402,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._manufacturer = value
 
     @property
-    def manufacturer_id(self) -> Optional[int]:
+    def manufacturer_id(self) -> int | None:
         """Return manufacturer id."""
         if self.manufacturer_id_override:
             return self.manufacturer_id_override
@@ -413,7 +412,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return None
 
     @property
-    def model(self) -> Optional[str]:
+    def model(self) -> str | None:
         return self._model
 
     @model.setter
@@ -433,12 +432,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._skip_configuration = False
 
     @property
-    def relays(self) -> Optional[Relays]:
+    def relays(self) -> Relays | None:
         """Relay list."""
         return self._relays
 
     @relays.setter
-    def relays(self, relays: Optional[Relays]) -> None:
+    def relays(self, relays: Relays | None) -> None:
         if relays is None:
             pass
         elif not isinstance(relays, Relays):

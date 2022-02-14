@@ -84,7 +84,7 @@ def test_counters_init():
         counters[name]
     assert len(counters) == 3
 
-    cnt_1, cnt_2, cnt_3 = [counter for counter in counters.counters()]
+    cnt_1, cnt_2, cnt_3 = (counter for counter in counters.counters())
     assert cnt_1.name == "counter_1"
     assert cnt_2.name == "counter_2"
     assert cnt_3.name == "some random name"

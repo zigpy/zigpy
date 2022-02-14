@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Any
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
@@ -306,7 +306,7 @@ class _SquawkOrWarningCommand:
         self.value = t.uint8_t(value)
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["_SquawkOrWarningCommand", bytes]:
+    def deserialize(cls, data: bytes) -> tuple[_SquawkOrWarningCommand, bytes]:
         val, data = t.uint8_t.deserialize(data)
         return cls(val), data
 
@@ -357,7 +357,7 @@ class IasWd(Cluster):
             Emergency_Panic = 0x06
 
         @property
-        def mode(self) -> "WarningMode":
+        def mode(self) -> WarningMode:
             return self.WarningMode((self.value >> 4) & 0x0F)
 
         @mode.setter
@@ -365,17 +365,17 @@ class IasWd(Cluster):
             self.value = (self.value & 0xF) | (mode << 4)
 
         @property
-        def strobe(self) -> "Strobe":
+        def strobe(self) -> Strobe:
             return self.Strobe((self.value >> 2) & 0x01)
 
         @strobe.setter
-        def strobe(self, strobe: "Strobe") -> None:
+        def strobe(self, strobe: Strobe) -> None:
             self.value = (self.value & 0xF7) | (
                 (strobe & 0x01) << 2  # type:ignore[operator]
             )
 
         @property
-        def level(self) -> "SirenLevel":
+        def level(self) -> SirenLevel:
             return self.SirenLevel(self.value & 0x03)
 
         @level.setter
@@ -396,7 +396,7 @@ class IasWd(Cluster):
             Disarmed = 0x01
 
         @property
-        def mode(self) -> "SquawkMode":
+        def mode(self) -> SquawkMode:
             return self.SquawkMode((self.value >> 4) & 0x0F)
 
         @mode.setter
@@ -404,7 +404,7 @@ class IasWd(Cluster):
             self.value = (self.value & 0xF) | ((mode & 0x0F) << 4)
 
         @property
-        def strobe(self) -> "Strobe":
+        def strobe(self) -> Strobe:
             return self.Strobe((self.value >> 3) & 0x01)
 
         @strobe.setter
@@ -412,7 +412,7 @@ class IasWd(Cluster):
             self.value = (self.value & 0xF7) | (strobe << 3)  # type:ignore[operator]
 
         @property
-        def level(self) -> "SquawkLevel":
+        def level(self) -> SquawkLevel:
             return self.SquawkLevel(self.value & 0x03)
 
         @level.setter

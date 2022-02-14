@@ -6,7 +6,7 @@ import functools
 import logging
 import random
 import time
-from typing import Any, Iterator, List, Optional
+from typing import Any, Iterator, List
 
 import zigpy.exceptions
 import zigpy.types
@@ -90,14 +90,14 @@ class Neighbors(zigpy.util.ListenableMixin, zigpy.util.LocalLogMixin):
         args = (self._device.nwk,) + args
         LOGGER.log(lvl, msg, *args, **kwargs)
 
-    async def scan(self) -> Optional[NeighborListType]:
+    async def scan(self) -> NeighborListType | None:
         """Scan device for neighbors."""
         try:
             return await self._scan()
         except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
             return None
 
-    async def _scan(self) -> Optional[NeighborListType]:
+    async def _scan(self) -> NeighborListType | None:
         """Scan device."""
 
         idx = 0

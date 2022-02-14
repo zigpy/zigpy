@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
@@ -851,9 +851,8 @@ class Time(Cluster):
         self,
         hdr: foundation.ZCLHeader,
         *args: list[Any],
-        dst_addressing: Optional[
-            t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
-        ] = None,
+        dst_addressing: None
+        | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
     ):
         if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
             data = {}
@@ -1475,9 +1474,8 @@ class Ota(Cluster):
         hdr: foundation.ZCLHeader,
         args: list[Any],
         *,
-        dst_addressing: Optional[
-            t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
-        ] = None,
+        dst_addressing: None
+        | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
     ):
         self.create_catching_task(
             self._handle_cluster_request(hdr, args, dst_addressing=dst_addressing),
@@ -1488,9 +1486,8 @@ class Ota(Cluster):
         hdr: foundation.ZCLHeader,
         args: list[Any],
         *,
-        dst_addressing: Optional[
-            t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
-        ] = None,
+        dst_addressing: None
+        | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
     ):
         """Parse OTA commands."""
         tsn, command_id = hdr.tsn, hdr.command_id

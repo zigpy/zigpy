@@ -709,46 +709,30 @@ def Optional(optional_item_type):
 class data8(FixedList, item_type=uint8_t, length=1):
     """General data, Discrete, 8 bit."""
 
-    pass
-
 
 class data16(FixedList, item_type=uint8_t, length=2):
     """General data, Discrete, 16 bit."""
-
-    pass
 
 
 class data24(FixedList, item_type=uint8_t, length=3):
     """General data, Discrete, 24 bit."""
 
-    pass
-
 
 class data32(FixedList, item_type=uint8_t, length=4):
     """General data, Discrete, 32 bit."""
-
-    pass
 
 
 class data40(FixedList, item_type=uint8_t, length=5):
     """General data, Discrete, 40 bit."""
 
-    pass
-
 
 class data48(FixedList, item_type=uint8_t, length=6):
     """General data, Discrete, 48 bit."""
-
-    pass
 
 
 class data56(FixedList, item_type=uint8_t, length=7):
     """General data, Discrete, 56 bit."""
 
-    pass
-
 
 class data64(FixedList, item_type=uint8_t, length=8):
     """General data, Discrete, 64 bit."""
-
-    pass

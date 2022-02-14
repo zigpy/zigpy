@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import zigpy.appdb
 import zigpy.config
@@ -109,12 +109,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def update_network(
         self,
         *,
-        channel: Optional[t.uint8_t] = None,
-        channels: Optional[t.Channels] = None,
-        extended_pan_id: Optional[t.ExtendedPanId] = None,
-        network_key: Optional[t.KeyData] = None,
-        pan_id: Optional[t.PanId] = None,
-        tc_link_key: Optional[t.KeyData] = None,
+        channel: t.uint8_t | None = None,
+        channels: t.Channels | None = None,
+        extended_pan_id: t.ExtendedPanId | None = None,
+        network_key: t.KeyData | None = None,
+        pan_id: t.PanId | None = None,
+        tc_link_key: t.KeyData | None = None,
         update_id: int = 0,
     ):
         """Update network parameters.
@@ -214,9 +214,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dst_ep: int,
         message: bytes,
         *,
-        dst_addressing: Optional[
-            t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
-        ] = None,
+        dst_addressing: None
+        | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
     ) -> None:
         self.listener_event(
             "handle_message", sender, profile, cluster, src_ep, dst_ep, message

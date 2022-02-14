@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Coroutine, Iterable, Optional, Union
+from typing import Any, Callable, Coroutine, Iterable
 
 from zigpy.const import (  # noqa: F401
     SIG_ENDPOINTS,
@@ -28,7 +28,7 @@ _DEVICE_REGISTRY = DeviceRegistry()
 _uninitialized_device_message_handlers = []
 
 
-def get_device(device: zigpy.device.Device, registry: Optional[DeviceRegistry] = None):
+def get_device(device: zigpy.device.Device, registry: DeviceRegistry | None = None):
     """Get a CustomDevice object, if one is available"""
     if registry is None:
         return _DEVICE_REGISTRY.get_device(device)
@@ -37,7 +37,7 @@ def get_device(device: zigpy.device.Device, registry: Optional[DeviceRegistry] =
 
 
 def get_quirk_list(
-    manufacturer: str, model: str, registry: Optional[DeviceRegistry] = None
+    manufacturer: str, model: str, registry: DeviceRegistry | None = None
 ):
     """Get the Quirk list for a given manufacturer and model."""
     if registry is None:
@@ -137,7 +137,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
 
 class CustomCluster(zigpy.zcl.Cluster):
     _skip_registry = True
-    _CONSTANT_ATTRIBUTES: Optional[dict[int, Any]] = None
+    _CONSTANT_ATTRIBUTES: dict[int, Any] | None = None
 
     manufacturer_id_override: t.uint16_t | None = None
 
@@ -146,7 +146,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         """Return True if cluster_id is within manufacturer specific range."""
         return 0xFC00 <= self.cluster_id <= 0xFFFF
 
-    def _has_manuf_attr(self, attrs_to_process: Union[Iterable, list, dict]) -> bool:
+    def _has_manuf_attr(self, attrs_to_process: Iterable | list | dict) -> bool:
         """Return True if contains a manufacturer specific attribute."""
         if self._is_manuf_specific:
             return True
@@ -162,12 +162,12 @@ class CustomCluster(zigpy.zcl.Cluster):
 
     def command(
         self,
-        command_id: Union[foundation.GeneralCommand, int, t.uint8_t],
+        command_id: foundation.GeneralCommand | int | t.uint8_t,
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
         tries: int = 1,
-        tsn: Optional[Union[int, t.uint8_t]] = None,
+        tsn: int | t.uint8_t | None = None,
         **kwargs: Any,
     ) -> Coroutine:
         command = self.server_commands[command_id]
@@ -190,10 +190,10 @@ class CustomCluster(zigpy.zcl.Cluster):
 
     def client_command(
         self,
-        command_id: Union[foundation.GeneralCommand, int, t.uint8_t],
+        command_id: foundation.GeneralCommand | int | t.uint8_t,
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
-        tsn: Optional[Union[int, t.uint8_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
+        tsn: int | t.uint8_t | None = None,
         **kwargs: Any,
     ) -> Coroutine:
         command = self.client_commands[command_id]
@@ -250,7 +250,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         self,
         config_records: list[foundation.AttributeReportingConfig],
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
         **kwargs,
     ):
         """Configure reporting ZCL foundation command."""
@@ -269,7 +269,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         self,
         attribute_ids: list[t.uint16_t],
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
         **kwargs,
     ):
         """Read attributes ZCL foundation command."""
@@ -283,7 +283,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         self,
         attributes: list[foundation.Attribute],
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
         **kwargs,
     ):
         """Write attribute ZCL foundation command."""
@@ -299,7 +299,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         self,
         attributes: list[foundation.Attribute],
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
         **kwargs,
     ):
         """Write attribute undivided ZCL foundation command."""

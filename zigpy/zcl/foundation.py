@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import keyword
-from typing import Any, Optional
+from typing import Any
 import warnings
 
 import zigpy.types as t
@@ -510,7 +510,7 @@ class ZCLHeader(t.Struct):
         cls,
         tsn: int | t.uint8_t,
         command_id: int | t.uint8_t,
-        manufacturer: Optional[int | t.uint16_t] = None,
+        manufacturer: int | t.uint16_t | None = None,
         is_reply: bool = False,
     ) -> ZCLHeader:
         return cls(
@@ -527,7 +527,7 @@ class ZCLHeader(t.Struct):
         cls,
         tsn: int | t.uint8_t,
         command_id: int | t.uint8_t,
-        manufacturer: Optional[int | t.uint16_t] = None,
+        manufacturer: int | t.uint16_t | None = None,
         is_reply: bool = False,
     ) -> ZCLHeader:
         return cls(

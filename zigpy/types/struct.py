@@ -16,15 +16,15 @@ class ListSubclass(list):
 
 @dataclasses.dataclass(frozen=True)
 class StructField:
-    name: typing.Optional[str] = None
-    type: typing.Optional[type] = None
+    name: str | None = None
+    type: type | None = None
 
-    requires: typing.Optional[typing.Callable[[Struct], bool]] = dataclasses.field(
+    requires: typing.Callable[[Struct], bool] | None = dataclasses.field(
         default=None, repr=False
     )
-    optional: typing.Optional[bool] = False
+    optional: bool | None = False
 
-    repr: typing.Optional[typing.Callable[[typing.Any], str]] = dataclasses.field(
+    repr: typing.Callable[[typing.Any], str] | None = dataclasses.field(
         default=repr, repr=False
     )
 
@@ -77,7 +77,7 @@ class Struct:
             None,
         )
 
-    def __new__(cls: typing.Type[_STRUCT], *args, **kwargs) -> _STRUCT:
+    def __new__(cls: type[_STRUCT], *args, **kwargs) -> _STRUCT:
         cls = cls._real_cls()
 
         if len(args) == 1 and isinstance(args[0], cls):
@@ -233,7 +233,7 @@ class Struct:
         return b"".join(chunks)
 
     @classmethod
-    def deserialize(cls: typing.Type[_STRUCT], data: bytes) -> tuple[_STRUCT, bytes]:
+    def deserialize(cls: type[_STRUCT], data: bytes) -> tuple[_STRUCT, bytes]:
         instance = cls()
 
         bit_length = 0
