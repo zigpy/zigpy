@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import InitVar, dataclass, field
 import functools
-from typing import Any
+from typing import Any, Iterator
 
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
@@ -214,9 +214,9 @@ class CounterGroup(dict):
 class CounterGroups(dict):
     """A collection of unrelated counter groups in a dict."""
 
-    def __iter__(self) -> Iterable[CounterGroup]:  # type:ignore[override]
+    def __iter__(self) -> Iterator[CounterGroup]:
         """Return an iterable of the counters"""
-        return (counter_group for counter_group in self.values())
+        return iter(self.values())
 
     def __missing__(self, counter_group_name: Any) -> CounterGroup:
         """Default counter factory."""
