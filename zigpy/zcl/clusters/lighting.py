@@ -1,6 +1,6 @@
 """Lighting Functional Domain"""
 
-import typing
+from __future__ import annotations
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
@@ -26,7 +26,7 @@ class Color(Cluster):
         Hue_and_saturation = 0b00000000_00000001
         Enhanced_hue = 0b00000000_00000010
         Color_loop = 0b00000000_00000100
-        XY_attributes: typing.Dict[int, ZCLAttributeDef] = 0b00000000_00001000
+        XY_attributes: dict[int, ZCLAttributeDef] = 0b00000000_00001000
         Color_temperature = 0b00000000_00010000
 
     class Direction(t.enum8):
@@ -62,7 +62,7 @@ class Color(Cluster):
     cluster_id = 0x0300
     name = "Color Control"
     ep_attribute = "light_color"
-    attributes: typing.Dict[int, ZCLAttributeDef] = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Color Information
         0x0000: ("current_hue", t.uint8_t),
         0x0001: ("current_saturation", t.uint8_t),
@@ -123,7 +123,7 @@ class Color(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands: typing.Dict[int, ZCLCommandDef] = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "move_to_hue",
             {
@@ -330,7 +330,7 @@ class Color(Cluster):
             False,
         ),
     }
-    client_commands: typing.Dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class Ballast(Cluster):
@@ -339,7 +339,7 @@ class Ballast(Cluster):
 
     cluster_id = 0x0301
     ep_attribute = "light_ballast"
-    attributes: typing.Dict[int, ZCLAttributeDef] = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Ballast Information
         0x0000: ("physical_min_level", t.uint8_t),
         0x0001: ("physical_max_level", t.uint8_t),
@@ -363,5 +363,5 @@ class Ballast(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands: typing.Dict[int, ZCLCommandDef] = {}
-    client_commands: typing.Dict[int, ZCLCommandDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}

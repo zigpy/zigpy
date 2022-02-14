@@ -1,0 +1,212 @@
+mypy.....................................................................[41mFailed[m
+[2m- hook id: mypy[m
+[2m- exit code: 1[m
+
+zigpy/ota/__init__.py: note: In member "__init__" of class "OTA":
+zigpy/ota/__init__.py:103: error: Need type annotation for "_image_cache" (hint: "_image_cache: Dict[<type>, <type>] = ...")  [var-annotated]
+zigpy/zcl/__init__.py: note: In member "request" of class "Cluster":
+zigpy/zcl/__init__.py:271: error: "Dict[Any, Any]" not callable  [operator]
+zigpy/zcl/__init__.py:271: error: "Struct" not callable  [operator]
+zigpy/zcl/__init__.py: note: In member "reply" of class "Cluster":
+zigpy/zcl/__init__.py:309: error: "Dict[Any, Any]" not callable  [operator]
+zigpy/zcl/__init__.py:309: error: "Struct" not callable  [operator]
+zigpy/zcl/clusters/security.py: note: In class "IasZone":
+zigpy/zcl/clusters/security.py:66: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/security.py:77: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/security.py:93: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/security.py: note: In class "IasAce":
+zigpy/zcl/clusters/security.py:202: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/security.py:203: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/security.py:236: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/security.py: note: In member "strobe" of class "Warning":
+zigpy/zcl/clusters/security.py:373: error: Unsupported left operand type for & (Strobe?)  [operator]
+zigpy/zcl/clusters/security.py: note: In member "strobe" of class "Squawk":
+zigpy/zcl/clusters/security.py:410: error: Unsupported left operand type for << (Strobe?)  [operator]
+zigpy/zcl/clusters/security.py: note: In class "IasWd":
+zigpy/zcl/clusters/security.py:423: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/security.py:424: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/security.py:437: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/manufacturer_specific.py: note: In class "ManufacturerSpecificCluster":
+zigpy/zcl/clusters/manufacturer_specific.py:8: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/manufacturer_specific.py:9: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/manufacturer_specific.py:10: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "GenericTunnel":
+zigpy/zcl/clusters/protocol.py:18: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:23: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:26: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "BacnetProtocolTunnel":
+zigpy/zcl/clusters/protocol.py:35: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:36: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:39: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "AnalogInputRegular":
+zigpy/zcl/clusters/protocol.py:45: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:54: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:55: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "AnalogInputExtended":
+zigpy/zcl/clusters/protocol.py:61: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:75: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:81: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "AnalogOutputRegular":
+zigpy/zcl/clusters/protocol.py:87: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:96: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:97: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "AnalogOutputExtended":
+zigpy/zcl/clusters/protocol.py:103: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:117: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:118: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "AnalogValueRegular":
+zigpy/zcl/clusters/protocol.py:124: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:131: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:132: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "AnalogValueExtended":
+zigpy/zcl/clusters/protocol.py:138: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:152: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:153: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "BinaryInputRegular":
+zigpy/zcl/clusters/protocol.py:159: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:171: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:172: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "BinaryInputExtended":
+zigpy/zcl/clusters/protocol.py:178: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:189: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:190: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "BinaryOutputRegular":
+zigpy/zcl/clusters/protocol.py:196: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:209: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:210: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "BinaryOutputExtended":
+zigpy/zcl/clusters/protocol.py:216: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:226: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:227: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "BinaryValueRegular":
+zigpy/zcl/clusters/protocol.py:233: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:244: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:245: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "BinaryValueExtended":
+zigpy/zcl/clusters/protocol.py:251: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:262: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:263: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "MultistateInputRegular":
+zigpy/zcl/clusters/protocol.py:269: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:276: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:277: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "MultistateInputExtended":
+zigpy/zcl/clusters/protocol.py:283: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:295: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:296: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "MultistateOutputRegular":
+zigpy/zcl/clusters/protocol.py:302: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:310: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:311: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "MultistateOutputExtended":
+zigpy/zcl/clusters/protocol.py:317: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:327: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:328: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "MultistateValueRegular":
+zigpy/zcl/clusters/protocol.py:334: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:340: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:341: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py: note: In class "MultistateValueExtended":
+zigpy/zcl/clusters/protocol.py:347: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:359: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/protocol.py:360: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py: note: In class "Pump":
+zigpy/zcl/clusters/hvac.py:55: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py:84: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py:85: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py: note: In class "Thermostat":
+zigpy/zcl/clusters/hvac.py:273: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py:321: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py:343: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py: note: In class "Fan":
+zigpy/zcl/clusters/hvac.py:392: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py:397: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py:398: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py: note: In class "Dehumidification":
+zigpy/zcl/clusters/hvac.py:418: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py:430: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py:431: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py: note: In class "UserInterface":
+zigpy/zcl/clusters/hvac.py:458: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py:463: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/hvac.py:464: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py: note: In class "ApplianceIdentification":
+zigpy/zcl/clusters/homeautomation.py:10: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py:24: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py:25: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py: note: In class "MeterIdentification":
+zigpy/zcl/clusters/homeautomation.py:32: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py:46: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py:47: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py: note: In class "ApplianceEventAlerts":
+zigpy/zcl/clusters/homeautomation.py:54: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py:55: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py:58: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py: note: In class "ApplianceStatistics":
+zigpy/zcl/clusters/homeautomation.py:69: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py:73: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py:77: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py: note: In class "ElectricalMeasurement":
+zigpy/zcl/clusters/homeautomation.py:89: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py:231: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py:235: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py: note: In class "Diagnostic":
+zigpy/zcl/clusters/homeautomation.py:244: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py:280: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/homeautomation.py:281: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/lightlink.py: note: In class "LightLink":
+zigpy/zcl/clusters/lightlink.py:79: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/lightlink.py:80: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/lightlink.py:195: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/__init__.py:18: error: Need type annotation for "CLUSTERS_BY_ID" (hint: "CLUSTERS_BY_ID: Dict[<type>, <type>] = ...")  [var-annotated]
+zigpy/zcl/clusters/__init__.py:19: error: Need type annotation for "CLUSTERS_BY_NAME" (hint: "CLUSTERS_BY_NAME: Dict[<type>, <type>] = ...")  [var-annotated]
+zigpy/zcl/clusters/smartenergy.py: note: In class "Price":
+zigpy/zcl/clusters/smartenergy.py:9: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:10: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:11: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py: note: In class "Drlc":
+zigpy/zcl/clusters/smartenergy.py:17: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:18: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:19: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py: note: In class "Metering":
+zigpy/zcl/clusters/smartenergy.py:25: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:150: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:159: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py: note: In class "Messaging":
+zigpy/zcl/clusters/smartenergy.py:171: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:172: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:173: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py: note: In class "Tunneling":
+zigpy/zcl/clusters/smartenergy.py:179: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:180: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:181: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py: note: In class "Prepayment":
+zigpy/zcl/clusters/smartenergy.py:187: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:188: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:189: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py: note: In class "EnergyManagement":
+zigpy/zcl/clusters/smartenergy.py:195: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:196: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:197: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py: note: In class "Calendar":
+zigpy/zcl/clusters/smartenergy.py:203: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:204: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:205: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py: note: In class "DeviceManagement":
+zigpy/zcl/clusters/smartenergy.py:211: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:212: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:213: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py: note: In class "Events":
+zigpy/zcl/clusters/smartenergy.py:219: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:220: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:221: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py: note: In class "MduPairing":
+zigpy/zcl/clusters/smartenergy.py:227: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:228: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:229: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py: note: In class "KeyEstablishment":
+zigpy/zcl/clusters/smartenergy.py:235: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:236: error: Name "foundation" is not defined  [name-defined]
+zigpy/zcl/clusters/smartenergy.py:237: error: Name "foundation" is not defined  [name-defined]
+Found 153 errors in 10 files (checked 75 source files)
+
