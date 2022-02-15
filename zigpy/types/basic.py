@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import enum
 import inspect
 import struct
-from typing import Callable, Tuple, TypeVar
+from typing import Callable, TypeVar
 
 CALLABLE_T = TypeVar("CALLABLE_T", bound=Callable)  # pylint: disable=invalid-name
 
@@ -35,7 +37,7 @@ class Bits(list):
         return bytes(serialized_bytes)
 
     @classmethod
-    def deserialize(cls, data) -> Tuple["Bits", bytes]:
+    def deserialize(cls, data) -> tuple[Bits, bytes]:
         bits: list[int] = []
 
         for byte in data:
@@ -108,7 +110,7 @@ class FixedIntType(int):
         return Bits([(self >> n) & 0b1 for n in range(self._bits - 1, -1, -1)])
 
     @classmethod
-    def from_bits(cls, bits: Bits) -> Tuple["FixedIntType", Bits]:
+    def from_bits(cls, bits: Bits) -> tuple[FixedIntType, Bits]:
         if len(bits) < cls._bits:
             raise ValueError(f"Not enough bits to decode {cls}: {bits}")
 
@@ -130,7 +132,7 @@ class FixedIntType(int):
         return self.to_bytes(self._bits // 8, "little", signed=self._signed)
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["FixedIntType", bytes]:
+    def deserialize(cls, data: bytes) -> tuple[FixedIntType, bytes]:
         if cls._bits % 8 != 0:
             raise TypeError(f"Integer type with {cls._bits} bits is not byte aligned")
 
@@ -399,7 +401,7 @@ class BaseFloat(float):
         cls._size = size_bits // 8
 
     @staticmethod
-    def _convert_format(*, src: "BaseFloat", dst: "BaseFloat", n: int) -> int:
+    def _convert_format(*, src: BaseFloat, dst: BaseFloat, n: int) -> int:
         """
         Converts an integer representing a float from one format into another. Note:
 
@@ -443,7 +445,7 @@ class BaseFloat(float):
         ).to_bytes(self._size, "little")
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["BaseFloat", bytes]:
+    def deserialize(cls, data: bytes) -> tuple[BaseFloat, bytes]:
         if len(data) < cls._size:
             raise ValueError(f"Data is too short to contain {cls._size} bytes")
 
@@ -590,7 +592,7 @@ class List(list, metaclass=KwargTypeMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["LVList", bytes]:
+    def deserialize(cls, data: bytes) -> tuple[LVList, bytes]:
         assert cls._item_type is not None
 
         lst = cls()
@@ -614,7 +616,7 @@ class LVList(list, metaclass=KwargTypeMeta):
         )
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["LVList", bytes]:
+    def deserialize(cls, data: bytes) -> tuple[LVList, bytes]:
         assert cls._item_type is not None
         length, data = cls._length_type.deserialize(data)
         r = cls()
@@ -641,7 +643,7 @@ class FixedList(list, metaclass=KwargTypeMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["FixedList", bytes]:
+    def deserialize(cls, data: bytes) -> tuple[FixedList, bytes]:
         assert cls._item_type is not None
         r = cls()
         for i in range(cls._length):
