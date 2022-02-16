@@ -314,6 +314,8 @@ class AttributeReportingConfig:
     @classmethod
     def deserialize(cls, data):
         self = cls()
+        if len(data) < 6:
+            raise Exception(data)
         self.direction, data = ReportingDirection.deserialize(data)
         self.attrid, data = t.uint16_t.deserialize(data)
         if self.direction == ReportingDirection.ReceiveReports:
@@ -322,9 +324,11 @@ class AttributeReportingConfig:
         else:
             # Notifying that I will report things to you
             self.datatype, data = t.uint8_t.deserialize(data)
+            datatype = DATA_TYPES[self.datatype]
+            if self.datatype > 0x86:
+                raise Exception(datatype)
             self.min_interval, data = t.uint16_t.deserialize(data)
             self.max_interval, data = t.uint16_t.deserialize(data)
-            datatype = DATA_TYPES[self.datatype]
             if datatype[2] is Analog:
                 self.reportable_change, data = datatype[1].deserialize(data)
 

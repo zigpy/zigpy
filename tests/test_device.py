@@ -157,12 +157,10 @@ async def test_handle_message_read_report_conf(dev):
     ep = dev.add_endpoint(3)
     ep.add_input_cluster(0x702)
     tsn = 0x56
-    hdr = MagicMock()
-    hdr.tsn = tsn
-    hdr.is_reply = True
     req_mock = MagicMock()
     dev._pending[tsn] = req_mock
 
+    # Read Report Configuration Success
     rsp = dev.handle_message(
         0x104,  # profile
         0x702,  # cluster
@@ -187,6 +185,23 @@ async def test_handle_message_read_report_conf(dev):
     assert cfg.min_interval == 30
     assert cfg.max_interval == 900
     assert cfg.reportable_change == 0x060504030201
+
+    # Unsupported attributes
+    tsn2 = 0x53
+    req_mock2 = MagicMock()
+    dev._pending[tsn2] = req_mock2
+    rsp2 = dev.handle_message(
+        0x104,  # profile
+        0x702,  # cluster
+        3,  # source EP
+        3,  # dest EP
+        b"\x18\x5b\x09\x86\x00\x00\x00\x86\x00\x12\x00\x86\x00\x00\x04",  # message 3x("Unsupported attribute" response)
+    )
+    assert (
+        rsp2 is None
+    )  # Returns decoded msg when response is not pending, None otherwise
+
+    # TODO: Test case with more than one good report, one invalid
 
 
 async def test_handle_message_reply(dev):
