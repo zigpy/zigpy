@@ -153,6 +153,42 @@ async def test_handle_message(dev):
     assert ep.handle_message.call_count == 1
 
 
+async def test_handle_message_read_report_conf(dev):
+    ep = dev.add_endpoint(3)
+    ep.add_input_cluster(0x702)
+    tsn = 0x56
+    hdr = MagicMock()
+    hdr.tsn = tsn
+    hdr.is_reply = True
+    req_mock = MagicMock()
+    dev._pending[tsn] = req_mock
+
+    rsp = dev.handle_message(
+        0x104,  # profile
+        0x702,  # cluster
+        3,  # source EP
+        3,  # dest EP
+        b"\x18\x56\x09\x00\x00\x00\x00\x25\x1e\x00\x84\x03\x01\x02\x03\x04\x05\x06",  # message
+    )
+    assert (
+        rsp is None
+    )  # Returns decoded msg when response is not pending, None otherwise
+    assert req_mock.result.set_result.call_count == 1
+    assert (
+        req_mock.result.set_result.call_args[0][0][0]
+        == zigpy.zcl.foundation.Status.SUCCESS
+    )
+    assert len(req_mock.result.set_result.call_args[0][0][1]) == 1
+    cfg = req_mock.result.set_result.call_args[0][0][1][0]
+    assert isinstance(cfg, zigpy.zcl.foundation.AttributeReportingConfig)
+    assert cfg.direction == 0
+    assert cfg.attrid == 0
+    assert cfg.datatype == 0x25
+    assert cfg.min_interval == 30
+    assert cfg.max_interval == 900
+    assert cfg.reportable_change == 0x060504030201
+
+
 async def test_handle_message_reply(dev):
     ep = dev.add_endpoint(3)
     ep.handle_message = MagicMock()
