@@ -314,8 +314,6 @@ class AttributeReportingConfig:
     @classmethod
     def deserialize(cls, data):
         self = cls()
-        if len(data) < 6:
-            raise Exception(data)
         self.direction, data = ReportingDirection.deserialize(data)
         self.attrid, data = t.uint16_t.deserialize(data)
         if self.direction == ReportingDirection.ReceiveReports:
