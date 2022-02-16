@@ -725,7 +725,10 @@ GENERAL_COMMANDS = COMMANDS = {
         is_reply=False,
     ),
     GeneralCommand.Read_Reporting_Configuration_rsp: ZCLCommandDef(
-        schema={"attribute_configs": t.List[AttributeReportingConfig]},
+        schema={
+            "status": Status,
+            "attribute_configs": t.List[AttributeReportingConfig],
+        },
         is_reply=True,
     ),
     GeneralCommand.Report_Attributes: ZCLCommandDef(
