@@ -284,7 +284,7 @@ class AttributeReportingStatus(t.enum8):
 
 
 class AttributeReportingConfig:
-    def __init__(self, other=None):
+    def __init__(self, other=None) -> None:
         if isinstance(other, self.__class__):
             self.direction = other.direction
             self.attrid = other.attrid
@@ -296,9 +296,13 @@ class AttributeReportingConfig:
             self.max_interval = other.max_interval
             self.reportable_change = other.reportable_change
 
-    def serialize(self):
+    def serialize(self, *, _only_dir_and_attrid: bool = False) -> bytes:
         r = ReportingDirection(self.direction).serialize()
         r += t.uint16_t(self.attrid).serialize()
+
+        if _only_dir_and_attrid:
+            return r
+
         if self.direction == ReportingDirection.ReceiveReports:
             r += t.uint16_t(self.timeout).serialize()
         else:
@@ -312,32 +316,39 @@ class AttributeReportingConfig:
         return r
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(
+        cls, data, *, _only_dir_and_attrid: bool = False
+    ) -> tuple[AttributeReportingConfig, bytes]:
         self = cls()
         self.direction, data = ReportingDirection.deserialize(data)
         self.attrid, data = t.uint16_t.deserialize(data)
+
+        # The report is only a direction and attribute
+        if _only_dir_and_attrid:
+            return self, data
+
         if self.direction == ReportingDirection.ReceiveReports:
             # Requesting things to be received by me
             self.timeout, data = t.uint16_t.deserialize(data)
         else:
             # Notifying that I will report things to you
             self.datatype, data = t.uint8_t.deserialize(data)
+            datatype = DATA_TYPES[self.datatype]
             self.min_interval, data = t.uint16_t.deserialize(data)
             self.max_interval, data = t.uint16_t.deserialize(data)
-            datatype = DATA_TYPES[self.datatype]
             if datatype[2] is Analog:
                 self.reportable_change, data = datatype[1].deserialize(data)
 
         return self, data
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         r = f"{self.__class__.__name__}("
         r += f"direction={self.direction}"
         r += f", attrid=0x{self.attrid:04X}"
 
         if self.direction == ReportingDirection.ReceiveReports:
             r += f", timeout={self.timeout}"
-        else:
+        elif hasattr(self, "datatype"):
             r += f", datatype={self.datatype}"
             r += f", min_interval={self.min_interval}"
             r += f", max_interval={self.max_interval}"
@@ -348,6 +359,32 @@ class AttributeReportingConfig:
         r += ")"
 
         return r
+
+
+class AttributeReportingConfigWithStatus(t.Struct):
+    status: Status
+    config: AttributeReportingConfig
+
+    @classmethod
+    def deserialize(
+        cls, data: bytes
+    ) -> tuple[AttributeReportingConfigWithStatus, bytes]:
+        status, data = Status.deserialize(data)
+
+        # FIXME: The reporting configuration will not include anything other than the
+        # direction and the attribute ID when the status is not successful. This
+        # information isn't a part of the attribute reporting config structure so we
+        # have to pass it in externally.
+        config, data = AttributeReportingConfig.deserialize(
+            data, _only_dir_and_attrid=(status != Status.SUCCESS)
+        )
+
+        return cls(status=status, config=config), data
+
+    def serialize(self) -> bytes:
+        return self.status.serialize() + self.config.serialize(
+            _only_dir_and_attrid=(self.status != Status.SUCCESS)
+        )
 
 
 class ConfigureReportingResponseRecord(t.Struct):
@@ -725,7 +762,7 @@ GENERAL_COMMANDS = COMMANDS = {
         is_reply=False,
     ),
     GeneralCommand.Read_Reporting_Configuration_rsp: ZCLCommandDef(
-        schema={"attribute_configs": t.List[AttributeReportingConfig]},
+        schema={"attribute_configs": t.List[AttributeReportingConfigWithStatus]},
         is_reply=True,
     ),
     GeneralCommand.Report_Attributes: ZCLCommandDef(
