@@ -489,6 +489,33 @@ class LVBytes(bytes):
         return cls(s), data[cls._prefix_length + num_bytes :]
 
 
+def LimitedLVBytes(max_len):  # noqa: N802
+    class LimitedLVBytes(LVBytes):
+        _max_len = max_len
+
+        def serialize(self):
+            if len(self) > self._max_len:
+                raise ValueError(f"LVBytes is too long (>{self._max_len})")
+            return super().serialize()
+
+    return LimitedLVBytes
+
+
+class LVBytesSize2(LVBytes):
+    def serialize(self):
+        if len(self) != 2:
+            raise ValueError("LVBytes must be of size 2")
+        return super().serialize()
+
+    @classmethod
+    def deserialize(cls, data):
+        d, r = super().deserialize(data)
+
+        if len(d) != 2:
+            raise ValueError("LVBytes must be of size 2")
+        return d, r
+
+
 class LongOctetString(LVBytes):
     _prefix_length = 2
 
@@ -686,7 +713,7 @@ def LimitedCharString(max_len):  # noqa: N802
 
         def serialize(self):
             if len(self) > self._max_len:
-                raise ValueError("String is too long")
+                raise ValueError(f"String is too long (>{self._max_len})")
             return super().serialize()
 
     return LimitedCharString
