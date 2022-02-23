@@ -203,9 +203,9 @@ class Basic(Cluster):
         0x0001: ("app_version", t.uint8_t),
         0x0002: ("stack_version", t.uint8_t),
         0x0003: ("hw_version", t.uint8_t),
-        0x0004: ("manufacturer", t.CharacterString),
-        0x0005: ("model", t.CharacterString),
-        0x0006: ("date_code", t.CharacterString),
+        0x0004: ("manufacturer", t.LimitedCharString(32)),
+        0x0005: ("model", t.LimitedCharString(32)),
+        0x0006: ("date_code", t.LimitedCharString(16)),
         0x0007: ("power_source", PowerSource),
         0x0008: ("generic_device_class", GenericDeviceClass),
         # Lighting is the only non-reserved device type
@@ -535,7 +535,7 @@ class Scenes(Cluster):
     }
     client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
-            "add_response",
+            "add_scene_response",
             {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
             True,
         ),
@@ -551,17 +551,17 @@ class Scenes(Cluster):
             True,
         ),  # TODO: + extension field sets
         0x02: ZCLCommandDef(
-            "remove_response",
+            "remove_scene_response",
             {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
             True,
         ),
         0x03: ZCLCommandDef(
-            "remove_all_response",
+            "remove_all_scenes_response",
             {"status": foundation.Status, "group_id": t.Group},
             True,
         ),
         0x04: ZCLCommandDef(
-            "store_response",
+            "store_scene_response",
             {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
             True,
         ),
@@ -704,12 +704,12 @@ class LevelControl(Cluster):
         0x0004: ("current_frequency", t.uint16_t),
         0x0005: ("min_frequency", t.uint16_t),
         0x0006: ("max_frequency", t.uint16_t),
+        0x000F: ("options", t.bitmap8),
         0x0010: ("on_off_transition_time", t.uint16_t),
         0x0011: ("on_level", t.uint8_t),
         0x0012: ("on_transition_time", t.uint16_t),
         0x0013: ("off_transition_time", t.uint16_t),
         0x0014: ("default_move_rate", t.uint8_t),
-        0x000F: ("options", t.bitmap8),
         0x4000: ("start_up_current_level", t.uint8_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
@@ -793,11 +793,11 @@ class Alarms(Cluster):
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
-            "reset", {"alarm_code": t.uint8_t, "cluster_id": t.uint16_t}, False
+            "reset_alarm", {"alarm_code": t.uint8_t, "cluster_id": t.uint16_t}, False
         ),
-        0x01: ZCLCommandDef("reset_all", {}, False),
+        0x01: ZCLCommandDef("reset_all_alarms", {}, False),
         0x02: ZCLCommandDef("get_alarm", {}, False),
-        0x03: ZCLCommandDef("reset_log", {}, False),
+        0x03: ZCLCommandDef("reset_alarm_log", {}, False),
         # 0x04: ("publish_event_log", {}, False),
     }
     client_commands: dict[int, ZCLCommandDef] = {
@@ -898,8 +898,8 @@ class RSSILocation(Cluster):
         0x0013: ("power", t.int16s),
         0x0014: ("path_loss_exponent", t.uint16_t),
         0x0015: ("reporting_period", t.uint16_t),
-        0x0016: ("calc_period", t.uint16_t),
-        0x0017: ("num_rssi_measurements", t.uint8_t),
+        0x0016: ("calculation_period", t.uint16_t),
+        0x0017: ("number_rssi_measurements", t.uint8_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
@@ -1120,7 +1120,9 @@ class BinaryOutput(Cluster):
         # single precision)
         0x0067: ("reliability", t.enum8),
         0x0068: ("relinquish_default", t.Bool),
+        0x006A: ("resolution", t.Single),
         0x006F: ("status_flags", t.bitmap8),
+        0x0075: ("engineering_units", t.enum16),  # Does not seem to be in binary_output
         0x0100: ("application_type", t.uint32_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
@@ -1296,6 +1298,16 @@ class Partition(Cluster):
     cluster_id = 0x0016
     ep_attribute = "partition"
     attributes: dict[int, ZCLAttributeDef] = {
+        0x0000: ("maximum_incoming_transfer_size", t.uint16_t),
+        0x0001: ("maximum_outgoing_transfer_size", t.uint16_t),
+        0x0002: ("partitioned_frame_size", t.uint8_t),
+        0x0003: ("large_frame_size", t.uint16_t),
+        0x0004: ("number_of_ack_frame", t.uint8_t),
+        0x0005: ("nack_timeout", t.uint16_t),
+        0x0006: ("interframe_delay", t.uint8_t),
+        0x0007: ("number_of_send_retries", t.uint8_t),
+        0x0008: ("sender_timeout", t.uint16_t),
+        0x0009: ("receiver_timeout", t.uint16_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
@@ -1826,6 +1838,9 @@ class ApplianceControl(Cluster):
     cluster_id = 0x001B
     ep_attribute = "appliance_control"
     attributes: dict[int, ZCLAttributeDef] = {
+        0x0000: ("start_time", t.uint16_t),
+        0x0001: ("finish_time", t.uint16_t),
+        0x0002: ("remaining_time", t.uint16_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
