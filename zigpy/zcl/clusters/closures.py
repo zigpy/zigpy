@@ -1,8 +1,10 @@
 """Closures Functional Domain"""
 
+from __future__ import annotations
+
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
-from zigpy.zcl.foundation import ZCLCommandDef
+from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 
 class Shade(Cluster):
@@ -11,7 +13,7 @@ class Shade(Cluster):
     cluster_id = 0x0100
     name = "Shade Configuration"
     ep_attribute = "shade"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Shade Information
         0x0000: ("physical_closed_limit", t.uint16_t),
         0x0001: ("motor_step_size", t.uint8_t),
@@ -20,8 +22,8 @@ class Shade(Cluster):
         0x0010: ("closed_limit", t.uint16_t),
         0x0012: ("mode", t.enum8),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class DoorLock(Cluster):
@@ -215,7 +217,7 @@ class DoorLock(Cluster):
     cluster_id = 0x0101
     name = "Door Lock"
     ep_attribute = "door_lock"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("lock_state", LockState),
         0x0001: ("lock_type", LockType),
         0x0002: ("actuator_enabled", t.Bool),
@@ -260,7 +262,7 @@ class DoorLock(Cluster):
         0x0046: ("rf_programming_event_mask", RFProgrammingEventMask),
         0x0047: ("rfid_programming_event_mask", RFIDProgrammingEventMask),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("lock_door", {"pin_code?": t.CharacterString}, False),
         0x01: ZCLCommandDef("unlock_door", {"pin_code?": t.CharacterString}, False),
         0x02: ZCLCommandDef("toggle_door", {"pin_code?": t.CharacterString}, False),
@@ -364,7 +366,7 @@ class DoorLock(Cluster):
         0x18: ZCLCommandDef("clear_rfid_code", {"user_id": t.uint16_t}, False),
         0x19: ZCLCommandDef("clear_all_rfid_codes", {}, False),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("lock_door_response", {"status": foundation.Status}, True),
         0x01: ZCLCommandDef(
             "unlock_door_response", {"status": foundation.Status}, True
@@ -529,7 +531,7 @@ class WindowCovering(Cluster):
     cluster_id = 0x0102
     name = "Window Covering"
     ep_attribute = "window_covering"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Window Covering Information
         0x0000: ("window_covering_type", t.enum8),
         0x0001: ("physical_closed_limit_lift", t.uint16_t),
@@ -553,7 +555,7 @@ class WindowCovering(Cluster):
         0x0018: ("intermediate_setpoints_lift", t.LVBytes),
         0x0019: ("intermediate_setpoints_tilt", t.LVBytes),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("up_open", {}, False),
         0x01: ZCLCommandDef("down_close", {}, False),
         0x02: ZCLCommandDef("stop", {}, False),
@@ -566,4 +568,4 @@ class WindowCovering(Cluster):
             "go_to_tilt_percentage", {"percentage_tilt_value": t.uint8_t}, False
         ),
     }
-    client_commands = {}
+    client_commands: dict[int, ZCLCommandDef] = {}

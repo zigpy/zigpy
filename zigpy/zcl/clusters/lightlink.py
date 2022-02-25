@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import zigpy.types as t
 from zigpy.zcl import Cluster
-from zigpy.zcl.foundation import ZCLCommandDef
+from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 
 class LogicalType(t.enum2):
@@ -76,8 +78,8 @@ class EndpointInfoRecord(t.Struct):
 class LightLink(Cluster):
     cluster_id = 0x1000
     ep_attribute = "lightlink"
-    attributes = {}
-    server_commands = {
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {
         # Touchlink
         0x00: ZCLCommandDef(
             "scan",
@@ -192,7 +194,7 @@ class LightLink(Cluster):
             False,
         ),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         # Touchlink
         0x01: ZCLCommandDef(
             "scan_rsp",

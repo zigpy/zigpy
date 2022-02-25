@@ -343,7 +343,7 @@ def test_frame_header_cluster():
 def test_data_types():
     """Test data types mappings."""
     assert len(foundation.DATA_TYPES) == len(foundation.DATA_TYPES._idx_by_class)
-    data_types_set = set([d[1] for d in foundation.DATA_TYPES.values()])
+    data_types_set = {d[1] for d in foundation.DATA_TYPES.values()}
     dt_2_id_set = set(foundation.DATA_TYPES._idx_by_class.keys())
     assert data_types_set == dt_2_id_set
 

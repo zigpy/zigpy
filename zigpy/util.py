@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import abc
 import asyncio
 import functools
@@ -5,7 +7,7 @@ import inspect
 import logging
 import sys
 import traceback
-from typing import Any, Coroutine, Dict, Optional, Tuple, Type, Union
+from typing import Any, Coroutine
 
 from Crypto.Cipher import AES
 from crccheck.crc import CrcX25
@@ -17,7 +19,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ListenableMixin:
-    _listeners: Dict
+    _listeners: dict
 
     def _add_listener(self, listener, include_context):
         id_ = id(listener)
@@ -226,7 +228,7 @@ class Request:
         """Init context manager for requests."""
         assert sequence not in pending
         self._pending = pending
-        self._result = asyncio.Future()
+        self._result: asyncio.Future = asyncio.Future()
         self._sequence = sequence
 
     @property
@@ -268,7 +270,7 @@ class CatchingTaskMixin(LocalLogMixin):
     def create_catching_task(
         self,
         target: Coroutine,
-        exceptions: Optional[Union[Type[Exception], Tuple]] = None,
+        exceptions: type[Exception] | tuple | None = None,
     ) -> None:
         """Create a task."""
         asyncio.ensure_future(self.catching_coro(target, exceptions))
@@ -276,7 +278,7 @@ class CatchingTaskMixin(LocalLogMixin):
     async def catching_coro(
         self,
         target: Coroutine,
-        exceptions: Optional[Union[Type[Exception], Tuple]] = None,
+        exceptions: type[Exception] | tuple | None = None,
     ) -> Any:
         """Wrap a target coro and catch specified exceptions."""
         if exceptions is None:

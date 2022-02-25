@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import enum
 import inspect
 import struct
-from typing import Callable, Tuple, TypeVar
+from typing import Callable, TypeVar
 
 CALLABLE_T = TypeVar("CALLABLE_T", bound=Callable)  # pylint: disable=invalid-name
 
@@ -35,8 +37,8 @@ class Bits(list):
         return bytes(serialized_bytes)
 
     @classmethod
-    def deserialize(cls, data) -> Tuple["Bits", bytes]:
-        bits = []
+    def deserialize(cls, data) -> tuple[Bits, bytes]:
+        bits: list[int] = []
 
         for byte in data:
             bits.extend((byte >> i) & 1 for i in range(7, -1, -1))
@@ -108,7 +110,7 @@ class FixedIntType(int):
         return Bits([(self >> n) & 0b1 for n in range(self._bits - 1, -1, -1)])
 
     @classmethod
-    def from_bits(cls, bits: Bits) -> Tuple["FixedIntType", Bits]:
+    def from_bits(cls, bits: Bits) -> tuple[FixedIntType, Bits]:
         if len(bits) < cls._bits:
             raise ValueError(f"Not enough bits to decode {cls}: {bits}")
 
@@ -130,7 +132,7 @@ class FixedIntType(int):
         return self.to_bytes(self._bits // 8, "little", signed=self._signed)
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["FixedIntType", bytes]:
+    def deserialize(cls, data: bytes) -> tuple[FixedIntType, bytes]:
         if cls._bits % 8 != 0:
             raise TypeError(f"Integer type with {cls._bits} bits is not byte aligned")
 
@@ -399,7 +401,7 @@ class BaseFloat(float):
         cls._size = size_bits // 8
 
     @staticmethod
-    def _convert_format(*, src: "BaseFloat", dst: "BaseFloat", n: int) -> int:
+    def _convert_format(*, src: BaseFloat, dst: BaseFloat, n: int) -> int:
         """
         Converts an integer representing a float from one format into another. Note:
 
@@ -443,7 +445,7 @@ class BaseFloat(float):
         ).to_bytes(self._size, "little")
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["BaseFloat", bytes]:
+    def deserialize(cls, data: bytes) -> tuple[BaseFloat, bytes]:
         if len(data) < cls._size:
             raise ValueError(f"Data is too short to contain {cls._size} bytes")
 
@@ -522,7 +524,7 @@ class LongOctetString(LVBytes):
 
 class KwargTypeMeta(type):
     # So things like `LVList[NWK, t.uint8_t]` are singletons
-    _anonymous_classes = {}
+    _anonymous_classes = {}  # type:ignore[var-annotated]
 
     def __new__(metaclass, name, bases, namespaces, **kwargs):
         cls_kwarg_attrs = namespaces.get("_getitem_kwargs", {})
@@ -617,7 +619,7 @@ class List(list, metaclass=KwargTypeMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["LVList", bytes]:
+    def deserialize(cls, data: bytes) -> tuple[LVList, bytes]:
         assert cls._item_type is not None
 
         lst = cls()
@@ -641,7 +643,7 @@ class LVList(list, metaclass=KwargTypeMeta):
         )
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["LVList", bytes]:
+    def deserialize(cls, data: bytes) -> tuple[LVList, bytes]:
         assert cls._item_type is not None
         length, data = cls._length_type.deserialize(data)
         r = cls()
@@ -668,7 +670,7 @@ class FixedList(list, metaclass=KwargTypeMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["FixedList", bytes]:
+    def deserialize(cls, data: bytes) -> tuple[FixedList, bytes]:
         assert cls._item_type is not None
         r = cls()
         for i in range(cls._length):
@@ -736,46 +738,30 @@ def Optional(optional_item_type):
 class data8(FixedList, item_type=uint8_t, length=1):
     """General data, Discrete, 8 bit."""
 
-    pass
-
 
 class data16(FixedList, item_type=uint8_t, length=2):
     """General data, Discrete, 16 bit."""
-
-    pass
 
 
 class data24(FixedList, item_type=uint8_t, length=3):
     """General data, Discrete, 24 bit."""
 
-    pass
-
 
 class data32(FixedList, item_type=uint8_t, length=4):
     """General data, Discrete, 32 bit."""
-
-    pass
 
 
 class data40(FixedList, item_type=uint8_t, length=5):
     """General data, Discrete, 40 bit."""
 
-    pass
-
 
 class data48(FixedList, item_type=uint8_t, length=6):
     """General data, Discrete, 48 bit."""
-
-    pass
 
 
 class data56(FixedList, item_type=uint8_t, length=7):
     """General data, Discrete, 56 bit."""
 
-    pass
-
 
 class data64(FixedList, item_type=uint8_t, length=8):
     """General data, Discrete, 64 bit."""
-
-    pass

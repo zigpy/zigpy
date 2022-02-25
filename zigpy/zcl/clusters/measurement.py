@@ -1,14 +1,17 @@
 """Measurement & Sensing Functional Domain"""
 
+from __future__ import annotations
+
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
+from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 
 class IlluminanceMeasurement(Cluster):
     cluster_id = 0x0400
     name = "Illuminance Measurement"
     ep_attribute = "illuminance"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Illuminance Measurement Information
         0x0000: ("measured_value", t.uint16_t),
         0x0001: ("min_measured_value", t.uint16_t),
@@ -18,15 +21,15 @@ class IlluminanceMeasurement(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class IlluminanceLevelSensing(Cluster):
     cluster_id = 0x0401
     name = "Illuminance Level Sensing"
     ep_attribute = "illuminance_level"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Illuminance Level Sensing Information
         0x0000: ("level_status", t.enum8),
         0x0001: ("light_sensor_type", t.enum8),
@@ -35,15 +38,15 @@ class IlluminanceLevelSensing(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class TemperatureMeasurement(Cluster):
     cluster_id = 0x0402
     name = "Temperature Measurement"
     ep_attribute = "temperature"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Temperature Measurement Information
         0x0000: ("measured_value", t.int16s),
         0x0001: ("min_measured_value", t.int16s),
@@ -54,15 +57,15 @@ class TemperatureMeasurement(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class PressureMeasurement(Cluster):
     cluster_id = 0x0403
     name = "Pressure Measurement"
     ep_attribute = "pressure"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Pressure Measurement Information
         0x0000: ("measured_value", t.int16s),
         0x0001: ("min_measured_value", t.int16s),
@@ -71,15 +74,15 @@ class PressureMeasurement(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class FlowMeasurement(Cluster):
     cluster_id = 0x0404
     name = "Flow Measurement"
     ep_attribute = "flow"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Flow Measurement Information
         0x0000: ("measured_value", t.uint16_t),
         0x0001: ("min_measured_value", t.uint16_t),
@@ -88,15 +91,15 @@ class FlowMeasurement(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class RelativeHumidity(Cluster):
     cluster_id = 0x0405
     name = "Relative Humidity Measurement"
     ep_attribute = "humidity"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Relative Humidity Measurement Information
         0x0000: ("measured_value", t.uint16_t),
         0x0001: ("min_measured_value", t.uint16_t),
@@ -105,15 +108,15 @@ class RelativeHumidity(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class OccupancySensing(Cluster):
     cluster_id = 0x0406
     name = "Occupancy Sensing"
     ep_attribute = "occupancy"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Occupancy Sensor Information
         0x0000: ("occupancy", t.bitmap8),
         0x0001: ("occupancy_sensor_type", t.enum8),
@@ -128,89 +131,89 @@ class OccupancySensing(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class LeafWetness(Cluster):
     cluster_id = 0x0407
     name = "Leaf Wetness Measurement"
     ep_attribute = "leaf_wetness"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Leaf Wetness Measurement Information
         0x0000: ("measured_value", t.uint16_t),
         0x0001: ("min_measured_value", t.uint16_t),
         0x0002: ("max_measured_value", t.uint16_t),
         0x0003: ("tolerance", t.uint16_t),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class SoilMoisture(Cluster):
     cluster_id = 0x0408
     name = "Soil Moisture Measurement"
     ep_attribute = "soil_moisture"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Soil Moisture Measurement Information
         0x0000: ("measured_value", t.uint16_t),
         0x0001: ("min_measured_value", t.uint16_t),
         0x0002: ("max_measured_value", t.uint16_t),
         0x0003: ("tolerance", t.uint16_t),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class PH(Cluster):
     cluster_id = 0x0409
     name = "pH Measurement"
     ep_attribute = "ph"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # pH Measurement Information
         0x0000: ("measured_value", t.uint16_t),
         0x0001: ("min_measured_value", t.uint16_t),
         0x0002: ("max_measured_value", t.uint16_t),
         0x0003: ("tolerance", t.uint16_t),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class ElectricalConductivity(Cluster):
     cluster_id = 0x040A
     name = "Electrical Conductivity"
     ep_attribute = "electrical_conductivity"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Electrical Conductivity Information
         0x0000: ("measured_value", t.uint16_t),
         0x0001: ("min_measured_value", t.uint16_t),
         0x0002: ("max_measured_value", t.uint16_t),
         0x0003: ("tolerance", t.uint16_t),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class WindSpeed(Cluster):
     cluster_id = 0x040B
     name = "Wind Speed Measurement"
     ep_attribute = "wind_speed"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Wind Speed Measurement Information
         0x0000: ("measured_value", t.uint16_t),
         0x0001: ("min_measured_value", t.uint16_t),
         0x0002: ("max_measured_value", t.uint16_t),
         0x0003: ("tolerance", t.uint16_t),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class _ConcentrationMixin:
     """Mixin for the common attributes of the concentration measurement clusters"""
 
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("measured_value", t.Single),  # fraction of 1 (one)
         0x0001: ("min_measured_value", t.Single),
         0x0002: ("max_measured_value", t.Single),
@@ -219,8 +222,8 @@ class _ConcentrationMixin:
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
 
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class CarbonMonoxideConcentration(_ConcentrationMixin, Cluster):

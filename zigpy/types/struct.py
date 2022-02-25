@@ -16,15 +16,15 @@ class ListSubclass(list):
 
 @dataclasses.dataclass(frozen=True)
 class StructField:
-    name: typing.Optional[str] = None
-    type: typing.Optional[type] = None
+    name: str | None = None
+    type: type | None = None
 
-    requires: typing.Optional[typing.Callable[[Struct], bool]] = dataclasses.field(
+    requires: typing.Callable[[Struct], bool] | None = dataclasses.field(
         default=None, repr=False
     )
-    optional: typing.Optional[bool] = False
+    optional: bool | None = False
 
-    repr: typing.Optional[typing.Callable[[typing.Any], str]] = dataclasses.field(
+    repr: typing.Callable[[typing.Any], str] | None = dataclasses.field(
         default=repr, repr=False
     )
 
@@ -42,6 +42,9 @@ class StructField:
                 f"Failed to convert {self.name}={value!r} from type"
                 f" {type(value)} to {self.type}"
             ) from e
+
+
+_STRUCT = typing.TypeVar("_STRUCT", bound="Struct")
 
 
 class Struct:
@@ -74,7 +77,7 @@ class Struct:
             None,
         )
 
-    def __new__(cls, *args, **kwargs) -> Struct:
+    def __new__(cls: type[_STRUCT], *args, **kwargs) -> _STRUCT:
         cls = cls._real_cls()
 
         if len(args) == 1 and isinstance(args[0], cls):
@@ -114,7 +117,7 @@ class Struct:
         return instance
 
     @classmethod
-    def _get_fields(cls) -> typing.List[StructField]:
+    def _get_fields(cls) -> list[StructField]:
         fields = ListSubclass()
 
         # We need both to throw type errors in case a field is not annotated
@@ -158,7 +161,7 @@ class Struct:
 
         return fields
 
-    def assigned_fields(self, *, strict=False) -> typing.List[StructField]:
+    def assigned_fields(self, *, strict=False) -> list[tuple[StructField, typing.Any]]:
         assigned_fields = ListSubclass()
 
         for field in self.fields:
@@ -181,10 +184,10 @@ class Struct:
 
         return assigned_fields
 
-    def as_dict(self) -> typing.Dict[str, typing.Any]:
+    def as_dict(self) -> dict[str, typing.Any]:
         return {f.name: getattr(self, f.name) for f in self.fields}
 
-    def as_tuple(self) -> typing.Tuple:
+    def as_tuple(self) -> tuple:
         return tuple(getattr(self, f.name) for f in self.fields)
 
     def serialize(self) -> bytes:
@@ -230,7 +233,7 @@ class Struct:
         return b"".join(chunks)
 
     @classmethod
-    def deserialize(cls, data: bytes) -> typing.Tuple[Struct, bytes]:
+    def deserialize(cls: type[_STRUCT], data: bytes) -> tuple[_STRUCT, bytes]:
         instance = cls()
 
         bit_length = 0
@@ -282,13 +285,14 @@ class Struct:
 
         return instance, data
 
+    # TODO: improve? def replace(self: typing.Type[_STRUCT], **kwargs) -> _STRUCT:
     def replace(self, **kwargs) -> Struct:
         d = self.as_dict().copy()
         d.update(kwargs)
 
         return type(self)(**d)
 
-    def __eq__(self, other: Struct) -> bool:
+    def __eq__(self, other: object) -> bool:
         if self._int_type is not None and isinstance(other, int):
             return int(self) == other
         elif not isinstance(self, type(other)) and not isinstance(other, type(self)):

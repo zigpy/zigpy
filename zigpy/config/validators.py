@@ -47,7 +47,7 @@ def cv_key(key: List[int]) -> t.KeyData:
     if len(key) != 16:
         raise vol.Invalid("key length must be 16")
 
-    if not all((0 <= e <= 255 for e in key)):
+    if not all(0 <= e <= 255 for e in key):
         raise vol.Invalid("Key bytes must be within (0..255) range")
 
     return t.KeyData(key)

@@ -100,7 +100,7 @@ class OTA(zigpy.util.ListenableMixin):
 
     def __init__(self, app: ControllerApplicationType, *args, **kwargs):
         self._app: ControllerApplicationType = app
-        self._image_cache = {}
+        self._image_cache: dict[ImageKey, CachedImage] = {}
         self._not_initialized = True
         self._listeners = {}
         ota_config = app.config[CONF_OTA]

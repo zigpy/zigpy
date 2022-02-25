@@ -104,7 +104,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         self._db = connection
         self._application = application
-        self._callback_handlers = asyncio.Queue()
+        self._callback_handlers: asyncio.Queue = asyncio.Queue()
         self.running = False
         self._worker_task = asyncio.create_task(self._worker())
 

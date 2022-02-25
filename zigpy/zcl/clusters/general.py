@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
-from zigpy.zcl.foundation import ZCLCommandDef
+from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 
 class Basic(Cluster):
@@ -197,7 +197,7 @@ class Basic(Cluster):
 
     cluster_id = 0x0000
     ep_attribute = "basic"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Basic Device Information
         0x0000: ("zcl_version", t.uint8_t),
         0x0001: ("app_version", t.uint8_t),
@@ -225,8 +225,10 @@ class Basic(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {0x00: ZCLCommandDef("reset_fact_default", {}, False)}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {
+        0x00: ZCLCommandDef("reset_fact_default", {}, False)
+    }
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class PowerConfiguration(Cluster):
@@ -254,7 +256,7 @@ class PowerConfiguration(Cluster):
     cluster_id = 0x0001
     name = "Power Configuration"
     ep_attribute = "power"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Mains Information
         0x0000: ("mains_voltage", t.uint16_t),
         0x0001: ("mains_frequency", t.uint8_t),
@@ -323,8 +325,8 @@ class PowerConfiguration(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class DeviceTemperature(Cluster):
@@ -339,7 +341,7 @@ class DeviceTemperature(Cluster):
     cluster_id = 0x0002
     name = "Device Temperature"
     ep_attribute = "device_temperature"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Device Temperature Information
         0x0000: ("current_temperature", t.int16s),
         0x0001: ("min_temp_experienced", t.int16s),
@@ -354,8 +356,8 @@ class DeviceTemperature(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class Identify(Cluster):
@@ -375,13 +377,13 @@ class Identify(Cluster):
 
     cluster_id = 0x0003
     ep_attribute = "identify"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("identify_time", t.uint16_t),
         # 0x0001: ("identify_commission_state", t.bitmap8),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("identify", {"identify_time": t.uint16_t}, False),
         0x01: ZCLCommandDef("identify_query", {}, False),
         # 0x02: ("ezmode_invoke", (t.bitmap8,), False),
@@ -392,7 +394,7 @@ class Identify(Cluster):
             False,
         ),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("identify_query_response", {"timeout": t.uint16_t}, True)
     }
 
@@ -406,12 +408,12 @@ class Groups(Cluster):
 
     cluster_id = 0x0004
     ep_attribute = "groups"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("name_support", NameSupport),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "add",
             {"group_id": t.Group, "group_name": t.LimitedCharString(16)},
@@ -427,7 +429,7 @@ class Groups(Cluster):
             False,
         ),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "add_response",
             {"status": foundation.Status, "group_id": t.Group},
@@ -464,7 +466,7 @@ class Scenes(Cluster):
 
     cluster_id = 0x0005
     ep_attribute = "scenes"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Scene Management Information
         0x0000: ("count", t.uint8_t),
         0x0001: ("current_scene", t.uint8_t),
@@ -475,7 +477,7 @@ class Scenes(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "add",
             {
@@ -531,7 +533,7 @@ class Scenes(Cluster):
             False,
         ),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "add_scene_response",
             {"status": foundation.Status, "group_id": t.Group, "scene_id": t.uint8_t},
@@ -620,7 +622,7 @@ class OnOff(Cluster):
     cluster_id = 0x0006
     name = "On/Off"
     ep_attribute = "on_off"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("on_off", t.Bool),
         0x4000: ("global_scene_control", t.Bool),
         0x4001: ("on_time", t.uint16_t),
@@ -629,7 +631,7 @@ class OnOff(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("off", {}, False),
         0x01: ZCLCommandDef("on", {}, False),
         0x02: ZCLCommandDef("toggle", {}, False),
@@ -649,7 +651,7 @@ class OnOff(Cluster):
             False,
         ),
     }
-    client_commands = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class OnOffConfiguration(Cluster):
@@ -669,14 +671,14 @@ class OnOffConfiguration(Cluster):
     cluster_id = 0x0007
     name = "On/Off Switch Configuration"
     ep_attribute = "on_off_config"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("switch_type", SwitchType),
         0x0010: ("switch_actions", SwitchActions),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class LevelControl(Cluster):
@@ -694,7 +696,7 @@ class LevelControl(Cluster):
     cluster_id = 0x0008
     name = "Level control"
     ep_attribute = "level"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("current_level", t.uint8_t),
         0x0001: ("remaining_time", t.uint16_t),
         0x0002: ("min_level", t.uint8_t),
@@ -712,7 +714,7 @@ class LevelControl(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "move_to_level",
             {
@@ -774,7 +776,7 @@ class LevelControl(Cluster):
             "move_to_closest_frequency", {"frequency": t.uint16_t}, False
         ),
     }
-    client_commands = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class Alarms(Cluster):
@@ -783,13 +785,13 @@ class Alarms(Cluster):
 
     cluster_id = 0x0009
     ep_attribute = "alarms"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Alarm Information
         0x0000: ("alarm_count", t.uint16_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "reset_alarm", {"alarm_code": t.uint8_t, "cluster_id": t.uint16_t}, False
         ),
@@ -798,7 +800,7 @@ class Alarms(Cluster):
         0x03: ZCLCommandDef("reset_alarm_log", {}, False),
         # 0x04: ("publish_event_log", {}, False),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "alarm", {"alarm_code": t.uint8_t, "cluster_id": t.uint16_t}, False
         ),
@@ -828,7 +830,7 @@ class Time(Cluster):
 
     cluster_id = 0x000A
     ep_attribute = "time"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("time", t.UTCTime),
         0x0001: ("time_status", t.bitmap8),
         0x0002: ("time_zone", t.int32s),
@@ -842,16 +844,15 @@ class Time(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
     def handle_cluster_general_request(
         self,
         hdr: foundation.ZCLHeader,
         *args: list[Any],
-        dst_addressing: Optional[
-            t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
-        ] = None,
+        dst_addressing: None
+        | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
     ):
         if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
             data = {}
@@ -883,7 +884,7 @@ class RSSILocation(Cluster):
 
     cluster_id = 0x000B
     ep_attribute = "rssi_location"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Location Information
         0x0000: ("type", t.uint8_t),
         0x0001: ("method", t.enum8),
@@ -902,7 +903,7 @@ class RSSILocation(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "set_absolute_location",
             {
@@ -972,7 +973,7 @@ class RSSILocation(Cluster):
         rssi: t.int8s
         num_measurements: t.uint8_t
 
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "dev_config_response",
             {
@@ -1019,7 +1020,7 @@ class RSSILocation(Cluster):
 class AnalogInput(Cluster):
     cluster_id = 0x000C
     ep_attribute = "analog_input"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x001C: ("description", t.CharacterString),
         0x0041: ("max_present_value", t.Single),
         0x0045: ("min_present_value", t.Single),
@@ -1033,14 +1034,14 @@ class AnalogInput(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class AnalogOutput(Cluster):
     cluster_id = 0x000D
     ep_attribute = "analog_output"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x001C: ("description", t.CharacterString),
         0x0041: ("max_present_value", t.Single),
         0x0045: ("min_present_value", t.Single),
@@ -1057,14 +1058,14 @@ class AnalogOutput(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class AnalogValue(Cluster):
     cluster_id = 0x000E
     ep_attribute = "analog_value"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x001C: ("description", t.CharacterString),
         0x0051: ("out_of_service", t.Bool),
         0x0055: ("present_value", t.Single),
@@ -1078,15 +1079,15 @@ class AnalogValue(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class BinaryInput(Cluster):
     cluster_id = 0x000F
     name = "Binary Input (Basic)"
     ep_attribute = "binary_input"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0004: ("active_text", t.CharacterString),
         0x001C: ("description", t.CharacterString),
         0x002E: ("inactive_text", t.CharacterString),
@@ -1099,14 +1100,14 @@ class BinaryInput(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class BinaryOutput(Cluster):
     cluster_id = 0x0010
     ep_attribute = "binary_output"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0004: ("active_text", t.CharacterString),
         0x001C: ("description", t.CharacterString),
         0x002E: ("inactive_text", t.CharacterString),
@@ -1126,14 +1127,14 @@ class BinaryOutput(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class BinaryValue(Cluster):
     cluster_id = 0x0011
     ep_attribute = "binary_value"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0004: ("active_text", t.CharacterString),
         0x001C: ("description", t.CharacterString),
         0x002E: ("inactive_text", t.CharacterString),
@@ -1150,14 +1151,14 @@ class BinaryValue(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class MultistateInput(Cluster):
     cluster_id = 0x0012
     ep_attribute = "multistate_input"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x000E: ("state_text", t.List[t.CharacterString]),
         0x001C: ("description", t.CharacterString),
         0x004A: ("number_of_states", t.uint16_t),
@@ -1171,14 +1172,14 @@ class MultistateInput(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class MultistateOutput(Cluster):
     cluster_id = 0x0013
     ep_attribute = "multistate_output"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x000E: ("state_text", t.List[t.CharacterString]),
         0x001C: ("description", t.CharacterString),
         0x004A: ("number_of_states", t.uint16_t),
@@ -1193,14 +1194,14 @@ class MultistateOutput(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class MultistateValue(Cluster):
     cluster_id = 0x0014
     ep_attribute = "multistate_value"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x000E: ("state_text", t.List[t.CharacterString]),
         0x001C: ("description", t.CharacterString),
         0x004A: ("number_of_states", t.uint16_t),
@@ -1215,8 +1216,8 @@ class MultistateValue(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class Commissioning(Cluster):
@@ -1225,7 +1226,7 @@ class Commissioning(Cluster):
 
     cluster_id = 0x0015
     ep_attribute = "commissioning"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Startup Parameters
         0x0000: ("short_address", t.uint16_t),
         0x0001: ("extended_pan_id", t.EUI64),
@@ -1257,7 +1258,7 @@ class Commissioning(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "restart_device",
             {"options": t.bitmap8, "delay": t.uint8_t, "jitter": t.uint8_t},
@@ -1277,7 +1278,7 @@ class Commissioning(Cluster):
             False,
         ),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "restart_device_response", {"status": foundation.Status}, True
         ),
@@ -1296,7 +1297,7 @@ class Commissioning(Cluster):
 class Partition(Cluster):
     cluster_id = 0x0016
     ep_attribute = "partition"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("maximum_incoming_transfer_size", t.uint16_t),
         0x0001: ("maximum_outgoing_transfer_size", t.uint16_t),
         0x0002: ("partitioned_frame_size", t.uint8_t),
@@ -1310,8 +1311,8 @@ class Partition(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class Ota(Cluster):
@@ -1340,7 +1341,7 @@ class Ota(Cluster):
 
     cluster_id = 0x0019
     ep_attribute = "ota"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("upgrade_server_id", t.EUI64),
         0x0001: ("file_offset", t.uint32_t),
         0x0002: ("current_file_version", t.uint32_t),
@@ -1357,7 +1358,7 @@ class Ota(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x01: ZCLCommandDef(
             "query_next_image",
             {
@@ -1420,7 +1421,7 @@ class Ota(Cluster):
             False,
         ),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "image_notify",
             {
@@ -1485,9 +1486,8 @@ class Ota(Cluster):
         hdr: foundation.ZCLHeader,
         args: list[Any],
         *,
-        dst_addressing: Optional[
-            t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
-        ] = None,
+        dst_addressing: None
+        | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
     ):
         self.create_catching_task(
             self._handle_cluster_request(hdr, args, dst_addressing=dst_addressing),
@@ -1498,9 +1498,8 @@ class Ota(Cluster):
         hdr: foundation.ZCLHeader,
         args: list[Any],
         *,
-        dst_addressing: Optional[
-            t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
-        ] = None,
+        dst_addressing: None
+        | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
     ):
         """Parse OTA commands."""
         tsn, command_id = hdr.tsn, hdr.command_id
@@ -1668,7 +1667,7 @@ class Ota(Cluster):
 class PowerProfile(Cluster):
     cluster_id = 0x001A
     ep_attribute = "power_profile"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("total_profile_num", t.uint8_t),
         0x0001: ("multiple_scheduling", t.Bool),
         0x0002: ("energy_formatting", t.bitmap8),
@@ -1696,7 +1695,7 @@ class PowerProfile(Cluster):
         power_profile_state: t.uint8_t
 
     # XXX: are these flipped?
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "power_profile_request", {"power_profile_id": t.uint8_t}, False
         ),
@@ -1757,7 +1756,7 @@ class PowerProfile(Cluster):
             True,
         ),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "power_profile_notification",
             {
@@ -1838,22 +1837,22 @@ class PowerProfile(Cluster):
 class ApplianceControl(Cluster):
     cluster_id = 0x001B
     ep_attribute = "appliance_control"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("start_time", t.uint16_t),
         0x0001: ("finish_time", t.uint16_t),
         0x0002: ("remaining_time", t.uint16_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class PollControl(Cluster):
     cluster_id = 0x0020
     name = "Poll Control"
     ep_attribute = "poll_control"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("checkin_interval", t.uint32_t),
         0x0001: ("long_poll_interval", t.uint32_t),
         0x0002: ("short_poll_interval", t.uint16_t),
@@ -1864,7 +1863,7 @@ class PollControl(Cluster):
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "checkin_response",
             {"start_fast_polling": t.Bool, "fast_poll_timeout": t.uint16_t},
@@ -1880,12 +1879,14 @@ class PollControl(Cluster):
             False,
         ),
     }
-    client_commands = {0x0000: ZCLCommandDef("checkin", {}, False)}
+    client_commands: dict[int, ZCLCommandDef] = {
+        0x0000: ZCLCommandDef("checkin", {}, False)
+    }
 
 
 class GreenPowerProxy(Cluster):
     cluster_id = 0x0021
     ep_attribute = "green_power"
-    attributes = {}
-    server_commands = {}
-    client_commands = {}
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import functools
 import logging
-from typing import Coroutine, List
+from typing import Coroutine
 
 import zigpy.profiles
 import zigpy.types as t
@@ -66,7 +66,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         profile: int,
         cluster: int,
         hdr: types.ZDOHeader,
-        args: List,
+        args: list,
         *,
         dst_addressing: t.Addressing.Group
         | t.Addressing.IEEE
@@ -221,7 +221,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         try:
             command = types.ZDOCmd[name]
         except KeyError:
-            raise AttributeError("No such '%s' ZDO command" % (name,))
+            raise AttributeError(f"No such '{name}' ZDO command")
 
         if command & 0x8000:
             return functools.partial(self.reply, command)
