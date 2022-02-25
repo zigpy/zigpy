@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Coroutine, Iterable, Optional, Union
+from typing import Any, Callable, Coroutine, Iterable
 
 from zigpy.const import (  # noqa: F401
     SIG_ENDPOINTS,
@@ -28,7 +28,7 @@ _DEVICE_REGISTRY = DeviceRegistry()
 _uninitialized_device_message_handlers = []
 
 
-def get_device(device: zigpy.device.Device, registry: Optional[DeviceRegistry] = None):
+def get_device(device: zigpy.device.Device, registry: DeviceRegistry | None = None):
     """Get a CustomDevice object, if one is available"""
     if registry is None:
         return _DEVICE_REGISTRY.get_device(device)
@@ -37,7 +37,7 @@ def get_device(device: zigpy.device.Device, registry: Optional[DeviceRegistry] =
 
 
 def get_quirk_list(
-    manufacturer: str, model: str, registry: Optional[DeviceRegistry] = None
+    manufacturer: str, model: str, registry: DeviceRegistry | None = None
 ):
     """Get the Quirk list for a given manufacturer and model."""
     if registry is None:
@@ -57,7 +57,7 @@ def register_uninitialized_device_message_handler(handler: Callable) -> None:
 
 
 class CustomDevice(zigpy.device.Device):
-    replacement = {}
+    replacement: dict[str, Any] = {}
     signature = None
 
     def __init_subclass__(cls):
@@ -84,7 +84,7 @@ class CustomDevice(zigpy.device.Device):
         for endpoint_id, endpoint in self.replacement.get(SIG_ENDPOINTS, {}).items():
             self.add_endpoint(endpoint_id, replace_device=replaces)
 
-    def add_endpoint(self, endpoint_id, replace_device=None):
+    def add_endpoint(self, endpoint_id, replace_device=None) -> zigpy.endpoint.Endpoint:
         if endpoint_id not in self.replacement.get(SIG_ENDPOINTS, {}):
             return super().add_endpoint(endpoint_id)
 
@@ -137,7 +137,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
 
 class CustomCluster(zigpy.zcl.Cluster):
     _skip_registry = True
-    _CONSTANT_ATTRIBUTES: Optional[dict[int, Any]] = None
+    _CONSTANT_ATTRIBUTES: dict[int, Any] | None = None
 
     manufacturer_id_override: t.uint16_t | None = None
 
@@ -146,7 +146,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         """Return True if cluster_id is within manufacturer specific range."""
         return 0xFC00 <= self.cluster_id <= 0xFFFF
 
-    def _has_manuf_attr(self, attrs_to_process: Union[Iterable, list, dict]) -> bool:
+    def _has_manuf_attr(self, attrs_to_process: Iterable | list | dict) -> bool:
         """Return True if contains a manufacturer specific attribute."""
         if self._is_manuf_specific:
             return True
@@ -162,12 +162,13 @@ class CustomCluster(zigpy.zcl.Cluster):
 
     def command(
         self,
-        command_id: Union[foundation.Command, int, t.uint8_t],
+        command_id: foundation.GeneralCommand | int | t.uint8_t,
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
         tries: int = 1,
-        tsn: Optional[Union[int, t.uint8_t]] = None,
+        tsn: int | t.uint8_t | None = None,
+        **kwargs: Any,
     ) -> Coroutine:
         command = self.server_commands[command_id]
 
@@ -189,10 +190,11 @@ class CustomCluster(zigpy.zcl.Cluster):
 
     def client_command(
         self,
-        command_id: Union[foundation.Command, int, t.uint8_t],
+        command_id: foundation.GeneralCommand | int | t.uint8_t,
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
-        tsn: Optional[Union[int, t.uint8_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
+        tsn: int | t.uint8_t | None = None,
+        **kwargs: Any,
     ) -> Coroutine:
         command = self.client_commands[command_id]
 
@@ -244,37 +246,70 @@ class CustomCluster(zigpy.zcl.Cluster):
             succeeded.extend(results[0])
         return [succeeded]
 
-    def _configure_reporting(
-        self, args: list[foundation.Attribute], manufacturer: Optional[int] = None
+    def _configure_reporting(  # type:ignore[override]
+        self,
+        config_records: list[foundation.AttributeReportingConfig],
+        *args,
+        manufacturer: int | t.uint16_t | None = None,
+        **kwargs,
     ):
         """Configure reporting ZCL foundation command."""
-        if manufacturer is None and self._has_manuf_attr([a.attrid for a in args]):
+        if manufacturer is None and self._has_manuf_attr(
+            [a.attrid for a in config_records]
+        ):
             manufacturer = self.endpoint.manufacturer_id
-        return super()._configure_reporting(args, manufacturer=manufacturer)
+        return super()._configure_reporting(
+            config_records,
+            *args,
+            manufacturer=manufacturer,
+            **kwargs,
+        )
 
-    def _read_attributes(
-        self, args: list[t.uint16_t], manufacturer: Optional[int] = None
+    def _read_attributes(  # type:ignore[override]
+        self,
+        attribute_ids: list[t.uint16_t],
+        *args,
+        manufacturer: int | t.uint16_t | None = None,
+        **kwargs,
     ):
         """Read attributes ZCL foundation command."""
-        if manufacturer is None and self._has_manuf_attr(args):
+        if manufacturer is None and self._has_manuf_attr(attribute_ids):
             manufacturer = self.endpoint.manufacturer_id
-        return super()._read_attributes(args, manufacturer=manufacturer)
+        return super()._read_attributes(
+            attribute_ids, *args, manufacturer=manufacturer, **kwargs
+        )
 
-    def _write_attributes(
-        self, args: list[foundation.Attribute], manufacturer: Optional[int] = None
+    def _write_attributes(  # type:ignore[override]
+        self,
+        attributes: list[foundation.Attribute],
+        *args,
+        manufacturer: int | t.uint16_t | None = None,
+        **kwargs,
     ):
         """Write attribute ZCL foundation command."""
-        if manufacturer is None and self._has_manuf_attr([a.attrid for a in args]):
+        if manufacturer is None and self._has_manuf_attr(
+            [a.attrid for a in attributes]
+        ):
             manufacturer = self.endpoint.manufacturer_id
-        return super()._write_attributes(args, manufacturer=manufacturer)
+        return super()._write_attributes(
+            attributes, *args, manufacturer=manufacturer, **kwargs
+        )
 
-    def _write_attributes_undivided(
-        self, args: list[foundation.Attribute], manufacturer: Optional[int] = None
+    def _write_attributes_undivided(  # type:ignore[override]
+        self,
+        attributes: list[foundation.Attribute],
+        *args,
+        manufacturer: int | t.uint16_t | None = None,
+        **kwargs,
     ):
         """Write attribute undivided ZCL foundation command."""
-        if manufacturer is None and self._has_manuf_attr([a.attrid for a in args]):
+        if manufacturer is None and self._has_manuf_attr(
+            [a.attrid for a in attributes]
+        ):
             manufacturer = self.endpoint.manufacturer_id
-        return super()._write_attributes_undivided(args, manufacturer=manufacturer)
+        return super()._write_attributes_undivided(
+            attributes, *args, manufacturer=manufacturer, **kwargs
+        )
 
 
 def handle_message_from_uninitialized_sender(

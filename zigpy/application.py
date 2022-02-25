@@ -5,7 +5,7 @@ import asyncio
 import logging
 import os
 import random
-from typing import Any, Optional
+from typing import Any
 
 import zigpy.appdb
 import zigpy.config as conf
@@ -273,9 +273,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dst_ep: int,
         message: bytes,
         *,
-        dst_addressing: Optional[
-            t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK
-        ] = None,
+        dst_addressing: None
+        | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
     ) -> None:
         """
         Called when the radio library receives a packet

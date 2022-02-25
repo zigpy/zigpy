@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 import logging
 import typing
@@ -19,7 +21,7 @@ class ValidationError(Exception):
     pass
 
 
-def parse_silabs_ebl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]:
+def parse_silabs_ebl(data: bytes) -> typing.Iterable[tuple[bytes, bytes]]:
     """
     Parses a Silicon Labs EBL firmware image.
     """
@@ -68,7 +70,7 @@ def parse_silabs_ebl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]
         break  # pragma: no cover
 
 
-def parse_silabs_gbl(data: bytes) -> typing.Iterable[typing.Tuple[bytes, bytes]]:
+def parse_silabs_gbl(data: bytes) -> typing.Iterable[tuple[bytes, bytes]]:
     """
     Parses a Silicon Labs GBL firmware image.
     """

@@ -6,7 +6,7 @@ from collections.abc import Iterable
 import dataclasses
 from dataclasses import InitVar, dataclass, field
 import functools
-from typing import Any
+from typing import Any, Iterator
 
 import zigpy.config as conf
 import zigpy.types as t
@@ -17,16 +17,11 @@ import zigpy.zdo.types as zdo_t
 class Key:
     """APS/TC Link key."""
 
-    key: t.KeyData | None = None
-    tx_counter: t.uint32_t | None = 0
-    rx_counter: t.uin32_t | None = 0
-    seq: t.uint8_t | None = 0
-    partner_ieee: t.EUI64 | None = None
-
-    def __post_init__(self) -> None:
-        """Initialize instance."""
-        if self.partner_ieee is None:
-            self.partner_ieee = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
+    key: t.KeyData = field(default_factory=lambda: t.KeyData.UNKNOWN)
+    tx_counter: t.uint32_t = 0
+    rx_counter: t.uint32_t = 0
+    seq: t.uint8_t = 0
+    partner_ieee: t.EUI64 = field(default_factory=lambda: t.EUI64.UNKNOWN)
 
     def replace(self, **kwargs) -> Key:
         return dataclasses.replace(self, **kwargs)
@@ -37,15 +32,8 @@ class NodeInfo:
     """Controller Application network Node information."""
 
     nwk: t.NWK = t.NWK(0xFFFE)
-    ieee: t.EUI64 | None = None
-    logical_type: zdo_t.LogicalType | None = None
-
-    def __post_init__(self) -> None:
-        """Initialize instance."""
-        if self.ieee is None:
-            self.ieee = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
-        if self.logical_type is None:
-            self.logical_type = zdo_t.LogicalType.Coordinator
+    ieee: t.EUI64 = field(default_factory=lambda: t.EUI64.UNKNOWN)
+    logical_type: zdo_t.LogicalType = zdo_t.LogicalType.EndDevice
 
     def replace(self, **kwargs) -> NodeInfo:
         return dataclasses.replace(self, **kwargs)
@@ -55,37 +43,34 @@ class NodeInfo:
 class NetworkInfo:
     """Network information."""
 
-    extended_pan_id: t.ExtendedPanId | None = None
-    pan_id: t.PanId | None = 0xFFFE
-    nwk_update_id: t.uint8_t | None = 0x00
-    nwk_manager_id: t.NWK | None = t.NWK(0x0000)
-    channel: t.uint8_t | None = None
-    channel_mask: t.Channels | None = None
-    security_level: t.uint8_t | None = None
-    network_key: Key | None = None
-    tc_link_key: Key | None = None
-    key_table: list[Key] | None = None
-    children: list[t.EUI64] | None = None
+    extended_pan_id: t.ExtendedPanId = field(
+        default_factory=lambda: t.ExtendedPanId.UNKNOWN
+    )
+    pan_id: t.PanId = t.PanId(0xFFFE)
+    nwk_update_id: t.uint8_t = t.uint8_t(0x00)
+    nwk_manager_id: t.NWK = t.NWK(0x0000)
+    channel: t.uint8_t = 0
+    channel_mask: t.Channels = t.Channels.NO_CHANNELS
+    security_level: t.uint8_t = 0
+    network_key: Key = field(default_factory=Key)
+    tc_link_key: Key = field(
+        default_factory=lambda: Key(
+            key=conf.CONF_NWK_TC_LINK_KEY_DEFAULT,
+            tx_counter=0,
+            rx_counter=0,
+            seq=0,
+            partner_ieee=t.EUI64.UNKNOWN,
+        )
+    )
+    key_table: list[Key] = field(default_factory=list)
+    children: list[t.EUI64] = field(default_factory=list)
 
     # If exposed by the stack, NWK addresses of other connected devices on the network
-    nwk_addresses: dict[t.EUI64, t.NWK] | None = None
+    nwk_addresses: dict[t.EUI64, t.NWK] = field(default_factory=dict)
 
     # Dict to keep track of stack-specific network stuff.
     # Z-Stack, for example, has a TCLK_SEED that should be backed up.
-    stack_specific: dict[str, Any] | None = None
-
-    def __post_init__(self) -> None:
-        """Initialize instance."""
-        if self.extended_pan_id is None:
-            self.extended_pan_id = t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff")
-        if self.key_table is None:
-            self.key_table = []
-        if self.stack_specific is None:
-            self.stack_specific = {}
-        if self.children is None:
-            self.children = []
-        if self.nwk_addresses is None:
-            self.nwk_addresses = {}
+    stack_specific: dict[str, Any] = field(default_factory=dict)
 
     def replace(self, **kwargs) -> NetworkInfo:
         return dataclasses.replace(self, **kwargs)
@@ -203,7 +188,7 @@ class CounterGroup(dict):
     @property
     def name(self) -> str:
         """Return counter collection name."""
-        return self._name
+        return self._name if self._name is not None else "No Name"
 
     def increment(self, name: int | str, *tags: int | str) -> None:
         """Create and Update all counters recursively."""
@@ -225,9 +210,9 @@ class CounterGroup(dict):
 class CounterGroups(dict):
     """A collection of unrelated counter groups in a dict."""
 
-    def __iter__(self) -> Iterable[CounterGroup]:
+    def __iter__(self) -> Iterator[CounterGroup]:
         """Return an iterable of the counters"""
-        return (counter_group for counter_group in self.values())
+        return iter(self.values())
 
     def __missing__(self, counter_group_name: Any) -> CounterGroup:
         """Default counter factory."""

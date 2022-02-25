@@ -306,10 +306,10 @@ def test_get_dst_address(app):
 
 
 def test_props(app):
-    assert app.state.network_info.channel is None
-    assert app.state.network_info.channel_mask is None
-    assert app.state.network_info.extended_pan_id
-    assert app.state.network_info.pan_id
+    assert app.state.network_info.channel is not None
+    assert app.state.network_info.channel_mask is not None
+    assert app.state.network_info.extended_pan_id is not None
+    assert app.state.network_info.pan_id is not None
     assert app.state.network_info.nwk_update_id is not None
 
 

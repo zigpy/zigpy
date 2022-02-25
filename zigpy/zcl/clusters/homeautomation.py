@@ -1,13 +1,15 @@
+from __future__ import annotations
+
 import zigpy.types as t
 from zigpy.zcl import Cluster
-from zigpy.zcl.foundation import ZCLCommandDef
+from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 
 class ApplianceIdentification(Cluster):
     cluster_id = 0x0B00
     name = "Appliance Identification"
     ep_attribute = "appliance_id"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("basic_identification", t.uint56_t),
         0x0010: ("company_name", t.LimitedCharString(16)),
         0x0011: ("company_id", t.uint16_t),
@@ -21,15 +23,15 @@ class ApplianceIdentification(Cluster):
         0x0019: ("product_type_id", t.uint16_t),
         0x001A: ("ceced_specification_version", t.uint8_t),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class MeterIdentification(Cluster):
     cluster_id = 0x0B01
     name = "Meter Identification"
     ep_attribute = "meter_id"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("company_name", t.LimitedCharString(16)),
         0x0001: ("meter_type_id", t.uint16_t),
         0x0004: ("data_quality_id", t.uint16_t),
@@ -43,17 +45,19 @@ class MeterIdentification(Cluster):
         0x000D: ("available_power", t.int24s),
         0x000E: ("power_threshold", t.int24s),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class ApplianceEventAlerts(Cluster):
     cluster_id = 0x0B02
     name = "Appliance Event Alerts"
     ep_attribute = "appliance_event"
-    attributes = {}
-    server_commands = {0x00: ZCLCommandDef("get_alerts", {}, False)}
-    client_commands = {
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {
+        0x00: ZCLCommandDef("get_alerts", {}, False)
+    }
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("get_alarts_response", {}, True),
         0x01: ZCLCommandDef("alerts_notification", {}, False),
         0x02: ZCLCommandDef("event_notification", {}, False),
@@ -64,15 +68,15 @@ class ApplianceStatistics(Cluster):
     cluster_id = 0x0B03
     name = "Appliance Statistics"
     ep_attribute = "appliance_stats"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("log_max_size", t.uint32_t),
         0x0001: ("log_queue_max_size", t.uint8_t),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("log", {}, False),
         0x01: ZCLCommandDef("log_queue", {}, False),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("log_notification", {}, False),
         0x01: ZCLCommandDef("log_response", {}, True),
         0x02: ZCLCommandDef("log_queue_response", {}, True),
@@ -84,7 +88,7 @@ class ElectricalMeasurement(Cluster):
     cluster_id = 0x0B04
     name = "Electrical Measurement"
     ep_attribute = "electrical_measurement"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Basic Information
         0x0000: ("measurement_type", t.bitmap32),
         # DC Measurement
@@ -226,11 +230,11 @@ class ElectricalMeasurement(Cluster):
         0x0A16: ("rms_voltage_sag_period_ph_c", t.uint16_t),
         0x0A17: ("rms_voltage_swell_period_ph__c", t.uint16_t),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("get_profile_info", {}, False),
         0x01: ZCLCommandDef("get_measurement_profile", {}, False),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("get_profile_info_response", {}, True),
         0x01: ZCLCommandDef("get_measurement_profile_response", {}, True),
     }
@@ -239,7 +243,7 @@ class ElectricalMeasurement(Cluster):
 class Diagnostic(Cluster):
     cluster_id = 0x0B05
     ep_attribute = "diagnostic"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Hardware Information
         0x0000: ("number_of_resets", t.uint16_t),
         0x0001: ("persistent_memory_writes", t.uint16_t),
@@ -275,5 +279,5 @@ class Diagnostic(Cluster):
         0x011C: ("last_message_lqi", t.uint8_t),
         0x011D: ("last_message_rssi", t.int8s),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}

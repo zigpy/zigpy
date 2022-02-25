@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Tuple, Union
+from typing import Iterable
 
 from . import basic
 from .struct import Struct
@@ -19,14 +19,14 @@ class BroadcastAddress(basic.enum16):
 
 class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
     # EUI 64-bit ID (an IEEE address).
-    def __repr__(self):
+    def __repr__(self) -> str:
         return ":".join("%02x" % i for i in self[::-1])
 
     def __hash__(self):
         return hash(repr(self))
 
     @classmethod
-    def convert(cls, ieee: str):
+    def convert(cls, ieee: str) -> EUI64:
         if ieee is None:
             return None
         ieee = [basic.uint8_t(p, base=16) for p in ieee.split(":")[::-1]]
@@ -34,8 +34,11 @@ class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
         return cls(ieee)
 
 
+EUI64.UNKNOWN = EUI64.convert("FF:FF:FF:FF:FF:FF:FF:FF")
+
+
 class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
-    def __repr__(self):
+    def __repr__(self) -> str:
         return ":".join(f"{i:02x}" for i in self)
 
     @classmethod
@@ -43,6 +46,9 @@ class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
         key = [basic.uint8_t(p, base=16) for p in key.split(":")]
         assert len(key) == cls._length
         return cls(key)
+
+
+KeyData.UNKNOWN = KeyData.convert("FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF")
 
 
 class Bool(basic.enum8):
@@ -81,7 +87,7 @@ class Channels(basic.bitmap32):
     CHANNEL_26 = 0x04000000
 
     @classmethod
-    def from_channel_list(cls, channels: Iterable[int]) -> "Channels":
+    def from_channel_list(cls: Channels, channels: Iterable[int]) -> Channels:
         mask = cls.NO_CHANNELS
 
         for channel in channels:
@@ -171,19 +177,13 @@ class UTCTime(_Time):
 class StandardTime(_Time):
     """Adjusted for TimeZone but not for daylight saving."""
 
-    pass
-
 
 class LocalTime(_Time):
     """Standard time adjusted for daylight saving."""
 
-    pass
-
 
 class Relays(basic.LVList, item_type=NWK, length_type=basic.uint8_t):
     """Relay list for static routing."""
-
-    pass
 
 
 class APSStatus(basic.enum8):
@@ -535,7 +535,7 @@ class Addressing:
     NWK = _AddressingNWK
 
     @classmethod
-    def ieee(cls, ieee: EUI64, endpoint: Union[basic.uint8_t, int]) -> _AddressingIEEE:
+    def ieee(cls, ieee: EUI64, endpoint: basic.uint8_t | int) -> _AddressingIEEE:
         """Return IEEE addressing mode."""
 
         return cls.IEEE(AddrMode.IEEE, ieee, endpoint)
@@ -547,7 +547,7 @@ class Addressing:
         return cls.Group(AddrMode.Group, group)
 
     @classmethod
-    def nwk(cls, nwk: NWK, endpoint: Union[basic.uint8_t, int]) -> _AddressingNWK:
+    def nwk(cls, nwk: NWK, endpoint: basic.uint8_t | int) -> _AddressingNWK:
         """Return NWK addressing mode."""
 
         return cls.NWK(AddrMode.NWK, nwk, endpoint)
@@ -555,7 +555,7 @@ class Addressing:
     @classmethod
     def deserialize(
         cls, data: bytes
-    ) -> Tuple[Union[_AddressingGroup, _AddressingIEEE, _AddressingNWK], bytes]:
+    ) -> tuple[_AddressingGroup | _AddressingIEEE | _AddressingNWK, bytes]:
         """Deserialize data."""
 
         if data[0] == AddrMode.IEEE:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Optional, Set
+from typing import TYPE_CHECKING, Any
 
 from zigpy import types as t
 from zigpy.endpoint import Endpoint
@@ -35,7 +35,7 @@ class Group(ListenableMixin, dict):
 
     def add_member(self, ep: Endpoint, suppress_event: bool = False) -> Group:
         if not isinstance(ep, Endpoint):
-            raise ValueError("%s is not %s class" % (ep, Endpoint.__class__.__name__))
+            raise ValueError(f"{ep} is not {Endpoint.__class__.__name__} class")
         if ep.unique_id in self:
             return self[ep.unique_id]
         self[ep.unique_id] = ep
@@ -88,7 +88,7 @@ class Group(ListenableMixin, dict):
     @property
     def name(self) -> str:
         if self._name is None:
-            return "No name group {}".format(self.group_id)
+            return f"No name group {self.group_id}"
         return self._name
 
     @property
@@ -104,7 +104,7 @@ class Groups(ListenableMixin, dict):
 
     def add_group(
         self, group_id: int, name: str | None = None, suppress_event: bool = False
-    ) -> Optional[Group]:
+    ) -> Group:
         if group_id in self:
             return self[group_id]
         LOGGER.debug("Adding group: %s, %s", group_id, name)
@@ -120,7 +120,7 @@ class Groups(ListenableMixin, dict):
     def member_removed(self, group: Group, ep: Endpoint) -> None:
         self.listener_event("group_member_removed", group, ep)
 
-    def pop(self, item, *args: Any) -> Optional[Group]:
+    def pop(self, item, *args: Any) -> Group | None:
         if isinstance(item, Group):
             group = super().pop(item.group_id, *args)
             if isinstance(group, Group):
@@ -137,7 +137,7 @@ class Groups(ListenableMixin, dict):
 
     remove_group = pop
 
-    def update_group_membership(self, ep: Endpoint, groups: Set[int]) -> None:
+    def update_group_membership(self, ep: Endpoint, groups: set[int]) -> None:
         """Sync up device group membership."""
         old_groups = {
             group.group_id for group in self.values() if ep.unique_id in group.members
@@ -160,17 +160,23 @@ class GroupCluster(zigpy.zcl.Cluster):
     """Virtual cluster for group requests."""
 
     @classmethod
-    def from_id(cls, group_endpoint: GroupEndpoint, cluster_id: int):
+    def from_id(
+        cls, group_endpoint: GroupEndpoint, cluster_id: int, is_server=True
+    ) -> zigpy.zcl.Cluster:
         """Instantiate from ZCL cluster by cluster id."""
+        if is_server is not True:
+            raise ValueError("Only server clusters are supported for group requests")
         if cluster_id in cls._registry:
             return cls._registry[cluster_id](group_endpoint, is_server=True)
         group_endpoint.debug(
             "0x%04x cluster id is not supported for group requests", cluster_id
         )
-        raise KeyError("Unsupported 0x{:04x} cluster id for groups".format(cluster_id))
+        raise KeyError(f"Unsupported 0x{cluster_id:04x} cluster id for groups")
 
     @classmethod
-    def from_attr(cls, group_endpoint: GroupEndpoint, ep_name: str):
+    def from_attr(
+        cls, group_endpoint: GroupEndpoint, ep_name: str
+    ) -> zigpy.zcl.Cluster:
         """Instantiate by Cluster name."""
 
         for cluster in cls._registry.values():
