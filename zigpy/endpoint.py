@@ -177,7 +177,16 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         # Some devices can't handle multiple attributes in the same read request
         for names in (["manufacturer", "model"], ["manufacturer"], ["model"]):
-            success, failure = await self.basic.read_attributes(names, allow_cache=True)
+            try:
+                success, failure = await self.basic.read_attributes(
+                    names, allow_cache=True
+                )
+            except asyncio.TimeoutError:
+                # Only swallow the `TimeoutError` on the double attribute read
+                if len(names) == 2:
+                    continue
+
+                raise
 
             if "model" in success:
                 self._model = success["model"]
