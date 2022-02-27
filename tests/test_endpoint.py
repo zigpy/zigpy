@@ -208,7 +208,7 @@ def _mk_rar(attrid, value, status=0):
     return r
 
 
-def _get_model_info(ep, test_manuf=None, test_model=None, fail=False, timeout=False):
+def _get_model_info(ep, attributes={}):
     clus = ep.add_input_cluster(0)
     assert 0 in ep.in_clusters
     assert ep.in_clusters[0] is clus
@@ -218,31 +218,19 @@ def _get_model_info(ep, test_manuf=None, test_model=None, fail=False, timeout=Fa
     ):
         assert foundation is True
         assert command == 0
-        if fail:
-            if timeout:
-                raise asyncio.TimeoutError
-            else:
-                raise zigpy.exceptions.ZigbeeException
-        nonlocal test_manuf, test_model
 
         result = []
-        if 4 in args:
-            if test_manuf is not None:
-                test_manuf = t.uint8_t(len(test_manuf)).serialize() + test_manuf
-                rar4 = _mk_rar(4, t.CharacterString.deserialize(test_manuf)[0])
-                result.append(rar4)
-            else:
-                rar4 = _mk_rar(4, None, status=1)
-                result.append(rar4)
 
-        if 5 in args:
-            if test_model is not None:
-                test_model = t.uint8_t(len(test_model)).serialize() + test_model
-                rar5 = _mk_rar(5, t.CharacterString.deserialize(test_model)[0])
-                result.append(rar5)
+        for attr_id, value in zip(args, attributes[tuple(args)]):
+            if isinstance(value, BaseException):
+                raise value
+            elif value is None:
+                rar = _mk_rar(attr_id, None, status=1)
             else:
-                rar5 = _mk_rar(5, None, status=1)
-                result.append(rar5)
+                raw_attr_value = t.uint8_t(len(value)).serialize() + value
+                rar = _mk_rar(attr_id, t.CharacterString.deserialize(raw_attr_value)[0])
+
+            result.append(rar)
 
         return [result]
 
@@ -252,17 +240,26 @@ def _get_model_info(ep, test_manuf=None, test_model=None, fail=False, timeout=Fa
 
 
 async def test_get_model_info(ep):
-    manufacturer = b"Mock Manufacturer"
-    model = b"Mock Model"
-
-    mod, man = await _get_model_info(ep, manufacturer, model)
+    mod, man = await _get_model_info(
+        ep,
+        attributes={
+            (0x0004, 0x0005): (b"Mock Manufacturer", b"Mock Model"),
+        },
+    )
 
     assert man == "Mock Manufacturer"
     assert mod == "Mock Model"
 
 
 async def test_init_endpoint_info_none(ep):
-    mod, man = await _get_model_info(ep)
+    mod, man = await _get_model_info(
+        ep,
+        attributes={
+            (0x0004, 0x0005): (None, None),
+            (0x0004,): (None,),
+            (0x0005,): (None,),
+        },
+    )
 
     assert man is None
     assert mod is None
@@ -278,46 +275,89 @@ async def test_get_model_info_missing_basic_cluster(ep):
 
 
 async def test_init_endpoint_info_null_padded_manuf(ep):
-    manufacturer = b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07"
-    model = b"Mock Model"
-    mod, man = await _get_model_info(ep, manufacturer, model)
+    mod, man = await _get_model_info(
+        ep,
+        attributes={
+            (0x0004, 0x0005): (
+                b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07",
+                b"Mock Model",
+            ),
+        },
+    )
 
     assert man == "Mock Manufacturer"
     assert mod == "Mock Model"
 
 
 async def test_init_endpoint_info_null_padded_model(ep):
-    manufacturer = b"Mock Manufacturer"
-    model = b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-    mod, man = await _get_model_info(ep, manufacturer, model)
+    mod, man = await _get_model_info(
+        ep,
+        attributes={
+            (0x0004, 0x0005): (
+                b"Mock Manufacturer",
+                b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+            ),
+        },
+    )
 
     assert man == "Mock Manufacturer"
     assert mod == "Mock Model"
 
 
 async def test_init_endpoint_info_null_padded_manuf_model(ep):
-    manufacturer = b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07"
-    model = b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-    mod, man = await _get_model_info(ep, manufacturer, model)
+    mod, man = await _get_model_info(
+        ep,
+        attributes={
+            (0x0004, 0x0005): (
+                b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07",
+                b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+            ),
+        },
+    )
 
     assert man == "Mock Manufacturer"
     assert mod == "Mock Model"
 
 
 async def test_get_model_info_delivery_error(ep):
-    manufacturer = b"Mock Manufacturer"
-    model = b"Mock Model"
-
     with pytest.raises(zigpy.exceptions.ZigbeeException):
-        await _get_model_info(ep, manufacturer, model, fail=True)
+        await _get_model_info(
+            ep,
+            attributes={
+                (0x0004, 0x0005): (
+                    zigpy.exceptions.ZigbeeException(),
+                    zigpy.exceptions.ZigbeeException(),
+                )
+            },
+        )
 
 
 async def test_get_model_info_timeout(ep):
-    manufacturer = b"Mock Manufacturer"
-    model = b"Mock Model"
-
     with pytest.raises(asyncio.TimeoutError):
-        await _get_model_info(ep, manufacturer, model, fail=True, timeout=True)
+        await _get_model_info(
+            ep,
+            attributes={
+                (0x0004, 0x0005): (asyncio.TimeoutError(), asyncio.TimeoutError()),
+                (0x0004,): (asyncio.TimeoutError(),),
+                (0x0005,): (asyncio.TimeoutError(),),
+            },
+        )
+
+
+async def test_get_model_info_double_read_timeout(ep):
+    mod, man = await _get_model_info(
+        ep,
+        attributes={
+            # The double read fails
+            (0x0004, 0x0005): (asyncio.TimeoutError(), asyncio.TimeoutError()),
+            # But individually the attributes can be read
+            (0x0004,): (b"Mock Manufacturer",),
+            (0x0005,): (b"Mock Model",),
+        },
+    )
+
+    assert man == "Mock Manufacturer"
+    assert mod == "Mock Model"
 
 
 def _group_add_mock(ep, status=ZCLStatus.SUCCESS, no_groups_cluster=False):
