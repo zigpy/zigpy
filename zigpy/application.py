@@ -59,18 +59,27 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         Starts a network, optionally forming one with random settings if necessary.
         """
 
+        await self.connect()
+
         try:
-            await self.load_network_info(load_devices=False)
-        except zigpy.exceptions.NetworkNotFormed:
-            if not auto_form:
-                raise
+            try:
+                await self.load_network_info(load_devices=False)
+            except zigpy.exceptions.NetworkNotFormed:
+                LOGGER.info("Network is not formed")
 
-            await self.form_network()
+                if not auto_form:
+                    raise
 
-        await self.start_network()
+                await self.form_network()
 
-        # Some radios erroneously permit joins on startup
-        await self.permit(0)
+            await self.start_network()
+
+            # Some radios erroneously permit joins on startup
+            await self.permit(0)
+        except Exception:
+            LOGGER.error("Couldn't start application")
+            await self.shutdown()
+            raise
 
     @classmethod
     async def new(
@@ -85,16 +94,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if not start_radio:
             return app
 
-        await app.connect()
-
-        try:
-            await app.startup(auto_form=auto_form)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            LOGGER.error("Couldn't start application")
-            await app.shutdown()
-            raise
+        await app.startup(auto_form=auto_form)
 
         for device in app.devices.values():
             if not device.is_initialized:
