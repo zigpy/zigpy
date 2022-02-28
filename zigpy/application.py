@@ -287,7 +287,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         ieee = t.EUI64(ieee)
 
         try:
-            dev = self.get_device(ieee)
+            dev = self.get_device(ieee, skip_ephemeral=True)
             LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
             new_join = False
         except KeyError:
@@ -314,7 +314,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         LOGGER.info("Device 0x%04x (%s) left the network", nwk, ieee)
 
         try:
-            dev = self.get_device(ieee)
+            dev = self.get_device(ieee, skip_ephemeral=True)
         except KeyError:
             return
         else:
@@ -420,7 +420,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 node = t.EUI64([t.uint8_t(p) for p in node])
             if node != self.ieee:
                 try:
-                    dev = self.get_device(ieee=node)
+                    dev = self.get_device(ieee=node, skip_ephemeral=True)
                     r = await dev.zdo.permit(time_s)
                     LOGGER.debug("Sent 'mgmt_permit_joining_req' to %s: %s", node, r)
                 except KeyError:
@@ -449,12 +449,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._send_sequence = (self._send_sequence + 1) % 256
         return self._send_sequence
 
-    def get_device(self, ieee=None, nwk=None) -> zigpy.device.Device:
+    def get_device(
+        self, ieee=None, nwk=None, skip_ephemeral=False
+    ) -> zigpy.device.Device:
         """Support for ephemeral devices."""
         try:
             return self._get_device(ieee=ieee, nwk=nwk)
         except KeyError:
-            pass
+            if skip_ephemeral:
+                raise
         return self.get_ephemeral_device(ieee=ieee, nwk=nwk)
 
     def _get_device(self, ieee=None, nwk=None) -> zigpy.device.Device:

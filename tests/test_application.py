@@ -209,7 +209,7 @@ async def test_permit_ncp():
 
 async def test_permit(app, ieee):
     app.devices[ieee] = MagicMock()
-    app.devices[ieee].zdo.permit = MagicMock(side_effect=asyncio.coroutine(MagicMock()))
+    app.devices[ieee].zdo.permit = AsyncMock()
     app.permit_ncp = AsyncMock()
     await app.permit(node=(1, 1, 1, 1, 1, 1, 1, 1))
     assert app.devices[ieee].zdo.permit.call_count == 0
@@ -366,11 +366,6 @@ def test_get_device_ieee(app, ieee):
 def test_get_device_both(app, ieee):
     dev = app.add_device(ieee, 8)
     assert app.get_device(ieee=ieee, nwk=8) is dev
-
-
-def test_get_device_missing(app, ieee):
-    with pytest.raises(KeyError):
-        app.get_device(nwk=8)
 
 
 def test_ieee(app):
