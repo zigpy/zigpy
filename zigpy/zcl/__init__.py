@@ -4,7 +4,7 @@ import asyncio
 import enum
 import functools
 import logging
-from typing import Any, Coroutine, Optional, Sequence, Union
+from typing import Any, Sequence, Union
 import warnings
 
 from zigpy import util
@@ -169,11 +169,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self._attr_cache: dict[int, Any] = {}
         self.unsupported_attributes: set[int | str] = set()
         self._listeners = {}
-
-        if is_server:
-            self._type: ClusterType = ClusterType.Server
-        else:
-            self._type: ClusterType = ClusterType.Client
+        self._type: ClusterType = (
+            ClusterType.Server if is_server else ClusterType.Client
+        )
 
     @property
     def attridx(self):
@@ -255,12 +253,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def request(
         self,
         general: bool,
-        command_id: Union[foundation.GeneralCommand, int, t.uint8_t],
+        command_id: foundation.GeneralCommand | int | t.uint8_t,
         schema: dict | t.Struct,
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
-        tsn: Optional[Union[int, t.uint8_t]] = None,
+        tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
         # Convert out-of-band dict schemas to struct schemas
@@ -270,7 +268,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             )
 
         try:
-            request = schema(*args, **kwargs)
+            request = schema(*args, **kwargs)  # type:ignore[operator]
             payload = request.serialize()
         except (ValueError, TypeError) as e:
             return future_exception(e)
@@ -294,11 +292,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def reply(
         self,
         general: bool,
-        command_id: Union[foundation.GeneralCommand, int, t.uint8_t],
+        command_id: foundation.GeneralCommand | int | t.uint8_t,
         schema: dict | t.Struct,
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
-        tsn: Optional[Union[int, t.uint8_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
+        tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
         # Convert out-of-band dict schemas to struct schemas
@@ -308,7 +306,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             )
 
         try:
-            request = schema(*args, **kwargs)
+            request = schema(*args, **kwargs)  # type:ignore[operator]
             payload = request.serialize()
         except (ValueError, TypeError) as e:
             return future_exception(e)
@@ -336,7 +334,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         hdr: foundation.ZCLHeader,
         args: list[Any],
         *,
-        dst_addressing: Optional[AddressingMode] = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         self.debug(
             "Received command 0x%02X (TSN %d): %s", hdr.command_id, hdr.tsn, args
@@ -353,7 +351,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         hdr: foundation.ZCLHeader,
         args: list[Any],
         *,
-        dst_addressing: Optional[AddressingMode] = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         self.debug(
             "No explicit handler for cluster command 0x%02x: %s",
@@ -366,7 +364,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         hdr: foundation.ZCLHeader,
         args: list,
         *,
-        dst_addressing: Optional[AddressingMode] = None,
+        dst_addressing: AddressingMode | None = None,
     ) -> None:
         if hdr.command_id == foundation.GeneralCommand.Report_Attributes:
             values = []
@@ -496,7 +494,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         return self._read_attributes_rsp(args, manufacturer=manufacturer, tsn=tsn)
 
     def _write_attr_records(
-        self, attributes: dict[Union[str, int], Any]
+        self, attributes: dict[str | int, Any]
     ) -> list[foundation.Attribute]:
         args = []
         for attrid, value in attributes.items():
@@ -531,14 +529,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         return args
 
     async def write_attributes(
-        self, attributes: dict[Union[str, int], Any], manufacturer: Optional[int] = None
+        self, attributes: dict[str | int, Any], manufacturer: int | None = None
     ) -> list:
         """Write attributes to device with internal 'attributes' validation"""
         attrs = self._write_attr_records(attributes)
         return await self.write_attributes_raw(attrs, manufacturer)
 
     async def write_attributes_raw(
-        self, attrs: list[foundation.Attribute], manufacturer: Optional[int] = None
+        self, attrs: list[foundation.Attribute], manufacturer: int | None = None
     ) -> list:
         """Write attributes to device without internal 'attributes' validation"""
         result = await self._write_attributes(attrs, manufacturer=manufacturer)
@@ -558,7 +556,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         return result
 
     def write_attributes_undivided(
-        self, attributes: dict[Union[str, int], Any], manufacturer: Optional[int] = None
+        self, attributes: dict[str | int, Any], manufacturer: int | None = None
     ) -> list:
         """Either all or none of the attributes are written by the device."""
         args = self._write_attr_records(attributes)
@@ -572,12 +570,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def _attr_reporting_rec(
         self,
-        attribute: Union[int, str],
+        attribute: int | str,
         min_interval: int,
         max_interval: int,
         reportable_change: int = 1,
         direction: int = 0x00,
-    ) -> foundation.ConfigureReportingResponseRecord:
+    ) -> foundation.AttributeReportingConfig:
         try:
             attr_def = self.find_attribute(attribute)
         except KeyError:
@@ -600,7 +598,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         max_interval: int,
         reportable_change: int,
         manufacturer: int | None = None,
-    ) -> Coroutine:
+    ) -> list[foundation.ConfigureReportingResponseRecord]:
         """Configure attribute reporting for a single attribute."""
         return await self.configure_reporting_multiple(
             {attribute: (min_interval, max_interval, reportable_change)},
@@ -649,12 +647,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def command(
         self,
-        command_id: Union[foundation.GeneralCommand, int, t.uint8_t],
+        command_id: foundation.GeneralCommand | int | t.uint8_t,
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
         tries: int = 1,
-        tsn: Optional[Union[int, t.uint8_t]] = None,
+        tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
         command = self.server_commands[command_id]
@@ -673,10 +671,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def client_command(
         self,
-        command_id: Union[foundation.GeneralCommand, int, t.uint8_t],
+        command_id: foundation.GeneralCommand | int | t.uint8_t,
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
-        tsn: Optional[Union[int, t.uint8_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
+        tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
         command = self.client_commands[command_id]
@@ -738,9 +736,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         elif name in self._server_commands_idx:
             return functools.partial(self.command, self._server_commands_idx[name])
         else:
-            raise AttributeError("No such command name: %s" % (name,))
+            raise AttributeError(f"No such command name: {name}")
 
-    def get(self, key: Union[int, str], default: Optional[Any] = None) -> Any:
+    def get(self, key: int | str, default: Any | None = None) -> Any:
         """Get cached attribute."""
         try:
             attr_def = self.find_attribute(key)
@@ -749,11 +747,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         return self._attr_cache.get(attr_def.id, default)
 
-    def __getitem__(self, key: Union[int, str]) -> Any:
+    def __getitem__(self, key: int | str) -> Any:
         """Return cached value of the attr."""
         return self._attr_cache[self.find_attribute(key).id]
 
-    def __setitem__(self, key: Union[int, str], value: Any) -> None:
+    def __setitem__(self, key: int | str, value: Any) -> None:
         """Set cached value through attribute write."""
         if not isinstance(key, (int, str)):
             raise ValueError("attr_name or attr_id are accepted only")
@@ -761,12 +759,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def general_command(
         self,
-        command_id: Union[foundation.GeneralCommand, int, t.uint8_t],
+        command_id: foundation.GeneralCommand | int | t.uint8_t,
         *args,
-        manufacturer: Optional[Union[int, t.uint16_t]] = None,
+        manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
         tries: int = 1,
-        tsn: Optional[Union[int, t.uint8_t]] = None,
+        tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
         command = foundation.GENERAL_COMMANDS[command_id]

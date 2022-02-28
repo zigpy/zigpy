@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import InitVar, dataclass, field
 import functools
-from typing import Any
+from typing import Any, Iterator
 
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
@@ -17,7 +17,7 @@ class Key:
 
     key: t.KeyData | None = None
     tx_counter: t.uint32_t | None = 0
-    rx_counter: t.uin32_t | None = 0
+    rx_counter: t.uint32_t | None = 0
     seq: t.uint8_t | None = 0
     partner_ieee: t.EUI64 | None = None
 
@@ -192,7 +192,7 @@ class CounterGroup(dict):
     @property
     def name(self) -> str:
         """Return counter collection name."""
-        return self._name
+        return self._name if self._name is not None else "No Name"
 
     def increment(self, name: int | str, *tags: int | str) -> None:
         """Create and Update all counters recursively."""
@@ -214,9 +214,9 @@ class CounterGroup(dict):
 class CounterGroups(dict):
     """A collection of unrelated counter groups in a dict."""
 
-    def __iter__(self) -> Iterable[CounterGroup]:
+    def __iter__(self) -> Iterator[CounterGroup]:
         """Return an iterable of the counters"""
-        return (counter_group for counter_group in self.values())
+        return iter(self.values())
 
     def __missing__(self, counter_group_name: Any) -> CounterGroup:
         """Default counter factory."""

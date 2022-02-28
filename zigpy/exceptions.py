@@ -5,13 +5,9 @@ class ZigbeeException(Exception):
 class ControllerException(ZigbeeException):
     """Application controller failed in some way."""
 
-    pass
-
 
 class APIException(ZigbeeException):
     """Radio API failed in some way."""
-
-    pass
 
 
 class DeliveryError(ZigbeeException):

@@ -1,8 +1,10 @@
 """HVAC Functional Domain"""
 
+from __future__ import annotations
+
 import zigpy.types as t
 from zigpy.zcl import Cluster
-from zigpy.zcl.foundation import ZCLCommandDef
+from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 
 class Pump(Cluster):
@@ -52,7 +54,7 @@ class Pump(Cluster):
     cluster_id = 0x0200
     name = "Pump Configuration and Control"
     ep_attribute = "pump"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Pump Information
         0x0000: ("max_pressure", t.int16s),
         0x0001: ("max_speed", t.uint16_t),
@@ -81,8 +83,8 @@ class Pump(Cluster):
         0x0021: ("control_mode", ControlMode),
         0x0022: ("alarm_mask", AlarmMask),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class CoolingSystemStage(t.enum8):
@@ -270,10 +272,10 @@ class Thermostat(Cluster):
 
     cluster_id = 0x0201
     ep_attribute = "thermostat"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Thermostat Information
-        0x0000: ("local_temp", t.int16s),
-        0x0001: ("outdoor_temp", t.int16s),
+        0x0000: ("local_temperature", t.int16s),
+        0x0001: ("outdoor_temperature", t.int16s),
         0x0002: ("occupancy", Occupancy),
         0x0003: ("abs_min_heat_setpoint_limit", t.int16s),
         0x0004: ("abs_max_heat_setpoint_limit", t.int16s),
@@ -294,31 +296,38 @@ class Thermostat(Cluster):
         0x0018: ("max_cool_setpoint_limit", t.int16s),
         0x0019: ("min_setpoint_dead_band", t.int8s),
         0x001A: ("remote_sensing", RemoteSensing),
-        0x001B: ("ctrl_seqe_of_oper", ControlSequenceOfOperation),
+        0x001B: ("ctrl_sequence_of_oper", ControlSequenceOfOperation),
         0x001C: ("system_mode", SystemMode),
         0x001D: ("alarm_mask", AlarmMask),
         0x001E: ("running_mode", RunningMode),
         # ...
         0x0020: ("start_of_week", StartOfWeek),
-        0x0021: ("number_of_weekly_trans", t.uint8_t),
-        0x0022: ("number_of_daily_trans", t.uint8_t),
+        0x0021: ("number_of_weekly_transitions", t.uint8_t),
+        0x0022: ("number_of_daily_transitions", t.uint8_t),
         0x0023: ("temp_setpoint_hold", TemperatureSetpointHold),
         0x0024: ("temp_setpoint_hold_duration", t.uint16_t),
         0x0025: ("programing_oper_mode", ProgrammingOperationMode),
         0x0029: ("running_state", RunningState),
         0x0030: ("setpoint_change_source", SetpointChangeSource),
         0x0031: ("setpoint_change_amount", t.int16s),
-        0x0032: ("setpoint_change_source_time_stamp", t.uint32_t),
+        0x0032: ("setpoint_change_source_timestamp", t.UTCTime),
+        0x0034: ("occupied_setback", t.uint8_t),
+        0x0035: ("occupied_setback_min", t.uint8_t),
+        0x0036: ("occupied_setback_max", t.uint8_t),
+        0x0037: ("unoccupied_setback", t.uint8_t),
+        0x0038: ("unoccupied_setback_min", t.uint8_t),
+        0x0039: ("unoccupied_setback_max", t.uint8_t),
+        0x003A: ("emergency_heat_delta", t.uint8_t),
         0x0040: ("ac_type", ACType),
         0x0041: ("ac_capacity", t.uint16_t),
         0x0042: ("ac_refrigerant_type", ACRefrigerantType),
         0x0043: ("ac_compressor_type", ACCompressorType),
         0x0044: ("ac_error_code", ACErrorCode),
         0x0045: ("ac_louver_position", ACLouverPosition),
-        0x0046: ("ac_coll_temp", t.int16s),
+        0x0046: ("ac_coil_temperature", t.int16s),
         0x0047: ("ac_capacity_format", ACCapacityFormat),
     }
-    server_commands = {
+    server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "setpoint_raise_lower", {"mode": SetpointMode, "amount": t.int8s}, False
         ),
@@ -340,7 +349,7 @@ class Thermostat(Cluster):
         0x03: ZCLCommandDef("clear_weekly_schedule", {}, False),
         0x04: ZCLCommandDef("get_relay_status_log", {}, False),
     }
-    client_commands = {
+    client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "get_weekly_schedule_response",
             {
@@ -389,13 +398,13 @@ class Fan(Cluster):
     cluster_id = 0x0202
     name = "Fan Control"
     ep_attribute = "fan"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Fan Control Status
         0x0000: ("fan_mode", FanMode),
         0x0001: ("fan_mode_sequence", FanModeSequence),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class Dehumidification(Cluster):
@@ -415,7 +424,7 @@ class Dehumidification(Cluster):
 
     cluster_id = 0x0203
     ep_attribute = "dehumidification"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Dehumidification Information
         0x0000: ("relative_humidity", t.uint8_t),
         0x0001: ("dehumid_cooling", t.uint8_t),
@@ -427,8 +436,8 @@ class Dehumidification(Cluster):
         0x0014: ("dehumid_max_cool", t.uint8_t),
         0x0015: ("relative_humid_display", RelativeHumidityDisplay),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class UserInterface(Cluster):
@@ -455,10 +464,10 @@ class UserInterface(Cluster):
     cluster_id = 0x0204
     name = "Thermostat User Interface Configuration"
     ep_attribute = "thermostat_ui"
-    attributes = {
-        0x0000: ("temp_display_mode", TemperatureDisplayMode),
+    attributes: dict[int, ZCLAttributeDef] = {
+        0x0000: ("temperature_display_mode", TemperatureDisplayMode),
         0x0001: ("keypad_lockout", KeypadLockout),
-        0x0002: ("programming_visibility", ScheduleProgrammingVisibility),
+        0x0002: ("schedule_programming_visibility", ScheduleProgrammingVisibility),
     }
-    server_commands = {}
-    client_commands = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}

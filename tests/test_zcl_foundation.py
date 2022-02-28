@@ -86,6 +86,23 @@ def test_attribute_reporting_config_1():
     assert repr(arc)
 
 
+def test_attribute_reporting_config_only_dir_and_attrid():
+    arc = foundation.AttributeReportingConfig()
+    arc.direction = 0
+    arc.attrid = 99
+    ser = arc.serialize(_only_dir_and_attrid=True)
+
+    arc2, data = foundation.AttributeReportingConfig.deserialize(
+        ser, _only_dir_and_attrid=True
+    )
+    assert data == b""
+    assert arc2.direction == arc.direction
+    assert arc2.attrid == arc.attrid
+
+    assert repr(arc)
+    assert repr(arc) == repr(arc2)
+
+
 def test_typed_collection():
     tc = foundation.TypedCollection()
     tc.type = 0x20
@@ -326,7 +343,7 @@ def test_frame_header_cluster():
 def test_data_types():
     """Test data types mappings."""
     assert len(foundation.DATA_TYPES) == len(foundation.DATA_TYPES._idx_by_class)
-    data_types_set = set([d[1] for d in foundation.DATA_TYPES.values()])
+    data_types_set = {d[1] for d in foundation.DATA_TYPES.values()}
     dt_2_id_set = set(foundation.DATA_TYPES._idx_by_class.keys())
     assert data_types_set == dt_2_id_set
 

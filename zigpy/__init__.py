@@ -1,4 +1,3 @@
-# coding: utf-8
 MAJOR_VERSION = 0
 MINOR_VERSION = 44
 PATCH_VERSION = "0.dev0"

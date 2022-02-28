@@ -245,6 +245,46 @@ def test_lvbytes_too_long():
         t.LVBytes(to_serialize).serialize()
 
 
+def test_limited_lvbytes():
+    d, r = t.LimitedLVBytes(5).deserialize(b"\x0412345")
+    assert r == b"5"
+    assert d == b"1234"
+
+    # Make sure that a length of 5 does not throw an exception
+    t.LimitedLVBytes(5)(b"12345").serialize()
+
+    # Make sure that a length of 6 does throw an exception
+    with pytest.raises(ValueError):
+        t.LimitedLVBytes(5)(b"123456").serialize()
+
+
+def test_lvbytes_size2():
+    # Deserialize tests
+    d, r = t.LVBytesSize2().deserialize(b"\x02123")
+    assert d == b"12"  # Accepted data
+    assert r == b"3"  # Remaining
+
+    # Make sure we get exceptions when the length is not 2 (lower/higher)
+
+    with pytest.raises(ValueError):
+        d, r = t.LVBytesSize2().deserialize(b"\x011")
+
+    with pytest.raises(ValueError):
+        d, r = t.LVBytesSize2().deserialize(b"\x03123")
+
+    # Serialize tests
+
+    # Make sure that a length of 2 does not throw an exception
+    t.LVBytesSize2(b"12").serialize()
+
+    # Make sure that a length of 1 does throw an exception
+    with pytest.raises(ValueError):
+        t.LVBytesSize2(b"1").serialize()
+    # Make sure that a length of 3 does throw an exception
+    with pytest.raises(ValueError):
+        t.LVBytesSize2(b"123").serialize()
+
+
 def test_long_octet_string():
     assert t.LongOctetString(b"asdfoo").serialize() == b"\x06\x00asdfoo"
 
