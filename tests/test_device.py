@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import time
+from unittest.mock import PropertyMock
 
 import pytest
 
@@ -414,3 +416,36 @@ def test_device_name(dev):
 
     assert dev.nwk == 0xFFFF
     assert dev.name == "0xFFFF"
+
+
+def test_device_expiration(dev):
+    """Test device expiration."""
+
+    # both NWK and IEEE are known on freshly created device
+    assert not dev.expired
+
+    p_expired = patch(
+        "time.time", return_value=time.time() + device.EPHEMERAL_DEVICE_EXP + 10
+    )
+    p_unk_nwk = patch.object(dev, "nwk", new=t.NWK.unknown())
+    p_unk_eui = patch(
+        "zigpy.device.Device.ieee",
+        new_callable=PropertyMock,
+        return_value=t.EUI64([0x00] * 8),
+    )
+    with p_expired:
+        # both NWK and IEEE are known on an older device
+        assert not dev.expired
+
+    with p_expired, p_unk_nwk:
+        assert dev.expired
+
+    with p_expired, p_unk_eui:
+        assert dev.expired
+
+    # not expired yet, even if ieee or nwk is unknown
+    with p_unk_eui:
+        assert not dev.expired
+
+    with p_unk_nwk:
+        assert not dev.expired

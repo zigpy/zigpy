@@ -129,7 +129,12 @@ class Date(Struct):
 
 
 class NWK(basic.uint16_t, repr="hex"):
-    pass
+    """Short Network Address."""
+
+    @classmethod
+    def unknown(cls) -> NWK:
+        """Unknown NWK address."""
+        return cls(0xFFFE)
 
 
 class PanId(NWK):

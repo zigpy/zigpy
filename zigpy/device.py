@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 APS_REPLY_TIMEOUT = 5
 APS_REPLY_TIMEOUT_EXTENDED = 28
+EPHEMERAL_DEVICE_EXP = 60 * 3
 LOGGER = logging.getLogger(__name__)
 
 
@@ -56,6 +57,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.nwk: NWK = NWK(nwk)
         self.zdo: zdo.ZDO = zdo.ZDO(self)
         self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
+        self._created_ts: float = time.time()
         self.lqi: int | None = None
         self.rssi: int | None = None
         self.last_seen: float | None = None
@@ -488,6 +490,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             f" is_initialized={self.is_initialized}"
             f">"
         )
+
+    @property
+    def expired(self) -> bool:
+        """Return True if either NWK or IEEE are still not known."""
+
+        if self.nwk != NWK.unknown() and self.ieee != EUI64([0x00] * 8):
+            return False
+
+        return time.time() - self._created_ts >= EPHEMERAL_DEVICE_EXP
 
 
 async def broadcast(
