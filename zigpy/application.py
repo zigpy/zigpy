@@ -31,6 +31,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def __init__(self, config: dict):
         self._send_sequence = 0
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
+        self._ephemeral_devices: list[zigpy.device.Device] = []
         self.state: zigpy.state.State = zigpy.state.State()
         self.topology = None
         self._listeners = {}
@@ -448,7 +449,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._send_sequence = (self._send_sequence + 1) % 256
         return self._send_sequence
 
-    def get_device(self, ieee=None, nwk=None):
+    def get_device(self, ieee=None, nwk=None) -> zigpy.device.Device:
+        """Support for ephemeral devices."""
+        try:
+            return self._get_device(ieee=ieee, nwk=nwk)
+        except KeyError:
+            pass
+        return self.get_ephemeral_device(ieee=ieee, nwk=nwk)
+
+    def _get_device(self, ieee=None, nwk=None) -> zigpy.device.Device:
         if ieee is not None:
             return self.devices[ieee]
 
@@ -461,6 +470,31 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 return dev
 
         raise KeyError
+
+    def get_ephemeral_device(self, ieee, nwk) -> zigpy.device.Device:
+        """Get ephemeral device with currently unknown ieee or nwk."""
+
+        clear_expired = [d for d in self._ephemeral_devices if not d.expired]
+        self._ephemeral_devices = clear_expired
+
+        if ieee is None:
+            # search by NWK
+            for d in self._ephemeral_devices:
+                if d.nwk == nwk:
+                    return d
+
+            new_ephemeral_dev = zigpy.device.Device(self, t.EUI64([0x00] * 8), nwk)
+            self._ephemeral_devices.append(new_ephemeral_dev)
+            return new_ephemeral_dev
+
+        # search by IEEE
+        for d in self._ephemeral_devices:
+            if d.ieee == ieee:
+                return d
+
+        new_ephemeral_dev = zigpy.device.Device(self, ieee, t.NWK.unknown())
+        self._ephemeral_devices.append(new_ephemeral_dev)
+        return new_ephemeral_dev
 
     def get_endpoint_id(self, cluster_id: int, is_server_cluster: bool = False):
         """Returns coordinator endpoint id for specified cluster id."""

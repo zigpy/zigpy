@@ -708,3 +708,29 @@ async def test_get_device(app):
     app.add_device(t.EUI64.convert("11:11:11:11:22:22:22:33"), 0x0000)
 
     assert app.get_device(nwk=0x0000) is dev_2
+
+
+async def test_get_unknown_device_by_ieee(app):
+    """"Test getting unknown devices."""
+
+    await app.startup()
+
+    dev_unk_nwk = app.get_device(ieee=t.EUI64([0x01] * 8))
+    assert dev_unk_nwk.nwk == t.NWK.unknown()
+    dev_unk_nwk.nwk = t.NWK(0x1234)
+    dev_with_nwk = app.get_device(ieee=t.EUI64([0x01] * 8))
+    assert dev_with_nwk.nwk == t.NWK(0x1234)
+
+
+async def test_get_unknown_device_by_nwk(app):
+    """"Test getting unknown devices."""
+
+    await app.startup()
+
+    nwk = t.NWK(0x1122)
+
+    dev_unk_eui = app.get_device(nwk=nwk)
+    assert dev_unk_eui.ieee == t.EUI64([0x00] * 8)
+    dev_unk_eui.ieee = t.EUI64([0x11] * 8)
+    dev_with_eui = app.get_device(nwk=nwk)
+    assert dev_with_eui.ieee == t.EUI64([0x11] * 8)

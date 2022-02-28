@@ -394,6 +394,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def ieee(self) -> EUI64:
         return self._ieee
 
+    @ieee.setter
+    def ieee(self, ieee) -> None:
+        self._ieee = EUI64(ieee)
+
     @property
     def manufacturer(self) -> str | None:
         return self._manufacturer
