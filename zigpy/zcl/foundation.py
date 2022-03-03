@@ -516,7 +516,7 @@ class FrameControl(t.Struct, t.uint8_t):
 
 
 class ZCLHeader(t.Struct):
-    NO_MANUFACTURER_ID: typing.Literal[-1] = -1
+    NO_MANUFACTURER_ID = -1  # type: typing.Literal
 
     frame_control: FrameControl
     manufacturer: t.uint16_t = t.StructField(
