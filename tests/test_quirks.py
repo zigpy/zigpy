@@ -920,17 +920,21 @@ async def test_manuf_id_disable(real_device):
 
     assert ep.manufacturer_id == 0x1234
 
-    # Works normally
+    # The default is to include the manufacturer ID
     with patch.object(ep, "request", AsyncMock()) as request_mock:
         request_mock.return_value = (zcl.foundation.Status.SUCCESS, "done")
         await ep.just_a_cluster.command(
             ep.just_a_cluster.commands_by_name["server_cmd0"].id,
-            manufacturer=None,
         )
+        await ep.just_a_cluster.read_attributes(["attr0"])
+        await ep.just_a_cluster.write_attributes({"attr0": 1})
 
-    data = request_mock.mock_calls[0][1][2]
-    hdr, _ = zcl.foundation.ZCLHeader.deserialize(data)
-    assert hdr.manufacturer == 0x1234
+    assert len(request_mock.mock_calls) == 3
+
+    for mock_call in request_mock.mock_calls:
+        data = mock_call[1][2]
+        hdr, _ = zcl.foundation.ZCLHeader.deserialize(data)
+        assert hdr.manufacturer == 0x1234
 
     # Can be disabled by passing NO_MANUFACTURER_ID
     with patch.object(ep, "request", AsyncMock()) as request_mock:
@@ -939,7 +943,16 @@ async def test_manuf_id_disable(real_device):
             ep.just_a_cluster.commands_by_name["server_cmd0"].id,
             manufacturer=zcl.foundation.ZCLHeader.NO_MANUFACTURER_ID,
         )
+        await ep.just_a_cluster.read_attributes(
+            ["attr0"], manufacturer=zcl.foundation.ZCLHeader.NO_MANUFACTURER_ID
+        )
+        await ep.just_a_cluster.write_attributes(
+            {"attr0": 1}, manufacturer=zcl.foundation.ZCLHeader.NO_MANUFACTURER_ID
+        )
 
-    data = request_mock.mock_calls[0][1][2]
-    hdr, _ = zcl.foundation.ZCLHeader.deserialize(data)
-    assert hdr.manufacturer is None
+    assert len(request_mock.mock_calls) == 3
+
+    for mock_call in request_mock.mock_calls:
+        data = mock_call[1][2]
+        hdr, _ = zcl.foundation.ZCLHeader.deserialize(data)
+        assert hdr.manufacturer is None
