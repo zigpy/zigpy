@@ -340,6 +340,23 @@ def test_frame_header_cluster():
     assert hdr.frame_control.is_manufacturer_specific is False
 
 
+def test_frame_header_disable_manufacturer_id():
+    """Test frame header manufacturer ID can be disabled with NO_MANUFACTURER_ID."""
+
+    hdr = foundation.ZCLHeader.cluster(tsn=123, command_id=0x12, manufacturer=None)
+    assert hdr.manufacturer is None
+    hdr.manufacturer = 0x1234
+    assert hdr.manufacturer == 0x1234
+
+    hdr.manufacturer = foundation.ZCLHeader.NO_MANUFACTURER_ID
+    assert hdr.manufacturer is None
+
+    hdr2 = foundation.ZCLHeader.cluster(
+        tsn=123, command_id=0x12, manufacturer=foundation.ZCLHeader.NO_MANUFACTURER_ID
+    )
+    assert hdr2.manufacturer is None
+
+
 def test_data_types():
     """Test data types mappings."""
     assert len(foundation.DATA_TYPES) == len(foundation.DATA_TYPES._idx_by_class)

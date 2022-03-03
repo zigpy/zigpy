@@ -906,3 +906,40 @@ def test_quirk_deprecated_manufacturer_prefixes():
             manufacturer_server_commands = {
                 0x1234: ("foo3", {}, False),
             }
+
+
+async def test_manuf_id_disable(real_device):
+    class TestCluster(ManufacturerSpecificCluster):
+        cluster_id = 0xFF00
+
+    real_device.manufacturer_id_override = 0x1234
+
+    ep = real_device.endpoints[1]
+    ep.add_input_cluster(TestCluster.cluster_id, TestCluster(ep))
+    assert isinstance(ep.just_a_cluster, TestCluster)
+
+    assert ep.manufacturer_id == 0x1234
+
+    # Works normally
+    with patch.object(ep, "request", AsyncMock()) as request_mock:
+        request_mock.return_value = (zcl.foundation.Status.SUCCESS, "done")
+        await ep.just_a_cluster.command(
+            ep.just_a_cluster.commands_by_name["server_cmd0"].id,
+            manufacturer=None,
+        )
+
+    data = request_mock.mock_calls[0][1][2]
+    hdr, _ = zcl.foundation.ZCLHeader.deserialize(data)
+    assert hdr.manufacturer == 0x1234
+
+    # Can be disabled by passing NO_MANUFACTURER_ID
+    with patch.object(ep, "request", AsyncMock()) as request_mock:
+        request_mock.return_value = (zcl.foundation.Status.SUCCESS, "done")
+        await ep.just_a_cluster.command(
+            ep.just_a_cluster.commands_by_name["server_cmd0"].id,
+            manufacturer=zcl.foundation.ZCLHeader.NO_MANUFACTURER_ID,
+        )
+
+    data = request_mock.mock_calls[0][1][2]
+    hdr, _ = zcl.foundation.ZCLHeader.deserialize(data)
+    assert hdr.manufacturer is None
