@@ -920,7 +920,8 @@ async def test_manuf_id_disable(real_device):
 
     assert ep.manufacturer_id == 0x1234
 
-    # The default is to include the manufacturer ID
+    # The default behavior for a manufacturer-specific cluster, command, or attribute is
+    # to include the manufacturer ID in the request
     with patch.object(ep, "request", AsyncMock()) as request_mock:
         request_mock.return_value = (zcl.foundation.Status.SUCCESS, "done")
         await ep.just_a_cluster.command(
@@ -936,7 +937,7 @@ async def test_manuf_id_disable(real_device):
         hdr, _ = zcl.foundation.ZCLHeader.deserialize(data)
         assert hdr.manufacturer == 0x1234
 
-    # Can be disabled by passing NO_MANUFACTURER_ID
+    # But it can be disabled by passing NO_MANUFACTURER_ID
     with patch.object(ep, "request", AsyncMock()) as request_mock:
         request_mock.return_value = (zcl.foundation.Status.SUCCESS, "done")
         await ep.just_a_cluster.command(
