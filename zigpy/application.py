@@ -31,7 +31,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     SCHEMA_DEVICE = conf.SCHEMA_DEVICE
 
     def __init__(self, config: dict):
-        self._send_sequence = 0
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
         self.state: zigpy.state.State = zigpy.state.State()
         self.topology = None
