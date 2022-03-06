@@ -10,7 +10,7 @@ import pytest
 from zigpy import profiles
 import zigpy.appdb
 import zigpy.application
-from zigpy.config import CONF_DATABASE, ZIGPY_SCHEMA
+import zigpy.config as conf
 from zigpy.const import SIG_ENDPOINTS, SIG_MANUFACTURER, SIG_MODEL
 from zigpy.device import Device, Status
 import zigpy.endpoint
@@ -50,7 +50,14 @@ def auto_kill_aiosqlite():
 async def make_app(database_file):
     p2 = patch("zigpy.topology.Topology.scan_loop", AsyncMock())
     with patch("zigpy.ota.OTA.initialize", AsyncMock()), p2:
-        app = await App.new(ZIGPY_SCHEMA({CONF_DATABASE: database_file}))
+        app = await App.new(
+            conf.ZIGPY_SCHEMA(
+                {
+                    conf.CONF_DATABASE: database_file,
+                    conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+                }
+            )
+        )
     return app
 
 

@@ -6,14 +6,7 @@ import pytest
 import voluptuous as vol
 
 import zigpy.application
-from zigpy.config import (
-    CONF_DATABASE,
-    CONF_DEVICE,
-    CONF_DEVICE_PATH,
-    CONF_OTA,
-    CONF_OTA_IKEA,
-    ZIGPY_SCHEMA,
-)
+import zigpy.config as conf
 from zigpy.exceptions import DeliveryError, NetworkNotFormed
 import zigpy.ota
 import zigpy.quirks
@@ -31,10 +24,12 @@ NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
 @patch("zigpy.ota.OTA", MagicMock(spec_set=zigpy.ota.OTA))
 @patch("zigpy.device.Device._initialize", AsyncMock())
 def app():
-    config = App.SCHEMA(
-        {CONF_DATABASE: None, CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"}}
+    app = App(
+        {
+            conf.CONF_DATABASE: None,
+            conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+        }
     )
-    app = App(config)
     app.state.node_info = app_state.NodeInfo(
         t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
     )
@@ -54,7 +49,12 @@ async def test_new_exception(ota_mock):
     ota_mock.return_value.initialize = AsyncMock()
 
     with p1 as db_mck, p2 as load_nwk_info_mck, p3 as shut_mck:
-        await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
+        await App.new(
+            {
+                conf.CONF_DATABASE: "/dev/null",
+                conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+            }
+        )
     assert db_mck.call_count == 1
     assert db_mck.await_count == 1
     assert ota_mock.return_value.initialize.call_count == 1
@@ -66,7 +66,12 @@ async def test_new_exception(ota_mock):
     with p1 as db_mck, p2 as load_nwk_info_mck, p3 as shut_mck:
         load_nwk_info_mck.side_effect = asyncio.TimeoutError()
         with pytest.raises(asyncio.TimeoutError):
-            await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
+            await App.new(
+                {
+                    conf.CONF_DATABASE: "/dev/null",
+                    conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+                }
+            )
     assert db_mck.call_count == 2
     assert db_mck.await_count == 2
     assert ota_mock.return_value.initialize.call_count == 2
@@ -317,36 +322,36 @@ def test_app_config_setter(app):
     """Test configuration setter."""
 
     cfg_copy = app.config.copy()
-    assert app.config[CONF_OTA][CONF_OTA_IKEA] is False
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
     with pytest.raises(vol.Invalid):
-        cfg_copy[CONF_OTA][CONF_OTA_IKEA] = "invalid bool"
+        cfg_copy[conf.CONF_OTA][conf.CONF_OTA_IKEA] = "invalid bool"
         app.config = cfg_copy
-        assert app.config[CONF_OTA][CONF_OTA_IKEA] is False
+        assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
 
-    cfg_copy[CONF_OTA][CONF_OTA_IKEA] = True
+    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_IKEA] = True
     app.config = cfg_copy
-    assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is True
 
     with pytest.raises(vol.Invalid):
-        cfg_copy[CONF_OTA][CONF_OTA_IKEA] = "invalid bool"
+        cfg_copy[conf.CONF_OTA][conf.CONF_OTA_IKEA] = "invalid bool"
         app.config = cfg_copy
-        assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
+        assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is True
 
 
 def test_app_update_config(app):
     """Test configuration partial update."""
 
-    assert app.config[CONF_OTA][CONF_OTA_IKEA] is False
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
     with pytest.raises(vol.Invalid):
-        app.update_config({CONF_OTA: {CONF_OTA_IKEA: "invalid bool"}})
-        assert app.config[CONF_OTA][CONF_OTA_IKEA] is False
+        app.update_config({conf.CONF_OTA: {conf.CONF_OTA_IKEA: "invalid bool"}})
+        assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
 
-    app.update_config({CONF_OTA: {CONF_OTA_IKEA: "yes"}})
-    assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
+    app.update_config({conf.CONF_OTA: {conf.CONF_OTA_IKEA: "yes"}})
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is True
 
     with pytest.raises(vol.Invalid):
-        app.update_config({CONF_OTA: {CONF_OTA_IKEA: "invalid bool"}})
-        assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
+        app.update_config({conf.CONF_OTA: {conf.CONF_OTA_IKEA: "invalid bool"}})
+        assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is True
 
 
 async def test_uninitialized_message_handlers(app, ieee):
@@ -449,7 +454,12 @@ async def test_startup_log_on_uninitialized_device(ieee, caplog):
 
     caplog.set_level(logging.WARNING)
 
-    await TestApp.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
+    await TestApp.new(
+        {
+            conf.CONF_DATABASE: "/dev/null",
+            conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+        }
+    )
     assert "Device is partially initialized" in caplog.text
 
 

@@ -36,7 +36,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.state: zigpy.state.State = zigpy.state.State()
         self.topology = None
         self._listeners = {}
-        self._config = config
+        self._config = conf.CONFIG_SCHEMA(config)
         self._dblistener = None
         self._groups = zigpy.group.Groups(self)
         self._listeners = {}
