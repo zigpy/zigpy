@@ -180,6 +180,60 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             self.Match_Desc_rsp(0, local_addr, [t.uint8_t(1)], tsn=hdr.tsn)
         )
 
+    def handle_nwk_addr_rsp(
+        self,
+        hdr: types.ZDOHeader,
+        status: types.Status,
+        remote_device_ieee: t.EUI64,
+        remote_device_nwk: t.NWK,
+        num_assoc_devices: t.uint8_t | None = None,
+        start_index: t.uint8_t | None = None,
+        associated_device_list: t.List[t.NWK] | None = None,
+        dst_addressing: t.Addressing.Group
+        | t.Addressing.IEEE
+        | t.Addressing.NWK
+        | None = None,
+    ):
+        """Handle ZDO NWK_addr_rsp command.
+
+        Handle a response to a NWK_addr_req command, inquiring as to the NWK address
+        of the Remote Device or the NWK address of an address held in the neighbor table
+        The destination addressing on this command is unicast."""
+
+        if status != types.Status.SUCCESS:
+            return
+
+        self._device.application.handle_join(
+            remote_device_nwk, remote_device_ieee, parent_nwk=None
+        )
+
+    def handle_ieee_addr_rsp(
+        self,
+        hdr: types.ZDOHeader,
+        status: types.Status,
+        remote_device_ieee: t.EUI64,
+        remote_device_nwk: t.NWK,
+        num_assoc_devices: t.uint8_t | None = None,
+        start_index: t.uint8_t | None = None,
+        associated_device_list: t.List[t.NWK] | None = None,
+        dst_addressing: t.Addressing.Group
+        | t.Addressing.IEEE
+        | t.Addressing.NWK
+        | None = None,
+    ):
+        """Handle ZDO IEEE_addr_rsp command.
+
+        Handle a response to a NWK_addr_req command inquiring as to the NWK address
+        of the Remote Device or the NWK address of an address held in the neighbor table.
+        The destination addressing on this command is unicast"""
+
+        if status != types.Status.SUCCESS:
+            return
+
+        self._device.application.handle_join(
+            remote_device_nwk, remote_device_ieee, parent_nwk=None
+        )
+
     def bind(self, cluster):
         return self.Bind_req(
             self._device.ieee,

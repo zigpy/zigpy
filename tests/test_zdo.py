@@ -240,3 +240,31 @@ async def test_reply_tsn_override(zdo_f, monkeypatch):
     assert seq == tsn
     assert data[0] == tsn
     assert data[1:3] == b"\xaa\x55"
+
+
+async def test_zdo_nwk_addr_rsp(zdo_f, app):
+    """Test NWK_addr_rsp frame."""
+
+    zdo_addr_rsp = b"a\x00\x08\x07\x06\x05\x04\x03\x02\x01\x34\x12\x00"
+    with patch.object(app, "handle_join") as handle_join_mock:
+        hdr, args = zdo_f.deserialize(zdo_types.ZDOCmd.NWK_addr_rsp, zdo_addr_rsp)
+        zdo_f.handle_message(0, zdo_types.ZDOCmd.NWK_addr_rsp, hdr, args)
+        assert handle_join_mock.call_count == 1
+        assert handle_join_mock.call_args[0][0] == t.NWK(0x1234)
+        assert handle_join_mock.call_args[0][1] == t.EUI64.convert(
+            "01:02:03:04:05:06:07:08"
+        )
+
+
+async def test_zdo_ieee_addr_rsp(zdo_f, app):
+    """Test IEEE_addr_rsp frame."""
+
+    zdo_addr_rsp = b"a\x00\x08\x07\x06\x05\x04\x03\x02\x01\x34\x12\x00"
+    with patch.object(app, "handle_join") as handle_join_mock:
+        hdr, args = zdo_f.deserialize(zdo_types.ZDOCmd.NWK_addr_rsp, zdo_addr_rsp)
+        zdo_f.handle_message(0, zdo_types.ZDOCmd.NWK_addr_rsp, hdr, args)
+        assert handle_join_mock.call_count == 1
+        assert handle_join_mock.call_args[0][0] == t.NWK(0x1234)
+        assert handle_join_mock.call_args[0][1] == t.EUI64.convert(
+            "01:02:03:04:05:06:07:08"
+        )
