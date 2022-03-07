@@ -488,6 +488,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
             new_ephemeral_dev = zigpy.device.Device(self, t.EUI64([0x00] * 8), nwk)
             self._ephemeral_devices.append(new_ephemeral_dev)
+            new_ephemeral_dev.schedule_initialize()
             return new_ephemeral_dev
 
         # search by IEEE
