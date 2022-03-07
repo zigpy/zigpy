@@ -96,6 +96,21 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         )
 
     @property
+    def nwk_is_known(self) -> bool:
+        """Return True if IEEE is known for the device."""
+        return self.nwk != NWK.unknown()
+
+    @property
+    def ieee_is_known(self) -> bool:
+        """Return True if IEEE address is known for the device."""
+        return self.ieee != EUI64([0x00] * 8)
+
+    @property
+    def address_is_known(self) -> bool:
+        """Return True if both IEEE and NWK are known addresses for the device."""
+        return self.nwk_is_known and self.ieee_is_known
+
+    @property
     def is_initialized(self) -> bool:
         return self.node_desc is not None and self.all_endpoints_init
 
@@ -138,6 +153,21 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return self._initialize_task
 
+    async def discover_ieee(self) -> EUI64:
+        self.info("Requesting IEEE address")
+
+        status, ieee, nwk, *_ = await self.zdo.IEEE_addr_req(
+            self.nwk, 0x00, 0x00, tries=2, delay=0.1
+        )
+
+        if status != zdo.types.Status.SUCCESS:
+            raise zigpy.exceptions.InvalidResponse(f"Requesting IEEE failed: {status}")
+
+        self.ieee = ieee
+        self.info("Discovered ieee address: %s", ieee)
+
+        return ieee
+
     async def get_node_descriptor(self) -> zdo.types.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
 
@@ -179,6 +209,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         its node descriptor, all endpoints and clusters, and the model and manufacturer
         attributes from any Basic cluster exposing those attributes.
         """
+
+        if not self.ieee_is_known:
+            await self.discover_ieee()
 
         # Some devices are improperly initialized and are missing a node descriptor
         if self.node_desc is None:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
@@ -449,3 +451,48 @@ def test_device_expiration(dev):
 
     with p_unk_nwk:
         assert not dev.expired
+
+
+async def test_discover_ieee(app_mock, caplog):
+    """Test IEEE address discovery."""
+
+    caplog.set_level(logging.DEBUG)
+    dev = device.Device(
+        app_mock, ieee=t.EUI64.convert("00:00:00:00:00:00:00:00"), nwk=t.NWK(0x1234)
+    )
+
+    p1 = patch.object(dev, "get_node_descriptor", new=AsyncMock())
+    p2 = patch.object(
+        dev.zdo,
+        "Active_EP_req",
+        new_callable=AsyncMock,
+        return_value=(zdo_t.Status.SUCCESS, 1, [1]),
+    )
+    p3 = patch("zigpy.endpoint.Endpoint.initialize", new=AsyncMock())
+    p4 = patch.object(
+        dev.zdo,
+        "IEEE_addr_req",
+        new_callable=AsyncMock,
+        return_value=(
+            zdo_t.Status.DEVICE_NOT_FOUND,
+            t.EUI64.convert("01:02:03:04:05:06:07:08"),
+            t.NWK(0x1234),
+            0,
+            None,
+            [],
+        ),
+    )
+    with p1, p2, p3, p4 as ieee_req_mock:
+        init_task = dev.schedule_initialize()
+        await init_task
+        assert dev.ieee == t.EUI64.convert("00:00:00:00:00:00:00:00")
+
+        ieee_req_mock.return_value = (
+            zdo_t.Status.SUCCESS,
+            t.EUI64.convert("01:02:03:04:05:06:07:08"),
+            t.NWK(0x1234),
+            0,
+        )
+        init_task = dev.schedule_initialize()
+        await init_task
+        assert dev.ieee == t.EUI64.convert("01:02:03:04:05:06:07:08")
