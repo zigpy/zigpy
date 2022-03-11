@@ -296,7 +296,7 @@ class Struct:
         return instance, data
 
     # TODO: improve? def replace(self: typing.Type[_STRUCT], **kwargs) -> _STRUCT:
-    def replace(self, **kwargs) -> Struct:
+    def replace(self, **kwargs: dict[str, typing.Any]) -> Struct:
         d = self.as_dict().copy()
         d.update(kwargs)
 
