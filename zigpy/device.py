@@ -168,6 +168,24 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return ieee
 
+    async def discover_nwk(self) -> NWK:
+        self.info("Requesting NWK address")
+
+        await zigpy.zdo.broadcast(
+            self.application, zdo.types.ZDOCmd.NWK_addr_req, 0, 0, self.ieee, 0x00, 0x00
+        )
+        status, ieee, nwk, *_ = await self.zdo.NWK_addr_req(
+            self.ieee, 0x00, 0x00, tries=2, delay=0.1, use_ieee=True
+        )
+
+        if status != zdo.types.Status.SUCCESS:
+            raise zigpy.exceptions.InvalidResponse(f"Requesting NWK failed: {status}")
+
+        self.nwk = nwk
+        self.info("Discovered IEEE and NWK addresses: %s/%s", ieee, nwk)
+
+        return nwk
+
     async def get_node_descriptor(self) -> zdo.types.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
 
@@ -212,6 +230,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         if not self.ieee_is_known:
             await self.discover_ieee()
+
+        if not self.nwk_is_known:
+            await self.discover_nwk()
 
         # Some devices are improperly initialized and are missing a node descriptor
         if self.node_desc is None:
