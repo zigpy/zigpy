@@ -532,7 +532,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def expired(self) -> bool:
         """Return True if either NWK or IEEE are still not known."""
 
-        if self.nwk != NWK.unknown() and self.ieee != EUI64([0x00] * 8):
+        if self.address_is_known:
             return False
 
         return time.time() - self._created_ts >= EPHEMERAL_DEVICE_EXP

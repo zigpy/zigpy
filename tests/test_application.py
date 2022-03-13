@@ -729,3 +729,4 @@ async def test_get_unknown_device_by_nwk(app):
     dev_unk_eui.ieee = t.EUI64([0x11] * 8)
     dev_with_eui = app.get_device(nwk=nwk)
     assert dev_with_eui.ieee == t.EUI64([0x11] * 8)
+    assert dev_with_eui.ieee in app.devices

@@ -458,7 +458,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         except KeyError:
             if skip_ephemeral:
                 raise
-        return self.get_ephemeral_device(ieee=ieee, nwk=nwk)
+        eph_dev = self.get_ephemeral_device(ieee=ieee, nwk=nwk)
+        if eph_dev.address_is_known:
+            self.devices[eph_dev.ieee] = eph_dev
+        return eph_dev
 
     def _get_device(self, ieee=None, nwk=None) -> zigpy.device.Device:
         if ieee is not None:
