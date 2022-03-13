@@ -51,9 +51,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     manufacturer_id_override = None
 
-    def __init__(self, application, ieee, nwk):
+    def __init__(self, application: ControllerApplication, ieee: EUI64, nwk: NWK):
         self._application: ControllerApplication = application
-        self._ieee: EUI64 = ieee
+        self._ieee: EUI64 = EUI64(ieee)
         self.nwk: NWK = NWK(nwk)
         self.zdo: zdo.ZDO = zdo.ZDO(self)
         self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
