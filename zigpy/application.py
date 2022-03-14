@@ -146,7 +146,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 partner_ieee=ieee,
             ),
             tc_link_key=zigpy.state.Key(
-                key=self.config[conf.CONF_NWK][conf.CONF_NWK_KEY],
+                key=self.config[conf.CONF_NWK][conf.CONF_NWK_TC_LINK_KEY],
                 tx_counter=0,
                 rx_counter=0,
                 seq=0,

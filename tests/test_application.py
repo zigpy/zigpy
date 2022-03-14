@@ -563,6 +563,13 @@ async def test_form_network(app):
     assert nwk_info1.pan_id != nwk_info2.pan_id
     assert nwk_info1.network_key != nwk_info2.network_key
 
+    # The well-known TCLK is used
+    assert (
+        nwk_info1.tc_link_key.key
+        == nwk_info2.tc_link_key.key
+        == t.KeyData(b"ZigBeeAlliance09")
+    )
+
     assert nwk_info1.channel == 15
 
 
