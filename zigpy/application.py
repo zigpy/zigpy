@@ -127,9 +127,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if channel is not None:
             channels = t.Channels.from_channel_list([channel])
 
-        nwk = 0x0000
-        ieee = None
-
         network_info = zigpy.state.NetworkInfo(
             extended_pan_id=extended_pan_id,
             pan_id=pan_id,
@@ -143,7 +140,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 tx_counter=0,
                 rx_counter=0,
                 seq=self.config[conf.CONF_NWK][conf.CONF_NWK_KEY_SEQ],
-                partner_ieee=ieee,
             ),
             tc_link_key=zigpy.state.Key(
                 key=self.config[conf.CONF_NWK][conf.CONF_NWK_TC_LINK_KEY],
@@ -159,8 +155,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         )
 
         node_info = zigpy.state.NodeInfo(
-            nwk=nwk,
-            ieee=ieee,
+            nwk=0x0000,
+            ieee=t.EUI64.UNKNOWN,  # Use the device IEEE address
             logical_type=zdo_types.LogicalType.Coordinator,
         )
 
