@@ -7,7 +7,8 @@ import inspect
 import logging
 import sys
 import traceback
-from typing import Any, Coroutine
+import typing
+import warnings
 
 from Crypto.Cipher import AES
 from crccheck.crc import CrcX25
@@ -269,7 +270,7 @@ class CatchingTaskMixin(LocalLogMixin):
 
     def create_catching_task(
         self,
-        target: Coroutine,
+        target: typing.Coroutine,
         exceptions: type[Exception] | tuple | None = None,
     ) -> None:
         """Create a task."""
@@ -277,9 +278,9 @@ class CatchingTaskMixin(LocalLogMixin):
 
     async def catching_coro(
         self,
-        target: Coroutine,
+        target: typing.Coroutine,
         exceptions: type[Exception] | tuple | None = None,
-    ) -> Any:
+    ) -> typing.Any:
         """Wrap a target coro and catch specified exceptions."""
         if exceptions is None:
             exceptions = (asyncio.TimeoutError, ZigbeeException)
@@ -295,3 +296,22 @@ class CatchingTaskMixin(LocalLogMixin):
             self.exception("%s", exc_msg)
 
         return None
+
+
+def deprecated(message: str) -> typing.Callable[[typing.Callable], typing.Callable]:
+    """
+    Decorator that emits a DeprecationWarning when the function or property is accessed.
+    """
+
+    def decorator(function: typing.Callable) -> typing.Callable:
+        @functools.wraps(function)
+        def replacement(*args, **kwargs):
+            warnings.warn(
+                f"{function.__name__} is deprecated: {message}", DeprecationWarning
+            )
+
+            return function(*args, **kwargs)
+
+        return replacement
+
+    return decorator

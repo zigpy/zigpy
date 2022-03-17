@@ -603,3 +603,37 @@ async def test_startup_not_formed(app):
     assert app.start_network.await_count == 1
     assert app.form_network.await_count == 1
     assert app.permit.await_count == 1
+
+
+async def test_deprecated_properties_and_methods(app):
+    app.state = MagicMock()
+    app.shutdown = AsyncMock()
+
+    with pytest.deprecated_call():
+        await app.pre_shutdown()
+
+    assert app.shutdown.await_count == 1
+
+    with pytest.deprecated_call():
+        assert app.nwk is app.state.node_info.nwk
+
+    with pytest.deprecated_call():
+        assert app.ieee is app.state.node_info.ieee
+
+    with pytest.deprecated_call():
+        assert app.pan_id is app.state.network_info.pan_id
+
+    with pytest.deprecated_call():
+        assert app.extended_pan_id is app.state.network_info.extended_pan_id
+
+    with pytest.deprecated_call():
+        assert app.network_key is app.state.network_info.network_key
+
+    with pytest.deprecated_call():
+        assert app.channel is app.state.network_info.channel
+
+    with pytest.deprecated_call():
+        assert app.channels is app.state.network_info.channel_mask
+
+    with pytest.deprecated_call():
+        assert app.nwk_update_id is app.state.network_info.nwk_update_id

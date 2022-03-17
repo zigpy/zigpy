@@ -343,7 +343,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         ieee = t.EUI64(ieee)
 
         try:
-            dev = self.get_device(ieee)
+            dev = self.get_device(ieee=ieee)
             LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
             new_join = False
         except KeyError:
@@ -373,7 +373,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         LOGGER.info("Device 0x%04x (%s) left the network", nwk, ieee)
 
         try:
-            dev = self.get_device(ieee)
+            dev = self.get_device(ieee=ieee)
         except KeyError:
             return
         else:
@@ -660,3 +660,47 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @property
     def ota(self):
         return self._ota
+
+    @zigpy.util.deprecated("await `app.shutdown()`")
+    async def pre_shutdown(self):
+        await self.shutdown()
+
+    @property
+    @zigpy.util.deprecated("use `app.state.node_info.nwk`")
+    def nwk(self):
+        return self.state.node_info.nwk
+
+    @property
+    @zigpy.util.deprecated("use `app.state.node_info.ieee`")
+    def ieee(self):
+        return self.state.node_info.ieee
+
+    @property
+    @zigpy.util.deprecated("use `app.state.network_info.pan_id`")
+    def pan_id(self):
+        return self.state.network_info.pan_id
+
+    @property
+    @zigpy.util.deprecated("use `app.state.network_info.extended_pan_id`")
+    def extended_pan_id(self):
+        return self.state.network_info.extended_pan_id
+
+    @property
+    @zigpy.util.deprecated("use `app.state.network_info.network_key`")
+    def network_key(self):
+        return self.state.network_info.network_key
+
+    @property
+    @zigpy.util.deprecated("use `app.state.network_info.channel`")
+    def channel(self):
+        return self.state.network_info.channel
+
+    @property
+    @zigpy.util.deprecated("use `app.state.network_info.channel_mask`")
+    def channels(self):
+        return self.state.network_info.channel_mask
+
+    @property
+    @zigpy.util.deprecated("use `app.state.network_info.nwk_update_id`")
+    def nwk_update_id(self):
+        return self.state.network_info.nwk_update_id
