@@ -112,6 +112,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         pan_id = self.config[conf.CONF_NWK][conf.CONF_NWK_PAN_ID]
         extended_pan_id = self.config[conf.CONF_NWK][conf.CONF_NWK_EXTENDED_PAN_ID]
         network_key = self.config[conf.CONF_NWK][conf.CONF_NWK_KEY]
+        tc_address = self.config[conf.CONF_NWK][conf.CONF_NWK_TC_ADDRESS]
 
         if pan_id is None:
             pan_id = random.SystemRandom().randint(0x0001, 0xFFFE + 1)
@@ -122,6 +123,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         if network_key is None:
             network_key = t.KeyData(os.urandom(16))
+
+        if tc_address is None:
+            tc_address = t.EUI64.UNKNOWN
 
         # Override `channels` with a single channel if one is explicitly set
         if channel is not None:
@@ -146,7 +150,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 tx_counter=0,
                 rx_counter=0,
                 seq=0,
-                partner_ieee=self.config[conf.CONF_NWK][conf.CONF_NWK_TC_ADDRESS],
+                partner_ieee=tc_address,
             ),
             children=[],
             key_table=[],
