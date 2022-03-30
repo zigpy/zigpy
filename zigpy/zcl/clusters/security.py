@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Any
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
 import zigpy.zcl.foundation
+from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 
 class IasZone(Cluster):
@@ -62,7 +63,7 @@ class IasZone(Cluster):
     cluster_id = 0x0500
     name = "IAS Zone"
     ep_attribute = "ias_zone"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         # Zone Information
         0x0000: ("zone_state", ZoneState),
         0x0001: ("zone_type", ZoneType),
@@ -73,18 +74,36 @@ class IasZone(Cluster):
         0x0012: ("num_zone_sensitivity_levels_supported", t.uint8_t),
         0x0013: ("current_zone_sensitivity_level", t.uint8_t),
     }
-    server_commands = {
-        0x0000: ("enroll_response", (EnrollResponse, t.uint8_t), True),
-        0x0001: ("init_normal_op_mode", (), False),
-        0x0002: ("init_test_mode", (t.uint8_t, t.uint8_t), False),
-    }
-    client_commands = {
-        0x0000: (
-            "status_change_notification",
-            (ZoneStatus, t.bitmap8, t.uint8_t, t.uint16_t),
+    server_commands: dict[int, ZCLCommandDef] = {
+        0x00: ZCLCommandDef(
+            "enroll_response",
+            {"enroll_response_code": EnrollResponse, "zone_id": t.uint8_t},
+            True,
+        ),
+        0x01: ZCLCommandDef("init_normal_op_mode", {}, False),
+        0x02: ZCLCommandDef(
+            "init_test_mode",
+            {
+                "test_mode_duration": t.uint8_t,
+                "current_zone_sensitivity_level": t.uint8_t,
+            },
             False,
         ),
-        0x0001: ("enroll", (ZoneType, t.uint16_t), False),
+    }
+    client_commands: dict[int, ZCLCommandDef] = {
+        0x00: ZCLCommandDef(
+            "status_change_notification",
+            {
+                "zone_status": ZoneStatus,
+                "extended_status": t.bitmap8,
+                "zone_id": t.uint8_t,
+                "delay": t.uint16_t,
+            },
+            False,
+        ),
+        0x01: ZCLCommandDef(
+            "enroll", {"zone_type": ZoneType, "manufacturer_code": t.uint16_t}, False
+        ),
     }
 
     def handle_cluster_request(
@@ -180,45 +199,100 @@ class IasAce(Cluster):
     cluster_id = 0x0501
     name = "IAS Ancillary Control Equipment"
     ep_attribute = "ias_ace"
-    attributes = {}
-    server_commands = {
-        0x0000: ("arm", (ArmMode, t.CharacterString, t.uint8_t), False),
-        0x0001: ("bypass", (t.LVList[t.uint8_t], t.CharacterString), False),
-        0x0002: ("emergency", (), False),
-        0x0003: ("fire", (), False),
-        0x0004: ("panic", (), False),
-        0x0005: ("get_zone_id_map", (), False),
-        0x0006: ("get_zone_info", (t.uint8_t,), False),
-        0x0007: ("get_panel_status", (), False),
-        0x0008: ("get_bypassed_zone_list", (), False),
-        0x0009: ("get_zone_status", (t.uint8_t, t.uint8_t, t.Bool, ZoneStatus), False),
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {
+        0x00: ZCLCommandDef(
+            "arm",
+            {
+                "arm_mode": ArmMode,
+                "arm_disarm_code": t.CharacterString,
+                "zone_id": t.uint8_t,
+            },
+            False,
+        ),
+        0x01: ZCLCommandDef(
+            "bypass",
+            {"zones_ids": t.LVList[t.uint8_t], "arm_disarm_code": t.CharacterString},
+            False,
+        ),
+        0x02: ZCLCommandDef("emergency", {}, False),
+        0x03: ZCLCommandDef("fire", {}, False),
+        0x04: ZCLCommandDef("panic", {}, False),
+        0x05: ZCLCommandDef("get_zone_id_map", {}, False),
+        0x06: ZCLCommandDef("get_zone_info", {"zone_id": t.uint8_t}, False),
+        0x07: ZCLCommandDef("get_panel_status", {}, False),
+        0x08: ZCLCommandDef("get_bypassed_zone_list", {}, False),
+        0x09: ZCLCommandDef(
+            "get_zone_status",
+            {
+                "starting_zone_id": t.uint8_t,
+                "max_num_zone_ids": t.uint8_t,
+                "zone_status_mask_flag": t.Bool,
+                "zone_status_mask": ZoneStatus,
+            },
+            False,
+        ),
     }
-    client_commands = {
-        0x0000: ("arm_response", (ArmNotification,), True),
-        0x0001: ("get_zone_id_map_response", (t.List[t.bitmap16],), True),
-        0x0002: (
+    client_commands: dict[int, ZCLCommandDef] = {
+        0x00: ZCLCommandDef(
+            "arm_response", {"arm_notification": ArmNotification}, True
+        ),
+        0x01: ZCLCommandDef(
+            "get_zone_id_map_response",
+            {"zone_id_map_sections": t.List[t.bitmap16]},
+            True,
+        ),
+        0x02: ZCLCommandDef(
             "get_zone_info_response",
-            (t.uint8_t, ZoneType, t.EUI64, t.CharacterString),
+            {
+                "zone_id": t.uint8_t,
+                "zone_type": ZoneType,
+                "ieee": t.EUI64,
+                "zone_label": t.CharacterString,
+            },
             True,
         ),
-        0x0003: (
+        0x03: ZCLCommandDef(
             "zone_status_changed",
-            (t.uint8_t, ZoneStatus, AudibleNotification, t.CharacterString),
+            {
+                "zone_id": t.uint8_t,
+                "zone_status": ZoneStatus,
+                "audible_notification": AudibleNotification,
+                "zone_label": t.CharacterString,
+            },
             False,
         ),
-        0x0004: (
+        0x04: ZCLCommandDef(
             "panel_status_changed",
-            (PanelStatus, t.uint8_t, AudibleNotification, AlarmStatus),
+            {
+                "panel_status": PanelStatus,
+                "seconds_remaining": t.uint8_t,
+                "audible_notification": AudibleNotification,
+                "alarm_status": AlarmStatus,
+            },
             False,
         ),
-        0x0005: (
+        0x05: ZCLCommandDef(
             "panel_status_response",
-            (PanelStatus, t.uint8_t, AudibleNotification, AlarmStatus),
+            {
+                "panel_status": PanelStatus,
+                "seconds_remaining": t.uint8_t,
+                "audible_notification": AudibleNotification,
+                "alarm_status": AlarmStatus,
+            },
             True,
         ),
-        0x0006: ("set_bypassed_zone_list", (t.LVList[t.uint8_t],), False),
-        0x0007: ("bypass_response", (t.LVList[BypassResponse],), True),
-        0x0008: ("get_zone_status_response", (t.Bool, t.LVList[ZoneStatusRsp]), True),
+        0x06: ZCLCommandDef(
+            "set_bypassed_zone_list", {"zone_ids": t.LVList[t.uint8_t]}, False
+        ),
+        0x07: ZCLCommandDef(
+            "bypass_response", {"bypass_results": t.LVList[BypassResponse]}, True
+        ),
+        0x08: ZCLCommandDef(
+            "get_zone_status_response",
+            {"zone_status_complete": t.Bool, "zone_statuses": t.LVList[ZoneStatusRsp]},
+            True,
+        ),
     }
 
 
@@ -232,7 +306,7 @@ class _SquawkOrWarningCommand:
         self.value = t.uint8_t(value)
 
     @classmethod
-    def deserialize(cls, data: bytes) -> Tuple["_SquawkOrWarningCommand", bytes]:
+    def deserialize(cls, data: bytes) -> tuple[_SquawkOrWarningCommand, bytes]:
         val, data = t.uint8_t.deserialize(data)
         return cls(val), data
 
@@ -283,7 +357,7 @@ class IasWd(Cluster):
             Emergency_Panic = 0x06
 
         @property
-        def mode(self) -> "WarningMode":
+        def mode(self) -> WarningMode:
             return self.WarningMode((self.value >> 4) & 0x0F)
 
         @mode.setter
@@ -291,15 +365,17 @@ class IasWd(Cluster):
             self.value = (self.value & 0xF) | (mode << 4)
 
         @property
-        def strobe(self) -> "Strobe":
+        def strobe(self) -> Strobe:
             return self.Strobe((self.value >> 2) & 0x01)
 
         @strobe.setter
-        def strobe(self, strobe: "Strobe") -> None:
-            self.value = (self.value & 0xF7) | ((strobe & 0x01) << 2)
+        def strobe(self, strobe: Strobe) -> None:
+            self.value = (self.value & 0xF7) | (
+                (strobe & 0x01) << 2  # type:ignore[operator]
+            )
 
         @property
-        def level(self) -> "SirenLevel":
+        def level(self) -> SirenLevel:
             return self.SirenLevel(self.value & 0x03)
 
         @level.setter
@@ -320,7 +396,7 @@ class IasWd(Cluster):
             Disarmed = 0x01
 
         @property
-        def mode(self) -> "SquawkMode":
+        def mode(self) -> SquawkMode:
             return self.SquawkMode((self.value >> 4) & 0x0F)
 
         @mode.setter
@@ -328,15 +404,15 @@ class IasWd(Cluster):
             self.value = (self.value & 0xF) | ((mode & 0x0F) << 4)
 
         @property
-        def strobe(self) -> "Strobe":
+        def strobe(self) -> Strobe:
             return self.Strobe((self.value >> 3) & 0x01)
 
         @strobe.setter
         def strobe(self, strobe: Strobe) -> None:
-            self.value = (self.value & 0xF7) | (strobe << 3)
+            self.value = (self.value & 0xF7) | (strobe << 3)  # type:ignore[operator]
 
         @property
-        def level(self) -> "SquawkLevel":
+        def level(self) -> SquawkLevel:
             return self.SquawkLevel(self.value & 0x03)
 
         @level.setter
@@ -346,9 +422,18 @@ class IasWd(Cluster):
     cluster_id = 0x0502
     name = "IAS Warning Device"
     ep_attribute = "ias_wd"
-    attributes = {0x0000: ("max_duration", t.uint16_t)}
-    server_commands = {
-        0x0000: ("start_warning", (Warning, t.uint16_t, t.uint8_t, StrobeLevel), False),
-        0x0001: ("squawk", (Squawk,), False),
+    attributes: dict[int, ZCLAttributeDef] = {0x0000: ("max_duration", t.uint16_t)}
+    server_commands: dict[int, ZCLCommandDef] = {
+        0x00: ZCLCommandDef(
+            "start_warning",
+            {
+                "warning": Warning,
+                "warning_duration": t.uint16_t,
+                "strobe_duty_cycle": t.uint8_t,
+                "stobe_level": StrobeLevel,
+            },
+            False,
+        ),
+        0x01: ZCLCommandDef("squawk", {"squawk": Squawk}, False),
     }
-    client_commands = {}
+    client_commands: dict[int, ZCLCommandDef] = {}

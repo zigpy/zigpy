@@ -106,16 +106,16 @@ def test_ints_signed():
     assert int7s(0) == 0
     assert int7s(1) == 1
     assert int7s(-1) == -1
-    assert int7s(2 ** 6 - 1) == 2 ** 6 - 1
-    assert int7s(-(2 ** 6)) == -(2 ** 6)
+    assert int7s(2**6 - 1) == 2**6 - 1
+    assert int7s(-(2**6)) == -(2**6)
 
     with pytest.raises(ValueError):
-        int7s(2 ** 6)
+        int7s(2**6)
 
     with pytest.raises(ValueError):
-        int7s(-(2 ** 6) - 1)
+        int7s(-(2**6) - 1)
 
-    n = int7s(2 ** 6 - 1)
+    n = int7s(2**6 - 1)
 
     with pytest.raises(TypeError):
         n.serialize()
@@ -123,7 +123,7 @@ def test_ints_signed():
     assert int7s(0).bits() == [0, 0, 0, 0, 0, 0, 0]
     assert int7s(1).bits() == [0, 0, 0, 0, 0, 0, 1]
     assert int7s(-1).bits() == [1, 1, 1, 1, 1, 1, 1]
-    assert int7s(2 ** 6 - 1).bits() == [0, 1, 1, 1, 1, 1, 1]
+    assert int7s(2**6 - 1).bits() == [0, 1, 1, 1, 1, 1, 1]
 
     assert int7s.from_bits([1, 0, 1, 0, 1, 1, 0, 1, 1, 1]) == (0b0110111, [1, 0, 1])
 
@@ -243,6 +243,46 @@ def test_lvbytes_too_long():
     to_serialize = b"".join(itertools.repeat(b"\xbe", 255))
     with pytest.raises(ValueError):
         t.LVBytes(to_serialize).serialize()
+
+
+def test_limited_lvbytes():
+    d, r = t.LimitedLVBytes(5).deserialize(b"\x0412345")
+    assert r == b"5"
+    assert d == b"1234"
+
+    # Make sure that a length of 5 does not throw an exception
+    t.LimitedLVBytes(5)(b"12345").serialize()
+
+    # Make sure that a length of 6 does throw an exception
+    with pytest.raises(ValueError):
+        t.LimitedLVBytes(5)(b"123456").serialize()
+
+
+def test_lvbytes_size2():
+    # Deserialize tests
+    d, r = t.LVBytesSize2().deserialize(b"\x02123")
+    assert d == b"12"  # Accepted data
+    assert r == b"3"  # Remaining
+
+    # Make sure we get exceptions when the length is not 2 (lower/higher)
+
+    with pytest.raises(ValueError):
+        d, r = t.LVBytesSize2().deserialize(b"\x011")
+
+    with pytest.raises(ValueError):
+        d, r = t.LVBytesSize2().deserialize(b"\x03123")
+
+    # Serialize tests
+
+    # Make sure that a length of 2 does not throw an exception
+    t.LVBytesSize2(b"12").serialize()
+
+    # Make sure that a length of 1 does throw an exception
+    with pytest.raises(ValueError):
+        t.LVBytesSize2(b"1").serialize()
+    # Make sure that a length of 3 does throw an exception
+    with pytest.raises(ValueError):
+        t.LVBytesSize2(b"123").serialize()
 
 
 def test_long_octet_string():

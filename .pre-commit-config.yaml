@@ -1,6 +1,16 @@
 repos:
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v2.31.1
+    hooks:
+      - id: pyupgrade
+
+  - repo: https://github.com/fsouza/autoflake8
+    rev: v0.3.2
+    hooks:
+      - id: autoflake8
+
   - repo: https://github.com/psf/black
-    rev: 20.8b1
+    rev: 22.3.0
     hooks:
       - id: black
         args:
@@ -8,20 +18,21 @@ repos:
           - --quiet
 
   - repo: https://gitlab.com/pycqa/flake8
-    rev: 3.8.4
+    rev: 4.0.1
     hooks:
       - id: flake8
 
   - repo: https://github.com/PyCQA/isort
-    rev: 5.5.2
+    rev: 5.10.1
     hooks:
       - id: isort
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v1.17.1
+    rev: v2.1.0
     hooks:
       - id: codespell
-        args:
-          - --ignore-words-list=ser,nd,hass
-          - --skip="./.*"
-          - --quiet-level=2
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v0.942
+    hooks:
+      - id: mypy

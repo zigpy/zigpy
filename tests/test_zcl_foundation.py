@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 import zigpy.types as t
@@ -10,7 +12,7 @@ def test_typevalue():
     tv.value = t.uint8_t(99)
     ser = tv.serialize()
     r = repr(tv)
-    assert r.startswith("<") and r.endswith(">")
+    assert r.startswith("TypeValue(") and r.endswith(")")
     assert "type=uint8_t" in r
     assert "value=99" in r
 
@@ -22,6 +24,12 @@ def test_typevalue():
     tv3 = foundation.TypeValue(tv2)
     assert tv3.type == tv.type
     assert tv3.value == tv.value
+
+    tv4 = foundation.TypeValue()
+    tv4.type = 0x42
+    tv4.value = t.CharacterString("test")
+    assert "CharacterString" in str(tv4)
+    assert "'test'" in str(tv4)
 
 
 def test_read_attribute_record():
@@ -76,6 +84,23 @@ def test_attribute_reporting_config_1():
     assert arc2.direction == arc.direction
     assert arc2.timeout == arc.timeout
     assert repr(arc)
+
+
+def test_attribute_reporting_config_only_dir_and_attrid():
+    arc = foundation.AttributeReportingConfig()
+    arc.direction = 0
+    arc.attrid = 99
+    ser = arc.serialize(_only_dir_and_attrid=True)
+
+    arc2, data = foundation.AttributeReportingConfig.deserialize(
+        ser, _only_dir_and_attrid=True
+    )
+    assert data == b""
+    assert arc2.direction == arc.direction
+    assert arc2.attrid == arc.attrid
+
+    assert repr(arc)
+    assert repr(arc) == repr(arc2)
 
 
 def test_typed_collection():
@@ -195,13 +220,8 @@ def test_frame_control():
     assert rest == extra
     assert frc.frame_type == foundation.FrameType.CLUSTER_COMMAND
 
-    frc.frame_type = 0x01
-    assert frc.frame_type is foundation.FrameType.CLUSTER_COMMAND
-
     r = repr(frc)
     assert isinstance(r, str)
-    assert r.startswith("<")
-    assert r.endswith(">")
 
 
 def test_frame_control_general():
@@ -211,14 +231,14 @@ def test_frame_control_general():
     data = frc.serialize()
 
     assert data == b"\x00"
-    assert frc.is_manufacturer_specific is False
+    assert not frc.is_manufacturer_specific
     frc.is_manufacturer_specific = False
     assert frc.serialize() == b"\x00"
     frc.is_manufacturer_specific = True
     assert frc.serialize() == b"\x04"
 
     frc = foundation.FrameControl.general(is_reply=False)
-    assert frc.is_reply is False
+    assert not frc.is_reply
     assert frc.serialize() == b"\x00"
     frc.is_reply = False
     assert frc.serialize() == b"\x00"
@@ -227,7 +247,7 @@ def test_frame_control_general():
     assert foundation.FrameControl.general(is_reply=True).serialize() == b"\x18"
 
     frc = foundation.FrameControl.general(is_reply=False)
-    assert frc.disable_default_response is False
+    assert not frc.disable_default_response
     assert frc.serialize() == b"\x00"
     frc.disable_default_response = False
     assert frc.serialize() == b"\x00"
@@ -242,14 +262,14 @@ def test_frame_control_cluster():
     data = frc.serialize()
 
     assert data == b"\x01"
-    assert frc.is_manufacturer_specific is False
+    assert not frc.is_manufacturer_specific
     frc.is_manufacturer_specific = False
     assert frc.serialize() == b"\x01"
     frc.is_manufacturer_specific = True
     assert frc.serialize() == b"\x05"
 
     frc = foundation.FrameControl.cluster(is_reply=False)
-    assert frc.is_reply is False
+    assert not frc.is_reply
     assert frc.serialize() == b"\x01"
     frc.is_reply = False
     assert frc.serialize() == b"\x01"
@@ -258,7 +278,7 @@ def test_frame_control_cluster():
     assert foundation.FrameControl.cluster(is_reply=True).serialize() == b"\x19"
 
     frc = foundation.FrameControl.cluster(is_reply=False)
-    assert frc.disable_default_response is False
+    assert not frc.disable_default_response
     assert frc.serialize() == b"\x01"
     frc.disable_default_response = False
     assert frc.serialize() == b"\x01"
@@ -274,7 +294,7 @@ def test_frame_header():
 
     assert rest == extra
     assert hdr.command_id == 0x0A
-    assert hdr.is_reply is True
+    assert hdr.is_reply
     assert hdr.manufacturer == 0x115F
     assert hdr.tsn == 0xC0
 
@@ -286,8 +306,6 @@ def test_frame_header():
 
     r = repr(hdr)
     assert isinstance(r, str)
-    assert r.startswith("<")
-    assert r.endswith(">")
 
 
 def test_frame_header_general():
@@ -322,10 +340,27 @@ def test_frame_header_cluster():
     assert hdr.frame_control.is_manufacturer_specific is False
 
 
+def test_frame_header_disable_manufacturer_id():
+    """Test frame header manufacturer ID can be disabled with NO_MANUFACTURER_ID."""
+
+    hdr = foundation.ZCLHeader.cluster(tsn=123, command_id=0x12, manufacturer=None)
+    assert hdr.manufacturer is None
+    hdr.manufacturer = 0x1234
+    assert hdr.manufacturer == 0x1234
+
+    hdr.manufacturer = foundation.ZCLHeader.NO_MANUFACTURER_ID
+    assert hdr.manufacturer is None
+
+    hdr2 = foundation.ZCLHeader.cluster(
+        tsn=123, command_id=0x12, manufacturer=foundation.ZCLHeader.NO_MANUFACTURER_ID
+    )
+    assert hdr2.manufacturer is None
+
+
 def test_data_types():
     """Test data types mappings."""
     assert len(foundation.DATA_TYPES) == len(foundation.DATA_TYPES._idx_by_class)
-    data_types_set = set([d[1] for d in foundation.DATA_TYPES.values()])
+    data_types_set = {d[1] for d in foundation.DATA_TYPES.values()}
     dt_2_id_set = set(foundation.DATA_TYPES._idx_by_class.keys())
     assert data_types_set == dt_2_id_set
 
@@ -557,3 +592,141 @@ def test_status_enum():
     assert status.name not in nwk_names
     assert status.name not in mac_names
     assert status.name == "undefined_0xff"
+
+
+def test_schema():
+    """Test schema parameter parsing"""
+
+    bad_s = foundation.ZCLCommandDef(
+        id=0x12,
+        name="test",
+        schema={
+            "uh oh": t.uint16_t,
+        },
+        is_reply=False,
+    )
+
+    with pytest.raises(ValueError):
+        bad_s.with_compiled_schema()
+
+    s = foundation.ZCLCommandDef(
+        id=0x12,
+        name="test",
+        schema={
+            "foo": t.uint8_t,
+            "bar?": t.uint16_t,
+            "baz?": t.uint8_t,
+        },
+        is_reply=False,
+    )
+    s = s.with_compiled_schema()
+
+    str(s)
+
+    assert s.schema.foo.type is t.uint8_t
+    assert not s.schema.foo.optional
+
+    assert s.schema.bar.type is t.uint16_t
+    assert s.schema.bar.optional
+
+    assert s.schema.baz.type is t.uint8_t
+    assert s.schema.baz.optional
+
+    assert "test" in str(s) and "is_reply=False" in str(s)
+
+    for kwargs, value in [
+        (dict(foo=1), b"\x01"),
+        (dict(foo=1, bar=2), b"\x01\x02\x00"),
+        (dict(foo=1, bar=2, baz=3), b"\x01\x02\x00\x03"),
+    ]:
+        assert s.schema(**kwargs) == s.schema(*kwargs.values())
+        assert s.schema(**kwargs).serialize() == value
+        assert s.schema.deserialize(value) == (s.schema(**kwargs), b"")
+
+    assert issubclass(s.schema, tuple)
+
+
+def test_zcl_attribute_definition():
+    a = foundation.ZCLAttributeDef(
+        id=0x1234,
+        name="test",
+        type=t.uint16_t,
+    )
+
+    assert "0x1234" in str(a)
+    assert "'test'" in str(a)
+    assert "uint16_t" in str(a)
+    assert not a.is_manufacturer_specific  # default
+    assert a.access == "rw"  # also default
+
+    with pytest.raises(AssertionError):
+        a.replace(access="x")
+
+    assert a.replace(access="w").access == "w"
+
+
+def test_zcl_attribute_item_access_warning():
+    a = foundation.ZCLAttributeDef(
+        id=0x1234,
+        name="test",
+        type=t.uint16_t,
+    )
+
+    with pytest.deprecated_call():
+        assert a[0] == a.name
+        assert a[1] == a.type
+
+
+def test_zcl_command_item_access_warning():
+    s = foundation.ZCLCommandDef(
+        id=0x12,
+        name="test",
+        schema={
+            "foo": t.uint8_t,
+        },
+        is_reply=False,
+    )
+
+    with pytest.deprecated_call():
+        assert s[0] == s.name
+        assert s[1] == s.schema
+        assert s[2] == s.is_reply
+
+
+@pytest.mark.skipif(sys.version_info < (3, 8), reason="3.8 added module __getattr__")
+def test_command_warning():
+    GeneralCommand = foundation.GeneralCommand
+
+    with pytest.deprecated_call():
+        assert foundation.Command is GeneralCommand
+
+
+def test_invalid_command_def_name():
+    command = foundation.ZCLCommandDef(
+        id=0x12,
+        name="test",
+        schema={
+            "foo": t.uint8_t,
+        },
+        is_reply=False,
+    )
+
+    with pytest.raises(ValueError):
+        command.replace(name="bad name")
+
+    with pytest.raises(ValueError):
+        command.replace(name="123name")
+
+
+def test_invalid_attribute_def_name():
+    attr = foundation.ZCLAttributeDef(
+        id=0x1234,
+        name="test",
+        type=t.uint16_t,
+    )
+
+    with pytest.raises(ValueError):
+        attr.replace(name="bad name")
+
+    with pytest.raises(ValueError):
+        attr.replace(name="123name")

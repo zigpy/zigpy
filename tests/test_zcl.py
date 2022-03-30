@@ -27,7 +27,7 @@ def test_deserialize_general(endpoint):
     hdr, args = endpoint.deserialize(0, b"\x00\x01\x00")
     assert hdr.tsn == 1
     assert hdr.command_id == 0
-    assert hdr.is_reply is False
+    assert not hdr.is_reply
 
 
 def test_deserialize_general_unknown(endpoint):
@@ -36,7 +36,7 @@ def test_deserialize_general_unknown(endpoint):
     assert hdr.frame_control.is_general is True
     assert hdr.frame_control.is_cluster is False
     assert hdr.command_id == 255
-    assert hdr.is_reply is False
+    assert not hdr.is_reply
 
 
 def test_deserialize_cluster(endpoint):
@@ -45,7 +45,7 @@ def test_deserialize_cluster(endpoint):
     assert hdr.frame_control.is_general is False
     assert hdr.frame_control.is_cluster is True
     assert hdr.command_id == 0
-    assert hdr.is_reply is False
+    assert not hdr.is_reply
 
 
 def test_deserialize_cluster_client(endpoint):
@@ -54,8 +54,8 @@ def test_deserialize_cluster_client(endpoint):
     assert hdr.frame_control.is_general is False
     assert hdr.frame_control.is_cluster is True
     assert hdr.command_id == 0
-    assert hdr.is_reply is True
-    assert args == [0x4241]
+    assert list(args) == [0x4241]
+    assert hdr.is_reply
 
 
 def test_deserialize_cluster_unknown(endpoint):
@@ -67,7 +67,7 @@ def test_deserialize_cluster_command_unknown(endpoint):
     hdr, args = endpoint.deserialize(0, b"\x01\x01\xff")
     assert hdr.tsn == 1
     assert hdr.command_id == 255
-    assert hdr.is_reply is False
+    assert not hdr.is_reply
 
 
 def test_unknown_cluster():
@@ -152,7 +152,7 @@ async def test_request_optional(cluster):
     cluster._endpoint.request.reset_mock()
 
     res = cluster.request(True, 0, schema, 1, 2, 3, 4, 5)
-    assert isinstance(res.exception(), ValueError)
+    assert isinstance(res.exception(), TypeError)
     assert cluster._endpoint.request.call_count == 0
     cluster._endpoint.request.reset_mock()
 
@@ -177,22 +177,30 @@ def test_attribute_report(cluster):
     attr.value = zcl.foundation.TypeValue()
     attr.value.value = "manufacturer"
     hdr = MagicMock(auto_spec=foundation.ZCLHeader)
-    hdr.command_id = foundation.Command.Report_Attributes
+    hdr.command_id = foundation.GeneralCommand.Report_Attributes
     hdr.frame_control.is_general = True
     hdr.frame_control.is_cluster = False
-    cluster.handle_message(hdr, [[attr]])
+
+    cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Report_Attributes
+    ].schema([attr])
+    cluster.handle_message(hdr, cmd)
+
     assert cluster._attr_cache[4] == "manufacturer"
 
     attr.attrid = 0x89AB
-    cluster.handle_message(hdr, [[attr]])
+    cluster.handle_message(hdr, cmd)
     assert cluster._attr_cache[attr.attrid] == "manufacturer"
 
     def mock_type(*args, **kwargs):
         raise ValueError
 
-    with patch.dict(cluster.attributes, {0xAAAA: ("Name", mock_type)}):
+    with patch.dict(
+        cluster.attributes,
+        {0xAAAA: foundation.ZCLAttributeDef(id=0xAAAA, name="Name", type=mock_type)},
+    ):
         attr.attrid = 0xAAAA
-        cluster.handle_message(hdr, [[attr]])
+        cluster.handle_message(hdr, cmd)
         assert cluster._attr_cache[attr.attrid] == "manufacturer"
 
 
@@ -324,7 +332,10 @@ async def test_read_attributes_value_normalization_error(cluster):
         raise ValueError
 
     cluster.request = mockrequest
-    with patch.dict(cluster.attributes, {5: ("Name", mock_type)}):
+    with patch.dict(
+        cluster.attributes,
+        {5: foundation.ZCLAttributeDef(id=5, name="Name", type=mock_type)},
+    ):
         success, failure = await cluster.read_attributes(["model"], allow_cache=True)
     assert failure == {}
     assert success["model"] == "Model"
@@ -435,7 +446,9 @@ async def test_write_attribute_types(
     "status", (foundation.Status.SUCCESS, foundation.Status.UNSUPPORTED_ATTRIBUTE)
 )
 async def test_write_attributes_cache_default_response(cluster, status):
-    write_mock = AsyncMock(return_value=[foundation.Command.Write_Attributes, status])
+    write_mock = AsyncMock(
+        return_value=[foundation.GeneralCommand.Write_Attributes, status]
+    )
     with patch.object(cluster, "_write_attributes", write_mock):
         attributes = {4: "manufacturer", 5: "model", 12: 12}
         await cluster.write_attributes(attributes)
@@ -577,7 +590,7 @@ async def test_configure_reporting_wrong_named(cluster):
 
 async def test_configure_reporting_wrong_attrid(cluster):
     with pytest.raises(ValueError):
-        await cluster.configure_reporting(0xFFFE, 10, 20, 1)
+        await cluster.configure_reporting(0xABCD, 10, 20, 1)
         assert cluster._endpoint.request.call_count == 0
 
 
@@ -660,12 +673,12 @@ def test_command_invalid_attr(cluster):
 
 async def test_invalid_arguments_cluster_command(cluster):
     res = cluster.command(0x00, 1)
-    assert isinstance(res.exception(), ValueError)
+    assert isinstance(res.exception(), TypeError)
 
 
-def test_invalid_arguments_cluster_client_command(client_cluster):
-    client_cluster.client_command(0, 0, 0)
-    assert client_cluster._endpoint.reply.call_count == 1
+async def test_invalid_arguments_cluster_client_command(client_cluster):
+    res = client_cluster.client_command(0, 0, 0)
+    assert isinstance(res.exception(), TypeError)
 
 
 def test_name(cluster):
@@ -751,7 +764,7 @@ async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
 
 
 async def test_handle_cluster_general_request_not_attr_report(cluster):
-    hdr = foundation.ZCLHeader.general(1, foundation.Command.Write_Attributes)
+    hdr = foundation.ZCLHeader.general(1, foundation.GeneralCommand.Write_Attributes)
     p1 = patch.object(cluster, "_update_attribute")
     p2 = patch.object(cluster, "create_catching_task")
     with p1 as attr_lst_mock, p2 as response_mock:
@@ -781,7 +794,7 @@ async def test_configure_reporting_multiple(cluster):
 async def test_configure_reporting_multiple_def_rsp(cluster):
     """Configure reporting returned a default response. May happen."""
     cluster.endpoint.request.return_value = (
-        zcl.foundation.Command.Configure_Reporting,
+        zcl.foundation.GeneralCommand.Configure_Reporting,
         zcl.foundation.Status.UNSUP_GENERAL_COMMAND,
     )
     await cluster.configure_reporting_multiple(
@@ -887,3 +900,46 @@ def test_unsupported_attr_add_no_reverse_attr_name(cluster):
 
     cluster.add_unsupported_attribute(0xDEED)
     assert 0xDEED in cluster.unsupported_attributes
+
+
+def test_zcl_command_duplicate_name_prevention():
+    assert 0x1234 not in zcl.clusters.CLUSTERS_BY_ID
+
+    with pytest.raises(TypeError):
+
+        class TestCluster(zcl.Cluster):
+            cluster_id = 0x1234
+            ep_attribute = "test_cluster"
+            server_commands = {
+                0x00: foundation.ZCLCommandDef("command1", {}, False),
+                0x01: foundation.ZCLCommandDef("command1", {}, False),
+            }
+
+
+def test_zcl_attridx_deprecation(cluster):
+    with pytest.deprecated_call():
+        cluster.attridx
+
+    with pytest.deprecated_call():
+        assert cluster.attridx is cluster.attributes_by_name
+
+
+def test_zcl_response_type_tuple_like():
+    req = (
+        zcl.clusters.general.OnOff(None)
+        .commands_by_name["on_with_timed_off"]
+        .schema(
+            on_off_control=0,
+            on_time=1,
+            off_wait_time=2,
+        )
+    )
+
+    on_off_control, on_time, off_wait_time = req
+    assert req.on_off_control == on_off_control == req[0] == 0
+    assert req.on_time == on_time == req[1] == 1
+    assert req.off_wait_time == off_wait_time == req[2] == 2
+
+    assert req == (0, 1, 2)
+    assert req == req
+    assert req == req.replace()

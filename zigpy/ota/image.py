@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import typing
 
 import attr
 
@@ -106,7 +105,7 @@ class OTAImageHeader(t.Struct):
         return ImageKey(self.manufacturer_id, self.image_type)
 
     @classmethod
-    def deserialize(cls, data) -> tuple:
+    def deserialize(cls, data) -> tuple[OTAImageHeader, bytes]:
         hdr, data = super().deserialize(data)
         if hdr.upgrade_file_id != cls.MAGIC_VALUE:
             raise ValueError(
@@ -142,7 +141,7 @@ class BaseOTAImage:
     header: OTAImageHeader
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data) -> tuple[BaseOTAImage, bytes]:
         raise NotImplementedError()  # pragma: no cover
 
     def serialize(self):
@@ -158,7 +157,7 @@ class OTAImage(t.Struct, BaseOTAImage):
     subelements: t.List[SubElement]
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data) -> tuple[OTAImage, bytes]:
         hdr, data = OTAImageHeader.deserialize(data)
         elements_len = hdr.image_size - hdr.header_length
 
@@ -197,7 +196,7 @@ class HueSBLOTAImage(BaseOTAImage):
         return self.header.serialize() + self.data
 
     @classmethod
-    def deserialize(cls, data) -> typing.Tuple["HueSBLOTAImage", bytes]:
+    def deserialize(cls, data) -> tuple[HueSBLOTAImage, bytes]:
         header, remaining_data = OTAImageHeader.deserialize(data)
         firmware = remaining_data[: header.image_size - len(header.serialize())]
 
@@ -219,7 +218,7 @@ class HueSBLOTAImage(BaseOTAImage):
         return cls(header=header, data=firmware), data[header.image_size :]
 
 
-def parse_ota_image(data: bytes) -> typing.Tuple[BaseOTAImage, bytes]:
+def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:
     """
     Attempts to extract any known OTA image type from data. Does not validate firmware.
     """

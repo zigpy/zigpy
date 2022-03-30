@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import functools
 import logging
-from typing import Coroutine, List
+from typing import Coroutine
 
 import zigpy.profiles
 import zigpy.types as t
@@ -15,6 +15,13 @@ LOGGER = logging.getLogger(__name__)
 
 class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
     """The ZDO endpoint of a device"""
+
+    class LeaveOptions(t.bitmap8):
+        """ZDO Mgmt_Leave_req Options."""
+
+        NONE = 0
+        RemoveChildren = 1 << 6
+        Rejoin = 1 << 7
 
     def __init__(self, device):
         self._device = device
@@ -59,7 +66,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         profile: int,
         cluster: int,
         hdr: types.ZDOHeader,
-        args: List,
+        args: list,
         *,
         dst_addressing: t.Addressing.Group
         | t.Addressing.IEEE
@@ -190,13 +197,13 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         )
 
     def leave(self, remove_children: bool = True, rejoin: bool = False) -> Coroutine:
-        flags = 0x00
+        opts = self.LeaveOptions.NONE
         if remove_children:
-            flags |= 0x02
+            opts |= self.LeaveOptions.RemoveChildren
         if rejoin:
-            flags |= 0x01
+            opts |= self.LeaveOptions.Rejoin
 
-        return self.Mgmt_Leave_req(self._device.ieee, flags)
+        return self.Mgmt_Leave_req(self._device.ieee, opts)
 
     def permit(self, duration=60, tc_significance=0):
         return self.Mgmt_Permit_Joining_req(duration, tc_significance)
@@ -214,7 +221,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         try:
             command = types.ZDOCmd[name]
         except KeyError:
-            raise AttributeError("No such '%s' ZDO command" % (name,))
+            raise AttributeError(f"No such '{name}' ZDO command")
 
         if command & 0x8000:
             return functools.partial(self.reply, command)

@@ -1,27 +1,30 @@
+from __future__ import annotations
+
 import zigpy.types as t
 from zigpy.zcl import Cluster
+from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 
 class Price(Cluster):
     cluster_id = 0x0700
     ep_attribute = "smartenergy_price"
-    attributes = {}
-    server_commands = {}
-    client_commands = {}
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class Drlc(Cluster):
     cluster_id = 0x0701
     ep_attribute = "smartenergy_drlc"
-    attributes = {}
-    server_commands = {}
-    client_commands = {}
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class Metering(Cluster):
     cluster_id = 0x0702
     ep_attribute = "smartenergy_metering"
-    attributes = {
+    attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ("current_summ_delivered", t.uint48_t),
         0x0001: ("current_summ_received", t.uint48_t),
         0x0002: ("current_max_demand_delivered", t.uint48_t),
@@ -29,29 +32,33 @@ class Metering(Cluster):
         0x0004: ("dft_summ", t.uint48_t),
         0x0005: ("daily_freeze_time", t.uint16_t),
         0x0006: ("power_factor", t.int8s),
-        0x0007: ("reading_snapshot_time", t.uint32_t),
-        0x0008: ("current_max_demand_deliverd_time", t.uint32_t),
-        0x0009: ("current_max_demand_received_time", t.uint32_t),
+        0x0007: ("reading_snapshot_time", t.UTCTime),
+        0x0008: ("current_max_demand_delivered_time", t.UTCTime),
+        0x0009: ("current_max_demand_received_time", t.UTCTime),
         0x000A: ("default_update_period", t.uint8_t),
         0x000B: ("fast_poll_update_period", t.uint8_t),
         0x000C: ("current_block_period_consump_delivered", t.uint48_t),
         0x000D: ("daily_consump_target", t.uint24_t),
         0x000E: ("current_block", t.enum8),
         0x000F: ("profile_interval_period", t.enum8),
-        # 0x0010: ('interval_read_reporting_period', UNKNOWN),
+        # 0x0010: ('interval_read_reporting_period', UNKNOWN),  # Deprecated
         0x0011: ("preset_reading_time", t.uint16_t),
         0x0012: ("volume_per_report", t.uint16_t),
         0x0013: ("flow_restriction", t.uint8_t),
         0x0014: ("supply_status", t.enum8),
         0x0015: ("current_in_energy_carrier_summ", t.uint48_t),
         0x0016: ("current_out_energy_carrier_summ", t.uint48_t),
-        0x0017: ("inlet_tempreature", t.int24s),
-        0x0018: ("outlet_tempreature", t.int24s),
-        0x0019: ("control_tempreature", t.int24s),
+        0x0017: ("inlet_temperature", t.int24s),
+        0x0018: ("outlet_temperature", t.int24s),
+        0x0019: ("control_temperature", t.int24s),
         0x001A: ("current_in_energy_carrier_demand", t.int24s),
         0x001B: ("current_out_energy_carrier_demand", t.int24s),
         0x001D: ("current_block_period_consump_received", t.uint48_t),
         0x001E: ("current_block_received", t.uint48_t),
+        0x001F: ("dft_summation_received", t.uint48_t),
+        0x0020: ("active_register_tier_delivered", t.enum8),
+        0x0021: ("active_register_tier_received", t.enum8),
+        0x0022: ("last_block_switch_time", t.UTCTime),
         # 0x0100: ('change_reporting_profile', UNKNOWN),
         0x0100: ("current_tier1_summ_delivered", t.uint48_t),
         0x0101: ("current_tier1_summ_received", t.uint48_t),
@@ -84,26 +91,34 @@ class Metering(Cluster):
         0x011C: ("current_tier15_summ_delivered", t.uint48_t),
         0x011D: ("current_tier15_summ_received", t.uint48_t),
         0x0200: ("status", t.bitmap8),
-        0x0201: ("remaining_batt_life", t.uint8_t),
+        0x0201: ("remaining_battery_life", t.uint8_t),
         0x0202: ("hours_in_operation", t.uint24_t),
         0x0203: ("hours_in_fault", t.uint24_t),
         0x0204: ("extended_status", t.bitmap64),
+        0x0205: ("remaining_battery_life_days", t.uint16_t),
+        0x0206: ("current_meter_id", t.LVBytes),
+        0x0207: ("iambient_consumption_indicator", t.enum8),
         0x0300: ("unit_of_measure", t.enum8),
         0x0301: ("multiplier", t.uint24_t),
         0x0302: ("divisor", t.uint24_t),
-        0x0303: ("summa_formatting", t.bitmap8),
+        0x0303: ("summation_formatting", t.bitmap8),
         0x0304: ("demand_formatting", t.bitmap8),
         0x0305: ("historical_consump_formatting", t.bitmap8),
         0x0306: ("metering_device_type", t.bitmap8),
-        0x0307: ("site_id", t.LimitedCharString(32)),
-        0x0308: ("meter_serial_number", t.LimitedCharString(24)),
+        0x0307: ("site_id", t.LimitedLVBytes(32)),
+        0x0308: ("meter_serial_number", t.LimitedLVBytes(24)),
         0x0309: ("energy_carrier_unit_of_meas", t.enum8),
         0x030A: ("energy_carrier_summ_formatting", t.bitmap8),
         0x030B: ("energy_carrier_demand_formatting", t.bitmap8),
-        0x030C: ("temperature_unit_of_meas", t.enum8),
+        0x030C: ("temperature_unit_of_measure", t.enum8),
         0x030D: ("temperature_formatting", t.bitmap8),
-        0x030E: ("module_serial_number", t.LVBytes),
-        0x030F: ("operating_tariff_level", t.LVBytes),
+        0x030E: ("module_serial_number", t.LimitedLVBytes(24)),
+        0x030F: ("operating_tariff_label_delivered", t.LimitedLVBytes(24)),
+        0x0310: ("operating_tariff_label_received", t.LimitedLVBytes(24)),
+        0x0311: ("customer_id_number", t.LimitedLVBytes(24)),
+        0x0312: ("alternative_unit_of_measure", t.enum8),
+        0x0313: ("alternative_demand_formatting", t.bitmap8),
+        0x0314: ("alternative_consumption_formatting", t.bitmap8),
         0x0400: ("instantaneous_demand", t.int24s),
         0x0401: ("currentday_consump_delivered", t.uint24_t),
         0x0402: ("currentday_consump_received", t.uint24_t),
@@ -146,91 +161,91 @@ class Metering(Cluster):
         0x0A02: ("projected_bill", t.uint32_t),
         0x0A03: ("projected_bill_time_stamp", t.uint32_t),
     }
-    server_commands = {
-        0x0000: ("get_profile", (), False),
-        0x0001: ("req_mirror", (), False),
-        0x0002: ("mirror_rem", (), False),
-        0x0003: ("req_fast_poll_mode", (), False),
-        0x0004: ("get_snapshot", (), False),
-        0x0005: ("take_snapshot", (), False),
-        0x0006: ("mirror_report_attr_response", (), True),
+    server_commands: dict[int, ZCLCommandDef] = {
+        0x00: ZCLCommandDef("get_profile", {}, False),
+        0x01: ZCLCommandDef("req_mirror", {}, False),
+        0x02: ZCLCommandDef("mirror_rem", {}, False),
+        0x03: ZCLCommandDef("req_fast_poll_mode", {}, False),
+        0x04: ZCLCommandDef("get_snapshot", {}, False),
+        0x05: ZCLCommandDef("take_snapshot", {}, False),
+        0x06: ZCLCommandDef("mirror_report_attr_response", {}, True),
     }
-    client_commands = {
-        0x0000: ("get_profile_response", (), True),
-        0x0001: ("req_mirror_response", (), True),
-        0x0002: ("mirror_rem_response", (), True),
-        0x0003: ("req_fast_poll_mode_response", (), True),
-        0x0004: ("get_snapshot_response", (), True),
+    client_commands: dict[int, ZCLCommandDef] = {
+        0x00: ZCLCommandDef("get_profile_response", {}, True),
+        0x01: ZCLCommandDef("req_mirror_response", {}, True),
+        0x02: ZCLCommandDef("mirror_rem_response", {}, True),
+        0x03: ZCLCommandDef("req_fast_poll_mode_response", {}, True),
+        0x04: ZCLCommandDef("get_snapshot_response", {}, True),
     }
 
 
 class Messaging(Cluster):
     cluster_id = 0x0703
     ep_attribute = "smartenergy_messaging"
-    attributes = {}
-    server_commands = {}
-    client_commands = {}
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class Tunneling(Cluster):
     cluster_id = 0x0704
     ep_attribute = "smartenergy_tunneling"
-    attributes = {}
-    server_commands = {}
-    client_commands = {}
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class Prepayment(Cluster):
     cluster_id = 0x0705
     ep_attribute = "smartenergy_prepayment"
-    attributes = {}
-    server_commands = {}
-    client_commands = {}
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class EnergyManagement(Cluster):
     cluster_id = 0x0706
     ep_attribute = "smartenergy_energy_management"
-    attributes = {}
-    server_commands = {}
-    client_commands = {}
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class Calendar(Cluster):
     cluster_id = 0x0707
     ep_attribute = "smartenergy_calendar"
-    attributes = {}
-    server_commands = {}
-    client_commands = {}
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class DeviceManagement(Cluster):
     cluster_id = 0x0708
     ep_attribute = "smartenergy_device_management"
-    attributes = {}
-    server_commands = {}
-    client_commands = {}
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class Events(Cluster):
     cluster_id = 0x0709
     ep_attribute = "smartenergy_events"
-    attributes = {}
-    server_commands = {}
-    client_commands = {}
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class MduPairing(Cluster):
     cluster_id = 0x070A
     ep_attribute = "smartenergy_mdu_pairing"
-    attributes = {}
-    server_commands = {}
-    client_commands = {}
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}
 
 
 class KeyEstablishment(Cluster):
     cluster_id = 0x0800
     ep_attribute = "smartenergy_key_establishment"
-    attributes = {}
-    server_commands = {}
-    client_commands = {}
+    attributes: dict[int, ZCLAttributeDef] = {}
+    server_commands: dict[int, ZCLCommandDef] = {}
+    client_commands: dict[int, ZCLCommandDef] = {}

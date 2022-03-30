@@ -16,12 +16,19 @@ class ListSubclass(list):
 
 @dataclasses.dataclass(frozen=True)
 class StructField:
-    name: typing.Optional[str] = None
-    type: typing.Optional[type] = None
+    name: str | None = None
+    type: type | None = None
 
-    requires: typing.Optional[typing.Callable[["Struct"], bool]] = None
+    requires: typing.Callable[[Struct], bool] | None = dataclasses.field(
+        default=None, repr=False
+    )
+    optional: bool | None = False
 
-    def replace(self, **kwargs) -> "StructField":
+    repr: typing.Callable[[typing.Any], str] | None = dataclasses.field(
+        default=repr, repr=False
+    )
+
+    def replace(self, **kwargs) -> StructField:
         return dataclasses.replace(self, **kwargs)
 
     def _convert_type(self, value):
@@ -35,6 +42,9 @@ class StructField:
                 f"Failed to convert {self.name}={value!r} from type"
                 f" {type(value)} to {self.type}"
             ) from e
+
+
+_STRUCT = typing.TypeVar("_STRUCT", bound="Struct")
 
 
 class Struct:
@@ -57,16 +67,29 @@ class Struct:
         # We generate fields up here to fail early and cache it
         cls.fields = cls._real_cls()._get_fields()
 
-    def __new__(cls, *args, **kwargs) -> Struct:
-        real_cls = cls._real_cls()
+        # Check to see if the Struct is also an integer
+        cls._int_type = next(
+            (
+                c
+                for c in cls.__mro__[1:]
+                if issubclass(c, t.FixedIntType) and not issubclass(c, Struct)
+            ),
+            None,
+        )
 
-        # Like a copy constructor
-        if len(args) == 1 and isinstance(args[0], real_cls):
+    def __new__(cls: type[_STRUCT], *args, **kwargs) -> _STRUCT:
+        cls = cls._real_cls()
+
+        if len(args) == 1 and isinstance(args[0], cls):
+            # Like a copy constructor
             if kwargs:
                 raise ValueError(f"Cannot use copy constructor with kwargs: {kwargs!r}")
 
             kwargs = args[0].as_dict()
             args = ()
+        elif len(args) == 1 and cls._int_type is not None and isinstance(args[0], int):
+            # Integer constructor
+            return cls.deserialize(cls._int_type(args[0]).serialize())[0]
 
         # Pretend our signature is `__new__(cls, p1: t1, p2: t2, ...)`
         signature = inspect.Signature(
@@ -84,7 +107,7 @@ class Struct:
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
 
-        instance = super().__new__(real_cls)
+        instance = super().__new__(cls)
 
         # Set each attributes on the instance
         for name, value in bound.arguments.items():
@@ -94,7 +117,7 @@ class Struct:
         return instance
 
     @classmethod
-    def _get_fields(cls) -> typing.List["StructField"]:
+    def _get_fields(cls) -> list[StructField]:
         fields = ListSubclass()
 
         # We need both to throw type errors in case a field is not annotated
@@ -138,7 +161,7 @@ class Struct:
 
         return fields
 
-    def assigned_fields(self, *, strict=False) -> typing.List["StructField"]:
+    def assigned_fields(self, *, strict=False) -> list[tuple[StructField, typing.Any]]:
         assigned_fields = ListSubclass()
 
         for field in self.fields:
@@ -149,7 +172,7 @@ class Struct:
                 continue
 
             # Missing fields cause an error if strict
-            if value is None:
+            if value is None and not field.optional:
                 if strict:
                     raise ValueError(f"Value for field {field.name!r} is required")
                 else:
@@ -161,10 +184,10 @@ class Struct:
 
         return assigned_fields
 
-    def as_dict(self) -> typing.Dict[str, typing.Any]:
+    def as_dict(self) -> dict[str, typing.Any]:
         return {f.name: getattr(self, f.name) for f in self.fields}
 
-    def as_tuple(self) -> typing.Tuple:
+    def as_tuple(self) -> tuple:
         return tuple(getattr(self, f.name) for f in self.fields)
 
     def serialize(self) -> bytes:
@@ -174,6 +197,9 @@ class Struct:
         bitfields = []
 
         for field, value in self.assigned_fields(strict=True):
+            if value is None and field.optional:
+                continue
+
             value = field._convert_type(value)
 
             # All integral types are compacted into one chunk, unless they start and end
@@ -207,7 +233,7 @@ class Struct:
         return b"".join(chunks)
 
     @classmethod
-    def deserialize(cls, data: bytes) -> typing.Tuple["Struct", bytes]:
+    def deserialize(cls: type[_STRUCT], data: bytes) -> tuple[_STRUCT, bytes]:
         instance = cls()
 
         bit_length = 0
@@ -215,6 +241,8 @@ class Struct:
 
         for field in cls.fields:
             if field.requires is not None and not field.requires(instance):
+                continue
+            elif not data and field.optional:
                 continue
 
             if issubclass(field.type, t.FixedIntType) and not (
@@ -257,27 +285,36 @@ class Struct:
 
         return instance, data
 
-    def replace(self, **kwargs) -> "Struct":
+    # TODO: improve? def replace(self: typing.Type[_STRUCT], **kwargs) -> _STRUCT:
+    def replace(self, **kwargs) -> Struct:
         d = self.as_dict().copy()
         d.update(kwargs)
 
         return type(self)(**d)
 
-    def copy(self) -> Struct:
-        return type(self)(**self.as_dict())
-
-    def __eq__(self, other: "Struct") -> bool:
-        if not isinstance(self, type(other)) and not isinstance(other, type(self)):
-            return False
+    def __eq__(self, other: object) -> bool:
+        if self._int_type is not None and isinstance(other, int):
+            return int(self) == other
+        elif not isinstance(self, type(other)) and not isinstance(other, type(self)):
+            return NotImplemented
 
         return self.as_dict() == other.as_dict()
+
+    def __int__(self) -> int:
+        if self._int_type is None:
+            return NotImplemented
+
+        n, remaining = self._int_type.deserialize(self.serialize())
+        assert not remaining
+
+        return int(n)
 
     def __repr__(self) -> str:
         fields = []
 
         # Assigned fields are displayed as `field=value`
         for f, v in self.assigned_fields():
-            fields.append(f"{f.name}={v!r}")
+            fields.append(f"{f.name}={f.repr(v)}")
 
         cls = type(self)
 

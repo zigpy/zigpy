@@ -153,6 +153,78 @@ async def test_handle_message(dev):
     assert ep.handle_message.call_count == 1
 
 
+async def test_handle_message_read_report_conf(dev):
+    ep = dev.add_endpoint(3)
+    ep.add_input_cluster(0x702)
+    tsn = 0x56
+    req_mock = MagicMock()
+    dev._pending[tsn] = req_mock
+
+    # Read Report Configuration Success
+    rsp = dev.handle_message(
+        0x104,  # profile
+        0x702,  # cluster
+        3,  # source EP
+        3,  # dest EP
+        b"\x18\x56\x09\x00\x00\x00\x00\x25\x1e\x00\x84\x03\x01\x02\x03\x04\x05\x06",  # message
+    )
+    # Returns decoded msg when response is not pending, None otherwise
+    assert rsp is None
+    assert req_mock.result.set_result.call_count == 1
+    cfg_sup1 = req_mock.result.set_result.call_args[0][0].attribute_configs[0]
+    assert isinstance(cfg_sup1, zigpy.zcl.foundation.AttributeReportingConfigWithStatus)
+    assert cfg_sup1.status == zigpy.zcl.foundation.Status.SUCCESS
+    assert cfg_sup1.config.direction == 0
+    assert cfg_sup1.config.attrid == 0
+    assert cfg_sup1.config.datatype == 0x25
+    assert cfg_sup1.config.min_interval == 30
+    assert cfg_sup1.config.max_interval == 900
+    assert cfg_sup1.config.reportable_change == 0x060504030201
+
+    # Unsupported attributes
+    tsn2 = 0x5B
+    req_mock2 = MagicMock()
+    dev._pending[tsn2] = req_mock2
+    rsp2 = dev.handle_message(
+        0x104,  # profile
+        0x702,  # cluster
+        3,  # source EP
+        3,  # dest EP
+        b"\x18\x5b\x09\x86\x00\x00\x00\x86\x00\x12\x00\x86\x00\x00\x04",  # message 3x("Unsupported attribute" response)
+    )
+    # Returns decoded msg when response is not pending, None otherwise
+    assert rsp2 is None
+    cfg_unsup1, cfg_unsup2, cfg_unsup3 = req_mock2.result.set_result.call_args[0][
+        0
+    ].attribute_configs
+    assert (
+        cfg_unsup1.status
+        == cfg_unsup2.status
+        == cfg_unsup3.status
+        == zigpy.zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE
+    )
+    assert cfg_unsup1.config.direction == 0x00 and cfg_unsup1.config.attrid == 0x0000
+    assert cfg_unsup2.config.direction == 0x00 and cfg_unsup2.config.attrid == 0x0012
+    assert cfg_unsup3.config.direction == 0x00 and cfg_unsup3.config.attrid == 0x0400
+
+    # One supported, one unsupported
+    tsn3 = 0x5C
+    req_mock3 = MagicMock()
+    dev._pending[tsn3] = req_mock3
+    rsp3 = dev.handle_message(
+        0x104,  # profile
+        0x702,  # cluster
+        3,  # source EP
+        3,  # dest EP
+        b"\x18\x5c\x09\x86\x00\x00\x00\x00\x00\x00\x00\x25\x1e\x00\x84\x03\x01\x02\x03\x04\x05\x06",
+    )
+    assert rsp3 is None
+    cfg_unsup4, cfg_sup2 = req_mock3.result.set_result.call_args[0][0].attribute_configs
+    assert cfg_unsup4.status == zigpy.zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE
+    assert cfg_sup2.status == zigpy.zcl.foundation.Status.SUCCESS
+    assert cfg_sup2.serialize() == cfg_sup1.serialize()
+
+
 async def test_handle_message_reply(dev):
     ep = dev.add_endpoint(3)
     ep.handle_message = MagicMock()
@@ -335,3 +407,10 @@ def test_device_manufacture_id_override(dev):
 
     dev.node_desc = None
     assert dev.manufacturer_id == 2345
+
+
+def test_device_name(dev):
+    """Test device name property."""
+
+    assert dev.nwk == 0xFFFF
+    assert dev.name == "0xFFFF"
