@@ -106,16 +106,16 @@ def test_ints_signed():
     assert int7s(0) == 0
     assert int7s(1) == 1
     assert int7s(-1) == -1
-    assert int7s(2 ** 6 - 1) == 2 ** 6 - 1
-    assert int7s(-(2 ** 6)) == -(2 ** 6)
+    assert int7s(2**6 - 1) == 2**6 - 1
+    assert int7s(-(2**6)) == -(2**6)
 
     with pytest.raises(ValueError):
-        int7s(2 ** 6)
+        int7s(2**6)
 
     with pytest.raises(ValueError):
-        int7s(-(2 ** 6) - 1)
+        int7s(-(2**6) - 1)
 
-    n = int7s(2 ** 6 - 1)
+    n = int7s(2**6 - 1)
 
     with pytest.raises(TypeError):
         n.serialize()
@@ -123,7 +123,7 @@ def test_ints_signed():
     assert int7s(0).bits() == [0, 0, 0, 0, 0, 0, 0]
     assert int7s(1).bits() == [0, 0, 0, 0, 0, 0, 1]
     assert int7s(-1).bits() == [1, 1, 1, 1, 1, 1, 1]
-    assert int7s(2 ** 6 - 1).bits() == [0, 1, 1, 1, 1, 1, 1]
+    assert int7s(2**6 - 1).bits() == [0, 1, 1, 1, 1, 1, 1]
 
     assert int7s.from_bits([1, 0, 1, 0, 1, 1, 0, 1, 1, 1]) == (0b0110111, [1, 0, 1])
 

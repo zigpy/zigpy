@@ -60,7 +60,7 @@ class FixedIntType(int):
 
         n = super().__new__(cls, *args, **kwargs)
 
-        if not cls._signed and not 0 <= n <= 2 ** cls._bits - 1:
+        if not cls._signed and not 0 <= n <= 2**cls._bits - 1:
             raise ValueError(f"{int(n)} is not an unsigned {cls._bits} bit integer")
         elif (
             cls._signed and not -(2 ** (cls._bits - 1)) <= n <= 2 ** (cls._bits - 1) - 1
@@ -121,7 +121,7 @@ class FixedIntType(int):
             n |= bit & 1
 
         if cls._signed and n >= 2 ** (cls._bits - 1):
-            n -= 2 ** cls._bits
+            n -= 2**cls._bits
 
         return cls(n), bits[: -cls._bits]
 
@@ -418,7 +418,7 @@ class BaseFloat(float):
         src_exp = src_biased_exp - 2 ** (src._exponent_bits - 1)
 
         if src_biased_exp == (1 << src._exponent_bits) - 1:
-            dst_biased_exp = 2 ** dst._exponent_bits - 1
+            dst_biased_exp = 2**dst._exponent_bits - 1
         elif src_biased_exp == 0:
             dst_biased_exp = 0
         else:
