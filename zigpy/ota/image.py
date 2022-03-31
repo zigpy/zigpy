@@ -223,8 +223,12 @@ def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:
     Attempts to extract any known OTA image type from data. Does not validate firmware.
     """
 
-    # IKEA container needs to be unwrapped
-    if data.startswith(b"NGIS"):
+    if len(data) > 4 and int.from_bytes(data[0:4], "little") + 21 == len(data):
+        # Legrand OTA images are prefixed with their unwrapped size and include a 1 + 16
+        # byte suffix
+        return OTAImage.deserialize(data[4:-17])
+    elif data.startswith(b"NGIS"):
+        # IKEA container needs to be unwrapped
         if len(data) <= 24:
             raise ValueError(
                 f"Data too short to contain IKEA container header: {len(data)}"
