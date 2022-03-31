@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import keyword
-from typing import Any
+import typing
 import warnings
 
 import zigpy.types as t
@@ -516,6 +516,8 @@ class FrameControl(t.Struct, t.uint8_t):
 
 
 class ZCLHeader(t.Struct):
+    NO_MANUFACTURER_ID = -1  # type: typing.Literal
+
     frame_control: FrameControl
     manufacturer: t.uint16_t = t.StructField(
         requires=lambda hdr: hdr.frame_control.is_manufacturer_specific
@@ -526,6 +528,10 @@ class ZCLHeader(t.Struct):
     def __new__(
         cls, frame_control=None, manufacturer=None, tsn=None, command_id=None
     ) -> ZCLHeader:
+        # Allow "auto manufacturer ID" to be disabled in higher layers
+        if manufacturer is cls.NO_MANUFACTURER_ID:
+            manufacturer = None
+
         if frame_control is not None and manufacturer is not None:
             frame_control.is_manufacturer_specific = True
 
@@ -537,6 +543,9 @@ class ZCLHeader(t.Struct):
         return self.frame_control.is_reply == 1
 
     def __setattr__(self, name, value) -> None:
+        if name == "manufacturer" and value is self.NO_MANUFACTURER_ID:
+            value = None
+
         super().__setattr__(name, value)
 
         if name == "manufacturer" and self.frame_control is not None:
@@ -820,7 +829,7 @@ for command_id, command_def in list(GENERAL_COMMANDS.items()):
     ).with_compiled_schema()
 
 
-def __getattr__(name: str) -> Any:
+def __getattr__(name: str) -> typing.Any:
     if name == "Command":
         warnings.warn(
             f"`{__name__}.Command` has been renamed to `{__name__}.GeneralCommand",
