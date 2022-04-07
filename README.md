@@ -11,7 +11,7 @@ Zigbee stacks and hardware from many different hardware chip manufacturers are s
 
 zigpy contains common code implementing ZCL (Zigbee Cluster Library) and ZDO (Zigbee Device Object) application state management which is being used by various radio libraries implementing the actual interface with the radio modules from different manufacturers. The separate radio libraries interface with radio hardware adapters/modules over USB and GPIO using different native UART serial protocols.
 
-A reference application integration implementation using the zigpy library exist in **[Home Assistant](https://www.home-assistant.io)** (Python based open source home automation software) as part of its **[ZHA integration component](https://www.home-assistant.io/integrations/zha/)**.
+The **[ZHA integration component for Home Assistant](https://www.home-assistant.io/integrations/zha/)**, the [Zigbee Plugin for Domoticz](https://www.domoticz.com/wiki/ZigbeeForDomoticz), and the [Zigbee Plugin for Jeedom](https://doc.jeedom.com/en_US/plugins/automation%20protocol/zigbee/) (competing open-source home automation software) are all using [zigpy libraries](https://github.com/zigpy/) as dependencies, as such they could be used as references of different implementations if looking to integrate a Zigbee solution into your application.
 
 ### Zigbee device OTA updates
 
