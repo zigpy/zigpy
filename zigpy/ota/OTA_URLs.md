@@ -12,7 +12,7 @@ https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json
 
 ### Dresden Elektronik
 
-Dresden Elektronik Zigbee OTA firmware images are made publicly available by Dresden Elektronik (first-party) at the followin URL:
+Dresden Elektronik Zigbee OTA firmware images are made publicly available by Dresden Elektronik (first-party) at the following URL:
 
 https://github.com/dresden-elektronik/deconz-rest-plugin/wiki/OTA-Image-Types---Firmware-versions
 
@@ -20,13 +20,13 @@ Dresden Elektronik also provide third-party OTA firmware images and external URL
 
 ### EUROTRONICS
 
-EUROTRONICS Zigbee OTA firmware images are made publicly available by EUROTRONIC Technology (first-party) at the followin URL:
+EUROTRONICS Zigbee OTA firmware images are made publicly available by EUROTRONIC Technology (first-party) at the following URL:
 
 https://github.com/EUROTRONIC-Technology/Spirit-ZigBee/releases/download/
 
 ### IKEA Trådfri 
 
-IKEA Tradfi Zigbee OTA firmware images are made publicly available by IKEA (first-party) at the followin URL:
+IKEA Tradfi Zigbee OTA firmware images are made publicly available by IKEA (first-party) at the following URL:
 
 Download-URL: 
 
@@ -42,7 +42,7 @@ https://ww8.ikea.com/ikeahomesmart/releasenotes/releasenotes.html
 
 ### LEDVANCE/Sylvania and OSRAM Lightify
 
-LEDVANCE/Sylvania and OSRAM Lightify Zigbee OTA firmware images are made publicly available by LEDVANCE (first-party) at the followin URL:
+LEDVANCE/Sylvania and OSRAM Lightify Zigbee OTA firmware images are made publicly available by LEDVANCE (first-party) at the following URL:
 
 https://update.ledvance.com/firmware-overview
 
@@ -52,36 +52,36 @@ https://consumer.sylvania.com/our-products/smart/sylvania-smart-zigbee-products-
 
 ### Legrand/Netatmo
 
-Legrand/Netatmo Zigbee OTA firmware images are made publicly available by Legrand (first-party) at the followin URL:
+Legrand/Netatmo Zigbee OTA firmware images are made publicly available by Legrand (first-party) at the following URL:
 
 https://developer.legrand.com/documentation/operating-manual/ https://developer.legrand.com/documentation/firmwares-download/
 
 ### LiXee
 
-LiXee Zigbee OTA firmware images are made publicly available by Fairecasoimeme / ZiGate (first-party) at the followin URL:
+LiXee Zigbee OTA firmware images are made publicly available by Fairecasoimeme / ZiGate (first-party) at the following URL:
 
 https://github.com/fairecasoimeme/Zlinky_TIC/releases
 
 ### SALUS/Computime
 
-SALUS/Computime Hue Zigbee OTA firmware images are made publicly available by SALUS (first-party) at the followin URL:
+SALUS/Computime Hue Zigbee OTA firmware images are made publicly available by SALUS (first-party) at the following URL:
 
 https://eu.salusconnect.io/demo/default/status/firmware
 
 ### Sengled
 
-Sengled Zigbee OTA firmware images are made publicly available by dresden-elektronik (third-party) at the followin URL:
+Sengled Zigbee OTA firmware images are made publicly available by Dresden Elektronik (third-party) at the following URL:
 
 https://github.com/dresden-elektronik/deconz-rest-plugin/wiki/OTA-Image-Types---Firmware-versions#sengled
 
 ### Philips Hue (Signify)
 
-Philips Hue (Signify) Zigbee OTA firmware images are made publicly available by dresden-elektronik (third-party) at the followin URL:
+Philips Hue (Signify) Zigbee OTA firmware images are made publicly available by Dresden Elektronik (third-party) at the following URL:
 
 https://github.com/dresden-elektronik/deconz-rest-plugin/wiki/OTA-Image-Types---Firmware-versions#philips-hue
 
 ### Ubisys
 
-Ubisys Zigbee OTA firmware images are made publicly available by Ubisys (first-party) at the followin URL:
+Ubisys Zigbee OTA firmware images are made publicly available by Ubisys (first-party) at the following URL:
 
 https://www.ubisys.de/en/support/firmware/
