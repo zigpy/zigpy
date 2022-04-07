@@ -77,6 +77,10 @@ ZHA deviation handling in Home Assistant relies on the third-party [ZHA Device H
 ### ZHA integration component for Home Assistant
 [ZHA integration component for Home Assistant](https://www.home-assistant.io/integrations/zha/) is a reference implementation of the zigpy library as integrated into the core of **[Home Assistant](https://www.home-assistant.io)** (a Python based open source home automation software). There are also other GUI and non-GUI projects for Home Assistant's ZHA components which builds on or depends on its features and functions to enhance or improve its user-experience, some of those are listed and linked below.
 
+#### ZHA Toolkit
+
+[ZHA Toolkit](https://github.com/mdeweerd/zha-toolkit) is a custom service for "rare" Zigbee operations using the [ZHA integration component](https://www.home-assistant.io/integrations/zha) in [Home Assistant](https://www.home-assistant.io/). The purpose of ZHA Toolkit and its Home Assistant 'Services' feature, is to provide direct control over low level zigbee commands provided in ZHA or zigpy that are not otherwise available or too limited for some use cases. ZHA Toolkit can also; serve as a framework to do local low level coding (the modules are reloaded on each call), provide access to some higher level commands such as ZNP backup (and restore), make it easier to perform one-time operations where (some) Zigbee knowledge is sufficient and avoiding the need to understand the inner workings of ZHA or Zigpy (methods, quirks, etc).
+
 #### ZHA Custom
 [zha_custom](https://github.com/Adminiuga/zha_custom) is a custom component package for Home Assistant (with its ZHA component for zigpy integration) that acts as zigpy commands service wrapper, when installed it allows you to enter custom commands via to zigy to example change advanced configuration and settings that are not available in the UI.
 
