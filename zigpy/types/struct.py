@@ -184,11 +184,21 @@ class Struct:
 
         return assigned_fields
 
-    def as_dict(self) -> dict[str, typing.Any]:
-        return {f.name: getattr(self, f.name) for f in self.fields}
+    def as_dict(self, *, skip_missing: bool = False) -> dict[str, typing.Any]:
+        d = {}
 
-    def as_tuple(self) -> tuple:
-        return tuple(getattr(self, f.name) for f in self.fields)
+        for f in self.fields:
+            value = getattr(self, f.name)
+
+            if value is None and skip_missing:
+                continue
+
+            d[f.name] = value
+
+        return d
+
+    def as_tuple(self, *, skip_missing: bool = False) -> tuple:
+        return tuple(self.as_dict(skip_missing=skip_missing).values())
 
     def serialize(self) -> bytes:
         chunks = []

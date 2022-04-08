@@ -774,3 +774,15 @@ def test_struct_field_repr():
     s1 = TestStruct(foo=1, bar=2, baz="asd")
 
     assert repr(s1) == "TestStruct(foo=2, bar=bar, baz=baz)"
+
+
+def test_skip_missing():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+        bar: t.uint16_t
+
+    assert TestStruct(foo=1).as_dict() == {"foo": 1, "bar": None}
+    assert TestStruct(foo=1).as_dict(skip_missing=True) == {"foo": 1}
+
+    assert TestStruct(foo=1).as_tuple() == (1, None)
+    assert TestStruct(foo=1).as_tuple(skip_missing=True) == (1,)
