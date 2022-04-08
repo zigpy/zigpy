@@ -1380,7 +1380,7 @@ class Ota(Cluster):
                 "file_offset": t.uint32_t,
                 "maximum_data_size": t.uint8_t,
                 "request_node_addr?": t.EUI64,
-                "minumum_block_period?": t.uint16_t,
+                "minimum_block_period?": t.uint16_t,
             },
             False,
         ),
