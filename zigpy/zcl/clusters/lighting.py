@@ -148,7 +148,7 @@ class Color(Cluster):
         0x02: ZCLCommandDef(
             "step_hue",
             {
-                "setp_mode": StepMode,
+                "step_mode": StepMode,
                 "step_size": t.uint8_t,
                 "transition_time": t.uint8_t,
                 "options_mask?": t.bitmap8,

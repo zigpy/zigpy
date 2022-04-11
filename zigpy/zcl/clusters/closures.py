@@ -336,7 +336,7 @@ class DoorLock(Cluster):
             "set_holiday_schedule",
             {
                 "holiday_schedule_id": t.uint8_t,
-                "loca_start_time": t.LocalTime,
+                "local_start_time": t.LocalTime,
                 "local_end_time": t.LocalTime,
                 "operating_mode_during_holiday": OperatingMode,
             },

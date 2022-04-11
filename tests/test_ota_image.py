@@ -314,6 +314,11 @@ def test_get_image_block_offset_too_large(raw_header, raw_sub_element):
         img.get_image_block(offset, size)
 
 
+def test_cached_image_wrapping(image):
+    cached_img = CachedImage(image)
+    assert cached_img.header is image.header
+
+
 def wrap_ikea(data):
     header = bytearray(100)
     header[0:4] = b"NGIS"
@@ -400,6 +405,21 @@ def test_parse_ota_hue_invalid():
         firmware.parse_ota_image(header.replace(manufacturer_id=12).serialize() + rest)
 
 
-def test_cached_image_wrapping(image):
-    cached_img = CachedImage(image)
-    assert cached_img.header is image.header
+def test_legrand_container_unwrapping(image):
+    # Unwrapped size prefix and 1 + 16 byte suffix
+    data = (
+        t.uint32_t(len(image.serialize())).serialize()
+        + image.serialize()
+        + b"\x01"
+        + b"abcdabcdabcdabcd"
+    )
+
+    with pytest.raises(ValueError):
+        firmware.parse_ota_image(data[:-1])
+
+    with pytest.raises(ValueError):
+        firmware.parse_ota_image(b"\xFF" + data[1:])
+
+    img, rest = firmware.parse_ota_image(data)
+    assert not rest
+    assert img == image
