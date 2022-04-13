@@ -1333,7 +1333,7 @@ class Ota(Cluster):
         Apply_after_timeout = 0x00
         Do_not_apply_after_timeout = 0x01
 
-    class ImageNotifyCommand(t.Struct):
+    class image_notify(t.Struct):
         class PayloadType(t.enum8):
             QueryJitter = 0x00
             QueryJitter_ManufacturerCode = 0x01
@@ -1360,7 +1360,7 @@ class Ota(Cluster):
             )
         )
 
-    class QueryNextImageCommand(t.Struct):
+    class query_next_image(t.Struct):
         class FieldControl(t.bitmap8):
             HardwareVersion = 0b00000001
 
@@ -1372,7 +1372,7 @@ class Ota(Cluster):
             requires=(lambda s: s.field_control & s.FieldControl.HardwareVersion)
         )
 
-    class ImageBlockCommand(t.Struct):
+    class image_block(t.Struct):
         class FieldControl(t.bitmap8):
             RequestNodeAddr = 0b00000001
             MinimumBlockPeriod = 0b00000010
@@ -1390,7 +1390,7 @@ class Ota(Cluster):
             requires=(lambda s: s.field_control & s.FieldControl.MinimumBlockPeriod)
         )
 
-    class ImagePageCommand(t.Struct):
+    class image_page(t.Struct):
         class FieldControl(t.bitmap8):
             RequestNodeAddr = 0b00000001
 
@@ -1426,9 +1426,9 @@ class Ota(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands: dict[int, ZCLCommandDef] = {
-        0x01: ZCLCommandDef("query_next_image", QueryNextImageCommand, False),
-        0x03: ZCLCommandDef("image_block", ImageBlockCommand, False),
-        0x04: ZCLCommandDef("image_page", ImagePageCommand, False),
+        0x01: ZCLCommandDef("query_next_image", query_next_image, False),
+        0x03: ZCLCommandDef("image_block", image_block, False),
+        0x04: ZCLCommandDef("image_page", image_page, False),
         0x06: ZCLCommandDef(
             "upgrade_end",
             {
@@ -1452,7 +1452,7 @@ class Ota(Cluster):
         ),
     }
     client_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("image_notify", ImageNotifyCommand, False),
+        0x00: ZCLCommandDef("image_notify", image_notify, False),
         0x02: ZCLCommandDef(
             "query_next_image_response",
             {

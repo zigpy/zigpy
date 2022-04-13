@@ -614,10 +614,18 @@ def test_ota_image_block_field_control():
     cluster = zcl.clusters.general.Ota(ep)
 
     hdr, response = cluster.deserialize(data)
+    assert hdr.serialize() + response.serialize() == data
 
-    assert (
-        response.field_control
-        == cluster.ImageBlockCommand.FieldControl.MinimumBlockPeriod
+    image_block = cluster.commands_by_name["image_block"].schema
+
+    assert response == image_block(
+        field_control=image_block.FieldControl.MinimumBlockPeriod,
+        manufacturer_code=4107,
+        image_type=285,
+        file_version=0x01001F00,
+        file_offset=0,
+        maximum_data_size=64,
+        minimum_block_period=0,
     )
-    assert response.minimum_block_period == 0
+
     assert response.request_node_addr is None
