@@ -1333,7 +1333,7 @@ class Ota(Cluster):
         Apply_after_timeout = 0x00
         Do_not_apply_after_timeout = 0x01
 
-    class image_notify(t.Struct):
+    class image_notify(foundation.CommandSchema):
         class PayloadType(t.enum8):
             QueryJitter = 0x00
             QueryJitter_ManufacturerCode = 0x01
@@ -1360,7 +1360,7 @@ class Ota(Cluster):
             )
         )
 
-    class query_next_image(t.Struct):
+    class query_next_image(foundation.CommandSchema):
         class FieldControl(t.bitmap8):
             HardwareVersion = 0b00000001
 
@@ -1372,7 +1372,7 @@ class Ota(Cluster):
             requires=(lambda s: s.field_control & s.FieldControl.HardwareVersion)
         )
 
-    class image_block(t.Struct):
+    class image_block(foundation.CommandSchema):
         class FieldControl(t.bitmap8):
             RequestNodeAddr = 0b00000001
             MinimumBlockPeriod = 0b00000010
@@ -1390,7 +1390,7 @@ class Ota(Cluster):
             requires=(lambda s: s.field_control & s.FieldControl.MinimumBlockPeriod)
         )
 
-    class image_page(t.Struct):
+    class image_page(foundation.CommandSchema):
         class FieldControl(t.bitmap8):
             RequestNodeAddr = 0b00000001
 
