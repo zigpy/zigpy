@@ -604,3 +604,28 @@ async def test_ias_zone(send_rsp_mock):
     hdr.frame_control.disable_default_response = False
     t.handle_message(hdr, args)
     assert send_rsp_mock.call_count == 1
+
+
+def test_ota_image_block_field_control():
+    """Test OTA image_block with field control deserializes properly."""
+    data = bytes.fromhex("01d403020b101d01001f000100000000400000")
+
+    ep = MagicMock()
+    cluster = zcl.clusters.general.Ota(ep)
+
+    hdr, response = cluster.deserialize(data)
+    assert hdr.serialize() + response.serialize() == data
+
+    image_block = cluster.commands_by_name["image_block"].schema
+
+    assert response == image_block(
+        field_control=image_block.FieldControl.MinimumBlockPeriod,
+        manufacturer_code=4107,
+        image_type=285,
+        file_version=0x01001F00,
+        file_offset=0,
+        maximum_data_size=64,
+        minimum_block_period=0,
+    )
+
+    assert response.request_node_addr is None

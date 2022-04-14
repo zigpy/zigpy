@@ -207,7 +207,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 cluster.cluster_id = cluster_id
                 return cluster
 
-        LOGGER.warning("Unknown cluster 0x%04X", cluster_id)
+        LOGGER.debug("Unknown cluster 0x%04X", cluster_id)
 
         cluster = cls(endpoint, is_server)
         cluster.cluster_id = cluster_id

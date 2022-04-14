@@ -58,7 +58,7 @@ class ApplianceEventAlerts(Cluster):
         0x00: ZCLCommandDef("get_alerts", {}, False)
     }
     client_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("get_alarts_response", {}, True),
+        0x00: ZCLCommandDef("get_alerts_response", {}, True),
         0x01: ZCLCommandDef("alerts_notification", {}, False),
         0x02: ZCLCommandDef("event_notification", {}, False),
     }

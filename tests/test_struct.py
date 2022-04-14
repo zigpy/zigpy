@@ -121,19 +121,18 @@ def test_struct_construction():
 
 
 def test_nested_structs(expose_global):
-    @expose_global
-    class InnerStruct(t.Struct):
-        b: t.uint8_t
-        c: t.uint8_t
-
     class OuterStruct(t.Struct):
+        class InnerStruct(t.Struct):
+            b: t.uint8_t
+            c: t.uint8_t
+
         a: t.uint8_t
-        inner: InnerStruct
+        inner: None = t.StructField(type=InnerStruct)
         d: t.uint8_t
 
     assert len(OuterStruct.fields) == 3
     assert OuterStruct.fields.a.type is t.uint8_t
-    assert OuterStruct.fields.inner.type is InnerStruct
+    assert OuterStruct.fields.inner.type is OuterStruct.InnerStruct
     assert len(OuterStruct.fields.inner.type.fields) == 2
     assert OuterStruct.fields.d.type is t.uint8_t
 
@@ -146,13 +145,10 @@ def test_nested_structs(expose_global):
 
 
 def test_nested_structs2(expose_global):
-    @expose_global
-    class InnerStruct(t.Struct):
-        b: t.uint8_t
-        c: t.uint8_t
-
     class OuterStruct(t.Struct):
-        InnerStruct = InnerStruct
+        class InnerStruct(t.Struct):
+            b: t.uint8_t
+            c: t.uint8_t
 
         a: t.uint8_t
         inner: None = t.StructField(type=InnerStruct)
@@ -774,3 +770,15 @@ def test_struct_field_repr():
     s1 = TestStruct(foo=1, bar=2, baz="asd")
 
     assert repr(s1) == "TestStruct(foo=2, bar=bar, baz=baz)"
+
+
+def test_skip_missing():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+        bar: t.uint16_t
+
+    assert TestStruct(foo=1).as_dict() == {"foo": 1, "bar": None}
+    assert TestStruct(foo=1).as_dict(skip_missing=True) == {"foo": 1}
+
+    assert TestStruct(foo=1).as_tuple() == (1, None)
+    assert TestStruct(foo=1).as_tuple(skip_missing=True) == (1,)

@@ -1333,11 +1333,78 @@ class Ota(Cluster):
         Apply_after_timeout = 0x00
         Do_not_apply_after_timeout = 0x01
 
-    class ImageNotifyPayloadType(t.enum8):
-        QueryJitter = 0x00
-        QueryJitter_ManufacturerCode = 0x01
-        QueryJitter_ManufacturerCode_ImageType = 0x02
-        QueryJitter_ManufacturerCode_ImageType_NewFileVersion = 0x03
+    class image_notify(foundation.CommandSchema):
+        class PayloadType(t.enum8):
+            QueryJitter = 0x00
+            QueryJitter_ManufacturerCode = 0x01
+            QueryJitter_ManufacturerCode_ImageType = 0x02
+            QueryJitter_ManufacturerCode_ImageType_NewFileVersion = 0x03
+
+        payload_type: None = t.StructField(type=PayloadType)
+        query_jitter: t.uint8_t
+        manufacturer_code: t.uint16_t = t.StructField(
+            requires=(
+                lambda s: s.payload_type >= s.PayloadType.QueryJitter_ManufacturerCode
+            )
+        )
+        image_type: t.uint16_t = t.StructField(
+            requires=(
+                lambda s: s.payload_type
+                >= s.PayloadType.QueryJitter_ManufacturerCode_ImageType
+            )
+        )
+        new_file_version: t.uint32_t = t.StructField(
+            requires=(
+                lambda s: s.payload_type
+                >= s.PayloadType.QueryJitter_ManufacturerCode_ImageType_NewFileVersion
+            )
+        )
+
+    class query_next_image(foundation.CommandSchema):
+        class FieldControl(t.bitmap8):
+            HardwareVersion = 0b00000001
+
+        field_control: None = t.StructField(type=FieldControl)
+        manufacturer_code: t.uint16_t
+        image_type: t.uint16_t
+        current_file_version: t.uint32_t
+        hardware_version: t.uint16_t = t.StructField(
+            requires=(lambda s: s.field_control & s.FieldControl.HardwareVersion)
+        )
+
+    class image_block(foundation.CommandSchema):
+        class FieldControl(t.bitmap8):
+            RequestNodeAddr = 0b00000001
+            MinimumBlockPeriod = 0b00000010
+
+        field_control: None = t.StructField(type=FieldControl)
+        manufacturer_code: t.uint16_t
+        image_type: t.uint16_t
+        file_version: t.uint32_t
+        file_offset: t.uint32_t
+        maximum_data_size: t.uint8_t
+        request_node_addr: t.EUI64 = t.StructField(
+            requires=(lambda s: s.field_control & s.FieldControl.RequestNodeAddr)
+        )
+        minimum_block_period: t.uint16_t = t.StructField(
+            requires=(lambda s: s.field_control & s.FieldControl.MinimumBlockPeriod)
+        )
+
+    class image_page(foundation.CommandSchema):
+        class FieldControl(t.bitmap8):
+            RequestNodeAddr = 0b00000001
+
+        field_control: None = t.StructField(type=FieldControl)
+        manufacturer_code: t.uint16_t
+        image_type: t.uint16_t
+        file_version: t.uint32_t
+        file_offset: t.uint32_t
+        maximum_data_size: t.uint8_t
+        page_size: t.uint16_t
+        response_spacing: t.uint16_t
+        request_node_addr: t.EUI64 = t.StructField(
+            requires=lambda s: s.field_control & s.FieldControl.RequestNodeAddr
+        )
 
     cluster_id = 0x0019
     ep_attribute = "ota"
@@ -1359,46 +1426,9 @@ class Ota(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands: dict[int, ZCLCommandDef] = {
-        0x01: ZCLCommandDef(
-            "query_next_image",
-            {
-                "field_control": t.uint8_t,
-                "manufacturer_code": t.uint16_t,
-                "image_type": t.uint16_t,
-                "current_file_version": t.uint32_t,
-                "hardware_version?": t.uint16_t,
-            },
-            False,
-        ),
-        0x03: ZCLCommandDef(
-            "image_block",
-            {
-                "field_control": t.uint8_t,
-                "manufacturer_code": t.uint16_t,
-                "image_type": t.uint16_t,
-                "file_version": t.uint32_t,
-                "file_offset": t.uint32_t,
-                "maximum_data_size": t.uint8_t,
-                "request_node_addr?": t.EUI64,
-                "minumum_block_period?": t.uint16_t,
-            },
-            False,
-        ),
-        0x04: ZCLCommandDef(
-            "image_page",
-            {
-                "field_control": t.uint8_t,
-                "manufacturer_code": t.uint16_t,
-                "image_type": t.uint16_t,
-                "file_version": t.uint32_t,
-                "file_offset": t.uint32_t,
-                "maximum_data_size": t.uint8_t,
-                "page_size": t.uint16_t,
-                "response_spacing": t.uint16_t,
-                "request_node_addr?": t.EUI64,
-            },
-            False,
-        ),
+        0x01: ZCLCommandDef("query_next_image", query_next_image, False),
+        0x03: ZCLCommandDef("image_block", image_block, False),
+        0x04: ZCLCommandDef("image_page", image_page, False),
         0x06: ZCLCommandDef(
             "upgrade_end",
             {
@@ -1422,17 +1452,7 @@ class Ota(Cluster):
         ),
     }
     client_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef(
-            "image_notify",
-            {
-                "payload_type": ImageNotifyPayloadType,
-                "query_jitter": t.uint8_t,
-                "manufacturer_code?": t.uint16_t,
-                "image_type?": t.uint16_t,
-                "new_file_version?": t.uint32_t,
-            },
-            False,
-        ),
+        0x00: ZCLCommandDef("image_notify", image_notify, False),
         0x02: ZCLCommandDef(
             "query_next_image_response",
             {
