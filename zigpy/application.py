@@ -438,6 +438,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """
         raise NotImplementedError()  # pragma: no cover
 
+    @abc.abstractmethod
+    async def register_endpoint(self, descriptor: zdo_types.SimpleDescriptor):
+        """
+        Registers a new endpoint on the controlled device. Not all radios will implement
+        this.
+        """
+        raise NotImplementedError()  # pragma: no cover
+
     async def mrequest(
         self,
         group_id: t.uint16_t,

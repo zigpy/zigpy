@@ -64,6 +64,9 @@ class App(zigpy.application.ControllerApplication):
     async def force_remove(self, dev):
         pass
 
+    async def register_endpoint(self, descriptor):
+        pass
+
     async def permit_ncp(self, time_s=60):
         pass
 
