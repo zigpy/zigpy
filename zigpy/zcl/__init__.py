@@ -547,11 +547,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         if len(records) == 1 and records[0].status == foundation.Status.SUCCESS:
             for attr_rec in attrs:
                 self._attr_cache[attr_rec.attrid] = attr_rec.value.value
+                self.listener_event("attribute_updated", attr_rec.attrid, attr_rec.value.value)
         else:
             failed = [rec.attrid for rec in records]
             for attr_rec in attrs:
                 if attr_rec.attrid not in failed:
                     self._attr_cache[attr_rec.attrid] = attr_rec.value.value
+                    self.listener_event("attribute_updated", attr_rec.attrid, attr_rec.value.value)
 
         return result
 
