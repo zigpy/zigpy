@@ -111,6 +111,21 @@ async def test_request(dev):
     assert dev.last_seen is not None
 
 
+async def test_request_without_reply(dev):
+    seq = sentinel.tsn
+
+    async def mock_req(*args, **kwargs):
+        dev._pending[seq].result.set_result(sentinel.result)
+        return 0, sentinel.radio_status
+
+    dev.application.request.side_effect = mock_req
+    assert dev.last_seen is None
+    r = await dev.request(1, 2, 3, 3, seq, b"", expect_reply=False)
+    assert r is None
+    assert dev._application.request.call_count == 1
+    assert dev.last_seen is not None
+
+
 async def test_failed_request(dev):
     assert dev.last_seen is None
     dev._application.request = AsyncMock(return_value=(1, "error"))
