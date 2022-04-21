@@ -271,7 +271,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.debug("Extending timeout for 0x%02x request", sequence)
             timeout = APS_REPLY_TIMEOUT_EXTENDED
         with self._pending.new(sequence) as req:
-            result, msg = await self._application.request(
+            radio_result, msg = await self._application.request(
                 self,
                 profile,
                 cluster,
@@ -282,7 +282,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 expect_reply=expect_reply,
                 use_ieee=use_ieee,
             )
-            if result != foundation.Status.SUCCESS:
+            if radio_result != foundation.Status.SUCCESS:
                 self.debug(
                     (
                         "Delivery error for seq # 0x%02x, on endpoint id %s "
@@ -301,10 +301,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             # If application.request raises an exception, we won't get here, so
             # won't update last_seen, as expected
             self.last_seen = time.time()
-            if expect_reply:
-                result = await asyncio.wait_for(req.result, timeout)
 
-        return result
+            if not expect_reply:
+                return None
+
+            return await asyncio.wait_for(req.result, timeout)
 
     def deserialize(self, endpoint_id, cluster_id, data):
         return self.endpoints[endpoint_id].deserialize(cluster_id, data)
