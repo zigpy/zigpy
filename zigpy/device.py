@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import binascii
+from datetime import datetime, timezone
 import enum
 import logging
-import time
 from typing import TYPE_CHECKING, Any
 
 from zigpy.const import (
@@ -58,7 +58,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
         self.lqi: int | None = None
         self.rssi: int | None = None
-        self.last_seen: float | None = None
+        self._last_seen: datetime | None = None
         self._initialize_task: asyncio.Task | None = None
         self._group_scan_task: asyncio.Task | None = None
         self._listeners = {}
@@ -76,6 +76,25 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def name(self) -> str:
         return f"0x{self.nwk:04X}"
+
+    def update_last_seen(self) -> None:
+        """
+        Update the `last_seen` attribute to the current time and emit an event.
+        """
+
+        self.last_seen = datetime.now(timezone.utc)
+
+    @property
+    def last_seen(self) -> datetime | None:
+        return self._last_seen
+
+    @last_seen.setter
+    def last_seen(self, value: datetime | int | float):
+        if isinstance(value, (int, float)):
+            value = datetime.fromtimestamp(value, timezone.utc)
+
+        self._last_seen = value
+        self.listener_event("device_last_seen_updated", self._last_seen)
 
     @property
     def non_zdo_endpoints(self) -> list[zigpy.endpoint.Endpoint]:
@@ -300,7 +319,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 )
             # If application.request raises an exception, we won't get here, so
             # won't update last_seen, as expected
-            self.last_seen = time.time()
+            self.update_last_seen()
 
             if not expect_reply:
                 return None
@@ -321,7 +340,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         dst_addressing: None
         | (Addressing.Group | Addressing.IEEE | Addressing.NWK) = None,
     ):
-        self.last_seen = time.time()
+        self.update_last_seen()
 
         try:
             hdr, args = self.deserialize(src_ep, cluster, message)
