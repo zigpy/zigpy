@@ -4,6 +4,7 @@ import os
 import sqlite3
 import sys
 import threading
+import time
 
 import aiosqlite
 import pytest
@@ -173,8 +174,12 @@ async def test_database(tmpdir):
     dev.model = "Model"
     assert dev.get_signature()[SIG_MANUFACTURER] == "Custom"
     assert dev.get_signature()[SIG_MODEL] == "Model"
+
+    ts = time.time()
+    dev.last_seen = ts
     dev_last_seen = dev.last_seen
-    assert isinstance(dev_last_seen, datetime)
+    assert isinstance(dev.last_seen, datetime)
+    assert abs(dev.last_seen.timestamp() - ts) < 0.1
 
     # Test a CustomDevice
     custom_ieee = make_ieee(1)
