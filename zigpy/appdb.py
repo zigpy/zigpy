@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import logging
+import re
 import types
 from typing import Any
 
@@ -28,6 +29,7 @@ DB_V = f"_v{DB_VERSION}"
 MIN_SQLITE_VERSION = (3, 24, 0)
 
 UNIX_EPOCH = datetime.fromtimestamp(0, tz=timezone.utc)
+DB_V_REGEX = re.compile(r"(?:_v\d+)?$")
 
 
 def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.ModuleType:
@@ -631,14 +633,23 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             dev.add_context_listener(self)
             dev.neighbors.add_context_listener(self)
 
-    async def _table_exists(self, name: str) -> bool:
-        async with self.execute(
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?",
-            [name],
-        ) as cursor:
-            (count,) = await cursor.fetchone()
+    async def _get_table_versions(self) -> dict[str, str]:
+        tables = {}
 
-        return bool(count)
+        async with self.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ) as cursor:
+            async for (name,) in cursor:
+                # The regex will always return a match
+                match = DB_V_REGEX.search(name)
+                assert match is not None
+
+                tables[name] = match.group(0)
+
+        return tables
+
+    async def _table_exists(self, name: str) -> bool:
+        return name in (await self._get_table_versions())
 
     async def _run_migrations(self):
         """Migrates the database to the newest schema."""
@@ -695,9 +706,27 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     ):
         """Copy rows from one set of tables into another."""
 
+        # Extract the "old" table version suffix
+        tables = await self._get_table_versions()
+        old_table_name = list(table_map.keys())[0]
+        old_version = tables[old_table_name]
+
+        # Check which tables would not be migrated
+        old_tables = [t for t, v in tables.items() if v == old_version]
+        unmigrated_old_tables = [t for t in old_tables if t not in table_map]
+
+        if unmigrated_old_tables:
+            raise RuntimeError(
+                f"The following tables were not migrated: {unmigrated_old_tables}"
+            )
+
         # Insertion order matters for foreign key constraints but any rows that fail
         # to insert due to constraint violations can be discarded
         for old_table, new_table in table_map.items():
+            # Ignore tables without a migration
+            if new_table is None:
+                continue
+
             async with self.execute(f"SELECT * FROM {old_table}") as cursor:
                 async for row in cursor:
                     placeholders = ",".join("?" * len(row))
@@ -773,6 +802,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 # These were migrated in v4
                 "neighbors_v4": "neighbors_v5",
                 "node_descriptors_v4": "node_descriptors_v5",
+                # Explicitly specify which tables will not be migrated
+                "devices": None,
+                "neighbors": None,
+                "node_descriptors": None,
             },
             errors="warn",
         )
@@ -793,6 +826,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "attributes_cache_v5": "attributes_cache_v6",
                 "neighbors_v5": "neighbors_v6",
                 "node_descriptors_v5": "node_descriptors_v6",
+                "devices_v5": None,
             }
         )
 
@@ -811,7 +845,19 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
 
                 await self._migrate_tables(
-                    {"attributes": "attributes_cache_v6"}, errors="ignore"
+                    {
+                        "attributes": "attributes_cache_v6",
+                        "devices": None,
+                        "endpoints": None,
+                        "clusters": None,
+                        "neighbors": None,
+                        "node_descriptors": None,
+                        "output_clusters": None,
+                        "groups": None,
+                        "group_members": None,
+                        "relays": None,
+                    },
+                    errors="ignore",
                 )
 
     async def _migrate_to_v7(self):
@@ -830,6 +876,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "attributes_cache_v6": "attributes_cache_v7",
                 "neighbors_v6": "neighbors_v7",
                 "node_descriptors_v6": "node_descriptors_v7",
+                "devices_v6": None,
             }
         )
 
@@ -857,5 +904,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "neighbors_v7": "neighbors_v8",
                 "node_descriptors_v7": "node_descriptors_v8",
                 "unsupported_attributes_v7": "unsupported_attributes_v8",
+                "devices_v7": None,
             }
         )
