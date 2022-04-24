@@ -6,6 +6,16 @@ from . import basic
 from .struct import Struct
 
 
+def _hex_string_to_bytes(hex_string: str) -> bytes:
+    """
+    Parses a hex string with optional colon delimiters and whitespace into bytes.
+    """
+
+    # Strips out whitespace and colons
+    cleaned = "".join(hex_string.replace(":", "").split()).upper()
+    return bytes.fromhex(cleaned)
+
+
 class BroadcastAddress(basic.enum16):
     ALL_DEVICES = 0xFFFF
     RESERVED_FFFE = 0xFFFE
@@ -29,7 +39,7 @@ class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
     def convert(cls, ieee: str):
         if ieee is None:
             return None
-        ieee = [basic.uint8_t(p, base=16) for p in ieee.split(":")[::-1]]
+        ieee = [basic.uint8_t(p) for p in _hex_string_to_bytes(ieee)[::-1]]
         assert len(ieee) == cls._length
         return cls(ieee)
 
@@ -40,7 +50,7 @@ class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
 
     @classmethod
     def convert(cls, key: str) -> KeyData:
-        key = [basic.uint8_t(p, base=16) for p in key.split(":")]
+        key = [basic.uint8_t(p) for p in _hex_string_to_bytes(key)]
         assert len(key) == cls._length
         return cls(key)
 
