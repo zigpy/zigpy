@@ -9,6 +9,7 @@ from zigpy.config import (
     CONF_OTA,
     CONF_OTA_DIR,
     CONF_OTA_IKEA,
+    CONF_OTA_INOVELLI,
     CONF_OTA_LEDVANCE,
     CONF_OTA_SALUS,
 )
@@ -108,6 +109,8 @@ class OTA(zigpy.util.ListenableMixin):
             self.add_listener(zigpy.ota.provider.FileStore())
         if ota_config[CONF_OTA_IKEA]:
             self.add_listener(zigpy.ota.provider.Trådfri())
+        if ota_config[CONF_OTA_INOVELLI]:
+            self.add_listener(zigpy.ota.provider.Inovelli())
         if ota_config[CONF_OTA_LEDVANCE]:
             self.add_listener(zigpy.ota.provider.Ledvance())
         if ota_config[CONF_OTA_SALUS]:
