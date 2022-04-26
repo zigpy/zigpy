@@ -468,6 +468,9 @@ async def test_write_attributes_cache_default_response(cluster, status):
     ),
 )
 async def test_write_attributes_cache_success(cluster, attributes, result):
+    listener = MagicMock()
+    cluster.add_listener(listener)
+
     rsp_type = t.List[foundation.WriteAttributesStatusRecord]
     write_mock = AsyncMock(return_value=[rsp_type.deserialize(result)[0]])
     with patch.object(cluster, "_write_attributes", write_mock):
@@ -475,6 +478,7 @@ async def test_write_attributes_cache_success(cluster, attributes, result):
         assert cluster._write_attributes.call_count == 1
         for attr_id in attributes:
             assert cluster._attr_cache[attr_id] == attributes[attr_id]
+            listener.attribute_updated.assert_any_call(attr_id, attributes[attr_id])
 
 
 @pytest.mark.parametrize(
@@ -501,6 +505,9 @@ async def test_write_attributes_cache_success(cluster, attributes, result):
     ),
 )
 async def test_write_attributes_cache_failure(cluster, attributes, result, failed):
+    listener = MagicMock()
+    cluster.add_listener(listener)
+
     rsp_type = foundation.WriteAttributesResponse
     write_mock = AsyncMock(return_value=[rsp_type.deserialize(result)[0]])
 
@@ -510,8 +517,15 @@ async def test_write_attributes_cache_failure(cluster, attributes, result, faile
         for attr_id in attributes:
             if attr_id in failed:
                 assert attr_id not in cluster._attr_cache
+
+                # Failed writes do not propagate
+                with pytest.raises(AssertionError):
+                    listener.attribute_updated.assert_any_call(
+                        attr_id, attributes[attr_id]
+                    )
             else:
                 assert cluster._attr_cache[attr_id] == attributes[attr_id]
+                listener.attribute_updated.assert_any_call(attr_id, attributes[attr_id])
 
 
 def test_read_attributes_response(cluster):

@@ -299,6 +299,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.debug("Device %s changed id (0x%04x => 0x%04x)", ieee, dev.nwk, nwk)
             new_join = True
 
+        # Not all stacks send a ZDO command when a device joins so the last_seen should
+        # be updated
+        dev.update_last_seen()
+
         if new_join:
             self.listener_event("device_joined", dev)
             dev.schedule_initialize()
