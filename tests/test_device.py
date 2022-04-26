@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import logging
 
 import pytest
@@ -11,7 +12,7 @@ import zigpy.state
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
-from .async_mock import AsyncMock, MagicMock, patch, sentinel
+from .async_mock import ANY, AsyncMock, MagicMock, patch, sentinel
 
 
 @pytest.fixture
@@ -429,3 +430,22 @@ def test_device_name(dev):
 
     assert dev.nwk == 0xFFFF
     assert dev.name == "0xFFFF"
+
+
+def test_device_last_seen(dev, monkeypatch):
+    """Test the device last_seen property handles updates and broadcasts events."""
+
+    monkeypatch.setattr(dev, "listener_event", MagicMock())
+    assert dev.last_seen is None
+
+    dev.last_seen = 0
+    epoch = datetime(1970, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
+    assert dev.last_seen == epoch
+
+    dev.listener_event.assert_called_once_with("device_last_seen_updated", epoch)
+    dev.listener_event.reset_mock()
+
+    dev.update_last_seen()
+    dev.listener_event.assert_called_once_with("device_last_seen_updated", ANY)
+    event_time = dev.listener_event.mock_calls[0][1][1]
+    assert (event_time - datetime.now(timezone.utc)).total_seconds() < 0.1
