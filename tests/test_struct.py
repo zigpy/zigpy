@@ -121,19 +121,18 @@ def test_struct_construction():
 
 
 def test_nested_structs(expose_global):
-    @expose_global
-    class InnerStruct(t.Struct):
-        b: t.uint8_t
-        c: t.uint8_t
-
     class OuterStruct(t.Struct):
+        class InnerStruct(t.Struct):
+            b: t.uint8_t
+            c: t.uint8_t
+
         a: t.uint8_t
-        inner: InnerStruct
+        inner: None = t.StructField(type=InnerStruct)
         d: t.uint8_t
 
     assert len(OuterStruct.fields) == 3
     assert OuterStruct.fields.a.type is t.uint8_t
-    assert OuterStruct.fields.inner.type is InnerStruct
+    assert OuterStruct.fields.inner.type is OuterStruct.InnerStruct
     assert len(OuterStruct.fields.inner.type.fields) == 2
     assert OuterStruct.fields.d.type is t.uint8_t
 
@@ -146,13 +145,10 @@ def test_nested_structs(expose_global):
 
 
 def test_nested_structs2(expose_global):
-    @expose_global
-    class InnerStruct(t.Struct):
-        b: t.uint8_t
-        c: t.uint8_t
-
     class OuterStruct(t.Struct):
-        InnerStruct = InnerStruct
+        class InnerStruct(t.Struct):
+            b: t.uint8_t
+            c: t.uint8_t
 
         a: t.uint8_t
         inner: None = t.StructField(type=InnerStruct)

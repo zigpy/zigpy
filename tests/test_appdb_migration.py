@@ -9,7 +9,7 @@ from zigpy.appdb import sqlite3
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
-from tests.async_mock import patch
+from tests.async_mock import AsyncMock, MagicMock, patch
 from tests.test_appdb import auto_kill_aiosqlite, make_app  # noqa: F401
 
 
@@ -457,3 +457,41 @@ async def test_v5_to_v7_migration(test_db):
 
     app = await make_app(test_db_v5)
     await app.pre_shutdown()
+
+
+async def test_migration_missing_tables():
+    app = MagicMock()
+    conn = MagicMock()
+    conn.close = AsyncMock()
+
+    appdb = zigpy.appdb.PersistingListener(conn, app)
+
+    appdb._get_table_versions = AsyncMock(
+        return_value={"table1_v1": "1", "table1": "", "table2_v1": "1"}
+    )
+
+    results = MagicMock()
+    results.__aiter__.return_value = results
+    results.__anext__.side_effect = StopIteration
+
+    appdb.execute = MagicMock()
+    appdb.execute.return_value.__aenter__.return_value = results
+
+    # Migrations must explicitly specify all old tables, even if they will be untouched
+    with pytest.raises(RuntimeError):
+        await appdb._migrate_tables(
+            {
+                "table1_v1": "table1_v2",
+                # "table2_v1": "table2_v2",
+            }
+        )
+
+    # The untouched table will never be queried
+    await appdb._migrate_tables({"table1_v1": "table1_v2", "table2_v1": None})
+
+    appdb.execute.assert_called_once_with("SELECT * FROM table1_v1")
+
+    with pytest.raises(AssertionError):
+        appdb.execute.assert_called_once_with("SELECT * FROM table2_v1")
+
+    await appdb.shutdown()

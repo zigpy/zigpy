@@ -696,6 +696,29 @@ async def test_ledvance_refresh_list(
                         "salesRegion": "us",
                         "length": 170800,
                     },
+                    # Old version but shows up after the new version in the OTA list
+                    {
+                        "blob": None,
+                        "identity": {
+                            "company": 4489,
+                            "product": 13,
+                            "version": {
+                                "major": 0,
+                                "minor": 2,
+                                "build": 428,
+                                "revision": 40,
+                            },
+                        },
+                        "releaseNotes": "",
+                        "shA256": sha_2,
+                        "name": "A19_TW_10_year_IMG000D_00102428-encrypted.ota",
+                        "productName": "A19 TW 10 year",
+                        "fullName": fn_2,
+                        "extension": ".ota",
+                        "released": "2015-02-28T16:42:50",
+                        "salesRegion": "us",
+                        "length": 170800,
+                    },
                 ]
             }
         ]

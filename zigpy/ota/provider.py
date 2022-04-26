@@ -194,9 +194,21 @@ class LedvanceImage:
     @classmethod
     def new(cls, data):
         identity = data["identity"]
-        ver = identity["version"]
+        version_parts = identity["version"]
 
-        res = cls(manufacturer_id=identity["company"], image_type=identity["product"])
+        # This matches the OTA file's `image_version` for every image
+        version = (
+            (version_parts["major"] << 24)
+            | (version_parts["minor"] << 16)
+            | (version_parts["build"] << 8)
+            | (version_parts["revision"] << 0)
+        )
+
+        res = cls(
+            manufacturer_id=identity["company"],
+            image_type=identity["product"],
+            version=version,
+        )
         res.file_version = int(data["fullName"].split("/")[1], 16)
         res.image_size = data["length"]
         res.url = (
@@ -206,8 +218,8 @@ class LedvanceImage:
                     "Company": identity["company"],
                     "Product": identity["product"],
                     "Version": (
-                        f"{ver['major']}.{ver['minor']}"
-                        f".{ver['build']}.{ver['revision']}"
+                        f"{version_parts['major']}.{version_parts['minor']}"
+                        f".{version_parts['build']}.{version_parts['revision']}"
                     ),
                 }
             )
@@ -280,6 +292,11 @@ class Ledvance(Basic):
         self._cache.clear()
         for fw in fw_lst["firmwares"]:
             img = LedvanceImage.new(fw)
+
+            # Ignore earlier images
+            if img.key in self._cache and self._cache[img.key].version > img.version:
+                continue
+
             self._cache[img.key] = img
         self.update_expiration()
 
