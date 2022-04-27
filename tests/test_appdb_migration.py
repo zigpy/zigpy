@@ -405,13 +405,6 @@ async def test_v4_to_v5_migration_bad_neighbors(test_db, with_bad_neighbor):
         assert num_new_neighbors == num_v4_neighbors
 
 
-async def test_v5_to_v6_migration(test_db):
-    test_db_v5 = test_db("simple_v5.sql")
-
-    app = await make_app(test_db_v5)
-    await app.pre_shutdown()
-
-
 @pytest.mark.parametrize("with_quirk_attribute", [False, True])
 async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribute):
     """V5's schema was too rigid and failed to migrate endpoints created by quirks"""
@@ -495,3 +488,21 @@ async def test_migration_missing_tables():
         appdb.execute.assert_called_once_with("SELECT * FROM table2_v1")
 
     await appdb.shutdown()
+
+
+async def test_last_seen_migration(test_db):
+    test_db_v5 = test_db("simple_v5.sql")
+
+    # To preserve the old behavior, `0` will not be exposed to ZHA, only `None`
+    app = await make_app(test_db_v5)
+    dev = app.get_device(nwk=0xBD4D)
+
+    assert dev.last_seen is None
+    dev.update_last_seen()
+    assert isinstance(dev.last_seen, float)
+    await app.pre_shutdown()
+
+    # But the device's `last_seen` will still update properly when it's actually set
+    app = await make_app(test_db_v5)
+    assert isinstance(app.get_device(nwk=0xBD4D).last_seen, float)
+    await app.pre_shutdown()

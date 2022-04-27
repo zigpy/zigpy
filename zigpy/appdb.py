@@ -228,7 +228,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
         await self.execute(
-            f"UPDATE devices{DB_V} SET last_seen=? WHERE ieee=?", (ieee, last_seen)
+            f"UPDATE devices{DB_V} SET last_seen=? WHERE ieee=?", (last_seen, ieee)
         )
         await self._db.commit()
 
@@ -372,7 +372,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         status=excluded.status,
                         last_seen=excluded.last_seen"""
         await self.execute(
-            q, (device.ieee, device.nwk, device.status, device._last_seen)
+            q, (device.ieee, device.nwk, device.status, device._last_seen or UNIX_EPOCH)
         )
 
         if device.node_desc is not None:
