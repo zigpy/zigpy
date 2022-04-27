@@ -1,5 +1,4 @@
 import asyncio
-from datetime import datetime
 import os
 import sqlite3
 import sys
@@ -178,8 +177,8 @@ async def test_database(tmpdir):
     ts = time.time()
     dev.last_seen = ts
     dev_last_seen = dev.last_seen
-    assert isinstance(dev.last_seen, datetime)
-    assert abs(dev.last_seen.timestamp() - ts) < 0.1
+    assert isinstance(dev.last_seen, float)
+    assert abs(dev.last_seen - ts) < 0.01
 
     # Test a CustomDevice
     custom_ieee = make_ieee(1)
@@ -202,7 +201,7 @@ async def test_database(tmpdir):
     assert dev.endpoints[1].in_clusters[0x0008]._attr_cache[0x0011] == 17
     assert dev.endpoints[99].in_clusters[0x0008]._attr_cache[0x0011] == 17
     custom_dev_last_seen = dev.last_seen
-    assert isinstance(custom_dev_last_seen, datetime)
+    assert isinstance(custom_dev_last_seen, float)
 
     await app.pre_shutdown()
 
@@ -221,7 +220,7 @@ async def test_database(tmpdir):
     assert dev.endpoints[3].device_type == profiles.zll.DeviceType.COLOR_LIGHT
     assert dev.relays == relays_1
     # The timestamp won't be restored exactly but it is more than close enough
-    assert abs((dev.last_seen - dev_last_seen).total_seconds()) < 0.01
+    assert abs(dev.last_seen - dev_last_seen) < 0.01
 
     dev = app2.get_device(custom_ieee)
     # This virtual attribute is added by the quirk, there is no corresponding cluster
@@ -229,7 +228,7 @@ async def test_database(tmpdir):
     assert dev.endpoints[1].in_clusters[0x0008]._attr_cache[0x0011] == 17
     assert dev.endpoints[99].in_clusters[0x0008]._attr_cache[0x0011] == 17
     assert dev.relays == relays_2
-    assert abs((dev.last_seen - custom_dev_last_seen).total_seconds()) < 0.01
+    assert abs(dev.last_seen - custom_dev_last_seen) < 0.01
     dev.relays = None
 
     app.handle_leave(99, ieee)
@@ -771,6 +770,50 @@ async def test_load_unsupp_attr_wrong_cluster(tmpdir):
 
     # reload
     app = await make_app(db)
+    await app.pre_shutdown()
+
+
+async def test_last_seen(tmpdir):
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee=ieee)
+    ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    clus._update_attribute(4, "Custom")
+    clus._update_attribute(5, "Model")
+    app.device_initialized(dev)
+
+    old_last_seen = dev.last_seen
+    await app.pre_shutdown()
+
+    # The `last_seen` of a joined device persists
+    app = await make_app(db)
+    dev = app.get_device(ieee=ieee)
+    await app.pre_shutdown()
+
+    next_last_seen = dev.last_seen
+    assert abs(next_last_seen - old_last_seen) < 0.01
+
+    await asyncio.sleep(0.1)
+
+    # Now the last_seen will update
+    app = await make_app(db)
+    dev = app.get_device(ieee=ieee)
+    dev.update_last_seen()
+    await app.pre_shutdown()
+
+    # And it will be updated when the database next loads
+    app = await make_app(db)
+    dev = app.get_device(ieee=ieee)
+    assert dev.last_seen > next_last_seen + 0.1
     await app.pre_shutdown()
 
 
