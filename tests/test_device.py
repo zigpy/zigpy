@@ -440,7 +440,7 @@ def test_device_last_seen(dev, monkeypatch):
 
     dev.last_seen = 0
     epoch = datetime(1970, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
-    assert dev.last_seen == epoch
+    assert dev.last_seen == epoch.timestamp()
 
     dev.listener_event.assert_called_once_with("device_last_seen_updated", epoch)
     dev.listener_event.reset_mock()
