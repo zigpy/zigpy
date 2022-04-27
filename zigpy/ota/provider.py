@@ -607,7 +607,7 @@ class Inovelli(Basic):
                     fw_lst = await rsp.json()
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
-        for model, firmwares in firmwares.items():
+        for model, firmwares in fw_lst.items():
             # Pick the most recent firmware
             firmware = max(firmwares, key=lambda obj: obj["version"])
             img = INOVELLIImage.new(data=firmware, model=model)
