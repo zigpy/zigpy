@@ -773,6 +773,50 @@ async def test_load_unsupp_attr_wrong_cluster(tmpdir):
     await app.pre_shutdown()
 
 
+async def test_last_seen(tmpdir):
+    db = os.path.join(str(tmpdir), "test.db")
+    app = await make_app(db)
+
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee=ieee)
+    ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    clus._update_attribute(4, "Custom")
+    clus._update_attribute(5, "Model")
+    app.device_initialized(dev)
+
+    old_last_seen = dev.last_seen
+    await app.pre_shutdown()
+
+    # The `last_seen` of a joined device persists
+    app = await make_app(db)
+    dev = app.get_device(ieee=ieee)
+    await app.pre_shutdown()
+
+    next_last_seen = dev.last_seen
+    assert abs(next_last_seen - old_last_seen) < 0.01
+
+    await asyncio.sleep(0.1)
+
+    # Now the last_seen will update
+    app = await make_app(db)
+    dev = app.get_device(ieee=ieee)
+    dev.update_last_seen()
+    await app.pre_shutdown()
+
+    # And it will be updated when the database next loads
+    app = await make_app(db)
+    dev = app.get_device(ieee=ieee)
+    assert dev.last_seen > next_last_seen + 0.1
+    await app.pre_shutdown()
+
+
 @pytest.mark.parametrize(
     "stdlib_version,use_sqlite",
     [
