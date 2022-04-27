@@ -541,6 +541,7 @@ class FileStore(Basic):
 @attr.s
 class INOVELLIImage:
     manufacturer_id = attr.ib()
+    model = attr.ib()
     version = attr.ib(default=None)
     url = attr.ib(default=None)
 
@@ -611,6 +612,8 @@ class Inovelli(Basic):
             # Pick the most recent firmware
             firmware = max(firmwares, key=lambda obj: obj["version"])
             img = INOVELLIImage.new(data=firmware, model=model)
+            self._cache[img.key] = img
+
         self.update_expiration()
 
     async def filter_get_image(self, key: ImageKey) -> bool:
