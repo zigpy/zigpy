@@ -566,7 +566,7 @@ class INOVELLIImage:
                 data = await rsp.read()
 
         ota_image, _ = parse_ota_image(data)
-        assert ota_image.header.key == self.key
+        assert ota_image.header.manufacturer_id == self.key.manufacturer_id
 
         LOGGER.debug(
             "Finished downloading %s bytes from %s for %s ver %s",
