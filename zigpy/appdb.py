@@ -372,7 +372,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         status=excluded.status,
                         last_seen=excluded.last_seen"""
         await self.execute(
-            q, (device.ieee, device.nwk, device.status, device.last_seen)
+            q, (device.ieee, device.nwk, device.status, device._last_seen)
         )
 
         if device.node_desc is not None:

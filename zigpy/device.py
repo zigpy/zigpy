@@ -85,8 +85,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.last_seen = datetime.now(timezone.utc)
 
     @property
-    def last_seen(self) -> datetime | None:
-        return self._last_seen
+    def last_seen(self) -> float | None:
+        return self._last_seen.timestamp() if self._last_seen is not None else None
 
     @last_seen.setter
     def last_seen(self, value: datetime | int | float):
