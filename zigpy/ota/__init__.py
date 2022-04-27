@@ -123,9 +123,10 @@ class OTA(zigpy.util.ListenableMixin):
     async def get_ota_image(
         self, manufacturer_id, image_type, model=None
     ) -> Optional[CachedImage]:
-        if (
-            manufacturer_id == zigpy.ota.provider.Salus.MANUFACTURER_ID
-        ):  # Salus/computime does not pass a useful image_type
+        if manufacturer_id in (
+            zigpy.ota.provider.Salus.MANUFACTURER_ID,
+            zigpy.ota.provider.Inovelli.MANUFACTURER_ID,
+        ):  # Salus/computime/Inovelli do not pass a useful image_type
             # in the message from the device. So construct key based on model name.
             key = ImageKey(manufacturer_id, model)
         else:
