@@ -565,7 +565,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             async for (ieee, nwk, status, last_seen) in cursor:
                 dev = self._application.add_device(ieee, nwk)
                 dev.status = zigpy.device.Status(status)
-                dev._last_seen = last_seen
+
+                if last_seen > UNIX_EPOCH:
+                    dev._last_seen = last_seen
 
     async def _load_node_descriptors(self) -> None:
         async with self.execute(f"SELECT * FROM node_descriptors{DB_V}") as cursor:
