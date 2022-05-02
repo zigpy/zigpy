@@ -23,8 +23,9 @@ LOGGER = logging.getLogger(__name__)
 LOCK_REFRESH = "firmware_list"
 
 ENABLE_IKEA_OTA = "enable_ikea_ota"
+ENABLE_INOVELLI_OTA = "enable_inovelli_ota"
 ENABLE_LEDVANCE_OTA = "enable_ledvance_ota"
-SKIP_OTA_FILES = (ENABLE_IKEA_OTA, ENABLE_LEDVANCE_OTA)
+SKIP_OTA_FILES = (ENABLE_IKEA_OTA, ENABLE_INOVELLI_OTA, ENABLE_LEDVANCE_OTA)
 
 
 class Basic(zigpy.util.LocalLogMixin, ABC):
@@ -535,3 +536,85 @@ class FileStore(Basic):
                     self._cache[img.key] = img
 
         self.update_expiration()
+
+
+@attr.s
+class INOVELLIImage:
+    manufacturer_id = attr.ib()
+    model = attr.ib()
+    version = attr.ib(default=None)
+    url = attr.ib(default=None)
+
+    @classmethod
+    def new(cls, data, model):
+        ver = int(data["version"], 10)
+        url = data["firmware"]
+
+        res = cls(
+            manufacturer_id=Inovelli.MANUFACTURER_ID, model=model, version=ver, url=url
+        )
+        return res
+
+    @property
+    def key(self):
+        return ImageKey(self.manufacturer_id, self.model)
+
+    async def fetch_image(self) -> BaseOTAImage | None:
+        async with aiohttp.ClientSession() as req:
+            LOGGER.debug("Downloading %s for %s", self.url, self.key)
+            async with req.get(self.url) as rsp:
+                data = await rsp.read()
+
+        ota_image, _ = parse_ota_image(data)
+        assert ota_image.header.manufacturer_id == self.key.manufacturer_id
+
+        LOGGER.debug(
+            "Finished downloading %s bytes from %s for %s ver %s",
+            self.url,
+            self.key,
+            self.version,
+        )
+        return ota_image
+
+
+class Inovelli(Basic):
+    """Inovelli OTA Firmware provider."""
+
+    UPDATE_URL = "https://files.inovelli.com/firmware/firmware.json"
+    MANUFACTURER_ID = 4655
+    HEADERS = {"accept": "application/json"}
+
+    async def initialize_provider(self, ota_config: dict) -> None:
+        self.info("OTA provider enabled")
+        self.config = ota_config
+        await self.refresh_firmware_list()
+        self.enable()
+
+    async def refresh_firmware_list(self) -> None:
+        if self._locks[LOCK_REFRESH].locked():
+            return
+
+        async with self._locks[LOCK_REFRESH]:
+            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
+                async with req.get(self.UPDATE_URL) as rsp:
+                    if not (200 <= rsp.status <= 299):
+                        self.warning(
+                            "Couldn't download '%s': %s/%s",
+                            rsp.url,
+                            rsp.status,
+                            rsp.reason,
+                        )
+                        return
+                    fw_lst = await rsp.json()
+        self.debug("Finished downloading firmware update list")
+        self._cache.clear()
+        for model, firmwares in fw_lst.items():
+            # Pick the most recent firmware
+            firmware = max(firmwares, key=lambda obj: obj["version"])
+            img = INOVELLIImage.new(data=firmware, model=model)
+            self._cache[img.key] = img
+
+        self.update_expiration()
+
+    async def filter_get_image(self, key: ImageKey) -> bool:
+        return key.manufacturer_id != self.MANUFACTURER_ID
