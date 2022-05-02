@@ -9,7 +9,7 @@ from zigpy.appdb import sqlite3
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
-from tests.async_mock import patch
+from tests.async_mock import AsyncMock, MagicMock, patch
 from tests.test_appdb import auto_kill_aiosqlite, make_app  # noqa: F401
 
 
@@ -405,13 +405,6 @@ async def test_v4_to_v5_migration_bad_neighbors(test_db, with_bad_neighbor):
         assert num_new_neighbors == num_v4_neighbors
 
 
-async def test_v5_to_v6_migration(test_db):
-    test_db_v5 = test_db("simple_v5.sql")
-
-    app = await make_app(test_db_v5)
-    await app.shutdown()
-
-
 @pytest.mark.parametrize("with_quirk_attribute", [False, True])
 async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribute):
     """V5's schema was too rigid and failed to migrate endpoints created by quirks"""
@@ -456,4 +449,60 @@ async def test_v5_to_v7_migration(test_db):
     test_db_v5 = test_db("simple_v5.sql")
 
     app = await make_app(test_db_v5)
+    await app.pre_shutdown()
+
+
+async def test_migration_missing_tables():
+    app = MagicMock()
+    conn = MagicMock()
+    conn.close = AsyncMock()
+
+    appdb = zigpy.appdb.PersistingListener(conn, app)
+
+    appdb._get_table_versions = AsyncMock(
+        return_value={"table1_v1": "1", "table1": "", "table2_v1": "1"}
+    )
+
+    results = MagicMock()
+    results.__aiter__.return_value = results
+    results.__anext__.side_effect = StopIteration
+
+    appdb.execute = MagicMock()
+    appdb.execute.return_value.__aenter__.return_value = results
+
+    # Migrations must explicitly specify all old tables, even if they will be untouched
+    with pytest.raises(RuntimeError):
+        await appdb._migrate_tables(
+            {
+                "table1_v1": "table1_v2",
+                # "table2_v1": "table2_v2",
+            }
+        )
+
+    # The untouched table will never be queried
+    await appdb._migrate_tables({"table1_v1": "table1_v2", "table2_v1": None})
+
+    appdb.execute.assert_called_once_with("SELECT * FROM table1_v1")
+
+    with pytest.raises(AssertionError):
+        appdb.execute.assert_called_once_with("SELECT * FROM table2_v1")
+
+    await appdb.shutdown()
+
+
+async def test_last_seen_migration(test_db):
+    test_db_v5 = test_db("simple_v5.sql")
+
+    # To preserve the old behavior, `0` will not be exposed to ZHA, only `None`
+    app = await make_app(test_db_v5)
+    dev = app.get_device(nwk=0xBD4D)
+
+    assert dev.last_seen is None
+    dev.update_last_seen()
+    assert isinstance(dev.last_seen, float)
+    await app.shutdown()
+
+    # But the device's `last_seen` will still update properly when it's actually set
+    app = await make_app(test_db_v5)
+    assert isinstance(app.get_device(nwk=0xBD4D).last_seen, float)
     await app.shutdown()

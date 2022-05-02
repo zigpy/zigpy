@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import binascii
+from datetime import datetime, timezone
 import enum
 import logging
-import time
 from typing import TYPE_CHECKING, Any
 
 from zigpy.const import (
@@ -58,7 +58,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
         self.lqi: int | None = None
         self.rssi: int | None = None
-        self.last_seen: float | None = None
+        self._last_seen: datetime | None = None
         self._initialize_task: asyncio.Task | None = None
         self._group_scan_task: asyncio.Task | None = None
         self._listeners = {}
@@ -76,6 +76,25 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def name(self) -> str:
         return f"0x{self.nwk:04X}"
+
+    def update_last_seen(self) -> None:
+        """
+        Update the `last_seen` attribute to the current time and emit an event.
+        """
+
+        self.last_seen = datetime.now(timezone.utc)
+
+    @property
+    def last_seen(self) -> float | None:
+        return self._last_seen.timestamp() if self._last_seen is not None else None
+
+    @last_seen.setter
+    def last_seen(self, value: datetime | int | float):
+        if isinstance(value, (int, float)):
+            value = datetime.fromtimestamp(value, timezone.utc)
+
+        self._last_seen = value
+        self.listener_event("device_last_seen_updated", self._last_seen)
 
     @property
     def non_zdo_endpoints(self) -> list[zigpy.endpoint.Endpoint]:
@@ -271,7 +290,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.debug("Extending timeout for 0x%02x request", sequence)
             timeout = APS_REPLY_TIMEOUT_EXTENDED
         with self._pending.new(sequence) as req:
-            result, msg = await self._application.request(
+            radio_result, msg = await self._application.request(
                 self,
                 profile,
                 cluster,
@@ -282,7 +301,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 expect_reply=expect_reply,
                 use_ieee=use_ieee,
             )
-            if result != foundation.Status.SUCCESS:
+            if radio_result != foundation.Status.SUCCESS:
                 self.debug(
                     (
                         "Delivery error for seq # 0x%02x, on endpoint id %s "
@@ -300,11 +319,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 )
             # If application.request raises an exception, we won't get here, so
             # won't update last_seen, as expected
-            self.last_seen = time.time()
-            if expect_reply:
-                result = await asyncio.wait_for(req.result, timeout)
+            self.update_last_seen()
 
-        return result
+            if not expect_reply:
+                return None
+
+            return await asyncio.wait_for(req.result, timeout)
 
     def deserialize(self, endpoint_id, cluster_id, data):
         return self.endpoints[endpoint_id].deserialize(cluster_id, data)
@@ -320,7 +340,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         dst_addressing: None
         | (Addressing.Group | Addressing.IEEE | Addressing.NWK) = None,
     ):
-        self.last_seen = time.time()
+        self.update_last_seen()
 
         try:
             hdr, args = self.deserialize(src_ep, cluster, message)

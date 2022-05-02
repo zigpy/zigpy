@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import logging
+import re
 import types
 from typing import Any
 
@@ -22,9 +24,12 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 7
+DB_VERSION = 8
 DB_V = f"_v{DB_VERSION}"
 MIN_SQLITE_VERSION = (3, 24, 0)
+
+UNIX_EPOCH = datetime.fromtimestamp(0, tz=timezone.utc)
+DB_V_REGEX = re.compile(r"(?:_v\d+)?$")
 
 
 def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.ModuleType:
@@ -71,6 +76,16 @@ def _register_sqlite_adapters():
         return t.EUI64.convert(s.decode())
 
     sqlite3.register_converter("ieee", convert_ieee)
+
+    def adapt_datetime(dt):
+        return int(dt.timestamp() * 1000)
+
+    sqlite3.register_adapter(datetime, adapt_datetime)
+
+    def convert_timestamp(ts):
+        return datetime.fromtimestamp(int(ts.decode("ascii"), 10) / 1000, timezone.utc)
+
+    sqlite3.register_converter("unix_timestamp", convert_timestamp)
 
 
 def aiosqlite_connect(
@@ -205,6 +220,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def device_left(self, device: zigpy.typing.DeviceType) -> None:
         pass
 
+    def device_last_seen_updated(
+        self, device: zigpy.typing.DeviceType, last_seen: datetime
+    ) -> None:
+        """Device last_seen time is updated."""
+        self.enqueue("_save_device_last_seen", device.ieee, last_seen)
+
+    async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
+        await self.execute(
+            f"UPDATE devices{DB_V} SET last_seen=? WHERE ieee=?", (last_seen, ieee)
+        )
+        await self._db.commit()
+
     def device_relays_updated(
         self, device: zigpy.typing.DeviceType, relays: t.Relays | None
     ) -> None:
@@ -337,10 +364,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_save_device", device)
 
     async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
-        q = f"""INSERT INTO devices{DB_V} (ieee, nwk, status) VALUES (?, ?, ?)
+        q = f"""INSERT INTO devices{DB_V} (ieee, nwk, status, last_seen)
+                    VALUES (?, ?, ?, ?)
                     ON CONFLICT (ieee)
-                    DO UPDATE SET nwk=excluded.nwk, status=excluded.status"""
-        await self.execute(q, (device.ieee, device.nwk, device.status))
+                    DO UPDATE SET
+                        nwk=excluded.nwk,
+                        status=excluded.status,
+                        last_seen=excluded.last_seen"""
+        await self.execute(
+            q, (device.ieee, device.nwk, device.status, device._last_seen or UNIX_EPOCH)
+        )
 
         if device.node_desc is not None:
             await self._save_node_descriptor(device)
@@ -529,9 +562,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _load_devices(self) -> None:
         async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:
-            async for (ieee, nwk, status) in cursor:
+            async for (ieee, nwk, status, last_seen) in cursor:
                 dev = self._application.add_device(ieee, nwk)
                 dev.status = zigpy.device.Status(status)
+
+                if last_seen > UNIX_EPOCH:
+                    dev._last_seen = last_seen
 
     async def _load_node_descriptors(self) -> None:
         async with self.execute(f"SELECT * FROM node_descriptors{DB_V}") as cursor:
@@ -599,14 +635,23 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             dev.add_context_listener(self)
             dev.neighbors.add_context_listener(self)
 
-    async def _table_exists(self, name: str) -> bool:
-        async with self.execute(
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?",
-            [name],
-        ) as cursor:
-            (count,) = await cursor.fetchone()
+    async def _get_table_versions(self) -> dict[str, str]:
+        tables = {}
 
-        return bool(count)
+        async with self.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ) as cursor:
+            async for (name,) in cursor:
+                # The regex will always return a match
+                match = DB_V_REGEX.search(name)
+                assert match is not None
+
+                tables[name] = match.group(0)
+
+        return tables
+
+    async def _table_exists(self, name: str) -> bool:
+        return name in (await self._get_table_versions())
 
     async def _run_migrations(self):
         """Migrates the database to the newest schema."""
@@ -640,6 +685,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v5, 5),
                 (self._migrate_to_v6, 6),
                 (self._migrate_to_v7, 7),
+                (self._migrate_to_v8, 8),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -662,9 +708,27 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     ):
         """Copy rows from one set of tables into another."""
 
+        # Extract the "old" table version suffix
+        tables = await self._get_table_versions()
+        old_table_name = list(table_map.keys())[0]
+        old_version = tables[old_table_name]
+
+        # Check which tables would not be migrated
+        old_tables = [t for t, v in tables.items() if v == old_version]
+        unmigrated_old_tables = [t for t in old_tables if t not in table_map]
+
+        if unmigrated_old_tables:
+            raise RuntimeError(
+                f"The following tables were not migrated: {unmigrated_old_tables}"
+            )
+
         # Insertion order matters for foreign key constraints but any rows that fail
         # to insert due to constraint violations can be discarded
         for old_table, new_table in table_map.items():
+            # Ignore tables without a migration
+            if new_table is None:
+                continue
+
             async with self.execute(f"SELECT * FROM {old_table}") as cursor:
                 async for row in cursor:
                     placeholders = ",".join("?" * len(row))
@@ -740,6 +804,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 # These were migrated in v4
                 "neighbors_v4": "neighbors_v5",
                 "node_descriptors_v4": "node_descriptors_v5",
+                # Explicitly specify which tables will not be migrated
+                "devices": None,
+                "neighbors": None,
+                "node_descriptors": None,
             },
             errors="warn",
         )
@@ -760,6 +828,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "attributes_cache_v5": "attributes_cache_v6",
                 "neighbors_v5": "neighbors_v6",
                 "node_descriptors_v5": "node_descriptors_v6",
+                "devices_v5": None,
             }
         )
 
@@ -778,7 +847,19 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
 
                 await self._migrate_tables(
-                    {"attributes": "attributes_cache_v6"}, errors="ignore"
+                    {
+                        "attributes": "attributes_cache_v6",
+                        "devices": None,
+                        "endpoints": None,
+                        "clusters": None,
+                        "neighbors": None,
+                        "node_descriptors": None,
+                        "output_clusters": None,
+                        "groups": None,
+                        "group_members": None,
+                        "relays": None,
+                    },
+                    errors="ignore",
                 )
 
     async def _migrate_to_v7(self):
@@ -797,5 +878,34 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "attributes_cache_v6": "attributes_cache_v7",
                 "neighbors_v6": "neighbors_v7",
                 "node_descriptors_v6": "node_descriptors_v7",
+                "devices_v6": None,
+            }
+        )
+
+    async def _migrate_to_v8(self):
+        """Schema v8 added the `devices_v8.last_seen` column."""
+
+        async with self.execute("SELECT * FROM devices_v7") as cursor:
+            async for (ieee, nwk, status) in cursor:
+                # Set the default `last_seen` to the unix epoch
+                await self.execute(
+                    "INSERT INTO devices_v8 VALUES (?, ?, ?, ?)",
+                    (ieee, nwk, status, UNIX_EPOCH),
+                )
+
+        # Copy the devices table first, it should have no conflicts
+        await self._migrate_tables(
+            {
+                "endpoints_v7": "endpoints_v8",
+                "in_clusters_v7": "in_clusters_v8",
+                "out_clusters_v7": "out_clusters_v8",
+                "groups_v7": "groups_v8",
+                "group_members_v7": "group_members_v8",
+                "relays_v7": "relays_v8",
+                "attributes_cache_v7": "attributes_cache_v8",
+                "neighbors_v7": "neighbors_v8",
+                "node_descriptors_v7": "node_descriptors_v8",
+                "unsupported_attributes_v7": "unsupported_attributes_v8",
+                "devices_v7": None,
             }
         )

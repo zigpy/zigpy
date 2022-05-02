@@ -10,8 +10,10 @@ import traceback
 import typing
 import warnings
 
-from Crypto.Cipher import AES
 from crccheck.crc import CrcX25
+from cryptography.hazmat.primitives.ciphers import Cipher
+from cryptography.hazmat.primitives.ciphers.algorithms import AES
+from cryptography.hazmat.primitives.ciphers.modes import ECB
 
 from zigpy.exceptions import ControllerException, ZigbeeException
 import zigpy.types as t
@@ -49,7 +51,12 @@ class ListenableMixin:
                 else:
                     result.append(method(*args))
             except Exception as e:
-                LOGGER.warning("Error calling listener.%s: %s", method_name, e)
+                LOGGER.warning(
+                    "Error calling listener %r with args %r: %r", method, args, e
+                )
+                LOGGER.debug(
+                    "Error calling listener %r with args %r", method, args, exc_info=e
+                )
         return result
 
     async def async_event(self, method_name, *args):
@@ -68,7 +75,15 @@ class ListenableMixin:
         results = []
         for result in await asyncio.gather(*tasks, return_exceptions=True):
             if isinstance(result, Exception):
-                LOGGER.warning("Error calling listener: %s", result)
+                LOGGER.warning(
+                    "Error calling listener %r with args %r: %r", method, args, result
+                )
+                LOGGER.debug(
+                    "Error calling listener %r with args %r",
+                    method,
+                    args,
+                    exc_info=result,
+                )
             else:
                 results.append(result)
         return results
@@ -148,36 +163,42 @@ def retryable(retry_exceptions, tries=1, delay=0.1):
 retryable_request = retryable((ZigbeeException, asyncio.TimeoutError))
 
 
-def aes_mmo_hash_update(length, result, data):
-    while len(data) >= AES.block_size:
+def aes_mmo_hash_update(length: int, result: bytes, data: bytes) -> tuple[int, bytes]:
+    block_size = AES.block_size // 8
+
+    while len(data) >= block_size:
+        block = bytes(data[:block_size])
+
         # Encrypt
-        aes = AES.new(bytes(result), AES.MODE_ECB)
-        result = bytearray(aes.encrypt(bytes(data[: AES.block_size])))
+        aes = Cipher(AES(bytes(result)), ECB()).encryptor()
+        result = bytearray(aes.update(block) + aes.finalize())
 
-        # XOR
-        for i in range(AES.block_size):
-            result[i] ^= bytes(data[: AES.block_size])[i]
+        # XOR plaintext into ciphertext
+        for i in range(block_size):
+            result[i] ^= block[i]
 
-        data = data[AES.block_size :]
-        length += AES.block_size
+        data = data[block_size:]
+        length += block_size
 
     return (length, result)
 
 
-def aes_mmo_hash(data):
+def aes_mmo_hash(data: bytes) -> t.KeyData:
+    block_size = AES.block_size // 8
+
     result_len = 0
     remaining_length = 0
     length = len(data)
-    result = bytearray([0] * AES.block_size)
-    temp = bytearray([0] * AES.block_size)
+    result = bytearray([0] * block_size)
+    temp = bytearray([0] * block_size)
 
     if data and length > 0:
-        remaining_length = length & (AES.block_size - 1)
-        if length >= AES.block_size:
+        remaining_length = length & (block_size - 1)
+        if length >= block_size:
             # Mask out the lower byte since hash update will hash
             # everything except the last piece, if the last piece
             # is less than 16 bytes.
-            hashed_length = length & ~(AES.block_size - 1)
+            hashed_length = length & ~(block_size - 1)
             (result_len, result) = aes_mmo_hash_update(result_len, result, data)
             data = data[hashed_length:]
 
@@ -191,25 +212,25 @@ def aes_mmo_hash(data):
 
     # If appending the bit string will push us beyond the 16-byte boundary
     # we must hash that block and append another 16-byte block.
-    if (AES.block_size - remaining_length) < 3:
+    if (block_size - remaining_length) < 3:
         (result_len, result) = aes_mmo_hash_update(result_len, result, temp)
 
         # Since this extra data is due to the concatenation,
         # we remove that length. We want the length of data only
         # and not the padding.
-        result_len -= AES.block_size
-        temp = bytearray([0] * AES.block_size)
+        result_len -= block_size
+        temp = bytearray([0] * block_size)
 
     bit_size = result_len * 8
-    temp[AES.block_size - 2] = (bit_size >> 8) & 0xFF
-    temp[AES.block_size - 1] = (bit_size) & 0xFF
+    temp[block_size - 2] = (bit_size >> 8) & 0xFF
+    temp[block_size - 1] = (bit_size) & 0xFF
 
     (result_len, result) = aes_mmo_hash_update(result_len, result, temp)
 
-    return t.KeyData([t.uint8_t(c) for c in result])
+    return t.KeyData(result)
 
 
-def convert_install_code(code):
+def convert_install_code(code: bytes) -> t.KeyData:
     if len(code) not in (8, 10, 14, 18):
         return None
 
