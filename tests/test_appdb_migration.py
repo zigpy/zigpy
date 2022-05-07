@@ -6,6 +6,7 @@ import pytest
 
 import zigpy.appdb
 from zigpy.appdb import sqlite3
+import zigpy.appdb_schemas
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
@@ -490,7 +491,7 @@ async def test_migration_missing_tables():
     await appdb.shutdown()
 
 
-async def test_last_seen_migration(test_db):
+async def test_last_seen_initial_migration(test_db):
     test_db_v5 = test_db("simple_v5.sql")
 
     # To preserve the old behavior, `0` will not be exposed to ZHA, only `None`
@@ -505,4 +506,16 @@ async def test_last_seen_migration(test_db):
     # But the device's `last_seen` will still update properly when it's actually set
     app = await make_app(test_db_v5)
     assert isinstance(app.get_device(nwk=0xBD4D).last_seen, float)
+    await app.pre_shutdown()
+
+
+def test_db_version_is_latest_schema_version():
+    assert zigpy.appdb.DB_VERSION == max(zigpy.appdb_schemas.SCHEMAS.keys())
+
+
+async def test_last_seen_migration_v8_to_v9(test_db):
+    test_db_v8 = test_db("simple_v8.sql")
+
+    app = await make_app(test_db_v8)
+    assert int(app.get_device(nwk=0xE01E).last_seen) == 1651119830
     await app.pre_shutdown()
