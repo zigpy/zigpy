@@ -436,7 +436,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
-    async def force_remove(self, dev):
+    async def force_remove(self, dev: zigpy.device.Device):
         """
         Instructs the radio to remove a device with a lower-level leave command. Not all
         radios implement this.
@@ -716,6 +716,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @property
     def ota(self):
         return self._ota
+
+    @property
+    def _device(self):
+        """The device being controlled."""
+        return self.get_device(ieee=self.state.node_info.ieee)
 
     @zigpy.util.deprecated("await `app.shutdown()`")
     async def pre_shutdown(self):

@@ -242,6 +242,11 @@ def test_get_device_missing(app, ieee):
         app.get_device(nwk=8)
 
 
+def test_device_property(app):
+    app.add_device(nwk=0x0000, ieee=NCP_IEEE)
+    assert app._device is app.get_device(ieee=NCP_IEEE)
+
+
 def test_ieee(app):
     assert app.state.node_info.ieee
 
