@@ -68,9 +68,12 @@ class NetworkInfo:
     # If exposed by the stack, NWK addresses of other connected devices on the network
     nwk_addresses: dict[t.EUI64, t.NWK] = field(default_factory=dict)
 
-    # Dict to keep track of stack-specific network stuff.
+    # Dict to keep track of stack-specific network information.
     # Z-Stack, for example, has a TCLK_SEED that should be backed up.
     stack_specific: dict[str, Any] = field(default_factory=dict)
+
+    # Internal metadata not directly used for network restoration
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def replace(self, **kwargs) -> NetworkInfo:
         return dataclasses.replace(self, **kwargs)
@@ -308,6 +311,7 @@ def network_state_to_json(
                     key.partner_ieee.serialize()[::-1].hex(): key.seq
                     for key in network_info.key_table
                 },
+                **network_info.metadata,
             },
         },
         "stack_specific": network_info.stack_specific,
@@ -344,13 +348,19 @@ def json_to_network_state(obj: dict[str, Any]) -> tuple[NetworkInfo, NodeInfo]:
         bytes.fromhex(obj["coordinator_ieee"])[::-1]
     )
 
-    network_meta = obj["metadata"].get("internal", {}).get("network", {})
+    meta = obj["metadata"].get("internal", {})
+
     network_info = NetworkInfo()
+    network_info.metadata = {
+        k: v for k, v in meta.items() if k not in ("node", "network", "link_key_seqs")
+    }
     network_info.pan_id, _ = t.NWK.deserialize(bytes.fromhex(obj["pan_id"])[::-1])
     network_info.extended_pan_id, _ = t.EUI64.deserialize(
         bytes.fromhex(obj["extended_pan_id"])[::-1]
     )
     network_info.nwk_update_id = obj["nwk_update_id"]
+
+    network_meta = meta.get("network", {})
 
     if "nwk_manager" in network_meta:
         network_info.nwk_manager_id, _ = t.NWK.deserialize(
