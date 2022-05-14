@@ -70,7 +70,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 if not auto_form:
                     raise
 
+                LOGGER.info("Forming a new network")
                 await self.form_network()
+
+            LOGGER.debug("Network info: %s", self.network_info)
+            LOGGER.debug("Node info: %s", self.node_info)
 
             await self.start_network()
 
