@@ -335,9 +335,10 @@ def network_state_to_json(
 
 
 def json_to_network_state(obj: dict[str, Any]) -> tuple[NetworkInfo, NodeInfo]:
-    node_meta = obj["metadata"].get("internal", {}).get("node", {})
+    internal = obj["metadata"].get("internal", {})
 
     node_info = NodeInfo()
+    node_meta = internal.get("node", {})
 
     if "nwk" in node_meta:
         node_info.nwk, _ = t.NWK.deserialize(bytes.fromhex(node_meta["nwk"])[::-1])
@@ -351,11 +352,12 @@ def json_to_network_state(obj: dict[str, Any]) -> tuple[NetworkInfo, NodeInfo]:
         bytes.fromhex(obj["coordinator_ieee"])[::-1]
     )
 
-    meta = obj["metadata"].get("internal", {})
     network_info = NetworkInfo()
     network_info.source = obj["metadata"]["source"]
     network_info.metadata = {
-        k: v for k, v in meta.items() if k not in ("node", "network", "link_key_seqs")
+        k: v
+        for k, v in internal.items()
+        if k not in ("node", "network", "link_key_seqs")
     }
     network_info.pan_id, _ = t.NWK.deserialize(bytes.fromhex(obj["pan_id"])[::-1])
     network_info.extended_pan_id, _ = t.EUI64.deserialize(
@@ -363,7 +365,7 @@ def json_to_network_state(obj: dict[str, Any]) -> tuple[NetworkInfo, NodeInfo]:
     )
     network_info.nwk_update_id = obj["nwk_update_id"]
 
-    network_meta = meta.get("network", {})
+    network_meta = internal.get("network", {})
 
     if "nwk_manager" in network_meta:
         network_info.nwk_manager_id, _ = t.NWK.deserialize(
