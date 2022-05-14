@@ -75,6 +75,9 @@ class NetworkInfo:
     # Internal metadata not directly used for network restoration
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    # Package generating the network information
+    source: str | None = None
+
     def replace(self, **kwargs) -> NetworkInfo:
         return dataclasses.replace(self, **kwargs)
 
@@ -251,7 +254,7 @@ JSON_TO_LOGICAL_TYPE = {v: k for k, v in LOGICAL_TYPE_TO_JSON.items()}
 
 
 def network_state_to_json(
-    *, network_info: NetworkInfo, node_info: NodeInfo, source: str = None
+    *, network_info: NetworkInfo, node_info: NodeInfo
 ) -> dict[str, Any]:
     devices = {}
 
@@ -290,7 +293,7 @@ def network_state_to_json(
         "metadata": {
             "version": 1,
             "format": "zigpy/open-coordinator-backup",
-            "source": source,
+            "source": network_info.source,
             "internal": {
                 "node": {
                     "ieee": node_info.ieee.serialize()[::-1].hex(),
@@ -349,8 +352,8 @@ def json_to_network_state(obj: dict[str, Any]) -> tuple[NetworkInfo, NodeInfo]:
     )
 
     meta = obj["metadata"].get("internal", {})
-
     network_info = NetworkInfo()
+    network_info.source = obj["metadata"]["source"]
     network_info.metadata = {
         k: v for k, v in meta.items() if k not in ("node", "network", "link_key_seqs")
     }
