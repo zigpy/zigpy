@@ -73,8 +73,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 LOGGER.info("Forming a new network")
                 await self.form_network()
 
-            LOGGER.debug("Network info: %s", self.network_info)
-            LOGGER.debug("Node info: %s", self.node_info)
+            LOGGER.debug("Network info: %s", self.state.network_info)
+            LOGGER.debug("Node info: %s", self.state.node_info)
 
             await self.start_network()
 
