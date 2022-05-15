@@ -1,5 +1,6 @@
 """Common fixtures."""
 import logging
+from unittest.mock import patch
 
 import pytest
 
@@ -115,7 +116,13 @@ def app_mock():
     config = App.SCHEMA(
         {CONF_DATABASE: None, CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"}}
     )
-    app_mock = MagicMock(spec_set=App(config))
+
+    app = App(config)
+
+    # Accessing the property fails when the mock's `spec_set` is being created
+    with patch.object(app, "devices"):
+        app_mock = MagicMock(spec_set=app)
+
     app_mock.state.node_info = app_state.NodeInfo(
         t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
     )

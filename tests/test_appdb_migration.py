@@ -518,4 +518,4 @@ async def test_last_seen_migration_v8_to_v9(test_db):
 
     app = await make_app(test_db_v8)
     assert int(app.get_device(nwk=0xE01E).last_seen) == 1651119830
-    await app.hutdown()
+    await app.shutdown()
