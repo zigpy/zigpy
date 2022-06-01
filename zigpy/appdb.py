@@ -24,7 +24,7 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 8
+DB_VERSION = 9
 DB_V = f"_v{DB_VERSION}"
 MIN_SQLITE_VERSION = (3, 24, 0)
 
@@ -76,16 +76,6 @@ def _register_sqlite_adapters():
         return t.EUI64.convert(s.decode())
 
     sqlite3.register_converter("ieee", convert_ieee)
-
-    def adapt_datetime(dt):
-        return int(dt.timestamp() * 1000)
-
-    sqlite3.register_adapter(datetime, adapt_datetime)
-
-    def convert_timestamp(ts):
-        return datetime.fromtimestamp(int(ts.decode("ascii"), 10) / 1000, timezone.utc)
-
-    sqlite3.register_converter("unix_timestamp", convert_timestamp)
 
 
 def aiosqlite_connect(
@@ -228,7 +218,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
         await self.execute(
-            f"UPDATE devices{DB_V} SET last_seen=? WHERE ieee=?", (last_seen, ieee)
+            f"UPDATE devices{DB_V} SET last_seen=? WHERE ieee=?",
+            (last_seen.timestamp(), ieee),
         )
         await self._db.commit()
 
@@ -372,7 +363,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         status=excluded.status,
                         last_seen=excluded.last_seen"""
         await self.execute(
-            q, (device.ieee, device.nwk, device.status, device._last_seen or UNIX_EPOCH)
+            q,
+            (
+                device.ieee,
+                device.nwk,
+                device.status,
+                (device._last_seen or UNIX_EPOCH).timestamp(),
+            ),
         )
 
         if device.node_desc is not None:
@@ -566,8 +563,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 dev = self._application.add_device(ieee, nwk)
                 dev.status = zigpy.device.Status(status)
 
-                if last_seen > UNIX_EPOCH:
-                    dev._last_seen = last_seen
+                if last_seen > 0:
+                    dev.last_seen = last_seen
 
     async def _load_node_descriptors(self) -> None:
         async with self.execute(f"SELECT * FROM node_descriptors{DB_V}") as cursor:
@@ -686,6 +683,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v6, 6),
                 (self._migrate_to_v7, 7),
                 (self._migrate_to_v8, 8),
+                (self._migrate_to_v9, 9),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -890,7 +888,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 # Set the default `last_seen` to the unix epoch
                 await self.execute(
                     "INSERT INTO devices_v8 VALUES (?, ?, ?, ?)",
-                    (ieee, nwk, status, UNIX_EPOCH),
+                    (ieee, nwk, status, 0),
                 )
 
         # Copy the devices table first, it should have no conflicts
@@ -907,5 +905,29 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "node_descriptors_v7": "node_descriptors_v8",
                 "unsupported_attributes_v7": "unsupported_attributes_v8",
                 "devices_v7": None,
+            }
+        )
+
+    async def _migrate_to_v9(self):
+        """Schema v9 changed the data type of the `devices_v8.last_seen` column."""
+
+        await self.execute(
+            """INSERT INTO devices_v9 (ieee, nwk, status, last_seen)
+            SELECT ieee, nwk, status, last_seen / 1000.0 FROM devices_v8"""
+        )
+
+        await self._migrate_tables(
+            {
+                "endpoints_v8": "endpoints_v9",
+                "in_clusters_v8": "in_clusters_v9",
+                "out_clusters_v8": "out_clusters_v9",
+                "groups_v8": "groups_v9",
+                "group_members_v8": "group_members_v9",
+                "relays_v8": "relays_v9",
+                "attributes_cache_v8": "attributes_cache_v9",
+                "neighbors_v8": "neighbors_v9",
+                "node_descriptors_v8": "node_descriptors_v9",
+                "unsupported_attributes_v8": "unsupported_attributes_v9",
+                "devices_v8": None,
             }
         )
