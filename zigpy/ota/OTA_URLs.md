@@ -2,6 +2,14 @@
 
 Collection of external Zigbee OTA firmware images from official and unofficial OTA provider sources.
 
+### Inovelli OTA Firmware provider
+
+Inovelli Zigbee OTA firmware images are made publicly available by Inovelli (first-party) at the following URLs:
+
+https://files.inovelli.com/firmware/firmware.json
+
+https://files.inovelli.com/firmware
+
 ### Koenkk zigbee-OTA repository
 
 Koenkk zigbee-OTA repository host third-party OTA firmware images and external URLs for many third-party Zigbee OTA firmware images.
