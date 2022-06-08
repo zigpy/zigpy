@@ -15,9 +15,9 @@ The **[ZHA integration component for Home Assistant](https://www.home-assistant.
 
 ### Zigbee device OTA updates
 
-zigpy have code to automatically download and perform OTA (Over-The-Air) firmware updates of Zigbee devices if the OTA firmware image provider source URL for updates is known. The OTA update directory is optional and it can also be used for any offline firmware files that you provide yourself.
+zigpy have ability to download and perform Zigbee OTAU (Over-The-Air Updates) of Zigbee devices firmware. The Zigbee OTA update firmware image files should conform standard Zigbee OTA format and OTA provider source URLs need to be published for public availability. Updates from a local OTA update directory also is also supported and can be used as an option for offline firmware updates if user provide correct Zigbee OTA formatted firmware files themselves.
 
-Online OTA providers for firmware updates are currently only available for IKEA, LEDVANCE/OSRAM, and SALUS/Computime devices. Support for OTA updates from other manufacturers could be added to zigpy in the future, if they publish their firmware images publicly.
+Support for automatic download from existing online OTA providers in zigpy OTA provider code is currently only available for IKEA, Inovelli, LEDVANCE/OSRAM, and SALUS/Computime devices. Support for additional OTA providers for other manufacturers devices could be added to zigpy in the future, if device manufacturers have publish their firmware images publicly and developers contribute the needed download code for them.
 
 ## How to install and test, report bugs, or contribute to this project
 
