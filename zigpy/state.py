@@ -10,6 +10,7 @@ from typing import Any, Iterator
 
 import zigpy.config as conf
 import zigpy.types as t
+import zigpy.util
 import zigpy.zdo.types as zdo_t
 
 
@@ -241,6 +242,16 @@ class State:
         """Initialize default counters."""
         for col_name in ("", "broadcast_", "device_", "group_"):
             setattr(self, f"{col_name}counters", CounterGroups())
+
+    @property
+    @zigpy.util.deprecated("`network_information` has been renamed to `network_info`")
+    def network_information(self) -> NetworkInfo:
+        return self.network_info
+
+    @property
+    @zigpy.util.deprecated("`node_information` has been renamed to `node_info`")
+    def node_information(self) -> NodeInfo:
+        return self.node_info
 
 
 LOGICAL_TYPE_TO_JSON = {

@@ -611,8 +611,14 @@ async def test_startup_not_formed(app):
 
 
 async def test_deprecated_properties_and_methods(app):
-    app.state = MagicMock()
+    with pytest.deprecated_call():
+        assert app.state.network_information is app.state.network_info
+
+    with pytest.deprecated_call():
+        assert app.state.node_information is app.state.node_info
+
     app.shutdown = AsyncMock()
+    app.state = MagicMock()
 
     with pytest.deprecated_call():
         await app.pre_shutdown()
