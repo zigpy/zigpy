@@ -169,7 +169,7 @@ Reference collections for different hardware specific Zigbee Stack and related m
 Silicon Labs video playlist of ZigBee Concepts: Architecture basics, MAC/PHY, node types, and application profiles
 - https://www.youtube.com/playlist?list=PL-awFRrdECXvAs1mN2t2xaI0_bQRh2AqD
 
-### zigpy wiki and communcation channels
+### zigpy wiki and communication channels
 
 - https://github.com/zigpy/zigpy/wiki
 - https://github.com/zigpy/zigpy/discussions
