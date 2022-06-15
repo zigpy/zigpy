@@ -3,14 +3,17 @@ from __future__ import annotations
 import abc
 import asyncio
 import logging
+import os
+import random
 from typing import Any
 
 import zigpy.appdb
-import zigpy.config
+import zigpy.config as conf
 import zigpy.device
 import zigpy.exceptions
 import zigpy.group
 import zigpy.ota
+import zigpy.profiles
 import zigpy.quirks
 import zigpy.state
 import zigpy.topology
@@ -25,16 +28,15 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
-    SCHEMA = zigpy.config.CONFIG_SCHEMA
-    SCHEMA_DEVICE = zigpy.config.SCHEMA_DEVICE
+    SCHEMA = conf.CONFIG_SCHEMA
+    SCHEMA_DEVICE = conf.SCHEMA_DEVICE
 
     def __init__(self, config: dict):
-        self._send_sequence = 0
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
         self.state: zigpy.state.State = zigpy.state.State()
         self.topology = None
         self._listeners = {}
-        self._config = config
+        self._config = self.SCHEMA(config)
         self._dblistener = None
         self._groups = zigpy.group.Groups(self)
         self._listeners = {}
@@ -43,7 +45,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def _load_db(self) -> None:
         """Restore save state."""
-        database_file = self.config[zigpy.config.CONF_DATABASE]
+        database_file = self.config[conf.CONF_DATABASE]
         if not database_file:
             return
 
@@ -51,6 +53,37 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.add_listener(self._dblistener)
         self.groups.add_listener(self._dblistener)
         await self._dblistener.load()
+
+    async def startup(self, *, auto_form: bool = False):
+        """
+        Starts a network, optionally forming one with random settings if necessary.
+        """
+
+        await self.connect()
+
+        try:
+            try:
+                await self.load_network_info(load_devices=False)
+            except zigpy.exceptions.NetworkNotFormed:
+                LOGGER.info("Network is not formed")
+
+                if not auto_form:
+                    raise
+
+                LOGGER.info("Forming a new network")
+                await self.form_network()
+
+            LOGGER.debug("Network info: %s", self.state.network_info)
+            LOGGER.debug("Node info: %s", self.state.node_info)
+
+            await self.start_network()
+
+            # Some radios erroneously permit joins on startup
+            await self.permit(0)
+        except Exception:
+            LOGGER.error("Couldn't start application")
+            await self.shutdown()
+            raise
 
     @classmethod
     async def new(
@@ -65,14 +98,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if not start_radio:
             return app
 
-        try:
-            await app.startup(auto_form)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            LOGGER.error("Couldn't start application")
-            await app.pre_shutdown()
-            raise
+        await app.startup(auto_form=auto_form)
 
         for device in app.devices.values():
             if not device.is_initialized:
@@ -80,54 +106,88 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         return app
 
-    async def pre_shutdown(self) -> None:
+    async def form_network(self):
+        """
+        Writes random network settings to the coordinator.
+        """
+
+        # First, make the settings consistent and randomly generate missing values
+        channel = self.config[conf.CONF_NWK][conf.CONF_NWK_CHANNEL]
+        channels = self.config[conf.CONF_NWK][conf.CONF_NWK_CHANNELS]
+        pan_id = self.config[conf.CONF_NWK][conf.CONF_NWK_PAN_ID]
+        extended_pan_id = self.config[conf.CONF_NWK][conf.CONF_NWK_EXTENDED_PAN_ID]
+        network_key = self.config[conf.CONF_NWK][conf.CONF_NWK_KEY]
+        tc_address = self.config[conf.CONF_NWK][conf.CONF_NWK_TC_ADDRESS]
+
+        if pan_id is None:
+            pan_id = random.SystemRandom().randint(0x0001, 0xFFFE + 1)
+
+        if extended_pan_id is None:
+            # TODO: exclude `FF:FF:FF:FF:FF:FF:FF:FF` and possibly more reserved EPIDs
+            extended_pan_id = t.ExtendedPanId(os.urandom(8))
+
+        if network_key is None:
+            network_key = t.KeyData(os.urandom(16))
+
+        if tc_address is None:
+            tc_address = t.EUI64.UNKNOWN
+
+        # Override `channels` with a single channel if one is explicitly set
+        if channel is not None:
+            channels = t.Channels.from_channel_list([channel])
+
+        network_info = zigpy.state.NetworkInfo(
+            extended_pan_id=extended_pan_id,
+            pan_id=pan_id,
+            nwk_update_id=self.config[conf.CONF_NWK][conf.CONF_NWK_UPDATE_ID],
+            nwk_manager_id=0x0000,
+            channel=channel,
+            channel_mask=channels,
+            security_level=5,
+            network_key=zigpy.state.Key(
+                key=network_key,
+                tx_counter=0,
+                rx_counter=0,
+                seq=self.config[conf.CONF_NWK][conf.CONF_NWK_KEY_SEQ],
+            ),
+            tc_link_key=zigpy.state.Key(
+                key=self.config[conf.CONF_NWK][conf.CONF_NWK_TC_LINK_KEY],
+                tx_counter=0,
+                rx_counter=0,
+                seq=0,
+                partner_ieee=tc_address,
+            ),
+            children=[],
+            key_table=[],
+            nwk_addresses={},
+            stack_specific={},
+        )
+
+        node_info = zigpy.state.NodeInfo(
+            nwk=0x0000,
+            ieee=t.EUI64.UNKNOWN,  # Use the device IEEE address
+            logical_type=zdo_types.LogicalType.Coordinator,
+        )
+
+        await self.write_network_info(network_info=network_info, node_info=node_info)
+
+    async def shutdown(self) -> None:
         """Shutdown controller."""
         if self._dblistener:
             await self._dblistener.shutdown()
-        await self.shutdown()
+        await self.disconnect()
 
-    @abc.abstractmethod
-    async def shutdown(self):
-        """Perform a complete application shutdown."""
+    def add_device(self, ieee: t.EUI64, nwk: t.NWK):
+        """
+        Creates a zigpy `Device` object with the provided IEEE and NWK addresses.
+        """
 
-    @abc.abstractmethod
-    async def startup(self, auto_form=False):
-        """Perform a complete application startup"""
-
-    async def form_network(self):
-        """Form a new network based on network configuration from config."""
-        raise NotImplementedError
-
-    def add_device(self, ieee, nwk):
         assert isinstance(ieee, t.EUI64)
         # TODO: Shut down existing device
 
         dev = zigpy.device.Device(self, ieee, nwk)
         self.devices[ieee] = dev
         return dev
-
-    async def update_network(
-        self,
-        *,
-        channel: t.uint8_t | None = None,
-        channels: t.Channels | None = None,
-        extended_pan_id: t.ExtendedPanId | None = None,
-        network_key: t.KeyData | None = None,
-        pan_id: t.PanId | None = None,
-        tc_link_key: t.KeyData | None = None,
-        update_id: int = 0,
-    ):
-        """Update network parameters.
-
-        :param channel: Radio channel
-        :param channels: Channels mask
-        :param extended_pan_id: Extended pan id
-        :param network_key: network key
-        :param pan_id: Network pan id
-        :param tc_link_key: Trust Center link key
-        :param update_id: nwk_update_id parameter
-        """
-        raise NotImplementedError
 
     def device_initialized(self, device):
         """Used by a device to signal that it is initialized"""
@@ -199,10 +259,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         self.devices.pop(device.ieee, None)
 
-    async def force_remove(self, dev):
-        raise NotImplementedError
-
-    def deserialize(self, sender, endpoint_id, cluster_id, data):
+    def deserialize(
+        self,
+        sender: zigpy.device.Device,
+        endpoint_id: t.uint8_t,
+        cluster_id: t.uint16_t,
+        data: bytes,
+    ) -> tuple[Any, bytes]:
         return sender.deserialize(endpoint_id, cluster_id, data)
 
     def handle_message(
@@ -217,6 +280,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dst_addressing: None
         | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
     ) -> None:
+        """
+        Called when the radio library receives a packet
+        """
         self.listener_event(
             "handle_message", sender, profile, cluster, src_ep, dst_ep, message
         )
@@ -286,7 +352,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         ieee = t.EUI64(ieee)
 
         try:
-            dev = self.get_device(ieee)
+            dev = self.get_device(ieee=ieee)
             LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
             new_join = False
         except KeyError:
@@ -313,27 +379,132 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             # Rescan groups for devices that are not newly joining and initialized
             dev.schedule_group_membership_scan()
 
-    def handle_leave(self, nwk, ieee):
+    def handle_leave(self, nwk: t.NWK, ieee: t.EUI64):
+        """
+        Called when a device has left the network.
+        """
         LOGGER.info("Device 0x%04x (%s) left the network", nwk, ieee)
 
         try:
-            dev = self.get_device(ieee)
+            dev = self.get_device(ieee=ieee)
         except KeyError:
             return
         else:
             self.listener_event("device_left", dev)
 
+    @classmethod
+    async def probe(cls, device_config: dict[str, Any]) -> bool | dict[str, Any]:
+        """
+        Probes the device specified by `device_config` and returns valid device settings
+        if the radio supports the device. If the device is not supported, `False` is
+        returned.
+        """
+
+        config = cls.SCHEMA({conf.CONF_DEVICE: cls.SCHEMA_DEVICE(device_config)})
+        app = cls(config)
+
+        try:
+            await app.connect()
+        except Exception:
+            LOGGER.debug(
+                "Failed to probe with config %s: %s",
+                device_config,
+                exc_info=True,
+            )
+            return False
+        else:
+            return device_config
+        finally:
+            await app.disconnect()
+
+    @abc.abstractmethod
+    async def connect(self):
+        """
+        Connect to the radio hardware and verify that it is compatible with the library.
+        This method should be stateless if the connection attempt fails.
+        """
+        raise NotImplementedError()  # pragma: no cover
+
+    @abc.abstractmethod
+    async def disconnect(self):
+        """
+        Disconnects from the radio hardware and shuts down the network.
+        """
+        raise NotImplementedError()  # pragma: no cover
+
+    @abc.abstractmethod
+    async def start_network(self):
+        """
+        Starts a Zigbee network with settings currently stored in the radio hardware.
+        """
+        raise NotImplementedError()  # pragma: no cover
+
+    @abc.abstractmethod
+    async def force_remove(self, dev: zigpy.device.Device):
+        """
+        Instructs the radio to remove a device with a lower-level leave command. Not all
+        radios implement this.
+        """
+        raise NotImplementedError()  # pragma: no cover
+
+    @abc.abstractmethod
+    async def add_endpoint(self, descriptor: zdo_types.SimpleDescriptor):
+        """
+        Registers a new endpoint on the controlled device. Not all radios will implement
+        this.
+        """
+        raise NotImplementedError()  # pragma: no cover
+
+    async def register_endpoints(self):
+        """
+        Registers all necessary endpoints.
+        The exact order in which this method is called depends on the radio module.
+        """
+
+        await self.add_endpoint(
+            zdo_types.SimpleDescriptor(
+                endpoint=1,
+                profile=zigpy.profiles.zha.PROFILE_ID,
+                device_type=zigpy.profiles.zha.DeviceType.IAS_CONTROL,
+                device_version=0b0000,
+                input_clusters=[
+                    zigpy.zcl.clusters.general.Basic.cluster_id,
+                    zigpy.zcl.clusters.general.OnOff.cluster_id,
+                    zigpy.zcl.clusters.general.Time.cluster_id,
+                    zigpy.zcl.clusters.general.Ota.cluster_id,
+                    zigpy.zcl.clusters.security.IasAce.cluster_id,
+                ],
+                output_clusters=[
+                    zigpy.zcl.clusters.general.PowerConfiguration.cluster_id,
+                    zigpy.zcl.clusters.general.PollControl.cluster_id,
+                    zigpy.zcl.clusters.security.IasZone.cluster_id,
+                    zigpy.zcl.clusters.security.IasWd.cluster_id,
+                ],
+            )
+        )
+
+        await self.add_endpoint(
+            zdo_types.SimpleDescriptor(
+                endpoint=2,
+                profile=zigpy.profiles.zll.PROFILE_ID,
+                device_type=zigpy.profiles.zll.DeviceType.CONTROLLER,
+                device_version=0b0000,
+                input_clusters=[zigpy.zcl.clusters.general.Basic.cluster_id],
+                output_clusters=[],
+            )
+        )
+
     async def mrequest(
         self,
-        group_id,
-        profile,
-        cluster,
-        src_ep,
-        sequence,
-        data,
+        group_id: t.uint16_t,
+        profile: t.uint8_t,
+        cluster: t.uint16_t,
+        src_ep: t.uint8_t,
+        sequence: t.uint8_t,
+        data: bytes,
         *,
-        hops=0,
-        non_member_radius=3,
+        hops: int = 0,
+        non_member_radius: int = 3,
     ):
         """Submit and send data out as a multicast transmission.
 
@@ -351,21 +522,21 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         :returns: return a tuple of a status and an error_message. Original requestor
                   has more context to provide a more meaningful error message
         """
-        raise NotImplementedError
+        raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
     @zigpy.util.retryable_request
     async def request(
         self,
-        device,
-        profile,
-        cluster,
-        src_ep,
-        dst_ep,
-        sequence,
-        data,
-        expect_reply=True,
-        use_ieee=False,
+        device: zigpy.device.Device,
+        profile: t.uint16_t,
+        cluster: t.uint16_t,
+        src_ep: t.uint8_t,
+        dst_ep: t.uint8_t,
+        sequence: t.uint8_t,
+        data: bytes,
+        expect_reply: bool = True,
+        use_ieee: bool = False,
     ):
         """Submit and send data out as an unicast transmission.
 
@@ -381,18 +552,20 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         :returns: return a tuple of a status and an error_message. Original requestor
                   has more context to provide a more meaningful error message
         """
+        raise NotImplementedError()  # pragma: no cover
 
+    @abc.abstractmethod
     async def broadcast(
         self,
-        profile,
-        cluster,
-        src_ep,
-        dst_ep,
-        grpid,
-        radius,
-        sequence,
-        data,
-        broadcast_address,
+        profile: t.uint16_t,
+        cluster: t.uint16_t,
+        src_ep: t.uint8_t,
+        dst_ep: t.uint8_t,
+        grpid: t.uint16_t,
+        radius: int,
+        sequence: t.uint8_t,
+        data: bytes,
+        broadcast_address: t.BroadcastAddress,
     ):
         """Submit and send data out as an unicast transmission.
 
@@ -409,19 +582,54 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         :returns: return a tuple of a status and an error_message. Original requestor
                   has more context to provide a more meaningful error message
         """
-        raise NotImplementedError
+        raise NotImplementedError()  # pragma: no cover
 
     @abc.abstractmethod
-    async def permit_ncp(self, time_s=60):
-        """Permit joining on NCP."""
+    async def permit_ncp(self, time_s: int = 60):
+        """
+        Permit joining on NCP.
+        Not all radios will require this method.
+        """
+        raise NotImplementedError()  # pragma: no cover
 
-    async def permit(self, time_s=60, node=None):
+    @abc.abstractmethod
+    async def permit_with_key(self, node: t.EUI64, code: bytes, time_s: int = 60):
+        """
+        Permit a node to join with the provided install code bytes.
+        """
+        raise NotImplementedError()  # pragma: no cover
+
+    @abc.abstractmethod
+    async def write_network_info(
+        self,
+        *,
+        network_info: zigpy.state.NetworkInfo,
+        node_info: zigpy.state.NodeInfo,
+    ) -> None:
+        """
+        Writes network and node state to the radio hardware.
+        Any information not supported by the radio should be logged as a warning.
+        """
+        raise NotImplementedError()  # pragma: no cover
+
+    @abc.abstractmethod
+    async def load_network_info(self, *, load_devices: bool = False) -> None:
+        """
+        Loads network and node information from the radio hardware.
+
+        :param load_devices: if `False`, supplementary network information that may take
+                             a while to load should be skipped. For example, device NWK
+                             addresses and link keys.
+        """
+        raise NotImplementedError()  # pragma: no cover
+
+    async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None):
         """Permit joining on a specific node or all router nodes."""
         assert 0 <= time_s <= 254
         if node is not None:
             if not isinstance(node, t.EUI64):
                 node = t.EUI64([t.uint8_t(p) for p in node])
-            if node != self.ieee:
+            if node != self.state.node_info.ieee:
                 try:
                     dev = self.get_device(ieee=node)
                     r = await dev.zdo.permit(time_s)
@@ -435,42 +643,49 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             return
 
         await zigpy.zdo.broadcast(
-            self,
-            0x0036,
-            0x0000,
-            0x00,
+            self,  # app
+            zdo_types.ZDOCmd.Mgmt_Permit_Joining_req,  # command
+            0x0000,  # grpid
+            0x00,  # radius
             time_s,
             0,
             broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
         )
         return await self.permit_ncp(time_s)
 
-    def permit_with_key(self, node, code, time_s=60):
-        raise NotImplementedError
-
-    def get_sequence(self):
+    def get_sequence(self) -> t.uint8_t:
         self._send_sequence = (self._send_sequence + 1) % 256
         return self._send_sequence
 
-    def get_device(self, ieee=None, nwk=None):
+    def get_device(
+        self, ieee: t.EUI64 = None, nwk: t.NWK | int = None
+    ) -> zigpy.device.Device:
+        """
+        Looks up a device in the `devices` dictionary based either on its NWK or IEEE
+        address.
+        """
+
         if ieee is not None:
             return self.devices[ieee]
 
-        if nwk == self.nwk:
-            return self.devices[self.ieee]
+        # If there two coordinators are loaded from the database, we want the active one
+        if nwk == self.state.node_info.nwk:
+            return self.devices[self.state.node_info.ieee]
 
+        # TODO: Make this not terrible
+        # Unlike its IEEE address, a device's NWK address can change at runtime so this
+        # is not as simple as building a second mapping
         for dev in self.devices.values():
-            # TODO: Make this not terrible
             if dev.nwk == nwk:
                 return dev
 
-        raise KeyError
+        raise KeyError("Device not found: nwk={nwk!r}, ieee={ieee!r}")
 
-    def get_endpoint_id(self, cluster_id: int, is_server_cluster: bool = False):
+    def get_endpoint_id(self, cluster_id: int, is_server_cluster: bool = False) -> int:
         """Returns coordinator endpoint id for specified cluster id."""
         return DEFAULT_ENDPOINT_ID
 
-    def get_dst_address(self, cluster):
+    def get_dst_address(self, cluster) -> zdo_types.MultiAddress:
         """Helper to get a dst address for bind/unbind operations.
 
         Allows radios to provide correct information especially for radios which listen
@@ -480,23 +695,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """
         dstaddr = zdo_types.MultiAddress()
         dstaddr.addrmode = 3
-        dstaddr.ieee = self.ieee
+        dstaddr.ieee = self.state.node_info.ieee
         dstaddr.endpoint = self.get_endpoint_id(cluster.cluster_id, cluster.is_server)
         return dstaddr
 
     def update_config(self, partial_config: dict[str, Any]) -> None:
         """Update existing config."""
         self.config = {**self.config, **partial_config}
-
-    @property
-    def channel(self):
-        """Current radio channel."""
-        return self.state.network_information.channel
-
-    @property
-    def channels(self):
-        """Channel mask."""
-        return self.state.network_information.channel_mask
 
     @property
     def config(self) -> dict:
@@ -509,54 +714,58 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._config = self.SCHEMA(new_config)
 
     @property
-    def extended_pan_id(self):
-        """Extended PAN Id."""
-        return self.state.network_information.extended_pan_id
-
-    @property
     def groups(self):
         return self._groups
-
-    @property
-    def ieee(self) -> t.EUI64:
-        return self.state.node_information.ieee
-
-    @ieee.setter
-    def ieee(self, value: t.EUI64) -> None:
-        """Setter for IEEEE."""
-        self.state.node_information.ieee = value
-
-    # Backward compatibility
-    _ieee = ieee
-
-    @property
-    def nwk(self) -> t.NWK:
-        return self.state.node_information.nwk
-
-    @nwk.setter
-    def nwk(self, new_nwk: t.NWK) -> None:
-        """NWK setter."""
-        self.state.node_information.nwk = new_nwk
-
-    # backward compatibility
-    _nwk = nwk
-
-    @property
-    def nwk_update_id(self):
-        """NWK Update ID."""
-        return self.state.network_information.nwk_update_id
 
     @property
     def ota(self):
         return self._ota
 
     @property
-    def pan_id(self):
-        """Network PAN Id."""
-        return self.state.network_information.pan_id
+    def _device(self):
+        """The device being controlled."""
+        return self.get_device(ieee=self.state.node_info.ieee)
 
-    @abc.abstractmethod
-    async def probe(
-        cls, device_config: dict[str, Any]
-    ) -> bool | dict[str, int | str | bool]:
-        """API/Port probe method."""
+    @zigpy.util.deprecated("await `app.shutdown()`")
+    async def pre_shutdown(self):
+        await self.shutdown()
+
+    @property
+    @zigpy.util.deprecated("use `app.state.node_info.nwk`")
+    def nwk(self):
+        return self.state.node_info.nwk
+
+    @property
+    @zigpy.util.deprecated("use `app.state.node_info.ieee`")
+    def ieee(self):
+        return self.state.node_info.ieee
+
+    @property
+    @zigpy.util.deprecated("use `app.state.network_info.pan_id`")
+    def pan_id(self):
+        return self.state.network_info.pan_id
+
+    @property
+    @zigpy.util.deprecated("use `app.state.network_info.extended_pan_id`")
+    def extended_pan_id(self):
+        return self.state.network_info.extended_pan_id
+
+    @property
+    @zigpy.util.deprecated("use `app.state.network_info.network_key`")
+    def network_key(self):
+        return self.state.network_info.network_key
+
+    @property
+    @zigpy.util.deprecated("use `app.state.network_info.channel`")
+    def channel(self):
+        return self.state.network_info.channel
+
+    @property
+    @zigpy.util.deprecated("use `app.state.network_info.channel_mask`")
+    def channels(self):
+        return self.state.network_info.channel_mask
+
+    @property
+    @zigpy.util.deprecated("use `app.state.network_info.nwk_update_id`")
+    def nwk_update_id(self):
+        return self.state.network_info.nwk_update_id

@@ -298,7 +298,7 @@ def test_endpoint_getitem(dev):
 
 
 async def test_broadcast(app_mock):
-    app_mock.ieee = t.EUI64(map(t.uint8_t, [8, 9, 10, 11, 12, 13, 14, 15]))
+    app_mock.state.node_info.ieee = t.EUI64.convert("08:09:0A:0B:0C:0D:0E:0F")
 
     (profile, cluster, src_ep, dst_ep, data) = (
         zha.PROFILE_ID,

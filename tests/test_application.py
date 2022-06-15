@@ -6,22 +6,16 @@ import pytest
 import voluptuous as vol
 
 import zigpy.application
-from zigpy.config import (
-    CONF_DATABASE,
-    CONF_DEVICE,
-    CONF_DEVICE_PATH,
-    CONF_OTA,
-    CONF_OTA_IKEA,
-    ZIGPY_SCHEMA,
-)
-from zigpy.exceptions import DeliveryError
+import zigpy.config as conf
+from zigpy.exceptions import DeliveryError, NetworkNotFormed
 import zigpy.ota
 import zigpy.quirks
 import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 
-from .async_mock import AsyncMock, MagicMock, patch, sentinel
+from .async_mock import AsyncMock, MagicMock, patch
+from .conftest import App
 
 NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
 
@@ -30,39 +24,13 @@ NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
 @patch("zigpy.ota.OTA", MagicMock(spec_set=zigpy.ota.OTA))
 @patch("zigpy.device.Device._initialize", AsyncMock())
 def app():
-    class App(zigpy.application.ControllerApplication):
-        async def shutdown(self):
-            pass
-
-        async def startup(self, auto_form=False):
-            self._ieee = t.EUI64.convert("aa:de:de:be:ef:11:22:11")
-            self._nwk = t.NWK(0x0000)
-
-        async def request(
-            self,
-            device,
-            profile,
-            cluster,
-            src_ep,
-            dst_ep,
-            sequence,
-            data,
-            expect_reply=True,
-            use_ieee=False,
-        ):
-            pass
-
-        async def permit_ncp(self, time_s=60):
-            pass
-
-        async def probe(self, config):
-            return True
-
-    config = App.SCHEMA(
-        {CONF_DATABASE: None, CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"}}
+    app = App(
+        {
+            conf.CONF_DATABASE: None,
+            conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+        }
     )
-    app = App(config)
-    app.state.node_information = app_state.NodeInfo(
+    app.state.node_info = app_state.NodeInfo(
         t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
     )
     return app
@@ -73,138 +41,44 @@ def ieee(init=0):
     return t.EUI64(map(t.uint8_t, range(init, init + 8)))
 
 
-async def test_startup():
-    class App(zigpy.application.ControllerApplication):
-        async def shutdown(self):
-            pass
-
-        async def request(
-            self,
-            device,
-            profile,
-            cluster,
-            src_ep,
-            dst_ep,
-            sequence,
-            data,
-            expect_reply=True,
-            use_ieee=False,
-        ):
-            pass
-
-        async def permit_ncp(self, time_s=60):
-            pass
-
-    with pytest.raises(TypeError):
-        await App({}).startup()
-
-
 @patch("zigpy.ota.OTA", spec_set=zigpy.ota.OTA)
 async def test_new_exception(ota_mock):
-    class App(zigpy.application.ControllerApplication):
-        async def shutdown(self):
-            pass
-
-        async def startup(self, auto_form=False):
-            pass
-
-        async def request(
-            self,
-            device,
-            profile,
-            cluster,
-            src_ep,
-            dst_ep,
-            sequence,
-            data,
-            expect_reply=True,
-            use_ieee=False,
-        ):
-            pass
-
-        async def permit_ncp(self, time_s=60):
-            pass
-
-        async def probe(self, config):
-            return True
-
     p1 = patch.object(App, "_load_db", AsyncMock())
-    p2 = patch.object(App, "startup", AsyncMock())
+    p2 = patch.object(App, "load_network_info", AsyncMock())
     p3 = patch.object(App, "shutdown", AsyncMock())
     ota_mock.return_value.initialize = AsyncMock()
 
-    with p1 as db_mck, p2 as start_mck, p3 as shut_mck:
-        await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
+    with p1 as db_mck, p2 as load_nwk_info_mck, p3 as shut_mck:
+        await App.new(
+            {
+                conf.CONF_DATABASE: "/dev/null",
+                conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+            }
+        )
     assert db_mck.call_count == 1
     assert db_mck.await_count == 1
     assert ota_mock.return_value.initialize.call_count == 1
-    assert start_mck.call_count == 1
-    assert start_mck.await_count == 1
+    assert load_nwk_info_mck.call_count == 1
+    assert load_nwk_info_mck.await_count == 1
     assert shut_mck.call_count == 0
     assert shut_mck.await_count == 0
 
-    with p1 as db_mck, p2 as start_mck, p3 as shut_mck:
-        start_mck.side_effect = asyncio.TimeoutError()
+    with p1 as db_mck, p2 as load_nwk_info_mck, p3 as shut_mck:
+        load_nwk_info_mck.side_effect = asyncio.TimeoutError()
         with pytest.raises(asyncio.TimeoutError):
-            await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
+            await App.new(
+                {
+                    conf.CONF_DATABASE: "/dev/null",
+                    conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+                }
+            )
     assert db_mck.call_count == 2
     assert db_mck.await_count == 2
     assert ota_mock.return_value.initialize.call_count == 2
-    assert start_mck.call_count == 2
-    assert start_mck.await_count == 2
+    assert load_nwk_info_mck.call_count == 2
+    assert load_nwk_info_mck.await_count == 2
     assert shut_mck.call_count == 1
     assert shut_mck.await_count == 1
-
-
-async def test_form_network(app):
-    with pytest.raises(NotImplementedError):
-        await app.form_network()
-
-
-async def test_force_remove(app):
-    with pytest.raises(NotImplementedError):
-        await app.force_remove(None)
-
-
-async def test_request():
-    class App(zigpy.application.ControllerApplication):
-        async def shutdown(self):
-            pass
-
-        async def startup(self, auto_form=False):
-            pass
-
-        async def permit_ncp(self, time_s=60):
-            pass
-
-    with pytest.raises(TypeError):
-        await App({}).request(None, None, None, None, None, None, None)
-
-
-async def test_permit_ncp():
-    class App(zigpy.application.ControllerApplication):
-        async def shutdown(self):
-            pass
-
-        async def startup(self, auto_form=False):
-            pass
-
-        async def request(
-            self,
-            device,
-            profile,
-            cluster,
-            src_ep,
-            dst_ep,
-            sequence,
-            data,
-            expect_reply=True,
-            use_ieee=False,
-        ):
-            pass
-
-    with pytest.raises(TypeError):
-        await App({}).permit_ncp()
 
 
 async def test_permit(app, ieee):
@@ -241,11 +115,6 @@ async def test_permit_broadcast(app):
     await app.permit(time_s=30)
     assert app.broadcast.call_count == 1
     assert app.permit_ncp.call_count == 1
-
-
-def test_permit_with_key(app):
-    with pytest.raises(NotImplementedError):
-        app.permit_with_key(None, None)
 
 
 @patch("zigpy.device.Device.initialize", new_callable=AsyncMock)
@@ -373,12 +242,17 @@ def test_get_device_missing(app, ieee):
         app.get_device(nwk=8)
 
 
+def test_device_property(app):
+    app.add_device(nwk=0x0000, ieee=NCP_IEEE)
+    assert app._device is app.get_device(ieee=NCP_IEEE)
+
+
 def test_ieee(app):
-    assert app.ieee
+    assert app.state.node_info.ieee
 
 
 def test_nwk(app):
-    assert app.nwk is not None
+    assert app.state.node_info.nwk is not None
 
 
 def test_config(app):
@@ -435,119 +309,54 @@ async def test_handle_message_uninitialized_dev(is_init_mock, app, ieee):
     assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 2
 
 
-async def test_broadcast(app):
-    from zigpy.profiles import zha
-
-    with pytest.raises(NotImplementedError):
-        (profile, cluster, src_ep, dst_ep, grp, radius, tsn, data) = (
-            zha.PROFILE_ID,
-            1,
-            2,
-            3,
-            0,
-            4,
-            212,
-            b"\x02\x01\x00",
-        )
-        await app.broadcast(
-            app, profile, cluster, src_ep, dst_ep, grp, radius, tsn, data
-        )
-
-
-async def test_shutdown():
-    class App(zigpy.application.ControllerApplication):
-        async def startup(self, auto_form=False):
-            pass
-
-        async def request(
-            self,
-            device,
-            profile,
-            cluster,
-            src_ep,
-            dst_ep,
-            sequence,
-            data,
-            expect_reply=True,
-            use_ieee=False,
-        ):
-            pass
-
-        async def permit_ncp(self, time_s=60):
-            pass
-
-    with pytest.raises(TypeError):
-        await App({}).shutdown()
-
-
 def test_get_dst_address(app):
     r = app.get_dst_address(MagicMock())
     assert r.addrmode == 3
     assert r.endpoint == 1
 
 
-async def test_update_network(app):
-    with pytest.raises(NotImplementedError):
-        await app.update_network()
-
-
 def test_props(app):
-    assert app.channel is None
-    assert app.channels is None
-    assert app.extended_pan_id
-    assert app.pan_id
-    assert app.nwk_update_id is not None
-
-    new_ieee = t.EUI64.convert("aa:22:11:22:11:22:33:44")
-    app._ieee = new_ieee
-    assert app.state.node_information.ieee == new_ieee
-
-    app._nwk = 0x4321
-    assert app.state.node_information.nwk == 0x4321
-
-
-async def test_mrequest(app):
-    s = sentinel
-    with pytest.raises(NotImplementedError):
-        await app.mrequest(
-            s.group_id, s.profile_id, s.cluster, s.src_ep, s.sequence, s.data
-        )
+    assert app.state.network_info.channel is not None
+    assert app.state.network_info.channel_mask is not None
+    assert app.state.network_info.extended_pan_id is not None
+    assert app.state.network_info.pan_id is not None
+    assert app.state.network_info.nwk_update_id is not None
 
 
 def test_app_config_setter(app):
     """Test configuration setter."""
 
     cfg_copy = app.config.copy()
-    assert app.config[CONF_OTA][CONF_OTA_IKEA] is False
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
     with pytest.raises(vol.Invalid):
-        cfg_copy[CONF_OTA][CONF_OTA_IKEA] = "invalid bool"
+        cfg_copy[conf.CONF_OTA][conf.CONF_OTA_IKEA] = "invalid bool"
         app.config = cfg_copy
-        assert app.config[CONF_OTA][CONF_OTA_IKEA] is False
+        assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
 
-    cfg_copy[CONF_OTA][CONF_OTA_IKEA] = True
+    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_IKEA] = True
     app.config = cfg_copy
-    assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is True
 
     with pytest.raises(vol.Invalid):
-        cfg_copy[CONF_OTA][CONF_OTA_IKEA] = "invalid bool"
+        cfg_copy[conf.CONF_OTA][conf.CONF_OTA_IKEA] = "invalid bool"
         app.config = cfg_copy
-        assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
+        assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is True
 
 
 def test_app_update_config(app):
     """Test configuration partial update."""
 
-    assert app.config[CONF_OTA][CONF_OTA_IKEA] is False
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
     with pytest.raises(vol.Invalid):
-        app.update_config({CONF_OTA: {CONF_OTA_IKEA: "invalid bool"}})
-        assert app.config[CONF_OTA][CONF_OTA_IKEA] is False
+        app.update_config({conf.CONF_OTA: {conf.CONF_OTA_IKEA: "invalid bool"}})
+        assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
 
-    app.update_config({CONF_OTA: {CONF_OTA_IKEA: "yes"}})
-    assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
+    app.update_config({conf.CONF_OTA: {conf.CONF_OTA_IKEA: "yes"}})
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is True
 
     with pytest.raises(vol.Invalid):
-        app.update_config({CONF_OTA: {CONF_OTA_IKEA: "invalid bool"}})
-        assert app.config[CONF_OTA][CONF_OTA_IKEA] is True
+        app.update_config({conf.CONF_OTA: {conf.CONF_OTA_IKEA: "invalid bool"}})
+        assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is True
 
 
 async def test_uninitialized_message_handlers(app, ieee):
@@ -643,18 +452,19 @@ async def test_remove_parent_devices(app):
 
 
 async def test_startup_log_on_uninitialized_device(ieee, caplog):
-    class App(zigpy.application.ControllerApplication):
-        async def _noop(self, *args, **kwargs):
-            pass
-
-        startup = request = permit_ncp = probe = shutdown = _noop
-
+    class TestApp(App):
         async def _load_db(self):
-            self.add_device(ieee, 1)
+            dev = self.add_device(ieee, 1)
+            assert not dev.is_initialized
 
     caplog.set_level(logging.WARNING)
 
-    await App.new(ZIGPY_SCHEMA({CONF_DATABASE: "/dev/null"}))
+    await TestApp.new(
+        {
+            conf.CONF_DATABASE: "/dev/null",
+            conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+        }
+    )
     assert "Device is partially initialized" in caplog.text
 
 
@@ -704,7 +514,137 @@ async def test_get_device(app):
     await app.startup()
 
     app.add_device(t.EUI64.convert("11:11:11:11:22:22:22:22"), 0x0000)
-    dev_2 = app.add_device(app.ieee, 0x0000)
+    dev_2 = app.add_device(app.state.node_info.ieee, 0x0000)
     app.add_device(t.EUI64.convert("11:11:11:11:22:22:22:33"), 0x0000)
 
     assert app.get_device(nwk=0x0000) is dev_2
+
+
+async def test_probe_success():
+    config = {"path": "/dev/test"}
+
+    with patch.object(App, "connect") as connect, patch.object(
+        App, "disconnect"
+    ) as disconnect:
+        result = await App.probe(config)
+
+    assert result == config
+
+    assert connect.await_count == 1
+    assert disconnect.await_count == 1
+
+
+async def test_probe_failure():
+    config = {"path": "/dev/test"}
+
+    with patch.object(
+        App, "connect", side_effect=asyncio.TimeoutError
+    ) as connect, patch.object(App, "disconnect") as disconnect:
+        result = await App.probe(config)
+
+    assert result is False
+
+    assert connect.await_count == 1
+    assert disconnect.await_count == 1
+
+
+async def test_form_network(app):
+    with patch.object(app, "write_network_info") as write1:
+        await app.form_network()
+
+    with patch.object(app, "write_network_info") as write2:
+        await app.form_network()
+
+    nwk_info1 = write1.mock_calls[0][2]["network_info"]
+    node_info1 = write1.mock_calls[0][2]["node_info"]
+
+    nwk_info2 = write2.mock_calls[0][2]["network_info"]
+    node_info2 = write2.mock_calls[0][2]["node_info"]
+
+    assert node_info1 == node_info2
+
+    # Critical network settings are randomized
+    assert nwk_info1.extended_pan_id != nwk_info2.extended_pan_id
+    assert nwk_info1.pan_id != nwk_info2.pan_id
+    assert nwk_info1.network_key != nwk_info2.network_key
+
+    # The well-known TCLK is used
+    assert (
+        nwk_info1.tc_link_key.key
+        == nwk_info2.tc_link_key.key
+        == t.KeyData(b"ZigBeeAlliance09")
+    )
+
+    assert nwk_info1.channel == 15
+
+
+async def test_startup_formed(app):
+    app.start_network = AsyncMock()
+    app.form_network = AsyncMock()
+    app.permit = AsyncMock()
+
+    await app.startup(auto_form=False)
+
+    assert app.start_network.await_count == 1
+    assert app.form_network.await_count == 0
+    assert app.permit.await_count == 1
+
+
+async def test_startup_not_formed(app):
+    app.start_network = AsyncMock()
+    app.form_network = AsyncMock()
+    app.load_network_info = AsyncMock(side_effect=NetworkNotFormed())
+    app.permit = AsyncMock()
+
+    with pytest.raises(NetworkNotFormed):
+        await app.startup(auto_form=False)
+
+    assert app.start_network.await_count == 0
+    assert app.form_network.await_count == 0
+    assert app.permit.await_count == 0
+
+    await app.startup(auto_form=True)
+
+    assert app.start_network.await_count == 1
+    assert app.form_network.await_count == 1
+    assert app.permit.await_count == 1
+
+
+async def test_deprecated_properties_and_methods(app):
+    with pytest.deprecated_call():
+        assert app.state.network_information is app.state.network_info
+
+    with pytest.deprecated_call():
+        assert app.state.node_information is app.state.node_info
+
+    app.shutdown = AsyncMock()
+    app.state = MagicMock()
+
+    with pytest.deprecated_call():
+        await app.pre_shutdown()
+
+    assert app.shutdown.await_count == 1
+
+    with pytest.deprecated_call():
+        assert app.nwk is app.state.node_info.nwk
+
+    with pytest.deprecated_call():
+        assert app.ieee is app.state.node_info.ieee
+
+    with pytest.deprecated_call():
+        assert app.pan_id is app.state.network_info.pan_id
+
+    with pytest.deprecated_call():
+        assert app.extended_pan_id is app.state.network_info.extended_pan_id
+
+    with pytest.deprecated_call():
+        assert app.network_key is app.state.network_info.network_key
+
+    with pytest.deprecated_call():
+        assert app.channel is app.state.network_info.channel
+
+    with pytest.deprecated_call():
+        assert app.channels is app.state.network_info.channel_mask
+
+    with pytest.deprecated_call():
+        assert app.nwk_update_id is app.state.network_info.nwk_update_id

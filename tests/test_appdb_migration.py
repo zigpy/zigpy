@@ -66,7 +66,7 @@ async def test_migration_from_3_to_4(open_twice, test_db):
     # Ensure migration works on first run, and after shutdown
     if open_twice:
         app = await make_app(test_db_v3)
-        await app.pre_shutdown()
+        await app.shutdown()
 
     app = await make_app(test_db_v3)
 
@@ -118,7 +118,7 @@ async def test_migration_from_3_to_4(open_twice, test_db):
         lqi=132,
     )
 
-    await app.pre_shutdown()
+    await app.shutdown()
 
     with sqlite3.connect(test_db_v3) as conn:
         cur = conn.cursor()
@@ -148,11 +148,11 @@ async def test_migration_0_to_5(test_db):
     assert num_devices_before_migration == 27
 
     app1 = await make_app(test_db_v0)
-    await app1.pre_shutdown()
+    await app1.shutdown()
     assert len(app1.devices) == 27
 
     app2 = await make_app(test_db_v0)
-    await app2.pre_shutdown()
+    await app2.shutdown()
 
     # All 27 devices migrated
     assert len(app2.devices) == 27
@@ -171,7 +171,7 @@ async def test_migration_missing_neighbors_v3(test_db):
 
     # Migration won't fail even though the database version number is 3
     app = await make_app(test_db_v3)
-    await app.pre_shutdown()
+    await app.shutdown()
 
     # Version was upgraded
     with sqlite3.connect(test_db_v3) as conn:
@@ -204,7 +204,7 @@ async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
 
     # Migration will handle invalid attributes entries
     app = await make_app(test_db_bad_attrs)
-    await app.pre_shutdown()
+    await app.shutdown()
 
     assert len(app.devices) == num_devices_before_migration
     assert (
@@ -222,7 +222,7 @@ async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
             cur.execute(f"PRAGMA user_version={force_version}")
 
     app2 = await make_app(test_db_bad_attrs)
-    await app2.pre_shutdown()
+    await app2.shutdown()
 
     # All devices still exist
     assert len(app2.devices) == num_devices_before_migration
@@ -262,7 +262,7 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
 
     # Saving the device should cause the node descriptor to not be saved
     await app._dblistener._save_device(bad_dev)
-    await app.pre_shutdown()
+    await app.shutdown()
 
     # The node descriptor is not in the database
     with sqlite3.connect(test_db_v3) as conn:
@@ -323,7 +323,7 @@ async def test_remigrate_forcibly_downgraded_v4(test_db):
 
     # Migrate it to the latest version
     app = await make_app(test_db_v4_downgraded_to_v3)
-    await app.pre_shutdown()
+    await app.shutdown()
 
     # Downgrade it back to v3
     with sqlite3.connect(test_db_v4_downgraded_to_v3) as conn:
@@ -351,7 +351,7 @@ async def test_remigrate_forcibly_downgraded_v4(test_db):
         assert ver == 3
 
     app = await make_app(test_db_v4_downgraded_to_v3)
-    await app.pre_shutdown()
+    await app.shutdown()
 
     with sqlite3.connect(test_db_v4_downgraded_to_v3) as conn:
         cur = conn.cursor()
@@ -392,7 +392,7 @@ async def test_v4_to_v5_migration_bad_neighbors(test_db, with_bad_neighbor):
         ).fetchone()
 
     app = await make_app(test_db_v4)
-    await app.pre_shutdown()
+    await app.shutdown()
 
     with sqlite3.connect(test_db_v4) as conn:
         (num_new_neighbors,) = cur.execute(
@@ -443,7 +443,7 @@ async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribut
         dev = app.get_device(ieee=t.EUI64.convert("00:0d:6f:ff:fe:a6:11:7a"))
         assert dev.endpoints[123].in_clusters[456]._attr_cache[789] == "test"
 
-    await app.pre_shutdown()
+    await app.shutdown()
 
 
 async def test_v5_to_v7_migration(test_db):
@@ -501,12 +501,12 @@ async def test_last_seen_initial_migration(test_db):
     assert dev.last_seen is None
     dev.update_last_seen()
     assert isinstance(dev.last_seen, float)
-    await app.pre_shutdown()
+    await app.shutdown()
 
     # But the device's `last_seen` will still update properly when it's actually set
     app = await make_app(test_db_v5)
     assert isinstance(app.get_device(nwk=0xBD4D).last_seen, float)
-    await app.pre_shutdown()
+    await app.shutdown()
 
 
 def test_db_version_is_latest_schema_version():
@@ -518,4 +518,4 @@ async def test_last_seen_migration_v8_to_v9(test_db):
 
     app = await make_app(test_db_v8)
     assert int(app.get_device(nwk=0xE01E).last_seen) == 1651119830
-    await app.pre_shutdown()
+    await app.shutdown()
