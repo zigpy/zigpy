@@ -29,14 +29,14 @@ class BroadcastAddress(basic.enum16):
 
 class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
     # EUI 64-bit ID (an IEEE address).
-    def __repr__(self):
+    def __repr__(self) -> str:
         return ":".join("%02x" % i for i in self[::-1])
 
     def __hash__(self):
         return hash(repr(self))
 
     @classmethod
-    def convert(cls, ieee: str):
+    def convert(cls, ieee: str) -> EUI64:
         if ieee is None:
             return None
         ieee = [basic.uint8_t(p) for p in _hex_string_to_bytes(ieee)[::-1]]
@@ -44,8 +44,11 @@ class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
         return cls(ieee)
 
 
+EUI64.UNKNOWN = EUI64.convert("FF:FF:FF:FF:FF:FF:FF:FF")
+
+
 class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
-    def __repr__(self):
+    def __repr__(self) -> str:
         return ":".join(f"{i:02x}" for i in self)
 
     @classmethod
@@ -53,6 +56,9 @@ class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
         key = [basic.uint8_t(p) for p in _hex_string_to_bytes(key)]
         assert len(key) == cls._length
         return cls(key)
+
+
+KeyData.UNKNOWN = KeyData.convert("FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF")
 
 
 class Bool(basic.enum8):

@@ -6,6 +6,7 @@ import struct
 from typing import Callable, TypeVar
 
 CALLABLE_T = TypeVar("CALLABLE_T", bound=Callable)  # pylint: disable=invalid-name
+T = TypeVar("T")
 
 
 class Bits(list):
@@ -105,6 +106,10 @@ class FixedIntType(int):
         #      member type. We have to ensure this is true for every subclass.
         if "__new__" not in cls.__dict__:
             cls.__new__ = cls.__new__
+
+        # XXX: The enum module sabotages pickling using the same logic.
+        if "__reduce_ex__" not in cls.__dict__:
+            cls.__reduce_ex__ = cls.__reduce_ex__
 
     def bits(self) -> Bits:
         return Bits([(self >> n) & 0b1 for n in range(self._bits - 1, -1, -1)])
@@ -619,7 +624,7 @@ class List(list, metaclass=KwargTypeMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[LVList, bytes]:
+    def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
         assert cls._item_type is not None
 
         lst = cls()
@@ -643,7 +648,7 @@ class LVList(list, metaclass=KwargTypeMeta):
         )
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[LVList, bytes]:
+    def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
         assert cls._item_type is not None
         length, data = cls._length_type.deserialize(data)
         r = cls()
@@ -670,7 +675,7 @@ class FixedList(list, metaclass=KwargTypeMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[FixedList, bytes]:
+    def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
         assert cls._item_type is not None
         r = cls()
         for i in range(cls._length):
@@ -682,7 +687,7 @@ class FixedList(list, metaclass=KwargTypeMeta):
 class CharacterString(str):
     _prefix_length = 1
 
-    def serialize(self):
+    def serialize(self) -> bytes:
         if len(self) >= pow(256, self._prefix_length) - 1:
             raise ValueError("String is too long")
         return len(self).to_bytes(
@@ -690,7 +695,7 @@ class CharacterString(str):
         ) + self.encode("utf8")
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
         if len(data) < cls._prefix_length:
             raise ValueError("Data is too short")
 
@@ -700,7 +705,11 @@ class CharacterString(str):
             raise ValueError("Data is too short")
 
         raw = data[cls._prefix_length : cls._prefix_length + length]
-        r = cls(raw.split(b"\x00")[0].decode("utf8", errors="replace"))
+        text = raw.split(b"\x00")[0].decode("utf8", errors="replace")
+
+        # FIXME: figure out how to get this working: `T` is not behaving as expected in
+        # the classmethod when it is not bound.
+        r = cls(text)  # type:ignore[call-arg]
         r.raw = raw
         return r, data[cls._prefix_length + length :]
 
@@ -713,7 +722,7 @@ def LimitedCharString(max_len):  # noqa: N802
     class LimitedCharString(CharacterString):
         _max_len = max_len
 
-        def serialize(self):
+        def serialize(self) -> bytes:
             if len(self) > self._max_len:
                 raise ValueError(f"String is too long (>{self._max_len})")
             return super().serialize()
