@@ -1,7 +1,7 @@
 # zigpy
 
 [![Build](https://github.com/zigpy/zigpy/workflows/CI/badge.svg?branch=dev)](https://github.com/zigpy/zigpy/workflows/CI/badge.svg?branch=dev)
-[![Coverage](https://coveralls.io/repos/github/zigpy/zigpy/badge.svg?branch=dev)](https://coveralls.io/github/zigpy/zigpy?branch=dev)
+[![Coverage Status](https://codecov.io/gh/zigpy/zigpy/branch/dev/graph/badge.svg)](https://codecov.io/gh/zigpy/zigpy)
 
 **[zigpy](https://github.com/zigpy/zigpy)** is a hardware independent **[Zigbee protocol stack](https://en.wikipedia.org/wiki/Zigbee)** integration project to implement **[Zigbee](https://www.zigbee.org/)** standard specifications as a Python 3 library. 
 
