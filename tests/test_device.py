@@ -12,7 +12,7 @@ import zigpy.state
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
-from .async_mock import ANY, AsyncMock, MagicMock, patch, sentinel
+from .async_mock import ANY, AsyncMock, MagicMock, int_sentinel, patch, sentinel
 
 
 @pytest.fixture
@@ -98,7 +98,7 @@ async def test_initialize_ep_failed(monkeypatch, dev):
 
 
 async def test_request(dev):
-    seq = sentinel.tsn
+    seq = int_sentinel.tsn
 
     async def mock_req(*args, **kwargs):
         dev._pending[seq].result.set_result(sentinel.result)
@@ -113,7 +113,7 @@ async def test_request(dev):
 
 
 async def test_request_without_reply(dev):
-    seq = sentinel.tsn
+    seq = int_sentinel.tsn
 
     async def mock_req(*args, **kwargs):
         dev._pending[seq].result.set_result(sentinel.result)
@@ -161,7 +161,7 @@ async def test_handle_message_no_endpoint(dev):
 async def test_handle_message(dev):
     ep = dev.add_endpoint(3)
     hdr = MagicMock()
-    hdr.tsn = sentinel.tsn
+    hdr.tsn = int_sentinel.tsn
     hdr.is_reply = sentinel.is_reply
     dev.deserialize = MagicMock(return_value=[hdr, sentinel.args])
     ep.handle_message = MagicMock()
@@ -244,7 +244,7 @@ async def test_handle_message_read_report_conf(dev):
 async def test_handle_message_reply(dev):
     ep = dev.add_endpoint(3)
     ep.handle_message = MagicMock()
-    tsn = sentinel.tsn
+    tsn = int_sentinel.tsn
     req_mock = MagicMock()
     dev._pending[tsn] = req_mock
     hdr_1 = MagicMock()
@@ -390,7 +390,7 @@ async def test_schedule_group_membership(dev, caplog):
         await asyncio.sleep(0)
         assert scan_mock.call_count == 1
         assert scan_mock.await_count == 1
-        assert not caplog.records
+        assert not [r for r in caplog.records if r.name != "asyncio"]
 
         scan_mock.reset_mock()
         dev.schedule_group_membership_scan()

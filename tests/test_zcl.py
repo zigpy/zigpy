@@ -10,7 +10,7 @@ import zigpy.types as t
 import zigpy.zcl as zcl
 import zigpy.zcl.foundation as foundation
 
-from .async_mock import AsyncMock, MagicMock, patch, sentinel
+from .async_mock import AsyncMock, MagicMock, int_sentinel, patch, sentinel
 
 DEFAULT_TSN = 123
 
@@ -206,7 +206,7 @@ def test_attribute_report(cluster):
 
 def test_handle_request_unknown(cluster):
     hdr = MagicMock(auto_spec=foundation.ZCLHeader)
-    hdr.command_id = sentinel.command_id
+    hdr.command_id = int_sentinel.command_id
     hdr.frame_control.is_general = True
     hdr.frame_control.is_cluster = False
     cluster.listener_event = MagicMock()
@@ -224,7 +224,7 @@ def test_handle_request_unknown(cluster):
 
 def test_handle_cluster_request(cluster):
     hdr = MagicMock(auto_spec=foundation.ZCLHeader)
-    hdr.command_id = sentinel.command_id
+    hdr.command_id = int_sentinel.command_id
     hdr.frame_control.is_general = False
     hdr.frame_control.is_cluster = True
     hdr.command_id.is_general = False
