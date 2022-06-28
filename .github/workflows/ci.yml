@@ -355,7 +355,7 @@ jobs:
           . venv/bin/activate
           pytest \
             -qq \
-            --timeout=9 \
+            --timeout=15 \
             --durations=10 \
             --cov zigpy \
             -o console_output_style=count \
