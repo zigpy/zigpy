@@ -407,11 +407,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         try:
             await app.connect()
         except Exception:
-            LOGGER.debug(
-                "Failed to probe with config %s: %s",
-                device_config,
-                exc_info=True,
-            )
+            LOGGER.debug("Failed to probe with config %s", device_config, exc_info=True)
             return False
         else:
             return device_config

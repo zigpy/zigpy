@@ -355,7 +355,7 @@ jobs:
           . venv/bin/activate
           pytest \
             -qq \
-            --timeout=9 \
+            --timeout=15 \
             --durations=10 \
             --cov zigpy \
             -o console_output_style=count \
@@ -403,4 +403,4 @@ jobs:
           coverage report --fail-under=99
           coverage xml
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v2

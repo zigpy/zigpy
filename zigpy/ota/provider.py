@@ -569,7 +569,7 @@ class INOVELLIImage:
         assert ota_image.header.manufacturer_id == self.key.manufacturer_id
 
         LOGGER.debug(
-            "Finished downloading %s bytes from %s for %s ver %s",
+            "Finished downloading from %s for %s ver %s",
             self.url,
             self.key,
             self.version,

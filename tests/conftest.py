@@ -31,6 +31,7 @@ def raise_on_bad_log_formatting():
 
     root = logging.getLogger()
     root.addHandler(handler)
+    root.setLevel(logging.DEBUG)
 
     try:
         yield

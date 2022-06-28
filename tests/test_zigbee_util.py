@@ -336,11 +336,13 @@ async def test_catching_coro(caplog):
     caplog.set_level(level=logging.DEBUG)
     mock_cluster = _ClusterMock(logging.getLogger(__name__))
     await mock_cluster.catching_coro(mock_cluster.a())
-    assert caplog.records[0].levelno == logging.DEBUG
-    assert caplog.records[0].message == "test a"
-    assert caplog.records[1].levelno == logging.WARNING
-    assert caplog.records[1].message == "test b"
-    assert len(caplog.records) == 2
+
+    records = [r for r in caplog.records if r.name == __name__]
+    assert records[0].levelno == logging.DEBUG
+    assert records[0].message == "test a"
+    assert records[1].levelno == logging.WARNING
+    assert records[1].message == "test b"
+    assert len(records) == 2
 
 
 @pytest.mark.parametrize("exception", [None, asyncio.TimeoutError])
@@ -350,11 +352,13 @@ async def test_catching_task_expected_exception(exception, caplog):
     await mock_cluster.catching_coro(
         mock_cluster.a(asyncio.TimeoutError), exceptions=exception
     )
-    assert caplog.records[0].levelno == logging.DEBUG
-    assert caplog.records[0].message == "test a"
-    assert caplog.records[1].levelno == logging.WARNING
-    assert caplog.records[1].message == "test b"
-    assert len(caplog.records) == 2
+
+    records = [r for r in caplog.records if r.name == "expected_exceptions"]
+    assert records[0].levelno == logging.DEBUG
+    assert records[0].message == "test a"
+    assert records[1].levelno == logging.WARNING
+    assert records[1].message == "test b"
+    assert len(records) == 2
 
 
 @pytest.mark.parametrize(
@@ -364,10 +368,12 @@ async def test_catching_task_unexpected_exception(to_raise, exception, caplog):
     """Test CatchingTaskMixin unexpected exceptions."""
     mock_cluster = _ClusterMock(logging.getLogger("unexpected_exceptions"))
     await mock_cluster.catching_coro(mock_cluster.a(to_raise), exceptions=exception)
-    assert caplog.records[0].levelno == logging.DEBUG
-    assert caplog.records[0].message == "test a"
-    assert caplog.records[1].levelno == logging.WARNING
-    assert caplog.records[1].message == "test b"
-    assert caplog.records[2].levelno == logging.ERROR
-    assert caplog.records[2].message.startswith("Traceback (most recent call last)")
-    assert len(caplog.records) == 3
+
+    records = [r for r in caplog.records if r.name == "unexpected_exceptions"]
+    assert records[0].levelno == logging.DEBUG
+    assert records[0].message == "test a"
+    assert records[1].levelno == logging.WARNING
+    assert records[1].message == "test b"
+    assert records[2].levelno == logging.ERROR
+    assert records[2].message.startswith("Traceback (most recent call last)")
+    assert len(records) == 3
