@@ -593,7 +593,9 @@ async def test_startup_formed(app):
 async def test_startup_not_formed(app):
     app.start_network = AsyncMock()
     app.form_network = AsyncMock()
-    app.load_network_info = AsyncMock(side_effect=NetworkNotFormed())
+    app.load_network_info = AsyncMock(
+        side_effect=[NetworkNotFormed(), NetworkNotFormed(), None]
+    )
     app.permit = AsyncMock()
 
     with pytest.raises(NetworkNotFormed):
