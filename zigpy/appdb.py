@@ -24,7 +24,7 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 9
+DB_VERSION = 10
 DB_V = f"_v{DB_VERSION}"
 MIN_SQLITE_VERSION = (3, 24, 0)
 
@@ -697,6 +697,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v7, 7),
                 (self._migrate_to_v8, 8),
                 (self._migrate_to_v9, 9),
+                (self._migrate_to_v10, 10),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -942,5 +943,26 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "node_descriptors_v8": "node_descriptors_v9",
                 "unsupported_attributes_v8": "unsupported_attributes_v9",
                 "devices_v8": None,
+            }
+        )
+
+    async def _migrate_to_v10(self):
+        """Schema v10 added a new `network_backups_v10` table."""
+
+        await self.execute("INSERT INTO devices_v10 SELECT * FROM devices_v9")
+
+        await self._migrate_tables(
+            {
+                "endpoints_v9": "endpoints_v10",
+                "in_clusters_v9": "in_clusters_v10",
+                "out_clusters_v9": "out_clusters_v10",
+                "groups_v9": "groups_v10",
+                "group_members_v9": "group_members_v10",
+                "relays_v9": "relays_v10",
+                "attributes_cache_v9": "attributes_cache_v10",
+                "neighbors_v9": "neighbors_v10",
+                "node_descriptors_v9": "node_descriptors_v10",
+                "unsupported_attributes_v9": "unsupported_attributes_v10",
+                "devices_v9": None,
             }
         )
