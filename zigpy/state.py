@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-import dataclasses
-from dataclasses import InitVar, dataclass, field
+from dataclasses import field
 import functools
-from typing import Any, Iterator
+from typing import Any, Iterator, Optional as Optional  # so pyupgrade leaves it alone
+
+from pydantic import dataclasses
+from pydantic.dataclasses import dataclass
 
 import zigpy.config as conf
 import zigpy.types as t
@@ -77,7 +79,7 @@ class NetworkInfo:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     # Package generating the network information
-    source: str | None = None
+    source: Optional[str] = None  # pyupgrade: noqa
 
     def replace(self, **kwargs) -> NetworkInfo:
         return dataclasses.replace(self, **kwargs)
@@ -88,10 +90,10 @@ class Counter:
     """Ever increasing Counter."""
 
     name: str
-    initial_value: InitVar[int] = 0
-    _raw_value: int = field(init=False, default=0)
+    initial_value: int = 0
+    raw_value: int = field(init=False, default=0)
     reset_count: int = field(init=False, default=0)
-    _last_reset_value: int = field(init=False, default=0)
+    last_reset_value: int = field(init=False, default=0)
 
     def __eq__(self, other) -> bool:
         """Compare two counters."""
@@ -106,7 +108,7 @@ class Counter:
 
     def __post_init__(self, initial_value) -> None:
         """Initialize instance."""
-        self._raw_value = initial_value
+        self.raw_value = initial_value
 
     def __str__(self) -> str:
         """String representation."""
@@ -116,32 +118,32 @@ class Counter:
     def value(self) -> int:
         """Current value of the counter."""
 
-        return self._last_reset_value + self._raw_value
+        return self.last_reset_value + self.raw_value
 
     def update(self, new_value: int) -> None:
         """Update counter value."""
 
-        if new_value == self._raw_value:
+        if new_value == self.raw_value:
             return
 
-        diff = new_value - self._raw_value
+        diff = new_value - self.raw_value
         if diff < 0:  # Roll over or reset
             self.reset_and_update(new_value)
             return
 
-        self._raw_value = new_value
+        self.raw_value = new_value
 
     def increment(self, increment: int = 1) -> None:
         """Increment current value by increment."""
 
         assert increment >= 0
-        self._raw_value += increment
+        self.raw_value += increment
 
     def reset_and_update(self, value: int) -> None:
         """Clear (rollover event) and optionally update."""
 
-        self._last_reset_value = self.value
-        self._raw_value = value
+        self.last_reset_value = self.value
+        self.raw_value = value
         self.reset_count += 1
 
     reset = functools.partialmethod(reset_and_update, 0)
@@ -233,10 +235,10 @@ class CounterGroups(dict):
 class State:
     node_info: NodeInfo = field(default_factory=NodeInfo)
     network_info: NetworkInfo = field(default_factory=NetworkInfo)
-    counters: CounterGroups | None = field(init=False, default=None)
-    broadcast_counters: CounterGroups | None = field(init=False, default=None)
-    device_counters: CounterGroups | None = field(init=False, default=None)
-    group_counters: CounterGroups | None = field(init=False, default=None)
+    counters: CounterGroups = field(init=False, default=None)
+    broadcast_counters: CounterGroups = field(init=False, default=None)
+    device_counters: CounterGroups = field(init=False, default=None)
+    group_counters: CounterGroups = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         """Initialize default counters."""
