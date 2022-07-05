@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+import json
 import logging
 import re
 import types
@@ -13,9 +14,11 @@ import zigpy.appdb_schemas
 import zigpy.device
 import zigpy.endpoint
 import zigpy.group
+import zigpy.models
 import zigpy.neighbor
 import zigpy.profiles
 import zigpy.quirks
+import zigpy.state
 import zigpy.types as t
 import zigpy.typing
 import zigpy.util
@@ -495,6 +498,28 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         await self._db.commit()
 
+    def network_backup_created(
+        self, network_info: zigpy.state.NetworkInfo, node_info: zigpy.state.NodeInfo
+    ) -> None:
+        backup = zigpy.models.NetworkBackup(
+            backup_time=datetime.now(timezone.utc),
+            network_info=network_info,
+            node_info=node_info,
+        )
+        self.enqueue("_network_backup_created", backup)
+
+    async def _network_backup_created(self, backup: zigpy.models.NetworkBackup) -> None:
+        obj = zigpy.state.network_state_to_json(
+            network_info=backup.network_info, node_info=backup.node_info
+        )
+        q = f"""INSERT INTO network_backups{DB_V} VALUES (?, ?)
+                    ON CONFLICT (backup_time)
+                    DO UPDATE SET
+                        backup_json=excluded.backup_json"""
+
+        await self.execute(q, (backup.backup_time.timestamp(), json.dumps(obj)))
+        await self._db.commit()
+
     async def load(self) -> None:
         LOGGER.debug("Loading application state")
         await self._load_devices()
@@ -515,6 +540,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
+        await self._load_network_backups()
         await self._register_device_listeners()
 
     async def _load_attributes(self, filter: str = None) -> None:
@@ -639,6 +665,24 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 neighbor = zdo_t.Neighbor(*fields)
                 assert neighbor.is_valid
                 dev.neighbors.add_neighbor(neighbor)
+
+    async def _load_network_backups(self) -> None:
+        self._application.network_backups.clear()
+
+        async with self.execute(
+            f"SELECT * FROM network_backups{DB_V} ORDER BY backup_time"
+        ) as cursor:
+            async for backup_time, backup_json in cursor:
+                obj = json.loads(backup_json)
+                network_info, node_info = zigpy.state.json_to_network_state(obj)
+
+                backup = zigpy.models.NetworkBackup(
+                    backup_time=datetime.fromtimestamp(backup_time, timezone.utc),
+                    network_info=network_info,
+                    node_info=node_info,
+                )
+
+                self._application.network_backups.append(backup)
 
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():

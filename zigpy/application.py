@@ -12,6 +12,7 @@ import zigpy.config as conf
 import zigpy.device
 import zigpy.exceptions
 import zigpy.group
+import zigpy.models
 import zigpy.ota
 import zigpy.profiles
 import zigpy.quirks
@@ -43,6 +44,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._ota = zigpy.ota.OTA(self)
         self._send_sequence = 0
 
+        self.network_backups: list[zigpy.models.NetworkBackup] = []
+
     async def _load_db(self) -> None:
         """Restore save state."""
         database_file = self.config[conf.CONF_DATABASE]
@@ -61,6 +64,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         await self.connect()
 
+        formed_new_network = False
+
         try:
             try:
                 await self.load_network_info(load_devices=False)
@@ -73,6 +78,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 LOGGER.info("Forming a new network")
                 await self.form_network()
                 await self.load_network_info(load_devices=False)
+                formed_new_network = True
 
             LOGGER.debug("Network info: %s", self.state.network_info)
             LOGGER.debug("Node info: %s", self.state.node_info)
@@ -85,6 +91,34 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.error("Couldn't start application")
             await self.shutdown()
             raise
+
+        # Perform a backup in the background
+        asyncio.create_task(
+            self._create_network_backup(formed_new_network=formed_new_network)
+        )
+
+    async def _create_network_backup(self, *, formed_new_network: bool = False) -> None:
+        if formed_new_network:
+            # If we just formed a new network, the backup will contain no devices so we
+            # can just send it to the database listener.
+            self.listener_event(
+                "network_backup_created", self.state.network_info, self.state.node_info
+            )
+            return
+
+        if not self.network_backups or not self.network_backups[-1].compatible_with(
+            network_info=self.state.network_info, node_info=self.state.node_info
+        ):
+            LOGGER.debug(
+                "Loaded state is not compatible with most recent backup: %s",
+                self.network_backups[-1:],
+            )
+            # Do a complete network backup when the superficial network information is
+            # not compatible with the most recent backup present in the database.
+            await self.load_network_info(load_devices=True)
+            self.listener_event(
+                "network_backup_created", self.state.network_info, self.state.node_info
+            )
 
     @classmethod
     async def new(
