@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import field
+from dataclasses import InitVar, field
 import functools
 from typing import Any, Iterator, Optional as Optional  # so pyupgrade leaves it alone
 
@@ -90,7 +90,7 @@ class Counter:
     """Ever increasing Counter."""
 
     name: str
-    initial_value: int = 0
+    initial_value: InitVar[int] = 0
     raw_value: int = field(init=False, default=0)
     reset_count: int = field(init=False, default=0)
     last_reset_value: int = field(init=False, default=0)

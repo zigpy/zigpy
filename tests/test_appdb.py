@@ -773,12 +773,12 @@ async def test_last_seen(tmpdir):
     app.device_initialized(dev)
 
     old_last_seen = dev.last_seen
-    await app.pre_shutdown()
+    await app.shutdown()
 
     # The `last_seen` of a joined device persists
     app = await make_app(db)
     dev = app.get_device(ieee=ieee)
-    await app.pre_shutdown()
+    await app.shutdown()
 
     next_last_seen = dev.last_seen
     assert abs(next_last_seen - old_last_seen) < 0.01
@@ -789,13 +789,13 @@ async def test_last_seen(tmpdir):
     app = await make_app(db)
     dev = app.get_device(ieee=ieee)
     dev.update_last_seen()
-    await app.pre_shutdown()
+    await app.shutdown()
 
     # And it will be updated when the database next loads
     app = await make_app(db)
     dev = app.get_device(ieee=ieee)
     assert dev.last_seen > next_last_seen + 0.1
-    await app.pre_shutdown()
+    await app.shutdown()
 
 
 @pytest.mark.parametrize(
