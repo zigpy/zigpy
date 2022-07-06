@@ -5,7 +5,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import InitVar, field
 import functools
-from typing import Any, Iterator, Optional as Optional  # so pyupgrade leaves it alone
+from typing import (  # `Dict as Dict` so pyupgrade doesn't try to upgrade it
+    Any,
+    Dict as Dict,
+    Iterator,
+    List as List,
+    Optional as Optional,
+)
 
 from pydantic import dataclasses
 from pydantic.dataclasses import dataclass
@@ -65,18 +71,18 @@ class NetworkInfo:
             partner_ieee=t.EUI64.UNKNOWN,
         )
     )
-    key_table: list[Key] = field(default_factory=list)
-    children: list[t.EUI64] = field(default_factory=list)
+    key_table: List[Key] = field(default_factory=list)
+    children: List[t.EUI64] = field(default_factory=list)
 
     # If exposed by the stack, NWK addresses of other connected devices on the network
-    nwk_addresses: dict[t.EUI64, t.NWK] = field(default_factory=dict)
+    nwk_addresses: Dict[t.EUI64, t.NWK] = field(default_factory=dict)
 
     # Dict to keep track of stack-specific network information.
     # Z-Stack, for example, has a TCLK_SEED that should be backed up.
-    stack_specific: dict[str, Any] = field(default_factory=dict)
+    stack_specific: Dict[str, Any] = field(default_factory=dict)
 
     # Internal metadata not directly used for network restoration
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     # Package generating the network information
     source: Optional[str] = None  # pyupgrade: noqa
