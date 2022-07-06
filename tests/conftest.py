@@ -109,9 +109,6 @@ class App(zigpy.application.ControllerApplication):
     async def load_network_info(self, *, load_devices=False):
         pass
 
-    async def _create_network_backup(self, *, formed_new_network=False):
-        pass
-
 
 @pytest.fixture
 def app_mock():

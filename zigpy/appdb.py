@@ -11,10 +11,10 @@ from typing import Any
 import aiosqlite
 
 import zigpy.appdb_schemas
+import zigpy.backup
 import zigpy.device
 import zigpy.endpoint
 import zigpy.group
-import zigpy.models
 import zigpy.neighbor
 import zigpy.profiles
 import zigpy.quirks
@@ -498,26 +498,17 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         await self._db.commit()
 
-    def network_backup_created(
-        self, network_info: zigpy.state.NetworkInfo, node_info: zigpy.state.NodeInfo
-    ) -> None:
-        backup = zigpy.models.NetworkBackup(
-            backup_time=datetime.now(timezone.utc),
-            network_info=network_info,
-            node_info=node_info,
-        )
-        self.enqueue("_network_backup_created", backup)
+    def network_backup_created(self, backup: zigpy.backup.NetworkBackup) -> None:
+        obj = zigpy.backup.network_backup_to_open_coordinator_backup(backup)
+        self.enqueue("_network_backup_created", json.dumps(obj))
 
-    async def _network_backup_created(self, backup: zigpy.models.NetworkBackup) -> None:
-        obj = zigpy.state.network_state_to_json(
-            network_info=backup.network_info, node_info=backup.node_info
-        )
+    async def _network_backup_created(self, backup_json: str) -> None:
         q = f"""INSERT INTO network_backups{DB_V} VALUES (?, ?)
-                    ON CONFLICT (backup_time)
+                    ON CONFLICT (id)
                     DO UPDATE SET
                         backup_json=excluded.backup_json"""
 
-        await self.execute(q, (backup.backup_time.timestamp(), json.dumps(obj)))
+        await self.execute(q, (None, backup_json))
         await self._db.commit()
 
     async def load(self) -> None:
@@ -667,22 +658,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 dev.neighbors.add_neighbor(neighbor)
 
     async def _load_network_backups(self) -> None:
-        self._application.network_backups.clear()
+        self._application.backups.backups.clear()
 
         async with self.execute(
-            f"SELECT * FROM network_backups{DB_V} ORDER BY backup_time"
+            f"SELECT * FROM network_backups{DB_V} ORDER BY id"
         ) as cursor:
-            async for backup_time, backup_json in cursor:
+            async for id_, backup_json in cursor:
                 obj = json.loads(backup_json)
-                network_info, node_info = zigpy.state.json_to_network_state(obj)
+                backup = zigpy.backup.open_coordinator_backup_to_network_backup(obj)
 
-                backup = zigpy.models.NetworkBackup(
-                    backup_time=datetime.fromtimestamp(backup_time, timezone.utc),
-                    network_info=network_info,
-                    node_info=node_info,
-                )
-
-                self._application.network_backups.append(backup)
+                self._application.backups.backups.append(backup)
 
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():
@@ -696,6 +681,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             "SELECT name FROM sqlite_master WHERE type='table'"
         ) as cursor:
             async for (name,) in cursor:
+                # Ignore tables internal to SQLite
+                if name.startswith("sqlite_"):
+                    continue
+
                 # The regex will always return a match
                 match = DB_V_REGEX.search(name)
                 assert match is not None

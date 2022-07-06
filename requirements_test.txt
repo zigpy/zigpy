@@ -3,7 +3,7 @@
 asynctest
 coveralls
 pytest
-pytest-aiohttp
+pytest-asyncio
 pytest-cov
 pytest-timeout
 

@@ -204,9 +204,6 @@ CREATE UNIQUE INDEX unsupported_attributes_idx_v10
 -- network backups
 DROP TABLE IF EXISTS network_backups_v10;
 CREATE TABLE network_backups_v10 (
-    backup_time REAL NOT NULL,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     backup_json TEXT NOT NULL
 );
-
-CREATE UNIQUE INDEX network_backups_backup_time_idx_v10
-    ON network_backups_v10(backup_time);
