@@ -89,6 +89,19 @@ class BackupManager(ListenableMixin):
 
         return backup
 
+    async def restore_backup(
+        self, backup: NetworkBackup, counter_increment: int = 5000
+    ) -> None:
+        key = backup.network_info.network_key
+        network_info = backup.network_info.replace(
+            network_key=key.replace(tx_counter=key.tx_counter + counter_increment)
+        )
+
+        await self.app.write_network_info(
+            network_info=network_info,
+            node_info=backup.node_info,
+        )
+
     def start_periodic_backups(self, period: int | float) -> None:
         self.stop_periodic_backups()
         self._backup_task = asyncio.create_task(self._backup_loop(period))
@@ -106,6 +119,9 @@ class BackupManager(ListenableMixin):
 
             LOGGER.debug("Waiting for %ss before backing up again", period)
             await asyncio.sleep(period)
+
+    def __getitem__(self, key) -> NetworkBackup:
+        return self.backups[key]
 
 
 def _network_backup_to_open_coordinator_backup(backup: NetworkBackup) -> dict[str, Any]:
