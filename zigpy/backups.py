@@ -30,7 +30,15 @@ LOGICAL_TYPE_TO_JSON = {
 JSON_TO_LOGICAL_TYPE = {v: k for k, v in LOGICAL_TYPE_TO_JSON.items()}
 
 
-class NetworkBackup(pydantic.BaseModel):
+class BasePydanticModel(pydantic.BaseModel):
+    def replace(self, **kwargs):
+        d = self.dict()
+        d.update(kwargs)
+
+        return type(self)(**d)
+
+
+class NetworkBackup(BasePydanticModel):
     backup_time: datetime = pydantic.Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -322,7 +330,12 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
         # XXX: Devices that are not children, have no NWK address, and have no link key
         #      are effectively ignored, since there is no place to write them
 
-    creation_time = internal.get("creation_time", "1970-01-01T00:00:00+00:00")
+    if "date" in internal:
+        # Z2M format
+        creation_time = internal["date"].replace("Z", "+00:00")
+    else:
+        # Zigpy format
+        creation_time = internal.get("creation_time", "1970-01-01T00:00:00+00:00")
 
     return NetworkBackup(
         backup_time=datetime.fromisoformat(creation_time),

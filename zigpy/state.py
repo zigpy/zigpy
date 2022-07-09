@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+import dataclasses
 from dataclasses import InitVar, field
 import functools
 from typing import (  # `Dict as Dict` so pyupgrade doesn't try to upgrade it
@@ -13,7 +14,6 @@ from typing import (  # `Dict as Dict` so pyupgrade doesn't try to upgrade it
     Optional as Optional,
 )
 
-from pydantic import dataclasses
 from pydantic.dataclasses import dataclass
 
 import zigpy.config as conf
