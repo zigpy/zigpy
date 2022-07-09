@@ -1,6 +1,6 @@
 import pytest
 
-import zigpy.backup
+import zigpy.backups
 import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
@@ -78,11 +78,11 @@ def network_info(node_info):
 
 @pytest.fixture
 def backup(network_info, node_info):
-    return zigpy.backup.NetworkBackup(network_info=network_info, node_info=node_info)
+    return zigpy.backups.NetworkBackup(network_info=network_info, node_info=node_info)
 
 
 def test_state_backup_restore_unchanged(backup):
     obj = backup.as_dict()
-    backup2 = zigpy.backup.NetworkBackup.from_dict(obj)
+    backup2 = zigpy.backups.NetworkBackup.from_dict(obj)
 
     assert backup == backup2

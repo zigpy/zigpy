@@ -8,7 +8,7 @@ import random
 from typing import Any
 
 import zigpy.appdb
-import zigpy.backup
+import zigpy.backups
 import zigpy.config as conf
 import zigpy.device
 import zigpy.exceptions
@@ -44,7 +44,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._ota = zigpy.ota.OTA(self)
         self._send_sequence = 0
 
-        self.backups: zigpy.backup.BackupManager = zigpy.backup.BackupManager(self)
+        self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
 
     async def _load_db(self) -> None:
         """Restore save state."""

@@ -11,7 +11,7 @@ from typing import Any
 import aiosqlite
 
 import zigpy.appdb_schemas
-import zigpy.backup
+import zigpy.backups
 import zigpy.device
 import zigpy.endpoint
 import zigpy.group
@@ -498,7 +498,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         await self._db.commit()
 
-    def network_backup_created(self, backup: zigpy.backup.NetworkBackup) -> None:
+    def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
         self.enqueue("_network_backup_created", json.dumps(backup.as_dict()))
 
     async def _network_backup_created(self, backup_json: str) -> None:
