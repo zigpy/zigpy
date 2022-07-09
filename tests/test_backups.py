@@ -82,7 +82,7 @@ def backup(network_info, node_info):
 
 
 def test_state_backup_restore_unchanged(backup):
-    obj = zigpy.backup.network_backup_to_open_coordinator_backup(backup)
-    backup2 = zigpy.backup.open_coordinator_backup_to_network_backup(obj)
+    obj = backup.as_dict()
+    backup2 = zigpy.backup.NetworkBackup.from_dict(obj)
 
     assert backup == backup2

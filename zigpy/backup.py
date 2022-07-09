@@ -58,6 +58,13 @@ class NetworkBackup(pydantic.BaseModel):
             and self.network_info.network_key.key == backup.network_info.network_key.key
         )
 
+    def as_dict(self) -> dict[str, Any]:
+        return _network_backup_to_open_coordinator_backup(self)
+
+    @classmethod
+    def from_dict(cls, obj: dict[str, Any]) -> NetworkBackup:
+        return _open_coordinator_backup_to_network_backup(obj)
+
 
 class BackupManager(ListenableMixin):
     def __init__(self, app: zigpy.application.ControllerApplication):
@@ -101,7 +108,7 @@ class BackupManager(ListenableMixin):
             await asyncio.sleep(period)
 
 
-def network_backup_to_open_coordinator_backup(backup: NetworkBackup) -> dict[str, Any]:
+def _network_backup_to_open_coordinator_backup(backup: NetworkBackup) -> dict[str, Any]:
     """
     Converts a `NetworkBackup` to an Open Coordinator Backup-compatible dictionary.
     """
@@ -188,7 +195,7 @@ def network_backup_to_open_coordinator_backup(backup: NetworkBackup) -> dict[str
     }
 
 
-def open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBackup:
+def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBackup:
     """
     Creates a `NetworkBackup` from an Open Coordinator Backup dictionary.
     """

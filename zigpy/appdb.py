@@ -499,8 +499,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     def network_backup_created(self, backup: zigpy.backup.NetworkBackup) -> None:
-        obj = zigpy.backup.network_backup_to_open_coordinator_backup(backup)
-        self.enqueue("_network_backup_created", json.dumps(obj))
+        self.enqueue("_network_backup_created", json.dumps(backup.as_dict()))
 
     async def _network_backup_created(self, backup_json: str) -> None:
         q = f"""INSERT INTO network_backups{DB_V} VALUES (?, ?)
@@ -664,9 +663,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             f"SELECT * FROM network_backups{DB_V} ORDER BY id"
         ) as cursor:
             async for id_, backup_json in cursor:
-                obj = json.loads(backup_json)
-                backup = zigpy.backup.open_coordinator_backup_to_network_backup(obj)
-
+                backup = zigpy.backups.NetworkBackup.from_dict(json.loads(backup_json))
                 self._application.backups.backups.append(backup)
 
     async def _register_device_listeners(self) -> None:
