@@ -122,6 +122,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 LOGGER.error("SQLite database file is corrupted!\n%s", status)
 
         await self.execute("PRAGMA foreign_keys = ON")
+        await self.execute("PRAGMA journal_mode = TRUNCATE")
         await self._run_migrations()
 
     @classmethod
