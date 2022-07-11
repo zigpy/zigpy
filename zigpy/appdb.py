@@ -121,8 +121,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             if status != "ok":
                 LOGGER.error("SQLite database file is corrupted!\n%s", status)
 
+        if sqlite3.__name__ != "pysqlite3":
+            # Truncate the SQLite journal file instead of deleting it after transactions
+            await self.execute("PRAGMA journal_mode = TRUNCATE")
+
         await self.execute("PRAGMA foreign_keys = ON")
-        await self.execute("PRAGMA journal_mode = TRUNCATE")
         await self._run_migrations()
 
     @classmethod
@@ -172,8 +175,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if not self._worker_task.done():
             self._worker_task.cancel()
 
-        # Delete the journal on shutdown
-        await self.execute("PRAGMA journal_mode = DELETE")
+        if sqlite3.__name__ != "pysqlite3":
+            # Delete the journal on shutdown
+            await self.execute("PRAGMA journal_mode = DELETE")
+
         await self._db.close()
 
     def enqueue(self, cb_name: str, *args) -> None:
