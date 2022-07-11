@@ -555,11 +555,11 @@ async def test_form_network(app):
     with patch.object(app, "write_network_info") as write2:
         await app.form_network()
 
-    nwk_info1 = write1.mock_calls[0][2]["network_info"]
-    node_info1 = write1.mock_calls[0][2]["node_info"]
+    nwk_info1 = write1.mock_calls[0].kwargs["network_info"]
+    node_info1 = write1.mock_calls[0].kwargs["node_info"]
 
-    nwk_info2 = write2.mock_calls[0][2]["network_info"]
-    node_info2 = write2.mock_calls[0][2]["node_info"]
+    nwk_info2 = write2.mock_calls[0].kwargs["network_info"]
+    node_info2 = write2.mock_calls[0].kwargs["node_info"]
 
     assert node_info1 == node_info2
 

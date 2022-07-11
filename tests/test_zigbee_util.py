@@ -88,8 +88,8 @@ def test_log_stacklevel():
     assert handler.emit.call_count == 2
 
     indirect_call, direct_call = handler.emit.mock_calls
-    (indirect,) = indirect_call[1]
-    (direct,) = direct_call[1]
+    (indirect,) = indirect_call.args
+    (direct,) = direct_call.args
 
     assert indirect.message == "Test1"
     assert direct.message == "Test2"

@@ -447,5 +447,5 @@ def test_device_last_seen(dev, monkeypatch):
 
     dev.update_last_seen()
     dev.listener_event.assert_called_once_with("device_last_seen_updated", ANY)
-    event_time = dev.listener_event.mock_calls[0][1][1]
+    event_time = dev.listener_event.mock_calls[0].args[1]
     assert (event_time - datetime.now(timezone.utc)).total_seconds() < 0.1
