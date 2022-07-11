@@ -171,6 +171,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._callback_handlers.join()
         if not self._worker_task.done():
             self._worker_task.cancel()
+
+        # Delete the journal on shutdown
+        await self.execute("PRAGMA journal_mode = DELETE")
         await self._db.close()
 
     def enqueue(self, cb_name: str, *args) -> None:
