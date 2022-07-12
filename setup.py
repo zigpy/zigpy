@@ -20,6 +20,6 @@ setup(
     license="GPL-3.0",
     packages=find_packages(exclude=["tests", "tests.*"]),
     install_requires=REQUIRES,
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     package_data={"": ["appdb_schemas/schema_v*.sql"]},
 )

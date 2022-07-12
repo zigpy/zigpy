@@ -136,8 +136,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         try:
             await listener.initialize_tables()
-        except asyncio.CancelledError:
-            raise
         except Exception:
             await listener.shutdown()
             raise
@@ -160,8 +158,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     args,
                     str(exc),
                 )
-            except asyncio.CancelledError:
-                raise
             except Exception as ex:
                 LOGGER.error(
                     "Unexpected error while processing %s(%s): %s", cb_name, args, ex
