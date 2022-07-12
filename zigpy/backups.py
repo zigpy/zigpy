@@ -98,7 +98,7 @@ class BackupManager(ListenableMixin):
         return backup
 
     async def restore_backup(
-        self, backup: NetworkBackup, counter_increment: int = 5000
+        self, backup: NetworkBackup, counter_increment: int = 10000
     ) -> None:
         key = backup.network_info.network_key
         new_backup = NetworkBackup(
