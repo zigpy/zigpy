@@ -31,7 +31,7 @@ JSON_TO_LOGICAL_TYPE = {v: k for k, v in LOGICAL_TYPE_TO_JSON.items()}
 
 
 class BasePydanticModel(pydantic.BaseModel):
-    def replace(self, **kwargs):
+    def replace(self, **kwargs: dict[str, Any]) -> BasePydanticModel:
         d = self.dict()
         d.update(kwargs)
 
@@ -101,14 +101,19 @@ class BackupManager(ListenableMixin):
         self, backup: NetworkBackup, counter_increment: int = 5000
     ) -> None:
         key = backup.network_info.network_key
-        network_info = backup.network_info.replace(
-            network_key=key.replace(tx_counter=key.tx_counter + counter_increment)
+        new_backup = NetworkBackup(
+            network_info=backup.network_info.replace(
+                network_key=key.replace(tx_counter=key.tx_counter + counter_increment)
+            ),
+            node_info=backup.node_info,
         )
 
         await self.app.write_network_info(
-            network_info=network_info,
-            node_info=backup.node_info,
+            network_info=new_backup.network_info,
+            node_info=new_backup.node_info,
         )
+
+        self.listener_event("network_backup_created", new_backup)
 
     def start_periodic_backups(self, period: int | float) -> None:
         self.stop_periodic_backups()
