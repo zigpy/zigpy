@@ -2,6 +2,7 @@ import logging
 import pathlib
 from sqlite3.dump import _iterdump as iterdump
 
+from aiosqlite.context import contextmanager
 import pytest
 
 import zigpy.appdb
@@ -464,12 +465,10 @@ async def test_migration_missing_tables():
         return_value={"table1_v1": "1", "table1": "", "table2_v1": "1"}
     )
 
-    results = MagicMock()
-    results.__aiter__.return_value = results
-    results.__anext__.side_effect = StopIteration
+    mock_execute = AsyncMock()
+    appdb.execute = contextmanager(mock_execute)
 
-    appdb.execute = MagicMock()
-    appdb.execute.return_value.__aenter__.return_value = results
+    appdb._db._execute = AsyncMock()
 
     # Migrations must explicitly specify all old tables, even if they will be untouched
     with pytest.raises(RuntimeError):
@@ -483,10 +482,10 @@ async def test_migration_missing_tables():
     # The untouched table will never be queried
     await appdb._migrate_tables({"table1_v1": "table1_v2", "table2_v1": None})
 
-    appdb.execute.assert_called_once_with("SELECT * FROM table1_v1")
+    mock_execute.assert_called_once_with("SELECT * FROM table1_v1")
 
     with pytest.raises(AssertionError):
-        appdb.execute.assert_called_once_with("SELECT * FROM table2_v1")
+        mock_execute.assert_called_once_with("SELECT * FROM table2_v1")
 
     await appdb.shutdown()
 
