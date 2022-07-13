@@ -824,3 +824,9 @@ def test_invalid_addressing():
 
     with pytest.raises(ValueError):
         t.Addressing.deserialize(b"\x05invalid")
+
+
+def test_nwk_convert():
+    assert t.NWK.convert(str(t.NWK(0x1234))[2:]) == t.NWK(0x1234)
+    assert str(t.NWK(0x0012))[2:] == "0012"
+    assert str(t.NWK(0x1200))[2:] == "1200"

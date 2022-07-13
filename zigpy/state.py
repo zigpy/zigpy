@@ -14,6 +14,7 @@ from typing import (  # `Dict as Dict` so pyupgrade doesn't try to upgrade it
     Optional as Optional,
 )
 
+import pydantic
 from pydantic.dataclasses import dataclass
 
 import zigpy.config as conf
@@ -21,38 +22,85 @@ import zigpy.types as t
 import zigpy.util
 import zigpy.zdo.types as zdo_t
 
+LOGICAL_TYPE_TO_JSON = {
+    zdo_t.LogicalType.Coordinator: "coordinator",
+    zdo_t.LogicalType.Router: "router",
+    zdo_t.LogicalType.EndDevice: "end_device",
+}
 
-@dataclass
-class Key:
+
+JSON_TO_LOGICAL_TYPE = {v: k for k, v in LOGICAL_TYPE_TO_JSON.items()}
+
+
+class BaseDataclass:
+    def replace(self, **kwargs):
+        return dataclasses.replace(self, **kwargs)
+
+
+class BasePydanticModel(pydantic.BaseModel):
+    def replace(self, **kwargs: dict[str, Any]) -> BasePydanticModel:
+        d = self.dict()
+        d.update(kwargs)
+
+        return type(self)(**d)
+
+
+class Key(BasePydanticModel):
     """APS/TC Link key."""
 
-    key: t.KeyData = field(default_factory=lambda: t.KeyData.UNKNOWN)
+    key: t.KeyData = pydantic.Field(default_factory=lambda: t.KeyData.UNKNOWN)
     tx_counter: t.uint32_t = 0
     rx_counter: t.uint32_t = 0
     seq: t.uint8_t = 0
-    partner_ieee: t.EUI64 = field(default_factory=lambda: t.EUI64.UNKNOWN)
+    partner_ieee: t.EUI64 = pydantic.Field(default_factory=lambda: t.EUI64.UNKNOWN)
 
-    def replace(self, **kwargs) -> Key:
-        return dataclasses.replace(self, **kwargs)
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "key": str(self.key),
+            "tx_counter": self.tx_counter,
+            "rx_counter": self.rx_counter,
+            "seq": self.seq,
+            "partner_ieee": str(self.partner_ieee),
+        }
+
+    @classmethod
+    def from_dict(cls, obj: dict[str, Any]) -> Key:
+        return cls(
+            key=t.KeyData.convert(obj["key"]),
+            tx_counter=obj["tx_counter"],
+            rx_counter=obj["rx_counter"],
+            seq=obj["seq"],
+            partner_ieee=t.EUI64.convert(obj["partner_ieee"]),
+        )
 
 
-@dataclass
-class NodeInfo:
+class NodeInfo(BasePydanticModel):
     """Controller Application network Node information."""
 
     nwk: t.NWK = t.NWK(0xFFFE)
-    ieee: t.EUI64 = field(default_factory=lambda: t.EUI64.UNKNOWN)
+    ieee: t.EUI64 = pydantic.Field(default_factory=lambda: t.EUI64.UNKNOWN)
     logical_type: zdo_t.LogicalType = zdo_t.LogicalType.EndDevice
 
-    def replace(self, **kwargs) -> NodeInfo:
-        return dataclasses.replace(self, **kwargs)
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "nwk": str(self.nwk)[2:],
+            "ieee": str(self.ieee),
+            "logical_type": LOGICAL_TYPE_TO_JSON[self.logical_type],
+        }
+
+    @classmethod
+    def from_dict(cls, obj: dict[str, Any]) -> NodeInfo:
+        return cls(
+            nwk=t.NWK.convert(obj["nwk"]),
+            ieee=t.EUI64.convert(obj["ieee"]),
+            logical_type=JSON_TO_LOGICAL_TYPE[obj["logical_type"]],
+        )
 
 
-@dataclass
-class NetworkInfo:
+class NetworkInfo(BasePydanticModel):
     """Network information."""
 
-    extended_pan_id: t.ExtendedPanId = field(
+    extended_pan_id: t.ExtendedPanId = pydantic.Field(
         default_factory=lambda: t.ExtendedPanId.UNKNOWN
     )
     pan_id: t.PanId = t.PanId(0xFFFE)
@@ -61,8 +109,8 @@ class NetworkInfo:
     channel: t.uint8_t = 0
     channel_mask: t.Channels = t.Channels.NO_CHANNELS
     security_level: t.uint8_t = 0
-    network_key: Key = field(default_factory=Key)
-    tc_link_key: Key = field(
+    network_key: Key = pydantic.Field(default_factory=Key)
+    tc_link_key: Key = pydantic.Field(
         default_factory=lambda: Key(
             key=conf.CONF_NWK_TC_LINK_KEY_DEFAULT,
             tx_counter=0,
@@ -71,28 +119,70 @@ class NetworkInfo:
             partner_ieee=t.EUI64.UNKNOWN,
         )
     )
-    key_table: List[Key] = field(default_factory=list)
-    children: List[t.EUI64] = field(default_factory=list)
+    key_table: List[Key] = pydantic.Field(default_factory=list)
+    children: List[t.EUI64] = pydantic.Field(default_factory=list)
 
     # If exposed by the stack, NWK addresses of other connected devices on the network
-    nwk_addresses: Dict[t.EUI64, t.NWK] = field(default_factory=dict)
+    nwk_addresses: Dict[t.EUI64, t.NWK] = pydantic.Field(default_factory=dict)
 
     # Dict to keep track of stack-specific network information.
     # Z-Stack, for example, has a TCLK_SEED that should be backed up.
-    stack_specific: Dict[str, Any] = field(default_factory=dict)
+    stack_specific: Dict[str, Any] = pydantic.Field(default_factory=dict)
 
     # Internal metadata not directly used for network restoration
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = pydantic.Field(default_factory=dict)
 
     # Package generating the network information
-    source: Optional[str] = None  # pyupgrade: noqa
+    source: Optional[str] = None
 
-    def replace(self, **kwargs) -> NetworkInfo:
-        return dataclasses.replace(self, **kwargs)
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "extended_pan_id": str(self.extended_pan_id),
+            "pan_id": str(t.PanId(self.pan_id))[2:],
+            "nwk_update_id": self.nwk_update_id,
+            "nwk_manager_id": str(t.NWK(self.nwk_manager_id))[2:],
+            "channel": self.channel,
+            "channel_mask": list(self.channel_mask),
+            "security_level": self.security_level,
+            "network_key": self.network_key.as_dict(),
+            "tc_link_key": self.tc_link_key.as_dict(),
+            "key_table": [key.as_dict() for key in self.key_table],
+            "children": [str(ieee) for ieee in self.children],
+            "nwk_addresses": {
+                str(ieee): str(t.NWK(nwk))[2:]
+                for ieee, nwk in self.nwk_addresses.items()
+            },
+            "stack_specific": self.stack_specific,
+            "metadata": self.metadata,
+            "source": self.source,
+        }
+
+    @classmethod
+    def from_dict(cls, obj: dict[str, Any]) -> NetworkInfo:
+        return cls(
+            extended_pan_id=t.ExtendedPanId.convert(obj["extended_pan_id"]),
+            pan_id=t.PanId.convert(obj["pan_id"]),
+            nwk_update_id=obj["nwk_update_id"],
+            nwk_manager_id=t.NWK.convert(obj["nwk_manager_id"]),
+            channel=obj["channel"],
+            channel_mask=t.Channels.from_channel_list(obj["channel_mask"]),
+            security_level=obj["security_level"],
+            network_key=Key.from_dict(obj["network_key"]),
+            tc_link_key=Key.from_dict(obj["tc_link_key"]),
+            key_table=[Key.from_dict(o) for o in obj["key_table"]],
+            children=[t.EUI64.convert(ieee) for ieee in obj["children"]],
+            nwk_addresses={
+                t.EUI64.convert(ieee): t.NWK.convert(nwk)
+                for ieee, nwk in obj["nwk_addresses"].items()
+            },
+            stack_specific=obj["stack_specific"],
+            metadata=obj["metadata"],
+            source=obj["source"],
+        )
 
 
 @dataclass
-class Counter:
+class Counter(BaseDataclass):
     """Ever increasing Counter."""
 
     name: str
@@ -237,7 +327,6 @@ class CounterGroups(dict):
         return counter_group
 
 
-@dataclass
 class State:
     node_info: NodeInfo = field(default_factory=NodeInfo)
     network_info: NetworkInfo = field(default_factory=NetworkInfo)

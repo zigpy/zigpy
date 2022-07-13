@@ -10,40 +10,22 @@ from typing import TYPE_CHECKING, Any
 import pydantic
 
 import zigpy.config as conf
-import zigpy.state as state
+import zigpy.state
 import zigpy.types as t
 from zigpy.util import ListenableMixin
-import zigpy.zdo.types as zdo_t
 
 if TYPE_CHECKING:
     import zigpy.application
 
 LOGGER = logging.getLogger(__name__)
 
-LOGICAL_TYPE_TO_JSON = {
-    zdo_t.LogicalType.Coordinator: "coordinator",
-    zdo_t.LogicalType.Router: "router",
-    zdo_t.LogicalType.EndDevice: "end_device",
-}
 
-
-JSON_TO_LOGICAL_TYPE = {v: k for k, v in LOGICAL_TYPE_TO_JSON.items()}
-
-
-class BasePydanticModel(pydantic.BaseModel):
-    def replace(self, **kwargs: dict[str, Any]) -> BasePydanticModel:
-        d = self.dict()
-        d.update(kwargs)
-
-        return type(self)(**d)
-
-
-class NetworkBackup(BasePydanticModel):
+class NetworkBackup(zigpy.state.BasePydanticModel):
     backup_time: datetime = pydantic.Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
-    network_info: state.NetworkInfo
-    node_info: state.NodeInfo
+    network_info: zigpy.state.NetworkInfo
+    node_info: zigpy.state.NodeInfo
 
     def compatible_with(self, backup: NetworkBackup) -> bool:
         """
@@ -67,10 +49,25 @@ class NetworkBackup(BasePydanticModel):
         )
 
     def as_dict(self) -> dict[str, Any]:
-        return _network_backup_to_open_coordinator_backup(self)
+        return {
+            "backup_time": self.backup_time.isoformat(),
+            "network_info": self.network_info.as_dict(),
+            "node_info": self.node_info.as_dict(),
+        }
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any]) -> NetworkBackup:
+        return cls(
+            backup_time=datetime.fromisoformat(obj["backup_time"]),
+            network_info=zigpy.state.NetworkInfo.from_dict(obj["network_info"]),
+            node_info=zigpy.state.NodeInfo.from_dict(obj["node_info"]),
+        )
+
+    def as_open_coordinator_json(self) -> dict[str, Any]:
+        return _network_backup_to_open_coordinator_backup(self)
+
+    @classmethod
+    def from_open_coordinator_json(cls, obj: dict[str, Any]) -> NetworkBackup:
         return _open_coordinator_backup_to_network_backup(obj)
 
 
@@ -188,7 +185,7 @@ def _network_backup_to_open_coordinator_backup(backup: NetworkBackup) -> dict[st
                 "node": {
                     "ieee": node_info.ieee.serialize()[::-1].hex(),
                     "nwk": node_info.nwk.serialize()[::-1].hex(),
-                    "type": LOGICAL_TYPE_TO_JSON[node_info.logical_type],
+                    "type": zigpy.state.LOGICAL_TYPE_TO_JSON[node_info.logical_type],
                 },
                 "network": {
                     "tc_link_key": {
@@ -231,7 +228,7 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
 
     internal = obj["metadata"].get("internal", {})
 
-    node_info = state.NodeInfo()
+    node_info = zigpy.state.NodeInfo()
     node_meta = internal.get("node", {})
 
     if "nwk" in node_meta:
@@ -239,14 +236,16 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
     else:
         node_info.nwk = t.NWK(0x0000)
 
-    node_info.logical_type = JSON_TO_LOGICAL_TYPE[node_meta.get("type", "coordinator")]
+    node_info.logical_type = zigpy.state.JSON_TO_LOGICAL_TYPE[
+        node_meta.get("type", "coordinator")
+    ]
 
     # Should be identical to `metadata.internal.node.ieee`
     node_info.ieee, _ = t.EUI64.deserialize(
         bytes.fromhex(obj["coordinator_ieee"])[::-1]
     )
 
-    network_info = state.NetworkInfo()
+    network_info = zigpy.state.NetworkInfo()
     network_info.source = obj["metadata"]["source"]
     network_info.metadata = {
         k: v
@@ -275,7 +274,7 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
     if obj.get("stack_specific"):
         network_info.stack_specific = obj.get("stack_specific")
 
-    network_info.tc_link_key = state.Key()
+    network_info.tc_link_key = zigpy.state.Key()
 
     if "tc_link_key" in network_meta:
         network_info.tc_link_key.key, _ = t.KeyData.deserialize(
@@ -291,7 +290,7 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
         network_info.tc_link_key.key = conf.CONF_NWK_TC_LINK_KEY_DEFAULT
         network_info.tc_link_key.partner_ieee = node_info.ieee
 
-    network_info.network_key = state.Key()
+    network_info.network_key = zigpy.state.Key()
     network_info.network_key.key, _ = t.KeyData.deserialize(
         bytes.fromhex(obj["network_key"]["key"])
     )
@@ -317,7 +316,7 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
             network_info.nwk_addresses[ieee] = nwk
 
         if "link_key" in device:
-            key = state.Key()
+            key = zigpy.state.Key()
             key.key, _ = t.KeyData.deserialize(bytes.fromhex(device["link_key"]["key"]))
             key.tx_counter = device["link_key"]["tx_counter"]
             key.rx_counter = device["link_key"]["rx_counter"]

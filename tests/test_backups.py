@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 
 import pytest
 
@@ -155,9 +156,14 @@ def z2m_backup_json():
     }
 
 
-def test_state_backup_restore_unchanged(backup):
-    obj = backup.as_dict()
-    backup2 = zigpy.backups.NetworkBackup.from_dict(obj)
+def test_state_backup_as_dict(backup):
+    obj = json.loads(json.dumps(backup.as_dict()))
+    assert backup == type(backup).from_dict(obj)
+
+
+def test_state_backup_as_open_coordinator(backup):
+    obj = json.loads(json.dumps(backup.as_open_coordinator_json()))
+    backup2 = zigpy.backups.NetworkBackup.from_open_coordinator_json(obj)
 
     backup.network_info.children.sort()
     backup2.network_info.children.sort()
@@ -173,7 +179,7 @@ def test_z2m_backup_parsing(z2m_backup_json, backup):
     for key in backup.network_info.key_table:
         key.seq = 0
 
-    backup2 = zigpy.backups.NetworkBackup.from_dict(z2m_backup_json)
+    backup2 = zigpy.backups.NetworkBackup.from_open_coordinator_json(z2m_backup_json)
     backup2.network_info.metadata = None
     backup2.network_info.source = None
 
