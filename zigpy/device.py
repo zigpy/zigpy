@@ -175,8 +175,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     async def initialize(self) -> None:
         try:
             await self._initialize()
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
             if not isinstance(
                 e, (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException)

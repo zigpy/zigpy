@@ -849,3 +849,12 @@ def test_pysqlite_load_failure(stdlib_version, pysqlite3_version):
     ):
         with pytest.raises(RuntimeError):
             zigpy.appdb._import_compatible_sqlite3(zigpy.appdb.MIN_SQLITE_VERSION)
+
+
+async def test_appdb_no_leftover_journal(tmp_path):
+    db = tmp_path / "test.db"
+    app = await make_app(str(db))
+    await app.shutdown()
+
+    assert db.exists()
+    assert set(db.parent.glob(db.with_suffix(".*").name)) == {db}

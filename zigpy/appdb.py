@@ -121,6 +121,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             if status != "ok":
                 LOGGER.error("SQLite database file is corrupted!\n%s", status)
 
+        # Truncate the SQLite journal file instead of deleting it after transactions
+        await self._set_isolation_level(None)
+        await self.execute("PRAGMA journal_mode = TRUNCATE")
+        await self._set_isolation_level("DEFERRED")
+
         await self.execute("PRAGMA foreign_keys = ON")
         await self._run_migrations()
 
@@ -130,14 +135,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     ) -> PersistingListener:
         """Create an instance of persisting listener."""
         sqlite_conn = await aiosqlite_connect(
-            database_file, detect_types=sqlite3.PARSE_DECLTYPES
+            database_file,
+            detect_types=sqlite3.PARSE_DECLTYPES,
+            isolation_level="DEFERRED",  # The default is "", an alias for "DEFERRED"
         )
         listener = cls(sqlite_conn, app)
 
         try:
             await listener.initialize_tables()
-        except asyncio.CancelledError:
-            raise
         except Exception:
             await listener.shutdown()
             raise
@@ -160,8 +165,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     args,
                     str(exc),
                 )
-            except asyncio.CancelledError:
-                raise
             except Exception as ex:
                 LOGGER.error(
                     "Unexpected error while processing %s(%s): %s", cb_name, args, ex
@@ -174,6 +177,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._callback_handlers.join()
         if not self._worker_task.done():
             self._worker_task.cancel()
+
+        # Delete the journal on shutdown
+        await self._set_isolation_level(None)
+        await self.execute("PRAGMA journal_mode = DELETE")
+        await self._set_isolation_level("DEFERRED")
+
         await self._db.close()
 
     def enqueue(self, cb_name: str, *args) -> None:
@@ -182,6 +191,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             LOGGER.warning("Discarding %s event", cb_name)
             return
         self._callback_handlers.put_nowait((cb_name, args))
+
+    async def _set_isolation_level(self, level: str | None):
+        """Set the SQLite statement isolation level in a thread-safe way."""
+        await self._db._execute(lambda: setattr(self._db, "isolation_level", level))
 
     def execute(self, *args, **kwargs):
         return self._db.execute(*args, **kwargs)
