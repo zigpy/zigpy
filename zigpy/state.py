@@ -147,10 +147,10 @@ class NetworkInfo(BasePydanticModel):
             "network_key": self.network_key.as_dict(),
             "tc_link_key": self.tc_link_key.as_dict(),
             "key_table": [key.as_dict() for key in self.key_table],
-            "children": [str(ieee) for ieee in self.children],
+            "children": sorted(str(ieee) for ieee in self.children),
             "nwk_addresses": {
                 str(ieee): str(t.NWK(nwk))[2:]
-                for ieee, nwk in self.nwk_addresses.items()
+                for ieee, nwk in sorted(self.nwk_addresses.items())
             },
             "stack_specific": self.stack_specific,
             "metadata": self.metadata,
