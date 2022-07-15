@@ -56,7 +56,7 @@ class Key(BasePydanticModel):
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "key": str(self.key),
+            "key": str(t.KeyData(self.key)),
             "tx_counter": self.tx_counter,
             "rx_counter": self.rx_counter,
             "seq": self.seq,
@@ -169,7 +169,10 @@ class NetworkInfo(BasePydanticModel):
             security_level=obj["security_level"],
             network_key=Key.from_dict(obj["network_key"]),
             tc_link_key=Key.from_dict(obj["tc_link_key"]),
-            key_table=[Key.from_dict(o) for o in obj["key_table"]],
+            key_table=sorted(
+                (Key.from_dict(o) for o in obj["key_table"]),
+                key=lambda k: k.partner_ieee,
+            ),
             children=[t.EUI64.convert(ieee) for ieee in obj["children"]],
             nwk_addresses={
                 t.EUI64.convert(ieee): t.NWK.convert(nwk)
@@ -327,6 +330,7 @@ class CounterGroups(dict):
         return counter_group
 
 
+@dataclass
 class State:
     node_info: NodeInfo = field(default_factory=NodeInfo)
     network_info: NetworkInfo = field(default_factory=NetworkInfo)

@@ -61,10 +61,10 @@ def backup():
             children=[
                 # Has a key
                 t.EUI64.convert("A3:1A:F6:8E:19:95:23:BE"),
-                # Does not have a key
-                t.EUI64.convert("C6:DF:28:F9:60:33:DB:03"),
                 # Random device with no NWK address or key
                 t.EUI64.convert("A4:02:A0:DC:17:D8:17:DF"),
+                # Does not have a key
+                t.EUI64.convert("C6:DF:28:F9:60:33:DB:03"),
             ],
             # If exposed by the stack, NWK addresses of other connected devices on the network
             nwk_addresses={
@@ -128,6 +128,11 @@ def z2m_backup_json():
                 "is_child": False,
             },
             {
+                "nwk_address": None,
+                "ieee_address": "a402a0dc17d817df",
+                "is_child": True,
+            },
+            {
                 "nwk_address": "1ca0",
                 "ieee_address": "c6df28f96033db03",
                 "is_child": True,
@@ -147,26 +152,19 @@ def z2m_backup_json():
                 "ieee_address": "9a0e1050001b1a5f",
                 "is_child": False,
             },
-            {
-                "nwk_address": None,
-                "ieee_address": "a402a0dc17d817df",
-                "is_child": True,
-            },
         ],
     }
 
 
 def test_state_backup_as_dict(backup):
     obj = json.loads(json.dumps(backup.as_dict()))
-    assert backup == type(backup).from_dict(obj)
+    restored_backup = type(backup).from_dict(obj)
+    assert backup == restored_backup
 
 
 def test_state_backup_as_open_coordinator(backup):
     obj = json.loads(json.dumps(backup.as_open_coordinator_json()))
     backup2 = zigpy.backups.NetworkBackup.from_open_coordinator_json(obj)
-
-    backup.network_info.children.sort()
-    backup2.network_info.children.sort()
 
     assert backup == backup2
 
@@ -191,18 +189,28 @@ def test_z2m_backup_parsing(z2m_backup_json, backup):
 
 
 def test_backup_compatibility(backup):
-    assert backup.compatible_with(backup)
+    assert backup.supersedes(backup)
 
     # Incompatible due to different coordinator IEEE
     assert not backup.replace(
         node_info=backup.node_info.replace(
             ieee=t.EUI64.convert("AA:AA:AA:AA:AA:AA:AA:AA")
         )
-    ).compatible_with(backup)
+    ).supersedes(backup)
 
-    # NWK frame counter is ignored
+    # NWK frame counter must always be greater
+    assert not backup.replace(
+        network_info=backup.network_info.replace(
+            network_key=backup.network_info.network_key.replace(
+                tx_counter=backup.network_info.network_key.tx_counter - 1
+            )
+        )
+    ).supersedes(backup)
+
     assert backup.replace(
         network_info=backup.network_info.replace(
-            network_key=backup.network_info.network_key.replace(tx_counter=0)
+            network_key=backup.network_info.network_key.replace(
+                tx_counter=backup.network_info.network_key.tx_counter + 1
+            )
         )
-    ).compatible_with(backup)
+    ).supersedes(backup)

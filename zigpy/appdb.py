@@ -510,6 +510,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(q, (None, backup_json))
         await self._db.commit()
 
+    def network_backup_removed(self, backup: zigpy.backups.NetworkBackup) -> None:
+        self.enqueue("_network_backup_removed", json.dumps(backup.as_dict()))
+
+    async def _network_backup_removed(self, backup_json: str) -> None:
+        q = f"""DELETE FROM network_backups{DB_V} WHERE backup_json=?"""
+
+        await self.execute(q, (backup_json,))
+        await self._db.commit()
+
     async def load(self) -> None:
         LOGGER.debug("Loading application state")
         await self._load_devices()
@@ -664,7 +673,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         ) as cursor:
             async for id_, backup_json in cursor:
                 backup = zigpy.backups.NetworkBackup.from_dict(json.loads(backup_json))
-                self._application.backups.backups.append(backup)
+                self._application.backups.add_backup(backup)
 
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():

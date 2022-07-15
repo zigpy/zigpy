@@ -27,7 +27,7 @@ class NetworkBackup(zigpy.state.BasePydanticModel):
     network_info: zigpy.state.NetworkInfo
     node_info: zigpy.state.NodeInfo
 
-    def compatible_with(self, backup: NetworkBackup) -> bool:
+    def supersedes(self, backup: NetworkBackup) -> bool:
         """
         Checks if this network backup uses settings compatible with another backup.
 
@@ -43,9 +43,13 @@ class NetworkBackup(zigpy.state.BasePydanticModel):
             and self.network_info.nwk_manager_id == backup.network_info.nwk_manager_id
             and self.network_info.channel == backup.network_info.channel
             and self.network_info.security_level == backup.network_info.security_level
-            # The frame counters will not match up so we only worry about the key
             and self.network_info.tc_link_key.key == backup.network_info.tc_link_key.key
             and self.network_info.network_key.key == backup.network_info.network_key.key
+            and self.network_info.nwk_update_id >= backup.network_info.nwk_update_id
+            and (
+                self.network_info.network_key.tx_counter
+                >= backup.network_info.network_key.tx_counter
+            )
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -89,8 +93,7 @@ class BackupManager(ListenableMixin):
             node_info=self.app.state.node_info,
         )
 
-        self.backups.append(backup)
-        self.listener_event("network_backup_created", backup)
+        self.add_backup(backup)
 
         return backup
 
@@ -110,7 +113,36 @@ class BackupManager(ListenableMixin):
             node_info=new_backup.node_info,
         )
 
-        self.listener_event("network_backup_created", new_backup)
+        await self.create_backup()
+
+    def add_backup(self, backup: NetworkBackup):
+        """
+        Adds a new backup to the database, superseding older ones if necessary.
+        """
+
+        LOGGER.debug("Adding a new backup %s", backup)
+
+        for index, old_backup in enumerate(self.backups):
+            if old_backup.supersedes(backup):
+                LOGGER.debug("Backup is superseded by %s, not writing.", old_backup)
+                # Ignore this backup if it's superseded by a new backup. This should not
+                # happen during normal operation, only if an old backup is intentionally
+                # restored.
+                return
+            elif not backup.supersedes(old_backup):
+                continue
+
+            # Replace the old backup with our more recent one
+            LOGGER.debug("Replacing %s", old_backup)
+            self.listener_event("network_backup_removed", old_backup)
+            self.listener_event("network_backup_created", backup)
+            self.backups[index] = backup
+
+            break
+        else:
+            # If no backup was replaced, create a new one
+            self.listener_event("network_backup_created", backup)
+            self.backups.append(backup)
 
     def start_periodic_backups(self, period: int | float) -> None:
         self.stop_periodic_backups()
