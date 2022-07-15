@@ -83,7 +83,7 @@ async def test_new_exception(ota_mock):
 
 async def test_permit(app, ieee):
     app.devices[ieee] = MagicMock()
-    app.devices[ieee].zdo.permit = MagicMock(side_effect=asyncio.coroutine(MagicMock()))
+    app.devices[ieee].zdo.permit = AsyncMock()
     app.permit_ncp = AsyncMock()
     await app.permit(node=(1, 1, 1, 1, 1, 1, 1, 1))
     assert app.devices[ieee].zdo.permit.call_count == 0
