@@ -144,6 +144,8 @@ class BackupManager(ListenableMixin):
             self.listener_event("network_backup_created", backup)
             self.backups.append(backup)
 
+        self.backups.sort(key=lambda backup: backup.backup_time)
+
     def start_periodic_backups(self, period: int | float) -> None:
         self.stop_periodic_backups()
         self._backup_task = asyncio.create_task(self._backup_loop(period))
