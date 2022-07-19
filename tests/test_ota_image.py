@@ -173,7 +173,7 @@ def test_subelement():
 
     e, rest = firmware.SubElement.deserialize(data + extra)
     assert rest == extra
-    assert e.tag_id == firmware.ElementTagId.ECDSA_SIGNATURE
+    assert e.tag_id == firmware.ElementTagId.ECDSA_SIGNATURE_CRYPTO_SUITE_1
     assert e.data == payload
     assert len(e.data) == len(payload)
 
