@@ -13,14 +13,26 @@ class Shade(Cluster):
     cluster_id = 0x0100
     name = "Shade Configuration"
     ep_attribute = "shade"
+
+    class ShadeStatus(t.bitmap8):
+        Operational = 0b00000001
+        Adjusting = 0b00000010
+        Opening = 0b00000100
+        Motor_forward_is_opening = 0b00001000
+
+    class ShadeMode(t.enum8):
+        Normal = 0x00
+        Configure = 0x00
+        Unknown = 0xFF
+
     attributes: dict[int, ZCLAttributeDef] = {
         # Shade Information
         0x0000: ("physical_closed_limit", t.uint16_t),
         0x0001: ("motor_step_size", t.uint8_t),
-        0x0002: ("status", t.bitmap8),
+        0x0002: ("status", ShadeStatus),
         # Shade Settings
         0x0010: ("closed_limit", t.uint16_t),
-        0x0012: ("mode", t.enum8),
+        0x0012: ("mode", ShadeMode),
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -531,16 +543,44 @@ class WindowCovering(Cluster):
     cluster_id = 0x0102
     name = "Window Covering"
     ep_attribute = "window_covering"
+
+    class WindowCoveringType(t.enum8):
+        Rollershade = 0x00
+        Rollershade_two_motors = 0x01
+        Rollershade_exterior = 0x02
+        Rollershade_exterior_two_motors = 0x03
+        Drapery = 0x04
+        Awning = 0x05
+        Shutter = 0x06
+        Tilt_blind_tilt_only = 0x07
+        Tilt_blind_tilt_and_lift = 0x08
+        Projector_screen = 0x09
+
+    class ConfigStatus(t.bitmap8):
+        Operational = 0b00000001
+        Online = 0b00000010
+        Open_up_commands_reversed = 0b00000100
+        Closed_loop_lift_control = 0b00001000
+        Closed_loop_tilt_control = 0b00010000
+        Encoder_controlled_lift = 0b00100000
+        Encoder_controlled_tilt = 0b01000000
+
+    class WindowCoveringMode(t.bitmap8):
+        Motor_direction_reversed = 0b00000001
+        Run_in_calibration_mode = 0b00000010
+        Motor_in_maintenance_mode = 0b00000100
+        LEDs_display_feedback = 0b00001000
+
     attributes: dict[int, ZCLAttributeDef] = {
         # Window Covering Information
-        0x0000: ("window_covering_type", t.enum8),
+        0x0000: ("window_covering_type", WindowCoveringType),
         0x0001: ("physical_closed_limit_lift", t.uint16_t),
         0x0002: ("physical_closed_limit_tilt", t.uint16_t),
         0x0003: ("current_position_lift", t.uint16_t),
         0x0004: ("current_position_tilt", t.uint16_t),
         0x0005: ("number_of_actuations_lift", t.uint16_t),
         0x0006: ("number_of_actuations_tilt", t.uint16_t),
-        0x0007: ("config_status", t.bitmap8),
+        0x0007: ("config_status", ConfigStatus),
         0x0008: ("current_position_lift_percentage", t.uint8_t),
         0x0009: ("current_position_tilt_percentage", t.uint8_t),
         # Window Covering Settings
@@ -551,7 +591,7 @@ class WindowCovering(Cluster):
         0x0014: ("velocity_lift", t.uint16_t),
         0x0015: ("acceleration_time_lift", t.uint16_t),
         0x0016: ("deceleration_time_lift", t.uint16_t),
-        0x0017: ("window_covering_mode", t.bitmap8),
+        0x0017: ("window_covering_mode", WindowCoveringMode),
         0x0018: ("intermediate_setpoints_lift", t.LVBytes),
         0x0019: ("intermediate_setpoints_tilt", t.LVBytes),
     }
