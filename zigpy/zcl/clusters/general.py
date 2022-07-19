@@ -693,6 +693,10 @@ class LevelControl(Cluster):
         Up = 0x00
         Down = 0x01
 
+    class Options(t.bitmap8):
+        Execute_if_off = 0b00000001
+        Couple_color_temp_to_level = 0b00000010
+
     cluster_id = 0x0008
     name = "Level control"
     ep_attribute = "level"
