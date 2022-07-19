@@ -26,7 +26,7 @@ class Color(Cluster):
         Hue_and_saturation = 0b00000000_00000001
         Enhanced_hue = 0b00000000_00000010
         Color_loop = 0b00000000_00000100
-        XY_attributes: dict[int, ZCLAttributeDef] = 0b00000000_00001000
+        XY_attributes = 0b00000000_00001000
         Color_temperature = 0b00000000_00010000
 
     class Direction(t.enum8):
@@ -59,6 +59,16 @@ class Color(Cluster):
         Decrement = 0x00
         Increment = 0x01
 
+    class DriftCompensation(t.enum8):
+        NONE = 0x00
+        Other_or_unknown = 0x01
+        Temperature_monitoring = 0x02
+        Luminance_monitoring = 0x03
+        Color_monitoring = 0x03
+
+    class Options(t.bitmap8):
+        Execute_if_off = 0b00000001
+
     cluster_id = 0x0300
     name = "Color Control"
     ep_attribute = "light_color"
@@ -69,11 +79,11 @@ class Color(Cluster):
         0x0002: ("remaining_time", t.uint16_t),
         0x0003: ("current_x", t.uint16_t),
         0x0004: ("current_y", t.uint16_t),
-        0x0005: ("drift_compensation", t.enum8),
+        0x0005: ("drift_compensation", DriftCompensation),
         0x0006: ("compensation_text", t.CharacterString),
         0x0007: ("color_temperature", t.uint16_t),
         0x0008: ("color_mode", t.enum8),
-        0x000F: ("options", t.bitmap8),
+        0x000F: ("options", Options),
         # Defined Primaries Information
         0x0010: ("num_primaries", t.uint8_t),
         0x0011: ("primary1_x", t.uint16_t),
@@ -337,13 +347,20 @@ class Ballast(Cluster):
     """Attributes and commands for configuring a lighting
     ballast"""
 
+    class BallastStatus(t.bitmap8):
+        Non_operational = 0b00000001
+        Lamp_failure = 0b00000010
+
+    class LampAlarmMode(t.bitmap8):
+        Lamp_burn_hours = 0b00000001
+
     cluster_id = 0x0301
     ep_attribute = "light_ballast"
     attributes: dict[int, ZCLAttributeDef] = {
         # Ballast Information
         0x0000: ("physical_min_level", t.uint8_t),
         0x0001: ("physical_max_level", t.uint8_t),
-        0x0002: ("ballast_status", t.bitmap8),
+        0x0002: ("ballast_status", BallastStatus),
         # Ballast Settings
         0x0010: ("min_level", t.uint8_t),
         0x0011: ("max_level", t.uint8_t),
@@ -358,7 +375,7 @@ class Ballast(Cluster):
         0x0031: ("lamp_manufacturer", t.LimitedCharString(16)),
         0x0032: ("lamp_rated_hours", t.uint24_t),
         0x0033: ("lamp_burn_hours", t.uint24_t),
-        0x0034: ("lamp_alarm_mode", t.bitmap8),
+        0x0034: ("lamp_alarm_mode", LampAlarmMode),
         0x0035: ("lamp_burn_hours_trip_point", t.uint24_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
