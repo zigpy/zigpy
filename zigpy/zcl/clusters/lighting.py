@@ -26,7 +26,7 @@ class Color(Cluster):
         Hue_and_saturation = 0b00000000_00000001
         Enhanced_hue = 0b00000000_00000010
         Color_loop = 0b00000000_00000100
-        XY_attributes: dict[int, ZCLAttributeDef] = 0b00000000_00001000
+        XY_attributes = 0b00000000_00001000
         Color_temperature = 0b00000000_00010000
 
     class Direction(t.enum8):
