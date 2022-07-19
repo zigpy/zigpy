@@ -59,6 +59,16 @@ class Color(Cluster):
         Decrement = 0x00
         Increment = 0x01
 
+    class DriftCompensation(t.enum8):
+        NONE = 0x00
+        Other_or_unknown = 0x01
+        Temperature_monitoring = 0x02
+        Luminance_monitoring = 0x03
+        Color_monitoring = 0x03
+
+    class Options(t.bitmap8):
+        Execute_if_off = 0b00000001
+
     cluster_id = 0x0300
     name = "Color Control"
     ep_attribute = "light_color"
@@ -69,11 +79,11 @@ class Color(Cluster):
         0x0002: ("remaining_time", t.uint16_t),
         0x0003: ("current_x", t.uint16_t),
         0x0004: ("current_y", t.uint16_t),
-        0x0005: ("drift_compensation", t.enum8),
+        0x0005: ("drift_compensation", DriftCompensation),
         0x0006: ("compensation_text", t.CharacterString),
         0x0007: ("color_temperature", t.uint16_t),
         0x0008: ("color_mode", t.enum8),
-        0x000F: ("options", t.bitmap8),
+        0x000F: ("options", Options),
         # Defined Primaries Information
         0x0010: ("num_primaries", t.uint8_t),
         0x0011: ("primary1_x", t.uint16_t),
