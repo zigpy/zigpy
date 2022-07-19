@@ -61,11 +61,16 @@ class NetworkBackup(zigpy.state.BasePydanticModel):
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any]) -> NetworkBackup:
-        return cls(
-            backup_time=datetime.fromisoformat(obj["backup_time"]),
-            network_info=zigpy.state.NetworkInfo.from_dict(obj["network_info"]),
-            node_info=zigpy.state.NodeInfo.from_dict(obj["node_info"]),
-        )
+        if "metadata" in obj:
+            return cls.from_open_coordinator_json(obj)
+        elif "network_info" in obj:
+            return cls(
+                backup_time=datetime.fromisoformat(obj["backup_time"]),
+                network_info=zigpy.state.NetworkInfo.from_dict(obj["network_info"]),
+                node_info=zigpy.state.NodeInfo.from_dict(obj["node_info"]),
+            )
+        else:
+            raise ValueError(f"Invalid network backup object: {obj!r}")
 
     def as_open_coordinator_json(self) -> dict[str, Any]:
         return _network_backup_to_open_coordinator_backup(self)

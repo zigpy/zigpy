@@ -188,6 +188,18 @@ def test_z2m_backup_parsing(z2m_backup_json, backup):
     assert backup == backup2
 
 
+def test_from_dict_automatic(z2m_backup_json):
+    backup1 = zigpy.backups.NetworkBackup.from_open_coordinator_json(z2m_backup_json)
+    backup2 = zigpy.backups.NetworkBackup.from_dict(z2m_backup_json)
+
+    assert backup1 == backup2
+
+
+def test_from_dict_failure():
+    with pytest.raises(ValueError):
+        zigpy.backups.NetworkBackup.from_dict({"some": "json"})
+
+
 def test_backup_compatibility(backup):
     assert backup.supersedes(backup)
 
