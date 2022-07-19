@@ -347,13 +347,20 @@ class Ballast(Cluster):
     """Attributes and commands for configuring a lighting
     ballast"""
 
+    class BallastStatus(t.bitmap8):
+        Non_operational = 0b00000001
+        Lamp_failure = 0b00000010
+
+    class LampAlarmMode(t.bitmap8):
+        Lamp_burn_hours = 0b00000001
+
     cluster_id = 0x0301
     ep_attribute = "light_ballast"
     attributes: dict[int, ZCLAttributeDef] = {
         # Ballast Information
         0x0000: ("physical_min_level", t.uint8_t),
         0x0001: ("physical_max_level", t.uint8_t),
-        0x0002: ("ballast_status", t.bitmap8),
+        0x0002: ("ballast_status", BallastStatus),
         # Ballast Settings
         0x0010: ("min_level", t.uint8_t),
         0x0011: ("max_level", t.uint8_t),
@@ -368,7 +375,7 @@ class Ballast(Cluster):
         0x0031: ("lamp_manufacturer", t.LimitedCharString(16)),
         0x0032: ("lamp_rated_hours", t.uint24_t),
         0x0033: ("lamp_burn_hours", t.uint24_t),
-        0x0034: ("lamp_alarm_mode", t.bitmap8),
+        0x0034: ("lamp_alarm_mode", LampAlarmMode),
         0x0035: ("lamp_burn_hours_trip_point", t.uint24_t),
         0xFFFD: ("cluster_revision", t.uint16_t),
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
