@@ -1,5 +1,5 @@
 import asyncio
-import os
+import pathlib
 import sqlite3
 import sys
 import threading
@@ -49,6 +49,9 @@ def auto_kill_aiosqlite():
 
 
 async def make_app(database_file):
+    if isinstance(database_file, pathlib.Path):
+        database_file = str(database_file)
+
     p2 = patch("zigpy.topology.Topology.scan_loop", AsyncMock())
     with patch("zigpy.ota.OTA.initialize", AsyncMock()), p2:
         app = await App.new(
@@ -101,13 +104,13 @@ def fake_get_device(device):
     return device
 
 
-async def test_no_database(tmpdir):
+async def test_no_database(tmp_path):
     with patch("zigpy.appdb.PersistingListener.new", AsyncMock()) as db_mock:
         db_mock.return_value.load.side_effect = AsyncMock()
         await make_app(None)
     assert db_mock.return_value.load.call_count == 0
 
-    db = os.path.join(str(tmpdir), "test.db")
+    db = tmp_path / "test.db"
     with patch("zigpy.appdb.PersistingListener.new", AsyncMock()) as db_mock:
         db_mock.return_value.load.side_effect = AsyncMock()
         await make_app(db)
@@ -115,8 +118,8 @@ async def test_no_database(tmpdir):
 
 
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
-async def test_database(tmpdir):
-    db = os.path.join(str(tmpdir), "test.db")
+async def test_database(tmp_path):
+    db = tmp_path / "test.db"
     app = await make_app(db)
     ieee = make_ieee()
     relays_1 = [t.NWK(0x1234), t.NWK(0x2345)]
@@ -234,12 +237,10 @@ async def test_database(tmpdir):
     assert dev.relays is None
     await app4.shutdown()
 
-    os.unlink(db)
-
 
 @patch("zigpy.device.Device.schedule_group_membership_scan", MagicMock())
-async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
-    db = os.path.join(str(tmpdir), "test.db")
+async def _test_null_padded(tmp_path, test_manufacturer=None, test_model=None):
+    db = tmp_path / "test.db"
     app = await make_app(db)
     ieee = make_ieee()
     with patch(
@@ -271,15 +272,13 @@ async def _test_null_padded(tmpdir, test_manufacturer=None, test_model=None):
     assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
     await app2.shutdown()
 
-    os.unlink(db)
-
     return dev
 
 
-async def test_appdb_load_null_padded_manuf(tmpdir):
+async def test_appdb_load_null_padded_manuf(tmp_path):
     manufacturer = b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07"
     model = b"Mock Model"
-    dev = await _test_null_padded(tmpdir, manufacturer, model)
+    dev = await _test_null_padded(tmp_path, manufacturer, model)
 
     assert dev.manufacturer == "Mock Manufacturer"
     assert dev.model == "Mock Model"
@@ -287,10 +286,10 @@ async def test_appdb_load_null_padded_manuf(tmpdir):
     assert dev.endpoints[3].model == "Mock Model"
 
 
-async def test_appdb_load_null_padded_model(tmpdir):
+async def test_appdb_load_null_padded_model(tmp_path):
     manufacturer = b"Mock Manufacturer"
     model = b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-    dev = await _test_null_padded(tmpdir, manufacturer, model)
+    dev = await _test_null_padded(tmp_path, manufacturer, model)
 
     assert dev.manufacturer == "Mock Manufacturer"
     assert dev.model == "Mock Model"
@@ -298,10 +297,10 @@ async def test_appdb_load_null_padded_model(tmpdir):
     assert dev.endpoints[3].model == "Mock Model"
 
 
-async def test_appdb_load_null_padded_manuf_model(tmpdir):
+async def test_appdb_load_null_padded_manuf_model(tmp_path):
     manufacturer = b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07"
     model = b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-    dev = await _test_null_padded(tmpdir, manufacturer, model)
+    dev = await _test_null_padded(tmp_path, manufacturer, model)
 
     assert dev.manufacturer == "Mock Manufacturer"
     assert dev.model == "Mock Model"
@@ -309,10 +308,10 @@ async def test_appdb_load_null_padded_manuf_model(tmpdir):
     assert dev.endpoints[3].model == "Mock Model"
 
 
-async def test_appdb_str_model(tmpdir):
+async def test_appdb_str_model(tmp_path):
     manufacturer = "Mock Manufacturer"
     model = "Mock Model"
-    dev = await _test_null_padded(tmpdir, manufacturer, model)
+    dev = await _test_null_padded(tmp_path, manufacturer, model)
 
     assert dev.manufacturer == "Mock Manufacturer"
     assert dev.model == "Mock Model"
@@ -322,13 +321,13 @@ async def test_appdb_str_model(tmpdir):
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
 @patch("zigpy.zcl.Cluster.request", new_callable=AsyncMock)
-async def test_groups(mock_request, tmpdir):
+async def test_groups(mock_request, tmp_path):
     """Test group adding/removing."""
 
     group_id, group_name = 0x1221, "app db Test Group 0x1221"
     mock_request.return_value = [ZCLStatus.SUCCESS, group_id]
 
-    db = os.path.join(str(tmpdir), "test.db")
+    db = tmp_path / "test.db"
     app = await make_app(db)
     ieee = make_ieee()
     app.handle_join(99, ieee, 0)
@@ -411,14 +410,12 @@ async def test_groups(mock_request, tmpdir):
     assert not app5.groups
     await app5.shutdown()
 
-    os.unlink(db)
-
 
 @pytest.mark.parametrize("dev_init", (True, False))
-async def test_attribute_update(tmpdir, dev_init):
+async def test_attribute_update(tmp_path, dev_init):
     """Test attribute update for initialized and uninitialized devices."""
 
-    db = os.path.join(str(tmpdir), "test.db")
+    db = tmp_path / "test.db"
     app = await make_app(db)
     ieee = make_ieee()
     with patch(
@@ -451,11 +448,10 @@ async def test_attribute_update(tmpdir, dev_init):
     assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
 
     await app2.shutdown()
-    os.unlink(db)
 
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
-async def test_neighbors(tmpdir):
+async def test_neighbors(tmp_path):
     """Test neighbor loading."""
 
     ext_pid = t.EUI64.convert("aa:bb:cc:dd:ee:ff:01:02")
@@ -471,7 +467,7 @@ async def test_neighbors(tmpdir):
     nwk_3 = 0x3333
     nei_3 = zdo_t.Neighbor(ext_pid, ieee_3, nwk_3, 1, 1, 2, 0, 0, 0, 15, 250)
 
-    db = os.path.join(str(tmpdir), "test.db")
+    db = tmp_path / "test.db"
     app = await make_app(db)
     app.handle_join(nwk_1, ieee_1, 0)
 
@@ -531,12 +527,11 @@ async def test_neighbors(tmpdir):
     assert dev_2.neighbors[1].device is None
     assert dev_2.neighbors[1].neighbor.ieee == ieee_3
     await app2.shutdown()
-    os.unlink(db)
 
 
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
-async def test_device_rejoin(tmpdir):
-    db = os.path.join(str(tmpdir), "test.db")
+async def test_device_rejoin(tmp_path):
+    db = tmp_path / "test.db"
     app = await make_app(db)
     ieee = make_ieee()
     nwk = 199
@@ -580,12 +575,10 @@ async def test_device_rejoin(tmpdir):
     assert dev.endpoints[1].model == "Model"
     await app3.shutdown()
 
-    os.unlink(db)
-
 
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
-async def test_stopped_appdb_listener(tmpdir):
-    db = os.path.join(str(tmpdir), "test.db")
+async def test_stopped_appdb_listener(tmp_path):
+    db = tmp_path / "test.db"
     app = await make_app(db)
     ieee = make_ieee()
     app.handle_join(99, ieee, 0)
@@ -613,13 +606,13 @@ async def test_stopped_appdb_listener(tmpdir):
 
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
-async def test_invalid_node_desc(tmpdir):
+async def test_invalid_node_desc(tmp_path):
     """devices without a valid node descriptor should not save the node descriptor."""
 
     ieee_1 = make_ieee(1)
     nwk_1 = 0x1111
 
-    db = os.path.join(str(tmpdir), "test.db")
+    db = tmp_path / "test.db"
     app = await make_app(db)
     app.handle_join(nwk_1, ieee_1, 0)
 
@@ -642,15 +635,14 @@ async def test_invalid_node_desc(tmpdir):
     assert dev_2.status == dev_1.status
 
     await app2.shutdown()
-    os.unlink(db)
 
 
-async def test_appdb_worker_exception(tmpdir):
+async def test_appdb_worker_exception(tmp_path):
     """Exceptions should not kill the appdb worker."""
 
     app_mock = MagicMock(name="ControllerApplication")
 
-    db = os.path.join(str(tmpdir), "test.db")
+    db = tmp_path / "test.db"
 
     ieee_1 = make_ieee(1)
     dev_1 = zigpy.device.Device(app_mock, ieee_1, 0x1111)
@@ -673,10 +665,10 @@ async def test_appdb_worker_exception(tmpdir):
 
 
 @pytest.mark.parametrize("dev_init", (True, False))
-async def test_unsupported_attribute(tmpdir, dev_init):
+async def test_unsupported_attribute(tmp_path, dev_init):
     """Test adding unsupported attributes for initialized and uninitialized devices."""
 
-    db = os.path.join(str(tmpdir), "test.db")
+    db = tmp_path / "test.db"
     app = await make_app(db)
     ieee = make_ieee()
     with patch(
@@ -710,14 +702,13 @@ async def test_unsupported_attribute(tmpdir, dev_init):
     assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
 
     await app2.shutdown()
-    os.unlink(db)
 
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
-async def test_load_unsupp_attr_wrong_cluster(tmpdir):
+async def test_load_unsupp_attr_wrong_cluster(tmp_path):
     """Test loading unsupported attribute from the wrong cluster."""
 
-    db = os.path.join(str(tmpdir), "test.db")
+    db = tmp_path / "test.db"
     app = await make_app(db)
 
     ieee = make_ieee()
@@ -754,8 +745,8 @@ async def test_load_unsupp_attr_wrong_cluster(tmpdir):
     await app.shutdown()
 
 
-async def test_last_seen(tmpdir):
-    db = os.path.join(str(tmpdir), "test.db")
+async def test_last_seen(tmp_path):
+    db = tmp_path / "test.db"
     app = await make_app(db)
 
     ieee = make_ieee()
@@ -853,7 +844,7 @@ def test_pysqlite_load_failure(stdlib_version, pysqlite3_version):
 
 async def test_appdb_no_leftover_journal(tmp_path):
     db = tmp_path / "test.db"
-    app = await make_app(str(db))
+    app = await make_app(db)
     await app.shutdown()
 
     assert db.exists()

@@ -16,10 +16,10 @@ from tests.test_appdb import auto_kill_aiosqlite, make_app  # noqa: F401
 
 
 @pytest.fixture
-def test_db(tmpdir):
+def test_db(tmp_path):
     def inner(filename):
         databases = pathlib.Path(__file__).parent / "databases"
-        db_path = pathlib.Path(tmpdir / filename)
+        db_path = tmp_path / filename
 
         if filename.endswith(".db"):
             db_path.write_bytes((databases / filename).read_bytes())

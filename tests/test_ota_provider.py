@@ -25,12 +25,12 @@ IMAGE_TYPE = mock.sentinel.image_type
 
 
 @pytest.fixture
-def file_image_name(tmpdir, image):  # noqa: F811
+def file_image_name(tmp_path, image):  # noqa: F811
     def ota_img_filename(name="ota-image"):
-        file_name = os.path.join(str(tmpdir), name + "-" + str(uuid.uuid4()))
-        with open(os.path.join(file_name), mode="bw+") as file:
-            file.write(image.serialize())
-        return file_name
+        image_file = tmp_path / (name + "-" + str(uuid.uuid4()))
+        image_file.write_bytes(image.serialize())
+
+        return str(image_file)
 
     return ota_img_filename
 
@@ -178,7 +178,7 @@ async def test_basic_get_image_filtered(basic_prov, key):
     assert image.fetch_image.call_count == 0
 
 
-async def test_ikea_init_ota_dir(ikea_prov, tmpdir):
+async def test_ikea_init_ota_dir(ikea_prov):
     ikea_prov.enable = mock.MagicMock()
     ikea_prov.refresh_firmware_list = AsyncMock()
 
@@ -422,23 +422,21 @@ async def test_filestore_fetch_uncaught_exc(file_image):
     assert mock_file.call_args[0][0] == file_image.file_name
 
 
-def test_filestore_validate_ota_dir(tmpdir):
+def test_filestore_validate_ota_dir(tmp_path):
     file_prov = ota_p.FileStore()
 
     assert file_prov.validate_ota_dir(None) is None
-
-    tmpdir = str(tmpdir)
-    assert file_prov.validate_ota_dir(tmpdir) == tmpdir
+    assert file_prov.validate_ota_dir(str(tmp_path)) == str(tmp_path)
 
     # non existing dir
-    non_existing = os.path.join(tmpdir, "non_existing")
-    assert file_prov.validate_ota_dir(non_existing) is None
+    non_existing = tmp_path / "non_existing"
+    assert file_prov.validate_ota_dir(str(non_existing)) is None
 
     # file instead of dir
-    file_path = os.path.join(tmpdir, "file")
-    with open(file_path, mode="w+"):
-        pass
-    assert file_prov.validate_ota_dir(file_path) is None
+    file_path = tmp_path / "file"
+    file_path.touch()
+
+    assert file_prov.validate_ota_dir(str(file_path)) is None
 
 
 async def test_filestore_init_provider_success(file_prov):
