@@ -52,6 +52,19 @@ class NetworkBackup(zigpy.state.BasePydanticModel):
             )
         )
 
+    def is_complete(self) -> bool:
+        """
+        Checks if this backup captures enough network state to recreate the network.
+        """
+
+        return (
+            self.node_info.ieee != t.EUI64.UNKNOWN
+            and self.network_info.extended_pan_id != t.EUI64.UNKNOWN
+            and self.network_info.pan_id not in (0x0000, 0xFFFF)
+            and self.network_info.channel in range(11, 26 + 1)
+            and self.network_info.network_key.key != t.KeyData.UNKNOWN
+        )
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "backup_time": self.backup_time.isoformat(),
@@ -127,9 +140,13 @@ class BackupManager(ListenableMixin):
 
         LOGGER.debug("Adding a new backup %s", backup)
 
+        if not backup.is_complete():
+            LOGGER.debug("Backup is incomplete, ignoring")
+            return
+
         for index, old_backup in enumerate(self.backups):
             if old_backup.supersedes(backup):
-                LOGGER.debug("Backup is superseded by %s, not writing.", old_backup)
+                LOGGER.debug("Backup is superseded by %s, ignoring", old_backup)
                 # Ignore this backup if it's superseded by a new backup. This should not
                 # happen during normal operation, only if an old backup is intentionally
                 # restored.

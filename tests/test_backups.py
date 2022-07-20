@@ -156,6 +156,49 @@ def z2m_backup_json():
     }
 
 
+@pytest.fixture
+def zigate_backup_json():
+    return {
+        "backup_time": "2022-07-20T17:58:16.694438+00:00",
+        "network_info": {
+            "extended_pan_id": "9d:ff:72:2d:19:2c:d1:01",
+            "pan_id": "D08A",
+            "nwk_update_id": 0,  # missing
+            "nwk_manager_id": "0000",
+            "channel": 15,
+            "channel_mask": [15],
+            "security_level": 5,
+            "network_key": {
+                # missing
+                "key": "ff:ff:ff:ff:ff:ff:ff:ff:ff:ff:ff:ff:ff:ff:ff:ff",
+                "tx_counter": 0,
+                "rx_counter": 0,
+                "seq": 0,
+                "partner_ieee": "ff:ff:ff:ff:ff:ff:ff:ff",
+            },
+            "tc_link_key": {
+                # missing
+                "key": "5a:69:67:42:65:65:41:6c:6c:69:61:6e:63:65:30:39",
+                "tx_counter": 0,
+                "rx_counter": 0,
+                "seq": 0,
+                "partner_ieee": "00:15:8d:00:06:a3:fd:fe",
+            },
+            "key_table": [],
+            "children": [],
+            "nwk_addresses": {},
+            "stack_specific": {},
+            "metadata": {"zigate": {"version": "3.21"}},
+            "source": "zigpy-zigate@0.9.0",
+        },
+        "node_info": {
+            "nwk": "0000",
+            "ieee": "00:15:8d:00:06:a3:fd:fe",
+            "logical_type": "coordinator",
+        },
+    }
+
+
 def test_state_backup_as_dict(backup):
     obj = json.loads(json.dumps(backup.as_dict()))
     restored_backup = type(backup).from_dict(obj)
@@ -226,3 +269,10 @@ def test_backup_compatibility(backup):
             )
         )
     ).supersedes(backup)
+
+
+def test_backup_completeness(backup, zigate_backup_json):
+    assert backup.is_complete()
+
+    zigate_backup = zigpy.backups.NetworkBackup.from_dict(zigate_backup_json)
+    assert not zigate_backup.is_complete()
