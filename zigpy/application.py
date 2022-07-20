@@ -80,7 +80,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             await self.start_network()
 
             # Some radios erroneously permit joins on startup
-            if self.config[ conf.CONF_DISABLE_JOINS_ON_STARTUP ]:
+            if self.config[conf.CONF_DISABLE_JOINS_ON_STARTUP]:
                 LOGGER.info("disable permit to join")
                 await self.permit(0)
         except Exception:
