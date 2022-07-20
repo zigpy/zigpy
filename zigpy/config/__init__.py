@@ -20,7 +20,7 @@ from zigpy.config.defaults import (
     CONF_TOPO_SCAN_ENABLED_DEFAULT,
     CONF_TOPO_SCAN_PERIOD_DEFAULT,
     CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
-    CONF_DISABLE_PERMIT_TO_JOIN_AT_STARTUP_DEFAULT
+    CONF_DISABLE_JOINS_ON_STARTUP_DEFAULT
 )
 from zigpy.config.validators import cv_boolean, cv_hex, cv_key
 import zigpy.types as t
@@ -48,7 +48,7 @@ CONF_OTA_SALUS = "salus_provider"
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
 CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
-CONF_DISABLE_PERMIT_TO_JOIN_AT_STARTUP = "disable_permit_to_join_at_startup"
+CONF_DISABLE_JOINS_ON_STARTUP = "disable_joins_on_startup"
 
 
 SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): str})
@@ -111,7 +111,7 @@ ZIGPY_SCHEMA = vol.Schema(
 CONFIG_SCHEMA = ZIGPY_SCHEMA.extend(
     {
         vol.Required(CONF_DEVICE): SCHEMA_DEVICE,
-        vol.Optional(CONF_DISABLE_PERMIT_TO_JOIN_AT_STARTUP, default=CONF_DISABLE_PERMIT_TO_JOIN_AT_STARTUP_DEFAULT): cv_boolean,
+        vol.Optional(CONF_DISABLE_JOINS_ON_STARTUP_DEFAULT, default=CONF_DISABLE_JOINS_ON_STARTUP_DEFAULT): cv_boolean,
     }, 
     extra=vol.ALLOW_EXTRA
 )
