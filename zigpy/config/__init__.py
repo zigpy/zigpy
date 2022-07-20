@@ -111,7 +111,9 @@ ZIGPY_SCHEMA = vol.Schema(
 CONFIG_SCHEMA = ZIGPY_SCHEMA.extend(
     {
         vol.Required(CONF_DEVICE): SCHEMA_DEVICE,
-        vol.Optional(CONF_DISABLE_JOINS_ON_STARTUP_DEFAULT, default=CONF_DISABLE_JOINS_ON_STARTUP_DEFAULT): cv_boolean,
+        vol.Optional(
+            CONF_DISABLE_JOINS_ON_STARTUP_DEFAULT, default=CONF_DISABLE_JOINS_ON_STARTUP_DEFAULT
+        ): cv_boolean,
     }, 
     extra=vol.ALLOW_EXTRA
 )
