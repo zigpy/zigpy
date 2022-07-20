@@ -118,6 +118,9 @@ class BackupManager(ListenableMixin):
     async def restore_backup(
         self, backup: NetworkBackup, counter_increment: int = 10000
     ) -> None:
+        if not backup.is_complete():
+            raise ValueError("Backup is incomplete, it is not possible to restore")
+
         key = backup.network_info.network_key
         new_backup = NetworkBackup(
             network_info=backup.network_info.replace(
