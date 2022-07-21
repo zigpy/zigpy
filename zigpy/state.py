@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 import dataclasses
-from dataclasses import InitVar, field
+from dataclasses import InitVar
 import functools
 from typing import (  # `Dict as Dict` so pyupgrade doesn't try to upgrade it
     Any,
@@ -13,9 +13,6 @@ from typing import (  # `Dict as Dict` so pyupgrade doesn't try to upgrade it
     List as List,
     Optional as Optional,
 )
-
-import pydantic
-from pydantic.dataclasses import dataclass
 
 import zigpy.config as conf
 import zigpy.types as t
@@ -32,27 +29,20 @@ LOGICAL_TYPE_TO_JSON = {
 JSON_TO_LOGICAL_TYPE = {v: k for k, v in LOGICAL_TYPE_TO_JSON.items()}
 
 
-class BaseDataclass:
+class BaseDataclassMixin:
     def replace(self, **kwargs):
         return dataclasses.replace(self, **kwargs)
 
 
-class BasePydanticModel(pydantic.BaseModel):
-    def replace(self, **kwargs: dict[str, Any]) -> BasePydanticModel:
-        d = self.dict()
-        d.update(kwargs)
-
-        return type(self)(**d)
-
-
-class Key(BasePydanticModel):
+@dataclasses.dataclass
+class Key(BaseDataclassMixin):
     """APS/TC Link key."""
 
-    key: t.KeyData = pydantic.Field(default_factory=lambda: t.KeyData.UNKNOWN)
+    key: t.KeyData = dataclasses.field(default_factory=lambda: t.KeyData.UNKNOWN)
     tx_counter: t.uint32_t = 0
     rx_counter: t.uint32_t = 0
     seq: t.uint8_t = 0
-    partner_ieee: t.EUI64 = pydantic.Field(default_factory=lambda: t.EUI64.UNKNOWN)
+    partner_ieee: t.EUI64 = dataclasses.field(default_factory=lambda: t.EUI64.UNKNOWN)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -74,11 +64,12 @@ class Key(BasePydanticModel):
         )
 
 
-class NodeInfo(BasePydanticModel):
+@dataclasses.dataclass
+class NodeInfo(BaseDataclassMixin):
     """Controller Application network Node information."""
 
     nwk: t.NWK = t.NWK(0xFFFE)
-    ieee: t.EUI64 = pydantic.Field(default_factory=lambda: t.EUI64.UNKNOWN)
+    ieee: t.EUI64 = dataclasses.field(default_factory=lambda: t.EUI64.UNKNOWN)
     logical_type: zdo_t.LogicalType = zdo_t.LogicalType.EndDevice
 
     def as_dict(self) -> dict[str, Any]:
@@ -97,10 +88,11 @@ class NodeInfo(BasePydanticModel):
         )
 
 
-class NetworkInfo(BasePydanticModel):
+@dataclasses.dataclass
+class NetworkInfo(BaseDataclassMixin):
     """Network information."""
 
-    extended_pan_id: t.ExtendedPanId = pydantic.Field(
+    extended_pan_id: t.ExtendedPanId = dataclasses.field(
         default_factory=lambda: t.ExtendedPanId.UNKNOWN
     )
     pan_id: t.PanId = t.PanId(0xFFFE)
@@ -109,8 +101,8 @@ class NetworkInfo(BasePydanticModel):
     channel: t.uint8_t = 0
     channel_mask: t.Channels = t.Channels.NO_CHANNELS
     security_level: t.uint8_t = 0
-    network_key: Key = pydantic.Field(default_factory=Key)
-    tc_link_key: Key = pydantic.Field(
+    network_key: Key = dataclasses.field(default_factory=Key)
+    tc_link_key: Key = dataclasses.field(
         default_factory=lambda: Key(
             key=conf.CONF_NWK_TC_LINK_KEY_DEFAULT,
             tx_counter=0,
@@ -119,18 +111,18 @@ class NetworkInfo(BasePydanticModel):
             partner_ieee=t.EUI64.UNKNOWN,
         )
     )
-    key_table: List[Key] = pydantic.Field(default_factory=list)
-    children: List[t.EUI64] = pydantic.Field(default_factory=list)
+    key_table: List[Key] = dataclasses.field(default_factory=list)
+    children: List[t.EUI64] = dataclasses.field(default_factory=list)
 
     # If exposed by the stack, NWK addresses of other connected devices on the network
-    nwk_addresses: Dict[t.EUI64, t.NWK] = pydantic.Field(default_factory=dict)
+    nwk_addresses: Dict[t.EUI64, t.NWK] = dataclasses.field(default_factory=dict)
 
     # Dict to keep track of stack-specific network information.
     # Z-Stack, for example, has a TCLK_SEED that should be backed up.
-    stack_specific: Dict[str, Any] = pydantic.Field(default_factory=dict)
+    stack_specific: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     # Internal metadata not directly used for network restoration
-    metadata: Dict[str, Any] = pydantic.Field(default_factory=dict)
+    metadata: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     # Package generating the network information
     source: Optional[str] = None
@@ -184,15 +176,15 @@ class NetworkInfo(BasePydanticModel):
         )
 
 
-@dataclass
-class Counter(BaseDataclass):
+@dataclasses.dataclass
+class Counter(BaseDataclassMixin):
     """Ever increasing Counter."""
 
     name: str
     initial_value: InitVar[int] = 0
-    raw_value: int = field(init=False, default=0)
-    reset_count: int = field(init=False, default=0)
-    last_reset_value: int = field(init=False, default=0)
+    raw_value: int = dataclasses.field(init=False, default=0)
+    reset_count: int = dataclasses.field(init=False, default=0)
+    last_reset_value: int = dataclasses.field(init=False, default=0)
 
     def __eq__(self, other) -> bool:
         """Compare two counters."""
@@ -330,14 +322,14 @@ class CounterGroups(dict):
         return counter_group
 
 
-@dataclass
+@dataclasses.dataclass
 class State:
-    node_info: NodeInfo = field(default_factory=NodeInfo)
-    network_info: NetworkInfo = field(default_factory=NetworkInfo)
-    counters: CounterGroups = field(init=False, default=None)
-    broadcast_counters: CounterGroups = field(init=False, default=None)
-    device_counters: CounterGroups = field(init=False, default=None)
-    group_counters: CounterGroups = field(init=False, default=None)
+    node_info: NodeInfo = dataclasses.field(default_factory=NodeInfo)
+    network_info: NetworkInfo = dataclasses.field(default_factory=NetworkInfo)
+    counters: CounterGroups = dataclasses.field(init=False, default=None)
+    broadcast_counters: CounterGroups = dataclasses.field(init=False, default=None)
+    device_counters: CounterGroups = dataclasses.field(init=False, default=None)
+    group_counters: CounterGroups = dataclasses.field(init=False, default=None)
 
     def __post_init__(self) -> None:
         """Initialize default counters."""

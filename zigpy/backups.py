@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from datetime import datetime, timezone
 import logging
 from typing import TYPE_CHECKING, Any
-
-import pydantic
 
 import zigpy.config as conf
 import zigpy.state
@@ -20,12 +19,17 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 
 
-class NetworkBackup(zigpy.state.BasePydanticModel):
-    backup_time: datetime = pydantic.Field(
+@dataclasses.dataclass
+class NetworkBackup(zigpy.state.BaseDataclassMixin):
+    backup_time: datetime = dataclasses.field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
-    network_info: zigpy.state.NetworkInfo
-    node_info: zigpy.state.NodeInfo
+    network_info: zigpy.state.NetworkInfo = dataclasses.field(
+        default_factory=zigpy.state.NetworkInfo
+    )
+    node_info: zigpy.state.NodeInfo = dataclasses.field(
+        default_factory=zigpy.state.NodeInfo
+    )
 
     def supersedes(self, backup: NetworkBackup) -> bool:
         """

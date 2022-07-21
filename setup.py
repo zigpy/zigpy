@@ -12,7 +12,6 @@ REQUIRES = [
     "crccheck",
     "cryptography",
     "voluptuous",
-    "pydantic",
 ]
 
 setup(
