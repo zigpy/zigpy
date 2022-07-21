@@ -271,8 +271,13 @@ def test_backup_compatibility(backup):
     ).supersedes(backup)
 
 
-def test_backup_completeness(backup, zigate_backup_json):
+async def test_backup_completeness(backup, zigate_backup_json):
     assert backup.is_complete()
 
     zigate_backup = zigpy.backups.NetworkBackup.from_dict(zigate_backup_json)
     assert not zigate_backup.is_complete()
+
+    backups = zigpy.backups.BackupManager(None)
+
+    with pytest.raises(ValueError):
+        await backups.restore_backup(zigate_backup)
