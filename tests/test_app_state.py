@@ -40,7 +40,7 @@ def test_counter():
 
     counter.reset()
     assert counter.value == 9
-    assert counter.raw_value == 0
+    assert counter._raw_value == 0
     assert counter.reset_count == 1
 
     # new value after a counter was reset/clear
