@@ -6,13 +6,7 @@ from collections.abc import Iterable
 import dataclasses
 from dataclasses import InitVar
 import functools
-from typing import (  # `Dict as Dict` so pyupgrade doesn't try to upgrade it
-    Any,
-    Dict as Dict,
-    Iterator,
-    List as List,
-    Optional as Optional,
-)
+from typing import Any, Iterator
 
 import zigpy.config as conf
 import zigpy.types as t
@@ -111,21 +105,21 @@ class NetworkInfo(BaseDataclassMixin):
             partner_ieee=t.EUI64.UNKNOWN,
         )
     )
-    key_table: List[Key] = dataclasses.field(default_factory=list)
-    children: List[t.EUI64] = dataclasses.field(default_factory=list)
+    key_table: list[Key] = dataclasses.field(default_factory=list)
+    children: list[t.EUI64] = dataclasses.field(default_factory=list)
 
     # If exposed by the stack, NWK addresses of other connected devices on the network
-    nwk_addresses: Dict[t.EUI64, t.NWK] = dataclasses.field(default_factory=dict)
+    nwk_addresses: dict[t.EUI64, t.NWK] = dataclasses.field(default_factory=dict)
 
-    # Dict to keep track of stack-specific network information.
+    # dict to keep track of stack-specific network information.
     # Z-Stack, for example, has a TCLK_SEED that should be backed up.
-    stack_specific: Dict[str, Any] = dataclasses.field(default_factory=dict)
+    stack_specific: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     # Internal metadata not directly used for network restoration
-    metadata: Dict[str, Any] = dataclasses.field(default_factory=dict)
+    metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     # Package generating the network information
-    source: Optional[str] = None
+    source: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -182,9 +176,9 @@ class Counter(BaseDataclassMixin):
 
     name: str
     initial_value: InitVar[int] = 0
-    raw_value: int = dataclasses.field(init=False, default=0)
+    _raw_value: int = dataclasses.field(init=False, default=0)
     reset_count: int = dataclasses.field(init=False, default=0)
-    last_reset_value: int = dataclasses.field(init=False, default=0)
+    _last_reset_value: int = dataclasses.field(init=False, default=0)
 
     def __eq__(self, other) -> bool:
         """Compare two counters."""
@@ -199,7 +193,7 @@ class Counter(BaseDataclassMixin):
 
     def __post_init__(self, initial_value) -> None:
         """Initialize instance."""
-        self.raw_value = initial_value
+        self._raw_value = initial_value
 
     def __str__(self) -> str:
         """String representation."""
@@ -209,32 +203,32 @@ class Counter(BaseDataclassMixin):
     def value(self) -> int:
         """Current value of the counter."""
 
-        return self.last_reset_value + self.raw_value
+        return self._last_reset_value + self._raw_value
 
     def update(self, new_value: int) -> None:
         """Update counter value."""
 
-        if new_value == self.raw_value:
+        if new_value == self._raw_value:
             return
 
-        diff = new_value - self.raw_value
+        diff = new_value - self._raw_value
         if diff < 0:  # Roll over or reset
             self.reset_and_update(new_value)
             return
 
-        self.raw_value = new_value
+        self._raw_value = new_value
 
     def increment(self, increment: int = 1) -> None:
         """Increment current value by increment."""
 
         assert increment >= 0
-        self.raw_value += increment
+        self._raw_value += increment
 
     def reset_and_update(self, value: int) -> None:
         """Clear (rollover event) and optionally update."""
 
-        self.last_reset_value = self.value
-        self.raw_value = value
+        self._last_reset_value = self.value
+        self._raw_value = value
         self.reset_count += 1
 
     reset = functools.partialmethod(reset_and_update, 0)
