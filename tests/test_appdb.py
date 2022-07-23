@@ -24,7 +24,9 @@ from zigpy.zdo import types as zdo_t
 
 from tests.async_mock import AsyncMock, MagicMock, patch
 from tests.conftest import App
-from tests.test_backups import backup  # noqa: F401; pylint: disable=unused-variable
+from tests.test_backups import (  # noqa: F401; pylint: disable=unused-variable
+    backup_factory,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -852,8 +854,10 @@ async def test_appdb_no_leftover_journal(tmp_path):
     assert set(db.parent.glob(db.with_suffix(".*").name)) == {db}
 
 
-async def test_appdb_network_backups(tmp_path, backup):  # noqa: F811
+async def test_appdb_network_backups(tmp_path, backup_factory):  # noqa: F811
     db = tmp_path / "test.db"
+
+    backup = backup_factory()
 
     app1 = await make_app(db)
     app1.backups.add_backup(backup)
@@ -864,13 +868,8 @@ async def test_appdb_network_backups(tmp_path, backup):  # noqa: F811
     assert len(app2.backups.backups) == 1
     assert app2.backups.backups[0] == backup
 
-    new_backup = backup.replace(
-        network_info=backup.network_info.replace(
-            network_key=backup.network_info.network_key.replace(
-                tx_counter=backup.network_info.network_key.tx_counter + 10000
-            )
-        )
-    )
+    new_backup = backup_factory()
+    new_backup.network_info.network_key.tx_counter += 10000
 
     app2.backups.add_backup(new_backup)
     await app2.shutdown()
