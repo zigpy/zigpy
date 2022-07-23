@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 
 import pytest
@@ -280,3 +280,38 @@ async def test_backup_completeness(backup, zigate_backup_json):
 
     with pytest.raises(ValueError):
         await backups.restore_backup(zigate_backup)
+
+
+async def test_add_backup(backup_factory):
+    backups = zigpy.backups.BackupManager(None)
+
+    # First backup
+    backup1 = backup_factory()
+    backups.add_backup(backup1)
+    assert backups.backups == [backup1]
+
+    # Adding the same backup twice will do nothing
+    backups.add_backup(backup1)
+    assert backups.backups == [backup1]
+
+    # Adding an identical backup that is newer replaces the old one
+    backup2 = backup_factory()
+    backup2.backup_time += timedelta(hours=1)
+
+    backups.add_backup(backup2)
+    assert backups.backups == [backup2]
+
+    # An even more recent one with a rolled back frame counter is ignored
+    backup3 = backup_factory()
+    backup3.backup_time += timedelta(hours=2)
+    backup3.network_info.network_key.tx_counter -= 1000
+
+    backups.add_backup(backup3)
+    assert backups.backups == [backup2]
+
+    # An incompatible backup will be added to the list. Nothing will be replaced.
+    backup4 = backup_factory()
+    backup4.network_info.pan_id += 1
+
+    backups.add_backup(backup4)
+    assert backups.backups == [backup2, backup4]

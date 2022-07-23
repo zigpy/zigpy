@@ -31,10 +31,8 @@ class NetworkBackup(zigpy.state.BaseDataclassMixin):
         default_factory=zigpy.state.NodeInfo
     )
 
-    def supersedes(self, backup: NetworkBackup) -> bool:
+    def is_compatible_with(self, backup: NetworkBackup) -> bool:
         """
-        Checks if this network backup uses settings compatible with another backup.
-
         Two backups are compatible if, ignoring frame counters, the same external device
         will be able to join either network.
         """
@@ -49,11 +47,20 @@ class NetworkBackup(zigpy.state.BaseDataclassMixin):
             and self.network_info.security_level == backup.network_info.security_level
             and self.network_info.tc_link_key.key == backup.network_info.tc_link_key.key
             and self.network_info.network_key.key == backup.network_info.network_key.key
-            and self.network_info.nwk_update_id >= backup.network_info.nwk_update_id
+        )
+
+    def supersedes(self, backup: NetworkBackup) -> bool:
+        """
+        Checks if this network backup is more recent than another backup.
+        """
+
+        return (
+            self.is_compatible_with(backup)
             and (
                 self.network_info.network_key.tx_counter
-                >= backup.network_info.network_key.tx_counter
+                > backup.network_info.network_key.tx_counter
             )
+            and self.network_info.nwk_update_id >= backup.network_info.nwk_update_id
         )
 
     def is_complete(self) -> bool:
@@ -152,16 +159,17 @@ class BackupManager(ListenableMixin):
             return
 
         for index, old_backup in enumerate(self.backups):
-            if old_backup.supersedes(backup):
-                LOGGER.debug("Backup is superseded by %s, ignoring", old_backup)
-                # Ignore this backup if it's superseded by a new backup. This should not
-                # happen during normal operation, only if an old backup is intentionally
-                # restored.
-                return
-            elif not backup.supersedes(old_backup):
+            if not backup.is_compatible_with(old_backup):
                 continue
+            elif old_backup.supersedes(backup):
+                # Ignore this backup if it's superseded by an old backup. This should
+                # not happen during normal operation, only if an old backup is
+                # intentionally restored.
+                LOGGER.debug("Backup is superseded by %s, ignoring", old_backup)
+                return
 
-            # Replace the old backup with our more recent one
+            # Replace the old backup with our more recent one, since we either supersede
+            # it or are superficially identical to it
             LOGGER.debug("Replacing %s", old_backup)
             self.listener_event("network_backup_removed", old_backup)
             self.listener_event("network_backup_created", backup)
@@ -173,7 +181,7 @@ class BackupManager(ListenableMixin):
             self.listener_event("network_backup_created", backup)
             self.backups.append(backup)
 
-        self.backups.sort(key=lambda backup: backup.backup_time)
+        self.backups.sort(reverse=True, key=lambda backup: backup.backup_time)
 
     def start_periodic_backups(self, period: int | float) -> None:
         self.stop_periodic_backups()
