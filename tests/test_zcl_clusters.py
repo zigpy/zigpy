@@ -1,4 +1,3 @@
-import asyncio
 import re
 
 import pytest
@@ -96,7 +95,7 @@ async def test_time_cluster():
 
 async def test_time_cluster_unsupported():
     ep = MagicMock()
-    ep.reply.side_effect = asyncio.coroutine(MagicMock())
+    ep.reply = AsyncMock()
     t = zcl.Cluster._registry[0x000A](ep)
 
     hdr_general = zcl.foundation.ZCLHeader.general

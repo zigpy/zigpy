@@ -1,11 +1,11 @@
-from typing import List, Union
+from __future__ import annotations
 
 import voluptuous as vol
 
 import zigpy.types as t
 
 
-def cv_boolean(value: Union[bool, int, str]) -> bool:
+def cv_boolean(value: bool | int | str) -> bool:
     """Validate and coerce a boolean value."""
     if isinstance(value, bool):
         return value
@@ -20,7 +20,7 @@ def cv_boolean(value: Union[bool, int, str]) -> bool:
     raise vol.Invalid(f"invalid boolean '{value}' value")
 
 
-def cv_hex(value: Union[int, str]) -> int:
+def cv_hex(value: int | str) -> int:
     """Convert string with possible hex number into int."""
     if isinstance(value, int):
         return value
@@ -39,7 +39,7 @@ def cv_hex(value: Union[int, str]) -> int:
     return value
 
 
-def cv_key(key: List[int]) -> t.KeyData:
+def cv_key(key: list[int]) -> t.KeyData:
     """Validate a key."""
     if not isinstance(key, list) or not all(isinstance(v, int) for v in key):
         raise vol.Invalid("key must be a list of integers")

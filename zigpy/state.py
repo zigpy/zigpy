@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 import dataclasses
-from dataclasses import InitVar, dataclass, field
+from dataclasses import InitVar
 import functools
 from typing import Any, Iterator
 
@@ -13,38 +13,80 @@ import zigpy.types as t
 import zigpy.util
 import zigpy.zdo.types as zdo_t
 
+LOGICAL_TYPE_TO_JSON = {
+    zdo_t.LogicalType.Coordinator: "coordinator",
+    zdo_t.LogicalType.Router: "router",
+    zdo_t.LogicalType.EndDevice: "end_device",
+}
 
-@dataclass
-class Key:
+
+JSON_TO_LOGICAL_TYPE = {v: k for k, v in LOGICAL_TYPE_TO_JSON.items()}
+
+
+class BaseDataclassMixin:
+    def replace(self, **kwargs):
+        return dataclasses.replace(self, **kwargs)
+
+
+@dataclasses.dataclass
+class Key(BaseDataclassMixin):
     """APS/TC Link key."""
 
-    key: t.KeyData = field(default_factory=lambda: t.KeyData.UNKNOWN)
+    key: t.KeyData = dataclasses.field(default_factory=lambda: t.KeyData.UNKNOWN)
     tx_counter: t.uint32_t = 0
     rx_counter: t.uint32_t = 0
     seq: t.uint8_t = 0
-    partner_ieee: t.EUI64 = field(default_factory=lambda: t.EUI64.UNKNOWN)
+    partner_ieee: t.EUI64 = dataclasses.field(default_factory=lambda: t.EUI64.UNKNOWN)
 
-    def replace(self, **kwargs) -> Key:
-        return dataclasses.replace(self, **kwargs)
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "key": str(t.KeyData(self.key)),
+            "tx_counter": self.tx_counter,
+            "rx_counter": self.rx_counter,
+            "seq": self.seq,
+            "partner_ieee": str(self.partner_ieee),
+        }
+
+    @classmethod
+    def from_dict(cls, obj: dict[str, Any]) -> Key:
+        return cls(
+            key=t.KeyData.convert(obj["key"]),
+            tx_counter=obj["tx_counter"],
+            rx_counter=obj["rx_counter"],
+            seq=obj["seq"],
+            partner_ieee=t.EUI64.convert(obj["partner_ieee"]),
+        )
 
 
-@dataclass
-class NodeInfo:
+@dataclasses.dataclass
+class NodeInfo(BaseDataclassMixin):
     """Controller Application network Node information."""
 
     nwk: t.NWK = t.NWK(0xFFFE)
-    ieee: t.EUI64 = field(default_factory=lambda: t.EUI64.UNKNOWN)
+    ieee: t.EUI64 = dataclasses.field(default_factory=lambda: t.EUI64.UNKNOWN)
     logical_type: zdo_t.LogicalType = zdo_t.LogicalType.EndDevice
 
-    def replace(self, **kwargs) -> NodeInfo:
-        return dataclasses.replace(self, **kwargs)
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "nwk": str(self.nwk)[2:],
+            "ieee": str(self.ieee),
+            "logical_type": LOGICAL_TYPE_TO_JSON[self.logical_type],
+        }
+
+    @classmethod
+    def from_dict(cls, obj: dict[str, Any]) -> NodeInfo:
+        return cls(
+            nwk=t.NWK.convert(obj["nwk"]),
+            ieee=t.EUI64.convert(obj["ieee"]),
+            logical_type=JSON_TO_LOGICAL_TYPE[obj["logical_type"]],
+        )
 
 
-@dataclass
-class NetworkInfo:
+@dataclasses.dataclass
+class NetworkInfo(BaseDataclassMixin):
     """Network information."""
 
-    extended_pan_id: t.ExtendedPanId = field(
+    extended_pan_id: t.ExtendedPanId = dataclasses.field(
         default_factory=lambda: t.ExtendedPanId.UNKNOWN
     )
     pan_id: t.PanId = t.PanId(0xFFFE)
@@ -53,8 +95,8 @@ class NetworkInfo:
     channel: t.uint8_t = 0
     channel_mask: t.Channels = t.Channels.NO_CHANNELS
     security_level: t.uint8_t = 0
-    network_key: Key = field(default_factory=Key)
-    tc_link_key: Key = field(
+    network_key: Key = dataclasses.field(default_factory=Key)
+    tc_link_key: Key = dataclasses.field(
         default_factory=lambda: Key(
             key=conf.CONF_NWK_TC_LINK_KEY_DEFAULT,
             tx_counter=0,
@@ -63,35 +105,80 @@ class NetworkInfo:
             partner_ieee=t.EUI64.UNKNOWN,
         )
     )
-    key_table: list[Key] = field(default_factory=list)
-    children: list[t.EUI64] = field(default_factory=list)
+    key_table: list[Key] = dataclasses.field(default_factory=list)
+    children: list[t.EUI64] = dataclasses.field(default_factory=list)
 
     # If exposed by the stack, NWK addresses of other connected devices on the network
-    nwk_addresses: dict[t.EUI64, t.NWK] = field(default_factory=dict)
+    nwk_addresses: dict[t.EUI64, t.NWK] = dataclasses.field(default_factory=dict)
 
-    # Dict to keep track of stack-specific network information.
+    # dict to keep track of stack-specific network information.
     # Z-Stack, for example, has a TCLK_SEED that should be backed up.
-    stack_specific: dict[str, Any] = field(default_factory=dict)
+    stack_specific: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     # Internal metadata not directly used for network restoration
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     # Package generating the network information
     source: str | None = None
 
-    def replace(self, **kwargs) -> NetworkInfo:
-        return dataclasses.replace(self, **kwargs)
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "extended_pan_id": str(self.extended_pan_id),
+            "pan_id": str(t.PanId(self.pan_id))[2:],
+            "nwk_update_id": self.nwk_update_id,
+            "nwk_manager_id": str(t.NWK(self.nwk_manager_id))[2:],
+            "channel": self.channel,
+            "channel_mask": list(self.channel_mask),
+            "security_level": self.security_level,
+            "network_key": self.network_key.as_dict(),
+            "tc_link_key": self.tc_link_key.as_dict(),
+            "key_table": [key.as_dict() for key in self.key_table],
+            "children": sorted(str(ieee) for ieee in self.children),
+            "nwk_addresses": {
+                str(ieee): str(t.NWK(nwk))[2:]
+                for ieee, nwk in sorted(self.nwk_addresses.items())
+            },
+            "stack_specific": self.stack_specific,
+            "metadata": self.metadata,
+            "source": self.source,
+        }
+
+    @classmethod
+    def from_dict(cls, obj: dict[str, Any]) -> NetworkInfo:
+        return cls(
+            extended_pan_id=t.ExtendedPanId.convert(obj["extended_pan_id"]),
+            pan_id=t.PanId.convert(obj["pan_id"]),
+            nwk_update_id=obj["nwk_update_id"],
+            nwk_manager_id=t.NWK.convert(obj["nwk_manager_id"]),
+            channel=obj["channel"],
+            channel_mask=t.Channels.from_channel_list(obj["channel_mask"]),
+            security_level=obj["security_level"],
+            network_key=Key.from_dict(obj["network_key"]),
+            tc_link_key=Key.from_dict(obj["tc_link_key"]),
+            key_table=sorted(
+                (Key.from_dict(o) for o in obj["key_table"]),
+                key=lambda k: k.partner_ieee,
+            ),
+            children=[t.EUI64.convert(ieee) for ieee in obj["children"]],
+            nwk_addresses={
+                t.EUI64.convert(ieee): t.NWK.convert(nwk)
+                for ieee, nwk in obj["nwk_addresses"].items()
+            },
+            stack_specific=obj["stack_specific"],
+            metadata=obj["metadata"],
+            source=obj["source"],
+        )
 
 
-@dataclass
-class Counter:
+@dataclasses.dataclass
+class Counter(BaseDataclassMixin):
     """Ever increasing Counter."""
 
     name: str
     initial_value: InitVar[int] = 0
-    _raw_value: int = field(init=False, default=0)
-    reset_count: int = field(init=False, default=0)
-    _last_reset_value: int = field(init=False, default=0)
+    _raw_value: int = dataclasses.field(init=False, default=0)
+    reset_count: int = dataclasses.field(init=False, default=0)
+    _last_reset_value: int = dataclasses.field(init=False, default=0)
 
     def __eq__(self, other) -> bool:
         """Compare two counters."""
@@ -229,14 +316,14 @@ class CounterGroups(dict):
         return counter_group
 
 
-@dataclass
+@dataclasses.dataclass
 class State:
-    node_info: NodeInfo = field(default_factory=NodeInfo)
-    network_info: NetworkInfo = field(default_factory=NetworkInfo)
-    counters: CounterGroups | None = field(init=False, default=None)
-    broadcast_counters: CounterGroups | None = field(init=False, default=None)
-    device_counters: CounterGroups | None = field(init=False, default=None)
-    group_counters: CounterGroups | None = field(init=False, default=None)
+    node_info: NodeInfo = dataclasses.field(default_factory=NodeInfo)
+    network_info: NetworkInfo = dataclasses.field(default_factory=NetworkInfo)
+    counters: CounterGroups = dataclasses.field(init=False, default=None)
+    broadcast_counters: CounterGroups = dataclasses.field(init=False, default=None)
+    device_counters: CounterGroups = dataclasses.field(init=False, default=None)
+    group_counters: CounterGroups = dataclasses.field(init=False, default=None)
 
     def __post_init__(self) -> None:
         """Initialize default counters."""
@@ -252,204 +339,3 @@ class State:
     @zigpy.util.deprecated("`node_information` has been renamed to `node_info`")
     def node_information(self) -> NodeInfo:
         return self.node_info
-
-
-LOGICAL_TYPE_TO_JSON = {
-    zdo_t.LogicalType.Coordinator: "coordinator",
-    zdo_t.LogicalType.Router: "router",
-    zdo_t.LogicalType.EndDevice: "end_device",
-}
-
-
-JSON_TO_LOGICAL_TYPE = {v: k for k, v in LOGICAL_TYPE_TO_JSON.items()}
-
-
-def network_state_to_json(
-    *, network_info: NetworkInfo, node_info: NodeInfo
-) -> dict[str, Any]:
-    devices = {}
-
-    for ieee, nwk in network_info.nwk_addresses.items():
-        devices[ieee] = {
-            "ieee_address": ieee.serialize()[::-1].hex(),
-            "nwk_address": nwk.serialize()[::-1].hex(),
-            "is_child": False,
-        }
-
-    for ieee in network_info.children:
-        if ieee not in devices:
-            devices[ieee] = {
-                "ieee_address": ieee.serialize()[::-1].hex(),
-                "nwk_address": None,
-                "is_child": True,
-            }
-        else:
-            devices[ieee]["is_child"] = True
-
-    for key in network_info.key_table:
-        if key.partner_ieee not in devices:
-            devices[key.partner_ieee] = {
-                "ieee_address": key.partner_ieee.serialize()[::-1].hex(),
-                "nwk_address": None,
-                "is_child": False,
-            }
-
-        devices[key.partner_ieee]["link_key"] = {
-            "key": key.key.serialize().hex(),
-            "tx_counter": key.tx_counter,
-            "rx_counter": key.rx_counter,
-        }
-
-    return {
-        "metadata": {
-            "version": 1,
-            "format": "zigpy/open-coordinator-backup",
-            "source": network_info.source,
-            "internal": {
-                "node": {
-                    "ieee": node_info.ieee.serialize()[::-1].hex(),
-                    "nwk": node_info.nwk.serialize()[::-1].hex(),
-                    "type": LOGICAL_TYPE_TO_JSON[node_info.logical_type],
-                },
-                "network": {
-                    "tc_link_key": {
-                        "key": network_info.tc_link_key.key.serialize().hex(),
-                        "frame_counter": network_info.tc_link_key.tx_counter,
-                    },
-                    "tc_address": network_info.tc_link_key.partner_ieee.serialize()[
-                        ::-1
-                    ].hex(),
-                    "nwk_manager": network_info.nwk_manager_id.serialize()[::-1].hex(),
-                },
-                "link_key_seqs": {
-                    key.partner_ieee.serialize()[::-1].hex(): key.seq
-                    for key in network_info.key_table
-                },
-                **network_info.metadata,
-            },
-        },
-        "stack_specific": network_info.stack_specific,
-        "coordinator_ieee": node_info.ieee.serialize()[::-1].hex(),
-        "pan_id": network_info.pan_id.serialize()[::-1].hex(),
-        "extended_pan_id": network_info.extended_pan_id.serialize()[::-1].hex(),
-        "nwk_update_id": network_info.nwk_update_id,
-        "security_level": network_info.security_level,
-        "channel": network_info.channel,
-        "channel_mask": list(network_info.channel_mask),
-        "network_key": {
-            "key": network_info.network_key.key.serialize().hex(),
-            "sequence_number": network_info.network_key.seq or 0,
-            "frame_counter": network_info.network_key.tx_counter or 0,
-        },
-        "devices": sorted(devices.values(), key=lambda d: d["ieee_address"]),
-    }
-
-
-def json_to_network_state(obj: dict[str, Any]) -> tuple[NetworkInfo, NodeInfo]:
-    internal = obj["metadata"].get("internal", {})
-
-    node_info = NodeInfo()
-    node_meta = internal.get("node", {})
-
-    if "nwk" in node_meta:
-        node_info.nwk, _ = t.NWK.deserialize(bytes.fromhex(node_meta["nwk"])[::-1])
-    else:
-        node_info.nwk = t.NWK(0x0000)
-
-    node_info.logical_type = JSON_TO_LOGICAL_TYPE[node_meta.get("type", "coordinator")]
-
-    # Should be identical to `metadata.internal.node.ieee`
-    node_info.ieee, _ = t.EUI64.deserialize(
-        bytes.fromhex(obj["coordinator_ieee"])[::-1]
-    )
-
-    network_info = NetworkInfo()
-    network_info.source = obj["metadata"]["source"]
-    network_info.metadata = {
-        k: v
-        for k, v in internal.items()
-        if k not in ("node", "network", "link_key_seqs")
-    }
-    network_info.pan_id, _ = t.NWK.deserialize(bytes.fromhex(obj["pan_id"])[::-1])
-    network_info.extended_pan_id, _ = t.EUI64.deserialize(
-        bytes.fromhex(obj["extended_pan_id"])[::-1]
-    )
-    network_info.nwk_update_id = obj["nwk_update_id"]
-
-    network_meta = internal.get("network", {})
-
-    if "nwk_manager" in network_meta:
-        network_info.nwk_manager_id, _ = t.NWK.deserialize(
-            bytes.fromhex(network_meta["nwk_manager"])
-        )
-    else:
-        network_info.nwk_manager_id = t.NWK(0x0000)
-
-    network_info.channel = obj["channel"]
-    network_info.channel_mask = t.Channels.from_channel_list(obj["channel_mask"])
-    network_info.security_level = obj["security_level"]
-
-    if obj.get("stack_specific"):
-        network_info.stack_specific = obj.get("stack_specific")
-
-    network_info.tc_link_key = Key()
-
-    if "tc_link_key" in network_meta:
-        network_info.tc_link_key.key, _ = t.KeyData.deserialize(
-            bytes.fromhex(network_meta["tc_link_key"]["key"])
-        )
-        network_info.tc_link_key.tx_counter = network_meta["tc_link_key"].get(
-            "frame_counter", 0
-        )
-        network_info.tc_link_key.partner_ieee, _ = t.EUI64.deserialize(
-            bytes.fromhex(network_meta["tc_address"])[::-1]
-        )
-    else:
-        network_info.tc_link_key.key = conf.CONF_NWK_TC_LINK_KEY_DEFAULT
-        network_info.tc_link_key.partner_ieee = node_info.ieee
-
-    network_info.network_key = Key()
-    network_info.network_key.key, _ = t.KeyData.deserialize(
-        bytes.fromhex(obj["network_key"]["key"])
-    )
-    network_info.network_key.tx_counter = obj["network_key"]["frame_counter"]
-    network_info.network_key.seq = obj["network_key"]["sequence_number"]
-
-    network_info.children = []
-    network_info.nwk_addresses = {}
-
-    for device in obj["devices"]:
-        if device["nwk_address"] is not None:
-            nwk, _ = t.NWK.deserialize(bytes.fromhex(device["nwk_address"])[::-1])
-        else:
-            nwk = None
-
-        ieee, _ = t.EUI64.deserialize(bytes.fromhex(device["ieee_address"])[::-1])
-
-        # The `is_child` key is currently optional
-        if device.get("is_child", True):
-            network_info.children.append(ieee)
-
-        if nwk is not None:
-            network_info.nwk_addresses[ieee] = nwk
-
-        if "link_key" in device:
-            key = Key()
-            key.key, _ = t.KeyData.deserialize(bytes.fromhex(device["link_key"]["key"]))
-            key.tx_counter = device["link_key"]["tx_counter"]
-            key.rx_counter = device["link_key"]["rx_counter"]
-            key.partner_ieee = ieee
-
-            try:
-                key.seq = obj["metadata"]["internal"]["link_key_seqs"][
-                    device["ieee_address"]
-                ]
-            except KeyError:
-                key.seq = 0
-
-            network_info.key_table.append(key)
-
-        # XXX: Devices that are not children, have no NWK address, and have no link key
-        #      are effectively ignored, since there is no place to write them
-
-    return network_info, node_info

@@ -145,7 +145,10 @@ class Date(Struct):
 
 
 class NWK(basic.uint16_t, repr="hex"):
-    pass
+    @classmethod
+    def convert(cls, data: str) -> NWK:
+        assert 4 * len(data) == cls._bits
+        return cls.deserialize(bytes.fromhex(data)[::-1])[0]
 
 
 class PanId(NWK):

@@ -8,6 +8,7 @@ import random
 from typing import Any
 
 import zigpy.appdb
+import zigpy.backups
 import zigpy.config as conf
 import zigpy.device
 import zigpy.exceptions
@@ -43,6 +44,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._ota = zigpy.ota.OTA(self)
         self._send_sequence = 0
 
+        self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
+
     async def _load_db(self) -> None:
         """Restore save state."""
         database_file = self.config[conf.CONF_DATABASE]
@@ -52,6 +55,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._dblistener = await zigpy.appdb.PersistingListener.new(database_file, self)
         self.add_listener(self._dblistener)
         self.groups.add_listener(self._dblistener)
+        self.backups.add_listener(self._dblistener)
         await self._dblistener.load()
 
     async def startup(self, *, auto_form: bool = False):
@@ -85,6 +89,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.error("Couldn't start application")
             await self.shutdown()
             raise
+
+        self.backups.start_periodic_backups(
+            period=self.config[conf.CONF_NWK][zigpy.config.CONF_NWK_BACKUP_PERIOD]
+        )
 
     @classmethod
     async def new(
@@ -174,8 +182,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def shutdown(self) -> None:
         """Shutdown controller."""
+        self.backups.stop_periodic_backups()
+
         if self._dblistener:
             await self._dblistener.shutdown()
+
         await self.disconnect()
 
     def add_device(self, ieee: t.EUI64, nwk: t.NWK):
