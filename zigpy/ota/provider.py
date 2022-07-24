@@ -547,7 +547,7 @@ class INOVELLIImage:
 
     @classmethod
     def new(cls, data, model):
-        ver = float(data["version"])
+        ver = int(data["version"], 16)
         url = data["firmware"]
 
         res = cls(
