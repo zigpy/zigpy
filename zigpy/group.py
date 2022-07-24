@@ -24,14 +24,14 @@ class Group(ListenableMixin, dict):
         *args: Any,
         **kwargs: Any,
     ):
+        super().__init__(*args, **kwargs)
+
         self._groups: Groups = groups
         self._group_id: t.Group = t.Group(group_id)
-        self._listeners: dict = {}
         self._name: str = name
         self._endpoint: GroupEndpoint = GroupEndpoint(self)
         if groups is not None:
             self.add_listener(groups)
-        super().__init__(*args, **kwargs)
 
     def add_member(self, ep: Endpoint, suppress_event: bool = False) -> Group:
         if not isinstance(ep, Endpoint):

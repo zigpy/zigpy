@@ -125,6 +125,6 @@ def app_mock():
         app_mock = MagicMock(spec_set=app)
 
     app_mock.state.node_info = app_state.NodeInfo(
-        t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
+        nwk=t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
     )
     return app_mock

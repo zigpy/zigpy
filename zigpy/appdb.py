@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+import json
 import logging
 import re
 import types
@@ -10,12 +11,14 @@ from typing import Any
 import aiosqlite
 
 import zigpy.appdb_schemas
+import zigpy.backups
 import zigpy.device
 import zigpy.endpoint
 import zigpy.group
 import zigpy.neighbor
 import zigpy.profiles
 import zigpy.quirks
+import zigpy.state
 import zigpy.types as t
 import zigpy.typing
 import zigpy.util
@@ -24,7 +27,7 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 9
+DB_VERSION = 10
 DB_V = f"_v{DB_VERSION}"
 MIN_SQLITE_VERSION = (3, 24, 0)
 
@@ -495,6 +498,27 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         await self._db.commit()
 
+    def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
+        self.enqueue("_network_backup_created", json.dumps(backup.as_dict()))
+
+    async def _network_backup_created(self, backup_json: str) -> None:
+        q = f"""INSERT INTO network_backups{DB_V} VALUES (?, ?)
+                    ON CONFLICT (id)
+                    DO UPDATE SET
+                        backup_json=excluded.backup_json"""
+
+        await self.execute(q, (None, backup_json))
+        await self._db.commit()
+
+    def network_backup_removed(self, backup: zigpy.backups.NetworkBackup) -> None:
+        self.enqueue("_network_backup_removed", json.dumps(backup.as_dict()))
+
+    async def _network_backup_removed(self, backup_json: str) -> None:
+        q = f"""DELETE FROM network_backups{DB_V} WHERE backup_json=?"""
+
+        await self.execute(q, (backup_json,))
+        await self._db.commit()
+
     async def load(self) -> None:
         LOGGER.debug("Loading application state")
         await self._load_devices()
@@ -515,6 +539,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
+        await self._load_network_backups()
         await self._register_device_listeners()
 
     async def _load_attributes(self, filter: str = None) -> None:
@@ -640,6 +665,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 assert neighbor.is_valid
                 dev.neighbors.add_neighbor(neighbor)
 
+    async def _load_network_backups(self) -> None:
+        self._application.backups.backups.clear()
+
+        async with self.execute(
+            f"SELECT * FROM network_backups{DB_V} ORDER BY id"
+        ) as cursor:
+            async for id_, backup_json in cursor:
+                backup = zigpy.backups.NetworkBackup.from_dict(json.loads(backup_json))
+                self._application.backups.add_backup(backup)
+
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
@@ -652,6 +687,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             "SELECT name FROM sqlite_master WHERE type='table'"
         ) as cursor:
             async for (name,) in cursor:
+                # Ignore tables internal to SQLite
+                if name.startswith("sqlite_"):
+                    continue
+
                 # The regex will always return a match
                 match = DB_V_REGEX.search(name)
                 assert match is not None
@@ -697,6 +736,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v7, 7),
                 (self._migrate_to_v8, 8),
                 (self._migrate_to_v9, 9),
+                (self._migrate_to_v10, 10),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -942,5 +982,26 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "node_descriptors_v8": "node_descriptors_v9",
                 "unsupported_attributes_v8": "unsupported_attributes_v9",
                 "devices_v8": None,
+            }
+        )
+
+    async def _migrate_to_v10(self):
+        """Schema v10 added a new `network_backups_v10` table."""
+
+        await self.execute("INSERT INTO devices_v10 SELECT * FROM devices_v9")
+
+        await self._migrate_tables(
+            {
+                "endpoints_v9": "endpoints_v10",
+                "in_clusters_v9": "in_clusters_v10",
+                "out_clusters_v9": "out_clusters_v10",
+                "groups_v9": "groups_v10",
+                "group_members_v9": "group_members_v10",
+                "relays_v9": "relays_v10",
+                "attributes_cache_v9": "attributes_cache_v10",
+                "neighbors_v9": "neighbors_v10",
+                "node_descriptors_v9": "node_descriptors_v10",
+                "unsupported_attributes_v9": "unsupported_attributes_v10",
+                "devices_v9": None,
             }
         )

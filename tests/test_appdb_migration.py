@@ -16,10 +16,10 @@ from tests.test_appdb import auto_kill_aiosqlite, make_app  # noqa: F401
 
 
 @pytest.fixture
-def test_db(tmpdir):
+def test_db(tmp_path):
     def inner(filename):
         databases = pathlib.Path(__file__).parent / "databases"
-        db_path = pathlib.Path(tmpdir / filename)
+        db_path = tmp_path / filename
 
         if filename.endswith(".db"):
             db_path.write_bytes((databases / filename).read_bytes())
@@ -451,7 +451,7 @@ async def test_v5_to_v7_migration(test_db):
     test_db_v5 = test_db("simple_v5.sql")
 
     app = await make_app(test_db_v5)
-    await app.pre_shutdown()
+    await app.shutdown()
 
 
 async def test_migration_missing_tables():

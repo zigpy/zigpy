@@ -175,10 +175,10 @@ def test_validate_ota_image_simple_valid():
 def test_validate_ota_image_complex_valid():
     image = OTAImage()
     image.subelements = [
-        create_subelement(ElementTagId.ECDSA_SIGNATURE, b"asd"),
+        create_subelement(ElementTagId.ECDSA_SIGNATURE_CRYPTO_SUITE_1, b"asd"),
         create_subelement(ElementTagId.UPGRADE_IMAGE, VALID_EBL_IMAGE),
         create_subelement(ElementTagId.UPGRADE_IMAGE, VALID_GBL_IMAGE),
-        create_subelement(ElementTagId.ECDSA_SIGNING_CERTIFICATE, b"foo"),
+        create_subelement(ElementTagId.ECDSA_SIGNING_CERTIFICATE_CRYPTO_SUITE_1, b"ab"),
     ]
 
     assert validators.validate_ota_image(image) == ValidationResult.VALID

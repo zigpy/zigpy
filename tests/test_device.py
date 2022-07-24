@@ -355,7 +355,7 @@ async def test_add_to_group(dev, monkeypatch):
     grp_id, grp_name = 0x1234, "test group 0x1234"
     epmock = MagicMock(spec_set=endpoint.Endpoint)
     monkeypatch.setattr(endpoint, "Endpoint", MagicMock(return_value=epmock))
-    epmock.add_to_group.side_effect = asyncio.coroutine(MagicMock())
+    epmock.add_to_group = AsyncMock()
 
     dev.add_endpoint(3)
     dev.add_endpoint(4)
