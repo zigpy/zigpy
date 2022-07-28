@@ -90,9 +90,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             await self.shutdown()
             raise
 
-        self.backups.start_periodic_backups(
-            period=self.config[conf.CONF_NWK][zigpy.config.CONF_NWK_BACKUP_PERIOD]
-        )
+        if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
+            self.backups.start_periodic_backups(
+                period=self.config[conf.CONF_NWK_BACKUP_PERIOD]
+            )
 
     @classmethod
     async def new(

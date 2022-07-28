@@ -3,6 +3,7 @@
 import voluptuous as vol
 
 from zigpy.config.defaults import (
+    CONF_NWK_BACKUP_ENABLED_DEFAULT,
     CONF_NWK_BACKUP_PERIOD_DEFAULT,
     CONF_NWK_CHANNEL_DEFAULT,
     CONF_NWK_CHANNELS_DEFAULT,
@@ -38,6 +39,7 @@ CONF_NWK_KEY_SEQ = "key_sequence_number"
 CONF_NWK_TC_ADDRESS = "tc_address"
 CONF_NWK_TC_LINK_KEY = "tc_link_key"
 CONF_NWK_UPDATE_ID = "update_id"
+CONF_NWK_BACKUP_ENABLED = "backup_enabled"
 CONF_NWK_BACKUP_PERIOD = "backup_period"
 CONF_OTA = "ota"
 CONF_OTA_DIR = "otau_directory"
@@ -54,9 +56,6 @@ CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
 SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): str})
 SCHEMA_NETWORK = vol.Schema(
     {
-        vol.Optional(
-            CONF_NWK_BACKUP_PERIOD, default=CONF_NWK_BACKUP_PERIOD_DEFAULT
-        ): vol.All(cv_hex, vol.Range(min=1)),
         vol.Optional(CONF_NWK_CHANNEL, default=CONF_NWK_CHANNEL_DEFAULT): vol.All(
             cv_hex, vol.Range(min=11, max=26)
         ),
@@ -107,6 +106,12 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(
             CONF_TOPO_SKIP_COORDINATOR, default=CONF_TOPO_SKIP_COORDINATOR_DEFAULT
         ): cv_boolean,
+        vol.Optional(
+            CONF_NWK_BACKUP_ENABLED, default=CONF_NWK_BACKUP_ENABLED_DEFAULT
+        ): cv_boolean,
+        vol.Optional(
+            CONF_NWK_BACKUP_PERIOD, default=CONF_NWK_BACKUP_PERIOD_DEFAULT
+        ): vol.All(cv_hex, vol.Range(min=1)),
     },
     extra=vol.ALLOW_EXTRA,
 )

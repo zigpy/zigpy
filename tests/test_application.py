@@ -23,17 +23,26 @@ NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
 @pytest.fixture
 @patch("zigpy.ota.OTA", MagicMock(spec_set=zigpy.ota.OTA))
 @patch("zigpy.device.Device._initialize", AsyncMock())
-def app():
-    app = App(
-        {
+def app_factory():
+    def app(extra_config={}):
+        config = {
             conf.CONF_DATABASE: None,
             conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
         }
-    )
-    app.state.node_info = app_state.NodeInfo(
-        nwk=t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
-    )
+        config.update(extra_config)
+
+        app = App(config)
+        app.state.node_info = app_state.NodeInfo(
+            nwk=t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
+        )
+        return app
+
     return app
+
+
+@pytest.fixture
+def app(app_factory):
+    return app_factory()
 
 
 @pytest.fixture
@@ -650,3 +659,21 @@ async def test_deprecated_properties_and_methods(app):
 
     with pytest.deprecated_call():
         assert app.nwk_update_id is app.state.network_info.nwk_update_id
+
+
+async def test_startup_backup(app_factory):
+    app = app_factory({conf.CONF_NWK_BACKUP_ENABLED: True})
+
+    with patch("zigpy.backups.BackupManager.start_periodic_backups") as p:
+        await app.startup()
+
+    p.assert_called_once()
+
+
+async def test_startup_no_backup(app_factory):
+    app = app_factory({conf.CONF_NWK_BACKUP_ENABLED: False})
+
+    with patch("zigpy.backups.BackupManager.start_periodic_backups") as p:
+        await app.startup()
+
+    p.assert_not_called()
