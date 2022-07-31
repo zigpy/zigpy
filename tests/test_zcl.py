@@ -957,3 +957,26 @@ def test_zcl_response_type_tuple_like():
     assert req == (0, 1, 2)
     assert req == req
     assert req == req.replace()
+
+
+async def test_zcl_request_direction():
+    """Test that the request header's `direction` field is properly set."""
+    dev = MagicMock()
+
+    ep = zigpy.endpoint.Endpoint(dev, 1)
+    ep._device.application.get_sequence.return_value = DEFAULT_TSN
+    ep.device.application.get_sequence.return_value = DEFAULT_TSN
+    ep.request = AsyncMock()
+
+    ep.add_input_cluster(zcl.clusters.general.OnOff.cluster_id)
+    ep.add_output_cluster(zcl.clusters.general.OnOff.cluster_id)
+
+    await ep.in_clusters[zcl.clusters.general.OnOff.cluster_id].on()
+    hdr, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
+    assert not hdr.is_reply
+
+    ep.request.reset_mock()
+
+    await ep.out_clusters[zcl.clusters.general.OnOff.cluster_id].on()
+    hdr, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
+    assert hdr.is_reply

@@ -277,9 +277,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             tsn = self._endpoint.device.application.get_sequence()
 
         if general:
-            hdr = foundation.ZCLHeader.general(tsn, command_id, manufacturer)
+            hdr = foundation.ZCLHeader.general(
+                tsn, command_id, manufacturer, is_reply=self.is_client
+            )
         else:
-            hdr = foundation.ZCLHeader.cluster(tsn, command_id, manufacturer)
+            hdr = foundation.ZCLHeader.cluster(
+                tsn, command_id, manufacturer, is_reply=self.is_client
+            )
 
         self.debug("Sending request header: %r", hdr)
         self.debug("Sending request: %r", request)
