@@ -258,6 +258,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         manufacturer: int | None = None,
         tsn: int | None = None,
         disable_default_response: bool,
+        direction: foundation.Direction,
         **kwargs,
     ) -> tuple[foundation.ZCLHeader, bytes]:
         # Convert out-of-band dict schemas to struct schemas
@@ -279,11 +280,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 else foundation.FrameType.CLUSTER_COMMAND
             ),
             is_manufacturer_specific=(manufacturer is not None),
-            direction=(
-                foundation.Direction.Server_to_Client
-                if self.is_client
-                else foundation.Direction.Client_to_Server
-            ),
+            direction=direction,
             disable_default_response=disable_default_response,
             reserved=0b000,
         )
@@ -318,6 +315,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 manufacturer=manufacturer,
                 tsn=tsn,
                 disable_default_response=self.is_client,
+                direction=(
+                    foundation.Direction.Server_to_Client
+                    if self.is_client
+                    else foundation.Direction.Client_to_Server
+                ),
                 **kwargs,
             )
         except (ValueError, TypeError) as e:
@@ -354,6 +356,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 manufacturer=manufacturer,
                 tsn=tsn,
                 disable_default_response=True,
+                direction=foundation.Direction.Client_to_Server,
                 **kwargs,
             )
         except (ValueError, TypeError) as e:
