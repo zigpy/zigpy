@@ -249,6 +249,54 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         return hdr, response
 
+    def _create_request(
+        self,
+        general: bool,
+        command_id: foundation.GeneralCommand | int,
+        schema: dict | t.Struct,
+        *args,
+        manufacturer: int | None = None,
+        tsn: int | None = None,
+        disable_default_response: bool,
+        **kwargs,
+    ) -> tuple[foundation.ZCLHeader, bytes]:
+        # Convert out-of-band dict schemas to struct schemas
+        if isinstance(schema, (tuple, list)):
+            schema = convert_list_schema(
+                command_id=command_id, schema=schema, is_reply=False
+            )
+
+        request = schema(*args, **kwargs)  # type:ignore[operator]
+        request.serialize()  # Throw an error before generating a new TSN
+
+        if tsn is None:
+            tsn = self._endpoint.device.application.get_sequence()
+
+        frame_control = foundation.FrameControl(
+            frame_type=(
+                foundation.FrameType.GLOBAL_COMMAND
+                if general
+                else foundation.FrameType.CLUSTER_COMMAND
+            ),
+            is_manufacturer_specific=(manufacturer is not None),
+            direction=(
+                foundation.Direction.Server_to_Client
+                if self.is_client
+                else foundation.Direction.Client_to_Server
+            ),
+            disable_default_response=disable_default_response,
+            reserved=0b000,
+        )
+
+        hdr = foundation.ZCLHeader(
+            frame_control=frame_control,
+            manufacturer=manufacturer,
+            tsn=tsn,
+            command_id=command_id,
+        )
+
+        return hdr, request
+
     @util.retryable_request
     def request(
         self,
@@ -261,36 +309,30 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
-        # Convert out-of-band dict schemas to struct schemas
-        if isinstance(schema, (tuple, list)):
-            schema = convert_list_schema(
-                command_id=command_id, schema=schema, is_reply=False
-            )
-
         try:
-            request = schema(*args, **kwargs)  # type:ignore[operator]
-            payload = request.serialize()
+            hdr, request = self._create_request(
+                general,
+                command_id,
+                schema,
+                *args,
+                manufacturer=manufacturer,
+                tsn=tsn,
+                disable_default_response=self.is_client,
+                **kwargs,
+            )
         except (ValueError, TypeError) as e:
             return future_exception(e)
 
-        if tsn is None:
-            tsn = self._endpoint.device.application.get_sequence()
-
-        if general:
-            hdr = foundation.ZCLHeader.general(
-                tsn, command_id, manufacturer, is_reply=self.is_client
-            )
-        else:
-            hdr = foundation.ZCLHeader.cluster(
-                tsn, command_id, manufacturer, is_reply=self.is_client
-            )
-
         self.debug("Sending request header: %r", hdr)
         self.debug("Sending request: %r", request)
-        data = hdr.serialize() + payload
+        data = hdr.serialize() + request.serialize()
 
         return self._endpoint.request(
-            self.cluster_id, tsn, data, expect_reply=expect_reply, command_id=command_id
+            self.cluster_id,
+            hdr.tsn,
+            data,
+            expect_reply=expect_reply,
+            command_id=hdr.command_id,
         )
 
     def reply(
@@ -303,43 +345,27 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
-        # Convert out-of-band dict schemas to struct schemas
-        if isinstance(schema, (tuple, list)):
-            schema = convert_list_schema(
-                command_id=command_id,
-                schema=schema,
-                is_reply=True,
-            )
-
         try:
-            request = schema(*args, **kwargs)  # type:ignore[operator]
-            payload = request.serialize()
+            hdr, request = self._create_request(
+                general,
+                command_id,
+                schema,
+                *args,
+                manufacturer=manufacturer,
+                tsn=tsn,
+                disable_default_response=True,
+                **kwargs,
+            )
         except (ValueError, TypeError) as e:
             return future_exception(e)
 
-        if tsn is None:
-            tsn = self._endpoint.device.application.get_sequence()
-
-        if general:
-            hdr = foundation.ZCLHeader.general(
-                tsn,
-                command_id,
-                manufacturer,
-                direction=foundation.Direction.Client_to_Server,
-            )
-        else:
-            hdr = foundation.ZCLHeader.cluster(
-                tsn,
-                command_id,
-                manufacturer,
-                direction=foundation.Direction.Client_to_Server,
-            )
-
         self.debug("Sending reply header: %r", hdr)
         self.debug("Sending reply: %r", request)
-        data = hdr.serialize() + payload
+        data = hdr.serialize() + request.serialize()
 
-        return self._endpoint.reply(self.cluster_id, tsn, data, command_id=command_id)
+        return self._endpoint.reply(
+            self.cluster_id, hdr.tsn, data, command_id=hdr.command_id
+        )
 
     def handle_message(
         self,
@@ -781,7 +807,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     ):
         command = foundation.GENERAL_COMMANDS[command_id]
 
-        if command.is_reply:
+        if command.direction == foundation.Direction.Client_to_Server:
             # should reply be retryable?
             return self.reply(
                 True,

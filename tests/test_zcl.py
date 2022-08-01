@@ -972,11 +972,11 @@ async def test_zcl_request_direction():
     ep.add_output_cluster(zcl.clusters.general.OnOff.cluster_id)
 
     await ep.in_clusters[zcl.clusters.general.OnOff.cluster_id].on()
-    hdr, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
-    assert hdr.direction == foundation.Direction.Server_to_Client
+    hdr1, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
+    assert hdr1.direction == foundation.Direction.Client_to_Server
 
     ep.request.reset_mock()
 
     await ep.out_clusters[zcl.clusters.general.OnOff.cluster_id].on()
-    hdr, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
-    assert hdr.direction == foundation.Direction.Client_to_Server
+    hdr2, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
+    assert hdr2.direction == foundation.Direction.Server_to_Client
