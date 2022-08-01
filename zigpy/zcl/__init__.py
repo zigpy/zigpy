@@ -316,9 +316,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 tsn=tsn,
                 disable_default_response=self.is_client,
                 direction=(
-                    foundation.Direction.Server_to_Client
+                    foundation.Direction.Client_to_Server
                     if self.is_client
-                    else foundation.Direction.Client_to_Server
+                    else foundation.Direction.Server_to_Client
                 ),
                 **kwargs,
             )
