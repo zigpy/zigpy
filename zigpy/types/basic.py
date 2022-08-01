@@ -301,6 +301,14 @@ def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined") -> CALLABLE
             new._value_ = value
             return new
 
+        def __format__(self, format_spec: str) -> str:
+            if format_spec:
+                # Allow formatting the integer enum value
+                return self._member_type_.__format__(self, format_spec)
+            else:
+                # Otherwise, format it as its string representation
+                return object.__format__(repr(self), format_spec)
+
     return _NewEnum
 
 
