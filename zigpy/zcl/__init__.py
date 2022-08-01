@@ -18,7 +18,7 @@ AddressingMode = Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
 
 
 def convert_list_schema(
-    schema: Sequence[type], command_id: int, is_reply: bool
+    schema: Sequence[type], command_id: int, direction: foundation.Direction
 ) -> type[t.Struct]:
     schema_dict = {}
 
@@ -32,7 +32,7 @@ def convert_list_schema(
         schema_dict[name] = real_type
 
     temp = foundation.ZCLCommandDef(
-        schema=schema_dict, is_reply=is_reply, id=command_id, name="schema"
+        schema=schema_dict, direction=direction, id=command_id, name="schema"
     )
 
     return temp.with_compiled_schema().schema
@@ -117,7 +117,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                     command = foundation.ZCLCommandDef(
                         id=command_id,
                         name=name,
-                        schema=convert_list_schema(schema, command_id, is_reply),
+                        schema=convert_list_schema(
+                            schema, command_id, foundation.Direction(is_reply)
+                        ),
                         is_reply=is_reply,
                     )
                 else:
@@ -264,7 +266,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         # Convert out-of-band dict schemas to struct schemas
         if isinstance(schema, (tuple, list)):
             schema = convert_list_schema(
-                command_id=command_id, schema=schema, is_reply=False
+                command_id=command_id,
+                schema=schema,
+                direction=foundation.Direction.Server_to_Client,
             )
 
         try:
@@ -306,7 +310,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         # Convert out-of-band dict schemas to struct schemas
         if isinstance(schema, (tuple, list)):
             schema = convert_list_schema(
-                command_id=command_id, schema=schema, is_reply=True
+                command_id=command_id,
+                schema=schema,
+                direction=foundation.Direction.Client_to_Server,
             )
 
         try:
@@ -320,11 +326,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         if general:
             hdr = foundation.ZCLHeader.general(
-                tsn, command_id, manufacturer, is_reply=True
+                tsn,
+                command_id,
+                manufacturer,
+                direction=foundation.Direction.Client_to_Server,
             )
         else:
             hdr = foundation.ZCLHeader.cluster(
-                tsn, command_id, manufacturer, is_reply=True
+                tsn,
+                command_id,
+                manufacturer,
+                direction=foundation.Direction.Client_to_Server,
             )
 
         self.debug("Sending reply header: %r", hdr)

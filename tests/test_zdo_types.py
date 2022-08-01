@@ -1,7 +1,6 @@
 import pytest
 
 import zigpy.types as t
-from zigpy.zcl import foundation
 import zigpy.zdo.types as types
 
 
@@ -236,10 +235,10 @@ def test_zdo_header():
     assert rest == extra
     assert hdr.tsn == tsn
     assert hdr.command_id == cmd_id
-    assert hdr.direction == foundation.Direction.Server_to_Client
+    assert not hdr.is_reply
 
     hdr.command_id = types.ZDOCmd.Bind_rsp
-    assert hdr.direction == foundation.Direction.Client_to_Server
+    assert hdr.is_reply
 
     assert hdr.serialize() == data
 

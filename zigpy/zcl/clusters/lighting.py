@@ -143,7 +143,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x01: ZCLCommandDef(
             "move_hue",
@@ -153,7 +153,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x02: ZCLCommandDef(
             "step_hue",
@@ -164,7 +164,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x03: ZCLCommandDef(
             "move_to_saturation",
@@ -174,7 +174,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x04: ZCLCommandDef(
             "move_saturation",
@@ -184,7 +184,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x05: ZCLCommandDef(
             "step_saturation",
@@ -195,7 +195,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x06: ZCLCommandDef(
             "move_to_hue_and_saturation",
@@ -206,7 +206,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x07: ZCLCommandDef(
             "move_to_color",
@@ -217,7 +217,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x08: ZCLCommandDef(
             "move_color",
@@ -227,7 +227,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x09: ZCLCommandDef(
             "step_color",
@@ -238,7 +238,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x0A: ZCLCommandDef(
             "move_to_color_temp",
@@ -248,7 +248,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x40: ZCLCommandDef(
             "enhanced_move_to_hue",
@@ -259,7 +259,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x41: ZCLCommandDef(
             "enhanced_move_hue",
@@ -269,7 +269,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x42: ZCLCommandDef(
             "enhanced_step_hue",
@@ -280,7 +280,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x43: ZCLCommandDef(
             "enhanced_move_to_hue_and_saturation",
@@ -291,7 +291,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x44: ZCLCommandDef(
             "color_loop_set",
@@ -304,7 +304,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x47: ZCLCommandDef(
             "stop_move_step",
@@ -312,7 +312,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x4B: ZCLCommandDef(
             "move_color_temp",
@@ -324,7 +324,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
         0x4C: ZCLCommandDef(
             "step_color_temp",
@@ -337,7 +337,7 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
+            foundation.Direction.Server_to_Client,
         ),
     }
     client_commands: dict[int, ZCLCommandDef] = {}

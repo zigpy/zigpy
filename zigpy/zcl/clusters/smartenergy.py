@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
-from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import Direction, ZCLAttributeDef, ZCLCommandDef
 
 
 class Price(Cluster):
@@ -162,20 +162,24 @@ class Metering(Cluster):
         0x0A03: ("projected_bill_time_stamp", t.uint32_t),
     }
     server_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("get_profile", {}, False),
-        0x01: ZCLCommandDef("req_mirror", {}, False),
-        0x02: ZCLCommandDef("mirror_rem", {}, False),
-        0x03: ZCLCommandDef("req_fast_poll_mode", {}, False),
-        0x04: ZCLCommandDef("get_snapshot", {}, False),
-        0x05: ZCLCommandDef("take_snapshot", {}, False),
-        0x06: ZCLCommandDef("mirror_report_attr_response", {}, True),
+        0x00: ZCLCommandDef("get_profile", {}, Direction.Server_to_Client),
+        0x01: ZCLCommandDef("req_mirror", {}, Direction.Server_to_Client),
+        0x02: ZCLCommandDef("mirror_rem", {}, Direction.Server_to_Client),
+        0x03: ZCLCommandDef("req_fast_poll_mode", {}, Direction.Server_to_Client),
+        0x04: ZCLCommandDef("get_snapshot", {}, Direction.Server_to_Client),
+        0x05: ZCLCommandDef("take_snapshot", {}, Direction.Server_to_Client),
+        0x06: ZCLCommandDef(
+            "mirror_report_attr_response", {}, Direction.Client_to_Server
+        ),
     }
     client_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("get_profile_response", {}, True),
-        0x01: ZCLCommandDef("req_mirror_response", {}, True),
-        0x02: ZCLCommandDef("mirror_rem_response", {}, True),
-        0x03: ZCLCommandDef("req_fast_poll_mode_response", {}, True),
-        0x04: ZCLCommandDef("get_snapshot_response", {}, True),
+        0x00: ZCLCommandDef("get_profile_response", {}, Direction.Client_to_Server),
+        0x01: ZCLCommandDef("req_mirror_response", {}, Direction.Client_to_Server),
+        0x02: ZCLCommandDef("mirror_rem_response", {}, Direction.Client_to_Server),
+        0x03: ZCLCommandDef(
+            "req_fast_poll_mode_response", {}, Direction.Client_to_Server
+        ),
+        0x04: ZCLCommandDef("get_snapshot_response", {}, Direction.Client_to_Server),
     }
 
 

@@ -7,7 +7,7 @@ from typing import Any
 import zigpy.types as t
 from zigpy.zcl import Cluster
 import zigpy.zcl.foundation
-from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import Direction, ZCLAttributeDef, ZCLCommandDef
 
 
 class IasZone(Cluster):
@@ -78,16 +78,16 @@ class IasZone(Cluster):
         0x00: ZCLCommandDef(
             "enroll_response",
             {"enroll_response_code": EnrollResponse, "zone_id": t.uint8_t},
-            True,
+            Direction.Client_to_Server,
         ),
-        0x01: ZCLCommandDef("init_normal_op_mode", {}, False),
+        0x01: ZCLCommandDef("init_normal_op_mode", {}, Direction.Server_to_Client),
         0x02: ZCLCommandDef(
             "init_test_mode",
             {
                 "test_mode_duration": t.uint8_t,
                 "current_zone_sensitivity_level": t.uint8_t,
             },
-            False,
+            Direction.Server_to_Client,
         ),
     }
     client_commands: dict[int, ZCLCommandDef] = {
@@ -99,10 +99,12 @@ class IasZone(Cluster):
                 "zone_id": t.uint8_t,
                 "delay": t.uint16_t,
             },
-            False,
+            Direction.Server_to_Client,
         ),
         0x01: ZCLCommandDef(
-            "enroll", {"zone_type": ZoneType, "manufacturer_code": t.uint16_t}, False
+            "enroll",
+            {"zone_type": ZoneType, "manufacturer_code": t.uint16_t},
+            Direction.Server_to_Client,
         ),
     }
 
@@ -121,7 +123,7 @@ class IasZone(Cluster):
             and self.is_server
             and not hdr.frame_control.disable_default_response
         ):
-            hdr.frame_control.is_reply = False  # this is a client -> server cmd
+            hdr.frame_control.direction = Direction.Server_to_Client
             self.send_default_rsp(hdr, zigpy.zcl.foundation.Status.SUCCESS)
 
 
@@ -208,20 +210,22 @@ class IasAce(Cluster):
                 "arm_disarm_code": t.CharacterString,
                 "zone_id": t.uint8_t,
             },
-            False,
+            Direction.Server_to_Client,
         ),
         0x01: ZCLCommandDef(
             "bypass",
             {"zones_ids": t.LVList[t.uint8_t], "arm_disarm_code": t.CharacterString},
-            False,
+            Direction.Server_to_Client,
         ),
-        0x02: ZCLCommandDef("emergency", {}, False),
-        0x03: ZCLCommandDef("fire", {}, False),
-        0x04: ZCLCommandDef("panic", {}, False),
-        0x05: ZCLCommandDef("get_zone_id_map", {}, False),
-        0x06: ZCLCommandDef("get_zone_info", {"zone_id": t.uint8_t}, False),
-        0x07: ZCLCommandDef("get_panel_status", {}, False),
-        0x08: ZCLCommandDef("get_bypassed_zone_list", {}, False),
+        0x02: ZCLCommandDef("emergency", {}, Direction.Server_to_Client),
+        0x03: ZCLCommandDef("fire", {}, Direction.Server_to_Client),
+        0x04: ZCLCommandDef("panic", {}, Direction.Server_to_Client),
+        0x05: ZCLCommandDef("get_zone_id_map", {}, Direction.Server_to_Client),
+        0x06: ZCLCommandDef(
+            "get_zone_info", {"zone_id": t.uint8_t}, Direction.Server_to_Client
+        ),
+        0x07: ZCLCommandDef("get_panel_status", {}, Direction.Server_to_Client),
+        0x08: ZCLCommandDef("get_bypassed_zone_list", {}, Direction.Server_to_Client),
         0x09: ZCLCommandDef(
             "get_zone_status",
             {
@@ -230,17 +234,19 @@ class IasAce(Cluster):
                 "zone_status_mask_flag": t.Bool,
                 "zone_status_mask": ZoneStatus,
             },
-            False,
+            Direction.Server_to_Client,
         ),
     }
     client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
-            "arm_response", {"arm_notification": ArmNotification}, True
+            "arm_response",
+            {"arm_notification": ArmNotification},
+            Direction.Client_to_Server,
         ),
         0x01: ZCLCommandDef(
             "get_zone_id_map_response",
             {"zone_id_map_sections": t.List[t.bitmap16]},
-            True,
+            Direction.Client_to_Server,
         ),
         0x02: ZCLCommandDef(
             "get_zone_info_response",
@@ -250,7 +256,7 @@ class IasAce(Cluster):
                 "ieee": t.EUI64,
                 "zone_label": t.CharacterString,
             },
-            True,
+            Direction.Client_to_Server,
         ),
         0x03: ZCLCommandDef(
             "zone_status_changed",
@@ -260,7 +266,7 @@ class IasAce(Cluster):
                 "audible_notification": AudibleNotification,
                 "zone_label": t.CharacterString,
             },
-            False,
+            Direction.Server_to_Client,
         ),
         0x04: ZCLCommandDef(
             "panel_status_changed",
@@ -270,7 +276,7 @@ class IasAce(Cluster):
                 "audible_notification": AudibleNotification,
                 "alarm_status": AlarmStatus,
             },
-            False,
+            Direction.Server_to_Client,
         ),
         0x05: ZCLCommandDef(
             "panel_status_response",
@@ -280,18 +286,22 @@ class IasAce(Cluster):
                 "audible_notification": AudibleNotification,
                 "alarm_status": AlarmStatus,
             },
-            True,
+            Direction.Client_to_Server,
         ),
         0x06: ZCLCommandDef(
-            "set_bypassed_zone_list", {"zone_ids": t.LVList[t.uint8_t]}, False
+            "set_bypassed_zone_list",
+            {"zone_ids": t.LVList[t.uint8_t]},
+            Direction.Server_to_Client,
         ),
         0x07: ZCLCommandDef(
-            "bypass_response", {"bypass_results": t.LVList[BypassResponse]}, True
+            "bypass_response",
+            {"bypass_results": t.LVList[BypassResponse]},
+            Direction.Client_to_Server,
         ),
         0x08: ZCLCommandDef(
             "get_zone_status_response",
             {"zone_status_complete": t.Bool, "zone_statuses": t.LVList[ZoneStatusRsp]},
-            True,
+            Direction.Client_to_Server,
         ),
     }
 
@@ -432,8 +442,8 @@ class IasWd(Cluster):
                 "strobe_duty_cycle": t.uint8_t,
                 "stobe_level": StrobeLevel,
             },
-            False,
+            Direction.Server_to_Client,
         ),
-        0x01: ZCLCommandDef("squawk", {"squawk": Squawk}, False),
+        0x01: ZCLCommandDef("squawk", {"squawk": Squawk}, Direction.Server_to_Client),
     }
     client_commands: dict[int, ZCLCommandDef] = {}

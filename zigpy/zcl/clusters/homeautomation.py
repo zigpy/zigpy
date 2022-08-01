@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
-from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import Direction, ZCLAttributeDef, ZCLCommandDef
 
 
 class ApplianceIdentification(Cluster):
@@ -55,12 +55,12 @@ class ApplianceEventAlerts(Cluster):
     ep_attribute = "appliance_event"
     attributes: dict[int, ZCLAttributeDef] = {}
     server_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("get_alerts", {}, False)
+        0x00: ZCLCommandDef("get_alerts", {}, Direction.Server_to_Client)
     }
     client_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("get_alerts_response", {}, True),
-        0x01: ZCLCommandDef("alerts_notification", {}, False),
-        0x02: ZCLCommandDef("event_notification", {}, False),
+        0x00: ZCLCommandDef("get_alerts_response", {}, Direction.Client_to_Server),
+        0x01: ZCLCommandDef("alerts_notification", {}, Direction.Server_to_Client),
+        0x02: ZCLCommandDef("event_notification", {}, Direction.Server_to_Client),
     }
 
 
@@ -73,14 +73,14 @@ class ApplianceStatistics(Cluster):
         0x0001: ("log_queue_max_size", t.uint8_t),
     }
     server_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("log", {}, False),
-        0x01: ZCLCommandDef("log_queue", {}, False),
+        0x00: ZCLCommandDef("log", {}, Direction.Server_to_Client),
+        0x01: ZCLCommandDef("log_queue", {}, Direction.Server_to_Client),
     }
     client_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("log_notification", {}, False),
-        0x01: ZCLCommandDef("log_response", {}, True),
-        0x02: ZCLCommandDef("log_queue_response", {}, True),
-        0x03: ZCLCommandDef("statistics_available", {}, False),
+        0x00: ZCLCommandDef("log_notification", {}, Direction.Server_to_Client),
+        0x01: ZCLCommandDef("log_response", {}, Direction.Client_to_Server),
+        0x02: ZCLCommandDef("log_queue_response", {}, Direction.Client_to_Server),
+        0x03: ZCLCommandDef("statistics_available", {}, Direction.Server_to_Client),
     }
 
 
@@ -231,12 +231,16 @@ class ElectricalMeasurement(Cluster):
         0x0A17: ("rms_voltage_swell_period_ph__c", t.uint16_t),
     }
     server_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("get_profile_info", {}, False),
-        0x01: ZCLCommandDef("get_measurement_profile", {}, False),
+        0x00: ZCLCommandDef("get_profile_info", {}, Direction.Server_to_Client),
+        0x01: ZCLCommandDef("get_measurement_profile", {}, Direction.Server_to_Client),
     }
     client_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("get_profile_info_response", {}, True),
-        0x01: ZCLCommandDef("get_measurement_profile_response", {}, True),
+        0x00: ZCLCommandDef(
+            "get_profile_info_response", {}, Direction.Client_to_Server
+        ),
+        0x01: ZCLCommandDef(
+            "get_measurement_profile_response", {}, Direction.Client_to_Server
+        ),
     }
 
 

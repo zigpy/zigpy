@@ -4,7 +4,6 @@ import pytest
 
 import zigpy.device
 import zigpy.types as t
-from zigpy.zcl import foundation
 import zigpy.zdo as zdo
 import zigpy.zdo.types as zdo_types
 
@@ -47,14 +46,14 @@ def zdo_f(app):
 def test_deserialize(zdo_f):
     hdr, args = zdo_f.deserialize(2, b"\x01\x02\x03xx")
     assert hdr.tsn == 1
-    assert hdr.direction == foundation.Direction.Server_to_Client
+    assert hdr.is_reply is False
     assert args == [0x0302]
 
 
 def test_deserialize_unknown(zdo_f):
     hdr, args = zdo_f.deserialize(0x0100, b"\x01")
     assert hdr.tsn == 1
-    assert hdr.direction == foundation.Direction.Server_to_Client
+    assert hdr.is_reply is False
 
 
 async def test_request(zdo_f):
