@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
-from zigpy.zcl.foundation import Direction, ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 
 class Pump(Cluster):
@@ -329,9 +329,7 @@ class Thermostat(Cluster):
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
-            "setpoint_raise_lower",
-            {"mode": SetpointMode, "amount": t.int8s},
-            Direction.Server_to_Client,
+            "setpoint_raise_lower", {"mode": SetpointMode, "amount": t.int8s}, False
         ),
         0x01: ZCLCommandDef(
             "set_weekly_schedule",
@@ -341,15 +339,15 @@ class Thermostat(Cluster):
                 "mode_for_sequence": SeqMode,
                 "values": t.List[t.int16s],
             },  # TODO: properly parse values
-            Direction.Server_to_Client,
+            False,
         ),
         0x02: ZCLCommandDef(
             "get_weekly_schedule",
             {"days_to_return": SeqDayOfWeek, "mode_to_return": SeqMode},
-            Direction.Server_to_Client,
+            False,
         ),
-        0x03: ZCLCommandDef("clear_weekly_schedule", {}, Direction.Server_to_Client),
-        0x04: ZCLCommandDef("get_relay_status_log", {}, Direction.Server_to_Client),
+        0x03: ZCLCommandDef("clear_weekly_schedule", {}, False),
+        0x04: ZCLCommandDef("get_relay_status_log", {}, False),
     }
     client_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
@@ -360,7 +358,7 @@ class Thermostat(Cluster):
                 "mode_for_sequence": SeqMode,
                 "values": t.List[t.int16s],
             },  # TODO: properly parse values
-            Direction.Client_to_Server,
+            True,
         ),
         0x01: ZCLCommandDef(
             "get_relay_status_log_response",
@@ -372,7 +370,7 @@ class Thermostat(Cluster):
                 "set_point": t.int16s,
                 "unread_entries": t.uint16_t,
             },
-            Direction.Client_to_Server,
+            True,
         ),
     }
 
