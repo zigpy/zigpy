@@ -223,7 +223,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         if hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND:
             # Cluster command
-            if hdr.is_reply:
+            if hdr.direction == foundation.Direction.Client_to_Server:
                 commands = self.client_commands
             else:
                 commands = self.server_commands
@@ -241,7 +241,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
             command = foundation.GENERAL_COMMANDS[hdr.command_id]
 
-        hdr.frame_control.is_reply = command.is_reply
+        hdr.frame_control.direction = command.direction
         response, data = command.schema.deserialize(data)
 
         self.debug("Decoded ZCL frame: %s:%r", type(self).__name__, response)

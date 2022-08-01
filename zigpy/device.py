@@ -362,7 +362,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
             return
 
-        if hdr.tsn in self._pending and hdr.is_reply:
+        if (
+            hdr.tsn in self._pending
+            and hdr.direction == foundation.Direction.Client_to_Server
+        ):
             try:
                 self._pending[hdr.tsn].result.set_result(args)
                 return
