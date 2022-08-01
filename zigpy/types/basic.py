@@ -312,6 +312,10 @@ def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined") -> CALLABLE
     return _NewEnum
 
 
+class enum1(enum_factory(uint1_t)):  # noqa: N801
+    pass
+
+
 class enum2(enum_factory(uint2_t)):  # noqa: N801
     pass
 
