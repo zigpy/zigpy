@@ -74,8 +74,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 if not auto_form:
                     raise
 
-                LOGGER.info("Forming a new network")
-                await self.form_network()
+                if not self.backups.backups:
+                    # Form a new network if we have no backup
+                    LOGGER.info("Forming a new network")
+                    await self.form_network()
+                else:
+                    # Otherwise, restore the most recent backup
+                    LOGGER.info("Restoring the most recent network backup")
+                    await self.backups.restore_backup(self.backups.backups[-1])
+
                 await self.load_network_info(load_devices=False)
 
             LOGGER.debug("Network info: %s", self.state.network_info)

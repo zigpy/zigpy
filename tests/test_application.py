@@ -14,7 +14,7 @@ import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 
-from .async_mock import AsyncMock, MagicMock, patch
+from .async_mock import AsyncMock, MagicMock, patch, sentinel
 from .conftest import App
 
 NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
@@ -607,6 +607,9 @@ async def test_startup_not_formed(app):
     )
     app.permit = AsyncMock()
 
+    app.backups.backups = []
+    app.backups.restore_backup = AsyncMock()
+
     with pytest.raises(NetworkNotFormed):
         await app.startup(auto_form=False)
 
@@ -619,6 +622,21 @@ async def test_startup_not_formed(app):
     assert app.start_network.await_count == 1
     assert app.form_network.await_count == 1
     assert app.permit.await_count == 1
+    assert app.backups.restore_backup.await_count == 0
+
+
+async def test_startup_not_formed_with_backup(app):
+    app.start_network = AsyncMock()
+    app.load_network_info = AsyncMock(side_effect=[NetworkNotFormed(), None])
+    app.permit = AsyncMock()
+
+    app.backups.restore_backup = AsyncMock()
+    app.backups.backups = [sentinel.OLD_BACKUP, sentinel.NEW_BACKUP]
+
+    await app.startup(auto_form=True)
+
+    assert app.start_network.await_count == 1
+    app.backups.restore_backup.assert_called_once_with(sentinel.NEW_BACKUP)
 
 
 async def test_deprecated_properties_and_methods(app):
