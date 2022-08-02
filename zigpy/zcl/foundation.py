@@ -492,12 +492,16 @@ class FrameControl(t.Struct, t.uint8_t):
     reserved: t.uint3_t
 
     @property
-    def is_reply(self) -> bool:
+    def is_reply(self) -> bool | None:
         warnings.warn("`is_reply` is deprecated, use `direction`", DeprecationWarning)
+
+        if self.direction is None:
+            return None
+
         return bool(self.direction)
 
     @is_reply.setter
-    def is_reply(self, value: bool):
+    def is_reply(self, value: bool | None):
         warnings.warn("`is_reply` is deprecated, use `direction`", DeprecationWarning)
 
         if value is None:
@@ -584,10 +588,6 @@ class ZCLHeader(t.Struct):
     def is_reply(self) -> bool:
         """Return direction of Frame Control."""
         return self.frame_control.direction == Direction.Client_to_Server
-
-    @is_reply.setter
-    def is_reply(self, value: bool | None):
-        self.frame_control.is_reply = value
 
     @property
     def direction(self) -> bool:

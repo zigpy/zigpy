@@ -752,3 +752,83 @@ def test_invalid_attribute_def_name():
 
     with pytest.raises(ValueError):
         attr.replace(name="123name")
+
+
+def test_frame_control_is_reply_compat():
+    fc = foundation.FrameControl()
+
+    fc.is_reply = True
+    assert fc.is_reply
+    assert fc.direction == foundation.Direction.Client_to_Server
+
+    fc.is_reply = False
+    assert not fc.is_reply
+    assert fc.direction == foundation.Direction.Server_to_Client
+
+    fc.is_reply = None
+    assert fc.is_reply is None
+    assert fc.direction is None
+
+    assert (
+        foundation.FrameControl.cluster(is_reply=False).direction
+        == foundation.Direction.Server_to_Client
+    )
+    assert (
+        foundation.FrameControl.cluster(is_reply=True).direction
+        == foundation.Direction.Client_to_Server
+    )
+    assert (
+        foundation.FrameControl.cluster(
+            direction=foundation.Direction.Server_to_Client
+        ).direction
+        == foundation.Direction.Server_to_Client
+    )
+    assert (
+        foundation.FrameControl.cluster(
+            direction=foundation.Direction.Client_to_Server
+        ).direction
+        == foundation.Direction.Client_to_Server
+    )
+
+    assert (
+        foundation.FrameControl.general(is_reply=False).direction
+        == foundation.Direction.Server_to_Client
+    )
+    assert (
+        foundation.FrameControl.general(is_reply=True).direction
+        == foundation.Direction.Client_to_Server
+    )
+    assert (
+        foundation.FrameControl.general(
+            direction=foundation.Direction.Server_to_Client
+        ).direction
+        == foundation.Direction.Server_to_Client
+    )
+    assert (
+        foundation.FrameControl.general(
+            direction=foundation.Direction.Client_to_Server
+        ).direction
+        == foundation.Direction.Client_to_Server
+    )
+
+
+def test_zcl_header_is_reply_compat():
+    hdr1 = foundation.ZCLHeader.general(tsn=12, command_id=34, is_reply=True)
+    assert hdr1.is_reply
+    assert hdr1.direction == foundation.Direction.Client_to_Server
+
+    hdr2 = foundation.ZCLHeader.general(tsn=12, command_id=34, is_reply=False)
+    assert not hdr2.is_reply
+    assert hdr2.direction == foundation.Direction.Server_to_Client
+
+    hdr3 = foundation.ZCLHeader.general(
+        tsn=12, command_id=34, direction=foundation.Direction.Client_to_Server
+    )
+    assert hdr3.is_reply
+    assert hdr3.direction == foundation.Direction.Client_to_Server
+
+    hdr4 = foundation.ZCLHeader.general(
+        tsn=12, command_id=34, direction=foundation.Direction.Server_to_Client
+    )
+    assert not hdr4.is_reply
+    assert hdr4.direction == foundation.Direction.Server_to_Client
