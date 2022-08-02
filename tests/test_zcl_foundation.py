@@ -51,7 +51,7 @@ def test_read_attribute_record():
 
 def test_attribute_reporting_config_0():
     arc = foundation.AttributeReportingConfig()
-    arc.direction = 0
+    arc.direction = foundation.ReportingDirection.SendReports
     arc.attrid = 99
     arc.datatype = 0x20
     arc.min_interval = 10
@@ -88,7 +88,7 @@ def test_attribute_reporting_config_1():
 
 def test_attribute_reporting_config_only_dir_and_attrid():
     arc = foundation.AttributeReportingConfig()
-    arc.direction = 0
+    arc.direction = foundation.ReportingDirection.SendReports
     arc.attrid = 99
     ser = arc.serialize(_only_dir_and_attrid=True)
 
@@ -225,7 +225,9 @@ def test_frame_control():
 
 
 def test_frame_control_general():
-    frc = foundation.FrameControl.general(is_reply=False)
+    frc = foundation.FrameControl.general(
+        direction=foundation.Direction.Server_to_Client
+    )
     assert frc.is_cluster is False
     assert frc.is_general is True
     data = frc.serialize()
@@ -237,16 +239,23 @@ def test_frame_control_general():
     frc.is_manufacturer_specific = True
     assert frc.serialize() == b"\x04"
 
-    frc = foundation.FrameControl.general(is_reply=False)
-    assert not frc.is_reply
+    frc = foundation.FrameControl.general(
+        direction=foundation.Direction.Server_to_Client
+    )
+    assert frc.direction == foundation.Direction.Server_to_Client
     assert frc.serialize() == b"\x00"
-    frc.is_reply = False
-    assert frc.serialize() == b"\x00"
-    frc.is_reply = True
+    frc.direction = foundation.Direction.Client_to_Server
     assert frc.serialize() == b"\x08"
-    assert foundation.FrameControl.general(is_reply=True).serialize() == b"\x18"
+    assert (
+        foundation.FrameControl.general(
+            direction=foundation.Direction.Client_to_Server
+        ).serialize()
+        == b"\x18"
+    )
 
-    frc = foundation.FrameControl.general(is_reply=False)
+    frc = foundation.FrameControl.general(
+        direction=foundation.Direction.Server_to_Client
+    )
     assert not frc.disable_default_response
     assert frc.serialize() == b"\x00"
     frc.disable_default_response = False
@@ -256,7 +265,9 @@ def test_frame_control_general():
 
 
 def test_frame_control_cluster():
-    frc = foundation.FrameControl.cluster(is_reply=False)
+    frc = foundation.FrameControl.cluster(
+        direction=foundation.Direction.Server_to_Client
+    )
     assert frc.is_cluster is True
     assert frc.is_general is False
     data = frc.serialize()
@@ -268,16 +279,25 @@ def test_frame_control_cluster():
     frc.is_manufacturer_specific = True
     assert frc.serialize() == b"\x05"
 
-    frc = foundation.FrameControl.cluster(is_reply=False)
-    assert not frc.is_reply
+    frc = foundation.FrameControl.cluster(
+        direction=foundation.Direction.Server_to_Client
+    )
+    assert frc.direction == foundation.Direction.Server_to_Client
     assert frc.serialize() == b"\x01"
-    frc.is_reply = False
+    frc.direction = foundation.Direction.Server_to_Client
     assert frc.serialize() == b"\x01"
-    frc.is_reply = True
+    frc.direction = foundation.Direction.Client_to_Server
     assert frc.serialize() == b"\x09"
-    assert foundation.FrameControl.cluster(is_reply=True).serialize() == b"\x19"
+    assert (
+        foundation.FrameControl.cluster(
+            direction=foundation.Direction.Client_to_Server
+        ).serialize()
+        == b"\x19"
+    )
 
-    frc = foundation.FrameControl.cluster(is_reply=False)
+    frc = foundation.FrameControl.cluster(
+        direction=foundation.Direction.Server_to_Client
+    )
     assert not frc.disable_default_response
     assert frc.serialize() == b"\x01"
     frc.disable_default_response = False
@@ -294,7 +314,7 @@ def test_frame_header():
 
     assert rest == extra
     assert hdr.command_id == 0x0A
-    assert hdr.is_reply
+    assert hdr.direction == foundation.Direction.Client_to_Server
     assert hdr.manufacturer == 0x115F
     assert hdr.tsn == 0xC0
 
@@ -328,7 +348,9 @@ def test_frame_header_cluster():
     """Test frame header cluster command."""
     (tsn, cmd_id, manufacturer) = (0x11, 0x16, 0x3344)
 
-    hdr = foundation.ZCLHeader.cluster(tsn, cmd_id, manufacturer)
+    hdr = foundation.ZCLHeader.cluster(
+        tsn=tsn, command_id=cmd_id, manufacturer=manufacturer
+    )
     assert hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND
     assert hdr.command_id == cmd_id
     assert hdr.tsn == tsn
@@ -603,7 +625,7 @@ def test_schema():
         schema={
             "uh oh": t.uint16_t,
         },
-        is_reply=False,
+        direction=foundation.Direction.Server_to_Client,
     )
 
     with pytest.raises(ValueError):
@@ -617,7 +639,7 @@ def test_schema():
             "bar?": t.uint16_t,
             "baz?": t.uint8_t,
         },
-        is_reply=False,
+        direction=foundation.Direction.Server_to_Client,
     )
     s = s.with_compiled_schema()
 
@@ -632,7 +654,7 @@ def test_schema():
     assert s.schema.baz.type is t.uint8_t
     assert s.schema.baz.optional
 
-    assert "test" in str(s) and "is_reply=False" in str(s)
+    assert "test" in str(s) and "direction=<Direction.Server_to_Client" in str(s)
 
     for kwargs, value in [
         (dict(foo=1), b"\x01"),
@@ -684,13 +706,13 @@ def test_zcl_command_item_access_warning():
         schema={
             "foo": t.uint8_t,
         },
-        is_reply=False,
+        direction=foundation.Direction.Server_to_Client,
     )
 
     with pytest.deprecated_call():
         assert s[0] == s.name
         assert s[1] == s.schema
-        assert s[2] == s.is_reply
+        assert s[2] == s.direction
 
 
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="3.8 added module __getattr__")
@@ -708,7 +730,7 @@ def test_invalid_command_def_name():
         schema={
             "foo": t.uint8_t,
         },
-        is_reply=False,
+        direction=foundation.Direction.Server_to_Client,
     )
 
     with pytest.raises(ValueError):
@@ -730,3 +752,83 @@ def test_invalid_attribute_def_name():
 
     with pytest.raises(ValueError):
         attr.replace(name="123name")
+
+
+def test_frame_control_is_reply_compat():
+    fc = foundation.FrameControl()
+
+    fc.is_reply = True
+    assert fc.is_reply
+    assert fc.direction == foundation.Direction.Client_to_Server
+
+    fc.is_reply = False
+    assert not fc.is_reply
+    assert fc.direction == foundation.Direction.Server_to_Client
+
+    fc.is_reply = None
+    assert fc.is_reply is None
+    assert fc.direction is None
+
+    assert (
+        foundation.FrameControl.cluster(is_reply=False).direction
+        == foundation.Direction.Server_to_Client
+    )
+    assert (
+        foundation.FrameControl.cluster(is_reply=True).direction
+        == foundation.Direction.Client_to_Server
+    )
+    assert (
+        foundation.FrameControl.cluster(
+            direction=foundation.Direction.Server_to_Client
+        ).direction
+        == foundation.Direction.Server_to_Client
+    )
+    assert (
+        foundation.FrameControl.cluster(
+            direction=foundation.Direction.Client_to_Server
+        ).direction
+        == foundation.Direction.Client_to_Server
+    )
+
+    assert (
+        foundation.FrameControl.general(is_reply=False).direction
+        == foundation.Direction.Server_to_Client
+    )
+    assert (
+        foundation.FrameControl.general(is_reply=True).direction
+        == foundation.Direction.Client_to_Server
+    )
+    assert (
+        foundation.FrameControl.general(
+            direction=foundation.Direction.Server_to_Client
+        ).direction
+        == foundation.Direction.Server_to_Client
+    )
+    assert (
+        foundation.FrameControl.general(
+            direction=foundation.Direction.Client_to_Server
+        ).direction
+        == foundation.Direction.Client_to_Server
+    )
+
+
+def test_zcl_header_is_reply_compat():
+    hdr1 = foundation.ZCLHeader.general(tsn=12, command_id=34, is_reply=True)
+    assert hdr1.is_reply
+    assert hdr1.direction == foundation.Direction.Client_to_Server
+
+    hdr2 = foundation.ZCLHeader.general(tsn=12, command_id=34, is_reply=False)
+    assert not hdr2.is_reply
+    assert hdr2.direction == foundation.Direction.Server_to_Client
+
+    hdr3 = foundation.ZCLHeader.general(
+        tsn=12, command_id=34, direction=foundation.Direction.Client_to_Server
+    )
+    assert hdr3.is_reply
+    assert hdr3.direction == foundation.Direction.Client_to_Server
+
+    hdr4 = foundation.ZCLHeader.general(
+        tsn=12, command_id=34, direction=foundation.Direction.Server_to_Client
+    )
+    assert not hdr4.is_reply
+    assert hdr4.direction == foundation.Direction.Server_to_Client

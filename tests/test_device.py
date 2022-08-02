@@ -10,6 +10,7 @@ import zigpy.exceptions
 from zigpy.profiles import zha
 import zigpy.state
 import zigpy.types as t
+import zigpy.zcl.foundation as foundation
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import ANY, AsyncMock, MagicMock, int_sentinel, patch, sentinel
@@ -162,7 +163,7 @@ async def test_handle_message(dev):
     ep = dev.add_endpoint(3)
     hdr = MagicMock()
     hdr.tsn = int_sentinel.tsn
-    hdr.is_reply = sentinel.is_reply
+    hdr.direction = sentinel.direction
     dev.deserialize = MagicMock(return_value=[hdr, sentinel.args])
     ep.handle_message = MagicMock()
     dev.handle_message(99, 98, 3, 3, b"abcd")
@@ -250,11 +251,11 @@ async def test_handle_message_reply(dev):
     hdr_1 = MagicMock()
     hdr_1.tsn = tsn
     hdr_1.command_id = sentinel.command_id
-    hdr_1.is_reply = True
+    hdr_1.direction = foundation.Direction.Client_to_Server
     hdr_2 = MagicMock()
     hdr_2.tsn = sentinel.another_tsn
     hdr_2.command_id = sentinel.command_id
-    hdr_2.is_reply = True
+    hdr_2.direction = foundation.Direction.Client_to_Server
     dev.deserialize = MagicMock(
         side_effect=(
             (hdr_1, sentinel.args),
