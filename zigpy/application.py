@@ -92,8 +92,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
             # Some radios erroneously permit joins on startup
             await self.permit(0)
-        except Exception:
-            LOGGER.error("Couldn't start application")
+        except Exception as e:
+            LOGGER.error("Couldn't start application", exc_info=e)
             await self.shutdown()
             raise
 
