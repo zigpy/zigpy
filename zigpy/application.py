@@ -74,8 +74,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 if not auto_form:
                     raise
 
-                LOGGER.info("Forming a new network")
-                await self.form_network()
+                if not self.backups.backups:
+                    # Form a new network if we have no backup
+                    LOGGER.info("Forming a new network")
+                    await self.form_network()
+                else:
+                    # Otherwise, restore the most recent backup
+                    LOGGER.info("Restoring the most recent network backup")
+                    await self.backups.restore_backup(self.backups.backups[-1])
+
                 await self.load_network_info(load_devices=False)
 
             LOGGER.debug("Network info: %s", self.state.network_info)
@@ -85,14 +92,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
             # Some radios erroneously permit joins on startup
             await self.permit(0)
-        except Exception:
-            LOGGER.error("Couldn't start application")
+        except Exception as e:
+            LOGGER.error("Couldn't start application", exc_info=e)
             await self.shutdown()
             raise
 
-        self.backups.start_periodic_backups(
-            period=self.config[conf.CONF_NWK][zigpy.config.CONF_NWK_BACKUP_PERIOD]
-        )
+        if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
+            self.backups.start_periodic_backups(
+                period=self.config[conf.CONF_NWK_BACKUP_PERIOD]
+            )
 
     @classmethod
     async def new(

@@ -700,6 +700,14 @@ def test_enum_instance_types():
     assert issubclass(TestEnum, t.uint8_t)
 
 
+def test_enum_formatting():
+    class TestEnum(t.enum8):
+        Member = 0x00
+
+    assert f"{TestEnum.Member}" == "<TestEnum.Member: 0>"
+    assert f"0x{TestEnum.Member:02X}" == "0x00"
+
+
 def test_bitmap():
     """Test bitmaps."""
 
