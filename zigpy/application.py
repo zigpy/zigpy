@@ -99,7 +99,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
             self.backups.start_periodic_backups(
-                period=self.config[conf.CONF_NWK_BACKUP_PERIOD]
+                # Config specifies the period in minutes, not seconds
+                period=(60 * self.config[conf.CONF_NWK_BACKUP_PERIOD])
             )
 
     @classmethod
