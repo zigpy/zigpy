@@ -58,6 +58,45 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.backups.add_listener(self._dblistener)
         await self._dblistener.load()
 
+    async def initialize(self, *, auto_form: bool = False):
+        """
+        Starts the network on a connected radio, optionally forming one with random
+        settings if necessary.
+        """
+
+        try:
+            await self.load_network_info(load_devices=False)
+        except zigpy.exceptions.NetworkNotFormed:
+            LOGGER.info("Network is not formed")
+
+            if not auto_form:
+                raise
+
+            if not self.backups.backups:
+                # Form a new network if we have no backup
+                LOGGER.info("Forming a new network")
+                await self.form_network()
+            else:
+                # Otherwise, restore the most recent backup
+                LOGGER.info("Restoring the most recent network backup")
+                await self.backups.restore_backup(self.backups.backups[-1])
+
+            await self.load_network_info(load_devices=False)
+
+        LOGGER.debug("Network info: %s", self.state.network_info)
+        LOGGER.debug("Node info: %s", self.state.node_info)
+
+        await self.start_network()
+
+        # Some radios erroneously permit joins on startup
+        await self.permit(0)
+
+        if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
+            self.backups.start_periodic_backups(
+                # Config specifies the period in minutes, not seconds
+                period=(60 * self.config[conf.CONF_NWK_BACKUP_PERIOD])
+            )
+
     async def startup(self, *, auto_form: bool = False):
         """
         Starts a network, optionally forming one with random settings if necessary.
@@ -66,42 +105,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         await self.connect()
 
         try:
-            try:
-                await self.load_network_info(load_devices=False)
-            except zigpy.exceptions.NetworkNotFormed:
-                LOGGER.info("Network is not formed")
-
-                if not auto_form:
-                    raise
-
-                if not self.backups.backups:
-                    # Form a new network if we have no backup
-                    LOGGER.info("Forming a new network")
-                    await self.form_network()
-                else:
-                    # Otherwise, restore the most recent backup
-                    LOGGER.info("Restoring the most recent network backup")
-                    await self.backups.restore_backup(self.backups.backups[-1])
-
-                await self.load_network_info(load_devices=False)
-
-            LOGGER.debug("Network info: %s", self.state.network_info)
-            LOGGER.debug("Node info: %s", self.state.node_info)
-
-            await self.start_network()
-
-            # Some radios erroneously permit joins on startup
-            await self.permit(0)
+            await self.initialize(auto_form=auto_form)
         except Exception as e:
             LOGGER.error("Couldn't start application", exc_info=e)
             await self.shutdown()
             raise
-
-        if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
-            self.backups.start_periodic_backups(
-                # Config specifies the period in minutes, not seconds
-                period=(60 * self.config[conf.CONF_NWK_BACKUP_PERIOD])
-            )
 
     @classmethod
     async def new(
