@@ -102,9 +102,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         Starts a network, optionally forming one with random settings if necessary.
         """
 
-        await self.connect()
-
         try:
+            await self.connect()
             await self.initialize(auto_form=auto_form)
         except Exception as e:
             LOGGER.error("Couldn't start application", exc_info=e)
