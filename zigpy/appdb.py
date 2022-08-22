@@ -251,8 +251,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         else:
             q = f"""INSERT INTO relays{DB_V} VALUES (?, ?)
                         ON CONFLICT (ieee)
-                        DO UPDATE SET relays=excluded.relays"""
-            await self.execute(q, (ieee, relays.serialize()))
+                        DO UPDATE SET relays=excluded.relays WHERE relays != ?"""
+            await self.execute(q, (ieee, relays.serialize(), relays.serialize()))
 
         await self._db.commit()
 
@@ -494,7 +494,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT (ieee, endpoint_id, cluster, attrid)
                     DO UPDATE SET
-                        value=excluded.value"""
+                        value=excluded.value WHERE value != excluded.value"""
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         await self._db.commit()
 
