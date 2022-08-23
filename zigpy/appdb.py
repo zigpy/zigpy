@@ -233,10 +233,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_save_device_last_seen", device.ieee, last_seen)
 
     async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
-        await self.execute(
-            f"UPDATE devices{DB_V} SET last_seen=? WHERE ieee=?",
-            (last_seen.timestamp(), ieee),
-        )
+        q = f"""UPDATE devices{DB_V}
+                    SET last_seen=:ts
+                    WHERE ieee=:ieee AND last_seen - :ts > 30"""
+        await self.execute(q, {"ts": last_seen.timestamp(), "ieee": ieee})
         await self._db.commit()
 
     def device_relays_updated(
@@ -249,10 +249,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if relays is None:
             await self.execute(f"DELETE FROM relays{DB_V} WHERE ieee = ?", (ieee,))
         else:
-            q = f"""INSERT INTO relays{DB_V} VALUES (?, ?)
+            q = f"""INSERT INTO relays{DB_V} VALUES (:ieee, :relays)
                         ON CONFLICT (ieee)
-                        DO UPDATE SET relays=excluded.relays WHERE relays != ?"""
-            await self.execute(q, (ieee, relays.serialize(), relays.serialize()))
+                        DO UPDATE SET relays=excluded.relays WHERE relays != :relays"""
+            await self.execute(q, {"ieee": ieee, "relays": relays.serialize()})
 
         await self._db.commit()
 
