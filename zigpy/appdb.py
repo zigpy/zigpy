@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 import re
@@ -33,6 +33,8 @@ MIN_SQLITE_VERSION = (3, 24, 0)
 
 UNIX_EPOCH = datetime.fromtimestamp(0, tz=timezone.utc)
 DB_V_REGEX = re.compile(r"(?:_v\d+)?$")
+
+MIN_LAST_SEEN_DELTA = timedelta(seconds=30).total_seconds()
 
 
 def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.ModuleType:
@@ -235,8 +237,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
         q = f"""UPDATE devices{DB_V}
                     SET last_seen=:ts
-                    WHERE ieee=:ieee AND last_seen - :ts > 30"""
-        await self.execute(q, {"ts": last_seen.timestamp(), "ieee": ieee})
+                    WHERE ieee=:ieee AND :ts - last_seen > :min_last_seen_delta"""
+        await self.execute(
+            q,
+            {
+                "ts": last_seen.timestamp(),
+                "ieee": ieee,
+                "min_last_seen_delta": MIN_LAST_SEEN_DELTA,
+            },
+        )
         await self._db.commit()
 
     def device_relays_updated(
