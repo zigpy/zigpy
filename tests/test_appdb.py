@@ -864,15 +864,6 @@ def test_pysqlite_load_failure(stdlib_version, pysqlite3_version):
             zigpy.appdb._import_compatible_sqlite3(zigpy.appdb.MIN_SQLITE_VERSION)
 
 
-async def test_appdb_no_leftover_journal(tmp_path):
-    db = tmp_path / "test.db"
-    app = await make_app(db)
-    await app.shutdown()
-
-    assert db.exists()
-    assert set(db.parent.glob(db.with_suffix(".*").name)) == {db}
-
-
 async def test_appdb_network_backups(tmp_path, backup_factory):  # noqa: F811
     db = tmp_path / "test.db"
 

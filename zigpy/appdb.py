@@ -128,7 +128,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Truncate the SQLite journal file instead of deleting it after transactions
         await self._set_isolation_level(None)
-        await self.execute("PRAGMA journal_mode = TRUNCATE")
+        await self.execute("PRAGMA journal_mode = WAL")
+        await self.execute("PRAGMA synchronous = normal")
+        await self.execute("PRAGMA temp_store = memory")
         await self._set_isolation_level("DEFERRED")
 
         await self.execute("PRAGMA foreign_keys = ON")
@@ -185,7 +187,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Delete the journal on shutdown
         await self._set_isolation_level(None)
-        await self.execute("PRAGMA journal_mode = DELETE")
+        await self.execute("PRAGMA wal_checkpoint;")
         await self._set_isolation_level("DEFERRED")
 
         await self._db.close()
