@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import pathlib
 import sqlite3
 import sys
@@ -6,6 +7,7 @@ import threading
 import time
 
 import aiosqlite
+import freezegun
 import pytest
 
 from zigpy import profiles
@@ -777,18 +779,35 @@ async def test_last_seen(tmp_path):
     next_last_seen = dev.last_seen
     assert abs(next_last_seen - old_last_seen) < 0.01
 
-    await asyncio.sleep(0.1)
-
-    # Now the last_seen will update
     app = await make_app(db)
     dev = app.get_device(ieee=ieee)
-    dev.update_last_seen()
+
+    # Last-seen is only written to the db every 30s (no write case)
+    now = datetime.fromtimestamp(dev.last_seen + 5, timezone.utc)
+    with freezegun.freeze_time(now):
+        dev.update_last_seen()
+
+    await app.shutdown()
+
+    app = await make_app(db)
+    dev = app.get_device(ieee=ieee)
+    assert dev.last_seen == next_last_seen  # no change
+    await app.shutdown()
+
+    app = await make_app(db)
+    dev = app.get_device(ieee=ieee)
+
+    # Last-seen is only written to the db every 30s (write case)
+    now = datetime.fromtimestamp(dev.last_seen + 35, timezone.utc)
+    with freezegun.freeze_time(now):
+        dev.update_last_seen()
+
     await app.shutdown()
 
     # And it will be updated when the database next loads
     app = await make_app(db)
     dev = app.get_device(ieee=ieee)
-    assert dev.last_seen > next_last_seen + 0.1
+    assert dev.last_seen >= next_last_seen + 35  # updated
     await app.shutdown()
 
 
@@ -843,15 +862,6 @@ def test_pysqlite_load_failure(stdlib_version, pysqlite3_version):
     ):
         with pytest.raises(RuntimeError):
             zigpy.appdb._import_compatible_sqlite3(zigpy.appdb.MIN_SQLITE_VERSION)
-
-
-async def test_appdb_no_leftover_journal(tmp_path):
-    db = tmp_path / "test.db"
-    app = await make_app(db)
-    await app.shutdown()
-
-    assert db.exists()
-    assert set(db.parent.glob(db.with_suffix(".*").name)) == {db}
 
 
 async def test_appdb_network_backups(tmp_path, backup_factory):  # noqa: F811

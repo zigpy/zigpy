@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 import re
@@ -33,6 +33,8 @@ MIN_SQLITE_VERSION = (3, 24, 0)
 
 UNIX_EPOCH = datetime.fromtimestamp(0, tz=timezone.utc)
 DB_V_REGEX = re.compile(r"(?:_v\d+)?$")
+
+MIN_LAST_SEEN_DELTA = timedelta(seconds=30).total_seconds()
 
 
 def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.ModuleType:
@@ -126,7 +128,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Truncate the SQLite journal file instead of deleting it after transactions
         await self._set_isolation_level(None)
-        await self.execute("PRAGMA journal_mode = TRUNCATE")
+        await self.execute("PRAGMA journal_mode = WAL")
+        await self.execute("PRAGMA synchronous = normal")
+        await self.execute("PRAGMA temp_store = memory")
         await self._set_isolation_level("DEFERRED")
 
         await self.execute("PRAGMA foreign_keys = ON")
@@ -183,7 +187,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Delete the journal on shutdown
         await self._set_isolation_level(None)
-        await self.execute("PRAGMA journal_mode = DELETE")
+        await self.execute("PRAGMA wal_checkpoint;")
         await self._set_isolation_level("DEFERRED")
 
         await self._db.close()
@@ -233,9 +237,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_save_device_last_seen", device.ieee, last_seen)
 
     async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
+        q = f"""UPDATE devices{DB_V}
+                    SET last_seen=:ts
+                    WHERE ieee=:ieee AND :ts - last_seen > :min_last_seen_delta"""
         await self.execute(
-            f"UPDATE devices{DB_V} SET last_seen=? WHERE ieee=?",
-            (last_seen.timestamp(), ieee),
+            q,
+            {
+                "ts": last_seen.timestamp(),
+                "ieee": ieee,
+                "min_last_seen_delta": MIN_LAST_SEEN_DELTA,
+            },
         )
         await self._db.commit()
 
@@ -249,10 +260,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if relays is None:
             await self.execute(f"DELETE FROM relays{DB_V} WHERE ieee = ?", (ieee,))
         else:
-            q = f"""INSERT INTO relays{DB_V} VALUES (?, ?)
+            q = f"""INSERT INTO relays{DB_V} VALUES (:ieee, :relays)
                         ON CONFLICT (ieee)
-                        DO UPDATE SET relays=excluded.relays"""
-            await self.execute(q, (ieee, relays.serialize()))
+                        DO UPDATE SET relays=excluded.relays WHERE relays != :relays"""
+            await self.execute(q, {"ieee": ieee, "relays": relays.serialize()})
 
         await self._db.commit()
 
@@ -494,7 +505,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT (ieee, endpoint_id, cluster, attrid)
                     DO UPDATE SET
-                        value=excluded.value"""
+                        value=excluded.value WHERE value != excluded.value"""
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
         await self._db.commit()
 
