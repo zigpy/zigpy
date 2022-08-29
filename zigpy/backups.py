@@ -31,37 +31,66 @@ class NetworkBackup(zigpy.state.BaseDataclassMixin):
         default_factory=zigpy.state.NodeInfo
     )
 
-    def is_compatible_with(self, backup: NetworkBackup) -> bool:
+    def is_compatible_with(self, backup: NetworkBackup, strict: bool = True) -> bool:
         """
         Two backups are compatible if, ignoring frame counters, the same external device
         will be able to join either network.
         """
 
-        return (
-            self.node_info == backup.node_info
-            and self.network_info.extended_pan_id == backup.network_info.extended_pan_id
-            and self.network_info.pan_id == backup.network_info.pan_id
-            and self.network_info.nwk_update_id == backup.network_info.nwk_update_id
-            and self.network_info.nwk_manager_id == backup.network_info.nwk_manager_id
-            and self.network_info.channel == backup.network_info.channel
-            and self.network_info.security_level == backup.network_info.security_level
-            and self.network_info.tc_link_key.key == backup.network_info.tc_link_key.key
-            and self.network_info.network_key.key == backup.network_info.network_key.key
+        if (
+            self.node_info != backup.node_info
+            or self.network_info.extended_pan_id != backup.network_info.extended_pan_id
+            or self.network_info.pan_id != backup.network_info.pan_id
+            or self.network_info.nwk_update_id != backup.network_info.nwk_update_id
+            or self.network_info.nwk_manager_id != backup.network_info.nwk_manager_id
+            or self.network_info.channel != backup.network_info.channel
+            or self.network_info.security_level != backup.network_info.security_level
+            or self.network_info.tc_link_key.key != backup.network_info.tc_link_key.key
+        ):
+            return False
+
+        network_keys_unknown = (
+            self.network_info.network_key.key == t.KeyData.UNKNOWN
+            or backup.network_info.network_key.key == t.KeyData.UNKNOWN
         )
 
-    def supersedes(self, backup: NetworkBackup) -> bool:
+        if strict and network_keys_unknown:
+            return False
+        elif network_keys_unknown:
+            pass
+        elif self.network_info.network_key.key != backup.network_info.network_key.key:
+            return False
+
+        return True
+
+    def supersedes(self, backup: NetworkBackup, *, strict: bool = True) -> bool:
         """
         Checks if this network backup is more recent than another backup.
         """
 
-        return (
-            self.is_compatible_with(backup)
-            and (
-                self.network_info.network_key.tx_counter
-                > backup.network_info.network_key.tx_counter
-            )
-            and self.network_info.nwk_update_id >= backup.network_info.nwk_update_id
-        )
+        if not self.is_compatible_with(backup, strict=strict):
+            return False
+
+        if self.network_info.nwk_update_id < backup.network_info.nwk_update_id:
+            return False
+
+        if not strict and self.network_info.network_key.tx_counter == 0:
+            # Old Conbee firmware doesn't expose the network key frame counter
+            pass
+        elif (
+            self.network_info.network_key.tx_counter
+            < backup.network_info.network_key.tx_counter
+        ):
+            return False
+
+        if (
+            strict
+            and self.network_info.network_key.tx_counter
+            == backup.network_info.network_key.tx_counter
+        ):
+            return False
+
+        return True
 
     def is_complete(self) -> bool:
         """
@@ -113,15 +142,21 @@ class BackupManager(ListenableMixin):
 
         self._backup_task: asyncio.Task | None = None
 
-    async def create_backup(self, *, load_devices: bool = False) -> NetworkBackup:
-        await self.app.load_network_info(load_devices=load_devices)
+    def most_recent_backup(self) -> NetworkBackup | None:
+        """Most recent network backup"""
+        return self.backups[-1] if self.backups else None
 
-        # Creation time will automatically be set
-        backup = NetworkBackup(
+    def from_network_state(self) -> NetworkBackup:
+        """Create a backup object from the current network's state."""
+        return NetworkBackup(
             network_info=self.app.state.network_info,
             node_info=self.app.state.node_info,
         )
 
+    async def create_backup(self, *, load_devices: bool = False) -> NetworkBackup:
+        await self.app.load_network_info(load_devices=load_devices)
+
+        backup = self.from_network_state()
         self.add_backup(backup)
 
         return backup
@@ -152,7 +187,7 @@ class BackupManager(ListenableMixin):
         if create_new:
             await self.create_backup()
 
-    def add_backup(self, backup: NetworkBackup):
+    def add_backup(self, backup: NetworkBackup) -> None:
         """
         Adds a new backup to the database, superseding older ones if necessary.
         """

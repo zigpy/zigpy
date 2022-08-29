@@ -28,3 +28,7 @@ class NetworkNotFormed(RadioException):
 
 class FormationFailure(RadioException):
     """Network settings could not be written to the radio"""
+
+
+class NetworkSettingsInconsistent(ZigbeeException):
+    """Loaded network settings are different from what is in the database"""

@@ -9,6 +9,8 @@ import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 
+from tests.async_mock import AsyncMock
+
 
 @pytest.fixture
 def backup_factory():
