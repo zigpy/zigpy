@@ -28,6 +28,7 @@ def app_factory():
         config = {
             conf.CONF_DATABASE: None,
             conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+            conf.CONF_NWK_VALIDATE_SETTINGS: False,
         }
         config.update(extra_config)
 

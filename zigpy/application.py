@@ -91,7 +91,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         new_state = self.backups.from_network_state()
 
         if (
-            self.config[conf.CONF_VALIDATE_NETWORK_SETTINGS]
+            self.config[conf.CONF_NWK_VALIDATE_SETTINGS]
             and last_backup is not None
             and not new_state.supersedes(last_backup, strict=False)
         ):
