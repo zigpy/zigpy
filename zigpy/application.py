@@ -93,8 +93,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             and not new_state.is_compatible_with(last_backup)
         ):
             raise zigpy.exceptions.NetworkSettingsInconsistent(
-                f"Loaded network settings are not compatible with most recent backup:"
-                f" {new_state!r} !~ {last_backup!r}"
+                f"Radio network settings are not compatible with most recent backup!\n"
+                f"Current settings: {new_state!r}\n"
+                f"Last backup: {last_backup!r}"
             )
 
         await self.start_network()
