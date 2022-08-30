@@ -19,6 +19,7 @@ from zigpy.config.defaults import (
     CONF_OTA_LEDVANCE_DEFAULT,
     CONF_OTA_OTAU_DIR_DEFAULT,
     CONF_OTA_SALUS_DEFAULT,
+    CONF_OTA_SONOFF_DEFAULT,
     CONF_TOPO_SCAN_ENABLED_DEFAULT,
     CONF_TOPO_SCAN_PERIOD_DEFAULT,
     CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
@@ -48,6 +49,8 @@ CONF_OTA_IKEA_URL = "ikea_update_url"
 CONF_OTA_INOVELLI = "inovelli_provider"
 CONF_OTA_LEDVANCE = "ledvance_provider"
 CONF_OTA_SALUS = "salus_provider"
+CONF_OTA_SONOFF = "sonoff_provider"
+CONF_OTA_SONOFF_URL = "sonoff_update_url"
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
 CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
@@ -90,6 +93,8 @@ SCHEMA_OTA = {
     vol.Optional(CONF_OTA_INOVELLI, default=CONF_OTA_INOVELLI_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_LEDVANCE, default=CONF_OTA_LEDVANCE_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_SALUS, default=CONF_OTA_SALUS_DEFAULT): cv_boolean,
+    vol.Optional(CONF_OTA_SONOFF, default=CONF_OTA_SONOFF_DEFAULT): cv_boolean,
+    vol.Optional(CONF_OTA_SONOFF_URL): vol.Url(),
 }
 
 ZIGPY_SCHEMA = vol.Schema(
