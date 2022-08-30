@@ -31,66 +31,26 @@ class NetworkBackup(zigpy.state.BaseDataclassMixin):
         default_factory=zigpy.state.NodeInfo
     )
 
-    def is_compatible_with(self, backup: NetworkBackup, strict: bool = True) -> bool:
+    def _network_key_unknown(self) -> bool:
+        return self.network_key.key == t.KeyData.UNKNOWN
+
+    def is_compatible_with(self, backup: NetworkBackup) -> bool:
         """
         Two backups are compatible if, ignoring frame counters, the same external device
         will be able to join either network.
         """
 
-        if (
-            self.node_info != backup.node_info
-            or self.network_info.extended_pan_id != backup.network_info.extended_pan_id
-            or self.network_info.pan_id != backup.network_info.pan_id
-            or self.network_info.nwk_update_id != backup.network_info.nwk_update_id
-            or self.network_info.nwk_manager_id != backup.network_info.nwk_manager_id
-            or self.network_info.channel != backup.network_info.channel
-            or self.network_info.security_level != backup.network_info.security_level
-            or self.network_info.tc_link_key.key != backup.network_info.tc_link_key.key
-        ):
-            return False
-
-        network_keys_unknown = (
-            self.network_info.network_key.key == t.KeyData.UNKNOWN
-            or backup.network_info.network_key.key == t.KeyData.UNKNOWN
+        return (
+            self.node_info == backup.node_info
+            and self.network_info.extended_pan_id == backup.network_info.extended_pan_id
+            and self.network_info.pan_id == backup.network_info.pan_id
+            and self.network_info.nwk_update_id == backup.network_info.nwk_update_id
+            and self.network_info.nwk_manager_id == backup.network_info.nwk_manager_id
+            and self.network_info.channel == backup.network_info.channel
+            and self.network_info.security_level == backup.network_info.security_level
+            and self.network_info.tc_link_key.key == backup.network_info.tc_link_key.key
+            and self.network_info.network_key.key == backup.network_info.network_key.key
         )
-
-        if strict and network_keys_unknown:
-            return False
-        elif network_keys_unknown:
-            pass
-        elif self.network_info.network_key.key != backup.network_info.network_key.key:
-            return False
-
-        return True
-
-    def supersedes(self, backup: NetworkBackup, *, strict: bool = True) -> bool:
-        """
-        Checks if this network backup is more recent than another backup.
-        """
-
-        if not self.is_compatible_with(backup, strict=strict):
-            return False
-
-        if self.network_info.nwk_update_id < backup.network_info.nwk_update_id:
-            return False
-
-        if not strict and self.network_info.network_key.tx_counter == 0:
-            # Old Conbee firmware doesn't expose the network key frame counter
-            pass
-        elif (
-            self.network_info.network_key.tx_counter
-            < backup.network_info.network_key.tx_counter
-        ):
-            return False
-
-        if (
-            strict
-            and self.network_info.network_key.tx_counter
-            == backup.network_info.network_key.tx_counter
-        ):
-            return False
-
-        return True
 
     def is_complete(self) -> bool:
         """

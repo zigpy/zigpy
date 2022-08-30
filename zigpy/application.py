@@ -93,7 +93,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if (
             self.config[conf.CONF_NWK_VALIDATE_SETTINGS]
             and last_backup is not None
-            and not new_state.supersedes(last_backup, strict=False)
+            and not new_state.is_compatible_with(last_backup)
         ):
             raise zigpy.exceptions.NetworkSettingsInconsistent(
                 f"Loaded network settings are not compatible with most recent backup:"
