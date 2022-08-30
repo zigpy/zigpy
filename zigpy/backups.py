@@ -162,18 +162,24 @@ class BackupManager(ListenableMixin):
             LOGGER.debug("Backup is incomplete, ignoring")
             return
 
-        most_recent = self.most_recent_backup()
+        # Only delete the most recent backup if the frame counter doesn't roll back.
+        #  1. Old Conbee backups replace one another: the FC never increments
+        #  2. EZSP -> old Conbee: create bad backup for Conbee
+        #  3. Old Conbee -> EZSP: replace Conbee backup, its FC is always zero
+        for old_backup in self.backups[:]:
+            if backup.is_compatible_with(old_backup) and (
+                backup.network_info.network_key.tx_counter
+                >= old_backup.network_info.network_key.tx_counter
+            ):
+                if not suppress_event:
+                    self.listener_event("network_backup_removed", old_backup)
+
+                self.backups.remove(old_backup)
 
         if not suppress_event:
             self.listener_event("network_backup_created", backup)
 
         self.backups.append(backup)
-
-        if most_recent is not None and backup.is_compatible_with(most_recent):
-            if not suppress_event:
-                self.listener_event("network_backup_removed", most_recent)
-
-            self.backups.remove(most_recent)
 
     def start_periodic_backups(self, period: int | float) -> None:
         self.stop_periodic_backups()
