@@ -123,11 +123,12 @@ class BackupManager(ListenableMixin):
         backup: NetworkBackup,
         *,
         counter_increment: int = 10000,
+        ignore_incomplete: bool = False,
         create_new: bool = True,
     ) -> None:
         LOGGER.debug("Restoring backup %s", backup)
 
-        if not backup.is_complete():
+        if not backup.is_complete() and not ignore_incomplete:
             raise ValueError("Backup is incomplete, it is not possible to restore")
 
         key = backup.network_info.network_key

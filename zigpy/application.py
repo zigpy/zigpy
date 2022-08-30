@@ -58,21 +58,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.backups.add_listener(self._dblistener)
         await self._dblistener.load()
 
-    async def _maybe_form_from_last_backup(self):
-        """Try to restore the last backup if it exists, otherwise form a new network."""
-        last_backup = self.backups.most_recent_backup()
-
-        if last_backup is None:
-            # Form a new network if we have no backup
-            LOGGER.info("Forming a new network")
-            await self.form_network()
-        else:
-            # Otherwise, restore the most recent backup
-            LOGGER.info("Restoring the most recent network backup")
-            await self.backups.restore_backup(last_backup)
-
-        await self.load_network_info(load_devices=False)
-
     async def initialize(self, *, auto_form: bool = False):
         """
         Starts the network on a connected radio, optionally forming one with random
@@ -89,7 +74,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             if not auto_form:
                 raise
 
-            await self._maybe_form_from_last_backup()
+            if last_backup is None:
+                # Form a new network if we have no backup
+                await self.form_network()
+            else:
+                # Otherwise, restore the most recent backup
+                LOGGER.info("Restoring the most recent network backup")
+                await self.backups.restore_backup(last_backup)
 
         LOGGER.debug("Network info: %s", self.state.network_info)
         LOGGER.debug("Node info: %s", self.state.node_info)
@@ -214,7 +205,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             logical_type=zdo_types.LogicalType.Coordinator,
         )
 
-        await self.write_network_info(network_info=network_info, node_info=node_info)
+        LOGGER.debug("Forming a new network")
+
+        await self.backups.restore_backup(
+            backup=zigpy.backups.NetworkBackup(
+                network_info=network_info,
+                node_info=node_info,
+            ),
+            counter_increment=0,
+            ignore_incomplete=True,
+        )
 
     async def shutdown(self) -> None:
         """Shutdown controller."""
