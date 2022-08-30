@@ -31,9 +31,6 @@ class NetworkBackup(zigpy.state.BaseDataclassMixin):
         default_factory=zigpy.state.NodeInfo
     )
 
-    def _network_key_unknown(self) -> bool:
-        return self.network_key.key == t.KeyData.UNKNOWN
-
     def is_compatible_with(self, backup: NetworkBackup) -> bool:
         """
         Two backups are compatible if, ignoring frame counters, the same external device
