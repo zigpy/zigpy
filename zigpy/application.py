@@ -58,6 +58,21 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.backups.add_listener(self._dblistener)
         await self._dblistener.load()
 
+    async def _maybe_form_from_last_backup(self):
+        """Try to restore the last backup if it exists, otherwise form a new network."""
+        last_backup = self.backups.most_recent_backup()
+
+        if last_backup is None:
+            # Form a new network if we have no backup
+            LOGGER.info("Forming a new network")
+            await self.form_network()
+        else:
+            # Otherwise, restore the most recent backup
+            LOGGER.info("Restoring the most recent network backup")
+            await self.backups.restore_backup(last_backup)
+
+        await self.load_network_info(load_devices=False)
+
     async def initialize(self, *, auto_form: bool = False):
         """
         Starts the network on a connected radio, optionally forming one with random
@@ -74,16 +89,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             if not auto_form:
                 raise
 
-            if last_backup is None:
-                # Form a new network if we have no backup
-                LOGGER.info("Forming a new network")
-                await self.form_network()
-            else:
-                # Otherwise, restore the most recent backup
-                LOGGER.info("Restoring the most recent network backup")
-                await self.backups.restore_backup(last_backup)
-
-            await self.load_network_info(load_devices=False)
+            await self._maybe_form_from_last_backup()
 
         LOGGER.debug("Network info: %s", self.state.network_info)
         LOGGER.debug("Node info: %s", self.state.node_info)

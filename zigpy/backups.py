@@ -124,10 +124,12 @@ class BackupManager(ListenableMixin):
     async def restore_backup(
         self,
         backup: NetworkBackup,
-        counter_increment: int = 10000,
         *,
+        counter_increment: int = 10000,
         create_new: bool = True,
     ) -> None:
+        LOGGER.debug("Restoring backup %s", backup)
+
         if not backup.is_complete():
             raise ValueError("Backup is incomplete, it is not possible to restore")
 
@@ -147,7 +149,9 @@ class BackupManager(ListenableMixin):
         if create_new:
             await self.create_backup()
 
-    def add_backup(self, backup: NetworkBackup) -> None:
+    def add_backup(
+        self, backup: NetworkBackup, *, suppress_event: bool = False
+    ) -> None:
         """
         Adds a new backup to the database, superseding older ones if necessary.
         """
@@ -158,30 +162,18 @@ class BackupManager(ListenableMixin):
             LOGGER.debug("Backup is incomplete, ignoring")
             return
 
-        for index, old_backup in enumerate(self.backups):
-            if not backup.is_compatible_with(old_backup):
-                continue
-            elif old_backup.supersedes(backup):
-                # Ignore this backup if it's superseded by an old backup. This should
-                # not happen during normal operation, only if an old backup is
-                # intentionally restored.
-                LOGGER.debug("Backup is superseded by %s, ignoring", old_backup)
-                return
+        most_recent = self.most_recent_backup()
 
-            # Replace the old backup with our more recent one, since we either supersede
-            # it or are superficially identical to it
-            LOGGER.debug("Replacing %s", old_backup)
-            self.listener_event("network_backup_removed", old_backup)
+        if not suppress_event:
             self.listener_event("network_backup_created", backup)
-            self.backups[index] = backup
 
-            break
-        else:
-            # If no backup was replaced, create a new one
-            self.listener_event("network_backup_created", backup)
-            self.backups.append(backup)
+        self.backups.append(backup)
 
-        self.backups.sort(reverse=True, key=lambda backup: backup.backup_time)
+        if most_recent is not None and backup.is_compatible_with(most_recent):
+            if not suppress_event:
+                self.listener_event("network_backup_removed", most_recent)
+
+            self.backups.remove(most_recent)
 
     def start_periodic_backups(self, period: int | float) -> None:
         self.stop_periodic_backups()
