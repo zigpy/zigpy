@@ -448,6 +448,7 @@ class SONOFFImage:
         )
         return ota_image
 
+
 class Sonoff(Basic):
     """Sonoff OTA Firmware provider."""
 
