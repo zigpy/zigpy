@@ -12,6 +12,7 @@ from zigpy.config import (
     CONF_OTA_INOVELLI,
     CONF_OTA_LEDVANCE,
     CONF_OTA_SALUS,
+    CONF_OTA_SONOFF,
 )
 from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader
 import zigpy.ota.provider
@@ -115,6 +116,8 @@ class OTA(zigpy.util.ListenableMixin):
             self.add_listener(zigpy.ota.provider.Ledvance())
         if ota_config[CONF_OTA_SALUS]:
             self.add_listener(zigpy.ota.provider.Salus())
+        if ota_config[CONF_OTA_SONOFF]:
+            self.add_listener(zigpy.ota.provider.Sonoff())
 
     async def initialize(self) -> None:
         await self.async_event("initialize_provider", self._app.config[CONF_OTA])
