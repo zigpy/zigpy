@@ -200,31 +200,31 @@ class Basic(Cluster):
     ep_attribute = "basic"
     attributes: dict[int, ZCLAttributeDef] = {
         # Basic Device Information
-        0x0000: ("zcl_version", t.uint8_t),
-        0x0001: ("app_version", t.uint8_t),
-        0x0002: ("stack_version", t.uint8_t),
-        0x0003: ("hw_version", t.uint8_t),
-        0x0004: ("manufacturer", t.LimitedCharString(32)),
-        0x0005: ("model", t.LimitedCharString(32)),
-        0x0006: ("date_code", t.LimitedCharString(16)),
-        0x0007: ("power_source", PowerSource),
-        0x0008: ("generic_device_class", GenericDeviceClass),
+        0x0000: ZCLAttributeDef("zcl_version", type=t.uint8_t, access="r", mandatory=True),
+        0x0001: ZCLAttributeDef("app_version", type=t.uint8_t, access="r"),
+        0x0002: ZCLAttributeDef("stack_version", type=t.uint8_t, access="r"),
+        0x0003: ZCLAttributeDef("hw_version", type=t.uint8_t, access="r"),
+        0x0004: ZCLAttributeDef("manufacturer", type=t.LimitedCharString(32), access="r"),
+        0x0005: ZCLAttributeDef("model", type=t.LimitedCharString(32), access="r"),
+        0x0006: ZCLAttributeDef("date_code", type=t.LimitedCharString(16), access="r"),
+        0x0007: ZCLAttributeDef("power_source", type=PowerSource, access="r", mandatory=True),
+        0x0008: ZCLAttributeDef("generic_device_class", type=GenericDeviceClass, access="r"),
         # Lighting is the only non-reserved device type
-        0x0009: ("generic_device_type", GenericLightingDeviceType),
-        0x000A: ("product_code", t.LVBytes),
-        0x000B: ("product_url", t.CharacterString),
-        0x000C: ("manufacturer_version_details", t.CharacterString),
-        0x000D: ("serial_number", t.CharacterString),
-        0x000E: ("product_label", t.CharacterString),
+        0x0009: ZCLAttributeDef("generic_device_type", type=GenericLightingDeviceType, access="r"),
+        0x000A: ZCLAttributeDef("product_code", type=t.LVBytes, access="r"),
+        0x000B: ZCLAttributeDef("product_url", type=t.CharacterString, access="r"),
+        0x000C: ZCLAttributeDef("manufacturer_version_details", type=t.CharacterString, access="r"),
+        0x000D: ZCLAttributeDef("serial_number", type=t.CharacterString, access="r"),
+        0x000E: ZCLAttributeDef("product_label", type=t.CharacterString, access="r"),
         # Basic Device Settings
-        0x0010: ("location_desc", t.LimitedCharString(16)),
-        0x0011: ("physical_env", PhysicalEnvironment),
-        0x0012: ("device_enabled", t.Bool),
-        0x0013: ("alarm_mask", AlarmMask),
-        0x0014: ("disable_local_config", DisableLocalConfig),
-        0x4000: ("sw_build_id", t.CharacterString),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0010: ZCLAttributeDef("location_desc", type=t.LimitedCharString(16), "access=rw"),
+        0x0011: ZCLAttributeDef("physical_env", type=PhysicalEnvironment, "access=rw"),
+        0x0012: ZCLAttributeDef("device_enabled", type=t.Bool, "access=rw"),
+        0x0013: ZCLAttributeDef("alarm_mask", type=AlarmMask, "access=rw"),
+        0x0014: ZCLAttributeDef("disable_local_config", type=DisableLocalConfig, "access=rw"),
+        0x4000: ZCLAttributeDef("sw_build_id", type=t.CharacterString, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("reset_fact_default", {}, False)
@@ -259,72 +259,72 @@ class PowerConfiguration(Cluster):
     ep_attribute = "power"
     attributes: dict[int, ZCLAttributeDef] = {
         # Mains Information
-        0x0000: ("mains_voltage", t.uint16_t),
-        0x0001: ("mains_frequency", t.uint8_t),
+        0x0000: ("mains_voltage", t.uint16_t, access="r"),
+        0x0001: ("mains_frequency", t.uint8_t, access="r"),
         # Mains Settings
-        0x0010: ("mains_alarm_mask", MainsAlarmMask),
-        0x0011: ("mains_volt_min_thres", t.uint16_t),
-        0x0012: ("mains_volt_max_thres", t.uint16_t),
-        0x0013: ("mains_voltage_dwell_trip_point", t.uint16_t),
+        0x0010: ("mains_alarm_mask", MainsAlarmMask, access="rw"),
+        0x0011: ("mains_volt_min_thres", t.uint16_t, access="rw"),
+        0x0012: ("mains_volt_max_thres", t.uint16_t, access="rw"),
+        0x0013: ("mains_voltage_dwell_trip_point", t.uint16_t, access="rw"),
         # Battery Information
-        0x0020: ("battery_voltage", t.uint8_t),
-        0x0021: ("battery_percentage_remaining", t.uint8_t),
+        0x0020: ("battery_voltage", t.uint8_t, access="r"),
+        0x0021: ("battery_percentage_remaining", t.uint8_t, access="rp"),
         # Battery Settings
-        0x0030: ("battery_manufacturer", t.LimitedCharString(16)),
-        0x0031: ("battery_size", BatterySize),
-        0x0032: ("battery_a_hr_rating", t.uint16_t),  # measured in units of 10mAHr
-        0x0033: ("battery_quantity", t.uint8_t),
-        0x0034: ("battery_rated_voltage", t.uint8_t),  # measured in units of 100mV
-        0x0035: ("battery_alarm_mask", t.bitmap8),
-        0x0036: ("battery_volt_min_thres", t.uint8_t),
-        0x0037: ("battery_volt_thres1", t.uint16_t),
-        0x0038: ("battery_volt_thres2", t.uint16_t),
-        0x0039: ("battery_volt_thres3", t.uint16_t),
-        0x003A: ("battery_percent_min_thres", t.uint8_t),
-        0x003B: ("battery_percent_thres1", t.uint8_t),
-        0x003C: ("battery_percent_thres2", t.uint8_t),
-        0x003D: ("battery_percent_thres3", t.uint8_t),
-        0x003E: ("battery_alarm_state", t.bitmap32),
+        0x0030: ("battery_manufacturer", t.LimitedCharString(16), access="rw"),
+        0x0031: ("battery_size", BatterySize, access="rw"),
+        0x0032: ("battery_a_hr_rating", t.uint16_t, access="rw"),  # measured in units of 10mAHr
+        0x0033: ("battery_quantity", t.uint8_t, access="rw"),
+        0x0034: ("battery_rated_voltage", t.uint8_t, access="rw"),  # measured in units of 100mV
+        0x0035: ("battery_alarm_mask", t.bitmap8, access="rw"),
+        0x0036: ("battery_volt_min_thres", t.uint8_t, access="rw"),
+        0x0037: ("battery_volt_thres1", t.uint16_t, access="r*w"),
+        0x0038: ("battery_volt_thres2", t.uint16_t, access="r*w"),
+        0x0039: ("battery_volt_thres3", t.uint16_t, access="r*w"),
+        0x003A: ("battery_percent_min_thres", t.uint8_t, access="r*w"),
+        0x003B: ("battery_percent_thres1", t.uint8_t, access="r*w"),
+        0x003C: ("battery_percent_thres2", t.uint8_t, access="r*w"),
+        0x003D: ("battery_percent_thres3", t.uint8_t, access="r*w"),
+        0x003E: ("battery_alarm_state", t.bitmap32, access="rp"),
         # Battery 2 Information
-        0x0040: ("battery_2_voltage", t.uint8_t),
-        0x0041: ("battery_2_percentage_remaining", t.uint8_t),
+        0x0040: ("battery_2_voltage", t.uint8_t, access="r"),
+        0x0041: ("battery_2_percentage_remaining", t.uint8_t, access="rp"),
         # Battery 2 Settings
-        0x0050: ("battery_2_manufacturer", t.CharacterString),
-        0x0051: ("battery_2_size", t.enum8),
-        0x0052: ("battery_2_a_hr_rating", t.uint16_t),
-        0x0053: ("battery_2_quantity", t.uint8_t),
-        0x0054: ("battery_2_rated_voltage", t.uint8_t),
-        0x0055: ("battery_2_alarm_mask", t.bitmap8),
-        0x0056: ("battery_2_volt_min_thres", t.uint8_t),
-        0x0057: ("battery_2_volt_thres1", t.uint16_t),
-        0x0058: ("battery_2_volt_thres2", t.uint16_t),
-        0x0059: ("battery_2_volt_thres3", t.uint16_t),
-        0x005A: ("battery_2_percent_min_thres", t.uint8_t),
-        0x005B: ("battery_2_percent_thres1", t.uint8_t),
-        0x005C: ("battery_2_percent_thres2", t.uint8_t),
-        0x005D: ("battery_2_percent_thres3", t.uint8_t),
-        0x005E: ("battery_2_alarm_state", t.bitmap32),
+        0x0050: ("battery_2_manufacturer", t.CharacterString, access="rw"),
+        0x0051: ("battery_2_size", t.enum8, access="rw"),
+        0x0052: ("battery_2_a_hr_rating", t.uint16_t, access="rw"),
+        0x0053: ("battery_2_quantity", t.uint8_t, access="rw"),
+        0x0054: ("battery_2_rated_voltage", t.uint8_t, access="rw"),
+        0x0055: ("battery_2_alarm_mask", t.bitmap8, access="rw"),
+        0x0056: ("battery_2_volt_min_thres", t.uint8_t, access="rw"),
+        0x0057: ("battery_2_volt_thres1", t.uint16_t, access="r*w"),
+        0x0058: ("battery_2_volt_thres2", t.uint16_t, access="r*w"),
+        0x0059: ("battery_2_volt_thres3", t.uint16_t, access="r*w"),
+        0x005A: ("battery_2_percent_min_thres", t.uint8_t, access="r*w"),
+        0x005B: ("battery_2_percent_thres1", t.uint8_t, access="r*w"),
+        0x005C: ("battery_2_percent_thres2", t.uint8_t, access="r*w"),
+        0x005D: ("battery_2_percent_thres3", t.uint8_t, access="r*w"),
+        0x005E: ("battery_2_alarm_state", t.bitmap32, access="rp"),
         # Battery 3 Information
-        0x0060: ("battery_3_voltage", t.uint8_t),
-        0x0061: ("battery_3_percentage_remaining", t.uint8_t),
+        0x0060: ("battery_3_voltage", t.uint8_t, access="r"),
+        0x0061: ("battery_3_percentage_remaining", t.uint8_t, access="rp"),
         # Battery 3 Settings
-        0x0070: ("battery_3_manufacturer", t.CharacterString),
-        0x0071: ("battery_3_size", t.enum8),
-        0x0072: ("battery_3_a_hr_rating", t.uint16_t),
-        0x0073: ("battery_3_quantity", t.uint8_t),
-        0x0074: ("battery_3_rated_voltage", t.uint8_t),
-        0x0075: ("battery_3_alarm_mask", t.bitmap8),
-        0x0076: ("battery_3_volt_min_thres", t.uint8_t),
-        0x0077: ("battery_3_volt_thres1", t.uint16_t),
-        0x0078: ("battery_3_volt_thres2", t.uint16_t),
-        0x0079: ("battery_3_volt_thres3", t.uint16_t),
-        0x007A: ("battery_3_percent_min_thres", t.uint8_t),
-        0x007B: ("battery_3_percent_thres1", t.uint8_t),
-        0x007C: ("battery_3_percent_thres2", t.uint8_t),
-        0x007D: ("battery_3_percent_thres3", t.uint8_t),
-        0x007E: ("battery_3_alarm_state", t.bitmap32),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0070: ("battery_3_manufacturer", t.CharacterString, access="rw"),
+        0x0071: ("battery_3_size", t.enum8, access="rw"),
+        0x0072: ("battery_3_a_hr_rating", t.uint16_t, access="rw"),
+        0x0073: ("battery_3_quantity", t.uint8_t, access="rw"),
+        0x0074: ("battery_3_rated_voltage", t.uint8_t, access="rw"),
+        0x0075: ("battery_3_alarm_mask", t.bitmap8, access="rw"),
+        0x0076: ("battery_3_volt_min_thres", t.uint8_t, access="rw"),
+        0x0077: ("battery_3_volt_thres1", t.uint16_t, access="r*w"),
+        0x0078: ("battery_3_volt_thres2", t.uint16_t, access="r*w"),
+        0x0079: ("battery_3_volt_thres3", t.uint16_t, access="r*w"),
+        0x007A: ("battery_3_percent_min_thres", t.uint8_t, access="r*w"),
+        0x007B: ("battery_3_percent_thres1", t.uint8_t, access="r*w"),
+        0x007C: ("battery_3_percent_thres2", t.uint8_t, access="r*w"),
+        0x007D: ("battery_3_percent_thres3", t.uint8_t, access="r*w"),
+        0x007E: ("battery_3_alarm_state", t.bitmap32, access="rp"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -344,18 +344,18 @@ class DeviceTemperature(Cluster):
     ep_attribute = "device_temperature"
     attributes: dict[int, ZCLAttributeDef] = {
         # Device Temperature Information
-        0x0000: ("current_temperature", t.int16s),
-        0x0001: ("min_temp_experienced", t.int16s),
-        0x0002: ("max_temp_experienced", t.int16s),
-        0x0003: ("over_temp_total_dwell", t.uint16_t),
+        0x0000: ("current_temperature", t.int16s, access="r", mandatory=True),
+        0x0001: ("min_temp_experienced", t.int16s, access="r"),
+        0x0002: ("max_temp_experienced", t.int16s, access="r"),
+        0x0003: ("over_temp_total_dwell", t.uint16_t, access="r"),
         # Device Temperature Settings
-        0x0010: ("dev_temp_alarm_mask", DeviceTempAlarmMask),
-        0x0011: ("low_temp_thres", t.int16s),
-        0x0012: ("high_temp_thres", t.int16s),
-        0x0013: ("low_temp_dwell_trip_point", t.uint24_t),
-        0x0014: ("high_temp_dwell_trip_point", t.uint24_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0010: ("dev_temp_alarm_mask", DeviceTempAlarmMask, access="rw"),
+        0x0011: ("low_temp_thres", t.int16s, access="rw"),
+        0x0012: ("high_temp_thres", t.int16s, access="rw"),
+        0x0013: ("low_temp_dwell_trip_point", t.uint24_t, access="rw"),
+        0x0014: ("high_temp_dwell_trip_point", t.uint24_t, access="rw"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -379,10 +379,10 @@ class Identify(Cluster):
     cluster_id = 0x0003
     ep_attribute = "identify"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("identify_time", t.uint16_t),
+        0x0000: ("identify_time", t.uint16_t, access="rw", mandatory=True),
         # 0x0001: ("identify_commission_state", t.bitmap8),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("identify", {"identify_time": t.uint16_t}, False),
@@ -410,9 +410,9 @@ class Groups(Cluster):
     cluster_id = 0x0004
     ep_attribute = "groups"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("name_support", NameSupport),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef("name_support", type=NameSupport, access="r", mandatory=True),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
@@ -469,14 +469,14 @@ class Scenes(Cluster):
     ep_attribute = "scenes"
     attributes: dict[int, ZCLAttributeDef] = {
         # Scene Management Information
-        0x0000: ("count", t.uint8_t),
-        0x0001: ("current_scene", t.uint8_t),
-        0x0002: ("current_group", t.uint16_t),
-        0x0003: ("scene_valid", t.Bool),
-        0x0004: ("name_support", NameSupport),
-        0x0005: ("last_configured_by", t.EUI64),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef("count", type=t.uint8_t, access="r", mandatory=True),
+        0x0001: ZCLAttributeDef("current_scene", type=t.uint8_t, access="r", mandatory=True),
+        0x0002: ZCLAttributeDef("current_group", type=t.uint16_t, access="r", mandatory=True),
+        0x0003: ZCLAttributeDef("scene_valid", type=t.Bool, access="r", mandatory=True),
+        0x0004: ZCLAttributeDef("name_support", type=NameSupport, access="r", mandatory=True),
+        0x0005: ZCLAttributeDef("last_configured_by", type=t.EUI64, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
@@ -627,13 +627,13 @@ class OnOff(Cluster):
     name = "On/Off"
     ep_attribute = "on_off"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("on_off", t.Bool),
-        0x4000: ("global_scene_control", t.Bool),
-        0x4001: ("on_time", t.uint16_t),
-        0x4002: ("off_wait_time", t.uint16_t),
-        0x4003: ("start_up_on_off", StartUpOnOff),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef("on_off", type=t.Bool, access="rps", mandatory=True),
+        0x4000: ZCLAttributeDef("global_scene_control", type=t.Bool, access="r"),
+        0x4001: ZCLAttributeDef("on_time", type=t.uint16_t, access="rw"),
+        0x4002: ZCLAttributeDef("off_wait_time", type=t.uint16_t, access="rw"),
+        0x4003: ZCLAttributeDef("start_up_on_off", type=StartUpOnOff, access="rw"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("off", {}, False),
@@ -659,8 +659,7 @@ class OnOff(Cluster):
 
 
 class OnOffConfiguration(Cluster):
-    """Attributes and commands for configuring On/Off
-    switching devices"""
+    """Attributes and commands for configuring On/Off switching devices"""
 
     class SwitchType(t.enum8):
         Toggle = 0x00
@@ -676,10 +675,10 @@ class OnOffConfiguration(Cluster):
     name = "On/Off Switch Configuration"
     ep_attribute = "on_off_config"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("switch_type", SwitchType),
-        0x0010: ("switch_actions", SwitchActions),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef("switch_type", type=SwitchType, access="r", mandatory=True),
+        0x0010: ZCLAttributeDef("switch_actions", type=SwitchActions, access="rw", mandatory=True),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -705,22 +704,22 @@ class LevelControl(Cluster):
     name = "Level control"
     ep_attribute = "level"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("current_level", t.uint8_t),
-        0x0001: ("remaining_time", t.uint16_t),
-        0x0002: ("min_level", t.uint8_t),
-        0x0003: ("max_level", t.uint8_t),
-        0x0004: ("current_frequency", t.uint16_t),
-        0x0005: ("min_frequency", t.uint16_t),
-        0x0006: ("max_frequency", t.uint16_t),
-        0x000F: ("options", t.bitmap8),
-        0x0010: ("on_off_transition_time", t.uint16_t),
-        0x0011: ("on_level", t.uint8_t),
-        0x0012: ("on_transition_time", t.uint16_t),
-        0x0013: ("off_transition_time", t.uint16_t),
-        0x0014: ("default_move_rate", t.uint8_t),
-        0x4000: ("start_up_current_level", t.uint8_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef("current_level", type=t.uint8_t, access="rps", mandatory=True),
+        0x0001: ZCLAttributeDef("remaining_time", type=t.uint16_t, access="r"),
+        0x0002: ZCLAttributeDef("min_level", type=t.uint8_t, access="r"),
+        0x0003: ZCLAttributeDef("max_level", type=t.uint8_t, access="r"),
+        0x0004: ZCLAttributeDef("current_frequency", type=t.uint16_t, access="rps"),
+        0x0005: ZCLAttributeDef("min_frequency", type=t.uint16_t, access="r"),
+        0x0006: ZCLAttributeDef("max_frequency", type=t.uint16_t, access="r"),
+        0x000F: ZCLAttributeDef("options", type=t.bitmap8, access="rw"),
+        0x0010: ZCLAttributeDef("on_off_transition_time", type=t.uint16_t, access="rw"),
+        0x0011: ZCLAttributeDef("on_level", type=t.uint8_t, access="rw"),
+        0x0012: ZCLAttributeDef("on_transition_time", type=t.uint16_t, access="rw"),
+        0x0013: ZCLAttributeDef("off_transition_time", type=t.uint16_t, access="rw"),
+        0x0014: ZCLAttributeDef("default_move_rate", type=t.uint8_t, access="rw"),
+        0x4000: ZCLAttributeDef("start_up_current_level", type=t.uint8_t, access="rw"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
@@ -795,9 +794,9 @@ class Alarms(Cluster):
     ep_attribute = "alarms"
     attributes: dict[int, ZCLAttributeDef] = {
         # Alarm Information
-        0x0000: ("alarm_count", t.uint16_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef("alarm_count", type=t.uint16_t, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
@@ -839,18 +838,18 @@ class Time(Cluster):
     cluster_id = 0x000A
     ep_attribute = "time"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("time", t.UTCTime),
-        0x0001: ("time_status", t.bitmap8),
-        0x0002: ("time_zone", t.int32s),
-        0x0003: ("dst_start", t.uint32_t),
-        0x0004: ("dst_end", t.uint32_t),
-        0x0005: ("dst_shift", t.int32s),
-        0x0006: ("standard_time", t.StandardTime),
-        0x0007: ("local_time", t.LocalTime),
-        0x0008: ("last_set_time", t.UTCTime),
-        0x0009: ("valid_until_time", t.UTCTime),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef("time", type=t.UTCTime, access="r*w", access=True),
+        0x0001: ZCLAttributeDef("time_status", type=t.bitmap8, access="r*w", access=True),
+        0x0002: ZCLAttributeDef("time_zone", type=t.int32s, access="rw"),
+        0x0003: ZCLAttributeDef("dst_start", type=t.uint32_t, access="rw"),
+        0x0004: ZCLAttributeDef("dst_end", type=t.uint32_t, access="rw"),
+        0x0005: ZCLAttributeDef("dst_shift", type=t.int32s, access="rw"),
+        0x0006: ZCLAttributeDef("standard_time", type=t.StandardTime, access="r"),
+        0x0007: ZCLAttributeDef("local_time", type=t.LocalTime, access="r"),
+        0x0008: ZCLAttributeDef("last_set_time", type=t.UTCTime, access="r"),
+        0x0009: ZCLAttributeDef("valid_until_time", type=t.UTCTime, access="rw"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -893,22 +892,22 @@ class RSSILocation(Cluster):
     ep_attribute = "rssi_location"
     attributes: dict[int, ZCLAttributeDef] = {
         # Location Information
-        0x0000: ("type", t.uint8_t),
-        0x0001: ("method", t.enum8),
-        0x0002: ("age", t.uint16_t),
-        0x0003: ("quality_measure", t.uint8_t),
-        0x0004: ("num_of_devices", t.uint8_t),
+        0x0000: ZCLAttributeDef("type", type=t.uint8_t, access="rw", mandatory=True),
+        0x0001: ZCLAttributeDef("method", type=t.enum8, access="rw", mandatory=True),
+        0x0002: ZCLAttributeDef("age", type=t.uint16_t, access="r"),
+        0x0003: ZCLAttributeDef("quality_measure", type=t.uint8_t, access="r"),
+        0x0004: ZCLAttributeDef("num_of_devices", type=t.uint8_t, access="r"),
         # Location Settings
-        0x0010: ("coordinate1", t.int16s),
-        0x0011: ("coordinate2", t.int16s),
-        0x0012: ("coordinate3", t.int16s),
-        0x0013: ("power", t.int16s),
-        0x0014: ("path_loss_exponent", t.uint16_t),
-        0x0015: ("reporting_period", t.uint16_t),
-        0x0016: ("calculation_period", t.uint16_t),
-        0x0017: ("number_rssi_measurements", t.uint8_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0010: ZCLAttributeDef("coordinate1", type=t.int16s, access="rw", mandatory=True),
+        0x0011: ZCLAttributeDef("coordinate2", type=t.int16s, access="rw", mandatory=True),
+        0x0012: ZCLAttributeDef("coordinate3", type=t.int16s, access="rw"),
+        0x0013: ZCLAttributeDef("power", type=t.int16s, access="rw", mandatory=True),
+        0x0014: ZCLAttributeDef("path_loss_exponent", type=t.uint16_t, access="rw", mandatory=True),
+        0x0015: ZCLAttributeDef("reporting_period", type=t.uint16_t, access="rw"),
+        0x0016: ZCLAttributeDef("calculation_period", type=t.uint16_t, access="rw"),
+        0x0017: ZCLAttributeDef("number_rssi_measurements", type=t.uint8_t, access="rw", mandatory=True),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
@@ -1028,18 +1027,18 @@ class AnalogInput(Cluster):
     cluster_id = 0x000C
     ep_attribute = "analog_input"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x001C: ("description", t.CharacterString),
-        0x0041: ("max_present_value", t.Single),
-        0x0045: ("min_present_value", t.Single),
-        0x0051: ("out_of_service", t.Bool),
-        0x0055: ("present_value", t.Single),
-        0x0067: ("reliability", t.enum8),
-        0x006A: ("resolution", t.Single),
-        0x006F: ("status_flags", t.bitmap8),
-        0x0075: ("engineering_units", t.enum16),
-        0x0100: ("application_type", t.uint32_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x001C: ZCLAttributeDef("description", type=t.CharacterString, access="r*w"),
+        0x0041: ZCLAttributeDef("max_present_value", type=t.Single, access="r*w"),
+        0x0045: ZCLAttributeDef("min_present_value", type=t.Single, access="r*w"),
+        0x0051: ZCLAttributeDef("out_of_service", type=t.Bool, access="r*w", mandatory=True),
+        0x0055: ZCLAttributeDef("present_value", type=t.Single, access="rwp", mandatory=True),
+        0x0067: ZCLAttributeDef("reliability", type=t.enum8, access="r*w"),
+        0x006A: ZCLAttributeDef("resolution", type=t.Single, access="r*w"),
+        0x006F: ZCLAttributeDef("status_flags", type=t.bitmap8, access="rp", mandatory=True),
+        0x0075: ZCLAttributeDef("engineering_units", type=t.enum16, access="r*w"),
+        0x0100: ZCLAttributeDef("application_type", type=t.uint32_t, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -1049,21 +1048,21 @@ class AnalogOutput(Cluster):
     cluster_id = 0x000D
     ep_attribute = "analog_output"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x001C: ("description", t.CharacterString),
-        0x0041: ("max_present_value", t.Single),
-        0x0045: ("min_present_value", t.Single),
-        0x0051: ("out_of_service", t.Bool),
-        0x0055: ("present_value", t.Single),
-        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
+        0x001C: ZCLAttributeDef("description", type=t.CharacterString, access="r*w"),
+        0x0041: ZCLAttributeDef("max_present_value", type=t.Single, access="r*w"),
+        0x0045: ZCLAttributeDef("min_present_value", type=t.Single, access="r*w"),
+        0x0051: ZCLAttributeDef("out_of_service", type=t.Bool, access="r*w", mandatory=True),
+        0x0055: ZCLAttributeDef("present_value", type=t.Single, access="rwp", mandatory=True),
+        # 0x0057: ZCLAttributeDef('priority_array', type=TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        0x0067: ("reliability", t.enum8),
-        0x0068: ("relinquish_default", t.Single),
-        0x006A: ("resolution", t.Single),
-        0x006F: ("status_flags", t.bitmap8),
-        0x0075: ("engineering_units", t.enum16),
-        0x0100: ("application_type", t.uint32_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0067: ZCLAttributeDef("reliability", type=t.enum8, access="r*w"),
+        0x0068: ZCLAttributeDef("relinquish_default", type=t.Single, access="r*w"),
+        0x006A: ZCLAttributeDef("resolution", type=t.Single, access="r*w"),
+        0x006F: ZCLAttributeDef("status_flags", type=t.bitmap8, access="rp", mandatory=True),
+        0x0075: ZCLAttributeDef("engineering_units", type=t.enum16, access="r*w"),
+        0x0100: ZCLAttributeDef("application_type", type=t.uint32_t, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -1073,18 +1072,18 @@ class AnalogValue(Cluster):
     cluster_id = 0x000E
     ep_attribute = "analog_value"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x001C: ("description", t.CharacterString),
-        0x0051: ("out_of_service", t.Bool),
-        0x0055: ("present_value", t.Single),
+        0x001C: ZCLAttributeDef("description", type=t.CharacterString, access="r*w"),
+        0x0051: ZCLAttributeDef("out_of_service", type=t.Bool, access="r*w", mandatory=True),
+        0x0055: ZCLAttributeDef("present_value", type=t.Single, access="r/w", mandatory=True),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        0x0067: ("reliability", t.enum8),
-        0x0068: ("relinquish_default", t.Single),
-        0x006F: ("status_flags", t.bitmap8),
-        0x0075: ("engineering_units", t.enum16),
-        0x0100: ("application_type", t.uint32_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0067: ZCLAttributeDef("reliability", type=t.enum8, access="r*w"),
+        0x0068: ZCLAttributeDef("relinquish_default", type=t.Single, access="r*w"),
+        0x006F: ZCLAttributeDef("status_flags", type=t.bitmap8, access="r", mandatory=True),
+        0x0075: ZCLAttributeDef("engineering_units", type=t.enum16, access="r*w"),
+        0x0100: ZCLAttributeDef("application_type", type=t.uint32_t, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -1095,17 +1094,17 @@ class BinaryInput(Cluster):
     name = "Binary Input (Basic)"
     ep_attribute = "binary_input"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0004: ("active_text", t.CharacterString),
-        0x001C: ("description", t.CharacterString),
-        0x002E: ("inactive_text", t.CharacterString),
-        0x0051: ("out_of_service", t.Bool),
-        0x0054: ("polarity", t.enum8),
-        0x0055: ("present_value", t.Bool),
-        0x0067: ("reliability", t.enum8),
-        0x006F: ("status_flags", t.bitmap8),
-        0x0100: ("application_type", t.uint32_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0004: ZCLAttributeDef("active_text", type=t.CharacterString, access="r*w"),
+        0x001C: ZCLAttributeDef("description", type=t.CharacterString, access="r*w"),
+        0x002E: ZCLAttributeDef("inactive_text", type=t.CharacterString, access="r*w"),
+        0x0051: ZCLAttributeDef("out_of_service", type=t.Bool, access="r*w", mandatory=True),
+        0x0054: ZCLAttributeDef("polarity", type=t.enum8, access="r"),
+        0x0055: ZCLAttributeDef("present_value", type=t.Bool, access="r*w", mandatory=True),
+        0x0067: ZCLAttributeDef("reliability", type=t.enum8, access="r*w"),
+        0x006F: ZCLAttributeDef("status_flags", type=t.bitmap8, access="r", mandatory=True),
+        0x0100: ZCLAttributeDef("application_type", type=t.uint32_t, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -1115,24 +1114,24 @@ class BinaryOutput(Cluster):
     cluster_id = 0x0010
     ep_attribute = "binary_output"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0004: ("active_text", t.CharacterString),
-        0x001C: ("description", t.CharacterString),
-        0x002E: ("inactive_text", t.CharacterString),
-        0x0042: ("minimum_off_time", t.uint32_t),
-        0x0043: ("minimum_on_time", t.uint32_t),
-        0x0051: ("out_of_service", t.Bool),
-        0x0054: ("polarity", t.enum8),
-        0x0055: ("present_value", t.Bool),
+        0x0004: ZCLAttributeDef("active_text", type=t.CharacterString, access="r*w"),
+        0x001C: ZCLAttributeDef("description", type=t.CharacterString, access="r*w"),
+        0x002E: ZCLAttributeDef("inactive_text", type=t.CharacterString, access="r*w"),
+        0x0042: ZCLAttributeDef("minimum_off_time", type=t.uint32_t, access="r*w"),
+        0x0043: ZCLAttributeDef("minimum_on_time", type=t.uint32_t, access="r*w"),
+        0x0051: ZCLAttributeDef("out_of_service", type=t.Bool, access="r*w", mandatory=True),
+        0x0054: ZCLAttributeDef("polarity", type=t.enum8, access="r"),
+        0x0055: ZCLAttributeDef("present_value", type=t.Bool, access="r*w", mandatory=True),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        0x0067: ("reliability", t.enum8),
-        0x0068: ("relinquish_default", t.Bool),
-        0x006A: ("resolution", t.Single),
-        0x006F: ("status_flags", t.bitmap8),
-        0x0075: ("engineering_units", t.enum16),  # Does not seem to be in binary_output
-        0x0100: ("application_type", t.uint32_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0067: ZCLAttributeDef("reliability", type=t.enum8, access="r*w"),
+        0x0068: ZCLAttributeDef("relinquish_default", type=t.Bool, access="r*w"),
+        0x006A: ZCLAttributeDef("resolution", type=t.Single, access="r"),  # Does not seem to be in binary_output
+        0x006F: ZCLAttributeDef("status_flags", type=t.bitmap8, access="r", mandatory=True),
+        0x0075: ZCLAttributeDef("engineering_units", type=t.enum16, access="r"),  # Does not seem to be in binary_output
+        0x0100: ZCLAttributeDef("application_type", type=t.uint32_t, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -1142,21 +1141,21 @@ class BinaryValue(Cluster):
     cluster_id = 0x0011
     ep_attribute = "binary_value"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0004: ("active_text", t.CharacterString),
-        0x001C: ("description", t.CharacterString),
-        0x002E: ("inactive_text", t.CharacterString),
-        0x0042: ("minimum_off_time", t.uint32_t),
-        0x0043: ("minimum_on_time", t.uint32_t),
-        0x0051: ("out_of_service", t.Bool),
-        0x0055: ("present_value", t.Single),
-        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
+        0x0004: ZCLAttributeDef("active_text", type=t.CharacterString, access="r*w"),
+        0x001C: ZCLAttributeDef("description", type=t.CharacterString, access="r*w"),
+        0x002E: ZCLAttributeDef("inactive_text", type=t.CharacterString, access="r*w"),
+        0x0042: ZCLAttributeDef("minimum_off_time", type=t.uint32_t, access="r*w"),
+        0x0043: ZCLAttributeDef("minimum_on_time", type=t.uint32_t, access="r*w"),
+        0x0051: ZCLAttributeDef("out_of_service", type=t.Bool, access="r*w", mandatory=True),
+        0x0055: ZCLAttributeDef("present_value", type=t.Single, access="r*w", mandatory=True),
+        # 0x0057: ZCLAttributeDef('priority_array', type=TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        0x0067: ("reliability", t.enum8),
-        0x0068: ("relinquish_default", t.Single),
-        0x006F: ("status_flags", t.bitmap8),
-        0x0100: ("application_type", t.uint32_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0067: ZCLAttributeDef("reliability", type=t.enum8, access="r*w"),
+        0x0068: ZCLAttributeDef("relinquish_default", type=t.Single, access="r*w"),
+        0x006F: ZCLAttributeDef("status_flags", type=t.bitmap8, access="r", mandatory=True),
+        0x0100: ZCLAttributeDef("application_type", type=t.uint32_t, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -1166,18 +1165,18 @@ class MultistateInput(Cluster):
     cluster_id = 0x0012
     ep_attribute = "multistate_input"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x000E: ("state_text", t.List[t.CharacterString]),
-        0x001C: ("description", t.CharacterString),
-        0x004A: ("number_of_states", t.uint16_t),
-        0x0051: ("out_of_service", t.Bool),
-        0x0055: ("present_value", t.Single),
+        0x000E: ZCLAttributeDef("state_text", type=t.List[t.CharacterString], access="r*w"),
+        0x001C: ZCLAttributeDef("description", type=t.CharacterString, access="r*w"),
+        0x004A: ZCLAttributeDef("number_of_states", type=t.uint16_t, access="r*w"),
+        0x0051: ZCLAttributeDef("out_of_service", type=t.Bool, access="r*w", mandatory=True),
+        0x0055: ZCLAttributeDef("present_value", type=t.Single, access="r*w", mandatory=True),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        0x0067: ("reliability", t.enum8),
-        0x006F: ("status_flags", t.bitmap8),
-        0x0100: ("application_type", t.uint32_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0067: ZCLAttributeDef("reliability", type=t.enum8, access="r*w"),
+        0x006F: ZCLAttributeDef("status_flags", type=t.bitmap8, access="r", mandatory=True),
+        0x0100: ZCLAttributeDef("application_type", type=t.uint32_t, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -1187,19 +1186,19 @@ class MultistateOutput(Cluster):
     cluster_id = 0x0013
     ep_attribute = "multistate_output"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x000E: ("state_text", t.List[t.CharacterString]),
-        0x001C: ("description", t.CharacterString),
-        0x004A: ("number_of_states", t.uint16_t),
-        0x0051: ("out_of_service", t.Bool),
-        0x0055: ("present_value", t.Single),
-        # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
+        0x000E: ZCLAttributeDef("state_text", type=t.List[t.CharacterString], access="r*w"),
+        0x001C: ZCLAttributeDef("description", type=t.CharacterString, access="r*w"),
+        0x004A: ZCLAttributeDef("number_of_states", type=t.uint16_t, access="r*w", mandatory=True),
+        0x0051: ZCLAttributeDef("out_of_service", type=t.Bool, access="r*w", mandatory=True),
+        0x0055: ZCLAttributeDef("present_value", type=t.Single, access="r*w", mandatory=True),
+        # 0x0057: ZCLAttributeDef('priority_array', type=TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        0x0067: ("reliability", t.enum8),
-        0x0068: ("relinquish_default", t.Single),
-        0x006F: ("status_flags", t.bitmap8),
-        0x0100: ("application_type", t.uint32_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0067: ZCLAttributeDef("reliability", type=t.enum8, access="r*w"),
+        0x0068: ZCLAttributeDef("relinquish_default", type=t.Single, access="r*w"),
+        0x006F: ZCLAttributeDef("status_flags", type=t.bitmap8, access="r", mandatory=True),
+        0x0100: ZCLAttributeDef("application_type", type=t.uint32_t, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -1209,19 +1208,19 @@ class MultistateValue(Cluster):
     cluster_id = 0x0014
     ep_attribute = "multistate_value"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x000E: ("state_text", t.List[t.CharacterString]),
-        0x001C: ("description", t.CharacterString),
-        0x004A: ("number_of_states", t.uint16_t),
-        0x0051: ("out_of_service", t.Bool),
-        0x0055: ("present_value", t.Single),
+        0x000E: ZCLAttributeDef("state_text", t.List[t.CharacterString], access="r*w"),
+        0x001C: ZCLAttributeDef("description", t.CharacterString, access="r*w"),
+        0x004A: ZCLAttributeDef("number_of_states", t.uint16_t, access="r*w", mandatory=True),
+        0x0051: ZCLAttributeDef("out_of_service", t.Bool, access="r*w", mandatory=True),
+        0x0055: ZCLAttributeDef("present_value", t.Single, access="r*w", mandatory=True),
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        0x0067: ("reliability", t.enum8),
-        0x0068: ("relinquish_default", t.Single),
-        0x006F: ("status_flags", t.bitmap8),
-        0x0100: ("application_type", t.uint32_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0067: ZCLAttributeDef("reliability", t.enum8, access="r*w"),
+        0x0068: ZCLAttributeDef("relinquish_default", t.Single, access="r*w"),
+        0x006F: ZCLAttributeDef("status_flags", t.bitmap8, access="r", mandatory=True),
+        0x0100: ZCLAttributeDef("application_type", t.uint32_t, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -1235,35 +1234,35 @@ class Commissioning(Cluster):
     ep_attribute = "commissioning"
     attributes: dict[int, ZCLAttributeDef] = {
         # Startup Parameters
-        0x0000: ("short_address", t.uint16_t),
-        0x0001: ("extended_pan_id", t.EUI64),
-        0x0002: ("pan_id", t.uint16_t),
-        0x0003: ("channelmask", t.Channels),
-        0x0004: ("protocol_version", t.uint8_t),
-        0x0005: ("stack_profile", t.uint8_t),
-        0x0006: ("startup_control", t.enum8),
-        0x0010: ("trust_center_address", t.EUI64),
-        0x0011: ("trust_center_master_key", t.KeyData),
-        0x0012: ("network_key", t.KeyData),
-        0x0013: ("use_insecure_join", t.Bool),
-        0x0014: ("preconfigured_link_key", t.KeyData),
-        0x0015: ("network_key_seq_num", t.uint8_t),
-        0x0016: ("network_key_type", t.enum8),
-        0x0017: ("network_manager_address", t.uint16_t),
+        0x0000: ZCLAttributeDef("short_address", type=t.uint16_t, access="rw", mandatory=True),
+        0x0001: ZCLAttributeDef("extended_pan_id", type=t.EUI64, access="rw", mandatory=True),
+        0x0002: ZCLAttributeDef("pan_id", type=t.uint16_t, access="rw", mandatory=True),
+        0x0003: ZCLAttributeDef("channelmask", type=t.Channels, access="rw", mandatory=True),
+        0x0004: ZCLAttributeDef("protocol_version", type=t.uint8_t, access="rw", mandatory=True),
+        0x0005: ZCLAttributeDef("stack_profile", type=t.uint8_t, access="rw", mandatory=True),
+        0x0006: ZCLAttributeDef("startup_control", type=t.enum8, access="rw", mandatory=True),
+        0x0010: ZCLAttributeDef("trust_center_address", type=t.EUI64, access="rw", mandatory=True),
+        0x0011: ZCLAttributeDef("trust_center_master_key", type=t.KeyData, access="rw"),
+        0x0012: ZCLAttributeDef("network_key", type=t.KeyData, access="rw", mandatory=True),
+        0x0013: ZCLAttributeDef("use_insecure_join", type=t.Bool, access="rw", mandatory=True),
+        0x0014: ZCLAttributeDef("preconfigured_link_key", type=t.KeyData, access="rw", mandatory=True),
+        0x0015: ZCLAttributeDef("network_key_seq_num", type=t.uint8_t, access="rw", mandatory=True),
+        0x0016: ZCLAttributeDef("network_key_type", type=t.enum8, access="rw", mandatory=True),
+        0x0017: ZCLAttributeDef("network_manager_address", type=t.uint16_t, access="rw", mandatory=True),
         # Join Parameters
-        0x0020: ("scan_attempts", t.uint8_t),
-        0x0021: ("time_between_scans", t.uint16_t),
-        0x0022: ("rejoin_interval", t.uint16_t),
-        0x0023: ("max_rejoin_interval", t.uint16_t),
+        0x0020: ZCLAttributeDef("scan_attempts", type=t.uint8_t, access="rw"),
+        0x0021: ZCLAttributeDef("time_between_scans", type=t.uint16_t, access="rw"),
+        0x0022: ZCLAttributeDef("rejoin_interval", type=t.uint16_t, access="rw"),
+        0x0023: ZCLAttributeDef("max_rejoin_interval", type=t.uint16_t, access="rw"),
         # End Device Parameters
-        0x0030: ("indirect_poll_rate", t.uint16_t),
-        0x0031: ("parent_retry_threshold", t.uint8_t),
+        0x0030: ZCLAttributeDef("indirect_poll_rate", type=t.uint16_t, access="rw"),
+        0x0031: ZCLAttributeDef("parent_retry_threshold", type=t.uint8_t, access="r"),
         # Concentrator Parameters
-        0x0040: ("concentrator_flag", t.Bool),
-        0x0041: ("concentrator_radius", t.uint8_t),
-        0x0042: ("concentrator_discovery_time", t.uint8_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0040: ZCLAttributeDef("concentrator_flag", type=t.Bool, access="rw"),
+        0x0041: ZCLAttributeDef("concentrator_radius", type=t.uint8_t, access="rw"),
+        0x0042: ZCLAttributeDef("concentrator_discovery_time", type=t.uint8_t, access="rw"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
@@ -1305,18 +1304,18 @@ class Partition(Cluster):
     cluster_id = 0x0016
     ep_attribute = "partition"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("maximum_incoming_transfer_size", t.uint16_t),
-        0x0001: ("maximum_outgoing_transfer_size", t.uint16_t),
-        0x0002: ("partitioned_frame_size", t.uint8_t),
-        0x0003: ("large_frame_size", t.uint16_t),
-        0x0004: ("number_of_ack_frame", t.uint8_t),
-        0x0005: ("nack_timeout", t.uint16_t),
-        0x0006: ("interframe_delay", t.uint8_t),
-        0x0007: ("number_of_send_retries", t.uint8_t),
-        0x0008: ("sender_timeout", t.uint16_t),
-        0x0009: ("receiver_timeout", t.uint16_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef("maximum_incoming_transfer_size", type=t.uint16_t, access="r", mandatory=True),
+        0x0001: ZCLAttributeDef("maximum_outgoing_transfer_size", type=t.uint16_t, access="r", mandatory=True),
+        0x0002: ZCLAttributeDef("partitioned_frame_size", type=t.uint8_t, access="rw", mandatory=True),
+        0x0003: ZCLAttributeDef("large_frame_size", type=t.uint16_t, access="rw", mandatory=True),
+        0x0004: ZCLAttributeDef("number_of_ack_frame", type=t.uint8_t, access="rw", mandatory=True),
+        0x0005: ZCLAttributeDef("nack_timeout", type=t.uint16_t, access="r", mandatory=True),
+        0x0006: ZCLAttributeDef("interframe_delay", type=t.uint8_t, access="rw", mandatory=True),
+        0x0007: ZCLAttributeDef("number_of_send_retries", type=t.uint8_t, access="r", mandatory=True),
+        0x0008: ZCLAttributeDef("sender_timeout", type=t.uint16_t, access="r", mandatory=True),
+        0x0009: ZCLAttributeDef("receiver_timeout", type=t.uint16_t, access="r", mandatory=True),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -1448,21 +1447,21 @@ class Ota(Cluster):
     cluster_id = 0x0019
     ep_attribute = "ota"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("upgrade_server_id", t.EUI64),
-        0x0001: ("file_offset", t.uint32_t),
-        0x0002: ("current_file_version", t.uint32_t),
-        0x0003: ("current_zigbee_stack_version", t.uint16_t),
-        0x0004: ("downloaded_file_version", t.uint32_t),
-        0x0005: ("downloaded_zigbee_stack_version", t.uint16_t),
-        0x0006: ("image_upgrade_status", ImageUpgradeStatus),
-        0x0007: ("manufacturer_id", t.uint16_t),
-        0x0008: ("image_type_id", t.uint16_t),
-        0x0009: ("minimum_block_req_delay", t.uint16_t),
-        0x000A: ("image_stamp", t.uint32_t),
-        0x000B: ("upgrade_activation_policy", UpgradeActivationPolicy),
-        0x000C: ("upgrade_timeout_policy", UpgradeTimeoutPolicy),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ("upgrade_server_id", t.EUI64, access="r", mandatory=True),
+        0x0001: ("file_offset", t.uint32_t, access="r"),
+        0x0002: ("current_file_version", t.uint32_t, access="r"),
+        0x0003: ("current_zigbee_stack_version", t.uint16_t, access="r"),
+        0x0004: ("downloaded_file_version", t.uint32_t, access="r"),
+        0x0005: ("downloaded_zigbee_stack_version", t.uint16_t, access="r"),
+        0x0006: ("image_upgrade_status", ImageUpgradeStatus, access="r", mandatory=True),
+        0x0007: ("manufacturer_id", t.uint16_t, access="r"),
+        0x0008: ("image_type_id", t.uint16_t, access="r"),
+        0x0009: ("minimum_block_req_delay", t.uint16_t, access="r"),
+        0x000A: ("image_stamp", t.uint32_t, access="r"),
+        0x000B: ("upgrade_activation_policy", UpgradeActivationPolicy, access="r"),
+        0x000C: ("upgrade_timeout_policy", UpgradeTimeoutPolicy, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x01: ZCLCommandDef("query_next_image", QueryNextImageCommand, False),
@@ -1719,13 +1718,13 @@ class PowerProfile(Cluster):
     cluster_id = 0x001A
     ep_attribute = "power_profile"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("total_profile_num", t.uint8_t),
-        0x0001: ("multiple_scheduling", t.Bool),
-        0x0002: ("energy_formatting", t.bitmap8),
-        0x0003: ("energy_remote", t.Bool),
-        0x0004: ("schedule_mode", t.bitmap8),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef("total_profile_num", type=t.uint8_t, access="r", mandatory=True),
+        0x0001: ZCLAttributeDef("multiple_scheduling", type=t.Bool, access="r", mandatory=True),
+        0x0002: ZCLAttributeDef("energy_formatting", type=t.bitmap8, access="r", mandatory=True),
+        0x0003: ZCLAttributeDef("energy_remote", type=t.Bool, access="r", mandatory=True),
+        0x0004: ZCLAttributeDef("schedule_mode", type=t.bitmap8, access="rwp", mandatory=True),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
 
     class ScheduleRecord(t.Struct):
@@ -1889,11 +1888,11 @@ class ApplianceControl(Cluster):
     cluster_id = 0x001B
     ep_attribute = "appliance_control"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("start_time", t.uint16_t),
-        0x0001: ("finish_time", t.uint16_t),
-        0x0002: ("remaining_time", t.uint16_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef("start_time", type=t.uint16_t, access="rp", mandatory=True),
+        0x0001: ZCLAttributeDef("finish_time", type=t.uint16_t, access="rp", mandatory=True),
+        0x0002: ZCLAttributeDef("remaining_time", type=t.uint16_t, access="rp"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -1904,15 +1903,15 @@ class PollControl(Cluster):
     name = "Poll Control"
     ep_attribute = "poll_control"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("checkin_interval", t.uint32_t),
-        0x0001: ("long_poll_interval", t.uint32_t),
-        0x0002: ("short_poll_interval", t.uint16_t),
-        0x0003: ("fast_poll_timeout", t.uint16_t),
-        0x0004: ("checkin_interval_min", t.uint32_t),
-        0x0005: ("long_poll_interval_min", t.uint32_t),
-        0x0006: ("fast_poll_timeout_max", t.uint16_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef("checkin_interval", type=t.uint32_t, access="rw", mandatory=True),
+        0x0001: ZCLAttributeDef("long_poll_interval", type=t.uint32_t, access="r", mandatory=True),
+        0x0002: ZCLAttributeDef("short_poll_interval", type=t.uint16_t, access="r", mandatory=True),
+        0x0003: ZCLAttributeDef("fast_poll_timeout", type=t.uint16_t, access="rw", mandatory=True),
+        0x0004: ZCLAttributeDef("checkin_interval_min", type=t.uint32_t, access="r"),
+        0x0005: ZCLAttributeDef("long_poll_interval_min", type=t.uint32_t, access="r"),
+        0x0006: ZCLAttributeDef("fast_poll_timeout_max", type=t.uint16_t, access="r"),
+        0xFFFD: ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(

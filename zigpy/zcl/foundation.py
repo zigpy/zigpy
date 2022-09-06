@@ -668,8 +668,8 @@ class ZCLCommandDef:
                 "`is_reply` is deprecated, use `direction`", DeprecationWarning
             )
             object.__setattr__(self, "direction", Direction(self.is_reply))
-        else:
-            object.__setattr__(self, "is_reply", bool(self.direction))
+
+        object.__setattr__(self, "is_reply", bool(self.direction))
 
     def with_compiled_schema(self):
         """
@@ -750,19 +750,31 @@ class CommandSchema(t.Struct, tuple):
         return super().__eq__(other)
 
 
+class ZCLAttributeAccess(enum.Flag):
+    Read = "r"
+    Write = "w"
+    Report = "p"
+
+
 @dataclasses.dataclass(frozen=True)
 class ZCLAttributeDef:
     id: t.uint16_t = None
     name: str = None
     type: type = None
-    access: str = "rw"
+    access: ZCLAttributeAccess = dataclasses.field(
+        factory=ZCLAttributeAccess,
+        default=(
+            ZCLAttributeAccess.Read
+            | ZCLAttributeAccess.Write
+            | ZCLAttributeAccess.Report
+        ),
+    )
     is_manufacturer_specific: bool = False
 
     def __post_init__(self):
         if not isinstance(self.id, t.uint16_t):
             object.__setattr__(self, "id", t.uint16_t(self.id))
 
-        assert self.access in {None, "r", "w", "rw"}
         ensure_valid_name(self.name)
 
     def replace(self, **kwargs) -> ZCLAttributeDef:
@@ -905,6 +917,13 @@ for command_id, command_def in list(GENERAL_COMMANDS.items()):
     GENERAL_COMMANDS[command_id] = command_def.replace(
         id=command_id, name=command_id.name
     ).with_compiled_schema()
+
+ZCL_CLUSTER_REVISION_ATTR = ZCLAttributeDef(
+    "cluster_revision", type=t.uint16_t, access="r", mandatory=True
+)
+ZCL_REPORTING_STATUS_ATTR = ZCLAttributeDef(
+    "attr_reporting_status", type=foundation.AttributeReportingStatus, access="r"
+)
 
 
 __getattr__ = zigpy.util.deprecated_attrs({"Command": GeneralCommand})
