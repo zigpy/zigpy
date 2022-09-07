@@ -214,7 +214,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 node_info=node_info,
             ),
             counter_increment=0,
-            ignore_incomplete=True,
+            allow_incomplete=True,
         )
 
     async def shutdown(self) -> None:
