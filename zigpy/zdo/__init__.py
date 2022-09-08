@@ -12,6 +12,8 @@ from . import types
 
 LOGGER = logging.getLogger(__name__)
 
+ZDO_ENDPOINT = 0
+
 
 class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
     """The ZDO endpoint of a device"""
@@ -243,19 +245,16 @@ def broadcast(
     return app.send_packet(
         t.ZigbeePacket(
             src=None,
-            src_ep=None,
+            src_ep=ZDO_ENDPOINT,
             dst=t.AddrModeAddress(
                 addr_mode=t.AddrMode.Broadcast, address=broadcast_address
             ),
-            dst_ep=None,
+            dst_ep=ZDO_ENDPOINT,
             tsn=sequence,
             profile=0x0000,
-            cluster_id=0x0000,
+            cluster_id=command,
             data=data,
-            tx_options=t.TransmitOptions.NONE,
             radius=radius,
             non_member_radius=3,
-            lqi=None,
-            rssi=None,
         )
     )

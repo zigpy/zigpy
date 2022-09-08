@@ -557,24 +557,25 @@ class ZigbeePacket(BaseDataclassMixin):
     it to zigpy for every type of packet.
     """
 
-    # Shared information
-    src: AddrModeAddress | None  # set to `None` when the packet is outgoing
-    src_ep: basic.uint8_t | None
+    # Set to `None` when the packet is outgoing
+    src: AddrModeAddress | None = dataclasses.field(default=None)
+    src_ep: basic.uint8_t | None = dataclasses.field(default=None)
 
-    dst: AddrModeAddress | None  # set to `None` when the packet is incoming
-    dst_ep: basic.uint8_t | None
+    # Set to `None` when the packet is incoming
+    dst: AddrModeAddress | None = dataclasses.field(default=None)
+    dst_ep: basic.uint8_t | None = dataclasses.field(default=None)
 
-    tsn: basic.uint8_t
-    profile: basic.uint16_t
-    cluster_id: basic.uint16_t
+    tsn: basic.uint8_t = dataclasses.field(default=0x00)
+    profile: basic.uint16_t = dataclasses.field(default=0x0000)
+    cluster_id: basic.uint16_t = dataclasses.field(default=0x0000)
 
     data: basic.Bytes  # any serializable object
 
     # Options for outgoing packets
-    tx_options: TransmitOptions
-    radius: basic.uint8_t
-    non_member_radius: basic.uint8_t
+    tx_options: TransmitOptions = dataclasses.field(default=TransmitOptions.NONE)
+    radius: basic.uint8_t = dataclasses.field(default=0)
+    non_member_radius: basic.uint8_t = dataclasses.field(default=0)
 
     # Options for incoming packets
-    lqi: basic.uint8_t | None
-    rssi: basic.uint8_t | None
+    lqi: basic.uint8_t | None = dataclasses.field(default=None)
+    rssi: basic.uint8_t | None = dataclasses.field(default=None)

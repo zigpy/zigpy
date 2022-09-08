@@ -296,7 +296,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         with self._pending.new(sequence) as req:
             await self._application.send_packet(
                 t.ZigbeePacket(
-                    src=None,
                     src_ep=src_ep,
                     dst=dst,
                     dst_ep=dst_ep,
@@ -309,10 +308,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                         if expect_reply
                         else t.TransmitOptions.NONE
                     ),
-                    radius=None,
-                    non_member_radius=None,
-                    lqi=None,
-                    rssi=None,
                 )
             )
 
