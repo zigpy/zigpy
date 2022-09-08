@@ -23,13 +23,8 @@ LOGICAL_TYPE_TO_JSON = {
 JSON_TO_LOGICAL_TYPE = {v: k for k, v in LOGICAL_TYPE_TO_JSON.items()}
 
 
-class BaseDataclassMixin:
-    def replace(self, **kwargs):
-        return dataclasses.replace(self, **kwargs)
-
-
 @dataclasses.dataclass
-class Key(BaseDataclassMixin):
+class Key(t.BaseDataclassMixin):
     """APS/TC Link key."""
 
     key: t.KeyData = dataclasses.field(default_factory=lambda: t.KeyData.UNKNOWN)
@@ -59,7 +54,7 @@ class Key(BaseDataclassMixin):
 
 
 @dataclasses.dataclass
-class NodeInfo(BaseDataclassMixin):
+class NodeInfo(t.BaseDataclassMixin):
     """Controller Application network Node information."""
 
     nwk: t.NWK = t.NWK(0xFFFE)
@@ -83,7 +78,7 @@ class NodeInfo(BaseDataclassMixin):
 
 
 @dataclasses.dataclass
-class NetworkInfo(BaseDataclassMixin):
+class NetworkInfo(t.BaseDataclassMixin):
     """Network information."""
 
     extended_pan_id: t.ExtendedPanId = dataclasses.field(
@@ -171,7 +166,7 @@ class NetworkInfo(BaseDataclassMixin):
 
 
 @dataclasses.dataclass
-class Counter(BaseDataclassMixin):
+class Counter(t.BaseDataclassMixin):
     """Ever increasing Counter."""
 
     name: str

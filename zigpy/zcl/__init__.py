@@ -4,17 +4,15 @@ import asyncio
 import enum
 import functools
 import logging
-from typing import Any, Sequence, Union
+from typing import Any, Sequence
 import warnings
 
 from zigpy import util
 import zigpy.types as t
-from zigpy.typing import EndpointType
+from zigpy.typing import AddressingMode, EndpointType
 from zigpy.zcl import foundation
 
 LOGGER = logging.getLogger(__name__)
-
-AddressingMode = Union[t.Addressing.Group, t.Addressing.IEEE, t.Addressing.NWK]
 
 
 def convert_list_schema(

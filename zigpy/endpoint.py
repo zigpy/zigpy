@@ -7,9 +7,8 @@ from typing import Any
 
 import zigpy.exceptions
 import zigpy.profiles
-from zigpy.types import Addressing
 from zigpy.types.named import EUI64
-from zigpy.typing import DeviceType
+from zigpy.typing import AddressingMode, DeviceType
 import zigpy.util
 import zigpy.zcl
 from zigpy.zcl.clusters.general import Basic
@@ -211,8 +210,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         hdr: ZCLHeader,
         args: list,
         *,
-        dst_addressing: None
-        | (Addressing.Group | Addressing.IEEE | Addressing.NWK) = None,
+        dst_addressing: AddressingMode | None = None,
     ) -> None:
         if cluster in self.in_clusters:
             handler = self.in_clusters[cluster].handle_message

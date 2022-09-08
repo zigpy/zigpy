@@ -338,3 +338,28 @@ def deprecated(message: str) -> typing.Callable[[typing.Callable], typing.Callab
         return replacement
 
     return decorator
+
+
+def deprecated_attrs(
+    mapping: dict[str, typing.Any]
+) -> typing.Callable[[str], typing.Any]:
+    """
+    Create a module-level `__getattr__` function that remaps deprecated objects.
+    """
+
+    def __getattr__(name: str) -> typing.Any:
+        if name not in mapping:
+            raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+        replacement = mapping[name]
+
+        warnings.warn(
+            (
+                f"`{__name__}.{name}` has been renamed to"
+                f" `{__name__}.{replacement.__name__}`"
+            ),
+            DeprecationWarning,
+        )
+        return replacement
+
+    return __getattr__

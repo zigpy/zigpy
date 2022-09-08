@@ -47,6 +47,15 @@ class Bits(list):
         return cls(bits), b""
 
 
+class Bytes(bytes):
+    def serialize(self) -> bytes:
+        return self
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Bytes, bytes]:
+        return cls(data), b""
+
+
 NOT_SET = object()
 
 

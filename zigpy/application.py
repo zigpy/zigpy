@@ -542,95 +542,53 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         for endpoint in self.config[conf.CONF_ADDITIONAL_ENDPOINTS]:
             await self.add_endpoint(endpoint)
 
-    async def mrequest(
-        self,
-        group_id: t.uint16_t,
-        profile: t.uint8_t,
-        cluster: t.uint16_t,
-        src_ep: t.uint8_t,
-        sequence: t.uint8_t,
-        data: bytes,
-        *,
-        hops: int = 0,
-        non_member_radius: int = 3,
-    ):
-        """Submit and send data out as a multicast transmission.
-
-        :param group_id: destination multicast address
-        :param profile: Zigbee Profile ID to use for outgoing message
-        :param cluster: cluster id where the message is being sent
-        :param src_ep: source endpoint id
-        :param sequence: transaction sequence number of the message
-        :param data: Zigbee message payload
-        :param hops: the message will be delivered to all nodes within this number of
-                     hops of the sender. A value of zero is converted to MAX_HOPS
-        :param non_member_radius: the number of hops that the message will be forwarded
-                                  by devices that are not members of the group. A value
-                                  of 7 or greater is treated as infinite
-        :returns: return a tuple of a status and an error_message. Original requestor
-                  has more context to provide a more meaningful error message
-        """
-        raise NotImplementedError()  # pragma: no cover
-
     @abc.abstractmethod
-    @zigpy.util.retryable_request
-    async def request(
-        self,
-        device: zigpy.device.Device,
-        profile: t.uint16_t,
-        cluster: t.uint16_t,
-        src_ep: t.uint8_t,
-        dst_ep: t.uint8_t,
-        sequence: t.uint8_t,
-        data: bytes,
-        expect_reply: bool = True,
-        use_ieee: bool = False,
-    ):
-        """Submit and send data out as an unicast transmission.
-
-        :param device: destination device
-        :param profile: Zigbee Profile ID to use for outgoing message
-        :param cluster: cluster id where the message is being sent
-        :param src_ep: source endpoint id
-        :param dst_ep: destination endpoint id
-        :param sequence: transaction sequence number of the message
-        :param data: Zigbee message payload
-        :param expect_reply: True if this is essentially a request
-        :param use_ieee: use EUI64 for destination addressing
-        :returns: return a tuple of a status and an error_message. Original requestor
-                  has more context to provide a more meaningful error message
+    async def send_packet(self, packet: t.ZigbeePacket) -> None:
         """
-        raise NotImplementedError()  # pragma: no cover
-
-    @abc.abstractmethod
-    async def broadcast(
-        self,
-        profile: t.uint16_t,
-        cluster: t.uint16_t,
-        src_ep: t.uint8_t,
-        dst_ep: t.uint8_t,
-        grpid: t.uint16_t,
-        radius: int,
-        sequence: t.uint8_t,
-        data: bytes,
-        broadcast_address: t.BroadcastAddress,
-    ):
-        """Submit and send data out as an unicast transmission.
-
-        :param profile: Zigbee Profile ID to use for outgoing message
-        :param cluster: cluster id where the message is being sent
-        :param src_ep: source endpoint id
-        :param dst_ep: destination endpoint id
-        :param: grpid: group id to address the broadcast to
-        :param radius: max radius of the broadcast
-        :param sequence: transaction sequence number of the message
-        :param data: zigbee message payload
-        :param timeout: how long to wait for transmission ACK
-        :param broadcast_address: broadcast address.
-        :returns: return a tuple of a status and an error_message. Original requestor
-                  has more context to provide a more meaningful error message
+        Send a Zigbee packet using the appropriate addressing mode and provided options.
         """
-        raise NotImplementedError()  # pragma: no cover
+
+        raise NotImplementedError()
+
+    def packet_received(self, packet: t.ZigbeePacket) -> None:
+        """
+        Notify zigpy of a received Zigbee packet.
+        """
+
+        LOGGER.debug("Received a packet: %r", packet)
+        assert packet.dst is not None
+
+        try:
+            device = self.get_device_with_address(packet.src)
+        except KeyError:
+            LOGGER.warning("Unknown device %r", packet.src)
+            return
+
+        device.radio_details(lqi=packet.lqi, rssi=packet.rssi)
+
+        self.handle_message(
+            sender=device,
+            profile=packet.profile,
+            cluster=packet.cluster_id,
+            src_ep=packet.src_ep,
+            dst_ep=packet.dst_ep,
+            message=packet.data,
+            dst_addressing=packet.dst.addr_mode,
+        )
+
+    def get_device_with_address(
+        self, address: t.AddrModeAddress
+    ) -> zigpy.device.Device:
+        """
+        Gets a `Device` object using the provided address mode address.
+        """
+
+        if address.addr_mode == t.AddrMode.NWK:
+            return self.get_device(nwk=address.address)
+        elif address.addr_mode == t.AddrMode.IEEE:
+            return self.get_device(ieee=address.address)
+        else:
+            raise ValueError(f"Invalid address: {address!r}")
 
     @abc.abstractmethod
     async def permit_ncp(self, time_s: int = 60):
@@ -727,7 +685,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             if dev.nwk == nwk:
                 return dev
 
-        raise KeyError("Device not found: nwk={nwk!r}, ieee={ieee!r}")
+        raise KeyError(f"Device not found: nwk={nwk!r}, ieee={ieee!r}")
 
     def get_endpoint_id(self, cluster_id: int, is_server_cluster: bool = False) -> int:
         """Returns coordinator endpoint id for specified cluster id."""

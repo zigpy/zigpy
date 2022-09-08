@@ -6,6 +6,7 @@ import typing
 import warnings
 
 import zigpy.types as t
+import zigpy.util
 
 
 def _hex_uint16_repr(v: int) -> str:
@@ -898,12 +899,4 @@ for command_id, command_def in list(GENERAL_COMMANDS.items()):
     ).with_compiled_schema()
 
 
-def __getattr__(name: str) -> typing.Any:
-    if name == "Command":
-        warnings.warn(
-            f"`{__name__}.Command` has been renamed to `{__name__}.GeneralCommand",
-            DeprecationWarning,
-        )
-        return GeneralCommand
-
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+__getattr__ = zigpy.util.deprecated_attrs({"Command": GeneralCommand})

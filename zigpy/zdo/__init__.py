@@ -236,19 +236,26 @@ def broadcast(
     *args,
     broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
 ):
-    sequence = app.get_sequence()
-    data = sequence.to_bytes(1, "little")
     schema = types.CLUSTERS[command][1]
-    data += t.serialize(args, schema)
-    return zigpy.device.broadcast(
-        app,
-        0,
-        command,
-        0,
-        0,
-        grpid,
-        radius,
-        sequence,
-        data,
-        broadcast_address=broadcast_address,
+    sequence = app.get_sequence()
+    data = bytes([sequence]) + t.serialize(args, schema)
+
+    return app.send_packet(
+        t.ZigbeePacket(
+            src=None,
+            src_ep=None,
+            dst=t.AddrModeAddress(
+                addr_mode=t.AddrMode.Broadcast, address=broadcast_address
+            ),
+            dst_ep=None,
+            tsn=sequence,
+            profile=0x0000,
+            cluster_id=0x0000,
+            data=data,
+            tx_options=t.TransmitOptions.NONE,
+            radius=radius,
+            non_member_radius=3,
+            lqi=None,
+            rssi=None,
+        )
     )
