@@ -583,4 +583,4 @@ class ZigbeePacket(BaseDataclassMixin):
 
     # Options for incoming packets
     lqi: basic.uint8_t | None = dataclasses.field(default=None)
-    rssi: basic.uint8_t | None = dataclasses.field(default=None)
+    rssi: basic.int8s | None = dataclasses.field(default=None)
