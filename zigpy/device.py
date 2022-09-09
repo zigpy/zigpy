@@ -289,9 +289,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         else:
             dst = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=self.nwk)
 
+        extended_timeout = False
+
         if expect_reply and (self.node_desc is None or self.node_desc.is_end_device):
             self.debug("Extending timeout for 0x%02x request", sequence)
             timeout = APS_REPLY_TIMEOUT_EXTENDED
+            extended_timeout = True
 
         with self._pending.new(sequence) as req:
             await self._application.send_packet(
@@ -303,6 +306,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     profile=profile,
                     cluster_id=cluster,
                     data=data,
+                    extended_timeout=extended_timeout,
                     tx_options=(
                         t.TransmitOptions.ACK
                         if expect_reply
