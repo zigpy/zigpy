@@ -55,7 +55,9 @@ class Group(ListenableMixin, dict):
         """Send multicast request."""
         return await self.application.send_packet(
             t.ZigbeePacket(
-                dst=t.AddrModeAddress(mode=t.AddrMode.Group, address=self.group_id),
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.Group, address=self.group_id
+                ),
                 tsn=sequence,
                 profile=profile,
                 cluster_id=cluster,
