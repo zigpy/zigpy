@@ -330,7 +330,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
     ) -> None:
         """
-        Called when the radio library receives a packet
+        Called when the radio library receives a packet.
+
+        Deprecated, will be removed.
         """
         self.listener_event(
             "handle_message", sender, profile, cluster, src_ep, dst_ep, message

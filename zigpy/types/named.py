@@ -565,11 +565,16 @@ class ZigbeePacket(BaseDataclassMixin):
     dst: AddrModeAddress | None = dataclasses.field(default=None)
     dst_ep: basic.uint8_t | None = dataclasses.field(default=None)
 
+    # If the radio supports it, a source route for the packet
+    source_route: list[NWK] | None = dataclasses.field(default=None)
+    extended_timeout: bool = dataclasses.field(default=True)
+
     tsn: basic.uint8_t = dataclasses.field(default=0x00)
     profile: basic.uint16_t = dataclasses.field(default=0x0000)
     cluster_id: basic.uint16_t = dataclasses.field(default=0x0000)
 
-    data: basic.Bytes  # any serializable object
+    # Any serializable object
+    data: basic.Bytes
 
     # Options for outgoing packets
     tx_options: TransmitOptions = dataclasses.field(default=TransmitOptions.NONE)
