@@ -574,7 +574,7 @@ class ZigbeePacket(BaseDataclassMixin):
     cluster_id: basic.uint16_t = dataclasses.field(default=0x0000)
 
     # Any serializable object
-    data: basic.Bytes
+    data: basic.Bytes = dataclasses.field(default_factory=basic.Bytes)
 
     # Options for outgoing packets
     tx_options: TransmitOptions = dataclasses.field(default=TransmitOptions.NONE)
