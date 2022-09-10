@@ -127,7 +127,11 @@ class BackupManager(ListenableMixin):
         return backup
 
     async def restore_backup(
-        self, backup: NetworkBackup, counter_increment: int = 10000
+        self,
+        backup: NetworkBackup,
+        counter_increment: int = 10000,
+        *,
+        create_new: bool = True,
     ) -> None:
         if not backup.is_complete():
             raise ValueError("Backup is incomplete, it is not possible to restore")
@@ -145,7 +149,8 @@ class BackupManager(ListenableMixin):
             node_info=new_backup.node_info,
         )
 
-        await self.create_backup()
+        if create_new:
+            await self.create_backup()
 
     def add_backup(self, backup: NetworkBackup):
         """

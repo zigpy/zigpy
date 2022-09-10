@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -319,3 +320,20 @@ async def test_add_backup(backup_factory):
 
     backups.add_backup(backup4)
     assert backups.backups == [backup2, backup4]
+
+
+async def test_restore_backup_create_new(backup):
+    app = AsyncMock()
+    backups = zigpy.backups.BackupManager(app)
+    backups.create_backup = AsyncMock()
+
+    await backups.restore_backup(backup)
+    app.write_network_info.assert_called_once()
+    backups.create_backup.assert_called_once()
+
+    app.reset_mock()
+    backups.create_backup.reset_mock()
+
+    await backups.restore_backup(backup, create_new=False)
+    app.write_network_info.assert_called_once()
+    backups.create_backup.assert_not_called()  # Won't be called
