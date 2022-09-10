@@ -64,6 +64,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         settings if necessary.
         """
 
+        last_backup = self.backups.most_recent_backup()
+
         try:
             await self.load_network_info(load_devices=False)
         except zigpy.exceptions.NetworkNotFormed:
@@ -72,19 +74,29 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             if not auto_form:
                 raise
 
-            if not self.backups.backups:
+            if last_backup is None:
                 # Form a new network if we have no backup
-                LOGGER.info("Forming a new network")
                 await self.form_network()
             else:
                 # Otherwise, restore the most recent backup
                 LOGGER.info("Restoring the most recent network backup")
-                await self.backups.restore_backup(self.backups.backups[-1])
-
-            await self.load_network_info(load_devices=False)
+                await self.backups.restore_backup(last_backup)
 
         LOGGER.debug("Network info: %s", self.state.network_info)
         LOGGER.debug("Node info: %s", self.state.node_info)
+
+        new_state = self.backups.from_network_state()
+
+        if (
+            self.config[conf.CONF_NWK_VALIDATE_SETTINGS]
+            and last_backup is not None
+            and not new_state.is_compatible_with(last_backup)
+        ):
+            raise zigpy.exceptions.NetworkSettingsInconsistent(
+                f"Radio network settings are not compatible with most recent backup!\n"
+                f"Current settings: {new_state!r}\n"
+                f"Last backup: {last_backup!r}"
+            )
 
         await self.start_network()
 
@@ -194,7 +206,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             logical_type=zdo_types.LogicalType.Coordinator,
         )
 
-        await self.write_network_info(network_info=network_info, node_info=node_info)
+        LOGGER.debug("Forming a new network")
+
+        await self.backups.restore_backup(
+            backup=zigpy.backups.NetworkBackup(
+                network_info=network_info,
+                node_info=node_info,
+            ),
+            counter_increment=0,
+            allow_incomplete=True,
+        )
 
     async def shutdown(self) -> None:
         """Shutdown controller."""

@@ -14,6 +14,7 @@ from zigpy.config.defaults import (
     CONF_NWK_TC_ADDRESS_DEFAULT,
     CONF_NWK_TC_LINK_KEY_DEFAULT,
     CONF_NWK_UPDATE_ID_DEFAULT,
+    CONF_NWK_VALIDATE_SETTINGS_DEFAULT,
     CONF_OTA_IKEA_DEFAULT,
     CONF_OTA_INOVELLI_DEFAULT,
     CONF_OTA_LEDVANCE_DEFAULT,
@@ -41,6 +42,7 @@ CONF_NWK_TC_LINK_KEY = "tc_link_key"
 CONF_NWK_UPDATE_ID = "update_id"
 CONF_NWK_BACKUP_ENABLED = "backup_enabled"
 CONF_NWK_BACKUP_PERIOD = "backup_period"
+CONF_NWK_VALIDATE_SETTINGS = "validate_network_settings"
 CONF_OTA = "ota"
 CONF_OTA_DIR = "otau_directory"
 CONF_OTA_IKEA = "ikea_provider"
@@ -112,6 +114,9 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(
             CONF_NWK_BACKUP_PERIOD, default=CONF_NWK_BACKUP_PERIOD_DEFAULT
         ): vol.All(cv_hex, vol.Range(min=1)),
+        vol.Optional(
+            CONF_NWK_VALIDATE_SETTINGS, default=CONF_NWK_VALIDATE_SETTINGS_DEFAULT
+        ): cv_boolean,
     },
     extra=vol.ALLOW_EXTRA,
 )
