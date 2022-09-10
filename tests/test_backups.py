@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 import json
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -261,16 +260,20 @@ def test_backup_compatibility(backup_factory):
     # Incompatible due to different coordinator IEEE
     backup2 = backup_factory()
     backup2.node_info.ieee = t.EUI64.convert("AA:AA:AA:AA:AA:AA:AA:AA")
+    assert not backup2.supersedes(backup1)
+    assert not backup1.supersedes(backup2)
     assert not backup1.is_compatible_with(backup2)
 
     # NWK frame counter must always be greater
     backup3 = backup_factory()
     backup3.network_info.network_key.tx_counter -= 1
     assert backup3.is_compatible_with(backup1)
+    assert not backup3.supersedes(backup1)
 
     backup4 = backup_factory()
     backup4.network_info.network_key.tx_counter += 1
     assert backup4.is_compatible_with(backup1)
+    assert backup4.supersedes(backup1)
 
 
 async def test_backup_completeness(backup, zigate_backup_json):

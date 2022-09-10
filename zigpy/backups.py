@@ -49,6 +49,20 @@ class NetworkBackup(zigpy.state.BaseDataclassMixin):
             and self.network_info.network_key.key == backup.network_info.network_key.key
         )
 
+    def supersedes(self, backup: NetworkBackup) -> bool:
+        """
+        Checks if this network backup is more recent than another backup.
+        """
+
+        return (
+            self.is_compatible_with(backup)
+            and (
+                self.network_info.network_key.tx_counter
+                > backup.network_info.network_key.tx_counter
+            )
+            and self.network_info.nwk_update_id >= backup.network_info.nwk_update_id
+        )
+
     def is_complete(self) -> bool:
         """
         Checks if this backup captures enough network state to recreate the network.
