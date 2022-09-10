@@ -7,7 +7,11 @@ import voluptuous as vol
 
 import zigpy.application
 import zigpy.config as conf
-from zigpy.exceptions import DeliveryError, NetworkNotFormed
+from zigpy.exceptions import (
+    DeliveryError,
+    NetworkNotFormed,
+    NetworkSettingsInconsistent,
+)
 import zigpy.ota
 import zigpy.quirks
 import zigpy.state as app_state
@@ -695,3 +699,32 @@ async def test_startup_no_backup(app_factory):
         await app.startup()
 
     p.assert_not_called()
+
+
+@patch("zigpy.backups.BackupManager.from_network_state")
+@patch("zigpy.backups.BackupManager.most_recent_backup")
+async def test_initialize_compatible_backup(
+    mock_most_recent_backup, mock_backup_from_state, app_factory
+):
+    app = app_factory({conf.CONF_NWK_VALIDATE_SETTINGS: True})
+    mock_backup_from_state.return_value.is_compatible_with.return_value = True
+
+    await app.initialize()
+
+    mock_backup_from_state.return_value.is_compatible_with.assert_called_once()
+    mock_most_recent_backup.assert_called_once()
+
+
+@patch("zigpy.backups.BackupManager.from_network_state")
+@patch("zigpy.backups.BackupManager.most_recent_backup")
+async def test_initialize_incompatible_backup(
+    mock_most_recent_backup, mock_backup_from_state, app_factory
+):
+    app = app_factory({conf.CONF_NWK_VALIDATE_SETTINGS: True})
+    mock_backup_from_state.return_value.is_compatible_with.return_value = False
+
+    with pytest.raises(NetworkSettingsInconsistent):
+        await app.initialize()
+
+    mock_backup_from_state.return_value.is_compatible_with.assert_called_once()
+    mock_most_recent_backup.assert_called_once()

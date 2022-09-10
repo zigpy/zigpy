@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 import json
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -8,6 +7,8 @@ import zigpy.backups
 import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
+
+from tests.async_mock import AsyncMock
 
 
 @pytest.fixture
@@ -302,24 +303,28 @@ async def test_add_backup(backup_factory):
     # Adding an identical backup that is newer replaces the old one
     backup2 = backup_factory()
     backup2.backup_time += timedelta(hours=1)
-
     backups.add_backup(backup2)
     assert backups.backups == [backup2]
 
-    # An even more recent one with a rolled back frame counter is ignored
+    # An even more recent one with a rolled back frame counter is appended
     backup3 = backup_factory()
     backup3.backup_time += timedelta(hours=2)
     backup3.network_info.network_key.tx_counter -= 1000
-
     backups.add_backup(backup3)
-    assert backups.backups == [backup2]
+    assert backups.backups == [backup2, backup3]
+
+    # A final one replacing them both is added
+    backup4 = backup_factory()
+    backup4.backup_time += timedelta(hours=3)
+    backup4.network_info.network_key.tx_counter += 1000
+    backups.add_backup(backup4)
+    assert backups.backups == [backup4]
 
     # An incompatible backup will be added to the list. Nothing will be replaced.
-    backup4 = backup_factory()
-    backup4.network_info.pan_id += 1
-
-    backups.add_backup(backup4)
-    assert backups.backups == [backup2, backup4]
+    backup5 = backup_factory()
+    backup5.network_info.pan_id += 1
+    backups.add_backup(backup5)
+    assert backups.backups == [backup4, backup5]
 
 
 async def test_restore_backup_create_new(backup):

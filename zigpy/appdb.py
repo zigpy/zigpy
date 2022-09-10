@@ -682,9 +682,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(
             f"SELECT * FROM network_backups{DB_V} ORDER BY id"
         ) as cursor:
+            backups = []
+
             async for id_, backup_json in cursor:
                 backup = zigpy.backups.NetworkBackup.from_dict(json.loads(backup_json))
-                self._application.backups.add_backup(backup)
+                backups.append(backup)
+
+        backups.sort(key=lambda b: b.backup_time)
+
+        for backup in backups:
+            self._application.backups.add_backup(backup, suppress_event=True)
 
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():
