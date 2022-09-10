@@ -333,7 +333,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         dst_ep: int,
         message: bytes,
         *,
-        dst_addressing: AddressingMode | None,
+        dst_addressing: AddressingMode | None = None,
     ):
         self.update_last_seen()
 
