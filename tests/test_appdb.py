@@ -64,7 +64,6 @@ async def make_app(database_file):
                 {
                     conf.CONF_DATABASE: database_file,
                     conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
-                    conf.CONF_NWK_VALIDATE_SETTINGS: False,
                 }
             )
         )
