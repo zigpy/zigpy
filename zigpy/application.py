@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import contextlib
 import logging
 import os
 import random
+import time
 from typing import Any
 
 import zigpy.appdb
@@ -43,6 +45,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._listeners = {}
         self._ota = zigpy.ota.OTA(self)
         self._send_sequence = 0
+
+        self._concurrent_requests_semaphore = asyncio.Semaphore(
+            self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
+        )
+        self._currently_waiting_requests = 0
 
         self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
 
@@ -543,6 +550,38 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         for endpoint in self.config[conf.CONF_ADDITIONAL_ENDPOINTS]:
             await self.add_endpoint(endpoint)
+
+    @contextlib.asynccontextmanager
+    async def _limit_concurrency(self):
+        """Async context manager to prevent devices from being overwhelmed by requests.
+
+        Mainly a thin wrapper around `asyncio.Semaphore` that logs when it has to wait.
+        """
+
+        start_time = time.time()
+        was_locked = self._concurrent_requests_semaphore.locked()
+
+        if was_locked:
+            self._currently_waiting_requests += 1
+            LOGGER.debug(
+                "Max concurrency (%s) reached, delaying requests (%s enqueued)",
+                self._config[conf.CONF_MAX_CONCURRENT_REQUESTS],
+                self._currently_waiting_requests,
+            )
+
+        try:
+            async with self._concurrent_requests_semaphore:
+                if was_locked:
+                    LOGGER.debug(
+                        "Previously delayed request is now running, "
+                        "delayed by %0.2f seconds",
+                        time.time() - start_time,
+                    )
+
+                yield
+        finally:
+            if was_locked:
+                self._currently_waiting_requests -= 1
 
     @abc.abstractmethod
     async def send_packet(self, packet: t.ZigbeePacket) -> None:

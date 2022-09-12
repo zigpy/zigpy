@@ -3,6 +3,7 @@
 import voluptuous as vol
 
 from zigpy.config.defaults import (
+    CONF_MAX_CONCURRENT_REQUESTS_DEFAULT,
     CONF_NWK_BACKUP_ENABLED_DEFAULT,
     CONF_NWK_BACKUP_PERIOD_DEFAULT,
     CONF_NWK_CHANNEL_DEFAULT,
@@ -30,6 +31,7 @@ import zigpy.types as t
 CONF_DATABASE = "database_path"
 CONF_DEVICE = "device"
 CONF_DEVICE_PATH = "path"
+CONF_MAX_CONCURRENT_REQUESTS = "max_concurrent_requests"
 CONF_NWK = "network"
 CONF_NWK_CHANNEL = "channel"
 CONF_NWK_CHANNELS = "channels"
@@ -119,6 +121,9 @@ ZIGPY_SCHEMA = vol.Schema(
             CONF_NWK_VALIDATE_SETTINGS, default=CONF_NWK_VALIDATE_SETTINGS_DEFAULT
         ): cv_boolean,
         vol.Optional(CONF_ADDITIONAL_ENDPOINTS, default=[]): [cv_simple_descriptor],
+        vol.Optional(
+            CONF_MAX_CONCURRENT_REQUESTS, default=CONF_MAX_CONCURRENT_REQUESTS_DEFAULT
+        ): vol.Any(None, vol.All(int, vol.Range(min=1))),
     },
     extra=vol.ALLOW_EXTRA,
 )
