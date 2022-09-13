@@ -327,15 +327,12 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
     `asyncio.BoundedSemaphore` with public interface to access and change the max value.
     """
 
-    def __init__(self, value: int | None = None) -> None:
-        self._value: int | None = None
-        self._max_value: int | None = None
+    def __init__(self, value: int = 0) -> None:
+        self._value: int = value
+        self._max_value: int = value
 
         self._waiters: collections.deque = collections.deque()
         self._wakeup_scheduled: bool = False
-
-        if value is not None:
-            self.max_value = value
 
     @functools.cached_property
     def _loop(self) -> asyncio.BaseEventLoop:
@@ -365,22 +362,18 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
         """
         if new_value < 0:
             raise ValueError(f"Semaphore value must be >= 0: {new_value!r}")
-        elif self._max_value is None:
-            self._value = 0
-            self._max_value = new_value
-        elif new_value < self._max_value:
-            # We can't cancel previously-acquired handles
-            self._max_value = new_value
-        else:
-            num_to_wake_up = min(len(self._waiters), new_value - self._value)
-            self._max_value = new_value
 
-            for _ in range(num_to_wake_up):
-                self._wake_up_next()
+        delta = new_value - self._max_value
+        self._value += delta
+        self._max_value += delta
+
+        # Wake up any pending waiters
+        for _ in range(min(len(self._waiters), max(0, delta))):
+            self._wake_up_next()
 
     def locked(self) -> bool:
         """Returns True if semaphore cannot be acquired immediately."""
-        return self._value is None or self._value <= 0
+        return self._value <= 0
 
     async def acquire(self):
         """
@@ -391,9 +384,6 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
         other coroutine has called release() to make it larger than 0, and then return
         True.
         """
-
-        if self._value is None:
-            raise ValueError("Semaphore max value has not been set")
 
         # _wakeup_scheduled is set if *another* task is scheduled to wakeup
         # but its acquire() is not resumed yet
@@ -420,9 +410,7 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
         When it was zero on entry and another coroutine is waiting for it to become
         larger than zero again, wake up that coroutine.
         """
-        if self._value is None:
-            raise ValueError("Semaphore max value has not been set")
-        elif self._value >= self._max_value:
+        if self._value >= self._max_value:
             raise ValueError("Semaphore released too many times")
 
         self._value += 1
@@ -437,14 +425,11 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
 
     def __repr__(self) -> str:
         if self.locked():
-            extra = "locked"
+            extra = f"locked, max value:{self._max_value}"
         else:
-            extra = f"unlocked, value:{self._value}, max value:{self._max_value}"
+            extra = f"unlocked, value:{self._value}, max value:{self._max_value}, waiters:{len(self._waiters)}"
 
-        if self._waiters:
-            extra = f"{extra}, waiters:{len(self._waiters)}"
-
-        return f"<{super().__repr__()[1:-1]} [{extra}]>"
+        return f"<{self.__class__.__name__} [{extra}]>"
 
 
 def deprecated(message: str) -> typing.Callable[[typing.Callable], typing.Callable]:
