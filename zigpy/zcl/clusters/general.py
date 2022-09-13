@@ -1678,18 +1678,20 @@ class Ota(Cluster):
             "OTA upgrade progress: %0.1f", 100.0 * file_offset / img.header.image_size
         )
         try:
+            block = img.get_image_block(file_offset, max_data_size)
+        except ValueError:
+            await self.image_block_response(
+                foundation.Status.MALFORMED_COMMAND, tsn=tsn
+            )
+        else:
             await self.image_block_response(
                 foundation.Status.SUCCESS,
                 img.key.manufacturer_id,
                 img.key.image_type,
                 img.version,
                 file_offset,
-                img.get_image_block(file_offset, max_data_size),
+                block,
                 tsn=tsn,
-            )
-        except ValueError:
-            await self.image_block_response(
-                foundation.Status.MALFORMED_COMMAND, tsn=tsn
             )
 
     async def _handle_upgrade_end(
