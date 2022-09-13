@@ -1651,10 +1651,10 @@ class Ota(Cluster):
     ):
         self.debug(
             (
-                "OTA image_block handler for '%s %s': field_control=%s, "
-                "manufacturer_id=%s, image_type=%s, file_version=%s, "
-                "file_offset=%s, max_data_size=%s, request_node_addr=%s"
-                "block_request_delay=%s"
+                "OTA image_block handler for '%s %s': field_control=%s"
+                ", manufacturer_id=%s, image_type=%s, file_version=%s"
+                ", file_offset=%s, max_data_size=%s, request_node_addr=%s"
+                ", block_request_delay=%s"
             ),
             self.endpoint.manufacturer,
             self.endpoint.model,
@@ -1699,8 +1699,8 @@ class Ota(Cluster):
     ):
         self.debug(
             (
-                "OTA upgrade_end handler for '%s %s': status=%s, "
-                "manufacturer_id=%s, image_type=%s, file_version=%s"
+                "OTA upgrade_end handler for '%s %s': status=%s"
+                ", manufacturer_id=%s, image_type=%s, file_version=%s"
             ),
             self.endpoint.manufacturer,
             self.endpoint.model,
