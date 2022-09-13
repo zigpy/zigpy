@@ -1589,8 +1589,8 @@ class Ota(Cluster):
         self.debug(
             (
                 "OTA query_next_image handler for '%s %s': "
-                "field_control=%s, manufacture_id=%s, image_type=%s, "
-                "current_file_version=%s, hardware_version=%s, model=%s"
+                "field_control=%s, manufacturer_id=%s, image_type=%s, "
+                "current_file_version=%s, hardware_version=%s, model=%r"
             ),
             self.endpoint.manufacturer,
             self.endpoint.model,
