@@ -1410,6 +1410,38 @@ class Ota(Cluster):
             requires=lambda s: s.field_control & s.FieldControl.RequestNodeAddr
         )
 
+    class image_block_response(foundation.CommandSchema):
+        # All responses contain at least a status
+        status: foundation.Status
+
+        # Payload with `SUCCESS` status
+        manufacturer_code: t.uint16_t = t.StructField(
+            requires=lambda s: s.status == foundation.Status.SUCCESS
+        )
+        image_type: t.uint16_t = t.StructField(
+            requires=lambda s: s.status == foundation.Status.SUCCESS
+        )
+        file_version: t.uint32_t = t.StructField(
+            requires=lambda s: s.status == foundation.Status.SUCCESS
+        )
+        file_offset: t.uint32_t = t.StructField(
+            requires=lambda s: s.status == foundation.Status.SUCCESS
+        )
+        image_data: t.LVBytes = t.StructField(
+            requires=lambda s: s.status == foundation.Status.SUCCESS
+        )
+
+        # Payload with `WAIT_FOR_DATA` status
+        current_time: t.UTCTime = t.StructField(
+            requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA
+        )
+        request_time: t.UTCTime = t.StructField(
+            requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA
+        )
+        minimum_block_period: t.uint16_t = t.StructField(
+            requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA
+        )
+
     cluster_id = 0x0019
     ep_attribute = "ota"
     attributes: dict[int, ZCLAttributeDef] = {
@@ -1468,17 +1500,9 @@ class Ota(Cluster):
             },
             True,
         ),
-        # XXX: the response format completely changes if the status is WAIT_FOR_DATA!
         0x05: ZCLCommandDef(
             "image_block_response",
-            {
-                "status": foundation.Status,
-                "manufacturer_code": t.uint16_t,
-                "image_type": t.uint16_t,
-                "file_version": t.uint32_t,
-                "file_offset": t.uint32_t,
-                "image_data": t.LVBytes,
-            },
+            image_block_response,
             True,
         ),
         0x07: ZCLCommandDef(
