@@ -1,4 +1,5 @@
 import re
+from unittest.mock import ANY
 
 import pytest
 
@@ -110,7 +111,13 @@ async def test_time_cluster_unsupported():
 def ota_cluster():
     ep = MagicMock()
     ep.device.application.ota = MagicMock(spec_set=ota.OTA)
-    return zcl.Cluster._registry[0x0019](ep)
+
+    cluster = zcl.Cluster._registry[0x0019](ep)
+
+    with patch.object(cluster, "reply", AsyncMock()), patch.object(
+        cluster, "request", AsyncMock()
+    ):
+        yield cluster
 
 
 async def test_ota_handle_cluster_req(ota_cluster):
@@ -275,22 +282,34 @@ def _ota_image_block(cluster, has_image=True, correct_version=True, wrong_offset
 
 
 async def test_ota_handle_image_block_no_img(ota_cluster):
-    ota_cluster.image_block_response = AsyncMock()
-
     await _ota_image_block(ota_cluster, has_image=False, correct_version=True)
-    assert ota_cluster.image_block_response.call_count == 1
-    assert (
-        ota_cluster.image_block_response.call_args[0][0] == zcl.foundation.Status.ABORT
+    ota_cluster.reply.assert_called_once_with(
+        False,
+        ota_cluster.commands_by_name["image_block_response"].id,
+        ota_cluster.commands_by_name["image_block_response"].schema,
+        *(
+            ota_cluster.commands_by_name["image_block_response"]
+            .schema(status=zcl.foundation.Status.ABORT)
+            .as_tuple(skip_missing=True)
+        ),
+        manufacturer=None,
+        tsn=ANY
     )
-    assert len(ota_cluster.image_block_response.call_args[0]) == 1
-    ota_cluster.image_block_response.reset_mock()
+    ota_cluster.reply.reset_mock()
 
     await _ota_image_block(ota_cluster, has_image=False, correct_version=False)
-    assert ota_cluster.image_block_response.call_count == 1
-    assert (
-        ota_cluster.image_block_response.call_args[0][0] == zcl.foundation.Status.ABORT
+    ota_cluster.reply.assert_called_once_with(
+        False,
+        ota_cluster.commands_by_name["image_block_response"].id,
+        ota_cluster.commands_by_name["image_block_response"].schema,
+        *(
+            ota_cluster.commands_by_name["image_block_response"]
+            .schema(status=zcl.foundation.Status.ABORT)
+            .as_tuple(skip_missing=True)
+        ),
+        manufacturer=None,
+        tsn=ANY
     )
-    assert len(ota_cluster.image_block_response.call_args[0]) == 1
 
 
 async def test_ota_handle_image_block(ota_cluster):
