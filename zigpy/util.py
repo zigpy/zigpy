@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import collections
 import functools
 import inspect
 import logging
@@ -319,6 +320,131 @@ class CatchingTaskMixin(LocalLogMixin):
             self.exception("%s", exc_msg)
 
         return None
+
+
+class DynamicBoundedSemaphore(asyncio.Semaphore):
+    """
+    `asyncio.BoundedSemaphore` with public interface to access and change the max value.
+    """
+
+    def __init__(self, value: int | None = None) -> None:
+        self._value: int | None = None
+        self._max_value: int | None = None
+
+        self._waiters: collections.deque = collections.deque()
+        self._wakeup_scheduled: bool = False
+
+        if value is not None:
+            self.max_value = value
+
+    @functools.cached_property
+    def _loop(self) -> asyncio.BaseEventLoop:
+        return asyncio.get_running_loop()
+
+    def _wake_up_next(self) -> None:
+        while self._waiters:
+            waiter = self._waiters.popleft()
+
+            if not waiter.done():
+                waiter.set_result(None)
+                self._wakeup_scheduled = True
+                return
+
+    @property
+    def value(self) -> int:
+        return self._value
+
+    @property
+    def max_value(self) -> int:
+        return self._max_value
+
+    @max_value.setter
+    def max_value(self, new_value) -> None:
+        """
+        Update the semaphore's max value.
+        """
+        if new_value < 0:
+            raise ValueError(f"Semaphore value must be >= 0: {new_value!r}")
+        elif self._max_value is None:
+            self._value = 0
+            self._max_value = new_value
+        elif new_value < self._max_value:
+            # We can't cancel previously-acquired handles
+            self._max_value = new_value
+        else:
+            num_to_wake_up = min(len(self._waiters), new_value - self._value)
+            self._max_value = new_value
+
+            for _ in range(num_to_wake_up):
+                self._wake_up_next()
+
+    def locked(self) -> bool:
+        """Returns True if semaphore cannot be acquired immediately."""
+        return self._value is None or self._value <= 0
+
+    async def acquire(self):
+        """
+        Acquire a semaphore.
+
+        If the internal counter is larger than zero on entry, decrement it by one and
+        return True immediately.  If it is zero on entry, block, waiting until some
+        other coroutine has called release() to make it larger than 0, and then return
+        True.
+        """
+
+        if self._value is None:
+            raise ValueError("Semaphore max value has not been set")
+
+        # _wakeup_scheduled is set if *another* task is scheduled to wakeup
+        # but its acquire() is not resumed yet
+        while self._wakeup_scheduled or self._value <= 0:
+            fut = self._loop.create_future()
+            self._waiters.append(fut)
+
+            try:
+                await fut
+                # reset _wakeup_scheduled *after* waiting for a future
+                self._wakeup_scheduled = False
+            except asyncio.CancelledError:
+                self._wake_up_next()
+                raise
+
+        assert self._value > 0
+        self._value -= 1
+        return True
+
+    def release(self) -> None:
+        """
+        Release a semaphore, incrementing the internal counter by one.
+
+        When it was zero on entry and another coroutine is waiting for it to become
+        larger than zero again, wake up that coroutine.
+        """
+        if self._value is None:
+            raise ValueError("Semaphore max value has not been set")
+        elif self._value >= self._max_value:
+            raise ValueError("Semaphore released too many times")
+
+        self._value += 1
+        self._wake_up_next()
+
+    async def __aenter__(self) -> None:
+        await self.acquire()
+        return None
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.release()
+
+    def __repr__(self) -> str:
+        if self.locked():
+            extra = "locked"
+        else:
+            extra = f"unlocked, value:{self._value}, max value:{self._max_value}"
+
+        if self._waiters:
+            extra = f"{extra}, waiters:{len(self._waiters)}"
+
+        return f"<{super().__repr__()[1:-1]} [{extra}]>"
 
 
 def deprecated(message: str) -> typing.Callable[[typing.Callable], typing.Callable]:

@@ -46,10 +46,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._ota = zigpy.ota.OTA(self)
         self._send_sequence = 0
 
-        self._concurrent_requests_semaphore = asyncio.Semaphore(
+        self._concurrent_requests_semaphore = zigpy.util.DynamicBoundedSemaphore(
             self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
         )
-        self._currently_waiting_requests = 0
 
         self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
 
@@ -553,35 +552,28 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     @contextlib.asynccontextmanager
     async def _limit_concurrency(self):
-        """Async context manager to prevent devices from being overwhelmed by requests.
-
-        Mainly a thin wrapper around `asyncio.Semaphore` that logs when it has to wait.
+        """
+        Async context manager to limit global coordinator request concurrency.
         """
 
-        start_time = time.time()
+        start_time = time.monotonic()
         was_locked = self._concurrent_requests_semaphore.locked()
 
         if was_locked:
-            self._currently_waiting_requests += 1
             LOGGER.debug(
-                "Max concurrency (%s) reached, delaying requests (%s enqueued)",
-                self._config[conf.CONF_MAX_CONCURRENT_REQUESTS],
-                self._currently_waiting_requests,
+                "Max concurrency (%s) reached, delaying request (%s enqueued)",
+                self._concurrent_requests_semaphore.value,
+                self._concurrent_requests_semaphore.value,
             )
 
-        try:
-            async with self._concurrent_requests_semaphore:
-                if was_locked:
-                    LOGGER.debug(
-                        "Previously delayed request is now running, "
-                        "delayed by %0.2f seconds",
-                        time.time() - start_time,
-                    )
-
-                yield
-        finally:
+        async with self._concurrent_requests_semaphore:
             if was_locked:
-                self._currently_waiting_requests -= 1
+                LOGGER.debug(
+                    "Previously delayed request is now running, delayed by %0.2fs",
+                    time.monotonic() - start_time,
+                )
+
+            yield
 
     @abc.abstractmethod
     async def send_packet(self, packet: t.ZigbeePacket) -> None:
