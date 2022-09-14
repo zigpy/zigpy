@@ -589,12 +589,44 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """
 
         LOGGER.debug("Received a packet: %r", packet)
+        assert packet.src is not None
         assert packet.dst is not None
+
+        # Peek into ZDO packets to handle ZDO notifications
+        if packet.dst_ep == zigpy.zdo.ZDO_ENDPOINT:
+            zdo_hdr, zdo_args = self._device.zdo.deserialize(
+                cluster_id=packet.cluster_id, data=packet.data.serialize()
+            )
+
+            if zdo_hdr.command_id == zdo_types.ZDOCmd.Device_annce:
+                nwk, ieee, _ = zdo_args
+                self.handle_join(nwk=nwk, ieee=ieee, parent_nwk=None)
+            elif zdo_hdr.command_id in (
+                zdo_types.ZDOCmd.NWK_addr_rsp,
+                zdo_types.ZDOCmd.IEEE_addr_rsp,
+            ):
+                status, ieee, nwk, _, _, _ = zdo_args
+                self.handle_join(nwk=nwk, ieee=ieee, parent_nwk=None)
 
         try:
             device = self.get_device_with_address(packet.src)
         except KeyError:
             LOGGER.warning("Unknown device %r", packet.src)
+
+            if packet.src.addr_mode == t.AddrMode.NWK:
+                # Manually send a ZDO IEEE address request to discover the device
+                asyncio.create_task(
+                    zigpy.zdo.broadcast(
+                        app=self,
+                        command=zdo_types.ZDOCmd.IEEE_addr_req,
+                        grpid=None,
+                        radius=0,
+                        NWKAddrOfInterest=packet.src.address,
+                        RequestType=zdo_types.AddrRequestType.Single,
+                        StartIndex=0,
+                    )
+                )
+
             return
 
         device.radio_details(lqi=packet.lqi, rssi=packet.rssi)
