@@ -449,6 +449,20 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         else:
             self.listener_event("device_left", dev)
 
+    def handle_relays(self, nwk: t.NWK, relays: list[t.NWK]) -> None:
+        """
+        Called when a list of relaying devices is received.
+        """
+        try:
+            device = self.get_device(nwk=nwk)
+        except KeyError:
+            LOGGER.warning("Received relays unknown device: %s", nwk)
+            asyncio.create_task(self._discover_unknown_device(nwk))
+            return
+
+        # `relays` is a property with a setter that emits an event
+        device.relays = relays
+
     @classmethod
     async def probe(cls, device_config: dict[str, Any]) -> bool | dict[str, Any]:
         """
@@ -583,6 +597,21 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         raise NotImplementedError()
 
+    async def _discover_unknown_device(self, nwk: t.NWK) -> None:
+        """
+        Discover the IEEE address of a device with an unknown NWK.
+        """
+
+        return await zigpy.zdo.broadcast(
+            app=self,
+            command=zdo_types.ZDOCmd.IEEE_addr_req,
+            grpid=None,
+            radius=0,
+            NWKAddrOfInterest=nwk,
+            RequestType=zdo_types.AddrRequestType.Single,
+            StartIndex=0,
+        )
+
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         """
         Notify zigpy of a received Zigbee packet.
@@ -606,7 +635,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 zdo_types.ZDOCmd.IEEE_addr_rsp,
             ):
                 status, ieee, nwk, _, _, _ = zdo_args
-                self.handle_join(nwk=nwk, ieee=ieee, parent_nwk=None)
+
+                if status == zdo_types.Status.SUCCESS:
+                    LOGGER.debug("Discovered IEEE address for NWK=%s: %s", nwk, ieee)
+                    self.handle_join(nwk=nwk, ieee=ieee, parent_nwk=None)
 
         try:
             device = self.get_device_with_address(packet.src)
@@ -615,17 +647,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
             if packet.src.addr_mode == t.AddrMode.NWK:
                 # Manually send a ZDO IEEE address request to discover the device
-                asyncio.create_task(
-                    zigpy.zdo.broadcast(
-                        app=self,
-                        command=zdo_types.ZDOCmd.IEEE_addr_req,
-                        grpid=None,
-                        radius=0,
-                        NWKAddrOfInterest=packet.src.address,
-                        RequestType=zdo_types.AddrRequestType.Single,
-                        StartIndex=0,
-                    )
-                )
+                asyncio.create_task(self._discover_unknown_device(packet.src.address))
 
             return
 
@@ -637,7 +659,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             cluster=packet.cluster_id,
             src_ep=packet.src_ep,
             dst_ep=packet.dst_ep,
-            message=packet.data,
+            message=packet.data.serialize(),
             dst_addressing=packet.dst.addr_mode,
         )
 
