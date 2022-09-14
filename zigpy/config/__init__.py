@@ -123,7 +123,7 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(CONF_ADDITIONAL_ENDPOINTS, default=[]): [cv_simple_descriptor],
         vol.Optional(
             CONF_MAX_CONCURRENT_REQUESTS, default=CONF_MAX_CONCURRENT_REQUESTS_DEFAULT
-        ): vol.Any(None, vol.All(int, vol.Range(min=1))),
+        ): vol.All(int, vol.Range(min=0)),
     },
     extra=vol.ALLOW_EXTRA,
 )
