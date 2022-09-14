@@ -220,10 +220,16 @@ def broadcast(
     radius,
     *args,
     broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
+    **kwargs,
 ):
-    schema = types.CLUSTERS[command][1]
+    params, param_types = types.CLUSTERS[command]
+
+    named_args = dict(zip(params, args))
+    named_args.update(kwargs)
+    assert set(named_args.keys()) & set(params)
+
     sequence = app.get_sequence()
-    data = bytes([sequence]) + t.serialize(args, schema)
+    data = bytes([sequence]) + t.serialize(named_args.values(), param_types)
 
     return app.send_packet(
         t.ZigbeePacket(
