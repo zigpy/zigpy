@@ -63,7 +63,7 @@ class Group(ListenableMixin, dict):
                     addr_mode=t.AddrMode.Group, address=self.group_id
                 ),
                 tsn=sequence,
-                profile=profile,
+                profile_id=profile,
                 cluster_id=cluster,
                 data=t.SerializableBytes(data),
                 radius=0,

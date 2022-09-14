@@ -570,7 +570,7 @@ class ZigbeePacket(BaseDataclassMixin):
     extended_timeout: bool = dataclasses.field(default=True)
 
     tsn: basic.uint8_t = dataclasses.field(default=0x00)
-    profile: basic.uint16_t = dataclasses.field(default=0x0000)
+    profile_id: basic.uint16_t = dataclasses.field(default=0x0000)
     cluster_id: basic.uint16_t = dataclasses.field(default=0x0000)
 
     # Any serializable object

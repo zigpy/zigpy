@@ -313,7 +313,7 @@ async def test_broadcast(app_mock):
     assert app_mock.send_packet.call_count == 1
     packet = app_mock.send_packet.mock_calls[0].args[0]
 
-    assert packet.profile == profile
+    assert packet.profile_id == profile
     assert packet.cluster_id == cluster
     assert packet.src_ep == src_ep
     assert packet.dst_ep == dst_ep

@@ -234,7 +234,7 @@ def broadcast(
             ),
             dst_ep=ZDO_ENDPOINT,
             tsn=sequence,
-            profile=0x0000,
+            profile_id=0x0000,
             cluster_id=command,
             data=t.SerializableBytes(data),
             radius=radius,

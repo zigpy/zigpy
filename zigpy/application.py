@@ -601,7 +601,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         self.handle_message(
             sender=device,
-            profile=packet.profile,
+            profile=packet.profile_id,
             cluster=packet.cluster_id,
             src_ep=packet.src_ep,
             dst_ep=packet.dst_ep,

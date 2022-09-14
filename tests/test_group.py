@@ -306,7 +306,7 @@ async def test_group_request(group):
     assert packet.dst == t.AddrModeAddress(
         addr_mode=t.AddrMode.Group, address=group.group_id
     )
-    assert packet.profile is sentinel.profile
+    assert packet.profile_id is sentinel.profile
     assert packet.cluster_id is sentinel.cluster
     assert packet.tsn is sentinel.sequence
     assert packet.data.serialize() == data
