@@ -317,7 +317,7 @@ async def test_broadcast(app_mock):
     assert packet.cluster_id == cluster
     assert packet.src_ep == src_ep
     assert packet.dst_ep == dst_ep
-    assert packet.data == data
+    assert packet.data.serialize() == data
 
 
 async def _get_node_descriptor(dev, zdo_success=True, request_success=True):

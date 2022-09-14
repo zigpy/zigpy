@@ -309,7 +309,7 @@ async def test_group_request(group):
     assert packet.profile is sentinel.profile
     assert packet.cluster_id is sentinel.cluster
     assert packet.tsn is sentinel.sequence
-    assert packet.data == data
+    assert packet.data.serialize() == data
 
     assert res.status is zigpy.zcl.foundation.Status.SUCCESS
     assert res.command_id == data[2]

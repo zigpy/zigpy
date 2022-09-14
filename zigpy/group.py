@@ -65,7 +65,7 @@ class Group(ListenableMixin, dict):
                 tsn=sequence,
                 profile=profile,
                 cluster_id=cluster,
-                data=data,
+                data=t.SerializableBytes(data),
                 radius=0,
                 non_member_radius=3,
             )

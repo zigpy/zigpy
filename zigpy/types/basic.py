@@ -47,13 +47,26 @@ class Bits(list):
         return cls(bits), b""
 
 
-class Bytes(bytes):
+class SerializableBytes:
+    """
+    A container object for raw bytes that enforces `serialize()` will be called.
+    """
+
+    def __init__(self, value: bytes = b"") -> None:
+        if isinstance(value, type(self)):
+            value = value.serialize()
+
+        self.value = value
+
     def serialize(self) -> bytes:
-        return self
+        return self.value
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[Bytes, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[SerializableBytes, bytes]:
         return cls(data), b""
+
+    def __repr__(self) -> str:
+        return f"Serialized[{self.value!r}]"
 
 
 NOT_SET = object()

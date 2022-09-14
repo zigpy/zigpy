@@ -236,7 +236,7 @@ def broadcast(
             tsn=sequence,
             profile=0x0000,
             cluster_id=command,
-            data=data,
+            data=t.SerializableBytes(data),
             radius=radius,
             non_member_radius=3,
         )

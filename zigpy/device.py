@@ -305,7 +305,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     tsn=sequence,
                     profile=profile,
                     cluster_id=cluster,
-                    data=data,
+                    data=t.SerializableBytes(data),
                     extended_timeout=extended_timeout,
                     tx_options=(
                         t.TransmitOptions.ACK
@@ -531,7 +531,7 @@ async def broadcast(
             tsn=sequence,
             profile=profile,
             cluster_id=cluster,
-            data=data,
+            data=t.SerializableBytes(data),
             radius=radius,
         )
     )
