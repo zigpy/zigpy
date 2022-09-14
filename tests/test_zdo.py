@@ -107,11 +107,13 @@ async def test_permit(zdo_f):
 
 
 def test_broadcast(app):
-    zigpy.device.broadcast = MagicMock()
     zigpy.zdo.broadcast(app, 0x0036, 0, 0, 60, 0)
 
-    assert zigpy.device.broadcast.call_count == 1
-    assert zigpy.device.broadcast.call_args[0][2] == 0x0036
+    assert app.send_packet.call_count == 1
+
+    packet = app.send_packet.mock_calls[0].args[0]
+    assert packet.dst.addr_mode == t.AddrMode.Broadcast
+    assert packet.cluster_id == 0x0036
 
 
 def _handle_match_desc(zdo_f, profile):

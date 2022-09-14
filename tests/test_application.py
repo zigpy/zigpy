@@ -110,10 +110,8 @@ async def test_permit(app, ieee):
 
 
 async def test_permit_delivery_failure(app, ieee):
-    from zigpy.exceptions import DeliveryError
-
     def zdo_permit(*args, **kwargs):
-        raise DeliveryError
+        raise DeliveryError("Failed")
 
     app.devices[ieee] = MagicMock()
     app.devices[ieee].zdo.permit = zdo_permit
@@ -123,11 +121,13 @@ async def test_permit_delivery_failure(app, ieee):
 
 
 async def test_permit_broadcast(app):
-    app.broadcast = AsyncMock()
     app.permit_ncp = AsyncMock()
+    app.send_packet = AsyncMock()
     await app.permit(time_s=30)
-    assert app.broadcast.call_count == 1
+    assert app.send_packet.call_count == 1
     assert app.permit_ncp.call_count == 1
+
+    assert app.send_packet.mock_calls[0].args[0].dst.addr_mode == t.AddrMode.Broadcast
 
 
 @patch("zigpy.device.Device.initialize", new_callable=AsyncMock)
@@ -166,7 +166,7 @@ async def _remove(
         if zdo_reply:
             return retval
         elif delivery_failure:
-            raise DeliveryError
+            raise DeliveryError("Error")
         else:
             raise asyncio.TimeoutError
 

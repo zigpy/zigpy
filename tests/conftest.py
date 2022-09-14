@@ -40,18 +40,10 @@ def raise_on_bad_log_formatting():
 
 
 class App(zigpy.application.ControllerApplication):
-    async def request(
-        self,
-        device,
-        profile,
-        cluster,
-        src_ep,
-        dst_ep,
-        sequence,
-        data,
-        expect_reply=True,
-        use_ieee=False,
-    ):
+    async def send_packet(self, packet):
+        pass
+
+    def packet_received(self, packet):
         pass
 
     async def connect(self):
@@ -70,34 +62,6 @@ class App(zigpy.application.ControllerApplication):
         pass
 
     async def permit_ncp(self, time_s=60):
-        pass
-
-    async def broadcast(
-        self,
-        profile,
-        cluster,
-        src_ep,
-        dst_ep,
-        grpid,
-        radius,
-        sequence,
-        data,
-        broadcast_address,
-    ):
-        pass
-
-    async def mrequest(
-        self,
-        group_id,
-        profile,
-        cluster,
-        src_ep,
-        sequence,
-        data,
-        *,
-        hops=0,
-        non_member_radius=3,
-    ):
         pass
 
     async def permit_with_key(self, node, code, time_s=60):

@@ -507,3 +507,31 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             f" is_initialized={self.is_initialized}"
             f">"
         )
+
+
+async def broadcast(
+    app,
+    profile,
+    cluster,
+    src_ep,
+    dst_ep,
+    grpid,
+    radius,
+    sequence,
+    data,
+    broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
+):
+    await app.send_packet(
+        t.ZigbeePacket(
+            src_ep=src_ep,
+            dst=t.AddrModeAddress(
+                addr_mode=t.AddrMode.Broadcast, address=broadcast_address
+            ),
+            dst_ep=dst_ep,
+            tsn=sequence,
+            profile=profile,
+            cluster_id=cluster,
+            data=data,
+            radius=radius,
+        )
+    )

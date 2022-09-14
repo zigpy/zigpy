@@ -103,13 +103,12 @@ async def test_request(dev):
 
     async def mock_req(*args, **kwargs):
         dev._pending[seq].result.set_result(sentinel.result)
-        return 0, ""
 
-    dev.application.request.side_effect = mock_req
+    dev.application.send_packet.side_effect = mock_req
     assert dev.last_seen is None
     r = await dev.request(1, 2, 3, 3, seq, b"")
     assert r is sentinel.result
-    assert dev._application.request.call_count == 1
+    assert dev._application.send_packet.call_count == 1
     assert dev.last_seen is not None
 
 
@@ -118,19 +117,20 @@ async def test_request_without_reply(dev):
 
     async def mock_req(*args, **kwargs):
         dev._pending[seq].result.set_result(sentinel.result)
-        return 0, sentinel.radio_status
 
-    dev.application.request.side_effect = mock_req
+    dev.application.send_packet.side_effect = mock_req
     assert dev.last_seen is None
     r = await dev.request(1, 2, 3, 3, seq, b"", expect_reply=False)
     assert r is None
-    assert dev._application.request.call_count == 1
+    assert dev._application.send_packet.call_count == 1
     assert dev.last_seen is not None
 
 
 async def test_failed_request(dev):
     assert dev.last_seen is None
-    dev._application.request = AsyncMock(return_value=(1, "error"))
+    dev._application.send_packet = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("Uh oh")
+    )
     with pytest.raises(zigpy.exceptions.DeliveryError):
         await dev.request(1, 2, 3, 4, 5, b"")
     assert dev.last_seen is None
@@ -310,12 +310,14 @@ async def test_broadcast(app_mock):
     )
     await device.broadcast(app_mock, profile, cluster, src_ep, dst_ep, 0, 0, 123, data)
 
-    assert app_mock.broadcast.call_count == 1
-    assert app_mock.broadcast.call_args[0][0] == profile
-    assert app_mock.broadcast.call_args[0][1] == cluster
-    assert app_mock.broadcast.call_args[0][2] == src_ep
-    assert app_mock.broadcast.call_args[0][3] == dst_ep
-    assert app_mock.broadcast.call_args[0][7] == data
+    assert app_mock.send_packet.call_count == 1
+    packet = app_mock.send_packet.mock_calls[0].args[0]
+
+    assert packet.profile == profile
+    assert packet.cluster_id == cluster
+    assert packet.src_ep == src_ep
+    assert packet.dst_ep == dst_ep
+    assert packet.data == data
 
 
 async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
