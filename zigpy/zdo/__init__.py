@@ -6,6 +6,7 @@ from typing import Coroutine
 
 import zigpy.profiles
 import zigpy.types as t
+from zigpy.typing import AddressingMode
 import zigpy.util
 
 from . import types
@@ -70,10 +71,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         hdr: types.ZDOHeader,
         args: list,
         *,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ) -> None:
         self.debug("ZDO request %s: %s", hdr.command_id, args)
 
@@ -97,10 +95,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         ieee: t.EUI64,
         request_type: int,
         start_index: int | None = None,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         """Handle ZDO NWK Address request."""
 
@@ -116,10 +111,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         nwk: t.NWK,
         request_type: int,
         start_index: int | None = None,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         """Handle ZDO IEEE Address request."""
 
@@ -135,10 +127,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         nwk: t.NWK,
         ieee: t.EUI64,
         capability: int,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         """Handle ZDO device announcement request."""
         self.listener_event("device_announce", self._device)
@@ -148,10 +137,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         hdr: types.ZDOHeader,
         permit_duration: int,
         tc_significance: int,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         """Handle ZDO permit joining request."""
 
@@ -164,10 +150,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         profile: int,
         in_clusters: list,
         out_cluster: list,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         """Handle ZDO Match_desc_req request."""
 
