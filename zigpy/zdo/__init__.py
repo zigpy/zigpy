@@ -231,19 +231,15 @@ def broadcast(
     sequence = app.get_sequence()
     data = bytes([sequence]) + t.serialize(named_args.values(), param_types)
 
-    return app.send_packet(
-        t.ZigbeePacket(
-            src=None,
-            src_ep=ZDO_ENDPOINT,
-            dst=t.AddrModeAddress(
-                addr_mode=t.AddrMode.Broadcast, address=broadcast_address
-            ),
-            dst_ep=ZDO_ENDPOINT,
-            tsn=sequence,
-            profile_id=0x0000,
-            cluster_id=command,
-            data=t.SerializableBytes(data),
-            radius=radius,
-            non_member_radius=3,
-        )
+    return zigpy.device.broadcast(
+        app,
+        0,
+        command,
+        0,
+        0,
+        grpid,
+        radius,
+        sequence,
+        data,
+        broadcast_address=broadcast_address,
     )

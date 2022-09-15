@@ -20,6 +20,7 @@ from .async_mock import ANY, AsyncMock, MagicMock, int_sentinel, patch, sentinel
 def dev(monkeypatch, app_mock):
     monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
+
     dev = device.Device(app_mock, ieee, 65535)
     node_desc = zdo_t.NodeDescriptor(1, 1, 1, 4, 5, 6, 7, 8)
     with patch.object(
@@ -104,7 +105,7 @@ async def test_request(dev):
     async def mock_req(*args, **kwargs):
         dev._pending[seq].result.set_result(sentinel.result)
 
-    dev.application.send_packet.side_effect = mock_req
+    dev.application.send_packet = AsyncMock(side_effect=mock_req)
     assert dev.last_seen is None
     r = await dev.request(1, 2, 3, 3, seq, b"")
     assert r is sentinel.result
@@ -118,7 +119,7 @@ async def test_request_without_reply(dev):
     async def mock_req(*args, **kwargs):
         dev._pending[seq].result.set_result(sentinel.result)
 
-    dev.application.send_packet.side_effect = mock_req
+    dev.application.send_packet = AsyncMock(side_effect=mock_req)
     assert dev.last_seen is None
     r = await dev.request(1, 2, 3, 3, seq, b"", expect_reply=False)
     assert r is None

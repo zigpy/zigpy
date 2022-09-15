@@ -284,11 +284,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         timeout=APS_REPLY_TIMEOUT,
         use_ieee=False,
     ):
-        if use_ieee:
-            dst = t.AddrModeAddress(addr_mode=t.AddrMode.IEEE, address=self.ieee)
-        else:
-            dst = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=self.nwk)
-
         extended_timeout = False
 
         if expect_reply and (self.node_desc is None or self.node_desc.is_end_device):
@@ -297,26 +292,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             extended_timeout = True
 
         with self._pending.new(sequence) as req:
-            await self._application.send_packet(
-                t.ZigbeePacket(
-                    src=t.AddrModeAddress(
-                        addr_mode=t.AddrMode.NWK,
-                        address=self._application.state.node_info.nwk,
-                    ),
-                    src_ep=src_ep,
-                    dst=dst,
-                    dst_ep=dst_ep,
-                    tsn=sequence,
-                    profile_id=profile,
-                    cluster_id=cluster,
-                    data=t.SerializableBytes(data),
-                    extended_timeout=extended_timeout,
-                    tx_options=(
-                        t.TransmitOptions.ACK
-                        if expect_reply
-                        else t.TransmitOptions.NONE
-                    ),
-                )
+            await self._application.request(
+                self,
+                profile,
+                cluster,
+                src_ep,
+                dst_ep,
+                sequence,
+                data,
+                expect_reply=expect_reply,
+                use_ieee=use_ieee,
+                extended_timeout=extended_timeout,
             )
 
             self.update_last_seen()
@@ -525,20 +511,14 @@ async def broadcast(
     data,
     broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
 ):
-    await app.send_packet(
-        t.ZigbeePacket(
-            src=t.AddrModeAddress(
-                addr_mode=t.AddrMode.NWK, address=app.state.node_info.nwk
-            ),
-            src_ep=src_ep,
-            dst=t.AddrModeAddress(
-                addr_mode=t.AddrMode.Broadcast, address=broadcast_address
-            ),
-            dst_ep=dst_ep,
-            tsn=sequence,
-            profile_id=profile,
-            cluster_id=cluster,
-            data=t.SerializableBytes(data),
-            radius=radius,
-        )
+    return await app.broadcast(
+        profile,
+        cluster,
+        src_ep,
+        dst_ep,
+        grpid,
+        radius,
+        sequence,
+        data,
+        broadcast_address=broadcast_address,
     )

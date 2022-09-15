@@ -1,6 +1,6 @@
 """Common fixtures."""
 import logging
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -83,12 +83,15 @@ def app_mock():
     )
 
     app = App(config)
-
-    # Accessing the property fails when the mock's `spec_set` is being created
-    with patch.object(app, "devices"):
-        app_mock = MagicMock(spec_set=app)
-
-    app_mock.state.node_info = app_state.NodeInfo(
+    app.state.node_info = app_state.NodeInfo(
         nwk=t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
     )
-    return app_mock
+
+    app.device_initialized = Mock(wraps=app.device_initialized)
+    app.listener_event = Mock(wraps=app.listener_event)
+    app.get_sequence = MagicMock(return_value=123)
+    app.send_packet = Mock(wraps=app.send_packet)
+
+    patch.object(app, "send_packet", MagicMock())
+
+    return app

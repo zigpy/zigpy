@@ -597,6 +597,147 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         raise NotImplementedError()
 
+    @zigpy.util.retryable_request
+    async def request(
+        self,
+        device: zigpy.device.Device,
+        profile: t.uint16_t,
+        cluster: t.uint16_t,
+        src_ep: t.uint8_t,
+        dst_ep: t.uint8_t,
+        sequence: t.uint8_t,
+        data: bytes,
+        *,
+        expect_reply: bool = True,
+        use_ieee: bool = False,
+        extended_timeout: bool = False,
+    ):
+        """Submit and send data out as an unicast transmission.
+        :param device: destination device
+        :param profile: Zigbee Profile ID to use for outgoing message
+        :param cluster: cluster id where the message is being sent
+        :param src_ep: source endpoint id
+        :param dst_ep: destination endpoint id
+        :param sequence: transaction sequence number of the message
+        :param data: Zigbee message payload
+        :param expect_reply: True if this is essentially a request
+        :param use_ieee: use EUI64 for destination addressing
+        :param extended_timeout: instruct the radio to use slower APS retries
+        """
+
+        if use_ieee:
+            src = t.AddrModeAddress(
+                addr_mode=t.AddrMode.IEEE, address=self.state.node_info.ieee
+            )
+            dst = t.AddrModeAddress(addr_mode=t.AddrMode.IEEE, address=device.ieee)
+        else:
+            src = t.AddrModeAddress(
+                addr_mode=t.AddrMode.NWK, address=self.state.node_info.nwk
+            )
+            dst = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk)
+
+        await self.send_packet(
+            t.ZigbeePacket(
+                src=src,
+                src_ep=src_ep,
+                dst=dst,
+                dst_ep=dst_ep,
+                tsn=sequence,
+                profile_id=profile,
+                cluster_id=cluster,
+                data=t.SerializableBytes(data),
+                extended_timeout=extended_timeout,
+                tx_options=(
+                    t.TransmitOptions.ACK if expect_reply else t.TransmitOptions.NONE
+                ),
+            )
+        )
+
+    async def mrequest(
+        self,
+        group_id: t.uint16_t,
+        profile: t.uint8_t,
+        cluster: t.uint16_t,
+        src_ep: t.uint8_t,
+        sequence: t.uint8_t,
+        data: bytes,
+        *,
+        hops: int = 0,
+        non_member_radius: int = 3,
+    ):
+        """Submit and send data out as a multicast transmission.
+        :param group_id: destination multicast address
+        :param profile: Zigbee Profile ID to use for outgoing message
+        :param cluster: cluster id where the message is being sent
+        :param src_ep: source endpoint id
+        :param sequence: transaction sequence number of the message
+        :param data: Zigbee message payload
+        :param hops: the message will be delivered to all nodes within this number of
+                     hops of the sender. A value of zero is converted to MAX_HOPS
+        :param non_member_radius: the number of hops that the message will be forwarded
+                                  by devices that are not members of the group. A value
+                                  of 7 or greater is treated as infinite
+        """
+        return await self.send_packet(
+            t.ZigbeePacket(
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK, address=self.state.node_info.nwk
+                ),
+                src_ep=src_ep,
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.Group, address=group_id),
+                tsn=sequence,
+                profile_id=profile,
+                cluster_id=cluster,
+                data=t.SerializableBytes(data),
+                tx_options=t.TransmitOptions.NONE,
+                radius=hops,
+                non_member_radius=non_member_radius,
+            )
+        )
+
+    async def broadcast(
+        self,
+        profile: t.uint16_t,
+        cluster: t.uint16_t,
+        src_ep: t.uint8_t,
+        dst_ep: t.uint8_t,
+        grpid: t.uint16_t,
+        radius: int,
+        sequence: t.uint8_t,
+        data: bytes,
+        broadcast_address: t.BroadcastAddress,
+    ):
+        """Submit and send data out as an unicast transmission.
+        :param profile: Zigbee Profile ID to use for outgoing message
+        :param cluster: cluster id where the message is being sent
+        :param src_ep: source endpoint id
+        :param dst_ep: destination endpoint id
+        :param: grpid: group id to address the broadcast to
+        :param radius: max radius of the broadcast
+        :param sequence: transaction sequence number of the message
+        :param data: zigbee message payload
+        :param timeout: how long to wait for transmission ACK
+        :param broadcast_address: broadcast address.
+        """
+        return await self.send_packet(
+            t.ZigbeePacket(
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK, address=self.state.node_info.nwk
+                ),
+                src_ep=src_ep,
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.Broadcast, address=broadcast_address
+                ),
+                dst_ep=dst_ep,
+                tsn=sequence,
+                profile_id=profile,
+                cluster_id=cluster,
+                data=t.SerializableBytes(data),
+                tx_options=t.TransmitOptions.NONE,
+                radius=radius,
+            )
+        )
+
     async def _discover_unknown_device(self, nwk: t.NWK) -> None:
         """
         Discover the IEEE address of a device with an unknown NWK.
