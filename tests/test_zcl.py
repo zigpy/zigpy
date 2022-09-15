@@ -106,21 +106,21 @@ def cluster(cluster_by_id):
 
 @pytest.fixture
 def client_cluster():
-    epmock = MagicMock()
-    epmock._device._application.get_sequence.return_value = DEFAULT_TSN
+    epmock = AsyncMock()
+    epmock.device.application.get_sequence = MagicMock(return_value=DEFAULT_TSN)
     return zcl.Cluster.from_id(epmock, 3)
 
 
-def test_request_general(cluster):
-    cluster.request(True, 0, [])
+async def test_request_general(cluster):
+    await cluster.request(True, 0, [])
     assert cluster._endpoint.request.call_count == 1
 
 
-def test_request_manufacturer(cluster):
-    cluster.request(True, 0, [t.uint8_t], 1)
+async def test_request_manufacturer(cluster):
+    await cluster.request(True, 0, [t.uint8_t], 1)
     assert cluster._endpoint.request.call_count == 1
     org_size = len(cluster._endpoint.request.call_args[0][2])
-    cluster.request(True, 0, [t.uint8_t], 1, manufacturer=1)
+    await cluster.request(True, 0, [t.uint8_t], 1, manufacturer=1)
     assert cluster._endpoint.request.call_count == 2
     assert org_size + 2 == len(cluster._endpoint.request.call_args[0][2])
 
@@ -658,41 +658,41 @@ async def test_configure_reporting_types(cluster_id, attr, data_type, cluster_by
     assert cluster.endpoint.request.call_args[0][2][6] == data_type
 
 
-def test_command(cluster):
-    cluster.command(0x00)
+async def test_command(cluster):
+    await cluster.command(0x00)
     assert cluster._endpoint.request.call_count == 1
     assert cluster._endpoint.request.call_args[0][1] == DEFAULT_TSN
 
 
-def test_command_override_tsn(cluster):
-    cluster.command(0x00, tsn=22)
+async def test_command_override_tsn(cluster):
+    await cluster.command(0x00, tsn=22)
     assert cluster._endpoint.request.call_count == 1
     assert cluster._endpoint.request.call_args[0][1] == 22
 
 
-def test_command_attr(cluster):
-    cluster.reset_fact_default()
+async def test_command_attr(cluster):
+    await cluster.reset_fact_default()
     assert cluster._endpoint.request.call_count == 1
 
 
-def test_client_command_attr(client_cluster):
-    client_cluster.identify_query_response(0)
+async def test_client_command_attr(client_cluster):
+    await client_cluster.identify_query_response(timeout=0)
     assert client_cluster._endpoint.reply.call_count == 1
 
 
-def test_command_invalid_attr(cluster):
+async def test_command_invalid_attr(cluster):
     with pytest.raises(AttributeError):
-        cluster.no_such_command()
+        await cluster.no_such_command()
 
 
 async def test_invalid_arguments_cluster_command(cluster):
-    res = cluster.command(0x00, 1)
-    assert isinstance(res.exception(), TypeError)
+    with pytest.raises(TypeError):
+        await cluster.command(0x00, 1)
 
 
 async def test_invalid_arguments_cluster_client_command(client_cluster):
-    res = client_cluster.client_command(0, 0, 0)
-    assert isinstance(res.exception(), TypeError)
+    with pytest.raises(TypeError):
+        await client_cluster.client_command(0, 0, 0)
 
 
 def test_name(cluster):
