@@ -705,7 +705,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         radius: int,
         sequence: t.uint8_t,
         data: bytes,
-        broadcast_address: t.BroadcastAddress,
+        broadcast_address: t.BroadcastAddress = t.BroadcastAddress.RX_ON_WHEN_IDLE,
     ):
         """Submit and send data out as an unicast transmission.
         :param profile: Zigbee Profile ID to use for outgoing message
