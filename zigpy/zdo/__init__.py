@@ -100,9 +100,17 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         """Handle ZDO NWK Address request."""
 
         app = self._device.application
-        if ieee == app.ieee:
+        if ieee == app.state.node_info.ieee:
             self.create_catching_task(
-                self.NWK_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
+                self.NWK_addr_rsp(
+                    0,
+                    app.state.node_info.ieee,
+                    app.state.node_info.nwk,
+                    0,
+                    0,
+                    [],
+                    tsn=hdr.tsn,
+                )
             )
 
     def handle_ieee_addr_req(
@@ -116,9 +124,22 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         """Handle ZDO IEEE Address request."""
 
         app = self._device.application
-        if nwk in (0xFFFF, 0xFFFD, 0xFFFC, app.nwk):
+        if nwk in (
+            t.BroadcastAddress.ALL_DEVICES,
+            t.BroadcastAddress.RX_ON_WHEN_IDLE,
+            t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
+            app.state.node_info.nwk,
+        ):
             self.create_catching_task(
-                self.IEEE_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
+                self.IEEE_addr_rsp(
+                    0,
+                    app.state.node_info.ieee,
+                    app.state.node_info.nwk,
+                    0,
+                    0,
+                    [],
+                    tsn=hdr.tsn,
+                )
             )
 
     def handle_device_annce(
