@@ -30,7 +30,10 @@ def convert_list_schema(
         schema_dict[name] = real_type
 
     temp = foundation.ZCLCommandDef(
-        schema=schema_dict, is_reply=is_reply, id=command_id, name="schema"
+        schema=schema_dict,
+        direction=foundation.Direction._from_is_reply(is_reply),
+        id=command_id,
+        name="schema",
     )
 
     return temp.with_compiled_schema().schema
