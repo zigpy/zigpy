@@ -299,6 +299,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         with self._pending.new(sequence) as req:
             await self._application.send_packet(
                 t.ZigbeePacket(
+                    src=t.AddrModeAddress(
+                        addr_mode=t.AddrMode.NWK,
+                        address=self._application.state.node_info.nwk,
+                    ),
                     src_ep=src_ep,
                     dst=dst,
                     dst_ep=dst_ep,
@@ -523,6 +527,9 @@ async def broadcast(
 ):
     await app.send_packet(
         t.ZigbeePacket(
+            src=t.AddrModeAddress(
+                addr_mode=t.AddrMode.NWK, address=app.state.node_info.nwk
+            ),
             src_ep=src_ep,
             dst=t.AddrModeAddress(
                 addr_mode=t.AddrMode.Broadcast, address=broadcast_address
