@@ -127,4 +127,6 @@ CONFIG_SCHEMA = ZIGPY_SCHEMA.extend(
     {vol.Required(CONF_DEVICE): SCHEMA_DEVICE}, extra=vol.ALLOW_EXTRA
 )
 
-ENDPOINT_SCHEMA = vol.Schema({vol.Optional(CONF_ADDITIONAL_ENDPOINTS): SimpleDescriptor})
+ENDPOINT_SCHEMA = vol.Schema(
+    {vol.Optional(CONF_ADDITIONAL_ENDPOINTS): SimpleDescriptor}
+)
