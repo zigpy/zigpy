@@ -23,6 +23,7 @@ import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
+from zigpy.config import CONF_ADDITIONAL_ENDPOINTS
 
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
@@ -538,6 +539,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 output_clusters=[],
             )
         )
+
+        for add_endpoint in self.config.get(CONF_ADDITIONAL_ENDPOINTS):
+            await self.add_endpoint(zdo_types.SimpleDescriptor(**add_endpoint))
 
     async def mrequest(
         self,
