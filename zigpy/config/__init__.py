@@ -25,8 +25,8 @@ from zigpy.config.defaults import (
     CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
 )
 from zigpy.config.validators import cv_boolean, cv_hex, cv_key
-from zigpy.zdo.types import SimpleDescriptor
 import zigpy.types as t
+from zigpy.zdo.types import SimpleDescriptor
 
 CONF_DATABASE = "database_path"
 CONF_DEVICE = "device"

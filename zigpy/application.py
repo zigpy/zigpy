@@ -10,6 +10,7 @@ from typing import Any
 import zigpy.appdb
 import zigpy.backups
 import zigpy.config as conf
+from zigpy.config import CONF_ADDITIONAL_ENDPOINTS
 import zigpy.device
 import zigpy.exceptions
 import zigpy.group
@@ -23,7 +24,6 @@ import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
-from zigpy.config import CONF_ADDITIONAL_ENDPOINTS
 
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
