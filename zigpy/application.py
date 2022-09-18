@@ -10,7 +10,6 @@ from typing import Any
 import zigpy.appdb
 import zigpy.backups
 import zigpy.config as conf
-from zigpy.config import CONF_ADDITIONAL_ENDPOINTS
 import zigpy.device
 import zigpy.exceptions
 import zigpy.group
@@ -540,8 +539,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             )
         )
 
-        for add_endpoint in self.config.get(CONF_ADDITIONAL_ENDPOINTS):
-            await self.add_endpoint(zdo_types.SimpleDescriptor(**add_endpoint))
+        for endpoint in self.config[conf.CONF_ADDITIONAL_ENDPOINTS]:
+            await self.add_endpoint(endpoint)
 
     async def mrequest(
         self,

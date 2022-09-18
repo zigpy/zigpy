@@ -119,14 +119,13 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(
             CONF_NWK_VALIDATE_SETTINGS, default=CONF_NWK_VALIDATE_SETTINGS_DEFAULT
         ): cv_boolean,
+        vol.Optional(CONF_ADDITIONAL_ENDPOINTS, default=[]): [
+            lambda v: SimpleDescriptor(**v)
+        ],
     },
     extra=vol.ALLOW_EXTRA,
 )
 
 CONFIG_SCHEMA = ZIGPY_SCHEMA.extend(
     {vol.Required(CONF_DEVICE): SCHEMA_DEVICE}, extra=vol.ALLOW_EXTRA
-)
-
-ENDPOINT_SCHEMA = vol.Schema(
-    {vol.Optional(CONF_ADDITIONAL_ENDPOINTS): SimpleDescriptor}
 )
