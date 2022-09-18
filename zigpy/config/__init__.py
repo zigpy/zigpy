@@ -26,7 +26,6 @@ from zigpy.config.defaults import (
 )
 from zigpy.config.validators import cv_boolean, cv_hex, cv_key, cv_simple_descriptor
 import zigpy.types as t
-from zigpy.zdo.types import SimpleDescriptor
 
 CONF_DATABASE = "database_path"
 CONF_DEVICE = "device"
