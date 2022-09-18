@@ -127,7 +127,7 @@ async def test_handle_match_desc_generic(zdo_f):
 
 
 async def test_handle_nwk_addr(zdo_f):
-    ieee = zdo_f._device.application.ieee
+    ieee = zdo_f._device.application.state.node_info.ieee
     zdo_f.reply = MagicMock()
     hdr = MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.NWK_addr_req
@@ -136,7 +136,7 @@ async def test_handle_nwk_addr(zdo_f):
 
 
 async def test_handle_ieee_addr(zdo_f):
-    nwk = zdo_f._device.application.nwk
+    nwk = zdo_f._device.application.state.node_info.nwk
     zdo_f.reply = MagicMock()
     hdr = MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.IEEE_addr_req
@@ -194,9 +194,9 @@ def test_device_accessor(zdo_f):
     assert zdo_f.device.nwk == 65535
 
 
-def test_reply(zdo_f):
-    zdo_f.device.request = MagicMock()
-    zdo_f.reply(0x0005)
+async def test_reply(zdo_f):
+    zdo_f.device.request = AsyncMock()
+    await zdo_f.reply(0x0005)
     assert zdo_f.device.request.call_count == 1
 
 

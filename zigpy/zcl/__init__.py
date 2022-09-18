@@ -296,7 +296,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         return hdr, request
 
     @util.retryable_request
-    def request(
+    async def request(
         self,
         general: bool,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
@@ -307,30 +307,27 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
-        try:
-            hdr, request = self._create_request(
-                general,
-                command_id,
-                schema,
-                *args,
-                manufacturer=manufacturer,
-                tsn=tsn,
-                disable_default_response=self.is_client,
-                direction=(
-                    foundation.Direction.Client_to_Server
-                    if self.is_client
-                    else foundation.Direction.Server_to_Client
-                ),
-                **kwargs,
-            )
-        except (ValueError, TypeError) as e:
-            return future_exception(e)
+        hdr, request = self._create_request(
+            general,
+            command_id,
+            schema,
+            *args,
+            manufacturer=manufacturer,
+            tsn=tsn,
+            disable_default_response=self.is_client,
+            direction=(
+                foundation.Direction.Client_to_Server
+                if self.is_client
+                else foundation.Direction.Server_to_Client
+            ),
+            **kwargs,
+        )
 
         self.debug("Sending request header: %r", hdr)
         self.debug("Sending request: %r", request)
         data = hdr.serialize() + request.serialize()
 
-        return self._endpoint.request(
+        return await self._endpoint.request(
             self.cluster_id,
             hdr.tsn,
             data,
@@ -338,7 +335,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             command_id=hdr.command_id,
         )
 
-    def reply(
+    async def reply(
         self,
         general: bool,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
@@ -348,26 +345,23 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
-        try:
-            hdr, request = self._create_request(
-                general,
-                command_id,
-                schema,
-                *args,
-                manufacturer=manufacturer,
-                tsn=tsn,
-                disable_default_response=True,
-                direction=foundation.Direction.Client_to_Server,
-                **kwargs,
-            )
-        except (ValueError, TypeError) as e:
-            return future_exception(e)
+        hdr, request = self._create_request(
+            general,
+            command_id,
+            schema,
+            *args,
+            manufacturer=manufacturer,
+            tsn=tsn,
+            disable_default_response=True,
+            direction=foundation.Direction.Client_to_Server,
+            **kwargs,
+        )
 
         self.debug("Sending reply header: %r", hdr)
         self.debug("Sending reply: %r", request)
         data = hdr.serialize() + request.serialize()
 
-        return self._endpoint.reply(
+        return await self._endpoint.reply(
             self.cluster_id, hdr.tsn, data, command_id=hdr.command_id
         )
 

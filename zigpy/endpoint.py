@@ -223,7 +223,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         handler(hdr, args, dst_addressing=dst_addressing)
 
-    def request(self, cluster, sequence, data, expect_reply=True, command_id=0x00):
+    async def request(
+        self, cluster, sequence, data, expect_reply=True, command_id=0x00
+    ):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
             and command_id < 0x40
@@ -232,7 +234,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         else:
             profile_id = self.profile_id
 
-        return self.device.request(
+        return await self.device.request(
             profile_id,
             cluster,
             self._endpoint_id,
@@ -242,7 +244,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             expect_reply=expect_reply,
         )
 
-    def reply(self, cluster, sequence, data, command_id=0x00):
+    async def reply(self, cluster, sequence, data, command_id=0x00):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
             and command_id < 0x40
@@ -251,7 +253,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         else:
             profile_id = self.profile_id
 
-        return self.device.reply(
+        return await self.device.reply(
             profile_id, cluster, self._endpoint_id, self._endpoint_id, sequence, data
         )
 

@@ -653,6 +653,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             )
         )
 
+        return (zigpy.zcl.foundation.Status.SUCCESS, "")
+
     async def mrequest(
         self,
         group_id: t.uint16_t,
@@ -678,7 +680,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                                   by devices that are not members of the group. A value
                                   of 7 or greater is treated as infinite
         """
-        return await self.send_packet(
+
+        await self.send_packet(
             t.ZigbeePacket(
                 src=t.AddrModeAddress(
                     addr_mode=t.AddrMode.NWK, address=self.state.node_info.nwk
@@ -694,6 +697,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 non_member_radius=non_member_radius,
             )
         )
+
+        return (zigpy.zcl.foundation.Status.SUCCESS, "")
 
     async def broadcast(
         self,
@@ -719,7 +724,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         :param timeout: how long to wait for transmission ACK
         :param broadcast_address: broadcast address.
         """
-        return await self.send_packet(
+
+        await self.send_packet(
             t.ZigbeePacket(
                 src=t.AddrModeAddress(
                     addr_mode=t.AddrMode.NWK, address=self.state.node_info.nwk
@@ -737,6 +743,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 radius=radius,
             )
         )
+
+        return (zigpy.zcl.foundation.Status.SUCCESS, "")
 
     async def _discover_unknown_device(self, nwk: t.NWK) -> None:
         """

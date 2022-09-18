@@ -94,6 +94,7 @@ def cluster_by_id():
         epmock._device.application.get_sequence.return_value = DEFAULT_TSN
         epmock.device.application.get_sequence.return_value = DEFAULT_TSN
         epmock.request = AsyncMock()
+        epmock.reply = AsyncMock()
         return zcl.Cluster.from_id(epmock, cluster_id)
 
     return _cluster
@@ -127,46 +128,49 @@ async def test_request_manufacturer(cluster):
 
 async def test_request_optional(cluster):
     schema = [t.uint8_t, t.uint16_t, t.Optional(t.uint16_t), t.Optional(t.uint8_t)]
-    cluster.endpoint.request = MagicMock()
+    cluster.endpoint.request = AsyncMock()
 
-    res = cluster.request(True, 0, schema)
-    assert isinstance(res.exception(), ValueError)
+    with pytest.raises(ValueError):
+        await cluster.request(True, 0, schema)
+
     assert cluster._endpoint.request.call_count == 0
     cluster._endpoint.request.reset_mock()
 
-    res = cluster.request(True, 0, schema, 1)
-    assert isinstance(res.exception(), ValueError)
+    with pytest.raises(ValueError):
+        await cluster.request(True, 0, schema, 1)
+
     assert cluster._endpoint.request.call_count == 0
     cluster._endpoint.request.reset_mock()
 
-    cluster.request(True, 0, schema, 1, 2)
+    await cluster.request(True, 0, schema, 1, 2)
     assert cluster._endpoint.request.call_count == 1
     cluster._endpoint.request.reset_mock()
 
-    cluster.request(True, 0, schema, 1, 2, 3)
+    await cluster.request(True, 0, schema, 1, 2, 3)
     assert cluster._endpoint.request.call_count == 1
     cluster._endpoint.request.reset_mock()
 
-    cluster.request(True, 0, schema, 1, 2, 3, 4)
+    await cluster.request(True, 0, schema, 1, 2, 3, 4)
     assert cluster._endpoint.request.call_count == 1
     cluster._endpoint.request.reset_mock()
 
-    res = cluster.request(True, 0, schema, 1, 2, 3, 4, 5)
-    assert isinstance(res.exception(), TypeError)
+    with pytest.raises(TypeError):
+        await cluster.request(True, 0, schema, 1, 2, 3, 4, 5)
+
     assert cluster._endpoint.request.call_count == 0
     cluster._endpoint.request.reset_mock()
 
 
-def test_reply_general(cluster):
-    cluster.reply(False, 0, [])
+async def test_reply_general(cluster):
+    await cluster.reply(False, 0, [])
     assert cluster._endpoint.reply.call_count == 1
 
 
-def test_reply_manufacturer(cluster):
-    cluster.reply(False, 0, [t.uint8_t], 1)
+async def test_reply_manufacturer(cluster):
+    await cluster.reply(False, 0, [t.uint8_t], 1)
     assert cluster._endpoint.reply.call_count == 1
     org_size = len(cluster._endpoint.reply.call_args[0][2])
-    cluster.reply(False, 0, [t.uint8_t], 1, manufacturer=1)
+    await cluster.reply(False, 0, [t.uint8_t], 1, manufacturer=1)
     assert cluster._endpoint.reply.call_count == 2
     assert org_size + 2 == len(cluster._endpoint.reply.call_args[0][2])
 
@@ -528,34 +532,34 @@ async def test_write_attributes_cache_failure(cluster, attributes, result, faile
                 listener.attribute_updated.assert_any_call(attr_id, attributes[attr_id])
 
 
-def test_read_attributes_response(cluster):
-    cluster.read_attributes_rsp({0: 5})
+async def test_read_attributes_response(cluster):
+    await cluster.read_attributes_rsp({0: 5})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
 
 
-def test_read_attributes_resp_unsupported(cluster):
-    cluster.read_attributes_rsp({0: 5})
+async def test_read_attributes_resp_unsupported(cluster):
+    await cluster.read_attributes_rsp({0: 5})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
     orig_len = len(cluster._endpoint.reply.call_args[0][2])
 
-    cluster.read_attributes_rsp({0: 5, 2: None})
+    await cluster.read_attributes_rsp({0: 5, 2: None})
     assert cluster._endpoint.reply.call_count == 2
     assert cluster._endpoint.request.call_count == 0
     assert len(cluster._endpoint.reply.call_args[0][2]) == orig_len + 3
 
 
-def test_read_attributes_resp_str(cluster):
-    cluster.read_attributes_rsp({"hw_version": 32})
+async def test_read_attributes_resp_str(cluster):
+    await cluster.read_attributes_rsp({"hw_version": 32})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
 
 
-def test_read_attributes_resp_exc(cluster):
+async def test_read_attributes_resp_exc(cluster):
     with patch.object(foundation.DATA_TYPES, "pytype_to_datatype_id") as mck:
         mck.side_effect = ValueError
-        cluster.read_attributes_rsp({"hw_version": 32})
+        await cluster.read_attributes_rsp({"hw_version": 32})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
     assert cluster.endpoint.reply.call_args[0][2][-3:] == b"\x03\x00\x86"
@@ -571,9 +575,9 @@ def test_read_attributes_resp_exc(cluster):
         (0x0202, "fan_mode", 0xDE, b"\x00\x00\x00\x30\xde"),
     ),
 )
-def test_read_attribute_resp(cluster_id, attr, value, serialized, cluster_by_id):
+async def test_read_attribute_resp(cluster_id, attr, value, serialized, cluster_by_id):
     cluster = cluster_by_id(cluster_id)
-    cluster.read_attributes_rsp({attr: value})
+    await cluster.read_attributes_rsp({attr: value})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
     assert cluster.endpoint.reply.call_args[0][2][3:] == serialized

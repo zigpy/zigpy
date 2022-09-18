@@ -372,8 +372,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             profile, cluster, hdr, args, dst_addressing=dst_addressing
         )
 
-    def reply(self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee=False):
-        return self.request(
+    async def reply(
+        self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee=False
+    ):
+        return await self.request(
             profile,
             cluster,
             src_ep,
