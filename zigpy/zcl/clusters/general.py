@@ -1337,7 +1337,7 @@ class Ota(Cluster):
         Apply_after_timeout = 0x00
         Do_not_apply_after_timeout = 0x01
 
-    class image_notify(foundation.CommandSchema):
+    class ImageNotifyCommand(foundation.CommandSchema):
         class PayloadType(t.enum8):
             QueryJitter = 0x00
             QueryJitter_ManufacturerCode = 0x01
@@ -1364,7 +1364,7 @@ class Ota(Cluster):
             )
         )
 
-    class query_next_image(foundation.CommandSchema):
+    class QueryNextImageCommand(foundation.CommandSchema):
         class FieldControl(t.bitmap8):
             HardwareVersion = 0b00000001
 
@@ -1376,7 +1376,7 @@ class Ota(Cluster):
             requires=(lambda s: s.field_control & s.FieldControl.HardwareVersion)
         )
 
-    class image_block(foundation.CommandSchema):
+    class ImageBlockCommand(foundation.CommandSchema):
         class FieldControl(t.bitmap8):
             RequestNodeAddr = 0b00000001
             MinimumBlockPeriod = 0b00000010
@@ -1394,7 +1394,7 @@ class Ota(Cluster):
             requires=(lambda s: s.field_control & s.FieldControl.MinimumBlockPeriod)
         )
 
-    class image_page(foundation.CommandSchema):
+    class ImagePageCommand(foundation.CommandSchema):
         class FieldControl(t.bitmap8):
             RequestNodeAddr = 0b00000001
 
@@ -1408,6 +1408,38 @@ class Ota(Cluster):
         response_spacing: t.uint16_t
         request_node_addr: t.EUI64 = t.StructField(
             requires=lambda s: s.field_control & s.FieldControl.RequestNodeAddr
+        )
+
+    class ImageBlockResponseCommand(foundation.CommandSchema):
+        # All responses contain at least a status
+        status: foundation.Status
+
+        # Payload with `SUCCESS` status
+        manufacturer_code: t.uint16_t = t.StructField(
+            requires=lambda s: s.status == foundation.Status.SUCCESS
+        )
+        image_type: t.uint16_t = t.StructField(
+            requires=lambda s: s.status == foundation.Status.SUCCESS
+        )
+        file_version: t.uint32_t = t.StructField(
+            requires=lambda s: s.status == foundation.Status.SUCCESS
+        )
+        file_offset: t.uint32_t = t.StructField(
+            requires=lambda s: s.status == foundation.Status.SUCCESS
+        )
+        image_data: t.LVBytes = t.StructField(
+            requires=lambda s: s.status == foundation.Status.SUCCESS
+        )
+
+        # Payload with `WAIT_FOR_DATA` status
+        current_time: t.UTCTime = t.StructField(
+            requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA
+        )
+        request_time: t.UTCTime = t.StructField(
+            requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA
+        )
+        minimum_block_period: t.uint16_t = t.StructField(
+            requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA
         )
 
     cluster_id = 0x0019
@@ -1430,9 +1462,9 @@ class Ota(Cluster):
         0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
     }
     server_commands: dict[int, ZCLCommandDef] = {
-        0x01: ZCLCommandDef("query_next_image", query_next_image, False),
-        0x03: ZCLCommandDef("image_block", image_block, False),
-        0x04: ZCLCommandDef("image_page", image_page, False),
+        0x01: ZCLCommandDef("query_next_image", QueryNextImageCommand, False),
+        0x03: ZCLCommandDef("image_block", ImageBlockCommand, False),
+        0x04: ZCLCommandDef("image_page", ImagePageCommand, False),
         0x06: ZCLCommandDef(
             "upgrade_end",
             {
@@ -1456,7 +1488,7 @@ class Ota(Cluster):
         ),
     }
     client_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("image_notify", image_notify, False),
+        0x00: ZCLCommandDef("image_notify", ImageNotifyCommand, False),
         0x02: ZCLCommandDef(
             "query_next_image_response",
             {
@@ -1468,17 +1500,9 @@ class Ota(Cluster):
             },
             True,
         ),
-        # XXX: the response format completely changes if the status is WAIT_FOR_DATA!
         0x05: ZCLCommandDef(
             "image_block_response",
-            {
-                "status": foundation.Status,
-                "manufacturer_code": t.uint16_t,
-                "image_type": t.uint16_t,
-                "file_version": t.uint32_t,
-                "file_offset": t.uint32_t,
-                "image_data": t.LVBytes,
-            },
+            ImageBlockResponseCommand,
             True,
         ),
         0x07: ZCLCommandDef(
@@ -1565,8 +1589,8 @@ class Ota(Cluster):
         self.debug(
             (
                 "OTA query_next_image handler for '%s %s': "
-                "field_control=%s, manufacture_id=%s, image_type=%s, "
-                "current_file_version=%s, hardware_version=%s, model=%s"
+                "field_control=%s, manufacturer_id=%s, image_type=%s, "
+                "current_file_version=%s, hardware_version=%s, model=%r"
             ),
             self.endpoint.manufacturer,
             self.endpoint.model,
@@ -1627,10 +1651,10 @@ class Ota(Cluster):
     ):
         self.debug(
             (
-                "OTA image_block handler for '%s %s': field_control=%s, "
-                "manufacturer_id=%s, image_type=%s, file_version=%s, "
-                "file_offset=%s, max_data_size=%s, request_node_addr=%s"
-                "block_request_delay=%s"
+                "OTA image_block handler for '%s %s': field_control=%s"
+                ", manufacturer_id=%s, image_type=%s, file_version=%s"
+                ", file_offset=%s, max_data_size=%s, request_node_addr=%s"
+                ", block_request_delay=%s"
             ),
             self.endpoint.manufacturer,
             self.endpoint.model,
@@ -1654,18 +1678,20 @@ class Ota(Cluster):
             "OTA upgrade progress: %0.1f", 100.0 * file_offset / img.header.image_size
         )
         try:
+            block = img.get_image_block(file_offset, max_data_size)
+        except ValueError:
+            await self.image_block_response(
+                foundation.Status.MALFORMED_COMMAND, tsn=tsn
+            )
+        else:
             await self.image_block_response(
                 foundation.Status.SUCCESS,
                 img.key.manufacturer_id,
                 img.key.image_type,
                 img.version,
                 file_offset,
-                img.get_image_block(file_offset, max_data_size),
+                block,
                 tsn=tsn,
-            )
-        except ValueError:
-            await self.image_block_response(
-                foundation.Status.MALFORMED_COMMAND, tsn=tsn
             )
 
     async def _handle_upgrade_end(
@@ -1673,8 +1699,8 @@ class Ota(Cluster):
     ):
         self.debug(
             (
-                "OTA upgrade_end handler for '%s %s': status=%s, "
-                "manufacturer_id=%s, image_type=%s, file_version=%s"
+                "OTA upgrade_end handler for '%s %s': status=%s"
+                ", manufacturer_id=%s, image_type=%s, file_version=%s"
             ),
             self.endpoint.manufacturer,
             self.endpoint.model,
