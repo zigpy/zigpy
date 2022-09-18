@@ -24,7 +24,7 @@ from zigpy.config.defaults import (
     CONF_TOPO_SCAN_PERIOD_DEFAULT,
     CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
 )
-from zigpy.config.validators import cv_boolean, cv_hex, cv_key
+from zigpy.config.validators import cv_boolean, cv_hex, cv_key, cv_simple_descriptor
 import zigpy.types as t
 from zigpy.zdo.types import SimpleDescriptor
 
@@ -119,14 +119,11 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(
             CONF_NWK_VALIDATE_SETTINGS, default=CONF_NWK_VALIDATE_SETTINGS_DEFAULT
         ): cv_boolean,
+        vol.Optional(CONF_ADDITIONAL_ENDPOINTS, default=[]): [cv_simple_descriptor],
     },
     extra=vol.ALLOW_EXTRA,
 )
 
 CONFIG_SCHEMA = ZIGPY_SCHEMA.extend(
     {vol.Required(CONF_DEVICE): SCHEMA_DEVICE}, extra=vol.ALLOW_EXTRA
-)
-
-ENDPOINT_SCHEMA = vol.Schema(
-    {vol.Optional(CONF_ADDITIONAL_ENDPOINTS): SimpleDescriptor}
 )
