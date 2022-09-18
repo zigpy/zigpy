@@ -24,7 +24,7 @@ from zigpy.config.defaults import (
     CONF_TOPO_SCAN_PERIOD_DEFAULT,
     CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
 )
-from zigpy.config.validators import cv_boolean, cv_hex, cv_key
+from zigpy.config.validators import cv_boolean, cv_hex, cv_key, cv_simple_descriptor
 import zigpy.types as t
 
 CONF_DATABASE = "database_path"
@@ -53,6 +53,7 @@ CONF_OTA_SALUS = "salus_provider"
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
 CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
+CONF_ADDITIONAL_ENDPOINTS = "additional_endpoints"
 
 
 SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): str})
@@ -117,6 +118,7 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(
             CONF_NWK_VALIDATE_SETTINGS, default=CONF_NWK_VALIDATE_SETTINGS_DEFAULT
         ): cv_boolean,
+        vol.Optional(CONF_ADDITIONAL_ENDPOINTS, default=[]): [cv_simple_descriptor],
     },
     extra=vol.ALLOW_EXTRA,
 )

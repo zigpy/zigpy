@@ -539,6 +539,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             )
         )
 
+        for endpoint in self.config[conf.CONF_ADDITIONAL_ENDPOINTS]:
+            await self.add_endpoint(endpoint)
+
     async def mrequest(
         self,
         group_id: t.uint16_t,
