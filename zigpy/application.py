@@ -772,7 +772,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         # Peek into ZDO packets to handle ZDO notifications
         if packet.dst_ep == zigpy.zdo.ZDO_ENDPOINT:
-            zdo_hdr, zdo_args = self._device.zdo.deserialize(
+            # The current zigpy device may not exist if we receive a packet early
+            try:
+                zdo = self._device.zdo
+            except KeyError:
+                zdo = zigpy.zdo.ZDO(None)
+
+            zdo_hdr, zdo_args = zdo.deserialize(
                 cluster_id=packet.cluster_id, data=packet.data.serialize()
             )
 
