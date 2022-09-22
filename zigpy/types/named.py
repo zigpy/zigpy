@@ -567,7 +567,7 @@ class ZigbeePacket(BaseDataclassMixin):
 
     # If the radio supports it, a source route for the packet
     source_route: list[NWK] | None = dataclasses.field(default=None)
-    extended_timeout: bool = dataclasses.field(default=True)
+    extended_timeout: bool = dataclasses.field(default=False)
 
     tsn: basic.uint8_t = dataclasses.field(default=0x00)
     profile_id: basic.uint16_t = dataclasses.field(default=0x0000)
