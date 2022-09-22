@@ -180,7 +180,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 e, (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException)
             ):
                 LOGGER.warning(
-                    "Device failed to initialize due to unexpected error", exc_info=True
+                    "Device %r failed to initialize due to unexpected error",
+                    self,
+                    exc_info=True,
                 )
 
             self.application.listener_event("device_init_failure", self)
