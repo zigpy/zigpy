@@ -782,3 +782,22 @@ def test_nwk_convert():
     assert t.NWK.convert(str(t.NWK(0x1234))[2:]) == t.NWK(0x1234)
     assert str(t.NWK(0x0012))[2:] == "0012"
     assert str(t.NWK(0x1200))[2:] == "1200"
+
+
+def test_serializable_bytes():
+    obj = t.SerializableBytes(b"test")
+    assert obj == obj
+    assert obj == t.SerializableBytes(b"test")
+    assert t.SerializableBytes(obj) == obj
+    assert obj != b"test"
+    assert obj.serialize() == b"test"
+    assert "test" in repr([obj])
+
+    with pytest.raises(TypeError):
+        obj + b"test"
+
+    with pytest.raises(ValueError):
+        t.SerializableBytes("test")
+
+    with pytest.raises(ValueError):
+        t.SerializableBytes([1, 2, 3])

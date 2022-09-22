@@ -54,7 +54,7 @@ class SerializableBytes:
 
     def __init__(self, value: bytes = b"") -> None:
         if isinstance(value, type(self)):
-            value = value.serialize()
+            value = value.value
         elif not isinstance(value, (bytes, bytearray)):
             raise ValueError(f"Object is not bytes: {value!r}")
 
@@ -68,10 +68,6 @@ class SerializableBytes:
 
     def serialize(self) -> bytes:
         return self.value
-
-    @classmethod
-    def deserialize(cls, data: bytes) -> tuple[SerializableBytes, bytes]:
-        return cls(data), b""
 
     def __repr__(self) -> str:
         return f"Serialized[{self.value!r}]"
