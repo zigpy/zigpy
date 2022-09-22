@@ -43,9 +43,6 @@ class App(zigpy.application.ControllerApplication):
     async def send_packet(self, packet):
         pass
 
-    def packet_received(self, packet):
-        pass
-
     async def connect(self):
         pass
 

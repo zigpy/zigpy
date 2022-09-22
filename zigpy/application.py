@@ -456,12 +456,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         try:
             device = self.get_device(nwk=nwk)
         except KeyError:
-            LOGGER.warning("Received relays unknown device: %s", nwk)
+            LOGGER.warning("Received relays from an unknown device: %s", nwk)
             asyncio.create_task(self._discover_unknown_device(nwk))
-            return
-
-        # `relays` is a property with a setter that emits an event
-        device.relays = relays
+        else:
+            # `relays` is a property with a setter that emits an event
+            device.relays = relays
 
     @classmethod
     async def probe(cls, device_config: dict[str, Any]) -> bool | dict[str, Any]:
@@ -595,9 +594,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         Send a Zigbee packet using the appropriate addressing mode and provided options.
         """
 
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
-    def build_source_route(self, dest: zigpy.device.Device) -> list[t.NWK] | None:
+    def build_source_route_to(self, dest: zigpy.device.Device) -> list[t.NWK] | None:
         """
         Compute a source route to the destination device.
         """
@@ -648,7 +647,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             dst = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk)
 
         if self.config[conf.CONF_SOURCE_ROUTING]:
-            source_route = self.build_source_route(dest=device)
+            source_route = self.build_source_route_to(dest=device)
         else:
             source_route = None
 

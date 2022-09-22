@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import enum
 import functools
 import logging
@@ -37,13 +36,6 @@ def convert_list_schema(
     )
 
     return temp.with_compiled_schema().schema
-
-
-def future_exception(e):
-    future = asyncio.Future()
-    future.set_exception(e)
-
-    return future
 
 
 class ClusterType(enum.IntEnum):

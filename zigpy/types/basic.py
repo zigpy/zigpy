@@ -3,10 +3,10 @@ from __future__ import annotations
 import enum
 import inspect
 import struct
-from typing import Callable, TypeVar
+import typing
 
-CALLABLE_T = TypeVar("CALLABLE_T", bound=Callable)  # pylint: disable=invalid-name
-T = TypeVar("T")
+CALLABLE_T = typing.TypeVar("CALLABLE_T", bound=typing.Callable)
+T = typing.TypeVar("T")
 
 
 class Bits(list):
@@ -59,6 +59,12 @@ class SerializableBytes:
             raise ValueError(f"Object is not bytes: {value!r}")
 
         self.value = value
+
+    def __eq__(self, other: typing.Any) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self.value == other.value
 
     def serialize(self) -> bytes:
         return self.value
