@@ -21,6 +21,7 @@ from zigpy.config.defaults import (
     CONF_OTA_LEDVANCE_DEFAULT,
     CONF_OTA_OTAU_DIR_DEFAULT,
     CONF_OTA_SALUS_DEFAULT,
+    CONF_SOURCE_ROUTING_DEFAULT,
     CONF_TOPO_SCAN_ENABLED_DEFAULT,
     CONF_TOPO_SCAN_PERIOD_DEFAULT,
     CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
@@ -52,6 +53,7 @@ CONF_OTA_IKEA_URL = "ikea_update_url"
 CONF_OTA_INOVELLI = "inovelli_provider"
 CONF_OTA_LEDVANCE = "ledvance_provider"
 CONF_OTA_SALUS = "salus_provider"
+CONF_SOURCE_ROUTING = "source_routing"
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
 CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
@@ -124,6 +126,9 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(
             CONF_MAX_CONCURRENT_REQUESTS, default=CONF_MAX_CONCURRENT_REQUESTS_DEFAULT
         ): vol.All(int, vol.Range(min=0)),
+        vol.Optional(CONF_SOURCE_ROUTING, default=CONF_SOURCE_ROUTING_DEFAULT): (
+            cv_boolean
+        ),
     },
     extra=vol.ALLOW_EXTRA,
 )

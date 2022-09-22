@@ -636,6 +636,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             )
             dst = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk)
 
+        if self.config[conf.CONF_SOURCE_ROUTING] and device.relays is not None:
+            source_route = device.relays
+        else:
+            source_route = None
+
         await self.send_packet(
             t.ZigbeePacket(
                 src=src,
@@ -647,6 +652,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 cluster_id=cluster,
                 data=t.SerializableBytes(data),
                 extended_timeout=extended_timeout,
+                source_route=source_route,
                 tx_options=(
                     t.TransmitOptions.ACK if expect_reply else t.TransmitOptions.NONE
                 ),
