@@ -597,6 +597,17 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         raise NotImplementedError()
 
+    def build_source_route(self, dest: zigpy.device.Device) -> list[t.NWK] | None:
+        """
+        Compute a source route to the destination device.
+        """
+
+        if dest.relays is None:
+            return None
+
+        # TODO: utilize topology scanner information
+        return dest.relays[::-1]
+
     @zigpy.util.retryable_request
     async def request(
         self,
@@ -636,8 +647,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             )
             dst = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk)
 
-        if self.config[conf.CONF_SOURCE_ROUTING] and device.relays is not None:
-            source_route = device.relays
+        if self.config[conf.CONF_SOURCE_ROUTING]:
+            source_route = self.build_source_route(dest=device)
         else:
             source_route = None
 
