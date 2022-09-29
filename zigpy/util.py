@@ -356,7 +356,7 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
         return self._max_value
 
     @max_value.setter
-    def max_value(self, new_value) -> None:
+    def max_value(self, new_value: int) -> None:
         """
         Update the semaphore's max value.
         """
@@ -370,6 +370,10 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
         # Wake up any pending waiters
         for _ in range(min(len(self._waiters), max(0, delta))):
             self._wake_up_next()
+
+    @property
+    def num_waiting(self) -> int:
+        return len(self._waiters)
 
     def locked(self) -> bool:
         """Returns True if semaphore cannot be acquired immediately."""
@@ -425,9 +429,9 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
 
     def __repr__(self) -> str:
         if self.locked():
-            extra = f"locked, max value:{self._max_value}"
+            extra = f"locked, max value:{self._max_value}, waiters:{len(self._waiters)}"
         else:
-            extra = f"unlocked, value:{self._value}, max value:{self._max_value}, waiters:{len(self._waiters)}"
+            extra = f"unlocked, value:{self._value}, max value:{self._max_value}"
 
         return f"<{self.__class__.__name__} [{extra}]>"
 

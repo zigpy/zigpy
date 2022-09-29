@@ -575,8 +575,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if was_locked:
             LOGGER.debug(
                 "Max concurrency (%s) reached, delaying request (%s enqueued)",
-                self._concurrent_requests_semaphore.value,
-                self._concurrent_requests_semaphore.value,
+                self._concurrent_requests_semaphore.max_value,
+                self._concurrent_requests_semaphore.num_waiting,
             )
 
         async with self._concurrent_requests_semaphore:
