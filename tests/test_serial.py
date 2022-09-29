@@ -15,11 +15,10 @@ async def test_serial_normal(event_loop):
     await zigpy.serial.create_serial_connection(
         event_loop, protocol_factory, "/dev/ttyUSB1"
     )
-    assert len(zigpy.serial.pyserial_asyncio.create_serial_connection.mock_calls) == 1
-    assert (
-        zigpy.serial.pyserial_asyncio.create_serial_connection.mock_calls[0].args[2]
-        == "/dev/ttyUSB1"
-    )
+
+    mock_calls = zigpy.serial.pyserial_asyncio.create_serial_connection.mock_calls
+    assert len(mock_calls) == 1
+    assert mock_calls[0].kwargs["url"] == "/dev/ttyUSB1"
 
 
 async def test_serial_socket(event_loop):
