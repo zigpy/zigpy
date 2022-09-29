@@ -540,6 +540,15 @@ class AddrModeAddress(BaseDataclassMixin):
     addr_mode: AddrMode
     address: NWK | Group | EUI64 | BroadcastAddress | None
 
+    def __post_init__(self):
+        if self.addr_mode is not None and self.address is not None:
+            self.address = {
+                AddrMode.Group: Group,
+                AddrMode.NWK: NWK,
+                AddrMode.IEEE: EUI64,
+                AddrMode.Broadcast: BroadcastAddress,
+            }[self.addr_mode](self.address)
+
 
 class TransmitOptions(enum.Flag):
     NONE = 0
