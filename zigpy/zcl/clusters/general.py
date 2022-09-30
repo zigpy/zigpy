@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 import zigpy.types as t
+from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
@@ -855,8 +856,7 @@ class Time(Cluster):
         self,
         hdr: foundation.ZCLHeader,
         *args: list[Any],
-        dst_addressing: None
-        | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
             data = {}
@@ -1534,8 +1534,7 @@ class Ota(Cluster):
         hdr: foundation.ZCLHeader,
         args: list[Any],
         *,
-        dst_addressing: None
-        | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         self.create_catching_task(
             self._handle_cluster_request(hdr, args, dst_addressing=dst_addressing),
@@ -1546,8 +1545,7 @@ class Ota(Cluster):
         hdr: foundation.ZCLHeader,
         args: list[Any],
         *,
-        dst_addressing: None
-        | (t.Addressing.Group | t.Addressing.IEEE | t.Addressing.NWK) = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         """Parse OTA commands."""
         tsn, command_id = hdr.tsn, hdr.command_id

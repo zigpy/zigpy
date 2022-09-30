@@ -1,6 +1,6 @@
 """Common fixtures."""
 import logging
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -40,18 +40,7 @@ def raise_on_bad_log_formatting():
 
 
 class App(zigpy.application.ControllerApplication):
-    async def request(
-        self,
-        device,
-        profile,
-        cluster,
-        src_ep,
-        dst_ep,
-        sequence,
-        data,
-        expect_reply=True,
-        use_ieee=False,
-    ):
+    async def send_packet(self, packet):
         pass
 
     async def connect(self):
@@ -72,35 +61,10 @@ class App(zigpy.application.ControllerApplication):
     async def permit_ncp(self, time_s=60):
         pass
 
-    async def broadcast(
-        self,
-        profile,
-        cluster,
-        src_ep,
-        dst_ep,
-        grpid,
-        radius,
-        sequence,
-        data,
-        broadcast_address,
-    ):
-        pass
-
-    async def mrequest(
-        self,
-        group_id,
-        profile,
-        cluster,
-        src_ep,
-        sequence,
-        data,
-        *,
-        hops=0,
-        non_member_radius=3,
-    ):
-        pass
-
     async def permit_with_key(self, node, code, time_s=60):
+        pass
+
+    async def reset_network_info(self):
         pass
 
     async def write_network_info(self, *, network_info, node_info):
@@ -119,12 +83,15 @@ def app_mock():
     )
 
     app = App(config)
-
-    # Accessing the property fails when the mock's `spec_set` is being created
-    with patch.object(app, "devices"):
-        app_mock = MagicMock(spec_set=app)
-
-    app_mock.state.node_info = app_state.NodeInfo(
+    app.state.node_info = app_state.NodeInfo(
         nwk=t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
     )
-    return app_mock
+
+    app.device_initialized = Mock(wraps=app.device_initialized)
+    app.listener_event = Mock(wraps=app.listener_event)
+    app.get_sequence = MagicMock(return_value=123)
+    app.send_packet = Mock(wraps=app.send_packet)
+
+    patch.object(app, "send_packet", MagicMock())
+
+    return app

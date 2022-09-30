@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import dataclasses
+import enum
 from typing import Iterable
 
 from . import basic
 from .struct import Struct
+
+
+class BaseDataclassMixin:
+    def replace(self, **kwargs):
+        return dataclasses.replace(self, **kwargs)
 
 
 def _hex_string_to_bytes(hex_string: str) -> bytes:
@@ -514,68 +521,77 @@ class AddrMode(basic.enum8):
     Group = 0x01
     NWK = 0x02
     IEEE = 0x03
-
-
-class _AddressingIEEE(Struct):
-    """Addressing mode is IEEE."""
-
-    addr_mode: AddrMode
-    addr: EUI64
-    endpoint: basic.uint8_t
-
-
-class _AddressingGroup(Struct):
-    """Addressing mode is Group."""
-
-    addr_mode: AddrMode
-    addr: Group
-
-
-class _AddressingNWK(Struct):
-    """Addressing mode is Group."""
-
-    addr_mode: AddrMode
-    addr: NWK
-    endpoint: basic.uint8_t
+    Broadcast = 0x0F
 
 
 class Addressing:
-    """Addr mode, address (group, node id or ieee) and optionally endpoint id."""
+    """Deprecated, only present for backwards compatibility."""
 
-    AddrMode = AddrMode
-    IEEE = _AddressingIEEE
-    Group = _AddressingGroup
-    NWK = _AddressingNWK
+    Group = AddrMode
+    NWK = AddrMode
+    IEEE = AddrMode
+    Broadcast = AddrMode
 
-    @classmethod
-    def ieee(cls, ieee: EUI64, endpoint: basic.uint8_t | int) -> _AddressingIEEE:
-        """Return IEEE addressing mode."""
 
-        return cls.IEEE(AddrMode.IEEE, ieee, endpoint)
+@dataclasses.dataclass
+class AddrModeAddress(BaseDataclassMixin):
+    """Address mode and address."""
 
-    @classmethod
-    def group(cls, group: Group) -> _AddressingGroup:
-        """Return Group addressing mode."""
+    addr_mode: AddrMode
+    address: NWK | Group | EUI64 | BroadcastAddress | None
 
-        return cls.Group(AddrMode.Group, group)
+    def __post_init__(self):
+        if self.addr_mode is not None and self.address is not None:
+            self.address = {
+                AddrMode.Group: Group,
+                AddrMode.NWK: NWK,
+                AddrMode.IEEE: EUI64,
+                AddrMode.Broadcast: BroadcastAddress,
+            }[self.addr_mode](self.address)
 
-    @classmethod
-    def nwk(cls, nwk: NWK, endpoint: basic.uint8_t | int) -> _AddressingNWK:
-        """Return NWK addressing mode."""
 
-        return cls.NWK(AddrMode.NWK, nwk, endpoint)
+class TransmitOptions(enum.Flag):
+    NONE = 0
 
-    @classmethod
-    def deserialize(
-        cls, data: bytes
-    ) -> tuple[_AddressingGroup | _AddressingIEEE | _AddressingNWK, bytes]:
-        """Deserialize data."""
+    ACK = 1
+    APS_Encryption = 2
 
-        if data[0] == AddrMode.IEEE:
-            return cls.IEEE.deserialize(data)
-        elif data[0] == AddrMode.Group:
-            return cls.Group.deserialize(data)
-        elif data[0] == AddrMode.NWK:
-            return cls.NWK.deserialize(data)
 
-        raise ValueError(f"Invalid '0x{data[0]:02x}' addressing mode")
+@dataclasses.dataclass
+class ZigbeePacket(BaseDataclassMixin):
+    """
+    Container for the information in an incoming or outgoing ZDO or ZCL packet.
+
+    The radio library is expected to fill this object in with all received data and pass
+    it to zigpy for every type of packet.
+    """
+
+    # Set to `None` when the packet is outgoing
+    src: AddrModeAddress | None = dataclasses.field(default=None)
+    src_ep: basic.uint8_t | None = dataclasses.field(default=None)
+
+    # Set to `None` when the packet is incoming
+    dst: AddrModeAddress | None = dataclasses.field(default=None)
+    dst_ep: basic.uint8_t | None = dataclasses.field(default=None)
+
+    # If the radio supports it, a source route for the packet
+    source_route: list[NWK] | None = dataclasses.field(default=None)
+    extended_timeout: bool = dataclasses.field(default=False)
+
+    tsn: basic.uint8_t = dataclasses.field(default=0x00)
+    profile_id: basic.uint16_t = dataclasses.field(default=0x0000)
+    cluster_id: basic.uint16_t = dataclasses.field(default=0x0000)
+
+    # Any serializable object
+    data: basic.SerializableBytes = dataclasses.field(
+        default_factory=basic.SerializableBytes
+    )
+
+    # Options for outgoing packets
+    tx_options: TransmitOptions = dataclasses.field(default=TransmitOptions.NONE)
+    radius: basic.uint8_t = dataclasses.field(default=0)
+    non_member_radius: basic.uint8_t = dataclasses.field(default=0)
+
+    # Options for incoming packets
+    lqi: basic.uint8_t | None = dataclasses.field(default=None)
+    rssi: basic.int8s | None = dataclasses.field(default=None)

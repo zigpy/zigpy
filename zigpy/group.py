@@ -8,6 +8,7 @@ from zigpy.endpoint import Endpoint
 import zigpy.profiles.zha as zha_profile
 from zigpy.util import ListenableMixin, LocalLogMixin
 import zigpy.zcl
+from zigpy.zcl import foundation
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -53,15 +54,29 @@ class Group(ListenableMixin, dict):
 
     async def request(self, profile, cluster, sequence, data, *args, **kwargs):
         """Send multicast request."""
-        res = await self.application.mrequest(
-            self.group_id,
-            profile,
-            cluster,
-            self.application.get_endpoint_id(cluster, is_server_cluster=False),
-            sequence,
-            data,
+        await self.application.send_packet(
+            t.ZigbeePacket(
+                src_ep=self.application.get_endpoint_id(
+                    cluster, is_server_cluster=False
+                ),
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.Group, address=self.group_id
+                ),
+                tsn=sequence,
+                profile_id=profile,
+                cluster_id=cluster,
+                data=t.SerializableBytes(data),
+                radius=0,
+                non_member_radius=3,
+            )
         )
-        return [data[2], zigpy.zcl.foundation.Status(res[0])]
+
+        return foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Default_Response
+        ].schema(
+            status=foundation.Status.SUCCESS,
+            command_id=data[2],
+        )
 
     def __repr__(self) -> str:
         return "<{} group_id={} name='{}' members={}>".format(

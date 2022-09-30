@@ -292,7 +292,7 @@ def test_group_ep_by_cluster_attr(group_endpoint, monkeypatch):
 
 
 async def test_group_request(group):
-    group.application.mrequest.return_value = [0, "message sent"]
+    group.application.send_packet = AsyncMock()
     data = b"\x01\x02\x03\x04\x05"
     res = await group.request(
         sentinel.profile,
@@ -300,14 +300,19 @@ async def test_group_request(group):
         sentinel.sequence,
         data,
     )
-    assert group.application.mrequest.call_count == 1
-    assert group.application.mrequest.call_args[0][0] == group.group_id
-    assert group.application.mrequest.call_args[0][1] is sentinel.profile
-    assert group.application.mrequest.call_args[0][2] is sentinel.cluster
-    assert group.application.mrequest.call_args[0][4] is sentinel.sequence
-    assert group.application.mrequest.call_args[0][5] == data
-    assert res[0] == data[2]
-    assert res[1] is zigpy.zcl.foundation.Status.SUCCESS
+    assert group.application.send_packet.call_count == 1
+    packet = group.application.send_packet.mock_calls[0].args[0]
+
+    assert packet.dst == t.AddrModeAddress(
+        addr_mode=t.AddrMode.Group, address=group.group_id
+    )
+    assert packet.profile_id is sentinel.profile
+    assert packet.cluster_id is sentinel.cluster
+    assert packet.tsn is sentinel.sequence
+    assert packet.data.serialize() == data
+
+    assert res.status is zigpy.zcl.foundation.Status.SUCCESS
+    assert res.command_id == data[2]
 
 
 def test_update_group_membership_remove_member(groups, endpoint):

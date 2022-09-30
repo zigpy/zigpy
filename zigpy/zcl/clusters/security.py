@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import zigpy.types as t
+from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster
 import zigpy.zcl.foundation
 from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
@@ -111,10 +112,7 @@ class IasZone(Cluster):
         hdr: zigpy.zcl.foundation.ZCLHeader,
         args: list[Any],
         *,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         if (
             hdr.command_id == 0

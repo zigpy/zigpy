@@ -6,11 +6,14 @@ from typing import Coroutine
 
 import zigpy.profiles
 import zigpy.types as t
+from zigpy.typing import AddressingMode
 import zigpy.util
 
 from . import types
 
 LOGGER = logging.getLogger(__name__)
+
+ZDO_ENDPOINT = 0
 
 
 class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
@@ -68,10 +71,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         hdr: types.ZDOHeader,
         args: list,
         *,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ) -> None:
         self.debug("ZDO request %s: %s", hdr.command_id, args)
 
@@ -95,17 +95,22 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         ieee: t.EUI64,
         request_type: int,
         start_index: int | None = None,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         """Handle ZDO NWK Address request."""
 
         app = self._device.application
-        if ieee == app.ieee:
+        if ieee == app.state.node_info.ieee:
             self.create_catching_task(
-                self.NWK_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
+                self.NWK_addr_rsp(
+                    0,
+                    app.state.node_info.ieee,
+                    app.state.node_info.nwk,
+                    0,
+                    0,
+                    [],
+                    tsn=hdr.tsn,
+                )
             )
 
     def handle_ieee_addr_req(
@@ -114,17 +119,27 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         nwk: t.NWK,
         request_type: int,
         start_index: int | None = None,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         """Handle ZDO IEEE Address request."""
 
         app = self._device.application
-        if nwk in (0xFFFF, 0xFFFD, 0xFFFC, app.nwk):
+        if nwk in (
+            t.BroadcastAddress.ALL_DEVICES,
+            t.BroadcastAddress.RX_ON_WHEN_IDLE,
+            t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
+            app.state.node_info.nwk,
+        ):
             self.create_catching_task(
-                self.IEEE_addr_rsp(0, app.ieee, app.nwk, 0, 0, [], tsn=hdr.tsn)
+                self.IEEE_addr_rsp(
+                    0,
+                    app.state.node_info.ieee,
+                    app.state.node_info.nwk,
+                    0,
+                    0,
+                    [],
+                    tsn=hdr.tsn,
+                )
             )
 
     def handle_device_annce(
@@ -133,10 +148,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         nwk: t.NWK,
         ieee: t.EUI64,
         capability: int,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         """Handle ZDO device announcement request."""
         self.listener_event("device_announce", self._device)
@@ -146,10 +158,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         hdr: types.ZDOHeader,
         permit_duration: int,
         tc_significance: int,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         """Handle ZDO permit joining request."""
 
@@ -162,14 +171,11 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         profile: int,
         in_clusters: list,
         out_cluster: list,
-        dst_addressing: t.Addressing.Group
-        | t.Addressing.IEEE
-        | t.Addressing.NWK
-        | None = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         """Handle ZDO Match_desc_req request."""
 
-        local_addr = self._device.application.nwk
+        local_addr = self._device.application.state.node_info.nwk
         if profile != zigpy.profiles.zha.PROFILE_ID:
             self.create_catching_task(
                 self.Match_Desc_rsp(0, local_addr, [], tsn=hdr.tsn)
@@ -235,11 +241,17 @@ def broadcast(
     radius,
     *args,
     broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
+    **kwargs,
 ):
+    params, param_types = types.CLUSTERS[command]
+
+    named_args = dict(zip(params, args))
+    named_args.update(kwargs)
+    assert set(named_args.keys()) & set(params)
+
     sequence = app.get_sequence()
-    data = sequence.to_bytes(1, "little")
-    schema = types.CLUSTERS[command][1]
-    data += t.serialize(args, schema)
+    data = bytes([sequence]) + t.serialize(named_args.values(), param_types)
+
     return zigpy.device.broadcast(
         app,
         0,

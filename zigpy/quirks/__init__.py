@@ -160,7 +160,7 @@ class CustomCluster(zigpy.zcl.Cluster):
 
         return False
 
-    def command(
+    async def command(
         self,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
         *args,
@@ -177,7 +177,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         ):
             manufacturer = self.endpoint.manufacturer_id
 
-        return self.request(
+        return await self.request(
             False,
             command.id,
             command.schema,
@@ -188,7 +188,7 @@ class CustomCluster(zigpy.zcl.Cluster):
             tsn=tsn,
         )
 
-    def client_command(
+    async def client_command(
         self,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
         *args,
@@ -203,7 +203,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         ):
             manufacturer = self.endpoint.manufacturer_id
 
-        return self.reply(
+        return await self.reply(
             False, command.id, command.schema, *args, manufacturer=manufacturer, tsn=tsn
         )
 
@@ -246,7 +246,7 @@ class CustomCluster(zigpy.zcl.Cluster):
             succeeded.extend(results[0])
         return [succeeded]
 
-    def _configure_reporting(  # type:ignore[override]
+    async def _configure_reporting(  # type:ignore[override]
         self,
         config_records: list[foundation.AttributeReportingConfig],
         *args,
@@ -258,14 +258,14 @@ class CustomCluster(zigpy.zcl.Cluster):
             [a.attrid for a in config_records]
         ):
             manufacturer = self.endpoint.manufacturer_id
-        return super()._configure_reporting(
+        return await super()._configure_reporting(
             config_records,
             *args,
             manufacturer=manufacturer,
             **kwargs,
         )
 
-    def _read_attributes(  # type:ignore[override]
+    async def _read_attributes(  # type:ignore[override]
         self,
         attribute_ids: list[t.uint16_t],
         *args,
@@ -275,11 +275,11 @@ class CustomCluster(zigpy.zcl.Cluster):
         """Read attributes ZCL foundation command."""
         if manufacturer is None and self._has_manuf_attr(attribute_ids):
             manufacturer = self.endpoint.manufacturer_id
-        return super()._read_attributes(
+        return await super()._read_attributes(
             attribute_ids, *args, manufacturer=manufacturer, **kwargs
         )
 
-    def _write_attributes(  # type:ignore[override]
+    async def _write_attributes(  # type:ignore[override]
         self,
         attributes: list[foundation.Attribute],
         *args,
@@ -291,11 +291,11 @@ class CustomCluster(zigpy.zcl.Cluster):
             [a.attrid for a in attributes]
         ):
             manufacturer = self.endpoint.manufacturer_id
-        return super()._write_attributes(
+        return await super()._write_attributes(
             attributes, *args, manufacturer=manufacturer, **kwargs
         )
 
-    def _write_attributes_undivided(  # type:ignore[override]
+    async def _write_attributes_undivided(  # type:ignore[override]
         self,
         attributes: list[foundation.Attribute],
         *args,
@@ -307,7 +307,7 @@ class CustomCluster(zigpy.zcl.Cluster):
             [a.attrid for a in attributes]
         ):
             manufacturer = self.endpoint.manufacturer_id
-        return super()._write_attributes_undivided(
+        return await super()._write_attributes_undivided(
             attributes, *args, manufacturer=manufacturer, **kwargs
         )
 

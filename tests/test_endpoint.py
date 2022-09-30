@@ -17,6 +17,7 @@ from .async_mock import AsyncMock, MagicMock, sentinel
 def ep():
     dev = MagicMock()
     dev.request = AsyncMock()
+    dev.reply = AsyncMock()
     return endpoint.Endpoint(dev, 1)
 
 
@@ -177,24 +178,24 @@ async def test_request_change_profileid(ep):
     assert ep._device.request.await_count == 3
 
 
-def test_reply(ep):
+async def test_reply(ep):
     ep.profile_id = 260
-    ep.reply(7, 8, b"")
+    await ep.reply(7, 8, b"")
     assert ep._device.reply.call_count == 1
 
 
-def test_reply_change_profile_id(ep):
+async def test_reply_change_profile_id(ep):
     ep.profile_id = 49246
-    ep.reply(0x1000, 8, b"", 0x3F)
+    await ep.reply(0x1000, 8, b"", 0x3F)
     assert ep._device.reply.call_count == 1
     assert ep._device.reply.call_args[0][0] == ep.profile_id
 
-    ep.reply(0x1000, 8, b"", 0x40)
+    await ep.reply(0x1000, 8, b"", 0x40)
     assert ep._device.reply.call_count == 2
     assert ep._device.reply.call_args[0][0] == 0x0104
 
     ep.profile_id = 0xBEEF
-    ep.reply(0x1000, 8, b"", 0x40)
+    await ep.reply(0x1000, 8, b"", 0x40)
     assert ep._device.reply.call_count == 3
     assert ep._device.reply.call_args[0][0] == ep.profile_id
 

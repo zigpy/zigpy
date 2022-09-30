@@ -20,8 +20,8 @@ from zigpy.const import (
 import zigpy.endpoint
 import zigpy.exceptions
 import zigpy.neighbor
-from zigpy.types import NWK, Addressing, BroadcastAddress, Relays
-from zigpy.types.named import EUI64
+import zigpy.types as t
+from zigpy.typing import AddressingMode
 import zigpy.util
 import zigpy.zcl.foundation as foundation
 import zigpy.zdo as zdo
@@ -50,10 +50,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     manufacturer_id_override = None
 
-    def __init__(self, application, ieee, nwk):
+    def __init__(self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK):
         self._application: ControllerApplication = application
-        self._ieee: EUI64 = ieee
-        self.nwk: NWK = NWK(nwk)
+        self._ieee: t.EUI64 = ieee
+        self.nwk: t.NWK = t.NWK(nwk)
         self.zdo: zdo.ZDO = zdo.ZDO(self)
         self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
         self.lqi: int | None = None
@@ -67,7 +67,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.node_desc: zdo.types.NodeDescriptor | None = None
         self.neighbors: zigpy.neighbor.Neighbors = zigpy.neighbor.Neighbors(self)
         self._pending: zigpy.util.Requests = zigpy.util.Requests()
-        self._relays: Relays | None = None
+        self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
 
         # Retained for backwards compatibility, will be removed in a future release
@@ -180,7 +180,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 e, (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException)
             ):
                 LOGGER.warning(
-                    "Device failed to initialize due to unexpected error", exc_info=True
+                    "Device %r failed to initialize due to unexpected error",
+                    self,
+                    exc_info=True,
                 )
 
             self.application.listener_event("device_init_failure", self)
@@ -284,11 +286,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         timeout=APS_REPLY_TIMEOUT,
         use_ieee=False,
     ):
+        extended_timeout = False
+
         if expect_reply and (self.node_desc is None or self.node_desc.is_end_device):
             self.debug("Extending timeout for 0x%02x request", sequence)
             timeout = APS_REPLY_TIMEOUT_EXTENDED
+            extended_timeout = True
+
         with self._pending.new(sequence) as req:
-            radio_result, msg = await self._application.request(
+            await self._application.request(
                 self,
                 profile,
                 cluster,
@@ -298,25 +304,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 data,
                 expect_reply=expect_reply,
                 use_ieee=use_ieee,
+                extended_timeout=extended_timeout,
             )
-            if radio_result != foundation.Status.SUCCESS:
-                self.debug(
-                    (
-                        "Delivery error for seq # 0x%02x, on endpoint id %s "
-                        "cluster 0x%04x: %s"
-                    ),
-                    sequence,
-                    dst_ep,
-                    cluster,
-                    msg,
-                )
-                raise zigpy.exceptions.DeliveryError(
-                    "[0x{:04x}:{}:0x{:04x}]: Message send failure".format(
-                        self.nwk, dst_ep, cluster
-                    )
-                )
-            # If application.request raises an exception, we won't get here, so
-            # won't update last_seen, as expected
+
             self.update_last_seen()
 
             if not expect_reply:
@@ -335,8 +325,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         dst_ep: int,
         message: bytes,
         *,
-        dst_addressing: None
-        | (Addressing.Group | Addressing.IEEE | Addressing.NWK) = None,
+        dst_addressing: AddressingMode | None = None,
     ):
         self.update_last_seen()
 
@@ -385,8 +374,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             profile, cluster, hdr, args, dst_addressing=dst_addressing
         )
 
-    def reply(self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee=False):
-        return self.request(
+    async def reply(
+        self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee=False
+    ):
+        return await self.request(
             profile,
             cluster,
             src_ep,
@@ -411,7 +402,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self._application
 
     @property
-    def ieee(self) -> EUI64:
+    def ieee(self) -> t.EUI64:
         return self._ieee
 
     @property
@@ -454,16 +445,16 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._skip_configuration = False
 
     @property
-    def relays(self) -> Relays | None:
+    def relays(self) -> t.Relays | None:
         """Relay list."""
         return self._relays
 
     @relays.setter
-    def relays(self, relays: Relays | None) -> None:
+    def relays(self, relays: t.Relays | None) -> None:
         if relays is None:
             pass
-        elif not isinstance(relays, Relays):
-            relays = Relays(relays)
+        elif not isinstance(relays, t.Relays):
+            relays = t.Relays(relays)
 
         self._relays = relays
         self.listener_event("device_relays_updated", relays)
@@ -505,7 +496,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             f"{type(self).__name__}"
             f" model={self.model!r}"
             f" manuf={self.manufacturer!r}"
-            f" nwk={NWK(self.nwk)}"
+            f" nwk={t.NWK(self.nwk)}"
             f" ieee={self.ieee}"
             f" is_initialized={self.is_initialized}"
             f">"
@@ -522,9 +513,9 @@ async def broadcast(
     radius,
     sequence,
     data,
-    broadcast_address=BroadcastAddress.RX_ON_WHEN_IDLE,
+    broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
 ):
-    result = await app.broadcast(
+    return await app.broadcast(
         profile,
         cluster,
         src_ep,
@@ -535,4 +526,3 @@ async def broadcast(
         data,
         broadcast_address=broadcast_address,
     )
-    return result

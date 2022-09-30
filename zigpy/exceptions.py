@@ -13,6 +13,10 @@ class APIException(ZigbeeException):
 class DeliveryError(ZigbeeException):
     """Message delivery failed in some way"""
 
+    def __init__(self, message: str, status=None):
+        super().__init__(message)
+        self.status = status
+
 
 class InvalidResponse(ZigbeeException):
     """A ZDO or ZCL response has an unsuccessful status code"""

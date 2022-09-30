@@ -20,7 +20,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
-class NetworkBackup(zigpy.state.BaseDataclassMixin):
+class NetworkBackup(t.BaseDataclassMixin):
     backup_time: datetime = dataclasses.field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
