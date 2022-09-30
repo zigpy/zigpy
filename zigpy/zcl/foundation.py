@@ -6,6 +6,7 @@ import typing
 import warnings
 
 import zigpy.types as t
+import zigpy.util
 
 
 def _hex_uint16_repr(v: int) -> str:
@@ -480,6 +481,10 @@ class Direction(t.enum1):
     Server_to_Client = 0
     Client_to_Server = 1
 
+    @classmethod
+    def _from_is_reply(cls, is_reply: bool) -> Direction:
+        return cls.Client_to_Server if is_reply else cls.Server_to_Client
+
 
 class FrameControl(t.Struct, t.uint8_t):
     """The frame control field contains information defining the command type
@@ -715,7 +720,7 @@ class ZCLCommandDef:
         )
 
     def replace(self, **kwargs) -> ZCLCommandDef:
-        return dataclasses.replace(self, **kwargs)
+        return dataclasses.replace(self, is_reply=None, **kwargs)
 
     def __getitem__(self, key):
         warnings.warn("Attributes should be accessed by name", DeprecationWarning)
@@ -809,86 +814,90 @@ class GeneralCommand(t.enum8):
 
 GENERAL_COMMANDS = COMMANDS = {
     GeneralCommand.Read_Attributes: ZCLCommandDef(
-        schema={"attribute_ids": t.List[t.uint16_t]}, is_reply=False
+        schema={"attribute_ids": t.List[t.uint16_t]},
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Read_Attributes_rsp: ZCLCommandDef(
         schema={"status_records": t.List[ReadAttributeRecord]},
-        is_reply=True,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Write_Attributes: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, is_reply=False
+        schema={"attributes": t.List[Attribute]}, direction=Direction.Server_to_Client
     ),
     GeneralCommand.Write_Attributes_Undivided: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, is_reply=False
+        schema={"attributes": t.List[Attribute]}, direction=Direction.Server_to_Client
     ),
     GeneralCommand.Write_Attributes_rsp: ZCLCommandDef(
-        schema={"status_records": WriteAttributesResponse}, is_reply=True
+        schema={"status_records": WriteAttributesResponse},
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Write_Attributes_No_Response: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, is_reply=False
+        schema={"attributes": t.List[Attribute]}, direction=Direction.Server_to_Client
     ),
     GeneralCommand.Configure_Reporting: ZCLCommandDef(
         schema={"config_records": t.List[AttributeReportingConfig]},
-        is_reply=False,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Configure_Reporting_rsp: ZCLCommandDef(
         schema={"status_records": ConfigureReportingResponse},
-        is_reply=True,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Read_Reporting_Configuration: ZCLCommandDef(
         schema={"attribute_records": t.List[ReadReportingConfigRecord]},
-        is_reply=False,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Read_Reporting_Configuration_rsp: ZCLCommandDef(
         schema={"attribute_configs": t.List[AttributeReportingConfigWithStatus]},
-        is_reply=True,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Report_Attributes: ZCLCommandDef(
-        schema={"attribute_reports": t.List[Attribute]}, is_reply=False
+        schema={"attribute_reports": t.List[Attribute]},
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Default_Response: ZCLCommandDef(
-        schema={"command_id": t.uint8_t, "status": Status}, is_reply=True
+        schema={"command_id": t.uint8_t, "status": Status},
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Discover_Attributes: ZCLCommandDef(
         schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
-        is_reply=False,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Attributes_rsp: ZCLCommandDef(
         schema={
             "discovery_complete": t.Bool,
             "attribute_info": t.List[DiscoverAttributesResponseRecord],
         },
-        is_reply=True,
+        direction=Direction.Client_to_Server,
     ),
-    # Command.Read_Attributes_Structured: ZCLCommandDef(schema=(, ), is_reply=False),
-    # Command.Write_Attributes_Structured: ZCLCommandDef(schema=(, ), is_reply=False),
-    # Command.Write_Attributes_Structured_rsp: ZCLCommandDef(schema=(, ), is_reply=True),
+    # Command.Read_Attributes_Structured: ZCLCommandDef(schema=(, ), direction=Direction.Server_to_Client),
+    # Command.Write_Attributes_Structured: ZCLCommandDef(schema=(, ), direction=Direction.Server_to_Client),
+    # Command.Write_Attributes_Structured_rsp: ZCLCommandDef(schema=(, ), direction=Direction.Client_to_Server),
     GeneralCommand.Discover_Commands_Received: ZCLCommandDef(
         schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
-        is_reply=False,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Commands_Received_rsp: ZCLCommandDef(
         schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
-        is_reply=True,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Discover_Commands_Generated: ZCLCommandDef(
         schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
-        is_reply=False,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Commands_Generated_rsp: ZCLCommandDef(
         schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
-        is_reply=True,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Discover_Attribute_Extended: ZCLCommandDef(
         schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
-        is_reply=False,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Attribute_Extended_rsp: ZCLCommandDef(
         schema={
             "discovery_complete": t.Bool,
             "extended_attr_info": t.List[DiscoverAttributesExtendedResponseRecord],
         },
-        is_reply=True,
+        direction=Direction.Client_to_Server,
     ),
 }
 
@@ -898,12 +907,4 @@ for command_id, command_def in list(GENERAL_COMMANDS.items()):
     ).with_compiled_schema()
 
 
-def __getattr__(name: str) -> typing.Any:
-    if name == "Command":
-        warnings.warn(
-            f"`{__name__}.Command` has been renamed to `{__name__}.GeneralCommand",
-            DeprecationWarning,
-        )
-        return GeneralCommand
-
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+__getattr__ = zigpy.util.deprecated_attrs({"Command": GeneralCommand})

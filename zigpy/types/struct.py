@@ -174,7 +174,9 @@ class Struct:
             # Missing fields cause an error if strict
             if value is None and not field.optional:
                 if strict:
-                    raise ValueError(f"Value for field {field.name!r} is required")
+                    raise ValueError(
+                        f"Value for field {field.name!r} is required: {self!r}"
+                    )
                 else:
                     pass  # Python bug, the following `continue` is never covered
                     continue  # pragma: no cover

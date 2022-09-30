@@ -364,6 +364,11 @@ class Binding(t.Struct):
     DstAddress: MultiAddress
 
 
+class AddrRequestType(t.enum8):
+    Single = 0x00
+    Extended = 0x01
+
+
 class Status(t.enum8):
     # The requested operation or transmission was completed successfully.
     SUCCESS = 0x00
@@ -500,8 +505,16 @@ class ZDOCmd(t.enum_factory(_CommandID)):
 
 CLUSTERS = {
     # Device and Service Discovery Server Requests
-    ZDOCmd.NWK_addr_req: (IEEE, ("RequestType", t.uint8_t), ("StartIndex", t.uint8_t)),
-    ZDOCmd.IEEE_addr_req: (NWKI, ("RequestType", t.uint8_t), ("StartIndex", t.uint8_t)),
+    ZDOCmd.NWK_addr_req: (
+        IEEE,
+        ("RequestType", AddrRequestType),
+        ("StartIndex", t.uint8_t),
+    ),
+    ZDOCmd.IEEE_addr_req: (
+        NWKI,
+        ("RequestType", AddrRequestType),
+        ("StartIndex", t.uint8_t),
+    ),
     ZDOCmd.Node_Desc_req: (NWKI,),
     ZDOCmd.Power_Desc_req: (NWKI,),
     ZDOCmd.Simple_Desc_req: (NWKI, ("EndPoint", t.uint8_t)),

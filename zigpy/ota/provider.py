@@ -15,7 +15,7 @@ import urllib.parse
 import aiohttp
 import attr
 
-from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA_URL
+from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA_URL, CONF_OTA_SONOFF_URL
 from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader, parse_ota_image
 import zigpy.util
 
@@ -408,6 +408,87 @@ class Salus(Basic):
             img = SalusImage.new(fw)
             self._cache[img.key] = img
         self.update_expiration()
+
+
+@attr.s
+class SONOFFImage:
+    manufacturer_id = attr.ib()
+    image_type = attr.ib()
+    version = attr.ib(default=None)
+    image_size = attr.ib(default=None)
+    url = attr.ib(default=None)
+
+    @classmethod
+    def new(cls, data):
+        res = cls(data["fw_manufacturer_id"], data["fw_image_type"])
+        res.version = data["fw_file_version"]
+        res.image_size = data["fw_filesize"]
+        res.url = data["fw_binary_url"]
+        return res
+
+    @property
+    def key(self):
+        return ImageKey(self.manufacturer_id, self.image_type)
+
+    async def fetch_image(self) -> BaseOTAImage | None:
+        async with aiohttp.ClientSession() as req:
+            LOGGER.debug("Downloading %s for %s", self.url, self.key)
+            async with req.get(self.url) as rsp:
+                data = await rsp.read()
+
+        ota_image, _ = parse_ota_image(data)
+        assert ota_image.header.key == self.key
+
+        LOGGER.debug(
+            "Finished downloading %s bytes from %s for %s ver %s",
+            self.image_size,
+            self.url,
+            self.key,
+            self.version,
+        )
+        return ota_image
+
+
+class Sonoff(Basic):
+    """Sonoff OTA Firmware provider."""
+
+    UPDATE_URL = "https://zigbee-ota.sonoff.tech/releases/upgrade.json"
+    MANUFACTURER_ID = 4742
+    HEADERS = {"accept": "application/json;q=0.9,*/*;q=0.8"}
+
+    async def initialize_provider(self, ota_config: dict) -> None:
+        self.info("OTA provider enabled")
+        self.config = ota_config
+        await self.refresh_firmware_list()
+        self.enable()
+
+    async def refresh_firmware_list(self) -> None:
+        if self._locks[LOCK_REFRESH].locked():
+            return
+
+        async with self._locks[LOCK_REFRESH]:
+            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
+                url = self.config.get(CONF_OTA_SONOFF_URL, self.UPDATE_URL)
+                async with req.get(url) as rsp:
+                    if not (200 <= rsp.status <= 299):
+                        self.warning(
+                            "Couldn't download '%s': %s/%s",
+                            rsp.url,
+                            rsp.status,
+                            rsp.reason,
+                        )
+                        return
+                    fw_lst = await rsp.json()
+        self.debug("Finished downloading firmware update list")
+        self._cache.clear()
+        for fw in fw_lst:
+            img = SONOFFImage.new(fw)
+            self._cache[img.key] = img
+
+        self.update_expiration()
+
+    async def filter_get_image(self, key: ImageKey) -> bool:
+        return key.manufacturer_id != self.MANUFACTURER_ID
 
 
 @attr.s

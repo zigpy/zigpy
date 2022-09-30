@@ -3,10 +3,10 @@ from __future__ import annotations
 import enum
 import inspect
 import struct
-from typing import Callable, TypeVar
+import typing
 
-CALLABLE_T = TypeVar("CALLABLE_T", bound=Callable)  # pylint: disable=invalid-name
-T = TypeVar("T")
+CALLABLE_T = typing.TypeVar("CALLABLE_T", bound=typing.Callable)
+T = typing.TypeVar("T")
 
 
 class Bits(list):
@@ -45,6 +45,32 @@ class Bits(list):
             bits.extend((byte >> i) & 1 for i in range(7, -1, -1))
 
         return cls(bits), b""
+
+
+class SerializableBytes:
+    """
+    A container object for raw bytes that enforces `serialize()` will be called.
+    """
+
+    def __init__(self, value: bytes = b"") -> None:
+        if isinstance(value, type(self)):
+            value = value.value
+        elif not isinstance(value, (bytes, bytearray)):
+            raise ValueError(f"Object is not bytes: {value!r}")
+
+        self.value = value
+
+    def __eq__(self, other: typing.Any) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self.value == other.value
+
+    def serialize(self) -> bytes:
+        return self.value
+
+    def __repr__(self) -> str:
+        return f"Serialized[{self.value!r}]"
 
 
 NOT_SET = object()
