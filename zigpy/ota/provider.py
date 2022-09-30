@@ -470,8 +470,6 @@ class Sonoff(Basic):
             async with aiohttp.ClientSession(headers=self.HEADERS) as req:
                 url = self.config.get(CONF_OTA_SONOFF_URL, self.UPDATE_URL)
                 async with req.get(url) as rsp:
-                    # SONOFF does not always respond with an appropriate Content-Type
-                    # but the response is always JSON
                     if not (200 <= rsp.status <= 299):
                         self.warning(
                             "Couldn't download '%s': %s/%s",
@@ -480,12 +478,10 @@ class Sonoff(Basic):
                             rsp.reason,
                         )
                         return
-                    fw_lst = await rsp.json(content_type=None)
+                    fw_lst = await rsp.json()
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
         for fw in fw_lst:
-            if "fw_file_version" not in fw:
-                continue
             img = SONOFFImage.new(fw)
             self._cache[img.key] = img
 
