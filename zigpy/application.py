@@ -887,6 +887,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """
         raise NotImplementedError()  # pragma: no cover
 
+    @abc.abstractmethod
+    async def reset_network_info(self) -> None:
+        """
+        Leaves the current network.
+        """
+
+        raise NotImplementedError()  # pragma: no cover
+
     async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None):
         """Permit joining on a specific node or all router nodes."""
         assert 0 <= time_s <= 254

@@ -64,6 +64,9 @@ class App(zigpy.application.ControllerApplication):
     async def permit_with_key(self, node, code, time_s=60):
         pass
 
+    async def reset_network_info(self):
+        pass
+
     async def write_network_info(self, *, network_info, node_info):
         pass
 
