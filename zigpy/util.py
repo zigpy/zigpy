@@ -334,7 +334,8 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
         self._waiters: collections.deque = collections.deque()
         self._wakeup_scheduled: bool = False
 
-    @functools.cached_property
+    @property
+    @functools.lru_cache(maxsize=None)
     def _loop(self) -> asyncio.BaseEventLoop:
         return asyncio.get_running_loop()
 
