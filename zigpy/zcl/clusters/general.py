@@ -614,6 +614,9 @@ class OnOff(Cluster):
         Delayed_All_Off = 0x00
         Dying_Light = 0x01
 
+    class OnOffControl(t.bitmap8):
+        Accept_Only_When_On = 0b00000001
+
     DELAYED_ALL_OFF_FADE_TO_OFF = 0x00
     DELAYED_ALL_OFF_NO_FADE = 0x01
     DELAYED_ALL_OFF_DIM_THEN_FADE_TO_OFF = 0x02
@@ -645,7 +648,7 @@ class OnOff(Cluster):
         0x42: ZCLCommandDef(
             "on_with_timed_off",
             {
-                "on_off_control": t.uint8_t,
+                "on_off_control": OnOffControl,
                 "on_time": t.uint16_t,
                 "off_wait_time": t.uint16_t,
             },

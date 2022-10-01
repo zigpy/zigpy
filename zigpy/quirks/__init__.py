@@ -186,6 +186,7 @@ class CustomCluster(zigpy.zcl.Cluster):
             expect_reply=expect_reply,
             tries=tries,
             tsn=tsn,
+            **kwargs,
         )
 
     async def client_command(
@@ -204,7 +205,13 @@ class CustomCluster(zigpy.zcl.Cluster):
             manufacturer = self.endpoint.manufacturer_id
 
         return await self.reply(
-            False, command.id, command.schema, *args, manufacturer=manufacturer, tsn=tsn
+            False,
+            command.id,
+            command.schema,
+            *args,
+            manufacturer=manufacturer,
+            tsn=tsn,
+            **kwargs,
         )
 
     async def read_attributes_raw(self, attributes, manufacturer=None):
