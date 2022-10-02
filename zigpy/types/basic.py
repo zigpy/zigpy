@@ -81,18 +81,20 @@ class FixedIntType(int):
     _bits = None
     _size = None  # Only for backwards compatibility, not set for smaller ints
 
+    min_value: int
+    max_value: int
+
     def __new__(cls, *args, **kwargs):
         if cls._signed is None or cls._bits is None:
             raise TypeError(f"{cls} is abstract and cannot be created")
 
         n = super().__new__(cls, *args, **kwargs)
 
-        if not cls._signed and not 0 <= n <= 2**cls._bits - 1:
-            raise ValueError(f"{int(n)} is not an unsigned {cls._bits} bit integer")
-        elif (
-            cls._signed and not -(2 ** (cls._bits - 1)) <= n <= 2 ** (cls._bits - 1) - 1
-        ):
-            raise ValueError(f"{int(n)} is not a signed {cls._bits} bit integer")
+        if not cls.min_value <= n <= cls.max_value:
+            raise ValueError(
+                f"{int(n)} is not an {'un' if not cls._signed else ''}signed"
+                f" {cls._bits} bit integer"
+            )
 
         return n
 
@@ -116,6 +118,14 @@ class FixedIntType(int):
                 cls._size = bits // 8
             else:
                 cls._size = None
+
+        if cls._bits is not None and cls._signed is not None:
+            if cls._signed:
+                cls.min_value = -(2 ** (cls._bits - 1))
+                cls.max_value = 2 ** (cls._bits - 1) - 1
+            else:
+                cls.min_value = 0
+                cls.max_value = 2**cls._bits - 1
 
         if repr == "hex":
             assert cls._bits % 4 == 0
