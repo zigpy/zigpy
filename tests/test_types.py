@@ -45,6 +45,8 @@ def test_int_too_short():
 def test_fractional_ints_corner():
     assert t.uint1_t._size is None
     assert t.uint1_t._bits == 1
+    assert t.uint1_t.min_value == 0
+    assert t.uint1_t.max_value == 1
 
     assert t.uint1_t(0) == 0
     assert t.uint1_t(1) == 1
@@ -70,6 +72,8 @@ def test_fractional_ints_corner():
 def test_fractional_ints_larger():
     assert t.uint7_t._size is None
     assert t.uint7_t._bits == 7
+    assert t.uint7_t.min_value == 0
+    assert t.uint7_t.max_value == 2**7 - 1
 
     assert t.uint7_t(0) == 0
     assert t.uint7_t(1) == 1
