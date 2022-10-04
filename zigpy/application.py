@@ -777,6 +777,39 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             StartIndex=0,
         )
 
+    def _maybe_parse_zdo(self, packet: t.ZigbeePacket) -> None:
+        """
+        Attempt to parse an incoming packet as ZDO, to extract useful notifications.
+        """
+
+        # The current zigpy device may not exist if we receive a packet early
+        try:
+            zdo = self._device.zdo
+        except KeyError:
+            zdo = zigpy.zdo.ZDO(None)
+
+        try:
+            zdo_hdr, zdo_args = zdo.deserialize(
+                cluster_id=packet.cluster_id, data=packet.data.serialize()
+            )
+        except ValueError:
+            LOGGER.debug("Could not parse ZDO message from packet")
+            return
+
+        # Interpret useful global ZDO responses and notifications
+        if zdo_hdr.command_id == zdo_types.ZDOCmd.Device_annce:
+            nwk, ieee, _ = zdo_args
+            self.handle_join(nwk=nwk, ieee=ieee, parent_nwk=None)
+        elif zdo_hdr.command_id in (
+            zdo_types.ZDOCmd.NWK_addr_rsp,
+            zdo_types.ZDOCmd.IEEE_addr_rsp,
+        ):
+            status, ieee, nwk, _, _, _ = zdo_args
+
+            if status == zdo_types.Status.SUCCESS:
+                LOGGER.debug("Discovered IEEE address for NWK=%s: %s", nwk, ieee)
+                self.handle_join(nwk=nwk, ieee=ieee, parent_nwk=None)
+
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         """
         Notify zigpy of a received Zigbee packet.
@@ -786,30 +819,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         assert packet.src is not None
         assert packet.dst is not None
 
-        # Peek into ZDO packets to handle ZDO notifications
-        if packet.dst_ep == zigpy.zdo.ZDO_ENDPOINT:
-            # The current zigpy device may not exist if we receive a packet early
-            try:
-                zdo = self._device.zdo
-            except KeyError:
-                zdo = zigpy.zdo.ZDO(None)
-
-            zdo_hdr, zdo_args = zdo.deserialize(
-                cluster_id=packet.cluster_id, data=packet.data.serialize()
-            )
-
-            if zdo_hdr.command_id == zdo_types.ZDOCmd.Device_annce:
-                nwk, ieee, _ = zdo_args
-                self.handle_join(nwk=nwk, ieee=ieee, parent_nwk=None)
-            elif zdo_hdr.command_id in (
-                zdo_types.ZDOCmd.NWK_addr_rsp,
-                zdo_types.ZDOCmd.IEEE_addr_rsp,
-            ):
-                status, ieee, nwk, _, _, _ = zdo_args
-
-                if status == zdo_types.Status.SUCCESS:
-                    LOGGER.debug("Discovered IEEE address for NWK=%s: %s", nwk, ieee)
-                    self.handle_join(nwk=nwk, ieee=ieee, parent_nwk=None)
+        # Peek into ZDO packets to handle possible ZDO notifications
+        if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
+            self._maybe_parse_zdo(packet)
 
         try:
             device = self.get_device_with_address(packet.src)
