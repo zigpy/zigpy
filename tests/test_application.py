@@ -1039,6 +1039,28 @@ async def test_packet_received_new_device_discovery(app, device, zdo_packet):
     assert zigpy_device.rssi == zdo_packet.rssi
 
 
+async def test_bad_zdo_packet_received(app, device):
+    device.is_initialized = True
+    app.devices[device.ieee] = device
+
+    bogus_zdo_packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk),
+        src_ep=1,
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        dst_ep=0,  # bad destination endpoint
+        tsn=180,
+        profile_id=260,
+        cluster_id=6,
+        data=t.SerializableBytes(b"\x08n\n\x00\x00\x10\x00"),
+        lqi=255,
+        rssi=-30,
+    )
+
+    app.packet_received(bogus_zdo_packet)
+
+    assert len(device.handle_message.mock_calls) == 1
+
+
 def test_get_device_with_address_nwk(app, device):
     app.devices[device.ieee] = device
 
