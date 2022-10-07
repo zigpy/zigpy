@@ -204,7 +204,7 @@ class BackupManager(ListenableMixin):
     async def _backup_loop(self, period: int | float):
         while True:
             try:
-                await self.create_backup()
+                await self.create_backup(load_devices=True)
             except Exception:
                 LOGGER.warning("Failed to create a network backup", exc_info=True)
 
