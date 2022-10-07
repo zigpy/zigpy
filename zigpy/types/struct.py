@@ -186,7 +186,23 @@ class Struct:
 
         return assigned_fields
 
-    def as_dict(self, *, skip_missing: bool = False) -> dict[str, typing.Any]:
+    @classmethod
+    def from_dict(cls: type[_STRUCT], obj: dict[str, typing.Any]) -> _STRUCT:
+        parsed = {}
+
+        for key, value in obj.items():
+            field = getattr(cls.fields, key)
+
+            if issubclass(field.type, Struct):
+                parsed[field.name] = field.type.from_dict(value)
+            else:
+                parsed[field.name] = value
+
+        return cls(**parsed)
+
+    def as_dict(
+        self, *, skip_missing: bool = False, recursive: bool = False
+    ) -> dict[str, typing.Any]:
         d = {}
 
         for f in self.fields:
@@ -194,8 +210,12 @@ class Struct:
 
             if value is None and skip_missing:
                 continue
-
-            d[f.name] = value
+            elif recursive and isinstance(value, Struct):
+                d[f.name] = value.as_dict(
+                    skip_missing=skip_missing, recursive=recursive
+                )
+            else:
+                d[f.name] = value
 
         return d
 
