@@ -782,3 +782,19 @@ def test_skip_missing():
 
     assert TestStruct(foo=1).as_tuple() == (1, None)
     assert TestStruct(foo=1).as_tuple(skip_missing=True) == (1,)
+
+
+def test_from_dict(expose_global):
+    @expose_global
+    class InnerStruct(t.Struct):
+        field1: t.uint8_t
+        field2: t.CharacterString
+
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+        bar: InnerStruct
+        baz: t.CharacterString
+
+    s = TestStruct(foo=1, bar=InnerStruct(field1=2, field2="field2"), baz="field3")
+
+    assert s == TestStruct.from_dict(s.as_dict(recursive=True))
