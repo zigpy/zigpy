@@ -973,14 +973,24 @@ async def test_zcl_request_direction():
     ep.request = AsyncMock()
 
     ep.add_input_cluster(zcl.clusters.general.OnOff.cluster_id)
+    ep.add_input_cluster(zcl.clusters.lighting.Color.cluster_id)
     ep.add_output_cluster(zcl.clusters.general.OnOff.cluster_id)
 
+    # Input cluster
     await ep.in_clusters[zcl.clusters.general.OnOff.cluster_id].on()
     hdr1, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
     assert hdr1.direction == foundation.Direction.Server_to_Client
 
     ep.request.reset_mock()
 
+    # Output cluster
     await ep.out_clusters[zcl.clusters.general.OnOff.cluster_id].on()
     hdr2, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
     assert hdr2.direction == foundation.Direction.Client_to_Server
+
+    # Color cluster that also uses `direction` as a kwarg
+    await ep.light_color.move_to_hue(
+        hue=0,
+        direction=zcl.clusters.lighting.Color.Direction.Shortest_distance,
+        transition_time=10,
+    )
