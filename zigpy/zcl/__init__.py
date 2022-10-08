@@ -244,15 +244,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def _create_request(
         self,
+        *,
         general: bool,
         command_id: foundation.GeneralCommand | int,
         schema: dict | t.Struct,
-        *args,
         manufacturer: int | None = None,
         tsn: int | None = None,
         disable_default_response: bool,
         direction: foundation.Direction,
-        **kwargs,
+        # Schema args and kwargs
+        args: tuple[Any, ...],
+        kwargs: Any,
     ) -> tuple[foundation.ZCLHeader, bytes]:
         # Convert out-of-band dict schemas to struct schemas
         if isinstance(schema, (tuple, list)):
@@ -300,10 +302,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         **kwargs,
     ):
         hdr, request = self._create_request(
-            general,
-            command_id,
-            schema,
-            *args,
+            general=general,
+            command_id=command_id,
+            schema=schema,
             manufacturer=manufacturer,
             tsn=tsn,
             disable_default_response=self.is_client,
@@ -312,7 +313,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 if self.is_client
                 else foundation.Direction.Server_to_Client
             ),
-            **kwargs,
+            args=args,
+            kwargs=kwargs,
         )
 
         self.debug("Sending request header: %r", hdr)
@@ -338,15 +340,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         **kwargs,
     ):
         hdr, request = self._create_request(
-            general,
-            command_id,
-            schema,
-            *args,
+            general=general,
+            command_id=command_id,
+            schema=schema,
             manufacturer=manufacturer,
             tsn=tsn,
             disable_default_response=True,
             direction=foundation.Direction.Client_to_Server,
-            **kwargs,
+            args=args,
+            kwargs=kwargs,
         )
 
         self.debug("Sending reply header: %r", hdr)
