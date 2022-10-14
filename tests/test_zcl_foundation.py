@@ -673,18 +673,21 @@ def test_zcl_attribute_definition():
         id=0x1234,
         name="test",
         type=t.uint16_t,
+        access="rw",
     )
 
     assert "0x1234" in str(a)
     assert "'test'" in str(a)
     assert "uint16_t" in str(a)
     assert not a.is_manufacturer_specific  # default
-    assert a.access == "rw"  # also default
+    assert a.access == (
+        foundation.ZCLAttributeAccess.Read | foundation.ZCLAttributeAccess.Write
+    )
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         a.replace(access="x")
 
-    assert a.replace(access="w").access == "w"
+    assert a.replace(access="w").access == foundation.ZCLAttributeAccess.Write
 
 
 def test_zcl_attribute_item_access_warning():

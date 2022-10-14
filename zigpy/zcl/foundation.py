@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import enum
 import keyword
 import typing
 import warnings
@@ -751,29 +752,65 @@ class CommandSchema(t.Struct, tuple):
 
 
 class ZCLAttributeAccess(enum.Flag):
-    Read = "r"
-    Write = "w"
-    Report = "p"
+    NONE = 0
+    Read = 1
+    Write = 2
+    Write_Optional = 4
+    Report = 8
+    Scene = 16
+
+    _names: dict[ZCLAttributeAccess, str]
+
+    @classmethod
+    def from_str(cls: ZCLAttributeAccess, value: str) -> ZCLAttributeAccess:
+        orig_value = value
+        access = cls.NONE
+
+        while value:
+            for mode, prefix in cls._names.items():
+                if value.startswith(prefix):
+                    value = value[len(prefix) :]
+                    access |= mode
+                    break
+            else:
+                raise ValueError(f"Invalid access mode: {orig_value!r}")
+
+        return cls(access)
+
+
+ZCLAttributeAccess._names = {
+    ZCLAttributeAccess.Write_Optional: "*w",
+    ZCLAttributeAccess.Write: "w",
+    ZCLAttributeAccess.Read: "r",
+    ZCLAttributeAccess.Report: "p",
+    ZCLAttributeAccess.Scene: "s",
+}
 
 
 @dataclasses.dataclass(frozen=True)
 class ZCLAttributeDef:
-    id: t.uint16_t = None
     name: str = None
     type: type = None
     access: ZCLAttributeAccess = dataclasses.field(
-        factory=ZCLAttributeAccess,
         default=(
             ZCLAttributeAccess.Read
             | ZCLAttributeAccess.Write
             | ZCLAttributeAccess.Report
         ),
     )
+    mandatory: bool = False
     is_manufacturer_specific: bool = False
 
+    # The ID will be specified later
+    id: t.uint16_t = None
+
     def __post_init__(self):
-        if not isinstance(self.id, t.uint16_t):
+        if self.id is not None and not isinstance(self.id, t.uint16_t):
             object.__setattr__(self, "id", t.uint16_t(self.id))
+
+        if isinstance(self.access, str):
+            ZCLAttributeAccess.NONE
+            object.__setattr__(self, "access", ZCLAttributeAccess.from_str(self.access))
 
         ensure_valid_name(self.name)
 
@@ -787,6 +824,7 @@ class ZCLAttributeDef:
             f"name={self.name!r}, "
             f"type={self.type}, "
             f"access={self.access!r}, "
+            f"mandatory={self.mandatory!r}, "
             f"is_manufacturer_specific={self.is_manufacturer_specific}"
             f")"
         )
@@ -922,7 +960,7 @@ ZCL_CLUSTER_REVISION_ATTR = ZCLAttributeDef(
     "cluster_revision", type=t.uint16_t, access="r", mandatory=True
 )
 ZCL_REPORTING_STATUS_ATTR = ZCLAttributeDef(
-    "attr_reporting_status", type=foundation.AttributeReportingStatus, access="r"
+    "attr_reporting_status", type=AttributeReportingStatus, access="r"
 )
 
 
