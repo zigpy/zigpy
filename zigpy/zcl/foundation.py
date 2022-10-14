@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import functools
 import keyword
 import typing
 import warnings
@@ -762,6 +763,7 @@ class ZCLAttributeAccess(enum.Flag):
     _names: dict[ZCLAttributeAccess, str]
 
     @classmethod
+    @functools.lru_cache(None)
     def from_str(cls: ZCLAttributeAccess, value: str) -> ZCLAttributeAccess:
         orig_value = value
         access = cls.NONE
