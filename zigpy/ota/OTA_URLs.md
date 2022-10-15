@@ -72,7 +72,7 @@ https://github.com/fairecasoimeme/Zlinky_TIC/releases
 
 ### SALUS/Computime
 
-SALUS/Computime Hue Zigbee OTA firmware images are made publicly available by SALUS (first-party) at the following URL:
+SALUS/Computime Zigbee OTA firmware images are made publicly available by SALUS (first-party) at the following URL:
 
 https://eu.salusconnect.io/demo/default/status/firmware
 
