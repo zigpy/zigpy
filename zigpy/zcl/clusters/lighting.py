@@ -86,7 +86,9 @@ class Color(Cluster):
             "compensation_text", type=t.CharacterString, access="r"
         ),
         0x0007: ZCLAttributeDef("color_temperature", type=t.uint16_t, access="rps"),
-        0x0008: ZCLAttributeDef("color_mode", type=t.enum8, access="r", mandatory=True),
+        0x0008: ZCLAttributeDef(
+            "color_mode", type=ColorMode, access="r", mandatory=True
+        ),
         0x000F: ZCLAttributeDef("options", type=Options, access="rw", mandatory=True),
         # Defined Primaries Information
         0x0010: ZCLAttributeDef("num_primaries", type=t.uint8_t, access="r"),
