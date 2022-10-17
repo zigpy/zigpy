@@ -972,10 +972,20 @@ class RSSILocation(Cluster):
 
     cluster_id = 0x000B
     ep_attribute = "rssi_location"
+
+    class LocationMethod(t.enum8):
+        Lateration = 0x00
+        Signposting = 0x01
+        RF_fingerprinting = 0x02
+        Out_of_band = 0x03
+        Centralized = 0x04
+
     attributes: dict[int, ZCLAttributeDef] = {
         # Location Information
         0x0000: ZCLAttributeDef("type", type=t.uint8_t, access="rw", mandatory=True),
-        0x0001: ZCLAttributeDef("method", type=t.enum8, access="rw", mandatory=True),
+        0x0001: ZCLAttributeDef(
+            "method", type=LocationMethod, access="rw", mandatory=True
+        ),
         0x0002: ZCLAttributeDef("age", type=t.uint16_t, access="r"),
         0x0003: ZCLAttributeDef("quality_measure", type=t.uint8_t, access="r"),
         0x0004: ZCLAttributeDef("num_of_devices", type=t.uint8_t, access="r"),
@@ -1116,6 +1126,20 @@ class RSSILocation(Cluster):
 class AnalogInput(Cluster):
     cluster_id = 0x000C
     ep_attribute = "analog_input"
+
+    class Reliability(t.enum8):
+        No_fault_detected = 0
+        No_sensor = 1
+        Over_range = 2
+        Under_range = 3
+        Open_loop = 4
+        Shorted_loop = 5
+        No_output = 6
+        Unreliable_other = 7
+        Process_error = 8
+        Multi_state_fault = 9
+        Configuration_error = 10
+
     attributes: dict[int, ZCLAttributeDef] = {
         0x001C: ZCLAttributeDef("description", type=t.CharacterString, access="r*w"),
         0x0041: ZCLAttributeDef("max_present_value", type=t.Single, access="r*w"),
@@ -1126,7 +1150,7 @@ class AnalogInput(Cluster):
         0x0055: ZCLAttributeDef(
             "present_value", type=t.Single, access="rwp", mandatory=True
         ),
-        0x0067: ZCLAttributeDef("reliability", type=t.enum8, access="r*w"),
+        0x0067: ZCLAttributeDef("reliability", type=Reliability, access="r*w"),
         0x006A: ZCLAttributeDef("resolution", type=t.Single, access="r*w"),
         0x006F: ZCLAttributeDef(
             "status_flags", type=t.bitmap8, access="rp", mandatory=True
@@ -1384,6 +1408,16 @@ class Commissioning(Cluster):
 
     cluster_id = 0x0015
     ep_attribute = "commissioning"
+
+    class StartupControl(t.enum8):
+        Part_of_network = 0x00
+        Form_network = 0x01
+        Rejoin_network = 0x02
+        Start_from_scratch = 0x03
+
+    class NetworkKeyType(t.enum8):
+        Standard = 0x01
+
     attributes: dict[int, ZCLAttributeDef] = {
         # Startup Parameters
         0x0000: ZCLAttributeDef(
@@ -1394,7 +1428,7 @@ class Commissioning(Cluster):
         ),
         0x0002: ZCLAttributeDef("pan_id", type=t.uint16_t, access="rw", mandatory=True),
         0x0003: ZCLAttributeDef(
-            "channelmask", type=t.Channels, access="rw", mandatory=True
+            "channel_mask", type=t.Channels, access="rw", mandatory=True
         ),
         0x0004: ZCLAttributeDef(
             "protocol_version", type=t.uint8_t, access="rw", mandatory=True
@@ -1403,7 +1437,7 @@ class Commissioning(Cluster):
             "stack_profile", type=t.uint8_t, access="rw", mandatory=True
         ),
         0x0006: ZCLAttributeDef(
-            "startup_control", type=t.enum8, access="rw", mandatory=True
+            "startup_control", type=StartupControl, access="rw", mandatory=True
         ),
         0x0010: ZCLAttributeDef(
             "trust_center_address", type=t.EUI64, access="rw", mandatory=True
@@ -1422,7 +1456,7 @@ class Commissioning(Cluster):
             "network_key_seq_num", type=t.uint8_t, access="rw", mandatory=True
         ),
         0x0016: ZCLAttributeDef(
-            "network_key_type", type=t.enum8, access="rw", mandatory=True
+            "network_key_type", type=NetworkKeyType, access="rw", mandatory=True
         ),
         0x0017: ZCLAttributeDef(
             "network_manager_address", type=t.uint16_t, access="rw", mandatory=True

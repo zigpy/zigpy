@@ -55,7 +55,7 @@ class IlluminanceLevelSensing(Cluster):
     attributes: dict[int, ZCLAttributeDef] = {
         # Illuminance Level Sensing Information
         0x0000: ZCLAttributeDef(
-            "level_status", type=t.enum8, access="r", mandatory=True
+            "level_status", type=LevelStatus, access="r", mandatory=True
         ),
         0x0001: ZCLAttributeDef("light_sensor_type", type=LightSensorType, access="r"),
         # Illuminance Level Sensing Settings
