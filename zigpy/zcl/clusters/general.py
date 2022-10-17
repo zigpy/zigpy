@@ -322,7 +322,7 @@ class PowerConfiguration(Cluster):
         0x0050: ZCLAttributeDef(
             "battery_2_manufacturer", type=t.CharacterString, access="rw"
         ),
-        0x0051: ZCLAttributeDef("battery_2_size", type=t.enum8, access="rw"),
+        0x0051: ZCLAttributeDef("battery_2_size", type=BatterySize, access="rw"),
         0x0052: ZCLAttributeDef("battery_2_a_hr_rating", type=t.uint16_t, access="rw"),
         0x0053: ZCLAttributeDef("battery_2_quantity", type=t.uint8_t, access="rw"),
         0x0054: ZCLAttributeDef("battery_2_rated_voltage", type=t.uint8_t, access="rw"),
@@ -355,7 +355,7 @@ class PowerConfiguration(Cluster):
         0x0070: ZCLAttributeDef(
             "battery_3_manufacturer", type=t.CharacterString, access="rw"
         ),
-        0x0071: ZCLAttributeDef("battery_3_size", type=t.enum8, access="rw"),
+        0x0071: ZCLAttributeDef("battery_3_size", type=BatterySize, access="rw"),
         0x0072: ZCLAttributeDef("battery_3_a_hr_rating", type=t.uint16_t, access="rw"),
         0x0073: ZCLAttributeDef("battery_3_quantity", type=t.uint8_t, access="rw"),
         0x0074: ZCLAttributeDef("battery_3_rated_voltage", type=t.uint8_t, access="rw"),
