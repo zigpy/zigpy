@@ -39,9 +39,8 @@ def test_deserialize(zdo_f):
 
 
 def test_deserialize_unknown(zdo_f):
-    hdr, args = zdo_f.deserialize(0x0100, b"\x01")
-    assert hdr.tsn == 1
-    assert hdr.is_reply is False
+    with pytest.raises(ValueError):
+        hdr, args = zdo_f.deserialize(0x0100, b"\x01")
 
 
 async def test_request(zdo_f):
