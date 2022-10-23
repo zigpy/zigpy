@@ -74,64 +74,82 @@ class Color(Cluster):
     ep_attribute = "light_color"
     attributes: dict[int, ZCLAttributeDef] = {
         # Color Information
-        0x0000: ("current_hue", t.uint8_t),
-        0x0001: ("current_saturation", t.uint8_t),
-        0x0002: ("remaining_time", t.uint16_t),
-        0x0003: ("current_x", t.uint16_t),
-        0x0004: ("current_y", t.uint16_t),
-        0x0005: ("drift_compensation", DriftCompensation),
-        0x0006: ("compensation_text", t.CharacterString),
-        0x0007: ("color_temperature", t.uint16_t),
-        0x0008: ("color_mode", t.enum8),
-        0x000F: ("options", Options),
+        0x0000: ZCLAttributeDef("current_hue", type=t.uint8_t, access="rp"),
+        0x0001: ZCLAttributeDef("current_saturation", type=t.uint8_t, access="rps"),
+        0x0002: ZCLAttributeDef("remaining_time", type=t.uint16_t, access="r"),
+        0x0003: ZCLAttributeDef("current_x", type=t.uint16_t, access="rps"),
+        0x0004: ZCLAttributeDef("current_y", type=t.uint16_t, access="rps"),
+        0x0005: ZCLAttributeDef(
+            "drift_compensation", type=DriftCompensation, access="r"
+        ),
+        0x0006: ZCLAttributeDef(
+            "compensation_text", type=t.CharacterString, access="r"
+        ),
+        0x0007: ZCLAttributeDef("color_temperature", type=t.uint16_t, access="rps"),
+        0x0008: ZCLAttributeDef(
+            "color_mode", type=ColorMode, access="r", mandatory=True
+        ),
+        0x000F: ZCLAttributeDef("options", type=Options, access="rw", mandatory=True),
         # Defined Primaries Information
-        0x0010: ("num_primaries", t.uint8_t),
-        0x0011: ("primary1_x", t.uint16_t),
-        0x0012: ("primary1_y", t.uint16_t),
-        0x0013: ("primary1_intensity", t.uint8_t),
-        0x0015: ("primary2_x", t.uint16_t),
-        0x0016: ("primary2_y", t.uint16_t),
-        0x0017: ("primary2_intensity", t.uint8_t),
-        0x0019: ("primary3_x", t.uint16_t),
-        0x001A: ("primary3_y", t.uint16_t),
-        0x001B: ("primary3_intensity", t.uint8_t),
+        0x0010: ZCLAttributeDef("num_primaries", type=t.uint8_t, access="r"),
+        0x0011: ZCLAttributeDef("primary1_x", type=t.uint16_t, access="r"),
+        0x0012: ZCLAttributeDef("primary1_y", type=t.uint16_t, access="r"),
+        0x0013: ZCLAttributeDef("primary1_intensity", type=t.uint8_t, access="r"),
+        0x0015: ZCLAttributeDef("primary2_x", type=t.uint16_t, access="r"),
+        0x0016: ZCLAttributeDef("primary2_y", type=t.uint16_t, access="r"),
+        0x0017: ZCLAttributeDef("primary2_intensity", type=t.uint8_t, access="r"),
+        0x0019: ZCLAttributeDef("primary3_x", type=t.uint16_t, access="r"),
+        0x001A: ZCLAttributeDef("primary3_y", type=t.uint16_t, access="r"),
+        0x001B: ZCLAttributeDef("primary3_intensity", type=t.uint8_t, access="r"),
         # Additional Defined Primaries Information
-        0x0020: ("primary4_x", t.uint16_t),
-        0x0021: ("primary4_y", t.uint16_t),
-        0x0022: ("primary4_intensity", t.uint8_t),
-        0x0024: ("primary5_x", t.uint16_t),
-        0x0025: ("primary5_y", t.uint16_t),
-        0x0026: ("primary5_intensity", t.uint8_t),
-        0x0028: ("primary6_x", t.uint16_t),
-        0x0029: ("primary6_y", t.uint16_t),
-        0x002A: ("primary6_intensity", t.uint8_t),
+        0x0020: ZCLAttributeDef("primary4_x", type=t.uint16_t, access="r"),
+        0x0021: ZCLAttributeDef("primary4_y", type=t.uint16_t, access="r"),
+        0x0022: ZCLAttributeDef("primary4_intensity", type=t.uint8_t, access="r"),
+        0x0024: ZCLAttributeDef("primary5_x", type=t.uint16_t, access="r"),
+        0x0025: ZCLAttributeDef("primary5_y", type=t.uint16_t, access="r"),
+        0x0026: ZCLAttributeDef("primary5_intensity", type=t.uint8_t, access="r"),
+        0x0028: ZCLAttributeDef("primary6_x", type=t.uint16_t, access="r"),
+        0x0029: ZCLAttributeDef("primary6_y", type=t.uint16_t, access="r"),
+        0x002A: ZCLAttributeDef("primary6_intensity", type=t.uint8_t, access="r"),
         # Defined Color Point Settings
-        0x0030: ("white_point_x", t.uint16_t),
-        0x0031: ("white_point_y", t.uint16_t),
-        0x0032: ("color_point_r_x", t.uint16_t),
-        0x0033: ("color_point_r_y", t.uint16_t),
-        0x0034: ("color_point_r_intensity", t.uint8_t),
-        0x0036: ("color_point_g_x", t.uint16_t),
-        0x0037: ("color_point_g_y", t.uint16_t),
-        0x0038: ("color_point_g_intensity", t.uint8_t),
-        0x003A: ("color_point_b_x", t.uint16_t),
-        0x003B: ("color_point_b_y", t.uint16_t),
-        0x003C: ("color_point_b_intensity", t.uint8_t),
+        0x0030: ZCLAttributeDef("white_point_x", type=t.uint16_t, access="r"),
+        0x0031: ZCLAttributeDef("white_point_y", type=t.uint16_t, access="r"),
+        0x0032: ZCLAttributeDef("color_point_r_x", type=t.uint16_t, access="r"),
+        0x0033: ZCLAttributeDef("color_point_r_y", type=t.uint16_t, access="r"),
+        0x0034: ZCLAttributeDef("color_point_r_intensity", type=t.uint8_t, access="r"),
+        0x0036: ZCLAttributeDef("color_point_g_x", type=t.uint16_t, access="r"),
+        0x0037: ZCLAttributeDef("color_point_g_y", type=t.uint16_t, access="r"),
+        0x0038: ZCLAttributeDef("color_point_g_intensity", type=t.uint8_t, access="r"),
+        0x003A: ZCLAttributeDef("color_point_b_x", type=t.uint16_t, access="r"),
+        0x003B: ZCLAttributeDef("color_point_b_y", type=t.uint16_t, access="r"),
+        0x003C: ZCLAttributeDef("color_point_b_intensity", type=t.uint8_t, access="r"),
         # ...
-        0x4000: ("enhanced_current_hue", t.uint16_t),
-        0x4001: ("enhanced_color_mode", EnhancedColorMode),
-        0x4002: ("color_loop_active", t.uint8_t),
-        0x4003: ("color_loop_direction", t.uint8_t),
-        0x4004: ("color_loop_time", t.uint16_t),
-        0x4005: ("color_loop_start_enhanced_hue", t.uint16_t),
-        0x4006: ("color_loop_stored_enhanced_hue", t.uint16_t),
-        0x400A: ("color_capabilities", ColorCapabilities),
-        0x400B: ("color_temp_physical_min", t.uint16_t),
-        0x400C: ("color_temp_physical_max", t.uint16_t),
-        0x400D: ("couple_color_temp_to_level_min", t.uint16_t),
-        0x4010: ("start_up_color_temperature", t.uint16_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x4000: ZCLAttributeDef("enhanced_current_hue", type=t.uint16_t, access="rs"),
+        0x4001: ZCLAttributeDef(
+            "enhanced_color_mode", type=EnhancedColorMode, access="r", mandatory=True
+        ),
+        0x4002: ZCLAttributeDef("color_loop_active", type=t.uint8_t, access="rs"),
+        0x4003: ZCLAttributeDef("color_loop_direction", type=t.uint8_t, access="rs"),
+        0x4004: ZCLAttributeDef("color_loop_time", type=t.uint16_t, access="rs"),
+        0x4005: ZCLAttributeDef(
+            "color_loop_start_enhanced_hue", type=t.uint16_t, access="r"
+        ),
+        0x4006: ZCLAttributeDef(
+            "color_loop_stored_enhanced_hue", type=t.uint16_t, access="r"
+        ),
+        0x400A: ZCLAttributeDef(
+            "color_capabilities", type=ColorCapabilities, access="r", mandatory=True
+        ),
+        0x400B: ZCLAttributeDef("color_temp_physical_min", type=t.uint16_t, access="r"),
+        0x400C: ZCLAttributeDef("color_temp_physical_max", type=t.uint16_t, access="r"),
+        0x400D: ZCLAttributeDef(
+            "couple_color_temp_to_level_min", type=t.uint16_t, access="r"
+        ),
+        0x4010: ZCLAttributeDef(
+            "start_up_color_temperature", type=t.uint16_t, access="rw"
+        ),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
@@ -358,27 +376,43 @@ class Ballast(Cluster):
     ep_attribute = "light_ballast"
     attributes: dict[int, ZCLAttributeDef] = {
         # Ballast Information
-        0x0000: ("physical_min_level", t.uint8_t),
-        0x0001: ("physical_max_level", t.uint8_t),
-        0x0002: ("ballast_status", BallastStatus),
+        0x0000: ZCLAttributeDef(
+            "physical_min_level", type=t.uint8_t, access="r", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "physical_max_level", type=t.uint8_t, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef("ballast_status", type=BallastStatus, access="r"),
         # Ballast Settings
-        0x0010: ("min_level", t.uint8_t),
-        0x0011: ("max_level", t.uint8_t),
-        0x0012: ("power_on_level", t.uint8_t),
-        0x0013: ("power_on_fade_time", t.uint16_t),
-        0x0014: ("intrinsic_ballast_factor", t.uint8_t),
-        0x0015: ("ballast_factor_adjustment", t.uint8_t),
+        0x0010: ZCLAttributeDef(
+            "min_level", type=t.uint8_t, access="rw", mandatory=True
+        ),
+        0x0011: ZCLAttributeDef(
+            "max_level", type=t.uint8_t, access="rw", mandatory=True
+        ),
+        0x0012: ZCLAttributeDef("power_on_level", type=t.uint8_t, access="rw"),
+        0x0013: ZCLAttributeDef("power_on_fade_time", type=t.uint16_t, access="rw"),
+        0x0014: ZCLAttributeDef(
+            "intrinsic_ballast_factor", type=t.uint8_t, access="rw"
+        ),
+        0x0015: ZCLAttributeDef(
+            "ballast_factor_adjustment", type=t.uint8_t, access="rw"
+        ),
         # Lamp Information
-        0x0020: ("lamp_quantity", t.uint8_t),
+        0x0020: ZCLAttributeDef("lamp_quantity", type=t.uint8_t, access="r"),
         # Lamp Settings
-        0x0030: ("lamp_type", t.LimitedCharString(16)),
-        0x0031: ("lamp_manufacturer", t.LimitedCharString(16)),
-        0x0032: ("lamp_rated_hours", t.uint24_t),
-        0x0033: ("lamp_burn_hours", t.uint24_t),
-        0x0034: ("lamp_alarm_mode", LampAlarmMode),
-        0x0035: ("lamp_burn_hours_trip_point", t.uint24_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0030: ZCLAttributeDef("lamp_type", type=t.LimitedCharString(16), access="rw"),
+        0x0031: ZCLAttributeDef(
+            "lamp_manufacturer", type=t.LimitedCharString(16), access="rw"
+        ),
+        0x0032: ZCLAttributeDef("lamp_rated_hours", type=t.uint24_t, access="rw"),
+        0x0033: ZCLAttributeDef("lamp_burn_hours", type=t.uint24_t, access="rw"),
+        0x0034: ZCLAttributeDef("lamp_alarm_mode", type=LampAlarmMode, access="rw"),
+        0x0035: ZCLAttributeDef(
+            "lamp_burn_hours_trip_point", type=t.uint24_t, access="rw"
+        ),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}

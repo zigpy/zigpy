@@ -27,12 +27,16 @@ class Shade(Cluster):
 
     attributes: dict[int, ZCLAttributeDef] = {
         # Shade Information
-        0x0000: ("physical_closed_limit", t.uint16_t),
-        0x0001: ("motor_step_size", t.uint8_t),
-        0x0002: ("status", ShadeStatus),
+        0x0000: ZCLAttributeDef("physical_closed_limit", type=t.uint16_t, access="r"),
+        0x0001: ZCLAttributeDef("motor_step_size", type=t.uint8_t, access="r"),
+        0x0002: ZCLAttributeDef(
+            "status", type=ShadeStatus, access="rw", mandatory=True
+        ),
         # Shade Settings
-        0x0010: ("closed_limit", t.uint16_t),
-        0x0012: ("mode", ShadeMode),
+        0x0010: ZCLAttributeDef(
+            "closed_limit", type=t.uint16_t, access="rw", mandatory=True
+        ),
+        0x0012: ZCLAttributeDef("mode", type=ShadeMode, access="rw", mandatory=True),
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -230,49 +234,99 @@ class DoorLock(Cluster):
     name = "Door Lock"
     ep_attribute = "door_lock"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("lock_state", LockState),
-        0x0001: ("lock_type", LockType),
-        0x0002: ("actuator_enabled", t.Bool),
-        0x0003: ("door_state", DoorState),
-        0x0004: ("door_open_events", t.uint32_t),
-        0x0005: ("door_closed_events", t.uint32_t),
-        0x0006: ("open_period", t.uint16_t),
-        0x0010: ("num_of_lock_records_supported", t.uint16_t),
-        0x0011: ("num_of_total_users_supported", t.uint16_t),
-        0x0012: ("num_of_pin_users_supported", t.uint16_t),
-        0x0013: ("num_of_rfid_users_supported", t.uint16_t),
-        0x0014: ("num_of_week_day_schedules_supported_per_user", t.uint8_t),
-        0x0015: ("num_of_year_day_schedules_supported_per_user", t.uint8_t),
-        0x0016: ("num_of_holiday_scheduleds_supported", t.uint8_t),
-        0x0017: ("max_pin_len", t.uint8_t),
-        0x0018: ("min_pin_len", t.uint8_t),
-        0x0019: ("max_rfid_len", t.uint8_t),
-        0x001A: ("min_rfid_len", t.uint8_t),
-        0x0020: ("enable_logging", t.Bool),
-        0x0021: ("language", t.LimitedCharString(3)),
-        0x0022: ("led_settings", t.uint8_t),
-        0x0023: ("auto_relock_time", t.uint32_t),
-        0x0024: ("sound_volume", t.uint8_t),
-        0x0025: ("operating_mode", OperatingMode),
-        0x0026: ("supported_operating_modes", SupportedOperatingModes),
-        0x0027: ("default_configuration_register", DefaultConfigurationRegister),
-        0x0028: ("enable_local_programming", t.Bool),
-        0x0029: ("enable_one_touch_locking", t.Bool),
-        0x002A: ("enable_inside_status_led", t.Bool),
-        0x002B: ("enable_privacy_mode_button", t.Bool),
-        0x0030: ("wrong_code_entry_limit", t.uint8_t),
-        0x0031: ("user_code_temporary_disable_time", t.uint8_t),
-        0x0032: ("send_pin_ota", t.Bool),
-        0x0033: ("require_pin_for_rf_operation", t.Bool),
-        0x0034: ("zigbee_security_level", ZigbeeSecurityLevel),
-        0x0040: ("alarm_mask", AlarmMask),
-        0x0041: ("keypad_operation_event_mask", KeypadOperationEventMask),
-        0x0042: ("rf_operation_event_mask", RFOperationEventMask),
-        0x0043: ("manual_operation_event_mask", ManualOperatitonEventMask),
-        0x0044: ("rfid_operation_event_mask", RFIDOperationEventMask),
-        0x0045: ("keypad_programming_event_mask", KeypadProgrammingEventMask),
-        0x0046: ("rf_programming_event_mask", RFProgrammingEventMask),
-        0x0047: ("rfid_programming_event_mask", RFIDProgrammingEventMask),
+        0x0000: ZCLAttributeDef(
+            "lock_state", type=LockState, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef("lock_type", type=LockType, access="r", mandatory=True),
+        0x0002: ZCLAttributeDef(
+            "actuator_enabled", type=t.Bool, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("door_state", type=DoorState, access="rp"),
+        0x0004: ZCLAttributeDef("door_open_events", type=t.uint32_t, access="rw"),
+        0x0005: ZCLAttributeDef("door_closed_events", type=t.uint32_t, access="rw"),
+        0x0006: ZCLAttributeDef("open_period", type=t.uint16_t, access="rw"),
+        0x0010: ZCLAttributeDef(
+            "num_of_lock_records_supported", type=t.uint16_t, access="r"
+        ),
+        0x0011: ZCLAttributeDef(
+            "num_of_total_users_supported", type=t.uint16_t, access="r"
+        ),
+        0x0012: ZCLAttributeDef(
+            "num_of_pin_users_supported", type=t.uint16_t, access="r"
+        ),
+        0x0013: ZCLAttributeDef(
+            "num_of_rfid_users_supported", type=t.uint16_t, access="r"
+        ),
+        0x0014: ZCLAttributeDef(
+            "num_of_week_day_schedules_supported_per_user", type=t.uint8_t, access="r"
+        ),
+        0x0015: ZCLAttributeDef(
+            "num_of_year_day_schedules_supported_per_user", type=t.uint8_t, access="r"
+        ),
+        0x0016: ZCLAttributeDef(
+            "num_of_holiday_scheduleds_supported", type=t.uint8_t, access="r"
+        ),
+        0x0017: ZCLAttributeDef("max_pin_len", type=t.uint8_t, access="r"),
+        0x0018: ZCLAttributeDef("min_pin_len", type=t.uint8_t, access="r"),
+        0x0019: ZCLAttributeDef("max_rfid_len", type=t.uint8_t, access="r"),
+        0x001A: ZCLAttributeDef("min_rfid_len", type=t.uint8_t, access="r"),
+        0x0020: ZCLAttributeDef("enable_logging", type=t.Bool, access="r*wp"),
+        0x0021: ZCLAttributeDef("language", type=t.LimitedCharString(3), access="r*wp"),
+        0x0022: ZCLAttributeDef("led_settings", type=t.uint8_t, access="r*wp"),
+        0x0023: ZCLAttributeDef("auto_relock_time", type=t.uint32_t, access="r*wp"),
+        0x0024: ZCLAttributeDef("sound_volume", type=t.uint8_t, access="r*wp"),
+        0x0025: ZCLAttributeDef("operating_mode", type=OperatingMode, access="r*wp"),
+        0x0026: ZCLAttributeDef(
+            "supported_operating_modes", type=SupportedOperatingModes, access="r"
+        ),
+        0x0027: ZCLAttributeDef(
+            "default_configuration_register",
+            type=DefaultConfigurationRegister,
+            access="rp",
+        ),
+        0x0028: ZCLAttributeDef("enable_local_programming", type=t.Bool, access="r*wp"),
+        0x0029: ZCLAttributeDef("enable_one_touch_locking", type=t.Bool, access="rwp"),
+        0x002A: ZCLAttributeDef("enable_inside_status_led", type=t.Bool, access="rwp"),
+        0x002B: ZCLAttributeDef(
+            "enable_privacy_mode_button", type=t.Bool, access="rwp"
+        ),
+        0x0030: ZCLAttributeDef(
+            "wrong_code_entry_limit", type=t.uint8_t, access="r*wp"
+        ),
+        0x0031: ZCLAttributeDef(
+            "user_code_temporary_disable_time", type=t.uint8_t, access="r*wp"
+        ),
+        0x0032: ZCLAttributeDef("send_pin_ota", type=t.Bool, access="r*wp"),
+        0x0033: ZCLAttributeDef(
+            "require_pin_for_rf_operation", type=t.Bool, access="r*wp"
+        ),
+        0x0034: ZCLAttributeDef(
+            "zigbee_security_level", type=ZigbeeSecurityLevel, access="rp"
+        ),
+        0x0040: ZCLAttributeDef("alarm_mask", type=AlarmMask, access="rwp"),
+        0x0041: ZCLAttributeDef(
+            "keypad_operation_event_mask", type=KeypadOperationEventMask, access="rwp"
+        ),
+        0x0042: ZCLAttributeDef(
+            "rf_operation_event_mask", type=RFOperationEventMask, access="rwp"
+        ),
+        0x0043: ZCLAttributeDef(
+            "manual_operation_event_mask", type=ManualOperatitonEventMask, access="rwp"
+        ),
+        0x0044: ZCLAttributeDef(
+            "rfid_operation_event_mask", type=RFIDOperationEventMask, access="rwp"
+        ),
+        0x0045: ZCLAttributeDef(
+            "keypad_programming_event_mask",
+            type=KeypadProgrammingEventMask,
+            access="rwp",
+        ),
+        0x0046: ZCLAttributeDef(
+            "rf_programming_event_mask", type=RFProgrammingEventMask, access="rwp"
+        ),
+        0x0047: ZCLAttributeDef(
+            "rfid_programming_event_mask", type=RFIDProgrammingEventMask, access="rwp"
+        ),
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("lock_door", {"pin_code?": t.CharacterString}, False),
@@ -573,27 +627,58 @@ class WindowCovering(Cluster):
 
     attributes: dict[int, ZCLAttributeDef] = {
         # Window Covering Information
-        0x0000: ("window_covering_type", WindowCoveringType),
-        0x0001: ("physical_closed_limit_lift", t.uint16_t),
-        0x0002: ("physical_closed_limit_tilt", t.uint16_t),
-        0x0003: ("current_position_lift", t.uint16_t),
-        0x0004: ("current_position_tilt", t.uint16_t),
-        0x0005: ("number_of_actuations_lift", t.uint16_t),
-        0x0006: ("number_of_actuations_tilt", t.uint16_t),
-        0x0007: ("config_status", ConfigStatus),
-        0x0008: ("current_position_lift_percentage", t.uint8_t),
-        0x0009: ("current_position_tilt_percentage", t.uint8_t),
+        0x0000: ZCLAttributeDef(
+            "window_covering_type", type=WindowCoveringType, access="r", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "physical_closed_limit_lift", type=t.uint16_t, access="r"
+        ),
+        0x0002: ZCLAttributeDef(
+            "physical_closed_limit_tilt", type=t.uint16_t, access="r"
+        ),
+        0x0003: ZCLAttributeDef("current_position_lift", type=t.uint16_t, access="r"),
+        0x0004: ZCLAttributeDef("current_position_tilt", type=t.uint16_t, access="r"),
+        0x0005: ZCLAttributeDef(
+            "number_of_actuations_lift", type=t.uint16_t, access="r"
+        ),
+        0x0006: ZCLAttributeDef(
+            "number_of_actuations_tilt", type=t.uint16_t, access="r"
+        ),
+        0x0007: ZCLAttributeDef(
+            "config_status", type=ConfigStatus, access="r", mandatory=True
+        ),
+        # All subsequent attributes are mandatory if their control types are enabled
+        0x0008: ZCLAttributeDef(
+            "current_position_lift_percentage", type=t.uint8_t, access="rps"
+        ),
+        0x0009: ZCLAttributeDef(
+            "current_position_tilt_percentage", type=t.uint8_t, access="rps"
+        ),
         # Window Covering Settings
-        0x0010: ("installed_open_limit_lift", t.uint16_t),
-        0x0011: ("installed_closed_limit_lift", t.uint16_t),
-        0x0012: ("installed_open_limit_tilt", t.uint16_t),
-        0x0013: ("installed_closed_limit_tilt", t.uint16_t),
-        0x0014: ("velocity_lift", t.uint16_t),
-        0x0015: ("acceleration_time_lift", t.uint16_t),
-        0x0016: ("deceleration_time_lift", t.uint16_t),
-        0x0017: ("window_covering_mode", WindowCoveringMode),
-        0x0018: ("intermediate_setpoints_lift", t.LVBytes),
-        0x0019: ("intermediate_setpoints_tilt", t.LVBytes),
+        0x0010: ZCLAttributeDef(
+            "installed_open_limit_lift", type=t.uint16_t, access="r"
+        ),
+        0x0011: ZCLAttributeDef(
+            "installed_closed_limit_lift", type=t.uint16_t, access="r"
+        ),
+        0x0012: ZCLAttributeDef(
+            "installed_open_limit_tilt", type=t.uint16_t, access="r"
+        ),
+        0x0013: ZCLAttributeDef(
+            "installed_closed_limit_tilt", type=t.uint16_t, access="r"
+        ),
+        0x0014: ZCLAttributeDef("velocity_lift", type=t.uint16_t, access="rw"),
+        0x0015: ZCLAttributeDef("acceleration_time_lift", type=t.uint16_t, access="rw"),
+        0x0016: ZCLAttributeDef("deceleration_time_lift", type=t.uint16_t, access="rw"),
+        0x0017: ZCLAttributeDef(
+            "window_covering_mode", type=WindowCoveringMode, access="rw", mandatory=True
+        ),
+        0x0018: ZCLAttributeDef(
+            "intermediate_setpoints_lift", type=t.LVBytes, access="rw"
+        ),
+        0x0019: ZCLAttributeDef(
+            "intermediate_setpoints_tilt", type=t.LVBytes, access="rw"
+        ),
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef("up_open", {}, False),

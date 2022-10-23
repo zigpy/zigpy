@@ -6,8 +6,7 @@ from typing import Any
 
 import zigpy.types as t
 from zigpy.typing import AddressingMode
-from zigpy.zcl import Cluster
-import zigpy.zcl.foundation
+from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 
@@ -66,14 +65,23 @@ class IasZone(Cluster):
     ep_attribute = "ias_zone"
     attributes: dict[int, ZCLAttributeDef] = {
         # Zone Information
-        0x0000: ("zone_state", ZoneState),
-        0x0001: ("zone_type", ZoneType),
-        0x0002: ("zone_status", ZoneStatus),
+        0x0000: ZCLAttributeDef(
+            "zone_state", type=ZoneState, access="r", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef("zone_type", type=ZoneType, access="r", mandatory=True),
+        0x0002: ZCLAttributeDef(
+            "zone_status", type=ZoneStatus, access="r", mandatory=True
+        ),
         # Zone Settings
-        0x0010: ("cie_addr", t.EUI64),
-        0x0011: ("zone_id", t.uint8_t),
-        0x0012: ("num_zone_sensitivity_levels_supported", t.uint8_t),
-        0x0013: ("current_zone_sensitivity_level", t.uint8_t),
+        0x0010: ZCLAttributeDef("cie_addr", type=t.EUI64, access="rw", mandatory=True),
+        0x0011: ZCLAttributeDef("zone_id", type=t.uint8_t, access="r", mandatory=True),
+        # Both attributes will be supported/unsupported
+        0x0012: ZCLAttributeDef(
+            "num_zone_sensitivity_levels_supported", type=t.uint8_t, access="r"
+        ),
+        0x0013: ZCLAttributeDef(
+            "current_zone_sensitivity_level", type=t.uint8_t, access="rw"
+        ),
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
@@ -109,18 +117,18 @@ class IasZone(Cluster):
 
     def handle_cluster_request(
         self,
-        hdr: zigpy.zcl.foundation.ZCLHeader,
+        hdr: foundation.ZCLHeader,
         args: list[Any],
         *,
         dst_addressing: AddressingMode | None = None,
     ):
         if (
-            hdr.command_id == 0
+            hdr.command_id == self.commands_by_name["enroll_response"].id
             and self.is_server
             and not hdr.frame_control.disable_default_response
         ):
             hdr.frame_control.is_reply = False  # this is a client -> server cmd
-            self.send_default_rsp(hdr, zigpy.zcl.foundation.Status.SUCCESS)
+            self.send_default_rsp(hdr, foundation.Status.SUCCESS)
 
 
 class IasAce(Cluster):
@@ -197,7 +205,10 @@ class IasAce(Cluster):
     cluster_id = 0x0501
     name = "IAS Ancillary Control Equipment"
     ep_attribute = "ias_ace"
-    attributes: dict[int, ZCLAttributeDef] = {}
+    attributes: dict[int, ZCLAttributeDef] = {
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
+    }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "arm",
@@ -420,7 +431,13 @@ class IasWd(Cluster):
     cluster_id = 0x0502
     name = "IAS Warning Device"
     ep_attribute = "ias_wd"
-    attributes: dict[int, ZCLAttributeDef] = {0x0000: ("max_duration", t.uint16_t)}
+    attributes: dict[int, ZCLAttributeDef] = {
+        0x0000: ZCLAttributeDef(
+            "max_duration", type=t.uint16_t, access="rw", mandatory=True
+        ),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
+    }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
             "start_warning",
