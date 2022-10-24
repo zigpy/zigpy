@@ -307,8 +307,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 extended_timeout=extended_timeout,
             )
 
-            self.update_last_seen()
-
             if not expect_reply:
                 return None
 
