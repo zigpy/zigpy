@@ -384,6 +384,10 @@ class enum16(enum_factory(uint16_t)):  # noqa: N801
     pass
 
 
+class enum32(enum_factory(uint32_t)):  # noqa: N801
+    pass
+
+
 class bitmap2(bitmap_factory(uint2_t)):
     pass
 
