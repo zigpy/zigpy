@@ -106,11 +106,9 @@ async def test_request(dev):
         dev._pending[seq].result.set_result(sentinel.result)
 
     dev.application.send_packet = AsyncMock(side_effect=mock_req)
-    assert dev.last_seen is None
     r = await dev.request(1, 2, 3, 3, seq, b"")
     assert r is sentinel.result
     assert dev._application.send_packet.call_count == 1
-    assert dev.last_seen is not None
 
 
 async def test_request_without_reply(dev):
@@ -120,11 +118,9 @@ async def test_request_without_reply(dev):
         dev._pending[seq].result.set_result(sentinel.result)
 
     dev.application.send_packet = AsyncMock(side_effect=mock_req)
-    assert dev.last_seen is None
     r = await dev.request(1, 2, 3, 3, seq, b"", expect_reply=False)
     assert r is None
     assert dev._application.send_packet.call_count == 1
-    assert dev.last_seen is not None
 
 
 async def test_failed_request(dev):
@@ -167,7 +163,11 @@ async def test_handle_message(dev):
     hdr.direction = sentinel.direction
     dev.deserialize = MagicMock(return_value=[hdr, sentinel.args])
     ep.handle_message = MagicMock()
+
+    assert dev.last_seen is None
     dev.handle_message(99, 98, 3, 3, b"abcd")
+    assert dev.last_seen is not None
+
     assert ep.handle_message.call_count == 1
 
 

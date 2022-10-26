@@ -7,19 +7,34 @@ from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 
+class LightSensorType(t.enum8):
+    Photodiode = 0x00
+    CMOS = 0x01
+    Unknown = 0xFF
+
+
 class IlluminanceMeasurement(Cluster):
     cluster_id = 0x0400
     name = "Illuminance Measurement"
     ep_attribute = "illuminance"
+
+    LightSensorType = LightSensorType
+
     attributes: dict[int, ZCLAttributeDef] = {
         # Illuminance Measurement Information
-        0x0000: ("measured_value", t.uint16_t),
-        0x0001: ("min_measured_value", t.uint16_t),
-        0x0002: ("max_measured_value", t.uint16_t),
-        0x0003: ("tolerance", t.uint16_t),
-        0x0004: ("light_sensor_type", t.enum8),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef(
+            "measured_value", type=t.uint16_t, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "min_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "max_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("tolerance", type=t.uint16_t, access="r"),
+        0x0004: ZCLAttributeDef("light_sensor_type", type=LightSensorType, access="r"),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -29,14 +44,26 @@ class IlluminanceLevelSensing(Cluster):
     cluster_id = 0x0401
     name = "Illuminance Level Sensing"
     ep_attribute = "illuminance_level"
+
+    class LevelStatus(t.enum8):
+        Illuminance_On_Target = 0x00
+        Illuminance_Below_Target = 0x01
+        Illuminance_Above_Target = 0x02
+
+    LightSensorType = LightSensorType
+
     attributes: dict[int, ZCLAttributeDef] = {
         # Illuminance Level Sensing Information
-        0x0000: ("level_status", t.enum8),
-        0x0001: ("light_sensor_type", t.enum8),
+        0x0000: ZCLAttributeDef(
+            "level_status", type=LevelStatus, access="r", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef("light_sensor_type", type=LightSensorType, access="r"),
         # Illuminance Level Sensing Settings
-        0x0010: ("illuminance_target_level", t.uint16_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0010: ZCLAttributeDef(
+            "illuminance_target_level", type=t.uint16_t, access="rw", mandatory=True
+        ),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -48,14 +75,20 @@ class TemperatureMeasurement(Cluster):
     ep_attribute = "temperature"
     attributes: dict[int, ZCLAttributeDef] = {
         # Temperature Measurement Information
-        0x0000: ("measured_value", t.int16s),
-        0x0001: ("min_measured_value", t.int16s),
-        0x0002: ("max_measured_value", t.int16s),
-        0x0003: ("tolerance", t.uint16_t),
+        0x0000: ZCLAttributeDef(
+            "measured_value", type=t.int16s, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "min_measured_value", type=t.int16s, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "max_measured_value", type=t.int16s, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("tolerance", type=t.uint16_t, access="r"),
         # 0x0010: ('min_percent_change', UNKNOWN),
         # 0x0011: ('min_absolute_change', UNKNOWN),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -67,12 +100,24 @@ class PressureMeasurement(Cluster):
     ep_attribute = "pressure"
     attributes: dict[int, ZCLAttributeDef] = {
         # Pressure Measurement Information
-        0x0000: ("measured_value", t.int16s),
-        0x0001: ("min_measured_value", t.int16s),
-        0x0002: ("max_measured_value", t.int16s),
-        0x0003: ("tolerance", t.uint16_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef(
+            "measured_value", type=t.int16s, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "min_measured_value", type=t.int16s, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "max_measured_value", type=t.int16s, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("tolerance", type=t.uint16_t, access="r"),
+        # Extended attribute set
+        0x0010: ZCLAttributeDef("scaled_value", type=t.int16s, access="r"),
+        0x0011: ZCLAttributeDef("min_scaled_value", type=t.int16s, access="r"),
+        0x0012: ZCLAttributeDef("max_scaled_value", type=t.int16s, access="r"),
+        0x0013: ZCLAttributeDef("scaled_tolerance", type=t.uint16_t, access="r"),
+        0x0014: ZCLAttributeDef("scale", type=t.int8s, access="r"),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -84,12 +129,18 @@ class FlowMeasurement(Cluster):
     ep_attribute = "flow"
     attributes: dict[int, ZCLAttributeDef] = {
         # Flow Measurement Information
-        0x0000: ("measured_value", t.uint16_t),
-        0x0001: ("min_measured_value", t.uint16_t),
-        0x0002: ("max_measured_value", t.uint16_t),
-        0x0003: ("tolerance", t.uint16_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef(
+            "measured_value", type=t.uint16_t, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "min_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "max_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("tolerance", type=t.uint16_t, access="r"),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -101,12 +152,18 @@ class RelativeHumidity(Cluster):
     ep_attribute = "humidity"
     attributes: dict[int, ZCLAttributeDef] = {
         # Relative Humidity Measurement Information
-        0x0000: ("measured_value", t.uint16_t),
-        0x0001: ("min_measured_value", t.uint16_t),
-        0x0002: ("max_measured_value", t.uint16_t),
-        0x0003: ("tolerance", t.uint16_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef(
+            "measured_value", type=t.uint16_t, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "min_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "max_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("tolerance", type=t.uint16_t, access="r"),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -116,20 +173,56 @@ class OccupancySensing(Cluster):
     cluster_id = 0x0406
     name = "Occupancy Sensing"
     ep_attribute = "occupancy"
+
+    class Occupancy(t.bitmap8):
+        Unoccupied = 0b00000000
+        Occupied = 0b00000001
+
+    class OccupancySensorType(t.enum8):
+        PIR = 0x00
+        Ultrasonic = 0x01
+        PIR_and_Ultrasonic = 0x02
+        Physical_Contact = 0x03
+
+    class OccupancySensorTypeBitmap(t.bitmap8):
+        PIR = 0b00000001
+        Ultrasonic = 0b00000010
+        Physical_Contact = 0b00000100
+
     attributes: dict[int, ZCLAttributeDef] = {
         # Occupancy Sensor Information
-        0x0000: ("occupancy", t.bitmap8),
-        0x0001: ("occupancy_sensor_type", t.enum8),
+        0x0000: ZCLAttributeDef(
+            "occupancy", type=Occupancy, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "occupancy_sensor_type_bitmap", type=t.bitmap8, access="r", mandatory=True
+        ),
         # PIR Configuration
-        0x0010: ("pir_o_to_u_delay", t.uint16_t),
-        0x0011: ("pir_u_to_o_delay", t.uint16_t),
-        0x0012: ("pir_u_to_o_threshold", t.uint8_t),
+        0x0010: ZCLAttributeDef("pir_o_to_u_delay", type=t.uint16_t, access="rw"),
+        0x0011: ZCLAttributeDef("pir_u_to_o_delay", type=t.uint16_t, access="rw"),
+        0x0012: ZCLAttributeDef("pir_u_to_o_threshold", type=t.uint8_t, access="rw"),
         # Ultrasonic Configuration
-        0x0020: ("ultrasonic_o_to_u_delay", t.uint16_t),
-        0x0021: ("ultrasonic_u_to_o_delay", t.uint16_t),
-        0x0022: ("ultrasonic_u_to_o_threshold", t.uint8_t),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0020: ZCLAttributeDef(
+            "ultrasonic_o_to_u_delay", type=t.uint16_t, access="rw"
+        ),
+        0x0021: ZCLAttributeDef(
+            "ultrasonic_u_to_o_delay", type=t.uint16_t, access="rw"
+        ),
+        0x0022: ZCLAttributeDef(
+            "ultrasonic_u_to_o_threshold", type=t.uint8_t, access="rw"
+        ),
+        # Physical Contact Configuration
+        0x0030: ZCLAttributeDef(
+            "physical_contact_o_to_u_delay", type=t.uint16_t, access="rw"
+        ),
+        0x0031: ZCLAttributeDef(
+            "physical_contact_u_to_o_delay", type=t.uint16_t, access="rw"
+        ),
+        0x0032: ZCLAttributeDef(
+            "physical_contact_u_to_o_threshold", type=t.uint8_t, access="rw"
+        ),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -141,10 +234,18 @@ class LeafWetness(Cluster):
     ep_attribute = "leaf_wetness"
     attributes: dict[int, ZCLAttributeDef] = {
         # Leaf Wetness Measurement Information
-        0x0000: ("measured_value", t.uint16_t),
-        0x0001: ("min_measured_value", t.uint16_t),
-        0x0002: ("max_measured_value", t.uint16_t),
-        0x0003: ("tolerance", t.uint16_t),
+        0x0000: ZCLAttributeDef(
+            "measured_value", type=t.uint16_t, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "min_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "max_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("tolerance", type=t.uint16_t, access="r"),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -156,10 +257,18 @@ class SoilMoisture(Cluster):
     ep_attribute = "soil_moisture"
     attributes: dict[int, ZCLAttributeDef] = {
         # Soil Moisture Measurement Information
-        0x0000: ("measured_value", t.uint16_t),
-        0x0001: ("min_measured_value", t.uint16_t),
-        0x0002: ("max_measured_value", t.uint16_t),
-        0x0003: ("tolerance", t.uint16_t),
+        0x0000: ZCLAttributeDef(
+            "measured_value", type=t.uint16_t, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "min_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "max_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("tolerance", type=t.uint16_t, access="r"),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -171,10 +280,18 @@ class PH(Cluster):
     ep_attribute = "ph"
     attributes: dict[int, ZCLAttributeDef] = {
         # pH Measurement Information
-        0x0000: ("measured_value", t.uint16_t),
-        0x0001: ("min_measured_value", t.uint16_t),
-        0x0002: ("max_measured_value", t.uint16_t),
-        0x0003: ("tolerance", t.uint16_t),
+        0x0000: ZCLAttributeDef(
+            "measured_value", type=t.uint16_t, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "min_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "max_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("tolerance", type=t.uint16_t, access="r"),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -186,10 +303,18 @@ class ElectricalConductivity(Cluster):
     ep_attribute = "electrical_conductivity"
     attributes: dict[int, ZCLAttributeDef] = {
         # Electrical Conductivity Information
-        0x0000: ("measured_value", t.uint16_t),
-        0x0001: ("min_measured_value", t.uint16_t),
-        0x0002: ("max_measured_value", t.uint16_t),
-        0x0003: ("tolerance", t.uint16_t),
+        0x0000: ZCLAttributeDef(
+            "measured_value", type=t.uint16_t, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "min_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "max_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("tolerance", type=t.uint16_t, access="r"),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -201,10 +326,18 @@ class WindSpeed(Cluster):
     ep_attribute = "wind_speed"
     attributes: dict[int, ZCLAttributeDef] = {
         # Wind Speed Measurement Information
-        0x0000: ("measured_value", t.uint16_t),
-        0x0001: ("min_measured_value", t.uint16_t),
-        0x0002: ("max_measured_value", t.uint16_t),
-        0x0003: ("tolerance", t.uint16_t),
+        0x0000: ZCLAttributeDef(
+            "measured_value", type=t.uint16_t, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "min_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "max_measured_value", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("tolerance", type=t.uint16_t, access="r"),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -214,12 +347,18 @@ class _ConcentrationMixin:
     """Mixin for the common attributes of the concentration measurement clusters"""
 
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("measured_value", t.Single),  # fraction of 1 (one)
-        0x0001: ("min_measured_value", t.Single),
-        0x0002: ("max_measured_value", t.Single),
-        0x0003: ("tolerance", t.Single),
-        0xFFFD: ("cluster_revision", t.uint16_t),
-        0xFFFE: ("attr_reporting_status", foundation.AttributeReportingStatus),
+        0x0000: ZCLAttributeDef(
+            "measured_value", type=t.Single, access="rp", mandatory=True
+        ),  # fraction of 1 (one)
+        0x0001: ZCLAttributeDef(
+            "min_measured_value", type=t.Single, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "max_measured_value", type=t.Single, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("tolerance", type=t.Single, access="r"),
+        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
+        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
     }
 
     server_commands: dict[int, ZCLCommandDef] = {}

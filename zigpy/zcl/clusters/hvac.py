@@ -56,32 +56,46 @@ class Pump(Cluster):
     ep_attribute = "pump"
     attributes: dict[int, ZCLAttributeDef] = {
         # Pump Information
-        0x0000: ("max_pressure", t.int16s),
-        0x0001: ("max_speed", t.uint16_t),
-        0x0002: ("max_flow", t.uint16_t),
-        0x0003: ("min_const_pressure", t.int16s),
-        0x0004: ("max_const_pressure", t.int16s),
-        0x0005: ("min_comp_pressure", t.int16s),
-        0x0006: ("max_comp_pressure", t.int16s),
-        0x0007: ("min_const_speed", t.uint16_t),
-        0x0008: ("max_const_speed", t.uint16_t),
-        0x0009: ("min_const_flow", t.uint16_t),
-        0x000A: ("max_const_flow", t.uint16_t),
-        0x000B: ("min_const_temp", t.int16s),
-        0x000C: ("max_const_temp", t.int16s),
+        0x0000: ZCLAttributeDef(
+            "max_pressure", type=t.int16s, access="r", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef(
+            "max_speed", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "max_flow", type=t.uint16_t, access="r", mandatory=True
+        ),
+        0x0003: ZCLAttributeDef("min_const_pressure", type=t.int16s, access="r"),
+        0x0004: ZCLAttributeDef("max_const_pressure", type=t.int16s, access="r"),
+        0x0005: ZCLAttributeDef("min_comp_pressure", type=t.int16s, access="r"),
+        0x0006: ZCLAttributeDef("max_comp_pressure", type=t.int16s, access="r"),
+        0x0007: ZCLAttributeDef("min_const_speed", type=t.uint16_t, access="r"),
+        0x0008: ZCLAttributeDef("max_const_speed", type=t.uint16_t, access="r"),
+        0x0009: ZCLAttributeDef("min_const_flow", type=t.uint16_t, access="r"),
+        0x000A: ZCLAttributeDef("max_const_flow", type=t.uint16_t, access="r"),
+        0x000B: ZCLAttributeDef("min_const_temp", type=t.int16s, access="r"),
+        0x000C: ZCLAttributeDef("max_const_temp", type=t.int16s, access="r"),
         # Pump Dynamic Information
-        0x0010: ("pump_status", PumpStatus),
-        0x0011: ("effective_operation_mode", OperationMode),
-        0x0012: ("effective_control_mode", ControlMode),
-        0x0013: ("capacity", t.int16s),
-        0x0014: ("speed", t.uint16_t),
-        0x0015: ("lifetime_running_hours", t.uint24_t),
-        0x0016: ("power", t.uint24_t),
-        0x0017: ("lifetime_energy_consumed", t.uint32_t),
+        0x0010: ZCLAttributeDef("pump_status", type=PumpStatus, access="rp"),
+        0x0011: ZCLAttributeDef(
+            "effective_operation_mode", type=OperationMode, access="r", mandatory=True
+        ),
+        0x0012: ZCLAttributeDef(
+            "effective_control_mode", type=ControlMode, access="r", mandatory=True
+        ),
+        0x0013: ZCLAttributeDef("capacity", type=t.int16s, access="rp", mandatory=True),
+        0x0014: ZCLAttributeDef("speed", type=t.uint16_t, access="r"),
+        0x0015: ZCLAttributeDef("lifetime_running_hours", type=t.uint24_t, access="rw"),
+        0x0016: ZCLAttributeDef("power", type=t.uint24_t, access="rw"),
+        0x0017: ZCLAttributeDef(
+            "lifetime_energy_consumed", type=t.uint32_t, access="r"
+        ),
         # Pump Settings
-        0x0020: ("operation_mode", OperationMode),
-        0x0021: ("control_mode", ControlMode),
-        0x0022: ("alarm_mask", AlarmMask),
+        0x0020: ZCLAttributeDef(
+            "operation_mode", type=OperationMode, access="rw", mandatory=True
+        ),
+        0x0021: ZCLAttributeDef("control_mode", type=ControlMode, access="rw"),
+        0x0022: ZCLAttributeDef("alarm_mask", type=AlarmMask, access="r"),
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -274,58 +288,111 @@ class Thermostat(Cluster):
     ep_attribute = "thermostat"
     attributes: dict[int, ZCLAttributeDef] = {
         # Thermostat Information
-        0x0000: ("local_temperature", t.int16s),
-        0x0001: ("outdoor_temperature", t.int16s),
-        0x0002: ("occupancy", Occupancy),
-        0x0003: ("abs_min_heat_setpoint_limit", t.int16s),
-        0x0004: ("abs_max_heat_setpoint_limit", t.int16s),
-        0x0005: ("abs_min_cool_setpoint_limit", t.int16s),
-        0x0006: ("abs_max_cool_setpoint_limit", t.int16s),
-        0x0007: ("pi_cooling_demand", t.uint8_t),
-        0x0008: ("pi_heating_demand", t.uint8_t),
-        0x0009: ("system_type_config", SystemType),
+        0x0000: ZCLAttributeDef(
+            "local_temperature", type=t.int16s, access="rp", mandatory=True
+        ),
+        0x0001: ZCLAttributeDef("outdoor_temperature", type=t.int16s, access="r"),
+        0x0002: ZCLAttributeDef("occupancy", type=Occupancy, access="r"),
+        0x0003: ZCLAttributeDef(
+            "abs_min_heat_setpoint_limit", type=t.int16s, access="r"
+        ),
+        0x0004: ZCLAttributeDef(
+            "abs_max_heat_setpoint_limit", type=t.int16s, access="r"
+        ),
+        0x0005: ZCLAttributeDef(
+            "abs_min_cool_setpoint_limit", type=t.int16s, access="r"
+        ),
+        0x0006: ZCLAttributeDef(
+            "abs_max_cool_setpoint_limit", type=t.int16s, access="r"
+        ),
+        0x0007: ZCLAttributeDef("pi_cooling_demand", type=t.uint8_t, access="rp"),
+        0x0008: ZCLAttributeDef("pi_heating_demand", type=t.uint8_t, access="rp"),
+        0x0009: ZCLAttributeDef("system_type_config", type=SystemType, access="r*w"),
         # Thermostat Settings
-        0x0010: ("local_temperature_calibration", t.int8s),
-        0x0011: ("occupied_cooling_setpoint", t.int16s),
-        0x0012: ("occupied_heating_setpoint", t.int16s),
-        0x0013: ("unoccupied_cooling_setpoint", t.int16s),
-        0x0014: ("unoccupied_heating_setpoint", t.int16s),
-        0x0015: ("min_heat_setpoint_limit", t.int16s),
-        0x0016: ("max_heat_setpoint_limit", t.int16s),
-        0x0017: ("min_cool_setpoint_limit", t.int16s),
-        0x0018: ("max_cool_setpoint_limit", t.int16s),
-        0x0019: ("min_setpoint_dead_band", t.int8s),
-        0x001A: ("remote_sensing", RemoteSensing),
-        0x001B: ("ctrl_sequence_of_oper", ControlSequenceOfOperation),
-        0x001C: ("system_mode", SystemMode),
-        0x001D: ("alarm_mask", AlarmMask),
-        0x001E: ("running_mode", RunningMode),
-        # ...
-        0x0020: ("start_of_week", StartOfWeek),
-        0x0021: ("number_of_weekly_transitions", t.uint8_t),
-        0x0022: ("number_of_daily_transitions", t.uint8_t),
-        0x0023: ("temp_setpoint_hold", TemperatureSetpointHold),
-        0x0024: ("temp_setpoint_hold_duration", t.uint16_t),
-        0x0025: ("programing_oper_mode", ProgrammingOperationMode),
-        0x0029: ("running_state", RunningState),
-        0x0030: ("setpoint_change_source", SetpointChangeSource),
-        0x0031: ("setpoint_change_amount", t.int16s),
-        0x0032: ("setpoint_change_source_timestamp", t.UTCTime),
-        0x0034: ("occupied_setback", t.uint8_t),
-        0x0035: ("occupied_setback_min", t.uint8_t),
-        0x0036: ("occupied_setback_max", t.uint8_t),
-        0x0037: ("unoccupied_setback", t.uint8_t),
-        0x0038: ("unoccupied_setback_min", t.uint8_t),
-        0x0039: ("unoccupied_setback_max", t.uint8_t),
-        0x003A: ("emergency_heat_delta", t.uint8_t),
-        0x0040: ("ac_type", ACType),
-        0x0041: ("ac_capacity", t.uint16_t),
-        0x0042: ("ac_refrigerant_type", ACRefrigerantType),
-        0x0043: ("ac_compressor_type", ACCompressorType),
-        0x0044: ("ac_error_code", ACErrorCode),
-        0x0045: ("ac_louver_position", ACLouverPosition),
-        0x0046: ("ac_coil_temperature", t.int16s),
-        0x0047: ("ac_capacity_format", ACCapacityFormat),
+        0x0010: ZCLAttributeDef(
+            "local_temperature_calibration", type=t.int8s, access="rw"
+        ),
+        # At least one of these two attribute sets will be available
+        0x0011: ZCLAttributeDef(
+            "occupied_cooling_setpoint", type=t.int16s, access="rws"
+        ),
+        0x0012: ZCLAttributeDef(
+            "occupied_heating_setpoint", type=t.int16s, access="rws"
+        ),
+        0x0013: ZCLAttributeDef(
+            "unoccupied_cooling_setpoint", type=t.int16s, access="rw"
+        ),
+        0x0014: ZCLAttributeDef(
+            "unoccupied_heating_setpoint", type=t.int16s, access="rw"
+        ),
+        0x0015: ZCLAttributeDef("min_heat_setpoint_limit", type=t.int16s, access="rw"),
+        0x0016: ZCLAttributeDef("max_heat_setpoint_limit", type=t.int16s, access="rw"),
+        0x0017: ZCLAttributeDef("min_cool_setpoint_limit", type=t.int16s, access="rw"),
+        0x0018: ZCLAttributeDef("max_cool_setpoint_limit", type=t.int16s, access="rw"),
+        0x0019: ZCLAttributeDef("min_setpoint_dead_band", type=t.int8s, access="r*w"),
+        0x001A: ZCLAttributeDef("remote_sensing", type=RemoteSensing, access="rw"),
+        0x001B: ZCLAttributeDef(
+            "ctrl_sequence_of_oper",
+            type=ControlSequenceOfOperation,
+            access="rw",
+            mandatory=True,
+        ),
+        0x001C: ZCLAttributeDef(
+            "system_mode", type=SystemMode, access="rws", mandatory=True
+        ),
+        0x001D: ZCLAttributeDef("alarm_mask", type=AlarmMask, access="r"),
+        0x001E: ZCLAttributeDef("running_mode", type=RunningMode, access="r"),
+        # Schedule
+        0x0020: ZCLAttributeDef("start_of_week", type=StartOfWeek, access="r"),
+        0x0021: ZCLAttributeDef(
+            "number_of_weekly_transitions", type=t.uint8_t, access="r"
+        ),
+        0x0022: ZCLAttributeDef(
+            "number_of_daily_transitions", type=t.uint8_t, access="r"
+        ),
+        0x0023: ZCLAttributeDef(
+            "temp_setpoint_hold", type=TemperatureSetpointHold, access="rw"
+        ),
+        0x0024: ZCLAttributeDef(
+            "temp_setpoint_hold_duration", type=t.uint16_t, access="rw"
+        ),
+        0x0025: ZCLAttributeDef(
+            "programing_oper_mode", type=ProgrammingOperationMode, access="rwp"
+        ),
+        # HVAC Relay
+        0x0029: ZCLAttributeDef("running_state", type=RunningState, access="r"),
+        # Thermostat Setpoint Change Tracking
+        0x0030: ZCLAttributeDef(
+            "setpoint_change_source", type=SetpointChangeSource, access="r"
+        ),
+        0x0031: ZCLAttributeDef("setpoint_change_amount", type=t.int16s, access="r"),
+        0x0032: ZCLAttributeDef(
+            "setpoint_change_source_timestamp", type=t.UTCTime, access="r"
+        ),
+        0x0034: ZCLAttributeDef("occupied_setback", type=t.uint8_t, access="rw"),
+        0x0035: ZCLAttributeDef("occupied_setback_min", type=t.uint8_t, access="r"),
+        0x0036: ZCLAttributeDef("occupied_setback_max", type=t.uint8_t, access="r"),
+        0x0037: ZCLAttributeDef("unoccupied_setback", type=t.uint8_t, access="rw"),
+        0x0038: ZCLAttributeDef("unoccupied_setback_min", type=t.uint8_t, access="r"),
+        0x0039: ZCLAttributeDef("unoccupied_setback_max", type=t.uint8_t, access="r"),
+        0x003A: ZCLAttributeDef("emergency_heat_delta", type=t.uint8_t, access="rw"),
+        # AC Information
+        0x0040: ZCLAttributeDef("ac_type", type=ACType, access="rw"),
+        0x0041: ZCLAttributeDef("ac_capacity", type=t.uint16_t, access="rw"),
+        0x0042: ZCLAttributeDef(
+            "ac_refrigerant_type", type=ACRefrigerantType, access="rw"
+        ),
+        0x0043: ZCLAttributeDef(
+            "ac_compressor_type", type=ACCompressorType, access="rw"
+        ),
+        0x0044: ZCLAttributeDef("ac_error_code", type=ACErrorCode, access="rw"),
+        0x0045: ZCLAttributeDef(
+            "ac_louver_position", type=ACLouverPosition, access="rw"
+        ),
+        0x0046: ZCLAttributeDef("ac_coil_temperature", type=t.int16s, access="r"),
+        0x0047: ZCLAttributeDef(
+            "ac_capacity_format", type=ACCapacityFormat, access="rw"
+        ),
     }
     server_commands: dict[int, ZCLCommandDef] = {
         0x00: ZCLCommandDef(
@@ -400,8 +467,8 @@ class Fan(Cluster):
     ep_attribute = "fan"
     attributes: dict[int, ZCLAttributeDef] = {
         # Fan Control Status
-        0x0000: ("fan_mode", FanMode),
-        0x0001: ("fan_mode_sequence", FanModeSequence),
+        0x0000: ZCLAttributeDef("fan_mode", type=FanMode, access=""),
+        0x0001: ZCLAttributeDef("fan_mode_sequence", type=FanModeSequence, access=""),
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -426,15 +493,29 @@ class Dehumidification(Cluster):
     ep_attribute = "dehumidification"
     attributes: dict[int, ZCLAttributeDef] = {
         # Dehumidification Information
-        0x0000: ("relative_humidity", t.uint8_t),
-        0x0001: ("dehumid_cooling", t.uint8_t),
+        0x0000: ZCLAttributeDef("relative_humidity", type=t.uint8_t, access="r"),
+        0x0001: ZCLAttributeDef(
+            "dehumidification_cooling", type=t.uint8_t, access="rp", mandatory=True
+        ),
         # Dehumidification Settings
-        0x0010: ("rh_dehumid_setpoint", t.uint8_t),
-        0x0011: ("relative_humidity_mode", RelativeHumidityMode),
-        0x0012: ("dehumid_lockout", DehumidificationLockout),
-        0x0013: ("dehumid_hysteresis", t.uint8_t),
-        0x0014: ("dehumid_max_cool", t.uint8_t),
-        0x0015: ("relative_humid_display", RelativeHumidityDisplay),
+        0x0010: ZCLAttributeDef(
+            "rh_dehumidification_setpoint", type=t.uint8_t, access="rw", mandatory=True
+        ),
+        0x0011: ZCLAttributeDef(
+            "relative_humidity_mode", type=RelativeHumidityMode, access="rw"
+        ),
+        0x0012: ZCLAttributeDef(
+            "dehumidification_lockout", type=DehumidificationLockout, access="rw"
+        ),
+        0x0013: ZCLAttributeDef(
+            "dehumidification_hysteresis", type=t.uint8_t, access="rw", mandatory=True
+        ),
+        0x0014: ZCLAttributeDef(
+            "dehumidification_max_cool", type=t.uint8_t, access="rw", mandatory=True
+        ),
+        0x0015: ZCLAttributeDef(
+            "relative_humidity_display", type=RelativeHumidityDisplay, access="rw"
+        ),
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}
@@ -465,9 +546,20 @@ class UserInterface(Cluster):
     name = "Thermostat User Interface Configuration"
     ep_attribute = "thermostat_ui"
     attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ("temperature_display_mode", TemperatureDisplayMode),
-        0x0001: ("keypad_lockout", KeypadLockout),
-        0x0002: ("schedule_programming_visibility", ScheduleProgrammingVisibility),
+        0x0000: ZCLAttributeDef(
+            "temperature_display_mode",
+            type=TemperatureDisplayMode,
+            access="rw",
+            mandatory=True,
+        ),
+        0x0001: ZCLAttributeDef(
+            "keypad_lockout", type=KeypadLockout, access="rw", mandatory=True
+        ),
+        0x0002: ZCLAttributeDef(
+            "schedule_programming_visibility",
+            type=ScheduleProgrammingVisibility,
+            access="rw",
+        ),
     }
     server_commands: dict[int, ZCLCommandDef] = {}
     client_commands: dict[int, ZCLCommandDef] = {}

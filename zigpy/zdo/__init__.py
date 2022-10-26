@@ -36,17 +36,16 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         return data
 
     def deserialize(self, cluster_id, data):
-        hdr, data = types.ZDOHeader.deserialize(cluster_id, data)
-        try:
-            cluster_details = types.CLUSTERS[cluster_id]
-        except KeyError:
-            self.warning("Unknown ZDO cluster 0x%04x", cluster_id)
-            return hdr, data
+        if cluster_id not in types.CLUSTERS:
+            raise ValueError(f"Invalid ZDO cluster ID: 0x{cluster_id:04X}")
 
-        args, data = t.deserialize(data, cluster_details[1])
-        if data != b"":
+        _, param_types = types.CLUSTERS[cluster_id]
+        hdr, data = types.ZDOHeader.deserialize(cluster_id, data)
+        args, data = t.deserialize(data, param_types)
+
+        if data:
             # TODO: Seems sane to check, but what should we do?
-            self.warning("Data remains after deserializing ZDO frame")
+            self.warning("Data remains after deserializing ZDO frame: %r", data)
 
         return hdr, args
 
