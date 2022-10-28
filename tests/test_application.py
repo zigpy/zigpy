@@ -807,7 +807,7 @@ def packet(app, device):
         data=t.SerializableBytes(b"test data"),
         source_route=None,
         extended_timeout=False,
-        tx_options=t.TransmitOptions.ACK,
+        tx_options=t.TransmitOptions.NONE,
     )
 
 
@@ -861,6 +861,14 @@ async def test_request(app, device, packet):
     app.build_source_route_to.assert_called_once_with(dest=device)
     app.send_packet.assert_called_once_with(
         packet=packet.replace(source_route=[0x000A, 0x000B])
+    )
+    app.send_packet.reset_mock()
+
+    # Test sending without waiting for a reply
+    status, msg = await send_request(app, expect_reply=False)
+
+    app.send_packet.assert_called_once_with(
+        packet=packet.replace(tx_options=t.TransmitOptions.ACK)
     )
     app.send_packet.reset_mock()
 

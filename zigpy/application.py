@@ -651,6 +651,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         else:
             source_route = None
 
+        tx_options = t.TransmitOptions.NONE
+
+        if not expect_reply:
+            tx_options |= t.TransmitOptions.ACK
+
         await self.send_packet(
             t.ZigbeePacket(
                 src=src,
@@ -663,9 +668,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 data=t.SerializableBytes(data),
                 extended_timeout=extended_timeout,
                 source_route=source_route,
-                tx_options=(
-                    t.TransmitOptions.ACK if expect_reply else t.TransmitOptions.NONE
-                ),
+                tx_options=tx_options,
             )
         )
 
