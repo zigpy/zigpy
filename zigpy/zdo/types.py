@@ -322,16 +322,41 @@ class Neighbor(t.Struct):
 class Neighbors(t.Struct):
     """Mgmt_Lqi_rsp"""
 
-    entries: t.uint8_t
-    start_index: t.uint8_t
-    neighbor_table_list: t.LVList[Neighbor]
+    Entries: t.uint8_t
+    StartIndex: t.uint8_t
+    NeighborTableList: t.LVList[Neighbor]
+
+
+class RouteStatus(t.enum3):
+    """Route descriptor route status."""
+
+    Active = 0x00
+    Discovery_Underway = 0x01
+    Discovery_Failed = 0x02
+    Inactive = 0x03
+    Validation_Underway = 0x04
+    Reserved_5 = 0x05
+    Reserved_6 = 0x06
+    Reserved_7 = 0x07
 
 
 class Route(t.Struct):
     """Route Descriptor"""
 
     DstNWK: t.NWK
-    RouteStatus: t.uint8_t
+    RouteStatus: RouteStatus
+
+    # Whether the device is a memory constrained concentrator.
+    MemoryConstrained: t.uint1_t
+
+    # The destination is a concentrator that issued a many-to-one request.
+    ManyToOne: t.uint1_t
+
+    # A route record command frame should be sent to the destination prior to the next
+    # data packet.
+    RouteRecordRequired: t.uint1_t
+    Reserved: t.uint2_t
+
     NextHop: t.NWK
 
 
