@@ -12,7 +12,7 @@ from zigpy.config import (
     CONF_OTA_INOVELLI,
     CONF_OTA_LEDVANCE,
     CONF_OTA_SALUS,
-    CONF_OTA_SONOFF,
+    CONF_OTA_SONOFF, CONF_OTA_THIRDREALITY,
 )
 from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader
 import zigpy.ota.provider
@@ -69,13 +69,13 @@ class CachedImage:
             return False
 
         if (
-            hw_ver is not None
-            and self.image.header.hardware_versions_present
-            and not (
+                hw_ver is not None
+                and self.image.header.hardware_versions_present
+                and not (
                 self.image.header.minimum_hardware_version
                 <= hw_ver
                 <= self.image.header.maximum_hardware_version
-            )
+        )
         ):
             return False
 
@@ -83,8 +83,8 @@ class CachedImage:
 
     def get_image_block(self, offset: t.uint32_t, size: t.uint8_t) -> bytes:
         if (
-            self.expires_on is not None
-            and self.expires_on - datetime.datetime.now() < DELAY_EXPIRATION
+                self.expires_on is not None
+                and self.expires_on - datetime.datetime.now() < DELAY_EXPIRATION
         ):
             self.expires_on += DELAY_EXPIRATION
 
@@ -94,7 +94,7 @@ class CachedImage:
         if offset > len(self.cached_data):
             raise ValueError("Offset exceeds image size")
 
-        return self.cached_data[offset : offset + min(self.MAXIMUM_DATA_SIZE, size)]
+        return self.cached_data[offset: offset + min(self.MAXIMUM_DATA_SIZE, size)]
 
 
 class OTA(zigpy.util.ListenableMixin):
@@ -118,17 +118,21 @@ class OTA(zigpy.util.ListenableMixin):
             self.add_listener(zigpy.ota.provider.Salus())
         if ota_config[CONF_OTA_SONOFF]:
             self.add_listener(zigpy.ota.provider.Sonoff())
+        if ota_config[CONF_OTA_THIRDREALITY]:
+            self.add_listener(zigpy.ota.provider.ThirdReality())
 
     async def initialize(self) -> None:
         await self.async_event("initialize_provider", self._app.config[CONF_OTA])
         self._not_initialized = False
 
     async def get_ota_image(
-        self, manufacturer_id, image_type, model=None
+            self, manufacturer_id, image_type, model=None
     ) -> Optional[CachedImage]:
         if manufacturer_id in (
-            zigpy.ota.provider.Salus.MANUFACTURER_ID,
-            zigpy.ota.provider.Inovelli.MANUFACTURER_ID,
+                zigpy.ota.provider.Salus.MANUFACTURER_ID,
+                zigpy.ota.provider.Inovelli.MANUFACTURER_ID,
+                zigpy.ota.provider.ThirdReality.MANUFACTURER_ID_BL,
+                zigpy.ota.provider.ThirdReality.MANUFACTURER_ID_TL,
         ):  # Salus/computime/Inovelli do not pass a useful image_type
             # in the message from the device. So construct key based on model name.
             key = ImageKey(manufacturer_id, model)

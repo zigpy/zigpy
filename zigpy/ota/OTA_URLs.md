@@ -105,3 +105,8 @@ https://github.com/dresden-elektronik/deconz-rest-plugin/wiki/OTA-Image-Types---
 Ubisys Zigbee OTA firmware images are made publicly available by Ubisys (first-party) at the following URL:
 
 https://www.ubisys.de/en/support/firmware/
+
+### ThirdReality
+ThirdReality Zigbee OTA firmware images are made publicly available at the following URL:
+
+https://tr-zha.s3.amazonaws.com/firmware.json

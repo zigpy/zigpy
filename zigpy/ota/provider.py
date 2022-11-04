@@ -1,6 +1,7 @@
 """OTA Firmware providers."""
 from __future__ import annotations
 
+import json
 from abc import ABC, abstractmethod
 import asyncio
 from collections import defaultdict
@@ -14,7 +15,7 @@ import urllib.parse
 
 import aiohttp
 import attr
-
+import httpx
 from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA_URL, CONF_OTA_SONOFF_URL
 from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader, parse_ota_image
 import zigpy.util
@@ -199,10 +200,10 @@ class LedvanceImage:
 
         # This matches the OTA file's `image_version` for every image
         version = (
-            (version_parts["major"] << 24)
-            | (version_parts["minor"] << 16)
-            | (version_parts["build"] << 8)
-            | (version_parts["revision"] << 0)
+                (version_parts["major"] << 24)
+                | (version_parts["minor"] << 16)
+                | (version_parts["build"] << 8)
+                | (version_parts["revision"] << 0)
         )
 
         res = cls(
@@ -213,17 +214,17 @@ class LedvanceImage:
         res.file_version = int(data["fullName"].split("/")[1], 16)
         res.image_size = data["length"]
         res.url = (
-            "https://api.update.ledvance.com/v1/zigbee/firmwares/download?"
-            + urllib.parse.urlencode(
-                {
-                    "Company": identity["company"],
-                    "Product": identity["product"],
-                    "Version": (
-                        f"{version_parts['major']}.{version_parts['minor']}"
-                        f".{version_parts['build']}.{version_parts['revision']}"
-                    ),
-                }
-            )
+                "https://api.update.ledvance.com/v1/zigbee/firmwares/download?"
+                + urllib.parse.urlencode(
+            {
+                "Company": identity["company"],
+                "Product": identity["product"],
+                "Version": (
+                    f"{version_parts['major']}.{version_parts['minor']}"
+                    f".{version_parts['build']}.{version_parts['revision']}"
+                ),
+            }
+        )
         )
 
         return res
@@ -293,6 +294,7 @@ class Ledvance(Basic):
         self._cache.clear()
         for fw in fw_lst["firmwares"]:
             img = LedvanceImage.new(fw)
+            print(img)
 
             # Ignore earlier images
             if img.key in self._cache and self._cache[img.key].version > img.version:
@@ -469,6 +471,7 @@ class Sonoff(Basic):
         async with self._locks[LOCK_REFRESH]:
             async with aiohttp.ClientSession(headers=self.HEADERS) as req:
                 url = self.config.get(CONF_OTA_SONOFF_URL, self.UPDATE_URL)
+                print(f"url: {url}")
                 async with req.get(url) as rsp:
                     if not (200 <= rsp.status <= 299):
                         self.warning(
@@ -699,3 +702,122 @@ class Inovelli(Basic):
 
     async def filter_get_image(self, key: ImageKey) -> bool:
         return key.manufacturer_id != self.MANUFACTURER_ID
+
+
+@attr.s
+class ThirdRealityImage:
+    """ThirdReality image handler"""
+
+    manufacturer_id = attr.ib()
+    model = attr.ib()
+    version = attr.ib(default=None)
+    image_size = attr.ib(default=None)
+    url = attr.ib(default=None)
+
+    @classmethod
+    def new(cls, data):
+        mod = data["modelId"]
+        ver = data["version"]
+        url = data["url"]
+        # All the devices of our company contain chips from two manufacturers,
+        # so we need to classify them according to the Model ID.
+        tl_model_ids = ThirdRealityImage.get_model_ids()
+        if mod in tl_model_ids:
+            res = cls(manufacturer_id=ThirdReality.MANUFACTURER_ID_TL, model=mod, version=ver, url=url)
+        else:
+            res = cls(manufacturer_id=ThirdReality.MANUFACTURER_ID_BL, model=mod, version=ver, url=url)
+        return res
+
+    @property
+    def key(self):
+        return ImageKey(self.manufacturer_id, self.model)
+
+    async def fetch_image(self) -> BaseOTAImage | None:
+        async with aiohttp.ClientSession() as req:
+            LOGGER.debug("Downloading %s for %s", self.url, self.key)
+            async with req.get(self.url) as rsp:
+                data = await rsp.read()
+            img_tgz = io.BytesIO(data)
+            with tarfile.open(fileobj=img_tgz) as tar:  # Unpack tar
+                for item in tar:
+                    if item.name.endswith(".ota"):
+                        f = tar.extractfile(item)
+                        if f is None:
+                            raise ValueError(
+                                f"Issue extracting {item.name} from {self.url}"
+                            )
+                        else:
+                            file_bytes = f.read()
+                        break
+            img, _ = parse_ota_image(file_bytes)
+
+            LOGGER.debug(
+                "%s: version: %s, hw_ver: (%s, %s), OTA string: %s",
+                img.header.key,
+                img.header.file_version,
+                img.header.minimum_hardware_version,
+                img.header.maximum_hardware_version,
+                img.header.header_string,
+            )
+            assert img.header.manufacturer_id == ThirdReality.MANUFACTURER_ID_TL or self.manufacturer_id in ThirdReality.MANUFACTURER_ID_BL
+
+        LOGGER.debug(
+            "Finished downloading %s bytes from %s for %s ver %s",
+            self.image_size,
+            self.url,
+            self.key,
+            self.version,
+        )
+        return img
+
+    @staticmethod
+    def get_model_ids():
+        client = httpx.Client()
+        LOGGER.debug("start get model_ids")
+        response = client.get(url="https://tr-zha.s3.amazonaws.com/tl_model_ids.json")
+        if not (200 <= response.status_code <= 299):
+            LOGGER.warning("Could not get Model Ids data")
+            raise Exception("Could not get Model Ids data")
+        content_dict = json.loads(response.content.decode("utf-8"))
+        tl_model_ids = content_dict["model_ids"]
+        client.close()
+        return tl_model_ids
+
+
+
+
+
+class ThirdReality(Basic):
+    """ThirdReality firmware provider"""
+    UPDATE_URL = "https://tr-zha.s3.amazonaws.com/firmware.json"  # 链接未定
+    MANUFACTURER_ID_TL = 4659  # Telink
+    MANUFACTURER_ID_BL = 4877  # BL
+    HEADERS = {"accept": "application/json"}
+
+    async def initialize_provider(self, ota_config: dict) -> None:
+        self.info("OTA provider enabled")
+        await self.refresh_firmware_list()
+        self.enable()
+
+    async def refresh_firmware_list(self) -> None:
+        if self._locks[LOCK_REFRESH].locked():
+            return
+
+        async with self._locks[LOCK_REFRESH]:
+            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
+                async with req.get(self.UPDATE_URL) as rsp:
+                    if not (200 <= rsp.status <= 299):
+                        self.warning(
+                            "Couldn't download '%s': %s/%s",
+                            rsp.url,
+                            rsp.status,
+                            rsp.reason,
+                        )
+                        return
+                    fw_lst = await rsp.json()
+        self.debug("Finished downloading firmware update list")
+        self._cache.clear()
+        for fw in fw_lst["versions"]:
+            img = ThirdRealityImage.new(fw)
+            self._cache[img.key] = img
+        self.update_expiration()
