@@ -1,3 +1,4 @@
+import hashlib
 from unittest import mock
 
 import pytest
@@ -423,3 +424,34 @@ def test_legrand_container_unwrapping(image):
     img, rest = firmware.parse_ota_image(data)
     assert not rest
     assert img == image
+
+
+def test_thirdreality_container(image):
+    image_bytes = image.serialize()
+
+    # There's little useful information in the header
+    subcontainer = (
+        t.uint32_t(16).serialize()
+        # Total length of image, excluding SHA512 prefix
+        + t.uint32_t(len(image_bytes) + 152 - 64).serialize()
+        + t.uint32_t(152).serialize()
+        # Unknown four byte prefix/suffix and what looks like a second SHA512 hash
+        + b"?" * (64 + 4)
+        + t.uint32_t(0).serialize()
+        + t.uint32_t(0).serialize()
+        + image_bytes
+    )
+
+    data = hashlib.sha512(subcontainer).digest() + subcontainer
+
+    assert data.index(image_bytes) == 152
+
+    img, rest = firmware.parse_ota_image(data)
+    assert not rest
+    assert img == image
+
+    with pytest.raises(ValueError):
+        firmware.parse_ota_image(data[:-1])
+
+    with pytest.raises(ValueError):
+        firmware.parse_ota_image(b"\xFF" + data[1:])
