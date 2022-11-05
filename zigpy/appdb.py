@@ -304,6 +304,30 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                    DO NOTHING"""
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid))
         await self._db.commit()
+    
+    def unsupported_attribute_removed(
+        self, cluster: zigpy.typing.ClusterType, attrid: int
+    ) -> None:
+        if not cluster.endpoint.device.is_initialized:
+            return
+
+        self.enqueue(
+            "_unsupported_attribute_removed",
+            cluster.endpoint.device.ieee,
+            cluster.endpoint.endpoint_id,
+            cluster.cluster_id,
+            attrid,
+        )
+
+    async def _unsupported_attribute_removed(
+        self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int
+    ) -> None:
+        q = f"""DELETE FROM unsupported_attributes{DB_V} WHERE ieee = ?
+                                                         AND endpoint_id = ?
+                                                         AND cluster = ?
+                                                         AND attrid = ?"""
+        await self.execute(q, (ieee, endpoint_id, cluster_id, attrid))
+        await self._db.commit()
 
     def neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
         """Neighbor update from ZDO_Lqi_rsp."""
