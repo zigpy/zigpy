@@ -676,9 +676,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 self.add_unsupported_attribute(attr)
 
             success = [
-                r.attrid
-                for r in records
-                if r.status == foundation.Status.SUCCESS
+                r.attrid for r in records if r.status == foundation.Status.SUCCESS
             ]
             for attr in success:
                 self.remove_unsupported_attribute(attr)
@@ -897,7 +895,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 self.add_unsupported_attribute(attrdef.name, inhibit_events)
             else:
                 self.add_unsupported_attribute(attrdef.id, inhibit_events)
-    
+
     def remove_unsupported_attribute(
         self, attr: int | str, inhibit_events: bool = False
     ) -> None:
@@ -939,7 +937,7 @@ class ClusterPersistingListener:
     def unsupported_attribute_added(self, attrid: int) -> None:
         """An unsupported attribute was added."""
         self._applistener.unsupported_attribute_added(self._cluster, attrid)
-    
+
     def unsupported_attribute_removed(self, attrid: int) -> None:
         """Remove an unsupported attribute."""
         self._applistener.unsupported_attribute_removed(self._cluster, attrid)
