@@ -304,7 +304,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                    DO NOTHING"""
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid))
         await self._db.commit()
-    
+
     def unsupported_attribute_removed(
         self, cluster: zigpy.typing.ClusterType, attrid: int
     ) -> None:
