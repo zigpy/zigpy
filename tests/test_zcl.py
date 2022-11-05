@@ -860,16 +860,13 @@ async def test_configure_reporting_multiple_single_fail(cluster):
     assert cluster.unsupported_attributes == {"hw_version", 3}
 
     cluster.endpoint.request.return_value = _mk_cfg_rsp(
-        {
-            3: zcl.foundation.Status.SUCCESS,
-            4: zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE,
-        }
+        {3: zcl.foundation.Status.SUCCESS}
     )
     await cluster.configure_reporting_multiple(
         {3: (5, 15, 20), 4: (6, 16, 26)}, manufacturer=0x2345
     )
     assert cluster.endpoint.request.await_count == 2
-    assert cluster.unsupported_attributes == {"manufacturer", 4}
+    assert cluster.unsupported_attributes == set()
 
 
 async def test_configure_reporting_multiple_single_unreportable(cluster):

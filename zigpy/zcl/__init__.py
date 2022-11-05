@@ -635,9 +635,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             {attribute: (min_interval, max_interval, reportable_change)},
             manufacturer=manufacturer,
         )
-        for res in response:
-            if res.status == foundation.Status.SUCCESS:
-                self.remove_unsupported_attribute(res.attrid)
         return response
 
     async def configure_reporting_multiple(
@@ -684,6 +681,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             ]
             for attr in success:
                 self.remove_unsupported_attribute(attr)
+        elif isinstance(records, list) and (
+            len(records) == 1 and records[0].status == foundation.Status.SUCCESS
+        ):
+            self.remove_unsupported_attribute(records[0].attrid)
         return res
 
     def command(
