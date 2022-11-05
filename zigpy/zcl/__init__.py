@@ -631,10 +631,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         manufacturer: int | None = None,
     ) -> list[foundation.ConfigureReportingResponseRecord]:
         """Configure attribute reporting for a single attribute."""
-        return await self.configure_reporting_multiple(
+        response = await self.configure_reporting_multiple(
             {attribute: (min_interval, max_interval, reportable_change)},
             manufacturer=manufacturer,
         )
+        for res in response:
+            if res.status == foundation.Status.SUCCESS:
+                self.remove_unsupported_attribute(res.attrid)
+        return response
 
     async def configure_reporting_multiple(
         self,
