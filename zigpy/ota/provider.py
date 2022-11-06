@@ -784,12 +784,9 @@ class ThirdRealityImage:
         return tl_model_ids
 
 
-
-
-
 class ThirdReality(Basic):
     """ThirdReality firmware provider"""
-    UPDATE_URL = "https://tr-zha.s3.amazonaws.com/firmware.json"  # 链接未定
+    UPDATE_URL = "https://tr-zha.s3.amazonaws.com/firmware.json"
     MANUFACTURER_ID_TL = 4659  # Telink
     MANUFACTURER_ID_BL = 4877  # BL
     HEADERS = {"accept": "application/json"}

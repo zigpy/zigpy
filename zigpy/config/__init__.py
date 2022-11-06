@@ -25,7 +25,7 @@ from zigpy.config.defaults import (
     CONF_SOURCE_ROUTING_DEFAULT,
     CONF_TOPO_SCAN_ENABLED_DEFAULT,
     CONF_TOPO_SCAN_PERIOD_DEFAULT,
-    CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
+    CONF_TOPO_SKIP_COORDINATOR_DEFAULT, CONF_OTA_THIRDREALITY_DEFAULT,
 )
 from zigpy.config.validators import cv_boolean, cv_hex, cv_key, cv_simple_descriptor
 import zigpy.types as t
@@ -56,6 +56,7 @@ CONF_OTA_LEDVANCE = "ledvance_provider"
 CONF_OTA_SALUS = "salus_provider"
 CONF_OTA_SONOFF = "sonoff_provider"
 CONF_OTA_SONOFF_URL = "sonoff_update_url"
+CONF_OTA_THIRDREALITY = "thirdreality_provider"
 CONF_SOURCE_ROUTING = "source_routing"
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
@@ -102,6 +103,7 @@ SCHEMA_OTA = {
     vol.Optional(CONF_OTA_SALUS, default=CONF_OTA_SALUS_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_SONOFF, default=CONF_OTA_SONOFF_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_SONOFF_URL): vol.Url(),
+    vol.Optional(CONF_OTA_THIRDREALITY, default=CONF_OTA_THIRDREALITY_DEFAULT): cv_boolean,
 }
 
 ZIGPY_SCHEMA = vol.Schema(
