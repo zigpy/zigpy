@@ -40,7 +40,7 @@ class HeaderString(str):
         if len(data) < cls._size:
             raise ValueError(f"Data is too short. Should be at least {cls._size}")
         raw = data[: cls._size].split(b"\x00")[0]
-        return cls(raw.decode("utf8", errors="replace")), data[cls._size:]
+        return cls(raw.decode("utf8", errors="replace")), data[cls._size :]
 
     def serialize(self):
         return self.encode("utf8").ljust(self._size, b"\x00")
@@ -218,7 +218,7 @@ class HueSBLOTAImage(BaseOTAImage):
                 f"Only Hue images are expected. Got: {header.manufacturer_id}"
             )
 
-        return cls(header=header, data=firmware), data[header.image_size:]
+        return cls(header=header, data=firmware), data[header.image_size :]
 
 
 def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:
@@ -243,7 +243,7 @@ def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:
         if len(data) <= offset + size:
             raise ValueError(f"Data too short to be IKEA container: {len(data)}")
 
-        wrapped_data = data[offset: offset + size]
+        wrapped_data = data[offset : offset + size]
         image, rest = OTAImage.deserialize(wrapped_data)
 
         if rest:

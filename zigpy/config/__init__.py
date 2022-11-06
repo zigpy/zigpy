@@ -104,7 +104,9 @@ SCHEMA_OTA = {
     vol.Optional(CONF_OTA_SALUS, default=CONF_OTA_SALUS_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_SONOFF, default=CONF_OTA_SONOFF_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_SONOFF_URL): vol.Url(),
-    vol.Optional(CONF_OTA_THIRDREALITY, default=CONF_OTA_THIRDREALITY_DEFAULT): cv_boolean,
+    vol.Optional(
+        CONF_OTA_THIRDREALITY, default=CONF_OTA_THIRDREALITY_DEFAULT
+    ): cv_boolean,
 }
 
 ZIGPY_SCHEMA = vol.Schema(

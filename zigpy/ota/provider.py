@@ -724,9 +724,19 @@ class ThirdRealityImage:
         # so we need to classify them according to the Model ID.
         tl_model_ids = ThirdRealityImage.get_model_ids()
         if mod in tl_model_ids:
-            res = cls(manufacturer_id=ThirdReality.MANUFACTURER_ID_TL, model=mod, version=ver, url=url)
+            res = cls(
+                manufacturer_id=ThirdReality.MANUFACTURER_ID_TL,
+                model=mod,
+                version=ver,
+                url=url,
+            )
         else:
-            res = cls(manufacturer_id=ThirdReality.MANUFACTURER_ID_BL, model=mod, version=ver, url=url)
+            res = cls(
+                manufacturer_id=ThirdReality.MANUFACTURER_ID_BL,
+                model=mod,
+                version=ver,
+                url=url,
+            )
         return res
 
     @property
@@ -760,7 +770,10 @@ class ThirdRealityImage:
                 img.header.maximum_hardware_version,
                 img.header.header_string,
             )
-            assert img.header.manufacturer_id == ThirdReality.MANUFACTURER_ID_TL or self.manufacturer_id in ThirdReality.MANUFACTURER_ID_BL
+            assert (
+                img.header.manufacturer_id == ThirdReality.MANUFACTURER_ID_TL
+                or self.manufacturer_id in ThirdReality.MANUFACTURER_ID_BL
+            )
 
         LOGGER.debug(
             "Finished downloading %s bytes from %s for %s ver %s",
@@ -787,6 +800,7 @@ class ThirdRealityImage:
 
 class ThirdReality(Basic):
     """ThirdReality firmware provider"""
+
     UPDATE_URL = "https://tr-zha.s3.amazonaws.com/firmware.json"
     MANUFACTURER_ID_TL = 4659  # Telink
     MANUFACTURER_ID_BL = 4877  # BL

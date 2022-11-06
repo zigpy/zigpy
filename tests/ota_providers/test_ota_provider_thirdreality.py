@@ -70,7 +70,9 @@ async def test_thirdreality_get_image_no_cache(thirdreality_prov, thirdreality_i
     assert thirdreality_image.fetch_image.call_count == 0
 
 
-async def test_thirdreality_get_image(thirdreality_prov, thirdreality_key, thirdreality_image):
+async def test_thirdreality_get_image(
+    thirdreality_prov, thirdreality_key, thirdreality_image
+):
     thirdreality_image.fetch_image = AsyncMock(return_value=mock.sentinel.image)
     thirdreality_prov._cache = mock.MagicMock()
     thirdreality_prov._cache.__getitem__.return_value = thirdreality_image
@@ -79,12 +81,16 @@ async def test_thirdreality_get_image(thirdreality_prov, thirdreality_key, third
     r = await thirdreality_prov.get_image(thirdreality_key)
     assert r is mock.sentinel.image
     assert thirdreality_prov._cache.__getitem__.call_count == 1
-    assert thirdreality_prov._cache.__getitem__.call_args[0][0] == thirdreality_image.key
+    assert (
+        thirdreality_prov._cache.__getitem__.call_args[0][0] == thirdreality_image.key
+    )
     assert thirdreality_image.fetch_image.call_count == 1
 
 
 @patch("aiohttp.ClientSession.get")
-async def test_thirdreality_refresh_list(mock_get, thirdreality_prov, thirdreality_image_with_version):
+async def test_thirdreality_refresh_list(
+    mock_get, thirdreality_prov, thirdreality_image_with_version
+):
     img1 = thirdreality_image_with_version(version="02.00.11.00", model="3RSS009Z_1")
     img2 = thirdreality_image_with_version(version="02.00.11.00", model="3RSS009B_1")
 
@@ -95,12 +101,12 @@ async def test_thirdreality_refresh_list(mock_get, thirdreality_prov, thirdreali
                     {
                         "modelId": "3RSS009Z_1",
                         "version": "012",
-                        "url": "https://s3.amazonaws.com/tr-ota-us-prod/3RSS009Z_1_099_20220922_062427.bin"
+                        "url": "https://s3.amazonaws.com/tr-ota-us-prod/3RSS009Z_1_099_20220922_062427.bin",
                     },
                     {
                         "modelId": "3RSS009B_1",
                         "version": "012",
-                        "url": "https://s3.amazonaws.com/tr-ota-us-prod/3RSS009B_1_088_20210319_070742.bin"
+                        "url": "https://s3.amazonaws.com/tr-ota-us-prod/3RSS009B_1_088_20210319_070742.bin",
                     },
                 ]
             }
@@ -133,7 +139,7 @@ async def test_thirdreality_refresh_list(mock_get, thirdreality_prov, thirdreali
 
 @patch("aiohttp.ClientSession.get")
 async def test_thirdreality_refresh_list_locked(
-        mock_get, thirdreality_prov, thirdreality_image_with_version
+    mock_get, thirdreality_prov, thirdreality_image_with_version
 ):
     await thirdreality_prov._locks[ota_p.LOCK_REFRESH].acquire()
 
