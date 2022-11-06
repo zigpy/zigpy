@@ -12,7 +12,8 @@ from zigpy.config import (
     CONF_OTA_INOVELLI,
     CONF_OTA_LEDVANCE,
     CONF_OTA_SALUS,
-    CONF_OTA_SONOFF, CONF_OTA_THIRDREALITY,
+    CONF_OTA_SONOFF,
+    CONF_OTA_THIRDREALITY,
 )
 from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader
 import zigpy.ota.provider

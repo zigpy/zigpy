@@ -22,10 +22,11 @@ from zigpy.config.defaults import (
     CONF_OTA_OTAU_DIR_DEFAULT,
     CONF_OTA_SALUS_DEFAULT,
     CONF_OTA_SONOFF_DEFAULT,
+    CONF_OTA_THIRDREALITY_DEFAULT,
     CONF_SOURCE_ROUTING_DEFAULT,
     CONF_TOPO_SCAN_ENABLED_DEFAULT,
     CONF_TOPO_SCAN_PERIOD_DEFAULT,
-    CONF_TOPO_SKIP_COORDINATOR_DEFAULT, CONF_OTA_THIRDREALITY_DEFAULT,
+    CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
 )
 from zigpy.config.validators import cv_boolean, cv_hex, cv_key, cv_simple_descriptor
 import zigpy.types as t

@@ -1,12 +1,12 @@
 """OTA Firmware providers."""
 from __future__ import annotations
 
-import json
 from abc import ABC, abstractmethod
 import asyncio
 from collections import defaultdict
 import datetime
 import io
+import json
 import logging
 import os
 import os.path
@@ -16,6 +16,7 @@ import urllib.parse
 import aiohttp
 import attr
 import httpx
+
 from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA_URL, CONF_OTA_SONOFF_URL
 from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader, parse_ota_image
 import zigpy.util
