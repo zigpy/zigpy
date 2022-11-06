@@ -200,10 +200,10 @@ class LedvanceImage:
 
         # This matches the OTA file's `image_version` for every image
         version = (
-                (version_parts["major"] << 24)
-                | (version_parts["minor"] << 16)
-                | (version_parts["build"] << 8)
-                | (version_parts["revision"] << 0)
+            (version_parts["major"] << 24)
+            | (version_parts["minor"] << 16)
+            | (version_parts["build"] << 8)
+            | (version_parts["revision"] << 0)
         )
 
         res = cls(
@@ -214,17 +214,17 @@ class LedvanceImage:
         res.file_version = int(data["fullName"].split("/")[1], 16)
         res.image_size = data["length"]
         res.url = (
-                "https://api.update.ledvance.com/v1/zigbee/firmwares/download?"
-                + urllib.parse.urlencode(
-            {
-                "Company": identity["company"],
-                "Product": identity["product"],
-                "Version": (
-                    f"{version_parts['major']}.{version_parts['minor']}"
-                    f".{version_parts['build']}.{version_parts['revision']}"
-                ),
-            }
-        )
+            "https://api.update.ledvance.com/v1/zigbee/firmwares/download?"
+            + urllib.parse.urlencode(
+                {
+                    "Company": identity["company"],
+                    "Product": identity["product"],
+                    "Version": (
+                        f"{version_parts['major']}.{version_parts['minor']}"
+                        f".{version_parts['build']}.{version_parts['revision']}"
+                    ),
+                }
+            )
         )
 
         return res

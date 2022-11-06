@@ -117,15 +117,15 @@ async def test_thirdreality_refresh_list(mock_get, thirdreality_prov, thirdreali
     cached_1 = thirdreality_prov._cache[img1.key]
     assert cached_1.model == img1.model
     assert (
-            cached_1.url
-            == "https://s3.amazonaws.com/tr-ota-us-prod/3RSS009Z_1_099_20220922_062427.bin"
+        cached_1.url
+        == "https://s3.amazonaws.com/tr-ota-us-prod/3RSS009Z_1_099_20220922_062427.bin"
     )
 
     cached_2 = thirdreality_prov._cache[img2.key]
     assert cached_2.model == img2.model
     assert (
-            cached_2.url
-            == "https://s3.amazonaws.com/tr-ota-us-prod/3RSS009B_1_088_20210319_070742.bin"
+        cached_2.url
+        == "https://s3.amazonaws.com/tr-ota-us-prod/3RSS009B_1_088_20210319_070742.bin"
     )
 
     assert not thirdreality_prov.expired

@@ -75,7 +75,7 @@ class CachedImage:
                 self.image.header.minimum_hardware_version
                 <= hw_ver
                 <= self.image.header.maximum_hardware_version
-        )
+                )
         ):
             return False
 
