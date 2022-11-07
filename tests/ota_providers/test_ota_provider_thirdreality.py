@@ -91,20 +91,20 @@ async def test_thirdreality_get_image(
 async def test_thirdreality_refresh_list(
     mock_get, thirdreality_prov, thirdreality_image_with_version
 ):
-    img1 = thirdreality_image_with_version(version="02.00.11.00", model="3RSS009Z_1")
-    img2 = thirdreality_image_with_version(version="02.00.11.00", model="3RSS009B_1")
+    img1 = thirdreality_image_with_version(version="02.00.11.00", model="3RSS009Z")
+    img2 = thirdreality_image_with_version(version="02.00.11.00", model="3RMS16BZ")
 
     mock_get.return_value.__aenter__.return_value.json = AsyncMock(
         side_effect=[
             {
                 "versions": [
                     {
-                        "modelId": "3RSS009Z_1",
+                        "modelId": "3RSS009Z",
                         "version": "012",
                         "url": "https://s3.amazonaws.com/tr-ota-us-prod/3RSS009Z_1_099_20220922_062427.bin",
                     },
                     {
-                        "modelId": "3RSS009B_1",
+                        "modelId": "3RMS16BZ",
                         "version": "012",
                         "url": "https://s3.amazonaws.com/tr-ota-us-prod/3RSS009B_1_088_20210319_070742.bin",
                     },
