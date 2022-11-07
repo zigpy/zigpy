@@ -623,23 +623,24 @@ class FileStore(Basic):
 @attr.s
 class INOVELLIImage:
     manufacturer_id = attr.ib()
-    model = attr.ib()
+    image_type = attr.ib()
     version = attr.ib(default=None)
     url = attr.ib(default=None)
 
     @classmethod
-    def new(cls, data, model):
-        ver = int(data["version"], 16)
-        url = data["firmware"]
-
+    def new(cls, data):
         res = cls(
-            manufacturer_id=Inovelli.MANUFACTURER_ID, model=model, version=ver, url=url
+            manufacturer_id=Inovelli.MANUFACTURER_ID,
+            image_type=data["image_type"]
         )
+        res.version = int(data["version"], 16)
+        res.url = data["firmware"]
+
         return res
 
     @property
     def key(self):
-        return ImageKey(self.manufacturer_id, self.model)
+        return ImageKey(self.manufacturer_id, self.image_type)
 
     async def fetch_image(self) -> BaseOTAImage | None:
         async with aiohttp.ClientSession() as req:
@@ -648,7 +649,7 @@ class INOVELLIImage:
                 data = await rsp.read()
 
         ota_image, _ = parse_ota_image(data)
-        assert ota_image.header.manufacturer_id == self.key.manufacturer_id
+        assert ota_image.header.key == self.key
 
         LOGGER.debug(
             "Finished downloading from %s for %s ver %s",
@@ -691,9 +692,8 @@ class Inovelli(Basic):
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
         for model, firmwares in fw_lst.items():
-            # Pick the most recent firmware
             firmware = max(firmwares, key=lambda obj: obj["version"])
-            img = INOVELLIImage.new(data=firmware, model=model)
+            img = INOVELLIImage.new(data=firmware)
             self._cache[img.key] = img
 
         self.update_expiration()
