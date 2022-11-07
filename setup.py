@@ -15,6 +15,7 @@ REQUIRES = [
     'pyserial-asyncio; platform_system!="Windows"',
     'pyserial-asyncio!=0.5; platform_system=="Windows"',
     "yarl",
+    "httpx",
 ]
 
 setup(
