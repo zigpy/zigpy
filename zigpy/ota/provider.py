@@ -10,6 +10,7 @@ import logging
 import os
 import os.path
 import tarfile
+import typing
 import urllib.parse
 
 import aiohttp
@@ -699,3 +700,87 @@ class Inovelli(Basic):
 
     async def filter_get_image(self, key: ImageKey) -> bool:
         return key.manufacturer_id != self.MANUFACTURER_ID
+
+
+@attr.s
+class ThirdRealityImage:
+    model = attr.ib()
+    url = attr.ib()
+    version = attr.ib()
+    image_type = attr.ib()
+    manufacturer_id = attr.ib()
+    file_version = attr.ib()
+
+    @classmethod
+    def from_json(cls, obj: dict[str, typing.Any]) -> ThirdRealityImage:
+        return cls(
+            model=obj["modelId"],
+            url=obj["url"],
+            version=obj["version"],
+            image_type=obj["imageType"],
+            manufacturer_id=obj["manufacturerId"],
+            file_version=obj["fileVersion"],
+        )
+
+    @property
+    def key(self) -> ImageKey:
+        return ImageKey(self.manufacturer_id, self.image_type)
+
+    async def fetch_image(self) -> BaseOTAImage:
+        async with aiohttp.ClientSession() as req:
+            LOGGER.debug("Downloading %s for %s", self.url, self.key)
+            async with req.get(self.url) as rsp:
+                data = await rsp.read()
+
+        ota_image, _ = parse_ota_image(data)
+        assert ota_image.header.key == self.key
+
+        LOGGER.debug(
+            "Finished downloading from %s for %s ver %s",
+            self.url,
+            self.key,
+            self.version,
+        )
+        return ota_image
+
+
+class ThirdReality(Basic):
+    """Third Reality OTA Firmware provider."""
+
+    UPDATE_URL = "https://tr-zha.s3.amazonaws.com/firmware.json"
+    MANUFACTURER_IDS = (4659, 4877)
+    HEADERS = {"accept": "application/json"}
+
+    async def initialize_provider(self, ota_config: dict) -> None:
+        self.info("OTA provider enabled")
+        self.config = ota_config
+        await self.refresh_firmware_list()
+        self.enable()
+
+    async def refresh_firmware_list(self) -> None:
+        if self._locks[LOCK_REFRESH].locked():
+            return
+
+        async with self._locks[LOCK_REFRESH]:
+            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
+                async with req.get(self.UPDATE_URL) as rsp:
+                    if not (200 <= rsp.status <= 299):
+                        self.warning(
+                            "Couldn't download '%s': %s/%s",
+                            rsp.url,
+                            rsp.status,
+                            rsp.reason,
+                        )
+                        return
+                    fw_lst = await rsp.json()
+
+        self.debug("Finished downloading firmware update list")
+        self._cache.clear()
+        for firmware in fw_lst:
+            img = ThirdRealityImage.from_json(firmware)
+            self._cache[img.key] = img
+
+        self.update_expiration()
+
+    async def filter_get_image(self, key: ImageKey) -> bool:
+        return key.manufacturer_id not in self.MANUFACTURER_IDS
