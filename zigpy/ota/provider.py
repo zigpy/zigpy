@@ -630,8 +630,7 @@ class INOVELLIImage:
     @classmethod
     def new(cls, data):
         res = cls(
-            manufacturer_id=Inovelli.MANUFACTURER_ID,
-            image_type=data["image_type"]
+            manufacturer_id=Inovelli.MANUFACTURER_ID, image_type=data["image_type"]
         )
         res.version = int(data["version"], 16)
         res.url = data["firmware"]
