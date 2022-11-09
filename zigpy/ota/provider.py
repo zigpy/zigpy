@@ -624,18 +624,23 @@ class FileStore(Basic):
 class INOVELLIImage:
     manufacturer_id = attr.ib()
     image_type = attr.ib()
-    version = attr.ib(default=None)
-    url = attr.ib(default=None)
+    version = attr.ib()
+    url = attr.ib()
 
     @classmethod
-    def new(cls, data):
-        res = cls(
-            manufacturer_id=Inovelli.MANUFACTURER_ID, image_type=data["image_type"]
-        )
-        res.version = int(data["version"], 16)
-        res.url = data["firmware"]
+    def from_json(cls, obj):
+        version = int(obj["version"], 16)
 
-        return res
+        # Old Inovelli OTA JSON versions were in hex, they then switched back to decimal
+        if version > 0x10:
+            version = int(obj["version"])
+
+        return cls(
+            manufacturer_id=obj["manufacturer_id"],
+            image_type=obj["image_type"],
+            version=version,
+            url=obj["firmware"],
+        )
 
     @property
     def key(self):
@@ -690,10 +695,19 @@ class Inovelli(Basic):
                     fw_lst = await rsp.json()
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
+
         for model, firmwares in fw_lst.items():
-            firmware = max(firmwares, key=lambda obj: obj["version"])
-            img = INOVELLIImage.new(data=firmware)
-            self._cache[img.key] = img
+            for firmware in firmwares:
+                img = INOVELLIImage.from_json(firmware)
+
+                # Only replace the previously-cached image if its version is smaller
+                if (
+                    img.key in self._cache
+                    and self._cache[img.key].version > img.version
+                ):
+                    continue
+
+                self._cache[img.key] = img
 
         self.update_expiration()
 

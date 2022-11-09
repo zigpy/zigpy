@@ -8,10 +8,9 @@ import zigpy.ota.image
 import zigpy.ota.provider as ota_p
 
 from tests.async_mock import AsyncMock, patch
-from tests.test_ota_image import image  # noqa: F401
 
 INOVELLI_ID = 4655
-INOVELLI_MODEL = "VZM31-SN"
+INOVELLI_IMAGE_TYPE = 257
 
 
 @pytest.fixture
@@ -23,9 +22,12 @@ def inovelli_prov():
 
 @pytest.fixture
 def inovelli_image_with_version():
-    def img(version=5, model=INOVELLI_MODEL):
+    def img(version=0x16908807, image_type=INOVELLI_IMAGE_TYPE):
         img = zigpy.ota.provider.INOVELLIImage(
-            INOVELLI_ID, model, version, mock.sentinel.url
+            manufacturer_id=INOVELLI_ID,
+            image_type=image_type,
+            version=version,
+            url=mock.sentinel.url,
         )
         return img
 
@@ -39,7 +41,7 @@ def inovelli_image(inovelli_image_with_version):
 
 @pytest.fixture
 def inovelli_key():
-    return zigpy.ota.image.ImageKey(INOVELLI_ID, INOVELLI_MODEL)
+    return zigpy.ota.image.ImageKey(INOVELLI_ID, INOVELLI_IMAGE_TYPE)
 
 
 async def test_inovelli_init_ota_dir(inovelli_prov):
@@ -84,51 +86,81 @@ async def test_inovelli_get_image(inovelli_prov, inovelli_key, inovelli_image):
 async def test_inovelli_refresh_list(
     mock_get, inovelli_prov, inovelli_image_with_version
 ):
-    img1 = inovelli_image_with_version(version="00000005", model="VMDS00I00")
-    img2 = inovelli_image_with_version(version="00000010", model="VZM31-SN")
+    img1 = inovelli_image_with_version(version=0x16908807, image_type=257)
+    img2 = inovelli_image_with_version(version=0x33619975, image_type=258)
 
     base = "https://files.inovelli.com/firmware"
 
     mock_get.return_value.__aenter__.return_value.json = AsyncMock(
         side_effect=[
             {
-                "VMDS00I00": [
-                    {
-                        "version": "00000005",
-                        "channel": "beta",
-                        "firmware": f"{base}/VZM31-SN/Beta/00000005/00000005.ota",
-                    }
-                ],
                 "VZM31-SN": [
                     {
-                        "version": "00000005",
+                        "version": "0000000B",
                         "channel": "beta",
-                        "firmware": f"{base}/VZM31-SN/Beta/00000005/00000005.ota",
+                        "firmware": f"{base}/VZM31-SN/Beta/1.11/VZM31-SN_1.11.ota",
+                        "manufacturer_id": 4655,
+                        "image_type": 257,
                     },
                     {
-                        "version": "00000006",
+                        "version": "16842764",
                         "channel": "beta",
-                        "firmware": f"{base}/VZM31-SN/Beta/00000006/00000006.ota",
+                        "firmware": f"{base}/VZM31-SN/Beta/1.12/VZM31-SN_1.12.ota",
+                        "manufacturer_id": 4655,
+                        "image_type": 257,
+                    },
+                    # Reorder these to put the most recent image in the middle
+                    {
+                        "version": "16908807",
+                        "channel": "beta",
+                        "firmware": f"{base}/VZM31-SN/Beta/2.07/VZM31-SN_2.07.ota",
+                        "manufacturer_id": 4655,
+                        "image_type": 257,
                     },
                     {
-                        "version": "00000010",
+                        "version": "16843021",
                         "channel": "beta",
-                        "firmware": f"{base}/VZM31-SN/Beta/00000010/00000010.ota",
+                        "firmware": f"{base}/VZM31-SN/Beta/1.13/VZM31-SN_1.13.ota",
+                        "manufacturer_id": 4655,
+                        "image_type": 257,
                     },
                     {
-                        "version": "00000007",
+                        "version": "16908805",
                         "channel": "beta",
-                        "firmware": f"{base}/VZM31-SN/Beta/00000007/00000007.ota",
+                        "firmware": f"{base}/VZM31-SN/Beta/2.05/VZM31-SN_2.05.ota",
+                        "manufacturer_id": 4655,
+                        "image_type": 257,
                     },
                     {
-                        "version": "00000008",
+                        "version": "16908806",
                         "channel": "beta",
-                        "firmware": f"{base}/VZM31-SN/Beta/00000008/00000008.ota",
+                        "firmware": f"{base}/VZM31-SN/Beta/2.06/VZM31-SN_2.06.ota",
+                        "manufacturer_id": 4655,
+                        "image_type": 257,
+                    },
+                ],
+                "VZM35-SN": [
+                    {
+                        "version": "00000004",
+                        "channel": "beta",
+                        "firmware": f"{base}/VZM35-SN/Beta/1.04/VZM35-SN_1.04.ota",
+                        "manufacturer_id": 4655,
+                        "image_type": 258,
+                    },
+                    # This is reordered as well
+                    {
+                        "version": "33619975",
+                        "channel": "beta",
+                        "firmware": f"{base}/VZM35-SN/Beta/1.07/VZM35-SN_1.07.ota",
+                        "manufacturer_id": 4655,
+                        "image_type": 258,
                     },
                     {
-                        "version": "00000009",
+                        "version": "33619974",
                         "channel": "beta",
-                        "firmware": f"{base}/VZM31-SN/Beta/00000009/00000009.ota",
+                        "firmware": f"{base}/VZM35-SN/Beta/1.06/VZM35-SN_1.06.ota",
+                        "manufacturer_id": 4655,
+                        "image_type": 258,
                     },
                 ],
             }
@@ -143,12 +175,14 @@ async def test_inovelli_refresh_list(
     assert img1.key in inovelli_prov._cache
     assert img2.key in inovelli_prov._cache
     cached_1 = inovelli_prov._cache[img1.key]
-    assert cached_1.model == img1.model
-    assert cached_1.url == f"{base}/VZM31-SN/Beta/00000005/00000005.ota"
+    assert cached_1.image_type == img1.image_type
+
+    # Most recent image is still picked
+    assert cached_1.url == f"{base}/VZM31-SN/Beta/2.07/VZM31-SN_2.07.ota"
 
     cached_2 = inovelli_prov._cache[img2.key]
-    assert cached_2.model == img2.model
-    assert cached_2.url == f"{base}/VZM31-SN/Beta/00000010/00000010.ota"
+    assert cached_2.image_type == img2.image_type
+    assert cached_2.url == f"{base}/VZM35-SN/Beta/1.07/VZM35-SN_1.07.ota"
 
     assert not inovelli_prov.expired
 
@@ -180,22 +214,35 @@ async def test_inovelli_refresh_list_failed(mock_get, inovelli_prov):
 
 @patch("aiohttp.ClientSession.get")
 async def test_inovelli_fetch_image(mock_get, inovelli_image_with_version):
-    header = bytes.fromhex(  # based on ikea sample but modded mfr code
-        "1ef1ee0b0001380000002f12012178563412020054657374204f544120496d61"
-        "676500000000000000000000000000000000000042000000"
+    image = zigpy.ota.image.OTAImage(
+        header=zigpy.ota.image.OTAImageHeader(
+            upgrade_file_id=200208670,
+            header_version=256,
+            header_length=56,
+            field_control=zigpy.ota.image.FieldControl(0),
+            manufacturer_id=INOVELLI_ID,
+            image_type=257,
+            file_version=16908807,
+            stack_version=2,
+            header_string="EBL VM_SWITCH",
+            image_size=66,
+        ),
+        subelements=[
+            zigpy.ota.image.SubElement(
+                tag_id=zigpy.ota.image.ElementTagId.UPGRADE_IMAGE, data=b"abcd"
+            )
+        ],
     )
 
-    sub_el = b"\x00\x00\x04\x00\x00\x00abcd"
-
-    img = inovelli_image_with_version(model=INOVELLI_MODEL)
+    img = inovelli_image_with_version()
     img.url = mock.sentinel.url
 
     mock_get.return_value.__aenter__.return_value.read = AsyncMock(
-        side_effect=[header + sub_el]
+        return_value=image.serialize()
     )
 
     r = await img.fetch_image()
     assert isinstance(r, zigpy.ota.image.OTAImage)
     assert mock_get.call_count == 1
     assert mock_get.call_args[0][0] == mock.sentinel.url
-    assert r.serialize() == header + sub_el
+    assert r == image
