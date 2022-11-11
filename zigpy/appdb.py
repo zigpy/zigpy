@@ -270,8 +270,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def attribute_updated(
         self, cluster: zigpy.typing.ClusterType, attrid: int, value: Any
     ) -> None:
-        if not cluster.endpoint.device.is_initialized:
-            return
 
         self.enqueue(
             "_save_attribute",
@@ -285,8 +283,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def unsupported_attribute_added(
         self, cluster: zigpy.typing.ClusterType, attrid: int
     ) -> None:
-        if not cluster.endpoint.device.is_initialized:
-            return
 
         self.enqueue(
             "_unsupported_attribute_added",
@@ -308,8 +304,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def unsupported_attribute_removed(
         self, cluster: zigpy.typing.ClusterType, attrid: int
     ) -> None:
-        if not cluster.endpoint.device.is_initialized:
-            return
 
         self.enqueue(
             "_unsupported_attribute_removed",

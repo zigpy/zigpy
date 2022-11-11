@@ -684,7 +684,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         elif isinstance(records, list) and (
             len(records) == 1 and records[0].status == foundation.Status.SUCCESS
         ):
-            self.remove_unsupported_attribute(records[0].attrid)
+            # we get a single success when all are supported
+            for attr in attributes.keys():
+                self.remove_unsupported_attribute(records[0].attrid)
         return res
 
     def command(

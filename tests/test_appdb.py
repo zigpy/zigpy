@@ -733,12 +733,9 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     assert 0x0010 in dev.endpoints[3].in_clusters[0].unsupported_attributes
     cluster.request = mockrequest
     await cluster.read_attributes([0x0010], allow_cache=False)
-    if dev_init:
-        assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-        assert (
-            "location_desc"
-            not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-        )
+    assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "location_desc" not in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "Not Removed" == dev.endpoints[3].in_clusters[0].get(0x0010)
     assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
     await app3.shutdown()
@@ -748,13 +745,9 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     dev = app4.get_device(ieee)
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
-    if dev_init:
-        assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-        assert "Not Removed" == dev.endpoints[3].in_clusters[0].get(0x0010)
-        assert (
-            "location_desc"
-            not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-        )
+    assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "Not Removed" == dev.endpoints[3].in_clusters[0].get(0x0010)
+    assert "location_desc" not in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
     await app4.shutdown()
