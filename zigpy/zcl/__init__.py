@@ -686,7 +686,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         ):
             # we get a single success when all are supported
             for attr in attributes.keys():
-                self.remove_unsupported_attribute(records[0].attrid)
+                self.remove_unsupported_attribute(attr)
         return res
 
     def command(
