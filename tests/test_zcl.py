@@ -859,6 +859,15 @@ async def test_configure_reporting_multiple_single_fail(cluster):
     assert cluster.endpoint.request.await_count == 1
     assert cluster.unsupported_attributes == {"hw_version", 3}
 
+    cluster.endpoint.request.return_value = _mk_cfg_rsp(
+        {3: zcl.foundation.Status.SUCCESS}
+    )
+    await cluster.configure_reporting_multiple(
+        {3: (5, 15, 20), 4: (6, 16, 26)}, manufacturer=0x2345
+    )
+    assert cluster.endpoint.request.await_count == 2
+    assert cluster.unsupported_attributes == set()
+
 
 async def test_configure_reporting_multiple_single_unreportable(cluster):
     """Configure reporting returned a single failure response for unreportable attribute."""
@@ -887,6 +896,19 @@ async def test_configure_reporting_multiple_both_unsupp(cluster):
     )
     assert cluster.endpoint.request.await_count == 1
     assert cluster.unsupported_attributes == {"hw_version", 3, "manufacturer", 4}
+
+    cluster.endpoint.request.return_value = _mk_cfg_rsp(
+        {
+            3: zcl.foundation.Status.SUCCESS,
+            4: zcl.foundation.Status.SUCCESS,
+        }
+    )
+
+    await cluster.configure_reporting_multiple(
+        {3: (5, 15, 20), 4: (6, 16, 26)}, manufacturer=0x2345
+    )
+    assert cluster.endpoint.request.await_count == 2
+    assert cluster.unsupported_attributes == set()
 
 
 def test_unsupported_attr_add(cluster):
@@ -918,6 +940,50 @@ def test_unsupported_attr_add_no_reverse_attr_name(cluster):
 
     cluster.add_unsupported_attribute(0xDEED)
     assert 0xDEED in cluster.unsupported_attributes
+
+
+def test_unsupported_attr_remove(cluster):
+    """Test removing unsupported attributes."""
+
+    assert "manufacturer" not in cluster.unsupported_attributes
+    assert 4 not in cluster.unsupported_attributes
+    assert "model" not in cluster.unsupported_attributes
+    assert 5 not in cluster.unsupported_attributes
+
+    cluster.add_unsupported_attribute(4)
+    assert "manufacturer" in cluster.unsupported_attributes
+    assert 4 in cluster.unsupported_attributes
+
+    cluster.add_unsupported_attribute("model")
+    assert "model" in cluster.unsupported_attributes
+    assert 5 in cluster.unsupported_attributes
+
+    cluster.remove_unsupported_attribute(4)
+    assert "manufacturer" not in cluster.unsupported_attributes
+    assert 4 not in cluster.unsupported_attributes
+
+    cluster.remove_unsupported_attribute("model")
+    assert "model" not in cluster.unsupported_attributes
+    assert 5 not in cluster.unsupported_attributes
+
+
+def test_unsupported_attr_remove_no_reverse_attr_name(cluster):
+    """Test removing unsupported attributes without corresponding reverse attr name."""
+
+    assert "no_such_attr" not in cluster.unsupported_attributes
+    assert 0xDEED not in cluster.unsupported_attributes
+
+    cluster.add_unsupported_attribute("no_such_attr")
+    assert "no_such_attr" in cluster.unsupported_attributes
+
+    cluster.add_unsupported_attribute(0xDEED)
+    assert 0xDEED in cluster.unsupported_attributes
+
+    cluster.remove_unsupported_attribute("no_such_attr")
+    assert "no_such_attr" not in cluster.unsupported_attributes
+
+    cluster.remove_unsupported_attribute(0xDEED)
+    assert 0xDEED not in cluster.unsupported_attributes
 
 
 def test_zcl_command_duplicate_name_prevention():
