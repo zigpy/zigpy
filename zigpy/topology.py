@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import collections
 import itertools
 import logging
 import random
@@ -45,17 +46,10 @@ class Topology(zigpy.util.ListenableMixin):
         self._neighbors_unsupported: set[t.EUI64] = set()
         self._routes_unsupported: set[t.EUI64] = set()
 
-        self.neighbors: dict[t.EUI64, list[zdo_t.Neighbor]] = {}
-        self.routes: dict[t.EUI64, list[zdo_t.Route]] = {}
-
-    @classmethod
-    def new(cls, app: zigpy.application.ControllerApplication) -> Topology:
-        """Create Topology instance."""
-
-        topo = cls(app)
-        if app.config[zigpy.config.CONF_TOPO_SCAN_ENABLED]:
-            asyncio.create_task(topo.scan_loop())
-        return topo
+        self.neighbors: dict[t.EUI64, list[zdo_t.Neighbor]] = collections.defaultdict(
+            list
+        )
+        self.routes: dict[t.EUI64, list[zdo_t.Route]] = collections.defaultdict(list)
 
     async def scan_loop(self) -> None:
         """Delay scan by creating a task."""
@@ -148,16 +142,13 @@ class Topology(zigpy.util.ListenableMixin):
             )
 
             # Ignore devices that aren't listening
-            if (
-                device.node_desc is None
-                or not device.node_desc.is_receiver_on_when_idle
-            ):
+            if device.node_desc is None or not device.node_desc.is_mains_powered:
                 continue
 
             # Ignore devices that do not support scanning tables
             if (
                 device.ieee in self._neighbors_unsupported
-                and device.iee in self.routes_unsupported
+                and device.ieee in self._routes_unsupported
             ):
                 continue
 
@@ -170,11 +161,12 @@ class Topology(zigpy.util.ListenableMixin):
 
             try:
                 self.neighbors[device.ieee] = await self._scan_neighbors(device)
+            except Exception as e:
+                LOGGER.warning("Failed to scan neighbors of %s: %r", device, e)
+            else:
                 LOGGER.info(
                     "Scanned neighbors for %s: %s", device, self.neighbors[device.ieee]
                 )
-            except Exception as e:
-                LOGGER.warning("Failed to scan neighbors of %s: %r", device, e)
 
             self.listener_event(
                 "neighbors_updated", device.ieee, self.neighbors[device.ieee]
@@ -182,18 +174,19 @@ class Topology(zigpy.util.ListenableMixin):
 
             try:
                 self.routes[device.ieee] = await self._scan_routes(device)
+            except Exception as e:
+                LOGGER.warning("Failed to scan routes of %s: %r", device, e)
+            else:
                 LOGGER.info(
                     "Scanned routes for %s: %s", device, self.routes[device.ieee]
                 )
-            except Exception as e:
-                LOGGER.warning("Failed to scan routes of %s: %r", device, e)
 
             self.listener_event("routes_updated", device.ieee, self.routes[device.ieee])
 
         LOGGER.debug("Finished scanning neighbors for all devices")
-        self._handle_unknown_devices()
+        # await self._handle_unknown_devices()
 
-    def _handle_unknown_devices(self) -> None:
+    async def _handle_unknown_devices(self) -> None:
         """Discover unknown devices discovered during topology scanning"""
         # Build a list of unknown devices from the topology scan
         unknown_nwks = set()

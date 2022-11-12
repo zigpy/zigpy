@@ -582,6 +582,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
+        await self._load_routes()
         await self._load_network_backups()
         await self._register_device_listeners()
 
@@ -703,10 +704,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_neighbors(self) -> None:
         async with self.execute(f"SELECT * FROM neighbors{DB_V}") as cursor:
             async for ieee, *fields in cursor:
-                dev = self._application.get_device(ieee)
                 neighbor = zdo_t.Neighbor(*fields)
-                assert neighbor.is_valid
-                dev.neighbors.add_neighbor(neighbor)
+                self._application.topology.neighbors[ieee].append(neighbor)
+
+    async def _load_routes(self) -> None:
+        async with self.execute(f"SELECT * FROM routes{DB_V}") as cursor:
+            async for ieee, *fields in cursor:
+                route = zdo_t.Route(*fields)
+                self._application.topology.routes[ieee].append(route)
 
     async def _load_network_backups(self) -> None:
         self._application.backups.backups.clear()
@@ -728,7 +733,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
-            dev.neighbors.add_context_listener(self)
 
     async def _get_table_versions(self) -> dict[str, str]:
         tables = {}
@@ -1066,5 +1070,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "neighbors_v10": "neighbors_v11",
                 "node_descriptors_v10": "node_descriptors_v11",
                 "unsupported_attributes_v10": "unsupported_attributes_v11",
+                "network_backups_v10": "network_backups_v11",
             }
         )

@@ -134,9 +134,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> ControllerApplication:
         """Create new instance of application controller."""
         app = cls(config)
+        app.topology = zigpy.topology.Topology(app)
+
+        if app.config[conf.CONF_TOPO_SCAN_ENABLED]:
+            asyncio.create_task(app.topology.scan_loop())
+
         await app._load_db()
         await app.ota.initialize()
-        app.topology = zigpy.topology.Topology.new(app)
 
         if not start_radio:
             return app
