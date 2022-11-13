@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import sys
+import time
 
 import pytest
 
@@ -557,3 +558,8 @@ async def test_dynamic_bounded_semaphore_errors(event_loop):
     assert not sem.locked()
     assert sem.value == 1
     assert sem.max_value == 1
+
+
+def test_monotonic_time_coarse():
+    """Test monotonic time coarse."""
+    assert abs(time.monotonic() - util.monotonic_time_coarse()) < 1

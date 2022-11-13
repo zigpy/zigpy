@@ -3,10 +3,13 @@ from __future__ import annotations
 import abc
 import asyncio
 import collections
+from contextlib import suppress
 import functools
 import inspect
 import logging
+import platform
 import sys
+import time
 import traceback
 import typing
 import warnings
@@ -18,6 +21,8 @@ from cryptography.hazmat.primitives.ciphers.modes import ECB
 
 from zigpy.exceptions import ControllerException, ZigbeeException
 import zigpy.types as t
+
+CLOCK_MONOTONIC_COARSE = 6
 
 LOGGER = logging.getLogger(__name__)
 
@@ -479,3 +484,23 @@ def deprecated_attrs(
         return replacement
 
     return __getattr__
+
+
+def __monotonic_time_coarse() -> float:
+    """Return a monotonic time in seconds.
+    This is the coarse version of time_monotonic, which is faster but less accurate.
+    Since many arm64 and 32-bit platforms don't support VDSO with time.monotonic
+    because of errata, we can't rely on the kernel to provide a fast
+    monotonic time.
+    https://lore.kernel.org/lkml/20170404171826.25030-1-marc.zyngier@arm.com/
+    """
+    return time.clock_gettime(CLOCK_MONOTONIC_COARSE)
+
+
+monotonic_time_coarse = time.monotonic
+with suppress(Exception):
+    if (
+        platform.system() == "Linux"
+        and abs(time.monotonic() - __monotonic_time_coarse()) < 1
+    ):
+        monotonic_time_coarse = __monotonic_time_coarse
