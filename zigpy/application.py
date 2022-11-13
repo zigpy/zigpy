@@ -568,7 +568,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         Async context manager to limit global coordinator request concurrency.
         """
 
-        start_time = zigpy.util.monotonic_time_coarse()
+        if LOGGER.isEnabledFor(logging.DEBUG):
+            start_time = zigpy.util.monotonic_time_coarse()
         was_locked = self._concurrent_requests_semaphore.locked()
 
         if was_locked:
@@ -579,7 +580,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             )
 
         async with self._concurrent_requests_semaphore:
-            if was_locked:
+            if was_locked and LOGGER.isEnabledFor(logging.DEBUG):
                 LOGGER.debug(
                     "Previously delayed request is now running, delayed by %0.2fs",
                     zigpy.util.monotonic_time_coarse() - start_time,
