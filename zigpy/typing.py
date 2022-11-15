@@ -1,7 +1,7 @@
 """Typing helpers for Zigpy."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Union
 
 ConfigType = Dict[str, Any]
 
@@ -39,3 +39,12 @@ if TYPE_CHECKING:
         zigpy.types.Addressing.IEEE,
         zigpy.types.Addressing.NWK,
     ]
+
+    MatcherFuncType = Callable[
+        [
+            Union[zigpy.zcl.foundation.ZCLHeader, zigpy.zdo.types.ZDOHeader],
+            zigpy.zcl.foundation.CommandSchema,
+        ],
+        bool,
+    ]
+    MatcherType = Union[MatcherFuncType, zigpy.zcl.foundation.CommandSchema]
