@@ -257,7 +257,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.devices[device.ieee] = device
         if self._dblistener is not None:
             device.add_context_listener(self._dblistener)
-            device.neighbors.add_context_listener(self._dblistener)
         self.listener_event("device_initialized", device)
 
     async def remove(
