@@ -112,7 +112,7 @@ http://us-fm.cloud.sengled.com:8000/sengled/zigbee/firmware/
 
 Note that Sengled do not seem to provide their firmware for use with other ZigBee gateways than the Sengled Smart Hub. The communication between their hub/gateway/bridge appliance and the server hosting the firmware files is encrypted, so we cannot directly get listing of all the files available. To find the URL for firmware files, you need to sniff the traffic from the Hue bridge to the Internet, as it downloads the files, (since the bridge will only download firmware files for connected devices with outdated firmware sniffing traffic is not repeatable once the device has been updated).
 
-The official URLs for Philips Hue (Signify) Zigbee OTA firmware images are therefor documented by community and third-parties such as Koenkk and Dresden Elektronik:
+The official URLs for Philips Hue (Signify) Zigbee OTA firmware images are therefore documented by community and third-parties such as Koenkk and Dresden Elektronik:
 
 https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json
 
@@ -136,7 +136,7 @@ https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json
 
 Note that Philips/Signify do not provide their firmware for use with other ZigBee gateways than the Philips Hue bridge. The communication between their hub/gateway/bridge appliance and the server hosting the firmware files is encrypted, so we cannot directly get listing of all the files available. To find the URL for firmware files, you need to sniff the traffic from the Hue bridge to the Internet, as it downloads the files, (since the bridge will only download firmware files for connected devices with outdated firmware sniffing traffic is not repeatable once the device has been updated).
 
-The official URLs for Philips Hue (Signify) Zigbee OTA firmware images are therefor documented by community and third-parties such as Koenkk and Dresden Elektronik:
+The official URLs for Philips Hue (Signify) Zigbee OTA firmware images are therefore documented by community and third-parties such as Koenkk and Dresden Elektronik:
 
 https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json
 
@@ -178,7 +178,7 @@ Danfoss Zigbee OTA firmware images for Danfoss Ally devices are made publicly av
 
 https://files.danfoss.com/download/Heating/Ally/Danfoss%20Ally
 
-More information about updateting Danfoss Ally smart heating products avilable at:
+More information about updateting Danfoss Ally smart heating products available at:
 
 https://www.danfoss.com/en/products/dhs/smart-heating/smart-heating/danfoss-ally/danfoss-ally-support/#tab-approvals
 
@@ -186,7 +186,7 @@ https://www.danfoss.com/en/products/dhs/smart-heating/smart-heating/danfoss-ally
 
 Manufacturer ID = 4398
 
-The ZLL switches from Busch-Jaeger does have upgradable firmware but unfortunatly they do not publish the OTOU image files directly via an public OTA provider server. However the firmware can be download and extracted from an Windows Upgrade Tool provided by Busch-Jaeger with the following steps:
+The ZLL switches from Busch-Jaeger does have upgradable firmware but unfortunately they do not publish the OTOU image files directly via an public OTA provider server. However the firmware can be download and extracted from an Windows Upgrade Tool provided by Busch-Jaeger with the following steps:
  - Download the Upgrade Tool from https://www.busch-jaeger.de/bje/software/Zigbee_Software/BJE_ZLL_Update_Tool_Setup_V1_2_0_Windows_Version.exe
  - Extract the contents of the *.exe file with 7zip (7z x BJE_ZLL_Update_Tool_Setup_V1_2_0_Windows_Version.exe).
  - Navigate to the device/ folder and get the firmware images.
