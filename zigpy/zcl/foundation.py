@@ -87,16 +87,19 @@ class Unknown(t.NoData):
     pass
 
 
+@dataclasses.dataclass()
 class TypeValue:
-    def __init__(self, python_type=None, value=None):
-        # Copy constructor
-        if isinstance(python_type, TypeValue):
-            other = python_type
+    type: t.uint8_t = dataclasses.field(default=None)
+    value: typing.Any = dataclasses.field(default=None)
 
-            python_type = other.type
+    def __init__(self, type: t.uint8_t | None = None, value: typing.Any = None) -> None:
+        # "Copy constructor"
+        if type is not None and value is None and isinstance(type, self.__class__):
+            other = type
+            type = other.type
             value = other.value
 
-        self.type = python_type
+        self.type = type
         self.value = value
 
     def serialize(self):
@@ -104,11 +107,11 @@ class TypeValue:
 
     @classmethod
     def deserialize(cls, data):
-        self = cls()
-        self.type, data = t.uint8_t.deserialize(data)
-        python_type = DATA_TYPES[self.type][1]
-        self.value, data = python_type.deserialize(data)
-        return self, data
+        type, data = t.uint8_t.deserialize(data)
+        python_type = DATA_TYPES[type][1]
+        value, data = python_type.deserialize(data)
+
+        return cls(type=type, value=value), data
 
     def __repr__(self) -> str:
         return (
@@ -121,12 +124,11 @@ class TypeValue:
 class TypedCollection(TypeValue):
     @classmethod
     def deserialize(cls, data):
-        self = cls()
-        self.type, data = data[0], data[1:]
-        python_item_type = DATA_TYPES[self.type][1]
-        python_type = t.LVList[python_item_type]
-        self.value, data = python_type.deserialize(data)
-        return self, data
+        type, data = t.uint8_t.deserialize(data)
+        python_type = DATA_TYPES[type][1]
+        values, data = t.LVList[python_type].deserialize(data)
+
+        return cls(type=type, value=values), data
 
 
 class Array(TypedCollection):

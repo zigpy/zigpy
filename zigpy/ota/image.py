@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 
 import attr
@@ -230,6 +231,15 @@ def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:
         # Legrand OTA images are prefixed with their unwrapped size and include a 1 + 16
         # byte suffix
         return OTAImage.deserialize(data[4:-17])
+    elif (
+        len(data) > 152
+        # Avoid the SHA512 hash until we're pretty sure this is a Third Reality image
+        and int.from_bytes(data[68:72], "little") + 64 == len(data)
+        and data.startswith(hashlib.sha512(data[64:]).digest())
+    ):
+        # Third Reality OTA images contain a 152 byte header with multiple SHA512 hashes
+        # and the image length
+        return OTAImage.deserialize(data[152:])
     elif data.startswith(b"NGIS"):
         # IKEA container needs to be unwrapped
         if len(data) <= 24:

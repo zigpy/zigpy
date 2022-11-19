@@ -491,6 +491,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                         )
                     self._update_attribute(record.attrid, value)
                     success[orig_attribute] = value
+                    self.remove_unsupported_attribute(record.attrid)
                 else:
                     if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
                         self.add_unsupported_attribute(record.attrid)
@@ -630,10 +631,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         manufacturer: int | None = None,
     ) -> list[foundation.ConfigureReportingResponseRecord]:
         """Configure attribute reporting for a single attribute."""
-        return await self.configure_reporting_multiple(
+        response = await self.configure_reporting_multiple(
             {attribute: (min_interval, max_interval, reportable_change)},
             manufacturer=manufacturer,
         )
+        return response
 
     async def configure_reporting_multiple(
         self,
@@ -673,6 +675,18 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             ]
             for attr in failed:
                 self.add_unsupported_attribute(attr)
+
+            success = [
+                r.attrid for r in records if r.status == foundation.Status.SUCCESS
+            ]
+            for attr in success:
+                self.remove_unsupported_attribute(attr)
+        elif isinstance(records, list) and (
+            len(records) == 1 and records[0].status == foundation.Status.SUCCESS
+        ):
+            # we get a single success when all are supported
+            for attr in attributes.keys():
+                self.remove_unsupported_attribute(attr)
         return res
 
     def command(
@@ -889,6 +903,29 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             else:
                 self.add_unsupported_attribute(attrdef.id, inhibit_events)
 
+    def remove_unsupported_attribute(
+        self, attr: int | str, inhibit_events: bool = False
+    ) -> None:
+        """Removes an unsupported attribute."""
+
+        if attr not in self.unsupported_attributes:
+            return
+
+        self.unsupported_attributes.remove(attr)
+
+        if isinstance(attr, int) and not inhibit_events:
+            self.listener_event("unsupported_attribute_removed", attr)
+
+        try:
+            attrdef = self.find_attribute(attr)
+        except KeyError:
+            pass
+        else:
+            if isinstance(attr, int):
+                self.remove_unsupported_attribute(attrdef.name, inhibit_events)
+            else:
+                self.remove_unsupported_attribute(attrdef.id, inhibit_events)
+
 
 class ClusterPersistingListener:
     def __init__(self, applistener, cluster):
@@ -907,6 +944,10 @@ class ClusterPersistingListener:
     def unsupported_attribute_added(self, attrid: int) -> None:
         """An unsupported attribute was added."""
         self._applistener.unsupported_attribute_added(self._cluster, attrid)
+
+    def unsupported_attribute_removed(self, attrid: int) -> None:
+        """Remove an unsupported attribute."""
+        self._applistener.unsupported_attribute_removed(self._cluster, attrid)
 
 
 # Import to populate the registry

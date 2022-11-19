@@ -10,6 +10,7 @@ import logging
 import os
 import os.path
 import tarfile
+import typing
 import urllib.parse
 
 import aiohttp
@@ -622,23 +623,28 @@ class FileStore(Basic):
 @attr.s
 class INOVELLIImage:
     manufacturer_id = attr.ib()
-    model = attr.ib()
-    version = attr.ib(default=None)
-    url = attr.ib(default=None)
+    image_type = attr.ib()
+    version = attr.ib()
+    url = attr.ib()
 
     @classmethod
-    def new(cls, data, model):
-        ver = int(data["version"], 16)
-        url = data["firmware"]
+    def from_json(cls, obj):
+        version = int(obj["version"], 16)
 
-        res = cls(
-            manufacturer_id=Inovelli.MANUFACTURER_ID, model=model, version=ver, url=url
+        # Old Inovelli OTA JSON versions were in hex, they then switched back to decimal
+        if version > 0x10:
+            version = int(obj["version"])
+
+        return cls(
+            manufacturer_id=obj["manufacturer_id"],
+            image_type=obj["image_type"],
+            version=version,
+            url=obj["firmware"],
         )
-        return res
 
     @property
     def key(self):
-        return ImageKey(self.manufacturer_id, self.model)
+        return ImageKey(self.manufacturer_id, self.image_type)
 
     async def fetch_image(self) -> BaseOTAImage | None:
         async with aiohttp.ClientSession() as req:
@@ -647,7 +653,7 @@ class INOVELLIImage:
                 data = await rsp.read()
 
         ota_image, _ = parse_ota_image(data)
-        assert ota_image.header.manufacturer_id == self.key.manufacturer_id
+        assert ota_image.header.key == self.key
 
         LOGGER.debug(
             "Finished downloading from %s for %s ver %s",
@@ -689,13 +695,105 @@ class Inovelli(Basic):
                     fw_lst = await rsp.json()
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
+
         for model, firmwares in fw_lst.items():
-            # Pick the most recent firmware
-            firmware = max(firmwares, key=lambda obj: obj["version"])
-            img = INOVELLIImage.new(data=firmware, model=model)
-            self._cache[img.key] = img
+            for firmware in firmwares:
+                img = INOVELLIImage.from_json(firmware)
+
+                # Only replace the previously-cached image if its version is smaller
+                if (
+                    img.key in self._cache
+                    and self._cache[img.key].version > img.version
+                ):
+                    continue
+
+                self._cache[img.key] = img
 
         self.update_expiration()
 
     async def filter_get_image(self, key: ImageKey) -> bool:
         return key.manufacturer_id != self.MANUFACTURER_ID
+
+
+@attr.s
+class ThirdRealityImage:
+    model = attr.ib()
+    url = attr.ib()
+    version = attr.ib()
+    image_type = attr.ib()
+    manufacturer_id = attr.ib()
+    file_version = attr.ib()
+
+    @classmethod
+    def from_json(cls, obj: dict[str, typing.Any]) -> ThirdRealityImage:
+        return cls(
+            model=obj["modelId"],
+            url=obj["url"],
+            version=obj["version"],
+            image_type=obj["imageType"],
+            manufacturer_id=obj["manufacturerId"],
+            file_version=obj["fileVersion"],
+        )
+
+    @property
+    def key(self) -> ImageKey:
+        return ImageKey(self.manufacturer_id, self.image_type)
+
+    async def fetch_image(self) -> BaseOTAImage:
+        async with aiohttp.ClientSession() as req:
+            LOGGER.debug("Downloading %s for %s", self.url, self.key)
+            async with req.get(self.url) as rsp:
+                data = await rsp.read()
+
+        ota_image, _ = parse_ota_image(data)
+        assert ota_image.header.key == self.key
+
+        LOGGER.debug(
+            "Finished downloading from %s for %s ver %s",
+            self.url,
+            self.key,
+            self.version,
+        )
+        return ota_image
+
+
+class ThirdReality(Basic):
+    """Third Reality OTA Firmware provider."""
+
+    UPDATE_URL = "https://tr-zha.s3.amazonaws.com/firmware.json"
+    MANUFACTURER_IDS = (4659, 4877)
+    HEADERS = {"accept": "application/json"}
+
+    async def initialize_provider(self, ota_config: dict) -> None:
+        self.info("OTA provider enabled")
+        self.config = ota_config
+        await self.refresh_firmware_list()
+        self.enable()
+
+    async def refresh_firmware_list(self) -> None:
+        if self._locks[LOCK_REFRESH].locked():
+            return
+
+        async with self._locks[LOCK_REFRESH]:
+            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
+                async with req.get(self.UPDATE_URL) as rsp:
+                    if not (200 <= rsp.status <= 299):
+                        self.warning(
+                            "Couldn't download '%s': %s/%s",
+                            rsp.url,
+                            rsp.status,
+                            rsp.reason,
+                        )
+                        return
+                    fw_lst = await rsp.json()
+
+        self.debug("Finished downloading firmware update list")
+        self._cache.clear()
+        for firmware in fw_lst:
+            img = ThirdRealityImage.from_json(firmware)
+            self._cache[img.key] = img
+
+        self.update_expiration()
+
+    async def filter_get_image(self, key: ImageKey) -> bool:
+        return key.manufacturer_id not in self.MANUFACTURER_IDS

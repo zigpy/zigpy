@@ -13,6 +13,7 @@ from zigpy.config import (
     CONF_OTA_LEDVANCE,
     CONF_OTA_SALUS,
     CONF_OTA_SONOFF,
+    CONF_OTA_THIRDREALITY,
 )
 from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader
 import zigpy.ota.provider
@@ -118,6 +119,8 @@ class OTA(zigpy.util.ListenableMixin):
             self.add_listener(zigpy.ota.provider.Salus())
         if ota_config[CONF_OTA_SONOFF]:
             self.add_listener(zigpy.ota.provider.Sonoff())
+        if ota_config[CONF_OTA_THIRDREALITY]:
+            self.add_listener(zigpy.ota.provider.ThirdReality())
 
     async def initialize(self) -> None:
         await self.async_event("initialize_provider", self._app.config[CONF_OTA])
@@ -128,8 +131,7 @@ class OTA(zigpy.util.ListenableMixin):
     ) -> Optional[CachedImage]:
         if manufacturer_id in (
             zigpy.ota.provider.Salus.MANUFACTURER_ID,
-            zigpy.ota.provider.Inovelli.MANUFACTURER_ID,
-        ):  # Salus/computime/Inovelli do not pass a useful image_type
+        ):  # Salus/computime do not pass a useful image_type
             # in the message from the device. So construct key based on model name.
             key = ImageKey(manufacturer_id, model)
         else:
