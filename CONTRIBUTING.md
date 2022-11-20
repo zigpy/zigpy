@@ -120,7 +120,7 @@ At this point `black` and `isort` will be run by the pre-commit hook, reformatti
  
 ### Unit testing
 
-Run `pytest -lv`, which will show you a stack trace and all the local variables when something breaks. It is recommended that you install both Python 3.7 and 3.8 so that you can run `tox` from the root project folder and see exactly what the CI system will tell you without having to wait for Travis CI or Coveralls. Code coverage information will be written by tox to `htmlcov/index.html`.
+Run `pytest -lv`, which will show you a stack trace and all the local variables when something breaks. It is recommended that you install Python 3.8, 3.9, 3.10 and 3.11 so that you can run `tox` from the root project folder and see exactly what the CI system will tell you without having to wait for Github Actions or Coveralls. Code coverage information will be written by tox to `htmlcov/index.html`.
 
 ### The zigpy API
 
