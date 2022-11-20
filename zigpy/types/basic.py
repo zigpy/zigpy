@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 import inspect
 import struct
+import sys
 import typing
 
 CALLABLE_T = typing.TypeVar("CALLABLE_T", bound=typing.Callable)
@@ -302,20 +303,27 @@ def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
     appropriate methods but with only one non-Enum parent class.
     """
 
-    class _NewEnum(int_type, enum.Flag):
-        # Rebind classmethods to our own class
-        _missing_ = classmethod(enum.IntFlag._missing_.__func__)
-        _create_pseudo_member_ = classmethod(
-            enum.IntFlag._create_pseudo_member_.__func__
-        )
+    if sys.version_info >= (3, 11):
 
-        __or__ = enum.IntFlag.__or__
-        __and__ = enum.IntFlag.__and__
-        __xor__ = enum.IntFlag.__xor__
-        __ror__ = enum.IntFlag.__ror__
-        __rand__ = enum.IntFlag.__rand__
-        __rxor__ = enum.IntFlag.__rxor__
-        __invert__ = enum.IntFlag.__invert__
+        class _NewEnum(int_type, enum.ReprEnum, enum.Flag, boundary=enum.KEEP):
+            pass
+
+    else:
+
+        class _NewEnum(int_type, enum.Flag):
+            # Rebind classmethods to our own class
+            _missing_ = classmethod(enum.IntFlag._missing_.__func__)
+            _create_pseudo_member_ = classmethod(
+                enum.IntFlag._create_pseudo_member_.__func__
+            )
+
+            __or__ = enum.IntFlag.__or__
+            __and__ = enum.IntFlag.__and__
+            __xor__ = enum.IntFlag.__xor__
+            __ror__ = enum.IntFlag.__ror__
+            __rand__ = enum.IntFlag.__rand__
+            __rxor__ = enum.IntFlag.__rxor__
+            __invert__ = enum.IntFlag.__invert__
 
     return _NewEnum
 
