@@ -141,8 +141,8 @@ class Topology(zigpy.util.ListenableMixin):
                 "Scanning topology (%d/%d) of %s", index + 1, len(devices), device
             )
 
-            # Ignore devices that aren't listening
-            if device.node_desc is None or not device.node_desc.is_mains_powered:
+            # Ignore devices that aren't routers
+            if device.node_desc is None or not device.node_desc.is_router:
                 continue
 
             # Ignore devices that do not support scanning tables
@@ -152,7 +152,7 @@ class Topology(zigpy.util.ListenableMixin):
             ):
                 continue
 
-            # Some coordinators have issues when sending loopback scans to themselves
+            # Some coordinators have issues when performing loopback scans
             if (
                 self._app.config[zigpy.config.CONF_TOPO_SKIP_COORDINATOR]
                 and device is self._app._device
@@ -162,10 +162,10 @@ class Topology(zigpy.util.ListenableMixin):
             try:
                 self.neighbors[device.ieee] = await self._scan_neighbors(device)
             except Exception as e:
-                LOGGER.warning("Failed to scan neighbors of %s: %r", device, e)
+                LOGGER.debug("Failed to scan neighbors of %s", device, exc_info=e)
             else:
                 LOGGER.info(
-                    "Scanned neighbors for %s: %s", device, self.neighbors[device.ieee]
+                    "Scanned neighbors of %s: %s", device, self.neighbors[device.ieee]
                 )
 
             self.listener_event(
@@ -175,10 +175,10 @@ class Topology(zigpy.util.ListenableMixin):
             try:
                 self.routes[device.ieee] = await self._scan_routes(device)
             except Exception as e:
-                LOGGER.warning("Failed to scan routes of %s: %r", device, e)
+                LOGGER.debug("Failed to scan routes of %s", device, exc_info=e)
             else:
                 LOGGER.info(
-                    "Scanned routes for %s: %s", device, self.routes[device.ieee]
+                    "Scanned routes of %s: %s", device, self.routes[device.ieee]
                 )
 
             self.listener_event("routes_updated", device.ieee, self.routes[device.ieee])
