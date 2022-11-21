@@ -10,7 +10,6 @@ import random
 import typing
 
 import zigpy.config
-import zigpy.neighbor
 import zigpy.types as t
 import zigpy.util
 import zigpy.zdo.types as zdo_t
@@ -173,7 +172,13 @@ class Topology(zigpy.util.ListenableMixin):
             )
 
             try:
-                self.routes[device.ieee] = await self._scan_routes(device)
+                # Filter out inactive routes
+                routes = await self._scan_routes(device)
+                self.routes[device.ieee] = [
+                    route
+                    for route in routes
+                    if route.RouteStatus != zdo_t.RouteStatus.Inactive
+                ]
             except Exception as e:
                 LOGGER.debug("Failed to scan routes of %s", device, exc_info=e)
             else:

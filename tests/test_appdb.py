@@ -465,81 +465,127 @@ async def test_attribute_update(tmp_path, dev_init):
 
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
-async def test_neighbors(tmp_path):
+async def test_topology(tmp_path):
     """Test neighbor loading."""
 
     ext_pid = t.EUI64.convert("aa:bb:cc:dd:ee:ff:01:02")
-    ieee_1 = make_ieee(1)
-    nwk_1 = 0x1111
-    nei_1 = zdo_t.Neighbor(ext_pid, ieee_1, nwk_1, 2, 1, 1, 0, 0, 0, 15, 250)
 
-    ieee_2 = make_ieee(2)
-    nwk_2 = 0x2222
-    nei_2 = zdo_t.Neighbor(ext_pid, ieee_2, nwk_2, 1, 1, 2, 0, 0, 0, 15, 250)
+    neighbor1 = zdo_t.Neighbor(
+        extended_pan_id=ext_pid,
+        ieee=make_ieee(1),
+        nwk=0x1111,
+        device_type=2,
+        rx_on_when_idle=1,
+        relationship=1,
+        reserved1=0,
+        permit_joining=0,
+        reserved2=0,
+        depth=15,
+        lqi=250,
+    )
 
-    ieee_3 = make_ieee(3)
-    nwk_3 = 0x3333
-    nei_3 = zdo_t.Neighbor(ext_pid, ieee_3, nwk_3, 1, 1, 2, 0, 0, 0, 15, 250)
+    neighbor2 = zdo_t.Neighbor(
+        extended_pan_id=ext_pid,
+        ieee=make_ieee(2),
+        nwk=0x1112,
+        device_type=2,
+        rx_on_when_idle=1,
+        relationship=1,
+        reserved1=0,
+        permit_joining=0,
+        reserved2=0,
+        depth=15,
+        lqi=250,
+    )
+
+    route1 = zdo_t.Route(
+        DstNWK=0x1234,
+        RouteStatus=zdo_t.RouteStatus.Active,
+        MemoryConstrained=0,
+        ManyToOne=0,
+        RouteRecordRequired=0,
+        Reserved=0,
+        NextHop=0x6789,
+    )
+
+    route2 = zdo_t.Route(
+        DstNWK=0x1235,
+        RouteStatus=zdo_t.RouteStatus.Active,
+        MemoryConstrained=0,
+        ManyToOne=0,
+        RouteRecordRequired=0,
+        Reserved=0,
+        NextHop=0x6790,
+    )
+
+    ieee = make_ieee(0)
+    nwk = 0x9876
 
     db = tmp_path / "test.db"
     app = await make_app(db)
-    app.handle_join(nwk_1, ieee_1, 0)
+    app.handle_join(nwk, ieee, 0x0000)
 
-    dev_1 = app.get_device(ieee_1)
-    dev_1.node_desc = zdo_t.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
-    ep1 = dev_1.add_endpoint(1)
+    dev = app.get_device(ieee)
+    dev.node_desc = zdo_t.NodeDescriptor(
+        logical_type=zdo_t.LogicalType.Router,
+        complex_descriptor_available=0,
+        user_descriptor_available=0,
+        reserved=0,
+        aps_flags=0,
+        frequency_band=zdo_t.NodeDescriptor.FrequencyBand.Freq2400MHz,
+        mac_capability_flags=zdo_t.NodeDescriptor.MACCapabilityFlags.AllocateAddress,
+        manufacturer_code=4174,
+        maximum_buffer_size=82,
+        maximum_incoming_transfer_size=82,
+        server_mask=0,
+        maximum_outgoing_transfer_size=82,
+        descriptor_capability_field=zdo_t.NodeDescriptor.DescriptorCapability.NONE,
+    )
+
+    ep1 = dev.add_endpoint(1)
     ep1.status = zigpy.endpoint.Status.ZDO_INIT
     ep1.profile_id = 260
     ep1.device_type = 0x1234
-    app.device_initialized(dev_1)
+    app.device_initialized(dev)
 
-    # 2nd device
-    app.handle_join(nwk_2, ieee_2, 0)
-    dev_2 = app.get_device(ieee_2)
-    dev_2.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4476, 82, 82, 0, 82, 0)
-    ep2 = dev_2.add_endpoint(1)
-    ep2.status = zigpy.endpoint.Status.ZDO_INIT
-    ep2.profile_id = 260
-    ep2.device_type = 0x1234
-    app.device_initialized(dev_2)
-
-    neighbors = zdo_t.Neighbors(2, 0, [nei_2, nei_3])
     p1 = patch.object(
-        dev_1.zdo,
-        "request",
-        new=AsyncMock(return_value=(zdo_t.Status.SUCCESS, neighbors)),
+        app.topology,
+        "_scan_neighbors",
+        new=AsyncMock(return_value=[neighbor1, neighbor2]),
     )
-    with p1:
-        res = await dev_1.neighbors.scan()
-        assert res
 
-    neighbors = zdo_t.Neighbors(2, 0, [nei_1, nei_3])
-    p1 = patch.object(
-        dev_2.zdo,
-        "request",
-        new=AsyncMock(return_value=(zdo_t.Status.SUCCESS, neighbors)),
+    p2 = patch.object(
+        app.topology,
+        "_scan_routes",
+        new=AsyncMock(return_value=[route1, route2]),
     )
-    with p1:
-        res = await dev_2.neighbors.scan()
-        assert res
+
+    with p1, p2:
+        await app.topology.scan()
+
+    assert len(app.topology.neighbors[ieee]) == 2
+    assert neighbor1 in app.topology.neighbors[ieee]
+    assert neighbor2 in app.topology.neighbors[ieee]
+
+    assert len(app.topology.routes[ieee]) == 2
+    assert route1 in app.topology.routes[ieee]
+    assert route2 in app.topology.routes[ieee]
 
     await app.shutdown()
-    del dev_1, dev_2
+    del dev
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
-    dev_1 = app2.get_device(ieee_1)
-    dev_2 = app2.get_device(ieee_2)
+    app2.get_device(ieee)
 
-    assert len(dev_1.neighbors) == 2
-    assert dev_1.neighbors[0].device is dev_2
-    assert dev_1.neighbors[1].device is None
-    assert dev_1.neighbors[1].neighbor.ieee == ieee_3
+    assert len(app2.topology.neighbors[ieee]) == 2
+    assert neighbor1 in app2.topology.neighbors[ieee]
+    assert neighbor2 in app2.topology.neighbors[ieee]
 
-    assert len(dev_2.neighbors.neighbors) == 2
-    assert dev_2.neighbors[0].device is dev_1
-    assert dev_2.neighbors[1].device is None
-    assert dev_2.neighbors[1].neighbor.ieee == ieee_3
+    assert len(app2.topology.routes[ieee]) == 2
+    assert route1 in app2.topology.routes[ieee]
+    assert route2 in app2.topology.routes[ieee]
+
     await app2.shutdown()
 
 

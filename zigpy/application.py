@@ -136,10 +136,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         app = cls(config)
         app.topology = zigpy.topology.Topology(app)
 
+        await app._load_db()
+
+        app.topology.add_listener(app._dblistener)
+
         if app.config[conf.CONF_TOPO_SCAN_ENABLED]:
             asyncio.create_task(app.topology.scan_loop())
 
-        await app._load_db()
         await app.ota.initialize()
 
         if not start_radio:

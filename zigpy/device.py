@@ -19,7 +19,6 @@ from zigpy.const import (
 )
 import zigpy.endpoint
 import zigpy.exceptions
-import zigpy.neighbor
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 import zigpy.util

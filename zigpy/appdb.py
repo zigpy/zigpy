@@ -15,7 +15,6 @@ import zigpy.backups
 import zigpy.device
 import zigpy.endpoint
 import zigpy.group
-import zigpy.neighbor
 import zigpy.profiles
 import zigpy.quirks
 import zigpy.state
@@ -341,7 +340,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
         """Route update from Mgmt_Rtg_req."""
-        self.enqueue("_routes_updated", (ieee, routes))
+        self.enqueue("_routes_updated", ieee, routes)
 
     async def _routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
         await self.execute(f"DELETE FROM routes{DB_V} WHERE device_ieee = ?", [ieee])
@@ -1037,10 +1036,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _migrate_to_v10(self):
         """Schema v10 added a new `network_backups_v10` table."""
 
-        await self.execute("INSERT INTO devices_v10 SELECT * FROM devices_v9")
-
         await self._migrate_tables(
             {
+                "devices_v9": "devices_v10",
                 "endpoints_v9": "endpoints_v10",
                 "in_clusters_v9": "in_clusters_v10",
                 "out_clusters_v9": "out_clusters_v10",

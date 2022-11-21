@@ -85,6 +85,9 @@ CREATE TABLE routes_v11 (
     next_hop INTEGER NOT NULL
 );
 
+CREATE INDEX routes_idx_v11
+    ON routes_v11(device_ieee);
+
 
 -- node descriptors
 DROP TABLE IF EXISTS node_descriptors_v11;
