@@ -46,7 +46,7 @@ class Status(enum.IntEnum):
     ENDPOINTS_INIT = 2
 
 
-class Neighbor(typing.NamedTuple):
+class NeighborShim(typing.NamedTuple):
     """Neighbor class for backwards compatibility."""
 
     device: Device
@@ -81,12 +81,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status = Status.NEW
 
     @property
-    def neighbors(self) -> list[Neighbor]:
+    def neighbors(self) -> list[NeighborShim]:
         """
         Backwards-compatible neighbors property.
         """
         return [
-            Neighbor(device=self, neighbor=n)
+            NeighborShim(device=self, neighbor=n)
             for n in self._application.topology.neighbors[self.ieee]
         ]
 
