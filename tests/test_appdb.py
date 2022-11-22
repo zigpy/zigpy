@@ -70,8 +70,8 @@ async def make_app(database_file):
     return app
 
 
-def make_ieee(init=0):
-    return t.EUI64(map(t.uint8_t, range(init, init + 8)))
+def make_ieee(start=0):
+    return t.EUI64(map(t.uint8_t, range(start, start + 8)))
 
 
 class FakeCustomDevice(CustomDevice):
@@ -464,6 +464,7 @@ async def test_attribute_update(tmp_path, dev_init):
     await app2.shutdown()
 
 
+@patch("zigpy.topology.REQUEST_DELAY", (0, 0))
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
 async def test_topology(tmp_path):
     """Test neighbor loading."""
@@ -474,9 +475,9 @@ async def test_topology(tmp_path):
         extended_pan_id=ext_pid,
         ieee=make_ieee(1),
         nwk=0x1111,
-        device_type=2,
+        device_type=zdo_t.Neighbor.DeviceType.EndDevice,
         rx_on_when_idle=1,
-        relationship=1,
+        relationship=zdo_t.Neighbor.Relationship.Child,
         reserved1=0,
         permit_joining=0,
         reserved2=0,
@@ -488,9 +489,9 @@ async def test_topology(tmp_path):
         extended_pan_id=ext_pid,
         ieee=make_ieee(2),
         nwk=0x1112,
-        device_type=2,
+        device_type=zdo_t.Neighbor.DeviceType.EndDevice,
         rx_on_when_idle=1,
-        relationship=1,
+        relationship=zdo_t.Neighbor.Relationship.Child,
         reserved1=0,
         permit_joining=0,
         reserved2=0,

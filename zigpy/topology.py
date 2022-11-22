@@ -81,7 +81,7 @@ class Topology(zigpy.util.ListenableMixin):
         table = []
 
         while True:
-            status, rsp = await scan_request(index, tries=3, delay=1)
+            status, rsp = await scan_request(StartIndex=index, tries=3, delay=1)
 
             if status != zdo_t.Status.SUCCESS:
                 raise ScanNotSupported()
@@ -189,21 +189,25 @@ class Topology(zigpy.util.ListenableMixin):
             self.listener_event("routes_updated", device.ieee, self.routes[device.ieee])
 
         LOGGER.debug("Finished scanning neighbors for all devices")
-        # await self._handle_unknown_devices()
+        await self._find_unknown_devices(neighbors=self.neighbors, routes=self.routes)
 
-    async def _handle_unknown_devices(self) -> None:
+    async def _find_unknown_devices(
+        self,
+        *,
+        neighbors: dict[t.EUI64, list[zdo_t.Neighbor]],
+        routes: dict[t.EUI64, list[zdo_t.Route]],
+    ) -> None:
         """Discover unknown devices discovered during topology scanning"""
         # Build a list of unknown devices from the topology scan
         unknown_nwks = set()
-        unknown_devices = set()
 
-        for neighbor in itertools.chain.from_iterable(self.neighbors.values()):
+        for neighbor in itertools.chain.from_iterable(neighbors.values()):
             try:
-                self._app.get_device(ieee=neighbor.ieee)
+                self._app.get_device(nwk=neighbor.nwk)
             except KeyError:
-                unknown_devices.add((neighbor.nwk, neighbor.ieee))
+                unknown_nwks.add(neighbor.nwk)
 
-        for route in itertools.chain.from_iterable(self.routes.values()):
+        for route in itertools.chain.from_iterable(routes.values()):
             # Ignore inactive or pending routes
             if route.RouteStatus != zdo_t.RouteStatus.Active:
                 continue
@@ -214,13 +218,8 @@ class Topology(zigpy.util.ListenableMixin):
                 except KeyError:
                     unknown_nwks.add(nwk)
 
-        # First, treat any unknown device as an explicit join
-        for nwk, ieee in unknown_devices:
-            LOGGER.warning("Discovered unknown device nwk=%s, ieee=%s", nwk, ieee)
-            self.handle_join(nwk=nwk, ieee=ieee, parent_nwk=None)
-            unknown_nwks.remove(nwk)
-
-        # Then, discover any new devices with unknown NWK addresses
+        # Try to discover any unknown devices
         for nwk in unknown_nwks:
-            LOGGER.warning("Discovered unknown device nwk=%s", nwk)
+            LOGGER.debug("Found unknown device nwk=%s", nwk)
             await self._app._discover_unknown_device(nwk)
+            await asyncio.sleep(random.uniform(*REQUEST_DELAY))

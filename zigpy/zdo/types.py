@@ -270,7 +270,7 @@ class _NeighborEnums:
         On = 0x1
         Unknown = 0x2
 
-    class RelationShip(t.enum3):
+    class Relationship(t.enum3):
         Parent = 0x0
         Child = 0x1
         Sibling = 0x2
@@ -289,7 +289,10 @@ class Neighbor(t.Struct):
     PermitJoins = _NeighborEnums.PermitJoins
     DeviceType = _NeighborEnums.DeviceType
     RxOnWhenIdle = _NeighborEnums.RxOnWhenIdle
-    RelationShip = _NeighborEnums.RelationShip
+    Relationship = _NeighborEnums.Relationship
+
+    # Backwards-compatible alternate spelling
+    RelationShip = Relationship
 
     extended_pan_id: t.ExtendedPanId
     ieee: t.EUI64
@@ -297,7 +300,7 @@ class Neighbor(t.Struct):
 
     device_type: _NeighborEnums.DeviceType
     rx_on_when_idle: _NeighborEnums.RxOnWhenIdle
-    relationship: _NeighborEnums.RelationShip
+    relationship: _NeighborEnums.Relationship
     reserved1: t.uint1_t
 
     permit_joining: _NeighborEnums.PermitJoins
