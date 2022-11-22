@@ -57,8 +57,7 @@ async def make_app(database_file):
     if isinstance(database_file, pathlib.Path):
         database_file = str(database_file)
 
-    p2 = patch("zigpy.topology.Topology.scan_loop", AsyncMock())
-    with patch("zigpy.ota.OTA.initialize", AsyncMock()), p2:
+    with patch("zigpy.ota.OTA.initialize", AsyncMock()):
         app = await App.new(
             conf.ZIGPY_SCHEMA(
                 {

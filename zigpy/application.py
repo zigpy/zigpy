@@ -37,7 +37,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def __init__(self, config: dict):
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
         self.state: zigpy.state.State = zigpy.state.State()
-        self.topology = None
         self._listeners = {}
         self._config = self.SCHEMA(config)
         self._dblistener = None
@@ -51,6 +50,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         )
 
         self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
+        self.topology: zigpy.topology.Topology = zigpy.topology.Topology(self)
 
     async def _load_db(self) -> None:
         """Restore save state."""
@@ -62,6 +62,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.add_listener(self._dblistener)
         self.groups.add_listener(self._dblistener)
         self.backups.add_listener(self._dblistener)
+        self.topology.add_listener(self._dblistener)
         await self._dblistener.load()
 
     async def initialize(self, *, auto_form: bool = False):
@@ -140,12 +141,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> ControllerApplication:
         """Create new instance of application controller."""
         app = cls(config)
-        app.topology = zigpy.topology.Topology(app)
 
         await app._load_db()
-
-        app.topology.add_listener(app._dblistener)
-
         await app.ota.initialize()
 
         if not start_radio:
