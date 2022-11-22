@@ -98,7 +98,7 @@ class Topology(zigpy.util.ListenableMixin):
         table = []
 
         while True:
-            status, rsp = await scan_request(StartIndex=index, tries=3, delay=1)
+            status, rsp = await scan_request(index, tries=3, delay=1)
 
             if status != zdo_t.Status.SUCCESS:
                 raise ScanNotSupported()
@@ -150,6 +150,7 @@ class Topology(zigpy.util.ListenableMixin):
     async def _scan(self) -> None:
         """Scan topology."""
 
+        # We iterate over a copy of the devices as opposed to the live dictionary
         devices = list(self._app.devices.values())
 
         for index, device in enumerate(devices):

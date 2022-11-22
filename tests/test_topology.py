@@ -287,14 +287,35 @@ async def test_scan_end_device(topology, make_initialized_device) -> None:
         assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 0
 
 
-async def test_scan_skip_coordinator(topology, make_initialized_device) -> None:
-    app = topology._app
-    coordinator = make_initialized_device(topology._app)
-    coordinator.nwk = 0x0000
+async def test_scan_router_many(topology, make_initialized_device) -> None:
+    dev = make_initialized_device(topology._app)
 
-    app.state.node_info.nwk = coordinator.nwk
-    app.state.node_info.ieee = coordinator.ieee
-    app.state.node_info.logical_type = zdo_t.LogicalType.Coordinator
+    with patch_device_tables(
+        dev,
+        neighbors=[
+            make_neighbor(ieee=make_ieee(2 + i), nwk=0x1234 + i) for i in range(100)
+        ],
+        routes=[
+            make_route(dest_nwk=0x1234 + i, next_hop=0x1234 + i) for i in range(100)
+        ],
+    ):
+        await topology.scan()
+
+        # We only permit three scans per request
+        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 34
+        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 34
+
+    assert topology.neighbors[dev.ieee] == [
+        make_neighbor(ieee=make_ieee(2 + i), nwk=0x1234 + i) for i in range(100)
+    ]
+    assert topology.routes[dev.ieee] == [
+        make_route(dest_nwk=0x1234 + i, next_hop=0x1234 + i) for i in range(100)
+    ]
+
+
+async def test_scan_skip_coordinator(topology, make_initialized_device) -> None:
+    coordinator = topology._app._device
+    assert coordinator.nwk == 0x0000
 
     with patch_device_tables(coordinator, neighbors=[], routes=[]):
         await topology.scan()
@@ -306,7 +327,7 @@ async def test_scan_skip_coordinator(topology, make_initialized_device) -> None:
     assert not topology.routes[coordinator.ieee]
 
 
-async def test_scan_scan_coordinator(topology) -> None:
+async def test_scan_coordinator(topology) -> None:
     app = topology._app
     app.config[conf.CONF_TOPO_SKIP_COORDINATOR] = False
 
