@@ -38,8 +38,8 @@ class Topology(zigpy.util.ListenableMixin):
         """Instantiate."""
         self._app: zigpy.application.ControllerApplication = app
         self._listeners: dict = {}
-        self._scan_period = app.config[zigpy.config.CONF_TOPO_SCAN_PERIOD] * 60
         self._scan_task: asyncio.Task | None = None
+        self._scan_loop_task: asyncio.Task | None = None
 
         # Keep track of devices that do not support scanning
         self._neighbors_unsupported: set[t.EUI64] = set()
@@ -50,14 +50,34 @@ class Topology(zigpy.util.ListenableMixin):
         )
         self.routes: dict[t.EUI64, list[zdo_t.Route]] = collections.defaultdict(list)
 
-    async def scan_loop(self) -> None:
+    def start_periodic_scans(self, period: int | float) -> None:
+        self.stop_periodic_scans()
+        self._scan_loop_task = asyncio.create_task(self._scan_loop(period))
+
+    def stop_periodic_scans(self):
+        if self._scan_loop_task is not None:
+            self._scan_loop_task.cancel()
+
+    async def _scan_loop(self, period: int | float) -> None:
         """Delay scan by creating a task."""
 
         while True:
-            await asyncio.sleep(self._scan_period)
-            if not self._scan_task or self._scan_task.done():
-                LOGGER.debug("Starting scheduled neighbor scan")
+            await asyncio.sleep(period)
+
+            # Don't run a scheduled scan if a scan is already running
+            if self._scan_task is not None and not self._scan_task.done():
+                continue
+
+            LOGGER.debug("Starting scheduled neighbor scan")
+
+            try:
                 await self.scan()
+            except asyncio.CancelledError:
+                # We explicitly catch a cancellation here to ensure the scan loop will
+                # not be interrupted if a manual scan is initiated
+                LOGGER.debug("Topology scan cancelled")
+            except (Exception, asyncio.CancelledError):
+                LOGGER.warning("Topology scan failed", exc_info=True)
 
     async def scan(self) -> None:
         """Preempt Topology scan and reschedule."""
@@ -67,10 +87,7 @@ class Topology(zigpy.util.ListenableMixin):
             self._scan_task.cancel()
 
         self._scan_task = asyncio.create_task(self._scan())
-        try:
-            await self._scan_task
-        except asyncio.CancelledError:
-            LOGGER.warning("Cancelled topology scanning task")
+        await self._scan_task
 
     async def _scan_table(
         self, scan_request: typing.Callable, entries_attr: str

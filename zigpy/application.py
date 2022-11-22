@@ -115,6 +115,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 period=(60 * self.config[conf.CONF_NWK_BACKUP_PERIOD])
             )
 
+        if self.config[conf.CONF_TOPO_SCAN_ENABLED]:
+            # Config specifies the period in minutes, not seconds
+            self.topology.start_periodic_scans(
+                period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
+            )
+
     async def startup(self, *, auto_form: bool = False):
         """
         Starts a network, optionally forming one with random settings if necessary.
@@ -139,9 +145,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         await app._load_db()
 
         app.topology.add_listener(app._dblistener)
-
-        if app.config[conf.CONF_TOPO_SCAN_ENABLED]:
-            asyncio.create_task(app.topology.scan_loop())
 
         await app.ota.initialize()
 
@@ -233,6 +236,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def shutdown(self) -> None:
         """Shutdown controller."""
         self.backups.stop_periodic_backups()
+        self.topology.stop_periodic_scans()
 
         if self._dblistener:
             await self._dblistener.shutdown()

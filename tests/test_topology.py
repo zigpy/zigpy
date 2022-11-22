@@ -7,6 +7,7 @@ from unittest import mock
 import pytest
 
 import zigpy.config as conf
+import zigpy.device
 import zigpy.endpoint
 import zigpy.profiles
 import zigpy.topology
@@ -15,6 +16,12 @@ import zigpy.zdo.types as zdo_t
 
 from tests.conftest import App
 from tests.test_appdb import make_ieee
+
+
+@pytest.fixture(autouse=True)
+def remove_request_delay():
+    with mock.patch("zigpy.topology.REQUEST_DELAY", new=(0, 0)):
+        yield
 
 
 def make_neighbor(
@@ -122,7 +129,7 @@ def topology(make_initialized_device):
 
 @contextlib.contextmanager
 def patch_device_tables(
-    device,
+    device: zigpy.device.Device,
     neighbors: list | BaseException | zdo_t.Status,
     routes: list | BaseException | zdo_t.Status,
 ):
@@ -189,7 +196,6 @@ def patch_device_tables(
         yield
 
 
-@mock.patch("zigpy.topology.REQUEST_DELAY", new=(0, 0))
 async def test_scan_no_devices(topology) -> None:
     await topology.scan()
 
@@ -197,7 +203,6 @@ async def test_scan_no_devices(topology) -> None:
     assert not topology.routes
 
 
-@mock.patch("zigpy.topology.REQUEST_DELAY", new=(0, 0))
 @pytest.mark.parametrize(
     "neighbors, routes",
     [
@@ -221,7 +226,6 @@ async def test_scan_failures(
     assert not topology.routes[dev.ieee]
 
 
-@mock.patch("zigpy.topology.REQUEST_DELAY", new=(0, 0))
 async def test_neighbors_not_supported(topology, make_initialized_device) -> None:
     dev = make_initialized_device(topology._app)
 
@@ -237,7 +241,6 @@ async def test_neighbors_not_supported(topology, make_initialized_device) -> Non
         assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 2
 
 
-@mock.patch("zigpy.topology.REQUEST_DELAY", new=(0, 0))
 async def test_routes_not_supported(topology, make_initialized_device) -> None:
     dev = make_initialized_device(topology._app)
 
@@ -253,7 +256,25 @@ async def test_routes_not_supported(topology, make_initialized_device) -> None:
         assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1
 
 
-@mock.patch("zigpy.topology.REQUEST_DELAY", new=(0, 0))
+async def test_routes_and_neighbors_not_supported(
+    topology, make_initialized_device
+) -> None:
+    dev = make_initialized_device(topology._app)
+
+    with patch_device_tables(
+        dev, neighbors=zdo_t.Status.NOT_SUPPORTED, routes=zdo_t.Status.NOT_SUPPORTED
+    ):
+        await topology.scan()
+
+        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 1
+        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1
+
+        await topology.scan()
+
+        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 1
+        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1
+
+
 async def test_scan_end_device(topology, make_initialized_device) -> None:
     dev = make_initialized_device(topology._app)
     dev.node_desc.logical_type = zdo_t.LogicalType.EndDevice
@@ -266,7 +287,6 @@ async def test_scan_end_device(topology, make_initialized_device) -> None:
         assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 0
 
 
-@mock.patch("zigpy.topology.REQUEST_DELAY", new=(0, 0))
 async def test_scan_skip_coordinator(topology, make_initialized_device) -> None:
     app = topology._app
     coordinator = make_initialized_device(topology._app)
@@ -286,7 +306,6 @@ async def test_scan_skip_coordinator(topology, make_initialized_device) -> None:
     assert not topology.routes[coordinator.ieee]
 
 
-@mock.patch("zigpy.topology.REQUEST_DELAY", new=(0, 0))
 async def test_scan_scan_coordinator(topology) -> None:
     app = topology._app
     app.config[conf.CONF_TOPO_SKIP_COORDINATOR] = False
@@ -316,7 +335,6 @@ async def test_scan_scan_coordinator(topology) -> None:
     ]
 
 
-@mock.patch("zigpy.topology.REQUEST_DELAY", new=(0, 0))
 @mock.patch("zigpy.application.ControllerApplication._discover_unknown_device")
 async def test_discover_new_devices(
     discover_unknown_device, topology, make_initialized_device
@@ -358,3 +376,89 @@ async def test_discover_new_devices(
     assert mock.call(0xFF00) in discover_unknown_device.mock_calls
     assert mock.call(0xFF01) in discover_unknown_device.mock_calls
     assert mock.call(0xFF02) in discover_unknown_device.mock_calls
+
+
+@mock.patch("zigpy.topology.Topology._scan")
+async def test_scan_start_concurrent(mock_scan, topology):
+    concurrency = 0
+    max_concurrency = 0
+
+    async def _scan():
+        nonlocal concurrency
+        nonlocal max_concurrency
+
+        concurrency += 1
+        max_concurrency = max(concurrency, max_concurrency)
+
+        try:
+            await asyncio.sleep(0.01)
+        finally:
+            concurrency -= 1
+            max_concurrency = max(concurrency, max_concurrency)
+
+    mock_scan.side_effect = _scan
+
+    topology.start_periodic_scans(0.1)
+    topology.start_periodic_scans(0.1)
+    topology.start_periodic_scans(0.1)
+    topology.start_periodic_scans(0.1)
+    topology.start_periodic_scans(0.1)
+
+    scan1 = asyncio.create_task(topology.scan())
+    scan2 = asyncio.create_task(topology.scan())
+
+    await asyncio.sleep(0.01)
+
+    with pytest.raises(asyncio.CancelledError):
+        await scan1
+
+    await scan2
+
+    # Wait for a "scan" to finish
+    await asyncio.sleep(0.15)
+    await topology._scan_task
+    topology.stop_periodic_scans()
+
+    # Only a single one was actually running
+    assert max_concurrency == 1
+
+    topology.stop_periodic_scans()
+
+    await asyncio.sleep(0)
+
+    # All of the tasks have been stopped
+    assert topology._scan_task.done()
+    assert topology._scan_loop_task.done()
+
+
+@mock.patch("zigpy.topology.Topology.scan", side_effect=RuntimeError())
+async def test_periodic_scan_failure(mock_scan, topology):
+    topology.start_periodic_scans(0.01)
+    await asyncio.sleep(0.1)
+    topology.stop_periodic_scans()
+
+
+async def test_periodic_scan_priority(topology):
+    async def _scan():
+        await asyncio.sleep(0.5)
+
+    with mock.patch.object(topology, "_scan", side_effect=_scan) as mock_scan:
+        scan_task = asyncio.create_task(topology.scan())
+        await asyncio.sleep(0.1)
+
+        # Start a periodic scan. It won't have time to run yet, the old scan is running
+        topology.start_periodic_scans(0.05)
+
+        # Wait for the original scan to finish
+        await scan_task
+
+        # Start another scan, interrupting the periodic scan
+        await asyncio.sleep(0.15)
+        await topology.scan()
+
+        # Now we can cancel the periodic scan
+        topology.stop_periodic_scans()
+        await asyncio.sleep(0)
+
+    # Our two manual scans succeeded and the periodic one was attempted
+    assert len(mock_scan.mock_calls) == 3
