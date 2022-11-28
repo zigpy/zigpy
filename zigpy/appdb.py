@@ -15,7 +15,6 @@ import zigpy.backups
 import zigpy.device
 import zigpy.endpoint
 import zigpy.group
-import zigpy.neighbor
 import zigpy.profiles
 import zigpy.quirks
 import zigpy.state
@@ -27,7 +26,7 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 10
+DB_VERSION = 11
 DB_V = f"_v{DB_VERSION}"
 MIN_SQLITE_VERSION = (3, 24, 0)
 
@@ -323,19 +322,33 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(q, (ieee, endpoint_id, cluster_id, attrid))
         await self._db.commit()
 
-    def neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
-        """Neighbor update from ZDO_Lqi_rsp."""
-        self.enqueue("_neighbors_updated", neighbors)
+    def neighbors_updated(self, ieee: t.EUI64, neighbors: list[zdo_t.Neighbor]) -> None:
+        """Neighbor update from Mgmt_Lqi_req."""
+        self.enqueue("_neighbors_updated", ieee, neighbors)
 
-    async def _neighbors_updated(self, neighbors: zigpy.neighbor.Neighbors) -> None:
-        await self.execute(
-            f"DELETE FROM neighbors{DB_V} WHERE device_ieee = ?", (neighbors.ieee,)
-        )
+    async def _neighbors_updated(
+        self, ieee: t.EUI64, neighbors: list[zdo_t.Neighbor]
+    ) -> None:
+        await self.execute(f"DELETE FROM neighbors{DB_V} WHERE device_ieee = ?", [ieee])
 
-        rows = [(neighbors.ieee,) + n.neighbor.as_tuple() for n in neighbors.neighbors]
+        rows = [(ieee,) + neighbor.as_tuple() for neighbor in neighbors]
 
         await self._db.executemany(
             f"INSERT INTO neighbors{DB_V} VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows
+        )
+        await self._db.commit()
+
+    def routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
+        """Route update from Mgmt_Rtg_req."""
+        self.enqueue("_routes_updated", ieee, routes)
+
+    async def _routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
+        await self.execute(f"DELETE FROM routes{DB_V} WHERE device_ieee = ?", [ieee])
+
+        rows = [(ieee,) + route.as_tuple() for route in routes]
+
+        await self._db.executemany(
+            f"INSERT INTO routes{DB_V} VALUES (?,?,?,?,?,?,?,?)", rows
         )
         await self._db.commit()
 
@@ -568,6 +581,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
+        await self._load_routes()
         await self._load_network_backups()
         await self._register_device_listeners()
 
@@ -689,10 +703,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_neighbors(self) -> None:
         async with self.execute(f"SELECT * FROM neighbors{DB_V}") as cursor:
             async for ieee, *fields in cursor:
-                dev = self._application.get_device(ieee)
                 neighbor = zdo_t.Neighbor(*fields)
-                assert neighbor.is_valid
-                dev.neighbors.add_neighbor(neighbor)
+                self._application.topology.neighbors[ieee].append(neighbor)
+
+    async def _load_routes(self) -> None:
+        async with self.execute(f"SELECT * FROM routes{DB_V}") as cursor:
+            async for ieee, *fields in cursor:
+                route = zdo_t.Route(*fields)
+                self._application.topology.routes[ieee].append(route)
 
     async def _load_network_backups(self) -> None:
         self._application.backups.backups.clear()
@@ -714,7 +732,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
-            dev.neighbors.add_context_listener(self)
 
     async def _get_table_versions(self) -> dict[str, str]:
         tables = {}
@@ -773,6 +790,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v8, 8),
                 (self._migrate_to_v9, 9),
                 (self._migrate_to_v10, 10),
+                (self._migrate_to_v11, 11),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -877,10 +895,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _migrate_to_v5(self):
         """Schema v5 introduced global table version suffixes and removed stale rows"""
 
-        # Copy the devices table first, it should have no conflicts
-        await self.execute("INSERT INTO devices_v5 SELECT * FROM devices")
         await self._migrate_tables(
             {
+                "devices": "devices_v5",
                 "endpoints": "endpoints_v5",
                 "clusters": "in_clusters_v5",
                 "output_clusters": "out_clusters_v5",
@@ -892,7 +909,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "neighbors_v4": "neighbors_v5",
                 "node_descriptors_v4": "node_descriptors_v5",
                 # Explicitly specify which tables will not be migrated
-                "devices": None,
                 "neighbors": None,
                 "node_descriptors": None,
             },
@@ -902,10 +918,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _migrate_to_v6(self):
         """Schema v6 relaxed the `attribute_cache` table schema to ignore endpoints"""
 
-        # Copy the devices table first, it should have no conflicts
-        await self.execute("INSERT INTO devices_v6 SELECT * FROM devices_v5")
         await self._migrate_tables(
             {
+                "devices_v5": "devices_v6",
                 "endpoints_v5": "endpoints_v6",
                 "in_clusters_v5": "in_clusters_v6",
                 "out_clusters_v5": "out_clusters_v6",
@@ -915,7 +930,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "attributes_cache_v5": "attributes_cache_v6",
                 "neighbors_v5": "neighbors_v6",
                 "node_descriptors_v5": "node_descriptors_v6",
-                "devices_v5": None,
             }
         )
 
@@ -952,10 +966,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _migrate_to_v7(self):
         """Schema v7 added the `unsupported_attributes` table."""
 
-        # Copy the devices table first, it should have no conflicts
-        await self.execute("INSERT INTO devices_v7 SELECT * FROM devices_v6")
         await self._migrate_tables(
             {
+                "devices_v6": "devices_v7",
                 "endpoints_v6": "endpoints_v7",
                 "in_clusters_v6": "in_clusters_v7",
                 "out_clusters_v6": "out_clusters_v7",
@@ -965,7 +978,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "attributes_cache_v6": "attributes_cache_v7",
                 "neighbors_v6": "neighbors_v7",
                 "node_descriptors_v6": "node_descriptors_v7",
-                "devices_v6": None,
             }
         )
 
@@ -1024,10 +1036,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _migrate_to_v10(self):
         """Schema v10 added a new `network_backups_v10` table."""
 
-        await self.execute("INSERT INTO devices_v10 SELECT * FROM devices_v9")
-
         await self._migrate_tables(
             {
+                "devices_v9": "devices_v10",
                 "endpoints_v9": "endpoints_v10",
                 "in_clusters_v9": "in_clusters_v10",
                 "out_clusters_v9": "out_clusters_v10",
@@ -1038,6 +1049,25 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "neighbors_v9": "neighbors_v10",
                 "node_descriptors_v9": "node_descriptors_v10",
                 "unsupported_attributes_v9": "unsupported_attributes_v10",
-                "devices_v9": None,
+            }
+        )
+
+    async def _migrate_to_v11(self):
+        """Schema v11 added a new `routes_v11` table."""
+
+        await self._migrate_tables(
+            {
+                "devices_v10": "devices_v11",
+                "endpoints_v10": "endpoints_v11",
+                "in_clusters_v10": "in_clusters_v11",
+                "out_clusters_v10": "out_clusters_v11",
+                "groups_v10": "groups_v11",
+                "group_members_v10": "group_members_v11",
+                "relays_v10": "relays_v11",
+                "attributes_cache_v10": "attributes_cache_v11",
+                "neighbors_v10": "neighbors_v11",
+                "node_descriptors_v10": "node_descriptors_v11",
+                "unsupported_attributes_v10": "unsupported_attributes_v11",
+                "network_backups_v10": "network_backups_v11",
             }
         )
