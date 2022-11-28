@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import typing
 
+import async_timeout
 import serial as pyserial
 import serial_asyncio as pyserial_asyncio
 import yarl
 
 DEFAULT_SOCKET_PORT = 6638
+SOCKET_CONNECT_TIMEOUT = 5
 
 
 async def create_serial_connection(
@@ -30,9 +32,10 @@ async def create_serial_connection(
         if parsed_url.port is None:
             parsed_url = parsed_url.with_port(DEFAULT_SOCKET_PORT)
 
-        transport, protocol = await loop.create_connection(
-            protocol_factory, parsed_url.host, parsed_url.port
-        )
+        async with async_timeout.timeout(SOCKET_CONNECT_TIMEOUT):
+            transport, protocol = await loop.create_connection(
+                protocol_factory, parsed_url.host, parsed_url.port
+            )
     else:
         transport, protocol = await pyserial_asyncio.create_serial_connection(
             loop, protocol_factory, url=url, **kwargs

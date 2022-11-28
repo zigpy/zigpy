@@ -9,6 +9,7 @@ import zigpy
 REQUIRES = [
     "aiohttp",
     "aiosqlite>=0.16.0",
+    "async_timeout",
     "crccheck",
     "cryptography",
     "voluptuous",
