@@ -37,7 +37,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def __init__(self, config: dict):
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
         self.state: zigpy.state.State = zigpy.state.State()
-        self.topology = None
         self._listeners = {}
         self._config = self.SCHEMA(config)
         self._dblistener = None
@@ -51,6 +50,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         )
 
         self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
+        self.topology: zigpy.topology.Topology = zigpy.topology.Topology(self)
 
     async def _load_db(self) -> None:
         """Restore save state."""
@@ -62,6 +62,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.add_listener(self._dblistener)
         self.groups.add_listener(self._dblistener)
         self.backups.add_listener(self._dblistener)
+        self.topology.add_listener(self._dblistener)
         await self._dblistener.load()
 
     async def initialize(self, *, auto_form: bool = False):
@@ -115,6 +116,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 period=(60 * self.config[conf.CONF_NWK_BACKUP_PERIOD])
             )
 
+        if self.config[conf.CONF_TOPO_SCAN_ENABLED]:
+            # Config specifies the period in minutes, not seconds
+            self.topology.start_periodic_scans(
+                period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
+            )
+
     async def startup(self, *, auto_form: bool = False):
         """
         Starts a network, optionally forming one with random settings if necessary.
@@ -134,9 +141,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> ControllerApplication:
         """Create new instance of application controller."""
         app = cls(config)
+
         await app._load_db()
         await app.ota.initialize()
-        app.topology = zigpy.topology.Topology.new(app)
 
         if not start_radio:
             return app
@@ -226,6 +233,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def shutdown(self) -> None:
         """Shutdown controller."""
         self.backups.stop_periodic_backups()
+        self.topology.stop_periodic_scans()
 
         if self._dblistener:
             await self._dblistener.shutdown()
@@ -253,7 +261,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.devices[device.ieee] = device
         if self._dblistener is not None:
             device.add_context_listener(self._dblistener)
-            device.neighbors.add_context_listener(self._dblistener)
         self.listener_event("device_initialized", device)
 
     async def remove(

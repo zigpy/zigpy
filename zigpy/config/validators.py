@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+import warnings
 
 import voluptuous as vol
 
@@ -69,3 +70,13 @@ def cv_simple_descriptor(obj: dict[str, typing.Any]) -> zdo_t.SimpleDescriptor:
         raise vol.Invalid(f"Invalid simple descriptor {descriptor!r}")
 
     return descriptor
+
+
+def cv_deprecated(message: str) -> typing.Callable[[typing.Any], typing.Any]:
+    """Factory function for creating a deprecation warning validator."""
+
+    def wrapper(obj: typing.Any) -> typing.Any:
+        warnings.warn(message, DeprecationWarning, stacklevel=2)
+        return obj
+
+    return wrapper

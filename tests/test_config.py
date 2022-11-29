@@ -1,5 +1,7 @@
 """Test configuration."""
 
+import warnings
+
 import pytest
 import voluptuous as vol
 
@@ -161,3 +163,24 @@ def test_schema_network_short_pan_id():
 
     config = zigpy.config.SCHEMA_NETWORK({zigpy.config.CONF_NWK_PAN_ID: 0x1234})
     assert config[zigpy.config.CONF_NWK_PAN_ID].serialize() == b"\x34\x12"
+
+
+def test_deprecated():
+    """Test key deprecation."""
+
+    schema = vol.Schema(
+        {
+            vol.Optional("value"): vol.All(
+                zigpy.config.validators.cv_hex,
+                zigpy.config.validators.cv_deprecated("Test message"),
+            )
+        }
+    )
+
+    with pytest.warns(DeprecationWarning, match="Test message"):
+        assert schema({"value": 123}) == {"value": 123}
+
+    # No warnings are raised
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert schema({}) == {}

@@ -5,7 +5,7 @@ import binascii
 from datetime import datetime, timezone
 import enum
 import logging
-from typing import TYPE_CHECKING, Any
+import typing
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -19,14 +19,14 @@ from zigpy.const import (
 )
 import zigpy.endpoint
 import zigpy.exceptions
-import zigpy.neighbor
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 import zigpy.util
 import zigpy.zcl.foundation as foundation
 import zigpy.zdo as zdo
+import zigpy.zdo.types as zdo_t
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
 
 APS_REPLY_TIMEOUT = 5
@@ -64,8 +64,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._listeners = {}
         self._manufacturer: str | None = None
         self._model: str | None = None
-        self.node_desc: zdo.types.NodeDescriptor | None = None
-        self.neighbors: zigpy.neighbor.Neighbors = zigpy.neighbor.Neighbors(self)
+        self.node_desc: zdo_t.NodeDescriptor | None = None
         self._pending: zigpy.util.Requests = zigpy.util.Requests()
         self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
@@ -155,14 +154,14 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return self._initialize_task
 
-    async def get_node_descriptor(self) -> zdo.types.NodeDescriptor:
+    async def get_node_descriptor(self) -> zdo_t.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
 
         status, _, node_desc = await self.zdo.Node_Desc_req(
             self.nwk, tries=2, delay=0.1
         )
 
-        if status != zdo.types.Status.SUCCESS:
+        if status != zdo_t.Status.SUCCESS:
             raise zigpy.exceptions.InvalidResponse(
                 f"Requesting Node Descriptor failed: {status}"
             )
@@ -211,7 +210,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 self.nwk, tries=3, delay=0.5
             )
 
-            if status != zdo.types.Status.SUCCESS:
+            if status != zdo_t.Status.SUCCESS:
                 raise zigpy.exceptions.InvalidResponse(
                     f"Endpoint request failed: {status}"
                 )
@@ -460,13 +459,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __getitem__(self, key):
         return self.endpoints[key]
 
-    def get_signature(self) -> dict[str, Any]:
+    def get_signature(self) -> dict[str, typing.Any]:
         # return the device signature by providing essential device information
         #    - Model Identifier ( Attribute 0x0005 of Basic Cluster 0x0000 )
         #    - Manufacturer Name ( Attribute 0x0004 of Basic Cluster 0x0000 )
         #    - Endpoint list
         #        - Profile Id, Device Id, Cluster Out, Cluster In
-        signature: dict[str, Any] = {}
+        signature: dict[str, typing.Any] = {}
         if self._manufacturer is not None:
             signature[SIG_MANUFACTURER] = self.manufacturer
         if self._model is not None:
