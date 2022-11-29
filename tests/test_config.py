@@ -169,7 +169,12 @@ def test_deprecated():
     """Test key deprecation."""
 
     schema = vol.Schema(
-        {vol.Optional("value"): zigpy.config.validators.cv_deprecated("Test message")}
+        {
+            vol.Optional("value"): vol.All(
+                zigpy.config.validators.cv_hex,
+                zigpy.config.validators.cv_deprecated("Test message"),
+            )
+        }
     )
 
     with pytest.warns(DeprecationWarning, match="Test message"):
