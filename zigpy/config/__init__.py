@@ -28,7 +28,13 @@ from zigpy.config.defaults import (
     CONF_TOPO_SCAN_PERIOD_DEFAULT,
     CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
 )
-from zigpy.config.validators import cv_boolean, cv_hex, cv_key, cv_simple_descriptor
+from zigpy.config.validators import (
+    cv_boolean,
+    cv_deprecated,
+    cv_hex,
+    cv_key,
+    cv_simple_descriptor,
+)
 import zigpy.types as t
 
 CONF_DATABASE = "database_path"
@@ -98,7 +104,6 @@ SCHEMA_NETWORK = vol.Schema(
 SCHEMA_OTA = {
     vol.Optional(CONF_OTA_DIR, default=CONF_OTA_OTAU_DIR_DEFAULT): vol.Any(None, str),
     vol.Optional(CONF_OTA_IKEA, default=CONF_OTA_IKEA_DEFAULT): cv_boolean,
-    vol.Optional(CONF_OTA_IKEA_URL): vol.Url(),
     vol.Optional(CONF_OTA_INOVELLI, default=CONF_OTA_INOVELLI_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_LEDVANCE, default=CONF_OTA_LEDVANCE_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_SALUS, default=CONF_OTA_SALUS_DEFAULT): cv_boolean,
@@ -107,6 +112,11 @@ SCHEMA_OTA = {
     vol.Optional(
         CONF_OTA_THIRDREALITY, default=CONF_OTA_THIRDREALITY_DEFAULT
     ): cv_boolean,
+    # Deprecated keys
+    vol.Optional(CONF_OTA_IKEA_URL): vol.All(
+        cv_deprecated("The `ikea_update_url` key is deprecated and should be removed"),
+        vol.Url(),
+    ),
 }
 
 ZIGPY_SCHEMA = vol.Schema(

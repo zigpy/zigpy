@@ -16,7 +16,7 @@ import urllib.parse
 import aiohttp
 import attr
 
-from zigpy.config import CONF_OTA_DIR, CONF_OTA_IKEA_URL, CONF_OTA_SONOFF_URL
+from zigpy.config import CONF_OTA_DIR, CONF_OTA_SONOFF_URL
 from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader, parse_ota_image
 import zigpy.util
 
@@ -157,8 +157,7 @@ class Trådfri(Basic):
 
         async with self._locks[LOCK_REFRESH]:
             async with aiohttp.ClientSession(headers=self.HEADERS) as req:
-                url = self.config.get(CONF_OTA_IKEA_URL, self.UPDATE_URL)
-                async with req.get(url) as rsp:
+                async with req.get(self.UPDATE_URL) as rsp:
                     # IKEA does not always respond with an appropriate Content-Type
                     # but the response is always JSON
                     if not (200 <= rsp.status <= 299):
