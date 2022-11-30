@@ -287,6 +287,21 @@ async def test_scan_end_device(topology, make_initialized_device) -> None:
         assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 0
 
 
+async def test_scan_explicit_device(topology, make_initialized_device) -> None:
+    dev1 = make_initialized_device(topology._app)
+    dev2 = make_initialized_device(topology._app)
+
+    with patch_device_tables(dev1, neighbors=[], routes=[]):
+        with patch_device_tables(dev2, neighbors=[], routes=[]):
+            await topology.scan(devices=[dev2])
+
+            # Only the second device was scanned
+            assert len(dev1.zdo.Mgmt_Lqi_req.mock_calls) == 0
+            assert len(dev1.zdo.Mgmt_Rtg_req.mock_calls) == 0
+            assert len(dev2.zdo.Mgmt_Lqi_req.mock_calls) == 1
+            assert len(dev2.zdo.Mgmt_Rtg_req.mock_calls) == 1
+
+
 async def test_scan_router_many(topology, make_initialized_device) -> None:
     dev = make_initialized_device(topology._app)
 
@@ -332,6 +347,7 @@ async def test_scan_coordinator(topology) -> None:
     app.config[conf.CONF_TOPO_SKIP_COORDINATOR] = False
 
     coordinator = app._device
+    coordinator.node_desc.logical_type = zdo_t.LogicalType.Coordinator
     assert coordinator.nwk == 0x0000
 
     with patch_device_tables(
@@ -404,7 +420,7 @@ async def test_scan_start_concurrent(mock_scan, topology):
     concurrency = 0
     max_concurrency = 0
 
-    async def _scan():
+    async def _scan(_):
         nonlocal concurrency
         nonlocal max_concurrency
 
@@ -460,7 +476,7 @@ async def test_periodic_scan_failure(mock_scan, topology):
 
 
 async def test_periodic_scan_priority(topology):
-    async def _scan():
+    async def _scan(_):
         await asyncio.sleep(0.5)
 
     with mock.patch.object(topology, "_scan", side_effect=_scan) as mock_scan:
