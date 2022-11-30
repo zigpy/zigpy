@@ -347,6 +347,7 @@ async def test_scan_coordinator(topology) -> None:
     app.config[conf.CONF_TOPO_SKIP_COORDINATOR] = False
 
     coordinator = app._device
+    coordinator.node_desc.logical_type = zdo_t.LogicalType.Coordinator
     assert coordinator.nwk == 0x0000
 
     with patch_device_tables(

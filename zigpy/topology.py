@@ -165,7 +165,9 @@ class Topology(zigpy.util.ListenableMixin):
             )
 
             # Ignore devices that aren't routers
-            if device.node_desc is None or not device.node_desc.is_router:
+            if device.node_desc is None or not (
+                device.node_desc.is_router or device.node_desc.is_coordinator
+            ):
                 continue
 
             # Ignore devices that do not support scanning tables
