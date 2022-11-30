@@ -10,6 +10,7 @@ import random
 import typing
 
 import zigpy.config
+import zigpy.device
 import zigpy.types as t
 import zigpy.util
 import zigpy.zdo.types as zdo_t
@@ -79,14 +80,16 @@ class Topology(zigpy.util.ListenableMixin):
             except (Exception, asyncio.CancelledError):
                 LOGGER.warning("Topology scan failed", exc_info=True)
 
-    async def scan(self) -> None:
+    async def scan(
+        self, devices: typing.Iterable[zigpy.device.Device] | None = None
+    ) -> None:
         """Preempt Topology scan and reschedule."""
 
         if self._scan_task and not self._scan_task.done():
             LOGGER.debug("Cancelling old scanning task")
             self._scan_task.cancel()
 
-        self._scan_task = asyncio.create_task(self._scan())
+        self._scan_task = asyncio.create_task(self._scan(devices))
         await self._scan_task
 
     async def _scan_table(
@@ -147,11 +150,14 @@ class Topology(zigpy.util.ListenableMixin):
 
         return table
 
-    async def _scan(self) -> None:
+    async def _scan(
+        self, devices: typing.Iterable[zigpy.device.Device] | None = None
+    ) -> None:
         """Scan topology."""
 
-        # We iterate over a copy of the devices as opposed to the live dictionary
-        devices = list(self._app.devices.values())
+        if devices is None:
+            # We iterate over a copy of the devices as opposed to the live dictionary
+            devices = list(self._app.devices.values())
 
         for index, device in enumerate(devices):
             LOGGER.debug(
@@ -159,7 +165,9 @@ class Topology(zigpy.util.ListenableMixin):
             )
 
             # Ignore devices that aren't routers
-            if device.node_desc is None or not device.node_desc.is_router:
+            if device.node_desc is None or not (
+                device.node_desc.is_router or device.node_desc.is_coordinator
+            ):
                 continue
 
             # Ignore devices that do not support scanning tables
