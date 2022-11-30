@@ -79,16 +79,18 @@ async def test_thirdreality_refresh_list(
     mock_get, thirdreality_prov, thirdreality_image
 ):
     mock_get.return_value.__aenter__.return_value.json = AsyncMock(
-        return_value=[
-            {
-                "modelId": "3RSB22BZ",
-                "url": "https://tr-zha.s3.amazonaws.com/firmwares/SmartButton_Zigbee_PROD_OTA_V21_1.00.21.ota",
-                "version": "1.00.21",
-                "imageType": 54184,
-                "manufacturerId": 4659,
-                "fileVersion": 33,
-            }
-        ]
+        return_value={
+            "versions": [
+                {
+                    "modelId": "3RSB22BZ",
+                    "url": "https://tr-zha.s3.amazonaws.com/firmwares/SmartButton_Zigbee_PROD_OTA_V21_1.00.21.ota",
+                    "version": "1.00.21",
+                    "imageType": 54184,
+                    "manufacturerId": 4659,
+                    "fileVersion": 33,
+                }
+            ]
+        }
     )
     mock_get.return_value.__aenter__.return_value.status = 200
     mock_get.return_value.__aenter__.return_value.reason = "OK"

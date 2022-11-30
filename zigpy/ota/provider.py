@@ -788,7 +788,7 @@ class ThirdReality(Basic):
 
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
-        for firmware in fw_lst:
+        for firmware in fw_lst["versions"]:
             img = ThirdRealityImage.from_json(firmware)
             self._cache[img.key] = img
 
