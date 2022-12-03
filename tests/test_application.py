@@ -19,7 +19,7 @@ import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
-from .conftest import App
+from .conftest import App, make_neighbor_from_device, make_node_desc
 
 NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
 
@@ -132,11 +132,13 @@ async def test_permit_broadcast(app):
 
 @patch("zigpy.device.Device.initialize", new_callable=AsyncMock)
 async def test_join_handler_skip(init_mock, app, ieee):
-    app.handle_join(1, ieee, None)
-    app.get_device(ieee).node_desc = _devices(1).node_desc
+    node_desc = make_node_desc()
 
     app.handle_join(1, ieee, None)
-    assert app.get_device(ieee).node_desc == _devices(1).node_desc
+    app.get_device(ieee).node_desc = node_desc
+
+    app.handle_join(1, ieee, None)
+    assert app.get_device(ieee).node_desc == node_desc
 
 
 async def test_join_handler_change_id(app, ieee):
@@ -396,48 +398,33 @@ async def test_uninitialized_message_handlers(app, ieee):
     assert handler_2.call_count == 1
 
 
-def _devices(index):
-    """Device factory."""
-
-    start_ieee = 0xFEAB000000
-    start_nwk = 0x1000
-
-    dev = MagicMock()
-    dev.ieee = zigpy.types.EUI64(zigpy.types.uint64_t(start_ieee + index).serialize())
-    dev.nwk = zigpy.types.NWK(start_nwk + index)
-    dev.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4388, 82, 255, 0, 255, 0)
-    dev.zdo = zigpy.zdo.ZDO(dev)
-    return dev
-
-
-async def test_remove_parent_devices(app):
+async def test_remove_parent_devices(app, make_initialized_device):
     """Test removing an end device with parents."""
 
-    end_device = _devices(1)
+    end_device = make_initialized_device(app)
     end_device.node_desc.logical_type = zdo_t.LogicalType.EndDevice
-    nei_end_device = MagicMock()
-    nei_end_device.device = end_device
 
-    router_1 = _devices(2)
-    nei_router_1 = MagicMock()
-    nei_router_1.device = router_1
+    router_1 = make_initialized_device(app)
+    router_1.node_desc.logical_type = zdo_t.LogicalType.Router
 
-    router_2 = _devices(3)
-    nei_router_2 = MagicMock()
-    nei_router_2.device = router_2
+    router_2 = make_initialized_device(app)
+    router_2.node_desc.logical_type = zdo_t.LogicalType.Router
 
-    parent = _devices(4)
-    nei_parent = MagicMock()
-    nei_parent.device = router_1
+    parent = make_initialized_device(app)
 
-    router_1.neighbors = [nei_router_2, nei_parent]
-    router_2.neighbors = [nei_parent, nei_router_1]
-    parent.neighbors = [nei_router_2, nei_router_1, nei_end_device]
-
-    app.devices[end_device.ieee] = end_device
-    app.devices[parent.ieee] = parent
-    app.devices[router_1.ieee] = router_1
-    app.devices[router_2.ieee] = router_2
+    app.topology.neighbors[router_1.ieee] = [
+        make_neighbor_from_device(router_2),
+        make_neighbor_from_device(parent),
+    ]
+    app.topology.neighbors[router_2.ieee] = [
+        make_neighbor_from_device(parent),
+        make_neighbor_from_device(router_1),
+    ]
+    app.topology.neighbors[parent.ieee] = [
+        make_neighbor_from_device(router_2),
+        make_neighbor_from_device(router_1),
+        make_neighbor_from_device(end_device),
+    ]
 
     p1 = patch.object(end_device.zdo, "leave", AsyncMock())
     p2 = patch.object(end_device.zdo, "request", AsyncMock())
