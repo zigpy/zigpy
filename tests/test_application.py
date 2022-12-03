@@ -777,7 +777,6 @@ def packet(app, device):
 
 
 async def test_request(app, device, packet):
-    app.send_packet = AsyncMock(spec_set=app.send_packet)
     app.build_source_route_to = MagicMock(spec_set=app.build_source_route_to)
 
     async def send_request(app, **kwargs):
@@ -853,7 +852,6 @@ def test_build_source_route_no_relays(app):
 
 
 async def test_send_mrequest(app, packet):
-    app.send_packet = AsyncMock(spec_set=app.send_packet)
 
     status, msg = await app.mrequest(
         group_id=0xABCD,
@@ -880,7 +878,6 @@ async def test_send_mrequest(app, packet):
 
 
 async def test_send_broadcast(app, packet):
-    app.send_packet = AsyncMock(spec_set=app.send_packet)
 
     status, msg = await app.broadcast(
         profile=0x1234,
