@@ -23,6 +23,7 @@ from .conftest import (
     App,
     make_app,
     make_ieee,
+    make_neighbor,
     make_neighbor_from_device,
     make_node_desc,
 )
@@ -403,6 +404,7 @@ async def test_remove_parent_devices(app, make_initialized_device):
         make_neighbor_from_device(router_2),
         make_neighbor_from_device(router_1),
         make_neighbor_from_device(end_device),
+        make_neighbor(ieee=make_ieee(123), nwk=0x9876),
     ]
 
     p1 = patch.object(end_device.zdo, "leave", AsyncMock())
