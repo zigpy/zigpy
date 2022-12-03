@@ -1,7 +1,8 @@
 """Common fixtures."""
+import copy
 import logging
 import typing
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -11,7 +12,7 @@ import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 
-from .async_mock import MagicMock
+from .async_mock import AsyncMock, MagicMock
 
 if typing.TYPE_CHECKING:
     import zigpy.device
@@ -79,27 +80,53 @@ class App(zigpy.application.ControllerApplication):
         pass
 
 
-@pytest.fixture
-def app_mock():
-    """ConntrollerApplication Mock."""
+def recursive_dict_merge(
+    obj: dict[str, typing.Any], updates: dict[str, typing.Any]
+) -> dict[str, typing.Any]:
+    result = copy.deepcopy(obj)
 
-    config = App.SCHEMA(
-        {CONF_DATABASE: None, CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"}}
+    for key, update in updates.items():
+        if isinstance(update, dict):
+            result[key] = recursive_dict_merge(result[key], update)
+        else:
+            result[key] = update
+
+    return result
+
+
+def make_app(
+    config_updates: dict[str, typing.Any],
+    app_base: zigpy.application.ControllerApplication = App,
+) -> zigpy.application.ControllerApplication:
+    config = recursive_dict_merge(
+        {CONF_DATABASE: None, CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"}},
+        config_updates,
     )
 
-    app = App(config)
+    app = app_base(app_base.SCHEMA(config))
     app.state.node_info = app_state.NodeInfo(
         nwk=t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
     )
 
     app.device_initialized = Mock(wraps=app.device_initialized)
     app.listener_event = Mock(wraps=app.listener_event)
-    app.get_sequence = MagicMock(return_value=123)
-    app.send_packet = Mock(wraps=app.send_packet)
-
-    patch.object(app, "send_packet", MagicMock())
+    app.get_sequence = MagicMock(wraps=app.get_sequence, return_value=123)
+    app.send_packet = AsyncMock(wraps=app.send_packet)
+    app.write_network_info = AsyncMock(wraps=app.write_network_info)
 
     return app
+
+
+@pytest.fixture
+def app():
+    """ControllerApplication Mock."""
+    return make_app({})
+
+
+@pytest.fixture
+def app_mock():
+    """ControllerApplication Mock."""
+    return make_app({})
 
 
 def make_ieee(start=0):

@@ -14,44 +14,23 @@ from zigpy.exceptions import (
 )
 import zigpy.ota
 import zigpy.quirks
-import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
-from .conftest import App, make_neighbor_from_device, make_node_desc
-
-NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
-
-
-@pytest.fixture
-@patch("zigpy.ota.OTA", MagicMock(spec_set=zigpy.ota.OTA))
-@patch("zigpy.device.Device._initialize", AsyncMock())
-def app_factory():
-    def app(extra_config={}, app_base=App):
-        config = {
-            conf.CONF_DATABASE: None,
-            conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
-        }
-        config.update(extra_config)
-
-        app = app_base(config)
-        app.state.node_info = app_state.NodeInfo(
-            nwk=t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
-        )
-        return app
-
-    return app
+from .conftest import (
+    NCP_IEEE,
+    App,
+    make_app,
+    make_ieee,
+    make_neighbor_from_device,
+    make_node_desc,
+)
 
 
 @pytest.fixture
-def app(app_factory):
-    return app_factory({})
-
-
-@pytest.fixture
-def ieee(init=0):
-    return t.EUI64(map(t.uint8_t, range(init, init + 8)))
+def ieee():
+    return make_ieee()
 
 
 @patch("zigpy.ota.OTA", spec_set=zigpy.ota.OTA)
@@ -669,8 +648,8 @@ async def test_deprecated_properties_and_methods(app):
         assert app.nwk_update_id is app.state.network_info.nwk_update_id
 
 
-async def test_startup_backup(app_factory):
-    app = app_factory({conf.CONF_NWK_BACKUP_ENABLED: True})
+async def test_startup_backup():
+    app = make_app({conf.CONF_NWK_BACKUP_ENABLED: True})
 
     with patch("zigpy.backups.BackupManager.start_periodic_backups") as p:
         await app.startup()
@@ -678,8 +657,8 @@ async def test_startup_backup(app_factory):
     p.assert_called_once()
 
 
-async def test_startup_no_backup(app_factory):
-    app = app_factory({conf.CONF_NWK_BACKUP_ENABLED: False})
+async def test_startup_no_backup():
+    app = make_app({conf.CONF_NWK_BACKUP_ENABLED: False})
 
     with patch("zigpy.backups.BackupManager.start_periodic_backups") as p:
         await app.startup()
@@ -690,9 +669,9 @@ async def test_startup_no_backup(app_factory):
 @patch("zigpy.backups.BackupManager.from_network_state")
 @patch("zigpy.backups.BackupManager.most_recent_backup")
 async def test_initialize_compatible_backup(
-    mock_most_recent_backup, mock_backup_from_state, app_factory
+    mock_most_recent_backup, mock_backup_from_state
 ):
-    app = app_factory({conf.CONF_NWK_VALIDATE_SETTINGS: True})
+    app = make_app({conf.CONF_NWK_VALIDATE_SETTINGS: True})
     mock_backup_from_state.return_value.is_compatible_with.return_value = True
 
     await app.initialize()
@@ -704,9 +683,9 @@ async def test_initialize_compatible_backup(
 @patch("zigpy.backups.BackupManager.from_network_state")
 @patch("zigpy.backups.BackupManager.most_recent_backup")
 async def test_initialize_incompatible_backup(
-    mock_most_recent_backup, mock_backup_from_state, app_factory
+    mock_most_recent_backup, mock_backup_from_state
 ):
-    app = app_factory({conf.CONF_NWK_VALIDATE_SETTINGS: True})
+    app = make_app({conf.CONF_NWK_VALIDATE_SETTINGS: True})
     mock_backup_from_state.return_value.is_compatible_with.return_value = False
 
     with pytest.raises(NetworkSettingsInconsistent):
@@ -737,7 +716,7 @@ async def test_relays_received_device_does_not_exist(app):
     app._discover_unknown_device.assert_called_once_with(nwk=0x1234)
 
 
-async def test_request_concurrency(app_factory):
+async def test_request_concurrency():
     current_concurrency = 0
     peak_concurrency = 0
 
@@ -756,7 +735,7 @@ async def test_request_concurrency(app_factory):
                     # Fail randomly
                     raise asyncio.DeliveryError()
 
-    app = app_factory({conf.CONF_MAX_CONCURRENT_REQUESTS: 16}, app_base=SlowApp)
+    app = make_app({conf.CONF_MAX_CONCURRENT_REQUESTS: 16}, app_base=SlowApp)
 
     assert current_concurrency == 0
     assert peak_concurrency == 0
@@ -823,13 +802,13 @@ async def test_request(app, device, packet):
     assert status == zigpy.zcl.foundation.Status.SUCCESS
     assert isinstance(msg, str)
 
-    app.send_packet.assert_called_once_with(packet=packet)
+    app.send_packet.assert_called_once_with(packet)
     app.send_packet.reset_mock()
 
     # Test sending with IEEE
     await send_request(app, use_ieee=True)
     app.send_packet.assert_called_once_with(
-        packet=packet.replace(
+        packet.replace(
             src=t.AddrModeAddress(
                 addr_mode=t.AddrMode.IEEE, address=app.state.node_info.ieee
             ),
@@ -846,7 +825,7 @@ async def test_request(app, device, packet):
 
     app.build_source_route_to.assert_called_once_with(dest=device)
     app.send_packet.assert_called_once_with(
-        packet=packet.replace(source_route=[0x000A, 0x000B])
+        packet.replace(source_route=[0x000A, 0x000B])
     )
     app.send_packet.reset_mock()
 
@@ -854,7 +833,7 @@ async def test_request(app, device, packet):
     status, msg = await send_request(app, expect_reply=False)
 
     app.send_packet.assert_called_once_with(
-        packet=packet.replace(tx_options=t.TransmitOptions.ACK)
+        packet.replace(tx_options=t.TransmitOptions.ACK)
     )
     app.send_packet.reset_mock()
 
@@ -890,7 +869,7 @@ async def test_send_mrequest(app, packet):
     assert isinstance(msg, str)
 
     app.send_packet.assert_called_once_with(
-        packet=packet.replace(
+        packet.replace(
             dst=t.AddrModeAddress(addr_mode=t.AddrMode.Group, address=0xABCD),
             dst_ep=None,
             radius=12,
@@ -918,7 +897,7 @@ async def test_send_broadcast(app, packet):
     assert isinstance(msg, str)
 
     app.send_packet.assert_called_once_with(
-        packet=packet.replace(
+        packet.replace(
             dst=t.AddrModeAddress(
                 addr_mode=t.AddrMode.Broadcast,
                 address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
