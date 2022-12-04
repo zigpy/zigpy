@@ -25,10 +25,8 @@ from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
 from tests.async_mock import AsyncMock, MagicMock, patch
-from tests.conftest import App
-from tests.test_backups import (  # noqa: F401; pylint: disable=unused-variable
-    backup_factory,
-)
+from tests.conftest import App, make_ieee
+from tests.test_backups import backup_factory  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
@@ -67,10 +65,6 @@ async def make_app(database_file):
             )
         )
     return app
-
-
-def make_ieee(start=0):
-    return t.EUI64(map(t.uint8_t, range(start, start + 8)))
 
 
 class FakeCustomDevice(CustomDevice):

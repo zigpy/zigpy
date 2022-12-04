@@ -21,12 +21,12 @@ def test_commands():
 
 
 @pytest.fixture
-def zdo_f(app_mock):
+def zdo_f(app):
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
-    dev = zigpy.device.Device(app_mock, ieee, 65535)
+    dev = zigpy.device.Device(app, ieee, 65535)
     dev.request = AsyncMock()
 
-    app_mock.devices[dev.ieee] = dev
+    app.devices[dev.ieee] = dev
 
     return zdo.ZDO(dev)
 
@@ -45,9 +45,9 @@ def test_deserialize_unknown(zdo_f):
 
 async def test_request(zdo_f):
     await zdo_f.request(2, 65535)
-    app_mock = zdo_f._device._application
+    app = zdo_f._device._application
     assert zdo_f.device.request.call_count == 1
-    assert app_mock.get_sequence.call_count == 1
+    assert app.get_sequence.call_count == 1
 
 
 async def test_bind(zdo_f):
@@ -93,12 +93,12 @@ async def test_permit(zdo_f):
     assert zdo_f.device.request.call_args[0][1] == 0x0036
 
 
-async def test_broadcast(app_mock):
-    await zigpy.zdo.broadcast(app_mock, 0x0036, 0, 0, 60, 0)
+async def test_broadcast(app):
+    await zigpy.zdo.broadcast(app, 0x0036, 0, 0, 60, 0)
 
-    assert app_mock.send_packet.call_count == 1
+    assert app.send_packet.call_count == 1
 
-    packet = app_mock.send_packet.mock_calls[0].args[0]
+    packet = app.send_packet.mock_calls[0].args[0]
     assert packet.dst.addr_mode == t.AddrMode.Broadcast
     assert packet.cluster_id == 0x0036
 

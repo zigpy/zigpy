@@ -9,6 +9,7 @@ import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 
 from tests.async_mock import AsyncMock
+from tests.conftest import app  # noqa: F401
 
 
 @pytest.fixture
@@ -327,8 +328,7 @@ async def test_add_backup(backup_factory):
     assert backups.backups == [backup4, backup5]
 
 
-async def test_restore_backup_create_new(backup):
-    app = AsyncMock()
+async def test_restore_backup_create_new(app, backup):
     backups = zigpy.backups.BackupManager(app)
     backups.create_backup = AsyncMock()
 
@@ -336,7 +336,7 @@ async def test_restore_backup_create_new(backup):
     app.write_network_info.assert_called_once()
     backups.create_backup.assert_called_once()
 
-    app.reset_mock()
+    app.write_network_info.reset_mock()
     backups.create_backup.reset_mock()
 
     await backups.restore_backup(backup, create_new=False)
