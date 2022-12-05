@@ -14,44 +14,24 @@ from zigpy.exceptions import (
 )
 import zigpy.ota
 import zigpy.quirks
-import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
-from .conftest import App
-
-NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
-
-
-@pytest.fixture
-@patch("zigpy.ota.OTA", MagicMock(spec_set=zigpy.ota.OTA))
-@patch("zigpy.device.Device._initialize", AsyncMock())
-def app_factory():
-    def app(extra_config={}, app_base=App):
-        config = {
-            conf.CONF_DATABASE: None,
-            conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
-        }
-        config.update(extra_config)
-
-        app = app_base(config)
-        app.state.node_info = app_state.NodeInfo(
-            nwk=t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
-        )
-        return app
-
-    return app
+from .conftest import (
+    NCP_IEEE,
+    App,
+    make_app,
+    make_ieee,
+    make_neighbor,
+    make_neighbor_from_device,
+    make_node_desc,
+)
 
 
 @pytest.fixture
-def app(app_factory):
-    return app_factory({})
-
-
-@pytest.fixture
-def ieee(init=0):
-    return t.EUI64(map(t.uint8_t, range(init, init + 8)))
+def ieee():
+    return make_ieee()
 
 
 @patch("zigpy.ota.OTA", spec_set=zigpy.ota.OTA)
@@ -132,11 +112,13 @@ async def test_permit_broadcast(app):
 
 @patch("zigpy.device.Device.initialize", new_callable=AsyncMock)
 async def test_join_handler_skip(init_mock, app, ieee):
-    app.handle_join(1, ieee, None)
-    app.get_device(ieee).node_desc = _devices(1).node_desc
+    node_desc = make_node_desc()
 
     app.handle_join(1, ieee, None)
-    assert app.get_device(ieee).node_desc == _devices(1).node_desc
+    app.get_device(ieee).node_desc = node_desc
+
+    app.handle_join(1, ieee, None)
+    assert app.get_device(ieee).node_desc == node_desc
 
 
 async def test_join_handler_change_id(app, ieee):
@@ -396,48 +378,34 @@ async def test_uninitialized_message_handlers(app, ieee):
     assert handler_2.call_count == 1
 
 
-def _devices(index):
-    """Device factory."""
-
-    start_ieee = 0xFEAB000000
-    start_nwk = 0x1000
-
-    dev = MagicMock()
-    dev.ieee = zigpy.types.EUI64(zigpy.types.uint64_t(start_ieee + index).serialize())
-    dev.nwk = zigpy.types.NWK(start_nwk + index)
-    dev.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4388, 82, 255, 0, 255, 0)
-    dev.zdo = zigpy.zdo.ZDO(dev)
-    return dev
-
-
-async def test_remove_parent_devices(app):
+async def test_remove_parent_devices(app, make_initialized_device):
     """Test removing an end device with parents."""
 
-    end_device = _devices(1)
+    end_device = make_initialized_device(app)
     end_device.node_desc.logical_type = zdo_t.LogicalType.EndDevice
-    nei_end_device = MagicMock()
-    nei_end_device.device = end_device
 
-    router_1 = _devices(2)
-    nei_router_1 = MagicMock()
-    nei_router_1.device = router_1
+    router_1 = make_initialized_device(app)
+    router_1.node_desc.logical_type = zdo_t.LogicalType.Router
 
-    router_2 = _devices(3)
-    nei_router_2 = MagicMock()
-    nei_router_2.device = router_2
+    router_2 = make_initialized_device(app)
+    router_2.node_desc.logical_type = zdo_t.LogicalType.Router
 
-    parent = _devices(4)
-    nei_parent = MagicMock()
-    nei_parent.device = router_1
+    parent = make_initialized_device(app)
 
-    router_1.neighbors = [nei_router_2, nei_parent]
-    router_2.neighbors = [nei_parent, nei_router_1]
-    parent.neighbors = [nei_router_2, nei_router_1, nei_end_device]
-
-    app.devices[end_device.ieee] = end_device
-    app.devices[parent.ieee] = parent
-    app.devices[router_1.ieee] = router_1
-    app.devices[router_2.ieee] = router_2
+    app.topology.neighbors[router_1.ieee] = [
+        make_neighbor_from_device(router_2),
+        make_neighbor_from_device(parent),
+    ]
+    app.topology.neighbors[router_2.ieee] = [
+        make_neighbor_from_device(parent),
+        make_neighbor_from_device(router_1),
+    ]
+    app.topology.neighbors[parent.ieee] = [
+        make_neighbor_from_device(router_2),
+        make_neighbor_from_device(router_1),
+        make_neighbor_from_device(end_device),
+        make_neighbor(ieee=make_ieee(123), nwk=0x9876),
+    ]
 
     p1 = patch.object(end_device.zdo, "leave", AsyncMock())
     p2 = patch.object(end_device.zdo, "request", AsyncMock())
@@ -682,8 +650,8 @@ async def test_deprecated_properties_and_methods(app):
         assert app.nwk_update_id is app.state.network_info.nwk_update_id
 
 
-async def test_startup_backup(app_factory):
-    app = app_factory({conf.CONF_NWK_BACKUP_ENABLED: True})
+async def test_startup_backup():
+    app = make_app({conf.CONF_NWK_BACKUP_ENABLED: True})
 
     with patch("zigpy.backups.BackupManager.start_periodic_backups") as p:
         await app.startup()
@@ -691,8 +659,8 @@ async def test_startup_backup(app_factory):
     p.assert_called_once()
 
 
-async def test_startup_no_backup(app_factory):
-    app = app_factory({conf.CONF_NWK_BACKUP_ENABLED: False})
+async def test_startup_no_backup():
+    app = make_app({conf.CONF_NWK_BACKUP_ENABLED: False})
 
     with patch("zigpy.backups.BackupManager.start_periodic_backups") as p:
         await app.startup()
@@ -703,9 +671,9 @@ async def test_startup_no_backup(app_factory):
 @patch("zigpy.backups.BackupManager.from_network_state")
 @patch("zigpy.backups.BackupManager.most_recent_backup")
 async def test_initialize_compatible_backup(
-    mock_most_recent_backup, mock_backup_from_state, app_factory
+    mock_most_recent_backup, mock_backup_from_state
 ):
-    app = app_factory({conf.CONF_NWK_VALIDATE_SETTINGS: True})
+    app = make_app({conf.CONF_NWK_VALIDATE_SETTINGS: True})
     mock_backup_from_state.return_value.is_compatible_with.return_value = True
 
     await app.initialize()
@@ -717,9 +685,9 @@ async def test_initialize_compatible_backup(
 @patch("zigpy.backups.BackupManager.from_network_state")
 @patch("zigpy.backups.BackupManager.most_recent_backup")
 async def test_initialize_incompatible_backup(
-    mock_most_recent_backup, mock_backup_from_state, app_factory
+    mock_most_recent_backup, mock_backup_from_state
 ):
-    app = app_factory({conf.CONF_NWK_VALIDATE_SETTINGS: True})
+    app = make_app({conf.CONF_NWK_VALIDATE_SETTINGS: True})
     mock_backup_from_state.return_value.is_compatible_with.return_value = False
 
     with pytest.raises(NetworkSettingsInconsistent):
@@ -750,7 +718,7 @@ async def test_relays_received_device_does_not_exist(app):
     app._discover_unknown_device.assert_called_once_with(nwk=0x1234)
 
 
-async def test_request_concurrency(app_factory):
+async def test_request_concurrency():
     current_concurrency = 0
     peak_concurrency = 0
 
@@ -769,7 +737,7 @@ async def test_request_concurrency(app_factory):
                     # Fail randomly
                     raise asyncio.DeliveryError()
 
-    app = app_factory({conf.CONF_MAX_CONCURRENT_REQUESTS: 16}, app_base=SlowApp)
+    app = make_app({conf.CONF_MAX_CONCURRENT_REQUESTS: 16}, app_base=SlowApp)
 
     assert current_concurrency == 0
     assert peak_concurrency == 0
@@ -811,7 +779,6 @@ def packet(app, device):
 
 
 async def test_request(app, device, packet):
-    app.send_packet = AsyncMock(spec_set=app.send_packet)
     app.build_source_route_to = MagicMock(spec_set=app.build_source_route_to)
 
     async def send_request(app, **kwargs):
@@ -836,13 +803,13 @@ async def test_request(app, device, packet):
     assert status == zigpy.zcl.foundation.Status.SUCCESS
     assert isinstance(msg, str)
 
-    app.send_packet.assert_called_once_with(packet=packet)
+    app.send_packet.assert_called_once_with(packet)
     app.send_packet.reset_mock()
 
     # Test sending with IEEE
     await send_request(app, use_ieee=True)
     app.send_packet.assert_called_once_with(
-        packet=packet.replace(
+        packet.replace(
             src=t.AddrModeAddress(
                 addr_mode=t.AddrMode.IEEE, address=app.state.node_info.ieee
             ),
@@ -859,7 +826,7 @@ async def test_request(app, device, packet):
 
     app.build_source_route_to.assert_called_once_with(dest=device)
     app.send_packet.assert_called_once_with(
-        packet=packet.replace(source_route=[0x000A, 0x000B])
+        packet.replace(source_route=[0x000A, 0x000B])
     )
     app.send_packet.reset_mock()
 
@@ -867,7 +834,7 @@ async def test_request(app, device, packet):
     status, msg = await send_request(app, expect_reply=False)
 
     app.send_packet.assert_called_once_with(
-        packet=packet.replace(tx_options=t.TransmitOptions.ACK)
+        packet.replace(tx_options=t.TransmitOptions.ACK)
     )
     app.send_packet.reset_mock()
 
@@ -887,7 +854,6 @@ def test_build_source_route_no_relays(app):
 
 
 async def test_send_mrequest(app, packet):
-    app.send_packet = AsyncMock(spec_set=app.send_packet)
 
     status, msg = await app.mrequest(
         group_id=0xABCD,
@@ -903,7 +869,7 @@ async def test_send_mrequest(app, packet):
     assert isinstance(msg, str)
 
     app.send_packet.assert_called_once_with(
-        packet=packet.replace(
+        packet.replace(
             dst=t.AddrModeAddress(addr_mode=t.AddrMode.Group, address=0xABCD),
             dst_ep=None,
             radius=12,
@@ -914,7 +880,6 @@ async def test_send_mrequest(app, packet):
 
 
 async def test_send_broadcast(app, packet):
-    app.send_packet = AsyncMock(spec_set=app.send_packet)
 
     status, msg = await app.broadcast(
         profile=0x1234,
@@ -931,7 +896,7 @@ async def test_send_broadcast(app, packet):
     assert isinstance(msg, str)
 
     app.send_packet.assert_called_once_with(
-        packet=packet.replace(
+        packet.replace(
             dst=t.AddrModeAddress(
                 addr_mode=t.AddrMode.Broadcast,
                 address=t.BroadcastAddress.RX_ON_WHEN_IDLE,

@@ -283,12 +283,18 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             self._remove_device(dev, remove_children=remove_children, rejoin=rejoin)
         )
         if dev.node_desc is not None and dev.node_desc.is_end_device:
-            parents = [
-                parent
-                for parent in self.devices.values()
-                for nei in parent.neighbors
-                if nei.device is dev
-            ]
+            parents = []
+
+            for parent in self.devices.values():
+                for zdo_neighbor in self.topology.neighbors[parent.ieee]:
+                    try:
+                        neighbor = self.get_device(ieee=zdo_neighbor.ieee)
+                    except KeyError:
+                        continue
+
+                    if neighbor is dev:
+                        parents.append(parent)
+
             for parent in parents:
                 LOGGER.debug(
                     "Sending leave request for %s to %s parent", dev.ieee, parent.ieee
