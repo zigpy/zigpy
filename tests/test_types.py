@@ -12,6 +12,8 @@ def test_abstract_ints():
     assert not issubclass(t.uint8_t, t.int_t)
     assert t.int_t._signed is True
     assert t.uint_t._signed is False
+    assert t.int_t._bigendian is False
+    assert t.be_int_t._bigendian is True
 
     with pytest.raises(TypeError):
         t.int_t(0)
@@ -139,6 +141,18 @@ def test_ints_signed():
     n = t.int8s(-126)
     bits = [1, 0] + t.Bits.deserialize(n.serialize())[0]
     assert t.int8s.from_bits(bits) == (n, [1, 0])
+
+
+def test_bigendian_ints():
+    assert t.be_uint32_t(0x12345678).serialize() == b"\x12\x34\x56\x78"
+    assert t.be_uint32_t.deserialize(b"\x12\x34\x56\x78") == (0x12345678, b"")
+    assert t.be_int32s(0x12345678).serialize() == b"\x12\x34\x56\x78"
+    assert t.be_int32s(-1).serialize() == b"\xff\xff\xff\xff"
+    assert t.be_int32s.deserialize(b"\xfe\xdc\xba\x98") == (-0x01234568, b"")
+    assert (
+        t.be_uint32_t(0x12345678).serialize()[::-1]
+        == t.uint32_t(0x12345678).serialize()
+    )
 
 
 def test_bits():

@@ -81,6 +81,7 @@ class FixedIntType(int):
     _signed = None
     _bits = None
     _size = None  # Only for backwards compatibility, not set for smaller ints
+    _bigendian = None
 
     min_value: int
     max_value: int
@@ -106,7 +107,9 @@ class FixedIntType(int):
     def _bin_repr(self):
         return f"0b{{:0{self._bits}b}}".format(int(self))
 
-    def __init_subclass__(cls, signed=NOT_SET, bits=NOT_SET, repr=NOT_SET) -> None:
+    def __init_subclass__(
+        cls, signed=NOT_SET, bits=NOT_SET, repr=NOT_SET, bigendian=NOT_SET
+    ) -> None:
         super().__init_subclass__()
 
         if signed is not NOT_SET:
@@ -138,6 +141,9 @@ class FixedIntType(int):
             cls.__repr__ = super().__repr__
         elif repr is not NOT_SET:
             raise ValueError(f"Invalid repr value {repr!r}. Must be either hex or bin")
+
+        if bigendian is not NOT_SET:
+            cls._bigendian = bigendian
 
         # XXX: The enum module uses the first class with __new__ in its __dict__ as the
         #      member type. We have to ensure this is true for every subclass.
@@ -171,7 +177,9 @@ class FixedIntType(int):
         if self._bits % 8 != 0:
             raise TypeError(f"Integer type with {self._bits} bits is not byte aligned")
 
-        return self.to_bytes(self._bits // 8, "little", signed=self._signed)
+        return self.to_bytes(
+            self._bits // 8, "big" if self._bigendian else "little", signed=self._signed
+        )
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[FixedIntType, bytes]:
@@ -183,16 +191,18 @@ class FixedIntType(int):
         if len(data) < byte_size:
             raise ValueError(f"Data is too short to contain {byte_size} bytes")
 
-        r = cls.from_bytes(data[:byte_size], "little", signed=cls._signed)
+        r = cls.from_bytes(
+            data[:byte_size], "big" if cls._bigendian else "little", signed=cls._signed
+        )
         data = data[byte_size:]
         return r, data
 
 
-class uint_t(FixedIntType, signed=False):
+class uint_t(FixedIntType, signed=False, bigendian=False):
     pass
 
 
-class int_t(FixedIntType, signed=True):
+class int_t(FixedIntType, signed=True, bigendian=False):
     pass
 
 
@@ -285,6 +295,70 @@ class uint56_t(uint_t, bits=56):
 
 
 class uint64_t(uint_t, bits=64):
+    pass
+
+
+class be_uint_t(FixedIntType, signed=False, bigendian=True):
+    pass
+
+
+class be_int_t(FixedIntType, signed=True, bigendian=True):
+    pass
+
+
+class be_int16s(be_int_t, bits=16):
+    pass
+
+
+class be_int24s(be_int_t, bits=24):
+    pass
+
+
+class be_int32s(be_int_t, bits=32):
+    pass
+
+
+class be_int40s(be_int_t, bits=40):
+    pass
+
+
+class be_int48s(be_int_t, bits=48):
+    pass
+
+
+class be_int56s(be_int_t, bits=56):
+    pass
+
+
+class be_int64s(be_int_t, bits=64):
+    pass
+
+
+class be_uint16_t(be_uint_t, bits=16):
+    pass
+
+
+class be_uint24_t(be_uint_t, bits=24):
+    pass
+
+
+class be_uint32_t(be_uint_t, bits=32):
+    pass
+
+
+class be_uint40_t(be_uint_t, bits=40):
+    pass
+
+
+class be_uint48_t(be_uint_t, bits=48):
+    pass
+
+
+class be_uint56_t(be_uint_t, bits=56):
+    pass
+
+
+class be_uint64_t(be_uint_t, bits=64):
     pass
 
 
@@ -396,6 +470,14 @@ class enum32(enum_factory(uint32_t)):  # noqa: N801
     pass
 
 
+class be_enum16(enum_factory(be_uint16_t)):  # noqa: N801
+    pass
+
+
+class be_enum32(enum_factory(be_uint32_t)):  # noqa: N801
+    pass
+
+
 class bitmap2(bitmap_factory(uint2_t)):
     pass
 
@@ -449,6 +531,34 @@ class bitmap56(bitmap_factory(uint56_t)):
 
 
 class bitmap64(bitmap_factory(uint64_t)):
+    pass
+
+
+class be_bitmap16(bitmap_factory(be_uint16_t)):
+    pass
+
+
+class be_bitmap24(bitmap_factory(be_uint24_t)):
+    pass
+
+
+class be_bitmap32(bitmap_factory(be_uint32_t)):
+    pass
+
+
+class be_bitmap40(bitmap_factory(be_uint40_t)):
+    pass
+
+
+class be_bitmap48(bitmap_factory(be_uint48_t)):
+    pass
+
+
+class be_bitmap56(bitmap_factory(be_uint56_t)):
+    pass
+
+
+class be_bitmap64(bitmap_factory(be_uint64_t)):
     pass
 
 
