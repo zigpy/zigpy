@@ -24,6 +24,25 @@ class Drlc(Cluster):
 class Metering(Cluster):
     cluster_id = 0x0702
     ep_attribute = "smartenergy_metering"
+
+    class RegisteredTier(t.enum8):
+        No_Tier = 0x00
+        Tier_1 = 0x01
+        Tier_2 = 0x02
+        Tier_3 = 0x03
+        Tier_4 = 0x04
+        Tier_5 = 0x05
+        Tier_6 = 0x06
+        Tier_7 = 0x07
+        Tier_8 = 0x08
+        Tier_9 = 0x09
+        Tier_10 = 0x0A
+        Tier_11 = 0x0B
+        Tier_12 = 0x0C
+        Tier_13 = 0x0D
+        Tier_14 = 0x0E
+        Extended_Tier = 0x0F
+
     attributes: dict[int, ZCLAttributeDef] = {
         0x0000: ZCLAttributeDef("current_summ_delivered", type=t.uint48_t, access="r"),
         0x0001: ZCLAttributeDef("current_summ_received", type=t.uint48_t, access="r"),
@@ -77,10 +96,10 @@ class Metering(Cluster):
         0x001E: ZCLAttributeDef("current_block_received", type=t.uint48_t, access="r"),
         0x001F: ZCLAttributeDef("dft_summation_received", type=t.uint48_t, access="r"),
         0x0020: ZCLAttributeDef(
-            "active_register_tier_delivered", type=t.enum8, access="r"
+            "active_register_tier_delivered", type=RegisteredTier, access="r"
         ),
         0x0021: ZCLAttributeDef(
-            "active_register_tier_received", type=t.enum8, access="r"
+            "active_register_tier_received", type=RegisteredTier, access="r"
         ),
         0x0022: ZCLAttributeDef("last_block_switch_time", type=t.UTCTime, access="r"),
         # 0x0100: ('change_reporting_profile', UNKNOWN),
