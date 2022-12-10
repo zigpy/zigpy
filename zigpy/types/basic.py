@@ -144,6 +144,8 @@ class FixedIntType(int):
 
         if byteorder is not NOT_SET:
             cls._byteorder = byteorder
+        elif cls._byteorder is None:
+            cls._byteorder = "little"
 
         # XXX: The enum module uses the first class with __new__ in its __dict__ as the
         #      member type. We have to ensure this is true for every subclass.
@@ -194,11 +196,11 @@ class FixedIntType(int):
         return r, data
 
 
-class uint_t(FixedIntType, signed=False, byteorder="little"):
+class uint_t(FixedIntType, signed=False):
     pass
 
 
-class int_t(FixedIntType, signed=True, byteorder="little"):
+class int_t(FixedIntType, signed=True):
     pass
 
 
