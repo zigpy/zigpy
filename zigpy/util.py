@@ -508,7 +508,7 @@ class BaseRequestListener:
             ):
                 match = command.matches(matcher)
             elif isinstance(command, list):
-                # XXX: ZDO not supported for now
+                # TODO: ZDO is not supported for now
                 continue
             else:
                 match = matcher(hdr, command)

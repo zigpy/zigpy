@@ -900,7 +900,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         filters: list[zigpy.typing.MatcherType],
         callback: typing.Callable[
             [
-                zigpy.zcl.foundation.ZCLHeader | zdo_types.ZDOHeader,
+                zigpy.zcl.foundation.ZCLHeader,
                 zigpy.zcl.foundation.CommandSchema,
             ],
             typing.Any,
