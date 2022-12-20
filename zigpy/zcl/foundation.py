@@ -8,7 +8,6 @@ import typing
 import warnings
 
 import zigpy.types as t
-import zigpy.util
 
 
 def _hex_uint16_repr(v: int) -> str:
@@ -966,6 +965,3 @@ ZCL_CLUSTER_REVISION_ATTR = ZCLAttributeDef(
 ZCL_REPORTING_STATUS_ATTR = ZCLAttributeDef(
     "attr_reporting_status", type=AttributeReportingStatus, access="r"
 )
-
-
-__getattr__ = zigpy.util.deprecated_attrs({"Command": GeneralCommand})

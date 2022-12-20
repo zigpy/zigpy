@@ -20,9 +20,9 @@ from cryptography.hazmat.primitives.ciphers.modes import ECB
 from zigpy.exceptions import ControllerException, ZigbeeException
 import zigpy.types as t
 import zigpy.typing
+from zigpy.zcl import foundation
 
 if typing.TYPE_CHECKING:
-    from zigpy.zcl import foundation
     import zigpy.zdo.types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
@@ -501,8 +501,6 @@ class BaseRequestListener:
         Attempts to resolve the listener with a given response. Can be called with any
         command as an argument, including ones we don't match.
         """
-
-        from zigpy.zcl import foundation
 
         for matcher in self.matchers:
             if isinstance(matcher, foundation.CommandSchema) and isinstance(
