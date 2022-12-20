@@ -18,6 +18,7 @@ import zigpy.config as conf
 import zigpy.device
 import zigpy.exceptions
 import zigpy.group
+import zigpy.listeners
 import zigpy.ota
 import zigpy.profiles
 import zigpy.quirks
@@ -62,7 +63,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         self._req_listeners: collections.defaultdict[
             zigpy.device.Device,
-            collections.deque[zigpy.util.BaseRequestListener],
+            collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
 
     async def _load_db(self) -> None:
@@ -897,7 +898,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def _callback_for_response(
         self,
         src: zigpy.device.Device,
-        filters: list[zigpy.typing.MatcherType],
+        filters: list[zigpy.listeners.MatcherType],
         callback: typing.Callable[
             [
                 zigpy.zcl.foundation.ZCLHeader,
@@ -910,7 +911,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         Context manager to create a callback that is passed Zigbee responses.
         """
 
-        listener = zigpy.util.CallbackListener(
+        listener = zigpy.listeners.CallbackListener(
             device=src,
             matchers=tuple(filters),
             callback=callback,
@@ -927,13 +928,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def _wait_for_response(
         self,
         src: zigpy.device.Device,
-        filters: list[zigpy.typing.MatcherType],
+        filters: list[zigpy.listeners.MatcherType],
     ) -> typing.Any:
         """
         Context manager to wait for a Zigbee response.
         """
 
-        listener = zigpy.util.FutureListener(
+        listener = zigpy.listeners.FutureListener(
             device=src,
             matchers=tuple(filters),
             future=asyncio.get_running_loop().create_future(),
