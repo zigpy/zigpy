@@ -894,7 +894,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             raise ValueError(f"Invalid address: {address!r}")
 
     @contextlib.contextmanager
-    def callback_for_response(
+    def _callback_for_response(
         self,
         src: zigpy.device.Device,
         filters: list[zigpy.typing.MatcherType],
@@ -924,7 +924,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             self._req_listeners[src].remove(listener)
 
     @contextlib.contextmanager
-    def wait_for_response(
+    def _wait_for_response(
         self,
         src: zigpy.device.Device,
         filters: list[zigpy.typing.MatcherType],
