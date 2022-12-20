@@ -19,6 +19,7 @@ from zigpy.const import (
 )
 import zigpy.endpoint
 import zigpy.exceptions
+import zigpy.listeners
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 import zigpy.util
@@ -373,7 +374,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         for listener in self._application._req_listeners[self]:
             # Resolve only until the first future listener
             if listener.resolve(hdr, args) and isinstance(
-                listener, zigpy.util.FutureListener
+                listener, zigpy.listeners.FutureListener
             ):
                 break
 
