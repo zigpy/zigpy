@@ -682,6 +682,7 @@ class ZCLCommandDef:
 
         # If the schema is already a struct, do nothing
         if not isinstance(self.schema, dict):
+            self.schema.command = self
             return self
 
         assert self.id is not None

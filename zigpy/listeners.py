@@ -34,9 +34,6 @@ class BaseRequestListener:
                 command, foundation.CommandSchema
             ):
                 match = command.matches(matcher)
-            elif isinstance(command, list):
-                # TODO: ZDO is not supported for now
-                continue
             else:
                 match = matcher(hdr, command)
 
@@ -85,9 +82,7 @@ class FutureListener(BaseRequestListener):
         return True
 
     def cancel(self):
-        if not self.future.done():
-            self.future.cancel()
-
+        self.future.cancel()
         return True
 
 
