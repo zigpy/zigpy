@@ -1,4 +1,5 @@
 import asyncio
+import errno
 import logging
 from unittest.mock import ANY, PropertyMock
 
@@ -11,6 +12,7 @@ from zigpy.exceptions import (
     DeliveryError,
     NetworkNotFormed,
     NetworkSettingsInconsistent,
+    TransientConnectionError,
 )
 import zigpy.ota
 import zigpy.quirks
@@ -666,6 +668,17 @@ async def test_startup_no_backup():
         await app.startup()
 
     p.assert_not_called()
+
+
+async def test_startup_failure_transient_error():
+    app = make_app({conf.CONF_NWK_BACKUP_ENABLED: False})
+
+    err = OSError("Network is unreachable")
+    err.errno = errno.ENETUNREACH
+
+    with patch.object(app, "connect", side_effect=[err]):
+        with pytest.raises(TransientConnectionError):
+            await app.startup()
 
 
 @patch("zigpy.backups.BackupManager.from_network_state")
