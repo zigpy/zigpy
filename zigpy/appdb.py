@@ -733,7 +733,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
 
-    async def _get_table_versions(self) -> dict[str, str]:
+    async def _get_table_versions(self) -> dict[str, int]:
         tables = {}
 
         async with self.execute(
@@ -748,7 +748,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 match = DB_V_REGEX.search(name)
                 assert match is not None
 
-                tables[name] = match.group(0)
+                tables[name] = int(match.group(0)[2:] or "0")
 
         return tables
 
