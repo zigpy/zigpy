@@ -3,6 +3,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import contextlib
+import errno
 import logging
 import os
 import random
@@ -28,6 +29,10 @@ import zigpy.zdo.types as zdo_types
 
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
+
+TRANSIENT_CONNECTION_ERRORS = {
+    errno.ENETUNREACH,
+}
 
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
@@ -133,6 +138,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         except Exception as e:
             LOGGER.error("Couldn't start application", exc_info=e)
             await self.shutdown()
+
+            if isinstance(e, OSError) and e.errno in TRANSIENT_CONNECTION_ERRORS:
+                raise zigpy.exceptions.TransientConnectionError() from e
+
             raise
 
     @classmethod
