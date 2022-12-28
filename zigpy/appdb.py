@@ -859,7 +859,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                             pass
                         else:
                             raise ValueError(
-                                f"Invalid value for `errors`: {errors}!r"
+                                f"Invalid value for `errors`: {errors!r}"
                             )  # noqa
 
     async def _migrate_to_v4(self):
