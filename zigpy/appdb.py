@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import datetime, timedelta, timezone
 import json
 import logging
@@ -733,6 +734,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
 
+    @contextlib.asynccontextmanager
+    async def _transaction(self):
+        await self.execute("BEGIN TRANSACTION")
+
+        try:
+            yield
+        except Exception:
+            await self.execute("ROLLBACK")
+            raise
+        else:
+            await self.execute("COMMIT")
+
     async def _get_table_versions(self) -> dict[str, int]:
         tables = {}
 
@@ -779,9 +792,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             return
 
         # All migrations must succeed. If any fail, the database is not touched.
-        await self.execute("BEGIN TRANSACTION")
-
-        try:
+        async with self._transaction():
             for migration, to_db_version in [
                 (self._migrate_to_v4, 4),
                 (self._migrate_to_v5, 5),
@@ -802,11 +813,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 await migration()
 
                 db_version = to_db_version
-        except Exception:
-            await self.execute("ROLLBACK")
-            raise
-        else:
-            await self.execute("COMMIT")
 
     async def _migrate_tables(
         self, table_map: dict[str, str], *, errors: str = "raise"
