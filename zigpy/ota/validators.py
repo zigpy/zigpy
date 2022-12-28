@@ -129,11 +129,14 @@ def validate_firmware(data: bytes) -> ValidationResult:
     return ValidationResult.VALID
 
 
-def validate_ota_image(image: OTAImage) -> ValidationResult:
+def validate_ota_image(image: BaseOTAImage) -> ValidationResult:
     """
     Validates a Zigbee OTA image's embedded firmwares and indicates if an image is
     valid, invalid, or of an unknown type.
     """
+
+    if not isinstance(image, OTAImage):
+        return ValidationResult.UNKNOWN
 
     results = []
 
@@ -151,9 +154,6 @@ def check_invalid(image: BaseOTAImage) -> bool:
     """
     Checks if an image is invalid or not. Unknown image types are considered valid.
     """
-
-    if not isinstance(image, OTAImage):
-        return False
 
     try:
         validate_ota_image(image)
