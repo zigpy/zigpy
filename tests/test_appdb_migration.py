@@ -308,7 +308,25 @@ async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
     assert before == after
 
 
-async def test_remigrate_forcibly_downgraded_v4(test_db):
+async def test_migration_failure_version_mismatch(test_db):
+    """Test migration failure when the `user_version` and table versions don't match."""
+
+    test_db_v3 = test_db("simple_v3.sql")
+
+    # Migrate it to the latest version
+    app = await make_app(test_db_v3)
+    await app.shutdown()
+
+    # Downgrade it back to v7
+    with sqlite3.connect(test_db_v3) as conn:
+        conn.execute("PRAGMA user_version=7")
+
+    # Startup now fails due to the version mismatch
+    with pytest.raises(zigpy.exceptions.CorruptDatabase):
+        await make_app(test_db_v3)
+
+
+async def test_migration_downgrade_warning(test_db, caplog):
     """Test V4 re-migration which was forcibly downgraded to v3."""
 
     test_db_v3 = test_db("simple_v3.sql")
@@ -317,13 +335,23 @@ async def test_remigrate_forcibly_downgraded_v4(test_db):
     app = await make_app(test_db_v3)
     await app.shutdown()
 
-    # Downgrade it back to v3
+    # Upgrade it beyond our current version
     with sqlite3.connect(test_db_v3) as conn:
-        conn.execute("PRAGMA user_version=3")
+        conn.execute("CREATE TABLE future_table_v100(column)")
+        conn.execute("PRAGMA user_version=100")
 
-    # Startup now fails due to the version mismatch
-    with pytest.raises(zigpy.exceptions.CorruptDatabase):
-        await make_app(test_db_v3)
+    # Startup now logs an error due to the "downgrade"
+    with caplog.at_level(logging.ERROR):
+        app2 = await make_app(test_db_v3)
+        await app2.shutdown()
+
+    assert "Downgrading zigpy" in caplog.text
+
+    # Ensure the version was not touched
+    with sqlite3.connect(test_db_v3) as conn:
+        user_version = conn.execute("PRAGMA user_version").fetchone()[0]
+
+    assert user_version == 100
 
 
 @pytest.mark.parametrize("with_bad_neighbor", [False, True])
