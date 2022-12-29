@@ -40,3 +40,7 @@ class FormationFailure(RadioException):
 
 class NetworkSettingsInconsistent(ZigbeeException):
     """Loaded network settings are different from what is in the database"""
+
+
+class CorruptDatabase(ZigbeeException):
+    """The SQLite database is corrupt or otherwise inconsistent"""
