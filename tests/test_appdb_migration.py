@@ -182,9 +182,8 @@ async def test_migration_missing_neighbors_v3(test_db):
         assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
 
 
-@pytest.mark.parametrize("force_version", [None, 3, 4, 9999])
 @pytest.mark.parametrize("corrupt_device", [False, True])
-async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
+async def test_migration_bad_attributes(test_db, corrupt_device):
     test_db_bad_attrs = test_db("bad_attrs_v3.db")
 
     with sqlite3.connect(test_db_bad_attrs) as conn:
@@ -214,15 +213,6 @@ async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
         == num_ep_before_migration - deleted_eps
     )
 
-    # Version was upgraded (and then downgraded)
-    with sqlite3.connect(test_db_bad_attrs) as conn:
-        cur = conn.cursor()
-        cur.execute("PRAGMA user_version")
-        assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
-
-        if force_version is not None:
-            cur.execute(f"PRAGMA user_version={force_version}")
-
     app2 = await make_app(test_db_bad_attrs)
     await app2.shutdown()
 
@@ -238,7 +228,7 @@ async def test_migration_bad_attributes(test_db, force_version, corrupt_device):
         cur.execute("PRAGMA user_version")
 
         # Ensure the final database schema version number does not decrease
-        assert cur.fetchone()[0] == max(zigpy.appdb.DB_VERSION, force_version or 0)
+        assert cur.fetchone()[0] >= zigpy.appdb.DB_VERSION
 
 
 async def test_migration_missing_node_descriptor(test_db, caplog):
@@ -321,48 +311,19 @@ async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
 async def test_remigrate_forcibly_downgraded_v4(test_db):
     """Test V4 re-migration which was forcibly downgraded to v3."""
 
-    test_db_v4_downgraded_to_v3 = test_db("simple_v3.sql")
+    test_db_v3 = test_db("simple_v3.sql")
 
     # Migrate it to the latest version
-    app = await make_app(test_db_v4_downgraded_to_v3)
+    app = await make_app(test_db_v3)
     await app.shutdown()
 
     # Downgrade it back to v3
-    with sqlite3.connect(test_db_v4_downgraded_to_v3) as conn:
-        # new neighbor
-        conn.execute(
-            """INSERT INTO neighbors VALUES(
-                   'ec:1b:bd:ff:fe:54:4f:40',
-                   '81:b1:12:dc:9f:bd:f4:b6',
-                   '00:0d:6f:ff:fe:a6:11:7b',
-                   48462,
-                   37,2,15,132)
-            """
-        )
+    with sqlite3.connect(test_db_v3) as conn:
         conn.execute("PRAGMA user_version=3")
 
-    with sqlite3.connect(test_db_v4_downgraded_to_v3) as conn:
-        cur = conn.cursor()
-
-        neighbors_v3 = list(cur.execute("SELECT * FROM neighbors"))
-        assert len(neighbors_v3) == 3
-        neighbors_v4 = list(cur.execute("SELECT * FROM neighbors_v4"))
-        assert len(neighbors_v4) == 2
-
-        (ver,) = cur.execute("PRAGMA user_version").fetchone()
-        assert ver == 3
-
-    app = await make_app(test_db_v4_downgraded_to_v3)
-    await app.shutdown()
-
-    with sqlite3.connect(test_db_v4_downgraded_to_v3) as conn:
-        cur = conn.cursor()
-
-        neighbors_v4 = list(cur.execute("SELECT * FROM neighbors_v4"))
-        assert len(neighbors_v4) == 3
-
-        (ver,) = cur.execute("PRAGMA user_version").fetchone()
-        assert ver == zigpy.appdb.DB_VERSION
+    # Startup now fails due to the version mismatch
+    with pytest.raises(zigpy.exceptions.CorruptDatabase):
+        await make_app(test_db_v3)
 
 
 @pytest.mark.parametrize("with_bad_neighbor", [False, True])

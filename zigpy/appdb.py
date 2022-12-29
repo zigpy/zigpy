@@ -15,6 +15,7 @@ import zigpy.appdb_schemas
 import zigpy.backups
 import zigpy.device
 import zigpy.endpoint
+import zigpy.exceptions
 import zigpy.group
 import zigpy.profiles
 import zigpy.quirks
@@ -768,19 +769,37 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _table_exists(self, name: str) -> bool:
         return name in (await self._get_table_versions())
 
-    async def _run_migrations(self):
-        """Migrates the database to the newest schema."""
+    async def _run_migrations(self) -> bool:
+        """
+        Migrates the database to the newest schema, returning True if migrations ran.
+        """
+
+        tables = await self._get_table_versions()
+        tables_version = max(tables.values(), default=0)
 
         async with self.execute("PRAGMA user_version") as cursor:
             (db_version,) = await cursor.fetchone()
 
-        LOGGER.debug("Current database version is v%s", db_version)
+        LOGGER.debug(
+            "Current database version is v%s (table version v%s)",
+            db_version,
+            tables_version,
+        )
 
-        # Very old databases did not set `user_version` but still should be migrated
-        if db_version == 0 and not await self._table_exists("devices"):
+        # Table version suffixes were introduced in v4. If the table version suffix does
+        # not match `user_version`, either zigpy was downgraded to a *really* old
+        # version (July 2021), or it's corrupt. Running migrations could delete existing
+        # table data, and since we cannot guarantee the schema is intact, fail early.
+        if tables_version >= 4 and tables_version != db_version:
+            raise zigpy.exceptions.CorruptDatabase(
+                f"The `zigbee.db` database version ({db_version}) does not match its"
+                f" max table version ({tables_version}). The database is inconsistent.",
+            )
+
+        if db_version == 0 and not tables:
             # If this is a brand new database, just load the current schema
             await self.executescript(zigpy.appdb_schemas.SCHEMAS[DB_VERSION])
-            return
+            return False
         elif db_version > DB_VERSION:
             LOGGER.error(
                 "This zigpy release uses database schema v%s but the database is v%s."
@@ -789,7 +808,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 DB_VERSION,
                 db_version,
             )
-            return
+            return False
 
         # All migrations must succeed. If any fail, the database is not touched.
         async with self._transaction():
@@ -813,6 +832,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 await migration()
 
                 db_version = to_db_version
+
+        return True
 
     async def _migrate_tables(
         self, table_map: dict[str, str], *, errors: str = "raise"
