@@ -1,8 +1,0 @@
-[run]
-source = zigpy
-
-[report]
-exclude_lines = 
-    pragma: no cover
-    if TYPE_CHECKING:
-    if typing.TYPE_CHECKING:

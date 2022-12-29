@@ -371,3 +371,22 @@ class Struct:
             return True
         except ValueError:
             return False
+
+    def matches(self, other: Struct) -> bool:
+        if not isinstance(self, type(other)) and not isinstance(other, type(self)):
+            return False
+
+        for field in self.fields:
+            actual = getattr(self, field.name)
+            expected = getattr(other, field.name)
+
+            if expected is None:
+                continue
+
+            if isinstance(expected, Struct):
+                if not actual.matches(expected):
+                    return False
+            elif actual != expected:
+                return False
+
+        return True

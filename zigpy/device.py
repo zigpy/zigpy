@@ -19,6 +19,7 @@ from zigpy.const import (
 )
 import zigpy.endpoint
 import zigpy.exceptions
+import zigpy.listeners
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 import zigpy.util
@@ -366,10 +367,16 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 )
                 return
 
-        endpoint = self.endpoints[src_ep]
-        return endpoint.handle_message(
+        self.endpoints[src_ep].handle_message(
             profile, cluster, hdr, args, dst_addressing=dst_addressing
         )
+
+        for listener in self._application._req_listeners[self]:
+            # Resolve only until the first future listener
+            if listener.resolve(hdr, args) and isinstance(
+                listener, zigpy.listeners.FutureListener
+            ):
+                break
 
     async def reply(
         self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee=False
