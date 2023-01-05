@@ -680,8 +680,13 @@ class ZCLCommandDef:
         schema converted into a `CommandSchema` subclass.
         """
 
-        # If the schema is already a struct, do nothing
-        if not isinstance(self.schema, dict):
+        if isinstance(self.schema, tuple):
+            raise ValueError(
+                f"Tuple schemas are deprecated: {self.schema!r}. Use a dictionary or a"
+                f" Struct subclass."
+            )
+        elif not isinstance(self.schema, dict):
+            # If the schema is already a struct, do nothing
             self.schema.command = self
             return self
 
