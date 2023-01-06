@@ -1,5 +1,3 @@
-import sys
-
 import pytest
 
 import zigpy.types as t
@@ -677,6 +675,20 @@ def test_schema():
     assert issubclass(s.schema, tuple)
 
 
+def test_command_schema_error_on_tuple():
+    """Test schema throwing an exception when a tuple is passed instead of a dict."""
+
+    cmd_def = foundation.ZCLCommandDef(
+        id=0x12,
+        name="test",
+        schema=(t.uint16_t,),
+        direction=foundation.Direction.Server_to_Client,
+    )
+
+    with pytest.raises(ValueError):
+        cmd_def.with_compiled_schema()
+
+
 def test_zcl_attribute_definition():
     a = foundation.ZCLAttributeDef(
         id=0x1234,
@@ -725,14 +737,6 @@ def test_zcl_command_item_access_warning():
         assert s[0] == s.name
         assert s[1] == s.schema
         assert s[2] == s.direction
-
-
-@pytest.mark.skipif(sys.version_info < (3, 8), reason="3.8 added module __getattr__")
-def test_command_warning():
-    GeneralCommand = foundation.GeneralCommand
-
-    with pytest.deprecated_call():
-        assert foundation.Command is GeneralCommand
 
 
 def test_invalid_command_def_name():

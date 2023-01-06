@@ -798,3 +798,28 @@ def test_from_dict(expose_global):
     s = TestStruct(foo=1, bar=InnerStruct(field1=2, field2="field2"), baz="field3")
 
     assert s == TestStruct.from_dict(s.as_dict(recursive=True))
+
+
+def test_matching(expose_global):
+    @expose_global
+    class InnerStruct(t.Struct):
+        field1: t.uint8_t
+        field2: t.CharacterString
+
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+        bar: InnerStruct
+        baz: t.CharacterString
+
+    assert TestStruct().matches(TestStruct())
+    assert not TestStruct().matches(InnerStruct())
+    assert TestStruct(foo=1).matches(TestStruct(foo=1))
+    assert not TestStruct(foo=1).matches(TestStruct(foo=2))
+    assert TestStruct(foo=1).matches(TestStruct())
+
+    s = TestStruct(foo=1, bar=InnerStruct(field1=2, field2="asd"), baz="foo")
+    assert s.matches(s)
+    assert s.matches(TestStruct())
+    assert s.matches(TestStruct(bar=InnerStruct()))
+    assert s.matches(TestStruct(bar=InnerStruct(field1=2, field2="asd")))
+    assert not s.matches(TestStruct(bar=InnerStruct(field1=3)))

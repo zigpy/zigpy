@@ -109,7 +109,7 @@ To setup a development environment, fork the repository and create a virtual env
 ```shell
 $ git clone git@github.com:youruser/zigpy.git
 $ cd zigpy
-$ virtualenv -p python3.7 venv
+$ virtualenv -p python3.8 venv
 $ source venv/bin/activate
 (venv) $ pip install --upgrade pip pre-commit tox
 (venv) $ pre-commit install            # install pre-commit as a Git hook

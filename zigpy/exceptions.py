@@ -26,6 +26,10 @@ class RadioException(Exception):
     """Base exception class for radio exceptions"""
 
 
+class TransientConnectionError(RadioException):
+    """Connection to the radio failed but will likely succeed in the near future"""
+
+
 class NetworkNotFormed(RadioException):
     """A network cannot be started because the radio has no stored network info"""
 
@@ -36,3 +40,7 @@ class FormationFailure(RadioException):
 
 class NetworkSettingsInconsistent(ZigbeeException):
     """Loaded network settings are different from what is in the database"""
+
+
+class CorruptDatabase(ZigbeeException):
+    """The SQLite database is corrupt or otherwise inconsistent"""

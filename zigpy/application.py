@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import collections
 import contextlib
+import errno
 import logging
 import os
 import random
 import time
+import typing
 from typing import Any
 
 import zigpy.appdb
@@ -15,12 +18,14 @@ import zigpy.config as conf
 import zigpy.device
 import zigpy.exceptions
 import zigpy.group
+import zigpy.listeners
 import zigpy.ota
 import zigpy.profiles
 import zigpy.quirks
 import zigpy.state
 import zigpy.topology
 import zigpy.types as t
+import zigpy.typing
 import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
@@ -28,6 +33,10 @@ import zigpy.zdo.types as zdo_types
 
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
+
+TRANSIENT_CONNECTION_ERRORS = {
+    errno.ENETUNREACH,
+}
 
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
@@ -51,6 +60,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
         self.topology: zigpy.topology.Topology = zigpy.topology.Topology(self)
+
+        self._req_listeners: collections.defaultdict[
+            zigpy.device.Device,
+            collections.deque[zigpy.listeners.BaseRequestListener],
+        ] = collections.defaultdict(lambda: collections.deque([]))
 
     async def _load_db(self) -> None:
         """Restore save state."""
@@ -133,6 +147,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         except Exception as e:
             LOGGER.error("Couldn't start application", exc_info=e)
             await self.shutdown()
+
+            if isinstance(e, OSError) and e.errno in TRANSIENT_CONNECTION_ERRORS:
+                raise zigpy.exceptions.TransientConnectionError() from e
+
             raise
 
     @classmethod
@@ -875,6 +893,59 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             return self.get_device(ieee=address.address)
         else:
             raise ValueError(f"Invalid address: {address!r}")
+
+    @contextlib.contextmanager
+    def _callback_for_response(
+        self,
+        src: zigpy.device.Device,
+        filters: list[zigpy.listeners.MatcherType],
+        callback: typing.Callable[
+            [
+                zigpy.zcl.foundation.ZCLHeader,
+                zigpy.zcl.foundation.CommandSchema,
+            ],
+            typing.Any,
+        ],
+    ) -> typing.Any:
+        """
+        Context manager to create a callback that is passed Zigbee responses.
+        """
+
+        listener = zigpy.listeners.CallbackListener(
+            device=src,
+            matchers=tuple(filters),
+            callback=callback,
+        )
+
+        self._req_listeners[src].append(listener)
+
+        try:
+            yield
+        finally:
+            self._req_listeners[src].remove(listener)
+
+    @contextlib.contextmanager
+    def _wait_for_response(
+        self,
+        src: zigpy.device.Device,
+        filters: list[zigpy.listeners.MatcherType],
+    ) -> typing.Any:
+        """
+        Context manager to wait for a Zigbee response.
+        """
+
+        listener = zigpy.listeners.FutureListener(
+            device=src,
+            matchers=tuple(filters),
+            future=asyncio.get_running_loop().create_future(),
+        )
+
+        self._req_listeners[src].append(listener)
+
+        try:
+            yield listener.future
+        finally:
+            self._req_listeners[src].remove(listener)
 
     @abc.abstractmethod
     async def permit_ncp(self, time_s: int = 60):

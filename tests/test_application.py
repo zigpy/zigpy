@@ -1,5 +1,7 @@
 import asyncio
+import errno
 import logging
+from unittest import mock
 from unittest.mock import ANY, PropertyMock
 
 import pytest
@@ -11,10 +13,12 @@ from zigpy.exceptions import (
     DeliveryError,
     NetworkNotFormed,
     NetworkSettingsInconsistent,
+    TransientConnectionError,
 )
 import zigpy.ota
 import zigpy.quirks
 import zigpy.types as t
+from zigpy.zcl import clusters, foundation
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -668,6 +672,17 @@ async def test_startup_no_backup():
     p.assert_not_called()
 
 
+async def test_startup_failure_transient_error():
+    app = make_app({conf.CONF_NWK_BACKUP_ENABLED: False})
+
+    err = OSError("Network is unreachable")
+    err.errno = errno.ENETUNREACH
+
+    with patch.object(app, "connect", side_effect=[err]):
+        with pytest.raises(TransientConnectionError):
+            await app.startup()
+
+
 @patch("zigpy.backups.BackupManager.from_network_state")
 @patch("zigpy.backups.BackupManager.most_recent_backup")
 async def test_initialize_compatible_backup(
@@ -1058,3 +1073,121 @@ def test_get_device_with_address_nwk(app, device):
         app.get_device_with_address(
             t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk + 1)
         )
+
+
+async def test_request_future_matching(app, make_initialized_device):
+    device = make_initialized_device(app)
+    ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
+
+    req_hdr, req_cmd = ota._create_request(
+        general=False,
+        command_id=ota.commands_by_name["query_next_image"].id,
+        schema=ota.commands_by_name["query_next_image"].schema,
+        disable_default_response=False,
+        direction=foundation.Direction.Server_to_Client,
+        args=(),
+        kwargs=dict(
+            field_control=0,
+            manufacturer_code=0x1234,
+            image_type=0x5678,
+            current_file_version=0x11112222,
+        ),
+    )
+
+    packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk),
+        src_ep=1,
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        dst_ep=1,
+        tsn=req_hdr.tsn,
+        profile_id=260,
+        cluster_id=ota.cluster_id,
+        data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
+        lqi=255,
+        rssi=-30,
+    )
+
+    assert not app._req_listeners[device]
+
+    with app._wait_for_response(
+        device, [ota.commands_by_name["query_next_image"].schema()]
+    ) as rsp_fut:
+        # Attach two listeners
+        with app._wait_for_response(
+            device, [ota.commands_by_name["query_next_image"].schema()]
+        ) as rsp_fut2:
+            assert app._req_listeners[device]
+
+            # Listeners are resolved FIFO
+            app.packet_received(packet)
+            assert rsp_fut.done()
+            assert not rsp_fut2.done()
+
+            app.packet_received(packet)
+            assert rsp_fut.done()
+            assert rsp_fut2.done()
+
+            # Unhandled packets are ignored
+            app.packet_received(packet)
+
+            rsp_hdr, rsp_cmd = await rsp_fut
+            assert rsp_hdr == req_hdr
+            assert rsp_cmd == req_cmd
+            assert rsp_cmd.current_file_version == 0x11112222
+
+    assert not app._req_listeners[device]
+
+
+async def test_request_callback_matching(app, make_initialized_device):
+    device = make_initialized_device(app)
+    ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
+
+    req_hdr, req_cmd = ota._create_request(
+        general=False,
+        command_id=ota.commands_by_name["query_next_image"].id,
+        schema=ota.commands_by_name["query_next_image"].schema,
+        disable_default_response=False,
+        direction=foundation.Direction.Server_to_Client,
+        args=(),
+        kwargs=dict(
+            field_control=0,
+            manufacturer_code=0x1234,
+            image_type=0x5678,
+            current_file_version=0x11112222,
+        ),
+    )
+
+    packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk),
+        src_ep=1,
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        dst_ep=1,
+        tsn=req_hdr.tsn,
+        profile_id=260,
+        cluster_id=ota.cluster_id,
+        data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
+        lqi=255,
+        rssi=-30,
+    )
+
+    mock_callback = mock.Mock()
+
+    assert not app._req_listeners[device]
+
+    with app._callback_for_response(
+        device, [ota.commands_by_name["query_next_image"].schema()], mock_callback
+    ):
+        assert app._req_listeners[device]
+
+        asyncio.get_running_loop().call_soon(app.packet_received, packet)
+
+        asyncio.get_running_loop().call_soon(app.packet_received, packet)
+
+        asyncio.get_running_loop().call_soon(app.packet_received, packet)
+
+        await asyncio.sleep(0.1)
+
+        assert len(mock_callback.mock_calls) == 3
+        assert mock_callback.mock_calls == [mock.call(req_hdr, req_cmd)] * 3
+
+    assert not app._req_listeners[device]
