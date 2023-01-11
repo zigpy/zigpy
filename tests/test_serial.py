@@ -39,5 +39,7 @@ async def test_serial_socket(event_loop):
         )
 
         assert len(event_loop.create_connection.mock_calls) == 2
-        assert event_loop.create_connection.mock_calls[0].args[1:] == ("1.2.3.4", 5678)
-        assert event_loop.create_connection.mock_calls[1].args[1:] == ("1.2.3.4", 6638)
+        assert event_loop.create_connection.mock_calls[0].kwargs["host"] == "1.2.3.4"
+        assert event_loop.create_connection.mock_calls[0].kwargs["port"] == 5678
+        assert event_loop.create_connection.mock_calls[1].kwargs["host"] == "1.2.3.4"
+        assert event_loop.create_connection.mock_calls[1].kwargs["port"] == 6638
