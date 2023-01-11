@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import typing
+import urllib.parse
 
 import async_timeout
 import serial as pyserial
 import serial_asyncio as pyserial_asyncio
-import yarl
 
 DEFAULT_SOCKET_PORT = 6638
 SOCKET_CONNECT_TIMEOUT = 5
@@ -25,16 +25,14 @@ async def create_serial_connection(
     Wrapper around pyserial-asyncio that transparently substitutes a normal TCP
     transport and protocol when a `socket` connection URI is provided.
     """
-    parsed_url = yarl.URL(url)
+    parsed_url = urllib.parse.urlparse(url)
 
     if parsed_url.scheme in ("socket", "tcp"):
-        # It's convention at this point to use port 6638
-        if parsed_url.port is None:
-            parsed_url = parsed_url.with_port(DEFAULT_SOCKET_PORT)
-
         async with async_timeout.timeout(SOCKET_CONNECT_TIMEOUT):
             transport, protocol = await loop.create_connection(
-                protocol_factory, parsed_url.host, parsed_url.port
+                protocol_factory=protocol_factory,
+                host=parsed_url.hostname,
+                port=parsed_url.port or DEFAULT_SOCKET_PORT,
             )
     else:
         transport, protocol = await pyserial_asyncio.create_serial_connection(

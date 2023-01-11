@@ -7,6 +7,7 @@ from setuptools import find_packages, setup
 import zigpy
 
 REQUIRES = [
+    "attrs",
     "aiohttp",
     "aiosqlite>=0.16.0",
     "async_timeout",
@@ -16,7 +17,6 @@ REQUIRES = [
     "voluptuous",
     'pyserial-asyncio; platform_system!="Windows"',
     'pyserial-asyncio!=0.5; platform_system=="Windows"',
-    "yarl",
 ]
 
 setup(
