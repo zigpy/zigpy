@@ -7,6 +7,7 @@ from setuptools import find_packages, setup
 import zigpy
 
 REQUIRES = [
+    "attrs",
     "aiohttp",
     "aiosqlite>=0.16.0",
     "async_timeout",
