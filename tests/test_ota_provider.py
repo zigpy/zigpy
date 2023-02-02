@@ -292,7 +292,6 @@ async def test_ikea_refresh_list_locked(mock_get, ikea_prov, ikea_image_with_ver
 
 @patch("aiohttp.ClientSession.get")
 async def test_ikea_refresh_list_failed(mock_get, ikea_prov):
-
     mock_get.return_value.__aenter__.return_value.json = AsyncMock(side_effect=[[]])
 
     mock_get.return_value.__aenter__.return_value.status = 434
