@@ -23,7 +23,7 @@ TYPE_MANUF_QUIRKS_DICT = Dict[Optional[str], TYPE_MODEL_QUIRKS_LIST]
 
 
 class DeviceRegistry:
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         self._registry: TYPE_MANUF_QUIRKS_DICT = collections.defaultdict(
             lambda: collections.defaultdict(list)
         )

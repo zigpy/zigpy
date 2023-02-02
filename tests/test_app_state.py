@@ -156,7 +156,7 @@ def test_counters_reset(counters):
 
 
 def test_counter_incr():
-    """Test counter incement."""
+    """Test counter increment."""
 
     counter = app_state.Counter("counter_name", 42)
     assert counter == 42

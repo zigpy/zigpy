@@ -201,7 +201,6 @@ async def test_inovelli_refresh_list_locked(
 
 @patch("aiohttp.ClientSession.get")
 async def test_inovelli_refresh_list_failed(mock_get, inovelli_prov):
-
     mock_get.return_value.__aenter__.return_value.json = AsyncMock(side_effect=[[]])
     mock_get.return_value.__aenter__.return_value.status = 434
     mock_get.return_value.__aenter__.return_value.reason = "UNK"

@@ -23,7 +23,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ListenableMixin:
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._listeners: dict[int, tuple[typing.Callable, bool]] = {}
 

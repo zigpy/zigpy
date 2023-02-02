@@ -63,7 +63,7 @@ def test_struct_subclass_creation():
     assert TestStruct3._private2 == 4567
     assert TestStruct3._PRIVATE_CONST is mock.sentinel.priv_const
     assert TestStruct3()._PRIVATE_CONST is mock.sentinel.priv_const
-    assert TestStruct3.Test
+    assert TestStruct3.Test  # type: ignore[truthy-function]
     assert TestStruct3().Test
     assert "Test" not in TestStruct3().as_dict()
 
