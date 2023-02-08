@@ -666,7 +666,7 @@ class INOVELLIImage:
 class Inovelli(Basic):
     """Inovelli OTA Firmware provider."""
 
-    UPDATE_URL = "https://files.inovelli.com/firmware/firmware.json"
+    UPDATE_URL = "https://files.inovelli.com/firmware/firmware-zha.json"
     MANUFACTURER_ID = 4655
     HEADERS = {"accept": "application/json"}
 
