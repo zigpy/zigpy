@@ -6,9 +6,9 @@ Collection of external Zigbee OTA firmware images from official and unofficial O
 
 Manufacturer ID = 4655
 
-Inovelli Zigbee OTA firmware images are made publicly available by Inovelli (first-party) at the following URLs:
+Inovelli Zigbee OTA firmware images for zigpy are made publicly available by Inovelli (first-party) at the following URLs:
 
-https://files.inovelli.com/firmware/firmware.json
+https://files.inovelli.com/firmware/firmware-zha.json
 
 https://files.inovelli.com/firmware
 
