@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import sys
 import threading
 import typing
 from unittest.mock import Mock
@@ -241,13 +242,16 @@ def verify_cleanup(
     event_loop: asyncio.AbstractEventLoop,
 ) -> typing.Generator[None, None, None]:
     """Verify that the test has cleaned up resources correctly."""
+    # Skip with Python 3.8 and below
+    if sys.version_info < (3, 9):
+        yield
+        return
+
     threads_before = frozenset(threading.enumerate())
     tasks_before = asyncio.all_tasks(event_loop)
     yield
 
-    # Introduced in Python 3.9
-    if hasattr(event_loop, "shutdown_default_executor"):
-        event_loop.run_until_complete(event_loop.shutdown_default_executor())
+    event_loop.run_until_complete(event_loop.shutdown_default_executor())
 
     # Warn and clean-up lingering tasks and timers
     # before moving on to the next test.
@@ -266,6 +270,4 @@ def verify_cleanup(
     # Verify no threads where left behind.
     threads = frozenset(threading.enumerate()) - threads_before
     for thread in threads:
-        assert isinstance(thread, threading._DummyThread) or thread.name.startswith(
-            "waitpid-"
-        )
+        assert isinstance(thread, threading._DummyThread)
