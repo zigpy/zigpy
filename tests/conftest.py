@@ -245,7 +245,9 @@ def verify_cleanup(
     tasks_before = asyncio.all_tasks(event_loop)
     yield
 
-    event_loop.run_until_complete(event_loop.shutdown_default_executor())
+    # Introduced in Python 3.9
+    if hasattr(event_loop, "shutdown_default_executor"):
+        event_loop.run_until_complete(event_loop.shutdown_default_executor())
 
     # Warn and clean-up lingering tasks and timers
     # before moving on to the next test.
