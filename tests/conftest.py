@@ -1,8 +1,10 @@
 """Common fixtures."""
 from __future__ import annotations
 
+import asyncio
 import copy
 import logging
+import threading
 import typing
 from unittest.mock import Mock
 
@@ -19,6 +21,7 @@ from .async_mock import AsyncMock, MagicMock
 if typing.TYPE_CHECKING:
     import zigpy.device
 
+_LOGGER = logging.getLogger(__name__)
 
 NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
 
@@ -230,3 +233,37 @@ def make_route(
         Reserved=0,
         NextHop=next_hop,
     )
+
+
+# Taken from Home Assistant's `conftest.py`
+@pytest.fixture(autouse=True)
+def verify_cleanup(
+    event_loop: asyncio.AbstractEventLoop,
+) -> typing.Generator[None, None, None]:
+    """Verify that the test has cleaned up resources correctly."""
+    threads_before = frozenset(threading.enumerate())
+    tasks_before = asyncio.all_tasks(event_loop)
+    yield
+
+    event_loop.run_until_complete(event_loop.shutdown_default_executor())
+
+    # Warn and clean-up lingering tasks and timers
+    # before moving on to the next test.
+    tasks = asyncio.all_tasks(event_loop) - tasks_before
+    for task in tasks:
+        _LOGGER.warning("Linger task after test %r", task)
+        task.cancel()
+    if tasks:
+        event_loop.run_until_complete(asyncio.wait(tasks))
+
+    for handle in event_loop._scheduled:  # type: ignore[attr-defined]
+        if not handle.cancelled():
+            _LOGGER.warning("Lingering timer after test %r", handle)
+            handle.cancel()
+
+    # Verify no threads where left behind.
+    threads = frozenset(threading.enumerate()) - threads_before
+    for thread in threads:
+        assert isinstance(thread, threading._DummyThread) or thread.name.startswith(
+            "waitpid-"
+        )
