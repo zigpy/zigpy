@@ -193,6 +193,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         await self._db.close()
 
+        # FIXME: aiosqlite's thread won't always be closed immediately
+        await asyncio.get_running_loop().run_in_executor(None, self._db.join)
+
     def enqueue(self, cb_name: str, *args) -> None:
         """Enqueue an async callback handler action."""
         if not self.running:
@@ -271,7 +274,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def attribute_updated(
         self, cluster: zigpy.typing.ClusterType, attrid: int, value: Any
     ) -> None:
-
         self.enqueue(
             "_save_attribute",
             cluster.endpoint.device.ieee,
@@ -284,7 +286,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def unsupported_attribute_added(
         self, cluster: zigpy.typing.ClusterType, attrid: int
     ) -> None:
-
         self.enqueue(
             "_unsupported_attribute_added",
             cluster.endpoint.device.ieee,
@@ -305,7 +306,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def unsupported_attribute_removed(
         self, cluster: zigpy.typing.ClusterType, attrid: int
     ) -> None:
-
         self.enqueue(
             "_unsupported_attribute_removed",
             cluster.endpoint.device.ieee,

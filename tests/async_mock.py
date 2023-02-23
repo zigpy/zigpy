@@ -44,7 +44,7 @@ class _IntSentinelObject(int):
     __str__ = __reduce__ = __repr__
 
 
-class _IntSentinel(object):
+class _IntSentinel:
     def __init__(self):
         self._sentinels = {}
 

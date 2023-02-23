@@ -75,7 +75,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     attributes_by_name: dict[str, foundation.ZCLAttributeDef] = {}
     commands_by_name: dict[str, foundation.ZCLCommandDef] = {}
 
-    def __init_subclass__(cls):
+    def __init_subclass__(cls) -> None:
         # Fail on deprecated attribute presence
         for a in ("attributes", "client_commands", "server_commands"):
             if not hasattr(cls, f"manufacturer_{a}"):

@@ -172,7 +172,6 @@ def test_group_remove_member(group, endpoint):
 
 
 def test_group_magic_methods(group, endpoint):
-
     group.add_member(endpoint, suppress_event=True)
 
     assert endpoint.unique_id in group.members

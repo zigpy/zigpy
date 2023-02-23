@@ -148,7 +148,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.error("Couldn't start application", exc_info=e)
             await self.shutdown()
 
-            if isinstance(e, OSError) and e.errno in TRANSIENT_CONNECTION_ERRORS:
+            if isinstance(e, ConnectionRefusedError) or (
+                isinstance(e, OSError) and e.errno in TRANSIENT_CONNECTION_ERRORS
+            ):
                 raise zigpy.exceptions.TransientConnectionError() from e
 
             raise

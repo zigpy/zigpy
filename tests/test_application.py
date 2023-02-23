@@ -869,7 +869,6 @@ def test_build_source_route_no_relays(app):
 
 
 async def test_send_mrequest(app, packet):
-
     status, msg = await app.mrequest(
         group_id=0xABCD,
         profile=0x1234,
@@ -895,7 +894,6 @@ async def test_send_mrequest(app, packet):
 
 
 async def test_send_broadcast(app, packet):
-
     status, msg = await app.broadcast(
         profile=0x1234,
         cluster=0x0006,
