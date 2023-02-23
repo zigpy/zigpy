@@ -12,6 +12,9 @@ from zigpy.config import (
     CONF_OTA_IKEA,
     CONF_OTA_INOVELLI,
     CONF_OTA_LEDVANCE,
+    CONF_OTA_PROVIDER_MANUF_IDS,
+    CONF_OTA_PROVIDER_URL,
+    CONF_OTA_REMOTE_PROVIDERS,
     CONF_OTA_SALUS,
     CONF_OTA_SONOFF,
     CONF_OTA_THIRDREALITY,
@@ -128,6 +131,14 @@ class OTA(zigpy.util.ListenableMixin):
             self.add_listener(zigpy.ota.provider.Sonoff())
         if ota_config[CONF_OTA_THIRDREALITY]:
             self.add_listener(zigpy.ota.provider.ThirdReality())
+
+        for provider_config in ota_config[CONF_OTA_REMOTE_PROVIDERS]:
+            self.add_listener(
+                zigpy.ota.provider.RemoteProvider(
+                    url=provider_config[CONF_OTA_PROVIDER_URL],
+                    manufacturer_ids=provider_config[CONF_OTA_PROVIDER_MANUF_IDS],
+                )
+            )
 
     async def initialize(self) -> None:
         await self.async_event("initialize_provider", self._app.config[CONF_OTA])

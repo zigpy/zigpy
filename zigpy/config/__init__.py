@@ -68,6 +68,9 @@ CONF_OTA_SALUS = "salus_provider"
 CONF_OTA_SONOFF = "sonoff_provider"
 CONF_OTA_SONOFF_URL = "sonoff_update_url"
 CONF_OTA_THIRDREALITY = "thirdreality_provider"
+CONF_OTA_REMOTE_PROVIDERS = "remote_providers"
+CONF_OTA_PROVIDER_URL = "url"
+CONF_OTA_PROVIDER_MANUF_IDS = "manufacturer_ids"
 CONF_SOURCE_ROUTING = "source_routing"
 CONF_STARTUP_ENERGY_SCAN = "startup_energy_scan"
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
@@ -105,6 +108,14 @@ SCHEMA_NETWORK = vol.Schema(
         ),
     }
 )
+
+SCHEMA_OTA_PROVIDER = vol.Schema(
+    {
+        vol.Required(CONF_OTA_PROVIDER_URL): str,
+        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
+    }
+)
+
 SCHEMA_OTA = {
     vol.Optional(CONF_OTA_DIR, default=CONF_OTA_OTAU_DIR_DEFAULT): vol.Any(None, str),
     vol.Optional(CONF_OTA_IKEA, default=CONF_OTA_IKEA_DEFAULT): cv_boolean,
@@ -116,6 +127,7 @@ SCHEMA_OTA = {
     vol.Optional(
         CONF_OTA_THIRDREALITY, default=CONF_OTA_THIRDREALITY_DEFAULT
     ): cv_boolean,
+    vol.Optional(CONF_OTA_REMOTE_PROVIDERS, default=[]): [SCHEMA_OTA_PROVIDER],
     # Deprecated keys
     vol.Optional(CONF_OTA_IKEA_URL): vol.All(
         cv_deprecated("The `ikea_update_url` key is deprecated and should be removed"),
