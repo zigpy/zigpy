@@ -73,7 +73,6 @@ jobs:
         id: cache-precommit
         uses: actions/cache@v3.2.6
         with:
-          fail-on-cache-miss: true
           path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
