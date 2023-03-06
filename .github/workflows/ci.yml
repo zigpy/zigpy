@@ -330,8 +330,9 @@ jobs:
         with:
           path: venv
           key: >-
-            ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{
-              needs.info.outputs.pre-commit_cache_key }}
+            ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
+            steps.python.outputs.python-version }}-${{
+            hashFiles('setup.py', 'requirements_test.txt') }}
       - name: Fail job if Python cache restore failed
         if: steps.cache-venv.outputs.cache-hit != 'true'
         run: |
@@ -341,10 +342,9 @@ jobs:
         id: cache-precommit
         uses: actions/cache/restore@v3.2.3
         with:
-          path: ${{ env.PRE_COMMIT_CACHE }}
-          key: >-
-            ${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{
-              needs.info.outputs.pre-commit_cache_key }}
+          path: ${{ env.PRE_COMMIT_HOME }}
+          key: |
+            ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if pre-commit cache restore failed
         if: steps.cache-precommit.outputs.cache-hit != 'true'
         run: |
