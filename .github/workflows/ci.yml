@@ -80,14 +80,12 @@ jobs:
           path: ${{ env.PRE_COMMIT_HOME }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: |
-            ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-
       - name: Install pre-commit dependencies
         if: steps.cache-precommit.outputs.cache-hit != 'true'
         run: |
           . venv/bin/activate
           mkdir -p ${{ env.PRE_COMMIT_HOME }}
-          pre-commit install-hooks
+          pre-commit install --install-hooks
   
   lint-ruff:
     name: Check ruff
