@@ -39,9 +39,7 @@ MIN_LAST_SEEN_DELTA = timedelta(seconds=30).total_seconds()
 
 
 def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.ModuleType:
-    """
-    Loads an SQLite module with a library version matching the provided constraint.
-    """
+    """Loads an SQLite module with a library version matching the provided constraint."""
 
     import sqlite3
 
@@ -87,8 +85,7 @@ def _register_sqlite_adapters():
 def aiosqlite_connect(
     database: str, iter_chunk_size: int = 64, **kwargs
 ) -> aiosqlite.Connection:
-    """
-    Copy of the the `aiosqlite.connect` function that connects using either the built-in
+    """Copy of the the `aiosqlite.connect` function that connects using either the built-in
     `sqlite3` module or the imported `pysqlite3` module.
     """
 
@@ -211,8 +208,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         return self._db.execute(*args, **kwargs)
 
     async def executescript(self, sql):
-        """
-        Naive replacement for `sqlite3.Cursor.executescript` that does not execute a
+        """Naive replacement for `sqlite3.Cursor.executescript` that does not execute a
         `COMMIT` before running the script. This extra `COMMIT` breaks transactions that
         run scripts.
         """
@@ -770,9 +766,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         return name in (await self._get_table_versions())
 
     async def _run_migrations(self) -> bool:
-        """
-        Migrates the database to the newest schema, returning True if migrations ran.
-        """
+        """Migrates the database to the newest schema, returning True if migrations ran."""
 
         tables = await self._get_table_versions()
         tables_version = max(tables.values(), default=0)

@@ -6,7 +6,6 @@ import collections
 import functools
 import inspect
 import logging
-import sys
 import traceback
 import typing
 import warnings
@@ -98,9 +97,7 @@ class LocalLogMixin:
         pass
 
     def _log(self, lvl: int, msg: str, *args, **kwargs):
-        if sys.version_info >= (3, 8):
-            # We have to exclude log, _log, and info
-            return self.log(lvl, msg, *args, stacklevel=4, **kwargs)
+        return self.log(lvl, msg, *args, stacklevel=4, **kwargs)
 
         return self.log(lvl, msg, *args, **kwargs)
 
@@ -323,9 +320,7 @@ class CatchingTaskMixin(LocalLogMixin):
 
 
 class DynamicBoundedSemaphore(asyncio.Semaphore):
-    """
-    `asyncio.BoundedSemaphore` with public interface to access and change the max value.
-    """
+    """`asyncio.BoundedSemaphore` with public interface to access and change the max value."""
 
     def __init__(self, value: int = 0) -> None:
         self._value: int = value
@@ -358,9 +353,7 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
 
     @max_value.setter
     def max_value(self, new_value: int) -> None:
-        """
-        Update the semaphore's max value.
-        """
+        """Update the semaphore's max value."""
         if new_value < 0:
             raise ValueError(f"Semaphore value must be >= 0: {new_value!r}")
 
@@ -381,8 +374,7 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
         return self._value <= 0
 
     async def acquire(self):
-        """
-        Acquire a semaphore.
+        """Acquire a semaphore.
 
         If the internal counter is larger than zero on entry, decrement it by one and
         return True immediately.  If it is zero on entry, block, waiting until some
@@ -409,8 +401,7 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
         return True
 
     def release(self) -> None:
-        """
-        Release a semaphore, incrementing the internal counter by one.
+        """Release a semaphore, incrementing the internal counter by one.
 
         When it was zero on entry and another coroutine is waiting for it to become
         larger than zero again, wake up that coroutine.
@@ -438,9 +429,7 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
 
 
 def deprecated(message: str) -> typing.Callable[[typing.Callable], typing.Callable]:
-    """
-    Decorator that emits a DeprecationWarning when the function or property is accessed.
-    """
+    """Decorator that emits a DeprecationWarning when the function or property is accessed."""
 
     def decorator(function: typing.Callable) -> typing.Callable:
         @functools.wraps(function)
@@ -459,9 +448,7 @@ def deprecated(message: str) -> typing.Callable[[typing.Callable], typing.Callab
 def deprecated_attrs(
     mapping: dict[str, typing.Any]
 ) -> typing.Callable[[str], typing.Any]:
-    """
-    Create a module-level `__getattr__` function that remaps deprecated objects.
-    """
+    """Create a module-level `__getattr__` function that remaps deprecated objects."""
 
     def __getattr__(name: str) -> typing.Any:
         if name not in mapping:

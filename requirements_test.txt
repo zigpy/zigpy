@@ -7,5 +7,6 @@ pytest-asyncio
 pytest-cov
 pytest-timeout
 freezegun
+ruff==0.0.253
 
 pysqlite3-binary; platform_system=="Linux"

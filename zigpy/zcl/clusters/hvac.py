@@ -127,7 +127,8 @@ class HeatingFuelSource(t.enum8):
 
 class Thermostat(Cluster):
     """An interface for configuring and controlling the
-    functionality of a thermostat."""
+    functionality of a thermostat.
+    """
 
     class ACCapacityFormat(t.enum8):
         BTUh = 0x00
@@ -444,7 +445,8 @@ class Thermostat(Cluster):
 
 class Fan(Cluster):
     """An interface for controlling a fan in a heating /
-    cooling system."""
+    cooling system.
+    """
 
     class FanMode(t.enum8):
         Off = 0x00
@@ -524,7 +526,8 @@ class Dehumidification(Cluster):
 class UserInterface(Cluster):
     """An interface for configuring the user interface of a
     thermostat (which may be remote from the
-    thermostat)."""
+    thermostat).
+    """
 
     class TemperatureDisplayMode(t.enum8):
         Metric = 0x00

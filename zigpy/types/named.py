@@ -14,9 +14,7 @@ class BaseDataclassMixin:
 
 
 def _hex_string_to_bytes(hex_string: str) -> bytes:
-    """
-    Parses a hex string with optional colon delimiters and whitespace into bytes.
-    """
+    """Parses a hex string with optional colon delimiters and whitespace into bytes."""
 
     # Strips out whitespace and colons
     cleaned = "".join(hex_string.replace(":", "").split()).upper()
@@ -559,8 +557,7 @@ class TransmitOptions(enum.Flag):
 
 @dataclasses.dataclass
 class ZigbeePacket(BaseDataclassMixin):
-    """
-    Container for the information in an incoming or outgoing ZDO or ZCL packet.
+    """Container for the information in an incoming or outgoing ZDO or ZCL packet.
 
     The radio library is expected to fill this object in with all received data and pass
     it to zigpy for every type of packet.

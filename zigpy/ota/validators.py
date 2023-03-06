@@ -22,9 +22,7 @@ class ValidationError(Exception):
 
 
 def parse_silabs_ebl(data: bytes) -> typing.Iterable[tuple[bytes, bytes]]:
-    """
-    Parses a Silicon Labs EBL firmware image.
-    """
+    """Parses a Silicon Labs EBL firmware image."""
 
     if len(data) % 64 != 0:
         raise ValidationError(
@@ -71,9 +69,7 @@ def parse_silabs_ebl(data: bytes) -> typing.Iterable[tuple[bytes, bytes]]:
 
 
 def parse_silabs_gbl(data: bytes) -> typing.Iterable[tuple[bytes, bytes]]:
-    """
-    Parses a Silicon Labs GBL firmware image.
-    """
+    """Parses a Silicon Labs GBL firmware image."""
 
     orig_data = data
 
@@ -112,9 +108,7 @@ def parse_silabs_gbl(data: bytes) -> typing.Iterable[tuple[bytes, bytes]]:
 
 
 def validate_firmware(data: bytes) -> ValidationResult:
-    """
-    Validates a firmware image.
-    """
+    """Validates a firmware image."""
 
     parser = None
 
@@ -130,8 +124,7 @@ def validate_firmware(data: bytes) -> ValidationResult:
 
 
 def validate_ota_image(image: BaseOTAImage) -> ValidationResult:
-    """
-    Validates a Zigbee OTA image's embedded firmwares and indicates if an image is
+    """Validates a Zigbee OTA image's embedded firmwares and indicates if an image is
     valid, invalid, or of an unknown type.
     """
 
@@ -151,9 +144,7 @@ def validate_ota_image(image: BaseOTAImage) -> ValidationResult:
 
 
 def check_invalid(image: BaseOTAImage) -> bool:
-    """
-    Checks if an image is invalid or not. Unknown image types are considered valid.
-    """
+    """Checks if an image is invalid or not. Unknown image types are considered valid."""
 
     try:
         validate_ota_image(image)

@@ -13,7 +13,8 @@ from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 class IasZone(Cluster):
     """The IAS Zone cluster defines an interface to the functionality of an IAS
     security zone device. IAS Zone supports up to two alarm types per zone, low battery
-    reports and supervision of the IAS network."""
+    reports and supervision of the IAS network.
+    """
 
     class ZoneState(t.enum8):
         Not_enrolled = 0x00

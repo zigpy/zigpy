@@ -167,7 +167,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.debug("Failed to sync-up group membership")
             return
 
-        groups = {group for group in res[1]}
+        groups = set(res[1])
         self.device.application.groups.update_group_membership(self, groups)
 
     async def get_model_info(self) -> tuple[str | None, str | None]:

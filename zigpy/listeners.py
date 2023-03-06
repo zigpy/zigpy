@@ -24,8 +24,7 @@ class BaseRequestListener:
         hdr: foundation.ZCLHeader | zdo_t.ZDOHeader,
         command: foundation.CommandSchema,
     ) -> bool:
-        """
-        Attempts to resolve the listener with a given response. Can be called with any
+        """Attempts to resolve the listener with a given response. Can be called with any
         command as an argument, including ones we don't match.
         """
 
@@ -47,8 +46,7 @@ class BaseRequestListener:
         hdr: foundation.ZCLHeader | zdo_t.ZDOHeader,
         command: foundation.CommandSchema,
     ) -> bool:
-        """
-        Implemented by subclasses to handle matched commands.
+        """Implemented by subclasses to handle matched commands.
 
         Return value indicates whether or not the listener has actually resolved,
         which can sometimes be unavoidable.
@@ -57,8 +55,7 @@ class BaseRequestListener:
         raise NotImplementedError()  # pragma: no cover
 
     def cancel(self):
-        """
-        Implement by subclasses to cancel the listener.
+        """Implement by subclasses to cancel the listener.
 
         Return value indicates whether or not the listener is cancelable.
         """
