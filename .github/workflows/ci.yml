@@ -78,10 +78,8 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ env.PRE_COMMIT_HOME }}
-          key: |
+          key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: |
-            ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-
       - name: Install pre-commit dependencies
         if: steps.cache-precommit.outputs.cache-hit != 'true'
         run: |
@@ -120,7 +118,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ env.PRE_COMMIT_HOME }}
-          key: |
+          key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if pre-commit cache restore failed
         if: steps.cache-precommit.outputs.cache-hit != 'true'
@@ -174,10 +172,10 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ env.PRE_COMMIT_HOME }}
-          key: |
+          key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
+        if: steps.cache-precommit.outputs.cache-hit != 'true'
         run: |
           echo "Failed to restore Python virtual environment from cache"
           exit 1
@@ -217,10 +215,10 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ env.PRE_COMMIT_HOME }}
-          key: |
+          key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
+        if: steps.cache-precommit.outputs.cache-hit != 'true'
         run: |
           echo "Failed to restore Python virtual environment from cache"
           exit 1
@@ -263,10 +261,10 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ env.PRE_COMMIT_HOME }}
-          key: |
+          key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
+        if: steps.cache-precommit.outputs.cache-hit != 'true'
         run: |
           echo "Failed to restore Python virtual environment from cache"
           exit 1
@@ -306,10 +304,10 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ env.PRE_COMMIT_HOME }}
-          key: |
+          key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
+        if: steps.cache-precommit.outputs.cache-hit != 'true'
         run: |
           echo "Failed to restore Python virtual environment from cache"
           exit 1
@@ -352,10 +350,10 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ env.PRE_COMMIT_HOME }}
-          key: |
+          key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
+        if: steps.cache-precommit.outputs.cache-hit != 'true'
         run: |
           echo "Failed to restore Python virtual environment from cache"
           exit 1
