@@ -86,6 +86,7 @@ jobs:
         if: steps.cache-precommit.outputs.cache-hit != 'true'
         run: |
           . venv/bin/activate
+          mkdir -p ${{ env.PRE_COMMIT_HOME }}
           pre-commit install-hooks
   
   lint-ruff:
