@@ -74,7 +74,9 @@ class DeviceRegistry:
                 _LOGGER.debug("Fail, because device model mismatch: '%s'", device.model)
                 continue
 
-            if device.manufacturer != candidate.signature.get(SIG_MANUFACTURER, device.manufacturer):
+            if device.manufacturer != candidate.signature.get(
+                SIG_MANUFACTURER, device.manufacturer
+            ):
                 _LOGGER.debug(
                     "Fail, because device manufacturer mismatch: '%s'",
                     device.manufacturer,
