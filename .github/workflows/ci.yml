@@ -94,16 +94,16 @@ jobs:
     needs: pre-commit
     steps:
       - name: Check out code from GitHub
-        uses: actions/checkout@v3.3.0
+        uses: actions/checkout@v3
       - name: Set up Python ${{ env.PYTHON_VERSION_DEFAULT }}
-        uses: actions/setup-python@v4.5.0
+        uses: actions/setup-python@v4
         id: python
         with:
           python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
           check-latest: true
       - name: Restore base Python virtual environment
         id: cache-venv
-        uses: actions/cache/restore@v3.2.3
+        uses: actions/cache@v3
         with:
           path: venv
           key: >-
@@ -117,7 +117,7 @@ jobs:
           exit 1
       - name: Restore pre-commit environment from cache
         id: cache-precommit
-        uses: actions/cache/restore@v3.2.3
+        uses: actions/cache@v3
         with:
           path: ${{ env.PRE_COMMIT_HOME }}
           key: |
