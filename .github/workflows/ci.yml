@@ -129,17 +129,9 @@ jobs:
       - name: Register ruff problem matcher
         run: |
           echo "::add-matcher::.github/workflows/matchers/ruff.json"
-      - name: Run ruff (fully)
-        if: needs.info.outputs.test_full_suite == 'true'
+      - name: Run ruff
         run: |
           . venv/bin/activate
-          pre-commit run --hook-stage manual ruff --all-files
-      - name: Run ruff (partially)
-        if: needs.info.outputs.test_full_suite == 'false'
-        shell: bash
-        run: |
-          . venv/bin/activate
-          shopt -s globstar
           pre-commit run --hook-stage manual ruff --all-files --show-diff-on-failure
 
   lint-black:
