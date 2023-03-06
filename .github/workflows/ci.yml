@@ -8,7 +8,7 @@ on:
 env:
   CACHE_VERSION: 1
   PYTHON_VERSION_DEFAULT: '3.9.15'
-  PRE_COMMIT_HOME: .cache/pre-commit
+  PRE_COMMIT_CACHE_PATH: ~/.cache/pre-commit
 
 jobs:
   # Separate job to pre-populate the base dependency cache
@@ -77,14 +77,14 @@ jobs:
         id: cache-precommit
         uses: actions/cache@v3.2.6
         with:
-          path: ${{ env.PRE_COMMIT_HOME }}
+          path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Install pre-commit dependencies
         if: steps.cache-precommit.outputs.cache-hit != 'true'
         run: |
           . venv/bin/activate
-          mkdir -p ${{ env.PRE_COMMIT_HOME }}
+          mkdir -p ${{ env.PRE_COMMIT_CACHE_PATH }}
           pre-commit install --install-hooks
   
   lint-ruff:
@@ -118,7 +118,7 @@ jobs:
         id: cache-precommit
         uses: actions/cache/restore@v3.2.6
         with:
-          path: ${{ env.PRE_COMMIT_HOME }}
+          path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if pre-commit cache restore failed
@@ -164,7 +164,7 @@ jobs:
         id: cache-precommit
         uses: actions/cache/restore@v3.2.6
         with:
-          path: ${{ env.PRE_COMMIT_HOME }}
+          path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if cache restore failed
@@ -207,7 +207,7 @@ jobs:
         id: cache-precommit
         uses: actions/cache/restore@v3.2.6
         with:
-          path: ${{ env.PRE_COMMIT_HOME }}
+          path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if cache restore failed
@@ -253,7 +253,7 @@ jobs:
         id: cache-precommit
         uses: actions/cache/restore@v3.2.6
         with:
-          path: ${{ env.PRE_COMMIT_HOME }}
+          path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if cache restore failed
@@ -296,7 +296,7 @@ jobs:
         id: cache-precommit
         uses: actions/cache/restore@v3.2.6
         with:
-          path: ${{ env.PRE_COMMIT_HOME }}
+          path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if cache restore failed
@@ -342,7 +342,7 @@ jobs:
         id: cache-precommit
         uses: actions/cache/restore@v3.2.6
         with:
-          path: ${{ env.PRE_COMMIT_HOME }}
+          path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Fail job if cache restore failed
