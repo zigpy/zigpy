@@ -63,20 +63,17 @@ jobs:
         id: cache-venv
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: venv
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
             steps.python.outputs.python-version }}-${{
             hashFiles('setup.py', 'requirements_test.txt') }}
-      - name: Fail job if Python cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Restore pre-commit environment from cache
         id: cache-precommit
         uses: actions/cache@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
@@ -104,28 +101,20 @@ jobs:
         id: cache-venv
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: venv
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
             steps.python.outputs.python-version }}-${{
             hashFiles('setup.py', 'requirements_test.txt') }}
-      - name: Fail job if Python cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Restore pre-commit environment from cache
         id: cache-precommit
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-      - name: Fail job if pre-commit cache restore failed
-        if: steps.cache-precommit.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore pre-commit environment from cache"
-          exit 1
       - name: Register ruff problem matcher
         run: |
           echo "::add-matcher::.github/workflows/matchers/ruff.json"
@@ -150,28 +139,20 @@ jobs:
         id: cache-venv
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: venv
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
             steps.python.outputs.python-version }}-${{
             hashFiles('setup.py', 'requirements_test.txt') }}
-      - name: Fail job if Python cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Restore pre-commit environment from cache
         id: cache-precommit
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-      - name: Fail job if cache restore failed
-        if: steps.cache-precommit.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Run black
         run: |
           . venv/bin/activate
@@ -193,28 +174,20 @@ jobs:
         id: cache-venv
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: venv
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
             steps.python.outputs.python-version }}-${{
             hashFiles('setup.py', 'requirements_test.txt') }}
-      - name: Fail job if Python cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Restore pre-commit environment from cache
         id: cache-precommit
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-      - name: Fail job if cache restore failed
-        if: steps.cache-precommit.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Register flake8 problem matcher
         run: |
           echo "::add-matcher::.github/workflows/matchers/flake8.json"
@@ -239,28 +212,20 @@ jobs:
         id: cache-venv
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: venv
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
             steps.python.outputs.python-version }}-${{
             hashFiles('setup.py', 'requirements_test.txt') }}
-      - name: Fail job if Python cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Restore pre-commit environment from cache
         id: cache-precommit
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-      - name: Fail job if cache restore failed
-        if: steps.cache-precommit.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Run isort
         run: |
           . venv/bin/activate
@@ -282,28 +247,20 @@ jobs:
         id: cache-venv
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: venv
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
             steps.python.outputs.python-version }}-${{
             hashFiles('setup.py', 'requirements_test.txt') }}
-      - name: Fail job if Python cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Restore pre-commit environment from cache
         id: cache-precommit
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-      - name: Fail job if cache restore failed
-        if: steps.cache-precommit.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Register codespell problem matcher
         run: |
           echo "::add-matcher::.github/workflows/matchers/codespell.json"
@@ -328,28 +285,20 @@ jobs:
         id: cache-venv
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: venv
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
             steps.python.outputs.python-version }}-${{
             hashFiles('setup.py', 'requirements_test.txt') }}
-      - name: Fail job if Python cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Restore pre-commit environment from cache
         id: cache-precommit
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: ${{ env.PRE_COMMIT_CACHE_PATH }}
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-      - name: Fail job if cache restore failed
-        if: steps.cache-precommit.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Run mypy
         run: |
           . venv/bin/activate
@@ -375,16 +324,12 @@ jobs:
         id: cache-venv
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: venv
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
             steps.python.outputs.python-version }}-${{
             hashFiles('setup.py', 'requirements_test.txt') }}
-      - name: Fail job if Python cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Register Python problem matcher
         run: |
           echo "::add-matcher::.github/workflows/matchers/python.json"
@@ -428,16 +373,12 @@ jobs:
         id: cache-venv
         uses: actions/cache/restore@v3.2.6
         with:
+          fail-on-cache-miss: true
           path: venv
           key: >-
             ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
             steps.python.outputs.python-version }}-${{
             hashFiles('setup.py', 'requirements_test.txt') }}
-      - name: Fail job if Python cache restore failed
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          echo "Failed to restore Python virtual environment from cache"
-          exit 1
       - name: Download all coverage artifacts
         uses: actions/download-artifact@v3
       - name: Combine coverage results
