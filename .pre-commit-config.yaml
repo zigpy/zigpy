@@ -3,11 +3,13 @@ repos:
     rev: v3.3.1
     hooks:
       - id: pyupgrade
+        stages: [manual]
 
   - repo: https://github.com/PyCQA/autoflake
     rev: v2.0.1
     hooks:
       - id: autoflake
+        stages: [manual]
 
   - repo: https://github.com/psf/black
     rev: 23.1.0
@@ -16,6 +18,7 @@ repos:
         args:
           - --safe
           - --quiet
+        stages: [manual]
 
   - repo: https://github.com/pycqa/flake8
     rev: 6.0.0
@@ -38,3 +41,10 @@ repos:
       - id: mypy
         additional_dependencies:
           - pydantic
+  
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.0.253
+    hooks:
+      - id: ruff
+        args:
+          - --fix
