@@ -61,5 +61,15 @@ fixture-parentheses = false
 [pyupgrade]
 keep-runtime-typing = true
 
+[isort]
+# will group `import x` and `from x import` of the same module.
+force-sort-within-sections = true
+known-first-party = [
+    "zigpy",
+    "tests",
+]
+forced-separate = ["tests"]
+combine-as-imports = true
+
 [mccabe]
 max-complexity = 25
