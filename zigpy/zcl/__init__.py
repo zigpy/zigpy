@@ -685,7 +685,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             len(records) == 1 and records[0].status == foundation.Status.SUCCESS
         ):
             # we get a single success when all are supported
-            for attr in attributes.keys():
+            for attr in attributes:
                 self.remove_unsupported_attribute(attr)
         return res
 

@@ -15,9 +15,7 @@ def _hex_uint16_repr(v: int) -> str:
 
 
 def ensure_valid_name(name: str | None) -> None:
-    """
-    Ensures that the name of an attribute or command is valid.
-    """
+    """Ensures that the name of an attribute or command is valid."""
     if name is not None and not name.isidentifier():
         raise ValueError(f"{name!r} is not a valid identifier name.")
 
@@ -491,7 +489,8 @@ class Direction(t.enum1):
 
 class FrameControl(t.Struct, t.uint8_t):
     """The frame control field contains information defining the command type
-    and other control flags."""
+    and other control flags.
+    """
 
     frame_type: FrameType
     is_manufacturer_specific: t.uint1_t
@@ -675,8 +674,7 @@ class ZCLCommandDef:
         object.__setattr__(self, "is_reply", bool(self.direction))
 
     def with_compiled_schema(self):
-        """
-        Return a copy of the ZCL command definition object with its dictionary command
+        """Return a copy of the ZCL command definition object with its dictionary command
         schema converted into a `CommandSchema` subclass.
         """
 
@@ -737,9 +735,7 @@ class ZCLCommandDef:
 
 
 class CommandSchema(t.Struct, tuple):
-    """
-    Struct subclass that behaves more like a tuple.
-    """
+    """Struct subclass that behaves more like a tuple."""
 
     command: ZCLCommandDef = None
 

@@ -456,9 +456,7 @@ class ChlorineConcentration(_ConcentrationMixin, Cluster):
 
 
 class FecalColiformAndEColiFraction(_ConcentrationMixin, Cluster):
-    """
-    Percent of positive samples
-    """
+    """Percent of positive samples"""
 
     cluster_id = 0x041B
     name = "Fecal coliform & E. Coli Fraction"
@@ -491,9 +489,7 @@ class TotalColiformBacteriaFraction(_ConcentrationMixin, Cluster):
 
 # XXX: is this a concentration? What are the units?
 class Turbidity(_ConcentrationMixin, Cluster):
-    """
-    Cloudiness of particles in water where an average person would notice a 5 or higher
-    """
+    """Cloudiness of particles in water where an average person would notice a 5 or higher"""
 
     cluster_id = 0x0420
     name = "Turbidity"
@@ -556,9 +552,7 @@ class SodiumConcentration(_ConcentrationMixin, Cluster):
 
 # XXX: is this a concentration? What are the units?
 class PM25(_ConcentrationMixin, Cluster):
-    """
-    Particulate Matter 2.5 microns or less
-    """
+    """Particulate Matter 2.5 microns or less"""
 
     cluster_id = 0x042A
     name = "PM2.5"

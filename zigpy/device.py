@@ -78,9 +78,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return f"0x{self.nwk:04X}"
 
     def update_last_seen(self) -> None:
-        """
-        Update the `last_seen` attribute to the current time and emit an event.
-        """
+        """Update the `last_seen` attribute to the current time and emit an event."""
 
         self.last_seen = datetime.now(timezone.utc)
 
@@ -191,8 +189,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException), tries=3, delay=0.5
     )
     async def _initialize(self) -> None:
-        """
-        Attempts multiple times to discover all basic information about a device: namely
+        """Attempts multiple times to discover all basic information about a device: namely
         its node descriptor, all endpoints and clusters, and the model and manufacturer
         attributes from any Basic cluster exposing those attributes.
         """
@@ -484,8 +481,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             if endpoint_id == 0:  # ZDO
                 continue
             signature.setdefault(SIG_ENDPOINTS, {})
-            in_clusters = [c for c in endpoint.in_clusters]
-            out_clusters = [c for c in endpoint.out_clusters]
+            in_clusters = list(endpoint.in_clusters)
+            out_clusters = list(endpoint.out_clusters)
             signature[SIG_ENDPOINTS][endpoint_id] = {
                 SIG_EP_PROFILE: endpoint.profile_id,
                 SIG_EP_TYPE: endpoint.device_type,

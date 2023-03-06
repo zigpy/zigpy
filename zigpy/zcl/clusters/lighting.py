@@ -9,7 +9,8 @@ from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
 
 class Color(Cluster):
     """Attributes and commands for controlling the color
-    properties of a color-capable light"""
+    properties of a color-capable light
+    """
 
     class ColorMode(t.enum8):
         Hue_and_saturation = 0x00
@@ -363,7 +364,8 @@ class Color(Cluster):
 
 class Ballast(Cluster):
     """Attributes and commands for configuring a lighting
-    ballast"""
+    ballast
+    """
 
     class BallastStatus(t.bitmap8):
         Non_operational = 0b00000001
