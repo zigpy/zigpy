@@ -5,7 +5,6 @@ import enum
 import functools
 import keyword
 import typing
-import warnings
 
 import zigpy.types as t
 
@@ -498,37 +497,12 @@ class FrameControl(t.Struct, t.uint8_t):
     disable_default_response: t.uint1_t
     reserved: t.uint3_t
 
-    @property
-    def is_reply(self) -> bool | None:
-        warnings.warn("`is_reply` is deprecated, use `direction`", DeprecationWarning)
-
-        if self.direction is None:
-            return None
-
-        return bool(self.direction)
-
-    @is_reply.setter
-    def is_reply(self, value: bool | None):
-        warnings.warn("`is_reply` is deprecated, use `direction`", DeprecationWarning)
-
-        if value is None:
-            self.direction = None
-        else:
-            self.direction = Direction(value)
-
     @classmethod
     def cluster(
         cls,
         direction: Direction = Direction.Server_to_Client,
-        is_reply: bool | None = None,
         is_manufacturer_specific: bool = False,
     ):
-        if is_reply is not None:
-            warnings.warn(
-                "`is_reply` is deprecated, use `direction`", DeprecationWarning
-            )
-            direction = Direction(is_reply)
-
         return cls(
             frame_type=FrameType.CLUSTER_COMMAND,
             is_manufacturer_specific=is_manufacturer_specific,
@@ -541,15 +515,8 @@ class FrameControl(t.Struct, t.uint8_t):
     def general(
         cls,
         direction: Direction = Direction.Server_to_Client,
-        is_reply: bool | None = None,
         is_manufacturer_specific: bool = False,
     ):
-        if is_reply is not None:
-            warnings.warn(
-                "`is_reply` is deprecated, use `direction`", DeprecationWarning
-            )
-            direction = Direction(is_reply)
-
         return cls(
             frame_type=FrameType.GLOBAL_COMMAND,
             is_manufacturer_specific=is_manufacturer_specific,
@@ -592,11 +559,6 @@ class ZCLHeader(t.Struct):
         return super().__new__(cls, frame_control, manufacturer, tsn, command_id)
 
     @property
-    def is_reply(self) -> bool:
-        """Return direction of Frame Control."""
-        return self.frame_control.direction == Direction.Client_to_Server
-
-    @property
     def direction(self) -> bool:
         """Return direction of Frame Control."""
         return self.frame_control.direction
@@ -616,12 +578,10 @@ class ZCLHeader(t.Struct):
         tsn: int | t.uint8_t,
         command_id: int | t.uint8_t,
         manufacturer: int | t.uint16_t | None = None,
-        is_reply: bool = None,
         direction: Direction = Direction.Server_to_Client,
     ) -> ZCLHeader:
         return cls(
             frame_control=FrameControl.general(
-                is_reply=is_reply,  # deprecated
                 direction=direction,
                 is_manufacturer_specific=(manufacturer is not None),
             ),
@@ -636,12 +596,10 @@ class ZCLHeader(t.Struct):
         tsn: int | t.uint8_t,
         command_id: int | t.uint8_t,
         manufacturer: int | t.uint16_t | None = None,
-        is_reply: bool = None,
         direction: Direction = Direction.Server_to_Client,
     ) -> ZCLHeader:
         return cls(
             frame_control=FrameControl.cluster(
-                is_reply=is_reply,  # deprecated
                 direction=direction,
                 is_manufacturer_specific=(manufacturer is not None),
             ),
@@ -652,26 +610,20 @@ class ZCLHeader(t.Struct):
 
 
 @dataclasses.dataclass(frozen=True)
-class ZCLCommandDef:
+class ZCLCommandDef(t.BaseDataclassMixin):
     name: str = None
     schema: CommandSchema = None
     direction: Direction = None
     id: t.uint8_t = None
     is_manufacturer_specific: bool = None
 
-    # Deprecated
-    is_reply: bool = None
-
     def __post_init__(self):
         ensure_valid_name(self.name)
 
-        if self.is_reply is not None:
-            warnings.warn(
-                "`is_reply` is deprecated, use `direction`", DeprecationWarning
+        if isinstance(self.direction, bool):
+            object.__setattr__(
+                self, "direction", Direction._from_is_reply(self.direction)
             )
-            object.__setattr__(self, "direction", Direction(self.is_reply))
-
-        object.__setattr__(self, "is_reply", bool(self.direction))
 
     def with_compiled_schema(self):
         """Return a copy of the ZCL command definition object with its dictionary command
@@ -725,13 +677,6 @@ class ZCLCommandDef:
             f"is_manufacturer_specific={self.is_manufacturer_specific}"
             f")"
         )
-
-    def replace(self, **kwargs) -> ZCLCommandDef:
-        return dataclasses.replace(self, is_reply=None, **kwargs)
-
-    def __getitem__(self, key):
-        warnings.warn("Attributes should be accessed by name", DeprecationWarning)
-        return (self.name, self.schema, self.direction)[key]
 
 
 class CommandSchema(t.Struct, tuple):
@@ -793,7 +738,7 @@ ZCLAttributeAccess._names = {
 
 
 @dataclasses.dataclass(frozen=True)
-class ZCLAttributeDef:
+class ZCLAttributeDef(t.BaseDataclassMixin):
     name: str = None
     type: type = None
     access: ZCLAttributeAccess = dataclasses.field(
@@ -819,9 +764,6 @@ class ZCLAttributeDef:
 
         ensure_valid_name(self.name)
 
-    def replace(self, **kwargs) -> ZCLAttributeDef:
-        return dataclasses.replace(self, **kwargs)
-
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
@@ -833,10 +775,6 @@ class ZCLAttributeDef:
             f"is_manufacturer_specific={self.is_manufacturer_specific}"
             f")"
         )
-
-    def __getitem__(self, key):
-        warnings.warn("Attributes should be accessed by name", DeprecationWarning)
-        return (self.name, self.type)[key]
 
 
 class GeneralCommand(t.enum8):
