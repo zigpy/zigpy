@@ -711,34 +711,6 @@ def test_zcl_attribute_definition():
     assert a.replace(access="w").access == foundation.ZCLAttributeAccess.Write
 
 
-def test_zcl_attribute_item_access_warning():
-    a = foundation.ZCLAttributeDef(
-        id=0x1234,
-        name="test",
-        type=t.uint16_t,
-    )
-
-    with pytest.deprecated_call():
-        assert a[0] == a.name
-        assert a[1] == a.type
-
-
-def test_zcl_command_item_access_warning():
-    s = foundation.ZCLCommandDef(
-        id=0x12,
-        name="test",
-        schema={
-            "foo": t.uint8_t,
-        },
-        direction=foundation.Direction.Server_to_Client,
-    )
-
-    with pytest.deprecated_call():
-        assert s[0] == s.name
-        assert s[1] == s.schema
-        assert s[2] == s.direction
-
-
 def test_invalid_command_def_name():
     command = foundation.ZCLCommandDef(
         id=0x12,

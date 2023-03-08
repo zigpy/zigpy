@@ -5,7 +5,6 @@ import enum
 import functools
 import keyword
 import typing
-import warnings
 
 import zigpy.types as t
 
@@ -678,10 +677,6 @@ class ZCLCommandDef(t.BaseDataclassMixin):
             f"is_manufacturer_specific={self.is_manufacturer_specific}"
             f")"
         )
-
-    def __getitem__(self, key):
-        warnings.warn("Attributes should be accessed by name", DeprecationWarning)
-        return (self.name, self.schema, self.direction)[key]
 
 
 class CommandSchema(t.Struct, tuple):
