@@ -426,19 +426,29 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if not sender.initializing and not sender.is_initialized:
             sender.schedule_initialize()
 
-    def handle_join(self, nwk: t.NWK, ieee: t.EUI64, parent_nwk: t.NWK) -> None:
+    def handle_join(
+        self,
+        nwk: t.NWK,
+        ieee: t.EUI64,
+        parent_nwk: t.NWK,
+        *,
+        handle_rejoin: bool = True,
+    ) -> None:
         """Called when a device joins or announces itself on the network."""
 
         ieee = t.EUI64(ieee)
 
         try:
             dev = self.get_device(ieee=ieee)
-            LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
-            new_join = False
         except KeyError:
             dev = self.add_device(ieee, nwk)
             LOGGER.info("New device 0x%04x (%s) joined the network", nwk, ieee)
             new_join = True
+        else:
+            if handle_rejoin:
+                LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
+
+            new_join = False
 
         if dev.nwk != nwk:
             LOGGER.debug("Device %s changed id (0x%04x => 0x%04x)", ieee, dev.nwk, nwk)
@@ -455,7 +465,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         elif not dev.is_initialized:
             # Re-initialize partially-initialized devices but don't emit "device_joined"
             dev.schedule_initialize()
-        else:
+        elif handle_rejoin:
             # Rescan groups for devices that are not newly joining and initialized
             dev.schedule_group_membership_scan()
 
@@ -811,7 +821,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
             if status == zdo_types.Status.SUCCESS:
                 LOGGER.debug("Discovered IEEE address for NWK=%s: %s", nwk, ieee)
-                self.handle_join(nwk=nwk, ieee=ieee, parent_nwk=None)
+                self.handle_join(
+                    nwk=nwk, ieee=ieee, parent_nwk=None, handle_rejoin=False
+                )
 
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         """Notify zigpy of a received Zigbee packet."""
