@@ -136,8 +136,7 @@ class SubElement(t.Struct):
 
 
 class BaseOTAImage:
-    """
-    Base OTA image container type. Not all images are valid Zigbee OTA images but are
+    """Base OTA image container type. Not all images are valid Zigbee OTA images but are
     nonetheless accepted by devices. Only requirement is that the image contains a valid
     OTAImageHeader property and can be serialized/deserialized.
     """
@@ -153,9 +152,7 @@ class BaseOTAImage:
 
 
 class OTAImage(t.Struct, BaseOTAImage):
-    """
-    Zigbee OTA image according to 11.4 of the ZCL specification.
-    """
+    """Zigbee OTA image according to 11.4 of the ZCL specification."""
 
     header: OTAImageHeader
     subelements: t.List[SubElement]
@@ -186,8 +183,7 @@ class OTAImage(t.Struct, BaseOTAImage):
 
 @attr.s
 class HueSBLOTAImage(BaseOTAImage):
-    """
-    Unique OTA image format for certain Hue devices. Starts with a valid header but does
+    """Unique OTA image format for certain Hue devices. Starts with a valid header but does
     not contain any valid subelements beyond that point.
     """
 
@@ -223,9 +219,7 @@ class HueSBLOTAImage(BaseOTAImage):
 
 
 def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:
-    """
-    Attempts to extract any known OTA image type from data. Does not validate firmware.
-    """
+    """Attempts to extract any known OTA image type from data. Does not validate firmware."""
 
     if len(data) > 4 and int.from_bytes(data[0:4], "little") + 21 == len(data):
         # Legrand OTA images are prefixed with their unwrapped size and include a 1 + 16

@@ -49,9 +49,7 @@ class Bits(list):
 
 
 class SerializableBytes:
-    """
-    A container object for raw bytes that enforces `serialize()` will be called.
-    """
+    """A container object for raw bytes that enforces `serialize()` will be called."""
 
     def __init__(self, value: bytes = b"") -> None:
         if isinstance(value, type(self)):
@@ -370,8 +368,7 @@ class _IntEnumMeta(enum.EnumMeta):
 
 
 def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
-    """
-    Mixins are broken by Python 3.8.6 so we must dynamically create the enum with the
+    """Mixins are broken by Python 3.8.6 so we must dynamically create the enum with the
     appropriate methods but with only one non-Enum parent class.
     """
 
@@ -575,14 +572,13 @@ class BaseFloat(float):
 
     @staticmethod
     def _convert_format(*, src: BaseFloat, dst: BaseFloat, n: int) -> int:
-        """
-        Converts an integer representing a float from one format into another. Note:
+        """Converts an integer representing a float from one format into another. Note:
 
-         1. Format is assumed to be little endian: 0b[sign bit] [exponent] [fraction]
-         2. Truncates/extends the exponent, preserving the special cases of all 1's
-            and all 0's.
-         3. Truncates/extends the fractional bits from the right, allowing lossless
-            conversion to a "bigger" representation.
+        1. Format is assumed to be little endian: 0b[sign bit] [exponent] [fraction]
+        2. Truncates/extends the exponent, preserving the special cases of all 1's
+        and all 0's.
+        3. Truncates/extends the fractional bits from the right, allowing lossless
+        conversion to a "bigger" representation.
         """
 
         src_sign = n >> (src._exponent_bits + src._fraction_bits)
@@ -767,7 +763,7 @@ class KwargTypeMeta(type):
             return False
 
         # They must also have the same class kwargs
-        for key in cls._getitem_kwargs.keys():
+        for key in cls._getitem_kwargs:
             key = f"_{key}"
 
             if getattr(cls, key) != getattr(subclass, key):

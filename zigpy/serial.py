@@ -21,8 +21,7 @@ async def create_serial_connection(
     stopbits=pyserial.STOPBITS_ONE,
     **kwargs: typing.Any,
 ) -> tuple[asyncio.Transport, asyncio.Protocol]:
-    """
-    Wrapper around pyserial-asyncio that transparently substitutes a normal TCP
+    """Wrapper around pyserial-asyncio that transparently substitutes a normal TCP
     transport and protocol when a `socket` connection URI is provided.
     """
     parsed_url = urllib.parse.urlparse(url)

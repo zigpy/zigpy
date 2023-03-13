@@ -32,8 +32,7 @@ class NetworkBackup(t.BaseDataclassMixin):
     )
 
     def is_compatible_with(self, backup: NetworkBackup) -> bool:
-        """
-        Two backups are compatible if, ignoring frame counters, the same external device
+        """Two backups are compatible if, ignoring frame counters, the same external device
         will be able to join either network.
         """
 
@@ -50,9 +49,7 @@ class NetworkBackup(t.BaseDataclassMixin):
         )
 
     def supersedes(self, backup: NetworkBackup) -> bool:
-        """
-        Checks if this network backup is more recent than another backup.
-        """
+        """Checks if this network backup is more recent than another backup."""
 
         return (
             self.is_compatible_with(backup)
@@ -64,9 +61,7 @@ class NetworkBackup(t.BaseDataclassMixin):
         )
 
     def is_complete(self) -> bool:
-        """
-        Checks if this backup captures enough network state to recreate the network.
-        """
+        """Checks if this backup captures enough network state to recreate the network."""
 
         return (
             self.node_info.ieee != t.EUI64.UNKNOWN
@@ -164,9 +159,7 @@ class BackupManager(ListenableMixin):
     def add_backup(
         self, backup: NetworkBackup, *, suppress_event: bool = False
     ) -> None:
-        """
-        Adds a new backup to the database, superseding older ones if necessary.
-        """
+        """Adds a new backup to the database, superseding older ones if necessary."""
 
         LOGGER.debug("Adding a new backup %s", backup)
 
@@ -216,9 +209,7 @@ class BackupManager(ListenableMixin):
 
 
 def _network_backup_to_open_coordinator_backup(backup: NetworkBackup) -> dict[str, Any]:
-    """
-    Converts a `NetworkBackup` to an Open Coordinator Backup-compatible dictionary.
-    """
+    """Converts a `NetworkBackup` to an Open Coordinator Backup-compatible dictionary."""
 
     node_info = backup.node_info
     network_info = backup.network_info
@@ -303,9 +294,7 @@ def _network_backup_to_open_coordinator_backup(backup: NetworkBackup) -> dict[st
 
 
 def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBackup:
-    """
-    Creates a `NetworkBackup` from an Open Coordinator Backup dictionary.
-    """
+    """Creates a `NetworkBackup` from an Open Coordinator Backup dictionary."""
 
     internal = obj["metadata"].get("internal", {})
 

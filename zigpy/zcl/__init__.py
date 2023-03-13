@@ -15,7 +15,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def convert_list_schema(
-    schema: Sequence[type], command_id: int, is_reply: bool
+    schema: Sequence[type], command_id: int, direction: foundation.Direction
 ) -> type[t.Struct]:
     schema_dict = {}
 
@@ -30,7 +30,7 @@ def convert_list_schema(
 
     temp = foundation.ZCLCommandDef(
         schema=schema_dict,
-        direction=foundation.Direction._from_is_reply(is_reply),
+        direction=direction,
         id=command_id,
         name="schema",
     )
@@ -106,12 +106,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             for command_id, command in list(commands.items()):
                 if isinstance(command, tuple):
                     # Backwards compatibility with old command tuples
-                    name, schema, is_reply = command
+                    name, schema, direction = command
                     command = foundation.ZCLCommandDef(
                         id=command_id,
                         name=name,
-                        schema=convert_list_schema(schema, command_id, is_reply),
-                        is_reply=is_reply,
+                        schema=convert_list_schema(schema, command_id, direction),
+                        direction=direction,
                     )
                 else:
                     command = command.replace(id=command_id)
@@ -259,7 +259,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         # Convert out-of-band dict schemas to struct schemas
         if isinstance(schema, (tuple, list)):
             schema = convert_list_schema(
-                command_id=command_id, schema=schema, is_reply=False
+                command_id=command_id,
+                schema=schema,
+                direction=foundation.Direction.Server_to_Client,
             )
 
         request = schema(*args, **kwargs)  # type:ignore[operator]
@@ -685,7 +687,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             len(records) == 1 and records[0].status == foundation.Status.SUCCESS
         ):
             # we get a single success when all are supported
-            for attr in attributes.keys():
+            for attr in attributes:
                 self.remove_unsupported_attribute(attr)
         return res
 

@@ -251,7 +251,8 @@ class Basic(Cluster):
 class PowerConfiguration(Cluster):
     """Attributes for determining more detailed information
     about a device’s power source(s), and for configuring
-    under/over voltage alarms."""
+    under/over voltage alarms.
+    """
 
     class MainsAlarmMask(t.bitmap8):
         Voltage_Too_Low = 0b00000001
@@ -389,7 +390,8 @@ class PowerConfiguration(Cluster):
 class DeviceTemperature(Cluster):
     """Attributes for determining information about a device’s
     internal temperature, and for configuring under/over
-    temperature alarms."""
+    temperature alarms.
+    """
 
     class DeviceTempAlarmMask(t.bitmap8):
         Temp_too_low = 0b00000001
@@ -427,7 +429,8 @@ class DeviceTemperature(Cluster):
 
 class Identify(Cluster):
     """Attributes and commands for putting a device into
-    Identification mode (e.g. flashing a light)"""
+    Identification mode (e.g. flashing a light)
+    """
 
     class EffectIdentifier(t.enum8):
         Blink = 0x00
@@ -468,7 +471,8 @@ class Identify(Cluster):
 
 class Groups(Cluster):
     """Attributes and commands for group configuration and
-    manipulation."""
+    manipulation.
+    """
 
     class NameSupport(t.bitmap8):
         Supported = 0b10000000
@@ -528,7 +532,8 @@ class Groups(Cluster):
 
 class Scenes(Cluster):
     """Attributes and commands for scene configuration and
-    manipulation."""
+    manipulation.
+    """
 
     class NameSupport(t.bitmap8):
         Supported = 0b10000000
@@ -676,7 +681,8 @@ class Scenes(Cluster):
 
 class OnOff(Cluster):
     """Attributes and commands for switching devices between
-    ‘On’ and ‘Off’ states."""
+    ‘On’ and ‘Off’ states.
+    """
 
     class StartUpOnOff(t.enum8):
         Off = 0x00
@@ -764,7 +770,8 @@ class OnOffConfiguration(Cluster):
 
 class LevelControl(Cluster):
     """Attributes and commands for controlling devices that
-    can be set to a level between fully ‘On’ and fully ‘Off’."""
+    can be set to a level between fully ‘On’ and fully ‘Off’.
+    """
 
     class MoveMode(t.enum8):
         Up = 0x00
@@ -868,7 +875,8 @@ class LevelControl(Cluster):
 
 class Alarms(Cluster):
     """Attributes and commands for sending notifications and
-    configuring alarm functionality."""
+    configuring alarm functionality.
+    """
 
     cluster_id = 0x0009
     ep_attribute = "alarms"
@@ -907,7 +915,8 @@ class Alarms(Cluster):
 
 class Time(Cluster):
     """Attributes and commands that provide a basic interface
-    to a real-time clock."""
+    to a real-time clock.
+    """
 
     class TimeStatus(t.bitmap8):
         Master = 0b00000001
@@ -968,7 +977,8 @@ class Time(Cluster):
 class RSSILocation(Cluster):
     """Attributes and commands that provide a means for
     exchanging location information and channel parameters
-    among devices."""
+    among devices.
+    """
 
     cluster_id = 0x000B
     ep_attribute = "rssi_location"
@@ -1404,7 +1414,8 @@ class MultistateValue(Cluster):
 
 class Commissioning(Cluster):
     """Attributes and commands for commissioning and
-    managing a ZigBee device."""
+    managing a ZigBee device.
+    """
 
     cluster_id = 0x0015
     ep_attribute = "commissioning"

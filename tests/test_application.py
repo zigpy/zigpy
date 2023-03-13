@@ -1016,12 +1016,75 @@ async def test_packet_received_new_device_discovery(app, device, zdo_packet):
     await asyncio.sleep(0.1)
 
     app.handle_join.assert_called_once_with(
-        nwk=device.nwk, ieee=device.ieee, parent_nwk=None
+        nwk=device.nwk, ieee=device.ieee, parent_nwk=None, handle_rejoin=False
     )
 
     zigpy_device = app.get_device(ieee=device.ieee)
     assert zigpy_device.lqi == zdo_packet.lqi
     assert zigpy_device.rssi == zdo_packet.rssi
+
+
+@patch("zigpy.device.Device.initialize", AsyncMock())
+async def test_packet_received_ieee_no_rejoin(app, device, zdo_packet, caplog):
+    device.is_initialized = True
+    app.devices[device.ieee] = device
+
+    app.handle_join = MagicMock(wraps=app.handle_join)
+
+    zdo_data = zigpy.zdo.ZDO(None)._serialize(
+        zdo_t.ZDOCmd.IEEE_addr_rsp,
+        *dict(
+            Status=zdo_t.Status.SUCCESS,
+            IEEEAddr=device.ieee,
+            NWKAddr=device.nwk,
+        ).values()
+    )
+
+    zdo_packet.cluster_id = zdo_t.ZDOCmd.IEEE_addr_rsp
+    zdo_packet.data = t.SerializableBytes(
+        t.uint8_t(zdo_packet.tsn).serialize() + zdo_data
+    )
+    app.packet_received(zdo_packet)
+
+    assert "joined the network" not in caplog.text
+
+    app.handle_join.assert_called_once_with(
+        nwk=device.nwk, ieee=device.ieee, parent_nwk=None, handle_rejoin=False
+    )
+
+    assert len(device.schedule_group_membership_scan.mock_calls) == 0
+    assert len(device.schedule_initialize.mock_calls) == 0
+
+
+@patch("zigpy.device.Device.initialize", AsyncMock())
+async def test_packet_received_ieee_rejoin(app, device, zdo_packet, caplog):
+    device.is_initialized = True
+    app.devices[device.ieee] = device
+
+    app.handle_join = MagicMock(wraps=app.handle_join)
+
+    zdo_data = zigpy.zdo.ZDO(None)._serialize(
+        zdo_t.ZDOCmd.IEEE_addr_rsp,
+        *dict(
+            Status=zdo_t.Status.SUCCESS,
+            IEEEAddr=device.ieee,
+            NWKAddr=device.nwk + 1,  # NWK has changed
+        ).values()
+    )
+
+    zdo_packet.cluster_id = zdo_t.ZDOCmd.IEEE_addr_rsp
+    zdo_packet.data = t.SerializableBytes(
+        t.uint8_t(zdo_packet.tsn).serialize() + zdo_data
+    )
+    app.packet_received(zdo_packet)
+
+    assert "joined the network" not in caplog.text
+
+    app.handle_join.assert_called_once_with(
+        nwk=device.nwk, ieee=device.ieee, parent_nwk=None, handle_rejoin=False
+    )
+
+    assert len(device.schedule_initialize.mock_calls) == 1
 
 
 async def test_bad_zdo_packet_received(app, device):
