@@ -1016,7 +1016,7 @@ async def test_packet_received_new_device_discovery(app, device, zdo_packet):
     await asyncio.sleep(0.1)
 
     app.handle_join.assert_called_once_with(
-        nwk=device.nwk, ieee=device.ieee, parent_nwk=None
+        nwk=device.nwk, ieee=device.ieee, parent_nwk=None, handle_rejoin=False
     )
 
     zigpy_device = app.get_device(ieee=device.ieee)
