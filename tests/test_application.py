@@ -1052,7 +1052,6 @@ async def test_packet_received_ieee_no_rejoin(app, device, zdo_packet, caplog):
         nwk=device.nwk, ieee=device.ieee, parent_nwk=None, handle_rejoin=False
     )
 
-    zigpy_device = app.get_device(ieee=device.ieee)
     assert len(device.schedule_group_membership_scan.mock_calls) == 0
     assert len(device.schedule_initialize.mock_calls) == 0
 
@@ -1085,7 +1084,6 @@ async def test_packet_received_ieee_rejoin(app, device, zdo_packet, caplog):
         nwk=device.nwk, ieee=device.ieee, parent_nwk=None, handle_rejoin=False
     )
 
-    zigpy_device = app.get_device(ieee=device.ieee)
     assert len(device.schedule_initialize.mock_calls) == 1
 
 
