@@ -834,6 +834,56 @@ async def test_load_unsupp_attr_wrong_cluster(tmp_path):
     await app.shutdown()
 
 
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
+async def test_load_unsupp_attr_missing_endpoint(tmp_path):
+    """Test loading unsupported attribute from the wrong cluster."""
+
+    db = tmp_path / "test.db"
+    app = await make_app(db)
+
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+
+    ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0x0000)
+    ep.add_output_cluster(0x0001)
+    clus._update_attribute(0x0004, "Custom")
+    clus._update_attribute(0x0005, "Model")
+
+    ep = dev.add_endpoint(4)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0x0006)
+    app.device_initialized(dev)
+
+    # Make an attribute unsupported
+    clus.add_unsupported_attribute(0x0000)
+
+    await app.shutdown()
+    del clus
+    del ep
+    del dev
+
+    def remove_cluster(device):
+        device.endpoints.pop(4)
+        return device
+
+    # Simulate a quirk that removes the entire endpoint
+    with patch("zigpy.quirks.get_device", side_effect=remove_cluster):
+        # The application should still load
+        app = await make_app(db)
+
+    dev = app.get_device(ieee)
+    assert 4 not in dev.endpoints
+    await app.shutdown()
+
+
 async def test_last_seen(tmp_path):
     db = tmp_path / "test.db"
     app = await make_app(db)
