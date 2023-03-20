@@ -38,6 +38,8 @@ TRANSIENT_CONNECTION_ERRORS = {
     errno.ENETUNREACH,
 }
 
+ENERGY_SCAN_WARN_THRESHOLD = 0.75 * 255
+
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     SCHEMA = conf.CONFIG_SCHEMA
@@ -135,6 +137,23 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
             )
 
+        if self.config[conf.CONF_STARTUP_ENERGY_SCAN]:
+            results = await self.energy_scan(channels=t.Channels.ALL_CHANNELS)
+            LOGGER.debug("Startup energy scan results: %s", results)
+
+            if results[self.state.network_info.channel] > ENERGY_SCAN_WARN_THRESHOLD:
+                LOGGER.warning(
+                    "Channel utilization for Zigbee channel %s is %0.2f%%!",
+                    self.state.network_info.channel,
+                    100 * results[self.state.network_info.channel] / 255,
+                )
+                LOGGER.warning(
+                    "If you are having problems joining new devices, are losing sensor"
+                    " updates, or have issues keeping devices joined, ensure your"
+                    " coordinator is away from interference sources such as USB 3.0"
+                    " devices, SSDs, WiFi routers, etc."
+                )
+
     async def startup(self, *, auto_form: bool = False):
         """Starts a network, optionally forming one with random settings if necessary."""
 
@@ -175,7 +194,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def energy_scan(
         self, channels: t.Channels.ALL_CHANNELS, duration_exp: int = 2, count: int = 1
-    ) -> list[tuple[int, float]]:
+    ) -> dict[int, float]:
         """Runs an energy detection scan and returns the per-channel scan results."""
         try:
             rsp = await self._device.zdo.Mgmt_NWK_Update_req(
@@ -192,10 +211,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         else:
             _, scanned_channels, _, _, energy_values = rsp
 
-        return [
-            (channel, energy)
-            for channel, energy in zip(scanned_channels, energy_values)
-        ]
+        return dict(zip(scanned_channels, energy_values))
 
     async def form_network(self):
         """Writes random network settings to the coordinator."""

@@ -15,6 +15,7 @@ from zigpy.config.defaults import (
     CONF_NWK_TC_ADDRESS_DEFAULT,
     CONF_NWK_TC_LINK_KEY_DEFAULT,
     CONF_NWK_UPDATE_ID_DEFAULT,
+    CONF_STARTUP_ENERGY_SCAN_DEFAULT,
     CONF_NWK_VALIDATE_SETTINGS_DEFAULT,
     CONF_OTA_IKEA_DEFAULT,
     CONF_OTA_INOVELLI_DEFAULT,
@@ -37,6 +38,7 @@ from zigpy.config.validators import (
 )
 import zigpy.types as t
 
+CONF_ADDITIONAL_ENDPOINTS = "additional_endpoints"
 CONF_DATABASE = "database_path"
 CONF_DEVICE = "device"
 CONF_DEVICE_PATH = "path"
@@ -65,10 +67,10 @@ CONF_OTA_SONOFF = "sonoff_provider"
 CONF_OTA_SONOFF_URL = "sonoff_update_url"
 CONF_OTA_THIRDREALITY = "thirdreality_provider"
 CONF_SOURCE_ROUTING = "source_routing"
+CONF_STARTUP_ENERGY_SCAN = "startup_energy_scan"
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
 CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
-CONF_ADDITIONAL_ENDPOINTS = "additional_endpoints"
 
 
 SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): str})
@@ -149,6 +151,9 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(CONF_SOURCE_ROUTING, default=CONF_SOURCE_ROUTING_DEFAULT): (
             cv_boolean
         ),
+        vol.Optional(
+            CONF_STARTUP_ENERGY_SCAN, default=CONF_STARTUP_ENERGY_SCAN_DEFAULT
+        ): (cv_boolean),
     },
     extra=vol.ALLOW_EXTRA,
 )
