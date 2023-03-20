@@ -173,6 +173,30 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         return app
 
+    async def energy_scan(
+        self, channels: t.Channels.ALL_CHANNELS, duration_exp: int = 2, count: int = 1
+    ) -> list[tuple[int, float]]:
+        """Runs an energy detection scan and returns the per-channel scan results."""
+        try:
+            rsp = await self._device.zdo.Mgmt_NWK_Update_req(
+                zigpy.zdo.types.NwkUpdate(
+                    ScanChannels=channels,
+                    ScanDuration=duration_exp,
+                    ScanCount=count,
+                )
+            )
+        except (asyncio.TimeoutError, zigpy.exceptions.DeliveryError):
+            raise zigpy.exceptions.ControllerException(
+                "Coordinator does not support energy scanning"
+            )
+        else:
+            _, scanned_channels, _, _, energy_values = rsp
+
+        return [
+            (channel, energy)
+            for channel, energy in zip(scanned_channels, energy_values)
+        ]
+
     async def form_network(self):
         """Writes random network settings to the coordinator."""
 
