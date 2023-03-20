@@ -141,7 +141,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             # Each scan period is 15.36ms. Scan for at least 200ms (2^4 + 1 periods) to
             # pick up WiFi beacon frames.
             results = await self.energy_scan(
-                channels=t.Channels.ALL_CHANNELS, duration_exp=4
+                channels=t.Channels.ALL_CHANNELS, duration_exp=4, count=1
             )
             LOGGER.debug("Startup energy scan results: %s", results)
 
@@ -197,7 +197,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         return app
 
     async def energy_scan(
-        self, channels: t.Channels.ALL_CHANNELS, duration_exp: int = 4, count: int = 1
+        self, channels: t.Channels, duration_exp: int, count: int
     ) -> dict[int, float]:
         """Runs an energy detection scan and returns the per-channel scan results."""
         try:
