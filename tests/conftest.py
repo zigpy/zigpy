@@ -12,7 +12,12 @@ from unittest.mock import Mock
 import pytest
 
 import zigpy.application
-from zigpy.config import CONF_DATABASE, CONF_DEVICE, CONF_DEVICE_PATH
+from zigpy.config import (
+    CONF_DATABASE,
+    CONF_DEVICE,
+    CONF_DEVICE_PATH,
+    CONF_STARTUP_ENERGY_SCAN,
+)
 import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
@@ -85,6 +90,9 @@ class App(zigpy.application.ControllerApplication):
     async def load_network_info(self, *, load_devices=False):
         pass
 
+    async def energy_scan(self, channels, duration_exp, count):
+        pass
+
 
 def recursive_dict_merge(
     obj: dict[str, typing.Any], updates: dict[str, typing.Any]
@@ -105,7 +113,11 @@ def make_app(
     app_base: zigpy.application.ControllerApplication = App,
 ) -> zigpy.application.ControllerApplication:
     config = recursive_dict_merge(
-        {CONF_DATABASE: None, CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"}},
+        {
+            CONF_DATABASE: None,
+            CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"},
+            CONF_STARTUP_ENERGY_SCAN: False,
+        },
         config_updates,
     )
 

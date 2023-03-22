@@ -50,6 +50,7 @@ async def test_new_exception(ota_mock):
             {
                 conf.CONF_DATABASE: "/dev/null",
                 conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+                conf.CONF_STARTUP_ENERGY_SCAN: False,
             }
         )
     assert db_mck.call_count == 1
@@ -67,6 +68,7 @@ async def test_new_exception(ota_mock):
                 {
                     conf.CONF_DATABASE: "/dev/null",
                     conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+                    conf.CONF_STARTUP_ENERGY_SCAN: False,
                 }
             )
     assert db_mck.call_count == 2
@@ -447,6 +449,7 @@ async def test_startup_log_on_uninitialized_device(ieee, caplog):
         {
             conf.CONF_DATABASE: "/dev/null",
             conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+            conf.CONF_STARTUP_ENERGY_SCAN: False,
         }
     )
     assert "Device is partially initialized" in caplog.text
