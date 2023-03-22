@@ -246,7 +246,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # a discrete convolution with the provided kernel.
         convolution = ext_energies[:]
 
-        for i in range(kernel_width, len(t.Channels.ALL_CHANNELS) - kernel_width):
+        for i in range(kernel_width, len(ext_energies) - 2 * kernel_width):
             for j in range(-kernel_width, kernel_width + 1):
                 convolution[i + j] += ext_energies[i + j] * kernel[j]
 

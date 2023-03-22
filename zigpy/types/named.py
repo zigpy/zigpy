@@ -125,9 +125,6 @@ class Channels(basic.bitmap32):
 
         return iter(channels)
 
-    def __len__(self) -> int:
-        return len(tuple(self))
-
 
 class ClusterId(basic.uint16_t):
     pass
