@@ -143,16 +143,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             results = await self.energy_scan(
                 channels=t.Channels.ALL_CHANNELS, duration_exp=4, count=1
             )
-            LOGGER.debug("Startup energy scan results: %s", results)
+            LOGGER.debug("Startup energy scan: %s", results)
 
             if results[self.state.network_info.channel] > ENERGY_SCAN_WARN_THRESHOLD:
                 LOGGER.warning(
-                    "Channel utilization for Zigbee channel %s is %0.2f%%!",
+                    "Zigbee channel %s utilization is %0.2f%%!",
                     self.state.network_info.channel,
                     100 * results[self.state.network_info.channel] / 255,
                 )
                 LOGGER.warning(
-                    "If you are having problems joining new devices, are losing sensor"
+                    "If you are having problems joining new devices, are missing sensor"
                     " updates, or have issues keeping devices joined, ensure your"
                     " coordinator is away from interference sources such as USB 3.0"
                     " devices, SSDs, WiFi routers, etc."
