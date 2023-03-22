@@ -217,7 +217,47 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         return dict(zip(scanned_channels, energy_values))
 
-    async def form_network(self):
+    async def scan_optimal_channel(
+        self,
+        channels: t.Channels,
+        *,
+        kernel: list[float] = [0.1, 0.5, 1.0, 0.5, 0.1],
+        channel_biases: dict[int, float] = {11: 2.0},
+    ) -> int:
+        """Scans all channels and picks the best one from the given mask."""
+        assert len(kernel) % 2 == 1
+
+        # Scan all channels even if we're restricted to picking among a few, since
+        # nearby channels will affect our decision
+        channel_energy = await self.energy_scan(
+            channels=t.Channels.ALL_CHANNELS, duration_exp=4, count=1
+        )
+        kernel_width = (len(kernel) - 1) // 2
+
+        # We don't know energies above channel 26 or below 11. Assume the scan results
+        # just continue indefinitely with the last-seen value.
+        ext_energies = (
+            [channel_energy[t.Channels.CHANNEL_11]] * kernel_width
+            + [channel_energy[c] for c in t.Channels.ALL_CHANNELS]
+            + [channel_energy[t.Channels.CHANNEL_26]] * kernel_width
+        )
+
+        # Incorporate the energies of nearby channels into our calculation by performing
+        # a discrete convolution with the provided kernel.
+        convolution = ext_energies[:]
+
+        for i in range(kernel_width, len(t.Channels.ALL_CHANNELS) - kernel_width):
+            for j in range(-kernel_width, kernel_width + 1):
+                convolution[i + j] += ext_energies[i + j] * kernel[j]
+
+        # Crop off the extended bounds, leaving us with an array of the original size
+        convolution = convolution[kernel_width:-kernel_width]
+
+        # The best channel can be picked from the list. Incorporate biases to steer away
+        # from choosing specific channels unless the others are much worse.
+        return min(channels, key=lambda c: convolution[c] * channel_biases.get(c, 1.0))
+
+    async def form_network(self) -> None:
         """Writes random network settings to the coordinator."""
 
         # First, make the settings consistent and randomly generate missing values
