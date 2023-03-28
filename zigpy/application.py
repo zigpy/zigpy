@@ -221,9 +221,24 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self,
         channels: t.Channels,
         *,
-        kernel: list[float] = [0.1, 0.5, 1.0, 0.5, 0.1],
+        kernel: list[float] = (0.1, 0.5, 1.0, 0.5, 0.1),
         channel_penalty: dict[int, float] = {
-            c: 2.0 for c in t.Channels.ALL_CHANNELS if c not in (15, 20, 25)
+            11: 2.0,  # ZLL but WiFi interferes
+            12: 3.0,
+            13: 3.0,
+            14: 3.0,
+            15: 1.0,  # ZLL
+            16: 3.0,
+            17: 3.0,
+            18: 3.0,
+            19: 3.0,
+            20: 1.0,  # ZLL
+            21: 3.0,
+            22: 3.0,
+            23: 3.0,
+            24: 3.0,
+            25: 1.0,  # ZLL
+            26: 2.0,  # Not ZLL but WiFi can interfere in some regions
         },
     ) -> int:
         """Scans all channels and picks the best one from the given mask."""
@@ -239,9 +254,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # We don't know energies above channel 26 or below 11. Assume the scan results
         # just continue indefinitely with the last-seen value.
         ext_energies = (
-            [channel_energy[t.Channels.CHANNEL_11]] * kernel_width
+            [channel_energy[11]] * kernel_width
             + [channel_energy[c] for c in t.Channels.ALL_CHANNELS]
-            + [channel_energy[t.Channels.CHANNEL_26]] * kernel_width
+            + [channel_energy[26]] * kernel_width
         )
 
         # Incorporate the energies of nearby channels into our calculation by performing
@@ -255,11 +270,20 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # Crop off the extended bounds, leaving us with an array of the original size
         convolution = convolution[kernel_width:-kernel_width]
 
-        # The best channel can be picked from the list. Incorporate biases to steer away
-        # from choosing specific channels unless the others are much worse.
-        return min(channels, key=lambda c: convolution[c] * channel_penalty.get(c, 1.0))
+        # Incorporate a penalty to avoid specific channels unless absolutely necessary
+        scores = {
+            c: convolution[c - 11] * channel_penalty.get(c, 1.0)
+            for c in t.Channels.ALL_CHANNELS
+        }
+        optimal_channel = min(channels, key=lambda c: scores[c])
 
-    async def form_network(self) -> None:
+        LOGGER.info("Channel energies: %s", channel_energy)
+        LOGGER.info("Optimal channel is %s", optimal_channel)
+        LOGGER.debug("Channel scores: %s", scores)
+
+        return optimal_channel
+
+    async def form_network(self, *, fast: bool = False) -> None:
         """Writes random network settings to the coordinator."""
 
         # First, make the settings consistent and randomly generate missing values
@@ -269,9 +293,27 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         extended_pan_id = self.config[conf.CONF_NWK][conf.CONF_NWK_EXTENDED_PAN_ID]
         network_key = self.config[conf.CONF_NWK][conf.CONF_NWK_KEY]
         tc_address = self.config[conf.CONF_NWK][conf.CONF_NWK_TC_ADDRESS]
+        stack_specific = {}
+
+        if fast:
+            # Indicate to the radio library that the network is ephemeral
+            stack_specific["form_quickly"] = True
 
         if pan_id is None:
             pan_id = random.SystemRandom().randint(0x0001, 0xFFFE + 1)
+
+        if channel is None and fast:
+            # Don't run an energy scan if this is an ephemeral network
+            channel = next(iter(channels))
+        elif channel is None and not fast:
+            # We can't run an energy scan without a running network on most radios
+            try:
+                await self.start_network()
+            except zigpy.exceptions.NetworkNotFormed:
+                await self.form_network(fast=True)
+                await self.start_network()
+
+            channel = await self.scan_optimal_channel(channels)
 
         if extended_pan_id is None:
             # TODO: exclude `FF:FF:FF:FF:FF:FF:FF:FF` and possibly more reserved EPIDs
@@ -311,7 +353,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             children=[],
             key_table=[],
             nwk_addresses={},
-            stack_specific={},
+            stack_specific=stack_specific,
         )
 
         node_info = zigpy.state.NodeInfo(

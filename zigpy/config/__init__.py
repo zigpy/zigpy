@@ -76,8 +76,8 @@ CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
 SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): str})
 SCHEMA_NETWORK = vol.Schema(
     {
-        vol.Optional(CONF_NWK_CHANNEL, default=CONF_NWK_CHANNEL_DEFAULT): vol.All(
-            cv_hex, vol.Range(min=11, max=26)
+        vol.Optional(CONF_NWK_CHANNEL, default=CONF_NWK_CHANNEL_DEFAULT): vol.Any(
+            None, vol.All(cv_hex, vol.Range(min=11, max=26))
         ),
         vol.Optional(CONF_NWK_CHANNELS, default=CONF_NWK_CHANNELS_DEFAULT): vol.Any(
             t.Channels, vol.All(list, t.Channels.from_channel_list)
