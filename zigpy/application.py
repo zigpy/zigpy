@@ -222,7 +222,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         channels: t.Channels,
         *,
         kernel: list[float] = [0.1, 0.5, 1.0, 0.5, 0.1],
-        channel_penalty: dict[int, float] = {11: 2.0},
+        channel_penalty: dict[int, float] = {
+            c: 2.0 for c in t.Channels.ALL_CHANNELS if c not in (15, 20, 25)
+        },
     ) -> int:
         """Scans all channels and picks the best one from the given mask."""
         assert len(kernel) % 2 == 1
