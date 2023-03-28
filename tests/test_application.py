@@ -536,6 +536,8 @@ async def test_probe_failure():
 
 
 async def test_form_network(app):
+    app.scan_optimal_channel = AsyncMock(return_value=15)
+
     with patch.object(app, "write_network_info") as write1:
         await app.form_network()
 
