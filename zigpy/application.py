@@ -222,7 +222,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         channels: t.Channels,
         *,
         kernel: list[float] = [0.1, 0.5, 1.0, 0.5, 0.1],
-        channel_biases: dict[int, float] = {11: 0.5},
+        channel_penalty: dict[int, float] = {11: 2.0},
     ) -> int:
         """Scans all channels and picks the best one from the given mask."""
         assert len(kernel) % 2 == 1
@@ -255,7 +255,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         # The best channel can be picked from the list. Incorporate biases to steer away
         # from choosing specific channels unless the others are much worse.
-        return min(channels, key=lambda c: convolution[c] / channel_biases.get(c, 1.0))
+        return min(channels, key=lambda c: convolution[c] * channel_penalty.get(c, 1.0))
 
     async def form_network(self) -> None:
         """Writes random network settings to the coordinator."""
