@@ -67,7 +67,9 @@ class App(zigpy.application.ControllerApplication):
         pass
 
     async def start_network(self):
-        pass
+        add_initialized_device(
+            app=self, nwk=self.state.node_info.nwk, ieee=self.state.node_info.ieee
+        )
 
     async def force_remove(self, dev):
         pass
@@ -88,9 +90,6 @@ class App(zigpy.application.ControllerApplication):
         pass
 
     async def load_network_info(self, *, load_devices=False):
-        pass
-
-    async def energy_scan(self, channels, duration_exp, count):
         pass
 
 
@@ -171,6 +170,18 @@ def make_node_desc(
     )
 
 
+def add_initialized_device(app, nwk, ieee):
+    dev = app.add_device(nwk=nwk, ieee=ieee)
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
+
+    return dev
+
+
 @pytest.fixture
 def make_initialized_device():
     count = 1
@@ -178,14 +189,7 @@ def make_initialized_device():
     def inner(app):
         nonlocal count
 
-        dev = app.add_device(nwk=0x1000 + count, ieee=make_ieee(count))
-        dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
-
-        ep = dev.add_endpoint(1)
-        ep.status = zigpy.endpoint.Status.ZDO_INIT
-        ep.profile_id = 260
-        ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
-
+        dev = add_initialized_device(app, nwk=0x1000 + count, ieee=make_ieee(count))
         count += 1
 
         return dev

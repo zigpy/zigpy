@@ -209,79 +209,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 )
             )
         except (asyncio.TimeoutError, zigpy.exceptions.DeliveryError):
-            raise zigpy.exceptions.ControllerException(
-                "Coordinator does not support energy scanning"
-            )
+            LOGGER.warning("Coordinator does not support energy scanning")
+            scanned_channels = channels
+            energy_values = [0] * scanned_channels
         else:
             _, scanned_channels, _, _, energy_values = rsp
 
         return dict(zip(scanned_channels, energy_values))
-
-    async def scan_optimal_channel(
-        self,
-        channels: t.Channels,
-        *,
-        kernel: list[float] = (0.1, 0.5, 1.0, 0.5, 0.1),
-        channel_penalty: dict[int, float] = {
-            11: 2.0,  # ZLL but WiFi interferes
-            12: 3.0,
-            13: 3.0,
-            14: 3.0,
-            15: 1.0,  # ZLL
-            16: 3.0,
-            17: 3.0,
-            18: 3.0,
-            19: 3.0,
-            20: 1.0,  # ZLL
-            21: 3.0,
-            22: 3.0,
-            23: 3.0,
-            24: 3.0,
-            25: 1.0,  # ZLL
-            26: 2.0,  # Not ZLL but WiFi can interfere in some regions
-        },
-    ) -> int:
-        """Scans all channels and picks the best one from the given mask."""
-        assert len(kernel) % 2 == 1
-
-        # Scan all channels even if we're restricted to picking among a few, since
-        # nearby channels will affect our decision
-        channel_energy = await self.energy_scan(
-            channels=t.Channels.ALL_CHANNELS, duration_exp=4, count=1
-        )
-        kernel_width = (len(kernel) - 1) // 2
-
-        # We don't know energies above channel 26 or below 11. Assume the scan results
-        # just continue indefinitely with the last-seen value.
-        ext_energies = (
-            [channel_energy[11]] * kernel_width
-            + [channel_energy[c] for c in t.Channels.ALL_CHANNELS]
-            + [channel_energy[26]] * kernel_width
-        )
-
-        # Incorporate the energies of nearby channels into our calculation by performing
-        # a discrete convolution with the provided kernel.
-        convolution = ext_energies[:]
-
-        for i in range(kernel_width, len(ext_energies) - 2 * kernel_width):
-            for j in range(-kernel_width, kernel_width + 1):
-                convolution[i + j] += ext_energies[i + j] * kernel[j]
-
-        # Crop off the extended bounds, leaving us with an array of the original size
-        convolution = convolution[kernel_width:-kernel_width]
-
-        # Incorporate a penalty to avoid specific channels unless absolutely necessary
-        scores = {
-            c: convolution[c - 11] * channel_penalty.get(c, 1.0)
-            for c in t.Channels.ALL_CHANNELS
-        }
-        optimal_channel = min(channels, key=lambda c: scores[c])
-
-        LOGGER.info("Channel energies: %s", channel_energy)
-        LOGGER.info("Optimal channel is %s", optimal_channel)
-        LOGGER.debug("Channel scores: %s", scores)
-
-        return optimal_channel
 
     async def form_network(self, *, fast: bool = False) -> None:
         """Writes random network settings to the coordinator."""
@@ -313,7 +247,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 await self.form_network(fast=True)
                 await self.start_network()
 
-            channel = await self.scan_optimal_channel(channels)
+            channel_energy = await self.energy_scan(
+                channels=t.Channels.ALL_CHANNELS, duration_exp=4, count=1
+            )
+            channel = zigpy.util.pick_optimal_channel(channel_energy, channels=channels)
 
         if extended_pan_id is None:
             # TODO: exclude `FF:FF:FF:FF:FF:FF:FF:FF` and possibly more reserved EPIDs
@@ -325,17 +262,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if tc_address is None:
             tc_address = t.EUI64.UNKNOWN
 
-        # Override `channels` with a single channel if one is explicitly set
-        if channel is not None:
-            channels = t.Channels.from_channel_list([channel])
-
         network_info = zigpy.state.NetworkInfo(
             extended_pan_id=extended_pan_id,
             pan_id=pan_id,
             nwk_update_id=self.config[conf.CONF_NWK][conf.CONF_NWK_UPDATE_ID],
             nwk_manager_id=0x0000,
             channel=channel,
-            channel_mask=channels,
+            channel_mask=t.Channels.from_channel_list([channel]),
             security_level=5,
             network_key=zigpy.state.Key(
                 key=network_key,

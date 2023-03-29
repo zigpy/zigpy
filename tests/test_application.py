@@ -1246,9 +1246,7 @@ async def test_request_callback_matching(app, make_initialized_device):
         assert app._req_listeners[device]
 
         asyncio.get_running_loop().call_soon(app.packet_received, packet)
-
         asyncio.get_running_loop().call_soon(app.packet_received, packet)
-
         asyncio.get_running_loop().call_soon(app.packet_received, packet)
 
         await asyncio.sleep(0.1)
@@ -1257,3 +1255,43 @@ async def test_request_callback_matching(app, make_initialized_device):
         assert mock_callback.mock_calls == [mock.call(req_hdr, req_cmd)] * 3
 
     assert not app._req_listeners[device]
+
+
+async def test_energy_scan_default(app):
+    await app.startup()
+
+    raw_scan_results = [
+        170,
+        191,
+        181,
+        165,
+        179,
+        169,
+        196,
+        163,
+        174,
+        162,
+        190,
+        186,
+        191,
+        178,
+        204,
+        187,
+    ]
+    coordinator = app._device
+    coordinator.zdo.Mgmt_NWK_Update_req = AsyncMock(
+        return_value=[
+            zdo_t.Status.SUCCESS,
+            t.Channels.ALL_CHANNELS,
+            29,
+            10,
+            raw_scan_results,
+        ]
+    )
+
+    results = await app.energy_scan(
+        channels=t.Channels.ALL_CHANNELS, duration_exp=2, count=1
+    )
+
+    assert len(results) == 16
+    assert results == dict(zip(range(11, 26 + 1), raw_scan_results))
