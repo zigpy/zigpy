@@ -536,8 +536,6 @@ async def test_probe_failure():
 
 
 async def test_form_network(app):
-    app.scan_optimal_channel = AsyncMock(return_value=15)
-
     with patch.object(app, "write_network_info") as write1:
         await app.form_network()
 
@@ -564,10 +562,40 @@ async def test_form_network(app):
         == t.KeyData(b"ZigBeeAlliance09")
     )
 
-    assert nwk_info1.channel == 15
+    assert nwk_info1.channel in (11, 15, 20, 25)
 
 
-async def test_startup_formed(app):
+@mock.patch("zigpy.util.pick_optimal_channel", mock.Mock(return_value=22))
+async def test_form_network_find_best_channel(app):
+    orig_start_network = app.start_network
+
+    async def start_network(*args, **kwargs):
+        start_network.await_count += 1
+
+        if start_network.await_count == 1:
+            raise NetworkNotFormed()
+
+        return await orig_start_network(*args, **kwargs)
+
+    start_network.await_count = 0
+    app.start_network = start_network
+
+    with patch.object(app, "write_network_info") as write:
+        await app.form_network()
+
+    assert start_network.await_count == 2
+
+    # A temporary network will be formed first
+    nwk_info1 = write.mock_calls[0].kwargs["network_info"]
+    assert nwk_info1.channel == 11
+
+    # Then, after the scan, a better channel is chosen
+    nwk_info2 = write.mock_calls[1].kwargs["network_info"]
+    assert nwk_info2.channel == 22
+
+
+async def test_startup_formed():
+    app = make_app({conf.CONF_STARTUP_ENERGY_SCAN: False})
     app.start_network = AsyncMock()
     app.form_network = AsyncMock()
     app.permit = AsyncMock()
@@ -579,7 +607,8 @@ async def test_startup_formed(app):
     assert app.permit.await_count == 1
 
 
-async def test_startup_not_formed(app):
+async def test_startup_not_formed():
+    app = make_app({conf.CONF_STARTUP_ENERGY_SCAN: False})
     app.start_network = AsyncMock()
     app.form_network = AsyncMock()
     app.load_network_info = AsyncMock(
@@ -605,7 +634,8 @@ async def test_startup_not_formed(app):
     assert app.backups.restore_backup.await_count == 0
 
 
-async def test_startup_not_formed_with_backup(app):
+async def test_startup_not_formed_with_backup():
+    app = make_app({conf.CONF_STARTUP_ENERGY_SCAN: False})
     app.start_network = AsyncMock()
     app.load_network_info = AsyncMock(side_effect=[NetworkNotFormed(), None])
     app.permit = AsyncMock()
@@ -1295,3 +1325,32 @@ async def test_energy_scan_default(app):
 
     assert len(results) == 16
     assert results == dict(zip(range(11, 26 + 1), raw_scan_results))
+
+
+async def test_energy_scan_not_implemented(app):
+    """Energy scanning still "works" even when the radio doesn't implement it."""
+    await app.startup()
+    app._device.zdo.Mgmt_NWK_Update_req.side_effect = asyncio.TimeoutError()
+
+    results = await app.energy_scan(
+        channels=t.Channels.ALL_CHANNELS, duration_exp=2, count=1
+    )
+    assert results == {c: 0 for c in range(11, 26 + 1)}
+
+
+@pytest.mark.parametrize(
+    "scan, message_present",
+    [
+        ({c: 0 for c in t.Channels.ALL_CHANNELS}, False),
+        ({c: 255 for c in t.Channels.ALL_CHANNELS}, True),
+    ],
+)
+async def test_startup_energy_scan(app, caplog, scan, message_present):
+    with mock.patch.object(app, "energy_scan", return_value=scan):
+        with caplog.at_level(logging.WARNING):
+            await app.startup()
+
+    if message_present:
+        assert "Zigbee channel 15 utilization is 100.00%" in caplog.text
+    else:
+        assert "Zigbee channel" not in caplog.text

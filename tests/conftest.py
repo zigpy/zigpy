@@ -12,12 +12,7 @@ from unittest.mock import Mock
 import pytest
 
 import zigpy.application
-from zigpy.config import (
-    CONF_DATABASE,
-    CONF_DEVICE,
-    CONF_DEVICE_PATH,
-    CONF_STARTUP_ENERGY_SCAN,
-)
+from zigpy.config import CONF_DATABASE, CONF_DEVICE, CONF_DEVICE_PATH
 import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
@@ -67,8 +62,18 @@ class App(zigpy.application.ControllerApplication):
         pass
 
     async def start_network(self):
-        add_initialized_device(
+        dev = add_initialized_device(
             app=self, nwk=self.state.node_info.nwk, ieee=self.state.node_info.ieee
+        )
+
+        dev.zdo.Mgmt_NWK_Update_req = AsyncMock(
+            return_value=[
+                zdo_t.Status.SUCCESS,
+                t.Channels.ALL_CHANNELS,
+                0,
+                0,
+                [80] * 16,
+            ]
         )
 
     async def force_remove(self, dev):
@@ -90,7 +95,7 @@ class App(zigpy.application.ControllerApplication):
         pass
 
     async def load_network_info(self, *, load_devices=False):
-        pass
+        self.state.network_info.channel = 15
 
 
 def recursive_dict_merge(
@@ -115,7 +120,6 @@ def make_app(
         {
             CONF_DATABASE: None,
             CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"},
-            CONF_STARTUP_ENERGY_SCAN: False,
         },
         config_updates,
     )
