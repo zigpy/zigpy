@@ -627,7 +627,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         ) as cursor:
             async for (ieee, endpoint_id, cluster_id, attrid) in cursor:
                 dev = self._application.get_device(ieee)
-                ep = dev.endpoints[endpoint_id]
+
+                try:
+                    ep = dev.endpoints[endpoint_id]
+                except KeyError:
+                    continue
 
                 try:
                     cluster = ep.in_clusters[cluster_id]

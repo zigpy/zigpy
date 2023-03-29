@@ -13,7 +13,7 @@ from zigpy.zdo import types as zdo_t
 
 from tests.async_mock import AsyncMock, MagicMock, patch
 from tests.conftest import app  # noqa: F401
-from tests.test_appdb import auto_kill_aiosqlite, make_app  # noqa: F401
+from tests.test_appdb import auto_kill_aiosqlite, make_app_with_db  # noqa: F401
 
 
 @pytest.fixture
@@ -67,10 +67,10 @@ async def test_migration_from_3_to_4(open_twice, test_db):
 
     # Ensure migration works on first run, and after shutdown
     if open_twice:
-        app = await make_app(test_db_v3)
+        app = await make_app_with_db(test_db_v3)
         await app.shutdown()
 
-    app = await make_app(test_db_v3)
+    app = await make_app_with_db(test_db_v3)
 
     dev1 = app.get_device(nwk=0xBD4D)
     assert dev1.node_desc == zdo_t.NodeDescriptor(
@@ -149,11 +149,11 @@ async def test_migration_0_to_5(test_db):
 
     assert num_devices_before_migration == 27
 
-    app1 = await make_app(test_db_v0)
+    app1 = await make_app_with_db(test_db_v0)
     await app1.shutdown()
     assert len(app1.devices) == 27
 
-    app2 = await make_app(test_db_v0)
+    app2 = await make_app_with_db(test_db_v0)
     await app2.shutdown()
 
     # All 27 devices migrated
@@ -172,7 +172,7 @@ async def test_migration_missing_neighbors_v3(test_db):
             cur.execute("SELECT * FROM neighbors")
 
     # Migration won't fail even though the database version number is 3
-    app = await make_app(test_db_v3)
+    app = await make_app_with_db(test_db_v3)
     await app.shutdown()
 
     # Version was upgraded
@@ -204,7 +204,7 @@ async def test_migration_bad_attributes(test_db, corrupt_device):
         deleted_eps = 0
 
     # Migration will handle invalid attributes entries
-    app = await make_app(test_db_bad_attrs)
+    app = await make_app_with_db(test_db_bad_attrs)
     await app.shutdown()
 
     assert len(app.devices) == num_devices_before_migration
@@ -213,7 +213,7 @@ async def test_migration_bad_attributes(test_db, corrupt_device):
         == num_ep_before_migration - deleted_eps
     )
 
-    app2 = await make_app(test_db_bad_attrs)
+    app2 = await make_app_with_db(test_db_bad_attrs)
     await app2.shutdown()
 
     # All devices still exist
@@ -241,9 +241,7 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
 
     with caplog.at_level(logging.WARNING):
         # The invalid device will still be loaded, for now
-        app = await make_app(test_db_v3)
-
-    assert "partially initialized" in caplog.text
+        app = await make_app_with_db(test_db_v3)
 
     assert len(app.devices) == 2
 
@@ -300,7 +298,7 @@ async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
 
     with patch("zigpy.appdb.PersistingListener.execute", new=patched_execute):
         with pytest.raises(sqlite3.ProgrammingError):
-            await make_app(test_db_bad_attrs)
+            await make_app_with_db(test_db_bad_attrs)
 
     assert sql_seen
 
@@ -314,7 +312,7 @@ async def test_migration_failure_version_mismatch(test_db):
     test_db_v3 = test_db("simple_v3.sql")
 
     # Migrate it to the latest version
-    app = await make_app(test_db_v3)
+    app = await make_app_with_db(test_db_v3)
     await app.shutdown()
 
     # Downgrade it back to v7
@@ -323,7 +321,7 @@ async def test_migration_failure_version_mismatch(test_db):
 
     # Startup now fails due to the version mismatch
     with pytest.raises(zigpy.exceptions.CorruptDatabase):
-        await make_app(test_db_v3)
+        await make_app_with_db(test_db_v3)
 
 
 async def test_migration_downgrade_warning(test_db, caplog):
@@ -332,7 +330,7 @@ async def test_migration_downgrade_warning(test_db, caplog):
     test_db_v3 = test_db("simple_v3.sql")
 
     # Migrate it to the latest version
-    app = await make_app(test_db_v3)
+    app = await make_app_with_db(test_db_v3)
     await app.shutdown()
 
     # Upgrade it beyond our current version
@@ -342,7 +340,7 @@ async def test_migration_downgrade_warning(test_db, caplog):
 
     # Startup now logs an error due to the "downgrade"
     with caplog.at_level(logging.ERROR):
-        app2 = await make_app(test_db_v3)
+        app2 = await make_app_with_db(test_db_v3)
         await app2.shutdown()
 
     assert "Downgrading zigpy" in caplog.text
@@ -382,7 +380,7 @@ async def test_v4_to_v5_migration_bad_neighbors(test_db, with_bad_neighbor):
             "SELECT count(*) FROM neighbors_v4"
         ).fetchone()
 
-    app = await make_app(test_db_v4)
+    app = await make_app_with_db(test_db_v4)
     await app.shutdown()
 
     with sqlite3.connect(test_db_v4) as conn:
@@ -428,7 +426,7 @@ async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribut
 
     # Migrate to v5 and then v6
     with patch("zigpy.quirks.get_device", get_device):
-        app = await make_app(test_db_v3)
+        app = await make_app_with_db(test_db_v3)
 
     if with_quirk_attribute:
         dev = app.get_device(ieee=t.EUI64.convert("00:0d:6f:ff:fe:a6:11:7a"))
@@ -440,7 +438,7 @@ async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribut
 async def test_v5_to_v7_migration(test_db):
     test_db_v5 = test_db("simple_v5.sql")
 
-    app = await make_app(test_db_v5)
+    app = await make_app_with_db(test_db_v5)
     await app.shutdown()
 
 
@@ -483,7 +481,7 @@ async def test_last_seen_initial_migration(test_db):
     test_db_v5 = test_db("simple_v5.sql")
 
     # To preserve the old behavior, `0` will not be exposed to ZHA, only `None`
-    app = await make_app(test_db_v5)
+    app = await make_app_with_db(test_db_v5)
     dev = app.get_device(nwk=0xBD4D)
 
     assert dev.last_seen is None
@@ -492,7 +490,7 @@ async def test_last_seen_initial_migration(test_db):
     await app.shutdown()
 
     # But the device's `last_seen` will still update properly when it's actually set
-    app = await make_app(test_db_v5)
+    app = await make_app_with_db(test_db_v5)
     assert isinstance(app.get_device(nwk=0xBD4D).last_seen, float)
     await app.shutdown()
 
@@ -504,6 +502,6 @@ def test_db_version_is_latest_schema_version():
 async def test_last_seen_migration_v8_to_v9(test_db):
     test_db_v8 = test_db("simple_v8.sql")
 
-    app = await make_app(test_db_v8)
+    app = await make_app_with_db(test_db_v8)
     assert int(app.get_device(nwk=0xE01E).last_seen) == 1651119830
     await app.shutdown()

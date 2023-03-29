@@ -38,6 +38,8 @@ TRANSIENT_CONNECTION_ERRORS = {
     errno.ENETUNREACH,
 }
 
+ENERGY_SCAN_WARN_THRESHOLD = 0.75 * 255
+
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     SCHEMA = conf.CONFIG_SCHEMA
@@ -135,6 +137,27 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
             )
 
+        if self.config[conf.CONF_STARTUP_ENERGY_SCAN]:
+            # Each scan period is 15.36ms. Scan for at least 200ms (2^4 + 1 periods) to
+            # pick up WiFi beacon frames.
+            results = await self.energy_scan(
+                channels=t.Channels.ALL_CHANNELS, duration_exp=4, count=1
+            )
+            LOGGER.debug("Startup energy scan: %s", results)
+
+            if results[self.state.network_info.channel] > ENERGY_SCAN_WARN_THRESHOLD:
+                LOGGER.warning(
+                    "Zigbee channel %s utilization is %0.2f%%!",
+                    self.state.network_info.channel,
+                    100 * results[self.state.network_info.channel] / 255,
+                )
+                LOGGER.warning(
+                    "If you are having problems joining new devices, are missing sensor"
+                    " updates, or have issues keeping devices joined, ensure your"
+                    " coordinator is away from interference sources such as USB 3.0"
+                    " devices, SSDs, WiFi routers, etc."
+                )
+
     async def startup(self, *, auto_form: bool = False):
         """Starts a network, optionally forming one with random settings if necessary."""
 
@@ -173,7 +196,28 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         return app
 
-    async def form_network(self):
+    async def energy_scan(
+        self, channels: t.Channels, duration_exp: int, count: int
+    ) -> dict[int, float]:
+        """Runs an energy detection scan and returns the per-channel scan results."""
+        try:
+            rsp = await self._device.zdo.Mgmt_NWK_Update_req(
+                zigpy.zdo.types.NwkUpdate(
+                    ScanChannels=channels,
+                    ScanDuration=duration_exp,
+                    ScanCount=count,
+                )
+            )
+        except (asyncio.TimeoutError, zigpy.exceptions.DeliveryError):
+            LOGGER.warning("Coordinator does not support energy scanning")
+            scanned_channels = channels
+            energy_values = [0] * scanned_channels
+        else:
+            _, scanned_channels, _, _, energy_values = rsp
+
+        return dict(zip(scanned_channels, energy_values))
+
+    async def form_network(self, *, fast: bool = False) -> None:
         """Writes random network settings to the coordinator."""
 
         # First, make the settings consistent and randomly generate missing values
@@ -183,9 +227,30 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         extended_pan_id = self.config[conf.CONF_NWK][conf.CONF_NWK_EXTENDED_PAN_ID]
         network_key = self.config[conf.CONF_NWK][conf.CONF_NWK_KEY]
         tc_address = self.config[conf.CONF_NWK][conf.CONF_NWK_TC_ADDRESS]
+        stack_specific = {}
+
+        if fast:
+            # Indicate to the radio library that the network is ephemeral
+            stack_specific["form_quickly"] = True
 
         if pan_id is None:
             pan_id = random.SystemRandom().randint(0x0001, 0xFFFE + 1)
+
+        if channel is None and fast:
+            # Don't run an energy scan if this is an ephemeral network
+            channel = next(iter(channels))
+        elif channel is None and not fast:
+            # We can't run an energy scan without a running network on most radios
+            try:
+                await self.start_network()
+            except zigpy.exceptions.NetworkNotFormed:
+                await self.form_network(fast=True)
+                await self.start_network()
+
+            channel_energy = await self.energy_scan(
+                channels=t.Channels.ALL_CHANNELS, duration_exp=4, count=1
+            )
+            channel = zigpy.util.pick_optimal_channel(channel_energy, channels=channels)
 
         if extended_pan_id is None:
             # TODO: exclude `FF:FF:FF:FF:FF:FF:FF:FF` and possibly more reserved EPIDs
@@ -197,17 +262,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if tc_address is None:
             tc_address = t.EUI64.UNKNOWN
 
-        # Override `channels` with a single channel if one is explicitly set
-        if channel is not None:
-            channels = t.Channels.from_channel_list([channel])
-
         network_info = zigpy.state.NetworkInfo(
             extended_pan_id=extended_pan_id,
             pan_id=pan_id,
             nwk_update_id=self.config[conf.CONF_NWK][conf.CONF_NWK_UPDATE_ID],
             nwk_manager_id=0x0000,
             channel=channel,
-            channel_mask=channels,
+            channel_mask=t.Channels.from_channel_list([channel]),
             security_level=5,
             network_key=zigpy.state.Key(
                 key=network_key,
@@ -225,7 +286,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             children=[],
             key_table=[],
             nwk_addresses={},
-            stack_specific={},
+            stack_specific=stack_specific,
         )
 
         node_info = zigpy.state.NodeInfo(
@@ -1061,47 +1122,3 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def _device(self):
         """The device being controlled."""
         return self.get_device(ieee=self.state.node_info.ieee)
-
-    @zigpy.util.deprecated("await `app.shutdown()`")
-    async def pre_shutdown(self):
-        await self.shutdown()
-
-    @property
-    @zigpy.util.deprecated("use `app.state.node_info.nwk`")
-    def nwk(self):
-        return self.state.node_info.nwk
-
-    @property
-    @zigpy.util.deprecated("use `app.state.node_info.ieee`")
-    def ieee(self):
-        return self.state.node_info.ieee
-
-    @property
-    @zigpy.util.deprecated("use `app.state.network_info.pan_id`")
-    def pan_id(self):
-        return self.state.network_info.pan_id
-
-    @property
-    @zigpy.util.deprecated("use `app.state.network_info.extended_pan_id`")
-    def extended_pan_id(self):
-        return self.state.network_info.extended_pan_id
-
-    @property
-    @zigpy.util.deprecated("use `app.state.network_info.network_key`")
-    def network_key(self):
-        return self.state.network_info.network_key
-
-    @property
-    @zigpy.util.deprecated("use `app.state.network_info.channel`")
-    def channel(self):
-        return self.state.network_info.channel
-
-    @property
-    @zigpy.util.deprecated("use `app.state.network_info.channel_mask`")
-    def channels(self):
-        return self.state.network_info.channel_mask
-
-    @property
-    @zigpy.util.deprecated("use `app.state.network_info.nwk_update_id`")
-    def nwk_update_id(self):
-        return self.state.network_info.nwk_update_id
