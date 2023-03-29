@@ -512,9 +512,10 @@ def pick_optimal_channel(
     # a discrete convolution with the provided kernel.
     convolution = ext_energies[:]
 
-    for i in range(kernel_width, len(ext_energies) - 2 * kernel_width):
+    for i in range(len(ext_energies)):
         for j in range(-kernel_width, kernel_width + 1):
-            convolution[i + j] += ext_energies[i + j] * kernel[j]
+            if 0 <= i + j < len(convolution):
+                convolution[i + j] += ext_energies[i] * kernel[kernel_width + j]
 
     # Crop off the extended bounds, leaving us with an array of the original size
     convolution = convolution[kernel_width:-kernel_width]
