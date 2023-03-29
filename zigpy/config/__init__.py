@@ -24,6 +24,7 @@ from zigpy.config.defaults import (
     CONF_OTA_SONOFF_DEFAULT,
     CONF_OTA_THIRDREALITY_DEFAULT,
     CONF_SOURCE_ROUTING_DEFAULT,
+    CONF_STARTUP_ENERGY_SCAN_DEFAULT,
     CONF_TOPO_SCAN_ENABLED_DEFAULT,
     CONF_TOPO_SCAN_PERIOD_DEFAULT,
     CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
@@ -37,6 +38,7 @@ from zigpy.config.validators import (
 )
 import zigpy.types as t
 
+CONF_ADDITIONAL_ENDPOINTS = "additional_endpoints"
 CONF_DATABASE = "database_path"
 CONF_DEVICE = "device"
 CONF_DEVICE_PATH = "path"
@@ -65,17 +67,17 @@ CONF_OTA_SONOFF = "sonoff_provider"
 CONF_OTA_SONOFF_URL = "sonoff_update_url"
 CONF_OTA_THIRDREALITY = "thirdreality_provider"
 CONF_SOURCE_ROUTING = "source_routing"
+CONF_STARTUP_ENERGY_SCAN = "startup_energy_scan"
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
 CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
-CONF_ADDITIONAL_ENDPOINTS = "additional_endpoints"
 
 
 SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): str})
 SCHEMA_NETWORK = vol.Schema(
     {
-        vol.Optional(CONF_NWK_CHANNEL, default=CONF_NWK_CHANNEL_DEFAULT): vol.All(
-            cv_hex, vol.Range(min=11, max=26)
+        vol.Optional(CONF_NWK_CHANNEL, default=CONF_NWK_CHANNEL_DEFAULT): vol.Any(
+            None, vol.All(cv_hex, vol.Range(min=11, max=26))
         ),
         vol.Optional(CONF_NWK_CHANNELS, default=CONF_NWK_CHANNELS_DEFAULT): vol.Any(
             t.Channels, vol.All(list, t.Channels.from_channel_list)
@@ -149,6 +151,9 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(CONF_SOURCE_ROUTING, default=CONF_SOURCE_ROUTING_DEFAULT): (
             cv_boolean
         ),
+        vol.Optional(
+            CONF_STARTUP_ENERGY_SCAN, default=CONF_STARTUP_ENERGY_SCAN_DEFAULT
+        ): (cv_boolean),
     },
     extra=vol.ALLOW_EXTRA,
 )
