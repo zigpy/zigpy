@@ -681,10 +681,10 @@ def with_attributes(obj, **attrs):
         ConnectionRefusedError(),
     ],
 )
-async def test_startup_failure_transient_error(err):
+async def test_startup_failure_transient_error(error):
     app = make_app({conf.CONF_NWK_BACKUP_ENABLED: False})
 
-    with patch.object(app, "connect", side_effect=[err]):
+    with patch.object(app, "connect", side_effect=[error]):
         with pytest.raises(TransientConnectionError):
             await app.startup()
 
