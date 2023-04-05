@@ -8,9 +8,15 @@ import errno
 import logging
 import os
 import random
+import sys
 import time
 import typing
 from typing import Any
+
+if sys.version_info[:2] < (3, 11):
+    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
+else:
+    from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
 import zigpy.appdb
 import zigpy.backups
@@ -390,12 +396,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> None:
         """Send a remove request then pop the device."""
         try:
-            await asyncio.wait_for(
-                device.zdo.leave(remove_children=remove_children, rejoin=rejoin),
-                timeout=30
+            async with asyncio_timeout(
+                30
                 if device.node_desc is not None and device.node_desc.is_end_device
-                else 7,
-            )
+                else 7
+            ):
+                await device.zdo.leave(remove_children=remove_children, rejoin=rejoin)
         except (zigpy.exceptions.DeliveryError, asyncio.TimeoutError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
