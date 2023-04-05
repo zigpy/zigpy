@@ -667,11 +667,22 @@ async def test_startup_no_backup():
     p.assert_not_called()
 
 
-async def test_startup_failure_transient_error():
-    app = make_app({conf.CONF_NWK_BACKUP_ENABLED: False})
+def with_attributes(obj, **attrs):
+    for k, v in attrs.items():
+        setattr(obj, k, v)
 
-    err = OSError("Network is unreachable")
-    err.errno = errno.ENETUNREACH
+    return obj
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        with_attributes(OSError("Network is unreachable"), errno=errno.ENETUNREACH),
+        ConnectionRefusedError(),
+    ],
+)
+async def test_startup_failure_transient_error(err):
+    app = make_app({conf.CONF_NWK_BACKUP_ENABLED: False})
 
     with patch.object(app, "connect", side_effect=[err]):
         with pytest.raises(TransientConnectionError):
