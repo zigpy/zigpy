@@ -1353,12 +1353,16 @@ async def test_startup_broadcast_failure_other(app, caplog):
             await app.startup()
 
 
+@patch("zigpy.application.CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S", 0.1)
 async def test_move_network_to_new_channel(app):
     def broadcast(app, command, *args, **kwargs):
         async def inner():
             if command != zigpy.zdo.types.ZDOCmd.Mgmt_NWK_Update_req:
                 return
 
+            await asyncio.sleep(
+                zigpy.application.CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S * 2
+            )
             NwkUpdate = kwargs["NwkUpdate"]
             app.state.network_info.channel = list(NwkUpdate.ScanChannels)[0]
             app.state.network_info.nwk_update_id = NwkUpdate.nwkUpdateId
@@ -1374,3 +1378,15 @@ async def test_move_network_to_new_channel(app):
 
     assert app.state.network_info.channel == 26
     assert len(mock_broadcast.mock_calls) == 10
+
+
+async def test_move_network_to_new_channel_noop(app):
+    await app.startup()
+
+    old_channel = app.state.network_info.channel
+
+    with patch("zigpy.zdo.broadcast") as mock_broadcast:
+        await app.move_network_to_channel(new_channel=old_channel)
+
+    assert app.state.network_info.channel == old_channel
+    assert len(mock_broadcast.mock_calls) == 0
