@@ -1351,3 +1351,26 @@ async def test_startup_broadcast_failure_other(app, caplog):
     with mock.patch.object(app, "permit", side_effect=DeliveryError("Error", 123)):
         with pytest.raises(DeliveryError, match="^Error$"):
             await app.startup()
+
+
+async def test_move_network_to_new_channel(app):
+    def broadcast(app, command, *args, **kwargs):
+        async def inner():
+            if command != zigpy.zdo.types.ZDOCmd.Mgmt_NWK_Update_req:
+                return
+
+            NwkUpdate = kwargs["NwkUpdate"]
+            app.state.network_info.channel = list(NwkUpdate.ScanChannels)[0]
+            app.state.network_info.nwk_update_id = NwkUpdate.nwkUpdateId
+
+        return inner()
+
+    await app.startup()
+
+    assert app.state.network_info.channel != 26
+
+    with patch("zigpy.zdo.broadcast", side_effect=broadcast) as mock_broadcast:
+        await app.move_network_to_channel(new_channel=26, num_broadcasts=10)
+
+    assert app.state.network_info.channel == 26
+    assert len(mock_broadcast.mock_calls) == 1 + 10
