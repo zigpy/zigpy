@@ -1373,4 +1373,4 @@ async def test_move_network_to_new_channel(app):
         await app.move_network_to_channel(new_channel=26, num_broadcasts=10)
 
     assert app.state.network_info.channel == 26
-    assert len(mock_broadcast.mock_calls) == 1 + 10
+    assert len(mock_broadcast.mock_calls) == 10

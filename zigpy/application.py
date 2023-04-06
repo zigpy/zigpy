@@ -250,7 +250,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> None:
         """Broadcasts the channel migration update request."""
         # Default implementation for radios that migrate via a loopback ZDO request
-        await self._zigpy_device.zdo.Mgmt_NWK_Update_req(
+        await self._device.zdo.Mgmt_NWK_Update_req(
             zigpy.zdo.types.NwkUpdate(
                 ScanChannels=zigpy.types.Channels.from_channel_list([new_channel]),
                 ScanDuration=zigpy.zdo.types.NwkUpdate.CHANNEL_CHANGE_REQ,
