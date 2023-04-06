@@ -259,7 +259,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         )
 
     async def move_network_to_channel(
-        self, new_channel: int, *, num_broadcasts: int = 10
+        self, new_channel: int, *, num_broadcasts: int = 5
     ) -> None:
         """Moves the network to a new channel."""
         if self.state.network_info.channel == new_channel:
