@@ -329,6 +329,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             ),
             counter_increment=0,
             allow_incomplete=True,
+            create_new=(not fast),
         )
 
     async def shutdown(self) -> None:
