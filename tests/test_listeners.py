@@ -119,7 +119,7 @@ async def test_callback_listener():
     ]
 
 
-async def test_callback_listener_async():
+async def test_callback_listener_async(app):
     listener = listeners.CallbackListener(
         device=mock.Mock(spec_set=zigpy.device.Device),
         matchers=[
@@ -134,7 +134,7 @@ async def test_callback_listener_async():
     await asyncio.sleep(0.1)
 
     assert listener.callback.mock_calls == [mock.call(make_hdr(on()), on())]
-    assert listener.callback.await_count == 1
+    assert listener.device.application.create_task.call_count == 1
 
 
 async def test_callback_listener_error(caplog):

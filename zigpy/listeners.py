@@ -99,7 +99,7 @@ class CallbackListener(BaseRequestListener):
 
             # Run coroutines in the background
             if asyncio.iscoroutine(result):
-                asyncio.create_task(result)
+                self.device.application.create_task(result)
         except Exception:
             LOGGER.warning(
                 "Caught an exception while executing callback", exc_info=True

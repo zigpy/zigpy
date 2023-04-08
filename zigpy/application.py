@@ -11,7 +11,7 @@ import random
 import sys
 import time
 import typing
-from typing import Any
+from typing import Any, Coroutine, TypeVar
 
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
@@ -45,6 +45,7 @@ TRANSIENT_CONNECTION_ERRORS = {
 }
 
 ENERGY_SCAN_WARN_THRESHOLD = 0.75 * 255
+_R = TypeVar("_R")
 
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
@@ -61,6 +62,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._listeners = {}
         self._ota = zigpy.ota.OTA(self)
         self._send_sequence = 0
+        self._tasks: set[asyncio.Future[Any]] = set()
 
         self._concurrent_requests_semaphore = zigpy.util.DynamicBoundedSemaphore(
             self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
@@ -73,6 +75,18 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             zigpy.device.Device,
             collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
+
+    def create_task(
+        self, target: Coroutine[Any, Any, _R], name: str | None = None
+    ) -> asyncio.Task[_R]:
+        """Create a task and store a reference to it until the task completes.
+
+        target: target to call.
+        """
+        task = asyncio.get_running_loop().create_task(target, name=name)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.remove)
+        return task
 
     async def _load_db(self) -> None:
         """Restore save state."""
@@ -359,8 +373,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dev.cancel_initialization()
 
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
-        asyncio.create_task(
-            self._remove_device(dev, remove_children=remove_children, rejoin=rejoin)
+        self.create_task(
+            self._remove_device(dev, remove_children=remove_children, rejoin=rejoin),
+            f"remove_device-nwk={dev.nwk!r}-ieee={ieee!r}",
         )
         if dev.node_desc is not None and dev.node_desc.is_end_device:
             parents = []
@@ -553,7 +568,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             device = self.get_device(nwk=nwk)
         except KeyError:
             LOGGER.warning("Received relays from an unknown device: %s", nwk)
-            asyncio.create_task(self._discover_unknown_device(nwk))
+            self.create_task(
+                self._discover_unknown_device(nwk),
+                f"discover_unknown_device_from_relays-nwk={nwk!r}",
+            )
         else:
             # `relays` is a property with a setter that emits an event
             device.relays = relays
@@ -910,7 +928,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
             if packet.src.addr_mode == t.AddrMode.NWK:
                 # Manually send a ZDO IEEE address request to discover the device
-                asyncio.create_task(self._discover_unknown_device(packet.src.address))
+                self.create_task(
+                    self._discover_unknown_device(packet.src.address),
+                    f"discover_unknown_device_from_packet-nwk={packet.src.address!r}",
+                )
 
             return
 
