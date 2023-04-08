@@ -25,7 +25,7 @@ jobs:
         uses: actions/setup-python@v4.5.0
         id: python
         with:
-          python-version: ${{ needs.prepare-base.inputs.PYTHON_VERSION_DEFAULT }}
+          python-version: ${{ needs.inputs.PYTHON_VERSION_DEFAULT }}
       - name: Restore base Python virtual environment
         id: cache-venv
         uses: actions/cache/restore@v3.2.6
@@ -33,7 +33,7 @@ jobs:
           fail-on-cache-miss: true
           path: venv
           key: >-
-            ${{ needs.prepare-base.inputs.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
+            ${{ needs.inputs.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
             steps.python.outputs.python-version }}-${{
             hashFiles('setup.py', 'requirements_test.txt') }}
       - name: Download all coverage artifacts
