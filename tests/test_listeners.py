@@ -119,7 +119,7 @@ async def test_callback_listener():
     ]
 
 
-async def test_callback_listener_async(app):
+async def test_callback_listener_async():
     listener = listeners.CallbackListener(
         device=mock.Mock(spec_set=zigpy.device.Device),
         matchers=[
