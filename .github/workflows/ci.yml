@@ -5,19 +5,12 @@ on:
   push:
   pull_request: ~
 
-env:
-  CACHE_VERSION: 2
-  CODE_FOLDER: zigpy
-  PYTHON_VERSION_DEFAULT: '3.9.15'
-
-
 jobs:
   shared-ci:
     uses: zigpy/workflows/.github/workflows/ci.yml@main
     with:
       CODE_FOLDER: zigpy
       CACHE_VERSION: 2
-      PYTHON_VERSION_DEFAULT: '3.9.15'
 
   coverage:
     name: Process test coverage
@@ -30,7 +23,7 @@ jobs:
         uses: actions/setup-python@v4.5.0
         id: python
         with:
-          python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
+          python-version: ${{ needs.inputs.PYTHON_VERSION_DEFAULT }}
       - name: Restore base Python virtual environment
         id: cache-venv
         uses: actions/cache/restore@v3.2.6
@@ -38,7 +31,7 @@ jobs:
           fail-on-cache-miss: true
           path: venv
           key: >-
-            ${{ env.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
+            ${{ needs.inputs.CACHE_VERSION}}-${{ runner.os }}-base-venv-${{
             steps.python.outputs.python-version }}-${{
             hashFiles('setup.py', 'requirements_test.txt') }}
       - name: Download all coverage artifacts
