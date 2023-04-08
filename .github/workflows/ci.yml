@@ -11,6 +11,8 @@ jobs:
     with:
       CODE_FOLDER: zigpy
       CACHE_VERSION: 2
+      PYTHON_VERSION_DEFAULT: 3.9.15
+      PRE_COMMIT_CACHE_PATH:  ~/.cache/pre-commit
 
   coverage:
     name: Process test coverage
