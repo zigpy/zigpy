@@ -11,13 +11,13 @@ env:
   PRE_COMMIT_CACHE_PATH: ~/.cache/pre-commit
 
 jobs:
-  CI:
+  shared-ci:
     uses: zigpy/workflows/.github/workflows/ci.yml@main
 
   coverage:
     name: Process test coverage
     runs-on: ubuntu-latest
-    needs: CI
+    needs: shared-ci
     steps:
       - name: Check out code from GitHub
         uses: actions/checkout@v3.3.0
