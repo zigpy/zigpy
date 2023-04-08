@@ -8,7 +8,7 @@ on:
 jobs:
   shared-ci:
     uses: zigpy/workflows/.github/workflows/ci.yml@main
-    env:
+    with:
       CODE_FOLDER: zigpy
 
   coverage:
