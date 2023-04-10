@@ -152,7 +152,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
             # Some radios (like the Conbee) can fail to deliver the startup broadcast
             # due to interference
-            LOGGER.warning("Failed to deliver startup broadcast")
+            LOGGER.warning("Failed to send startup broadcast with error: %s", e)
             LOGGER.warning(const.INTERFERENCE_MESSAGE)
 
         if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
