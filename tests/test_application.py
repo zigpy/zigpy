@@ -1337,7 +1337,7 @@ async def test_startup_broadcast_failure_due_to_interference(app, caplog):
             await app.startup()
 
     # The application will still start up, however
-    assert "Failed to deliver startup broadcast" in caplog.text
+    assert "Failed to send startup broadcast" in caplog.text
     assert "interference" in caplog.text
 
 
