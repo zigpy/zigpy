@@ -134,7 +134,7 @@ async def test_callback_listener_async():
     await asyncio.sleep(0.1)
 
     assert listener.callback.mock_calls == [mock.call(make_hdr(on()), on())]
-    assert listener.callback.await_count == 1
+    assert listener.device.application.create_task.call_count == 1
 
 
 async def test_callback_listener_error(caplog):
