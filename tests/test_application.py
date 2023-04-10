@@ -1339,3 +1339,9 @@ async def test_startup_broadcast_failure_due_to_interference(app, caplog):
     # The application will still start up, however
     assert "Failed to deliver startup broadcast" in caplog.text
     assert "interference" in caplog.text
+
+
+async def test_startup_broadcast_failure_other(app, caplog):
+    with mock.patch.object(app, "permit", side_effect=DeliveryError("Error", 123)):
+        with pytest.raises(DeliveryError, match="^Error$"):
+            await app.startup()
