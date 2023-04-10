@@ -13,7 +13,7 @@ class APIException(ZigbeeException):
 class DeliveryError(ZigbeeException):
     """Message delivery failed in some way"""
 
-    def __init__(self, message: str, status=None):
+    def __init__(self, message: str, status: int | None = None):
         super().__init__(message)
         self.status = status
 

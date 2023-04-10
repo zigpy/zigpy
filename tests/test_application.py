@@ -1325,3 +1325,17 @@ async def test_startup_energy_scan(app, caplog, scan, message_present):
         assert "Zigbee channel 15 utilization is 100.00%" in caplog.text
     else:
         assert "Zigbee channel" not in caplog.text
+
+
+async def test_startup_broadcast_failure_due_to_interference(app, caplog):
+    err = DeliveryError(
+        "Failed to deliver packet: <TXStatus.MAC_CHANNEL_ACCESS_FAILURE: 225>", 225
+    )
+
+    with mock.patch.object(app, "permit", side_effect=err):
+        with caplog.at_level(logging.WARNING):
+            await app.startup()
+
+    # The application will still start up, however
+    assert "Failed to deliver startup broadcast" in caplog.text
+    assert "interference" in caplog.text
