@@ -21,6 +21,7 @@ else:
 import zigpy.appdb
 import zigpy.backups
 import zigpy.config as conf
+import zigpy.const as const
 import zigpy.device
 import zigpy.exceptions
 import zigpy.group
@@ -143,7 +144,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         await self.start_network()
 
         # Some radios erroneously permit joins on startup
-        await self.permit(0)
+        try:
+            await self.permit(0)
+        except zigpy.exceptions.DeliveryError as e:
+            if e.status != t.MACStatus.MAC_CHANNEL_ACCESS_FAILURE:
+                raise
+
+            # Some radios (like the Conbee) can fail to deliver the startup broadcast
+            # due to interference
+            LOGGER.warning("Failed to send startup broadcast: %s", e)
+            LOGGER.warning(const.INTERFERENCE_MESSAGE)
 
         if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
             self.backups.start_periodic_backups(
@@ -171,12 +181,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     self.state.network_info.channel,
                     100 * results[self.state.network_info.channel] / 255,
                 )
-                LOGGER.warning(
-                    "If you are having problems joining new devices, are missing sensor"
-                    " updates, or have issues keeping devices joined, ensure your"
-                    " coordinator is away from interference sources such as USB 3.0"
-                    " devices, SSDs, WiFi routers, etc."
-                )
+                LOGGER.warning(const.INTERFERENCE_MESSAGE)
 
     async def startup(self, *, auto_form: bool = False):
         """Starts a network, optionally forming one with random settings if necessary."""
