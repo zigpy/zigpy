@@ -8,13 +8,20 @@ import errno
 import logging
 import os
 import random
+import sys
 import time
 import typing
-from typing import Any
+from typing import Any, Coroutine, TypeVar
+
+if sys.version_info[:2] < (3, 11):
+    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
+else:
+    from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
 import zigpy.appdb
 import zigpy.backups
 import zigpy.config as conf
+import zigpy.const as const
 import zigpy.device
 import zigpy.exceptions
 import zigpy.group
@@ -39,6 +46,7 @@ TRANSIENT_CONNECTION_ERRORS = {
 }
 
 ENERGY_SCAN_WARN_THRESHOLD = 0.75 * 255
+_R = TypeVar("_R")
 
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
@@ -55,6 +63,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._listeners = {}
         self._ota = zigpy.ota.OTA(self)
         self._send_sequence = 0
+        self._tasks: set[asyncio.Future[Any]] = set()
 
         self._concurrent_requests_semaphore = zigpy.util.DynamicBoundedSemaphore(
             self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
@@ -67,6 +76,18 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             zigpy.device.Device,
             collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
+
+    def create_task(
+        self, target: Coroutine[Any, Any, _R], name: str | None = None
+    ) -> asyncio.Task[_R]:
+        """Create a task and store a reference to it until the task completes.
+
+        target: target to call.
+        """
+        task = asyncio.get_running_loop().create_task(target, name=name)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.remove)
+        return task
 
     async def _load_db(self) -> None:
         """Restore save state."""
@@ -123,19 +144,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         await self.start_network()
 
         # Some radios erroneously permit joins on startup
-        await self.permit(0)
+        try:
+            await self.permit(0)
+        except zigpy.exceptions.DeliveryError as e:
+            if e.status != t.MACStatus.MAC_CHANNEL_ACCESS_FAILURE:
+                raise
 
-        if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
-            self.backups.start_periodic_backups(
-                # Config specifies the period in minutes, not seconds
-                period=(60 * self.config[conf.CONF_NWK_BACKUP_PERIOD])
-            )
-
-        if self.config[conf.CONF_TOPO_SCAN_ENABLED]:
-            # Config specifies the period in minutes, not seconds
-            self.topology.start_periodic_scans(
-                period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
-            )
+            # Some radios (like the Conbee) can fail to deliver the startup broadcast
+            # due to interference
+            LOGGER.warning("Failed to send startup broadcast: %s", e)
+            LOGGER.warning(const.INTERFERENCE_MESSAGE)
 
         if self.config[conf.CONF_STARTUP_ENERGY_SCAN]:
             # Each scan period is 15.36ms. Scan for at least 200ms (2^4 + 1 periods) to
@@ -151,12 +169,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     self.state.network_info.channel,
                     100 * results[self.state.network_info.channel] / 255,
                 )
-                LOGGER.warning(
-                    "If you are having problems joining new devices, are missing sensor"
-                    " updates, or have issues keeping devices joined, ensure your"
-                    " coordinator is away from interference sources such as USB 3.0"
-                    " devices, SSDs, WiFi routers, etc."
-                )
+                LOGGER.warning(const.INTERFERENCE_MESSAGE)
+
+        if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
+            self.backups.start_periodic_backups(
+                # Config specifies the period in minutes, not seconds
+                period=(60 * self.config[conf.CONF_NWK_BACKUP_PERIOD])
+            )
+
+        if self.config[conf.CONF_TOPO_SCAN_ENABLED]:
+            # Config specifies the period in minutes, not seconds
+            self.topology.start_periodic_scans(
+                period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
+            )
 
     async def startup(self, *, auto_form: bool = False):
         """Starts a network, optionally forming one with random settings if necessary."""
@@ -168,7 +193,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.error("Couldn't start application", exc_info=e)
             await self.shutdown()
 
-            if isinstance(e, ConnectionRefusedError) or (
+            if isinstance(e, ConnectionError) or (
                 isinstance(e, OSError) and e.errno in TRANSIENT_CONNECTION_ERRORS
             ):
                 raise zigpy.exceptions.TransientConnectionError() from e
@@ -304,6 +329,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             ),
             counter_increment=0,
             allow_incomplete=True,
+            create_new=(not fast),
         )
 
     async def shutdown(self) -> None:
@@ -353,8 +379,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dev.cancel_initialization()
 
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
-        asyncio.create_task(
-            self._remove_device(dev, remove_children=remove_children, rejoin=rejoin)
+        self.create_task(
+            self._remove_device(dev, remove_children=remove_children, rejoin=rejoin),
+            f"remove_device-nwk={dev.nwk!r}-ieee={ieee!r}",
         )
         if dev.node_desc is not None and dev.node_desc.is_end_device:
             parents = []
@@ -390,12 +417,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> None:
         """Send a remove request then pop the device."""
         try:
-            await asyncio.wait_for(
-                device.zdo.leave(remove_children=remove_children, rejoin=rejoin),
-                timeout=30
+            async with asyncio_timeout(
+                30
                 if device.node_desc is not None and device.node_desc.is_end_device
-                else 7,
-            )
+                else 7
+            ):
+                await device.zdo.leave(remove_children=remove_children, rejoin=rejoin)
         except (zigpy.exceptions.DeliveryError, asyncio.TimeoutError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
@@ -547,7 +574,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             device = self.get_device(nwk=nwk)
         except KeyError:
             LOGGER.warning("Received relays from an unknown device: %s", nwk)
-            asyncio.create_task(self._discover_unknown_device(nwk))
+            self.create_task(
+                self._discover_unknown_device(nwk),
+                f"discover_unknown_device_from_relays-nwk={nwk!r}",
+            )
         else:
             # `relays` is a property with a setter that emits an event
             device.relays = relays
@@ -904,7 +934,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
             if packet.src.addr_mode == t.AddrMode.NWK:
                 # Manually send a ZDO IEEE address request to discover the device
-                asyncio.create_task(self._discover_unknown_device(packet.src.address))
+                self.create_task(
+                    self._discover_unknown_device(packet.src.address),
+                    f"discover_unknown_device_from_packet-nwk={packet.src.address!r}",
+                )
 
             return
 

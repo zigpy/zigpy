@@ -5,7 +5,13 @@ import binascii
 from datetime import datetime, timezone
 import enum
 import logging
+import sys
 import typing
+
+if sys.version_info[:2] < (3, 11):
+    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
+else:
+    from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -307,7 +313,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             if not expect_reply:
                 return None
 
-            return await asyncio.wait_for(req.result, timeout)
+            async with asyncio_timeout(timeout):
+                return await req.result
 
     def deserialize(self, endpoint_id, cluster_id, data):
         return self.endpoints[endpoint_id].deserialize(cluster_id, data)

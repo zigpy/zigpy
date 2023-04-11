@@ -47,7 +47,6 @@ ignore = [
     "E731",   # do not assign a lambda expression, use a def
     "B007",   # Loop control variable `id_` not used within loop body
     "PGH004", # Use specific rule codes when using `noqa`
-    "RUF006", # Store a reference to the return value of `asyncio.create_task`
     "TRY004", # Prefer `TypeError` exception for invalid type
 ]
 

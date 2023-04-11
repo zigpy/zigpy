@@ -289,13 +289,20 @@ class Requests(dict):
 class CatchingTaskMixin(LocalLogMixin):
     """Allow creating tasks suppressing exceptions."""
 
+    _tasks: set[asyncio.Future[typing.Any]] = set()
+
     def create_catching_task(
         self,
         target: typing.Coroutine,
         exceptions: type[Exception] | tuple | None = None,
+        name: str | None = None,
     ) -> None:
         """Create a task."""
-        asyncio.create_task(self.catching_coro(target, exceptions))
+        task = asyncio.get_running_loop().create_task(
+            self.catching_coro(target, exceptions), name=name
+        )
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.remove)
 
     async def catching_coro(
         self,

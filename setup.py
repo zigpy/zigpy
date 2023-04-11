@@ -14,6 +14,7 @@ REQUIRES = [
     "crccheck",
     "cryptography",
     'importlib_resources; python_version<"3.9"',
+    'async-timeout; python_version<"3.11"',
     "voluptuous",
     'pyserial-asyncio; platform_system!="Windows"',
     'pyserial-asyncio!=0.5; platform_system=="Windows"',

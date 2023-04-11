@@ -581,7 +581,10 @@ async def test_form_network_find_best_channel(app):
     app.start_network = start_network
 
     with patch.object(app, "write_network_info") as write:
-        await app.form_network()
+        with patch.object(
+            app.backups, "create_backup", wraps=app.backups.create_backup
+        ) as create_backup:
+            await app.form_network()
 
     assert start_network.await_count == 2
 
@@ -592,6 +595,9 @@ async def test_form_network_find_best_channel(app):
     # Then, after the scan, a better channel is chosen
     nwk_info2 = write.mock_calls[1].kwargs["network_info"]
     assert nwk_info2.channel == 22
+
+    # Only a single backup will be present
+    assert create_backup.await_count == 1
 
 
 async def test_startup_formed():
@@ -667,13 +673,24 @@ async def test_startup_no_backup():
     p.assert_not_called()
 
 
-async def test_startup_failure_transient_error():
+def with_attributes(obj, **attrs):
+    for k, v in attrs.items():
+        setattr(obj, k, v)
+
+    return obj
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        with_attributes(OSError("Network is unreachable"), errno=errno.ENETUNREACH),
+        ConnectionRefusedError(),
+    ],
+)
+async def test_startup_failure_transient_error(error):
     app = make_app({conf.CONF_NWK_BACKUP_ENABLED: False})
 
-    err = OSError("Network is unreachable")
-    err.errno = errno.ENETUNREACH
-
-    with patch.object(app, "connect", side_effect=[err]):
+    with patch.object(app, "connect", side_effect=[error]):
         with pytest.raises(TransientConnectionError):
             await app.startup()
 
@@ -1314,3 +1331,23 @@ async def test_startup_energy_scan(app, caplog, scan, message_present):
         assert "Zigbee channel 15 utilization is 100.00%" in caplog.text
     else:
         assert "Zigbee channel" not in caplog.text
+
+
+async def test_startup_broadcast_failure_due_to_interference(app, caplog):
+    err = DeliveryError(
+        "Failed to deliver packet: <TXStatus.MAC_CHANNEL_ACCESS_FAILURE: 225>", 225
+    )
+
+    with mock.patch.object(app, "permit", side_effect=err):
+        with caplog.at_level(logging.WARNING):
+            await app.startup()
+
+    # The application will still start up, however
+    assert "Failed to send startup broadcast" in caplog.text
+    assert "interference" in caplog.text
+
+
+async def test_startup_broadcast_failure_other(app, caplog):
+    with mock.patch.object(app, "permit", side_effect=DeliveryError("Error", 123)):
+        with pytest.raises(DeliveryError, match="^Error$"):
+            await app.startup()
