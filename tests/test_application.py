@@ -581,7 +581,10 @@ async def test_form_network_find_best_channel(app):
     app.start_network = start_network
 
     with patch.object(app, "write_network_info") as write:
-        await app.form_network()
+        with patch.object(
+            app.backups, "create_backup", wraps=app.backups.create_backup
+        ) as create_backup:
+            await app.form_network()
 
     assert start_network.await_count == 2
 
@@ -592,6 +595,9 @@ async def test_form_network_find_best_channel(app):
     # Then, after the scan, a better channel is chosen
     nwk_info2 = write.mock_calls[1].kwargs["network_info"]
     assert nwk_info2.channel == 22
+
+    # Only a single backup will be present
+    assert create_backup.await_count == 1
 
 
 async def test_startup_formed():
