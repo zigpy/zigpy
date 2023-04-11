@@ -155,18 +155,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.warning("Failed to send startup broadcast: %s", e)
             LOGGER.warning(const.INTERFERENCE_MESSAGE)
 
-        if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
-            self.backups.start_periodic_backups(
-                # Config specifies the period in minutes, not seconds
-                period=(60 * self.config[conf.CONF_NWK_BACKUP_PERIOD])
-            )
-
-        if self.config[conf.CONF_TOPO_SCAN_ENABLED]:
-            # Config specifies the period in minutes, not seconds
-            self.topology.start_periodic_scans(
-                period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
-            )
-
         if self.config[conf.CONF_STARTUP_ENERGY_SCAN]:
             # Each scan period is 15.36ms. Scan for at least 200ms (2^4 + 1 periods) to
             # pick up WiFi beacon frames.
@@ -182,6 +170,18 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     100 * results[self.state.network_info.channel] / 255,
                 )
                 LOGGER.warning(const.INTERFERENCE_MESSAGE)
+
+        if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
+            self.backups.start_periodic_backups(
+                # Config specifies the period in minutes, not seconds
+                period=(60 * self.config[conf.CONF_NWK_BACKUP_PERIOD])
+            )
+
+        if self.config[conf.CONF_TOPO_SCAN_ENABLED]:
+            # Config specifies the period in minutes, not seconds
+            self.topology.start_periodic_scans(
+                period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
+            )
 
     async def startup(self, *, auto_form: bool = False):
         """Starts a network, optionally forming one with random settings if necessary."""
