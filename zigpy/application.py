@@ -48,6 +48,9 @@ TRANSIENT_CONNECTION_ERRORS = {
 ENERGY_SCAN_WARN_THRESHOLD = 0.75 * 255
 _R = TypeVar("_R")
 
+CHANNEL_CHANGE_BROADCAST_DELAY_S = 1.0
+CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S = 1.0
+
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     SCHEMA = conf.CONFIG_SCHEMA
@@ -241,6 +244,64 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             _, scanned_channels, _, _, energy_values = rsp
 
         return dict(zip(scanned_channels, energy_values))
+
+    async def _move_network_to_channel(
+        self, new_channel: int, new_nwk_update_id: int
+    ) -> None:
+        """Broadcasts the channel migration update request."""
+        # Default implementation for radios that migrate via a loopback ZDO request
+        await self._device.zdo.Mgmt_NWK_Update_req(
+            zigpy.zdo.types.NwkUpdate(
+                ScanChannels=zigpy.types.Channels.from_channel_list([new_channel]),
+                ScanDuration=zigpy.zdo.types.NwkUpdate.CHANNEL_CHANGE_REQ,
+                nwkUpdateId=new_nwk_update_id,
+            )
+        )
+
+    async def move_network_to_channel(
+        self, new_channel: int, *, num_broadcasts: int = 5
+    ) -> None:
+        """Moves the network to a new channel."""
+        if self.state.network_info.channel == new_channel:
+            return
+
+        new_nwk_update_id = (self.state.network_info.nwk_update_id + 1) % 0xFF
+
+        for attempt in range(num_broadcasts):
+            LOGGER.info(
+                "Broadcasting migration to channel %s (%s of %s)",
+                new_channel,
+                attempt + 1,
+                num_broadcasts,
+            )
+
+            await zigpy.zdo.broadcast(
+                app=self,
+                command=zigpy.zdo.types.ZDOCmd.Mgmt_NWK_Update_req,
+                grpid=None,
+                radius=30,  # Explicitly set the maximum radius
+                broadcast_address=zigpy.types.BroadcastAddress.ALL_DEVICES,
+                NwkUpdate=zigpy.zdo.types.NwkUpdate(
+                    ScanChannels=zigpy.types.Channels.from_channel_list([new_channel]),
+                    ScanDuration=zigpy.zdo.types.NwkUpdate.CHANNEL_CHANGE_REQ,
+                    nwkUpdateId=new_nwk_update_id,
+                ),
+            )
+
+            await asyncio.sleep(CHANNEL_CHANGE_BROADCAST_DELAY_S)
+
+        # Move the coordinator itself, if supported
+        await self._move_network_to_channel(
+            new_channel=new_channel, new_nwk_update_id=new_nwk_update_id
+        )
+
+        # Wait for settings to update
+        while self.state.network_info.channel != new_channel:
+            LOGGER.info("Waiting for channel change to take effect")
+            await self.load_network_info(load_devices=False)
+            await asyncio.sleep(CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S)
+
+        LOGGER.info("Successfully migrated to channel %d", new_channel)
 
     async def form_network(self, *, fast: bool = False) -> None:
         """Writes random network settings to the coordinator."""
