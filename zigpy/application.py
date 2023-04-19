@@ -56,7 +56,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     SCHEMA = conf.CONFIG_SCHEMA
     SCHEMA_DEVICE = conf.SCHEMA_DEVICE
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict) -> None:
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
         self.state: zigpy.state.State = zigpy.state.State()
         self._listeners = {}
@@ -105,7 +105,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.topology.add_listener(self._dblistener)
         await self._dblistener.load()
 
-    async def initialize(self, *, auto_form: bool = False):
+    async def initialize(self, *, auto_form: bool = False) -> None:
         """Starts the network on a connected radio, optionally forming one with random
         settings if necessary.
         """
@@ -186,7 +186,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
             )
 
-    async def startup(self, *, auto_form: bool = False):
+    async def startup(self, *, auto_form: bool = False) -> None:
         """Starts a network, optionally forming one with random settings if necessary."""
 
         try:
@@ -403,7 +403,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         await self.disconnect()
 
-    def add_device(self, ieee: t.EUI64, nwk: t.NWK):
+    def add_device(self, ieee: t.EUI64, nwk: t.NWK) -> zigpy.device.Device:
         """Creates a zigpy `Device` object with the provided IEEE and NWK addresses."""
 
         assert isinstance(ieee, t.EUI64)
@@ -413,7 +413,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.devices[ieee] = dev
         return dev
 
-    def device_initialized(self, device):
+    def device_initialized(self, device: zigpy.device.Device) -> None:
         """Used by a device to signal that it is initialized"""
         LOGGER.debug("Device is initialized %s", device)
 
@@ -694,7 +694,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """
         raise NotImplementedError()  # pragma: no cover
 
-    async def register_endpoints(self):
+    async def register_endpoints(self) -> None:
         """Registers all necessary endpoints.
         The exact order in which this method is called depends on the radio module.
         """
@@ -787,7 +787,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         expect_reply: bool = True,
         use_ieee: bool = False,
         extended_timeout: bool = False,
-    ):
+    ) -> tuple[zigpy.zcl.foundation.Status, str]:
         """Submit and send data out as an unicast transmission.
         :param device: destination device
         :param profile: Zigbee Profile ID to use for outgoing message
@@ -896,7 +896,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         sequence: t.uint8_t,
         data: bytes,
         broadcast_address: t.BroadcastAddress = t.BroadcastAddress.RX_ON_WHEN_IDLE,
-    ):
+    ) -> tuple[zigpy.zcl.foundation.Status, str]:
         """Submit and send data out as an unicast transmission.
         :param profile: Zigbee Profile ID to use for outgoing message
         :param cluster: cluster id where the message is being sent
@@ -1076,7 +1076,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             self._req_listeners[src].remove(listener)
 
     @abc.abstractmethod
-    async def permit_ncp(self, time_s: int = 60):
+    async def permit_ncp(self, time_s: int = 60) -> None:
         """Permit joining on NCP.
         Not all radios will require this method.
         """
@@ -1115,7 +1115,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         raise NotImplementedError()  # pragma: no cover
 
-    async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None):
+    async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None) -> None:
         """Permit joining on a specific node or all router nodes."""
         assert 0 <= time_s <= 254
         if node is not None:
@@ -1143,7 +1143,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             0,
             broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
         )
-        return await self.permit_ncp(time_s)
+        await self.permit_ncp(time_s)
 
     def get_sequence(self) -> t.uint8_t:
         self._send_sequence = (self._send_sequence + 1) % 256
@@ -1176,7 +1176,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Returns coordinator endpoint id for specified cluster id."""
         return DEFAULT_ENDPOINT_ID
 
-    def get_dst_address(self, cluster) -> zdo_types.MultiAddress:
+    def get_dst_address(self, cluster: zigpy.zcl.Cluster) -> zdo_types.MultiAddress:
         """Helper to get a dst address for bind/unbind operations.
 
         Allows radios to provide correct information especially for radios which listen
@@ -1205,11 +1205,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._config = self.SCHEMA(new_config)
 
     @property
-    def groups(self):
+    def groups(self) -> zigpy.group.Groups:
         return self._groups
 
     @property
-    def ota(self):
+    def ota(self) -> zigpy.ota.OTA:
         return self._ota
 
     @property
