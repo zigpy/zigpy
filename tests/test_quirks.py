@@ -474,8 +474,8 @@ class ManufacturerSpecificCluster(zigpy.quirks.CustomCluster):
     cluster_id = 0x2222
     ep_attribute = "just_a_cluster"
     attributes = {
-        0: ("attr0", t.uint8_t),
-        1: ("attr1", t.uint16_t, True),
+        0: zcl.foundation.ZCLAttributeDef("attr0", t.uint8_t),
+        1: zcl.foundation.ZCLAttributeDef("attr1", t.uint16_t, True),
     }
 
     client_commands = {
