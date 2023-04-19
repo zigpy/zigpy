@@ -54,7 +54,7 @@ class Struct:
         # We have to use a little introspection to find our real class.
         return next(c for c in cls.__mro__ if c.__name__ != "Optional")
 
-    def __init_subclass__(cls):
+    def __init_subclass__(cls) -> None:
         super().__init_subclass__()
 
         # Explicitly check for old-style structs
