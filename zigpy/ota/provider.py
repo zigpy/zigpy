@@ -34,11 +34,11 @@ class Basic(zigpy.util.LocalLogMixin, ABC):
 
     REFRESH = datetime.timedelta(hours=12)
 
-    def __init__(self):
-        self.config = {}
-        self._cache = {}
+    def __init__(self) -> None:
+        self.config: dict[str, str | int] = {}
+        self._cache: dict[ImageKey, BaseOTAImage] = {}
         self._is_enabled = False
-        self._locks = defaultdict(asyncio.Semaphore)
+        self._locks: defaultdict[asyncio.Semaphore] = defaultdict(asyncio.Semaphore)
         self._last_refresh = None
 
     @abstractmethod
@@ -77,7 +77,7 @@ class Basic(zigpy.util.LocalLogMixin, ABC):
     def enable(self) -> None:
         self._is_enabled = True
 
-    def update_expiration(self):
+    def update_expiration(self) -> None:
         self._last_refresh = datetime.datetime.now()
 
     @property
@@ -92,7 +92,7 @@ class Basic(zigpy.util.LocalLogMixin, ABC):
 
         return datetime.datetime.now() - self._last_refresh > self.REFRESH
 
-    def log(self, lvl, msg, *args, **kwargs):
+    def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
         """Log a message"""
         msg = f"{self.__class__.__name__}: {msg}"
         return LOGGER.log(lvl, msg, *args, **kwargs)
@@ -107,7 +107,7 @@ class IKEAImage:
     url = attr.ib(default=None)
 
     @classmethod
-    def new(cls, data):
+    def new(cls, data: dict[str, str | int]) -> IKEAImage:
         res = cls(data["fw_manufacturer_id"], data["fw_image_type"])
         res.file_version = data["fw_file_version_MSB"] << 16
         res.file_version |= data["fw_file_version_LSB"]
@@ -116,7 +116,7 @@ class IKEAImage:
         return res
 
     @property
-    def key(self):
+    def key(self) -> ImageKey:
         return ImageKey(self.manufacturer_id, self.image_type)
 
     async def fetch_image(self) -> BaseOTAImage | None:
@@ -549,7 +549,7 @@ class FileImage:
 
 
 class FileStore(Basic):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._ota_dir = None
 
@@ -627,7 +627,7 @@ class INOVELLIImage:
     url = attr.ib()
 
     @classmethod
-    def from_json(cls, obj):
+    def from_json(cls, obj: dict[str, str | int]) -> INOVELLIImage:
         version = int(obj["version"], 16)
 
         # Old Inovelli OTA JSON versions were in hex, they then switched back to decimal
@@ -642,7 +642,7 @@ class INOVELLIImage:
         )
 
     @property
-    def key(self):
+    def key(self) -> ImageKey:
         return ImageKey(self.manufacturer_id, self.image_type)
 
     async def fetch_image(self) -> BaseOTAImage | None:
