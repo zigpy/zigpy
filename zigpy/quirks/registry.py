@@ -3,7 +3,7 @@ from __future__ import annotations
 import collections
 import itertools
 import logging
-from typing import Dict, List, Optional
+import typing
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -20,8 +20,10 @@ from zigpy.typing import CustomDeviceType, DeviceType
 
 _LOGGER = logging.getLogger(__name__)
 
-TYPE_MODEL_QUIRKS_LIST = Dict[Optional[str], List["zigpy.quirks.CustomDevice"]]
-TYPE_MANUF_QUIRKS_DICT = Dict[Optional[str], TYPE_MODEL_QUIRKS_LIST]
+TYPE_MANUF_QUIRKS_DICT = typing.Dict[
+    typing.Optional[str],
+    typing.Dict[typing.Optional[str], typing.List["zigpy.quirks.CustomDevice"]],
+]
 
 
 class DeviceRegistry:
@@ -152,11 +154,11 @@ class DeviceRegistry:
         return device
 
     @staticmethod
-    def _match(a, b):
+    def _match(a: dict | typing.Iterable, b: dict | typing.Iterable) -> bool:
         return set(a) == set(b)
 
     @property
-    def registry(self):
+    def registry(self) -> TYPE_MANUF_QUIRKS_DICT:
         return self._registry
 
     def __contains__(self, device: CustomDeviceType) -> bool:
