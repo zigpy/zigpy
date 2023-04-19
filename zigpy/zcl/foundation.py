@@ -142,8 +142,21 @@ class Set(TypedCollection):
 class DataTypes(dict):
     """DataTypes container."""
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        data_types: dict[
+            int,
+            tuple[
+                str,
+                typing.Any,
+                typing.Literal[Null]
+                | typing.Literal[Discrete]
+                | typing.Literal[Analog]
+                | typing.Literal[None],
+            ],
+        ],
+    ) -> None:
+        super().__init__(data_types)
         self._idx_by_class = {
             _type: type_id for type_id, (name, _type, ad) in self.items()
         }
