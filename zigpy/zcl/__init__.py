@@ -3,13 +3,18 @@ from __future__ import annotations
 import enum
 import functools
 import logging
-from typing import Any, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 import warnings
 
 from zigpy import util
 import zigpy.types as t
 from zigpy.typing import AddressingMode, EndpointType
 from zigpy.zcl import foundation
+
+if TYPE_CHECKING:
+    from zigpy.appdb import PersistingListener
+    from zigpy.endpoint import Endpoint
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -157,7 +162,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         if cls.cluster_id_range is not None:
             cls._registry_range[cls.cluster_id_range] = cls
 
-    def __init__(self, endpoint: EndpointType, is_server: bool = True):
+    def __init__(self, endpoint: EndpointType, is_server: bool = True) -> None:
         self._endpoint: EndpointType = endpoint
         self._attr_cache: dict[int, Any] = {}
         self.unsupported_attributes: set[int | str] = set()
@@ -340,7 +345,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         manufacturer: int | t.uint16_t | None = None,
         tsn: int | t.uint8_t | None = None,
         **kwargs,
-    ):
+    ) -> None:
         hdr, request = self._create_request(
             general=general,
             command_id=command_id,
@@ -367,7 +372,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         args: list[Any],
         *,
         dst_addressing: AddressingMode | None = None,
-    ):
+    ) -> None:
         self.debug(
             "Received command 0x%02X (TSN %d): %s", hdr.command_id, hdr.tsn, args
         )
@@ -440,7 +445,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         allow_cache: bool = False,
         only_cache: bool = False,
         manufacturer: int | t.uint16_t | None = None,
-    ):
+    ) -> Any:
         success, failure = {}, {}
         attribute_ids: list[int] = []
         orig_attributes: dict[int, int | str] = {}
@@ -746,26 +751,26 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         return self._type == ClusterType.Server
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self.__class__.__name__
 
     @property
-    def endpoint(self):
+    def endpoint(self) -> Endpoint:
         return self._endpoint
 
     @property
     def commands(self):
         return list(self._server_commands_idx.keys())
 
-    def update_attribute(self, attrid, value):
+    def update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
         """Update specified attribute with specified value"""
         self._update_attribute(attrid, value)
 
-    def _update_attribute(self, attrid, value):
+    def _update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
         self._attr_cache[attrid] = value
         self.listener_event("attribute_updated", attrid, value)
 
-    def log(self, lvl, msg, *args, **kwargs):
+    def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
         msg = "[%s:%s:0x%04x] " + msg
         args = (
             self._endpoint.device.name,
@@ -774,7 +779,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         ) + args
         return LOGGER.log(lvl, msg, *args, **kwargs)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> functools.partial:
         if name in self._client_commands_idx:
             return functools.partial(
                 self.client_command, self._client_commands_idx[name]
@@ -930,17 +935,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
 
 class ClusterPersistingListener:
-    def __init__(self, applistener, cluster):
+    def __init__(self, applistener: PersistingListener, cluster: Cluster) -> None:
         self._applistener = applistener
         self._cluster = cluster
 
-    def attribute_updated(self, attrid, value):
+    def attribute_updated(self, attrid: int | t.uint16_t, value: Any) -> None:
         self._applistener.attribute_updated(self._cluster, attrid, value)
 
-    def cluster_command(self, *args, **kwargs):
+    def cluster_command(self, *args, **kwargs) -> None:
         pass
 
-    def general_command(self, *args, **kwargs):
+    def general_command(self, *args, **kwargs) -> None:
         pass
 
     def unsupported_attribute_added(self, attrid: int) -> None:
