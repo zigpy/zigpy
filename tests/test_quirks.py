@@ -474,20 +474,22 @@ class ManufacturerSpecificCluster(zigpy.quirks.CustomCluster):
     cluster_id = 0x2222
     ep_attribute = "just_a_cluster"
     attributes = {
-        0: zcl.foundation.ZCLAttributeDef("attr0", t.uint8_t),
-        1: zcl.foundation.ZCLAttributeDef("attr1", t.uint16_t, True),
+        0x0000: zcl.foundation.ZCLAttributeDef("attr0", t.uint8_t),
+        0x0001: zcl.foundation.ZCLAttributeDef(
+            "attr1", t.uint16_t, is_manufacturer_specific=True
+        ),
     }
 
     client_commands = {
-        0: zcl.foundation.ZCLCommandDef("client_cmd0", {}, False),
-        1: zcl.foundation.ZCLCommandDef(
+        0x00: zcl.foundation.ZCLCommandDef("client_cmd0", {}, False),
+        0x01: zcl.foundation.ZCLCommandDef(
             "client_cmd1", {}, False, is_manufacturer_specific=True
         ),
     }
 
     server_commands = {
-        0: zcl.foundation.ZCLCommandDef("server_cmd0", {}, False),
-        1: zcl.foundation.ZCLCommandDef(
+        0x00: zcl.foundation.ZCLCommandDef("server_cmd0", {}, False),
+        0x01: zcl.foundation.ZCLCommandDef(
             "server_cmd1", {}, False, is_manufacturer_specific=True
         ),
     }
