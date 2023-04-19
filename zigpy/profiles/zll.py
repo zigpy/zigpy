@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import zigpy.types as t
 
 PROFILE_ID = 49246

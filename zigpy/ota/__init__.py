@@ -1,7 +1,8 @@
 """OTA support for Zigbee devices."""
+from __future__ import annotations
+
 import datetime
 import logging
-from typing import Optional
 
 import attr
 
@@ -38,7 +39,7 @@ class CachedImage:
     cached_data = attr.ib(default=None)
 
     @classmethod
-    def new(cls, img: BaseOTAImage) -> "CachedImage":
+    def new(cls, img: BaseOTAImage) -> CachedImage:
         expiration = datetime.datetime.now() + cls.DEFAULT_EXPIRATION
         return cls(img, expiration)
 
@@ -128,7 +129,7 @@ class OTA(zigpy.util.ListenableMixin):
 
     async def get_ota_image(
         self, manufacturer_id, image_type, model=None
-    ) -> Optional[CachedImage]:
+    ) -> CachedImage | None:
         if manufacturer_id in (
             zigpy.ota.provider.Salus.MANUFACTURER_ID,
         ):  # Salus/computime do not pass a useful image_type

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 MAJOR_VERSION = 0
 MINOR_VERSION = 55
 PATCH_VERSION = "0.dev0"

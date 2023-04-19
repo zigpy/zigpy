@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import collections
 import itertools
 import logging
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -51,7 +53,7 @@ class DeviceRegistry:
             model = custom_device.signature.get(SIG_MODEL)
             self.registry[manufacturer][model].remove(custom_device)
 
-    def get_device(self, device: DeviceType) -> Union[CustomDeviceType, DeviceType]:
+    def get_device(self, device: DeviceType) -> CustomDeviceType | DeviceType:
         """Get a CustomDevice object, if one is available"""
         if isinstance(device, zigpy.quirks.CustomDevice):
             return device
