@@ -98,11 +98,11 @@ class TypeValue:
         self.type = type
         self.value = value
 
-    def serialize(self):
+    def serialize(self) -> bytes:
         return self.type.to_bytes(1, "little") + self.value.serialize()
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data: bytes) -> tuple[TypeValue, bytes]:
         type, data = t.uint8_t.deserialize(data)
         python_type = DATA_TYPES[type][1]
         value, data = python_type.deserialize(data)
@@ -142,13 +142,26 @@ class Set(TypedCollection):
 class DataTypes(dict):
     """DataTypes container."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        data_types: dict[
+            int,
+            tuple[
+                str,
+                typing.Any,
+                typing.Literal[Null]
+                | typing.Literal[Discrete]
+                | typing.Literal[Analog]
+                | typing.Literal[None],
+            ],
+        ],
+    ) -> None:
+        super().__init__(data_types)
         self._idx_by_class = {
             _type: type_id for type_id, (name, _type, ad) in self.items()
         }
 
-    def pytype_to_datatype_id(self, python_type) -> int:
+    def pytype_to_datatype_id(self, python_type: typing.Any) -> int:
         """Return Zigbee Datatype ID for a give python type."""
 
         # We return the most specific parent class
@@ -394,7 +407,7 @@ class ConfigureReportingResponseRecord(t.Struct):
     attrid: t.uint16_t = t.StructField(repr=_hex_uint16_repr)
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data: bytes) -> tuple[ConfigureReportingResponseRecord, bytes]:
         r = cls()
         r.status, data = Status.deserialize(data)
         if r.status == Status.SUCCESS:
@@ -415,7 +428,7 @@ class ConfigureReportingResponseRecord(t.Struct):
             r += t.uint16_t(self.attrid).serialize()
         return r
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         r = f"{self.__class__.__name__}(status={self.status}"
         if self.status != Status.SUCCESS:
             r += f", direction={self.direction}, attrid={self.attrid}"
@@ -547,7 +560,11 @@ class ZCLHeader(t.Struct):
     command_id: t.uint8_t
 
     def __new__(
-        cls, frame_control=None, manufacturer=None, tsn=None, command_id=None
+        cls: type[ZCLHeader],
+        frame_control: FrameControl | None = None,
+        manufacturer: t.uint16_t | None = None,
+        tsn: int | t.uint8_t | None = None,
+        command_id: int | GeneralCommand | None = None,
     ) -> ZCLHeader:
         # Allow "auto manufacturer ID" to be disabled in higher layers
         if manufacturer is cls.NO_MANUFACTURER_ID:
@@ -563,7 +580,11 @@ class ZCLHeader(t.Struct):
         """Return direction of Frame Control."""
         return self.frame_control.direction
 
-    def __setattr__(self, name, value) -> None:
+    def __setattr__(
+        self,
+        name: str,
+        value: t.uint16_t | FrameControl | t.uint8_t | GeneralCommand | None,
+    ) -> None:
         if name == "manufacturer" and value is self.NO_MANUFACTURER_ID:
             value = None
 
@@ -617,7 +638,7 @@ class ZCLCommandDef(t.BaseDataclassMixin):
     id: t.uint8_t = None
     is_manufacturer_specific: bool = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         ensure_valid_name(self.name)
 
         if isinstance(self.direction, bool):
@@ -625,7 +646,7 @@ class ZCLCommandDef(t.BaseDataclassMixin):
                 self, "direction", Direction._from_is_reply(self.direction)
             )
 
-    def with_compiled_schema(self):
+    def with_compiled_schema(self) -> ZCLCommandDef:
         """Return a copy of the ZCL command definition object with its dictionary command
         schema converted into a `CommandSchema` subclass.
         """
@@ -687,7 +708,9 @@ class CommandSchema(t.Struct, tuple):
     def __iter__(self):
         return iter(self.as_tuple())
 
-    def __getitem__(self, item):
+    def __getitem__(
+        self, item: slice | typing.SupportsIndex
+    ) -> typing.Any | tuple[typing.Any, ...]:
         return self.as_tuple()[item]
 
     def __len__(self) -> int:
@@ -754,7 +777,7 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
     # The ID will be specified later
     id: t.uint16_t = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.id is not None and not isinstance(self.id, t.uint16_t):
             object.__setattr__(self, "id", t.uint16_t(self.id))
 

@@ -7,13 +7,17 @@ from typing import Any
 
 import zigpy.exceptions
 import zigpy.profiles
-from zigpy.types.named import EUI64
+import zigpy.types as t
 from zigpy.typing import AddressingMode, DeviceType
 import zigpy.util
 import zigpy.zcl
-from zigpy.zcl.clusters.general import Basic
-from zigpy.zcl.foundation import Status as ZCLStatus, ZCLHeader
-from zigpy.zdo.types import Status as zdo_status
+from zigpy.zcl.foundation import (
+    CommandSchema,
+    GeneralCommand,
+    Status as ZCLStatus,
+    ZCLHeader,
+)
+from zigpy.zdo.types import Status as ZDOStatus
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,7 +36,7 @@ class Status(enum.IntEnum):
 class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """An endpoint on a device on the network"""
 
-    def __init__(self, device: DeviceType, endpoint_id: int):
+    def __init__(self, device: DeviceType, endpoint_id: int) -> None:
         self._device: DeviceType = device
         self._endpoint_id: int = endpoint_id
         self._listeners: dict = {}
@@ -59,11 +63,11 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 self._device.nwk, self._endpoint_id, tries=3, delay=2
             )
 
-            if status == zdo_status.NOT_ACTIVE:
+            if status == ZDOStatus.NOT_ACTIVE:
                 # These endpoints are essentially junk but this lets the device join
                 self.status = Status.ENDPOINT_INACTIVE
                 return
-            elif status != zdo_status.SUCCESS:
+            elif status != ZDOStatus.SUCCESS:
                 raise zigpy.exceptions.InvalidResponse(
                     "Failed to retrieve service descriptor: %s", status
                 )
@@ -171,7 +175,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.device.application.groups.update_group_membership(self, groups)
 
     async def get_model_info(self) -> tuple[str | None, str | None]:
-        if Basic.cluster_id not in self.in_clusters:
+        if zigpy.zcl.clusters.general.Basic.cluster_id not in self.in_clusters:
             return None, None
 
         # Some devices can't handle multiple attributes in the same read request
@@ -195,7 +199,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return self._model, self._manufacturer
 
-    def deserialize(self, cluster_id, data):
+    def deserialize(
+        self, cluster_id: t.ClusterId, data: bytes
+    ) -> tuple[ZCLHeader, CommandSchema]:
         """Deserialize data for ZCL"""
         if cluster_id not in self.in_clusters and cluster_id not in self.out_clusters:
             raise KeyError(f"No cluster ID 0x{cluster_id:04x} on {self.unique_id}")
@@ -224,7 +230,12 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         handler(hdr, args, dst_addressing=dst_addressing)
 
     async def request(
-        self, cluster, sequence, data, expect_reply=True, command_id=0x00
+        self,
+        cluster: t.ClusterId,
+        sequence: t.uint8_t,
+        data: bytes,
+        expect_reply: bool = True,
+        command_id: GeneralCommand | t.uint8_t = 0x00,
     ):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -244,7 +255,13 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             expect_reply=expect_reply,
         )
 
-    async def reply(self, cluster, sequence, data, command_id=0x00):
+    async def reply(
+        self,
+        cluster: t.ClusterId,
+        sequence: t.uint8_t,
+        data: bytes,
+        command_id: GeneralCommand | t.uint8_t = 0x00,
+    ) -> None:
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
             and command_id < 0x40
@@ -308,10 +325,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._model = value
 
     @property
-    def unique_id(self) -> tuple[EUI64, int]:
+    def unique_id(self) -> tuple[t.EUI64, int]:
         return self.device.ieee, self.endpoint_id
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> zigpy.zcl.Cluster:
         try:
             return self._cluster_attr[name]
         except KeyError:

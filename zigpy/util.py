@@ -7,6 +7,7 @@ import functools
 import inspect
 import logging
 import traceback
+import types
 import typing
 import warnings
 
@@ -26,20 +27,20 @@ class ListenableMixin:
         super().__init__(*args, **kwargs)
         self._listeners: dict[int, tuple[typing.Callable, bool]] = {}
 
-    def _add_listener(self, listener, include_context):
+    def _add_listener(self, listener: typing.Any, include_context: bool) -> int:
         id_ = id(listener)
         while id_ in self._listeners:
             id_ += 1
         self._listeners[id_] = (listener, include_context)
         return id_
 
-    def add_listener(self, listener):
+    def add_listener(self, listener: typing.Any) -> int:
         return self._add_listener(listener, include_context=False)
 
-    def add_context_listener(self, listener):
+    def add_context_listener(self, listener: CatchingTaskMixin) -> int:
         return self._add_listener(listener, include_context=True)
 
-    def listener_event(self, method_name, *args):
+    def listener_event(self, method_name: str, *args) -> list[typing.Any | None]:
         result = []
         for listener, include_context in self._listeners.values():
             method = getattr(listener, method_name, None)
@@ -61,7 +62,7 @@ class ListenableMixin:
                 )
         return result
 
-    async def async_event(self, method_name, *args):
+    async def async_event(self, method_name: str, *args) -> list[typing.Any]:
         tasks = []
         for listener, include_context in self._listeners.values():
             method = getattr(listener, method_name, None)
@@ -96,28 +97,31 @@ class LocalLogMixin:
     def log(self, lvl: int, msg: str, *args, **kwargs):  # pragma: no cover
         pass
 
-    def _log(self, lvl: int, msg: str, *args, **kwargs):
+    def _log(self, lvl: int, msg: str, *args, **kwargs) -> None:
         return self.log(lvl, msg, *args, stacklevel=4, **kwargs)
-
-        return self.log(lvl, msg, *args, **kwargs)
 
     def exception(self, msg, *args, **kwargs):
         return self._log(logging.ERROR, msg, *args, **kwargs)
 
-    def debug(self, msg, *args, **kwargs):
+    def debug(self, msg: str, *args, **kwargs) -> None:
         return self._log(logging.DEBUG, msg, *args, **kwargs)
 
-    def info(self, msg, *args, **kwargs):
+    def info(self, msg: str, *args, **kwargs) -> None:
         return self._log(logging.INFO, msg, *args, **kwargs)
 
-    def warning(self, msg, *args, **kwargs):
+    def warning(self, msg: str, *args, **kwargs) -> None:
         return self._log(logging.WARNING, msg, *args, **kwargs)
 
     def error(self, msg, *args, **kwargs):
         return self._log(logging.ERROR, msg, *args, **kwargs)
 
 
-async def retry(func, retry_exceptions, tries=3, delay=0.1):
+async def retry(
+    func: typing.Callable[[], typing.Awaitable[typing.Any]],
+    retry_exceptions: typing.Iterable[BaseException],
+    tries: int = 3,
+    delay: int | float = 0.1,
+) -> typing.Any:
     """Retry a function in case of exception
 
     Only exceptions in `retry_exceptions` will be retried.
@@ -125,8 +129,7 @@ async def retry(func, retry_exceptions, tries=3, delay=0.1):
     while True:
         LOGGER.debug("Tries remaining: %s", tries)
         try:
-            r = await func()
-            return r
+            return await func()
         except retry_exceptions:
             if tries <= 1:
                 raise
@@ -134,14 +137,16 @@ async def retry(func, retry_exceptions, tries=3, delay=0.1):
             await asyncio.sleep(delay)
 
 
-def retryable(retry_exceptions, tries=1, delay=0.1):
+def retryable(
+    retry_exceptions: typing.Iterable[BaseException], tries: int = 1, delay: float = 0.1
+) -> typing.Callable:
     """Return a decorator which makes a function able to be retried
 
     This adds "tries" and "delay" keyword arguments to the function. Only
     exceptions in `retry_exceptions` will be retried.
     """
 
-    def decorator(func):
+    def decorator(func: typing.Callable) -> typing.Callable:
         nonlocal tries, delay
 
         @functools.wraps(func)
@@ -262,12 +267,12 @@ class Request:
         """Send Future."""
         return self._sequence
 
-    def __enter__(self):
+    def __enter__(self) -> Request:
         """Return context manager."""
         self._pending[self.sequence] = self
         return self
 
-    def __exit__(self, exc_type, exc_value, exc_traceback):
+    def __exit__(self, exc_type: None, exc_value: None, exc_traceback: None) -> bool:
         """Clean up pending on exit."""
         if not self.result.done():
             self.result.cancel()
@@ -380,7 +385,7 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
         """Returns True if semaphore cannot be acquired immediately."""
         return self._value <= 0
 
-    async def acquire(self):
+    async def acquire(self) -> typing.Literal[True]:
         """Acquire a semaphore.
 
         If the internal counter is larger than zero on entry, decrement it by one and
@@ -423,7 +428,12 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
         await self.acquire()
         return None
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: types.TracebackType | None,
+    ) -> None:
         self.release()
 
     def __repr__(self) -> str:

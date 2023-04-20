@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import zigpy.types as t
 
 CONF_STARTUP_ENERGY_SCAN_DEFAULT = True
