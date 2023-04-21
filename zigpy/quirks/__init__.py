@@ -340,6 +340,24 @@ class CustomCluster(zigpy.zcl.Cluster):
             attributes, *args, manufacturer=manufacturer, **kwargs
         )
 
+    def get(self, key: int | str, default: typing.Any | None = None) -> typing.Any:
+        """Get cached attribute."""
+
+        try:
+            attr_def = self.find_attribute(key)
+        except KeyError:
+            return super().get(key, default)
+
+        # Ensure we check the constant attributes dictionary first, since their values
+        # will not be in the attribute cache but can be read immediately.
+        if (
+            self._CONSTANT_ATTRIBUTES is not None
+            and attr_def.id in self._CONSTANT_ATTRIBUTES
+        ):
+            return self._CONSTANT_ATTRIBUTES[attr_def.id]
+
+        return super().get(key, default)
+
 
 def handle_message_from_uninitialized_sender(
     sender: zigpy.device.Device,
