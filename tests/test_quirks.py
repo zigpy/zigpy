@@ -383,36 +383,45 @@ async def test_read_attributes_uncached():
         foundation, command, schema, args, manufacturer=None, **kwargs
     ):
         assert foundation is True
-        assert command == 0
-        rar0 = _mk_rar(0, 99)
-        rar99 = _mk_rar(2, None, 1)
-        rar199 = _mk_rar(3, 199)
+        assert command == 0x00
+        rar0 = _mk_rar(0x0000, 99)
+        rar99 = _mk_rar(0x0002, None, 1)
+        rar199 = _mk_rar(0x0003, 199)
         return [[rar0, rar99, rar199]]
 
-    cluster.request = mockrequest
-    cluster2.request = mockrequest
+    # Unknown attribute read passes through
+    assert cluster.get("unknown_attribute", 123) == 123
+    assert "unknown_attribute" not in cluster._attr_cache
+
+    # Constant attribute can be read with `get`
+    assert cluster.get("second_attribute") == 5
+    assert "second_attribute" not in cluster._attr_cache
+
     # test no constants
+    cluster.request = mockrequest
     success, failure = await cluster.read_attributes([0, 2, 3])
-    assert success[0] == 99
-    assert failure[2] == 1
-    assert success[3] == 199
+    assert success[0x0000] == 99
+    assert failure[0x0002] == 1
+    assert success[0x0003] == 199
+    assert cluster.get(0x0003) == 199
 
     # test mixed response with constant
     success, failure = await cluster.read_attributes([0, 1, 2, 3])
-    assert success[0] == 99
-    assert success[1] == 5
-    assert failure[2] == 1
-    assert success[3] == 199
+    assert success[0x0000] == 99
+    assert success[0x0001] == 5
+    assert failure[0x0002] == 1
+    assert success[0x0003] == 199
 
     # test just constant attr
     success, failure = await cluster.read_attributes([1])
     assert success[1] == 5
 
     # test just constant attr
+    cluster2.request = mockrequest
     success, failure = await cluster2.read_attributes([0, 2, 3])
-    assert success[0] == 99
-    assert failure[2] == 1
-    assert success[3] == 199
+    assert success[0x0000] == 99
+    assert failure[0x0002] == 1
+    assert success[0x0003] == 199
 
 
 async def test_read_attributes_default_response():
