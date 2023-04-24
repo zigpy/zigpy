@@ -186,7 +186,7 @@ class Counter(t.BaseDataclassMixin):
         """Return int of the current value."""
         return self.value
 
-    def __post_init__(self, initial_value) -> None:
+    def __post_init__(self, initial_value: int) -> None:
         """Initialize instance."""
         self._raw_value = initial_value
 

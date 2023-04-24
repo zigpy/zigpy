@@ -383,36 +383,45 @@ async def test_read_attributes_uncached():
         foundation, command, schema, args, manufacturer=None, **kwargs
     ):
         assert foundation is True
-        assert command == 0
-        rar0 = _mk_rar(0, 99)
-        rar99 = _mk_rar(2, None, 1)
-        rar199 = _mk_rar(3, 199)
+        assert command == 0x00
+        rar0 = _mk_rar(0x0000, 99)
+        rar99 = _mk_rar(0x0002, None, 1)
+        rar199 = _mk_rar(0x0003, 199)
         return [[rar0, rar99, rar199]]
 
-    cluster.request = mockrequest
-    cluster2.request = mockrequest
+    # Unknown attribute read passes through
+    assert cluster.get("unknown_attribute", 123) == 123
+    assert "unknown_attribute" not in cluster._attr_cache
+
+    # Constant attribute can be read with `get`
+    assert cluster.get("second_attribute") == 5
+    assert "second_attribute" not in cluster._attr_cache
+
     # test no constants
+    cluster.request = mockrequest
     success, failure = await cluster.read_attributes([0, 2, 3])
-    assert success[0] == 99
-    assert failure[2] == 1
-    assert success[3] == 199
+    assert success[0x0000] == 99
+    assert failure[0x0002] == 1
+    assert success[0x0003] == 199
+    assert cluster.get(0x0003) == 199
 
     # test mixed response with constant
     success, failure = await cluster.read_attributes([0, 1, 2, 3])
-    assert success[0] == 99
-    assert success[1] == 5
-    assert failure[2] == 1
-    assert success[3] == 199
+    assert success[0x0000] == 99
+    assert success[0x0001] == 5
+    assert failure[0x0002] == 1
+    assert success[0x0003] == 199
 
     # test just constant attr
     success, failure = await cluster.read_attributes([1])
     assert success[1] == 5
 
     # test just constant attr
+    cluster2.request = mockrequest
     success, failure = await cluster2.read_attributes([0, 2, 3])
-    assert success[0] == 99
-    assert failure[2] == 1
-    assert success[3] == 199
+    assert success[0x0000] == 99
+    assert failure[0x0002] == 1
+    assert success[0x0003] == 199
 
 
 async def test_read_attributes_default_response():
@@ -474,20 +483,22 @@ class ManufacturerSpecificCluster(zigpy.quirks.CustomCluster):
     cluster_id = 0x2222
     ep_attribute = "just_a_cluster"
     attributes = {
-        0: ("attr0", t.uint8_t),
-        1: ("attr1", t.uint16_t, True),
+        0x0000: zcl.foundation.ZCLAttributeDef("attr0", t.uint8_t),
+        0x0001: zcl.foundation.ZCLAttributeDef(
+            "attr1", t.uint16_t, is_manufacturer_specific=True
+        ),
     }
 
     client_commands = {
-        0: zcl.foundation.ZCLCommandDef("client_cmd0", {}, False),
-        1: zcl.foundation.ZCLCommandDef(
+        0x00: zcl.foundation.ZCLCommandDef("client_cmd0", {}, False),
+        0x01: zcl.foundation.ZCLCommandDef(
             "client_cmd1", {}, False, is_manufacturer_specific=True
         ),
     }
 
     server_commands = {
-        0: zcl.foundation.ZCLCommandDef("server_cmd0", {}, False),
-        1: zcl.foundation.ZCLCommandDef(
+        0x00: zcl.foundation.ZCLCommandDef("server_cmd0", {}, False),
+        0x01: zcl.foundation.ZCLCommandDef(
             "server_cmd1", {}, False, is_manufacturer_specific=True
         ),
     }

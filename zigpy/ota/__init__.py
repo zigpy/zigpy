@@ -1,7 +1,8 @@
 """OTA support for Zigbee devices."""
+from __future__ import annotations
+
 import datetime
 import logging
-from typing import Optional
 
 import attr
 
@@ -38,7 +39,7 @@ class CachedImage:
     cached_data = attr.ib(default=None)
 
     @classmethod
-    def new(cls, img: BaseOTAImage) -> "CachedImage":
+    def new(cls, img: BaseOTAImage) -> CachedImage:
         expiration = datetime.datetime.now() + cls.DEFAULT_EXPIRATION
         return cls(img, expiration)
 
@@ -60,7 +61,13 @@ class CachedImage:
     def version(self) -> int:
         return self.image.header.file_version
 
-    def should_update(self, manufacturer_id, img_type, ver, hw_ver=None) -> bool:
+    def should_update(
+        self,
+        manufacturer_id: t.uint16_t,
+        img_type: t.uint16_t,
+        ver: t.uint32_t,
+        hw_ver: None = None,
+    ) -> bool:
         """Check if it should upgrade"""
 
         if self.key != ImageKey(manufacturer_id, img_type):
@@ -82,7 +89,7 @@ class CachedImage:
 
         return True
 
-    def get_image_block(self, offset: t.uint32_t, size: t.uint8_t) -> bytes:
+    def get_image_block(self, offset: t.t.uint32_t, size: t.uint8_t) -> bytes:
         if (
             self.expires_on is not None
             and self.expires_on - datetime.datetime.now() < DELAY_EXPIRATION
@@ -101,7 +108,7 @@ class CachedImage:
 class OTA(zigpy.util.ListenableMixin):
     """OTA Manager."""
 
-    def __init__(self, app: ControllerApplicationType, *args, **kwargs):
+    def __init__(self, app: ControllerApplicationType, *args, **kwargs) -> None:
         self._app: ControllerApplicationType = app
         self._image_cache: dict[ImageKey, CachedImage] = {}
         self._not_initialized = True
@@ -127,8 +134,11 @@ class OTA(zigpy.util.ListenableMixin):
         self._not_initialized = False
 
     async def get_ota_image(
-        self, manufacturer_id, image_type, model=None
-    ) -> Optional[CachedImage]:
+        self,
+        manufacturer_id: t.uint16_t,
+        image_type: t.uint16_t,
+        model: str | None = None,
+    ) -> CachedImage | None:
         if manufacturer_id in (
             zigpy.ota.provider.Salus.MANUFACTURER_ID,
         ):  # Salus/computime do not pass a useful image_type

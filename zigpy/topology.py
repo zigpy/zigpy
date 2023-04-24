@@ -35,7 +35,7 @@ INVALID_NEIGHBOR_IEEES = {
 class Topology(zigpy.util.ListenableMixin):
     """Topology scanner."""
 
-    def __init__(self, app: zigpy.application.ControllerApplication):
+    def __init__(self, app: zigpy.application.ControllerApplication) -> None:
         """Instantiate."""
         self._app: zigpy.application.ControllerApplication = app
         self._listeners: dict = {}
@@ -55,7 +55,7 @@ class Topology(zigpy.util.ListenableMixin):
         self.stop_periodic_scans()
         self._scan_loop_task = asyncio.create_task(self._scan_loop(period))
 
-    def stop_periodic_scans(self):
+    def stop_periodic_scans(self) -> None:
         if self._scan_loop_task is not None:
             self._scan_loop_task.cancel()
 

@@ -1,5 +1,7 @@
 """Config schemas and validation."""
 
+from __future__ import annotations
+
 import voluptuous as vol
 
 from zigpy.config.defaults import (

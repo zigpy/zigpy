@@ -18,6 +18,7 @@ REQUIRES = [
     "voluptuous",
     'pyserial-asyncio; platform_system!="Windows"',
     'pyserial-asyncio!=0.5; platform_system=="Windows"',
+    "typing_extensions",
 ]
 
 setup(

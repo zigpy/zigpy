@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-from typing import Iterable
+import typing
 
 from . import basic
 from .struct import Struct
 
+if typing.TYPE_CHECKING:
+    from typing_extensions import Self
+
 
 class BaseDataclassMixin:
-    def replace(self, **kwargs):
+    def replace(self, **kwargs) -> Self:
         return dataclasses.replace(self, **kwargs)
 
 
@@ -37,7 +40,7 @@ class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
     def __repr__(self) -> str:
         return ":".join("%02x" % i for i in self[::-1])
 
-    def __hash__(self):
+    def __hash__(self) -> int:  # type: ignore
         return hash(repr(self))
 
     @classmethod
@@ -102,7 +105,7 @@ class Channels(basic.bitmap32):
     CHANNEL_26 = 0x04000000
 
     @classmethod
-    def from_channel_list(cls: Channels, channels: Iterable[int]) -> Channels:
+    def from_channel_list(cls: Channels, channels: typing.Iterable[int]) -> Channels:
         mask = cls.NO_CHANNELS
 
         for channel in channels:
@@ -538,7 +541,7 @@ class AddrModeAddress(BaseDataclassMixin):
     addr_mode: AddrMode
     address: NWK | Group | EUI64 | BroadcastAddress | None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.addr_mode is not None and self.address is not None:
             self.address = {
                 AddrMode.Group: Group,

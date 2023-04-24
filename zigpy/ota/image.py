@@ -37,13 +37,13 @@ class HeaderString(str):
     _size = 32
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data: bytes) -> tuple[HeaderString, bytes]:
         if len(data) < cls._size:
             raise ValueError(f"Data is too short. Should be at least {cls._size}")
         raw = data[: cls._size].split(b"\x00")[0]
         return cls(raw.decode("utf8", errors="replace")), data[cls._size :]
 
-    def serialize(self):
+    def serialize(self) -> bytes:
         return self.encode("utf8").ljust(self._size, b"\x00")
 
 
@@ -102,11 +102,11 @@ class OTAImageHeader(t.Struct):
         return bool(self.field_control & FieldControl.HARDWARE_VERSIONS_PRESENT)
 
     @property
-    def key(self):
+    def key(self) -> ImageKey:
         return ImageKey(self.manufacturer_id, self.image_type)
 
     @classmethod
-    def deserialize(cls, data) -> tuple[OTAImageHeader, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[OTAImageHeader, bytes]:
         hdr, data = super().deserialize(data)
         if hdr.upgrade_file_id != cls.MAGIC_VALUE:
             raise ValueError(
@@ -158,7 +158,7 @@ class OTAImage(t.Struct, BaseOTAImage):
     subelements: t.List[SubElement]
 
     @classmethod
-    def deserialize(cls, data) -> tuple[OTAImage, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[OTAImage, bytes]:
         hdr, data = OTAImageHeader.deserialize(data)
         elements_len = hdr.image_size - hdr.header_length
 
@@ -174,7 +174,7 @@ class OTAImage(t.Struct, BaseOTAImage):
 
         return image, data
 
-    def serialize(self):
+    def serialize(self) -> bytes:
         res = super().serialize()
         assert len(res) == self.header.image_size
 
@@ -196,7 +196,7 @@ class HueSBLOTAImage(BaseOTAImage):
         return self.header.serialize() + self.data
 
     @classmethod
-    def deserialize(cls, data) -> tuple[HueSBLOTAImage, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[HueSBLOTAImage, bytes]:
         header, remaining_data = OTAImageHeader.deserialize(data)
         firmware = remaining_data[: header.image_size - len(header.serialize())]
 
