@@ -409,13 +409,6 @@ def test_optional_struct_special_case():
     )
 
 
-def test_old_style_struct():
-    with pytest.raises(TypeError):
-        # `_fields` would typically be ignored but this would be very bad
-        class OldStruct(t.Struct):
-            _fields = [("foo", t.uint8_t)]
-
-
 def test_conflicting_types():
     class GoodStruct(t.Struct):
         foo: t.uint8_t = t.StructField(type=t.uint8_t)

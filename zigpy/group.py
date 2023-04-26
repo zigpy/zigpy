@@ -195,7 +195,7 @@ class GroupCluster(zigpy.zcl.Cluster):
         """Instantiate by Cluster name."""
 
         for cluster in cls._registry.values():
-            if hasattr(cluster, "ep_attribute") and cluster.ep_attribute == ep_name:
+            if cluster.ep_attribute == ep_name:
                 return cluster(group_endpoint, is_server=True)
         raise AttributeError(f"Unsupported {ep_name} group cluster")
 
