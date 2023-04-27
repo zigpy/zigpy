@@ -377,7 +377,8 @@ async def test_item_access_attributes(cluster):
         cluster.get(None)
 
     # Test access to cached attribute via wrong attr name
-    assert cluster.get("no_such_attribute", mock.sentinel.attr) is mock.sentinel.attr
+    with pytest.raises(KeyError):
+        cluster.get("no_such_attribute")
 
 
 async def test_item_set_attributes(cluster):
