@@ -390,7 +390,9 @@ async def test_read_attributes_uncached():
         return [[rar0, rar99, rar199]]
 
     # Unknown attribute read passes through
-    assert cluster.get("unknown_attribute", 123) == 123
+    with pytest.raises(KeyError):
+        cluster.get("unknown_attribute", 123)
+
     assert "unknown_attribute" not in cluster._attr_cache
 
     # Constant attribute can be read with `get`
