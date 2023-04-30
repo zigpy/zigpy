@@ -483,7 +483,9 @@ async def test_write_attributes_cache_success(cluster, attributes, result):
         assert cluster._write_attributes.call_count == 1
         for attr_id in attributes:
             assert cluster._attr_cache[attr_id] == attributes[attr_id]
-            listener.attribute_updated.assert_any_call(attr_id, attributes[attr_id])
+            listener.attribute_updated.assert_any_call(
+                attr_id, attributes[attr_id], mock.ANY
+            )
 
 
 @pytest.mark.parametrize(
@@ -530,7 +532,9 @@ async def test_write_attributes_cache_failure(cluster, attributes, result, faile
                     )
             else:
                 assert cluster._attr_cache[attr_id] == attributes[attr_id]
-                listener.attribute_updated.assert_any_call(attr_id, attributes[attr_id])
+                listener.attribute_updated.assert_any_call(
+                    attr_id, attributes[attr_id], mock.ANY
+                )
 
 
 async def test_read_attributes_response(cluster):
