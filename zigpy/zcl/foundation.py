@@ -632,11 +632,13 @@ class ZCLHeader(t.Struct):
 
 @dataclasses.dataclass(frozen=True)
 class ZCLCommandDef(t.BaseDataclassMixin):
-    name: str = None
+    id: t.uint8_t = None
     schema: CommandSchema = None
     direction: Direction = None
-    id: t.uint8_t = None
     is_manufacturer_specific: bool = None
+
+    # set later
+    name: str = None
 
     def __post_init__(self) -> None:
         ensure_valid_name(self.name)
@@ -782,7 +784,6 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
             object.__setattr__(self, "id", t.uint16_t(self.id))
 
         if isinstance(self.access, str):
-            ZCLAttributeAccess.NONE
             object.__setattr__(self, "access", ZCLAttributeAccess.from_str(self.access))
 
         ensure_valid_name(self.name)
