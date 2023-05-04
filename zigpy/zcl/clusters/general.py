@@ -578,20 +578,16 @@ class Identify(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        identify: Final = (
-            ZCLCommandDef(
-                id=0x00, schema={"identify_time": t.uint16_t}, direction=False
-            ),
+        identify: Final = ZCLCommandDef(
+            id=0x00, schema={"identify_time": t.uint16_t}, direction=False
         )
-        identify_query: Final = (ZCLCommandDef(id=0x01, schema={}, direction=False),)
+        identify_query: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
         # 0x02: ("ezmode_invoke", (t.bitmap8,), False),
         # 0x03: ("update_commission_state", (t.bitmap8,), False),
-        trigger_effect: Final = (
-            ZCLCommandDef(
-                id=0x40,
-                schema={"effect_id": EffectIdentifier, "effect_variant": EffectVariant},
-                direction=False,
-            ),
+        trigger_effect: Final = ZCLCommandDef(
+            id=0x40,
+            schema={"effect_id": EffectIdentifier, "effect_variant": EffectVariant},
+            direction=False,
         )
 
     class ClientCommandDefs:
@@ -622,65 +618,51 @@ class Groups(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        add: Final = (
-            ZCLCommandDef(
-                id=0x00,
-                schema={"group_id": t.Group, "group_name": t.LimitedCharString(16)},
-                direction=False,
-            ),
+        add: Final = ZCLCommandDef(
+            id=0x00,
+            schema={"group_id": t.Group, "group_name": t.LimitedCharString(16)},
+            direction=False,
         )
-        view: Final = (
-            ZCLCommandDef(id=0x01, schema={"group_id": t.Group}, direction=False),
+        view: Final = ZCLCommandDef(
+            id=0x01, schema={"group_id": t.Group}, direction=False
         )
-        get_membership: Final = (
-            ZCLCommandDef(
-                id=0x02, schema={"groups": t.LVList[t.Group]}, direction=False
-            ),
+        get_membership: Final = ZCLCommandDef(
+            id=0x02, schema={"groups": t.LVList[t.Group]}, direction=False
         )
-        remove: Final = (
-            ZCLCommandDef(id=0x03, schema={"group_id": t.Group}, direction=False),
+        remove: Final = ZCLCommandDef(
+            id=0x03, schema={"group_id": t.Group}, direction=False
         )
-        remove_all: Final = (ZCLCommandDef(id=0x04, schema={}, direction=False),)
-        add_if_identifying: Final = (
-            ZCLCommandDef(
-                id=0x05,
-                schema={"group_id": t.Group, "group_name": t.LimitedCharString(16)},
-                direction=False,
-            ),
+        remove_all: Final = ZCLCommandDef(id=0x04, schema={}, direction=False)
+        add_if_identifying: Final = ZCLCommandDef(
+            id=0x05,
+            schema={"group_id": t.Group, "group_name": t.LimitedCharString(16)},
+            direction=False,
         )
 
     class ClientCommandDefs:
-        add_response: Final = (
-            ZCLCommandDef(
-                id=0x00,
-                schema={"status": foundation.Status, "group_id": t.Group},
-                direction=True,
-            ),
+        add_response: Final = ZCLCommandDef(
+            id=0x00,
+            schema={"status": foundation.Status, "group_id": t.Group},
+            direction=True,
         )
-        view_response: Final = (
-            ZCLCommandDef(
-                id=0x01,
-                schema={
-                    "status": foundation.Status,
-                    "group_id": t.Group,
-                    "group_name": t.LimitedCharString(16),
-                },
-                direction=True,
-            ),
+        view_response: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "group_name": t.LimitedCharString(16),
+            },
+            direction=True,
         )
-        get_membership_response: Final = (
-            ZCLCommandDef(
-                id=0x02,
-                schema={"capacity": t.uint8_t, "groups": t.LVList[t.Group]},
-                direction=True,
-            ),
+        get_membership_response: Final = ZCLCommandDef(
+            id=0x02,
+            schema={"capacity": t.uint8_t, "groups": t.LVList[t.Group]},
+            direction=True,
         )
-        remove_response: Final = (
-            ZCLCommandDef(
-                id=0x03,
-                schema={"status": foundation.Status, "group_id": t.Group},
-                direction=True,
-            ),
+        remove_response: Final = ZCLCommandDef(
+            id=0x03,
+            schema={"status": foundation.Status, "group_id": t.Group},
+            direction=True,
         )
 
 
@@ -716,192 +698,158 @@ class Scenes(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        add: Final = (
-            ZCLCommandDef(
-                id=0x00,
-                schema={
-                    "group_id": t.Group,
-                    "scene_id": t.uint8_t,
-                    "transition_time": t.uint16_t,
-                    "scene_name": t.LimitedCharString(16),
-                },
-                direction=False,
-            ),
+        add: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "scene_name": t.LimitedCharString(16),
+            },
+            direction=False,
         )
         # TODO: + extension field sets
-        view: Final = (
-            ZCLCommandDef(
-                id=0x01,
-                schema={"group_id": t.Group, "scene_id": t.uint8_t},
-                direction=False,
-            ),
+        view: Final = ZCLCommandDef(
+            id=0x01,
+            schema={"group_id": t.Group, "scene_id": t.uint8_t},
+            direction=False,
         )
-        remove: Final = (
-            ZCLCommandDef(
-                id=0x02,
-                schema={"group_id": t.Group, "scene_id": t.uint8_t},
-                direction=False,
-            ),
+        remove: Final = ZCLCommandDef(
+            id=0x02,
+            schema={"group_id": t.Group, "scene_id": t.uint8_t},
+            direction=False,
         )
-        remove_all: Final = (
-            ZCLCommandDef(id=0x03, schema={"group_id": t.Group}, direction=False),
+        remove_all: Final = ZCLCommandDef(
+            id=0x03, schema={"group_id": t.Group}, direction=False
         )
-        store: Final = (
-            ZCLCommandDef(
-                id=0x04,
-                schema={"group_id": t.Group, "scene_id": t.uint8_t},
-                direction=False,
-            ),
+        store: Final = ZCLCommandDef(
+            id=0x04,
+            schema={"group_id": t.Group, "scene_id": t.uint8_t},
+            direction=False,
         )
-        recall: Final = (
-            ZCLCommandDef(
-                id=0x05,
-                schema={
-                    "group_id": t.Group,
-                    "scene_id": t.uint8_t,
-                    "transition_time?": t.uint16_t,
-                },
-                direction=False,
-            ),
+        recall: Final = ZCLCommandDef(
+            id=0x05,
+            schema={
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time?": t.uint16_t,
+            },
+            direction=False,
         )
-        get_scene_membership: Final = (
-            ZCLCommandDef(id=0x06, schema={"group_id": t.Group}, direction=False),
+        get_scene_membership: Final = ZCLCommandDef(
+            id=0x06, schema={"group_id": t.Group}, direction=False
         )
-        enhanced_add: Final = (
-            ZCLCommandDef(
-                id=0x40,
-                schema={
-                    "group_id": t.Group,
-                    "scene_id": t.uint8_t,
-                    "transition_time": t.uint16_t,
-                    "scene_name": t.LimitedCharString(16),
-                },
-                direction=False,
-            ),
+        enhanced_add: Final = ZCLCommandDef(
+            id=0x40,
+            schema={
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "scene_name": t.LimitedCharString(16),
+            },
+            direction=False,
         )
-        enhanced_view: Final = (
-            ZCLCommandDef(
-                id=0x41,
-                schema={"group_id": t.Group, "scene_id": t.uint8_t},
-                direction=False,
-            ),
+        enhanced_view: Final = ZCLCommandDef(
+            id=0x41,
+            schema={"group_id": t.Group, "scene_id": t.uint8_t},
+            direction=False,
         )
-        copy: Final = (
-            ZCLCommandDef(
-                id=0x42,
-                schema={
-                    "mode": t.uint8_t,
-                    "group_id_from": t.uint16_t,
-                    "scene_id_from": t.uint8_t,
-                    "group_id_to": t.uint16_t,
-                    "scene_id_to": t.uint8_t,
-                },
-                direction=False,
-            ),
+        copy: Final = ZCLCommandDef(
+            id=0x42,
+            schema={
+                "mode": t.uint8_t,
+                "group_id_from": t.uint16_t,
+                "scene_id_from": t.uint8_t,
+                "group_id_to": t.uint16_t,
+                "scene_id_to": t.uint8_t,
+            },
+            direction=False,
         )
 
     class ClientCommandDefs:
-        add_scene_response: Final = (
-            ZCLCommandDef(
-                id=0x00,
-                schema={
-                    "status": foundation.Status,
-                    "group_id": t.Group,
-                    "scene_id": t.uint8_t,
-                },
-                direction=True,
-            ),
+        add_scene_response: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+            },
+            direction=True,
         )
-        view_response: Final = (
-            ZCLCommandDef(
-                id=0x01,
-                schema={
-                    "status": foundation.Status,
-                    "group_id": t.Group,
-                    "scene_id": t.uint8_t,
-                    "transition_time?": t.uint16_t,
-                    "scene_name?": t.LimitedCharString(16),
-                },
-                direction=True,
-            ),
+        view_response: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time?": t.uint16_t,
+                "scene_name?": t.LimitedCharString(16),
+            },
+            direction=True,
         )
         # TODO: + extension field sets
-        remove_scene_response: Final = (
-            ZCLCommandDef(
-                id=0x02,
-                schema={
-                    "status": foundation.Status,
-                    "group_id": t.Group,
-                    "scene_id": t.uint8_t,
-                },
-                direction=True,
-            ),
+        remove_scene_response: Final = ZCLCommandDef(
+            id=0x02,
+            schema={
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+            },
+            direction=True,
         )
-        remove_all_scenes_response: Final = (
-            ZCLCommandDef(
-                id=0x03,
-                schema={"status": foundation.Status, "group_id": t.Group},
-                direction=True,
-            ),
+        remove_all_scenes_response: Final = ZCLCommandDef(
+            id=0x03,
+            schema={"status": foundation.Status, "group_id": t.Group},
+            direction=True,
         )
-        store_scene_response: Final = (
-            ZCLCommandDef(
-                id=0x04,
-                schema={
-                    "status": foundation.Status,
-                    "group_id": t.Group,
-                    "scene_id": t.uint8_t,
-                },
-                direction=True,
-            ),
+        store_scene_response: Final = ZCLCommandDef(
+            id=0x04,
+            schema={
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+            },
+            direction=True,
         )
-        get_scene_membership_response: Final = (
-            ZCLCommandDef(
-                id=0x06,
-                schema={
-                    "status": foundation.Status,
-                    "capacity": t.uint8_t,
-                    "group_id": t.Group,
-                    "scenes?": t.LVList[t.uint8_t],
-                },
-                direction=True,
-            ),
+        get_scene_membership_response: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
+                "status": foundation.Status,
+                "capacity": t.uint8_t,
+                "group_id": t.Group,
+                "scenes?": t.LVList[t.uint8_t],
+            },
+            direction=True,
         )
-        enhanced_add_response: Final = (
-            ZCLCommandDef(
-                id=0x40,
-                schema={
-                    "status": foundation.Status,
-                    "group_id": t.Group,
-                    "scene_id": t.uint8_t,
-                },
-                direction=True,
-            ),
+        enhanced_add_response: Final = ZCLCommandDef(
+            id=0x40,
+            schema={
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+            },
+            direction=True,
         )
-        enhanced_view_response: Final = (
-            ZCLCommandDef(
-                id=0x41,
-                schema={
-                    "status": foundation.Status,
-                    "group_id": t.Group,
-                    "scene_id": t.uint8_t,
-                    "transition_time?": t.uint16_t,
-                    "scene_name?": t.LimitedCharString(16),
-                },
-                direction=True,
-            ),
+        enhanced_view_response: Final = ZCLCommandDef(
+            id=0x41,
+            schema={
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+                "transition_time?": t.uint16_t,
+                "scene_name?": t.LimitedCharString(16),
+            },
+            direction=True,
         )
         # TODO: + extension field sets
-        copy_response: Final = (
-            ZCLCommandDef(
-                id=0x42,
-                schema={
-                    "status": foundation.Status,
-                    "group_id": t.Group,
-                    "scene_id": t.uint8_t,
-                },
-                direction=True,
-            ),
+        copy_response: Final = ZCLCommandDef(
+            id=0x42,
+            schema={
+                "status": foundation.Status,
+                "group_id": t.Group,
+                "scene_id": t.uint8_t,
+            },
+            direction=True,
         )
 
 
@@ -956,29 +904,25 @@ class OnOff(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        off: Final = (ZCLCommandDef(id=0x00, schema={}, direction=False),)
-        on: Final = (ZCLCommandDef(id=0x01, schema={}, direction=False),)
-        toggle: Final = (ZCLCommandDef(id=0x02, schema={}, direction=False),)
-        off_with_effect: Final = (
-            ZCLCommandDef(
-                id=0x40,
-                schema={"effect_id": OffEffectIdentifier, "effect_variant": t.uint8_t},
-                direction=False,
-            ),
+        off: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
+        on: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
+        toggle: Final = ZCLCommandDef(id=0x02, schema={}, direction=False)
+        off_with_effect: Final = ZCLCommandDef(
+            id=0x40,
+            schema={"effect_id": OffEffectIdentifier, "effect_variant": t.uint8_t},
+            direction=False,
         )
-        on_with_recall_global_scene: Final = (
-            ZCLCommandDef(id=0x41, schema={}, direction=False),
+        on_with_recall_global_scene: Final = ZCLCommandDef(
+            id=0x41, schema={}, direction=False
         )
-        on_with_timed_off: Final = (
-            ZCLCommandDef(
-                id=0x42,
-                schema={
-                    "on_off_control": OnOffControl,
-                    "on_time": t.uint16_t,
-                    "off_wait_time": t.uint16_t,
-                },
-                direction=False,
-            ),
+        on_with_timed_off: Final = ZCLCommandDef(
+            id=0x42,
+            schema={
+                "on_off_control": OnOffControl,
+                "on_time": t.uint16_t,
+                "off_wait_time": t.uint16_t,
+            },
+            direction=False,
         )
 
     class ClientCommandDefs:
@@ -1085,81 +1029,67 @@ class LevelControl(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        move_to_level: Final = (
-            ZCLCommandDef(
-                id=0x00,
-                schema={
-                    "level": t.uint8_t,
-                    "transition_time": t.uint16_t,
-                    "options_mask?": t.bitmap8,
-                    "options_override?": t.bitmap8,
-                },
-                direction=False,
-            ),
+        move_to_level: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "level": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            direction=False,
         )
-        move: Final = (
-            ZCLCommandDef(
-                id=0x01,
-                schema={
-                    "move_mode": MoveMode,
-                    "rate": t.uint8_t,
-                    "options_mask?": t.bitmap8,
-                    "options_override?": t.bitmap8,
-                },
-                direction=False,
-            ),
+        move: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "move_mode": MoveMode,
+                "rate": t.uint8_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            direction=False,
         )
-        step: Final = (
-            ZCLCommandDef(
-                id=0x02,
-                schema={
-                    "step_mode": StepMode,
-                    "step_size": t.uint8_t,
-                    "transition_time": t.uint16_t,
-                    "options_mask?": t.bitmap8,
-                    "options_override?": t.bitmap8,
-                },
-                direction=False,
-            ),
+        step: Final = ZCLCommandDef(
+            id=0x02,
+            schema={
+                "step_mode": StepMode,
+                "step_size": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            direction=False,
         )
-        stop: Final = (
-            ZCLCommandDef(
-                id=0x03,
-                schema={
-                    "options_mask?": t.bitmap8,
-                    "options_override?": t.bitmap8,
-                },
-                direction=False,
-            ),
+        stop: Final = ZCLCommandDef(
+            id=0x03,
+            schema={
+                "options_mask?": t.bitmap8,
+                "options_override?": t.bitmap8,
+            },
+            direction=False,
         )
-        move_to_level_with_on_off: Final = (
-            ZCLCommandDef(
-                id=0x04,
-                schema={"level": t.uint8_t, "transition_time": t.uint16_t},
-                direction=False,
-            ),
+        move_to_level_with_on_off: Final = ZCLCommandDef(
+            id=0x04,
+            schema={"level": t.uint8_t, "transition_time": t.uint16_t},
+            direction=False,
         )
-        move_with_on_off: Final = (
-            ZCLCommandDef(
-                id=0x05,
-                schema={"move_mode": MoveMode, "rate": t.uint8_t},
-                direction=False,
-            ),
+        move_with_on_off: Final = ZCLCommandDef(
+            id=0x05,
+            schema={"move_mode": MoveMode, "rate": t.uint8_t},
+            direction=False,
         )
-        step_with_on_off: Final = (
-            ZCLCommandDef(
-                id=0x06,
-                schema={
-                    "step_mode": StepMode,
-                    "step_size": t.uint8_t,
-                    "transition_time": t.uint16_t,
-                },
-                direction=False,
-            ),
+        step_with_on_off: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
+                "step_mode": StepMode,
+                "step_size": t.uint8_t,
+                "transition_time": t.uint16_t,
+            },
+            direction=False,
         )
-        stop_with_on_off: Final = (ZCLCommandDef(id=0x07, schema={}, direction=False),)
-        move_to_closest_frequency: Final = (
-            ZCLCommandDef(id=0x08, schema={"frequency": t.uint16_t}, direction=False),
+        stop_with_on_off: Final = ZCLCommandDef(id=0x07, schema={}, direction=False)
+        move_to_closest_frequency: Final = ZCLCommandDef(
+            id=0x08, schema={"frequency": t.uint16_t}, direction=False
         )
 
     class ClientCommandDefs:
@@ -1180,37 +1110,31 @@ class Alarms(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        reset_alarm: Final = (
-            ZCLCommandDef(
-                id=0x00,
-                schema={"alarm_code": t.uint8_t, "cluster_id": t.uint16_t},
-                direction=False,
-            ),
+        reset_alarm: Final = ZCLCommandDef(
+            id=0x00,
+            schema={"alarm_code": t.uint8_t, "cluster_id": t.uint16_t},
+            direction=False,
         )
-        reset_all_alarms: Final = (ZCLCommandDef(id=0x01, schema={}, direction=False),)
-        get_alarm: Final = (ZCLCommandDef(id=0x02, schema={}, direction=False),)
-        reset_alarm_log: Final = (ZCLCommandDef(id=0x03, schema={}, direction=False),)
+        reset_all_alarms: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
+        get_alarm: Final = ZCLCommandDef(id=0x02, schema={}, direction=False)
+        reset_alarm_log: Final = ZCLCommandDef(id=0x03, schema={}, direction=False)
         # 0x04: ("publish_event_log", {}, False),
 
     class ClientCommandDefs:
-        alarm: Final = (
-            ZCLCommandDef(
-                id=0x00,
-                schema={"alarm_code": t.uint8_t, "cluster_id": t.uint16_t},
-                direction=False,
-            ),
+        alarm: Final = ZCLCommandDef(
+            id=0x00,
+            schema={"alarm_code": t.uint8_t, "cluster_id": t.uint16_t},
+            direction=False,
         )
-        get_alarm_response: Final = (
-            ZCLCommandDef(
-                id=0x01,
-                schema={
-                    "status": foundation.Status,
-                    "alarm_code?": t.uint8_t,
-                    "cluster_id?": t.uint16_t,
-                    "timestamp?": t.uint32_t,
-                },
-                direction=True,
-            ),
+        get_alarm_response: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "status": foundation.Status,
+                "alarm_code?": t.uint8_t,
+                "cluster_id?": t.uint16_t,
+                "timestamp?": t.uint32_t,
+            },
+            direction=True,
         )
         # 0x02: ("get_event_log", {}, False),
 
@@ -1356,143 +1280,121 @@ class RSSILocation(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        set_absolute_location: Final = (
-            ZCLCommandDef(
-                id=0x00,
-                schema={
-                    "coordinate1": t.int16s,
-                    "coordinate2": t.int16s,
-                    "coordinate3": t.int16s,
-                    "power": t.int16s,
-                    "path_loss_exponent": t.uint16_t,
-                },
-                direction=False,
-            ),
+        set_absolute_location: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "coordinate1": t.int16s,
+                "coordinate2": t.int16s,
+                "coordinate3": t.int16s,
+                "power": t.int16s,
+                "path_loss_exponent": t.uint16_t,
+            },
+            direction=False,
         )
-        set_dev_config: Final = (
-            ZCLCommandDef(
-                id=0x01,
-                schema={
-                    "power": t.int16s,
-                    "path_loss_exponent": t.uint16_t,
-                    "calculation_period": t.uint16_t,
-                    "num_rssi_measurements": t.uint8_t,
-                    "reporting_period": t.uint16_t,
-                },
-                direction=False,
-            ),
+        set_dev_config: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "power": t.int16s,
+                "path_loss_exponent": t.uint16_t,
+                "calculation_period": t.uint16_t,
+                "num_rssi_measurements": t.uint8_t,
+                "reporting_period": t.uint16_t,
+            },
+            direction=False,
         )
-        get_dev_config: Final = (
-            ZCLCommandDef(id=0x02, schema={"target_addr": t.EUI64}, direction=False),
+        get_dev_config: Final = ZCLCommandDef(
+            id=0x02, schema={"target_addr": t.EUI64}, direction=False
         )
-        get_location_data: Final = (
-            ZCLCommandDef(
-                id=0x03,
-                schema={
-                    "packed": t.bitmap8,
-                    "num_responses": t.uint8_t,
-                    "target_addr": t.EUI64,
-                },
-                direction=False,
-            ),
+        get_location_data: Final = ZCLCommandDef(
+            id=0x03,
+            schema={
+                "packed": t.bitmap8,
+                "num_responses": t.uint8_t,
+                "target_addr": t.EUI64,
+            },
+            direction=False,
         )
-        rssi_response: Final = (
-            ZCLCommandDef(
-                id=0x04,
-                schema={
-                    "replying_device": t.EUI64,
-                    "x": t.int16s,
-                    "y": t.int16s,
-                    "z": t.int16s,
-                    "rssi": t.int8s,
-                    "num_rssi_measurements": t.uint8_t,
-                },
-                direction=True,
-            ),
+        rssi_response: Final = ZCLCommandDef(
+            id=0x04,
+            schema={
+                "replying_device": t.EUI64,
+                "x": t.int16s,
+                "y": t.int16s,
+                "z": t.int16s,
+                "rssi": t.int8s,
+                "num_rssi_measurements": t.uint8_t,
+            },
+            direction=True,
         )
-        send_pings: Final = (
-            ZCLCommandDef(
-                id=0x05,
-                schema={
-                    "target_addr": t.EUI64,
-                    "num_rssi_measurements": t.uint8_t,
-                    "calculation_period": t.uint16_t,
-                },
-                direction=False,
-            ),
+        send_pings: Final = ZCLCommandDef(
+            id=0x05,
+            schema={
+                "target_addr": t.EUI64,
+                "num_rssi_measurements": t.uint8_t,
+                "calculation_period": t.uint16_t,
+            },
+            direction=False,
         )
-        anchor_node_announce: Final = (
-            ZCLCommandDef(
-                id=0x06,
-                schema={
-                    "anchor_node_ieee_addr": t.EUI64,
-                    "x": t.int16s,
-                    "y": t.int16s,
-                    "z": t.int16s,
-                },
-                direction=False,
-            ),
+        anchor_node_announce: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
+                "anchor_node_ieee_addr": t.EUI64,
+                "x": t.int16s,
+                "y": t.int16s,
+                "z": t.int16s,
+            },
+            direction=False,
         )
 
     class ClientCommandDefs:
-        dev_config_response: Final = (
-            ZCLCommandDef(
-                id=0x00,
-                schema={
-                    "status": foundation.Status,
-                    "power?": t.int16s,
-                    "path_loss_exponent?": t.uint16_t,
-                    "calculation_period?": t.uint16_t,
-                    "num_rssi_measurements?": t.uint8_t,
-                    "reporting_period?": t.uint16_t,
-                },
-                direction=True,
-            ),
+        dev_config_response: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "status": foundation.Status,
+                "power?": t.int16s,
+                "path_loss_exponent?": t.uint16_t,
+                "calculation_period?": t.uint16_t,
+                "num_rssi_measurements?": t.uint8_t,
+                "reporting_period?": t.uint16_t,
+            },
+            direction=True,
         )
-        location_data_response: Final = (
-            ZCLCommandDef(
-                id=0x01,
-                schema={
-                    "status": foundation.Status,
-                    "location_type?": t.uint8_t,
-                    "coordinate1?": t.int16s,
-                    "coordinate2?": t.int16s,
-                    "coordinate3?": t.int16s,
-                    "power?": t.uint16_t,
-                    "path_loss_exponent?": t.uint8_t,
-                    "location_method?": t.uint8_t,
-                    "quality_measure?": t.uint8_t,
-                    "location_age?": t.uint16_t,
-                },
-                direction=True,
-            ),
+        location_data_response: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "status": foundation.Status,
+                "location_type?": t.uint8_t,
+                "coordinate1?": t.int16s,
+                "coordinate2?": t.int16s,
+                "coordinate3?": t.int16s,
+                "power?": t.uint16_t,
+                "path_loss_exponent?": t.uint8_t,
+                "location_method?": t.uint8_t,
+                "quality_measure?": t.uint8_t,
+                "location_age?": t.uint16_t,
+            },
+            direction=True,
         )
-        location_data_notification: Final = (
-            ZCLCommandDef(id=0x02, schema={}, direction=False),
+        location_data_notification: Final = ZCLCommandDef(
+            id=0x02, schema={}, direction=False
         )
-        compact_location_data_notification: Final = (
-            ZCLCommandDef(id=0x03, schema={}, direction=False),
+        compact_location_data_notification: Final = ZCLCommandDef(
+            id=0x03, schema={}, direction=False
         )
-        rssi_ping: Final = (
-            ZCLCommandDef(
-                id=0x04, schema={"location_type": t.uint8_t}, direction=False
-            ),
+        rssi_ping: Final = ZCLCommandDef(
+            id=0x04, schema={"location_type": t.uint8_t}, direction=False
         )
-        rssi_req: Final = (ZCLCommandDef(id=0x05, schema={}, direction=False),)
-        report_rssi_measurements: Final = (
-            ZCLCommandDef(
-                id=0x06,
-                schema={
-                    "measuring_device": t.EUI64,
-                    "neighbors": t.LVList[NeighborInfo],
-                },
-                direction=False,
-            ),
+        rssi_req: Final = ZCLCommandDef(id=0x05, schema={}, direction=False)
+        report_rssi_measurements: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
+                "measuring_device": t.EUI64,
+                "neighbors": t.LVList[NeighborInfo],
+            },
+            direction=False,
         )
-        request_own_location: Final = (
-            ZCLCommandDef(
-                id=0x07, schema={"ieee_of_blind_node": t.EUI64}, direction=False
-            ),
+        request_own_location: Final = ZCLCommandDef(
+            id=0x07, schema={"ieee_of_blind_node": t.EUI64}, direction=False
         )
 
 
@@ -2002,55 +1904,39 @@ class Commissioning(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        restart_device: Final = (
-            ZCLCommandDef(
-                id=0x00,
-                schema={"options": t.bitmap8, "delay": t.uint8_t, "jitter": t.uint8_t},
-                direction=False,
-            ),
+        restart_device: Final = ZCLCommandDef(
+            id=0x00,
+            schema={"options": t.bitmap8, "delay": t.uint8_t, "jitter": t.uint8_t},
+            direction=False,
         )
-        save_startup_parameters: Final = (
-            ZCLCommandDef(
-                id=0x01,
-                schema={"options": t.bitmap8, "index": t.uint8_t},
-                direction=False,
-            ),
+        save_startup_parameters: Final = ZCLCommandDef(
+            id=0x01,
+            schema={"options": t.bitmap8, "index": t.uint8_t},
+            direction=False,
         )
-        restore_startup_parameters: Final = (
-            ZCLCommandDef(
-                id=0x02,
-                schema={"options": t.bitmap8, "index": t.uint8_t},
-                direction=False,
-            ),
+        restore_startup_parameters: Final = ZCLCommandDef(
+            id=0x02,
+            schema={"options": t.bitmap8, "index": t.uint8_t},
+            direction=False,
         )
-        reset_startup_parameters: Final = (
-            ZCLCommandDef(
-                id=0x03,
-                schema={"options": t.bitmap8, "index": t.uint8_t},
-                direction=False,
-            ),
+        reset_startup_parameters: Final = ZCLCommandDef(
+            id=0x03,
+            schema={"options": t.bitmap8, "index": t.uint8_t},
+            direction=False,
         )
 
     class ClientCommandDefs:
-        restart_device_response: Final = (
-            ZCLCommandDef(
-                id=0x00, schema={"status": foundation.Status}, direction=True
-            ),
+        restart_device_response: Final = ZCLCommandDef(
+            id=0x00, schema={"status": foundation.Status}, direction=True
         )
-        save_startup_params_response: Final = (
-            ZCLCommandDef(
-                id=0x01, schema={"status": foundation.Status}, direction=True
-            ),
+        save_startup_params_response: Final = ZCLCommandDef(
+            id=0x01, schema={"status": foundation.Status}, direction=True
         )
-        restore_startup_params_response: Final = (
-            ZCLCommandDef(
-                id=0x02, schema={"status": foundation.Status}, direction=True
-            ),
+        restore_startup_params_response: Final = ZCLCommandDef(
+            id=0x02, schema={"status": foundation.Status}, direction=True
         )
-        reset_startup_params_response: Final = (
-            ZCLCommandDef(
-                id=0x03, schema={"status": foundation.Status}, direction=True
-            ),
+        reset_startup_params_response: Final = ZCLCommandDef(
+            id=0x03, schema={"status": foundation.Status}, direction=True
         )
 
 
@@ -2284,90 +2170,78 @@ class Ota(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        query_next_image: Final = (
-            ZCLCommandDef(id=0x01, schema=QueryNextImageCommand, direction=False),
+        query_next_image: Final = ZCLCommandDef(
+            id=0x01, schema=QueryNextImageCommand, direction=False
         )
-        image_block: Final = (
-            ZCLCommandDef(id=0x03, schema=ImageBlockCommand, direction=False),
+        image_block: Final = ZCLCommandDef(
+            id=0x03, schema=ImageBlockCommand, direction=False
         )
-        image_page: Final = (
-            ZCLCommandDef(id=0x04, schema=ImagePageCommand, direction=False),
+        image_page: Final = ZCLCommandDef(
+            id=0x04, schema=ImagePageCommand, direction=False
         )
-        upgrade_end: Final = (
-            ZCLCommandDef(
-                id=0x06,
-                schema={
-                    "status": foundation.Status,
-                    "manufacturer_code": t.uint16_t,
-                    "image_type": t.uint16_t,
-                    "file_version": t.uint32_t,
-                },
-                direction=False,
-            ),
+        upgrade_end: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
+                "status": foundation.Status,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+            },
+            direction=False,
         )
-        query_specific_file: Final = (
-            ZCLCommandDef(
-                id=0x08,
-                schema={
-                    "request_node_addr": t.EUI64,
-                    "manufacturer_code": t.uint16_t,
-                    "image_type": t.uint16_t,
-                    "file_version": t.uint32_t,
-                    "current_zigbee_stack_version": t.uint16_t,
-                },
-                direction=False,
-            ),
+        query_specific_file: Final = ZCLCommandDef(
+            id=0x08,
+            schema={
+                "request_node_addr": t.EUI64,
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+                "current_zigbee_stack_version": t.uint16_t,
+            },
+            direction=False,
         )
 
     class ClientCommandDefs:
-        image_notify: Final = (
-            ZCLCommandDef(id=0x00, schema=ImageNotifyCommand, direction=False),
+        image_notify: Final = ZCLCommandDef(
+            id=0x00, schema=ImageNotifyCommand, direction=False
         )
-        query_next_image_response: Final = (
-            ZCLCommandDef(
-                id=0x02,
-                schema={
-                    "status": foundation.Status,
-                    "manufacturer_code?": t.uint16_t,
-                    "image_type?": t.uint16_t,
-                    "file_version?": t.uint32_t,
-                    "image_size?": t.uint32_t,
-                },
-                direction=True,
-            ),
+        query_next_image_response: Final = ZCLCommandDef(
+            id=0x02,
+            schema={
+                "status": foundation.Status,
+                "manufacturer_code?": t.uint16_t,
+                "image_type?": t.uint16_t,
+                "file_version?": t.uint32_t,
+                "image_size?": t.uint32_t,
+            },
+            direction=True,
         )
-        image_block_response: Final = (
-            ZCLCommandDef(
-                id=0x05,
-                schema=ImageBlockResponseCommand,
-                direction=True,
-            ),
+        image_block_response: Final = ZCLCommandDef(
+            id=0x05,
+            schema=ImageBlockResponseCommand,
+            direction=True,
         )
-        upgrade_end_response: Final = (
-            ZCLCommandDef(
-                id=0x07,
-                schema={
-                    "manufacturer_code": t.uint16_t,
-                    "image_type": t.uint16_t,
-                    "file_version": t.uint32_t,
-                    "current_time": t.UTCTime,
-                    "upgrade_time": t.UTCTime,
-                },
-                direction=True,
-            ),
+        upgrade_end_response: Final = ZCLCommandDef(
+            id=0x07,
+            schema={
+                "manufacturer_code": t.uint16_t,
+                "image_type": t.uint16_t,
+                "file_version": t.uint32_t,
+                "current_time": t.UTCTime,
+                "upgrade_time": t.UTCTime,
+            },
+            direction=True,
         )
-        query_specific_file_response: Final = (
-            ZCLCommandDef(
-                id=0x09,
-                schema={
-                    "status": foundation.Status,
-                    "manufacturer_code?": t.uint16_t,
-                    "image_type?": t.uint16_t,
-                    "file_version?": t.uint32_t,
-                    "image_size?": t.uint32_t,
-                },
-                direction=True,
-            ),
+        query_specific_file_response: Final = ZCLCommandDef(
+            id=0x09,
+            schema={
+                "status": foundation.Status,
+                "manufacturer_code?": t.uint16_t,
+                "image_type?": t.uint16_t,
+                "file_version?": t.uint32_t,
+                "image_size?": t.uint32_t,
+            },
+            direction=True,
         )
 
     def handle_cluster_request(
@@ -2601,188 +2475,150 @@ class PowerProfile(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        power_profile_request: Final = (
-            ZCLCommandDef(
-                id=0x00, schema={"power_profile_id": t.uint8_t}, direction=False
-            ),
+        power_profile_request: Final = ZCLCommandDef(
+            id=0x00, schema={"power_profile_id": t.uint8_t}, direction=False
         )
-        power_profile_state_request: Final = (
-            ZCLCommandDef(id=0x01, schema={}, direction=False),
+        power_profile_state_request: Final = ZCLCommandDef(
+            id=0x01, schema={}, direction=False
         )
-        get_power_profile_price_response: Final = (
-            ZCLCommandDef(
-                id=0x02,
-                schema={
-                    "power_profile_id": t.uint8_t,
-                    "currency": t.uint16_t,
-                    "price": t.uint32_t,
-                    "price_trailing_digit": t.uint8_t,
-                },
-                direction=True,
-            ),
+        get_power_profile_price_response: Final = ZCLCommandDef(
+            id=0x02,
+            schema={
+                "power_profile_id": t.uint8_t,
+                "currency": t.uint16_t,
+                "price": t.uint32_t,
+                "price_trailing_digit": t.uint8_t,
+            },
+            direction=True,
         )
-        get_overall_schedule_price_response: Final = (
-            ZCLCommandDef(
-                id=0x03,
-                schema={
-                    "currency": t.uint16_t,
-                    "price": t.uint32_t,
-                    "price_trailing_digit": t.uint8_t,
-                },
-                direction=True,
-            ),
+        get_overall_schedule_price_response: Final = ZCLCommandDef(
+            id=0x03,
+            schema={
+                "currency": t.uint16_t,
+                "price": t.uint32_t,
+                "price_trailing_digit": t.uint8_t,
+            },
+            direction=True,
         )
-        energy_phases_schedule_notification: Final = (
-            ZCLCommandDef(
-                id=0x04,
-                schema={
-                    "power_profile_id": t.uint8_t,
-                    "scheduled_phases": t.LVList[ScheduleRecord],
-                },
-                direction=False,
-            ),
+        energy_phases_schedule_notification: Final = ZCLCommandDef(
+            id=0x04,
+            schema={
+                "power_profile_id": t.uint8_t,
+                "scheduled_phases": t.LVList[ScheduleRecord],
+            },
+            direction=False,
         )
-        energy_phases_schedule_response: Final = (
-            ZCLCommandDef(
-                id=0x05,
-                schema={
-                    "power_profile_id": t.uint8_t,
-                    "scheduled_phases": t.LVList[ScheduleRecord],
-                },
-                direction=True,
-            ),
+        energy_phases_schedule_response: Final = ZCLCommandDef(
+            id=0x05,
+            schema={
+                "power_profile_id": t.uint8_t,
+                "scheduled_phases": t.LVList[ScheduleRecord],
+            },
+            direction=True,
         )
-        power_profile_schedule_constraints_request: Final = (
-            ZCLCommandDef(
-                id=0x06,
-                schema={"power_profile_id": t.uint8_t},
-                direction=False,
-            ),
+        power_profile_schedule_constraints_request: Final = ZCLCommandDef(
+            id=0x06,
+            schema={"power_profile_id": t.uint8_t},
+            direction=False,
         )
-        energy_phases_schedule_state_request: Final = (
-            ZCLCommandDef(
-                id=0x07,
-                schema={"power_profile_id": t.uint8_t},
-                direction=False,
-            ),
+        energy_phases_schedule_state_request: Final = ZCLCommandDef(
+            id=0x07,
+            schema={"power_profile_id": t.uint8_t},
+            direction=False,
         )
-        get_power_profile_price_extended_response: Final = (
-            ZCLCommandDef(
-                id=0x08,
-                schema={
-                    "power_profile_id": t.uint8_t,
-                    "currency": t.uint16_t,
-                    "price": t.uint32_t,
-                    "price_trailing_digit": t.uint8_t,
-                },
-                direction=True,
-            ),
+        get_power_profile_price_extended_response: Final = ZCLCommandDef(
+            id=0x08,
+            schema={
+                "power_profile_id": t.uint8_t,
+                "currency": t.uint16_t,
+                "price": t.uint32_t,
+                "price_trailing_digit": t.uint8_t,
+            },
+            direction=True,
         )
 
     class ClientCommandDefs:
-        power_profile_notification: Final = (
-            ZCLCommandDef(
-                id=0x00,
-                schema={
-                    "total_profile_num": t.uint8_t,
-                    "power_profile_id": t.uint8_t,
-                    "transfer_phases": t.LVList[PowerProfilePhase],
-                },
-                direction=False,
-            ),
+        power_profile_notification: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "total_profile_num": t.uint8_t,
+                "power_profile_id": t.uint8_t,
+                "transfer_phases": t.LVList[PowerProfilePhase],
+            },
+            direction=False,
         )
-        power_profile_response: Final = (
-            ZCLCommandDef(
-                id=0x01,
-                schema={
-                    "total_profile_num": t.uint8_t,
-                    "power_profile_id": t.uint8_t,
-                    "transfer_phases": t.LVList[PowerProfilePhase],
-                },
-                direction=True,
-            ),
+        power_profile_response: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "total_profile_num": t.uint8_t,
+                "power_profile_id": t.uint8_t,
+                "transfer_phases": t.LVList[PowerProfilePhase],
+            },
+            direction=True,
         )
-        power_profile_state_response: Final = (
-            ZCLCommandDef(
-                id=0x02,
-                schema={"power_profiles": t.LVList[PowerProfileType]},
-                direction=True,
-            ),
+        power_profile_state_response: Final = ZCLCommandDef(
+            id=0x02,
+            schema={"power_profiles": t.LVList[PowerProfileType]},
+            direction=True,
         )
-        get_power_profile_price: Final = (
-            ZCLCommandDef(
-                id=0x03, schema={"power_profile_id": t.uint8_t}, direction=False
-            ),
+        get_power_profile_price: Final = ZCLCommandDef(
+            id=0x03, schema={"power_profile_id": t.uint8_t}, direction=False
         )
-        power_profile_state_notification: Final = (
-            ZCLCommandDef(
-                id=0x04,
-                schema={"power_profiles": t.LVList[PowerProfileType]},
-                direction=False,
-            ),
+        power_profile_state_notification: Final = ZCLCommandDef(
+            id=0x04,
+            schema={"power_profiles": t.LVList[PowerProfileType]},
+            direction=False,
         )
-        get_overall_schedule_price: Final = (
-            ZCLCommandDef(id=0x05, schema={}, direction=False),
+        get_overall_schedule_price: Final = ZCLCommandDef(
+            id=0x05, schema={}, direction=False
         )
-        energy_phases_schedule_request: Final = (
-            ZCLCommandDef(
-                id=0x06,
-                schema={"power_profile_id": t.uint8_t},
-                direction=False,
-            ),
+        energy_phases_schedule_request: Final = ZCLCommandDef(
+            id=0x06,
+            schema={"power_profile_id": t.uint8_t},
+            direction=False,
         )
-        energy_phases_schedule_state_response: Final = (
-            ZCLCommandDef(
-                id=0x07,
-                schema={
-                    "power_profile_id": t.uint8_t,
-                    "num_scheduled_energy_phases": t.uint8_t,
-                },
-                direction=True,
-            ),
+        energy_phases_schedule_state_response: Final = ZCLCommandDef(
+            id=0x07,
+            schema={
+                "power_profile_id": t.uint8_t,
+                "num_scheduled_energy_phases": t.uint8_t,
+            },
+            direction=True,
         )
-        energy_phases_schedule_state_notification: Final = (
-            ZCLCommandDef(
-                id=0x08,
-                schema={
-                    "power_profile_id": t.uint8_t,
-                    "num_scheduled_energy_phases": t.uint8_t,
-                },
-                direction=False,
-            ),
+        energy_phases_schedule_state_notification: Final = ZCLCommandDef(
+            id=0x08,
+            schema={
+                "power_profile_id": t.uint8_t,
+                "num_scheduled_energy_phases": t.uint8_t,
+            },
+            direction=False,
         )
-        power_profile_schedule_constraints_notification: Final = (
-            ZCLCommandDef(
-                id=0x09,
-                schema={
-                    "power_profile_id": t.uint8_t,
-                    "start_after": t.uint16_t,
-                    "stop_before": t.uint16_t,
-                },
-                direction=False,
-            ),
+        power_profile_schedule_constraints_notification: Final = ZCLCommandDef(
+            id=0x09,
+            schema={
+                "power_profile_id": t.uint8_t,
+                "start_after": t.uint16_t,
+                "stop_before": t.uint16_t,
+            },
+            direction=False,
         )
-        power_profile_schedule_constraints_response: Final = (
-            ZCLCommandDef(
-                id=0x0A,
-                schema={
-                    "power_profile_id": t.uint8_t,
-                    "start_after": t.uint16_t,
-                    "stop_before": t.uint16_t,
-                },
-                direction=True,
-            ),
+        power_profile_schedule_constraints_response: Final = ZCLCommandDef(
+            id=0x0A,
+            schema={
+                "power_profile_id": t.uint8_t,
+                "start_after": t.uint16_t,
+                "stop_before": t.uint16_t,
+            },
+            direction=True,
         )
-        get_power_profile_price_extended: Final = (
-            ZCLCommandDef(
-                id=0x0B,
-                schema={
-                    "options": t.bitmap8,
-                    "power_profile_id": t.uint8_t,
-                    "power_profile_start_time?": t.uint16_t,
-                },
-                direction=False,
-            ),
+        get_power_profile_price_extended: Final = ZCLCommandDef(
+            id=0x0B,
+            schema={
+                "options": t.bitmap8,
+                "power_profile_id": t.uint8_t,
+                "power_profile_start_time?": t.uint16_t,
+            },
+            direction=False,
         )
 
 
@@ -2839,25 +2675,19 @@ class PollControl(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        checkin_response: Final = (
-            ZCLCommandDef(
-                id=0x00,
-                schema={"start_fast_polling": t.Bool, "fast_poll_timeout": t.uint16_t},
-                direction=True,
-            ),
+        checkin_response: Final = ZCLCommandDef(
+            id=0x00,
+            schema={"start_fast_polling": t.Bool, "fast_poll_timeout": t.uint16_t},
+            direction=True,
         )
-        fast_poll_stop: Final = (ZCLCommandDef(id=0x01, schema={}, direction=False),)
-        set_long_poll_interval: Final = (
-            ZCLCommandDef(
-                id=0x02, schema={"new_long_poll_interval": t.uint32_t}, direction=False
-            ),
+        fast_poll_stop: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
+        set_long_poll_interval: Final = ZCLCommandDef(
+            id=0x02, schema={"new_long_poll_interval": t.uint32_t}, direction=False
         )
-        set_short_poll_interval: Final = (
-            ZCLCommandDef(
-                id=0x03,
-                schema={"new_short_poll_interval": t.uint16_t},
-                direction=False,
-            ),
+        set_short_poll_interval: Final = ZCLCommandDef(
+            id=0x03,
+            schema={"new_short_poll_interval": t.uint16_t},
+            direction=False,
         )
 
     class ClientCommandDefs:
