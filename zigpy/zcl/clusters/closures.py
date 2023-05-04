@@ -407,386 +407,292 @@ class DoorLock(Cluster):
         )
 
     class ServerCommandDefs:
-        lock_door: Final = (
-            ZCLCommandDef(
-                id=0x00, schema={"pin_code?": t.CharacterString}, direction=False
-            ),
+        lock_door: Final = ZCLCommandDef(
+            id=0x00, schema={"pin_code?": t.CharacterString}, direction=False
         )
-        unlock_door: Final = (
-            ZCLCommandDef(
-                id=0x01, schema={"pin_code?": t.CharacterString}, direction=False
-            ),
+        unlock_door: Final = ZCLCommandDef(
+            id=0x01, schema={"pin_code?": t.CharacterString}, direction=False
         )
-        toggle_door: Final = (
-            ZCLCommandDef(
-                id=0x02, schema={"pin_code?": t.CharacterString}, direction=False
-            ),
+        toggle_door: Final = ZCLCommandDef(
+            id=0x02, schema={"pin_code?": t.CharacterString}, direction=False
         )
-        unlock_with_timeout: Final = (
-            ZCLCommandDef(
-                id=0x03,
-                schema={"timeout": t.uint16_t, "pin_code?": t.CharacterString},
-                direction=False,
-            ),
+        unlock_with_timeout: Final = ZCLCommandDef(
+            id=0x03,
+            schema={"timeout": t.uint16_t, "pin_code?": t.CharacterString},
+            direction=False,
         )
-        get_log_record: Final = (
-            ZCLCommandDef(id=0x04, schema={"log_index": t.uint16_t}, direction=False),
+        get_log_record: Final = ZCLCommandDef(
+            id=0x04, schema={"log_index": t.uint16_t}, direction=False
         )
-        set_pin_code: Final = (
-            ZCLCommandDef(
-                id=0x05,
-                schema={
-                    "user_id": t.uint16_t,
-                    "user_status": UserStatus,
-                    "user_type": UserType,
-                    "pin_code": t.CharacterString,
-                },
-                direction=False,
-            ),
+        set_pin_code: Final = ZCLCommandDef(
+            id=0x05,
+            schema={
+                "user_id": t.uint16_t,
+                "user_status": UserStatus,
+                "user_type": UserType,
+                "pin_code": t.CharacterString,
+            },
+            direction=False,
         )
-        get_pin_code: Final = (
-            ZCLCommandDef(id=0x06, schema={"user_id": t.uint16_t}, direction=False),
+        get_pin_code: Final = ZCLCommandDef(
+            id=0x06, schema={"user_id": t.uint16_t}, direction=False
         )
-        clear_pin_code: Final = (
-            ZCLCommandDef(id=0x07, schema={"user_id": t.uint16_t}, direction=False),
+        clear_pin_code: Final = ZCLCommandDef(
+            id=0x07, schema={"user_id": t.uint16_t}, direction=False
         )
-        clear_all_pin_codes: Final = (
-            ZCLCommandDef(id=0x08, schema={}, direction=False),
+        clear_all_pin_codes: Final = ZCLCommandDef(id=0x08, schema={}, direction=False)
+        set_user_status: Final = ZCLCommandDef(
+            id=0x09,
+            schema={"user_id": t.uint16_t, "user_status": UserStatus},
+            direction=False,
         )
-        set_user_status: Final = (
-            ZCLCommandDef(
-                id=0x09,
-                schema={"user_id": t.uint16_t, "user_status": UserStatus},
-                direction=False,
-            ),
+        get_user_status: Final = ZCLCommandDef(
+            id=0x0A, schema={"user_id": t.uint16_t}, direction=False
         )
-        get_user_status: Final = (
-            ZCLCommandDef(id=0x0A, schema={"user_id": t.uint16_t}, direction=False),
+        set_week_day_schedule: Final = ZCLCommandDef(
+            id=0x0B,
+            schema={
+                "schedule_id": t.uint8_t,
+                "user_id": t.uint16_t,
+                "days_mask": DayMask,
+                "start_hour": t.uint8_t,
+                "start_minute": t.uint8_t,
+                "end_hour": t.uint8_t,
+                "end_minute": t.uint8_t,
+            },
+            direction=False,
         )
-        set_week_day_schedule: Final = (
-            ZCLCommandDef(
-                id=0x0B,
-                schema={
-                    "schedule_id": t.uint8_t,
-                    "user_id": t.uint16_t,
-                    "days_mask": DayMask,
-                    "start_hour": t.uint8_t,
-                    "start_minute": t.uint8_t,
-                    "end_hour": t.uint8_t,
-                    "end_minute": t.uint8_t,
-                },
-                direction=False,
-            ),
+        get_week_day_schedule: Final = ZCLCommandDef(
+            id=0x0C,
+            schema={"schedule_id": t.uint8_t, "user_id": t.uint16_t},
+            direction=False,
         )
-        get_week_day_schedule: Final = (
-            ZCLCommandDef(
-                id=0x0C,
-                schema={"schedule_id": t.uint8_t, "user_id": t.uint16_t},
-                direction=False,
-            ),
+        clear_week_day_schedule: Final = ZCLCommandDef(
+            id=0x0D,
+            schema={"schedule_id": t.uint8_t, "user_id": t.uint16_t},
+            direction=False,
         )
-        clear_week_day_schedule: Final = (
-            ZCLCommandDef(
-                id=0x0D,
-                schema={"schedule_id": t.uint8_t, "user_id": t.uint16_t},
-                direction=False,
-            ),
+        set_year_day_schedule: Final = ZCLCommandDef(
+            id=0x0E,
+            schema={
+                "schedule_id": t.uint8_t,
+                "user_id": t.uint16_t,
+                "local_start_time": t.LocalTime,
+                "local_end_time": t.LocalTime,
+            },
+            direction=False,
         )
-        set_year_day_schedule: Final = (
-            ZCLCommandDef(
-                id=0x0E,
-                schema={
-                    "schedule_id": t.uint8_t,
-                    "user_id": t.uint16_t,
-                    "local_start_time": t.LocalTime,
-                    "local_end_time": t.LocalTime,
-                },
-                direction=False,
-            ),
+        get_year_day_schedule: Final = ZCLCommandDef(
+            id=0x0F,
+            schema={"schedule_id": t.uint8_t, "user_id": t.uint16_t},
+            direction=False,
         )
-        get_year_day_schedule: Final = (
-            ZCLCommandDef(
-                id=0x0F,
-                schema={"schedule_id": t.uint8_t, "user_id": t.uint16_t},
-                direction=False,
-            ),
+        clear_year_day_schedule: Final = ZCLCommandDef(
+            id=0x10,
+            schema={"schedule_id": t.uint8_t, "user_id": t.uint16_t},
+            direction=False,
         )
-        clear_year_day_schedule: Final = (
-            ZCLCommandDef(
-                id=0x10,
-                schema={"schedule_id": t.uint8_t, "user_id": t.uint16_t},
-                direction=False,
-            ),
+        set_holiday_schedule: Final = ZCLCommandDef(
+            id=0x11,
+            schema={
+                "holiday_schedule_id": t.uint8_t,
+                "local_start_time": t.LocalTime,
+                "local_end_time": t.LocalTime,
+                "operating_mode_during_holiday": OperatingMode,
+            },
+            direction=False,
         )
-        set_holiday_schedule: Final = (
-            ZCLCommandDef(
-                id=0x11,
-                schema={
-                    "holiday_schedule_id": t.uint8_t,
-                    "local_start_time": t.LocalTime,
-                    "local_end_time": t.LocalTime,
-                    "operating_mode_during_holiday": OperatingMode,
-                },
-                direction=False,
-            ),
+        get_holiday_schedule: Final = ZCLCommandDef(
+            id=0x12, schema={"holiday_schedule_id": t.uint8_t}, direction=False
         )
-        get_holiday_schedule: Final = (
-            ZCLCommandDef(
-                id=0x12, schema={"holiday_schedule_id": t.uint8_t}, direction=False
-            ),
+        clear_holiday_schedule: Final = ZCLCommandDef(
+            id=0x13, schema={"holiday_schedule_id": t.uint8_t}, direction=False
         )
-        clear_holiday_schedule: Final = (
-            ZCLCommandDef(
-                id=0x13, schema={"holiday_schedule_id": t.uint8_t}, direction=False
-            ),
+        set_user_type: Final = ZCLCommandDef(
+            id=0x14,
+            schema={"user_id": t.uint16_t, "user_type": UserType},
+            direction=False,
         )
-        set_user_type: Final = (
-            ZCLCommandDef(
-                id=0x14,
-                schema={"user_id": t.uint16_t, "user_type": UserType},
-                direction=False,
-            ),
+        get_user_type: Final = ZCLCommandDef(
+            id=0x15, schema={"user_id": t.uint16_t}, direction=False
         )
-        get_user_type: Final = (
-            ZCLCommandDef(id=0x15, schema={"user_id": t.uint16_t}, direction=False),
+        set_rfid_code: Final = ZCLCommandDef(
+            id=0x16,
+            schema={
+                "user_id": t.uint16_t,
+                "user_status": UserStatus,
+                "user_type": UserType,
+                "rfid_code": t.CharacterString,
+            },
+            direction=False,
         )
-        set_rfid_code: Final = (
-            ZCLCommandDef(
-                id=0x16,
-                schema={
-                    "user_id": t.uint16_t,
-                    "user_status": UserStatus,
-                    "user_type": UserType,
-                    "rfid_code": t.CharacterString,
-                },
-                direction=False,
-            ),
+        get_rfid_code: Final = ZCLCommandDef(
+            id=0x17, schema={"user_id": t.uint16_t}, direction=False
         )
-        get_rfid_code: Final = (
-            ZCLCommandDef(id=0x17, schema={"user_id": t.uint16_t}, direction=False),
+        clear_rfid_code: Final = ZCLCommandDef(
+            id=0x18, schema={"user_id": t.uint16_t}, direction=False
         )
-        clear_rfid_code: Final = (
-            ZCLCommandDef(id=0x18, schema={"user_id": t.uint16_t}, direction=False),
-        )
-        clear_all_rfid_codes: Final = (
-            ZCLCommandDef(id=0x19, schema={}, direction=False),
-        )
+        clear_all_rfid_codes: Final = ZCLCommandDef(id=0x19, schema={}, direction=False)
 
     class ClientCommandDefs:
-        lock_door_response: Final = (
-            ZCLCommandDef(
-                id=0x00, schema={"status": foundation.Status}, direction=True
-            ),
+        lock_door_response: Final = ZCLCommandDef(
+            id=0x00, schema={"status": foundation.Status}, direction=True
         )
-        unlock_door_response: Final = (
-            ZCLCommandDef(
-                id=0x01, schema={"status": foundation.Status}, direction=True
-            ),
+        unlock_door_response: Final = ZCLCommandDef(
+            id=0x01, schema={"status": foundation.Status}, direction=True
         )
-        toggle_door_response: Final = (
-            ZCLCommandDef(
-                id=0x02, schema={"status": foundation.Status}, direction=True
-            ),
+        toggle_door_response: Final = ZCLCommandDef(
+            id=0x02, schema={"status": foundation.Status}, direction=True
         )
-        unlock_with_timeout_response: Final = (
-            ZCLCommandDef(
-                id=0x03, schema={"status": foundation.Status}, direction=True
-            ),
+        unlock_with_timeout_response: Final = ZCLCommandDef(
+            id=0x03, schema={"status": foundation.Status}, direction=True
         )
-        get_log_record_response: Final = (
-            ZCLCommandDef(
-                id=0x04,
-                schema={
-                    "log_entry_id": t.uint16_t,
-                    "timestamp": t.uint32_t,
-                    "event_type": EventType,
-                    "source": OperationEventSource,
-                    "event_id_or_alarm_code": t.uint8_t,
-                    "user_id": t.uint16_t,
-                    "pin?": t.CharacterString,
-                },
-                direction=True,
-            ),
+        get_log_record_response: Final = ZCLCommandDef(
+            id=0x04,
+            schema={
+                "log_entry_id": t.uint16_t,
+                "timestamp": t.uint32_t,
+                "event_type": EventType,
+                "source": OperationEventSource,
+                "event_id_or_alarm_code": t.uint8_t,
+                "user_id": t.uint16_t,
+                "pin?": t.CharacterString,
+            },
+            direction=True,
         )
-        set_pin_code_response: Final = (
-            ZCLCommandDef(
-                id=0x05, schema={"status": foundation.Status}, direction=True
-            ),
+        set_pin_code_response: Final = ZCLCommandDef(
+            id=0x05, schema={"status": foundation.Status}, direction=True
         )
-        get_pin_code_response: Final = (
-            ZCLCommandDef(
-                id=0x06,
-                schema={
-                    "user_id": t.uint16_t,
-                    "user_status": UserStatus,
-                    "user_type": UserType,
-                    "code": t.CharacterString,
-                },
-                direction=True,
-            ),
+        get_pin_code_response: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
+                "user_id": t.uint16_t,
+                "user_status": UserStatus,
+                "user_type": UserType,
+                "code": t.CharacterString,
+            },
+            direction=True,
         )
-        clear_pin_code_response: Final = (
-            ZCLCommandDef(
-                id=0x07, schema={"status": foundation.Status}, direction=True
-            ),
+        clear_pin_code_response: Final = ZCLCommandDef(
+            id=0x07, schema={"status": foundation.Status}, direction=True
         )
-        clear_all_pin_codes_response: Final = (
-            ZCLCommandDef(
-                id=0x08, schema={"status": foundation.Status}, direction=True
-            ),
+        clear_all_pin_codes_response: Final = ZCLCommandDef(
+            id=0x08, schema={"status": foundation.Status}, direction=True
         )
-        set_user_status_response: Final = (
-            ZCLCommandDef(
-                id=0x09, schema={"status": foundation.Status}, direction=True
-            ),
+        set_user_status_response: Final = ZCLCommandDef(
+            id=0x09, schema={"status": foundation.Status}, direction=True
         )
-        get_user_status_response: Final = (
-            ZCLCommandDef(
-                id=0x0A,
-                schema={"user_id": t.uint16_t, "user_status": UserStatus},
-                direction=True,
-            ),
+        get_user_status_response: Final = ZCLCommandDef(
+            id=0x0A,
+            schema={"user_id": t.uint16_t, "user_status": UserStatus},
+            direction=True,
         )
-        set_week_day_schedule_response: Final = (
-            ZCLCommandDef(
-                id=0x0B, schema={"status": foundation.Status}, direction=True
-            ),
+        set_week_day_schedule_response: Final = ZCLCommandDef(
+            id=0x0B, schema={"status": foundation.Status}, direction=True
         )
-        get_week_day_schedule_response: Final = (
-            ZCLCommandDef(
-                id=0x0C,
-                schema={
-                    "schedule_id": t.uint8_t,
-                    "user_id": t.uint16_t,
-                    "status": foundation.Status,
-                    "days_mask?": t.uint8_t,
-                    "start_hour?": t.uint8_t,
-                    "start_minute?": t.uint8_t,
-                    "end_hour?": t.uint8_t,
-                    "end_minute?": t.uint8_t,
-                },
-                direction=True,
-            ),
+        get_week_day_schedule_response: Final = ZCLCommandDef(
+            id=0x0C,
+            schema={
+                "schedule_id": t.uint8_t,
+                "user_id": t.uint16_t,
+                "status": foundation.Status,
+                "days_mask?": t.uint8_t,
+                "start_hour?": t.uint8_t,
+                "start_minute?": t.uint8_t,
+                "end_hour?": t.uint8_t,
+                "end_minute?": t.uint8_t,
+            },
+            direction=True,
         )
-        clear_week_day_schedule_response: Final = (
-            ZCLCommandDef(
-                id=0x0D, schema={"status": foundation.Status}, direction=True
-            ),
+        clear_week_day_schedule_response: Final = ZCLCommandDef(
+            id=0x0D, schema={"status": foundation.Status}, direction=True
         )
-        set_year_day_schedule_response: Final = (
-            ZCLCommandDef(
-                id=0x0E, schema={"status": foundation.Status}, direction=True
-            ),
+        set_year_day_schedule_response: Final = ZCLCommandDef(
+            id=0x0E, schema={"status": foundation.Status}, direction=True
         )
-        get_year_day_schedule_response: Final = (
-            ZCLCommandDef(
-                id=0x0F,
-                schema={
-                    "schedule_id": t.uint8_t,
-                    "user_id": t.uint16_t,
-                    "status": foundation.Status,
-                    "local_start_time?": t.LocalTime,
-                    "local_end_time?": t.LocalTime,
-                },
-                direction=True,
-            ),
+        get_year_day_schedule_response: Final = ZCLCommandDef(
+            id=0x0F,
+            schema={
+                "schedule_id": t.uint8_t,
+                "user_id": t.uint16_t,
+                "status": foundation.Status,
+                "local_start_time?": t.LocalTime,
+                "local_end_time?": t.LocalTime,
+            },
+            direction=True,
         )
-        clear_year_day_schedule_response: Final = (
-            ZCLCommandDef(
-                id=0x10, schema={"status": foundation.Status}, direction=True
-            ),
+        clear_year_day_schedule_response: Final = ZCLCommandDef(
+            id=0x10, schema={"status": foundation.Status}, direction=True
         )
-        set_holiday_schedule_response: Final = (
-            ZCLCommandDef(
-                id=0x11, schema={"status": foundation.Status}, direction=True
-            ),
+        set_holiday_schedule_response: Final = ZCLCommandDef(
+            id=0x11, schema={"status": foundation.Status}, direction=True
         )
-        get_holiday_schedule_response: Final = (
-            ZCLCommandDef(
-                id=0x12,
-                schema={
-                    "holiday_schedule_id": t.uint8_t,
-                    "status": foundation.Status,
-                    "local_start_time?": t.LocalTime,
-                    "local_end_time?": t.LocalTime,
-                    "operating_mode_during_holiday?": t.uint8_t,
-                },
-                direction=True,
-            ),
+        get_holiday_schedule_response: Final = ZCLCommandDef(
+            id=0x12,
+            schema={
+                "holiday_schedule_id": t.uint8_t,
+                "status": foundation.Status,
+                "local_start_time?": t.LocalTime,
+                "local_end_time?": t.LocalTime,
+                "operating_mode_during_holiday?": t.uint8_t,
+            },
+            direction=True,
         )
-        clear_holiday_schedule_response: Final = (
-            ZCLCommandDef(
-                id=0x13, schema={"status": foundation.Status}, direction=True
-            ),
+        clear_holiday_schedule_response: Final = ZCLCommandDef(
+            id=0x13, schema={"status": foundation.Status}, direction=True
         )
-        set_user_type_response: Final = (
-            ZCLCommandDef(
-                id=0x14, schema={"status": foundation.Status}, direction=True
-            ),
+        set_user_type_response: Final = ZCLCommandDef(
+            id=0x14, schema={"status": foundation.Status}, direction=True
         )
-        get_user_type_response: Final = (
-            ZCLCommandDef(
-                id=0x15,
-                schema={"user_id": t.uint16_t, "user_type": UserType},
-                direction=True,
-            ),
+        get_user_type_response: Final = ZCLCommandDef(
+            id=0x15,
+            schema={"user_id": t.uint16_t, "user_type": UserType},
+            direction=True,
         )
-        set_rfid_code_response: Final = (
-            ZCLCommandDef(
-                id=0x16, schema={"status": foundation.Status}, direction=True
-            ),
+        set_rfid_code_response: Final = ZCLCommandDef(
+            id=0x16, schema={"status": foundation.Status}, direction=True
         )
-        get_rfid_code_response: Final = (
-            ZCLCommandDef(
-                id=0x17,
-                schema={
-                    "user_id": t.uint16_t,
-                    "user_status": UserStatus,
-                    "user_type": UserType,
-                    "rfid_code": t.CharacterString,
-                },
-                direction=True,
-            ),
+        get_rfid_code_response: Final = ZCLCommandDef(
+            id=0x17,
+            schema={
+                "user_id": t.uint16_t,
+                "user_status": UserStatus,
+                "user_type": UserType,
+                "rfid_code": t.CharacterString,
+            },
+            direction=True,
         )
-        clear_rfid_code_response: Final = (
-            ZCLCommandDef(
-                id=0x18, schema={"status": foundation.Status}, direction=True
-            ),
+        clear_rfid_code_response: Final = ZCLCommandDef(
+            id=0x18, schema={"status": foundation.Status}, direction=True
         )
-        clear_all_rfid_codes_response: Final = (
-            ZCLCommandDef(
-                id=0x19, schema={"status": foundation.Status}, direction=True
-            ),
+        clear_all_rfid_codes_response: Final = ZCLCommandDef(
+            id=0x19, schema={"status": foundation.Status}, direction=True
         )
-        operation_event_notification: Final = (
-            ZCLCommandDef(
-                id=0x20,
-                schema={
-                    "operation_event_source": OperationEventSource,
-                    "operation_event_code": OperationEvent,
-                    "user_id": t.uint16_t,
-                    "pin": t.CharacterString,
-                    "local_time": t.LocalTime,
-                    "data?": t.CharacterString,
-                },
-                direction=False,
-            ),
+        operation_event_notification: Final = ZCLCommandDef(
+            id=0x20,
+            schema={
+                "operation_event_source": OperationEventSource,
+                "operation_event_code": OperationEvent,
+                "user_id": t.uint16_t,
+                "pin": t.CharacterString,
+                "local_time": t.LocalTime,
+                "data?": t.CharacterString,
+            },
+            direction=False,
         )
-        programming_event_notification: Final = (
-            ZCLCommandDef(
-                id=0x21,
-                schema={
-                    "program_event_source": OperationEventSource,
-                    "program_event_code": ProgrammingEvent,
-                    "user_id": t.uint16_t,
-                    "pin": t.CharacterString,
-                    "user_type": UserType,
-                    "user_status": UserStatus,
-                    "local_time": t.LocalTime,
-                    "data?": t.CharacterString,
-                },
-                direction=False,
-            ),
+        programming_event_notification: Final = ZCLCommandDef(
+            id=0x21,
+            schema={
+                "program_event_source": OperationEventSource,
+                "program_event_code": ProgrammingEvent,
+                "user_id": t.uint16_t,
+                "pin": t.CharacterString,
+                "user_type": UserType,
+                "user_status": UserStatus,
+                "local_time": t.LocalTime,
+                "data?": t.CharacterString,
+            },
+            direction=False,
         )
 
 
@@ -893,24 +799,20 @@ class WindowCovering(Cluster):
         )
 
     class ServerCommandDefs:
-        up_open: Final = (ZCLCommandDef(id=0x00, schema={}, direction=False),)
-        down_close: Final = (ZCLCommandDef(id=0x01, schema={}, direction=False),)
-        stop: Final = (ZCLCommandDef(id=0x02, schema={}, direction=False),)
-        go_to_lift_value: Final = (
-            ZCLCommandDef(id=0x04, schema={"lift_value": t.uint16_t}, direction=False),
+        up_open: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
+        down_close: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
+        stop: Final = ZCLCommandDef(id=0x02, schema={}, direction=False)
+        go_to_lift_value: Final = ZCLCommandDef(
+            id=0x04, schema={"lift_value": t.uint16_t}, direction=False
         )
-        go_to_lift_percentage: Final = (
-            ZCLCommandDef(
-                id=0x05, schema={"percentage_lift_value": t.uint8_t}, direction=False
-            ),
+        go_to_lift_percentage: Final = ZCLCommandDef(
+            id=0x05, schema={"percentage_lift_value": t.uint8_t}, direction=False
         )
-        go_to_tilt_value: Final = (
-            ZCLCommandDef(id=0x07, schema={"tilt_value": t.uint16_t}, direction=False),
+        go_to_tilt_value: Final = ZCLCommandDef(
+            id=0x07, schema={"tilt_value": t.uint16_t}, direction=False
         )
-        go_to_tilt_percentage: Final = (
-            ZCLCommandDef(
-                id=0x08, schema={"percentage_tilt_value": t.uint8_t}, direction=False
-            ),
+        go_to_tilt_percentage: Final = ZCLCommandDef(
+            id=0x08, schema={"percentage_tilt_value": t.uint8_t}, direction=False
         )
 
     class ClientCommandDefs:
