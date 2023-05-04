@@ -114,15 +114,9 @@ class ApplianceEventAlerts(Cluster):
         get_alerts: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
 
     class ClientCommandDefs:
-        get_alerts_response: Final = (
-            ZCLCommandDef(id=0x00, schema={}, direction=True),
-        )
-        alerts_notification: Final = (
-            ZCLCommandDef(id=0x01, schema={}, direction=False),
-        )
-        event_notification: Final = (
-            ZCLCommandDef(id=0x02, schema={}, direction=False),
-        )
+        get_alerts_response: Final = ZCLCommandDef(id=0x00, schema={}, direction=True)
+        alerts_notification: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
+        event_notification: Final = ZCLCommandDef(id=0x02, schema={}, direction=False)
 
 
 class ApplianceStatistics(Cluster):
@@ -141,16 +135,14 @@ class ApplianceStatistics(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        log: Final = (ZCLCommandDef(id=0x00, schema={}, direction=False),)
-        log_queue: Final = (ZCLCommandDef(id=0x01, schema={}, direction=False),)
+        log: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
+        log_queue: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
 
     class ClientCommandDefs:
-        log_notification: Final = (ZCLCommandDef(id=0x00, schema={}, direction=False),)
-        log_response: Final = (ZCLCommandDef(id=0x01, schema={}, direction=True),)
-        log_queue_response: Final = (ZCLCommandDef(id=0x02, schema={}, direction=True),)
-        statistics_available: Final = (
-            ZCLCommandDef(id=0x03, schema={}, direction=False),
-        )
+        log_notification: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
+        log_response: Final = ZCLCommandDef(id=0x01, schema={}, direction=True)
+        log_queue_response: Final = ZCLCommandDef(id=0x02, schema={}, direction=True)
+        statistics_available: Final = ZCLCommandDef(id=0x03, schema={}, direction=False)
 
 
 class MeasurementType(t.bitmap32):
@@ -543,17 +535,17 @@ class ElectricalMeasurement(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs:
-        get_profile_info: Final = (ZCLCommandDef(id=0x00, schema={}, direction=False),)
-        get_measurement_profile: Final = (
-            ZCLCommandDef(id=0x01, schema={}, direction=False),
+        get_profile_info: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
+        get_measurement_profile: Final = ZCLCommandDef(
+            id=0x01, schema={}, direction=False
         )
 
     class ClientCommandDefs:
-        get_profile_info_response: Final = (
-            ZCLCommandDef(id=0x00, schema={}, direction=True),
+        get_profile_info_response: Final = ZCLCommandDef(
+            id=0x00, schema={}, direction=True
         )
-        get_measurement_profile_response: Final = (
-            ZCLCommandDef(id=0x01, schema={}, direction=True),
+        get_measurement_profile_response: Final = ZCLCommandDef(
+            id=0x01, schema={}, direction=True
         )
 
 
