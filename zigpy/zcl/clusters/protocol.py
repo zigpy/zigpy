@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Final
+
 import zigpy.types as t
 from zigpy.zcl import Cluster
 from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
@@ -13,348 +15,426 @@ class DateTime(t.Struct):
 
 
 class GenericTunnel(Cluster):
-    cluster_id = 0x0600
-    ep_attribute = "generic_tunnel"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0001: ZCLAttributeDef("max_income_trans_size", type=t.uint16_t),
-        0x0002: ZCLAttributeDef("max_outgo_trans_size", type=t.uint16_t),
-        0x0003: ZCLAttributeDef("protocol_addr", type=t.LVBytes),
-    }
-    server_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("match_protocol_addr", {}, False)
-    }
-    client_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("match_protocol_addr_response", {}, True),
-        0x01: ZCLCommandDef("advertise_protocol_address", {}, False),
-    }
+    cluster_id: Final = 0x0600
+    ep_attribute: Final = "generic_tunnel"
+
+    class AttributeDefs:
+        max_income_trans_size: Final = ZCLAttributeDef(id=0x0001, type=t.uint16_t)
+        max_outgo_trans_size: Final = ZCLAttributeDef(id=0x0002, type=t.uint16_t)
+        protocol_addr: Final = ZCLAttributeDef(id=0x0003, type=t.LVBytes)
+
+    class ServerCommandDefs:
+        match_protocol_addr: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
+
+    class ClientCommandDefs:
+        match_protocol_addr_response: Final = ZCLCommandDef(
+            id=0x00, schema={}, direction=True
+        )
+        advertise_protocol_address: Final = ZCLCommandDef(
+            id=0x01, schema={}, direction=False
+        )
 
 
 class BacnetProtocolTunnel(Cluster):
-    cluster_id = 0x0601
-    ep_attribute = "bacnet_tunnel"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("transfer_npdu", {"npdu": t.LVBytes}, False)
-    }
-    client_commands: dict[int, ZCLCommandDef] = {}
+    cluster_id: Final = 0x0601
+    ep_attribute: Final = "bacnet_tunnel"
+
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        transfer_npdu: Final = ZCLCommandDef(
+            id=0x00, schema={"npdu": t.LVBytes}, direction=False
+        )
+
+    class ClientCommandDefs:
+        pass
 
 
 class AnalogInputRegular(Cluster):
-    cluster_id = 0x0602
-    ep_attribute = "bacnet_regular_analog_input"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0016: ZCLAttributeDef("cov_increment", type=t.Single),
-        0x001F: ZCLAttributeDef("device_type", type=t.CharacterString),
-        0x004B: ZCLAttributeDef("object_id", type=t.FixedList[4, t.uint8_t]),
-        0x004D: ZCLAttributeDef("object_name", type=t.CharacterString),
-        0x004F: ZCLAttributeDef("object_type", type=t.enum16),
-        0x0076: ZCLAttributeDef("update_interval", type=t.uint8_t),
-        0x00A8: ZCLAttributeDef("profile_name", type=t.CharacterString),
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    cluster_id: Final = 0x0602
+    ep_attribute: Final = "bacnet_regular_analog_input"
+
+    class AttributeDefs:
+        cov_increment: Final = ZCLAttributeDef(id=0x0016, type=t.Single)
+        device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
+        update_interval: Final = ZCLAttributeDef(id=0x0076, type=t.uint8_t)
+        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class AnalogInputExtended(Cluster):
-    cluster_id = 0x0603
-    ep_attribute = "bacnet_extended_analog_input"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ZCLAttributeDef("acked_transitions", type=t.bitmap8),
-        0x0011: ZCLAttributeDef("notification_class", type=t.uint16_t),
-        0x0019: ZCLAttributeDef("deadband", type=t.Single),
-        0x0023: ZCLAttributeDef("event_enable", type=t.bitmap8),
-        0x0024: ZCLAttributeDef("event_state", type=t.enum8),
-        0x002D: ZCLAttributeDef("high_limit", type=t.Single),
-        0x0034: ZCLAttributeDef("limit_enable", type=t.bitmap8),
-        0x003B: ZCLAttributeDef("low_limit", type=t.Single),
-        0x0048: ZCLAttributeDef("notify_type", type=t.enum8),
-        0x0071: ZCLAttributeDef("time_delay", type=t.uint8_t),
-        # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array) # Array[3] of (16-bit unsigned
+    cluster_id: Final = 0x0603
+    ep_attribute: Final = "bacnet_extended_analog_input"
+
+    class AttributeDefs:
+        acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
+        notification_class: Final = ZCLAttributeDef(id=0x0011, type=t.uint16_t)
+        deadband: Final = ZCLAttributeDef(id=0x0019, type=t.Single)
+        event_enable: Final = ZCLAttributeDef(id=0x0023, type=t.bitmap8)
+        event_state: Final = ZCLAttributeDef(id=0x0024, type=t.enum8)
+        high_limit: Final = ZCLAttributeDef(id=0x002D, type=t.Single)
+        limit_enable: Final = ZCLAttributeDef(id=0x0034, type=t.bitmap8)
+        low_limit: Final = ZCLAttributeDef(id=0x003B, type=t.Single)
+        notify_type: Final = ZCLAttributeDef(id=0x0048, type=t.enum8)
+        time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
+        # event_time_stamps: Final = ZCLAttributeDef(id=0x0082, type=t.Array[3, t.uint32_t])
         # integer, time of day, or structure of (date, time of day))
-    }
-    server_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef("transfer_apdu", {}, False),
-        0x01: ZCLCommandDef("connect_req", {}, False),
-        0x02: ZCLCommandDef("disconnect_req", {}, False),
-        0x03: ZCLCommandDef("connect_status_noti", {}, False),
-    }
-    client_commands: dict[int, ZCLCommandDef] = {}
+
+    class ServerCommandDefs:
+        transfer_apdu: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
+        connect_req: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
+        disconnect_req: Final = ZCLCommandDef(id=0x02, schema={}, direction=False)
+        connect_status_noti: Final = ZCLCommandDef(id=0x03, schema={}, direction=False)
+
+    class ClientCommandDefs:
+        pass
 
 
 class AnalogOutputRegular(Cluster):
-    cluster_id = 0x0604
-    ep_attribute = "bacnet_regular_analog_output"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0016: ZCLAttributeDef("cov_increment", type=t.Single),
-        0x001F: ZCLAttributeDef("device_type", type=t.CharacterString),
-        0x004B: ZCLAttributeDef("object_id", type=t.FixedList[4, t.uint8_t]),
-        0x004D: ZCLAttributeDef("object_name", type=t.CharacterString),
-        0x004F: ZCLAttributeDef("object_type", type=t.enum16),
-        0x0076: ZCLAttributeDef("update_interval", type=t.uint8_t),
-        0x00A8: ZCLAttributeDef("profile_name", type=t.CharacterString),
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    cluster_id: Final = 0x0604
+    ep_attribute: Final = "bacnet_regular_analog_output"
+
+    class AttributeDefs:
+        cov_increment: Final = ZCLAttributeDef(id=0x0016, type=t.Single)
+        device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
+        update_interval: Final = ZCLAttributeDef(id=0x0076, type=t.uint8_t)
+        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class AnalogOutputExtended(Cluster):
-    cluster_id = 0x0605
-    ep_attribute = "bacnet_extended_analog_output"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ZCLAttributeDef("acked_transitions", type=t.bitmap8),
-        0x0011: ZCLAttributeDef("notification_class", type=t.uint16_t),
-        0x0019: ZCLAttributeDef("deadband", type=t.Single),
-        0x0023: ZCLAttributeDef("event_enable", type=t.bitmap8),
-        0x0024: ZCLAttributeDef("event_state", type=t.enum8),
-        0x002D: ZCLAttributeDef("high_limit", type=t.Single),
-        0x0034: ZCLAttributeDef("limit_enable", type=t.bitmap8),
-        0x003B: ZCLAttributeDef("low_limit", type=t.Single),
-        0x0048: ZCLAttributeDef("notify_type", type=t.enum8),
-        0x0071: ZCLAttributeDef("time_delay", type=t.uint8_t),
-        # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array)# Array[3] of (16-bit unsigned
+    cluster_id: Final = 0x0605
+    ep_attribute: Final = "bacnet_extended_analog_output"
+
+    class AttributeDefs:
+        acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
+        notification_class: Final = ZCLAttributeDef(id=0x0011, type=t.uint16_t)
+        deadband: Final = ZCLAttributeDef(id=0x0019, type=t.Single)
+        event_enable: Final = ZCLAttributeDef(id=0x0023, type=t.bitmap8)
+        event_state: Final = ZCLAttributeDef(id=0x0024, type=t.enum8)
+        high_limit: Final = ZCLAttributeDef(id=0x002D, type=t.Single)
+        limit_enable: Final = ZCLAttributeDef(id=0x0034, type=t.bitmap8)
+        low_limit: Final = ZCLAttributeDef(id=0x003B, type=t.Single)
+        notify_type: Final = ZCLAttributeDef(id=0x0048, type=t.enum8)
+        time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
+        # event_time_stamps: Final = ZCLAttributeDef(id=0x0082, type=t.Array[3, t.uint32_t])
         # integer, time of day, or structure of (date, time of day))
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class AnalogValueRegular(Cluster):
-    cluster_id = 0x0606
-    ep_attribute = "bacnet_regular_analog_value"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0016: ZCLAttributeDef("cov_increment", type=t.Single),
-        0x004B: ZCLAttributeDef("object_id", type=t.FixedList[4, t.uint8_t]),
-        0x004D: ZCLAttributeDef("object_name", type=t.CharacterString),
-        0x004F: ZCLAttributeDef("object_type", type=t.enum16),
-        0x00A8: ZCLAttributeDef("profile_name", type=t.CharacterString),
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    cluster_id: Final = 0x0606
+    ep_attribute: Final = "bacnet_regular_analog_value"
+
+    class AttributeDefs:
+        cov_increment: Final = ZCLAttributeDef(id=0x0016, type=t.Single)
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
+        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class AnalogValueExtended(Cluster):
-    cluster_id = 0x0607
-    ep_attribute = "bacnet_extended_analog_value"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ZCLAttributeDef("acked_transitions", type=t.bitmap8),
-        0x0011: ZCLAttributeDef("notification_class", type=t.uint16_t),
-        0x0019: ZCLAttributeDef("deadband", type=t.Single),
-        0x0023: ZCLAttributeDef("event_enable", type=t.bitmap8),
-        0x0024: ZCLAttributeDef("event_state", type=t.enum8),
-        0x002D: ZCLAttributeDef("high_limit", type=t.Single),
-        0x0034: ZCLAttributeDef("limit_enable", type=t.bitmap8),
-        0x003B: ZCLAttributeDef("low_limit", type=t.Single),
-        0x0048: ZCLAttributeDef("notify_type", type=t.enum8),
-        0x0071: ZCLAttributeDef("time_delay", type=t.uint8_t),
-        # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
-        # integer, time of day, or structure of (date, time of day))
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    cluster_id: Final = 0x0607
+    ep_attribute: Final = "bacnet_extended_analog_value"
+
+    class AttributeDefs:
+        acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
+        notification_class: Final = ZCLAttributeDef(id=0x0011, type=t.uint16_t)
+        deadband: Final = ZCLAttributeDef(id=0x0019, type=t.Single)
+        event_enable: Final = ZCLAttributeDef(id=0x0023, type=t.bitmap8)
+        event_state: Final = ZCLAttributeDef(id=0x0024, type=t.enum8)
+        high_limit: Final = ZCLAttributeDef(id=0x002D, type=t.Single)
+        limit_enable: Final = ZCLAttributeDef(id=0x0034, type=t.bitmap8)
+        low_limit: Final = ZCLAttributeDef(id=0x003B, type=t.Single)
+        notify_type: Final = ZCLAttributeDef(id=0x0048, type=t.enum8)
+        time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class BinaryInputRegular(Cluster):
-    cluster_id = 0x0608
-    ep_attribute = "bacnet_regular_binary_input"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x000F: ZCLAttributeDef("change_of_state_count", type=t.uint32_t),
-        0x0010: ZCLAttributeDef("change_of_state_time", type=DateTime),
-        0x001F: ZCLAttributeDef("device_type", type=t.CharacterString),
-        0x0021: ZCLAttributeDef("elapsed_active_time", type=t.uint32_t),
-        0x004B: ZCLAttributeDef("object_id", type=t.FixedList[4, t.uint8_t]),
-        0x004D: ZCLAttributeDef("object_name", type=t.CharacterString),
-        0x004F: ZCLAttributeDef("object_type", type=t.enum16),
-        0x0072: ZCLAttributeDef("time_of_at_reset", type=DateTime),
-        0x0073: ZCLAttributeDef("time_of_sc_reset", type=DateTime),
-        0x00A8: ZCLAttributeDef("profile_name", type=t.CharacterString),
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    cluster_id: Final = 0x0608
+    ep_attribute: Final = "bacnet_regular_binary_input"
+
+    class AttributeDefs:
+        change_of_state_count: Final = ZCLAttributeDef(id=0x000F, type=t.uint32_t)
+        change_of_state_time: Final = ZCLAttributeDef(id=0x0010, type=DateTime)
+        device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
+        elapsed_active_time: Final = ZCLAttributeDef(id=0x0021, type=t.uint32_t)
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
+        time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=DateTime)
+        time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=DateTime)
+        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class BinaryInputExtended(Cluster):
-    cluster_id = 0x0609
-    ep_attribute = "bacnet_extended_binary_input"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ZCLAttributeDef("acked_transitions", type=t.bitmap8),
-        0x0006: ZCLAttributeDef("alarm_value", type=t.Bool),
-        0x0011: ZCLAttributeDef("notification_class", type=t.uint16_t),
-        0x0023: ZCLAttributeDef("event_enable", type=t.bitmap8),
-        0x0024: ZCLAttributeDef("event_state", type=t.enum8),
-        0x0048: ZCLAttributeDef("notify_type", type=t.enum8),
-        0x0071: ZCLAttributeDef("time_delay", type=t.uint8_t),
+    cluster_id: Final = 0x0609
+    ep_attribute: Final = "bacnet_extended_binary_input"
+
+    class AttributeDefs:
+        acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
+        alarm_value: Final = ZCLAttributeDef(id=0x0006, type=t.Bool)
+        notification_class: Final = ZCLAttributeDef(id=0x0011, type=t.uint16_t)
+        event_enable: Final = ZCLAttributeDef(id=0x0023, type=t.bitmap8)
+        event_state: Final = ZCLAttributeDef(id=0x0024, type=t.enum8)
+        notify_type: Final = ZCLAttributeDef(id=0x0048, type=t.enum8)
+        time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class BinaryOutputRegular(Cluster):
-    cluster_id = 0x060A
-    ep_attribute = "bacnet_regular_binary_output"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x000F: ZCLAttributeDef("change_of_state_count", type=t.uint32_t),
-        0x0010: ZCLAttributeDef("change_of_state_time", type=DateTime),
-        0x001F: ZCLAttributeDef("device_type", type=t.CharacterString),
-        0x0021: ZCLAttributeDef("elapsed_active_time", type=t.uint32_t),
-        0x0028: ZCLAttributeDef("feed_back_value", type=t.enum8),
-        0x004B: ZCLAttributeDef("object_id", type=t.FixedList[4, t.uint8_t]),
-        0x004D: ZCLAttributeDef("object_name", type=t.CharacterString),
-        0x004F: ZCLAttributeDef("object_type", type=t.enum16),
-        0x0072: ZCLAttributeDef("time_of_at_reset", type=DateTime),
-        0x0073: ZCLAttributeDef("time_of_sc_reset", type=DateTime),
-        0x00A8: ZCLAttributeDef("profile_name", type=t.CharacterString),
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    cluster_id: Final = 0x060A
+    ep_attribute: Final = "bacnet_regular_binary_output"
+
+    class AttributeDefs:
+        change_of_state_count: Final = ZCLAttributeDef(id=0x000F, type=t.uint32_t)
+        change_of_state_time: Final = ZCLAttributeDef(id=0x0010, type=DateTime)
+        device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
+        elapsed_active_time: Final = ZCLAttributeDef(id=0x0021, type=t.uint32_t)
+        feed_back_value: Final = ZCLAttributeDef(id=0x0028, type=t.enum8)
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
+        time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=DateTime)
+        time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=DateTime)
+        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class BinaryOutputExtended(Cluster):
-    cluster_id = 0x060B
-    ep_attribute = "bacnet_extended_binary_output"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ZCLAttributeDef("acked_transitions", type=t.bitmap8),
-        0x0011: ZCLAttributeDef("notification_class", type=t.uint16_t),
-        0x0023: ZCLAttributeDef("event_enable", type=t.bitmap8),
-        0x0024: ZCLAttributeDef("event_state", type=t.enum8),
-        0x0048: ZCLAttributeDef("notify_type", type=t.enum8),
-        0x0071: ZCLAttributeDef("time_delay", type=t.uint8_t),
+    cluster_id: Final = 0x060B
+    ep_attribute: Final = "bacnet_extended_binary_output"
+
+    class AttributeDefs:
+        acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
+        notification_class: Final = ZCLAttributeDef(id=0x0011, type=t.uint16_t)
+        event_enable: Final = ZCLAttributeDef(id=0x0023, type=t.bitmap8)
+        event_state: Final = ZCLAttributeDef(id=0x0024, type=t.enum8)
+        notify_type: Final = ZCLAttributeDef(id=0x0048, type=t.enum8)
+        time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class BinaryValueRegular(Cluster):
-    cluster_id = 0x060C
-    ep_attribute = "bacnet_regular_binary_value"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x000F: ZCLAttributeDef("change_of_state_count", type=t.uint32_t),
-        0x0010: ZCLAttributeDef("change_of_state_time", type=DateTime),
-        0x0021: ZCLAttributeDef("elapsed_active_time", type=t.uint32_t),
-        0x004B: ZCLAttributeDef("object_id", type=t.FixedList[4, t.uint8_t]),
-        0x004D: ZCLAttributeDef("object_name", type=t.CharacterString),
-        0x004F: ZCLAttributeDef("object_type", type=t.enum16),
-        0x0072: ZCLAttributeDef("time_of_at_reset", type=DateTime),
-        0x0073: ZCLAttributeDef("time_of_sc_reset", type=DateTime),
-        0x00A8: ZCLAttributeDef("profile_name", type=t.CharacterString),
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    cluster_id: Final = 0x060C
+    ep_attribute: Final = "bacnet_regular_binary_value"
+
+    class AttributeDefs:
+        change_of_state_count: Final = ZCLAttributeDef(id=0x000F, type=t.uint32_t)
+        change_of_state_time: Final = ZCLAttributeDef(id=0x0010, type=DateTime)
+        elapsed_active_time: Final = ZCLAttributeDef(id=0x0021, type=t.uint32_t)
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
+        time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=DateTime)
+        time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=DateTime)
+        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class BinaryValueExtended(Cluster):
-    cluster_id = 0x060D
-    ep_attribute = "bacnet_extended_binary_value"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ZCLAttributeDef("acked_transitions", type=t.bitmap8),
-        0x0006: ZCLAttributeDef("alarm_value", type=t.Bool),
-        0x0011: ZCLAttributeDef("notification_class", type=t.uint16_t),
-        0x0023: ZCLAttributeDef("event_enable", type=t.bitmap8),
-        0x0024: ZCLAttributeDef("event_state", type=t.enum8),
-        0x0048: ZCLAttributeDef("notify_type", type=t.enum8),
-        0x0071: ZCLAttributeDef("time_delay", type=t.uint8_t),
+    cluster_id: Final = 0x060D
+    ep_attribute: Final = "bacnet_extended_binary_value"
+
+    class AttributeDefs:
+        acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
+        alarm_value: Final = ZCLAttributeDef(id=0x0006, type=t.Bool)
+        notification_class: Final = ZCLAttributeDef(id=0x0011, type=t.uint16_t)
+        event_enable: Final = ZCLAttributeDef(id=0x0023, type=t.bitmap8)
+        event_state: Final = ZCLAttributeDef(id=0x0024, type=t.enum8)
+        notify_type: Final = ZCLAttributeDef(id=0x0048, type=t.enum8)
+        time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class MultistateInputRegular(Cluster):
-    cluster_id = 0x060E
-    ep_attribute = "bacnet_regular_multistate_input"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x001F: ZCLAttributeDef("device_type", type=t.CharacterString),
-        0x004B: ZCLAttributeDef("object_id", type=t.FixedList[4, t.uint8_t]),
-        0x004D: ZCLAttributeDef("object_name", type=t.CharacterString),
-        0x004F: ZCLAttributeDef("object_type", type=t.enum16),
-        0x00A8: ZCLAttributeDef("profile_name", type=t.CharacterString),
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    cluster_id: Final = 0x060E
+    ep_attribute: Final = "bacnet_regular_multistate_input"
+
+    class AttributeDefs:
+        device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
+        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class MultistateInputExtended(Cluster):
-    cluster_id = 0x060F
-    ep_attribute = "bacnet_extended_multistate_input"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ZCLAttributeDef("acked_transitions", type=t.bitmap8),
-        0x0006: ZCLAttributeDef("alarm_value", type=t.uint16_t),
-        0x0011: ZCLAttributeDef("notification_class", type=t.uint16_t),
-        0x0023: ZCLAttributeDef("event_enable", type=t.bitmap8),
-        0x0024: ZCLAttributeDef("event_state", type=t.enum8),
-        0x0025: ZCLAttributeDef("fault_values", type=t.uint16_t),
-        0x0048: ZCLAttributeDef("notify_type", type=t.enum8),
-        0x0071: ZCLAttributeDef("time_delay", type=t.uint8_t),
+    cluster_id: Final = 0x060F
+    ep_attribute: Final = "bacnet_extended_multistate_input"
+
+    class AttributeDefs:
+        acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
+        alarm_value: Final = ZCLAttributeDef(id=0x0006, type=t.uint16_t)
+        notification_class: Final = ZCLAttributeDef(id=0x0011, type=t.uint16_t)
+        event_enable: Final = ZCLAttributeDef(id=0x0023, type=t.bitmap8)
+        event_state: Final = ZCLAttributeDef(id=0x0024, type=t.enum8)
+        fault_values: Final = ZCLAttributeDef(id=0x0025, type=t.uint16_t)
+        notify_type: Final = ZCLAttributeDef(id=0x0048, type=t.enum8)
+        time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class MultistateOutputRegular(Cluster):
-    cluster_id = 0x0610
-    ep_attribute = "bacnet_regular_multistate_output"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x001F: ZCLAttributeDef("device_type", type=t.CharacterString),
-        0x0028: ZCLAttributeDef("feed_back_value", type=t.enum8),
-        0x004B: ZCLAttributeDef("object_id", type=t.FixedList[4, t.uint8_t]),
-        0x004D: ZCLAttributeDef("object_name", type=t.CharacterString),
-        0x004F: ZCLAttributeDef("object_type", type=t.enum16),
-        0x00A8: ZCLAttributeDef("profile_name", type=t.CharacterString),
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    cluster_id: Final = 0x0610
+    ep_attribute: Final = "bacnet_regular_multistate_output"
+
+    class AttributeDefs:
+        device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
+        feed_back_value: Final = ZCLAttributeDef(id=0x0028, type=t.enum8)
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
+        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class MultistateOutputExtended(Cluster):
-    cluster_id = 0x0611
-    ep_attribute = "bacnet_extended_multistate_output"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ZCLAttributeDef("acked_transitions", type=t.bitmap8),
-        0x0011: ZCLAttributeDef("notification_class", type=t.uint16_t),
-        0x0023: ZCLAttributeDef("event_enable", type=t.bitmap8),
-        0x0024: ZCLAttributeDef("event_state", type=t.enum8),
-        0x0048: ZCLAttributeDef("notify_type", type=t.enum8),
-        0x0071: ZCLAttributeDef("time_delay", type=t.uint8_t),
+    cluster_id: Final = 0x0611
+    ep_attribute: Final = "bacnet_extended_multistate_output"
+
+    class AttributeDefs:
+        acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
+        notification_class: Final = ZCLAttributeDef(id=0x0011, type=t.uint16_t)
+        event_enable: Final = ZCLAttributeDef(id=0x0023, type=t.bitmap8)
+        event_state: Final = ZCLAttributeDef(id=0x0024, type=t.enum8)
+        notify_type: Final = ZCLAttributeDef(id=0x0048, type=t.enum8)
+        time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class MultistateValueRegular(Cluster):
-    cluster_id = 0x0612
-    ep_attribute = "bacnet_regular_multistate_value"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x004B: ZCLAttributeDef("object_id", type=t.FixedList[4, t.uint8_t]),
-        0x004D: ZCLAttributeDef("object_name", type=t.CharacterString),
-        0x004F: ZCLAttributeDef("object_type", type=t.enum16),
-        0x00A8: ZCLAttributeDef("profile_name", type=t.CharacterString),
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+    cluster_id: Final = 0x0612
+    ep_attribute: Final = "bacnet_regular_multistate_value"
+
+    class AttributeDefs:
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
+        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class MultistateValueExtended(Cluster):
-    cluster_id = 0x0613
-    ep_attribute = "bacnet_extended_multistate_value"
-    attributes: dict[int, ZCLAttributeDef] = {
-        0x0000: ZCLAttributeDef("acked_transitions", type=t.bitmap8),
-        0x0006: ZCLAttributeDef("alarm_value", type=t.uint16_t),
-        0x0011: ZCLAttributeDef("notification_class", type=t.uint16_t),
-        0x0023: ZCLAttributeDef("event_enable", type=t.bitmap8),
-        0x0024: ZCLAttributeDef("event_state", type=t.enum8),
-        0x0025: ZCLAttributeDef("fault_values", type=t.uint16_t),
-        0x0048: ZCLAttributeDef("notify_type", type=t.enum8),
-        0x0071: ZCLAttributeDef("time_delay", type=t.uint8_t),
+    cluster_id: Final = 0x0613
+    ep_attribute: Final = "bacnet_extended_multistate_value"
+
+    class AttributeDefs:
+        acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
+        alarm_value: Final = ZCLAttributeDef(id=0x0006, type=t.uint16_t)
+        notification_class: Final = ZCLAttributeDef(id=0x0011, type=t.uint16_t)
+        event_enable: Final = ZCLAttributeDef(id=0x0023, type=t.bitmap8)
+        event_state: Final = ZCLAttributeDef(id=0x0024, type=t.enum8)
+        fault_values: Final = ZCLAttributeDef(id=0x0025, type=t.uint16_t)
+        notify_type: Final = ZCLAttributeDef(id=0x0048, type=t.enum8)
+        time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
