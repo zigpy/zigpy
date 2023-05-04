@@ -102,6 +102,37 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         cls.commands_by_name = {}
         cls._server_commands_idx = {}
         cls._client_commands_idx = {}
+        cls.attributes = {}
+        cls.client_commands = {}
+        cls.server_commands = {}
+
+        commands = {
+            name: command
+            for (name, command) in cls.ServerCommandDefs.__dict__.items()
+            if isinstance(command, foundation.ZCLCommandDef)
+        }
+        for name, command in commands.items():
+            cls.server_commands[command.id] = command
+            object.__setattr__(command, "name", name)
+
+        commands = {
+            name: command
+            for (name, command) in cls.ClientCommandDefs.__dict__.items()
+            if isinstance(command, foundation.ZCLCommandDef)
+        }
+        for name, command in commands.items():
+            cls.client_commands[command.id] = command
+            object.__setattr__(command, "name", name)
+
+        attrs = {
+            name: attribute
+            for (name, attribute) in cls.AttributeDefs.__dict__.items()
+            if isinstance(attribute, foundation.ZCLAttributeDef)
+        }
+
+        for name, attribute in attrs.items():
+            cls.attributes[attribute.id] = attribute
+            object.__setattr__(attribute, "name", name)
 
         # Compile command definitions
         for commands, index in [

@@ -66,7 +66,7 @@ class Pump(Cluster):
     name: Final = "Pump Configuration and Control"
     ep_attribute: Final = "pump"
 
-    class AttributeCommandDefs:
+    class AttributeDefs:
         # Pump Information
         max_pressure: Final = ZCLAttributeDef(
             id=0x0000, type=t.int16s, access="r", mandatory=True
@@ -351,7 +351,7 @@ class Thermostat(Cluster):
     cluster_id: Final = 0x0201
     ep_attribute: Final = "thermostat"
 
-    class AttributeCommandDefs:
+    class AttributeDefs:
         # Thermostat Information
         local_temperature: Final = ZCLAttributeDef(
             id=0x0000, type=t.int16s, access="rp", mandatory=True

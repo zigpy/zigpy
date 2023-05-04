@@ -11,10 +11,28 @@ class Price(Cluster):
     cluster_id: Final = 0x0700
     ep_attribute: Final = "smartenergy_price"
 
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
+
 
 class Drlc(Cluster):
     cluster_id: Final = 0x0701
     ep_attribute: Final = "smartenergy_drlc"
+
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class RegisteredTier(t.enum8):
@@ -438,42 +456,123 @@ class Messaging(Cluster):
     cluster_id: Final = 0x0703
     ep_attribute: Final = "smartenergy_messaging"
 
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
+
 
 class Tunneling(Cluster):
     cluster_id: Final = 0x0704
     ep_attribute: Final = "smartenergy_tunneling"
+
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class Prepayment(Cluster):
     cluster_id: Final = 0x0705
     ep_attribute: Final = "smartenergy_prepayment"
 
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
+
 
 class EnergyManagement(Cluster):
     cluster_id: Final = 0x0706
     ep_attribute: Final = "smartenergy_energy_management"
+
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class Calendar(Cluster):
     cluster_id: Final = 0x0707
     ep_attribute: Final = "smartenergy_calendar"
 
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
+
 
 class DeviceManagement(Cluster):
     cluster_id: Final = 0x0708
     ep_attribute: Final = "smartenergy_device_management"
+
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
 
 
 class Events(Cluster):
     cluster_id: Final = 0x0709
     ep_attribute: Final = "smartenergy_events"
 
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
+
 
 class MduPairing(Cluster):
     cluster_id: Final = 0x070A
     ep_attribute: Final = "smartenergy_mdu_pairing"
 
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
+
 
 class KeyEstablishment(Cluster):
     cluster_id: Final = 0x0800
     ep_attribute: Final = "smartenergy_key_establishment"
+
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass

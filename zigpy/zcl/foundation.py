@@ -764,7 +764,7 @@ ZCLAttributeAccess._names = {
 
 @dataclasses.dataclass(frozen=True)
 class ZCLAttributeDef(t.BaseDataclassMixin):
-    name: str = None
+    id: t.uint16_t = None
     type: type = None
     access: ZCLAttributeAccess = dataclasses.field(
         default=(
@@ -776,8 +776,8 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
     mandatory: bool = False
     is_manufacturer_specific: bool = False
 
-    # The ID will be specified later
-    id: t.uint16_t = None
+    # The name will be specified later
+    name: str = None
 
     def __post_init__(self) -> None:
         if self.id is not None and not isinstance(self.id, t.uint16_t):
@@ -924,8 +924,8 @@ for command_id, command_def in list(GENERAL_COMMANDS.items()):
     ).with_compiled_schema()
 
 ZCL_CLUSTER_REVISION_ATTR = ZCLAttributeDef(
-    "cluster_revision", type=t.uint16_t, access="r", mandatory=True
+    id=0xFFFD, type=t.uint16_t, access="r", mandatory=True
 )
 ZCL_REPORTING_STATUS_ATTR = ZCLAttributeDef(
-    "attr_reporting_status", type=AttributeReportingStatus, access="r"
+    id=0xFFFE, type=AttributeReportingStatus, access="r"
 )

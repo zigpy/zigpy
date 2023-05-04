@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Final
 from unittest import mock
 
 import pytest
@@ -995,10 +996,20 @@ def test_zcl_command_duplicate_name_prevention():
         class TestCluster(zcl.Cluster):
             cluster_id = 0x1234
             ep_attribute = "test_cluster"
-            server_commands = {
-                0x00: foundation.ZCLCommandDef("command1", {}, False),
-                0x01: foundation.ZCLCommandDef("command1", {}, False),
-            }
+
+            class AttributeDefs:
+                pass
+
+            class ServerCommandDefs:
+                command1: Final = foundation.ZCLCommandDef(
+                    id=0x00, schema={}, direction=False
+                )
+                command1: Final = foundation.ZCLCommandDef(
+                    id=0x01, schema={}, direction=False
+                )
+
+            class ClientCommandDefs:
+                pass
 
 
 def test_zcl_attridx_deprecation(cluster):
