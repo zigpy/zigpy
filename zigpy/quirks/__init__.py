@@ -161,15 +161,6 @@ class CustomCluster(zigpy.zcl.Cluster):
 
     manufacturer_id_override: t.uint16_t | None = None
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
     @property
     def _is_manuf_specific(self) -> bool:
         """Return True if cluster_id is within manufacturer specific range."""

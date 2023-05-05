@@ -504,6 +504,3 @@ class IasWd(Cluster):
         squawk: Final = ZCLCommandDef(
             id=0x01, schema={"squawk": Squawk}, direction=False
         )
-
-    class ClientCommandDefs:
-        pass

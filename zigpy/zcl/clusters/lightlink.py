@@ -81,9 +81,6 @@ class LightLink(Cluster):
     cluster_id: Final = 0x1000
     ep_attribute: Final = "lightlink"
 
-    class AttributeDefs:
-        pass
-
     class ServerCommandDefs:
         scan: Final = ZCLCommandDef(
             id=0x00,

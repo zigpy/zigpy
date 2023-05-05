@@ -420,9 +420,6 @@ class Color(Cluster):
             direction=False,
         )
 
-    class ClientCommandDefs:
-        pass
-
 
 class BallastStatus(t.bitmap8):
     Non_operational = 0b00000001
@@ -494,9 +491,3 @@ class Ballast(Cluster):
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass

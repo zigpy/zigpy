@@ -49,12 +49,6 @@ class Shade(Cluster):
             id=0x0012, type=ShadeMode, access="rw", mandatory=True
         )
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class LockState(t.enum8):
     Not_fully_locked = 0x00
@@ -814,6 +808,3 @@ class WindowCovering(Cluster):
         go_to_tilt_percentage: Final = ZCLCommandDef(
             id=0x08, schema={"percentage_tilt_value": t.uint8_t}, direction=False
         )
-
-    class ClientCommandDefs:
-        pass

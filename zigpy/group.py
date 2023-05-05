@@ -174,15 +174,6 @@ class Groups(ListenableMixin, dict):
 class GroupCluster(zigpy.zcl.Cluster):
     """Virtual cluster for group requests."""
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
     @classmethod
     def from_id(
         cls, group_endpoint: GroupEndpoint, cluster_id: int, is_server=True

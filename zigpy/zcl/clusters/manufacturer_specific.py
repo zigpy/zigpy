@@ -9,12 +9,3 @@ class ManufacturerSpecificCluster(Cluster):
     cluster_id_range = (0xFC00, 0xFFFF)
     ep_attribute: Final = "manufacturer_specific"
     name: Final = "Manufacturer Specific"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass

@@ -117,12 +117,6 @@ class Pump(Cluster):
         control_mode: Final = ZCLAttributeDef(id=0x0021, type=ControlMode, access="rw")
         alarm_mask: Final = ZCLAttributeDef(id=0x0022, type=PumpAlarmMask, access="r")
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class CoolingSystemStage(t.enum8):
     Cool_Stage_1 = 0x00
@@ -582,12 +576,6 @@ class Fan(Cluster):
             id=0x0001, type=FanModeSequence, access=""
         )
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class RelativeHumidityMode(t.enum8):
     RH_measured_locally = 0x00
@@ -642,12 +630,6 @@ class Dehumidification(Cluster):
             id=0x0015, type=RelativeHumidityDisplay, access="rw"
         )
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class TemperatureDisplayMode(t.enum8):
     Metric = 0x00
@@ -697,9 +679,3 @@ class UserInterface(Cluster):
             type=ScheduleProgrammingVisibility,
             access="rw",
         )
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass

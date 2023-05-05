@@ -51,6 +51,15 @@ class ClusterType(enum.IntEnum):
 class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     """A cluster on an endpoint"""
 
+    class AttributeDefs:
+        pass
+
+    class ServerCommandDefs:
+        pass
+
+    class ClientCommandDefs:
+        pass
+
     # Custom clusters for quirks subclass Cluster but should not be stored in any global
     # registries, since they're device-specific and collide with existing clusters.
     _skip_registry: bool = False
@@ -102,25 +111,25 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         cls.commands_by_name = {}
         cls._server_commands_idx = {}
         cls._client_commands_idx = {}
-        cls.attributes = {}
-        cls.client_commands = {}
-        cls.server_commands = {}
+        cls.attributes: dict[int, foundation.ZCLAttributeDef] = {}
+        cls.client_commands: dict[int, foundation.ZCLCommandDef] = {}
+        cls.server_commands: dict[int, foundation.ZCLCommandDef] = {}
 
-        commands = {
+        cmds = {
             name: command
             for (name, command) in cls.ServerCommandDefs.__dict__.items()
             if isinstance(command, foundation.ZCLCommandDef)
         }
-        for name, command in commands.items():
+        for name, command in cmds.items():
             cls.server_commands[command.id] = command
             object.__setattr__(command, "name", name)
 
-        commands = {
+        cmds = {
             name: command
             for (name, command) in cls.ClientCommandDefs.__dict__.items()
             if isinstance(command, foundation.ZCLCommandDef)
         }
-        for name, command in commands.items():
+        for name, command in cmds.items():
             cls.client_commands[command.id] = command
             object.__setattr__(command, "name", name)
 

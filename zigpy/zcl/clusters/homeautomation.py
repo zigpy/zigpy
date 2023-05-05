@@ -44,12 +44,6 @@ class ApplianceIdentification(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class MeterIdentification(Cluster):
     cluster_id: Final = 0x0B01
@@ -93,12 +87,6 @@ class MeterIdentification(Cluster):
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class ApplianceEventAlerts(Cluster):
@@ -622,9 +610,3 @@ class Diagnostic(Cluster):
         last_message_rssi: Final = ZCLAttributeDef(id=0x011D, type=t.int8s, access="r")
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass

@@ -273,9 +273,6 @@ class Basic(Cluster):
     class ServerCommandDefs:
         reset_fact_default: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
 
-    class ClientCommandDefs:
-        pass
-
 
 class MainsAlarmMask(t.bitmap8):
     Voltage_Too_Low = 0b00000001
@@ -486,12 +483,6 @@ class PowerConfiguration(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class DeviceTempAlarmMask(t.bitmap8):
     Temp_too_low = 0b00000001
@@ -538,12 +529,6 @@ class DeviceTemperature(Cluster):
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class EffectIdentifier(t.enum8):
@@ -925,9 +910,6 @@ class OnOff(Cluster):
             direction=False,
         )
 
-    class ClientCommandDefs:
-        pass
-
 
 class SwitchType(t.enum8):
     Toggle = 0x00
@@ -960,12 +942,6 @@ class OnOffConfiguration(Cluster):
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class MoveMode(t.enum8):
@@ -1092,9 +1068,6 @@ class LevelControl(Cluster):
             id=0x08, schema={"frequency": t.uint16_t}, direction=False
         )
 
-    class ClientCommandDefs:
-        pass
-
 
 class Alarms(Cluster):
     """Attributes and commands for sending notifications and
@@ -1177,12 +1150,6 @@ class Time(Cluster):
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
     def handle_cluster_general_request(
         self,
@@ -1448,12 +1415,6 @@ class AnalogInput(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class AnalogOutput(Cluster):
     cluster_id: Final = 0x000D
@@ -1494,12 +1455,6 @@ class AnalogOutput(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class AnalogValue(Cluster):
     cluster_id: Final = 0x000E
@@ -1533,12 +1488,6 @@ class AnalogValue(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class BinaryInput(Cluster):
     cluster_id: Final = 0x000F
@@ -1571,12 +1520,6 @@ class BinaryInput(Cluster):
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class BinaryOutput(Cluster):
@@ -1627,12 +1570,6 @@ class BinaryOutput(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class BinaryValue(Cluster):
     cluster_id: Final = 0x0011
@@ -1675,12 +1612,6 @@ class BinaryValue(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class MultistateInput(Cluster):
     cluster_id: Final = 0x0012
@@ -1713,12 +1644,6 @@ class MultistateInput(Cluster):
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class MultistateOutput(Cluster):
@@ -1756,12 +1681,6 @@ class MultistateOutput(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class MultistateValue(Cluster):
     cluster_id: Final = 0x0014
@@ -1797,12 +1716,6 @@ class MultistateValue(Cluster):
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class StartupControl(t.enum8):
@@ -1983,12 +1896,6 @@ class Partition(Cluster):
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class ImageUpgradeStatus(t.enum8):
@@ -2637,12 +2544,6 @@ class ApplianceControl(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class PollControl(Cluster):
     cluster_id: Final = 0x0020
@@ -2697,12 +2598,3 @@ class PollControl(Cluster):
 class GreenPowerProxy(Cluster):
     cluster_id: Final = 0x0021
     ep_attribute: Final = "green_power"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass

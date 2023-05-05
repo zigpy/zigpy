@@ -39,12 +39,6 @@ class IlluminanceMeasurement(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class LevelStatus(t.enum8):
     Illuminance_On_Target = 0x00
@@ -74,12 +68,6 @@ class IlluminanceLevelSensing(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class TemperatureMeasurement(Cluster):
     cluster_id: Final = 0x0402
@@ -102,12 +90,6 @@ class TemperatureMeasurement(Cluster):
         # 0x0011: ('min_absolute_change', UNKNOWN),
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class PressureMeasurement(Cluster):
@@ -138,12 +120,6 @@ class PressureMeasurement(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class FlowMeasurement(Cluster):
     cluster_id: Final = 0x0404
@@ -164,12 +140,6 @@ class FlowMeasurement(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class RelativeHumidity(Cluster):
     cluster_id: Final = 0x0405
@@ -189,12 +159,6 @@ class RelativeHumidity(Cluster):
         tolerance: Final = ZCLAttributeDef(id=0x0003, type=t.uint16_t, access="r")
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class Occupancy(t.bitmap8):
@@ -265,12 +229,6 @@ class OccupancySensing(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class LeafWetness(Cluster):
     cluster_id: Final = 0x0407
@@ -291,12 +249,6 @@ class LeafWetness(Cluster):
         tolerance: Final = ZCLAttributeDef(id=0x0003, type=t.uint16_t, access="r")
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class SoilMoisture(Cluster):
@@ -319,12 +271,6 @@ class SoilMoisture(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class PH(Cluster):
     cluster_id: Final = 0x0409
@@ -346,12 +292,6 @@ class PH(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class ElectricalConductivity(Cluster):
     cluster_id: Final = 0x040A
@@ -371,12 +311,6 @@ class ElectricalConductivity(Cluster):
         tolerance: Final = ZCLAttributeDef(id=0x0003, type=t.uint16_t, access="r")
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class WindSpeed(Cluster):
@@ -399,12 +333,6 @@ class WindSpeed(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class _ConcentrationMixin:
     """Mixin for the common attributes of the concentration measurement clusters"""
@@ -423,26 +351,11 @@ class _ConcentrationMixin:
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class CarbonMonoxideConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x040C
     name: Final = "Carbon Monoxide (CO) Concentration"
     ep_attribute: Final = "carbon_monoxide_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class CarbonDioxideConcentration(_ConcentrationMixin, Cluster):
@@ -450,29 +363,11 @@ class CarbonDioxideConcentration(_ConcentrationMixin, Cluster):
     name: Final = "Carbon Dioxide (CO₂) Concentration"
     ep_attribute: Final = "carbon_dioxide_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class EthyleneConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x040E
     name: Final = "Ethylene (CH₂) Concentration"
     ep_attribute: Final = "ethylene_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class EthyleneOxideConcentration(_ConcentrationMixin, Cluster):
@@ -480,29 +375,11 @@ class EthyleneOxideConcentration(_ConcentrationMixin, Cluster):
     name: Final = "Ethylene Oxide (C₂H₄O) Concentration"
     ep_attribute: Final = "ethylene_oxide_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class HydrogenConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x0410
     name: Final = "Hydrogen (H) Concentration"
     ep_attribute: Final = "hydrogen_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class HydrogenSulfideConcentration(_ConcentrationMixin, Cluster):
@@ -510,29 +387,11 @@ class HydrogenSulfideConcentration(_ConcentrationMixin, Cluster):
     name: Final = "Hydrogen Sulfide (H₂S) Concentration"
     ep_attribute: Final = "hydrogen_sulfide_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class NitricOxideConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x0412
     name: Final = "Nitric Oxide (NO) Concentration"
     ep_attribute: Final = "nitric_oxide_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class NitrogenDioxideConcentration(_ConcentrationMixin, Cluster):
@@ -540,29 +399,11 @@ class NitrogenDioxideConcentration(_ConcentrationMixin, Cluster):
     name: Final = "Nitrogen Dioxide (NO₂) Concentration"
     ep_attribute: Final = "nitrogen_dioxide_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class OxygenConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x0414
     name: Final = "Oxygen (O₂) Concentration"
     ep_attribute: Final = "oxygen_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class OzoneConcentration(_ConcentrationMixin, Cluster):
@@ -570,29 +411,11 @@ class OzoneConcentration(_ConcentrationMixin, Cluster):
     name: Final = "Ozone (O₃) Concentration"
     ep_attribute: Final = "ozone_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class SulfurDioxideConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x0416
     name: Final = "Sulfur Dioxide (SO₂) Concentration"
     ep_attribute: Final = "sulfur_dioxide_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class DissolvedOxygenConcentration(_ConcentrationMixin, Cluster):
@@ -600,29 +423,11 @@ class DissolvedOxygenConcentration(_ConcentrationMixin, Cluster):
     name: Final = "Dissolved Oxygen (DO) Concentration"
     ep_attribute: Final = "dissolved_oxygen_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class BromateConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x0418
     name: Final = "Bromate Concentration"
     ep_attribute: Final = "bromate_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class ChloraminesConcentration(_ConcentrationMixin, Cluster):
@@ -630,29 +435,11 @@ class ChloraminesConcentration(_ConcentrationMixin, Cluster):
     name: Final = "Chloramines Concentration"
     ep_attribute: Final = "chloramines_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class ChlorineConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x041A
     name: Final = "Chlorine Concentration"
     ep_attribute: Final = "chlorine_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class FecalColiformAndEColiFraction(_ConcentrationMixin, Cluster):
@@ -662,29 +449,11 @@ class FecalColiformAndEColiFraction(_ConcentrationMixin, Cluster):
     name: Final = "Fecal coliform & E. Coli Fraction"
     ep_attribute: Final = "fecal_coliform_and_e_coli_fraction"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class FluorideConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x041C  # XXX: spec repeats 0x041B but this seems like a mistake
     name: Final = "Fluoride Concentration"
     ep_attribute: Final = "fluoride_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class HaloaceticAcidsConcentration(_ConcentrationMixin, Cluster):
@@ -692,44 +461,17 @@ class HaloaceticAcidsConcentration(_ConcentrationMixin, Cluster):
     name: Final = "Haloacetic Acids Concentration"
     ep_attribute: Final = "haloacetic_acids_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class TotalTrihalomethanesConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x041E
     name: Final = "Total Trihalomethanes Concentration"
     ep_attribute: Final = "total_trihalomethanes_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class TotalColiformBacteriaFraction(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x041F
     name: Final = "Total Coliform Bacteria Fraction"
     ep_attribute: Final = "total_coliform_bacteria_fraction"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 # XXX: is this a concentration? What are the units?
@@ -740,29 +482,11 @@ class Turbidity(_ConcentrationMixin, Cluster):
     name: Final = "Turbidity"
     ep_attribute: Final = "turbidity"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class CopperConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x0421
     name: Final = "Copper Concentration"
     ep_attribute: Final = "copper_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class LeadConcentration(_ConcentrationMixin, Cluster):
@@ -770,29 +494,11 @@ class LeadConcentration(_ConcentrationMixin, Cluster):
     name: Final = "Lead Concentration"
     ep_attribute: Final = "lead_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class ManganeseConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x0423
     name: Final = "Manganese Concentration"
     ep_attribute: Final = "manganese_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class SulfateConcentration(_ConcentrationMixin, Cluster):
@@ -800,29 +506,11 @@ class SulfateConcentration(_ConcentrationMixin, Cluster):
     name: Final = "Sulfate Concentration"
     ep_attribute: Final = "sulfate_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class BromodichloromethaneConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x0425
     name: Final = "Bromodichloromethane Concentration"
     ep_attribute: Final = "bromodichloromethane_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class BromoformConcentration(_ConcentrationMixin, Cluster):
@@ -830,29 +518,11 @@ class BromoformConcentration(_ConcentrationMixin, Cluster):
     name: Final = "Bromoform Concentration"
     ep_attribute: Final = "bromoform_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class ChlorodibromomethaneConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x0427
     name: Final = "Chlorodibromomethane Concentration"
     ep_attribute: Final = "chlorodibromomethane_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class ChloroformConcentration(_ConcentrationMixin, Cluster):
@@ -860,29 +530,11 @@ class ChloroformConcentration(_ConcentrationMixin, Cluster):
     name: Final = "Chloroform Concentration"
     ep_attribute: Final = "chloroform_concentration"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class SodiumConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x0429
     name: Final = "Sodium Concentration"
     ep_attribute: Final = "sodium_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 # XXX: is this a concentration? What are the units?
@@ -893,26 +545,8 @@ class PM25(_ConcentrationMixin, Cluster):
     name: Final = "PM2.5"
     ep_attribute: Final = "pm25"
 
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class FormaldehydeConcentration(_ConcentrationMixin, Cluster):
     cluster_id: Final = 0x042B
     name: Final = "Formaldehyde Concentration"
     ep_attribute: Final = "formaldehyde_concentration"
-
-    class AttributeDefs:
-        pass
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass

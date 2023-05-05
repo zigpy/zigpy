@@ -39,16 +39,10 @@ class BacnetProtocolTunnel(Cluster):
     cluster_id: Final = 0x0601
     ep_attribute: Final = "bacnet_tunnel"
 
-    class AttributeDefs:
-        pass
-
     class ServerCommandDefs:
         transfer_npdu: Final = ZCLCommandDef(
             id=0x00, schema={"npdu": t.LVBytes}, direction=False
         )
-
-    class ClientCommandDefs:
-        pass
 
 
 class AnalogInputRegular(Cluster):
@@ -63,12 +57,6 @@ class AnalogInputRegular(Cluster):
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         update_interval: Final = ZCLAttributeDef(id=0x0076, type=t.uint8_t)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class AnalogInputExtended(Cluster):
@@ -95,9 +83,6 @@ class AnalogInputExtended(Cluster):
         disconnect_req: Final = ZCLCommandDef(id=0x02, schema={}, direction=False)
         connect_status_noti: Final = ZCLCommandDef(id=0x03, schema={}, direction=False)
 
-    class ClientCommandDefs:
-        pass
-
 
 class AnalogOutputRegular(Cluster):
     cluster_id: Final = 0x0604
@@ -111,12 +96,6 @@ class AnalogOutputRegular(Cluster):
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         update_interval: Final = ZCLAttributeDef(id=0x0076, type=t.uint8_t)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class AnalogOutputExtended(Cluster):
@@ -137,12 +116,6 @@ class AnalogOutputExtended(Cluster):
         # event_time_stamps: Final = ZCLAttributeDef(id=0x0082, type=t.Array[3, t.uint32_t])
         # integer, time of day, or structure of (date, time of day))
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class AnalogValueRegular(Cluster):
     cluster_id: Final = 0x0606
@@ -154,12 +127,6 @@ class AnalogValueRegular(Cluster):
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class AnalogValueExtended(Cluster):
@@ -178,12 +145,6 @@ class AnalogValueExtended(Cluster):
         notify_type: Final = ZCLAttributeDef(id=0x0048, type=t.enum8)
         time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class BinaryInputRegular(Cluster):
     cluster_id: Final = 0x0608
@@ -201,12 +162,6 @@ class BinaryInputRegular(Cluster):
         time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=DateTime)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class BinaryInputExtended(Cluster):
     cluster_id: Final = 0x0609
@@ -222,12 +177,6 @@ class BinaryInputExtended(Cluster):
         time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class BinaryOutputRegular(Cluster):
@@ -247,12 +196,6 @@ class BinaryOutputRegular(Cluster):
         time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=DateTime)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class BinaryOutputExtended(Cluster):
     cluster_id: Final = 0x060B
@@ -267,12 +210,6 @@ class BinaryOutputExtended(Cluster):
         time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class BinaryValueRegular(Cluster):
@@ -290,12 +227,6 @@ class BinaryValueRegular(Cluster):
         time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=DateTime)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class BinaryValueExtended(Cluster):
     cluster_id: Final = 0x060D
@@ -312,12 +243,6 @@ class BinaryValueExtended(Cluster):
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class MultistateInputRegular(Cluster):
     cluster_id: Final = 0x060E
@@ -329,12 +254,6 @@ class MultistateInputRegular(Cluster):
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class MultistateInputExtended(Cluster):
@@ -353,12 +272,6 @@ class MultistateInputExtended(Cluster):
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class MultistateOutputRegular(Cluster):
     cluster_id: Final = 0x0610
@@ -371,12 +284,6 @@ class MultistateOutputRegular(Cluster):
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class MultistateOutputExtended(Cluster):
@@ -393,12 +300,6 @@ class MultistateOutputExtended(Cluster):
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
 
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
-
 
 class MultistateValueRegular(Cluster):
     cluster_id: Final = 0x0612
@@ -409,12 +310,6 @@ class MultistateValueRegular(Cluster):
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
 
 
 class MultistateValueExtended(Cluster):
@@ -432,9 +327,3 @@ class MultistateValueExtended(Cluster):
         time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
-
-    class ServerCommandDefs:
-        pass
-
-    class ClientCommandDefs:
-        pass
