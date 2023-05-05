@@ -108,15 +108,23 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         # use the new definition objects to populate the old collections
         # this is done to maintain backwards compatibility with the old
         # definitions
-        cls.attributes: dict[int, foundation.ZCLAttributeDef] = {}
-        cls.client_commands: dict[int, foundation.ZCLCommandDef] = {}
-        cls.server_commands: dict[int, foundation.ZCLCommandDef] = {}
-
+        if "server_commands" in cls.__dict__ and "ServerCommandDefs" in cls.__dict__:
+            raise TypeError(
+                "Cannot define both `server_commands` and `ServerCommandDefs`"
+            )
+        if "client_commands" in cls.__dict__ and "ClientCommandDefs" in cls.__dict__:
+            raise TypeError(
+                "Cannot define both `client_commands` and `ClientCommandDefs`"
+            )
+        if "attributes" in cls.__dict__ and "AttributeDefs" in cls.__dict__:
+            raise TypeError("Cannot define both `attributes` and `AttributeDefs`")
         cmds = {
             name: command
             for (name, command) in cls.ServerCommandDefs.__dict__.items()
             if isinstance(command, foundation.ZCLCommandDef)
         }
+        if cmds:
+            cls.server_commands: dict[int, foundation.ZCLCommandDef] = {}
         for name, command in cmds.items():
             cls.server_commands[command.id] = command
             object.__setattr__(command, "name", name)
@@ -126,6 +134,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             for (name, command) in cls.ClientCommandDefs.__dict__.items()
             if isinstance(command, foundation.ZCLCommandDef)
         }
+        if cmds:
+            cls.client_commands: dict[int, foundation.ZCLCommandDef] = {}
         for name, command in cmds.items():
             cls.client_commands[command.id] = command
             object.__setattr__(command, "name", name)
@@ -135,7 +145,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             for (name, attribute) in cls.AttributeDefs.__dict__.items()
             if isinstance(attribute, foundation.ZCLAttributeDef)
         }
-
+        if attrs:
+            cls.attributes: dict[int, foundation.ZCLAttributeDef] = {}
         for name, attribute in attrs.items():
             cls.attributes[attribute.id] = attribute
             object.__setattr__(attribute, "name", name)

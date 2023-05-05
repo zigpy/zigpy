@@ -996,20 +996,40 @@ def test_zcl_command_duplicate_name_prevention():
         class TestCluster(zcl.Cluster):
             cluster_id = 0x1234
             ep_attribute = "test_cluster"
+            server_commands = {
+                0x00: foundation.ZCLCommandDef(
+                    name="command1", schema={}, direction=False
+                ),
+                0x01: foundation.ZCLCommandDef(
+                    name="command1", schema={}, direction=False
+                ),
+            }
 
-            class AttributeDefs:
-                pass
+
+def test_zcl_dicts_and_defs_prevention():
+    assert 0x1234 not in zcl.clusters.CLUSTERS_BY_ID
+
+    with pytest.raises(TypeError):
+
+        class TestCluster(zcl.Cluster):
+            cluster_id = 0x1234
+            ep_attribute = "test_cluster"
+            server_commands = {
+                0x00: foundation.ZCLCommandDef(
+                    name="command1", schema={}, direction=False
+                ),
+                0x01: foundation.ZCLCommandDef(
+                    name="command2", schema={}, direction=False
+                ),
+            }
 
             class ServerCommandDefs:
                 command1: Final = foundation.ZCLCommandDef(
                     id=0x00, schema={}, direction=False
                 )
-                command1: Final = foundation.ZCLCommandDef(
+                command2: Final = foundation.ZCLCommandDef(
                     id=0x01, schema={}, direction=False
                 )
-
-            class ClientCommandDefs:
-                pass
 
 
 def test_zcl_attridx_deprecation(cluster):

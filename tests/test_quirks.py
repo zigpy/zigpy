@@ -396,12 +396,6 @@ async def test_read_attributes_uncached():
                 id=0x0000, type=t.uint8_t
             )
 
-        class ServerCommandDefs:
-            pass
-
-        class ClientCommandDefs:
-            pass
-
     epmock = MagicMock()
     epmock._device.application.get_sequence.return_value = 123
     epmock.device.application.get_sequence.return_value = 123
@@ -957,7 +951,7 @@ def test_quirk_deprecated_manufacturer_prefixes():
         server_commands = {
             0x1233: ("foo1", (), False),
             0x1234: zcl.foundation.ZCLCommandDef(
-                "foo2", {}, False, is_manufacturer_specific=True
+                name="foo2", schema={}, direction=False, is_manufacturer_specific=True
             ),
         }
 
