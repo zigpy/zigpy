@@ -105,12 +105,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         if cls.cluster_id is not None:
             cls.cluster_id = t.ClusterId(cls.cluster_id)
 
-        # Clear the caches and lookup tables. Their contents should correspond exactly
-        # to what's in their respective command/attribute dictionaries.
-        cls.attributes_by_name = {}
-        cls.commands_by_name = {}
-        cls._server_commands_idx = {}
-        cls._client_commands_idx = {}
+        # use the new definition objects to populate the old collections
+        # this is done to maintain backwards compatibility with the old
+        # definitions
         cls.attributes: dict[int, foundation.ZCLAttributeDef] = {}
         cls.client_commands: dict[int, foundation.ZCLCommandDef] = {}
         cls.server_commands: dict[int, foundation.ZCLCommandDef] = {}
@@ -142,6 +139,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         for name, attribute in attrs.items():
             cls.attributes[attribute.id] = attribute
             object.__setattr__(attribute, "name", name)
+
+        # Clear the caches and lookup tables. Their contents should correspond exactly
+        # to what's in their respective command/attribute dictionaries.
+        cls.attributes_by_name = {}
+        cls.commands_by_name = {}
+        cls._server_commands_idx = {}
+        cls._client_commands_idx = {}
 
         # Compile command definitions
         for commands, index in [
