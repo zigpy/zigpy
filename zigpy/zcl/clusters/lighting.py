@@ -6,7 +6,12 @@ from typing import Final
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
-from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import (
+    BaseAttributeDefs,
+    BaseCommandDefs,
+    ZCLAttributeDef,
+    ZCLCommandDef,
+)
 
 
 class ColorMode(t.enum8):
@@ -99,7 +104,7 @@ class Color(Cluster):
     name: Final = "Color Control"
     ep_attribute: Final = "light_color"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         current_hue: Final = ZCLAttributeDef(id=0x0000, type=t.uint8_t, access="rp")
         current_saturation: Final = ZCLAttributeDef(
             id=0x0001, type=t.uint8_t, access="rps"
@@ -213,7 +218,7 @@ class Color(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         move_to_hue: Final = ZCLCommandDef(
             id=0x00,
             schema={
@@ -441,7 +446,7 @@ class Ballast(Cluster):
     cluster_id: Final = 0x0301
     ep_attribute: Final = "light_ballast"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         physical_min_level: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint8_t, access="r", mandatory=True
         )

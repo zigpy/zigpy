@@ -4,7 +4,7 @@ from typing import Final
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
-from zigpy.zcl.foundation import ZCLCommandDef
+from zigpy.zcl.foundation import BaseCommandDefs, ZCLCommandDef
 
 
 class LogicalType(t.enum2):
@@ -81,7 +81,7 @@ class LightLink(Cluster):
     cluster_id: Final = 0x1000
     ep_attribute: Final = "lightlink"
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         scan: Final = ZCLCommandDef(
             id=0x00,
             schema={
@@ -198,7 +198,7 @@ class LightLink(Cluster):
             direction=False,
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         scan_rsp: Final = ZCLCommandDef(
             id=0x01,
             schema={

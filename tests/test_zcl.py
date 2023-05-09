@@ -1023,7 +1023,7 @@ def test_zcl_server_dicts_and_defs_prevention():
                 ),
             }
 
-            class ServerCommandDefs:
+            class ServerCommandDefs(zcl.foundation.BaseCommandDefs):
                 command1: Final = foundation.ZCLCommandDef(
                     id=0x00, schema={}, direction=False
                 )
@@ -1049,7 +1049,7 @@ def test_zcl_client_dicts_and_defs_prevention():
                 ),
             }
 
-            class ClientCommandDefs:
+            class ClientCommandDefs(zcl.foundation.BaseCommandDefs):
                 command1: Final = foundation.ZCLCommandDef(
                     id=0x00, schema={}, direction=False
                 )
@@ -1071,7 +1071,7 @@ def test_zcl_attribute_dicts_and_defs_prevention():
                 0x00FF: ("second_attribute", t.enum8),
             }
 
-            class AttributeDefs:
+            class AttributeDefs(zcl.foundation.BaseAttributeDefs):
                 first_attribute: Final = zcl.foundation.ZCLAttributeDef(
                     id=0x0000, type=t.uint8_t
                 )

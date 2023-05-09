@@ -6,7 +6,12 @@ from typing import Final
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
-from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import (
+    BaseAttributeDefs,
+    BaseCommandDefs,
+    ZCLAttributeDef,
+    ZCLCommandDef,
+)
 
 
 class ShadeStatus(t.bitmap8):
@@ -32,7 +37,7 @@ class Shade(Cluster):
     name: Final = "Shade Configuration"
     ep_attribute: Final = "shade"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Shade Information
         physical_closed_limit: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="r"
@@ -287,7 +292,7 @@ class DoorLock(Cluster):
     name: Final = "Door Lock"
     ep_attribute: Final = "door_lock"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         lock_state: Final = ZCLAttributeDef(
             id=0x0000, type=LockState, access="rp", mandatory=True
         )
@@ -400,7 +405,7 @@ class DoorLock(Cluster):
             id=0x0047, type=RFIDProgrammingEventMask, access="rwp"
         )
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         lock_door: Final = ZCLCommandDef(
             id=0x00, schema={"pin_code?": t.CharacterString}, direction=False
         )
@@ -528,7 +533,7 @@ class DoorLock(Cluster):
         )
         clear_all_rfid_codes: Final = ZCLCommandDef(id=0x19, schema={}, direction=False)
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         lock_door_response: Final = ZCLCommandDef(
             id=0x00, schema={"status": foundation.Status}, direction=True
         )
@@ -729,7 +734,7 @@ class WindowCovering(Cluster):
     name: Final = "Window Covering"
     ep_attribute: Final = "window_covering"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Window Covering Information
         window_covering_type: Final = ZCLAttributeDef(
             id=0x0000, type=WindowCoveringType, access="r", mandatory=True
@@ -792,7 +797,7 @@ class WindowCovering(Cluster):
             id=0x0019, type=t.LVBytes, access="rw"
         )
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         up_open: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
         down_close: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
         stop: Final = ZCLCommandDef(id=0x02, schema={}, direction=False)

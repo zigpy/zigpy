@@ -6,7 +6,12 @@ from typing import Final
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
-from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import (
+    BaseAttributeDefs,
+    BaseCommandDefs,
+    ZCLAttributeDef,
+    ZCLCommandDef,
+)
 
 
 class PumpAlarmMask(t.bitmap16):
@@ -66,7 +71,7 @@ class Pump(Cluster):
     name: Final = "Pump Configuration and Control"
     ep_attribute: Final = "pump"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Pump Information
         max_pressure: Final = ZCLAttributeDef(
             id=0x0000, type=t.int16s, access="r", mandatory=True
@@ -345,7 +350,7 @@ class Thermostat(Cluster):
     cluster_id: Final = 0x0201
     ep_attribute: Final = "thermostat"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Thermostat Information
         local_temperature: Final = ZCLAttributeDef(
             id=0x0000, type=t.int16s, access="rp", mandatory=True
@@ -491,7 +496,7 @@ class Thermostat(Cluster):
             id=0x0047, type=ACCapacityFormat, access="rw"
         )
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         setpoint_raise_lower: Final = ZCLCommandDef(
             id=0x00, schema={"mode": SetpointMode, "amount": t.int8s}, direction=False
         )
@@ -515,7 +520,7 @@ class Thermostat(Cluster):
         )
         get_relay_status_log: Final = ZCLCommandDef(id=0x04, schema={}, direction=False)
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         get_weekly_schedule_response: Final = ZCLCommandDef(
             id=0x00,
             schema={
@@ -570,7 +575,7 @@ class Fan(Cluster):
     name: Final = "Fan Control"
     ep_attribute: Final = "fan"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         fan_mode: Final = ZCLAttributeDef(id=0x0000, type=FanMode, access="")
         fan_mode_sequence: Final = ZCLAttributeDef(
             id=0x0001, type=FanModeSequence, access=""
@@ -602,7 +607,7 @@ class Dehumidification(Cluster):
     cluster_id: Final = 0x0203
     ep_attribute: Final = "dehumidification"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Dehumidification Information
         relative_humidity: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint8_t, access="r"
@@ -664,7 +669,7 @@ class UserInterface(Cluster):
     name: Final = "Thermostat User Interface Configuration"
     ep_attribute: Final = "thermostat_ui"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         temperature_display_mode: Final = ZCLAttributeDef(
             id=0x0000,
             type=TemperatureDisplayMode,

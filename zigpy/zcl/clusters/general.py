@@ -8,7 +8,12 @@ from typing import Any, Final
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster, foundation
-from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import (
+    BaseAttributeDefs,
+    BaseCommandDefs,
+    ZCLAttributeDef,
+    ZCLCommandDef,
+)
 
 
 class PowerSource(t.enum8):
@@ -212,7 +217,7 @@ class Basic(Cluster):
     cluster_id: Final = 0x0000
     ep_attribute: Final = "basic"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Basic Device Information
         zcl_version: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint8_t, access="r", mandatory=True
@@ -270,7 +275,7 @@ class Basic(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         reset_fact_default: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
 
 
@@ -306,7 +311,7 @@ class PowerConfiguration(Cluster):
     name: Final = "Power Configuration"
     ep_attribute: Final = "power"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Mains Information
         mains_voltage: Final = ZCLAttributeDef(id=0x0000, type=t.uint16_t, access="r")
         mains_frequency: Final = ZCLAttributeDef(id=0x0001, type=t.uint8_t, access="r")
@@ -501,7 +506,7 @@ class DeviceTemperature(Cluster):
     name: Final = "Device Temperature"
     ep_attribute: Final = "device_temperature"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Device Temperature Information
         current_temperature: Final = ZCLAttributeDef(
             id=0x0000, type=t.int16s, access="r", mandatory=True
@@ -555,14 +560,14 @@ class Identify(Cluster):
     cluster_id: Final = 0x0003
     ep_attribute: Final = "identify"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         identify_time: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="rw", mandatory=True
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         identify: Final = ZCLCommandDef(
             id=0x00, schema={"identify_time": t.uint16_t}, direction=False
         )
@@ -575,7 +580,7 @@ class Identify(Cluster):
             direction=False,
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         identify_query_response: Final = ZCLCommandDef(
             id=0x00, schema={"timeout": t.uint16_t}, direction=True
         )
@@ -595,14 +600,14 @@ class Groups(Cluster):
     cluster_id: Final = 0x0004
     ep_attribute: Final = "groups"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         name_support: Final = ZCLAttributeDef(
             id=0x0000, type=NameSupport, access="r", mandatory=True
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         add: Final = ZCLCommandDef(
             id=0x00,
             schema={"group_id": t.Group, "group_name": t.LimitedCharString(16)},
@@ -624,7 +629,7 @@ class Groups(Cluster):
             direction=False,
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         add_response: Final = ZCLCommandDef(
             id=0x00,
             schema={"status": foundation.Status, "group_id": t.Group},
@@ -661,7 +666,7 @@ class Scenes(Cluster):
     cluster_id: Final = 0x0005
     ep_attribute: Final = "scenes"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Scene Management Information
         count: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint8_t, access="r", mandatory=True
@@ -682,7 +687,7 @@ class Scenes(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         add: Final = ZCLCommandDef(
             id=0x00,
             schema={
@@ -751,7 +756,7 @@ class Scenes(Cluster):
             direction=False,
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         add_scene_response: Final = ZCLCommandDef(
             id=0x00,
             schema={
@@ -873,7 +878,7 @@ class OnOff(Cluster):
     name: Final = "On/Off"
     ep_attribute: Final = "on_off"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         on_off: Final = ZCLAttributeDef(
             id=0x0000, type=t.Bool, access="rps", mandatory=True
         )
@@ -888,7 +893,7 @@ class OnOff(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         off: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
         on: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
         toggle: Final = ZCLCommandDef(id=0x02, schema={}, direction=False)
@@ -933,7 +938,7 @@ class OnOffConfiguration(Cluster):
     name: Final = "On/Off Switch Configuration"
     ep_attribute: Final = "on_off_config"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         switch_type: Final = ZCLAttributeDef(
             id=0x0000, type=SwitchType, access="r", mandatory=True
         )
@@ -972,7 +977,7 @@ class LevelControl(Cluster):
     name: Final = "Level control"
     ep_attribute: Final = "level"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         current_level: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint8_t, access="rps", mandatory=True
         )
@@ -1004,7 +1009,7 @@ class LevelControl(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         move_to_level: Final = ZCLCommandDef(
             id=0x00,
             schema={
@@ -1077,12 +1082,12 @@ class Alarms(Cluster):
     cluster_id: Final = 0x0009
     ep_attribute: Final = "alarms"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         alarm_count: Final = ZCLAttributeDef(id=0x0000, type=t.uint16_t, access="r")
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         reset_alarm: Final = ZCLCommandDef(
             id=0x00,
             schema={"alarm_code": t.uint8_t, "cluster_id": t.uint16_t},
@@ -1093,7 +1098,7 @@ class Alarms(Cluster):
         reset_alarm_log: Final = ZCLCommandDef(id=0x03, schema={}, direction=False)
         # 0x04: ("publish_event_log", {}, False),
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         alarm: Final = ZCLCommandDef(
             id=0x00,
             schema={"alarm_code": t.uint8_t, "cluster_id": t.uint16_t},
@@ -1129,7 +1134,7 @@ class Time(Cluster):
     cluster_id: Final = 0x000A
     ep_attribute: Final = "time"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         time: Final = ZCLAttributeDef(
             id=0x0000, type=t.UTCTime, access="r*w", mandatory=True
         )
@@ -1209,7 +1214,7 @@ class RSSILocation(Cluster):
     cluster_id: Final = 0x000B
     ep_attribute: Final = "rssi_location"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Location Information
         type: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint8_t, access="rw", mandatory=True
@@ -1246,7 +1251,7 @@ class RSSILocation(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         set_absolute_location: Final = ZCLCommandDef(
             id=0x00,
             schema={
@@ -1313,7 +1318,7 @@ class RSSILocation(Cluster):
             direction=False,
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         dev_config_response: Final = ZCLCommandDef(
             id=0x00,
             schema={
@@ -1385,7 +1390,7 @@ class AnalogInput(Cluster):
     cluster_id: Final = 0x000C
     ep_attribute: Final = "analog_input"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         description: Final = ZCLAttributeDef(
             id=0x001C, type=t.CharacterString, access="r*w"
         )
@@ -1420,7 +1425,7 @@ class AnalogOutput(Cluster):
     cluster_id: Final = 0x000D
     ep_attribute: Final = "analog_output"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         description: Final = ZCLAttributeDef(
             id=0x001C, type=t.CharacterString, access="r*w"
         )
@@ -1460,7 +1465,7 @@ class AnalogValue(Cluster):
     cluster_id: Final = 0x000E
     ep_attribute: Final = "analog_value"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         description: Final = ZCLAttributeDef(
             id=0x001C, type=t.CharacterString, access="r*w"
         )
@@ -1494,7 +1499,7 @@ class BinaryInput(Cluster):
     name: Final = "Binary Input (Basic)"
     ep_attribute: Final = "binary_input"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         active_text: Final = ZCLAttributeDef(
             id=0x0004, type=t.CharacterString, access="r*w"
         )
@@ -1526,7 +1531,7 @@ class BinaryOutput(Cluster):
     cluster_id: Final = 0x0010
     ep_attribute: Final = "binary_output"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         active_text: Final = ZCLAttributeDef(
             id=0x0004, type=t.CharacterString, access="r*w"
         )
@@ -1575,7 +1580,7 @@ class BinaryValue(Cluster):
     cluster_id: Final = 0x0011
     ep_attribute: Final = "binary_value"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         active_text: Final = ZCLAttributeDef(
             id=0x0004, type=t.CharacterString, access="r*w"
         )
@@ -1617,7 +1622,7 @@ class MultistateInput(Cluster):
     cluster_id: Final = 0x0012
     ep_attribute: Final = "multistate_input"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         state_text: Final = ZCLAttributeDef(
             id=0x000E, type=t.List[t.CharacterString], access="r*w"
         )
@@ -1650,7 +1655,7 @@ class MultistateOutput(Cluster):
     cluster_id: Final = 0x0013
     ep_attribute: Final = "multistate_output"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         state_text: Final = ZCLAttributeDef(
             id=0x000E, type=t.List[t.CharacterString], access="r*w"
         )
@@ -1686,7 +1691,7 @@ class MultistateValue(Cluster):
     cluster_id: Final = 0x0014
     ep_attribute: Final = "multistate_value"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         state_text: Final = ZCLAttributeDef(
             id=0x000E, type=t.List[t.CharacterString], access="r*w"
         )
@@ -1740,7 +1745,7 @@ class Commissioning(Cluster):
     cluster_id: Final = 0x0015
     ep_attribute: Final = "commissioning"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Startup Parameters
         short_address: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="rw", mandatory=True
@@ -1816,7 +1821,7 @@ class Commissioning(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         restart_device: Final = ZCLCommandDef(
             id=0x00,
             schema={"options": t.bitmap8, "delay": t.uint8_t, "jitter": t.uint8_t},
@@ -1838,7 +1843,7 @@ class Commissioning(Cluster):
             direction=False,
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         restart_device_response: Final = ZCLCommandDef(
             id=0x00, schema={"status": foundation.Status}, direction=True
         )
@@ -1857,7 +1862,7 @@ class Partition(Cluster):
     cluster_id: Final = 0x0016
     ep_attribute: Final = "partition"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         maximum_incoming_transfer_size: Final = ZCLAttributeDef(
             id=0x0000,
             type=t.uint16_t,
@@ -2041,7 +2046,7 @@ class Ota(Cluster):
     cluster_id: Final = 0x0019
     ep_attribute: Final = "ota"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         upgrade_server_id: Final = ZCLAttributeDef(
             id=0x0000, type=t.EUI64, access="r", mandatory=True
         )
@@ -2076,7 +2081,7 @@ class Ota(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         query_next_image: Final = ZCLCommandDef(
             id=0x01, schema=QueryNextImageCommand, direction=False
         )
@@ -2108,7 +2113,7 @@ class Ota(Cluster):
             direction=False,
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         image_notify: Final = ZCLCommandDef(
             id=0x00, schema=ImageNotifyCommand, direction=False
         )
@@ -2362,7 +2367,7 @@ class PowerProfile(Cluster):
     cluster_id: Final = 0x001A
     ep_attribute: Final = "power_profile"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         total_profile_num: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint8_t, access="r", mandatory=True
         )
@@ -2381,7 +2386,7 @@ class PowerProfile(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         power_profile_request: Final = ZCLCommandDef(
             id=0x00, schema={"power_profile_id": t.uint8_t}, direction=False
         )
@@ -2444,7 +2449,7 @@ class PowerProfile(Cluster):
             direction=True,
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         power_profile_notification: Final = ZCLCommandDef(
             id=0x00,
             schema={
@@ -2533,7 +2538,7 @@ class ApplianceControl(Cluster):
     cluster_id: Final = 0x001B
     ep_attribute: Final = "appliance_control"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         start_time: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="rp", mandatory=True
         )
@@ -2550,7 +2555,7 @@ class PollControl(Cluster):
     name: Final = "Poll Control"
     ep_attribute: Final = "poll_control"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         checkin_interval: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint32_t, access="rw", mandatory=True
         )
@@ -2575,7 +2580,7 @@ class PollControl(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         checkin_response: Final = ZCLCommandDef(
             id=0x00,
             schema={"start_fast_polling": t.Bool, "fast_poll_timeout": t.uint16_t},
@@ -2591,7 +2596,7 @@ class PollControl(Cluster):
             direction=False,
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         checkin: Final = ZCLCommandDef(id=0x0000, schema={}, direction=False)
 
 

@@ -4,7 +4,12 @@ from typing import Final
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
-from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import (
+    BaseAttributeDefs,
+    BaseCommandDefs,
+    ZCLAttributeDef,
+    ZCLCommandDef,
+)
 
 
 class ApplianceIdentification(Cluster):
@@ -12,7 +17,7 @@ class ApplianceIdentification(Cluster):
     name: Final = "Appliance Identification"
     ep_attribute: Final = "appliance_id"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         basic_identification: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint56_t, access="r", mandatory=True
         )
@@ -50,7 +55,7 @@ class MeterIdentification(Cluster):
     name: Final = "Meter Identification"
     ep_attribute: Final = "meter_id"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         company_name: Final = ZCLAttributeDef(
             id=0x0000, type=t.LimitedCharString(16), access="r", mandatory=True
         )
@@ -94,14 +99,14 @@ class ApplianceEventAlerts(Cluster):
     name: Final = "Appliance Event Alerts"
     ep_attribute: Final = "appliance_event"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         get_alerts: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         get_alerts_response: Final = ZCLCommandDef(id=0x00, schema={}, direction=True)
         alerts_notification: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
         event_notification: Final = ZCLCommandDef(id=0x02, schema={}, direction=False)
@@ -112,7 +117,7 @@ class ApplianceStatistics(Cluster):
     name: Final = "Appliance Statistics"
     ep_attribute: Final = "appliance_stats"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         log_max_size: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint32_t, access="r", mandatory=True
         )
@@ -122,11 +127,11 @@ class ApplianceStatistics(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         log: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
         log_queue: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         log_notification: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
         log_response: Final = ZCLCommandDef(id=0x01, schema={}, direction=True)
         log_queue_response: Final = ZCLCommandDef(id=0x02, schema={}, direction=True)
@@ -172,7 +177,7 @@ class ElectricalMeasurement(Cluster):
     DCOverloadAlarmMark: Final = DCOverloadAlarmMark
     ACAlarmsMask: Final = ACAlarmsMask
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Basic Information
         measurement_type: Final = ZCLAttributeDef(
             id=0x0000, type=MeasurementType, access="r", mandatory=True
@@ -522,13 +527,13 @@ class ElectricalMeasurement(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         get_profile_info: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
         get_measurement_profile: Final = ZCLCommandDef(
             id=0x01, schema={}, direction=False
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         get_profile_info_response: Final = ZCLCommandDef(
             id=0x00, schema={}, direction=True
         )
@@ -541,7 +546,7 @@ class Diagnostic(Cluster):
     cluster_id: Final = 0x0B05
     ep_attribute: Final = "diagnostic"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Hardware Information
         number_of_resets: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="r"

@@ -10,6 +10,7 @@ from zigpy import util
 import zigpy.types as t
 from zigpy.typing import AddressingMode, EndpointType
 from zigpy.zcl import foundation
+from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs
 
 if TYPE_CHECKING:
     from zigpy.appdb import PersistingListener
@@ -51,13 +52,13 @@ class ClusterType(enum.IntEnum):
 class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     """A cluster on an endpoint"""
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         pass
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         pass
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         pass
 
     # Custom clusters for quirks subclass Cluster but should not be stored in any global

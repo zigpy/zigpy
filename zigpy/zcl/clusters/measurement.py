@@ -6,7 +6,7 @@ from typing import Final
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
-from zigpy.zcl.foundation import ZCLAttributeDef
+from zigpy.zcl.foundation import BaseAttributeDefs, ZCLAttributeDef
 
 
 class LightSensorType(t.enum8):
@@ -22,7 +22,7 @@ class IlluminanceMeasurement(Cluster):
     name: Final = "Illuminance Measurement"
     ep_attribute: Final = "illuminance"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         measured_value: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="rp", mandatory=True
         )
@@ -54,7 +54,7 @@ class IlluminanceLevelSensing(Cluster):
     name: Final = "Illuminance Level Sensing"
     ep_attribute: Final = "illuminance_level"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         level_status: Final = ZCLAttributeDef(
             id=0x0000, type=LevelStatus, access="r", mandatory=True
         )
@@ -74,7 +74,7 @@ class TemperatureMeasurement(Cluster):
     name: Final = "Temperature Measurement"
     ep_attribute: Final = "temperature"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Temperature Measurement Information
         measured_value: Final = ZCLAttributeDef(
             id=0x0000, type=t.int16s, access="rp", mandatory=True
@@ -97,7 +97,7 @@ class PressureMeasurement(Cluster):
     name: Final = "Pressure Measurement"
     ep_attribute: Final = "pressure"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Pressure Measurement Information
         measured_value: Final = ZCLAttributeDef(
             id=0x0000, type=t.int16s, access="rp", mandatory=True
@@ -126,7 +126,7 @@ class FlowMeasurement(Cluster):
     name: Final = "Flow Measurement"
     ep_attribute: Final = "flow"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         measured_value: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="rp", mandatory=True
         )
@@ -146,7 +146,7 @@ class RelativeHumidity(Cluster):
     name: Final = "Relative Humidity Measurement"
     ep_attribute: Final = "humidity"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         measured_value: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="rp", mandatory=True
         )
@@ -188,7 +188,7 @@ class OccupancySensing(Cluster):
     name: Final = "Occupancy Sensing"
     ep_attribute: Final = "occupancy"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Occupancy Sensor Information
         occupancy: Final = ZCLAttributeDef(
             id=0x0000, type=Occupancy, access="rp", mandatory=True
@@ -235,7 +235,7 @@ class LeafWetness(Cluster):
     name: Final = "Leaf Wetness Measurement"
     ep_attribute: Final = "leaf_wetness"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Leaf Wetness Measurement Information
         measured_value: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="rp", mandatory=True
@@ -256,7 +256,7 @@ class SoilMoisture(Cluster):
     name: Final = "Soil Moisture Measurement"
     ep_attribute: Final = "soil_moisture"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Soil Moisture Measurement Information
         measured_value: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="rp", mandatory=True
@@ -277,7 +277,7 @@ class PH(Cluster):
     name: Final = "pH Measurement"
     ep_attribute: Final = "ph"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # pH Measurement Information
         measured_value: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="rp", mandatory=True
@@ -298,7 +298,7 @@ class ElectricalConductivity(Cluster):
     name: Final = "Electrical Conductivity"
     ep_attribute: Final = "electrical_conductivity"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         measured_value: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="rp", mandatory=True
         )
@@ -318,7 +318,7 @@ class WindSpeed(Cluster):
     name: Final = "Wind Speed Measurement"
     ep_attribute: Final = "wind_speed"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Wind Speed Measurement Information
         measured_value: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="rp", mandatory=True
@@ -337,7 +337,7 @@ class WindSpeed(Cluster):
 class _ConcentrationMixin:
     """Mixin for the common attributes of the concentration measurement clusters"""
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         measured_value: Final = ZCLAttributeDef(
             id=0x0000, type=t.Single, access="rp", mandatory=True
         )  # fraction of 1 (one)

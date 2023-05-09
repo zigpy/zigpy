@@ -4,7 +4,12 @@ from typing import Final
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
-from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import (
+    BaseAttributeDefs,
+    BaseCommandDefs,
+    ZCLAttributeDef,
+    ZCLCommandDef,
+)
 
 
 class Price(Cluster):
@@ -42,7 +47,7 @@ class Metering(Cluster):
     cluster_id: Final = 0x0702
     ep_attribute: Final = "smartenergy_metering"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         current_summ_delivered: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint48_t, access="r"
         )
@@ -413,7 +418,7 @@ class Metering(Cluster):
             id=0x0A03, type=t.uint32_t, access="r"
         )
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         get_profile: Final = ZCLCommandDef(id=0x00, schema={}, direction=False)
         req_mirror: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
         mirror_rem: Final = ZCLCommandDef(id=0x02, schema={}, direction=False)
@@ -424,7 +429,7 @@ class Metering(Cluster):
             id=0x06, schema={}, direction=True
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         get_profile_response: Final = ZCLCommandDef(id=0x00, schema={}, direction=True)
         req_mirror_response: Final = ZCLCommandDef(id=0x01, schema={}, direction=True)
         mirror_rem_response: Final = ZCLCommandDef(id=0x02, schema={}, direction=True)

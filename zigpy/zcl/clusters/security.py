@@ -7,7 +7,12 @@ from typing import Any, Final
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster, foundation
-from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import (
+    BaseAttributeDefs,
+    BaseCommandDefs,
+    ZCLAttributeDef,
+    ZCLCommandDef,
+)
 
 
 class ZoneState(t.enum8):
@@ -74,7 +79,7 @@ class IasZone(Cluster):
     name: Final = "IAS Zone"
     ep_attribute: Final = "ias_zone"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         # Zone Information
         zone_state: Final = ZCLAttributeDef(
             id=0x0000, type=ZoneState, access="r", mandatory=True
@@ -100,7 +105,7 @@ class IasZone(Cluster):
             id=0x0013, type=t.uint8_t, access="rw"
         )
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         enroll_response: Final = ZCLCommandDef(
             id=0x00,
             schema={"enroll_response_code": EnrollResponse, "zone_id": t.uint8_t},
@@ -116,7 +121,7 @@ class IasZone(Cluster):
             direction=False,
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         status_change_notification: Final = ZCLCommandDef(
             id=0x00,
             schema={
@@ -240,11 +245,11 @@ class IasAce(Cluster):
     name: Final = "IAS Ancillary Control Equipment"
     ep_attribute: Final = "ias_ace"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         arm: Final = ZCLCommandDef(
             id=0x00,
             schema={
@@ -284,7 +289,7 @@ class IasAce(Cluster):
             direction=False,
         )
 
-    class ClientCommandDefs:
+    class ClientCommandDefs(BaseCommandDefs):
         arm_response: Final = ZCLCommandDef(
             id=0x00, schema={"arm_notification": ArmNotification}, direction=True
         )
@@ -483,14 +488,14 @@ class IasWd(Cluster):
     name: Final = "IAS Warning Device"
     ep_attribute: Final = "ias_wd"
 
-    class AttributeDefs:
+    class AttributeDefs(BaseAttributeDefs):
         max_duration: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint16_t, access="rw", mandatory=True
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    class ServerCommandDefs:
+    class ServerCommandDefs(BaseCommandDefs):
         start_warning: Final = ZCLCommandDef(
             id=0x00,
             schema={

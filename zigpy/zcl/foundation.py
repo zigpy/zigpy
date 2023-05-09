@@ -801,6 +801,21 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
         )
 
 
+class IterableMemberMeta(type):
+    def __iter__(cls) -> typing.Iterable[typing.Any]:
+        for name in dir(cls):
+            if not name.startswith("_"):
+                yield getattr(cls, name)
+
+
+class BaseCommandDefs(metaclass=IterableMemberMeta):
+    pass
+
+
+class BaseAttributeDefs(metaclass=IterableMemberMeta):
+    pass
+
+
 class GeneralCommand(t.enum8):
     """ZCL Foundation General Command IDs."""
 
