@@ -706,7 +706,7 @@ def test_name(cluster):
 
 
 def test_commands(cluster):
-    assert cluster.commands == ["reset_fact_default"]
+    assert cluster.commands == [cluster.ServerCommandDefs.reset_fact_default]
 
 
 def test_general_command(cluster):

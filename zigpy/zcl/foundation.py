@@ -641,6 +641,11 @@ class ZCLCommandDef(t.BaseDataclassMixin):
     name: str = None
 
     def __post_init__(self) -> None:
+        # Backwards compatibility with positional syntax where the name was first
+        if isinstance(self.id, str):
+            object.__setattr__(self, "name", self.id)
+            object.__setattr__(self, "id", None)
+
         ensure_valid_name(self.name)
 
         if isinstance(self.direction, bool):
@@ -780,6 +785,11 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
     name: str = None
 
     def __post_init__(self) -> None:
+        # Backwards compatibility with positional syntax where the name was first
+        if isinstance(self.id, str):
+            object.__setattr__(self, "name", self.id)
+            object.__setattr__(self, "id", None)
+
         if self.id is not None and not isinstance(self.id, t.uint16_t):
             object.__setattr__(self, "id", t.uint16_t(self.id))
 
