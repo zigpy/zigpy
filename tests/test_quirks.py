@@ -330,23 +330,12 @@ def test_custom_cluster_idx():
                 id=0x01, schema={"param1": t.uint8_t}, direction=True
             )
 
-    def _test_cmd(cmd_set, cmd_set_idx):
-        assert hasattr(TestClusterIdx, cmd_set_idx)
-        idx_len = len(getattr(TestClusterIdx, cmd_set_idx))
-        cmd_set_len = len(getattr(TestClusterIdx, cmd_set))
-        assert idx_len == cmd_set_len
-        for cmd_name, cmd_id in getattr(TestClusterIdx, cmd_set_idx).items():
-            assert getattr(TestClusterIdx, cmd_set)[cmd_id].name == cmd_name
-
     assert hasattr(TestClusterIdx, "attributes_by_name")
     attr_idx_len = len(TestClusterIdx.attributes_by_name)
     attrs_len = len(TestClusterIdx.attributes)
     assert attr_idx_len == attrs_len
     for attr_name, attr in TestClusterIdx.attributes_by_name.items():
         assert TestClusterIdx.attributes[attr.id].name == attr_name
-
-    _test_cmd("server_commands", "_server_commands_idx")
-    _test_cmd("client_commands", "_client_commands_idx")
 
 
 async def test_read_attributes_uncached():
@@ -944,23 +933,6 @@ def test_quirk_wildcard_manufacturer(real_device, real_device_2):
     real_device.model = "And now we should not match any quirk"
     quirked = registry.get_device(real_device)
     assert quirked is real_device
-
-
-def test_quirk_deprecated_manufacturer_prefixes():
-    class GoodCluster(zigpy.quirks.CustomCluster):
-        server_commands = {
-            0x1233: ("foo1", (), False),
-            0x1234: zcl.foundation.ZCLCommandDef(
-                name="foo2", schema={}, direction=False, is_manufacturer_specific=True
-            ),
-        }
-
-    with pytest.raises(TypeError):
-
-        class BadCluster(zigpy.quirks.CustomCluster):
-            manufacturer_server_commands = {
-                0x1234: ("foo3", {}, False),
-            }
 
 
 async def test_manuf_id_disable(real_device):

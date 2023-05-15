@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Final
 from unittest import mock
 
 import pytest
@@ -1004,80 +1003,6 @@ def test_zcl_command_duplicate_name_prevention():
                     name="command1", schema={}, direction=False
                 ),
             }
-
-
-def test_zcl_server_dicts_and_defs_prevention():
-    assert 0x1234 not in zcl.clusters.CLUSTERS_BY_ID
-
-    with pytest.raises(TypeError):
-
-        class TestCluster(zcl.Cluster):
-            cluster_id = 0x1234
-            ep_attribute = "test_cluster"
-            server_commands = {
-                0x00: foundation.ZCLCommandDef(
-                    name="command1", schema={}, direction=False
-                ),
-                0x01: foundation.ZCLCommandDef(
-                    name="command2", schema={}, direction=False
-                ),
-            }
-
-            class ServerCommandDefs(zcl.foundation.BaseCommandDefs):
-                command1: Final = foundation.ZCLCommandDef(
-                    id=0x00, schema={}, direction=False
-                )
-                command2: Final = foundation.ZCLCommandDef(
-                    id=0x01, schema={}, direction=False
-                )
-
-
-def test_zcl_client_dicts_and_defs_prevention():
-    assert 0x1234 not in zcl.clusters.CLUSTERS_BY_ID
-
-    with pytest.raises(TypeError):
-
-        class TestCluster(zcl.Cluster):
-            cluster_id = 0x1234
-            ep_attribute = "test_cluster"
-            client_commands = {
-                0x00: foundation.ZCLCommandDef(
-                    name="command1", schema={}, direction=False
-                ),
-                0x01: foundation.ZCLCommandDef(
-                    name="command2", schema={}, direction=False
-                ),
-            }
-
-            class ClientCommandDefs(zcl.foundation.BaseCommandDefs):
-                command1: Final = foundation.ZCLCommandDef(
-                    id=0x00, schema={}, direction=False
-                )
-                command2: Final = foundation.ZCLCommandDef(
-                    id=0x01, schema={}, direction=False
-                )
-
-
-def test_zcl_attribute_dicts_and_defs_prevention():
-    assert 0x1234 not in zcl.clusters.CLUSTERS_BY_ID
-
-    with pytest.raises(TypeError):
-
-        class TestCluster(zcl.Cluster):
-            cluster_id = 0x1234
-            ep_attribute = "test_cluster"
-            attributes = {
-                0x0000: ("first_attribute", t.uint8_t),
-                0x00FF: ("second_attribute", t.enum8),
-            }
-
-            class AttributeDefs(zcl.foundation.BaseAttributeDefs):
-                first_attribute: Final = zcl.foundation.ZCLAttributeDef(
-                    id=0x0000, type=t.uint8_t
-                )
-                second_attribute: Final = zcl.foundation.ZCLAttributeDef(
-                    id=0x00FF, type=t.enum8
-                )
 
 
 def test_zcl_attridx_deprecation(cluster):

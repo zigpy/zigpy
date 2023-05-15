@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import collections
 import enum
 import functools
-import types
-import inspect
 import itertools
 import logging
-from typing import TYPE_CHECKING, Any, Sequence
+import types
+from typing import TYPE_CHECKING, Any, Iterable, Sequence
 import warnings
 
 from zigpy import util
@@ -90,40 +90,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     _registry_range: dict = {}
 
     def __init_subclass__(cls) -> None:
-        # Fail on deprecated attribute presence
-        for a in ("attributes", "client_commands", "server_commands"):
-            if not hasattr(cls, f"manufacturer_{a}"):
-                continue
-
-            raise TypeError(
-                f"`manufacturer_{a}` is deprecated. Copy the parent class's `{a}`"
-                f" dictionary and update it with your manufacturer-specific `{a}`. Make"
-                f" sure to specify that it is manufacturer-specific through the "
-                f" appropriate constructor or tuple!"
-            )
-
         if cls.cluster_id is not None:
             cls.cluster_id = t.ClusterId(cls.cluster_id)
-
-        using_defs = (
-            cls.ServerCommandDefs is not Cluster.ServerCommandDefs
-            or cls.ClientCommandDefs is not Cluster.ClientCommandDefs
-            or cls.AttributeDefs is not Cluster.AttributeDefs
-        )
-
-        # Do not allow both the old-style and new-style definitions to be used
-        if using_defs and 'server_commands' in cls.__dict__:
-            raise TypeError(
-                "Cannot define both `server_commands` and `ServerCommandDefs`"
-            )
-
-        if using_defs and 'client_commands' in cls.__dict__:
-            raise TypeError(
-                "Cannot define both `client_commands` and `ClientCommandDefs`"
-            )
-
-        if using_defs and 'attributes' in cls.__dict__:
-            raise TypeError("Cannot define both `attributes` and `AttributeDefs`")
 
         # Compile the old command definitions
         for commands in [cls.server_commands, cls.client_commands]:
@@ -137,10 +105,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                         schema=convert_list_schema(schema, command_id, direction),
                         direction=direction,
                     )
-                else:
-                    command = command.replace(id=command_id)
 
-                command = command.with_compiled_schema()
+                command = command.replace(id=command_id).with_compiled_schema()
                 commands[command.id] = command
 
         # Compile the old attribute definitions
@@ -158,51 +124,57 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                     type=attr_type,
                     is_manufacturer_specific=attr_manuf_specific,
                 )
-            else:
-                attr = attr.replace(id=attr_id)
 
-            cls.attributes[attr.id] = attr
+            cls.attributes[attr.id] = attr.replace(id=attr_id)
 
         # Create new definitions from the old-style definitions
-        if not using_defs:
-            if cls.attributes:
-                cls.AttributeDefs = types.new_class(
-                    name="AttributeDefs",
-                    bases=(BaseAttributeDefs,),
-                )
+        if cls.attributes and "AttributeDefs" not in cls.__dict__:
+            cls.AttributeDefs = types.new_class(
+                name="AttributeDefs",
+                bases=(BaseAttributeDefs,),
+            )
 
-                for attr in cls.attributes.values():
-                    setattr(cls.AttributeDefs, attr.name, attr)
+            for attr in cls.attributes.values():
+                setattr(cls.AttributeDefs, attr.name, attr)
 
-            if cls.server_commands:
-                cls.ServerCommandDefs = types.new_class(
-                    name="ServerCommandDefs",
-                    bases=(BaseCommandDefs,),
-                )
+        if cls.server_commands and "ServerCommandDefs" not in cls.__dict__:
+            cls.ServerCommandDefs = types.new_class(
+                name="ServerCommandDefs",
+                bases=(BaseCommandDefs,),
+            )
 
-                for command in cls.server_commands.values():
-                    setattr(cls.ServerCommandDefs, command.name, command)
+            for command in cls.server_commands.values():
+                setattr(cls.ServerCommandDefs, command.name, command)
 
-            if cls.client_commands:
-                cls.ClientCommandDefs = types.new_class(
-                    name="ClientCommandDefs",
-                    bases=(BaseCommandDefs,),
-                )
+        if cls.client_commands and "ClientCommandDefs" not in cls.__dict__:
+            cls.ClientCommandDefs = types.new_class(
+                name="ClientCommandDefs",
+                bases=(BaseCommandDefs,),
+            )
 
-                for command in cls.client_commands.values():
-                    setattr(cls.ClientCommandDefs, command.name, command)
+            for command in cls.client_commands.values():
+                setattr(cls.ClientCommandDefs, command.name, command)
+
+        # Check the old definitions for duplicates
+        for old_defs in [cls.attributes, cls.server_commands, cls.client_commands]:
+            counts = collections.Counter(d.name for d in old_defs.values())
+
+            if len(counts) != counts.total():
+                duplicates = [n for n, c in counts.items() if c > 1]
+                raise TypeError(f"Duplicate definitions exist for {duplicates}")
 
         # Populate the `name` attribute of every definition
         for defs in (cls.ServerCommandDefs, cls.ClientCommandDefs, cls.AttributeDefs):
             for name in dir(defs):
                 definition = getattr(defs, name)
 
-                if not isinstance(
-                    definition, (foundation.ZCLCommandDef, foundation.ZCLAttributeDef)
+                if (
+                    isinstance(
+                        definition,
+                        (foundation.ZCLCommandDef, foundation.ZCLAttributeDef),
+                    )
+                    and definition.name is None
                 ):
-                    continue
-
-                if definition.name is None:
                     object.__setattr__(definition, "name", name)
 
         # Compile the schemas
@@ -210,20 +182,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             for name in dir(defs):
                 definition = getattr(defs, name)
 
-                if not isinstance(definition, foundation.ZCLCommandDef):
-                    continue
-
-                setattr(defs, definition.name, definition.with_compiled_schema())
+                if isinstance(definition, foundation.ZCLCommandDef):
+                    setattr(defs, definition.name, definition.with_compiled_schema())
 
         # Recreate the old structures using the new-style definitions
         cls.attributes = {attr.id: attr for attr in cls.AttributeDefs}
         cls.client_commands = {cmd.id: cmd for cmd in cls.ClientCommandDefs}
         cls.server_commands = {cmd.id: cmd for cmd in cls.ServerCommandDefs}
         cls.attributes_by_name = {attr.name: attr for attr in cls.AttributeDefs}
-        cls.commands_by_name = {
-            cmd.name: cmd
-            for cmd in itertools.chain(cls.ClientCommandDefs, cls.ServerCommandDefs)
-        }
+
+        all_cmds: Iterable[foundation.ZCLCommandDef] = itertools.chain(
+            cls.ClientCommandDefs, cls.ServerCommandDefs
+        )
+        cls.commands_by_name = {cmd.name: cmd for cmd in all_cmds}
 
         if cls._skip_registry:
             return
