@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import pathlib
 import sqlite3
 import sys
@@ -433,20 +433,26 @@ async def test_attribute_update(tmp_path, dev_init):
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
-    clus = ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
-    clus.update_attribute(4, test_manufacturer)
-    clus.update_attribute(5, test_model)
+    clus = ep.add_input_cluster(0x0000)
+    ep.add_output_cluster(0x0001)
+    clus.update_attribute(0x0004, test_manufacturer)
+    clus.update_attribute(0x0005, test_model)
     app.device_initialized(dev)
     await app.shutdown()
+
+    attr_update_time = clus._attr_last_updated[0x0004]
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app_with_db(db)
     dev = app2.get_device(ieee)
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
-    assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
-    assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
+
+    clus = dev.endpoints[3].in_clusters[0x0000]
+    assert clus._attr_cache[0x0004] == test_manufacturer
+    assert clus._attr_cache[0x0005] == test_model
+
+    assert (attr_update_time - clus._attr_last_updated[0x0004]) < timedelta(seconds=0.1)
 
     await app2.shutdown()
 
