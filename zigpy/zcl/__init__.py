@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import collections
 import enum
 import functools
+import itertools
 import logging
-from typing import TYPE_CHECKING, Any, Sequence
+import types
+from typing import TYPE_CHECKING, Any, Iterable, Sequence
 import warnings
 
 from zigpy import util
 import zigpy.types as t
 from zigpy.typing import AddressingMode, EndpointType
 from zigpy.zcl import foundation
+from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs
 
 if TYPE_CHECKING:
     from zigpy.appdb import PersistingListener
@@ -51,6 +55,15 @@ class ClusterType(enum.IntEnum):
 class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     """A cluster on an endpoint"""
 
+    class AttributeDefs(BaseAttributeDefs):
+        pass
+
+    class ServerCommandDefs(BaseCommandDefs):
+        pass
+
+    class ClientCommandDefs(BaseCommandDefs):
+        pass
+
     # Custom clusters for quirks subclass Cluster but should not be stored in any global
     # registries, since they're device-specific and collide with existing clusters.
     _skip_registry: bool = False
@@ -65,49 +78,23 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
     cluster_id_range: tuple[t.uint16_t, t.uint16_t] = None
 
-    # Clusters contain attributes and both client and server commands
+    # Deprecated: clusters contain attributes and both client and server commands
     attributes: dict[int, foundation.ZCLAttributeDef] = {}
     client_commands: dict[int, foundation.ZCLCommandDef] = {}
     server_commands: dict[int, foundation.ZCLCommandDef] = {}
+    attributes_by_name: dict[str, foundation.ZCLAttributeDef] = {}
+    commands_by_name: dict[str, foundation.ZCLCommandDef] = {}
 
     # Internal caches and indices
     _registry: dict = {}
     _registry_range: dict = {}
 
-    _server_commands_idx: dict[str, int] = {}
-    _client_commands_idx: dict[str, int] = {}
-
-    attributes_by_name: dict[str, foundation.ZCLAttributeDef] = {}
-    commands_by_name: dict[str, foundation.ZCLCommandDef] = {}
-
     def __init_subclass__(cls) -> None:
-        # Fail on deprecated attribute presence
-        for a in ("attributes", "client_commands", "server_commands"):
-            if not hasattr(cls, f"manufacturer_{a}"):
-                continue
-
-            raise TypeError(
-                f"`manufacturer_{a}` is deprecated. Copy the parent class's `{a}`"
-                f" dictionary and update it with your manufacturer-specific `{a}`. Make"
-                f" sure to specify that it is manufacturer-specific through the "
-                f" appropriate constructor or tuple!"
-            )
-
         if cls.cluster_id is not None:
             cls.cluster_id = t.ClusterId(cls.cluster_id)
 
-        # Clear the caches and lookup tables. Their contents should correspond exactly
-        # to what's in their respective command/attribute dictionaries.
-        cls.attributes_by_name = {}
-        cls.commands_by_name = {}
-        cls._server_commands_idx = {}
-        cls._client_commands_idx = {}
-
-        # Compile command definitions
-        for commands, index in [
-            (cls.server_commands, cls._server_commands_idx),
-            (cls.client_commands, cls._client_commands_idx),
-        ]:
+        # Compile the old command definitions
+        for commands in [cls.server_commands, cls.client_commands]:
             for command_id, command in list(commands.items()):
                 if isinstance(command, tuple):
                     # Backwards compatibility with old command tuples
@@ -118,21 +105,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                         schema=convert_list_schema(schema, command_id, direction),
                         direction=direction,
                     )
-                else:
-                    command = command.replace(id=command_id)
 
-                if command.name in cls.commands_by_name:
-                    raise TypeError(
-                        f"Command name {command} is not unique in {cls}: {cls.commands_by_name}"
-                    )
-
-                index[command.name] = command.id
-
-                command = command.with_compiled_schema()
+                command = command.replace(id=command_id).with_compiled_schema()
                 commands[command.id] = command
-                cls.commands_by_name[command.name] = command
 
-        # Compile attributes
+        # Compile the old attribute definitions
         for attr_id, attr in list(cls.attributes.items()):
             if isinstance(attr, tuple):
                 if len(attr) == 2:
@@ -147,11 +124,77 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                     type=attr_type,
                     is_manufacturer_specific=attr_manuf_specific,
                 )
-            else:
-                attr = attr.replace(id=attr_id)
 
-            cls.attributes[attr.id] = attr
-            cls.attributes_by_name[attr.name] = attr
+            cls.attributes[attr.id] = attr.replace(id=attr_id)
+
+        # Create new definitions from the old-style definitions
+        if cls.attributes and "AttributeDefs" not in cls.__dict__:
+            cls.AttributeDefs = types.new_class(
+                name="AttributeDefs",
+                bases=(BaseAttributeDefs,),
+            )
+
+            for attr in cls.attributes.values():
+                setattr(cls.AttributeDefs, attr.name, attr)
+
+        if cls.server_commands and "ServerCommandDefs" not in cls.__dict__:
+            cls.ServerCommandDefs = types.new_class(
+                name="ServerCommandDefs",
+                bases=(BaseCommandDefs,),
+            )
+
+            for command in cls.server_commands.values():
+                setattr(cls.ServerCommandDefs, command.name, command)
+
+        if cls.client_commands and "ClientCommandDefs" not in cls.__dict__:
+            cls.ClientCommandDefs = types.new_class(
+                name="ClientCommandDefs",
+                bases=(BaseCommandDefs,),
+            )
+
+            for command in cls.client_commands.values():
+                setattr(cls.ClientCommandDefs, command.name, command)
+
+        # Check the old definitions for duplicates
+        for old_defs in [cls.attributes, cls.server_commands, cls.client_commands]:
+            counts = collections.Counter(d.name for d in old_defs.values())
+
+            if len(counts) != sum(counts.values()):
+                duplicates = [n for n, c in counts.items() if c > 1]
+                raise TypeError(f"Duplicate definitions exist for {duplicates}")
+
+        # Populate the `name` attribute of every definition
+        for defs in (cls.ServerCommandDefs, cls.ClientCommandDefs, cls.AttributeDefs):
+            for name in dir(defs):
+                definition = getattr(defs, name)
+
+                if (
+                    isinstance(
+                        definition,
+                        (foundation.ZCLCommandDef, foundation.ZCLAttributeDef),
+                    )
+                    and definition.name is None
+                ):
+                    object.__setattr__(definition, "name", name)
+
+        # Compile the schemas
+        for defs in (cls.ServerCommandDefs, cls.ClientCommandDefs):
+            for name in dir(defs):
+                definition = getattr(defs, name)
+
+                if isinstance(definition, foundation.ZCLCommandDef):
+                    setattr(defs, definition.name, definition.with_compiled_schema())
+
+        # Recreate the old structures using the new-style definitions
+        cls.attributes = {attr.id: attr for attr in cls.AttributeDefs}
+        cls.client_commands = {cmd.id: cmd for cmd in cls.ClientCommandDefs}
+        cls.server_commands = {cmd.id: cmd for cmd in cls.ServerCommandDefs}
+        cls.attributes_by_name = {attr.name: attr for attr in cls.AttributeDefs}
+
+        all_cmds: Iterable[foundation.ZCLCommandDef] = itertools.chain(
+            cls.ClientCommandDefs, cls.ServerCommandDefs
+        )
+        cls.commands_by_name = {cmd.name: cmd for cmd in all_cmds}
 
         if cls._skip_registry:
             return
@@ -760,7 +803,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     @property
     def commands(self):
-        return list(self._server_commands_idx.keys())
+        return list(self.ServerCommandDefs)
 
     def update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
         """Update specified attribute with specified value"""
@@ -780,14 +823,21 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         return LOGGER.log(lvl, msg, *args, **kwargs)
 
     def __getattr__(self, name: str) -> functools.partial:
-        if name in self._client_commands_idx:
-            return functools.partial(
-                self.client_command, self._client_commands_idx[name]
-            )
-        elif name in self._server_commands_idx:
-            return functools.partial(self.command, self._server_commands_idx[name])
+        try:
+            cmd = getattr(self.ClientCommandDefs, name)
+        except AttributeError:
+            pass
         else:
-            raise AttributeError(f"No such command name: {name}")
+            return functools.partial(self.client_command, cmd.id)
+
+        try:
+            cmd = getattr(self.ServerCommandDefs, name)
+        except AttributeError:
+            pass
+        else:
+            return functools.partial(self.command, cmd.id)
+
+        raise AttributeError(f"No such command name: {name}")
 
     def get(self, key: int | str, default: Any | None = None) -> Any:
         """Get cached attribute."""

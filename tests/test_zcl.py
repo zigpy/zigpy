@@ -705,7 +705,7 @@ def test_name(cluster):
 
 
 def test_commands(cluster):
-    assert cluster.commands == ["reset_fact_default"]
+    assert cluster.commands == [cluster.ServerCommandDefs.reset_fact_default]
 
 
 def test_general_command(cluster):
@@ -996,8 +996,12 @@ def test_zcl_command_duplicate_name_prevention():
             cluster_id = 0x1234
             ep_attribute = "test_cluster"
             server_commands = {
-                0x00: foundation.ZCLCommandDef("command1", {}, False),
-                0x01: foundation.ZCLCommandDef("command1", {}, False),
+                0x00: foundation.ZCLCommandDef(
+                    name="command1", schema={}, direction=False
+                ),
+                0x01: foundation.ZCLCommandDef(
+                    name="command1", schema={}, direction=False
+                ),
             }
 
 

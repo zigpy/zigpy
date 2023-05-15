@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from typing import Final
+
 import zigpy.types as t
 from zigpy.zcl import Cluster
-from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import BaseCommandDefs, ZCLCommandDef
 
 
 class LogicalType(t.enum2):
@@ -76,38 +78,40 @@ class EndpointInfoRecord(t.Struct):
 
 
 class LightLink(Cluster):
-    cluster_id = 0x1000
-    ep_attribute = "lightlink"
-    attributes: dict[int, ZCLAttributeDef] = {}
-    server_commands: dict[int, ZCLCommandDef] = {
-        # Touchlink
-        0x00: ZCLCommandDef(
-            "scan",
-            {
+    cluster_id: Final = 0x1000
+    ep_attribute: Final = "lightlink"
+
+    class ServerCommandDefs(BaseCommandDefs):
+        scan: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
                 "inter_pan_transaction_id": t.uint32_t,
                 "zigbee_information": ZigbeeInformation,
                 "touchlink_information": ScanRequestInformation,
             },
-            False,
-        ),
-        0x02: ZCLCommandDef(
-            "device_info",
-            {"inter_pan_transaction_id": t.uint32_t, "start_index": t.uint8_t},
-            False,
-        ),
-        0x06: ZCLCommandDef(
-            "identify",
-            {"inter_pan_transaction_id": t.uint32_t, "identify_duration": t.uint16_t},
-            False,
-        ),
-        0x07: ZCLCommandDef(
-            "reset_to_factory_new",
-            {"inter_pan_transaction_id": t.uint32_t},
-            False,
-        ),
-        0x10: ZCLCommandDef(
-            "network_start",
-            {
+            direction=False,
+        )
+        device_info: Final = ZCLCommandDef(
+            id=0x02,
+            schema={"inter_pan_transaction_id": t.uint32_t, "start_index": t.uint8_t},
+            direction=False,
+        )
+        identify: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
+                "inter_pan_transaction_id": t.uint32_t,
+                "identify_duration": t.uint16_t,
+            },
+            direction=False,
+        )
+        reset_to_factory_new: Final = ZCLCommandDef(
+            id=0x07,
+            schema={"inter_pan_transaction_id": t.uint32_t},
+            direction=False,
+        )
+        network_start: Final = ZCLCommandDef(
+            id=0x10,
+            schema={
                 "inter_pan_transaction_id": t.uint32_t,
                 "epid": t.EUI64,
                 "key_index": t.uint8_t,
@@ -124,11 +128,11 @@ class LightLink(Cluster):
                 "initiator_ieee": t.EUI64,
                 "initiator_nwk": t.NWK,
             },
-            False,
-        ),
-        0x12: ZCLCommandDef(
-            "network_join_router",
-            {
+            direction=False,
+        )
+        network_join_router: Final = ZCLCommandDef(
+            id=0x12,
+            schema={
                 "inter_pan_transaction_id": t.uint32_t,
                 "epid": t.EUI64,
                 "key_index": t.uint8_t,
@@ -144,11 +148,11 @@ class LightLink(Cluster):
                 "free_group_id_range_begin": t.Group,
                 "free_group_id_range_end": t.Group,
             },
-            False,
-        ),
-        0x14: ZCLCommandDef(
-            "network_join_end_device",
-            {
+            direction=False,
+        )
+        network_join_end_device: Final = ZCLCommandDef(
+            id=0x14,
+            schema={
                 "inter_pan_transaction_id": t.uint32_t,
                 "epid": t.EUI64,
                 "key_index": t.uint8_t,
@@ -164,11 +168,11 @@ class LightLink(Cluster):
                 "free_group_id_range_begin": t.Group,
                 "free_group_id_range_end": t.Group,
             },
-            False,
-        ),
-        0x16: ZCLCommandDef(
-            "network_update",
-            {
+            direction=False,
+        )
+        network_update: Final = ZCLCommandDef(
+            id=0x16,
+            schema={
                 "inter_pan_transaction_id": t.uint32_t,
                 "epid": t.EUI64,
                 "nwk_update_id": t.uint8_t,
@@ -176,29 +180,28 @@ class LightLink(Cluster):
                 "pan_id": t.PanId,
                 "nwk_addr": t.NWK,
             },
-            False,
-        ),
+            direction=False,
+        )
         # Utility
-        0x41: ZCLCommandDef(
-            "get_group_identifiers",
-            {
+        get_group_identifiers: Final = ZCLCommandDef(
+            id=0x41,
+            schema={
                 "start_index": t.uint8_t,
             },
-            False,
-        ),
-        0x42: ZCLCommandDef(
-            "get_endpoint_list",
-            {
+            direction=False,
+        )
+        get_endpoint_list: Final = ZCLCommandDef(
+            id=0x42,
+            schema={
                 "start_index": t.uint8_t,
             },
-            False,
-        ),
-    }
-    client_commands: dict[int, ZCLCommandDef] = {
-        # Touchlink
-        0x01: ZCLCommandDef(
-            "scan_rsp",
-            {
+            direction=False,
+        )
+
+    class ClientCommandDefs(BaseCommandDefs):
+        scan_rsp: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
                 "inter_pan_transaction_id": t.uint32_t,
                 "rssi_correction": t.uint8_t,
                 "zigbee_info": ZigbeeInformation,
@@ -218,21 +221,21 @@ class LightLink(Cluster):
                 "version?": t.uint8_t,
                 "group_id_count?": t.uint8_t,
             },
-            True,
-        ),
-        0x03: ZCLCommandDef(
-            "device_info_rsp",
-            {
+            direction=True,
+        )
+        device_info_rsp: Final = ZCLCommandDef(
+            id=0x03,
+            schema={
                 "inter_pan_transaction_id": t.uint32_t,
                 "num_sub_devices": t.uint8_t,
                 "start_index": t.uint8_t,
                 "device_info_records": t.LVList[DeviceInfoRecord],
             },
-            True,
-        ),
-        0x11: ZCLCommandDef(
-            "network_start_rsp",
-            {
+            direction=True,
+        )
+        network_start_rsp: Final = ZCLCommandDef(
+            id=0x11,
+            schema={
                 "inter_pan_transaction_id": t.uint32_t,
                 "status": Status,
                 "epid": t.EUI64,
@@ -240,28 +243,28 @@ class LightLink(Cluster):
                 "logical_channel": t.uint8_t,
                 "pan_id": t.PanId,
             },
-            True,
-        ),
-        0x13: ZCLCommandDef(
-            "network_join_router_rsp",
-            {
+            direction=True,
+        )
+        network_join_router_rsp: Final = ZCLCommandDef(
+            id=0x13,
+            schema={
                 "inter_pan_transaction_id": t.uint32_t,
                 "status": Status,
             },
-            True,
-        ),
-        0x15: ZCLCommandDef(
-            "network_join_end_device_rsp",
-            {
+            direction=True,
+        )
+        network_join_end_device_rsp: Final = ZCLCommandDef(
+            id=0x15,
+            schema={
                 "inter_pan_transaction_id": t.uint32_t,
                 "status": Status,
             },
-            True,
-        ),
+            direction=True,
+        )
         # Utility
-        0x40: ZCLCommandDef(
-            "endpoint_info",
-            {
+        endpoint_info: Final = ZCLCommandDef(
+            id=0x40,
+            schema={
                 "ieee_addr": t.EUI64,
                 "nwk_addr": t.NWK,
                 "endpoint_id": t.uint8_t,
@@ -269,24 +272,23 @@ class LightLink(Cluster):
                 "device_id": t.uint16_t,
                 "version": t.uint8_t,
             },
-            True,
-        ),
-        0x41: ZCLCommandDef(
-            "get_group_identifiers_rsp",
-            {
+            direction=True,
+        )
+        get_group_identifiers_rsp: Final = ZCLCommandDef(
+            id=0x41,
+            schema={
                 "total": t.uint8_t,
                 "start_index": t.uint8_t,
                 "group_info_records": t.LVList[GroupInfoRecord],
             },
-            True,
-        ),
-        0x42: ZCLCommandDef(
-            "get_endpoint_list_rsp",
-            {
+            direction=True,
+        )
+        get_endpoint_list_rsp: Final = ZCLCommandDef(
+            id=0x42,
+            schema={
                 "total": t.uint8_t,
                 "start_index": t.uint8_t,
                 "endpoint_info_records": t.LVList[EndpointInfoRecord],
             },
-            True,
-        ),
-    }
+            direction=True,
+        )

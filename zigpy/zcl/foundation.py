@@ -632,13 +632,20 @@ class ZCLHeader(t.Struct):
 
 @dataclasses.dataclass(frozen=True)
 class ZCLCommandDef(t.BaseDataclassMixin):
-    name: str = None
+    id: t.uint8_t = None
     schema: CommandSchema = None
     direction: Direction = None
-    id: t.uint8_t = None
     is_manufacturer_specific: bool = None
 
+    # set later
+    name: str = None
+
     def __post_init__(self) -> None:
+        # Backwards compatibility with positional syntax where the name was first
+        if isinstance(self.id, str):
+            object.__setattr__(self, "name", self.id)
+            object.__setattr__(self, "id", None)
+
         ensure_valid_name(self.name)
 
         if isinstance(self.direction, bool):
@@ -762,7 +769,7 @@ ZCLAttributeAccess._names = {
 
 @dataclasses.dataclass(frozen=True)
 class ZCLAttributeDef(t.BaseDataclassMixin):
-    name: str = None
+    id: t.uint16_t = None
     type: type = None
     access: ZCLAttributeAccess = dataclasses.field(
         default=(
@@ -774,15 +781,19 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
     mandatory: bool = False
     is_manufacturer_specific: bool = False
 
-    # The ID will be specified later
-    id: t.uint16_t = None
+    # The name will be specified later
+    name: str = None
 
     def __post_init__(self) -> None:
+        # Backwards compatibility with positional syntax where the name was first
+        if isinstance(self.id, str):
+            object.__setattr__(self, "name", self.id)
+            object.__setattr__(self, "id", None)
+
         if self.id is not None and not isinstance(self.id, t.uint16_t):
             object.__setattr__(self, "id", t.uint16_t(self.id))
 
         if isinstance(self.access, str):
-            ZCLAttributeAccess.NONE
             object.__setattr__(self, "access", ZCLAttributeAccess.from_str(self.access))
 
         ensure_valid_name(self.name)
@@ -798,6 +809,21 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
             f"is_manufacturer_specific={self.is_manufacturer_specific}"
             f")"
         )
+
+
+class IterableMemberMeta(type):
+    def __iter__(cls) -> typing.Iterable[typing.Any]:
+        for name in dir(cls):
+            if not name.startswith("_"):
+                yield getattr(cls, name)
+
+
+class BaseCommandDefs(metaclass=IterableMemberMeta):
+    pass
+
+
+class BaseAttributeDefs(metaclass=IterableMemberMeta):
+    pass
 
 
 class GeneralCommand(t.enum8):
@@ -923,8 +949,8 @@ for command_id, command_def in list(GENERAL_COMMANDS.items()):
     ).with_compiled_schema()
 
 ZCL_CLUSTER_REVISION_ATTR = ZCLAttributeDef(
-    "cluster_revision", type=t.uint16_t, access="r", mandatory=True
+    id=0xFFFD, type=t.uint16_t, access="r", mandatory=True
 )
 ZCL_REPORTING_STATUS_ATTR = ZCLAttributeDef(
-    "attr_reporting_status", type=AttributeReportingStatus, access="r"
+    id=0xFFFE, type=AttributeReportingStatus, access="r"
 )
