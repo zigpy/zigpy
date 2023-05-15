@@ -159,7 +159,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         for old_defs in [cls.attributes, cls.server_commands, cls.client_commands]:
             counts = collections.Counter(d.name for d in old_defs.values())
 
-            if len(counts) != counts.total():
+            if len(counts) != sum(counts.values()):
                 duplicates = [n for n, c in counts.items() if c > 1]
                 raise TypeError(f"Duplicate definitions exist for {duplicates}")
 
