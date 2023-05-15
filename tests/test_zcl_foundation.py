@@ -783,3 +783,21 @@ def test_attribute_command_iteration():
 
     assert list(Commands1) == [Commands1.command1]
     assert list(Commands2) == [Commands2.command1, Commands2.command2]
+
+
+def test_attribute_definition_backwards_compat():
+    assert foundation.ZCLAttributeDef(0x1234, t.uint8_t) == foundation.ZCLAttributeDef(
+        id=0x1234, type=t.uint8_t
+    )
+    assert foundation.ZCLAttributeDef("name", t.uint8_t) == foundation.ZCLAttributeDef(
+        name="name", type=t.uint8_t
+    )
+
+
+def test_command_definition_backwards_compat():
+    assert foundation.ZCLCommandDef(0x12, {}) == foundation.ZCLCommandDef(
+        id=0x12, schema={}
+    )
+    assert foundation.ZCLCommandDef("name", {}) == foundation.ZCLCommandDef(
+        name="name", schema={}
+    )
