@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections
+from datetime import datetime, timezone
 import enum
 import functools
 import itertools
@@ -208,6 +209,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def __init__(self, endpoint: EndpointType, is_server: bool = True) -> None:
         self._endpoint: EndpointType = endpoint
         self._attr_cache: dict[int, Any] = {}
+        self._attr_last_updated: dict[int, datetime] = {}
         self.unsupported_attributes: set[int | str] = set()
         self._listeners = {}
         self._type: ClusterType = (
@@ -810,8 +812,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self._update_attribute(attrid, value)
 
     def _update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
+        now = datetime.now(timezone.utc)
+
         self._attr_cache[attrid] = value
-        self.listener_event("attribute_updated", attrid, value)
+        self._attr_last_updated[attrid] = now
+
+        self.listener_event("attribute_updated", attrid, value, now)
 
     def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
         msg = "[%s:%s:0x%04x] " + msg
@@ -985,8 +991,10 @@ class ClusterPersistingListener:
         self._applistener = applistener
         self._cluster = cluster
 
-    def attribute_updated(self, attrid: int | t.uint16_t, value: Any) -> None:
-        self._applistener.attribute_updated(self._cluster, attrid, value)
+    def attribute_updated(
+        self, attrid: int | t.uint16_t, value: Any, timestamp: datetime
+    ) -> None:
+        self._applistener.attribute_updated(self._cluster, attrid, value, timestamp)
 
     def cluster_command(self, *args, **kwargs) -> None:
         pass

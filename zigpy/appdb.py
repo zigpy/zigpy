@@ -28,14 +28,14 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 11
+DB_VERSION = 12
 DB_V = f"_v{DB_VERSION}"
 MIN_SQLITE_VERSION = (3, 24, 0)
 
 UNIX_EPOCH = datetime.fromtimestamp(0, tz=timezone.utc)
 DB_V_REGEX = re.compile(r"(?:_v\d+)?$")
 
-MIN_LAST_SEEN_DELTA = timedelta(seconds=30).total_seconds()
+MIN_UPDATE_DELTA = timedelta(seconds=30).total_seconds()
 
 
 def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.ModuleType:
@@ -239,13 +239,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
         q = f"""UPDATE devices{DB_V}
                     SET last_seen=:ts
-                    WHERE ieee=:ieee AND :ts - last_seen > :min_last_seen_delta"""
+                    WHERE ieee=:ieee AND :ts - last_seen > :min_update_delta"""
         await self.execute(
             q,
             {
                 "ts": last_seen.timestamp(),
                 "ieee": ieee,
-                "min_last_seen_delta": MIN_LAST_SEEN_DELTA,
+                "min_update_delta": MIN_UPDATE_DELTA,
             },
         )
         await self._db.commit()
@@ -268,7 +268,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     def attribute_updated(
-        self, cluster: zigpy.typing.ClusterType, attrid: int, value: Any
+        self,
+        cluster: zigpy.typing.ClusterType,
+        attrid: int,
+        value: Any,
+        timestamp: datetime,
     ) -> None:
         self.enqueue(
             "_save_attribute",
@@ -277,6 +281,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             cluster.cluster_id,
             attrid,
             value,
+            timestamp,
         )
 
     def unsupported_attribute_added(
@@ -497,13 +502,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _save_attribute_cache(self, ep: zigpy.typing.EndpointType) -> None:
         clusters = [
-            (ep.device.ieee, ep.endpoint_id, cluster.cluster_id, attrid, value)
+            (
+                ep.device.ieee,
+                ep.endpoint_id,
+                cluster.cluster_id,
+                attrid,
+                value,
+                cluster._attr_last_updated.get(attrid, UNIX_EPOCH).timestamp(),
+            )
             for cluster in ep.in_clusters.values()
             for attrid, value in cluster._attr_cache.items()
         ]
-        q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)
+        q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT (ieee, endpoint_id, cluster, attrid)
-                    DO UPDATE SET value=excluded.value"""
+                    DO UPDATE SET value=excluded.value, last_updated=excluded.last_updated"""
         await self._db.executemany(q, clusters)
 
     async def _save_unsupported_attributes(self, ep: zigpy.typing.EndpointType) -> None:
@@ -529,13 +541,35 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(q, clusters)
 
     async def _save_attribute(
-        self, ieee: t.EUI64, endpoint_id: int, cluster_id: int, attrid: int, value: Any
+        self,
+        ieee: t.EUI64,
+        endpoint_id: int,
+        cluster_id: int,
+        attrid: int,
+        value: Any,
+        timestamp: datetime,
     ) -> None:
-        q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT (ieee, endpoint_id, cluster, attrid)
-                    DO UPDATE SET
-                        value=excluded.value WHERE value != excluded.value"""
-        await self.execute(q, (ieee, endpoint_id, cluster_id, attrid, value))
+        q = f"""
+            INSERT INTO attributes_cache{DB_V}
+            VALUES (:ieee, :endpoint_id, :cluster_id, :attrid, :value, :timestamp)
+                ON CONFLICT (ieee, endpoint_id, cluster, attrid) DO UPDATE
+                SET value=excluded.value, last_updated=excluded.last_updated
+                WHERE
+                    value != excluded.value
+                    AND :timestamp - last_updated > :min_update_delta
+            """
+        await self.execute(
+            q,
+            {
+                "ieee": ieee,
+                "endpoint_id": endpoint_id,
+                "cluster_id": cluster_id,
+                "attrid": attrid,
+                "value": value,
+                "timestamp": timestamp.timestamp(),
+                "min_update_delta": MIN_UPDATE_DELTA,
+            },
+        )
         await self._db.commit()
 
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
@@ -590,7 +624,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             query = f"SELECT * FROM attributes_cache{DB_V}"
 
         async with self.execute(query) as cursor:
-            async for (ieee, endpoint_id, cluster, attrid, value) in cursor:
+            async for (
+                ieee,
+                endpoint_id,
+                cluster,
+                attrid,
+                value,
+                last_updated,
+            ) in cursor:
                 dev = self._application.get_device(ieee)
 
                 # Some quirks create endpoints and clusters that do not exist
@@ -603,6 +644,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     continue
 
                 ep.in_clusters[cluster]._attr_cache[attrid] = value
+                ep.in_clusters[cluster]._attr_last_updated[
+                    attrid
+                ] = datetime.fromtimestamp(last_updated, timezone.utc)
 
                 LOGGER.debug(
                     "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
@@ -819,6 +863,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v9, 9),
                 (self._migrate_to_v10, 10),
                 (self._migrate_to_v11, 11),
+                (self._migrate_to_v12, 12),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -1096,3 +1141,32 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "network_backups_v10": "network_backups_v11",
             }
         )
+
+    async def _migrate_to_v12(self):
+        """Schema v12 added a `timestamp` column to attribute updates."""
+
+        await self._migrate_tables(
+            {
+                "devices_v11": "devices_v12",
+                "endpoints_v11": "endpoints_v12",
+                "in_clusters_v11": "in_clusters_v12",
+                "neighbors_v11": "neighbors_v12",
+                "routes_v11": "routes_v12",
+                "node_descriptors_v11": "node_descriptors_v12",
+                "out_clusters_v11": "out_clusters_v12",
+                "groups_v11": "groups_v12",
+                "group_members_v11": "group_members_v12",
+                "relays_v11": "relays_v12",
+                "unsupported_attributes_v11": "unsupported_attributes_v12",
+                "network_backups_v11": "network_backups_v12",
+                "attributes_cache_v11": None,
+            }
+        )
+
+        async with self.execute("SELECT * FROM attributes_cache_v11") as cursor:
+            async for (ieee, endpoint_id, cluster_id, attrid, value) in cursor:
+                # Set the default `last_updated` to the unix epoch
+                await self.execute(
+                    "INSERT INTO attributes_cache_v12 VALUES (?, ?, ?, ?, ?, ?)",
+                    (ieee, endpoint_id, cluster_id, attrid, value, 0),
+                )
