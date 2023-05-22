@@ -25,6 +25,14 @@ class DeviceType(t.enum16):
     SMART_PLUG = 0x0051
     WHITE_GOODS = 0x0052
     METER_INTERFACE = 0x0053
+    # Greenpower
+    GP_PROXY = 0x0060
+    GP_PROXY_MIN = 0x0061
+    GP_TARGET_PLUS = 0x0062
+    GP_TARGET = 0x0063
+    GP_COMM_TOOL = 0x0064
+    GP_COMBO = 0x0065
+    GP_COMBO_MIN = 0x0066
     # Lighting
     ON_OFF_LIGHT = 0x0100
     DIMMABLE_LIGHT = 0x0101
