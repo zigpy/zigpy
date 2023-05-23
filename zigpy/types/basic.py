@@ -363,8 +363,12 @@ class _IntEnumMeta(enum.EnumMeta):
         if isinstance(value, str):
             if value.startswith("0x"):
                 value = int(value, base=16)
-            elif value.isnumeric()
+            elif value.isnumeric():
                 value = int(value)
+            elif value.startswith(cls.__name__ + "."):
+                value = cls[value[len(cls.__name__)+1:]].value
+            else:
+                value = cls[value].value
         return super().__call__(value, names, *args, **kwargs)
 
 
