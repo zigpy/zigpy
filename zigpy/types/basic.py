@@ -360,10 +360,11 @@ class uint64_t_be(uint_t_be, bits=64):
 
 class _IntEnumMeta(enum.EnumMeta):
     def __call__(cls, value, names=None, *args, **kwargs):
-        if isinstance(value, str) and value.startswith("0x"):
-            value = int(value, base=16)
-        else:
-            value = int(value)
+        if isinstance(value, str):
+            if value.startswith("0x"):
+                value = int(value, base=16)
+            elif value.isnumeric()
+                value = int(value)
         return super().__call__(value, names, *args, **kwargs)
 
 
