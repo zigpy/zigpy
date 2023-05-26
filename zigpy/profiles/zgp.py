@@ -13,6 +13,7 @@ class DeviceType(t.enum16):
     COMBO = 0x0065
     COMBO_MIN = 0x0066
 
+
 CLUSTERS = {
     DeviceType.PROXY_MIN: ([0x0021], []),
 }
