@@ -366,7 +366,7 @@ class _IntEnumMeta(enum.EnumMeta):
             elif value.isnumeric():
                 value = int(value)
             elif value.startswith(cls.__name__ + "."):
-                value = cls[value[len(cls.__name__)+1:]].value
+                value = cls[value[len(cls.__name__) + 1 :]].value
             else:
                 value = cls[value].value
         return super().__call__(value, names, *args, **kwargs)
