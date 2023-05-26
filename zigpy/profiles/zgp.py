@@ -4,6 +4,7 @@ import zigpy.types as t
 
 PROFILE_ID = 41440
 
+
 class DeviceType(t.enum16):
     PROXY = 0x0060
     PROXY_MIN = 0x0061
