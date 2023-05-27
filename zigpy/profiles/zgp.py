@@ -16,5 +16,11 @@ class DeviceType(t.enum16):
 
 
 CLUSTERS = {
-    DeviceType.PROXY_BASIC: ([0x0021], []),
+    DeviceType.PROXY: ([0x0021], [0x0021]),
+    DeviceType.PROXY_BASIC: ([], [0x0021]),
+    DeviceType.TARGET_PLUS: ([0x0021], [0x0021]),
+    DeviceType.TARGET: ([0x0021], [0x0021]),
+    DeviceType.COMM_TOOL: ([0x0021], []),
+    DeviceType.COMBO: ([0x0021], [0x0021]),
+    DeviceType.COMBO_BASIC: ([0x0021], [0x0021]),
 }
