@@ -629,7 +629,6 @@ async def test_configure_reporting_manuf():
         mock.ANY,
         expect_reply=True,
         manufacturer=None,
-        tries=1,
         tsn=mock.ANY,
     )
 
@@ -643,7 +642,6 @@ async def test_configure_reporting_manuf():
         mock.ANY,
         expect_reply=True,
         manufacturer=manufacturer_id,
-        tries=1,
         tsn=mock.ANY,
     )
     assert cluster.request.call_count == 1
@@ -728,7 +726,6 @@ def test_general_command(cluster):
         sentinel.items,
         expect_reply=True,
         manufacturer=0x4567,
-        tries=1,
         tsn=mock.ANY,
     )
 

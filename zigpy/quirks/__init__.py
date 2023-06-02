@@ -186,7 +186,6 @@ class CustomCluster(zigpy.zcl.Cluster):
         *args,
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
-        tries: int = 1,
         tsn: int | t.uint8_t | None = None,
         **kwargs: typing.Any,
     ) -> typing.Coroutine:
@@ -204,7 +203,6 @@ class CustomCluster(zigpy.zcl.Cluster):
             *args,
             manufacturer=manufacturer,
             expect_reply=expect_reply,
-            tries=tries,
             tsn=tsn,
             **kwargs,
         )

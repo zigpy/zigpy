@@ -150,7 +150,7 @@ def retryable(
         nonlocal tries, delay
 
         @functools.wraps(func)
-        def wrapper(*args, tries=tries, delay=delay, **kwargs):
+        def wrapper(*args, **kwargs):
             if tries <= 1:
                 return func(*args, **kwargs)
             return retry(
@@ -165,7 +165,9 @@ def retryable(
     return decorator
 
 
-retryable_request = retryable((ZigbeeException, asyncio.TimeoutError))
+retryable_request = functools.partial(
+    retryable, (ZigbeeException, asyncio.TimeoutError)
+)
 
 
 def aes_mmo_hash_update(length: int, result: bytes, data: bytes) -> tuple[int, bytes]:

@@ -341,7 +341,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         return hdr, request
 
-    @util.retryable_request
     async def request(
         self,
         general: bool,
@@ -747,7 +746,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *args,
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
-        tries: int = 1,
         tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
@@ -760,7 +758,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             *args,
             manufacturer=manufacturer,
             expect_reply=expect_reply,
-            tries=tries,
             tsn=tsn,
             **kwargs,
         )
@@ -866,7 +863,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *args,
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
-        tries: int = 1,
         tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
@@ -891,7 +887,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             *args,
             manufacturer=manufacturer,
             expect_reply=expect_reply,
-            tries=tries,
             tsn=tsn,
             **kwargs,
         )
