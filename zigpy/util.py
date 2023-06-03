@@ -140,10 +140,8 @@ async def retry(
 def retryable(
     retry_exceptions: typing.Iterable[BaseException], tries: int = 1, delay: float = 0.1
 ) -> typing.Callable:
-    """Return a decorator which makes a function able to be retried
-
-    This adds "tries" and "delay" keyword arguments to the function. Only
-    exceptions in `retry_exceptions` will be retried.
+    """Return a decorator which makes a function able to be retried.
+    Only exceptions in `retry_exceptions` will be retried.
     """
 
     def decorator(func: typing.Callable) -> typing.Callable:
