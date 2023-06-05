@@ -61,7 +61,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.info("Endpoint descriptor already queried")
         else:
             status, _, sd = await self._device.zdo.Simple_Desc_req(
-                self._device.nwk, self._endpoint_id, tries=3, delay=2
+                self._device.nwk, self._endpoint_id
             )
 
             if status == ZDOStatus.NOT_ACTIVE:

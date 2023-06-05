@@ -773,7 +773,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # TODO: utilize topology scanner information
         return dest.relays[::-1]
 
-    @zigpy.util.retryable_request
     async def request(
         self,
         device: zigpy.device.Device,

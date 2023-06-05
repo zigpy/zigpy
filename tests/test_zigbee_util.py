@@ -135,7 +135,7 @@ async def test_retry_once():
 async def _test_retryable(exception, retry_exceptions, n, tries=3, delay=0.001):
     counter = 0
 
-    @util.retryable(retry_exceptions)
+    @util.retryable(retry_exceptions, tries=tries, delay=delay)
     async def count(x, y, z):
         assert x == y == z == 9
         nonlocal counter
@@ -145,7 +145,7 @@ async def _test_retryable(exception, retry_exceptions, n, tries=3, delay=0.001):
             exc._counter = counter
             raise exc
 
-    await count(9, 9, 9, tries=tries, delay=delay)
+    await count(9, 9, 9)
     return counter
 
 
