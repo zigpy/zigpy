@@ -377,7 +377,8 @@ async def test_item_access_attributes(cluster):
         cluster.get(None)
 
     # Test access to cached attribute via wrong attr name
-    assert cluster.get("no_such_attribute", mock.sentinel.attr) is mock.sentinel.attr
+    with pytest.raises(KeyError):
+        cluster.get("no_such_attribute")
 
 
 async def test_item_set_attributes(cluster):
@@ -482,7 +483,9 @@ async def test_write_attributes_cache_success(cluster, attributes, result):
         assert cluster._write_attributes.call_count == 1
         for attr_id in attributes:
             assert cluster._attr_cache[attr_id] == attributes[attr_id]
-            listener.attribute_updated.assert_any_call(attr_id, attributes[attr_id])
+            listener.attribute_updated.assert_any_call(
+                attr_id, attributes[attr_id], mock.ANY
+            )
 
 
 @pytest.mark.parametrize(
@@ -529,7 +532,9 @@ async def test_write_attributes_cache_failure(cluster, attributes, result, faile
                     )
             else:
                 assert cluster._attr_cache[attr_id] == attributes[attr_id]
-                listener.attribute_updated.assert_any_call(attr_id, attributes[attr_id])
+                listener.attribute_updated.assert_any_call(
+                    attr_id, attributes[attr_id], mock.ANY
+                )
 
 
 async def test_read_attributes_response(cluster):
@@ -624,7 +629,6 @@ async def test_configure_reporting_manuf():
         mock.ANY,
         expect_reply=True,
         manufacturer=None,
-        tries=1,
         tsn=mock.ANY,
     )
 
@@ -638,7 +642,6 @@ async def test_configure_reporting_manuf():
         mock.ANY,
         expect_reply=True,
         manufacturer=manufacturer_id,
-        tries=1,
         tsn=mock.ANY,
     )
     assert cluster.request.call_count == 1
@@ -704,7 +707,7 @@ def test_name(cluster):
 
 
 def test_commands(cluster):
-    assert cluster.commands == ["reset_fact_default"]
+    assert cluster.commands == [cluster.ServerCommandDefs.reset_fact_default]
 
 
 def test_general_command(cluster):
@@ -723,7 +726,6 @@ def test_general_command(cluster):
         sentinel.items,
         expect_reply=True,
         manufacturer=0x4567,
-        tries=1,
         tsn=mock.ANY,
     )
 
@@ -995,8 +997,12 @@ def test_zcl_command_duplicate_name_prevention():
             cluster_id = 0x1234
             ep_attribute = "test_cluster"
             server_commands = {
-                0x00: foundation.ZCLCommandDef("command1", {}, False),
-                0x01: foundation.ZCLCommandDef("command1", {}, False),
+                0x00: foundation.ZCLCommandDef(
+                    name="command1", schema={}, direction=False
+                ),
+                0x01: foundation.ZCLCommandDef(
+                    name="command1", schema={}, direction=False
+                ),
             }
 
 

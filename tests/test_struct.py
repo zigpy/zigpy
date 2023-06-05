@@ -32,6 +32,21 @@ def expose_global():
         del globals()[obj.__name__]
 
 
+def test_enum_fields():
+    class EnumNamed(t.enum8):
+        NAME1 = 0x01
+        NAME2 = 0x10
+
+    assert EnumNamed("0x01") == EnumNamed.NAME1
+    assert EnumNamed("1") == EnumNamed.NAME1
+    assert EnumNamed("0x10") == EnumNamed.NAME2
+    assert EnumNamed("16") == EnumNamed.NAME2
+    assert EnumNamed("NAME1") == EnumNamed.NAME1
+    assert EnumNamed("NAME2") == EnumNamed.NAME2
+    assert EnumNamed("EnumNamed.NAME1") == EnumNamed.NAME1
+    assert EnumNamed("EnumNamed.NAME2") == EnumNamed.NAME2
+
+
 def test_struct_fields():
     class TestStruct(t.Struct):
         a: t.uint8_t
@@ -407,13 +422,6 @@ def test_optional_struct_special_case():
         OptionalTestStruct(foo=0x00),
         b"",
     )
-
-
-def test_old_style_struct():
-    with pytest.raises(TypeError):
-        # `_fields` would typically be ignored but this would be very bad
-        class OldStruct(t.Struct):
-            _fields = [("foo", t.uint8_t)]
 
 
 def test_conflicting_types():

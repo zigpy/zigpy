@@ -7,10 +7,10 @@ import zigpy.device
 import zigpy.exceptions
 import zigpy.types as t
 import zigpy.zcl as zcl
-from zigpy.zcl.foundation import Status as ZCLStatus
+from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCLStatus
 from zigpy.zdo import types
 
-from .async_mock import AsyncMock, MagicMock, sentinel
+from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
 
 @pytest.fixture
@@ -519,6 +519,24 @@ async def test_group_membership_scan_fail(ep):
     await ep.group_membership_scan()
     assert ep.device.application.groups.update_group_membership.call_count == 0
     assert ep.device.request.call_count == 1
+
+
+async def test_group_membership_scan_fail_default_response(ep, caplog):
+    """Test group membership scan failure because group commands are unsupported."""
+
+    ep.device.application.groups.update_group_membership = MagicMock()
+    ep.add_input_cluster(4)
+    ep.device.request.side_effect = asyncio.TimeoutError
+
+    with patch.object(ep.groups, "get_membership", new=AsyncMock()) as get_membership:
+        get_membership.return_value = GENERAL_COMMANDS[
+            GeneralCommand.Default_Response
+        ].schema(command_id=2, status=ZCLStatus.UNSUP_CLUSTER_COMMAND)
+        await ep.group_membership_scan()
+
+    assert "Device does not support group commands" in caplog.text
+
+    assert ep.device.application.groups.update_group_membership.call_count == 0
 
 
 def test_endpoint_manufacturer_id(ep):

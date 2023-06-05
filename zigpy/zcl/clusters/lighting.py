@@ -2,9 +2,85 @@
 
 from __future__ import annotations
 
+from typing import Final
+
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
-from zigpy.zcl.foundation import ZCLAttributeDef, ZCLCommandDef
+from zigpy.zcl.foundation import (
+    BaseAttributeDefs,
+    BaseCommandDefs,
+    ZCLAttributeDef,
+    ZCLCommandDef,
+)
+
+
+class ColorMode(t.enum8):
+    Hue_and_saturation = 0x00
+    X_and_Y = 0x01
+    Color_temperature = 0x02
+
+
+class EnhancedColorMode(t.enum8):
+    Hue_and_saturation = 0x00
+    X_and_Y = 0x01
+    Color_temperature = 0x02
+    Enhanced_hue_and_saturation = 0x03
+
+
+class ColorCapabilities(t.bitmap16):
+    Hue_and_saturation = 0b00000000_00000001
+    Enhanced_hue = 0b00000000_00000010
+    Color_loop = 0b00000000_00000100
+    XY_attributes = 0b00000000_00001000
+    Color_temperature = 0b00000000_00010000
+
+
+class Direction(t.enum8):
+    Shortest_distance = 0x00
+    Longest_distance = 0x01
+    Up = 0x02
+    Down = 0x03
+
+
+class MoveMode(t.enum8):
+    Stop = 0x00
+    Up = 0x01
+    Down = 0x03
+
+
+class StepMode(t.enum8):
+    Up = 0x01
+    Down = 0x03
+
+
+class ColorLoopUpdateFlags(t.bitmap8):
+    Action = 0b0000_0001
+    Direction = 0b0000_0010
+    Time = 0b0000_0100
+    Start_Hue = 0b0000_1000
+
+
+class ColorLoopAction(t.enum8):
+    Deactivate = 0x00
+    Activate_from_color_loop_hue = 0x01
+    Activate_from_current_hue = 0x02
+
+
+class ColorLoopDirection(t.enum8):
+    Decrement = 0x00
+    Increment = 0x01
+
+
+class DriftCompensation(t.enum8):
+    NONE = 0x00
+    Other_or_unknown = 0x01
+    Temperature_monitoring = 0x02
+    Luminance_monitoring = 0x03
+    Color_monitoring = 0x03
+
+
+class Options(t.bitmap8):
+    Execute_if_off = 0b00000001
 
 
 class Color(Cluster):
@@ -12,309 +88,299 @@ class Color(Cluster):
     properties of a color-capable light
     """
 
-    class ColorMode(t.enum8):
-        Hue_and_saturation = 0x00
-        X_and_Y = 0x01
-        Color_temperature = 0x02
+    ColorMode: Final = ColorMode
+    EnhancedColorMode: Final = EnhancedColorMode
+    ColorCapabilities: Final = ColorCapabilities
+    Direction: Final = Direction
+    MoveMode: Final = MoveMode
+    StepMode: Final = StepMode
+    ColorLoopUpdateFlags: Final = ColorLoopUpdateFlags
+    ColorLoopAction: Final = ColorLoopAction
+    ColorLoopDirection: Final = ColorLoopDirection
+    DriftCompensation: Final = DriftCompensation
+    Options: Final = Options
 
-    class EnhancedColorMode(t.enum8):
-        Hue_and_saturation = 0x00
-        X_and_Y = 0x01
-        Color_temperature = 0x02
-        Enhanced_hue_and_saturation = 0x03
+    cluster_id: Final = 0x0300
+    name: Final = "Color Control"
+    ep_attribute: Final = "light_color"
 
-    class ColorCapabilities(t.bitmap16):
-        Hue_and_saturation = 0b00000000_00000001
-        Enhanced_hue = 0b00000000_00000010
-        Color_loop = 0b00000000_00000100
-        XY_attributes = 0b00000000_00001000
-        Color_temperature = 0b00000000_00010000
-
-    class Direction(t.enum8):
-        Shortest_distance = 0x00
-        Longest_distance = 0x01
-        Up = 0x02
-        Down = 0x03
-
-    class MoveMode(t.enum8):
-        Stop = 0x00
-        Up = 0x01
-        Down = 0x03
-
-    class StepMode(t.enum8):
-        Up = 0x01
-        Down = 0x03
-
-    class ColorLoopUpdateFlags(t.bitmap8):
-        Action = 0b0000_0001
-        Direction = 0b0000_0010
-        Time = 0b0000_0100
-        Start_Hue = 0b0000_1000
-
-    class ColorLoopAction(t.enum8):
-        Deactivate = 0x00
-        Activate_from_color_loop_hue = 0x01
-        Activate_from_current_hue = 0x02
-
-    class ColorLoopDirection(t.enum8):
-        Decrement = 0x00
-        Increment = 0x01
-
-    class DriftCompensation(t.enum8):
-        NONE = 0x00
-        Other_or_unknown = 0x01
-        Temperature_monitoring = 0x02
-        Luminance_monitoring = 0x03
-        Color_monitoring = 0x03
-
-    class Options(t.bitmap8):
-        Execute_if_off = 0b00000001
-
-    cluster_id = 0x0300
-    name = "Color Control"
-    ep_attribute = "light_color"
-    attributes: dict[int, ZCLAttributeDef] = {
-        # Color Information
-        0x0000: ZCLAttributeDef("current_hue", type=t.uint8_t, access="rp"),
-        0x0001: ZCLAttributeDef("current_saturation", type=t.uint8_t, access="rps"),
-        0x0002: ZCLAttributeDef("remaining_time", type=t.uint16_t, access="r"),
-        0x0003: ZCLAttributeDef("current_x", type=t.uint16_t, access="rps"),
-        0x0004: ZCLAttributeDef("current_y", type=t.uint16_t, access="rps"),
-        0x0005: ZCLAttributeDef(
-            "drift_compensation", type=DriftCompensation, access="r"
-        ),
-        0x0006: ZCLAttributeDef(
-            "compensation_text", type=t.CharacterString, access="r"
-        ),
-        0x0007: ZCLAttributeDef("color_temperature", type=t.uint16_t, access="rps"),
-        0x0008: ZCLAttributeDef(
-            "color_mode", type=ColorMode, access="r", mandatory=True
-        ),
-        0x000F: ZCLAttributeDef("options", type=Options, access="rw", mandatory=True),
+    class AttributeDefs(BaseAttributeDefs):
+        current_hue: Final = ZCLAttributeDef(id=0x0000, type=t.uint8_t, access="rp")
+        current_saturation: Final = ZCLAttributeDef(
+            id=0x0001, type=t.uint8_t, access="rps"
+        )
+        remaining_time: Final = ZCLAttributeDef(id=0x0002, type=t.uint16_t, access="r")
+        current_x: Final = ZCLAttributeDef(id=0x0003, type=t.uint16_t, access="rps")
+        current_y: Final = ZCLAttributeDef(id=0x0004, type=t.uint16_t, access="rps")
+        drift_compensation: Final = ZCLAttributeDef(
+            id=0x0005, type=DriftCompensation, access="r"
+        )
+        compensation_text: Final = ZCLAttributeDef(
+            id=0x0006, type=t.CharacterString, access="r"
+        )
+        color_temperature: Final = ZCLAttributeDef(
+            id=0x0007, type=t.uint16_t, access="rps"
+        )
+        color_mode: Final = ZCLAttributeDef(
+            id=0x0008, type=ColorMode, access="r", mandatory=True
+        )
+        options: Final = ZCLAttributeDef(
+            id=0x000F, type=Options, access="rw", mandatory=True
+        )
         # Defined Primaries Information
-        0x0010: ZCLAttributeDef("num_primaries", type=t.uint8_t, access="r"),
-        0x0011: ZCLAttributeDef("primary1_x", type=t.uint16_t, access="r"),
-        0x0012: ZCLAttributeDef("primary1_y", type=t.uint16_t, access="r"),
-        0x0013: ZCLAttributeDef("primary1_intensity", type=t.uint8_t, access="r"),
-        0x0015: ZCLAttributeDef("primary2_x", type=t.uint16_t, access="r"),
-        0x0016: ZCLAttributeDef("primary2_y", type=t.uint16_t, access="r"),
-        0x0017: ZCLAttributeDef("primary2_intensity", type=t.uint8_t, access="r"),
-        0x0019: ZCLAttributeDef("primary3_x", type=t.uint16_t, access="r"),
-        0x001A: ZCLAttributeDef("primary3_y", type=t.uint16_t, access="r"),
-        0x001B: ZCLAttributeDef("primary3_intensity", type=t.uint8_t, access="r"),
+        num_primaries: Final = ZCLAttributeDef(id=0x0010, type=t.uint8_t, access="r")
+        primary1_x: Final = ZCLAttributeDef(id=0x0011, type=t.uint16_t, access="r")
+        primary1_y: Final = ZCLAttributeDef(id=0x0012, type=t.uint16_t, access="r")
+        primary1_intensity: Final = ZCLAttributeDef(
+            id=0x0013, type=t.uint8_t, access="r"
+        )
+        primary2_x: Final = ZCLAttributeDef(id=0x0015, type=t.uint16_t, access="r")
+        primary2_y: Final = ZCLAttributeDef(id=0x0016, type=t.uint16_t, access="r")
+        primary2_intensity: Final = ZCLAttributeDef(
+            id=0x0017, type=t.uint8_t, access="r"
+        )
+        primary3_x: Final = ZCLAttributeDef(id=0x0019, type=t.uint16_t, access="r")
+        primary3_y: Final = ZCLAttributeDef(id=0x001A, type=t.uint16_t, access="r")
+        primary3_intensity: Final = ZCLAttributeDef(
+            id=0x001B, type=t.uint8_t, access="r"
+        )
         # Additional Defined Primaries Information
-        0x0020: ZCLAttributeDef("primary4_x", type=t.uint16_t, access="r"),
-        0x0021: ZCLAttributeDef("primary4_y", type=t.uint16_t, access="r"),
-        0x0022: ZCLAttributeDef("primary4_intensity", type=t.uint8_t, access="r"),
-        0x0024: ZCLAttributeDef("primary5_x", type=t.uint16_t, access="r"),
-        0x0025: ZCLAttributeDef("primary5_y", type=t.uint16_t, access="r"),
-        0x0026: ZCLAttributeDef("primary5_intensity", type=t.uint8_t, access="r"),
-        0x0028: ZCLAttributeDef("primary6_x", type=t.uint16_t, access="r"),
-        0x0029: ZCLAttributeDef("primary6_y", type=t.uint16_t, access="r"),
-        0x002A: ZCLAttributeDef("primary6_intensity", type=t.uint8_t, access="r"),
+        primary4_x: Final = ZCLAttributeDef(id=0x0020, type=t.uint16_t, access="r")
+        primary4_y: Final = ZCLAttributeDef(id=0x0021, type=t.uint16_t, access="r")
+        primary4_intensity: Final = ZCLAttributeDef(
+            id=0x0022, type=t.uint8_t, access="r"
+        )
+        primary5_x: Final = ZCLAttributeDef(id=0x0024, type=t.uint16_t, access="r")
+        primary5_y: Final = ZCLAttributeDef(id=0x0025, type=t.uint16_t, access="r")
+        primary5_intensity: Final = ZCLAttributeDef(
+            id=0x0026, type=t.uint8_t, access="r"
+        )
+        primary6_x: Final = ZCLAttributeDef(id=0x0028, type=t.uint16_t, access="r")
+        primary6_y: Final = ZCLAttributeDef(id=0x0029, type=t.uint16_t, access="r")
+        primary6_intensity: Final = ZCLAttributeDef(
+            id=0x002A, type=t.uint8_t, access="r"
+        )
         # Defined Color Point Settings
-        0x0030: ZCLAttributeDef("white_point_x", type=t.uint16_t, access="r"),
-        0x0031: ZCLAttributeDef("white_point_y", type=t.uint16_t, access="r"),
-        0x0032: ZCLAttributeDef("color_point_r_x", type=t.uint16_t, access="r"),
-        0x0033: ZCLAttributeDef("color_point_r_y", type=t.uint16_t, access="r"),
-        0x0034: ZCLAttributeDef("color_point_r_intensity", type=t.uint8_t, access="r"),
-        0x0036: ZCLAttributeDef("color_point_g_x", type=t.uint16_t, access="r"),
-        0x0037: ZCLAttributeDef("color_point_g_y", type=t.uint16_t, access="r"),
-        0x0038: ZCLAttributeDef("color_point_g_intensity", type=t.uint8_t, access="r"),
-        0x003A: ZCLAttributeDef("color_point_b_x", type=t.uint16_t, access="r"),
-        0x003B: ZCLAttributeDef("color_point_b_y", type=t.uint16_t, access="r"),
-        0x003C: ZCLAttributeDef("color_point_b_intensity", type=t.uint8_t, access="r"),
+        white_point_x: Final = ZCLAttributeDef(id=0x0030, type=t.uint16_t, access="r")
+        white_point_y: Final = ZCLAttributeDef(id=0x0031, type=t.uint16_t, access="r")
+        color_point_r_x: Final = ZCLAttributeDef(id=0x0032, type=t.uint16_t, access="r")
+        color_point_r_y: Final = ZCLAttributeDef(id=0x0033, type=t.uint16_t, access="r")
+        color_point_r_intensity: Final = ZCLAttributeDef(
+            id=0x0034, type=t.uint8_t, access="r"
+        )
+        color_point_g_x: Final = ZCLAttributeDef(id=0x0036, type=t.uint16_t, access="r")
+        color_point_g_y: Final = ZCLAttributeDef(id=0x0037, type=t.uint16_t, access="r")
+        color_point_g_intensity: Final = ZCLAttributeDef(
+            id=0x0038, type=t.uint8_t, access="r"
+        )
+        color_point_b_x: Final = ZCLAttributeDef(id=0x003A, type=t.uint16_t, access="r")
+        color_point_b_y: Final = ZCLAttributeDef(id=0x003B, type=t.uint16_t, access="r")
+        color_point_b_intensity: Final = ZCLAttributeDef(
+            id=0x003C, type=t.uint8_t, access="r"
+        )
         # ...
-        0x4000: ZCLAttributeDef("enhanced_current_hue", type=t.uint16_t, access="rs"),
-        0x4001: ZCLAttributeDef(
-            "enhanced_color_mode", type=EnhancedColorMode, access="r", mandatory=True
-        ),
-        0x4002: ZCLAttributeDef("color_loop_active", type=t.uint8_t, access="rs"),
-        0x4003: ZCLAttributeDef("color_loop_direction", type=t.uint8_t, access="rs"),
-        0x4004: ZCLAttributeDef("color_loop_time", type=t.uint16_t, access="rs"),
-        0x4005: ZCLAttributeDef(
-            "color_loop_start_enhanced_hue", type=t.uint16_t, access="r"
-        ),
-        0x4006: ZCLAttributeDef(
-            "color_loop_stored_enhanced_hue", type=t.uint16_t, access="r"
-        ),
-        0x400A: ZCLAttributeDef(
-            "color_capabilities", type=ColorCapabilities, access="r", mandatory=True
-        ),
-        0x400B: ZCLAttributeDef("color_temp_physical_min", type=t.uint16_t, access="r"),
-        0x400C: ZCLAttributeDef("color_temp_physical_max", type=t.uint16_t, access="r"),
-        0x400D: ZCLAttributeDef(
-            "couple_color_temp_to_level_min", type=t.uint16_t, access="r"
-        ),
-        0x4010: ZCLAttributeDef(
-            "start_up_color_temperature", type=t.uint16_t, access="rw"
-        ),
-        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
-        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
-    }
-    server_commands: dict[int, ZCLCommandDef] = {
-        0x00: ZCLCommandDef(
-            "move_to_hue",
-            {
+        enhanced_current_hue: Final = ZCLAttributeDef(
+            id=0x4000, type=t.uint16_t, access="rs"
+        )
+        enhanced_color_mode: Final = ZCLAttributeDef(
+            id=0x4001, type=EnhancedColorMode, access="r", mandatory=True
+        )
+        color_loop_active: Final = ZCLAttributeDef(
+            id=0x4002, type=t.uint8_t, access="rs"
+        )
+        color_loop_direction: Final = ZCLAttributeDef(
+            id=0x4003, type=t.uint8_t, access="rs"
+        )
+        color_loop_time: Final = ZCLAttributeDef(
+            id=0x4004, type=t.uint16_t, access="rs"
+        )
+        color_loop_start_enhanced_hue: Final = ZCLAttributeDef(
+            id=0x4005, type=t.uint16_t, access="r"
+        )
+        color_loop_stored_enhanced_hue: Final = ZCLAttributeDef(
+            id=0x4006, type=t.uint16_t, access="r"
+        )
+        color_capabilities: Final = ZCLAttributeDef(
+            id=0x400A, type=ColorCapabilities, access="r", mandatory=True
+        )
+        color_temp_physical_min: Final = ZCLAttributeDef(
+            id=0x400B, type=t.uint16_t, access="r"
+        )
+        color_temp_physical_max: Final = ZCLAttributeDef(
+            id=0x400C, type=t.uint16_t, access="r"
+        )
+        couple_color_temp_to_level_min: Final = ZCLAttributeDef(
+            id=0x400D, type=t.uint16_t, access="r"
+        )
+        start_up_color_temperature: Final = ZCLAttributeDef(
+            id=0x4010, type=t.uint16_t, access="rw"
+        )
+        cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
+        reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
+
+    class ServerCommandDefs(BaseCommandDefs):
+        move_to_hue: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
                 "hue": t.uint8_t,
                 "direction": Direction,
                 "transition_time": t.uint16_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x01: ZCLCommandDef(
-            "move_hue",
-            {
+            direction=False,
+        )
+        move_hue: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
                 "move_mode": MoveMode,
                 "rate": t.uint8_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x02: ZCLCommandDef(
-            "step_hue",
-            {
+            direction=False,
+        )
+        step_hue: Final = ZCLCommandDef(
+            id=0x02,
+            schema={
                 "step_mode": StepMode,
                 "step_size": t.uint8_t,
                 "transition_time": t.uint8_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x03: ZCLCommandDef(
-            "move_to_saturation",
-            {
+            direction=False,
+        )
+        move_to_saturation: Final = ZCLCommandDef(
+            id=0x03,
+            schema={
                 "saturation": t.uint8_t,
                 "transition_time": t.uint16_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x04: ZCLCommandDef(
-            "move_saturation",
-            {
+            direction=False,
+        )
+        move_saturation: Final = ZCLCommandDef(
+            id=0x04,
+            schema={
                 "move_mode": MoveMode,
                 "rate": t.uint8_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x05: ZCLCommandDef(
-            "step_saturation",
-            {
+            direction=False,
+        )
+        step_saturation: Final = ZCLCommandDef(
+            id=0x05,
+            schema={
                 "step_mode": StepMode,
                 "step_size": t.uint8_t,
                 "transition_time": t.uint8_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x06: ZCLCommandDef(
-            "move_to_hue_and_saturation",
-            {
+            direction=False,
+        )
+        move_to_hue_and_saturation: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
                 "hue": t.uint8_t,
                 "saturation": t.uint8_t,
                 "transition_time": t.uint16_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x07: ZCLCommandDef(
-            "move_to_color",
-            {
+            direction=False,
+        )
+        move_to_color: Final = ZCLCommandDef(
+            id=0x07,
+            schema={
                 "color_x": t.uint16_t,
                 "color_y": t.uint16_t,
                 "transition_time": t.uint16_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x08: ZCLCommandDef(
-            "move_color",
-            {
+            direction=False,
+        )
+        move_color: Final = ZCLCommandDef(
+            id=0x08,
+            schema={
                 "rate_x": t.uint16_t,
                 "rate_y": t.uint16_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x09: ZCLCommandDef(
-            "step_color",
-            {
+            direction=False,
+        )
+        step_color: Final = ZCLCommandDef(
+            id=0x09,
+            schema={
                 "step_x": t.uint16_t,
                 "step_y": t.uint16_t,
                 "duration": t.uint16_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x0A: ZCLCommandDef(
-            "move_to_color_temp",
-            {
+            direction=False,
+        )
+        move_to_color_temp: Final = ZCLCommandDef(
+            id=0x0A,
+            schema={
                 "color_temp_mireds": t.uint16_t,
                 "transition_time": t.uint16_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x40: ZCLCommandDef(
-            "enhanced_move_to_hue",
-            {
+            direction=False,
+        )
+        enhanced_move_to_hue: Final = ZCLCommandDef(
+            id=0x40,
+            schema={
                 "enhanced_hue": t.uint16_t,
                 "direction": Direction,
                 "transition_time": t.uint16_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x41: ZCLCommandDef(
-            "enhanced_move_hue",
-            {
+            direction=False,
+        )
+        enhanced_move_hue: Final = ZCLCommandDef(
+            id=0x41,
+            schema={
                 "move_mode": MoveMode,
                 "rate": t.uint16_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x42: ZCLCommandDef(
-            "enhanced_step_hue",
-            {
+            direction=False,
+        )
+        enhanced_step_hue: Final = ZCLCommandDef(
+            id=0x42,
+            schema={
                 "step_mode": StepMode,
                 "step_size": t.uint16_t,
                 "transition_time": t.uint16_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x43: ZCLCommandDef(
-            "enhanced_move_to_hue_and_saturation",
-            {
+            direction=False,
+        )
+        enhanced_move_to_hue_and_saturation: Final = ZCLCommandDef(
+            id=0x43,
+            schema={
                 "enhanced_hue": t.uint16_t,
                 "saturation": t.uint8_t,
                 "transition_time": t.uint16_t,
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x44: ZCLCommandDef(
-            "color_loop_set",
-            {
+            direction=False,
+        )
+        color_loop_set: Final = ZCLCommandDef(
+            id=0x44,
+            schema={
                 "update_flags": ColorLoopUpdateFlags,
                 "action": ColorLoopAction,
                 "direction": ColorLoopDirection,
@@ -323,19 +389,19 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x47: ZCLCommandDef(
-            "stop_move_step",
-            {
+            direction=False,
+        )
+        stop_move_step: Final = ZCLCommandDef(
+            id=0x47,
+            schema={
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x4B: ZCLCommandDef(
-            "move_color_temp",
-            {
+            direction=False,
+        )
+        move_color_temp: Final = ZCLCommandDef(
+            id=0x4B,
+            schema={
                 "move_mode": MoveMode,
                 "rate": t.uint16_t,
                 "color_temp_min_mireds": t.uint16_t,
@@ -343,11 +409,11 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-        0x4C: ZCLCommandDef(
-            "step_color_temp",
-            {
+            direction=False,
+        )
+        step_color_temp: Final = ZCLCommandDef(
+            id=0x4C,
+            schema={
                 "step_mode": StepMode,
                 "step_size": t.uint16_t,
                 "transition_time": t.uint16_t,
@@ -356,10 +422,17 @@ class Color(Cluster):
                 "options_mask?": t.bitmap8,
                 "options_override?": t.bitmap8,
             },
-            False,
-        ),
-    }
-    client_commands: dict[int, ZCLCommandDef] = {}
+            direction=False,
+        )
+
+
+class BallastStatus(t.bitmap8):
+    Non_operational = 0b00000001
+    Lamp_failure = 0b00000010
+
+
+class LampAlarmMode(t.bitmap8):
+    Lamp_burn_hours = 0b00000001
 
 
 class Ballast(Cluster):
@@ -367,54 +440,59 @@ class Ballast(Cluster):
     ballast
     """
 
-    class BallastStatus(t.bitmap8):
-        Non_operational = 0b00000001
-        Lamp_failure = 0b00000010
+    BallastStatus: Final = BallastStatus
+    LampAlarmMode: Final = LampAlarmMode
 
-    class LampAlarmMode(t.bitmap8):
-        Lamp_burn_hours = 0b00000001
+    cluster_id: Final = 0x0301
+    ep_attribute: Final = "light_ballast"
 
-    cluster_id = 0x0301
-    ep_attribute = "light_ballast"
-    attributes: dict[int, ZCLAttributeDef] = {
-        # Ballast Information
-        0x0000: ZCLAttributeDef(
-            "physical_min_level", type=t.uint8_t, access="r", mandatory=True
-        ),
-        0x0001: ZCLAttributeDef(
-            "physical_max_level", type=t.uint8_t, access="r", mandatory=True
-        ),
-        0x0002: ZCLAttributeDef("ballast_status", type=BallastStatus, access="r"),
+    class AttributeDefs(BaseAttributeDefs):
+        physical_min_level: Final = ZCLAttributeDef(
+            id=0x0000, type=t.uint8_t, access="r", mandatory=True
+        )
+        physical_max_level: Final = ZCLAttributeDef(
+            id=0x0001, type=t.uint8_t, access="r", mandatory=True
+        )
+        ballast_status: Final = ZCLAttributeDef(
+            id=0x0002, type=BallastStatus, access="r"
+        )
         # Ballast Settings
-        0x0010: ZCLAttributeDef(
-            "min_level", type=t.uint8_t, access="rw", mandatory=True
-        ),
-        0x0011: ZCLAttributeDef(
-            "max_level", type=t.uint8_t, access="rw", mandatory=True
-        ),
-        0x0012: ZCLAttributeDef("power_on_level", type=t.uint8_t, access="rw"),
-        0x0013: ZCLAttributeDef("power_on_fade_time", type=t.uint16_t, access="rw"),
-        0x0014: ZCLAttributeDef(
-            "intrinsic_ballast_factor", type=t.uint8_t, access="rw"
-        ),
-        0x0015: ZCLAttributeDef(
-            "ballast_factor_adjustment", type=t.uint8_t, access="rw"
-        ),
+        min_level: Final = ZCLAttributeDef(
+            id=0x0010, type=t.uint8_t, access="rw", mandatory=True
+        )
+        max_level: Final = ZCLAttributeDef(
+            id=0x0011, type=t.uint8_t, access="rw", mandatory=True
+        )
+        power_on_level: Final = ZCLAttributeDef(id=0x0012, type=t.uint8_t, access="rw")
+        power_on_fade_time: Final = ZCLAttributeDef(
+            id=0x0013, type=t.uint16_t, access="rw"
+        )
+        intrinsic_ballast_factor: Final = ZCLAttributeDef(
+            id=0x0014, type=t.uint8_t, access="rw"
+        )
+        ballast_factor_adjustment: Final = ZCLAttributeDef(
+            id=0x0015, type=t.uint8_t, access="rw"
+        )
         # Lamp Information
-        0x0020: ZCLAttributeDef("lamp_quantity", type=t.uint8_t, access="r"),
+        lamp_quantity: Final = ZCLAttributeDef(id=0x0020, type=t.uint8_t, access="r")
         # Lamp Settings
-        0x0030: ZCLAttributeDef("lamp_type", type=t.LimitedCharString(16), access="rw"),
-        0x0031: ZCLAttributeDef(
-            "lamp_manufacturer", type=t.LimitedCharString(16), access="rw"
-        ),
-        0x0032: ZCLAttributeDef("lamp_rated_hours", type=t.uint24_t, access="rw"),
-        0x0033: ZCLAttributeDef("lamp_burn_hours", type=t.uint24_t, access="rw"),
-        0x0034: ZCLAttributeDef("lamp_alarm_mode", type=LampAlarmMode, access="rw"),
-        0x0035: ZCLAttributeDef(
-            "lamp_burn_hours_trip_point", type=t.uint24_t, access="rw"
-        ),
-        0xFFFD: foundation.ZCL_CLUSTER_REVISION_ATTR,
-        0xFFFE: foundation.ZCL_REPORTING_STATUS_ATTR,
-    }
-    server_commands: dict[int, ZCLCommandDef] = {}
-    client_commands: dict[int, ZCLCommandDef] = {}
+        lamp_type: Final = ZCLAttributeDef(
+            id=0x0030, type=t.LimitedCharString(16), access="rw"
+        )
+        lamp_manufacturer: Final = ZCLAttributeDef(
+            id=0x0031, type=t.LimitedCharString(16), access="rw"
+        )
+        lamp_rated_hours: Final = ZCLAttributeDef(
+            id=0x0032, type=t.uint24_t, access="rw"
+        )
+        lamp_burn_hours: Final = ZCLAttributeDef(
+            id=0x0033, type=t.uint24_t, access="rw"
+        )
+        lamp_alarm_mode: Final = ZCLAttributeDef(
+            id=0x0034, type=LampAlarmMode, access="rw"
+        )
+        lamp_burn_hours_trip_point: Final = ZCLAttributeDef(
+            id=0x0035, type=t.uint24_t, access="rw"
+        )
+        cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
+        reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR

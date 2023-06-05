@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import pathlib
 import sqlite3
 import sys
@@ -144,9 +144,9 @@ async def test_database(tmp_path):
     ep.profile_id = 49246
     ep.device_type = profiles.zll.DeviceType.COLOR_LIGHT
     app.device_initialized(dev)
-    clus._update_attribute(0, 99)
-    clus._update_attribute(4, bytes("Custom", "ascii"))
-    clus._update_attribute(5, bytes("Model", "ascii"))
+    clus.update_attribute(0, 99)
+    clus.update_attribute(4, bytes("Custom", "ascii"))
+    clus.update_attribute(5, bytes("Model", "ascii"))
     clus.listener_event("cluster_command", 0)
     clus.listener_event("general_command")
     dev.relays = relays_1
@@ -181,8 +181,8 @@ async def test_database(tmp_path):
     dev = app.get_device(custom_ieee)
     app.device_initialized(dev)
     dev.relays = relays_2
-    dev.endpoints[1].level._update_attribute(0x0011, 17)
-    dev.endpoints[99].level._update_attribute(0x0011, 17)
+    dev.endpoints[1].level.update_attribute(0x0011, 17)
+    dev.endpoints[99].level.update_attribute(0x0011, 17)
     assert dev.endpoints[1].in_clusters[0x0008]._attr_cache[0x0011] == 17
     assert dev.endpoints[99].in_clusters[0x0008]._attr_cache[0x0011] == 17
     custom_dev_last_seen = dev.last_seen
@@ -259,8 +259,8 @@ async def _test_null_padded(tmp_path, test_manufacturer=None, test_model=None):
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
     app.device_initialized(dev)
-    clus._update_attribute(4, test_manufacturer)
-    clus._update_attribute(5, test_model)
+    clus.update_attribute(4, test_manufacturer)
+    clus.update_attribute(5, test_model)
     clus.listener_event("cluster_command", 0)
     clus.listener_event("zdo_command")
     await app.shutdown()
@@ -433,20 +433,26 @@ async def test_attribute_update(tmp_path, dev_init):
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
-    clus = ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
-    clus._update_attribute(4, test_manufacturer)
-    clus._update_attribute(5, test_model)
+    clus = ep.add_input_cluster(0x0000)
+    ep.add_output_cluster(0x0001)
+    clus.update_attribute(0x0004, test_manufacturer)
+    clus.update_attribute(0x0005, test_model)
     app.device_initialized(dev)
     await app.shutdown()
+
+    attr_update_time = clus._attr_last_updated[0x0004]
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app_with_db(db)
     dev = app2.get_device(ieee)
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
-    assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
-    assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
+
+    clus = dev.endpoints[3].in_clusters[0x0000]
+    assert clus._attr_cache[0x0004] == test_manufacturer
+    assert clus._attr_cache[0x0005] == test_model
+
+    assert (attr_update_time - clus._attr_last_updated[0x0004]) < timedelta(seconds=0.1)
 
     await app2.shutdown()
 
@@ -593,8 +599,8 @@ async def test_device_rejoin(tmp_path):
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
     app.device_initialized(dev)
-    clus._update_attribute(4, "Custom")
-    clus._update_attribute(5, "Model")
+    clus.update_attribute(4, "Custom")
+    clus.update_attribute(5, "Model")
     await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
@@ -641,13 +647,13 @@ async def test_stopped_appdb_listener(tmp_path):
     app.device_initialized(dev)
 
     with patch("zigpy.appdb.PersistingListener._save_attribute") as mock_attr_save:
-        clus._update_attribute(0, 99)
-        clus._update_attribute(4, bytes("Custom", "ascii"))
-        clus._update_attribute(5, bytes("Model", "ascii"))
+        clus.update_attribute(0, 99)
+        clus.update_attribute(4, bytes("Custom", "ascii"))
+        clus.update_attribute(5, bytes("Model", "ascii"))
         await app.shutdown()
         assert mock_attr_save.call_count == 3
 
-        clus._update_attribute(0, 100)
+        clus.update_attribute(0, 100)
         for i in range(100):
             await asyncio.sleep(0)
         assert mock_attr_save.call_count == 3
@@ -732,8 +738,8 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
-    clus._update_attribute(4, "Custom")
-    clus._update_attribute(5, "Model")
+    clus.update_attribute(4, "Custom")
+    clus.update_attribute(5, "Model")
     app.device_initialized(dev)
     clus.add_unsupported_attribute(0x0010)
     clus.add_unsupported_attribute("physical_env")
@@ -804,8 +810,8 @@ async def test_load_unsupp_attr_wrong_cluster(tmp_path):
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
-    clus._update_attribute(4, "Custom")
-    clus._update_attribute(5, "Model")
+    clus.update_attribute(4, "Custom")
+    clus.update_attribute(5, "Model")
     app.device_initialized(dev)
     await app.shutdown()
     del clus
@@ -846,8 +852,8 @@ async def test_load_unsupp_attr_missing_endpoint(tmp_path):
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0x0000)
     ep.add_output_cluster(0x0001)
-    clus._update_attribute(0x0004, "Custom")
-    clus._update_attribute(0x0005, "Model")
+    clus.update_attribute(0x0004, "Custom")
+    clus.update_attribute(0x0005, "Model")
 
     ep = dev.add_endpoint(4)
     ep.status = zigpy.endpoint.Status.ZDO_INIT
@@ -892,8 +898,8 @@ async def test_last_seen(tmp_path):
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
-    clus._update_attribute(4, "Custom")
-    clus._update_attribute(5, "Model")
+    clus.update_attribute(4, "Custom")
+    clus.update_attribute(5, "Model")
     app.device_initialized(dev)
 
     old_last_seen = dev.last_seen

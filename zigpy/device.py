@@ -162,9 +162,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     async def get_node_descriptor(self) -> zdo_t.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
 
-        status, _, node_desc = await self.zdo.Node_Desc_req(
-            self.nwk, tries=2, delay=0.1
-        )
+        status, _, node_desc = await self.zdo.Node_Desc_req(self.nwk)
 
         if status != zdo_t.Status.SUCCESS:
             raise zigpy.exceptions.InvalidResponse(
@@ -179,21 +177,18 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     async def initialize(self) -> None:
         try:
             await self._initialize()
-        except Exception as e:
-            if not isinstance(
-                e, (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException)
-            ):
-                LOGGER.warning(
-                    "Device %r failed to initialize due to unexpected error",
-                    self,
-                    exc_info=True,
-                )
+        except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
+            self.application.listener_event("device_init_failure", self)
+        except Exception:
+            LOGGER.warning(
+                "Device %r failed to initialize due to unexpected error",
+                self,
+                exc_info=True,
+            )
 
             self.application.listener_event("device_init_failure", self)
 
-    @zigpy.util.retryable(
-        (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException), tries=3, delay=0.5
-    )
+    @zigpy.util.retryable_request(tries=5, delay=0.5)
     async def _initialize(self) -> None:
         """Attempts multiple times to discover all basic information about a device: namely
         its node descriptor, all endpoints and clusters, and the model and manufacturer
@@ -210,9 +205,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         else:
             self.info("Discovering endpoints")
 
-            status, _, endpoints = await self.zdo.Active_EP_req(
-                self.nwk, tries=3, delay=0.5
-            )
+            status, _, endpoints = await self.zdo.Active_EP_req(self.nwk)
 
             if status != zdo_t.Status.SUCCESS:
                 raise zigpy.exceptions.InvalidResponse(
