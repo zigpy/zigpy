@@ -50,7 +50,7 @@ def patch_device_tables(
     neighbors: list | BaseException | zdo_t.Status,
     routes: list | BaseException | zdo_t.Status,
 ):
-    def mgmt_lqi_req(StartIndex: t.uint8_t, **kwargs):
+    def mgmt_lqi_req(StartIndex: t.uint8_t):
         status = zdo_t.Status.SUCCESS
         entries = 0
         start_index = 0
@@ -76,7 +76,7 @@ def patch_device_tables(
             ).values()
         )
 
-    def mgmt_rtg_req(StartIndex: t.uint8_t, **kwargs):
+    def mgmt_rtg_req(StartIndex: t.uint8_t):
         status = zdo_t.Status.SUCCESS
         entries = 0
         start_index = 0
