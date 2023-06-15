@@ -103,10 +103,14 @@ def patch_device_tables(
         )
 
     lqi_req_patch = mock.patch.object(
-        device.zdo, "Mgmt_Lqi_req", mock.AsyncMock(side_effect=mgmt_lqi_req)
+        device.zdo,
+        "Mgmt_Lqi_req",
+        mock.AsyncMock(side_effect=mgmt_lqi_req, spec_set=device.zdo.Mgmt_Lqi_req),
     )
     rtg_req_patch = mock.patch.object(
-        device.zdo, "Mgmt_Rtg_req", mock.AsyncMock(side_effect=mgmt_rtg_req)
+        device.zdo,
+        "Mgmt_Rtg_req",
+        mock.AsyncMock(side_effect=mgmt_rtg_req, spec_set=device.zdo.Mgmt_Rtg_req),
     )
 
     with lqi_req_patch, rtg_req_patch:
@@ -136,8 +140,8 @@ async def test_scan_failures(
     with patch_device_tables(dev, neighbors=neighbors, routes=routes):
         await topology.scan()
 
-        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 1
-        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1
+        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 1 if not neighbors else 3
+        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1 if not routes else 3
 
     assert not topology.neighbors[dev.ieee]
     assert not topology.routes[dev.ieee]
