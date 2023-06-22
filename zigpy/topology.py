@@ -22,6 +22,9 @@ if typing.TYPE_CHECKING:
     import zigpy.application
 
 
+RETRY_SLOW = zigpy.util.retryable_request(tries=3, delay=1)
+
+
 class ScanNotSupported(Exception):
     pass
 
@@ -101,7 +104,7 @@ class Topology(zigpy.util.ListenableMixin):
         table = []
 
         while True:
-            status, rsp = await scan_request(index, tries=3, delay=1)
+            status, rsp = await RETRY_SLOW(scan_request)(index)
 
             if status != zdo_t.Status.SUCCESS:
                 raise ScanNotSupported()
