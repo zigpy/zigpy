@@ -56,7 +56,7 @@ enabled = true
 asyncio_mode = "auto"
 
 [tool.ruff]
-target-version = "py37"
+target-version = "py38"
 select = [
     "B007", # Loop control variable {name} not used within loop body
     "B014", # Exception handler with duplicate exception

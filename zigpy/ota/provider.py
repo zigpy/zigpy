@@ -581,7 +581,7 @@ class FileStore(Basic):
 
         self._cache.clear()
         loop = asyncio.get_event_loop()
-        for root, dirs, files in os.walk(self._ota_dir):
+        for root, _dirs, files in os.walk(self._ota_dir):
             for file in files:
                 if file in SKIP_OTA_FILES:
                     continue
@@ -695,7 +695,7 @@ class Inovelli(Basic):
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
 
-        for model, firmwares in fw_lst.items():
+        for _model, firmwares in fw_lst.items():
             for firmware in firmwares:
                 img = INOVELLIImage.from_json(firmware)
 

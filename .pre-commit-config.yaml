@@ -44,9 +44,8 @@ repos:
         additional_dependencies:
           - pydantic
   
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
+  - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.0.277
     hooks:
       - id: ruff
-        args:
-          - --fix
+        args: ["--fix", "--exit-non-zero-on-fix", "--config", "pyproject.toml"]
