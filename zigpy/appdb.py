@@ -766,7 +766,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         ) as cursor:
             backups = []
 
-            async for id_, backup_json in cursor:
+            async for _id, backup_json in cursor:
                 backup = zigpy.backups.NetworkBackup.from_dict(json.loads(backup_json))
                 backups.append(backup)
 
@@ -922,9 +922,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         elif errors == "ignore":
                             pass
                         else:
-                            raise ValueError(
-                                f"Invalid value for `errors`: {errors!r}"
-                            )  # noqa
+                            raise ValueError(f"Invalid value for `errors`: {errors!r}")
 
     async def _migrate_to_v4(self):
         """Schema v4 expanded the node descriptor and neighbor table columns"""
