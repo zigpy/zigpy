@@ -167,7 +167,7 @@ disable_error_code = [
 follow_imports = "silent"
 
 [tool.coverage.run]
-source = "zigpy"
+source = ["zigpy"]
 
 [tool.coverage.report]
 exclude_lines = [
