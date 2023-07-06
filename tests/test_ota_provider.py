@@ -352,7 +352,7 @@ def test_filestore_scan(file_image_name):
 def test_filestore_scan_exc(file_image_name):
     ota_file = file_image_name()
     with patch("builtins.open", mock.mock_open()) as mock_file:
-        mock_file.side_effect = IOError()
+        mock_file.side_effect = OSError()
 
         r = ota_p.FileImage.scan_image(ota_file)
         assert r is None
@@ -387,7 +387,7 @@ async def test_filestore_fetch_image(file_image):
 
 async def test_filestore_fetch_image_exc(file_image):
     with mock.patch("builtins.open", mock.mock_open()) as mock_file:
-        mock_file.side_effect = IOError()
+        mock_file.side_effect = OSError()
 
         r = await ota_p.FileImage.fetch_image(file_image)
         assert r is None

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from datetime import datetime, timedelta, timezone
 import pathlib
 import sqlite3
@@ -43,10 +44,8 @@ def auto_kill_aiosqlite():
         except ValueError:
             pass
         else:
-            try:
+            with contextlib.suppress(zigpy.appdb.sqlite3.ProgrammingError):
                 conn.close()
-            except zigpy.appdb.sqlite3.ProgrammingError:
-                pass
 
         thread._running = False
 
@@ -227,7 +226,7 @@ async def test_database(tmp_path):
 
     app3.devices[ieee].zdo.leave = mockleave
     await app3.remove(ieee)
-    for i in range(1, 20):
+    for _i in range(1, 20):
         await asyncio.sleep(0)
     assert ieee not in app3.devices
     await app3.shutdown()
@@ -654,7 +653,7 @@ async def test_stopped_appdb_listener(tmp_path):
         assert mock_attr_save.call_count == 3
 
         clus.update_attribute(0, 100)
-        for i in range(100):
+        for _i in range(100):
             await asyncio.sleep(0)
         assert mock_attr_save.call_count == 3
 
@@ -775,7 +774,7 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     await cluster.read_attributes([0x0010], allow_cache=False)
     assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert "location_desc" not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "Not Removed" == dev.endpoints[3].in_clusters[0].get(0x0010)
+    assert dev.endpoints[3].in_clusters[0].get(0x0010) == "Not Removed"
     assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
     await app3.shutdown()
@@ -786,7 +785,7 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
     assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "Not Removed" == dev.endpoints[3].in_clusters[0].get(0x0010)
+    assert dev.endpoints[3].in_clusters[0].get(0x0010) == "Not Removed"
     assert "location_desc" not in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes

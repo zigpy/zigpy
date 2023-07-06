@@ -90,6 +90,7 @@ ignore = [
     "E731",  # do not assign a lambda expression, use a def
     "SIM117",  # Use a single `with` statement with multiple contexts
     "D",     # FIXME: docstrings
+    "C901",  # is too complex (15 > 10)
 ]
 
 exclude = [

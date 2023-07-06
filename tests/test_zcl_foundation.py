@@ -664,9 +664,9 @@ def test_schema():
     assert "test" in str(s) and "direction=<Direction.Server_to_Client" in str(s)
 
     for kwargs, value in [
-        (dict(foo=1), b"\x01"),
-        (dict(foo=1, bar=2), b"\x01\x02\x00"),
-        (dict(foo=1, bar=2, baz=3), b"\x01\x02\x00\x03"),
+        ({"foo": 1}, b"\x01"),
+        ({"foo": 1, "bar": 2}, b"\x01\x02\x00"),
+        ({"foo": 1, "bar": 2, "baz": 3}, b"\x01\x02\x00\x03"),
     ]:
         assert s.schema(**kwargs) == s.schema(*kwargs.values())
         assert s.schema(**kwargs).serialize() == value

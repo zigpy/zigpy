@@ -93,7 +93,7 @@ class CustomDevice(zigpy.device.Device):
         set_device_attr(SIG_MANUFACTURER)
         set_device_attr(SIG_MODEL)
         set_device_attr(SIG_SKIP_CONFIG)
-        for endpoint_id, endpoint in self.replacement.get(SIG_ENDPOINTS, {}).items():
+        for endpoint_id, _endpoint in self.replacement.get(SIG_ENDPOINTS, {}).items():
             self.add_endpoint(endpoint_id, replace_device=replaces)
 
     def add_endpoint(

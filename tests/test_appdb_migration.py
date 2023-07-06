@@ -59,11 +59,11 @@ async def test_migration_from_3_to_4(open_twice, test_db):
 
         neighbors_before = list(cur.execute("SELECT * FROM neighbors"))
         assert len(neighbors_before) == 2
-        assert all([len(row) == 8 for row in neighbors_before])
+        assert all(len(row) == 8 for row in neighbors_before)
 
         node_descs_before = list(cur.execute("SELECT * FROM node_descriptors"))
         assert len(node_descs_before) == 2
-        assert all([len(row) == 2 for row in node_descs_before])
+        assert all(len(row) == 2 for row in node_descs_before)
 
     # Ensure migration works on first run, and after shutdown
     if open_twice:
@@ -132,11 +132,11 @@ async def test_migration_from_3_to_4(open_twice, test_db):
         # New tables exist
         neighbors_after = list(cur.execute("SELECT * FROM neighbors_v4"))
         assert len(neighbors_after) == 2
-        assert all([len(row) == 12 for row in neighbors_after])
+        assert all(len(row) == 12 for row in neighbors_after)
 
         node_descs_after = list(cur.execute("SELECT * FROM node_descriptors_v4"))
         assert len(node_descs_after) == 2
-        assert all([len(row) == 14 for row in node_descs_after])
+        assert all(len(row) == 14 for row in node_descs_after)
 
 
 async def test_migration_0_to_5(test_db):
@@ -496,7 +496,7 @@ async def test_last_seen_initial_migration(test_db):
 
 
 def test_db_version_is_latest_schema_version():
-    assert zigpy.appdb.DB_VERSION == max(zigpy.appdb_schemas.SCHEMAS.keys())
+    assert max(zigpy.appdb_schemas.SCHEMAS.keys()) == zigpy.appdb.DB_VERSION
 
 
 async def test_last_seen_migration_v8_to_v9(test_db):
