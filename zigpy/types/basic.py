@@ -55,7 +55,7 @@ class SerializableBytes:
         if isinstance(value, type(self)):
             value = value.value
         elif not isinstance(value, (bytes, bytearray)):
-            raise TypeError(f"Object is not bytes: {value!r}")
+            raise ValueError(f"Object is not bytes: {value!r}")  # noqa: TRY004
 
         self.value = value
 
