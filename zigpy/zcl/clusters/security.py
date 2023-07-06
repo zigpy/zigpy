@@ -499,7 +499,7 @@ class IasWd(Cluster):
         start_warning: Final = ZCLCommandDef(
             id=0x00,
             schema={
-                "warning": Warning,
+                "warning": WarningType,
                 "warning_duration": t.uint16_t,
                 "strobe_duty_cycle": t.uint8_t,
                 "stobe_level": StrobeLevel,
