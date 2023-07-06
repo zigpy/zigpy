@@ -169,7 +169,7 @@ async def _remove(
 
     app.devices[ieee] = device
     await app.remove(ieee)
-    for i in range(1, 20):
+    for _i in range(1, 20):
         await asyncio.sleep(0)
     assert ieee not in app.devices
 
@@ -193,7 +193,7 @@ async def test_remove_with_failed_zdo(app, ieee):
 async def test_remove_nonexistent(app, ieee):
     with patch.object(app, "_remove_device", AsyncMock()) as remove_device:
         await app.remove(ieee)
-        for i in range(1, 20):
+        for _i in range(1, 20):
             await asyncio.sleep(0)
         assert ieee not in app.devices
         assert remove_device.await_count == 0
@@ -424,7 +424,7 @@ async def test_remove_parent_devices(app, make_initialized_device):
 
     with p1, p2, p3, p4, p5, p6, p7, p8:
         await app.remove(end_device.ieee)
-        for i in range(1, 60):
+        for _i in range(1, 60):
             await asyncio.sleep(0)
 
         assert end_device.zdo.leave.await_count == 1
@@ -959,11 +959,11 @@ async def test_packet_received_new_device_zdo_announce(app, device, zdo_packet):
 
     zdo_data = zigpy.zdo.ZDO(None)._serialize(
         zdo_t.ZDOCmd.Device_annce,
-        *dict(
-            NWKAddr=device.nwk,
-            IEEEAddr=device.ieee,
-            Capability=0x00,
-        ).values()
+        *{
+            "NWKAddr": device.nwk,
+            "IEEEAddr": device.ieee,
+            "Capability": 0x00,
+        }.values(),
     )
 
     zdo_packet.cluster_id = zdo_t.ZDOCmd.Device_annce
@@ -993,23 +993,23 @@ async def test_packet_received_new_device_discovery(app, device, zdo_packet):
             packet.cluster_id, packet.data.serialize()
         )
         assert args == list(
-            dict(
-                NWKAddrOfInterest=device.nwk,
-                RequestType=zdo_t.AddrRequestType.Single,
-                StartIndex=0,
-            ).values()
+            {
+                "NWKAddrOfInterest": device.nwk,
+                "RequestType": zdo_t.AddrRequestType.Single,
+                "StartIndex": 0,
+            }.values()
         )
 
         zdo_data = zigpy.zdo.ZDO(None)._serialize(
             zdo_t.ZDOCmd.IEEE_addr_rsp,
-            *dict(
-                Status=zdo_t.Status.SUCCESS,
-                IEEEAddr=device.ieee,
-                NWKAddr=device.nwk,
-                NumAssocDev=0,
-                StartIndex=0,
-                NWKAddrAssocDevList=[],
-            ).values()
+            *{
+                "Status": zdo_t.Status.SUCCESS,
+                "IEEEAddr": device.ieee,
+                "NWKAddr": device.nwk,
+                "NumAssocDev": 0,
+                "StartIndex": 0,
+                "NWKAddrAssocDevList": [],
+            }.values(),
         )
 
         # Receive the IEEE address reply
@@ -1045,11 +1045,11 @@ async def test_packet_received_ieee_no_rejoin(app, device, zdo_packet, caplog):
 
     zdo_data = zigpy.zdo.ZDO(None)._serialize(
         zdo_t.ZDOCmd.IEEE_addr_rsp,
-        *dict(
-            Status=zdo_t.Status.SUCCESS,
-            IEEEAddr=device.ieee,
-            NWKAddr=device.nwk,
-        ).values()
+        *{
+            "Status": zdo_t.Status.SUCCESS,
+            "IEEEAddr": device.ieee,
+            "NWKAddr": device.nwk,
+        }.values(),
     )
 
     zdo_packet.cluster_id = zdo_t.ZDOCmd.IEEE_addr_rsp
@@ -1077,11 +1077,11 @@ async def test_packet_received_ieee_rejoin(app, device, zdo_packet, caplog):
 
     zdo_data = zigpy.zdo.ZDO(None)._serialize(
         zdo_t.ZDOCmd.IEEE_addr_rsp,
-        *dict(
-            Status=zdo_t.Status.SUCCESS,
-            IEEEAddr=device.ieee,
-            NWKAddr=device.nwk + 1,  # NWK has changed
-        ).values()
+        *{
+            "Status": zdo_t.Status.SUCCESS,
+            "IEEEAddr": device.ieee,
+            "NWKAddr": device.nwk + 1,  # NWK has changed
+        }.values(),
     )
 
     zdo_packet.cluster_id = zdo_t.ZDOCmd.IEEE_addr_rsp
@@ -1159,12 +1159,12 @@ async def test_request_future_matching(app, make_initialized_device):
         disable_default_response=False,
         direction=foundation.Direction.Server_to_Client,
         args=(),
-        kwargs=dict(
-            field_control=0,
-            manufacturer_code=0x1234,
-            image_type=0x5678,
-            current_file_version=0x11112222,
-        ),
+        kwargs={
+            "field_control": 0,
+            "manufacturer_code": 0x1234,
+            "image_type": 0x5678,
+            "current_file_version": 0x11112222,
+        },
     )
 
     packet = t.ZigbeePacket(
@@ -1222,12 +1222,12 @@ async def test_request_callback_matching(app, make_initialized_device):
         disable_default_response=False,
         direction=foundation.Direction.Server_to_Client,
         args=(),
-        kwargs=dict(
-            field_control=0,
-            manufacturer_code=0x1234,
-            image_type=0x5678,
-            current_file_version=0x11112222,
-        ),
+        kwargs={
+            "field_control": 0,
+            "manufacturer_code": 0x1234,
+            "image_type": 0x5678,
+            "current_file_version": 0x11112222,
+        },
     )
 
     packet = t.ZigbeePacket(
@@ -1365,7 +1365,7 @@ async def test_move_network_to_new_channel(app):
             app.state.network_info.channel = list(NwkUpdate.ScanChannels)[0]
             app.state.network_info.nwk_update_id = NwkUpdate.nwkUpdateId
 
-        asyncio.create_task(inner())
+        asyncio.create_task(inner())  # noqa: RUF006
 
     await app.startup()
 

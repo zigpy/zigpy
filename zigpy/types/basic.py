@@ -55,7 +55,7 @@ class SerializableBytes:
         if isinstance(value, type(self)):
             value = value.value
         elif not isinstance(value, (bytes, bytearray)):
-            raise ValueError(f"Object is not bytes: {value!r}")
+            raise ValueError(f"Object is not bytes: {value!r}")  # noqa: TRY004
 
         self.value = value
 
@@ -706,7 +706,7 @@ class KwargTypeMeta(type):
         def __init_subclass__(cls, **kwargs):
             filtered_kwargs = kwargs.copy()
 
-            for name, value in kwargs.items():
+            for name, _value in kwargs.items():
                 if name in cls_kwarg_attrs:
                     setattr(cls, f"_{name}", filtered_kwargs.pop(name))
 
@@ -821,7 +821,7 @@ class LVList(list, metaclass=KwargTypeMeta):
         assert cls._item_type is not None
         length, data = cls._length_type.deserialize(data)
         r = cls()
-        for i in range(length):
+        for _i in range(length):
             item, data = cls._item_type.deserialize(data)
             r.append(item)
         return r, data
@@ -847,7 +847,7 @@ class FixedList(list, metaclass=KwargTypeMeta):
     def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
         assert cls._item_type is not None
         r = cls()
-        for i in range(cls._length):
+        for _i in range(cls._length):
             item, data = cls._item_type.deserialize(data)
             r.append(item)
         return r, data

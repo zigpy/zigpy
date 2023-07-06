@@ -24,7 +24,7 @@ def test_registry():
 
 
 def test_attributes():
-    for cluster_id, cluster in zcl.Cluster._registry.items():
+    for _cluster_id, cluster in zcl.Cluster._registry.items():
         for attrid, attr in cluster.attributes.items():
             assert 0 <= attrid <= 0xFFFF
             assert isinstance(attr, zcl.foundation.ZCLAttributeDef)
@@ -36,7 +36,7 @@ def test_attributes():
 
 
 def _test_commands(cmdattr):
-    for cluster_id, cluster in zcl.Cluster._registry.items():
+    for _cluster_id, cluster in zcl.Cluster._registry.items():
         for cmdid, cmdspec in getattr(cluster, cmdattr).items():
             assert 0 <= cmdid <= 0xFF
 
@@ -59,7 +59,7 @@ def test_client_commands():
 
 def test_ep_attributes():
     seen = set()
-    for cluster_id, cluster in zcl.Cluster._registry.items():
+    for _cluster_id, cluster in zcl.Cluster._registry.items():
         assert isinstance(cluster.ep_attribute, str)
         assert re.match(r"^[a-z_][a-z0-9_]*$", cluster.ep_attribute)
         assert cluster.ep_attribute not in seen
@@ -309,7 +309,7 @@ async def test_ota_handle_image_block_no_img(ota_cluster):
             .as_tuple(skip_missing=True)
         ),
         manufacturer=None,
-        tsn=ANY
+        tsn=ANY,
     )
     ota_cluster.reply.reset_mock()
 
@@ -324,7 +324,7 @@ async def test_ota_handle_image_block_no_img(ota_cluster):
             .as_tuple(skip_missing=True)
         ),
         manufacturer=None,
-        tsn=ANY
+        tsn=ANY,
     )
 
 

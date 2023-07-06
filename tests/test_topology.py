@@ -66,14 +66,14 @@ def patch_device_tables(
             table = neighbors[StartIndex : StartIndex + 3]
 
         return list(
-            dict(
-                Status=status,
-                Neighbors=zdo_t.Neighbors(
+            {
+                "Status": status,
+                "Neighbors": zdo_t.Neighbors(
                     Entries=entries,
                     StartIndex=start_index,
                     NeighborTableList=table,
                 ),
-            ).values()
+            }.values()
         )
 
     def mgmt_rtg_req(StartIndex: t.uint8_t):
@@ -92,14 +92,14 @@ def patch_device_tables(
             table = routes[StartIndex : StartIndex + 3]
 
         return list(
-            dict(
-                Status=status,
-                Routes=zdo_t.Routes(
+            {
+                "Status": status,
+                "Routes": zdo_t.Routes(
                     Entries=entries,
                     StartIndex=start_index,
                     RoutingTableList=table,
                 ),
-            ).values()
+            }.values()
         )
 
     lqi_req_patch = mock.patch.object(

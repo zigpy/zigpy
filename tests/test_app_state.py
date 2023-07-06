@@ -183,10 +183,10 @@ def test_counter_nested_groups_increment():
     counters.increment("total", "rx", 3, 0x0008)
     counters.increment("total", "rx", 3, 0x0300)
 
-    tags = {t for t in counters.tags()}
+    tags = set(counters.tags())
     assert {"rx"} == tags
 
-    tags = {t for t in counters["rx"].tags()}
+    tags = set(counters["rx"].tags())
     assert {"zdo", 3} == tags
 
     assert counters["rx"]["reply"] == 1
@@ -204,9 +204,9 @@ def test_counter_groups():
     """Test CounterGroups."""
 
     groups = app_state.CounterGroups()
-    assert not [group for group in groups]
+    assert not list(groups)
 
     counter_group = groups["ezsp_counters"]
 
-    new_groups = [group for group in groups]
+    new_groups = list(groups)
     assert new_groups == [counter_group]
