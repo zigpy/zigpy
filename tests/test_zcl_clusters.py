@@ -31,6 +31,8 @@ def test_attributes():
             assert attr.id == attrid
             assert attr.name
             assert attr.type
+            assert callable(attr.type.deserialize)
+            assert callable(attr.type.serialize)
 
 
 def _test_commands(cmdattr):
@@ -41,6 +43,10 @@ def _test_commands(cmdattr):
             assert cmdspec.id == cmdid
             assert isinstance(cmdspec, zcl.foundation.ZCLCommandDef)
             assert issubclass(cmdspec.schema, types.Struct)
+
+            for field in cmdspec.schema.fields:
+                assert callable(field.type.deserialize)
+                assert callable(field.type.serialize)
 
 
 def test_server_commands():
