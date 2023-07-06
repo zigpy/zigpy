@@ -963,7 +963,7 @@ async def test_packet_received_new_device_zdo_announce(app, device, zdo_packet):
             NWKAddr=device.nwk,
             IEEEAddr=device.ieee,
             Capability=0x00,
-        ).values()
+        ).values(),
     )
 
     zdo_packet.cluster_id = zdo_t.ZDOCmd.Device_annce
@@ -1009,7 +1009,7 @@ async def test_packet_received_new_device_discovery(app, device, zdo_packet):
                 NumAssocDev=0,
                 StartIndex=0,
                 NWKAddrAssocDevList=[],
-            ).values()
+            ).values(),
         )
 
         # Receive the IEEE address reply
@@ -1049,7 +1049,7 @@ async def test_packet_received_ieee_no_rejoin(app, device, zdo_packet, caplog):
             Status=zdo_t.Status.SUCCESS,
             IEEEAddr=device.ieee,
             NWKAddr=device.nwk,
-        ).values()
+        ).values(),
     )
 
     zdo_packet.cluster_id = zdo_t.ZDOCmd.IEEE_addr_rsp
@@ -1081,7 +1081,7 @@ async def test_packet_received_ieee_rejoin(app, device, zdo_packet, caplog):
             Status=zdo_t.Status.SUCCESS,
             IEEEAddr=device.ieee,
             NWKAddr=device.nwk + 1,  # NWK has changed
-        ).values()
+        ).values(),
     )
 
     zdo_packet.cluster_id = zdo_t.ZDOCmd.IEEE_addr_rsp

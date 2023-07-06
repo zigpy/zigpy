@@ -100,11 +100,9 @@ class DeviceRegistry:
                 continue
 
             if not all(
-                [
-                    device[eid].profile_id
-                    == sig[eid].get(SIG_EP_PROFILE, device[eid].profile_id)
-                    for eid in sig
-                ]
+                device[eid].profile_id
+                == sig[eid].get(SIG_EP_PROFILE, device[eid].profile_id)
+                for eid in sig
             ):
                 _LOGGER.debug(
                     "Fail because profile_id mismatch on at least one endpoint"
@@ -112,11 +110,9 @@ class DeviceRegistry:
                 continue
 
             if not all(
-                [
-                    device[eid].device_type
-                    == sig[eid].get(SIG_EP_TYPE, device[eid].device_type)
-                    for eid in sig
-                ]
+                device[eid].device_type
+                == sig[eid].get(SIG_EP_TYPE, device[eid].device_type)
+                for eid in sig
             ):
                 _LOGGER.debug(
                     "Fail because device_type mismatch on at least one endpoint"
@@ -124,10 +120,8 @@ class DeviceRegistry:
                 continue
 
             if not all(
-                [
-                    self._match(device[eid].in_clusters, ep.get(SIG_EP_INPUT, []))
-                    for eid, ep in sig.items()
-                ]
+                self._match(device[eid].in_clusters, ep.get(SIG_EP_INPUT, []))
+                for eid, ep in sig.items()
             ):
                 _LOGGER.debug(
                     "Fail because input cluster mismatch on at least one endpoint"
@@ -135,10 +129,8 @@ class DeviceRegistry:
                 continue
 
             if not all(
-                [
-                    self._match(device[eid].out_clusters, ep.get(SIG_EP_OUTPUT, []))
-                    for eid, ep in sig.items()
-                ]
+                self._match(device[eid].out_clusters, ep.get(SIG_EP_OUTPUT, []))
+                for eid, ep in sig.items()
             ):
                 _LOGGER.debug(
                     "Fail because output cluster mismatch on at least one endpoint"

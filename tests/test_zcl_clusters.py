@@ -303,7 +303,7 @@ async def test_ota_handle_image_block_no_img(ota_cluster):
             .as_tuple(skip_missing=True)
         ),
         manufacturer=None,
-        tsn=ANY
+        tsn=ANY,
     )
     ota_cluster.reply.reset_mock()
 
@@ -318,7 +318,7 @@ async def test_ota_handle_image_block_no_img(ota_cluster):
             .as_tuple(skip_missing=True)
         ),
         manufacturer=None,
-        tsn=ANY
+        tsn=ANY,
     )
 
 
