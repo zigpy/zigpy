@@ -31,9 +31,11 @@ repos:
       - id: isort
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.2.4
+    rev: v2.2.5
     hooks:
       - id: codespell
+        additional_dependencies: [tomli]
+        args: ["--toml", "pyproject.toml"]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v0.982
