@@ -811,6 +811,8 @@ class RemoteImage:
     # Optional
     min_hardware_version = attr.ib()
     max_hardware_version = attr.ib()
+    min_current_file_version = attr.ib()
+    max_current_file_version = attr.ib()
 
     @classmethod
     def from_json(cls, obj: dict[str, typing.Any]) -> RemoteImage:
@@ -823,6 +825,8 @@ class RemoteImage:
             checksum=obj["checksum"],
             min_hardware_version=obj.get("min_hardware_version"),
             max_hardware_version=obj.get("max_hardware_version"),
+            min_current_file_version=obj.get("min_current_file_version"),
+            max_current_file_version=obj.get("max_current_file_version"),
         )
 
     @property
@@ -847,18 +851,7 @@ class RemoteImage:
 
         ota_image, _ = parse_ota_image(data)
 
-        if ota_image.header.key != self.key:
-            raise ValueError(
-                f"Image key does not match metadata: {ota_image.header.key}"
-                f" != {self.key}"
-            )
-
-        LOGGER.debug(
-            "Finished downloading from %s for %s ver %s",
-            self.binary_url,
-            self.key,
-            self.version,
-        )
+        LOGGER.debug("Finished downloading %s", self)
         return ota_image
 
 

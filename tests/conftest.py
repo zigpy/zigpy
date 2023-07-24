@@ -104,7 +104,7 @@ def recursive_dict_merge(
     result = copy.deepcopy(obj)
 
     for key, update in updates.items():
-        if isinstance(update, dict):
+        if isinstance(update, dict) and key in result:
             result[key] = recursive_dict_merge(result[key], update)
         else:
             result[key] = update
