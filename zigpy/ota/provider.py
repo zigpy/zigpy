@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections import defaultdict
 import datetime
+import hashlib
 import io
 import logging
 import os
@@ -796,3 +797,107 @@ class ThirdReality(Basic):
 
     async def filter_get_image(self, key: ImageKey) -> bool:
         return key.manufacturer_id not in self.MANUFACTURER_IDS
+
+
+@attr.s
+class RemoteImage:
+    binary_url = attr.ib()
+    file_version = attr.ib()
+    image_type = attr.ib()
+    manufacturer_id = attr.ib()
+    changelog = attr.ib()
+    checksum = attr.ib()
+
+    # Optional
+    min_hardware_version = attr.ib()
+    max_hardware_version = attr.ib()
+    min_current_file_version = attr.ib()
+    max_current_file_version = attr.ib()
+
+    @classmethod
+    def from_json(cls, obj: dict[str, typing.Any]) -> RemoteImage:
+        return cls(
+            binary_url=obj["binary_url"],
+            file_version=obj["file_version"],
+            image_type=obj["image_type"],
+            manufacturer_id=obj["manufacturer_id"],
+            changelog=obj["changelog"],
+            checksum=obj["checksum"],
+            min_hardware_version=obj.get("min_hardware_version"),
+            max_hardware_version=obj.get("max_hardware_version"),
+            min_current_file_version=obj.get("min_current_file_version"),
+            max_current_file_version=obj.get("max_current_file_version"),
+        )
+
+    @property
+    def key(self) -> ImageKey:
+        return ImageKey(self.manufacturer_id, self.image_type)
+
+    async def fetch_image(self) -> BaseOTAImage:
+        async with aiohttp.ClientSession() as req:
+            LOGGER.debug("Downloading %s for %s", self.binary_url, self.key)
+            async with req.get(self.binary_url) as rsp:
+                data = await rsp.read()
+
+        algorithm, checksum = self.checksum.split(":")
+        hasher = hashlib.new(algorithm)
+        await asyncio.get_running_loop().run_in_executor(None, hasher.update, data)
+
+        if hasher.hexdigest() != checksum:
+            raise ValueError(
+                f"Image checksum is invalid: expected {self.checksum},"
+                f" got {hasher.hexdigest()}"
+            )
+
+        ota_image, _ = parse_ota_image(data)
+
+        LOGGER.debug("Finished downloading %s", self)
+        return ota_image
+
+
+class RemoteProvider(Basic):
+    """Generic zigpy OTA URL provider."""
+
+    HEADERS = {"accept": "application/json"}
+
+    def __init__(self, url: str, manufacturer_ids: list[int] | None) -> None:
+        super().__init__()
+
+        self.url = url
+        self.manufacturer_ids = manufacturer_ids
+
+    async def initialize_provider(self, ota_config: dict) -> None:
+        self.info("OTA provider enabled")
+        await self.refresh_firmware_list()
+        self.enable()
+
+    async def refresh_firmware_list(self) -> None:
+        if self._locks[LOCK_REFRESH].locked():
+            return
+
+        async with self._locks[LOCK_REFRESH]:
+            async with aiohttp.ClientSession(headers=self.HEADERS) as req:
+                async with req.get(self.url) as rsp:
+                    if not (200 <= rsp.status <= 299):
+                        self.warning(
+                            "Couldn't download '%s': %s/%s",
+                            rsp.url,
+                            rsp.status,
+                            rsp.reason,
+                        )
+                        return
+                    fw_lst = await rsp.json()
+
+        self.debug("Finished downloading firmware update list")
+        self._cache.clear()
+        for obj in fw_lst:
+            img = RemoteImage.from_json(obj)
+            self._cache[img.key] = img
+
+        self.update_expiration()
+
+    async def filter_get_image(self, key: ImageKey) -> bool:
+        if not self.manufacturer_ids:
+            return False
+
+        return key.manufacturer_id not in self.manufacturer_ids
