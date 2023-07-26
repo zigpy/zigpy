@@ -6,7 +6,7 @@ on:
 
 jobs:
   shared-ci:
-    uses: zigpy/workflows/.github/workflows/ci.yml@puddly/pre-commit
+    uses: zigpy/workflows/.github/workflows/ci.yml@main
     with:
       CODE_FOLDER: zigpy
       CACHE_VERSION: 2
