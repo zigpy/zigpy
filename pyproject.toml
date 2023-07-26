@@ -46,7 +46,7 @@ testing = [
     "pytest-timeout",
     "freezegun",
     "ruff==0.0.261",
-    'pysqlite3-binary; platform_system=="Linux"',
+    'pysqlite3-binary; platform_system=="Linux" and python_version<"3.12"',
 ]
 
 [tool.setuptools-git-versioning]
