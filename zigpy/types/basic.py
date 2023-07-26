@@ -361,7 +361,14 @@ class uint64_t_be(uint_t_be, bits=64):
     pass
 
 
-class _IntEnumMeta(enum.EnumMeta):
+class AlwaysCreateEnumType(enum.EnumMeta):
+    """Enum metaclass that skips the functional creation API."""
+
+    def __call__(cls, value, names=None, *values) -> type[enum.Enum]:  # type: ignore
+        return cls.__new__(cls, value)  # type: ignore
+
+
+class _IntEnumMeta(AlwaysCreateEnumType):
     def __call__(cls, value, names=None, *args, **kwargs):
         if isinstance(value, str):
             if value.startswith("0x"):
@@ -382,7 +389,13 @@ def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
 
     if sys.version_info >= (3, 11):
 
-        class _NewEnum(int_type, enum.ReprEnum, enum.Flag, boundary=enum.KEEP):
+        class _NewEnum(
+            int_type,
+            enum.ReprEnum,
+            enum.Flag,
+            boundary=enum.KEEP,
+            metaclass=AlwaysCreateEnumType,
+        ):
             pass
 
     else:
