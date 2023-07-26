@@ -11,4 +11,4 @@ freezegun
 ruff==0.0.261
 tomli
 
-pysqlite3-binary; platform_system=="Linux"
+pysqlite3-binary; platform_system=="Linux" and python_version<"3.12"
