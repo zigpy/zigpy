@@ -23,6 +23,7 @@ import zigpy.backups
 import zigpy.config as conf
 import zigpy.const as const
 import zigpy.device
+import zigpy.endpoint
 import zigpy.exceptions
 import zigpy.group
 import zigpy.listeners
@@ -145,6 +146,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             )
 
         await self.start_network()
+        self._persist_coordinator_model_strings_in_db()
 
         # Some radios erroneously permit joins on startup
         try:
@@ -1212,6 +1214,21 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         return self._ota
 
     @property
-    def _device(self):
+    def _device(self) -> zigpy.device.Device:
         """The device being controlled."""
         return self.get_device(ieee=self.state.node_info.ieee)
+
+    def _persist_coordinator_model_strings_in_db(self) -> None:
+        # Emit an `attribute_updated` event from a fake cluster to persist the attribute
+        fake_ep = zigpy.endpoint.Endpoint(device=self._device, endpoint_id=1)
+        fake_cluster = fake_ep.add_input_cluster(
+            zigpy.zcl.clusters.general.Basic.cluster_id
+        )
+        fake_cluster.update_attribute(
+            attrid=zigpy.zcl.clusters.general.Basic.AttributeDefs.model.id,
+            value=self._device.model,
+        )
+        fake_cluster.update_attribute(
+            attrid=zigpy.zcl.clusters.general.Basic.AttributeDefs.manufacturer.id,
+            value=self._device.manufacturer,
+        )
