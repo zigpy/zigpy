@@ -556,7 +556,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 SET value=excluded.value, last_updated=excluded.last_updated
                 WHERE
                     value != excluded.value
-                    AND :timestamp - last_updated > :min_update_delta
+                    OR :timestamp - last_updated > :min_update_delta
             """
         await self.execute(
             q,

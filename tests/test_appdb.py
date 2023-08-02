@@ -456,6 +456,54 @@ async def test_attribute_update(tmp_path, dev_init):
     await app2.shutdown()
 
 
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
+async def test_attribute_update_short_interval(tmp_path):
+    """Test updating an attribute twice in a short interval."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0x0000)
+    ep.add_output_cluster(0x0001)
+    clus.update_attribute(0x0004, "Custom")
+    clus.update_attribute(0x0005, "Model")
+    app.device_initialized(dev)
+
+    # wait for the device initialization to write attribute cache to db
+    await asyncio.sleep(0.01)
+
+    # update an attribute twice in a short interval
+    clus.update_attribute(0x4000, "1.0")
+    attr_update_time_first = clus._attr_last_updated[0x4000]
+
+    # update attribute again 10 seconds later
+    fake_time = datetime.utcnow() + timedelta(seconds=10)
+    with freezegun.freeze_time(fake_time):
+        clus.update_attribute(0x4000, "2.0")
+
+    await app.shutdown()
+
+    # Everything should've been saved - check that it re-loads
+    app2 = await make_app_with_db(db)
+    dev = app2.get_device(ieee)
+
+    clus = dev.endpoints[3].in_clusters[0x0000]
+    assert clus._attr_cache[0x4000] == "2.0"  # verify second attribute update was saved
+
+    # verify the first update attribute time was not overwritten, as it was within the short interval
+    assert (attr_update_time_first - clus._attr_last_updated[0x0004]) < timedelta(seconds=0.1)
+
+    await app2.shutdown()
+
+
 @patch("zigpy.topology.REQUEST_DELAY", (0, 0))
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
 async def test_topology(tmp_path):
