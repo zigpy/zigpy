@@ -15,9 +15,13 @@ The **[ZHA integration component for Home Assistant](https://www.home-assistant.
 
 ### Zigbee device OTA updates
 
-zigpy have ability to download and perform Zigbee OTAU (Over-The-Air Updates) of Zigbee devices firmware. The Zigbee OTA update firmware image files should conform to standard Zigbee OTA format and OTA provider source URLs need to be published for public availability. Updates from a local OTA update directory also is also supported and can be used as an option for offline firmware updates if user provide correct Zigbee OTA formatted firmware files themselves.
+zigpy has the ability to download and perform Zigbee OTAU (Over-The-Air Updates) of Zigbee device's firmware. The Zigbee OTA update firmware image files will need conform to standard Zigbee OTA format. Updates from a local OTA update directory also is also supported and can be used as an option for offline firmware updates if user provide correct Zigbee OTA formatted firmware files themselves.
 
-Support for automatic download from existing online OTA providers in zigpy OTA provider code is currently only available for IKEA, Inovelli, LEDVANCE/OSRAM, SALUS/Computime, and SONOFF/ITEAD devices. Support for additional OTA providers for other manufacturers devices could be added to zigpy in the future, if device manufacturers publish their firmware images publicly and developers contribute the needed download code for them.
+OTA provider code included by default in zigpy is currently only IKEA, Inovelli, LEDVANCE/OSRAM, SALUS/Computime, and SONOFF/ITEAD devices as those OTA providers have published source URLs online for public availability. Support for additional OTA providers for other manufacturer's devices and updates could be included with zigpy in the future if device manufacturers publish their firmware images publicly.
+
+Manufacturers and users can also without extra code distribute additional OTA providers as test feed URLs if there is no need to deploy OTA updates globally. Support for implementing such additional OTA providers can be done using the JSON format specified in zigpy wiki, see: 
+
+- https://github.com/zigpy/zigpy/wiki/OTA-Information-for-Manufacturers
 
 ## How to install and test, report bugs, or contribute to this project
 
