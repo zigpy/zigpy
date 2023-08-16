@@ -499,7 +499,9 @@ async def test_attribute_update_short_interval(tmp_path):
     assert clus._attr_cache[0x4000] == "2.0"  # verify second attribute update was saved
 
     # verify the first update attribute time was not overwritten, as it was within the short interval
-    assert (attr_update_time_first - clus._attr_last_updated[0x0004]) < timedelta(seconds=0.1)
+    assert (attr_update_time_first - clus._attr_last_updated[0x0004]) < timedelta(
+        seconds=0.1
+    )
 
     await app2.shutdown()
 
