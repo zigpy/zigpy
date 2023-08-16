@@ -25,7 +25,7 @@ import zigpy.zcl
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
-from tests.async_mock import AsyncMock, MagicMock, patch
+from tests.async_mock import AsyncMock, MagicMock, call, patch
 from tests.conftest import make_app, make_ieee
 from tests.test_backups import backup_factory  # noqa: F401
 
@@ -1071,3 +1071,17 @@ async def test_appdb_network_backups(tmp_path, backup_factory):  # noqa: F811
     assert app3.backups.backups[0] == new_backup
     assert app3.backups.backups[0] != backup
     await app3.shutdown()
+
+
+async def test_appdb_persist_coordinator_info(tmp_path):  # noqa: F811
+    db = tmp_path / "test.db"
+
+    with patch(
+        "zigpy.appdb.PersistingListener._save_attribute_cache",
+        wraps=zigpy.appdb.PersistingListener._save_attribute_cache,
+    ) as mock_save_attr_cache:
+        app = await make_app_with_db(db)
+        await app.initialize()
+        await app.shutdown()
+
+    assert mock_save_attr_cache.mock_calls == [call(app._device.endpoints[1])]

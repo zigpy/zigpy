@@ -65,6 +65,8 @@ class App(zigpy.application.ControllerApplication):
         dev = add_initialized_device(
             app=self, nwk=self.state.node_info.nwk, ieee=self.state.node_info.ieee
         )
+        dev.model = "Coordinator Model"
+        dev.manufacturer = "Coordinator Manufacturer"
 
         dev.zdo.Mgmt_NWK_Update_req = AsyncMock(
             return_value=[
