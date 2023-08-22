@@ -125,6 +125,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                     type=attr_type,
                     is_manufacturer_specific=attr_manuf_specific,
                 )
+            else:
+                attr = attr.replace(id=attr_id)
 
             cls.attributes[attr.id] = attr.replace(id=attr_id)
 
