@@ -717,11 +717,14 @@ async def test_initialize_incompatible_backup(
     app = make_app({conf.CONF_NWK_VALIDATE_SETTINGS: True})
     mock_backup_from_state.return_value.is_compatible_with.return_value = False
 
-    with pytest.raises(NetworkSettingsInconsistent):
+    with pytest.raises(NetworkSettingsInconsistent) as exc:
         await app.initialize()
 
     mock_backup_from_state.return_value.is_compatible_with.assert_called_once()
     mock_most_recent_backup.assert_called_once()
+
+    assert exc.value.old_state is mock_most_recent_backup()
+    assert exc.value.new_state is mock_backup_from_state.return_value
 
 
 async def test_relays_received_device_exists(app):
