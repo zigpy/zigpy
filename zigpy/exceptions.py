@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-import zigpy.backups
+import typing
+
+if typing.TYPE_CHECKING:
+    import zigpy.backups
 
 
 class ZigbeeException(Exception):
