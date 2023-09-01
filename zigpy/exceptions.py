@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import zigpy.backups
+
 
 class ZigbeeException(Exception):
     """Base exception class"""
@@ -43,6 +45,16 @@ class FormationFailure(RadioException):
 
 class NetworkSettingsInconsistent(ZigbeeException):
     """Loaded network settings are different from what is in the database"""
+
+    def __init__(
+        self,
+        message: str,
+        new_state: zigpy.backups.NetworkBackup,
+        old_state: zigpy.backups.NetworkBackup,
+    ) -> None:
+        super().__init__(message)
+        self.new_state = new_state
+        self.old_state = old_state
 
 
 class CorruptDatabase(ZigbeeException):
