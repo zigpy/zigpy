@@ -1221,6 +1221,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         return self.get_device(ieee=self.state.node_info.ieee)
 
     def _persist_coordinator_model_strings_in_db(self) -> None:
+        if 1 not in self._device.endpoints:
+            self._device.add_endpoint(1)
+
         cluster = self._device.endpoints[1].add_input_cluster(
             zigpy.zcl.clusters.general.Basic.cluster_id
         )
