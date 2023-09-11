@@ -365,7 +365,60 @@ class AlwaysCreateEnumType(enum.EnumMeta):
     """Enum metaclass that skips the functional creation API."""
 
     def __call__(cls, value, names=None, *values) -> type[enum.Enum]:  # type: ignore
-        return cls.__new__(cls, value)  # type: ignore
+        """Custom implementation of Enum.__new__.
+
+        From https://github.com/python/cpython/blob/v3.11.5/Lib/enum.py#L1091-L1140
+        """
+        # all enum instances are actually created during class construction
+        # without calling this method; this method is called by the metaclass'
+        # __call__ (i.e. Color(3) ), and by pickle
+        if type(value) is cls:
+            # For lookups like Color(Color.RED)
+            return value
+        # by-value search for a matching enum member
+        # see if it's in the reverse mapping (for hashable values)
+        try:
+            return cls._value2member_map_[value]
+        except KeyError:
+            # Not found, no need to do long O(n) search
+            pass
+        except TypeError:
+            # not there, now do long search -- O(n) behavior
+            for member in cls._member_map_.values():
+                if member._value_ == value:
+                    return member
+        # still not found -- try _missing_ hook
+        try:
+            exc = None
+            result = cls._missing_(value)
+        except Exception as e:
+            exc = e
+            result = None
+        try:
+            if isinstance(result, cls):
+                return result
+            elif (
+                enum.Flag is not None
+                and issubclass(cls, enum.Flag)
+                and cls._boundary_ is enum.EJECT
+                and isinstance(result, int)
+            ):
+                return result
+            else:
+                ve_exc = ValueError(f"{value!r} is not a valid {cls.__qualname__}")
+                if result is None and exc is None:
+                    raise ve_exc
+                elif exc is None:
+                    exc = TypeError(
+                        f"error in {cls.__name__}._missing_: returned {result!r} instead of None or a valid member"
+                    )
+                if not isinstance(exc, ValueError):
+                    exc.__context__ = ve_exc
+                raise exc
+        finally:
+            # ensure all variables that could hold an exception are destroyed
+            exc = None
+            ve_exc = None
 
 
 class _IntEnumMeta(AlwaysCreateEnumType):
