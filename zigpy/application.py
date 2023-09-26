@@ -1090,6 +1090,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Permit a node to join with the provided install code bytes."""
         raise NotImplementedError()  # pragma: no cover
 
+    async def permit_with_link_key(
+        self, node: t.EUI64, link_key: t.KeyData, time_s: int = 60
+    ) -> None:
+        """Permit a node to join with the provided link key."""
+        raise NotImplementedError()  # pragma: no cover
+
     @abc.abstractmethod
     async def write_network_info(
         self,
