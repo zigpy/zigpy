@@ -32,7 +32,7 @@ dependencies = [
 exclude = ["tests", "tests.*"]
 
 [tool.setuptools.package-data]
-"*" = ["appdb_schemas/schema_v*.sql"]
+"*" = ["appdb_schemas/schema_v*.sql", "py.typed"]
 
 [project.optional-dependencies]
 testing = [
