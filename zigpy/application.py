@@ -100,11 +100,26 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             return
 
         self._dblistener = await zigpy.appdb.PersistingListener.new(database_file, self)
+        await self._dblistener.load()
+        self._add_db_listeners()
+
+    def _add_db_listeners(self):
+        if self._dblistener is None:
+            return
+
         self.add_listener(self._dblistener)
         self.groups.add_listener(self._dblistener)
         self.backups.add_listener(self._dblistener)
         self.topology.add_listener(self._dblistener)
-        await self._dblistener.load()
+
+    def _remove_db_listeners(self):
+        if self._dblistener is None:
+            return
+
+        self.topology.remove_listener(self._dblistener)
+        self.backups.remove_listener(self._dblistener)
+        self.groups.remove_listener(self._dblistener)
+        self.remove_listener(self._dblistener)
 
     async def initialize(self, *, auto_form: bool = False) -> None:
         """Starts the network on a connected radio, optionally forming one with random
@@ -197,8 +212,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             await self.connect()
             await self.initialize(auto_form=auto_form)
         except Exception as e:
-            LOGGER.error("Couldn't start application", exc_info=e)
-            await self.shutdown()
+            await self.shutdown(db=False)
 
             if isinstance(e, ConnectionError) or (
                 isinstance(e, OSError) and e.errno in TRANSIENT_CONNECTION_ERRORS
@@ -217,10 +231,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         await app._load_db()
         await app.ota.initialize()
 
-        if not start_radio:
-            return app
-
-        await app.startup(auto_form=auto_form)
+        if start_radio:
+            await app.startup(auto_form=auto_form)
 
         return app
 
@@ -393,15 +405,23 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             create_new=(not fast),
         )
 
-    async def shutdown(self) -> None:
+    async def shutdown(self, *, db: bool = True) -> None:
         """Shutdown controller."""
         self.backups.stop_periodic_backups()
         self.topology.stop_periodic_scans()
 
-        if self._dblistener:
-            await self._dblistener.shutdown()
+        try:
+            await self.disconnect()
+        except Exception:
+            LOGGER.warning("Failed to disconnect from radio", exc_info=True)
 
-        await self.disconnect()
+        if db and self._dblistener:
+            self._remove_db_listeners()
+
+            try:
+                await self._dblistener.shutdown()
+            except Exception:
+                LOGGER.warning("Failed to disconnect from database", exc_info=True)
 
     def add_device(self, ieee: t.EUI64, nwk: t.NWK) -> zigpy.device.Device:
         """Creates a zigpy `Device` object with the provided IEEE and NWK addresses."""

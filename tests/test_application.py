@@ -1375,3 +1375,17 @@ async def test_move_network_to_new_channel_noop(app):
 
     assert app.state.network_info.channel == old_channel
     assert len(mock_broadcast.mock_calls) == 0
+
+
+async def test_startup_multiple_dblistener(app):
+    app._dblistener = AsyncMock()
+    app.connect = AsyncMock(side_effect=RuntimeError())
+
+    with pytest.raises(RuntimeError):
+        await app.startup()
+
+    with pytest.raises(RuntimeError):
+        await app.startup()
+
+    # The database listener will not be shut down automatically
+    assert len(app._dblistener.shutdown.mock_calls) == 0
