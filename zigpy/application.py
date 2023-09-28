@@ -222,10 +222,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         await app.startup(auto_form=auto_form)
 
-        for device in app.devices.values():
-            if not device.is_initialized:
-                LOGGER.warning("Device is partially initialized: %s", device)
-
         return app
 
     async def energy_scan(

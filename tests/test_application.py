@@ -437,24 +437,6 @@ async def test_remove_parent_devices(app, make_initialized_device):
         assert parent.zdo.request.await_count == 1
 
 
-async def test_startup_log_on_uninitialized_device(ieee, caplog):
-    class TestApp(App):
-        async def _load_db(self):
-            dev = self.add_device(ieee, 1)
-            assert not dev.is_initialized
-
-    caplog.set_level(logging.WARNING)
-
-    await TestApp.new(
-        {
-            conf.CONF_DATABASE: "/dev/null",
-            conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
-            conf.CONF_STARTUP_ENERGY_SCAN: False,
-        }
-    )
-    assert "Device is partially initialized" in caplog.text
-
-
 @patch("zigpy.device.Device.schedule_initialize", new_callable=MagicMock)
 @patch("zigpy.device.Device.schedule_group_membership_scan", new_callable=MagicMock)
 @patch("zigpy.device.Device.is_initialized", new_callable=PropertyMock)
