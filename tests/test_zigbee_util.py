@@ -52,6 +52,7 @@ def test_listenable():
     listen.remove_listener(listener)
     listen.remove_listener(listener)
     listen.remove_listener(broken_listener)
+    listen.remove_listener(context_listener)
     listen.listener_event("event", "test1")
     assert listener.event.call_count == 2
     assert context_listener.event.call_count == 1
