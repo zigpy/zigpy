@@ -389,9 +389,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             use_ieee=use_ieee,
         )
 
-    def radio_details(self, lqi, rssi) -> None:
-        self.lqi = lqi
-        self.rssi = rssi
+    def radio_details(self, lqi=None, rssi=None) -> None:
+        if lqi is not None:
+            self.lqi = lqi
+        if rssi is not None:
+            self.rssi = rssi
 
     def log(self, lvl, msg, *args, **kwargs) -> None:
         msg = "[0x%04x] " + msg

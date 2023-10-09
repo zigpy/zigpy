@@ -144,6 +144,14 @@ def test_radio_details(dev):
     assert dev.lqi == 1
     assert dev.rssi == 2
 
+    dev.radio_details(lqi=3)
+    assert dev.lqi == 3
+    assert dev.rssi == 2
+
+    dev.radio_details(rssi=4)
+    assert dev.lqi == 3
+    assert dev.rssi == 4
+
 
 def test_deserialize(dev):
     ep = dev.add_endpoint(3)
