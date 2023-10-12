@@ -155,19 +155,6 @@ non_interactive = true
 show_error_codes = true
 show_error_context = true
 error_summary = true
-disable_error_code = [
-    # Only a few notifications left:
-    "type-arg",
-    # Only a few notifications left:
-    "return-value",
-    # operator breaks in CI (zigpy.types.basic), but not locally
-    "operator",
-    "valid-type",
-    "misc",
-    "attr-defined",
-    "assignment",
-    "arg-type"
-]
 # Only report on selected files
 follow_imports = "silent"
 
