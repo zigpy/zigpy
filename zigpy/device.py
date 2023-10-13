@@ -7,6 +7,7 @@ import enum
 import logging
 import sys
 import typing
+import warnings
 
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
@@ -85,6 +86,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def update_last_seen(self) -> None:
         """Update the `last_seen` attribute to the current time and emit an event."""
+
+        warnings.warn(
+            "Calling `update_last_seen` directly is deprecated", DeprecationWarning
+        )
 
         self.last_seen = datetime.now(timezone.utc)
 
@@ -309,9 +314,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             async with asyncio_timeout(timeout):
                 return await req.result
 
-    def deserialize(self, endpoint_id, cluster_id, data):
-        return self.endpoints[endpoint_id].deserialize(cluster_id, data)
-
     def handle_message(
         self,
         profile: int,
@@ -322,38 +324,92 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         *,
         dst_addressing: AddressingMode | None = None,
     ):
-        self.update_last_seen()
+        """Deprecated compatibility function. Use `packet_received` instead."""
+
+        warnings.warn(
+            "`handle_message` is deprecated, use `packet_received`", DeprecationWarning
+        )
+
+        if dst_addressing is None:
+            dst_addressing = t.AddrMode.NWK
+
+        self.packet_received(
+            t.ZigbeePacket(
+                profile_id=profile,
+                cluster_id=cluster,
+                src_ep=src_ep,
+                dst_ep=dst_ep,
+                data=t.SerializableBytes(message),
+                dst=t.AddrModeAddress(
+                    addr_mode=dst_addressing,
+                    address={
+                        t.AddrMode.NWK: self.nwk,
+                        t.AddrMode.IEEE: self.ieee,
+                    }[dst_addressing],
+                ),
+            )
+        )
+
+    def packet_received(self, packet: t.ZigbeePacket) -> None:
+        # Set radio details that can be read from any type of packet
+        self.last_seen = packet.timestamp
+
+        if packet.lqi is not None:
+            self.lqi = packet.lqi
+
+        if packet.rssi is not None:
+            self.rssi = packet.rssi
+
+        # Filter out packets that refer to unknown endpoints or clusters
+        if packet.src_ep not in self.endpoints:
+            self.debug(
+                "Ignoring message on unknown endpoint %s (expected one of %s)",
+                packet.src_ep,
+                self.endpoints,
+            )
+            return
+
+        endpoint = self.endpoints[packet.src_ep]
+
+        if packet.src_ep != zdo.ZDO_ENDPOINT and (
+            packet.cluster_id not in endpoint.in_clusters
+            and packet.cluster_id not in endpoint.out_clusters
+        ):
+            self.debug(
+                "Ignoring message on unknown cluster %s for endpoint %s",
+                packet.cluster_id,
+                endpoint,
+            )
+            return
+
+        # Try parsing the message
+        exc = None
 
         try:
-            hdr, args = self.deserialize(src_ep, cluster, message)
-        except ValueError as e:
-            LOGGER.error(
-                "Failed to parse message (%s) on cluster %d, because %s",
-                binascii.hexlify(message),
-                cluster,
-                e,
-            )
-            return
-        except KeyError as e:
-            LOGGER.debug(
-                (
-                    "Ignoring message (%s) on cluster %d: "
-                    "unknown endpoint or cluster id: %s"
-                ),
-                binascii.hexlify(message),
-                cluster,
-                e,
+            hdr, args = endpoint.deserialize(packet.cluster_id, packet.data.serialize())
+        except Exception:
+            self.debug(
+                "Failed to parse message on endpoint %s, cluster %s: %s",
+                packet.src_ep,
+                packet.cluster_id,
+                binascii.hexlify(packet.data.serialize()),
+                exc_info=True,
             )
             return
 
+        # Resolve the future if this is a response to a request
         if hdr.tsn in self._pending and (
             hdr.direction == foundation.Direction.Client_to_Server
             if isinstance(hdr, foundation.ZCLHeader)
             else hdr.is_reply
         ):
+            future = self._pending[hdr.tsn]
+
             try:
-                self._pending[hdr.tsn].result.set_result(args)
-                return
+                if exc is not None:
+                    future.result.set_exception(exc)
+                else:
+                    future.result.set_result(args)
             except asyncio.InvalidStateError:
                 self.debug(
                     (
@@ -362,18 +418,25 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     ),
                     hdr.tsn,
                 )
-                return
 
-        self.endpoints[src_ep].handle_message(
-            profile, cluster, hdr, args, dst_addressing=dst_addressing
-        )
+            return
 
+        # Pass the request off to a listener, if one is registered
         for listener in self._application._req_listeners[self]:
             # Resolve only until the first future listener
             if listener.resolve(hdr, args) and isinstance(
                 listener, zigpy.listeners.FutureListener
             ):
                 break
+
+        # Finally, pass it off to the endpoint message handler. This will be removed.
+        endpoint.handle_message(
+            packet.profile_id,
+            packet.cluster_id,
+            hdr,
+            args,
+            dst_addressing=packet.dst.addr_mode if packet.dst is not None else None,
+        )
 
     async def reply(
         self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee=False

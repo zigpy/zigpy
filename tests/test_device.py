@@ -153,13 +153,6 @@ def test_radio_details(dev):
     assert dev.rssi == 4
 
 
-def test_deserialize(dev):
-    ep = dev.add_endpoint(3)
-    ep.deserialize = MagicMock()
-    dev.deserialize(3, 1, b"")
-    assert ep.deserialize.call_count == 1
-
-
 async def test_handle_message_no_endpoint(dev):
     dev.handle_message(99, 98, 97, 97, b"aabbcc")
 

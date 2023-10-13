@@ -1103,7 +1103,7 @@ async def test_bad_zdo_packet_received(app, device):
 
     app.packet_received(bogus_zdo_packet)
 
-    assert len(device.handle_message.mock_calls) == 1
+    assert len(device.packet_received.mock_calls) == 1
 
 
 def test_get_device_with_address_nwk(app, device):
