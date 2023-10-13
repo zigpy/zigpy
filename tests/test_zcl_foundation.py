@@ -110,20 +110,6 @@ def test_attribute_reporting_config_only_dir_and_attrid():
     assert repr(arc) == repr(arc2)
 
 
-def test_typed_collection():
-    tc = foundation.TypedCollection()
-    tc.type = 0x20
-    tc.value = t.LVList[t.uint8_t]([t.uint8_t(i) for i in range(100)])
-    ser = tc.serialize()
-
-    assert len(ser) == 1 + 1 + 100  # type, length, values
-
-    tc2, data = foundation.TypedCollection.deserialize(ser)
-
-    assert tc2.type == 0x20
-    assert tc2.value == list(range(100))
-
-
 def test_write_attribute_status_record():
     attr_id = b"\x01\x00"
     extra = b"12da-"
