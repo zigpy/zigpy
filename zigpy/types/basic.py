@@ -43,7 +43,7 @@ class Bits(list[int]):
         return bytes(serialized_bytes)
 
     @classmethod
-    def deserialize(cls, data) -> tuple[Bits, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Bits, bytes]:
         bits: list[int] = []
 
         for byte in data:
@@ -462,7 +462,7 @@ class AlwaysCreateEnumType(enum.EnumMeta):
 
 
 class _IntEnumMeta(AlwaysCreateEnumType):
-    def __call__(cls, value, names=None, *args, **kwargs):
+    def __call__(cls, value, names=None, *args, **kwargs) -> type[enum.Enum]:
         if isinstance(value, str):
             if value.startswith("0x"):
                 value = int(value, base=16)
