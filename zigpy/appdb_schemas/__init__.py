@@ -10,6 +10,7 @@ else:
 # Map each schema version to its SQL
 SCHEMAS = {}
 
-for file in importlib_resources.files(__name__).glob("schema_v*.sql"):
-    n = int(file.name.replace("schema_v", "").replace(".sql", ""), 10)
-    SCHEMAS[n] = file.read_text()
+with importlib_resources.as_file(importlib_resources.files(__name__)) as resources:
+    for file in resources.glob("schema_v*.sql"):
+        n = int(file.name.replace("schema_v", "").replace(".sql", ""), 10)
+        SCHEMAS[n] = file.read_text()

@@ -393,7 +393,7 @@ def test_ias_zone_type():
 
     zone, rest = sec.IasZone.ZoneType.deserialize(b"\x81\x81" + extra)
     assert rest == extra
-    assert zone.name.startswith("manufacturer_specific")
+    assert zone.name.startswith("undefined")
     assert zone.value == 0x8181
 
 
@@ -409,7 +409,7 @@ def test_ias_ace_audible_notification():
         b"\x81" + extra
     )
     assert rest == extra
-    assert notification_type.name.startswith("manufacturer_specific")
+    assert notification_type.name.startswith("undefined")
     assert notification_type.value == 0x81
 
 
