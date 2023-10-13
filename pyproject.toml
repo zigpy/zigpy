@@ -172,11 +172,11 @@ disable_error_code = [
 follow_imports = "silent"
 
 [[tool.mypy.overrides]]
-module = "zigpy.types.basic"
-disable_error_code = []
-
-[[tool.mypy.overrides]]
-module = "zigpy.appdb_schemas"
+module = [
+    "zigpy.appdb_schemas",
+    "zigpy.types.basic",
+    "zigpy.types.named",
+]
 disable_error_code = []
 
 [tool.coverage.run]
