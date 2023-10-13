@@ -7,7 +7,7 @@ import functools
 import itertools
 import logging
 import types
-from typing import TYPE_CHECKING, Any, Iterable, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Sequence, cast
 import warnings
 
 from zigpy import util
@@ -132,7 +132,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         # Create new definitions from the old-style definitions
         if cls.attributes and "AttributeDefs" not in cls.__dict__:
-            cls.AttributeDefs = types.new_class(
+            cls.AttributeDefs = types.new_class(  # type:ignore[misc]
                 name="AttributeDefs",
                 bases=(BaseAttributeDefs,),
             )
@@ -141,7 +141,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 setattr(cls.AttributeDefs, attr.name, attr)
 
         if cls.server_commands and "ServerCommandDefs" not in cls.__dict__:
-            cls.ServerCommandDefs = types.new_class(
+            cls.ServerCommandDefs = types.new_class(  # type:ignore[misc]
                 name="ServerCommandDefs",
                 bases=(BaseCommandDefs,),
             )
@@ -150,7 +150,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 setattr(cls.ServerCommandDefs, command.name, command)
 
         if cls.client_commands and "ClientCommandDefs" not in cls.__dict__:
-            cls.ClientCommandDefs = types.new_class(
+            cls.ClientCommandDefs = types.new_class(  # type:ignore[misc]
                 name="ClientCommandDefs",
                 bases=(BaseCommandDefs,),
             )
@@ -282,7 +282,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 self.warning("Unknown foundation command %s %s", hdr.command_id, data)
                 return hdr, data
 
-            command = foundation.GENERAL_COMMANDS[hdr.command_id]
+            command = foundation.GENERAL_COMMANDS[
+                cast(foundation.GeneralCommand, hdr.command_id)
+            ]
 
         hdr.frame_control.direction = command.direction
         response, data = command.schema.deserialize(data)
@@ -861,7 +863,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def general_command(
         self,
-        command_id: foundation.GeneralCommand | int | t.uint8_t,
+        command_id: foundation.GeneralCommand,
         *args,
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
