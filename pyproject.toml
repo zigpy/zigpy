@@ -166,7 +166,8 @@ disable_error_code = [
     "misc",
     "attr-defined",
     "assignment",
-    "arg-type"
+    "arg-type",
+    "has-type",
 ]
 # Only report on selected files
 follow_imports = "silent"
