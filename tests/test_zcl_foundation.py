@@ -801,3 +801,36 @@ def test_command_definition_backwards_compat():
     assert foundation.ZCLCommandDef("name", {}) == foundation.ZCLCommandDef(
         name="name", schema={}
     )
+
+
+def test_array():
+    data = bytes.fromhex(
+        "183c010100004841040006000d0106000206010d0206000206020d0306000206030d04060002"
+    )
+    hdr, data = foundation.ZCLHeader.deserialize(data)
+
+    command = foundation.GENERAL_COMMANDS[hdr.command_id]
+    rsp, rest = command.schema.deserialize(data)
+
+    assert rest == b""
+
+    assert rsp.status_records == [
+        foundation.ReadAttributeRecord(
+            attrid=0x0001,
+            status=foundation.Status.SUCCESS,
+            value=foundation.TypeValue(
+                type=foundation.DATA_TYPES.pytype_to_datatype_id(foundation.Array),
+                value=foundation.Array(
+                    type=foundation.DATA_TYPES.pytype_to_datatype_id(t.LVBytes),
+                    value=t.LVList[t.LVBytes, t.uint16_t](
+                        [
+                            b"\x00\r\x01\x06\x00\x02",
+                            b"\x01\r\x02\x06\x00\x02",
+                            b"\x02\r\x03\x06\x00\x02",
+                            b"\x03\r\x04\x06\x00\x02",
+                        ]
+                    ),
+                ),
+            ),
+        )
+    ]

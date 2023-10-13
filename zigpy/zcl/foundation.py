@@ -122,7 +122,7 @@ class TypedCollection(TypeValue):
     def deserialize(cls, data):
         type, data = t.uint8_t.deserialize(data)
         python_type = DATA_TYPES[type][1]
-        values, data = t.LVList[python_type].deserialize(data)
+        values, data = t.LVList[python_type, t.uint16_t].deserialize(data)
 
         return cls(type=type, value=values), data
 
