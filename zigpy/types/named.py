@@ -11,6 +11,7 @@ if typing.TYPE_CHECKING:
     from typing_extensions import Self
 
 
+@dataclasses.dataclass
 class BaseDataclassMixin:
     def replace(self, **kwargs) -> Self:
         return dataclasses.replace(self, **kwargs)
@@ -105,7 +106,7 @@ class Channels(basic.bitmap32):
     CHANNEL_26 = 0x04000000
 
     @classmethod
-    def from_channel_list(cls: Channels, channels: typing.Iterable[int]) -> Channels:
+    def from_channel_list(cls, channels: typing.Iterable[int]) -> Self:
         mask = cls.NO_CHANNELS
 
         for channel in channels:
@@ -114,14 +115,16 @@ class Channels(basic.bitmap32):
                     f"Invalid channel number {channel}. Must be between 11 and 26."
                 )
 
-            mask |= cls[f"CHANNEL_{channel}"]
+            mask |= getattr(cls, f"CHANNEL_{channel}")
 
         return mask
 
     def __iter__(self):
         cls = type(self)
 
-        channels = [c for c in range(11, 26 + 1) if self & cls[f"CHANNEL_{c}"]]
+        channels = [
+            c for c in range(11, 26 + 1) if self & getattr(self, f"CHANNEL_{c}")
+        ]
 
         if self != cls.from_channel_list(channels):
             raise ValueError(f"Channels bitmap has unexpected members: {self}")
