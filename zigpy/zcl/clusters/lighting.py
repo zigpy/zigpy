@@ -100,9 +100,9 @@ class Color(Cluster):
     DriftCompensation: Final = DriftCompensation
     Options: Final = Options
 
-    cluster_id: Final = 0x0300
-    name: Final = "Color Control"
-    ep_attribute: Final = "light_color"
+    cluster_id = 0x0300
+    name = "Color Control"
+    ep_attribute = "light_color"
 
     class AttributeDefs(BaseAttributeDefs):
         current_hue: Final = ZCLAttributeDef(id=0x0000, type=t.uint8_t, access="rp")
@@ -443,8 +443,8 @@ class Ballast(Cluster):
     BallastStatus: Final = BallastStatus
     LampAlarmMode: Final = LampAlarmMode
 
-    cluster_id: Final = 0x0301
-    ep_attribute: Final = "light_ballast"
+    cluster_id = 0x0301
+    ep_attribute = "light_ballast"
 
     class AttributeDefs(BaseAttributeDefs):
         physical_min_level: Final = ZCLAttributeDef(

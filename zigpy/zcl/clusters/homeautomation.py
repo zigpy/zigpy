@@ -13,19 +13,19 @@ from zigpy.zcl.foundation import (
 
 
 class ApplianceIdentification(Cluster):
-    cluster_id: Final = 0x0B00
-    name: Final = "Appliance Identification"
-    ep_attribute: Final = "appliance_id"
+    cluster_id = 0x0B00
+    name = "Appliance Identification"
+    ep_attribute = "appliance_id"
 
     class AttributeDefs(BaseAttributeDefs):
         basic_identification: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint56_t, access="r", mandatory=True
         )
-        company_name: Final = ZCLAttributeDef(
+        company_name = ZCLAttributeDef(
             id=0x0010, type=t.LimitedCharString(16), access="r"
         )
         company_id: Final = ZCLAttributeDef(id=0x0011, type=t.uint16_t, access="r")
-        brand_name: Final = ZCLAttributeDef(
+        brand_name = ZCLAttributeDef(
             id=0x0012, type=t.LimitedCharString(16), access="r"
         )
         brand_id: Final = ZCLAttributeDef(id=0x0013, type=t.uint16_t, access="r")
@@ -39,9 +39,7 @@ class ApplianceIdentification(Cluster):
         software_revision: Final = ZCLAttributeDef(
             id=0x0017, type=t.LimitedLVBytes(6), access="r"
         )
-        product_type_name: Final = ZCLAttributeDef(
-            id=0x0018, type=t.LVBytesSize2, access="r"
-        )
+        product_type_name = ZCLAttributeDef(id=0x0018, type=t.LVBytesSize2, access="r")
         product_type_id: Final = ZCLAttributeDef(id=0x0019, type=t.uint16_t, access="r")
         ceced_specification_version: Final = ZCLAttributeDef(
             id=0x001A, type=t.uint8_t, access="r"
@@ -51,12 +49,12 @@ class ApplianceIdentification(Cluster):
 
 
 class MeterIdentification(Cluster):
-    cluster_id: Final = 0x0B01
-    name: Final = "Meter Identification"
-    ep_attribute: Final = "meter_id"
+    cluster_id = 0x0B01
+    name = "Meter Identification"
+    ep_attribute = "meter_id"
 
     class AttributeDefs(BaseAttributeDefs):
-        company_name: Final = ZCLAttributeDef(
+        company_name = ZCLAttributeDef(
             id=0x0000, type=t.LimitedCharString(16), access="r", mandatory=True
         )
         meter_type_id: Final = ZCLAttributeDef(
@@ -65,7 +63,7 @@ class MeterIdentification(Cluster):
         data_quality_id: Final = ZCLAttributeDef(
             id=0x0004, type=t.uint16_t, access="r", mandatory=True
         )
-        customer_name: Final = ZCLAttributeDef(
+        customer_name = ZCLAttributeDef(
             id=0x0005, type=t.LimitedCharString(16), access="rw"
         )
         model: Final = ZCLAttributeDef(id=0x0006, type=t.LimitedLVBytes(16), access="r")
@@ -78,7 +76,7 @@ class MeterIdentification(Cluster):
         software_revision: Final = ZCLAttributeDef(
             id=0x000A, type=t.LimitedLVBytes(6), access="r"
         )
-        utility_name: Final = ZCLAttributeDef(
+        utility_name = ZCLAttributeDef(
             id=0x000B, type=t.LimitedCharString(16), access="r"
         )
         pod: Final = ZCLAttributeDef(
@@ -95,9 +93,9 @@ class MeterIdentification(Cluster):
 
 
 class ApplianceEventAlerts(Cluster):
-    cluster_id: Final = 0x0B02
-    name: Final = "Appliance Event Alerts"
-    ep_attribute: Final = "appliance_event"
+    cluster_id = 0x0B02
+    name = "Appliance Event Alerts"
+    ep_attribute = "appliance_event"
 
     class AttributeDefs(BaseAttributeDefs):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
@@ -113,9 +111,9 @@ class ApplianceEventAlerts(Cluster):
 
 
 class ApplianceStatistics(Cluster):
-    cluster_id: Final = 0x0B03
-    name: Final = "Appliance Statistics"
-    ep_attribute: Final = "appliance_stats"
+    cluster_id = 0x0B03
+    name = "Appliance Statistics"
+    ep_attribute = "appliance_stats"
 
     class AttributeDefs(BaseAttributeDefs):
         log_max_size: Final = ZCLAttributeDef(
@@ -169,9 +167,9 @@ class ACAlarmsMask(t.bitmap16):
 
 
 class ElectricalMeasurement(Cluster):
-    cluster_id: Final = 0x0B04
-    name: Final = "Electrical Measurement"
-    ep_attribute: Final = "electrical_measurement"
+    cluster_id = 0x0B04
+    name = "Electrical Measurement"
+    ep_attribute = "electrical_measurement"
 
     MeasurementType: Final = MeasurementType
     DCOverloadAlarmMark: Final = DCOverloadAlarmMark
@@ -543,8 +541,8 @@ class ElectricalMeasurement(Cluster):
 
 
 class Diagnostic(Cluster):
-    cluster_id: Final = 0x0B05
-    ep_attribute: Final = "diagnostic"
+    cluster_id = 0x0B05
+    ep_attribute = "diagnostic"
 
     class AttributeDefs(BaseAttributeDefs):
         # Hardware Information

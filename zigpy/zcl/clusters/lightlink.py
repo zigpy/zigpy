@@ -78,8 +78,8 @@ class EndpointInfoRecord(t.Struct):
 
 
 class LightLink(Cluster):
-    cluster_id: Final = 0x1000
-    ep_attribute: Final = "lightlink"
+    cluster_id = 0x1000
+    ep_attribute = "lightlink"
 
     class ServerCommandDefs(BaseCommandDefs):
         scan: Final = ZCLCommandDef(

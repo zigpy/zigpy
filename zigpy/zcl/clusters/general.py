@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Final
 
+from typing_extensions import Self
+
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster, foundation
@@ -31,7 +33,7 @@ class PowerSource(t.enum8):
         self.battery_backup = False
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[bytes, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         val, data = t.uint8_t.deserialize(data)
         r = cls(val & 0x7F)
         r.battery_backup = bool(val & 0x80)
@@ -214,8 +216,8 @@ class Basic(Cluster):
     GenericDeviceClass: Final = GenericDeviceClass
     GenericLightingDeviceType: Final = GenericLightingDeviceType
 
-    cluster_id: Final = 0x0000
-    ep_attribute: Final = "basic"
+    cluster_id = 0x0000
+    ep_attribute = "basic"
 
     class AttributeDefs(BaseAttributeDefs):
         # Basic Device Information
@@ -307,9 +309,9 @@ class PowerConfiguration(Cluster):
     MainsAlarmMask: Final = MainsAlarmMask
     BatterySize: Final = BatterySize
 
-    cluster_id: Final = 0x0001
-    name: Final = "Power Configuration"
-    ep_attribute: Final = "power"
+    cluster_id = 0x0001
+    name = "Power Configuration"
+    ep_attribute = "power"
 
     class AttributeDefs(BaseAttributeDefs):
         # Mains Information
@@ -502,9 +504,9 @@ class DeviceTemperature(Cluster):
 
     DeviceTempAlarmMask: Final = DeviceTempAlarmMask
 
-    cluster_id: Final = 0x0002
-    name: Final = "Device Temperature"
-    ep_attribute: Final = "device_temperature"
+    cluster_id = 0x0002
+    name = "Device Temperature"
+    ep_attribute = "device_temperature"
 
     class AttributeDefs(BaseAttributeDefs):
         # Device Temperature Information
@@ -557,8 +559,8 @@ class Identify(Cluster):
     EffectIdentifier: Final = EffectIdentifier
     EffectVariant: Final = EffectVariant
 
-    cluster_id: Final = 0x0003
-    ep_attribute: Final = "identify"
+    cluster_id = 0x0003
+    ep_attribute = "identify"
 
     class AttributeDefs(BaseAttributeDefs):
         identify_time: Final = ZCLAttributeDef(
@@ -597,8 +599,8 @@ class Groups(Cluster):
 
     NameSupport: Final = NameSupport
 
-    cluster_id: Final = 0x0004
-    ep_attribute: Final = "groups"
+    cluster_id = 0x0004
+    ep_attribute = "groups"
 
     class AttributeDefs(BaseAttributeDefs):
         name_support: Final = ZCLAttributeDef(
@@ -663,8 +665,8 @@ class Scenes(Cluster):
 
     NameSupport: Final = NameSupport
 
-    cluster_id: Final = 0x0005
-    ep_attribute: Final = "scenes"
+    cluster_id = 0x0005
+    ep_attribute = "scenes"
 
     class AttributeDefs(BaseAttributeDefs):
         # Scene Management Information
@@ -874,9 +876,9 @@ class OnOff(Cluster):
 
     DYING_LIGHT_DIM_UP_THEN_FADE_TO_OFF = 0x00
 
-    cluster_id: Final = 0x0006
-    name: Final = "On/Off"
-    ep_attribute: Final = "on_off"
+    cluster_id = 0x0006
+    name = "On/Off"
+    ep_attribute = "on_off"
 
     class AttributeDefs(BaseAttributeDefs):
         on_off: Final = ZCLAttributeDef(
@@ -934,9 +936,9 @@ class OnOffConfiguration(Cluster):
     SwitchType: Final = SwitchType
     SwitchActions: Final = SwitchActions
 
-    cluster_id: Final = 0x0007
-    name: Final = "On/Off Switch Configuration"
-    ep_attribute: Final = "on_off_config"
+    cluster_id = 0x0007
+    name = "On/Off Switch Configuration"
+    ep_attribute = "on_off_config"
 
     class AttributeDefs(BaseAttributeDefs):
         switch_type: Final = ZCLAttributeDef(
@@ -973,9 +975,9 @@ class LevelControl(Cluster):
     StepMode: Final = StepMode
     Options: Final = Options
 
-    cluster_id: Final = 0x0008
-    name: Final = "Level control"
-    ep_attribute: Final = "level"
+    cluster_id = 0x0008
+    name = "Level control"
+    ep_attribute = "level"
 
     class AttributeDefs(BaseAttributeDefs):
         current_level: Final = ZCLAttributeDef(
@@ -1079,8 +1081,8 @@ class Alarms(Cluster):
     configuring alarm functionality.
     """
 
-    cluster_id: Final = 0x0009
-    ep_attribute: Final = "alarms"
+    cluster_id = 0x0009
+    ep_attribute = "alarms"
 
     class AttributeDefs(BaseAttributeDefs):
         alarm_count: Final = ZCLAttributeDef(id=0x0000, type=t.uint16_t, access="r")
@@ -1131,8 +1133,8 @@ class Time(Cluster):
 
     TimeStatus: Final = TimeStatus
 
-    cluster_id: Final = 0x000A
-    ep_attribute: Final = "time"
+    cluster_id = 0x000A
+    ep_attribute = "time"
 
     class AttributeDefs(BaseAttributeDefs):
         time: Final = ZCLAttributeDef(
@@ -1211,8 +1213,8 @@ class RSSILocation(Cluster):
     LocationMethod: Final = LocationMethod
     NeighborInfo: Final = NeighborInfo
 
-    cluster_id: Final = 0x000B
-    ep_attribute: Final = "rssi_location"
+    cluster_id = 0x000B
+    ep_attribute = "rssi_location"
 
     class AttributeDefs(BaseAttributeDefs):
         # Location Information
@@ -1387,8 +1389,8 @@ class Reliability(t.enum8):
 class AnalogInput(Cluster):
     Reliability: Final = Reliability
 
-    cluster_id: Final = 0x000C
-    ep_attribute: Final = "analog_input"
+    cluster_id = 0x000C
+    ep_attribute = "analog_input"
 
     class AttributeDefs(BaseAttributeDefs):
         description: Final = ZCLAttributeDef(
@@ -1422,8 +1424,8 @@ class AnalogInput(Cluster):
 
 
 class AnalogOutput(Cluster):
-    cluster_id: Final = 0x000D
-    ep_attribute: Final = "analog_output"
+    cluster_id = 0x000D
+    ep_attribute = "analog_output"
 
     class AttributeDefs(BaseAttributeDefs):
         description: Final = ZCLAttributeDef(
@@ -1462,8 +1464,8 @@ class AnalogOutput(Cluster):
 
 
 class AnalogValue(Cluster):
-    cluster_id: Final = 0x000E
-    ep_attribute: Final = "analog_value"
+    cluster_id = 0x000E
+    ep_attribute = "analog_value"
 
     class AttributeDefs(BaseAttributeDefs):
         description: Final = ZCLAttributeDef(
@@ -1495,9 +1497,9 @@ class AnalogValue(Cluster):
 
 
 class BinaryInput(Cluster):
-    cluster_id: Final = 0x000F
-    name: Final = "Binary Input (Basic)"
-    ep_attribute: Final = "binary_input"
+    cluster_id = 0x000F
+    name = "Binary Input (Basic)"
+    ep_attribute = "binary_input"
 
     class AttributeDefs(BaseAttributeDefs):
         active_text: Final = ZCLAttributeDef(
@@ -1528,8 +1530,8 @@ class BinaryInput(Cluster):
 
 
 class BinaryOutput(Cluster):
-    cluster_id: Final = 0x0010
-    ep_attribute: Final = "binary_output"
+    cluster_id = 0x0010
+    ep_attribute = "binary_output"
 
     class AttributeDefs(BaseAttributeDefs):
         active_text: Final = ZCLAttributeDef(
@@ -1577,8 +1579,8 @@ class BinaryOutput(Cluster):
 
 
 class BinaryValue(Cluster):
-    cluster_id: Final = 0x0011
-    ep_attribute: Final = "binary_value"
+    cluster_id = 0x0011
+    ep_attribute = "binary_value"
 
     class AttributeDefs(BaseAttributeDefs):
         active_text: Final = ZCLAttributeDef(
@@ -1619,8 +1621,8 @@ class BinaryValue(Cluster):
 
 
 class MultistateInput(Cluster):
-    cluster_id: Final = 0x0012
-    ep_attribute: Final = "multistate_input"
+    cluster_id = 0x0012
+    ep_attribute = "multistate_input"
 
     class AttributeDefs(BaseAttributeDefs):
         state_text: Final = ZCLAttributeDef(
@@ -1652,8 +1654,8 @@ class MultistateInput(Cluster):
 
 
 class MultistateOutput(Cluster):
-    cluster_id: Final = 0x0013
-    ep_attribute: Final = "multistate_output"
+    cluster_id = 0x0013
+    ep_attribute = "multistate_output"
 
     class AttributeDefs(BaseAttributeDefs):
         state_text: Final = ZCLAttributeDef(
@@ -1688,8 +1690,8 @@ class MultistateOutput(Cluster):
 
 
 class MultistateValue(Cluster):
-    cluster_id: Final = 0x0014
-    ep_attribute: Final = "multistate_value"
+    cluster_id = 0x0014
+    ep_attribute = "multistate_value"
 
     class AttributeDefs(BaseAttributeDefs):
         state_text: Final = ZCLAttributeDef(
@@ -1742,8 +1744,8 @@ class Commissioning(Cluster):
     StartupControl: Final = StartupControl
     NetworkKeyType: Final = NetworkKeyType
 
-    cluster_id: Final = 0x0015
-    ep_attribute: Final = "commissioning"
+    cluster_id = 0x0015
+    ep_attribute = "commissioning"
 
     class AttributeDefs(BaseAttributeDefs):
         # Startup Parameters
@@ -1859,8 +1861,8 @@ class Commissioning(Cluster):
 
 
 class Partition(Cluster):
-    cluster_id: Final = 0x0016
-    ep_attribute: Final = "partition"
+    cluster_id = 0x0016
+    ep_attribute = "partition"
 
     class AttributeDefs(BaseAttributeDefs):
         maximum_incoming_transfer_size: Final = ZCLAttributeDef(
@@ -2043,8 +2045,8 @@ class Ota(Cluster):
     ImagePageCommand: Final = ImagePageCommand
     ImageBlockResponseCommand: Final = ImageBlockResponseCommand
 
-    cluster_id: Final = 0x0019
-    ep_attribute: Final = "ota"
+    cluster_id = 0x0019
+    ep_attribute = "ota"
 
     class AttributeDefs(BaseAttributeDefs):
         upgrade_server_id: Final = ZCLAttributeDef(
@@ -2364,8 +2366,8 @@ class PowerProfile(Cluster):
     PowerProfilePhase: Final = PowerProfilePhase
     PowerProfile: Final = PowerProfileType
 
-    cluster_id: Final = 0x001A
-    ep_attribute: Final = "power_profile"
+    cluster_id = 0x001A
+    ep_attribute = "power_profile"
 
     class AttributeDefs(BaseAttributeDefs):
         total_profile_num: Final = ZCLAttributeDef(
@@ -2535,8 +2537,8 @@ class PowerProfile(Cluster):
 
 
 class ApplianceControl(Cluster):
-    cluster_id: Final = 0x001B
-    ep_attribute: Final = "appliance_control"
+    cluster_id = 0x001B
+    ep_attribute = "appliance_control"
 
     class AttributeDefs(BaseAttributeDefs):
         start_time: Final = ZCLAttributeDef(
@@ -2551,9 +2553,9 @@ class ApplianceControl(Cluster):
 
 
 class PollControl(Cluster):
-    cluster_id: Final = 0x0020
-    name: Final = "Poll Control"
-    ep_attribute: Final = "poll_control"
+    cluster_id = 0x0020
+    name = "Poll Control"
+    ep_attribute = "poll_control"
 
     class AttributeDefs(BaseAttributeDefs):
         checkin_interval: Final = ZCLAttributeDef(
@@ -2601,5 +2603,5 @@ class PollControl(Cluster):
 
 
 class GreenPowerProxy(Cluster):
-    cluster_id: Final = 0x0021
-    ep_attribute: Final = "green_power"
+    cluster_id = 0x0021
+    ep_attribute = "green_power"
