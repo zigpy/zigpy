@@ -110,20 +110,6 @@ def test_attribute_reporting_config_only_dir_and_attrid():
     assert repr(arc) == repr(arc2)
 
 
-def test_typed_collection():
-    tc = foundation.TypedCollection()
-    tc.type = 0x20
-    tc.value = t.LVList[t.uint8_t]([t.uint8_t(i) for i in range(100)])
-    ser = tc.serialize()
-
-    assert len(ser) == 1 + 1 + 100  # type, length, values
-
-    tc2, data = foundation.TypedCollection.deserialize(ser)
-
-    assert tc2.type == 0x20
-    assert tc2.value == list(range(100))
-
-
 def test_write_attribute_status_record():
     attr_id = b"\x01\x00"
     extra = b"12da-"
@@ -801,3 +787,36 @@ def test_command_definition_backwards_compat():
     assert foundation.ZCLCommandDef("name", {}) == foundation.ZCLCommandDef(
         name="name", schema={}
     )
+
+
+def test_array():
+    data = bytes.fromhex(
+        "183c010100004841040006000d0106000206010d0206000206020d0306000206030d04060002"
+    )
+    hdr, data = foundation.ZCLHeader.deserialize(data)
+
+    command = foundation.GENERAL_COMMANDS[hdr.command_id]
+    rsp, rest = command.schema.deserialize(data)
+
+    assert rest == b""
+
+    assert rsp.status_records == [
+        foundation.ReadAttributeRecord(
+            attrid=0x0001,
+            status=foundation.Status.SUCCESS,
+            value=foundation.TypeValue(
+                type=foundation.DATA_TYPES.pytype_to_datatype_id(foundation.Array),
+                value=foundation.Array(
+                    type=foundation.DATA_TYPES.pytype_to_datatype_id(t.LVBytes),
+                    value=t.LVList[t.LVBytes, t.uint16_t](
+                        [
+                            b"\x00\r\x01\x06\x00\x02",
+                            b"\x01\r\x02\x06\x00\x02",
+                            b"\x02\r\x03\x06\x00\x02",
+                            b"\x03\r\x04\x06\x00\x02",
+                        ]
+                    ),
+                ),
+            ),
+        )
+    ]
