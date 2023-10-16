@@ -391,7 +391,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             error.__cause__ = exc
 
             self.debug("Failed to parse packet %r", packet, exc_info=error)
-            return
 
         # Resolve the future if this is a response to a request
         if hdr.tsn in self._pending and (
@@ -415,6 +414,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     hdr.tsn,
                 )
 
+            return
+
+        if error is not None:
             return
 
         # Pass the request off to a listener, if one is registered
