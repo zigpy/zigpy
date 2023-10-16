@@ -381,16 +381,24 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
             return
 
-        # Try parsing the message
-        error = None
+        # Parse the ZCL/ZDO header first. This should never fail.
+        data = packet.data.serialize()
+
+        if packet.dst_ep == zdo_t.ZDO_ENDPOINT:
+            hdr, _ = zdo_t.ZDOHeader.deserialize(packet.cluster_id, data)
+        else:
+            hdr, _ = foundation.ZCLHeader.deserialize(data)
 
         try:
-            hdr, args = endpoint.deserialize(packet.cluster_id, packet.data.serialize())
+            # Next, parse the ZCl/ZDO payload
+            _, args = endpoint.deserialize(packet.cluster_id, data)
         except Exception as exc:
             error = zigpy.exceptions.ParsingError()
             error.__cause__ = exc
 
             self.debug("Failed to parse packet %r", packet, exc_info=error)
+        else:
+            error = None
 
         # Resolve the future if this is a response to a request
         if hdr.tsn in self._pending and (
