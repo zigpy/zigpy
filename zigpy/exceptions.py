@@ -10,6 +10,10 @@ class ZigbeeException(Exception):
     """Base exception class"""
 
 
+class ParsingError(ZigbeeException):
+    """Failed to parse a frame"""
+
+
 class ControllerException(ZigbeeException):
     """Application controller failed in some way."""
 

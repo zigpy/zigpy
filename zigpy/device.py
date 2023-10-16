@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import binascii
 from datetime import datetime, timezone
 import enum
 import logging
@@ -383,18 +382,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return
 
         # Try parsing the message
-        exc = None
+        error = None
 
         try:
             hdr, args = endpoint.deserialize(packet.cluster_id, packet.data.serialize())
-        except Exception:
-            self.debug(
-                "Failed to parse message on endpoint %s, cluster %s: %s",
-                packet.src_ep,
-                packet.cluster_id,
-                binascii.hexlify(packet.data.serialize()),
-                exc_info=True,
-            )
+        except Exception as exc:
+            error = zigpy.exceptions.ParsingError()
+            error.__cause__ = exc
+
+            self.debug("Failed to parse packet %r", packet, exc_info=error)
             return
 
         # Resolve the future if this is a response to a request
@@ -406,8 +402,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             future = self._pending[hdr.tsn]
 
             try:
-                if exc is not None:
-                    future.result.set_exception(exc)
+                if error is not None:
+                    future.result.set_exception(error)
                 else:
                     future.result.set_result(args)
             except asyncio.InvalidStateError:
