@@ -12,6 +12,7 @@ import sys
 import time
 import typing
 from typing import Any, Coroutine, TypeVar
+import warnings
 
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
@@ -1001,6 +1002,47 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # If the quirk did not fast-initialize the device, start initialization
         if not device.initializing and not device.is_initialized:
             device.schedule_initialize()
+
+    def handle_message(
+        self,
+        sender: zigpy.device.Device,
+        profile: int,
+        cluster: int,
+        src_ep: int,
+        dst_ep: int,
+        message: bytes,
+        *,
+        dst_addressing: zigpy.typing.AddressingMode | None = None,
+    ):
+        """Deprecated compatibility function. Use `packet_received` instead."""
+
+        warnings.warn(
+            "`handle_message` is deprecated, use `packet_received`", DeprecationWarning
+        )
+
+        if dst_addressing is None:
+            dst_addressing = t.AddrMode.NWK
+
+        self.packet_received(
+            t.ZigbeePacket(
+                profile_id=profile,
+                cluster_id=cluster,
+                src_ep=src_ep,
+                dst_ep=dst_ep,
+                data=t.SerializableBytes(message),
+                src=t.AddrModeAddress(
+                    addr_mode=dst_addressing,
+                    address={
+                        t.AddrMode.NWK: sender.nwk,
+                        t.AddrMode.IEEE: sender.ieee,
+                    }[dst_addressing],
+                ),
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=self.state.node_info.nwk,
+                ),
+            )
+        )
 
     def get_device_with_address(
         self, address: t.AddrModeAddress
