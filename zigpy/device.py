@@ -370,8 +370,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         endpoint = self.endpoints[packet.src_ep]
 
-        if packet.src_ep != zdo.ZDO_ENDPOINT and (
-            packet.cluster_id not in endpoint.in_clusters
+        # Ignore packets that do not match the endpoint's clusters.
+        # TODO: this isn't actually necessary, we can parse most packets by cluster ID.
+        if (
+            packet.dst_ep != zdo.ZDO_ENDPOINT
+            and packet.cluster_id not in endpoint.in_clusters
             and packet.cluster_id not in endpoint.out_clusters
         ):
             self.debug(
@@ -384,7 +387,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         # Parse the ZCL/ZDO header first. This should never fail.
         data = packet.data.serialize()
 
-        if packet.dst_ep == zdo_t.ZDO_ENDPOINT:
+        if packet.dst_ep == zdo.ZDO_ENDPOINT:
             hdr, _ = zdo_t.ZDOHeader.deserialize(packet.cluster_id, data)
         else:
             hdr, _ = foundation.ZCLHeader.deserialize(data)

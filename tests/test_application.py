@@ -2,7 +2,7 @@ import asyncio
 import errno
 import logging
 from unittest import mock
-from unittest.mock import ANY, PropertyMock
+from unittest.mock import ANY, PropertyMock, call
 
 import pytest
 import voluptuous as vol
@@ -266,47 +266,98 @@ def test_deserialize(app, ieee):
     assert dev.deserialize.call_count == 1
 
 
-def test_handle_message(app, ieee):
+async def test_handle_message_shim(app):
     dev = MagicMock()
-    app.handle_message(dev, 260, 1, 1, 1, [])
-    assert dev.handle_message.call_count == 1
+    dev.nwk = 0x1234
+
+    app.packet_received = MagicMock(spec_set=app.packet_received)
+    app.handle_message(dev, 260, 1, 2, 3, b"data")
+
+    assert app.packet_received.mock_calls == [
+        call(
+            t.ZigbeePacket(
+                profile_id=260,
+                cluster_id=1,
+                src_ep=2,
+                dst_ep=3,
+                data=t.SerializableBytes(b"data"),
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=0x1234,
+                ),
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=0x0000,
+                ),
+            )
+        )
+    ]
 
 
 @patch("zigpy.device.Device.is_initialized", new_callable=PropertyMock)
 @patch("zigpy.quirks.handle_message_from_uninitialized_sender", new=MagicMock())
 async def test_handle_message_uninitialized_dev(is_init_mock, app, ieee):
     dev = app.add_device(ieee, 0x1234)
-    dev.handle_message = MagicMock()
+    dev.packet_received = MagicMock()
     is_init_mock.return_value = False
 
     assert not dev.initializing
 
+    def make_packet(
+        profile_id: int, cluster_id: int, src_ep: int, dst_ep: int, data: bytes
+    ) -> t.ZigbeePacket:
+        return t.ZigbeePacket(
+            profile_id=profile_id,
+            cluster_id=cluster_id,
+            src_ep=src_ep,
+            dst_ep=dst_ep,
+            data=t.SerializableBytes(data),
+            src=t.AddrModeAddress(
+                addr_mode=t.AddrMode.NWK,
+                address=dev.nwk,
+            ),
+            dst=t.AddrModeAddress(
+                addr_mode=t.AddrMode.NWK,
+                address=0x0000,
+            ),
+        )
+
     # Power Configuration cluster not allowed, no endpoints
-    app.handle_message(dev, 260, cluster=0x0001, src_ep=1, dst_ep=1, message=b"")
-    assert dev.handle_message.call_count == 0
+    app.packet_received(
+        make_packet(profile_id=260, cluster_id=0x0001, src_ep=1, dst_ep=1, data=b"test")
+    )
+    assert dev.packet_received.call_count == 0
     assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 1
 
     # Device should be completing initialization
     assert dev.initializing
 
     # ZDO is allowed
-    app.handle_message(dev, 260, cluster=0x0000, src_ep=0, dst_ep=0, message=b"")
-    assert dev.handle_message.call_count == 1
+    app.packet_received(
+        make_packet(profile_id=260, cluster_id=0x0000, src_ep=0, dst_ep=0, data=b"test")
+    )
+    assert dev.packet_received.call_count == 1
 
     # Endpoint is uninitialized but Basic attribute read responses still work
     ep = dev.add_endpoint(1)
-    app.handle_message(dev, 260, cluster=0x0000, src_ep=1, dst_ep=1, message=b"")
-    assert dev.handle_message.call_count == 2
+    app.packet_received(
+        make_packet(profile_id=260, cluster_id=0x0000, src_ep=1, dst_ep=1, data=b"test")
+    )
+    assert dev.packet_received.call_count == 2
 
     # Others still do not
-    app.handle_message(dev, 260, cluster=0x0001, src_ep=1, dst_ep=1, message=b"")
-    assert dev.handle_message.call_count == 2
+    app.packet_received(
+        make_packet(profile_id=260, cluster_id=0x0001, src_ep=1, dst_ep=1, data=b"test")
+    )
+    assert dev.packet_received.call_count == 2
     assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 2
 
     # They work after the endpoint is initialized
     ep.status = zigpy.endpoint.Status.ZDO_INIT
-    app.handle_message(dev, 260, cluster=0x0001, src_ep=1, dst_ep=1, message=b"")
-    assert dev.handle_message.call_count == 3
+    app.packet_received(
+        make_packet(profile_id=260, cluster_id=0x0001, src_ep=1, dst_ep=1, data=b"test")
+    )
+    assert dev.packet_received.call_count == 3
     assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 2
 
 

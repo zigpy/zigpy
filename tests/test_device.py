@@ -153,25 +153,6 @@ def test_radio_details(dev):
     assert dev.rssi == 4
 
 
-async def test_handle_message_no_endpoint(dev):
-    dev.handle_message(99, 98, 97, 97, b"aabbcc")
-
-
-async def test_handle_message(dev):
-    ep = dev.add_endpoint(3)
-    hdr = MagicMock()
-    hdr.tsn = int_sentinel.tsn
-    hdr.direction = sentinel.direction
-    dev.deserialize = MagicMock(return_value=[hdr, sentinel.args])
-    ep.handle_message = MagicMock()
-
-    assert dev.last_seen is None
-    dev.handle_message(99, 98, 3, 3, b"abcd")
-    assert dev.last_seen is not None
-
-    assert ep.handle_message.call_count == 1
-
-
 async def test_handle_message_read_report_conf(dev):
     ep = dev.add_endpoint(3)
     ep.add_input_cluster(0x702)
