@@ -349,6 +349,14 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
         )
 
+    def deserialize(self, endpoint_id, cluster_id, data):
+        """Deprecated compatibility function."""
+        warnings.warn(
+            "`deserialize` is deprecated, avoid rewriting packet structures this way",
+            DeprecationWarning,
+        )
+        return self.endpoints[endpoint_id].deserialize(cluster_id, data)
+
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         # Set radio details that can be read from any type of packet
         self.last_seen = packet.timestamp
@@ -393,9 +401,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             hdr, _ = foundation.ZCLHeader.deserialize(data)
 
         try:
-            # Next, parse the ZCL/ZDO payload
-            # FIXME: ZCL deserialization mutates the header!
-            hdr, args = endpoint.deserialize(packet.cluster_id, data)
+            if type(self).deserialize is not Device.deserialize:
+                # XXX: support for custom deserialization will be removed
+                hdr, args = self.deserialize(packet.src_ep, packet.cluster_id, data)
+            else:
+                # Next, parse the ZCL/ZDO payload
+                # FIXME: ZCL deserialization mutates the header!
+                hdr, args = endpoint.deserialize(packet.cluster_id, data)
         except Exception as exc:
             error = zigpy.exceptions.ParsingError()
             error.__cause__ = exc
