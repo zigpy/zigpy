@@ -393,8 +393,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             hdr, _ = foundation.ZCLHeader.deserialize(data)
 
         try:
-            # Next, parse the ZCl/ZDO payload
-            _, args = endpoint.deserialize(packet.cluster_id, data)
+            # Next, parse the ZCL/ZDO payload
+            # FIXME: ZCL deserialization mutates the header!
+            hdr, args = endpoint.deserialize(packet.cluster_id, data)
         except Exception as exc:
             error = zigpy.exceptions.ParsingError()
             error.__cause__ = exc
