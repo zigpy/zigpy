@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from datetime import datetime, timezone
 import enum
 import typing
 
@@ -565,6 +566,10 @@ class ZigbeePacket(BaseDataclassMixin):
     The radio library is expected to fill this object in with all received data and pass
     it to zigpy for every type of packet.
     """
+
+    timestamp: datetime = dataclasses.field(
+        compare=False, default_factory=lambda: datetime.now(timezone.utc)
+    )
 
     # Set to `None` when the packet is outgoing
     src: AddrModeAddress | None = dataclasses.field(default=None)

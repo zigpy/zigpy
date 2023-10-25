@@ -10,6 +10,7 @@ import zigpy.exceptions
 from zigpy.profiles import zha
 import zigpy.state
 import zigpy.types as t
+from zigpy.zcl.clusters.general import Basic
 import zigpy.zcl.foundation as foundation
 from zigpy.zdo import types as zdo_t
 
@@ -35,7 +36,7 @@ async def test_initialize(monkeypatch, dev):
 
     async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
-        self.add_input_cluster(0x0001)  # Basic
+        self.add_input_cluster(Basic.cluster_id)
 
     async def mock_ep_get_model_info(self):
         if self.endpoint_id == 1:
@@ -153,32 +154,6 @@ def test_radio_details(dev):
     assert dev.rssi == 4
 
 
-def test_deserialize(dev):
-    ep = dev.add_endpoint(3)
-    ep.deserialize = MagicMock()
-    dev.deserialize(3, 1, b"")
-    assert ep.deserialize.call_count == 1
-
-
-async def test_handle_message_no_endpoint(dev):
-    dev.handle_message(99, 98, 97, 97, b"aabbcc")
-
-
-async def test_handle_message(dev):
-    ep = dev.add_endpoint(3)
-    hdr = MagicMock()
-    hdr.tsn = int_sentinel.tsn
-    hdr.direction = sentinel.direction
-    dev.deserialize = MagicMock(return_value=[hdr, sentinel.args])
-    ep.handle_message = MagicMock()
-
-    assert dev.last_seen is None
-    dev.handle_message(99, 98, 3, 3, b"abcd")
-    assert dev.last_seen is not None
-
-    assert ep.handle_message.call_count == 1
-
-
 async def test_handle_message_read_report_conf(dev):
     ep = dev.add_endpoint(3)
     ep.add_input_cluster(0x702)
@@ -249,46 +224,6 @@ async def test_handle_message_read_report_conf(dev):
     assert cfg_unsup4.status == zigpy.zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE
     assert cfg_sup2.status == zigpy.zcl.foundation.Status.SUCCESS
     assert cfg_sup2.serialize() == cfg_sup1.serialize()
-
-
-async def test_handle_message_reply(dev):
-    ep = dev.add_endpoint(3)
-    ep.handle_message = MagicMock()
-    tsn = int_sentinel.tsn
-    req_mock = MagicMock()
-    dev._pending[tsn] = req_mock
-    hdr_1 = MagicMock()
-    hdr_1.tsn = tsn
-    hdr_1.command_id = sentinel.command_id
-    hdr_1.direction = foundation.Direction.Client_to_Server
-    hdr_2 = MagicMock()
-    hdr_2.tsn = sentinel.another_tsn
-    hdr_2.command_id = sentinel.command_id
-    hdr_2.direction = foundation.Direction.Client_to_Server
-    dev.deserialize = MagicMock(
-        side_effect=(
-            (hdr_1, sentinel.args),
-            (hdr_2, sentinel.args),
-            (hdr_1, sentinel.args),
-        )
-    )
-    dev.handle_message(99, 98, 3, 3, b"abcd")
-    assert ep.handle_message.call_count == 0
-    assert req_mock.result.set_result.call_count == 1
-    assert req_mock.result.set_result.call_args[0][0] is sentinel.args
-
-    req_mock.reset_mock()
-    dev.handle_message(99, 98, 3, 3, b"abcd")
-    assert ep.handle_message.call_count == 1
-    assert ep.handle_message.call_args[0][-1] is sentinel.args
-    assert req_mock.result.set_result.call_count == 0
-
-    req_mock.reset_mock()
-    req_mock.result.set_result.side_effect = asyncio.InvalidStateError
-    ep.handle_message.reset_mock()
-    dev.handle_message(99, 98, 3, 3, b"abcd")
-    assert ep.handle_message.call_count == 0
-    assert req_mock.result.set_result.call_count == 1
 
 
 async def test_handle_message_deserialize_error(dev):
@@ -461,3 +396,119 @@ def test_device_last_seen(dev, monkeypatch):
     dev.listener_event.assert_called_once_with("device_last_seen_updated", ANY)
     event_time = dev.listener_event.mock_calls[0].args[1]
     assert (event_time - datetime.now(timezone.utc)).total_seconds() < 0.1
+
+
+async def test_ignore_unknown_endpoint(dev, caplog):
+    """Test that unknown endpoints are ignored."""
+    dev.add_endpoint(1)
+
+    with caplog.at_level(logging.DEBUG):
+        dev.packet_received(
+            t.ZigbeePacket(
+                profile_id=260,
+                cluster_id=1,
+                src_ep=2,
+                dst_ep=3,
+                data=t.SerializableBytes(b"data"),
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=dev.nwk,
+                ),
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=0x0000,
+                ),
+            )
+        )
+
+    assert "Ignoring message on unknown endpoint" in caplog.text
+
+
+async def test_deserialize_backwards_compat(dev):
+    """Test that deserialization uses the method if it is overloaded."""
+    packet = t.ZigbeePacket(
+        profile_id=260,
+        cluster_id=Basic.cluster_id,
+        src_ep=1,
+        dst_ep=1,
+        data=t.SerializableBytes(
+            b"\x18\x56\x09\x00\x00\x00\x00\x25\x1e\x00\x84\x03\x01\x02\x03\x04\x05\x06"
+        ),
+        src=t.AddrModeAddress(
+            addr_mode=t.AddrMode.NWK,
+            address=dev.nwk,
+        ),
+        dst=t.AddrModeAddress(
+            addr_mode=t.AddrMode.NWK,
+            address=0x0000,
+        ),
+    )
+
+    ep = dev.add_endpoint(1)
+    ep.add_input_cluster(Basic.cluster_id)
+
+    dev.packet_received(packet)
+
+    # Replace the method
+    dev.deserialize = MagicMock(side_effect=dev.deserialize)
+    dev.packet_received(packet)
+
+    assert dev.deserialize.call_count == 1
+
+
+async def test_request_exception_propagation(dev, event_loop):
+    """Test that exceptions are propagated to the caller."""
+    tsn = 0x12
+
+    ep = dev.add_endpoint(1)
+    ep.add_input_cluster(Basic.cluster_id)
+    ep.deserialize = MagicMock(side_effect=RuntimeError())
+
+    dev.application.get_sequence = MagicMock(return_value=tsn)
+
+    event_loop.call_soon(
+        dev.packet_received,
+        t.ZigbeePacket(
+            profile_id=260,
+            cluster_id=Basic.cluster_id,
+            src_ep=1,
+            dst_ep=1,
+            data=t.SerializableBytes(
+                foundation.ZCLHeader(
+                    frame_control=foundation.FrameControl(
+                        frame_type=foundation.FrameType.CLUSTER_COMMAND,
+                        is_manufacturer_specific=False,
+                        direction=foundation.Direction.Client_to_Server,
+                        disable_default_response=True,
+                        reserved=0,
+                    ),
+                    tsn=tsn,
+                    command_id=foundation.GeneralCommand.Default_Response,
+                    manufacturer=None,
+                ).serialize()
+                + (
+                    foundation.GENERAL_COMMANDS[
+                        foundation.GeneralCommand.Default_Response
+                    ]
+                    .schema(
+                        command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+                        status=foundation.Status.SUCCESS,
+                    )
+                    .serialize()
+                )
+            ),
+            src=t.AddrModeAddress(
+                addr_mode=t.AddrMode.NWK,
+                address=dev.nwk,
+            ),
+            dst=t.AddrModeAddress(
+                addr_mode=t.AddrMode.NWK,
+                address=0x0000,
+            ),
+        ),
+    )
+
+    with pytest.raises(zigpy.exceptions.ParsingError) as exc:
+        await ep.basic.reset_fact_default()
+
+    assert type(exc.value.__cause__) is RuntimeError
