@@ -401,7 +401,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             hdr, _ = foundation.ZCLHeader.deserialize(data)
 
         try:
-            if type(self).deserialize is not Device.deserialize:
+            if (
+                type(self).deserialize is not Device.deserialize
+                or getattr(self.deserialize, "__func__", None) is not Device.deserialize
+            ):
                 # XXX: support for custom deserialization will be removed
                 hdr, args = self.deserialize(packet.src_ep, packet.cluster_id, data)
             else:
