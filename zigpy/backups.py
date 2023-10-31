@@ -40,7 +40,9 @@ class NetworkBackup(t.BaseDataclassMixin):
         """
 
         return (
-            self.node_info == backup.node_info
+            self.node_info.nwk == backup.node_info.nwk
+            and self.node_info.logical_type == backup.node_info.logical_type
+            and self.node_info.ieee == backup.node_info.ieee
             and self.network_info.extended_pan_id == backup.network_info.extended_pan_id
             and self.network_info.pan_id == backup.network_info.pan_id
             and self.network_info.nwk_update_id == backup.network_info.nwk_update_id
