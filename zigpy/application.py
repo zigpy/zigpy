@@ -614,6 +614,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """
         raise NotImplementedError()  # pragma: no cover
 
+    def connection_lost(self, exc: Exception) -> None:
+        """Connection lost callback."""
+
+        LOGGER.debug("Connection to the radio has been lost: %r", exc)
+        self.listener_event("connection_lost", exc)
+
     @abc.abstractmethod
     async def disconnect(self):
         """Disconnects from the radio hardware and shuts down the network."""
