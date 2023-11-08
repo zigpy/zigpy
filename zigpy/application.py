@@ -41,6 +41,7 @@ import zigpy.zdo
 import zigpy.zdo.types as zdo_types
 
 DEFAULT_ENDPOINT_ID = 1
+GREENPOWER_ENDPOINT_ID = 242
 LOGGER = logging.getLogger(__name__)
 
 TRANSIENT_CONNECTION_ERRORS = {
@@ -1275,6 +1276,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def get_endpoint_id(self, cluster_id: int, is_server_cluster: bool = False) -> int:
         """Returns coordinator endpoint id for specified cluster id."""
+        if(cluster_id == zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id):
+            return GREENPOWER_ENDPOINT_ID
         return DEFAULT_ENDPOINT_ID
 
     def get_dst_address(self, cluster: zigpy.zcl.Cluster) -> zdo_types.MultiAddress:
