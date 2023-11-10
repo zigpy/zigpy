@@ -26,6 +26,7 @@ import zigpy.const as const
 import zigpy.device
 import zigpy.endpoint
 import zigpy.exceptions
+import zigpy.greenpower
 import zigpy.group
 import zigpy.listeners
 import zigpy.ota
@@ -64,6 +65,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def __init__(self, config: dict) -> None:
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
         self.state: zigpy.state.State = zigpy.state.State()
+        self._greenpower = zigpy.greenpower.GreenPowerController(self)
         self._listeners = {}
         self._config = self.SCHEMA(config)
         self._dblistener = None
@@ -223,6 +225,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         try:
             await self.connect()
             await self.initialize(auto_form=auto_form)
+            await self._greenpower.initialize()
         except Exception as e:
             await self.shutdown(db=False)
 
@@ -736,12 +739,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         await self.add_endpoint(
             zdo_types.SimpleDescriptor(
-                endpoint=242,
+                endpoint=GREENPOWER_ENDPOINT_ID,
                 profile=zigpy.profiles.zgp.PROFILE_ID,
                 device_type=zigpy.profiles.zgp.DeviceType.TARGET,
                 device_version=0b0000,
-                input_clusters=[zigpy.zcl.clusters.greenpower.GreenPowerTarget.cluster_id],
-                output_clusters=[zigpy.zcl.clusters.greenpower.GreenPowerTarget.cluster_id],
+                input_clusters=[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id],
+                output_clusters=[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id],
             )
         )
 

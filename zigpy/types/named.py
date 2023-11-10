@@ -160,6 +160,10 @@ class NWK(basic.uint16_t, repr="hex"):
         return cls.deserialize(bytes.fromhex(data)[::-1])[0]
 
 
+class GreenPowerDeviceID(basic.uint32_t, repr="hex"):
+    pass
+
+
 class PanId(NWK):
     pass
 
