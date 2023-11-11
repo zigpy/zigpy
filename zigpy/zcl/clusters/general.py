@@ -2618,6 +2618,14 @@ class GPSecurityKeyType(t.enum3):
     DerivedIndividual = 0b111
 
 
+# Table 29
+class GPCommunicationMode(t.enum2):
+    Unicast = 0b00
+    GroupcastForwardToDGroup = 0b01
+    GroupcastForwardToCommGroup = 0b10
+    UnicastLightweight = 0b11
+
+
 class GreenPowerProxy(Cluster):
     cluster_id: Final = 0x0021
     name: Final = "Green Power"
@@ -2731,6 +2739,19 @@ class GreenPowerProxy(Cluster):
                 "options": t.bitmap8,
                 "window?": t.uint16_t,
                 "channel?": t.uint8_t
+            },
+            direction=True
+        )
+
+        response: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
+                "options": t.bitmap8,
+                "tempMasterShortAddr": t.uint16_t,
+                "tempMasterTxChannel": t.uint8_t,
+                "gpdId": t.GreenPowerDeviceID,
+                "gpdCommandId": t.uint8_t,
+                "gpdCommandPayload": t.LongOctetString,
             },
             direction=True
         )
