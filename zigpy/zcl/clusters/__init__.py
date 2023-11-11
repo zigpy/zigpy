@@ -24,7 +24,6 @@ CLUSTERS_BY_NAME: dict[str, Cluster] = {}
 for cls in (
     closures,
     general,
-    greenpower,
     homeautomation,
     hvac,
     lighting,
