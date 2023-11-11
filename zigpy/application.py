@@ -1242,6 +1242,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     dev = self.get_device(ieee=node)
                     r = await dev.zdo.permit(time_s)
                     LOGGER.debug("Sent 'mgmt_permit_joining_req' to %s: %s", node, r)
+                    await self._greenpower.permit(time_s, dev)
                 except KeyError:
                     LOGGER.warning("Device '%s' not found", node)
                 except zigpy.exceptions.DeliveryError as ex:
@@ -1260,6 +1261,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
         )
         await self.permit_ncp(time_s)
+        await self._greenpower.permit(time_s)
 
     def get_sequence(self) -> t.uint8_t:
         self._send_sequence = (self._send_sequence + 1) % 256
