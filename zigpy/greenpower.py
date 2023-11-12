@@ -72,7 +72,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
     @_controller_state.setter
     def _controller_state(self, value):
         if self.__controller_state != value:
-            LOGGER.info(
+            LOGGER.debug(
                 "Green power controller transition states '%s' to '%s'", 
                 str(self.__controller_state), 
                 str(value))
@@ -80,19 +80,18 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
 
     async def initialize(self):
         # register callbacks
+        # self._application._callback_for_response()
         self._controller_state = ControllerState.Operational
         LOGGER.info("Green Power Controller initialized!")
 
     async def permit(self, time_s: int = 60, device: zigpy.device.Device = None):
         assert 0 <= time_s <= 254
 
-        # This can happen on startup
-        if self._controller_state == ControllerState.Uninitialized:
-            return
-
         if time_s == 0:
             await self._stop_permit()
             return
+
+        assert self._controller_state != ControllerState.Uninitialized
 
         if self._controller_state == ControllerState.Operational:
             if device is not None:
@@ -114,19 +113,25 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             else:
                 await self._send_commissioning_broadcast_command(time_s)
                 self._controller_state = ControllerState.Commissioning
-                self._commissioning_mode = CommissioningMode.ProxyUnicast
+                self._commissioning_mode = CommissioningMode.ProxyBroadcast
         else:
-            LOGGER.warn(
-                "GreenPowerController not valid to start commissioning, current state: %d",
-                self._controller_state
+            LOGGER.debug(
+                "GreenPowerController not valid to start commissioning, current state: %s",
+                str(self._controller_state)
             )
 
     async def _stop_permit(self):
-        assert self._controller_state != ControllerState.Uninitialized
+        # this may happen if the application experiences an unexpected
+        # shutdown before we're initialized, or during startup when the NCP
+        # state is being ensured. more common paths are asserted, not tested.
+        if self._controller_state == ControllerState.Uninitialized:
+            LOGGER.debug("GreenPowerController ignoring stop permit request on uninitialized state")
+            return
+        
         if self._controller_state != ControllerState.Commissioning:
-            LOGGER.warn(
-                "GreenPowerController not valid to stop commissioning, current state: %d",
-                self._controller_state
+            LOGGER.debug(
+                "GreenPowerController not valid to stop commissioning, current state: %s",
+                str(self._controller_state)
             )
             return
         
@@ -158,7 +163,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         command: zigpy.foundation.ZCLCommandDef,
         kwargs: dict = {},
         address: t.BroadcastAddress = BroadcastAddress.RX_ON_WHEN_IDLE,
-        dst_ep: t.uint16_t = zigpy.application.GREENPOWER_ENDPOINT_ID,
+        dst_ep: t.uint16_t = zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID,
         cluster_id: t.uint16_t = GreenPowerProxy.cluster_id,
         profile_id: t.uint16_t = zigpy.profiles.zgp.PROFILE_ID,
         radius=30,
@@ -183,7 +188,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 src=t.AddrModeAddress(
                     addr_mode=t.AddrMode.NWK, address=self._application.state.node_info.nwk
                 ),
-                src_ep=self.get_endpoint_id(cluster_id),
+                src_ep=zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID,
                 dst=t.AddrModeAddress(addr_mode=t.AddrMode.Broadcast, address=address),
                 dst_ep=dst_ep,
                 tsn=tsn,

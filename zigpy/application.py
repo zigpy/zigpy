@@ -42,7 +42,6 @@ import zigpy.zdo
 import zigpy.zdo.types as zdo_types
 
 DEFAULT_ENDPOINT_ID = 1
-GREENPOWER_ENDPOINT_ID = 242
 LOGGER = logging.getLogger(__name__)
 
 TRANSIENT_CONNECTION_ERRORS = {
@@ -423,7 +422,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Shutdown controller."""
         if self._watchdog_task is not None:
             self._watchdog_task.cancel()
-
+        # always ensure we let the network know we're no longer servicing ZGP requests
+        await self._greenpower._stop_permit()
         self.backups.stop_periodic_backups()
         self.topology.stop_periodic_scans()
 
@@ -739,7 +739,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         await self.add_endpoint(
             zdo_types.SimpleDescriptor(
-                endpoint=GREENPOWER_ENDPOINT_ID,
+                endpoint=zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID,
                 profile=zigpy.profiles.zgp.PROFILE_ID,
                 device_type=zigpy.profiles.zgp.DeviceType.TARGET,
                 device_version=0b0000,
@@ -1293,7 +1293,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def get_endpoint_id(self, cluster_id: int, is_server_cluster: bool = False) -> int:
         """Returns coordinator endpoint id for specified cluster id."""
         if(cluster_id == zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id):
-            return GREENPOWER_ENDPOINT_ID
+            return zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID
         return DEFAULT_ENDPOINT_ID
 
     def get_dst_address(self, cluster: zigpy.zcl.Cluster) -> zdo_types.MultiAddress:

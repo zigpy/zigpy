@@ -4,6 +4,8 @@ import zigpy.types as t
 
 PROFILE_ID = 41440
 
+GREENPOWER_ENDPOINT_ID = 242
+
 # Table 51
 class GPDeviceType(t.enum16):
     SWITCH_SIMPLE_ONE_STATE = 0x00
