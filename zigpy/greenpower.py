@@ -21,8 +21,14 @@ import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
 
+from zigpy.zcl import Cluster, foundation
+from zigpy.types.named import BroadcastAddress
+from zigpy.zcl.clusters.general import GreenPowerProxy
+
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
+
+LOGGER = logging.getLogger(__name__)
 
 # Table 27
 class SinkTableEntry(t.Struct):
@@ -51,42 +57,44 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
     """Controller that tracks the current GPS state"""
     def __init__(self, application: ControllerApplication):
         self._application: ControllerApplication = application
-        self._controllerState: ControllerState = ControllerState.Uninitialized
-        self._commissioningMode: CommissioningMode = CommissioningMode.NotCommissioning
-        self._proxyUnicastTarget: zigpy.device.Device = None
+        self.__controller_state: ControllerState = ControllerState.Uninitialized
+        self._commissioning_mode: CommissioningMode = CommissioningMode.NotCommissioning
+        self._proxy_unicast_target: zigpy.device.Device = None
 
     @property
-    def _app_device(self) -> zigpy.device.Device:
-        return self._application._device
+    def _gp_endpoint_id(self):
+        return zigpy.application.GREENPOWER_ENDPOINT_ID
 
     @property 
-    def _gp_endpoint(self) -> zigpy.endpoint.Endpoint:
-        return self._app_device.endpoints[self._application.get_endpoint_id(zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id)]
+    def _controller_state(self):
+        return self.__controller_state
 
-    @property 
-    def _gp_in_cluster(self) -> zigpy.zcl.Cluster:
-        return self._gp_endpoint.in_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]
-    
-    @property
-    def _gp_out_cluster(self) -> zigpy.zcl.Cluster:
-        return self._gp_endpoint.out_clusters[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id]
+    @_controller_state.setter
+    def _controller_state(self, value):
+        if self.__controller_state != value:
+            LOGGER.info(
+                "Green power controller transition states '%s' to '%s'", 
+                str(self.__controller_state), 
+                str(value))
+            self.__controller_state = value
 
     async def initialize(self):
-        self._gp_in_cluster.add_context_listener("cluster_command", self)
-        self._controllerState = ControllerState.Operational
-    
-    async def cluster_command(self, cluster: zigpy.zcl.Cluster, tsn: t.uint8_t, command_id: t.uint8_t, args: list):
-        self.info("GreenPowerController cluster_command callback received!")
-        
+        # register callbacks
+        self._controller_state = ControllerState.Operational
+        LOGGER.info("Green Power Controller initialized!")
+
     async def permit(self, time_s: int = 60, device: zigpy.device.Device = None):
-        assert self._controllerState != ControllerState.Uninitialized
         assert 0 <= time_s <= 254
+
+        # This can happen on startup
+        if self._controller_state == ControllerState.Uninitialized:
+            return
 
         if time_s == 0:
             await self._stop_permit()
             return
 
-        if self._controllerState == ControllerState.Operational:
+        if self._controller_state == ControllerState.Operational:
             if device is not None:
                 # No GP endpoint nothing doing sorry
                 if not device.endpoints[zigpy.application.GREENPOWER_ENDPOINT_ID]:
@@ -100,60 +108,91 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                     options = 0b00001011,
                     window = time_s,
                 )
-                self._controllerState = ControllerState.Commissioning
-                self._commissioningMode = CommissioningMode.ProxyUnicast
-                self._proxyUnicastTarget = device
+                self._controller_state = ControllerState.Commissioning
+                self._commissioning_mode = CommissioningMode.ProxyUnicast
+                self._proxy_unicast_target = device
             else:
                 await self._send_commissioning_broadcast_command(time_s)
-                self._controllerState = ControllerState.Commissioning
-                self._commissioningMode = CommissioningMode.ProxyUnicast
+                self._controller_state = ControllerState.Commissioning
+                self._commissioning_mode = CommissioningMode.ProxyUnicast
         else:
-            self.warn(
-                "GreenPowerController not valid to start unicast commissioning, current state: %d",
-                self._controllerState
+            LOGGER.warn(
+                "GreenPowerController not valid to start commissioning, current state: %d",
+                self._controller_state
             )
 
     async def _stop_permit(self):
-        assert self._controllerState != ControllerState.Uninitialized
-        if self._controllerState != ControllerState.Commissioning:
-            self.warn(
+        assert self._controller_state != ControllerState.Uninitialized
+        if self._controller_state != ControllerState.Commissioning:
+            LOGGER.warn(
                 "GreenPowerController not valid to stop commissioning, current state: %d",
-                self._controllerState
+                self._controller_state
             )
             return
         
-        if self._commissioningMode == CommissioningMode.ProxyBroadcast:
+        if self._commissioning_mode == CommissioningMode.ProxyBroadcast:
             await self._send_commissioning_broadcast_command(0)
-        elif self._commissioningMode == CommissioningMode.ProxyUnicast:
-            await self._proxyUnicastTarget.endpoints[zigpy.application.GREENPOWER_ENDPOINT_ID].green_power.proxy_commissioning_mode(
+        elif self._commissioning_mode == CommissioningMode.ProxyUnicast:
+            await self._proxy_unicast_target.endpoints[zigpy.application.GREENPOWER_ENDPOINT_ID].green_power.proxy_commissioning_mode(
                 options=0b00000000,
             )
         
-        self._controllerState = ControllerState.Operational
-        self._commissioningMode = CommissioningMode.NotCommissioning
-        self._proxyUnicastTarget = None
+        self._controller_state = ControllerState.Operational
+        self._commissioning_mode = CommissioningMode.NotCommissioning
+        self._proxy_unicast_target = None
 
     async def _send_commissioning_broadcast_command(self, time_s: int):
-        assert self._controllerState != ControllerState.Uninitialized
-        assert 0 <= time_s <= 254
-
-        tsn = self._application.get_sequence()
-        hdr = zigpy.zcl.foundation.ZCLHeader.cluster(tsn, 2)  # commissioning
-        hdr.frame_control.disable_default_response = True
-        data = None
-        if time_s == 0:
-            data = hdr.serialize() + t.serialize((0x00), (t.bitmap8))
+        named_arguments = None
+        if time_s > 0:
+            named_arguments = {
+                "options": 0b00001011,
+                "window": time_s
+            }
         else:
-            data = hdr.serialize() + t.serialize((0b00001011, time_s), (t.bitmap8, t.uint16_t))
-        await self._application.broadcast(
-            profile=zigpy.profiles.zgp.PROFILE_ID,
-            cluster=zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id,
-            src_ep=zigpy.application.GREENPOWER_ENDPOINT_ID,
-            dst_ep=zigpy.application.GREENPOWER_ENDPOINT_ID,
-            grpid=None,
-            radius=30,
-            sequence=tsn,
-            data=data,
+            named_arguments = {"options": 0x00}
+
+        await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode, named_arguments)
+
+    async def _zcl_broadcast(
+        self,
+        command: zigpy.foundation.ZCLCommandDef,
+        kwargs: dict = {},
+        address: t.BroadcastAddress = BroadcastAddress.RX_ON_WHEN_IDLE,
+        dst_ep: t.uint16_t = zigpy.application.GREENPOWER_ENDPOINT_ID,
+        cluster_id: t.uint16_t = GreenPowerProxy.cluster_id,
+        profile_id: t.uint16_t = zigpy.profiles.zgp.PROFILE_ID,
+        radius=30,
+    ):
+        tsn = self._application.get_sequence()
+
+        hdr, request = Cluster._create_request(
+            self=None,
+            general=False,
+            command_id=command.id,
+            schema=command.schema,
+            tsn=tsn,
+            disable_default_response=False,
+            direction=command.direction,
+            args=(),
+            kwargs=kwargs,
+        )
+
+        # Broadcast
+        await self._application.send_packet(
+            t.ZigbeePacket(
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK, address=self._application.state.node_info.nwk
+                ),
+                src_ep=self.get_endpoint_id(cluster_id),
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.Broadcast, address=address),
+                dst_ep=dst_ep,
+                tsn=tsn,
+                profile_id=profile_id,
+                cluster_id=cluster_id,
+                data=t.SerializableBytes(hdr.serialize() + request.serialize()),
+                tx_options=t.TransmitOptions.NONE,
+                radius=radius,
+            )
         )
 
 
