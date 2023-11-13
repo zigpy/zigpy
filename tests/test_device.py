@@ -32,7 +32,7 @@ def dev(monkeypatch, app_mock):
 
 async def test_initialize(monkeypatch, dev):
     async def mockrequest(nwk, tries=None, delay=None):
-        return [0, None, [1, 2, 3, 4]]
+        return [0, None, [0, 1, 2, 3, 4]]
 
     async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
@@ -53,6 +53,7 @@ async def test_initialize(monkeypatch, dev):
     dev.zdo.Active_EP_req = mockrequest
     await dev.initialize()
 
+    assert dev.endpoints[0] is dev.zdo
     assert 1 in dev.endpoints
     assert 2 in dev.endpoints
     assert 3 in dev.endpoints

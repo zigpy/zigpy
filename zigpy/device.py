@@ -219,7 +219,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.info("Discovered endpoints: %s", endpoints)
 
             for endpoint_id in endpoints:
-                self.add_endpoint(endpoint_id)
+                if endpoint_id != 0:
+                    self.add_endpoint(endpoint_id)
 
         self.status = Status.ZDO_INIT
 
