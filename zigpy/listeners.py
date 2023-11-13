@@ -95,11 +95,7 @@ class CallbackListener(BaseRequestListener):
         command: foundation.CommandSchema,
     ) -> bool:
         try:
-            result = self.callback(hdr, command)
-
-            # Run coroutines in the background
-            if asyncio.iscoroutine(result):
-                self.device.application.create_task(result)
+            self.callback(hdr, command)
         except Exception:
             LOGGER.warning(
                 "Caught an exception while executing callback", exc_info=True
