@@ -5,10 +5,14 @@ import dataclasses
 import logging
 import typing
 
+from zigpy.util import Singleton
 from zigpy.zcl import foundation
 import zigpy.zdo.types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
+
+
+ANY_DEVICE = Singleton("ANY_DEVICE")
 
 
 @dataclasses.dataclass(frozen=True)
