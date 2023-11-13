@@ -61,11 +61,19 @@ class NodeInfo(t.BaseDataclassMixin):
     ieee: t.EUI64 = dataclasses.field(default_factory=lambda: t.EUI64.UNKNOWN)
     logical_type: zdo_t.LogicalType = zdo_t.LogicalType.EndDevice
 
+    # Device information
+    model: str | None = None
+    manufacturer: str | None = None
+    version: str | None = None
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "nwk": str(self.nwk)[2:],
             "ieee": str(self.ieee),
             "logical_type": LOGICAL_TYPE_TO_JSON[self.logical_type],
+            "model": self.model,
+            "manufacturer": self.manufacturer,
+            "version": self.version,
         }
 
     @classmethod
@@ -74,6 +82,9 @@ class NodeInfo(t.BaseDataclassMixin):
             nwk=t.NWK.convert(obj["nwk"]),
             ieee=t.EUI64.convert(obj["ieee"]),
             logical_type=JSON_TO_LOGICAL_TYPE[obj["logical_type"]],
+            model=obj["model"],
+            manufacturer=obj["manufacturer"],
+            version=obj["version"],
         )
 
 
