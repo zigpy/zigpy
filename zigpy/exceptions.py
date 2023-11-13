@@ -30,6 +30,10 @@ class DeliveryError(ZigbeeException):
         self.status = status
 
 
+class SendError(DeliveryError):
+    """Message could not be enqueued."""
+
+
 class InvalidResponse(ZigbeeException):
     """A ZDO or ZCL response has an unsuccessful status code"""
 
