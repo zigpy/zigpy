@@ -1074,7 +1074,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Context manager to create a callback that is passed Zigbee responses."""
 
         listener = zigpy.listeners.CallbackListener(
-            device=src,
             matchers=tuple(filters),
             callback=callback,
         )
@@ -1095,7 +1094,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Context manager to wait for a Zigbee response."""
 
         listener = zigpy.listeners.FutureListener(
-            device=src,
             matchers=tuple(filters),
             future=asyncio.get_running_loop().create_future(),
         )

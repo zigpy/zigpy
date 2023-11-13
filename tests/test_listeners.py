@@ -5,7 +5,6 @@ from unittest import mock
 import pytest
 
 from zigpy import listeners
-import zigpy.device
 from zigpy.zcl import foundation
 import zigpy.zcl.clusters.general
 
@@ -24,7 +23,6 @@ toggle = zigpy.zcl.clusters.general.OnOff.commands_by_name["toggle"].schema
 
 async def test_future_listener():
     listener = listeners.FutureListener(
-        device=mock.Mock(spec_set=zigpy.device.Device),
         matchers=[
             query_next_image(manufacturer_code=0x1234),
             on(),
@@ -72,7 +70,6 @@ async def test_future_listener():
 
 async def test_future_listener_cancellation():
     listener = listeners.FutureListener(
-        device=mock.Mock(spec_set=zigpy.device.Device),
         matchers=[],
         future=asyncio.get_running_loop().create_future(),
     )
@@ -87,7 +84,6 @@ async def test_future_listener_cancellation():
 
 async def test_callback_listener():
     listener = listeners.CallbackListener(
-        device=mock.Mock(spec_set=zigpy.device.Device),
         matchers=[
             query_next_image(manufacturer_code=0x1234),
             on(),
@@ -121,7 +117,6 @@ async def test_callback_listener():
 
 async def test_callback_listener_error(caplog):
     listener = listeners.CallbackListener(
-        device=mock.Mock(spec_set=zigpy.device.Device),
         matchers=[
             on(),
         ],

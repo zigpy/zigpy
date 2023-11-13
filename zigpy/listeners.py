@@ -8,15 +8,11 @@ import typing
 from zigpy.zcl import foundation
 import zigpy.zdo.types as zdo_t
 
-if typing.TYPE_CHECKING:
-    import zigpy.device
-
 LOGGER = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass(frozen=True)
 class BaseRequestListener:
-    device: zigpy.device.Device
     matchers: tuple[MatcherType]
 
     def resolve(
