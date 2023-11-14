@@ -17,6 +17,7 @@ import zigpy.device
 import zigpy.endpoint
 import zigpy.listeners
 import zigpy.profiles.zgp
+from zigpy.profiles.zgp import GPCommand
 import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
@@ -53,6 +54,96 @@ class CommissioningMode(enum.Flag):
     ProxyUnicast   = 0b010
     ProxyBroadcast = 0b100
 
+class GPFrameType(enum.Enum):
+    DataFrame = 0x00
+    MaintenanceFrame = 0x01
+
+class GPApplicationID(enum.Enum):
+    GPZero = 0b000
+    GPTwo  = 0b010
+    LPED   = 0b001
+
+# Table 13
+class GPSecurityLevel(t.enum2):
+    NoSecurity = 0b00
+    ShortFrameCounterAndMIC = 0b01
+    FullFrameCounterAndMIC = 0b10
+    Encrypted = 0b11
+
+
+# Table 14
+class GPSecurityKeyType(t.enum3):
+    NoKey = 0b000
+    NWKKey = 0b001
+    GPDGroupKey = 0b010
+    NWKKeyDerivedGPD = 0b011
+    IndividualKey = 0b100
+    DerivedIndividual = 0b111
+
+COMMAND_PAYLOADS = {
+    
+}
+
+
+def deserialize_green_power_frame(data: bytes):
+    # this comes almost entirely from 
+    # https://github.com/dresden-elektronik/deconz-serial-protocol/issues/13#issuecomment-992586453
+    # since they seem to know what's what
+    options, data = t.bitmap8.deserialize(data)
+    ext_options = 0
+    auto_commissioning = options & 0b01000000
+    has_frame_control_extension = options & 0b10000000
+    frame_type = GPFrameType(options & 0x03)
+    if frame_type not in (GPFrameType.DataFrame, GPFrameType.MaintenanceFrame):
+        raise Exception("Bad GDPF type %d", frame_type)
+    if has_frame_control_extension: # parse extended data frame
+        ext_options, data = t.bitmap8.deserialize(data)
+    application_id = GPApplicationID(ext_options & 0b0000011)
+    if application_id not in (GPApplicationID.GPZero, GPApplicationID.GPTwo, GPApplicationID.LPED):
+        raise Exception("Bad Application ID %d", application_id)
+
+    src_id = 0
+    if frame_type == GPFrameType.DataFrame and application_id == GPApplicationID.GPZero:
+        src_id, data = t.uint32_t.deserialize(data)
+    elif frame_type == GPFrameType.MaintenanceFrame and has_frame_control_extension and application_id == GPApplicationID.GPZero:
+        src_id, data = t.uint32_t.deserialize(data)
+
+    frame_counter = 0
+    security_level = GPSecurityLevel.NoSecurity
+    if has_frame_control_extension:
+        security_level = GPSecurityLevel((ext_options >> 3) & 0x03)
+        has_security_key = (ext_options >> 5) & 0x01
+        rx_after_tx = (ext_options >> 6) & 0x01
+        direction = (ext_options >> 7) & 0x01
+        if security_level in (GPSecurityLevel.FullFrameCounterAndMIC, GPSecurityLevel.Encrypted):
+            frame_counter, data = t.uint32_t.deserialize(data)
+    
+    command_id = 0
+    mic = 0
+    if application_id != GPApplicationID.LPED:
+        command_id, data = t.uint8_t.deserialize(data)
+
+        if security_level == GPSecurityLevel.ShortFrameCounterAndMIC:
+            mic, _ = t.uint16_t.deserialize(data[-2:])
+            data = data[:-2]
+        elif security_level in (GPSecurityLevel.FullFrameCounterAndMIC, GPSecurityLevel.Encrypted):
+            mic, _ = t.uint32_t.deserialize(data[-4:])
+            data = data[:-4]
+            
+        command_payload = data
+    
+    return {
+        options: options,
+        ext_options: ext_options,
+        frame_type: frame_type,
+        auto_commissioning: auto_commissioning,
+        src_id: src_id,
+        frame_counter: frame_counter,
+        command_id: command_id,
+        command_payload: command_payload,
+        mic: mic
+    }
+
 class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """Controller that tracks the current GPS state"""
     def __init__(self, application: ControllerApplication):
@@ -60,10 +151,6 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self.__controller_state: ControllerState = ControllerState.Uninitialized
         self._commissioning_mode: CommissioningMode = CommissioningMode.NotCommissioning
         self._proxy_unicast_target: zigpy.device.Device = None
-
-    @property
-    def _gp_endpoint_id(self):
-        return zigpy.application.GREENPOWER_ENDPOINT_ID
 
     @property 
     def _controller_state(self):
@@ -84,6 +171,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self._controller_state = ControllerState.Operational
         LOGGER.info("Green Power Controller initialized!")
 
+
     async def permit(self, time_s: int = 60, device: zigpy.device.Device = None):
         assert 0 <= time_s <= 254
 
@@ -96,17 +184,18 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         if self._controller_state == ControllerState.Operational:
             if device is not None:
                 # No GP endpoint nothing doing sorry
-                if not device.endpoints[zigpy.application.GREENPOWER_ENDPOINT_ID]:
+                if not device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID]:
                     return
                 
                 # Figure 42
                 # 0: Active
                 # 1: during commissioning window 
                 # 3: or until told to stop
-                await device.endpoints[zigpy.application.GREENPOWER_ENDPOINT_ID].green_power.proxy_commissioning_mode(
-                    options = 0b00001011,
-                    window = time_s,
+                await device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].green_power.proxy_commissioning_mode(
+                    options = 0x0B,
+                    window = 25
                 )
+                LOGGER.debug("Successfully sent commissioning mode request to %s", str(device.ieee))
                 self._controller_state = ControllerState.Commissioning
                 self._commissioning_mode = CommissioningMode.ProxyUnicast
                 self._proxy_unicast_target = device
@@ -138,8 +227,8 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         if self._commissioning_mode == CommissioningMode.ProxyBroadcast:
             await self._send_commissioning_broadcast_command(0)
         elif self._commissioning_mode == CommissioningMode.ProxyUnicast:
-            await self._proxy_unicast_target.endpoints[zigpy.application.GREENPOWER_ENDPOINT_ID].green_power.proxy_commissioning_mode(
-                options=0b00000000,
+            await self._proxy_unicast_target.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].green_power.proxy_commissioning_mode(
+                options=0x00,
             )
         
         self._controller_state = ControllerState.Operational
@@ -150,7 +239,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         named_arguments = None
         if time_s > 0:
             named_arguments = {
-                "options": 0b00001011,
+                "options": 0x0B,
                 "window": time_s
             }
         else:

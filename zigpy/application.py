@@ -736,17 +736,20 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 output_clusters=[],
             )
         )
-
-        await self.add_endpoint(
-            zdo_types.SimpleDescriptor(
-                endpoint=zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID,
-                profile=zigpy.profiles.zgp.PROFILE_ID,
-                device_type=zigpy.profiles.zgp.DeviceType.TARGET,
-                device_version=0b0000,
-                input_clusters=[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id],
-                output_clusters=[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id],
+        
+        try:
+            await self.add_endpoint(
+                zdo_types.SimpleDescriptor(
+                    endpoint=zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID,
+                    profile=zigpy.profiles.zgp.PROFILE_ID,
+                    device_type=zigpy.profiles.zgp.DeviceType.TARGET,
+                    device_version=0b0000,
+                    input_clusters=[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id],
+                    output_clusters=[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id],
+                )
             )
-        )
+        except Exception as e:
+            LOGGER.warn("Failed to add ZGP endpoint; here's hoping it works anyway. Message: %s", str(e))
 
         for endpoint in self.config[conf.CONF_ADDITIONAL_ENDPOINTS]:
             await self.add_endpoint(endpoint)

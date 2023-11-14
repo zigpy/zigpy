@@ -2600,24 +2600,6 @@ class PollControl(Cluster):
         checkin: Final = ZCLCommandDef(id=0x0000, schema={}, direction=False)
 
 
-# Table 13
-class GPSecurityLevel(t.enum2):
-    NoSecurity = 0b00
-    ShortFrameCounterAndMIC = 0b01
-    FullFrameCounterAndMIC = 0b10
-    Encrypted = 0b11
-
-
-# Table 14
-class GPSecurityKeyType(t.enum3):
-    NoKey = 0b000
-    NWKKey = 0b001
-    GPDGroupKey = 0b010
-    NWKKeyDerivedGPD = 0b011
-    IndividualKey = 0b100
-    DerivedIndividual = 0b111
-
-
 # Table 29
 class GPCommunicationMode(t.enum2):
     Unicast = 0b00
@@ -2630,6 +2612,9 @@ class GreenPowerProxy(Cluster):
     cluster_id: Final = 0x0021
     name: Final = "Green Power"
     ep_attribute: Final = "green_power"
+
+    def handle_message(self, data):
+        self.log("Green Power Cluster direct message received")
     
     class AttributeDefs(BaseAttributeDefs):
         max_sink_table_entries: Final = ZCLAttributeDef(
@@ -2655,6 +2640,12 @@ class GreenPowerProxy(Cluster):
         )
         active_functionality: Final = ZCLAttributeDef(
             id=0x0007, type=t.bitmap24, access="r", mandatory=True
+        )
+        gpp_functionality: Final = ZCLAttributeDef(
+            id=0x0016, type=t.bitmap24, access="r", mandatory=True
+        )
+        gpp_active_functionality: Final = ZCLAttributeDef(
+            id=0x0017, type=t.bitmap24, access="r", mandatory=True
         )
         joiningAllowUntil: Final = ZCLAttributeDef(
             id=0x9997, type=t.uint32_t, access="rw"
@@ -2737,8 +2728,7 @@ class GreenPowerProxy(Cluster):
             id=0x02,
             schema={
                 "options": t.bitmap8,
-                "window?": t.uint16_t,
-                "channel?": t.uint8_t
+                "window?": t.uint16_t
             },
             direction=True
         )
