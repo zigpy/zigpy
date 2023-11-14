@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import enum
+import itertools
 import logging
 import sys
 import typing
@@ -448,7 +449,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return
 
         # Pass the request off to a listener, if one is registered
-        for listener in self._application._req_listeners[self]:
+        for listener in itertools.chain(
+            self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
+            self._application._req_listeners[self],
+        ):
             # Resolve only until the first future listener
             if listener.resolve(hdr, args) and isinstance(
                 listener, zigpy.listeners.FutureListener

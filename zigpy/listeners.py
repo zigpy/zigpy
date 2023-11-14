@@ -5,18 +5,18 @@ import dataclasses
 import logging
 import typing
 
+from zigpy.util import Singleton
 from zigpy.zcl import foundation
 import zigpy.zdo.types as zdo_t
-
-if typing.TYPE_CHECKING:
-    import zigpy.device
 
 LOGGER = logging.getLogger(__name__)
 
 
+ANY_DEVICE = Singleton("ANY_DEVICE")
+
+
 @dataclasses.dataclass(frozen=True)
 class BaseRequestListener:
-    device: zigpy.device.Device
     matchers: tuple[MatcherType]
 
     def resolve(
@@ -95,11 +95,7 @@ class CallbackListener(BaseRequestListener):
         command: foundation.CommandSchema,
     ) -> bool:
         try:
-            result = self.callback(hdr, command)
-
-            # Run coroutines in the background
-            if asyncio.iscoroutine(result):
-                self.device.application.create_task(result)
+            self.callback(hdr, command)
         except Exception:
             LOGGER.warning(
                 "Caught an exception while executing callback", exc_info=True

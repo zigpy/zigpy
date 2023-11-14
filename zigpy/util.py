@@ -556,3 +556,16 @@ def pick_optimal_channel(
     LOGGER.debug("Channel scores: %s", scores)
 
     return optimal_channel
+
+
+class Singleton:
+    """Singleton class."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __repr__(self) -> str:
+        return f"<Singleton {self.name!r}>"
+
+    def __hash__(self) -> int:
+        return hash(self.name)

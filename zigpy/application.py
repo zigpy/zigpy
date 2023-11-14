@@ -1061,7 +1061,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @contextlib.contextmanager
     def _callback_for_response(
         self,
-        src: zigpy.device.Device,
+        src: zigpy.device.Device | zigpy.listeners.ANY_DEVICE,
         filters: list[zigpy.listeners.MatcherType],
         callback: typing.Callable[
             [
@@ -1074,7 +1074,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Context manager to create a callback that is passed Zigbee responses."""
 
         listener = zigpy.listeners.CallbackListener(
-            device=src,
             matchers=tuple(filters),
             callback=callback,
         )
@@ -1089,13 +1088,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @contextlib.contextmanager
     def _wait_for_response(
         self,
-        src: zigpy.device.Device,
+        src: zigpy.device.Device | zigpy.listeners.ANY_DEVICE,
         filters: list[zigpy.listeners.MatcherType],
     ) -> typing.Any:
         """Context manager to wait for a Zigbee response."""
 
         listener = zigpy.listeners.FutureListener(
-            device=src,
             matchers=tuple(filters),
             future=asyncio.get_running_loop().create_future(),
         )
