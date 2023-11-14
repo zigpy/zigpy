@@ -21,6 +21,9 @@ def backup_factory():
                 nwk=t.NWK(0x0000),
                 ieee=t.EUI64.convert("93:2C:A9:34:D9:D0:5D:12"),
                 logical_type=zdo_t.LogicalType.Coordinator,
+                model="Coordinator Model",
+                manufacturer="Coordinator Manufacturer",
+                version="1.2.3.4",
             ),
             network_info=app_state.NetworkInfo(
                 extended_pan_id=t.ExtendedPanId.convert("0D:49:91:99:AE:CD:3C:35"),
@@ -226,6 +229,9 @@ def test_state_backup_as_open_coordinator(backup):
 def test_z2m_backup_parsing(z2m_backup_json, backup):
     backup.network_info.metadata = None
     backup.network_info.source = None
+    backup.node_info.manufacturer = None
+    backup.node_info.model = None
+    backup.node_info.version = None
     backup.network_info.tc_link_key.tx_counter = 0
 
     for key in backup.network_info.key_table:

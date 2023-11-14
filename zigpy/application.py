@@ -213,6 +213,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if self.config[conf.CONF_WATCHDOG_ENABLED]:
             self._watchdog_task = asyncio.create_task(self._watchdog_loop())
 
+        # Only initialize OTA after we've fully loaded
+        await self.ota.initialize()
+
     async def startup(self, *, auto_form: bool = False) -> None:
         """Starts a network, optionally forming one with random settings if necessary."""
 
@@ -237,7 +240,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         app = cls(config)
 
         await app._load_db()
-        await app.ota.initialize()
 
         if start_radio:
             await app.startup(auto_form=auto_form)

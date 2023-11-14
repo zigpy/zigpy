@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import dataclasses
 from datetime import datetime, timezone
 import logging
@@ -17,10 +18,12 @@ if TYPE_CHECKING:
     import zigpy.application
 
 LOGGER = logging.getLogger(__name__)
+BACKUP_FORMAT_VERSION = 1
 
 
 @dataclasses.dataclass
 class NetworkBackup(t.BaseDataclassMixin):
+    version: int = dataclasses.field(default=BACKUP_FORMAT_VERSION)
     backup_time: datetime = dataclasses.field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -37,7 +40,9 @@ class NetworkBackup(t.BaseDataclassMixin):
         """
 
         return (
-            self.node_info == backup.node_info
+            self.node_info.nwk == backup.node_info.nwk
+            and self.node_info.logical_type == backup.node_info.logical_type
+            and self.node_info.ieee == backup.node_info.ieee
             and self.network_info.extended_pan_id == backup.network_info.extended_pan_id
             and self.network_info.pan_id == backup.network_info.pan_id
             and self.network_info.nwk_update_id == backup.network_info.nwk_update_id
@@ -73,6 +78,7 @@ class NetworkBackup(t.BaseDataclassMixin):
 
     def as_dict(self) -> dict[str, Any]:
         return {
+            "version": self.version,
             "backup_time": self.backup_time.isoformat(),
             "network_info": self.network_info.as_dict(),
             "node_info": self.node_info.as_dict(),
@@ -83,7 +89,21 @@ class NetworkBackup(t.BaseDataclassMixin):
         if "metadata" in obj:
             return cls.from_open_coordinator_json(obj)
         elif "network_info" in obj:
+            version = obj.get("version", 0)
+
+            # Version 1 introduced the `model`, `manufacturer`, and `version` fields
+            if version == 0:
+                obj = copy.deepcopy(obj)
+
+                obj["node_info"]["model"] = None
+                obj["node_info"]["manufacturer"] = None
+                obj["node_info"]["version"] = None
+                version = 1
+
+            assert version == BACKUP_FORMAT_VERSION
+
             return cls(
+                version=BACKUP_FORMAT_VERSION,
                 backup_time=datetime.fromisoformat(obj["backup_time"]),
                 network_info=zigpy.state.NetworkInfo.from_dict(obj["network_info"]),
                 node_info=zigpy.state.NodeInfo.from_dict(obj["node_info"]),
@@ -258,6 +278,9 @@ def _network_backup_to_open_coordinator_backup(backup: NetworkBackup) -> dict[st
                     "ieee": node_info.ieee.serialize()[::-1].hex(),
                     "nwk": node_info.nwk.serialize()[::-1].hex(),
                     "type": zigpy.state.LOGICAL_TYPE_TO_JSON[node_info.logical_type],
+                    "model": node_info.model,
+                    "manufacturer": node_info.manufacturer,
+                    "version": node_info.version,
                 },
                 "network": {
                     "tc_link_key": {
@@ -314,6 +337,9 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
     node_info.ieee, _ = t.EUI64.deserialize(
         bytes.fromhex(obj["coordinator_ieee"])[::-1]
     )
+    node_info.model = node_meta.get("model")
+    node_info.manufacturer = node_meta.get("manufacturer")
+    node_info.version = node_meta.get("version")
 
     network_info = zigpy.state.NetworkInfo()
     network_info.source = obj["metadata"]["source"]
@@ -412,6 +438,7 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
         creation_time = internal.get("creation_time", "1970-01-01T00:00:00+00:00")
 
     return NetworkBackup(
+        version=BACKUP_FORMAT_VERSION,
         backup_time=datetime.fromisoformat(creation_time),
         network_info=network_info,
         node_info=node_info,

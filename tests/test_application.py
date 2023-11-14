@@ -73,7 +73,7 @@ async def test_new_exception(ota_mock):
             )
     assert db_mck.call_count == 2
     assert db_mck.await_count == 2
-    assert ota_mock.return_value.initialize.call_count == 2
+    assert ota_mock.return_value.initialize.call_count == 1
     assert load_nwk_info_mck.call_count == 2
     assert load_nwk_info_mck.await_count == 2
     assert shut_mck.call_count == 1
