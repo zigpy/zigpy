@@ -548,7 +548,7 @@ async def test_probe_success():
     ) as disconnect:
         result = await App.probe(config)
 
-    assert result == config
+    assert set(config.items()) <= set(result.items())
 
     assert connect.await_count == 1
     assert disconnect.await_count == 1
@@ -1501,3 +1501,29 @@ async def test_permit_with_key(app):
             time_s=60,
         )
     ]
+
+
+async def test_probe(app):
+    class BaudSpecificApp(App):
+        _probe_configs = [
+            {conf.CONF_DEVICE_BAUDRATE: 57600},
+            {conf.CONF_DEVICE_BAUDRATE: 115200},
+        ]
+
+        async def connect(self):
+            if self._config[conf.CONF_DEVICE][conf.CONF_DEVICE_BAUDRATE] != 115200:
+                raise asyncio.TimeoutError()
+
+    # Only one baudrate is valid
+    assert (await BaudSpecificApp.probe({conf.CONF_DEVICE_PATH: "/dev/null"})) == {
+        conf.CONF_DEVICE_PATH: "/dev/null",
+        conf.CONF_DEVICE_BAUDRATE: 115200,
+        conf.CONF_DEVICE_FLOW_CONTROL: None,
+    }
+
+    class NeverConnectsApp(App):
+        async def connect(self):
+            raise asyncio.TimeoutError()
+
+    # No settings will work
+    assert (await NeverConnectsApp.probe({conf.CONF_DEVICE_PATH: "/dev/null"})) is False
