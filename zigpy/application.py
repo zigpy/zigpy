@@ -1155,11 +1155,21 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """
         raise NotImplementedError()  # pragma: no cover
 
-    @abc.abstractmethod
     async def permit_with_key(self, node: t.EUI64, code: bytes, time_s: int = 60):
         """Permit a node to join with the provided install code bytes."""
-        raise NotImplementedError()  # pragma: no cover
+        warnings.warn(
+            "`permit_with_key` is deprecated, use `permit_with_link_key`",
+            DeprecationWarning,
+        )
 
+        key = zigpy.util.convert_install_code(code)
+
+        if key is None:
+            raise ValueError(f"Invalid install code: {code!r}")
+
+        await self.permit_with_link_key(node=node, link_key=key, time_s=time_s)
+
+    @abc.abstractmethod
     async def permit_with_link_key(
         self, node: t.EUI64, link_key: t.KeyData, time_s: int = 60
     ) -> None:
