@@ -604,3 +604,109 @@ class ZigbeePacket(BaseDataclassMixin):
     # Options for incoming packets
     lqi: basic.uint8_t | None = dataclasses.field(default=None)
     rssi: basic.int8s | None = dataclasses.field(default=None)
+
+
+class GPFrameType(basic.enum2):
+    DataFrame = 0x00
+    MaintenanceFrame = 0x01
+
+class GPApplicationID(basic.enum3):
+    GPZero = 0b000
+    GPTwo  = 0b010
+    LPED   = 0b001
+
+# Table 13
+class GPSecurityLevel(basic.enum2):
+    NoSecurity = 0b00
+    ShortFrameCounterAndMIC = 0b01
+    FullFrameCounterAndMIC = 0b10
+    Encrypted = 0b11
+
+# Table 14
+class GPSecurityKeyType(basic.enum3):
+    NoKey = 0b000
+    NWKKey = 0b001
+    GPDGroupKey = 0b010
+    NWKKeyDerivedGPD = 0b011
+    IndividualKey = 0b100
+    DerivedIndividual = 0b111
+
+class GPDataFrame(Struct):
+    options: basic.bitmap8
+    frame_control_ext: basic.bitmap8
+    src_id: GreenPowerDeviceID
+    frame_counter: basic.uint32_t
+    command_id: basic.uint32_t
+    command_payload: bytes
+    mic: basic.uint32_t
+
+    @property
+    def auto_commissioning(self) -> bool:
+        return bool(self.options & 0b01000000)
+
+    @property
+    def has_frame_control_ext(self) -> bool:
+        return bool(self.options & 0b10000000)
+    
+    @property
+    def frame_type(self) -> GPFrameType:
+        return GPFrameType(self.options & 0b0000011)
+    
+    @property
+    def application_id(self) -> GPApplicationID:
+        return GPApplicationID(self.frame_control_ext & 0b0000011)
+
+    @property
+    def security_level(self) -> GPSecurityLevel:
+        return GPSecurityLevel((self.frame_control_ext >> 3) & 0b0000011)
+
+    @property
+    def has_security_key(self) -> bool:
+        return bool((self.frame_control_ext >> 5) & 0x01)
+    
+    @property
+    def rx_after_tx(self) -> bool: 
+        return bool((self.frame_control_ext >> 6) & 0x01)
+
+    @property
+    def direction(self) -> bool:
+        return bool((self.frame_control_ext >> 7) & 0x01)
+
+    @classmethod
+    def deserialize(cls: type[GPDataFrame], data: bytes) -> tuple[GPDataFrame, bytes]:
+        instance : GPDataFrame = GPDataFrame()
+        instance.options, data = basic.bitmap8.deserialize(data)
+        if instance.frame_type not in (GPFrameType.DataFrame, GPFrameType.MaintenanceFrame):
+            raise Exception("Bad GDPF type %d", instance.frame_type)
+        instance.frame_control_ext = 0
+        if instance.has_frame_control_ext:
+            instance.frame_control_ext, data = basic.bitmap8.deserialize(data)
+        if instance.application_id not in (GPApplicationID.GPZero, GPApplicationID.GPTwo, GPApplicationID.LPED):
+            raise Exception("Bad Application ID %d", instance.application_id)
+        
+        instance.src_id = 0
+        if instance.frame_type == GPFrameType.DataFrame and instance.application_id == GPApplicationID.GPZero:
+            instance.src_id, data = GreenPowerDeviceID.deserialize(data)
+        elif instance.frame_type == GPFrameType.MaintenanceFrame and instance.has_frame_control_ext and instance.application_id == GPApplicationID.GPZero:
+            instance.src_id, data = GreenPowerDeviceID.deserialize(data)
+        
+        instance.frame_counter = 0
+        if instance.has_frame_control_ext and instance.security_level in (GPSecurityLevel.FullFrameCounterAndMIC, GPSecurityLevel.Encrypted):
+            instance.frame_counter, data = basic.uint32_t.deserialize(data)
+        
+        instance.command_id = 0
+        instance.mic = 0
+        if instance.application_id != GPApplicationID.LPED:
+            instance.command_id, data = basic.uint8_t.deserialize(data)
+
+            if instance.security_level == GPSecurityLevel.ShortFrameCounterAndMIC:
+                instance.mic, _ = basic.uint16_t.deserialize(data[-2:])
+                data = data[:-2]
+            elif instance.security_level in (GPSecurityLevel.FullFrameCounterAndMIC, GPSecurityLevel.Encrypted):
+                instance.mic, _ = basic.uint32_t.deserialize(data[-4:])
+                data = data[:-4]
+                
+            instance.command_payload = data
+        
+        return instance, bytes()
+    
