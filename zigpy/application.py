@@ -58,6 +58,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     SCHEMA = conf.CONFIG_SCHEMA
     SCHEMA_DEVICE = conf.SCHEMA_DEVICE
 
+    _watchdog_period: int = 30
+
     def __init__(self, config: dict) -> None:
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
         self.state: zigpy.state.State = zigpy.state.State()
@@ -69,6 +71,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._ota = zigpy.ota.OTA(self)
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()
+
+        self._watchdog_task: asyncio.Task | None = None
 
         self._concurrent_requests_semaphore = zigpy.util.DynamicBoundedSemaphore(
             self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
@@ -205,6 +209,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             self.topology.start_periodic_scans(
                 period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
             )
+
+        if self.config[conf.CONF_WATCHDOG_ENABLED]:
+            self._watchdog_task = asyncio.create_task(self._watchdog_loop())
 
         # Only initialize OTA after we've fully loaded
         await self.ota.initialize()
@@ -410,6 +417,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def shutdown(self, *, db: bool = True) -> None:
         """Shutdown controller."""
+        if self._watchdog_task is not None:
+            self._watchdog_task.cancel()
+
         self.backups.stop_periodic_backups()
         self.topology.stop_periodic_scans()
 
@@ -615,6 +625,39 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         This method should be stateless if the connection attempt fails.
         """
         raise NotImplementedError()  # pragma: no cover
+
+    async def _watchdog_feed(self) -> None:
+        """
+        Reset the firmware watchdog timer.
+        """
+
+    async def _watchdog_loop(self) -> None:
+        """
+        Watchdog loop to periodically test if the stack is still running.
+        """
+
+        LOGGER.debug("Starting watchdog loop")
+
+        while True:
+            await asyncio.sleep(self._watchdog_period)
+
+            try:
+                await self._watchdog_feed()
+            except Exception as e:
+                LOGGER.warning("Watchdog failure", exc_info=e)
+
+                # Treat the watchdog failure as a disconnect
+                self.connection_lost(e)
+
+                break
+
+        LOGGER.debug("Stopping watchdog loop")
+
+    def connection_lost(self, exc: Exception) -> None:
+        """Connection lost callback."""
+
+        LOGGER.debug("Connection to the radio has been lost: %r", exc)
+        self.listener_event("connection_lost", exc)
 
     @abc.abstractmethod
     async def disconnect(self):

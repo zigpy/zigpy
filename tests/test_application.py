@@ -1440,3 +1440,35 @@ async def test_startup_multiple_dblistener(app):
 
     # The database listener will not be shut down automatically
     assert len(app._dblistener.shutdown.mock_calls) == 0
+
+
+async def test_connection_lost(app):
+    exc = RuntimeError()
+    listener = MagicMock()
+
+    app.add_listener(listener)
+    app.connection_lost(exc)
+
+    listener.connection_lost.assert_called_with(exc)
+
+
+async def test_watchdog(app):
+    error = RuntimeError()
+
+    app = make_app({})
+    app._watchdog_period = 0.1
+    app._watchdog_feed = AsyncMock(side_effect=[None, None, error])
+    app.connection_lost = MagicMock()
+
+    assert app._watchdog_task is None
+    await app.startup()
+    assert app._watchdog_task is not None
+
+    assert app._watchdog_feed.mock_calls == []
+    assert app.connection_lost.mock_calls == []
+
+    await asyncio.sleep(0.5)
+
+    assert app._watchdog_feed.mock_calls == [call(), call(), call()]
+    assert app.connection_lost.mock_calls == [call(error)]
+    assert app._watchdog_task.done()

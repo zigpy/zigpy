@@ -30,6 +30,7 @@ from zigpy.config.defaults import (
     CONF_TOPO_SCAN_ENABLED_DEFAULT,
     CONF_TOPO_SCAN_PERIOD_DEFAULT,
     CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
+    CONF_WATCHDOG_ENABLED_DEFAULT,
 )
 from zigpy.config.validators import (
     cv_boolean,
@@ -76,6 +77,7 @@ CONF_STARTUP_ENERGY_SCAN = "startup_energy_scan"
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
 CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
+CONF_WATCHDOG_ENABLED = "watchdog_enabled"
 
 
 SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): str})
@@ -167,7 +169,10 @@ ZIGPY_SCHEMA = vol.Schema(
         ),
         vol.Optional(
             CONF_STARTUP_ENERGY_SCAN, default=CONF_STARTUP_ENERGY_SCAN_DEFAULT
-        ): (cv_boolean),
+        ): cv_boolean,
+        vol.Optional(
+            CONF_WATCHDOG_ENABLED, default=CONF_WATCHDOG_ENABLED_DEFAULT
+        ): cv_boolean,
     },
     extra=vol.ALLOW_EXTRA,
 )
