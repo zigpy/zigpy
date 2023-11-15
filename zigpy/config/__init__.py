@@ -5,6 +5,8 @@ from __future__ import annotations
 import voluptuous as vol
 
 from zigpy.config.defaults import (
+    CONF_DEVICE_BAUDRATE_DEFAULT,
+    CONF_DEVICE_FLOW_CONTROL_DEFAULT,
     CONF_MAX_CONCURRENT_REQUESTS_DEFAULT,
     CONF_NWK_BACKUP_ENABLED_DEFAULT,
     CONF_NWK_BACKUP_PERIOD_DEFAULT,
@@ -85,10 +87,10 @@ CONF_WATCHDOG_ENABLED = "watchdog_enabled"
 SCHEMA_DEVICE = vol.Schema(
     {
         vol.Required(CONF_DEVICE_PATH): str,
-        vol.Optional(CONF_DEVICE_BAUDRATE): int,
-        vol.Optional(CONF_DEVICE_FLOW_CONTROL, default=None): vol.In(
-            ["hardware", "software", None]
-        ),
+        vol.Optional(CONF_DEVICE_BAUDRATE, default=CONF_DEVICE_BAUDRATE_DEFAULT): int,
+        vol.Optional(
+            CONF_DEVICE_FLOW_CONTROL, default=CONF_DEVICE_FLOW_CONTROL_DEFAULT
+        ): vol.In(["hardware", "software", None]),
     }
 )
 
