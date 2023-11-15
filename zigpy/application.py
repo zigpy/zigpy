@@ -56,7 +56,6 @@ CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S = 1.0
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     SCHEMA = conf.CONFIG_SCHEMA
-    SCHEMA_DEVICE = conf.SCHEMA_DEVICE
 
     _watchdog_period: int = 30
     _probe_configs: list[dict[str, Any]] = []
@@ -607,10 +606,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         returned.
         """
 
-        device_configs = [cls.SCHEMA_DEVICE(device_config)]
+        device_configs = [conf.SCHEMA_DEVICE(device_config)]
 
         for overrides in cls._probe_configs:
-            new_config = cls.SCHEMA_DEVICE({**device_config, **overrides})
+            new_config = conf.SCHEMA_DEVICE({**device_config, **overrides})
 
             if new_config not in device_configs:
                 device_configs.append(new_config)
