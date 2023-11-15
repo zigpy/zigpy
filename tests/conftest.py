@@ -87,7 +87,7 @@ class App(zigpy.application.ControllerApplication):
     async def permit_ncp(self, time_s=60):
         pass
 
-    async def permit_with_key(self, node, code, time_s=60):
+    async def permit_with_link_key(self, node, link_key, time_s=60):
         pass
 
     async def reset_network_info(self):

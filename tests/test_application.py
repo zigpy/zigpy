@@ -1472,3 +1472,32 @@ async def test_watchdog(app):
     assert app._watchdog_feed.mock_calls == [call(), call(), call()]
     assert app.connection_lost.mock_calls == [call(error)]
     assert app._watchdog_task.done()
+
+
+async def test_permit_with_key(app):
+    app = make_app({})
+
+    app.permit_with_link_key = AsyncMock()
+
+    with pytest.raises(ValueError):
+        await app.permit_with_key(
+            node=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"),
+            code=b"invalid code that is far too long and of the wrong parity",
+            time_s=60,
+        )
+
+    assert app.permit_with_link_key.mock_calls == []
+
+    await app.permit_with_key(
+        node=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"),
+        code=bytes.fromhex("11223344556677884AF7"),
+        time_s=60,
+    )
+
+    assert app.permit_with_link_key.mock_calls == [
+        call(
+            node=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"),
+            link_key=t.KeyData.convert("41618FC0C83B0E14A589954B16E31466"),
+            time_s=60,
+        )
+    ]
