@@ -81,6 +81,11 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self._controller_state = ControllerState.Operational
         LOGGER.info("Green Power Controller initialized!")
 
+    async def handle_received_green_power_frame(self, frame: t.GPDataFrame):
+        LOGGER.debug("Ignoring directly received ZGP packet from %s", str(frame.src_id))
+        # if CommissioningMode.Direct in self._commissioning_mode:
+
+        pass
 
     async def permit(self, time_s: int = 60, device: zigpy.device.Device = None):
         assert 0 <= time_s <= 254
@@ -91,8 +96,16 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
 
         assert self._controller_state != ControllerState.Uninitialized
 
+        if self._controller_state != ControllerState.Operational:
+            await self._stop_permit()
+
         if self._controller_state == ControllerState.Operational:
             if device is not None:
+                # We can direct commission without a lot of help
+                if device == self._application._device:
+                    self._commissioning_mode = CommissioningMode.Direct
+                    return
+
                 # No GP endpoint nothing doing sorry
                 if not device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID]:
                     return
@@ -103,7 +116,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 # 3: or until told to stop
                 await device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].green_power.proxy_commissioning_mode(
                     options = 0x0B,
-                    window = 25
+                    window = time_s
                 )
                 LOGGER.debug("Successfully sent commissioning mode request to %s", str(device.ieee))
                 self._controller_state = ControllerState.Commissioning
@@ -112,7 +125,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             else:
                 await self._send_commissioning_broadcast_command(time_s)
                 self._controller_state = ControllerState.Commissioning
-                self._commissioning_mode = CommissioningMode.ProxyBroadcast
+                self._commissioning_mode = CommissioningMode.ProxyBroadcast | CommissioningMode.Direct
         else:
             LOGGER.debug(
                 "GreenPowerController not valid to start commissioning, current state: %s",
@@ -134,9 +147,9 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             )
             return
         
-        if self._commissioning_mode == CommissioningMode.ProxyBroadcast:
+        if CommissioningMode.ProxyBroadcast in self._commissioning_mode:
             await self._send_commissioning_broadcast_command(0)
-        elif self._commissioning_mode == CommissioningMode.ProxyUnicast:
+        elif CommissioningMode.ProxyUnicast in self._commissioning_mode:
             await self._proxy_unicast_target.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].green_power.proxy_commissioning_mode(
                 options=0x00,
             )

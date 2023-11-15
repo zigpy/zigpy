@@ -637,7 +637,7 @@ class GPDataFrame(Struct):
     src_id: GreenPowerDeviceID
     frame_counter: basic.uint32_t
     command_id: basic.uint32_t
-    command_payload: bytes
+    command_payload: basic.SerializableBytes
     mic: basic.uint32_t
 
     @property
@@ -670,6 +670,8 @@ class GPDataFrame(Struct):
 
     @property
     def direction(self) -> bool:
+        # false = from GPD to GPP
+        # true  = from GPP to GPD
         return bool((self.frame_control_ext >> 7) & 0x01)
 
     @classmethod
@@ -706,7 +708,7 @@ class GPDataFrame(Struct):
                 instance.mic, _ = basic.uint32_t.deserialize(data[-4:])
                 data = data[:-4]
                 
-            instance.command_payload = data
+            instance.command_payload = basic.SerializableBytes(data)
         
         return instance, bytes()
     
