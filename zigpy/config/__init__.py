@@ -46,6 +46,7 @@ CONF_DATABASE = "database_path"
 CONF_DEVICE = "device"
 CONF_DEVICE_PATH = "path"
 CONF_DEVICE_BAUDRATE = "baudrate"
+CONF_DEVICE_FLOW_CONTROL = "flow_control"
 CONF_MAX_CONCURRENT_REQUESTS = "max_concurrent_requests"
 CONF_NWK = "network"
 CONF_NWK_CHANNEL = "channel"
@@ -85,6 +86,9 @@ SCHEMA_DEVICE = vol.Schema(
     {
         vol.Required(CONF_DEVICE_PATH): str,
         vol.Optional(CONF_DEVICE_BAUDRATE): int,
+        vol.Optional(CONF_DEVICE_FLOW_CONTROL, default=None): vol.In(
+            ["hardware", "software", None]
+        ),
     }
 )
 
