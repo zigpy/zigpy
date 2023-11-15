@@ -831,3 +831,23 @@ def test_matching(expose_global):
     assert s.matches(TestStruct(bar=InnerStruct()))
     assert s.matches(TestStruct(bar=InnerStruct(field1=2, field2="asd")))
     assert not s.matches(TestStruct(bar=InnerStruct(field1=3)))
+
+
+def test_dynamic_type():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+        baz: None = t.StructField(
+            dynamic_type=lambda s: t.LVBytes if s.foo == 0x00 else t.uint8_t
+        )
+
+    assert TestStruct.deserialize(b"\x00\x04test") == (
+        TestStruct(foo=0x00, baz=b"test"),
+        b"",
+    )
+    assert TestStruct.deserialize(b"\x01\x04test") == (
+        TestStruct(foo=0x01, baz=0x04),
+        b"test",
+    )
+
+    assert TestStruct(foo=0x00, baz=b"test").serialize() == b"\x00\x04test"
+    assert TestStruct(foo=0x01, baz=0x04).serialize() == b"\x01\x04"
