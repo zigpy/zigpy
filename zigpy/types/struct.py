@@ -18,6 +18,7 @@ class ListSubclass(list):
 class StructField:
     name: str | None = None
     type: type | None = None
+    dynamic_type: typing.Callable[[Struct], type] | None = None
 
     requires: typing.Callable[[Struct], bool] | None = dataclasses.field(
         default=None, repr=False
@@ -31,16 +32,24 @@ class StructField:
     def replace(self, **kwargs) -> StructField:
         return dataclasses.replace(self, **kwargs)
 
-    def _convert_type(self, value):
-        if value is None or isinstance(value, self.type):
+    def get_type(self, struct: Struct) -> type:
+        if self.dynamic_type is not None:
+            return self.dynamic_type(struct)
+
+        return self.type
+
+    def _convert_type(self, value, struct: Struct):
+        field_type = self.get_type(struct)
+
+        if value is None or isinstance(value, field_type):
             return value
 
         try:
-            return self.type(value)
+            return field_type(value)
         except Exception as e:
             raise ValueError(
                 f"Failed to convert {self.name}={value!r} from type"
-                f" {type(value)} to {self.type}"
+                f" {type(value)} to {field_type}"
             ) from e
 
 
@@ -105,7 +114,7 @@ class Struct:
         # Set each attributes on the instance
         for name, value in bound.arguments.items():
             field = getattr(cls.fields, name)
-            setattr(instance, name, field._convert_type(value))
+            setattr(instance, name, field._convert_type(value, struct=instance))
 
         return instance
 
@@ -146,7 +155,7 @@ class Struct:
                     )
 
                 field = field.replace(type=annotation)
-            elif field.type is None:
+            elif field.type is None and field.dynamic_type is None:
                 raise TypeError(f"Field {name!r} has no type")
 
             fields.append(field)
@@ -181,17 +190,18 @@ class Struct:
 
     @classmethod
     def from_dict(cls: type[_STRUCT], obj: dict[str, typing.Any]) -> _STRUCT:
-        parsed = {}
+        instance = cls()
 
         for key, value in obj.items():
             field = getattr(cls.fields, key)
+            field_type = field.get_type(instance)
 
-            if issubclass(field.type, Struct):
-                parsed[field.name] = field.type.from_dict(value)
+            if issubclass(field_type, Struct):
+                setattr(instance, field.name, field_type.from_dict(value))
             else:
-                parsed[field.name] = value
+                setattr(instance, field.name, value)
 
-        return cls(**parsed)
+        return instance
 
     def as_dict(
         self, *, skip_missing: bool = False, recursive: bool = False
@@ -225,11 +235,12 @@ class Struct:
             if value is None and field.optional:
                 continue
 
-            value = field._convert_type(value)
+            value = field._convert_type(value, struct=self)
+            field_type = field.get_type(struct=self)
 
             # All integral types are compacted into one chunk, unless they start and end
             # on a byte boundary.
-            if issubclass(field.type, t.FixedIntType) and not (
+            if issubclass(field_type, t.FixedIntType) and not (
                 value._bits % 8 == 0 and bit_offset % 8 == 0
             ):
                 bit_offset += value._bits
@@ -270,10 +281,12 @@ class Struct:
             elif not data and field.optional:
                 continue
 
-            if issubclass(field.type, t.FixedIntType) and not (
-                field.type._bits % 8 == 0 and bit_length % 8 == 0
+            field_type = field.get_type(struct=instance)
+
+            if issubclass(field_type, t.FixedIntType) and not (
+                field_type._bits % 8 == 0 and bit_length % 8 == 0
             ):
-                bit_length += field.type._bits
+                bit_length += field_type._bits
                 bitfields.append(field)
 
                 if bit_length % 8 == 0:
@@ -299,7 +312,7 @@ class Struct:
                     f" {bitfields}"
                 )
 
-            value, data = field.type.deserialize(data)
+            value, data = field_type.deserialize(data)
             setattr(instance, field.name, value)
 
         if bitfields:
