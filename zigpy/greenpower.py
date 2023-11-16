@@ -114,7 +114,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 # 0: Active
                 # 1: during commissioning window 
                 # 3: or until told to stop
-                await device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].green_power.proxy_commissioning_mode(
+                await device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].proxy_commissioning_mode(
                     options = 0x0B,
                     window = time_s
                 )
@@ -150,10 +150,9 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         if CommissioningMode.ProxyBroadcast in self._commissioning_mode:
             await self._send_commissioning_broadcast_command(0)
         elif CommissioningMode.ProxyUnicast in self._commissioning_mode:
-            await self._proxy_unicast_target.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].green_power.proxy_commissioning_mode(
+            await self._proxy_unicast_target.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].proxy_commissioning_mode(
                 options=0x00,
             )
-        
         self._controller_state = ControllerState.Operational
         self._commissioning_mode = CommissioningMode.NotCommissioning
         self._proxy_unicast_target = None
