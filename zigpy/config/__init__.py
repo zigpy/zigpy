@@ -5,6 +5,8 @@ from __future__ import annotations
 import voluptuous as vol
 
 from zigpy.config.defaults import (
+    CONF_DEVICE_BAUDRATE_DEFAULT,
+    CONF_DEVICE_FLOW_CONTROL_DEFAULT,
     CONF_MAX_CONCURRENT_REQUESTS_DEFAULT,
     CONF_NWK_BACKUP_ENABLED_DEFAULT,
     CONF_NWK_BACKUP_PERIOD_DEFAULT,
@@ -45,6 +47,8 @@ CONF_ADDITIONAL_ENDPOINTS = "additional_endpoints"
 CONF_DATABASE = "database_path"
 CONF_DEVICE = "device"
 CONF_DEVICE_PATH = "path"
+CONF_DEVICE_BAUDRATE = "baudrate"
+CONF_DEVICE_FLOW_CONTROL = "flow_control"
 CONF_MAX_CONCURRENT_REQUESTS = "max_concurrent_requests"
 CONF_NWK = "network"
 CONF_NWK_CHANNEL = "channel"
@@ -80,7 +84,16 @@ CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
 CONF_WATCHDOG_ENABLED = "watchdog_enabled"
 
 
-SCHEMA_DEVICE = vol.Schema({vol.Required(CONF_DEVICE_PATH): str})
+SCHEMA_DEVICE = vol.Schema(
+    {
+        vol.Required(CONF_DEVICE_PATH): str,
+        vol.Optional(CONF_DEVICE_BAUDRATE, default=CONF_DEVICE_BAUDRATE_DEFAULT): int,
+        vol.Optional(
+            CONF_DEVICE_FLOW_CONTROL, default=CONF_DEVICE_FLOW_CONTROL_DEFAULT
+        ): vol.In(["hardware", "software", None]),
+    }
+)
+
 SCHEMA_NETWORK = vol.Schema(
     {
         vol.Optional(CONF_NWK_CHANNEL, default=CONF_NWK_CHANNEL_DEFAULT): vol.Any(

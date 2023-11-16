@@ -56,9 +56,9 @@ CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S = 1.0
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     SCHEMA = conf.CONFIG_SCHEMA
-    SCHEMA_DEVICE = conf.SCHEMA_DEVICE
 
     _watchdog_period: int = 30
+    _probe_configs: list[dict[str, Any]] = []
 
     def __init__(self, config: dict) -> None:
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
@@ -606,18 +606,29 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         returned.
         """
 
-        config = cls.SCHEMA({conf.CONF_DEVICE: cls.SCHEMA_DEVICE(device_config)})
-        app = cls(config)
+        device_configs = [conf.SCHEMA_DEVICE(device_config)]
 
-        try:
-            await app.connect()
-        except Exception:
-            LOGGER.debug("Failed to probe with config %s", device_config, exc_info=True)
-            return False
-        else:
-            return device_config
-        finally:
-            await app.disconnect()
+        for overrides in cls._probe_configs:
+            new_config = conf.SCHEMA_DEVICE({**device_config, **overrides})
+
+            if new_config not in device_configs:
+                device_configs.append(new_config)
+
+        for device_config in device_configs:
+            app = cls(cls.SCHEMA({conf.CONF_DEVICE: device_config}))
+
+            try:
+                await app.connect()
+            except Exception:
+                LOGGER.debug(
+                    "Failed to probe with config %s", device_config, exc_info=True
+                )
+            else:
+                return device_config
+            finally:
+                await app.disconnect()
+
+        return False
 
     @abc.abstractmethod
     async def connect(self):
