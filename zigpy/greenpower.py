@@ -17,8 +17,14 @@ import zigpy.device
 import zigpy.endpoint
 import zigpy.listeners
 import zigpy.profiles.zgp
-from zigpy.profiles.zgp import GPCommand
+from zigpy.profiles.zgp import (
+    GPCommand
+)
 import zigpy.types as t
+from zigpy.types import (
+    GPFrameType,
+    GPSecurityLevel
+)
 import zigpy.util
 import zigpy.zcl
 
@@ -34,7 +40,7 @@ LOGGER = logging.getLogger(__name__)
 # Table 27
 class SinkTableEntry(t.Struct):
     options: t.bitmap16
-    gpd_id: t.uint32_t
+    gpd_id: t.GreenPowerDeviceID
     device_id: t.uint8_t
     radius: t.uint8_t = 0xff 
     sec_options: t.bitmap8
@@ -78,9 +84,33 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
     async def initialize(self):
         # register callbacks
         # self._application._callback_for_response()
+        self._application._callback_for_response(zigpy.listeners.ANY_DEVICE, [
+            GreenPowerProxy.ServerCommandDefs.notification.schema()
+        ], self._on_zcl_notification)
+        self._application._callback_for_response(zigpy.listeners.ANY_DEVICE, [
+            GreenPowerProxy.ServerCommandDefs.commissioning_notification.schema()
+        ], self._on_zcl_commissioning_notification)
         self._controller_state = ControllerState.Operational
         LOGGER.info("Green Power Controller initialized!")
 
+    def _on_zcl_notification(self, hdr, command):
+        LOGGER.info("Got green power ZCL notification")
+
+    def _on_zcl_commissioning_notification(self, hdr, command):
+        LOGGER.info("Got green power ZCL commissioning notification")
+
+    def handle_unknown_tunneled_green_power_frame(self, packet: t.ZigbeePacket):
+        # if we're not listening for commissioning packets, don't worry too much about it
+        # we can't really scan for these things so don't worry about the ZDO followup either
+        if self._controller_state != ControllerState.Commissioning:
+            return
+
+        # oh, we are listening for commissioning packets?
+        hdr, rest = foundation.ZCLHeader.deserialize(packet.data.value)
+        if hdr.command_id == GreenPowerProxy.ServerCommandDefs.commissioning_notification.id:
+            # here we go
+            command, rest = GreenPowerProxy.ServerCommandDefs.commissioning_notification.schema.deserialize(rest)
+       
     async def handle_received_green_power_frame(self, frame: t.GPDataFrame):
         LOGGER.debug("Ignoring directly received ZGP packet from %s", str(frame.src_id))
         # if CommissioningMode.Direct in self._commissioning_mode:
@@ -96,8 +126,8 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
 
         assert self._controller_state != ControllerState.Uninitialized
 
-        if self._controller_state != ControllerState.Operational:
-            await self._stop_permit()
+        # if self._controller_state != ControllerState.Operational:
+        #     await self._stop_permit()
 
         if self._controller_state == ControllerState.Operational:
             if device is not None:
@@ -187,7 +217,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             command_id=command.id,
             schema=command.schema,
             tsn=tsn,
-            disable_default_response=False,
+            disable_default_response=True,
             direction=command.direction,
             args=(),
             kwargs=kwargs,

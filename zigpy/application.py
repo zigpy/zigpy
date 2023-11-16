@@ -1009,6 +1009,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         try:
             device = self.get_device_with_address(packet.src)
         except KeyError:
+            # tunneled frames need special processing; we could be in a 
+            # commissioning state and expecting it, or the frame may be
+            # flagged for autocommissioning. either way, let the green
+            # power controller sort it out. (we're not getting back
+            # a ZDO IEEE request anyway so bypass that)
+            if packet.profile_id == zigpy.profiles.zgp.PROFILE_ID:
+                self._greenpower.handle_unknown_tunneled_green_power_frame(packet)
+                return
+
             LOGGER.warning("Unknown device %r", packet.src)
 
             if packet.src.addr_mode == t.AddrMode.NWK:

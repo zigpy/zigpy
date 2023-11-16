@@ -60,6 +60,7 @@ class GPCommand(t.enum8):
     ShortPress1of1 = 0x66
     ShortPress1of2 = 0x67
     ShortPress2of2 = 0x68
+    Commissioning = 0xe0
 
 # Table 51
 class GPDeviceType(t.enum16):

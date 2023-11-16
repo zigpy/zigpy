@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any, Final
 
 import zigpy.types as t
+from zigpy.types.named import GPSecurityLevel
 from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
@@ -2684,7 +2685,12 @@ class GreenPowerProxy(Cluster):
         commissioning_notification: Final = ZCLCommandDef(
             id=0x04,
             schema={
-                "options": t.bitmap16,
+                "applicationId": t.GPApplicationID,
+                "tempMaster": t.uint1_t,
+                "securityLevel": t.GPSecurityLevel,
+                "securityKeyType": t.GPSecurityKeyType,
+                "securityFailed": t.uint1_t,
+                "optionsReserved": t.uint6_t,
                 "gpdId": t.GreenPowerDeviceID,
                 "frameCounter": t.uint32_t,
                 "commandId": t.uint8_t,
