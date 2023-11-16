@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 import enum
 import typing
 
+from Crypto.Cipher import AES
+from Crypto.Util import Counter
+
 from . import basic
 from .struct import Struct
 
@@ -673,6 +676,32 @@ class GPDataFrame(Struct):
         # false = from GPD to GPP
         # true  = from GPP to GPD
         return bool((self.frame_control_ext >> 7) & 0x01)
+    
+    def calculate_mic(self, key: basic.uint32_t) -> basic.uint32_t:
+        src_id = self.src_id.to_bytes(4, "little")
+        frame_counter = self.frame_counter.to_bytes(4, "little")
+        nonce = src_id + src_id + frame_counter + (0x05).to_bytes(1)
+        header = self.options.to_bytes(1) + self.frame_control_ext.to_bytes(1)
+        header = header + src_id + frame_counter
+        a = header + self.command_payload
+        La = len(a).to_bytes(2)
+        AddAuthData = La + a
+        AddAuthData += (0x00).to_bytes(1) * (16 - len(AddAuthData))
+        B0 = (0x49).to_bytes(1) + nonce
+        B0 += (0x00).to_bytes(1) * (16 - len(B0))
+        B1 = AddAuthData
+        X0 = (0x00000000000000000000000000000000).to_bytes(16)
+        cipher = AES.new(key, AES.MODE_CBC, B0)
+        X1 = cipher.encrypt(X0)
+        cipher = AES.new(key, AES.MODE_CBC, B1)
+        X2 = cipher.encrypt(X1)
+        A0 = (0x01).to_bytes(1) + nonce + (0x0000).to_bytes(2)
+        cipher = AES.new(
+            key,
+            AES.MODE_CTR,
+            counter=Counter.new(128, initial_value=int.from_bytes(A0, byteorder="big")),
+        )
+        return basic.uint32_t.from_bytes(cipher.encrypt(X2[0:4]), byteorder="little")
 
     @classmethod
     def deserialize(cls: type[GPDataFrame], data: bytes) -> tuple[GPDataFrame, bytes]:
