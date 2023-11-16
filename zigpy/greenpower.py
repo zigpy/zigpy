@@ -30,7 +30,7 @@ import zigpy.zcl
 
 from zigpy.zcl import Cluster, foundation
 from zigpy.types.named import BroadcastAddress
-from zigpy.zcl.clusters.general import GreenPowerProxy
+from zigpy.zcl.clusters.greenpower import GreenPowerProxy
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -145,7 +145,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 # 1: during commissioning window 
                 # 3: or until told to stop
                 await device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].proxy_commissioning_mode(
-                    options = 0x0B,
+                    options = GreenPowerProxy.GPProxyCommissioningModeOptions(
+                        enter=1,
+                        exit_mode=t.GPProxyCommissioningModeExitMode.OnExpireOrExplicitExit
+                    ),
                     window = time_s
                 )
                 LOGGER.debug("Successfully sent commissioning mode request to %s", str(device.ieee))
@@ -181,7 +184,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             await self._send_commissioning_broadcast_command(0)
         elif CommissioningMode.ProxyUnicast in self._commissioning_mode:
             await self._proxy_unicast_target.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].proxy_commissioning_mode(
-                options=0x00,
+                options=GreenPowerProxy.GPProxyCommissioningModeOptions(enter=0),
             )
         self._controller_state = ControllerState.Operational
         self._commissioning_mode = CommissioningMode.NotCommissioning
@@ -191,11 +194,16 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         named_arguments = None
         if time_s > 0:
             named_arguments = {
-                "options": 0x0B,
+                "options": GreenPowerProxy.GPProxyCommissioningModeOptions(
+                    enter=1,
+                    exit_mode=t.GPProxyCommissioningModeExitMode.OnExpireOrExplicitExit
+                ),
                 "window": time_s
             }
         else:
-            named_arguments = {"options": 0x00}
+            named_arguments = {
+                "options": GreenPowerProxy.GPProxyCommissioningModeOptions(enter=0)
+            }
 
         await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode, named_arguments)
 
