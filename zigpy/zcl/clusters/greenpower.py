@@ -191,15 +191,6 @@ class GreenPowerProxy(Cluster):
         gpp_active_functionality: Final = ZCLAttributeDef(
             id=0x0017, type=t.bitmap24, access="r", mandatory=True
         )
-        joiningAllowUntil: Final = ZCLAttributeDef(
-            id=0x9997, type=t.uint32_t, access="rw"
-        )
-        key: Final = ZCLAttributeDef(
-            id=0x9998, type=t.uint32_t, access="rw"
-        )
-        counter: Final = ZCLAttributeDef(
-            id=0x9999, type=t.uint64_t, access="rw"
-        )
     
     class ServerCommandDefs(BaseCommandDefs):
         notification: Final = ZCLCommandDef(

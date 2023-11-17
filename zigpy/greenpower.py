@@ -18,7 +18,9 @@ import zigpy.endpoint
 import zigpy.listeners
 import zigpy.profiles.zgp
 from zigpy.profiles.zgp import (
-    GPCommand
+    GPCommand,
+    GREENPOWER_BROADCAST_GROUP,
+    GREENPOWER_ENDPOINT_ID,
 )
 import zigpy.types as t
 from zigpy.types import (
@@ -30,7 +32,10 @@ import zigpy.zcl
 
 from zigpy.zcl import Cluster, foundation
 from zigpy.types.named import BroadcastAddress
-from zigpy.zcl.clusters.greenpower import GreenPowerProxy
+from zigpy.zcl.clusters.greenpower import (
+    GreenPowerProxy,
+    GPCommissioningNotificationOptions
+)
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -90,6 +95,12 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self._application._callback_for_response(zigpy.listeners.ANY_DEVICE, [
             GreenPowerProxy.ServerCommandDefs.commissioning_notification.schema()
         ], self._on_zcl_commissioning_notification)
+
+        try:
+            await self._application._device.endpoints[GREENPOWER_ENDPOINT_ID].add_to_group(GREENPOWER_BROADCAST_GROUP)
+        except (IndexError, KeyError):
+            LOGGER.warn("No GP endpoint to add to GP Group; GP broadcasts will not function")
+        
         self._controller_state = ControllerState.Operational
         LOGGER.info("Green Power Controller initialized!")
 
@@ -105,18 +116,21 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         if self._controller_state != ControllerState.Commissioning:
             return
 
-        # oh, we are listening for commissioning packets?
         hdr, rest = foundation.ZCLHeader.deserialize(packet.data.value)
         if hdr.command_id == GreenPowerProxy.ServerCommandDefs.commissioning_notification.id:
             # here we go
-            command, rest = GreenPowerProxy.ServerCommandDefs.commissioning_notification.schema.deserialize(rest)
+            notif, rest = GreenPowerProxy.ServerCommandDefs.commissioning_notification.schema.deserialize(rest)
+            options: GPCommissioningNotificationOptions = notif.options
+            if options.security_level == GPSecurityLevel.NoSecurity and notif.command_id == GPCommand.Commissioning:
+                
+                pass
+            
+            # if we have security level > 0, it's not a proper 0xE0 commissioning command; pass
+            
        
     async def handle_received_green_power_frame(self, frame: t.GPDataFrame):
-        LOGGER.debug("Ignoring directly received ZGP packet from %s", str(frame.src_id))
-        # if CommissioningMode.Direct in self._commissioning_mode:
-
-        pass
-
+        """Build this out later to allow for direct interaction and commissioning"""
+    
     async def permit(self, time_s: int = 60, device: zigpy.device.Device = None):
         assert 0 <= time_s <= 254
 
@@ -126,44 +140,46 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
 
         assert self._controller_state != ControllerState.Uninitialized
 
-        # if self._controller_state != ControllerState.Operational:
-        #     await self._stop_permit()
+        # this flow kinda stinks, but ZHA doesn't give us a message to
+        # stop commissioning near as I can tell. it just waits for the
+        # window to close
+        if self._controller_state == ControllerState.Commissioning:
+            await self._stop_permit()
+            # really, really let it settle, as devices hate the close/open
+            await asyncio.sleep(0.2)
 
-        if self._controller_state == ControllerState.Operational:
-            if device is not None:
-                # We can direct commission without a lot of help
-                if device == self._application._device:
-                    self._commissioning_mode = CommissioningMode.Direct
-                    return
+        assert self._controller_state == ControllerState.Operational
 
-                # No GP endpoint nothing doing sorry
-                if not device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID]:
-                    return
-                
-                # Figure 42
-                # 0: Active
-                # 1: during commissioning window 
-                # 3: or until told to stop
-                await device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].proxy_commissioning_mode(
-                    options = GreenPowerProxy.GPProxyCommissioningModeOptions(
-                        enter=1,
-                        exit_mode=t.GPProxyCommissioningModeExitMode.OnExpireOrExplicitExit
-                    ),
-                    window = time_s
-                )
-                LOGGER.debug("Successfully sent commissioning mode request to %s", str(device.ieee))
-                self._controller_state = ControllerState.Commissioning
-                self._commissioning_mode = CommissioningMode.ProxyUnicast
-                self._proxy_unicast_target = device
-            else:
-                await self._send_commissioning_broadcast_command(time_s)
-                self._controller_state = ControllerState.Commissioning
-                self._commissioning_mode = CommissioningMode.ProxyBroadcast | CommissioningMode.Direct
-        else:
-            LOGGER.debug(
-                "GreenPowerController not valid to start commissioning, current state: %s",
-                str(self._controller_state)
+        if device is not None:
+            # We can direct commission without a lot of help
+            if device == self._application._device:
+                self._commissioning_mode = CommissioningMode.Direct
+                return
+
+            # No GP endpoint nothing doing sorry
+            if not device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID]:
+                return
+            
+            # Figure 42
+            # 0: Active
+            # 1: during commissioning window 
+            # 3: or until told to stop
+            await device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].proxy_commissioning_mode(
+                options = GreenPowerProxy.GPProxyCommissioningModeOptions(
+                    enter=1,
+                    exit_mode=t.GPProxyCommissioningModeExitMode.OnExpireOrExplicitExit
+                ),
+                window = time_s
             )
+            LOGGER.debug("Successfully sent commissioning mode request to %s", str(device.ieee))
+            self._controller_state = ControllerState.Commissioning
+            self._commissioning_mode = CommissioningMode.ProxyUnicast
+            self._proxy_unicast_target = device
+        else:
+            await self._send_commissioning_broadcast_command(time_s)
+            self._controller_state = ControllerState.Commissioning
+            self._commissioning_mode = CommissioningMode.ProxyBroadcast
+
 
     async def _stop_permit(self):
         # this may happen if the application experiences an unexpected
@@ -189,6 +205,9 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self._controller_state = ControllerState.Operational
         self._commissioning_mode = CommissioningMode.NotCommissioning
         self._proxy_unicast_target = None
+        # we need to give the network and devices time to settle
+        # just in case we have to immediately request more commissioning
+        await asyncio.sleep(0.2)
 
     async def _send_commissioning_broadcast_command(self, time_s: int):
         named_arguments = None
