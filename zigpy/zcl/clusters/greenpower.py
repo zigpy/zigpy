@@ -21,14 +21,14 @@ class GPNotificationOptions(t.bitmap16):
     def application_id(self) -> t.GPApplicationID:
         return t.GPApplicationID(self & 0b111)
     @property
-    def also_unicast(self) -> bool:
-        return bool((self >> 3) & 0x01)
+    def also_unicast(self) -> t.uint1_t:
+        return t.uint1_t((self >> 3) & 0x01)
     @property
-    def also_derived_group(self) -> bool:
-        return bool((self >> 4) & 0x01)
+    def also_derived_group(self) -> t.uint1_t:
+        return t.uint1_t((self >> 4) & 0x01)
     @property
-    def also_commissioned_group(self) -> bool:
-        return bool((self >> 5) & 0x01)
+    def also_commissioned_group(self) -> t.uint1_t:
+        return t.uint1_t((self >> 5) & 0x01)
     @property
     def security_level(self) -> t.GPSecurityLevel:
         return t.GPSecurityLevel((self >> 6) & 0b11)
@@ -36,11 +36,11 @@ class GPNotificationOptions(t.bitmap16):
     def security_key_type(self) -> t.GPSecurityKeyType:
         return t.GPSecurityKeyType((self >> 8) & 0b111)
     @property
-    def temp_master(self) -> bool:
-        return bool((self >> 11) & 0x01)
+    def temp_master(self) -> t.uint1_t:
+        return t.uint1_t((self >> 11) & 0x01)
     @property
-    def gpp_tx_queue_full(self) -> bool:
-        return bool((self >> 12) & 0x01)
+    def gpp_tx_queue_full(self) -> t.uint1_t:
+        return t.uint1_t((self >> 12) & 0x01)
 
 # ZGP spec Figure 26
 class GPPairingSearchOptions(t.bitmap16):
@@ -48,20 +48,20 @@ class GPPairingSearchOptions(t.bitmap16):
     def application_id(self) -> t.GPApplicationID:
         return t.GPApplicationID(self & 0b111)
     @property
-    def request_unicast_sink(self) -> bool:
-        return bool((self >> 3) & 0x01)
+    def request_unicast_sink(self) -> t.uint1_t:
+        return t.uint1_t((self >> 3) & 0x01)
     @property
-    def request_derived_groupcast_sink(self) -> bool:
-        return bool((self >> 4) & 0x01)
+    def request_derived_groupcast_sink(self) -> t.uint1_t:
+        return t.uint1_t((self >> 4) & 0x01)
     @property
-    def request_commissioned_groupcast_sink(self) -> bool:
-        return bool((self >> 5) & 0x01)
+    def request_commissioned_groupcast_sink(self) -> t.uint1_t:
+        return t.uint1_t((self >> 5) & 0x01)
     @property
-    def request_frame_counter(self) -> bool:
-        return bool((self >> 6) & 0x01)
+    def request_frame_counter(self) -> t.uint1_t:
+        return t.uint1_t((self >> 6) & 0x01)
     @property
-    def request_security_key(self) -> bool:
-        return bool((self >> 7) & 0x01)
+    def request_security_key(self) -> t.uint1_t:
+        return t.uint1_t((self >> 7) & 0x01)
 
 # ZGP spec Figure 28
 class GPCommissioningNotificationOptions(t.bitmap16):
@@ -69,7 +69,7 @@ class GPCommissioningNotificationOptions(t.bitmap16):
     def application_id(self) -> t.GPApplicationID:
         return t.GPApplicationID(self & 0b111)
     @property
-    def temp_master(self) -> bool:
+    def temp_master(self) -> t.uint1_t:
         return bool((self >> 3) & 0x01)
     @property
     def security_level(self) -> t.GPSecurityLevel:
@@ -78,7 +78,7 @@ class GPCommissioningNotificationOptions(t.bitmap16):
     def security_key_type(self) -> t.GPSecurityKeyType:
         return t.GPSecurityKeyType((self >> 6) & 0b111)
     @property
-    def security_failed(self) -> bool:
+    def security_failed(self) -> t.uint1_t:
         return bool((self >> 9) & 0x01)
     
 # ZGP spec Figure 37
@@ -95,33 +95,81 @@ class GPNotificationResponseOptions(t.Struct):
         return super().__new__(cls, *args, **kwargs)
 
 # ZGP spec Figure 41
-class GPPairingOptions(t.Struct):
-    application_id: t.GPApplicationID
-    add_sink: t.uint1_t
-    remove_gpd: t.uint1_t
-    communication_mode: t.GPCommunicationMode
-    gpd_fixed: t.uint1_t
-    gpd_mac_seq_num_cap: t.uint1_t
-    security_level: t.GPSecurityLevel
-    security_key_type: t.GPSecurityKeyType
-    security_frame_counter_present: t.uint1_t
-    assigned_alias_present: t.uint1_t
-    forwarding_radius_present: t.uint1_t
-    reserved: t.uint6_t
-    def __new__(cls: GPPairingOptions, *args, **kwargs) -> GPPairingOptions:
-        kwargs.setdefault("application_id", t.GPApplicationID.GPZero)
-        kwargs.setdefault("add_sink", 0)
-        kwargs.setdefault("remove_gpd", 0)
-        kwargs.setdefault("communication_mode", t.GPCommunicationMode.Unicast)
-        kwargs.setdefault("gpd_fixed", 0)
-        kwargs.setdefault("gpd_mac_seq_num_cap", 0)
-        kwargs.setdefault("security_level", t.GPSecurityLevel.NoSecurity)
-        kwargs.setdefault("security_key_type", t.GPSecurityKeyType.NoKey)
-        kwargs.setdefault("security_frame_counter_present", 0)
-        kwargs.setdefault("assigned_alias_present", 0)
-        kwargs.setdefault("forwarding_radius_present", 0)
-        kwargs.setdefault("reserved", 0)
-        return super().__new__(cls, *args, **kwargs)
+class GPPairingOptions(t.bitmap24):
+    # work around a little issue regarding
+    # bitfield byte order for now
+    @property
+    def application_id(self) -> t.GPApplicationID:
+        return t.GPApplicationID(self & 0b111)
+    @application_id.setter
+    def application_id(self, value: t.GPApplicationID):
+        self = (self & ~(0b111)) | value
+    @property
+    def add_sink(self) -> t.uint1_t:
+        return t.uint1_t((self >> 3) & 0x01)
+    @add_sink.setter
+    def add_sink(self, value: t.uint1_t):
+        self = (self & ~(1 << 3)) | (value << 3)
+    @property
+    def remove_gpd(self) -> t.uint1_t:
+        return t.uint1_t((self >> 4) & 0x01)
+    @remove_gpd.setter
+    def remove_gpd(self, value: t.uint1_t):
+        self = (self & ~(1 << 4)) | (value << 4)
+    @property
+    def communication_mode(self) -> t.GPCommunicationMode:
+        return t.GPCommunicationMode((self >> 5) & 0b11)
+    @communication_mode.setter
+    def communication_mode(self, value: t.GPCommunicationMode):
+        self = (self & ~(0b11 << 5)) | (value << 5)
+    @property
+    def gpd_fixed(self) -> t.uint1_t:
+        return t.uint1_t((self >> 7) & 0x01)
+    @gpd_fixed.setter
+    def gpd_fixed(self, value: t.uint1_t):
+        self = (self & ~(1 << 7)) | (value << 7)
+    @property
+    def gpd_mac_seq_num_cap(self) -> t.uint1_t:
+        return t.uint1_t((self >> 8) & 0x01)
+    @gpd_mac_seq_num_cap.setter
+    def gpd_mac_seq_num_cap(self, value: t.uint1_t):
+        self = (self & ~(1 << 8)) | (value << 8)
+    @property
+    def security_level(self) -> t.GPSecurityLevel:
+        return t.GPSecurityLevel((self >> 9) & 0b11)
+    @security_level.setter
+    def security_level(self, value: t.GPSecurityLevel):
+        self = (self & ~(0b11 << 9)) | (value << 9)
+    @property
+    def security_key_type(self) -> t.GPSecurityKeyType:
+        return t.GPSecurityKeyType((self >> 11) & 0b111)
+    @security_key_type.setter
+    def security_key_type(self, value: t.GPSecurityKeyType):
+        self = (self & ~(0b111 << 11)) | (value << 11)
+    @property
+    def security_frame_counter_present(self) -> t.uint1_t:
+        return t.uint1_t((self >> 14) & 0x01)
+    @security_frame_counter_present.setter
+    def security_frame_counter_present(self, value: t.uint1_t):
+        self = (self & ~(1 << 14)) | (value << 14)
+    @property
+    def security_key_present(self) -> t.uint1_t:
+        return t.uint1_t((self >> 15) & 0x01)
+    @security_key_present.setter
+    def security_key_present(self, value: t.uint1_t):
+        self = (self & ~(1 << 15)) | (value << 15)
+    @property
+    def assigned_alias_present(self) -> t.uint1_t:
+        return t.uint1_t((self >> 16) & 0x01)
+    @assigned_alias_present.setter
+    def assigned_alias_present(self, value: t.uint1_t):
+        self = (self & ~(1 << 16)) | (value << 16)
+    @property
+    def forwarding_radius_present(self) -> t.uint1_t:
+        return t.uint1_t((self >> 17) & 0x01)
+    @forwarding_radius_present.setter
+    def forwarding_radius_present(self, value: t.uint1_t):
+        self = (self & ~(1 << 17)) | (value << 17)
 
 # ZGP spec Figure 43
 class GPProxyCommissioningModeOptions(t.Struct):
