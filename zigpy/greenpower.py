@@ -72,6 +72,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self.__controller_state: ControllerState = ControllerState.Uninitialized
         self._commissioning_mode: CommissioningMode = CommissioningMode.NotCommissioning
         self._proxy_unicast_target: zigpy.device.Device = None
+        self._timeout_task: asyncio.Task = None
 
     @property 
     def _controller_state(self):
@@ -121,8 +122,11 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             # here we go
             notif, rest = GreenPowerProxy.ServerCommandDefs.commissioning_notification.schema.deserialize(rest)
             options: GPCommissioningNotificationOptions = notif.options
+            if options.security_failed:
+                LOGGER.debug("Unknown device failed security checks: %s", str(notif.gpd_id))
+            
             if options.security_level == GPSecurityLevel.NoSecurity and notif.command_id == GPCommand.Commissioning:
-                
+                LOGGER.debug("Received valid GP commissioning packet from %s", str(notif.gpd_id))
                 pass
             
             # if we have security level > 0, it's not a proper 0xE0 commissioning command; pass
@@ -131,6 +135,16 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
     async def handle_received_green_power_frame(self, frame: t.GPDataFrame):
         """Build this out later to allow for direct interaction and commissioning"""
     
+
+    async def _permit_timeout(self, time_s: int):
+        """After timeout we just fall out of commissioning mode"""
+        await asyncio.sleep(time_s)
+        LOGGER.info("Green Power Controller commissioning window closing after timeout")
+        self._controller_state = ControllerState.Operational
+        self._commissioning_mode = CommissioningMode.NotCommissioning
+        self._timeout_task = None
+
+
     async def permit(self, time_s: int = 60, device: zigpy.device.Device = None):
         assert 0 <= time_s <= 254
 
@@ -160,10 +174,6 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             if not device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID]:
                 return
             
-            # Figure 42
-            # 0: Active
-            # 1: during commissioning window 
-            # 3: or until told to stop
             await device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].proxy_commissioning_mode(
                 options = GreenPowerProxy.GPProxyCommissioningModeOptions(
                     enter=1,
@@ -171,7 +181,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 ),
                 window = time_s
             )
-            LOGGER.debug("Successfully sent commissioning mode request to %s", str(device.ieee))
+            LOGGER.debug("Successfully sent commissioning open request to %s", str(device.ieee))
             self._controller_state = ControllerState.Commissioning
             self._commissioning_mode = CommissioningMode.ProxyUnicast
             self._proxy_unicast_target = device
@@ -179,6 +189,9 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             await self._send_commissioning_broadcast_command(time_s)
             self._controller_state = ControllerState.Commissioning
             self._commissioning_mode = CommissioningMode.ProxyBroadcast
+        
+        # kickstart the timeout task
+        self._timeout_task = asyncio.get_running_loop().create_task(self._permit_timeout(time_s))
 
 
     async def _stop_permit(self):
@@ -196,18 +209,25 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             )
             return
         
+        if self._timeout_task != None:
+            self._timeout_task.cancel()
+            self._timeout_task = None
+        else:
+            LOGGER.error("Green Power Controller in commissioning state with no timeout task!")
+
         if CommissioningMode.ProxyBroadcast in self._commissioning_mode:
             await self._send_commissioning_broadcast_command(0)
         elif CommissioningMode.ProxyUnicast in self._commissioning_mode:
-            await self._proxy_unicast_target.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].proxy_commissioning_mode(
+            await self._proxy_unicast_target.endpoints[GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].proxy_commissioning_mode(
                 options=GreenPowerProxy.GPProxyCommissioningModeOptions(enter=0),
             )
+            LOGGER.debug("Successfully sent commissioning close request to %s", str(self._proxy_unicast_target.ieee))
+            # we need to give the network and devices time to settle
+            # just in case we have to immediately request more commissioning
+            await asyncio.sleep(0.2)
         self._controller_state = ControllerState.Operational
         self._commissioning_mode = CommissioningMode.NotCommissioning
         self._proxy_unicast_target = None
-        # we need to give the network and devices time to settle
-        # just in case we have to immediately request more commissioning
-        await asyncio.sleep(0.2)
 
     async def _send_commissioning_broadcast_command(self, time_s: int):
         named_arguments = None
@@ -267,6 +287,8 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 radius=radius,
             )
         )
+        # Let the broadcast work its way thru the net
+        await asyncio.sleep(0.2)
 
 
 
