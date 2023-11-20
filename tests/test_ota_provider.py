@@ -286,6 +286,17 @@ async def test_ikea_refresh_list(mock_get, ikea_prov):
     assert not ikea_prov.expired
 
 
+def test_ikea_bad_version():
+    image = ota_p.IKEAImage(
+        image_type=4552,
+        binary_url="https://fw.ota.homesmart.ikea.com/files/DIRIGERA_release_prod_v2.453.1_348f0dce-3c34-49a2-b64c-a1caa202104c.raucb",
+        sha3_256_sum="1b5fbea79c5b41864352a938a90ad25d9a0118054bf1cdc0314ef9636a60143a",
+    )
+
+    with pytest.raises(ValueError):
+        image.version
+
+
 @patch("aiohttp.ClientSession.get")
 async def test_ikea_refresh_list_locked(mock_get, ikea_prov):
     await ikea_prov._locks[ota_p.LOCK_REFRESH].acquire()
