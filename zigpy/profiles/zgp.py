@@ -5,6 +5,8 @@ import zigpy.types as t
 PROFILE_ID = 41440
 GREENPOWER_ENDPOINT_ID = 242
 GREENPOWER_BROADCAST_GROUP = 0x0b84
+# ZigBeeAlliance09, Table 32
+GREENPOWER_DEFAULT_LINK_KEY = t.KeyData([0x5A, 0x69, 0x67, 0x42, 0x65, 0x65, 0x41, 0x6C, 0x6C, 0x69, 0x61, 0x6E, 0x63, 0x65, 0x30, 0x39])
 
 class GPCommand(t.enum8):
     Identify = 0x00
@@ -63,7 +65,7 @@ class GPCommand(t.enum8):
     Commissioning = 0xe0
 
 # Table 51
-class GPDeviceType(t.enum16):
+class GPDeviceType(t.enum8):
     SWITCH_SIMPLE_ONE_STATE = 0x00
     SWITCH_SIMPLE_TWO_STATE = 0x01
     SWITCH_ON_OFF = 0x02
@@ -71,6 +73,7 @@ class GPDeviceType(t.enum16):
     SENSOR_SIMPLE = 0x04
     SWITCH_ADVANCED_ONE_STATE = 0x05
     SWITCH_ADVANCED_TWO_STATE = 0x06
+    SWITCH_GENERIC = 0x07
 
     SWITCH_COLOR_DIMMER = 0x10
     SENSOR_LIGHT = 0x11

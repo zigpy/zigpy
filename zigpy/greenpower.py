@@ -7,11 +7,18 @@ import sys
 import typing 
 import warnings
 
+from cryptography.hazmat.primitives.ciphers.aead import AESCCM
+from rsa import encrypt
+from zigpy import zdo
+from zigpy.types.basic import LVBytes, Optional
+from zigpy.types.greenpower import GPCommunicationMode
+
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
 else:
     from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
+import zigpy.config as conf
 import zigpy.application
 import zigpy.device
 import zigpy.endpoint
@@ -19,19 +26,34 @@ import zigpy.listeners
 import zigpy.profiles.zgp
 from zigpy.profiles.zgp import (
     GPCommand,
+    GPDeviceType,
     GREENPOWER_BROADCAST_GROUP,
+    GREENPOWER_DEFAULT_LINK_KEY,
     GREENPOWER_ENDPOINT_ID,
 )
 import zigpy.types as t
 from zigpy.types import (
+    BroadcastAddress,
+    GPCommunicationMode,
+    GPDataFrame,
     GPFrameType,
-    GPSecurityLevel
+    GPSecurityLevel,
+    SinkTableEntry,
 )
 import zigpy.util
 import zigpy.zcl
+import zigpy.zdo.types
 
 from zigpy.zcl import Cluster, foundation
-from zigpy.types.named import BroadcastAddress
+import zigpy.zcl.clusters.closures
+import zigpy.zcl.clusters.lighting
+import zigpy.zcl.clusters.measurement
+from zigpy.zcl.clusters.general import (
+    Basic,
+    Scenes,
+    OnOff,
+    LevelControl,
+)
 from zigpy.zcl.clusters.greenpower import (
     GreenPowerProxy,
     GPCommissioningNotificationOptions
@@ -41,16 +63,6 @@ if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
 
 LOGGER = logging.getLogger(__name__)
-
-# Table 27
-class SinkTableEntry(t.Struct):
-    options: t.bitmap16
-    gpd_id: t.GreenPowerDeviceID
-    device_id: t.uint8_t
-    radius: t.uint8_t = 0xff 
-    sec_options: t.bitmap8
-    sec_frame_counter: t.uint32_t
-    key: t.KeyData
 
 class ControllerState(enum.Enum):
     Uninitialized = 0
@@ -64,6 +76,34 @@ class CommissioningMode(enum.Flag):
     Direct         = 0b001
     ProxyUnicast   = 0b010
     ProxyBroadcast = 0b100
+
+class GPDeviceTypeDescriptor:
+    name: str
+    in_clusters: typing.List[zigpy.zcl.Cluster]
+    out_clusters: typing.List[zigpy.zcl.Cluster]
+    def __init__(self, name: str, in_clusters: typing.List[zigpy.zcl.Cluster] = [], out_clusters: typing.List[zigpy.zcl.Cluster] = []) -> None:
+        self.name = name
+        self.in_clusters = in_clusters
+        self.out_clusters = out_clusters
+
+GPEndpointsByDeviceType: typing.Dict[GPDeviceType, GPDeviceTypeDescriptor] = {
+    GPDeviceType.SWITCH_SIMPLE_ONE_STATE: GPDeviceTypeDescriptor("Simple Generic 1-state", out_clusters=[OnOff]),
+    GPDeviceType.SWITCH_SIMPLE_TWO_STATE: GPDeviceTypeDescriptor("Simple Generic 2-state", out_clusters=[OnOff]),
+    GPDeviceType.SWITCH_ON_OFF: GPDeviceTypeDescriptor("On/Off Switch", out_clusters=[Scenes, OnOff]),
+    GPDeviceType.SWITCH_LEVEL_CONTROL: GPDeviceTypeDescriptor("Level Control Switch",out_clusters=[LevelControl]),
+    GPDeviceType.SENSOR_SIMPLE: GPDeviceTypeDescriptor("Simple Sensor"),
+    GPDeviceType.SWITCH_ADVANCED_ONE_STATE: GPDeviceTypeDescriptor("Advanced Generic 1-state Switch", out_clusters=[Scenes, OnOff]),
+    GPDeviceType.SWITCH_ADVANCED_TWO_STATE: GPDeviceTypeDescriptor("Advanced Generic 2-state Switch", out_clusters=[Scenes, OnOff]),
+    GPDeviceType.SWITCH_GENERIC: GPDeviceTypeDescriptor("Generic Switch", out_clusters=[Scenes, OnOff]),
+    GPDeviceType.SWITCH_COLOR_DIMMER: GPDeviceTypeDescriptor("Color Dimmer Switch",out_clusters=[zigpy.zcl.clusters.lighting.Color]),
+    GPDeviceType.SENSOR_LIGHT: GPDeviceTypeDescriptor("Light Sensor", in_clusters=[zigpy.zcl.clusters.measurement.IlluminanceMeasurement]),
+    GPDeviceType.SENSOR_OCCUPANCY: GPDeviceTypeDescriptor("Occupancy Sensor", in_clusters=[zigpy.zcl.clusters.measurement.OccupancySensing]),
+    GPDeviceType.DOOR_LOCK_CONTROLLER: GPDeviceTypeDescriptor("Door Lock Controller", out_clusters=[zigpy.zcl.clusters.closures.DoorLock]),
+    GPDeviceType.SENSOR_TEMPERATURE: GPDeviceTypeDescriptor("Temperature Sensor", in_clusters=[zigpy.zcl.clusters.measurement.TemperatureMeasurement]),
+    GPDeviceType.SENSOR_PRESSURE: GPDeviceTypeDescriptor("Pressure Sensor", in_clusters=[zigpy.zcl.clusters.measurement.PressureMeasurement]),
+    GPDeviceType.SENSOR_FLOW: GPDeviceTypeDescriptor("Flow Sensor", in_clusters=[zigpy.zcl.clusters.measurement.FlowMeasurement]),
+    GPDeviceType.SENSOR_ENVIRONMENT_INDOOR: GPDeviceTypeDescriptor("Indoor Environment Sensor")
+}
 
 class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """Controller that tracks the current GPS state"""
@@ -87,9 +127,16 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 str(value))
             self.__controller_state = value
 
+    def _sink_table_as_bytes(self) -> t.LongOctetString:
+        return t.LongOctetString()
+
+    @property
+    def _gp_cluster(self) -> zigpy.zcl.Cluster:
+        return self._application._device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id]
+
     async def initialize(self):
-        # register callbacks
-        # self._application._callback_for_response()
+        await self._load_persistent_sink_table()
+
         self._application._callback_for_response(zigpy.listeners.ANY_DEVICE, [
             GreenPowerProxy.ServerCommandDefs.notification.schema()
         ], self._on_zcl_notification)
@@ -102,8 +149,19 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         except (IndexError, KeyError):
             LOGGER.warn("No GP endpoint to add to GP Group; GP broadcasts will not function")
         
+        try:
+            await self._gp_cluster.write_attributes({
+                "max_sink_table_entries": 0xFF,
+                "sink_table": self._sink_table_as_bytes(),
+            })
+        except:
+            LOGGER.warn("GP Controller failed to write initialization attrs")
+        
         self._controller_state = ControllerState.Operational
         LOGGER.info("Green Power Controller initialized!")
+
+    def _get_sink_table_entry(self, gpd_id: t.GreenPowerDeviceID):
+        return next((e for e in self._sink_table if e.device_id == gpd_id), None)
 
     def _on_zcl_notification(self, hdr, command):
         LOGGER.info("Got green power ZCL notification")
@@ -114,7 +172,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
     def handle_unknown_tunneled_green_power_frame(self, packet: t.ZigbeePacket):
         # if we're not listening for commissioning packets, don't worry too much about it
         # we can't really scan for these things so don't worry about the ZDO followup either
-        if self._controller_state != ControllerState.Commissioning:
+        if self._controller_state != ControllerState.Commissioning or self._commissioning_mode == CommissioningMode.Direct:
             return
 
         hdr, rest = foundation.ZCLHeader.deserialize(packet.data.value)
@@ -127,12 +185,129 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             
             if options.security_level == GPSecurityLevel.NoSecurity and notif.command_id == GPCommand.Commissioning:
                 LOGGER.debug("Received valid GP commissioning packet from %s", str(notif.gpd_id))
-                pass
-            
-            # if we have security level > 0, it's not a proper 0xE0 commissioning command; pass
-            
-       
-    async def handle_received_green_power_frame(self, frame: t.GPDataFrame):
+                frame, rest = GPDataFrame.deserialize(notif.payload)
+                asyncio.get_running_loop().create_task(self._handle_commissioning_data_frame(frame, True))
+
+
+    async def _create_device(self, frame: GPDataFrame, payload: t.GPCommissioningPayload, sink_table_entry: SinkTableEntry, from_zcl: bool) -> zigpy.device.Device:
+        device_type = payload.device_type
+        ieee = t.EUI64(bytearray([0,0,0,0]).append(frame.src_id.serialize()))
+        device = self._application.add_device(ieee, t.uint16_t(frame.src_id & 0xFFFF))
+        device.status = zigpy.device.Status.ENDPOINTS_INIT
+        device._skip_configuration = True
+        device.node_desc = zdo.types.NodeDescriptor(
+            logical_type=zigpy.zdo.types.LogicalType.EndDevice,
+            frequency_band=zigpy.zdo.types._NodeDescriptorEnums.FrequencyBand.Freq2400MHz,
+            mac_capability_flags=zigpy.zdo.types._NodeDescriptorEnums.MACCapabilityFlags.AllocateAddress,
+            manufacturer_code=4174,
+            maximum_buffer_size=82,
+            maximum_incoming_transfer_size=82,
+            server_mask=0,
+            maximum_outgoing_transfer_size=82,
+            descriptor_capability_field=0,
+        )
+        ep: zigpy.endpoint.Endpoint = device.add_endpoint(1)
+        ep.status = zigpy.endpoint.Status.ZDO_INIT
+        ep.profile_id = zigpy.profiles.zha.PROFILE_ID
+        ep.device_type = zigpy.profiles.zha.DeviceType.GREEN_POWER
+        ep.add_input_cluster(Basic.cluster_id)
+        cluster: Cluster = ep.in_clusters[Basic.cluster_id]
+        cluster.update_attribute(Basic.AttributeDefs.manufacturer.id, "GreenPower")
+        if device_type is not None and device_type in GPEndpointsByDeviceType:
+            descriptor = GPEndpointsByDeviceType[device_type]
+            ep.in_clusters[Basic.cluster_id].update_attribute(Basic.AttributeDefs.model.id, descriptor.name)
+            for cluster in descriptor.in_clusters:
+                LOGGER.debug("Add input cluster id %s on device %s", cluster.cluster_id, ieee)
+                ep.add_input_cluster(cluster.cluster_id)
+            for cluster in descriptor.out_clusters:
+                LOGGER.debug("Add output cluster id %s on device %s", cluster.cluster_id, ieee)
+                ep.add_output_cluster(cluster.cluster_id)
+        else:
+            ep.in_clusters[Basic.cluster_id].update_attribute(Basic.AttributeDefs.model.id, "GreenPowerDevice")
+        ep = device.add_endpoint(GREENPOWER_ENDPOINT_ID)
+        ep.status = zigpy.endpoint.Status.ZDO_INIT
+        ep.profile_id = zigpy.profiles.zha.PROFILE_ID
+        ep.device_type = zigpy.profiles.zha.DeviceType.GREEN_POWER
+        cluster = ep.add_input_cluster(GreenPowerProxy.cluster_id)
+        if payload.gpd_key is not None:
+            cluster.update_attribute(GreenPowerProxy.AttributeDefs.__internal_gpd_key.id, payload.gpd_key)
+        cluster.update_attribute(GreenPowerProxy.AttributeDefs.__internal_gpd_sinktableentry, sink_table_entry)
+        self._application.device_initialized(device)
+        return device
+
+
+    async def _handle_commissioning_data_frame(self, frame: GPDataFrame, from_zcl: bool) -> bool:
+        if self._get_sink_table_entry(frame.src_id) is not None:
+            # well this is bad. we have a sink table entry but an incoming commissioning request?
+            # do we update the info in here? unregister and re-register?? Figure this out...
+            return False
+
+        comm_mode = t.GPCommunicationMode.GroupcastForwardToCommGroup if CommissioningMode.ProxyBroadcast in self._commissioning_mode else t.GPCommunicationMode.UnicastLightweight
+        commission_payload, _ = t.GPCommissioningPayload.deserialize(frame.command_payload)
+
+        entry = SinkTableEntry(
+            gpd_id=frame.src_id,
+            device_id=commission_payload.device_type,
+            radius=0xFF
+        )
+        entry.communication_mode = comm_mode
+        entry.sequence_number_cap = commission_payload.mac_seq_num_cap
+        entry.rx_on_cap = commission_payload.rx_on_cap
+        entry.security_use = commission_payload.security_level != GPSecurityLevel.NoSecurity
+        if commission_payload.gpd_key is not None:
+            encrypted_key = self._encrypt_key(frame.src_id, commission_payload.gpd_key)
+        if comm_mode == t.GPCommunicationMode.GroupcastForwardToCommGroup:
+            entry.group_list = LVBytes(
+                bytearray(GREENPOWER_BROADCAST_GROUP.to_bytes(2, "little")).append((0xFF,0xFF))
+            )
+        if entry.security_use:
+            entry.sec_options = commission_payload.security_level | (commission_payload.key_type << 2)
+        if entry.security_use or entry.sequence_number_cap:
+            entry.sec_frame_counter = commission_payload.gpd_outgoing_counter
+        if commission_payload.gpd_key is not None:
+            entry.key = encrypted_key
+
+        device = await self._create_device(frame, commission_payload, entry, from_zcl)
+
+        if CommissioningMode.ProxyBroadcast in self._commissioning_mode or CommissioningMode.ProxyUnicast in self._commissioning_mode:
+            pairing_options = GreenPowerProxy.GPPairingOptions()
+            pairing_options.add_sink = 1
+            pairing_options.communication_mode = comm_mode
+            pairing_options.gpd_mac_seq_num_cap = commission_payload.mac_seq_num_cap
+            pairing_options.security_level = commission_payload.security_level
+            pairing_options.security_key_type = commission_payload.key_type
+
+            pairing_schema = dict(options=pairing_options)
+            if commission_payload.gpd_key is not None:
+                pairing_options.security_key_present = 1
+                pairing_schema["key"] = encrypted_key
+
+            if CommissioningMode.ProxyUnicast in self._commissioning_mode:
+                pairing_schema["sink_IEEE"] = self._application.state.node_info.ieee
+                pairing_schema["sink_nwk_addr"] = self._application.state.node_info.nwk
+                await self._proxy_unicast_target.endpoints[GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].pairing(pairing_schema)
+            elif CommissioningMode.ProxyBroadcast in self._commissioning_mode:
+                pairing_schema["sink_group"] = GREENPOWER_BROADCAST_GROUP
+                await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.pairing, pairing_schema)
+
+            return True
+        else:
+            """Direct commissioning mode... deal later"""
+            return False
+
+
+    
+        
+    def _encrypt_key(self, gpd_id: t.GreenPowerDeviceID, key: t.KeyData) -> bytes:
+        src_big_endian = gpd_id.to_bytes(4, "big")
+        nonce = bytearray((src_big_endian,src_big_endian,src_big_endian,0x05))
+        assert len(nonce) == 13
+        aesccm = AESCCM(key, tag_length=16)
+        result = aesccm.encrypt(nonce, key.serialize())
+        return result
+
+    
+    async def handle_received_green_power_frame(self, frame: GPDataFrame):
         """Build this out later to allow for direct interaction and commissioning"""
     
 
@@ -163,13 +338,11 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             await asyncio.sleep(0.2)
 
         assert self._controller_state == ControllerState.Operational
-
-        if device is not None:
-            # We can direct commission without a lot of help
-            if device == self._application._device:
-                self._commissioning_mode = CommissioningMode.Direct
-                return
-
+        
+        # We can direct commission without a lot of help
+        if device == self._application._device:
+            self._commissioning_mode = CommissioningMode.Direct
+        elif device is not None:
             # No GP endpoint nothing doing sorry
             if not device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID]:
                 return
@@ -289,6 +462,3 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         )
         # Let the broadcast work its way thru the net
         await asyncio.sleep(0.2)
-
-
-

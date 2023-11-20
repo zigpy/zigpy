@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Final, Optional
 
 import zigpy.types as t
-from zigpy.types.named import GPSecurityLevel
+from zigpy.types.greenpower import GPSecurityLevel
 from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
@@ -216,7 +216,7 @@ class GreenPowerProxy(Cluster):
             id=0x0001, type=t.LongOctetString, access="r", mandatory=True
         )
         communication_mode: Final = ZCLAttributeDef(
-            id=0x0002, type=t.bitmap8, access="rw", mandatory=True
+            id=0x0002, type=t.GPCommunicationMode, access="rw", mandatory=True
         )
         commissioning_exit_mode: Final = ZCLAttributeDef(
             id=0x0003, type=t.bitmap8, access="rw", mandatory=True
@@ -238,6 +238,15 @@ class GreenPowerProxy(Cluster):
         )
         gpp_active_functionality: Final = ZCLAttributeDef(
             id=0x0017, type=t.bitmap24, access="r", mandatory=True
+        )
+        link_key: Final = ZCLAttributeDef(
+            id=0x0022, type=t.KeyData, access="r", mandatory=True
+        )
+        __internal_gpd_key: Final = ZCLAttributeDef(
+            id=0xEE00, type=t.KeyData, access="r"
+        )
+        __internal_gpd_sinktableentry: Final = ZCLAttributeDef(
+            id=0xEE02, type=t.SinkTableEntry, access="r"
         )
     
     class ServerCommandDefs(BaseCommandDefs):
