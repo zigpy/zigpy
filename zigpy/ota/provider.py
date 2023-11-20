@@ -145,7 +145,7 @@ class IKEAImage:
 class Trådfri(Basic):
     """IKEA OTA Firmware provider."""
 
-    UPDATE_URL = "https://fw.ota.homesmart.ikea.com/check/update/prod"
+    UPDATE_URL = "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json"
     MANUFACTURER_ID = 4476
     HEADERS = {"accept": "application/json;q=0.9,*/*;q=0.8"}
 
