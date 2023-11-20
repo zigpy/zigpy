@@ -5,9 +5,6 @@ from datetime import datetime, timezone
 import enum
 import typing
 
-from Crypto.Cipher import AES
-from Crypto.Util import Counter
-
 from . import basic
 from .struct import Struct
 
@@ -68,7 +65,7 @@ class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
         key = [basic.uint8_t(p) for p in _hex_string_to_bytes(key)]
         assert len(key) == cls._length
         return cls(key)
-
+    
 
 KeyData.UNKNOWN = KeyData.convert("FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF")
 

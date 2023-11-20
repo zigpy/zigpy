@@ -8,10 +8,8 @@ import typing
 import warnings
 
 from cryptography.hazmat.primitives.ciphers.aead import AESCCM
-from rsa import encrypt
 from zigpy import zdo
 from zigpy.types.basic import LVBytes, Optional
-from zigpy.types.greenpower import GPCommunicationMode
 
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
@@ -26,7 +24,6 @@ import zigpy.listeners
 import zigpy.profiles.zgp
 from zigpy.profiles.zgp import (
     GPCommand,
-    GPDeviceType,
     GREENPOWER_BROADCAST_GROUP,
     GREENPOWER_DEFAULT_LINK_KEY,
     GREENPOWER_ENDPOINT_ID,
@@ -36,6 +33,7 @@ from zigpy.types import (
     BroadcastAddress,
     GPCommunicationMode,
     GPDataFrame,
+    GPDeviceType,
     GPFrameType,
     GPSecurityLevel,
     SinkTableEntry,
@@ -127,16 +125,11 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 str(value))
             self.__controller_state = value
 
-    def _sink_table_as_bytes(self) -> t.LongOctetString:
-        return t.LongOctetString()
-
     @property
     def _gp_cluster(self) -> zigpy.zcl.Cluster:
         return self._application._device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id]
 
     async def initialize(self):
-        await self._load_persistent_sink_table()
-
         self._application._callback_for_response(zigpy.listeners.ANY_DEVICE, [
             GreenPowerProxy.ServerCommandDefs.notification.schema()
         ], self._on_zcl_notification)
@@ -191,7 +184,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
 
     async def _create_device(self, frame: GPDataFrame, payload: t.GPCommissioningPayload, sink_table_entry: SinkTableEntry, from_zcl: bool) -> zigpy.device.Device:
         device_type = payload.device_type
-        ieee = t.EUI64(bytearray([0,0,0,0]).append(frame.src_id.serialize()))
+        ieee = t.EUI64(bytes([0,0,0,0]) + frame.src_id.serialize())
         device = self._application.add_device(ieee, t.uint16_t(frame.src_id & 0xFFFF))
         device.status = zigpy.device.Status.ENDPOINTS_INIT
         device._skip_configuration = True
@@ -232,6 +225,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         if payload.gpd_key is not None:
             cluster.update_attribute(GreenPowerProxy.AttributeDefs.__internal_gpd_key.id, payload.gpd_key)
         cluster.update_attribute(GreenPowerProxy.AttributeDefs.__internal_gpd_sinktableentry, sink_table_entry)
+        cluster.update_attribute(GreenPowerProxy.AttributeDefs.__internal_gpd_id, frame.src_id)
         self._application.device_initialized(device)
         return device
 
@@ -268,6 +262,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             entry.key = encrypted_key
 
         device = await self._create_device(frame, commission_payload, entry, from_zcl)
+        await self._push_sink_table()
 
         if CommissioningMode.ProxyBroadcast in self._commissioning_mode or CommissioningMode.ProxyUnicast in self._commissioning_mode:
             pairing_options = GreenPowerProxy.GPPairingOptions()
@@ -294,31 +289,9 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         else:
             """Direct commissioning mode... deal later"""
             return False
-
-
-    
         
-    def _encrypt_key(self, gpd_id: t.GreenPowerDeviceID, key: t.KeyData) -> bytes:
-        src_big_endian = gpd_id.to_bytes(4, "big")
-        nonce = bytearray((src_big_endian,src_big_endian,src_big_endian,0x05))
-        assert len(nonce) == 13
-        aesccm = AESCCM(key, tag_length=16)
-        result = aesccm.encrypt(nonce, key.serialize())
-        return result
-
-    
     async def handle_received_green_power_frame(self, frame: GPDataFrame):
         """Build this out later to allow for direct interaction and commissioning"""
-    
-
-    async def _permit_timeout(self, time_s: int):
-        """After timeout we just fall out of commissioning mode"""
-        await asyncio.sleep(time_s)
-        LOGGER.info("Green Power Controller commissioning window closing after timeout")
-        self._controller_state = ControllerState.Operational
-        self._commissioning_mode = CommissioningMode.NotCommissioning
-        self._timeout_task = None
-
 
     async def permit(self, time_s: int = 60, device: zigpy.device.Device = None):
         assert 0 <= time_s <= 254
@@ -366,7 +339,6 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         # kickstart the timeout task
         self._timeout_task = asyncio.get_running_loop().create_task(self._permit_timeout(time_s))
 
-
     async def _stop_permit(self):
         # this may happen if the application experiences an unexpected
         # shutdown before we're initialized, or during startup when the NCP
@@ -401,6 +373,22 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self._controller_state = ControllerState.Operational
         self._commissioning_mode = CommissioningMode.NotCommissioning
         self._proxy_unicast_target = None
+
+    def _encrypt_key(self, gpd_id: t.GreenPowerDeviceID, key: t.KeyData) -> bytes:
+        src_big_endian = gpd_id.to_bytes(4, "big")
+        nonce = src_big_endian + src_big_endian + src_big_endian + bytes((0x05,))
+        assert len(nonce) == 13
+        aesccm = AESCCM(GREENPOWER_DEFAULT_LINK_KEY, tag_length=16)
+        result = aesccm.encrypt(nonce, key.serialize())
+        return result
+
+    async def _permit_timeout(self, time_s: int):
+        """After timeout we just fall out of commissioning mode"""
+        await asyncio.sleep(time_s)
+        LOGGER.info("Green Power Controller commissioning window closing after timeout")
+        self._controller_state = ControllerState.Operational
+        self._commissioning_mode = CommissioningMode.NotCommissioning
+        self._timeout_task = None
 
     async def _send_commissioning_broadcast_command(self, time_s: int):
         named_arguments = None
@@ -462,3 +450,21 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         )
         # Let the broadcast work its way thru the net
         await asyncio.sleep(0.2)
+
+    def _sink_table_as_bytes(self) -> t.LongOctetString:
+        src_bytes = bytearray()
+        for ieee,device in self._application.devices.items():
+            try:
+                table_entry: t.SinkTableEntry = device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id].get(GreenPowerProxy.AttributeDefs.__internal_gpd_sinktableentry.id, None)
+                if table_entry is not None:
+                    src_bytes.append(table_entry.serialize())
+            except KeyError:
+                # If at any time we determine we don't have the endpoint, cluster or attribute
+                # just continue
+                continue
+        return t.LongOctetString(src_bytes)
+    
+    async def _push_sink_table(self):
+        await self._gp_cluster.write_attributes({
+            "sink_table": self._sink_table_as_bytes()
+        })
