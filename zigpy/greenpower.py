@@ -8,6 +8,7 @@ import typing
 import warnings
 
 from cryptography.hazmat.primitives.ciphers.aead import AESCCM
+
 from zigpy import zdo
 from zigpy.types.basic import LVBytes, Optional
 
@@ -378,12 +379,16 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self._proxy_unicast_target = None
 
     def _encrypt_key(self, gpd_id: t.GreenPowerDeviceID, key: t.KeyData) -> bytes:
-        src_big_endian = gpd_id.to_bytes(4, "little")
-        nonce = src_big_endian + src_big_endian + src_big_endian + bytes((0x05,))
+        # A.1.5.9.1
+        link_key_bytes = GREENPOWER_DEFAULT_LINK_KEY.serialize()
+        key_bytes = key.serialize()
+        src_bytes = gpd_id.to_bytes(4, "little")
+        nonce = src_bytes + src_bytes + src_bytes + 0x05.to_bytes(1)
         assert len(nonce) == 13
-        aesccm = AESCCM(GREENPOWER_DEFAULT_LINK_KEY.serialize(), tag_length=16)
-        result = aesccm.encrypt(nonce, key.serialize(), None)
-        return result
+
+        aesccm = AESCCM(link_key_bytes, tag_length=16)
+        result = aesccm.encrypt(nonce, key_bytes, None)
+        return result[0:16]
 
     async def _permit_timeout(self, time_s: int):
         """After timeout we just fall out of commissioning mode"""
