@@ -90,16 +90,10 @@ class GPCommunicationDirection(basic.enum1):
 class GPCommissioningPayload(Struct):
     device_type: basic.uint8_t
     options: basic.bitmap8
-    ext_options: basic.bitmap8 = StructField(
-        requires=lambda s: s.ext_opts_present,
-        optional=True)
-    gpd_key: KeyData = StructField(
-        requires=lambda s: s.gpd_key_present,
-        optional=True)
+    ext_options: basic.bitmap8 = StructField(optional=True)
+    gpd_key: KeyData = StructField(optional=True)
     gpd_key_mic: basic.uint32_t = StructField(optional=True)
-    gpd_outgoing_counter: basic.uint32_t = StructField(
-        requires=lambda s: s.gpd_outgoing_counter_present,
-        optional=True)
+    gpd_outgoing_counter: basic.uint32_t = StructField(optional=True)
 
     @property
     def mac_seq_num_cap(self) -> basic.uint1_t:
@@ -131,7 +125,7 @@ class GPCommissioningPayload(Struct):
         return self.ext_opts_present and basic.uint1_t((self.ext_options >> 5) & 0x1) or 0
     @property
     def gpd_key_encryption(self) -> basic.uint1_t:
-        return self.ext_opts_present and basic.uint1_t((self.ext_options >> 6) & 0x1) or 0
+        return self.ext_opts_present and self.gpd_key_present and basic.uint1_t((self.ext_options >> 6) & 0x1) or 0
     @property
     def gpd_outgoing_counter_present(self) -> basic.uint1_t:
         return self.ext_opts_present and basic.uint1_t((self.ext_options >> 7) & 0x1) or 0
@@ -147,10 +141,10 @@ class GPCommissioningPayload(Struct):
         if instance.gpd_key_present:
             instance.gpd_key, data = KeyData.deserialize(data)
             if instance.gpd_key_encryption:
-                instance.gpd_key_mic, data = basic.uint32_t(data)
+                instance.gpd_key_mic, data = basic.uint32_t.deserialize(data)
         
         if instance.gpd_outgoing_counter_present:
-            instance.gpd_outgoing_counter, data = basic.uint32_t(data)
+            instance.gpd_outgoing_counter, data = basic.uint32_t.deserialize(data)
         
         return [instance, data]
 
@@ -238,9 +232,7 @@ class GPDataFrame(Struct):
         optional=True)
     command_id: basic.uint32_t
     command_payload: basic.SerializableBytes = StructField(optional=True)
-    mic = StructField(
-        dynamic_type=lambda s: basic.uint16_t if s.security_level == GPSecurityLevel.ShortFrameCounterAndMIC else basic.uint32_t,
-        optional=True)
+    mic: basic.uint32_t = StructField(optional=True) # TODO: this could be 0/2/4, fix with dynamic_type
 
     @property
     def auto_commissioning(self) -> bool:

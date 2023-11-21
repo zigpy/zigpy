@@ -242,6 +242,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         comm_mode = t.GPCommunicationMode.GroupcastForwardToCommGroup if CommissioningMode.ProxyBroadcast in self._commissioning_mode else t.GPCommunicationMode.UnicastLightweight
 
         entry = SinkTableEntry(
+            options=0,
             gpd_id=src_id,
             device_id=commission_payload.device_type,
             radius=0xFF
@@ -380,7 +381,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         src_big_endian = gpd_id.to_bytes(4, "big")
         nonce = src_big_endian + src_big_endian + src_big_endian + bytes((0x05,))
         assert len(nonce) == 13
-        aesccm = AESCCM(GREENPOWER_DEFAULT_LINK_KEY, tag_length=16)
+        aesccm = AESCCM(GREENPOWER_DEFAULT_LINK_KEY.serialize(), tag_length=16)
         result = aesccm.encrypt(nonce, key.serialize())
         return result
 
@@ -460,7 +461,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 table_entry = device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id].get(GreenPowerProxy.AttributeDefs.__internal_gpd_sinktableentry.id, None)
                 if table_entry is not None:
                     devices.append(device)
-            except KeyError:
+            except (KeyError, AttributeError):
                 continue
         return devices
     
@@ -470,7 +471,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 dev_src_id = device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id].get(GreenPowerProxy.AttributeDefs.__internal_gpd_id.id, None)
                 if src_id == dev_src_id:
                     return device
-            except KeyError:
+            except (KeyError, AttributeError):
                 continue
         return None
 
