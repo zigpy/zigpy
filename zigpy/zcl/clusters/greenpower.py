@@ -6,6 +6,7 @@ from typing import Any, Final, Optional
 
 import zigpy.types as t
 from zigpy.types.greenpower import GPSecurityLevel
+from zigpy.types.struct import StructField
 from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
@@ -14,33 +15,6 @@ from zigpy.zcl.foundation import (
     ZCLAttributeDef,
     ZCLCommandDef,
 )
-
-# ZGP spec Figure 24
-class GPNotificationOptions(t.bitmap16):
-    @property
-    def application_id(self) -> t.GPApplicationID:
-        return t.GPApplicationID(self & 0b111)
-    @property
-    def also_unicast(self) -> t.uint1_t:
-        return t.uint1_t((self >> 3) & 0x01)
-    @property
-    def also_derived_group(self) -> t.uint1_t:
-        return t.uint1_t((self >> 4) & 0x01)
-    @property
-    def also_commissioned_group(self) -> t.uint1_t:
-        return t.uint1_t((self >> 5) & 0x01)
-    @property
-    def security_level(self) -> t.GPSecurityLevel:
-        return t.GPSecurityLevel((self >> 6) & 0b11)
-    @property
-    def security_key_type(self) -> t.GPSecurityKeyType:
-        return t.GPSecurityKeyType((self >> 8) & 0b111)
-    @property
-    def temp_master(self) -> t.uint1_t:
-        return t.uint1_t((self >> 11) & 0x01)
-    @property
-    def gpp_tx_queue_full(self) -> t.uint1_t:
-        return t.uint1_t((self >> 12) & 0x01)
 
 # ZGP spec Figure 26
 class GPPairingSearchOptions(t.bitmap16):
@@ -63,24 +37,79 @@ class GPPairingSearchOptions(t.bitmap16):
     def request_security_key(self) -> t.uint1_t:
         return t.uint1_t((self >> 7) & 0x01)
 
-# ZGP spec Figure 28
-class GPCommissioningNotificationOptions(t.bitmap16):
+class GPNotificationSchema(t.Struct):
+    options: t.bitmap16
+    gpd_id: t.GreenPowerDeviceID
+    frame_counter: t.uint32_t
+    command_id: t.uint8_t
+    payload: t.LVBytes
+    short_addr: t.uint16_t = StructField(
+        requires=lambda s: s.temp_master,
+        optional=True
+    )
+    distance: t.uint8_t = StructField(
+        requires=lambda s: s.temp_master,
+        optional=True
+    )
+
     @property
     def application_id(self) -> t.GPApplicationID:
-        return t.GPApplicationID(self & 0b111)
+        return t.GPApplicationID(self.options & 0b111)
     @property
-    def temp_master(self) -> t.uint1_t:
-        return bool((self >> 3) & 0x01)
+    def also_unicast(self) -> t.uint1_t:
+        return t.uint1_t((self.options >> 3) & 0x01)
+    @property
+    def also_derived_group(self) -> t.uint1_t:
+        return t.uint1_t((self.options >> 4) & 0x01)
+    @property
+    def also_commissioned_group(self) -> t.uint1_t:
+        return t.uint1_t((self.options >> 5) & 0x01)
     @property
     def security_level(self) -> t.GPSecurityLevel:
-        return t.GPSecurityLevel((self >> 4) & 0b11)
+        return t.GPSecurityLevel((self.options >> 6) & 0b11)
     @property
     def security_key_type(self) -> t.GPSecurityKeyType:
-        return t.GPSecurityKeyType((self >> 6) & 0b111)
+        return t.GPSecurityKeyType((self.options >> 8) & 0b111)
+    @property
+    def temp_master(self) -> t.uint1_t:
+        return t.uint1_t((self.options >> 11) & 0x01)
+    @property
+    def gpp_tx_queue_full(self) -> t.uint1_t:
+        return t.uint1_t((self.options >> 12) & 0x01)
+
+# Figure 27
+class GPCommissioningNotificationSchema(t.Struct):
+    options: t.bitmap16
+    gpd_id: t.GreenPowerDeviceID
+    frame_counter: t.uint32_t
+    command_id: t.uint8_t
+    payload: t.LVBytes
+    short_addr: t.uint16_t = StructField(
+        requires=lambda s: s.temp_master,
+        optional=True)
+    distance: t.uint8_t = StructField(
+        requires=lambda s: s.temp_master,
+        optional=True)
+    mic: t.uint32_t = StructField(
+        requires=lambda s: s.security_failed,
+        optional=True)
+
+    @property
+    def application_id(self) -> t.GPApplicationID:
+        return t.GPApplicationID(self.options & 0b111)
+    @property
+    def temp_master(self) -> t.uint1_t:
+        return bool((self.options >> 3) & 0x01)
+    @property
+    def security_level(self) -> t.GPSecurityLevel:
+        return t.GPSecurityLevel((self.options >> 4) & 0b11)
+    @property
+    def security_key_type(self) -> t.GPSecurityKeyType:
+        return t.GPSecurityKeyType((self.options >> 6) & 0b111)
     @property
     def security_failed(self) -> t.uint1_t:
-        return bool((self >> 9) & 0x01)
-    
+        return bool((self.options >> 9) & 0x01)
+
 # ZGP spec Figure 37
 class GPNotificationResponseOptions(t.Struct):
     application_id: t.GPApplicationID
@@ -197,13 +226,13 @@ class GreenPowerProxy(Cluster):
     name: Final = "Green Power"
     ep_attribute: Final = "green_power"
 
-    GPNotificationOptions: Final = GPNotificationOptions
+    GPNotificationSchema: Final = GPNotificationSchema
     GPPairingSearchOptions: Final = GPPairingSearchOptions
-    GPCommissioningNotificationOptions: Final = GPCommissioningNotificationOptions
     GPNotificationResponseOptions: Final = GPNotificationResponseOptions
     GPPairingOptions: Final = GPPairingOptions
     GPProxyCommissioningModeOptions: Final = GPProxyCommissioningModeOptions
     GPResponseOptions: Final = GPResponseOptions
+    GPCommissioningNotificationSchema: Final = GPCommissioningNotificationSchema
 
     def handle_message(self, data):
         self.log("Green Power Cluster direct message received")
@@ -255,15 +284,7 @@ class GreenPowerProxy(Cluster):
     class ServerCommandDefs(BaseCommandDefs):
         notification: Final = ZCLCommandDef(
             id=0x00,
-            schema={
-                "options": GPNotificationOptions,
-                "gpd_id": t.GreenPowerDeviceID,
-                "frame_counter": t.uint32_t,
-                "command_id": t.uint8_t,
-                "payload": t.LVBytes,
-                "short_addr?": t.uint16_t,
-                "distance?": t.uint8_t,
-            },
+            schema=GPNotificationSchema,
             direction=False,
         )
         
@@ -278,16 +299,7 @@ class GreenPowerProxy(Cluster):
 
         commissioning_notification: Final = ZCLCommandDef(
             id=0x04,
-            schema={
-                "options": GPCommissioningNotificationOptions,
-                "gpd_id": t.GreenPowerDeviceID,
-                "frame_counter": t.uint32_t,
-                "command_id": t.uint8_t,
-                "payload": t.LVBytes,
-                "short_addr?": t.uint16_t,
-                "distance?": t.uint8_t,
-                "mic?": t.uint32_t,
-            },
+            schema=GPCommissioningNotificationSchema,
             direction=False,
         )
         

@@ -90,10 +90,16 @@ class GPCommunicationDirection(basic.enum1):
 class GPCommissioningPayload(Struct):
     device_type: basic.uint8_t
     options: basic.bitmap8
-    ext_options: basic.bitmap8 = StructField(optional=True)
-    gpd_key: KeyData = StructField(optional=True)
+    ext_options: basic.bitmap8 = StructField(
+        requires=lambda s: s.ext_opts_present,
+        optional=True)
+    gpd_key: KeyData = StructField(
+        requires=lambda s: s.gpd_key_present,
+        optional=True)
     gpd_key_mic: basic.uint32_t = StructField(optional=True)
-    gpd_outgoing_counter: basic.uint32_t = StructField(optional=True)
+    gpd_outgoing_counter: basic.uint32_t = StructField(
+        requires=lambda s: s.gpd_outgoing_counter_present,
+        optional=True)
 
     @property
     def mac_seq_num_cap(self) -> basic.uint1_t:
@@ -221,12 +227,20 @@ class SinkTableEntry(Struct):
 
 class GPDataFrame(Struct):
     options: basic.bitmap8
-    frame_control_ext: basic.bitmap8 = StructField(optional=True)
-    src_id: GreenPowerDeviceID = StructField(optional=True)
-    frame_counter: basic.uint32_t = StructField(optional=True)
+    frame_control_ext: basic.bitmap8 = StructField(
+        requires=lambda s: s.has_frame_control_ext, 
+        optional=True)
+    src_id: GreenPowerDeviceID = StructField(
+        requires=lambda s: s.has_src_id,
+        optional=True)
+    frame_counter: basic.uint32_t = StructField(
+        requires=lambda s: s.has_frame_counter,
+        optional=True)
     command_id: basic.uint32_t
     command_payload: basic.SerializableBytes = StructField(optional=True)
-    mic: basic.uint32_t = StructField(optional=True) # TODO this could be either 0/2/4 bytes, not just 0/4
+    mic = StructField(
+        dynamic_type=lambda s: basic.uint16_t if s.security_level == GPSecurityLevel.ShortFrameCounterAndMIC else basic.uint32_t,
+        optional=True)
 
     @property
     def auto_commissioning(self) -> bool:
@@ -255,6 +269,15 @@ class GPDataFrame(Struct):
     @property
     def rx_after_tx(self) -> basic.uint1_t: 
         return self.has_frame_control_ext and basic.uint1_t((self.frame_control_ext >> 6) & 0x01) or 0
+
+    @property
+    def has_frame_counter(self) -> bool: 
+        return self.has_frame_control_ext and self.security_level in (GPSecurityLevel.FullFrameCounterAndMIC, GPSecurityLevel.Encrypted)
+
+    @property
+    def has_src_id(self) -> bool: 
+        return (self.frame_type == GPFrameType.DataFrame and self.application_id == GPApplicationID.GPZero or
+            self.frame_type == GPFrameType.MaintenanceFrame and self.has_frame_control_ext and self.application_id == GPApplicationID.GPZero)
 
     @property
     def direction(self) -> GPCommunicationDirection:
@@ -298,12 +321,10 @@ class GPDataFrame(Struct):
         if instance.application_id not in (GPApplicationID.GPZero, GPApplicationID.GPTwo, GPApplicationID.LPED):
             raise Exception("Bad Application ID %d", instance.application_id)
         
-        if instance.frame_type == GPFrameType.DataFrame and instance.application_id == GPApplicationID.GPZero:
-            instance.src_id, data = GreenPowerDeviceID.deserialize(data)
-        elif instance.frame_type == GPFrameType.MaintenanceFrame and instance.has_frame_control_ext and instance.application_id == GPApplicationID.GPZero:
+        if instance.has_src_id:
             instance.src_id, data = GreenPowerDeviceID.deserialize(data)
         
-        if instance.has_frame_control_ext and instance.security_level in (GPSecurityLevel.FullFrameCounterAndMIC, GPSecurityLevel.Encrypted):
+        if instance.has_frame_counter:
             instance.frame_counter, data = basic.uint32_t.deserialize(data)
         
         if instance.application_id != GPApplicationID.LPED:
