@@ -8,7 +8,7 @@ import typing
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from . import basic
-from .struct import Struct
+from .struct import Struct, StructField
 from .named import KeyData
 
 if typing.TYPE_CHECKING:
@@ -90,10 +90,10 @@ class GPCommunicationDirection(basic.enum1):
 class GPCommissioningPayload(Struct):
     device_type: basic.uint8_t
     options: basic.bitmap8
-    ext_options: basic.Optional(basic.bitmap8)
-    gpd_key: basic.Optional(KeyData)
-    gpd_key_mic: basic.Optional(basic.uint32_t)
-    gpd_outgoing_counter: basic.Optional(basic.uint32_t)
+    ext_options: basic.bitmap8 = StructField(optional=True)
+    gpd_key: KeyData = StructField(optional=True)
+    gpd_key_mic: basic.uint32_t = StructField(optional=True)
+    gpd_outgoing_counter: basic.uint32_t = StructField(optional=True)
 
     @property
     def mac_seq_num_cap(self) -> basic.uint1_t:
@@ -152,9 +152,9 @@ class GPCommissioningPayload(Struct):
 # Figure 74
 class GPCommissioningReplyPayload(Struct):
     options: basic.bitmap8
-    pan_id: basic.Optional(basic.uint16_t)
-    security_key: basic.Optional(KeyData)
-    gpd_key_mic: basic.Optional(basic.uint32_t)
+    pan_id: basic.uint16_t = StructField(optional=True)
+    security_key: KeyData = StructField(optional=True)
+    gpd_key_mic: basic.uint32_t = StructField(optional=True)
 
 
 
@@ -163,11 +163,11 @@ class SinkTableEntry(Struct):
     options: basic.bitmap16
     gpd_id: GreenPowerDeviceID
     device_id: GPDeviceType
-    group_list: basic.Optional(basic.LVBytes)
+    group_list: basic.LVBytes = StructField(optional=True)
     radius: basic.uint8_t 
-    sec_options: basic.Optional(basic.bitmap8)
-    sec_frame_counter: basic.Optional(basic.uint32_t)
-    key: basic.Optional(KeyData)
+    sec_options: basic.bitmap8 = StructField(optional=True)
+    sec_frame_counter: basic.uint32_t = StructField(optional=True)
+    key: KeyData = StructField(optional=True)
 
     @property
     def application_id(self) -> GPApplicationID:
@@ -221,12 +221,12 @@ class SinkTableEntry(Struct):
 
 class GPDataFrame(Struct):
     options: basic.bitmap8
-    frame_control_ext: basic.Optional(basic.bitmap8)
-    src_id: basic.Optional(GreenPowerDeviceID)
-    frame_counter: basic.Optional(basic.uint32_t)
+    frame_control_ext: basic.bitmap8 = StructField(optional=True)
+    src_id: GreenPowerDeviceID = StructField(optional=True)
+    frame_counter: basic.uint32_t = StructField(optional=True)
     command_id: basic.uint32_t
-    command_payload: basic.Optional(basic.SerializableBytes)
-    mic: basic.Optional(basic.uint32_t) # TODO this could be either 0/2/4 bytes, not just 0/4
+    command_payload: basic.SerializableBytes = StructField(optional=True)
+    mic: basic.uint32_t = StructField(optional=True) # TODO this could be either 0/2/4 bytes, not just 0/4
 
     @property
     def auto_commissioning(self) -> bool:
