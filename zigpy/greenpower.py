@@ -227,9 +227,9 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         ep.device_type = zigpy.profiles.zha.DeviceType.GREEN_POWER
         cluster = ep.add_input_cluster(GreenPowerProxy.cluster_id)
         if payload.gpd_key is not None:
-            cluster.update_attribute(GreenPowerProxy.AttributeDefs.__internal_gpd_key.id, payload.gpd_key)
-        cluster.update_attribute(GreenPowerProxy.AttributeDefs.__internal_gpd_sinktableentry, sink_table_entry)
-        cluster.update_attribute(GreenPowerProxy.AttributeDefs.__internal_gpd_id, src_id)
+            cluster.update_attribute(GreenPowerProxy.AttributeDefs.internal_gpd_key.id, payload.gpd_key)
+        cluster.update_attribute(GreenPowerProxy.AttributeDefs.internal_gpd_sinktableentry, sink_table_entry)
+        cluster.update_attribute(GreenPowerProxy.AttributeDefs.internal_gpd_id, src_id)
         self._application.device_initialized(device)
         return device
 
@@ -256,7 +256,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             encrypted_key = self._encrypt_key(src_id, commission_payload.gpd_key)
         if comm_mode == t.GPCommunicationMode.GroupcastForwardToCommGroup:
             entry.group_list = LVBytes(
-                bytearray(GREENPOWER_BROADCAST_GROUP.to_bytes(2, "little")).append((0xFF,0xFF))
+                GREENPOWER_BROADCAST_GROUP.to_bytes(2, "little") + 0xFF.to_bytes(1) + 0xFF.to_bytes(1)
             )
         if entry.security_use:
             entry.sec_options = commission_payload.security_level | (commission_payload.key_type << 2)
@@ -463,7 +463,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         devices: typing.List[zigpy.device.Device] = []
         for ieee,device in self._application.devices.items():
             try:
-                table_entry = device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id].get(GreenPowerProxy.AttributeDefs.__internal_gpd_sinktableentry.id, None)
+                table_entry = device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id].get(GreenPowerProxy.AttributeDefs.internal_gpd_id.id, None)
                 if table_entry is not None:
                     devices.append(device)
             except (KeyError, AttributeError):
@@ -473,7 +473,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
     def _get_gp_device_with_srcid(self, src_id: t.GreenPowerDeviceID) -> zigpy.device.Device | None:
         for ieee,device in self._application.devices.items():
             try:
-                dev_src_id = device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id].get(GreenPowerProxy.AttributeDefs.__internal_gpd_id.id, None)
+                dev_src_id = device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id].get(GreenPowerProxy.AttributeDefs.internal_gpd_id.id, None)
                 if src_id == dev_src_id:
                     return device
             except (KeyError, AttributeError):
@@ -483,7 +483,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
     def _sink_table_as_bytes(self) -> t.LongOctetString:
         src_bytes = bytearray()
         for device in self._get_all_gp_devices():
-            b = device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id].get(GreenPowerProxy.AttributeDefs.__internal_gpd_sinktableentry.id, None)
+            b = device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id].get(GreenPowerProxy.AttributeDefs.internal_gpd_sinktableentry.id, None)
             if b is not None:
                 src_bytes.append(b)
         return t.LongOctetString(src_bytes)

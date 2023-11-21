@@ -271,13 +271,13 @@ class GreenPowerProxy(Cluster):
         link_key: Final = ZCLAttributeDef(
             id=0x0022, type=t.KeyData, access="r", mandatory=True
         )
-        __internal_gpd_key: Final = ZCLAttributeDef(
+        internal_gpd_key: Final = ZCLAttributeDef(
             id=0xEE00, type=t.KeyData, access="r"
         )
-        __internal_gpd_id: Final = ZCLAttributeDef(
+        internal_gpd_id: Final = ZCLAttributeDef(
             id=0xEE01, type=t.GreenPowerDeviceID, access="r"
         )
-        __internal_gpd_sinktableentry: Final = ZCLAttributeDef(
+        internal_gpd_sinktableentry: Final = ZCLAttributeDef(
             id=0xEE02, type=t.SinkTableEntry, access="r"
         )
     
