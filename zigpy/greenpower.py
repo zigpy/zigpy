@@ -378,11 +378,11 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self._proxy_unicast_target = None
 
     def _encrypt_key(self, gpd_id: t.GreenPowerDeviceID, key: t.KeyData) -> bytes:
-        src_big_endian = gpd_id.to_bytes(4, "big")
+        src_big_endian = gpd_id.to_bytes(4, "little")
         nonce = src_big_endian + src_big_endian + src_big_endian + bytes((0x05,))
         assert len(nonce) == 13
         aesccm = AESCCM(GREENPOWER_DEFAULT_LINK_KEY.serialize(), tag_length=16)
-        result = aesccm.encrypt(nonce, key.serialize())
+        result = aesccm.encrypt(nonce, key.serialize(), None)
         return result
 
     async def _permit_timeout(self, time_s: int):

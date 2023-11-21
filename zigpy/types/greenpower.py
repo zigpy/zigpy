@@ -276,6 +276,7 @@ class GPDataFrame(Struct):
         return self.has_frame_control_ext and GPCommunicationDirection((self.frame_control_ext >> 7) & 0x01) or GPCommunicationDirection.GPDtoGPP
     
     def calculate_mic(self, key: KeyData) -> basic.uint32_t:
+        key_bytes = key.serialize()
         src_id: bytes = self.src_id.to_bytes(4, "little")
         frame_counter: bytes = self.frame_counter.to_bytes(4, "little")
         nonce = src_id + src_id + frame_counter + (0x05).to_bytes(1)
@@ -285,18 +286,18 @@ class GPDataFrame(Struct):
         La = len(a).to_bytes(2)
         AddAuthData = La + a
         AddAuthData += (0x00).to_bytes(1) * (16 - len(AddAuthData))
-        B0 = (0x49).to_bytes(1) + nonce
+        B0: bytes = (0x49).to_bytes(1) + nonce
         B0 += (0x00).to_bytes(1) * (16 - len(B0))
-        B1 = AddAuthData
+        B1: bytes = AddAuthData
         X0 = (0x00000000000000000000000000000000).to_bytes(16)
-        cipher = Cipher(algorithms.AES(key), modes.CBC(B0))
+        cipher = Cipher(algorithms.AES(key_bytes), modes.CBC(B0))
         encryptor = cipher.encryptor()
         X1 = encryptor.update(X0) + encryptor.finalize()
-        cipher = Cipher(algorithms.AES(key), modes.CBC(B1))
+        cipher = Cipher(algorithms.AES(key_bytes), modes.CBC(B1))
         encryptor = cipher.encryptor()
         X2 = encryptor.update(X1) + encryptor.finalize()
         A0 = (0x01).to_bytes(1) + nonce + (0x0000).to_bytes(2)
-        cipher = Cipher(algorithms.AES(key), modes.CTR(int.from_bytes(A0, byteorder="big")))
+        cipher = Cipher(algorithms.AES(key_bytes), modes.CTR(int.from_bytes(A0, byteorder="big")))
         encryptor = cipher.encryptor()
         result = encryptor.update(X2[0:4]) + encryptor.finalize()
         return basic.uint32_t.from_bytes(result, byteorder="little")
