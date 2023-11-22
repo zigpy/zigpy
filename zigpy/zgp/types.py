@@ -4,12 +4,13 @@ import dataclasses
 from datetime import datetime, timezone
 import enum
 import typing
+from click import command
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-from . import basic
-from .struct import Struct, StructField
-from .named import KeyData
+from zigpy.types import basic
+from zigpy.types.struct import Struct, StructField
+from zigpy.types.named import KeyData
 
 if typing.TYPE_CHECKING:
     from typing_extensions import Self
@@ -35,6 +36,66 @@ class GPDeviceType(basic.enum8):
     SENSOR_PRESSURE = 0x31
     SENSOR_FLOW = 0x32
     SENSOR_ENVIRONMENT_INDOOR = 0x33
+
+class GPCommand(basic.enum8):
+    Identify = 0x00
+    Scene0 = 0x10
+    Scene1 = 0x11
+    Scene2 = 0x12
+    Scene3 = 0x13
+    Scene4 = 0x14
+    Scene5 = 0x15
+    Scene6 = 0x16
+    Scene7 = 0x17
+    Scene8 = 0x18
+    Scene9 = 0x19
+    Scene10 = 0x1A
+    Scene11 = 0x1B
+    Scene12 = 0x1C
+    Scene13 = 0x1D
+    Scene14 = 0x1E
+    Scene15 = 0x1F
+    Off = 0x20
+    On = 0x21
+    Toggle = 0x22
+    Release = 0x23
+    MoveUp = 0x30
+    MoveDown = 0x31
+    StepUp = 0x32
+    StepDown = 0x33
+    LevelControlStop = 0x34
+    MoveUpWithOnOff = 0x35
+    MoveDownWithOnOff = 0x36
+    StepUpWithOnOff = 0x37
+    StepDownWithOnOff = 0x38
+    MoveHueStop = 0x40
+    MoveHueUp = 0x41
+    MoveHueDown = 0x42
+    StepHueUp = 0x43
+    StepHueDown = 0x44
+    MoveSaturationStop = 0x45
+    MoveSaturationUp = 0x46
+    MoveSaturationDown = 0x47
+    StepSaturationUp = 0x48
+    StepSaturationDown = 0x49
+    MoveColor = 0x4A
+    StepColor = 0x4B
+    LockDoor = 0x50
+    UnlockDoor = 0x51
+    Press1of1 = 0x60
+    Release1of1 = 0x61
+    Press1of2 = 0x62
+    Release1of2 = 0x63
+    Press2of2 = 0x64
+    Release2of2 = 0x65
+    ShortPress1of1 = 0x66
+    ShortPress1of2 = 0x67
+    ShortPress2of2 = 0x68
+    Commissioning = 0xe0
+
+class GPCommandType(enum.Enum):
+    CLUSTER_COMMAND = 0
+    GREENPOWER_COMMAND = 1
 
 class GreenPowerDeviceID(basic.uint32_t, repr="hex"):
     pass
@@ -90,10 +151,18 @@ class GPCommunicationDirection(basic.enum1):
 class GPCommissioningPayload(Struct):
     device_type: basic.uint8_t
     options: basic.bitmap8
-    ext_options: basic.bitmap8 = StructField(optional=True)
-    gpd_key: KeyData = StructField(optional=True)
-    gpd_key_mic: basic.uint32_t = StructField(optional=True)
-    gpd_outgoing_counter: basic.uint32_t = StructField(optional=True)
+    ext_options: basic.bitmap8 = StructField(
+        requires=lambda s: s.ext_opts_present,
+        optional=True)
+    gpd_key: KeyData = StructField(
+        requires=lambda s: s.gpd_key_present,
+        optional=True)
+    gpd_key_mic: basic.uint32_t = StructField(
+        requires=lambda s: s.gpd_key_encryption,
+        optional=True)
+    gpd_outgoing_counter: basic.uint32_t = StructField(
+        requires=lambda s: s.gpd_outgoing_counter_present,
+        optional=True)
 
     @property
     def mac_seq_num_cap(self) -> basic.uint1_t:
@@ -218,7 +287,6 @@ class SinkTableEntry(Struct):
     def security_use(self, value: basic.uint1_t):
         self.options = (self.options & ~(1 << 9)) | (value << 9)
 
-
 class GPDataFrame(Struct):
     options: basic.bitmap8
     frame_control_ext: basic.bitmap8 = StructField(
@@ -232,7 +300,7 @@ class GPDataFrame(Struct):
         optional=True)
     command_id: basic.uint32_t
     command_payload: basic.SerializableBytes = StructField(optional=True)
-    mic: basic.uint32_t = StructField(optional=True) # TODO: this could be 0/2/4, fix with dynamic_type
+    mic: basic.uint32_t = StructField(optional=True) # TODO: this could be 0/2/4, fix with dynamic_type, tho that hits before options is populated
 
     @property
     def auto_commissioning(self) -> bool:
@@ -303,7 +371,7 @@ class GPDataFrame(Struct):
         return basic.uint32_t.from_bytes(result, byteorder="little")
 
     @classmethod
-    def deserialize(cls: type[GPDataFrame], data: bytes) -> tuple[GPDataFrame, bytes]:
+    def deserialize(cls: GPDataFrame, data: bytes) -> tuple[GPDataFrame, bytes]:
         instance : GPDataFrame = GPDataFrame()
         instance.options, data = basic.bitmap8.deserialize(data)
         if instance.frame_type not in (GPFrameType.DataFrame, GPFrameType.MaintenanceFrame):

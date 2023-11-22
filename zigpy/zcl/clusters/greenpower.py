@@ -5,7 +5,16 @@ from datetime import datetime
 from typing import Any, Final, Optional
 
 import zigpy.types as t
-from zigpy.types.greenpower import GPSecurityLevel
+import zigpy.zgp.types as gpt
+from zigpy.zgp.types import (
+    GreenPowerDeviceID,
+    GPApplicationID,
+    GPCommunicationMode,
+    GPProxyCommissioningModeExitMode,
+    GPSecurityLevel,
+    GPSecurityKeyType,
+    SinkTableEntry,
+)
 from zigpy.types.struct import StructField
 from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster, foundation
@@ -19,8 +28,8 @@ from zigpy.zcl.foundation import (
 # ZGP spec Figure 26
 class GPPairingSearchOptions(t.bitmap16):
     @property
-    def application_id(self) -> t.GPApplicationID:
-        return t.GPApplicationID(self & 0b111)
+    def application_id(self) -> GPApplicationID:
+        return GPApplicationID(self & 0b111)
     @property
     def request_unicast_sink(self) -> t.uint1_t:
         return t.uint1_t((self >> 3) & 0x01)
@@ -39,7 +48,7 @@ class GPPairingSearchOptions(t.bitmap16):
 
 class GPNotificationSchema(t.Struct):
     options: t.bitmap16
-    gpd_id: t.GreenPowerDeviceID
+    gpd_id: GreenPowerDeviceID
     frame_counter: t.uint32_t
     command_id: t.uint8_t
     payload: t.LVBytes
@@ -53,8 +62,8 @@ class GPNotificationSchema(t.Struct):
     )
 
     @property
-    def application_id(self) -> t.GPApplicationID:
-        return t.GPApplicationID(self.options & 0b111)
+    def application_id(self) -> GPApplicationID:
+        return GPApplicationID(self.options & 0b111)
     @property
     def also_unicast(self) -> t.uint1_t:
         return t.uint1_t((self.options >> 3) & 0x01)
@@ -65,11 +74,11 @@ class GPNotificationSchema(t.Struct):
     def also_commissioned_group(self) -> t.uint1_t:
         return t.uint1_t((self.options >> 5) & 0x01)
     @property
-    def security_level(self) -> t.GPSecurityLevel:
-        return t.GPSecurityLevel((self.options >> 6) & 0b11)
+    def security_level(self) -> GPSecurityLevel:
+        return GPSecurityLevel((self.options >> 6) & 0b11)
     @property
-    def security_key_type(self) -> t.GPSecurityKeyType:
-        return t.GPSecurityKeyType((self.options >> 8) & 0b111)
+    def security_key_type(self) -> GPSecurityKeyType:
+        return GPSecurityKeyType((self.options >> 8) & 0b111)
     @property
     def temp_master(self) -> t.uint1_t:
         return t.uint1_t((self.options >> 11) & 0x01)
@@ -80,7 +89,7 @@ class GPNotificationSchema(t.Struct):
 # Figure 27
 class GPCommissioningNotificationSchema(t.Struct):
     options: t.bitmap16
-    gpd_id: t.GreenPowerDeviceID
+    gpd_id: GreenPowerDeviceID
     frame_counter: t.uint32_t
     command_id: t.uint8_t
     payload: t.LVBytes
@@ -95,29 +104,29 @@ class GPCommissioningNotificationSchema(t.Struct):
         optional=True)
 
     @property
-    def application_id(self) -> t.GPApplicationID:
-        return t.GPApplicationID(self.options & 0b111)
+    def application_id(self) -> GPApplicationID:
+        return GPApplicationID(self.options & 0b111)
     @property
     def temp_master(self) -> t.uint1_t:
         return bool((self.options >> 3) & 0x01)
     @property
-    def security_level(self) -> t.GPSecurityLevel:
-        return t.GPSecurityLevel((self.options >> 4) & 0b11)
+    def security_level(self) -> GPSecurityLevel:
+        return GPSecurityLevel((self.options >> 4) & 0b11)
     @property
-    def security_key_type(self) -> t.GPSecurityKeyType:
-        return t.GPSecurityKeyType((self.options >> 6) & 0b111)
+    def security_key_type(self) -> GPSecurityKeyType:
+        return GPSecurityKeyType((self.options >> 6) & 0b111)
     @property
     def security_failed(self) -> t.uint1_t:
         return bool((self.options >> 9) & 0x01)
 
 # ZGP spec Figure 37
 class GPNotificationResponseOptions(t.Struct):
-    application_id: t.GPApplicationID
+    application_id: GPApplicationID
     first_to_forward: t.uint1_t
     no_pairing: t.uint1_t
     reserved: t.uint3_t
     def __new__(cls: GPNotificationResponseOptions, *args, **kwargs) -> GPNotificationResponseOptions:
-        kwargs.setdefault("application_id", t.GPApplicationID.GPZero)
+        kwargs.setdefault("application_id", GPApplicationID.GPZero)
         kwargs.setdefault("first_to_forward", 0)
         kwargs.setdefault("no_pairing", 0)
         kwargs.setdefault("reserved", 0)
@@ -125,13 +134,11 @@ class GPNotificationResponseOptions(t.Struct):
 
 # ZGP spec Figure 41
 class GPPairingOptions(t.bitmap24):
-    # work around a little issue regarding
-    # bitfield byte order for now
     @property
-    def application_id(self) -> t.GPApplicationID:
-        return t.GPApplicationID(self & 0b111)
+    def application_id(self) -> GPApplicationID:
+        return GPApplicationID(self & 0b111)
     @application_id.setter
-    def application_id(self, value: t.GPApplicationID):
+    def application_id(self, value: GPApplicationID):
         self = (self & ~(0b111)) | value
     @property
     def add_sink(self) -> t.uint1_t:
@@ -146,10 +153,10 @@ class GPPairingOptions(t.bitmap24):
     def remove_gpd(self, value: t.uint1_t):
         self = (self & ~(1 << 4)) | (value << 4)
     @property
-    def communication_mode(self) -> t.GPCommunicationMode:
-        return t.GPCommunicationMode((self >> 5) & 0b11)
+    def communication_mode(self) -> GPCommunicationMode:
+        return GPCommunicationMode((self >> 5) & 0b11)
     @communication_mode.setter
-    def communication_mode(self, value: t.GPCommunicationMode):
+    def communication_mode(self, value: GPCommunicationMode):
         self = (self & ~(0b11 << 5)) | (value << 5)
     @property
     def gpd_fixed(self) -> t.uint1_t:
@@ -164,16 +171,16 @@ class GPPairingOptions(t.bitmap24):
     def gpd_mac_seq_num_cap(self, value: t.uint1_t):
         self = (self & ~(1 << 8)) | (value << 8)
     @property
-    def security_level(self) -> t.GPSecurityLevel:
-        return t.GPSecurityLevel((self >> 9) & 0b11)
+    def security_level(self) -> GPSecurityLevel:
+        return GPSecurityLevel((self >> 9) & 0b11)
     @security_level.setter
-    def security_level(self, value: t.GPSecurityLevel):
+    def security_level(self, value: GPSecurityLevel):
         self = (self & ~(0b11 << 9)) | (value << 9)
     @property
-    def security_key_type(self) -> t.GPSecurityKeyType:
-        return t.GPSecurityKeyType((self >> 11) & 0b111)
+    def security_key_type(self) -> GPSecurityKeyType:
+        return GPSecurityKeyType((self >> 11) & 0b111)
     @security_key_type.setter
-    def security_key_type(self, value: t.GPSecurityKeyType):
+    def security_key_type(self, value: GPSecurityKeyType):
         self = (self & ~(0b111 << 11)) | (value << 11)
     @property
     def security_frame_counter_present(self) -> t.uint1_t:
@@ -203,21 +210,21 @@ class GPPairingOptions(t.bitmap24):
 # ZGP spec Figure 43
 class GPProxyCommissioningModeOptions(t.Struct):
     enter: t.uint1_t
-    exit_mode: t.GPProxyCommissioningModeExitMode
+    exit_mode: GPProxyCommissioningModeExitMode
     channel_present: t.uint1_t
     reserved: t.uint3_t
     def __new__(cls: GPProxyCommissioningModeOptions, *args, **kwargs) -> GPProxyCommissioningModeOptions:
-        kwargs.setdefault("exit_mode", t.GPProxyCommissioningModeExitMode.NotDefined)
+        kwargs.setdefault("exit_mode", GPProxyCommissioningModeExitMode.NotDefined)
         kwargs.setdefault("channel_present", 0)
         kwargs.setdefault("reserved", 0)
         return super().__new__(cls, *args, **kwargs)
 
 # ZGP spec Figure 45
 class GPResponseOptions(t.Struct):
-    application_id: t.GPApplicationID
+    application_id: GPApplicationID
     reserved: t.uint5_t
     def __new__(cls: GPProxyCommissioningModeOptions, *args, **kwargs) -> GPProxyCommissioningModeOptions:
-        kwargs.setdefault("application_id", t.GPApplicationID.GPZero)
+        kwargs.setdefault("application_id", GPApplicationID.GPZero)
         kwargs.setdefault("reserved", 0)
         return super().__new__(cls, *args, **kwargs)
 
@@ -245,7 +252,7 @@ class GreenPowerProxy(Cluster):
             id=0x0001, type=t.LongOctetString, access="r", mandatory=True
         )
         communication_mode: Final = ZCLAttributeDef(
-            id=0x0002, type=t.GPCommunicationMode, access="rw", mandatory=True
+            id=0x0002, type=GPCommunicationMode, access="rw", mandatory=True
         )
         commissioning_exit_mode: Final = ZCLAttributeDef(
             id=0x0003, type=t.bitmap8, access="rw", mandatory=True
@@ -275,10 +282,10 @@ class GreenPowerProxy(Cluster):
             id=0xEE00, type=t.KeyData, access="r"
         )
         internal_gpd_id: Final = ZCLAttributeDef(
-            id=0xEE01, type=t.GreenPowerDeviceID, access="r"
+            id=0xEE01, type=GreenPowerDeviceID, access="r"
         )
         internal_gpd_sinktableentry: Final = ZCLAttributeDef(
-            id=0xEE02, type=t.SinkTableEntry, access="r"
+            id=0xEE02, type=SinkTableEntry, access="r"
         )
     
     class ServerCommandDefs(BaseCommandDefs):
@@ -292,7 +299,7 @@ class GreenPowerProxy(Cluster):
             id=0x01,
             schema={
                 "options": GPPairingSearchOptions,
-                "gpdId": t.GreenPowerDeviceID,
+                "gpd_id": GreenPowerDeviceID,
             },
             direction=False,
         )
@@ -308,7 +315,7 @@ class GreenPowerProxy(Cluster):
             id=0x00,
             schema={
                 "options": GPNotificationResponseOptions,
-                "gpd_id": t.GreenPowerDeviceID,
+                "gpd_id": GreenPowerDeviceID,
                 "frame_counter": t.uint32_t
             },
             direction=True,
@@ -318,7 +325,7 @@ class GreenPowerProxy(Cluster):
             id=0x01,
             schema={
                 "options": GPPairingOptions,
-                "gpd_id": t.GreenPowerDeviceID,
+                "gpd_id": GreenPowerDeviceID,
                 "sink_IEEE?": t.EUI64,
                 "sink_nwk_addr?": t.NWK,
                 "sink_group?": t.Group,
@@ -346,7 +353,7 @@ class GreenPowerProxy(Cluster):
                 "options": GPResponseOptions,
                 "temp_master_short_addr": t.uint16_t,
                 "temp_master_tx_channel": t.uint8_t,
-                "gpd_id": t.GreenPowerDeviceID,
+                "gpd_id": GreenPowerDeviceID,
                 "gpd_command_id": t.uint8_t,
                 "gpd_command_payload": t.LongOctetString,
             },

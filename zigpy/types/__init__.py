@@ -3,7 +3,6 @@ from __future__ import annotations
 from .basic import *  # noqa: F401,F403
 from .named import *  # noqa: F401,F403
 from .struct import *  # noqa: F401,F403
-from .greenpower import * # noqa: F401,F403
 
 
 def deserialize(data, schema):
