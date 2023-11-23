@@ -132,80 +132,90 @@ class GPNotificationResponseOptions(t.Struct):
         kwargs.setdefault("reserved", 0)
         return super().__new__(cls, *args, **kwargs)
 
-# ZGP spec Figure 41
-class GPPairingOptions(t.bitmap24):
+class GPPairingSchema(t.Struct):
+    options: t.bitmap24
+    gpd_id: GreenPowerDeviceID
+    sink_IEEE: t.EUI64 = t.StructField(optional=True)
+    sink_nwk_addr: t.NWK = t.StructField(optional=True)
+    sink_group: t.Group = t.StructField(optional=True)
+    device_id: t.uint8_t = t.StructField(optional=True)
+    frame_counter: t.uint32_t = t.StructField(optional=True)
+    key: t.KeyData = t.StructField(optional=True)
+    alias: t.uint16_t = t.StructField(optional=True)
+    forwarding_radius: t.uint8_t = t.StructField(optional=True)
+    
     @property
     def application_id(self) -> GPApplicationID:
-        return GPApplicationID(self & 0b111)
+        return GPApplicationID(self.options & 0b111)
     @application_id.setter
     def application_id(self, value: GPApplicationID):
-        self = (self & ~(0b111)) | value
+        self.options = (self.options & ~(0b111)) | value
     @property
     def add_sink(self) -> t.uint1_t:
-        return t.uint1_t((self >> 3) & 0x01)
+        return t.uint1_t((self.options >> 3) & 0x01)
     @add_sink.setter
     def add_sink(self, value: t.uint1_t):
-        self = (self & ~(1 << 3)) | (value << 3)
+        self.options = (self.options & ~(1 << 3)) | (value << 3)
     @property
     def remove_gpd(self) -> t.uint1_t:
-        return t.uint1_t((self >> 4) & 0x01)
+        return t.uint1_t((self.options >> 4) & 0x01)
     @remove_gpd.setter
     def remove_gpd(self, value: t.uint1_t):
-        self = (self & ~(1 << 4)) | (value << 4)
+        self.options = (self.options & ~(1 << 4)) | (value << 4)
     @property
     def communication_mode(self) -> GPCommunicationMode:
-        return GPCommunicationMode((self >> 5) & 0b11)
+        return GPCommunicationMode((self.options >> 5) & 0b11)
     @communication_mode.setter
     def communication_mode(self, value: GPCommunicationMode):
-        self = (self & ~(0b11 << 5)) | (value << 5)
+        self.options = (self.options & ~(0b11 << 5)) | (value << 5)
     @property
     def gpd_fixed(self) -> t.uint1_t:
-        return t.uint1_t((self >> 7) & 0x01)
+        return t.uint1_t((self.options >> 7) & 0x01)
     @gpd_fixed.setter
     def gpd_fixed(self, value: t.uint1_t):
-        self = (self & ~(1 << 7)) | (value << 7)
+        self.options = (self.options & ~(1 << 7)) | (value << 7)
     @property
     def gpd_mac_seq_num_cap(self) -> t.uint1_t:
-        return t.uint1_t((self >> 8) & 0x01)
+        return t.uint1_t((self.options >> 8) & 0x01)
     @gpd_mac_seq_num_cap.setter
     def gpd_mac_seq_num_cap(self, value: t.uint1_t):
-        self = (self & ~(1 << 8)) | (value << 8)
+        self.options = (self.options & ~(1 << 8)) | (value << 8)
     @property
     def security_level(self) -> GPSecurityLevel:
-        return GPSecurityLevel((self >> 9) & 0b11)
+        return GPSecurityLevel((self.options >> 9) & 0b11)
     @security_level.setter
     def security_level(self, value: GPSecurityLevel):
-        self = (self & ~(0b11 << 9)) | (value << 9)
+        self.options = (self.options & ~(0b11 << 9)) | (value << 9)
     @property
     def security_key_type(self) -> GPSecurityKeyType:
-        return GPSecurityKeyType((self >> 11) & 0b111)
+        return GPSecurityKeyType((self.options >> 11) & 0b111)
     @security_key_type.setter
     def security_key_type(self, value: GPSecurityKeyType):
-        self = (self & ~(0b111 << 11)) | (value << 11)
+        self.options = (self.options & ~(0b111 << 11)) | (value << 11)
     @property
     def security_frame_counter_present(self) -> t.uint1_t:
-        return t.uint1_t((self >> 14) & 0x01)
+        return t.uint1_t((self.options >> 14) & 0x01)
     @security_frame_counter_present.setter
     def security_frame_counter_present(self, value: t.uint1_t):
-        self = (self & ~(1 << 14)) | (value << 14)
+        self.options = (self.options & ~(1 << 14)) | (value << 14)
     @property
     def security_key_present(self) -> t.uint1_t:
-        return t.uint1_t((self >> 15) & 0x01)
+        return t.uint1_t((self.options >> 15) & 0x01)
     @security_key_present.setter
     def security_key_present(self, value: t.uint1_t):
-        self = (self & ~(1 << 15)) | (value << 15)
+        self.options = (self.options & ~(1 << 15)) | (value << 15)
     @property
     def assigned_alias_present(self) -> t.uint1_t:
-        return t.uint1_t((self >> 16) & 0x01)
+        return t.uint1_t((self.options >> 16) & 0x01)
     @assigned_alias_present.setter
     def assigned_alias_present(self, value: t.uint1_t):
-        self = (self & ~(1 << 16)) | (value << 16)
+        self.options = (self.options & ~(1 << 16)) | (value << 16)
     @property
     def forwarding_radius_present(self) -> t.uint1_t:
-        return t.uint1_t((self >> 17) & 0x01)
+        return t.uint1_t((self.options >> 17) & 0x01)
     @forwarding_radius_present.setter
     def forwarding_radius_present(self, value: t.uint1_t):
-        self = (self & ~(1 << 17)) | (value << 17)
+        self.options = (self.options & ~(1 << 17)) | (value << 17)
 
 # ZGP spec Figure 43
 class GPProxyCommissioningModeOptions(t.Struct):
@@ -236,7 +246,7 @@ class GreenPowerProxy(Cluster):
     GPNotificationSchema: Final = GPNotificationSchema
     GPPairingSearchOptions: Final = GPPairingSearchOptions
     GPNotificationResponseOptions: Final = GPNotificationResponseOptions
-    GPPairingOptions: Final = GPPairingOptions
+    GPPairingSchema: Final = GPPairingSchema
     GPProxyCommissioningModeOptions: Final = GPProxyCommissioningModeOptions
     GPResponseOptions: Final = GPResponseOptions
     GPCommissioningNotificationSchema: Final = GPCommissioningNotificationSchema
@@ -323,18 +333,7 @@ class GreenPowerProxy(Cluster):
 
         pairing: Final = ZCLCommandDef(
             id=0x01,
-            schema={
-                "options": GPPairingOptions,
-                "gpd_id": GreenPowerDeviceID,
-                "sink_IEEE?": t.EUI64,
-                "sink_nwk_addr?": t.NWK,
-                "sink_group?": t.Group,
-                "device_id?": t.uint8_t,
-                "frame_counter?": t.uint32_t,
-                "key?": t.KeyData,
-                "alias?": t.uint16_t,
-                "forwarding_radius?": t.uint8_t
-            },
+            schema=GPPairingSchema,
             direction=True,
         )
 
