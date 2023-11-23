@@ -53,11 +53,11 @@ class GPNotificationSchema(t.Struct):
     command_id: t.uint8_t
     payload: t.LVBytes
     short_addr: t.uint16_t = StructField(
-        requires=lambda s: s.temp_master,
+        requires=lambda s: s.proxy_info_present,
         optional=True
     )
     distance: t.uint8_t = StructField(
-        requires=lambda s: s.temp_master,
+        requires=lambda s: s.proxy_info_present,
         optional=True
     )
 
@@ -79,12 +79,19 @@ class GPNotificationSchema(t.Struct):
     @property
     def security_key_type(self) -> GPSecurityKeyType:
         return GPSecurityKeyType((self.options >> 8) & 0b111)
+    # XXX: these come from Wireshark, not the spec!
     @property
-    def temp_master(self) -> t.uint1_t:
+    def rx_after_tx(self) -> t.uint1_t:
         return t.uint1_t((self.options >> 11) & 0x01)
     @property
     def gpp_tx_queue_full(self) -> t.uint1_t:
         return t.uint1_t((self.options >> 12) & 0x01)
+    @property
+    def bidirectional_cap(self) -> t.uint1_t:
+        return t.uint1_t((self.options >> 13) & 0x01)
+    @property
+    def proxy_info_present(self) -> t.uint1_t:
+        return t.uint1_t((self.options >> 14) & 0x01)
 
 # Figure 27
 class GPCommissioningNotificationSchema(t.Struct):
