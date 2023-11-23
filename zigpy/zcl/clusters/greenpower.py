@@ -21,6 +21,7 @@ from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    Direction,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -224,6 +225,10 @@ class GPPairingSchema(t.Struct):
     def forwarding_radius_present(self, value: t.uint1_t):
         self.options = (self.options & ~(1 << 17)) | (value << 17)
 
+    def __new__(cls: GPPairingSchema, *args, **kwargs) -> GPPairingSchema:
+        kwargs.setdefault("options", 0)
+        return super().__new__(cls, *args, **kwargs)
+
 # ZGP spec Figure 43
 class GPProxyCommissioningModeOptions(t.Struct):
     enter: t.uint1_t
@@ -304,12 +309,15 @@ class GreenPowerProxy(Cluster):
         internal_gpd_sinktableentry: Final = ZCLAttributeDef(
             id=0xEE02, type=SinkTableEntry, access="r"
         )
+        internal_gpd_counter: Final = ZCLAttributeDef(
+            id=0xEE03, type=t.uint32_t, access="r"
+        )
     
     class ServerCommandDefs(BaseCommandDefs):
         notification: Final = ZCLCommandDef(
             id=0x00,
             schema=GPNotificationSchema,
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         
         pairing_search: Final = ZCLCommandDef(
@@ -318,13 +326,13 @@ class GreenPowerProxy(Cluster):
                 "options": GPPairingSearchOptions,
                 "gpd_id": GreenPowerDeviceID,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
 
         commissioning_notification: Final = ZCLCommandDef(
             id=0x04,
             schema=GPCommissioningNotificationSchema,
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         
     class ClientCommandDefs(BaseCommandDefs):
@@ -335,7 +343,7 @@ class GreenPowerProxy(Cluster):
                 "gpd_id": GreenPowerDeviceID,
                 "frame_counter": t.uint32_t
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
 
         pairing: Final = ZCLCommandDef(
@@ -350,7 +358,7 @@ class GreenPowerProxy(Cluster):
                 "options": GPProxyCommissioningModeOptions,
                 "window?": t.uint16_t
             },
-            direction=True
+            direction=Direction.Server_to_Client
         )
 
         response: Final = ZCLCommandDef(
@@ -363,6 +371,6 @@ class GreenPowerProxy(Cluster):
                 "gpd_command_id": t.uint8_t,
                 "gpd_command_payload": t.LongOctetString,
             },
-            direction=True
+            direction=Direction.Server_to_Client
         )
 
