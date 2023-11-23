@@ -105,6 +105,8 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         return self._application._device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id]
 
     async def initialize(self):
+        all_devices = self._application.devices
+        devices = self._get_all_gp_devices()
         self._application._callback_for_response(zigpy.listeners.ANY_DEVICE, [
             GreenPowerProxy.ServerCommandDefs.notification.schema()
         ], self._on_zcl_notification)
@@ -159,7 +161,8 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         device_type = payload.device_type
         ieee = t.EUI64(src_id.serialize() + bytes([0,0,0,0]))
         device = self._application.add_device(ieee, t.uint16_t(src_id & 0xFFFF))
-        device._skip_configuration = True
+        device.skip_configuration = True
+        device.status =  zigpy.device.Status.NEW
         device.node_desc = zdo.types.NodeDescriptor(
             logical_type=zigpy.zdo.types.LogicalType.EndDevice,
             frequency_band=zigpy.zdo.types._NodeDescriptorEnums.FrequencyBand.Freq2400MHz,
@@ -172,8 +175,8 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             descriptor_capability_field=0,
         )
         device.manufacturer = "GreenPower"
-        ep: zigpy.endpoint.Endpoint = device.add_endpoint(1)
         ep.status = zigpy.endpoint.Status.ZDO_INIT
+        ep: zigpy.endpoint.Endpoint = device.add_endpoint(1)
         ep.profile_id = zigpy.profiles.zha.PROFILE_ID
         ep.device_type = zigpy.profiles.zha.DeviceType.GREEN_POWER
         ep.add_input_cluster(Basic.cluster_id)
@@ -202,6 +205,8 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         cluster.update_attribute(GreenPowerProxy.AttributeDefs.internal_gpd_sinktableentry, sink_table_entry)
         cluster.update_attribute(GreenPowerProxy.AttributeDefs.internal_gpd_id, src_id)
         device.update_last_seen()
+
+        device.status =  zigpy.device.Status.ENDPOINTS_INIT
         self._application.device_initialized(device)
         return device
 
