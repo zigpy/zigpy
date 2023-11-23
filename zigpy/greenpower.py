@@ -252,8 +252,11 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             pairing.communication_mode = comm_mode
             pairing.gpd_id = src_id
             pairing.gpd_mac_seq_num_cap = commission_payload.mac_seq_num_cap
+            pairing.security_frame_counter_present = 1 # always true for pairing p.106 l.25
+            pairing.frame_counter = commission_payload.gpd_outgoing_counter_present and commission_payload.gpd_outgoing_counter or 0
             pairing.security_level = commission_payload.security_level
             pairing.security_key_type = commission_payload.key_type
+            pairing.device_id = commission_payload.device_type
 
             if commission_payload.gpd_key is not None:
                 pairing.security_key_present = 1
