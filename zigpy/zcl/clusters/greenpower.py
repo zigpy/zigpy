@@ -21,6 +21,7 @@ from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    CommandSchema,
     Direction,
     ZCLAttributeDef,
     ZCLCommandDef,
@@ -95,7 +96,7 @@ class GPNotificationSchema(t.Struct):
         return t.uint1_t((self.options >> 14) & 0x01)
 
 # Figure 27
-class GPCommissioningNotificationSchema(t.Struct):
+class GPCommissioningNotificationSchema(CommandSchema):
     options: t.bitmap16
     gpd_id: GreenPowerDeviceID
     frame_counter: t.uint32_t
@@ -140,7 +141,7 @@ class GPNotificationResponseOptions(t.Struct):
         kwargs.setdefault("reserved", 0)
         return super().__new__(cls, *args, **kwargs)
 
-class GPPairingSchema(t.Struct):
+class GPPairingSchema(CommandSchema):
     options: t.bitmap24
     gpd_id: GreenPowerDeviceID
     sink_IEEE: t.EUI64 = t.StructField(optional=True)
@@ -307,7 +308,7 @@ class GreenPowerProxy(Cluster):
             id=0xEE01, type=GreenPowerDeviceID, access="r"
         )
         internal_gpd_sinktableentry: Final = ZCLAttributeDef(
-            id=0xEE02, type=SinkTableEntry, access="r"
+            id=0xEE02, type=bytes, access="r"
         )
         internal_gpd_counter: Final = ZCLAttributeDef(
             id=0xEE03, type=t.uint32_t, access="r"

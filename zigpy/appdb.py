@@ -72,14 +72,21 @@ sqlite3 = _import_compatible_sqlite3(min_version=MIN_SQLITE_VERSION)
 def _register_sqlite_adapters():
     def adapt_ieee(eui64):
         return str(eui64)
+    def adapt_key(key):
+        return str(key)
 
     sqlite3.register_adapter(t.EUI64, adapt_ieee)
+    sqlite3.register_adapter(t.KeyData, adapt_key)
     sqlite3.register_adapter(t.ExtendedPanId, adapt_ieee)
 
     def convert_ieee(s):
         return t.EUI64.convert(s.decode())
+    def convert_key(s):
+        return t.KeyData.convert(s.decode())
+
 
     sqlite3.register_converter("ieee", convert_ieee)
+    sqlite3.register_converter("key", convert_key)
 
 
 def aiosqlite_connect(

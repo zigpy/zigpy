@@ -53,7 +53,7 @@ from zigpy.zgp.commands import (
     GPCommandToZCLMapping,
 )
 from zigpy.zgp.devices import (
-    GPEndpointsByDeviceType,
+    GPClustersByDeviceType,
 )
 
 import zigpy.util
@@ -122,6 +122,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         try:
             self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.max_sink_table_entries.id, 0xFF)
             self._push_sink_table()
+            self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.link_key.id, GREENPOWER_DEFAULT_LINK_KEY)
         except:
             LOGGER.warn("GP Controller failed to write initialization attrs")
         
@@ -163,27 +164,18 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         device = self._application.add_device(ieee, t.uint16_t(src_id & 0xFFFF))
         device.skip_configuration = True
         device.status =  zigpy.device.Status.NEW
-        device.node_desc = zdo.types.NodeDescriptor(
-            logical_type=zigpy.zdo.types.LogicalType.EndDevice,
-            frequency_band=zigpy.zdo.types._NodeDescriptorEnums.FrequencyBand.Freq2400MHz,
-            mac_capability_flags=zigpy.zdo.types._NodeDescriptorEnums.MACCapabilityFlags.AllocateAddress,
-            manufacturer_code=4174,
-            maximum_buffer_size=82,
-            maximum_incoming_transfer_size=82,
-            server_mask=0,
-            maximum_outgoing_transfer_size=82,
-            descriptor_capability_field=0,
-        )
+        
+        device.node_desc = zdo.types.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
         device.manufacturer = "GreenPower"
-        ep.status = zigpy.endpoint.Status.ZDO_INIT
         ep: zigpy.endpoint.Endpoint = device.add_endpoint(1)
         ep.profile_id = zigpy.profiles.zha.PROFILE_ID
         ep.device_type = zigpy.profiles.zha.DeviceType.GREEN_POWER
-        ep.add_input_cluster(Basic.cluster_id)
-        cluster: Cluster = ep.in_clusters[Basic.cluster_id]
+        ep.status = zigpy.endpoint.Status.ZDO_INIT
+        
+        cluster: Cluster = ep.add_input_cluster(Basic.cluster_id)
         cluster.update_attribute(Basic.AttributeDefs.manufacturer.id, device.manufacturer)
-        if device_type is not None and device_type in GPEndpointsByDeviceType:
-            descriptor = GPEndpointsByDeviceType[device_type]
+        if device_type is not None and device_type in GPClustersByDeviceType:
+            descriptor = GPClustersByDeviceType[device_type]
             device.model = descriptor.name
             cluster.update_attribute(Basic.AttributeDefs.model.id, device.model)
             for cluster_desc in descriptor.in_clusters:
@@ -195,16 +187,18 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         else:
             device.model = "GreenPowerDevice"
             cluster.update_attribute(Basic.AttributeDefs.model.id, device.model)
+        
         ep = device.add_endpoint(GREENPOWER_ENDPOINT_ID)
         ep.status = zigpy.endpoint.Status.ZDO_INIT
-        ep.profile_id = zigpy.profiles.zha.PROFILE_ID
-        ep.device_type = zigpy.profiles.zha.DeviceType.GREEN_POWER
+        ep.profile_id = zigpy.profiles.zgp.PROFILE_ID
+        ep.device_type = device_type
+        
         cluster = ep.add_input_cluster(GreenPowerProxy.cluster_id)
         if payload.gpd_key is not None:
             cluster.update_attribute(GreenPowerProxy.AttributeDefs.internal_gpd_key.id, payload.gpd_key)
-        cluster.update_attribute(GreenPowerProxy.AttributeDefs.internal_gpd_sinktableentry, sink_table_entry)
-        cluster.update_attribute(GreenPowerProxy.AttributeDefs.internal_gpd_id, src_id)
-        device.update_last_seen()
+        cluster.update_attribute(GreenPowerProxy.AttributeDefs.internal_gpd_sinktableentry.id, sink_table_entry.serialize())
+        cluster.update_attribute(GreenPowerProxy.AttributeDefs.internal_gpd_id.id, src_id)
+        # device.update_last_seen()
 
         device.status =  zigpy.device.Status.ENDPOINTS_INIT
         self._application.device_initialized(device)
@@ -462,12 +456,15 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         return None
 
     def _sink_table_as_bytes(self) -> t.LongOctetString:
-        src_bytes = bytearray()
+        src_bytes: bytes = bytes()
         for device in self._get_all_gp_devices():
-            b = device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id].get(GreenPowerProxy.AttributeDefs.internal_gpd_sinktableentry.id, None)
+            b: bytes = device.endpoints[GREENPOWER_ENDPOINT_ID].in_clusters[GreenPowerProxy.cluster_id].get(GreenPowerProxy.AttributeDefs.internal_gpd_sinktableentry.id, None)
             if b is not None:
-                src_bytes.append(b)
-        return t.LongOctetString(src_bytes)
+                try:
+                    src_bytes = src_bytes + b
+                except Exception as e:
+                    LOGGER.error(e)
+        return t.LongOctetString(t.uint16_t(len(src_bytes)).serialize() + src_bytes)
     
     def _push_sink_table(self):
         self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.sink_table.id, self._sink_table_as_bytes())

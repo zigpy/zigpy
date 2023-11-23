@@ -68,6 +68,7 @@ class DeviceType(t.enum16):
     NON_COLOR_SCENE_CONTROLLER = 0x0830
     CONTROL_BRIDGE = 0x0840
     ON_OFF_SENSOR = 0x0850
+    # XXX this is actually the profile ID, pulled from old PR, not sure ...
     GREEN_POWER = 0xA1E0
 
 CLUSTERS = {
