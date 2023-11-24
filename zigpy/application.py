@@ -14,6 +14,8 @@ import typing
 from typing import Any, Coroutine, TypeVar
 import warnings
 
+from zigpy.profiles.zgp import GREENPOWER_ENDPOINT_ID
+
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
 else:
@@ -515,12 +517,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> None:
         """Send a remove request then pop the device."""
         try:
-            async with asyncio_timeout(
-                30
-                if device.node_desc is not None and device.node_desc.is_end_device
-                else 7
-            ):
-                await device.zdo.leave(remove_children=remove_children, rejoin=rejoin)
+            if self._greenpower._is_gp_device(device):
+                await self._greenpower.remove_device(device)
+            else:
+                async with asyncio_timeout(
+                    30
+                    if device.node_desc is not None and device.node_desc.is_end_device
+                    else 7
+                ):
+                    await device.zdo.leave(remove_children=remove_children, rejoin=rejoin)
         except (zigpy.exceptions.DeliveryError, asyncio.TimeoutError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 

@@ -174,9 +174,13 @@ class SinkTableEntry(Struct):
     device_id: GPDeviceType
     group_list: basic.LVBytes = StructField(optional=True)
     radius: basic.uint8_t 
-    sec_options: basic.bitmap8 = StructField(optional=True)
-    sec_frame_counter: basic.uint32_t = StructField(optional=True)
-    key: KeyData = StructField(optional=True)
+    sec_options: basic.bitmap8 = StructField(
+        requires=lambda s: s.security_use,
+        optional=True)
+    sec_frame_counter: basic.uint32_t = StructField(
+        optional=True)
+    key: KeyData = StructField(
+        optional=True)
 
     @property
     def application_id(self) -> GPApplicationID:
@@ -184,6 +188,18 @@ class SinkTableEntry(Struct):
     @application_id.setter
     def application_id(self, value: GPApplicationID):
         self.options = (self.options & ~(0b111)) | value
+    
+    @property
+    def security_level(self) -> GPSecurityLevel:
+        if self.sec_options is None:
+            return GPSecurityLevel.NoSecurity
+        return GPSecurityLevel(self.sec_options & 0b11)
+
+    @property
+    def security_key_type(self) -> GPSecurityKeyType:
+        if self.sec_options is None:
+            return GPSecurityKeyType.NoKey
+        return GPSecurityKeyType((self.sec_options >> 2) & 0b111)
     
     @property
     def communication_mode(self) -> GPCommunicationMode:
