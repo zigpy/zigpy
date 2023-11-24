@@ -40,7 +40,6 @@ from zigpy.types import (
 )
 from zigpy.zgp import (
     GreenPowerDeviceID,
-    GPCommand,
     GPCommissioningPayload,
     GPCommunicationMode,
     GPProxyCommissioningModeExitMode,
@@ -49,6 +48,7 @@ from zigpy.zgp import (
     SinkTableEntry,
 )
 from zigpy.zgp.commands import (
+    GPCommand,
     GPCommandDescriptor,
     GPCommandToZCLMapping,
 )

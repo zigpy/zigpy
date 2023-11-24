@@ -37,66 +37,6 @@ class GPDeviceType(basic.enum8):
     SENSOR_FLOW = 0x32
     SENSOR_ENVIRONMENT_INDOOR = 0x33
 
-class GPCommand(basic.enum8):
-    Identify = 0x00
-    Scene0 = 0x10
-    Scene1 = 0x11
-    Scene2 = 0x12
-    Scene3 = 0x13
-    Scene4 = 0x14
-    Scene5 = 0x15
-    Scene6 = 0x16
-    Scene7 = 0x17
-    Scene8 = 0x18
-    Scene9 = 0x19
-    Scene10 = 0x1A
-    Scene11 = 0x1B
-    Scene12 = 0x1C
-    Scene13 = 0x1D
-    Scene14 = 0x1E
-    Scene15 = 0x1F
-    Off = 0x20
-    On = 0x21
-    Toggle = 0x22
-    Release = 0x23
-    MoveUp = 0x30
-    MoveDown = 0x31
-    StepUp = 0x32
-    StepDown = 0x33
-    LevelControlStop = 0x34
-    MoveUpWithOnOff = 0x35
-    MoveDownWithOnOff = 0x36
-    StepUpWithOnOff = 0x37
-    StepDownWithOnOff = 0x38
-    MoveHueStop = 0x40
-    MoveHueUp = 0x41
-    MoveHueDown = 0x42
-    StepHueUp = 0x43
-    StepHueDown = 0x44
-    MoveSaturationStop = 0x45
-    MoveSaturationUp = 0x46
-    MoveSaturationDown = 0x47
-    StepSaturationUp = 0x48
-    StepSaturationDown = 0x49
-    MoveColor = 0x4A
-    StepColor = 0x4B
-    LockDoor = 0x50
-    UnlockDoor = 0x51
-    Press1of1 = 0x60
-    Release1of1 = 0x61
-    Press1of2 = 0x62
-    Release1of2 = 0x63
-    Press2of2 = 0x64
-    Release2of2 = 0x65
-    ShortPress1of1 = 0x66
-    ShortPress1of2 = 0x67
-    ShortPress2of2 = 0x68
-    Commissioning = 0xe0
-
-class GPCommandType(enum.Enum):
-    CLUSTER_COMMAND = 0
-    GREENPOWER_COMMAND = 1
-
 class GreenPowerDeviceID(basic.uint32_t, repr="hex"):
     pass
 
