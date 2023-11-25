@@ -66,6 +66,8 @@ class GreenPowerExtDB:
             del self._data_by_gpid[entry.gpd_id]
             del self._data_by_ieee[entry.ieee]
             await self.write_to_disk()
+        else:
+            LOGGER.error("GPExtDB got remove request for %s but not present; failing", str(device.ieee))
 
     async def add(self, data:GreenPowerExtData):
         # find first duplicate index
