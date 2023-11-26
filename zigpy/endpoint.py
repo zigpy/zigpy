@@ -5,6 +5,7 @@ import enum
 import logging
 from typing import Any
 
+import typing
 import zigpy.exceptions
 import zigpy.profiles
 import zigpy.types as t
@@ -45,8 +46,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status: Status = Status.NEW
         self.profile_id: int | None = None
         self.device_type: zigpy.profiles.zha.DeviceType | None = None
-        self.in_clusters: dict = {}
-        self.out_clusters: dict = {}
+        self.in_clusters: typing.Dict[int, zigpy.zcl.Cluster] = {}
+        self.out_clusters: typing.Dict[int, zigpy.zcl.Cluster] = {}
         self._cluster_attr: dict = {}
 
         self._member_of: dict = {}
