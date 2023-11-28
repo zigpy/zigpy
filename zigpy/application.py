@@ -42,6 +42,7 @@ import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
+import zigpy.quirks.greenpower
 
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
@@ -517,7 +518,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> None:
         """Send a remove request then pop the device."""
         try:
-            if self._greenpower._is_gp_device(device):
+            if device.is_green_power_device:
                 await self._greenpower.remove_device(device)
             else:
                 async with asyncio_timeout(
@@ -1007,6 +1008,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         assert packet.src is not None
         assert packet.dst is not None
 
+        # XXX: suck up all the ZGP profile ID packets
+        if packet.profile_id == zigpy.profiles.zgp.PROFILE_ID:
+            self._greenpower.packet_received(packet)
+            return
+
         # Peek into ZDO packets to handle possible ZDO notifications
         if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
             self._maybe_parse_zdo(packet)
@@ -1014,15 +1020,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         try:
             device = self.get_device_with_address(packet.src)
         except KeyError:
-            # tunneled frames need special processing; we could be in a 
-            # commissioning state and expecting it, or the frame may be
-            # flagged for autocommissioning. either way, let the green
-            # power controller sort it out. (we're not getting back
-            # a ZDO IEEE request anyway so bypass that)
-            if packet.profile_id == zigpy.profiles.zgp.PROFILE_ID:
-                self._greenpower.handle_unknown_tunneled_green_power_frame(packet)
-                return
-
             LOGGER.warning("Unknown device %r", packet.src)
 
             if packet.src.addr_mode == t.AddrMode.NWK:

@@ -4,6 +4,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Final, Optional
 
+from zigpy.profiles.zgp import (
+    GREENPOWER_CLUSTER_ID
+)
 import zigpy.types as t
 import zigpy.zgp.types as gpt
 from zigpy.zgp.types import (
@@ -252,7 +255,7 @@ class GPResponseOptions(t.Struct):
         return super().__new__(cls, *args, **kwargs)
 
 class GreenPowerProxy(Cluster):
-    cluster_id: Final = 0x0021
+    cluster_id: Final = GREENPOWER_CLUSTER_ID
     name: Final = "Green Power"
     ep_attribute: Final = "green_power"
 

@@ -81,6 +81,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status = Status.NEW
 
     @property
+    def is_green_power_device(self) -> bool:
+        return False
+
+    @property
     def name(self) -> str:
         return f"0x{self.nwk:04X}"
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import zigpy.types as t
 
 PROFILE_ID = 41440
+GREENPOWER_CLUSTER_ID = 0x0021
 GREENPOWER_ENDPOINT_ID = 242
 GREENPOWER_BROADCAST_GROUP = 0x0b84
 # ZigBeeAlliance09, Table 32

@@ -1,41 +1,25 @@
 from __future__ import annotations
-
-import dataclasses
-from datetime import datetime, timezone
-import enum
 import typing
 from click import command
 
+from cryptography.hazmat.primitives.ciphers.aead import AESCCM
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from zigpy.profiles.zgp import (
+    GREENPOWER_BROADCAST_GROUP,
+    GREENPOWER_DEFAULT_LINK_KEY
+)
 
+from .foundation import GPDeviceType
 from zigpy.types import basic
 from zigpy.types.struct import Struct, StructField
-from zigpy.types.named import KeyData
+from zigpy.types.named import (
+    EUI64,
+    NWK,
+    KeyData
+)
 
 if typing.TYPE_CHECKING:
     from typing_extensions import Self
-
-# Table 51
-class GPDeviceType(basic.enum8):
-    SWITCH_SIMPLE_ONE_STATE = 0x00
-    SWITCH_SIMPLE_TWO_STATE = 0x01
-    SWITCH_ON_OFF = 0x02
-    SWITCH_LEVEL_CONTROL = 0x03
-    SENSOR_SIMPLE = 0x04
-    SWITCH_ADVANCED_ONE_STATE = 0x05
-    SWITCH_ADVANCED_TWO_STATE = 0x06
-    SWITCH_GENERIC = 0x07
-
-    SWITCH_COLOR_DIMMER = 0x10
-    SENSOR_LIGHT = 0x11
-    SENSOR_OCCUPANCY = 0x12
-
-    DOOR_LOCK_CONTROLLER = 0x20
-
-    SENSOR_TEMPERATURE = 0x30
-    SENSOR_PRESSURE = 0x31
-    SENSOR_FLOW = 0x32
-    SENSOR_ENVIRONMENT_INDOOR = 0x33
 
 class GreenPowerDeviceID(basic.uint32_t, repr="hex"):
     pass
@@ -157,15 +141,12 @@ class GPCommissioningPayload(Struct):
         
         return [instance, data]
 
-
 # Figure 74
 class GPCommissioningReplyPayload(Struct):
     options: basic.bitmap8
     pan_id: basic.uint16_t = StructField(optional=True)
     security_key: KeyData = StructField(optional=True)
     gpd_key_mic: basic.uint32_t = StructField(optional=True)
-
-
 
 # Table 27
 class SinkTableEntry(Struct):
@@ -178,8 +159,10 @@ class SinkTableEntry(Struct):
         requires=lambda s: s.security_use,
         optional=True)
     sec_frame_counter: basic.uint32_t = StructField(
+        requires=lambda s: s.sequence_number_cap,
         optional=True)
     key: KeyData = StructField(
+        requires=lambda s: s.security_key_type is not GPSecurityKeyType.NoKey,
         optional=True)
 
     @property
@@ -242,6 +225,82 @@ class SinkTableEntry(Struct):
     @security_use.setter
     def security_use(self, value: basic.uint1_t):
         self.options = (self.options & ~(1 << 9)) | (value << 9)
+
+class GreenPowerExtData(Struct):
+    gpd_id: GreenPowerDeviceID
+    device_id: GPDeviceType
+    unicast_sink: EUI64
+    security_level: GPSecurityLevel
+    security_key_type: GPSecurityKeyType
+    communication_mode: GPCommunicationMode
+    frame_counter: basic.uint32_t
+    raw_key: KeyData
+    assigned_alias: bool
+    fixed_location: bool
+    rx_on_cap: bool
+    sequence_number_cap: bool
+
+    @property
+    def ieee(self) -> EUI64:
+        return EUI64(self.gpd_id.serialize() + bytes([0,0,0,0]))
+    
+    @property
+    def nwk(self) -> NWK:
+        return NWK(self.gpd_id & 0xFFFF)
+    
+    @property
+    def sink_table_entry(self) -> SinkTableEntry:
+        instance = SinkTableEntry(
+            options=0,
+            gpd_id=self.gpd_id,
+            device_id=self.device_id,
+            radius=0xFF
+        )
+        if self.communication_mode in (GPCommunicationMode.GroupcastForwardToCommGroup, GPCommunicationMode.GroupcastForwardToDGroup):
+            instance.group_list=basic.LVBytes(
+                GREENPOWER_BROADCAST_GROUP.to_bytes(2, "little") + 0xFF.to_bytes(1) + 0xFF.to_bytes(1)
+            )
+
+        instance.security_use = self.security_level is not GPSecurityLevel.NoSecurity
+        if instance.security_use:
+            instance.sec_options = 0
+            instance.security_level = self.security_level
+            instance.security_key_type = self.security_key_type
+            if instance.security_key_type != GPSecurityKeyType.NoKey:
+                instance.key = self.encrypt_key()
+        instance.rx_on_cap = self.rx_on_cap
+        instance.sequence_number_cap = self.sequence_number_cap
+        if instance.sequence_number_cap:
+            instance.sec_frame_counter = self.frame_counter
+        
+        return instance
+
+    def encrypt_key(self) -> bytes:
+        # A.1.5.9.1
+        link_key_bytes = GREENPOWER_DEFAULT_LINK_KEY.serialize()
+        key_bytes = self.raw_key.serialize()
+        src_bytes = self.gpd_id.to_bytes(4, "little")
+        nonce = src_bytes + src_bytes + src_bytes + 0x05.to_bytes(1)
+        assert len(nonce) == 13
+
+        aesccm = AESCCM(link_key_bytes, tag_length=16)
+        result = aesccm.encrypt(nonce, key_bytes, None)
+        return result[0:16]
+
+
+    def __new__(cls: GreenPowerExtData, *args, **kwargs) -> GreenPowerExtData:
+        kwargs.setdefault("unicast_sink", EUI64.UNKNOWN)
+        kwargs.setdefault("security_level", GPSecurityLevel.NoSecurity)
+        kwargs.setdefault("security_key_type", GPSecurityKeyType.NoKey)
+        kwargs.setdefault("frame_counter", 0)
+        kwargs.setdefault("raw_key", KeyData.UNKNOWN)
+        kwargs.setdefault("assigned_alias", False)
+        kwargs.setdefault("fixed_location", False)
+        kwargs.setdefault("rx_on_cap", False)
+        kwargs.setdefault("sequence_number_cap", True)
+        return super().__new__(cls, *args, **kwargs)
+    
+
 
 class GPDataFrame(Struct):
     options: basic.bitmap8

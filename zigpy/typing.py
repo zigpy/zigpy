@@ -13,6 +13,8 @@ CustomDeviceType = "CustomDevice"
 CustomEndpointType = "CustomEndpoint"
 DeviceType = "Device"
 EndpointType = "Endpoint"
+GreenPowerDeviceType = "GreenPowerDevice"
+GreenPowerExtData = "GreenPowerExtData"
 ZDOType = "ZDO"
 AddressingMode = "AddressingMode"
 
@@ -24,6 +26,8 @@ if TYPE_CHECKING:
     import zigpy.types
     import zigpy.zcl
     import zigpy.zdo
+    import zigpy.zgp
+    import zigpy.zgp.device
 
     ClusterType = zigpy.zcl.Cluster
     ControllerApplicationType = zigpy.application.ControllerApplication
@@ -32,6 +36,8 @@ if TYPE_CHECKING:
     CustomEndpointType = zigpy.quirks.CustomEndpoint
     DeviceType = zigpy.device.Device
     EndpointType = zigpy.endpoint.Endpoint
+    GreenPowerDeviceType = zigpy.zgp.device.GreenPowerDevice
+    GreenPowerExtData = zigpy.zgp.GreenPowerExtData
     ZDOType = zigpy.zdo.ZDO
 
     AddressingMode = Union[
