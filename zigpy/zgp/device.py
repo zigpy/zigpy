@@ -41,7 +41,7 @@ class GreenPowerDevice(zigpy.device.Device):
         ep.profile_id = zigpy.profiles.zgp.PROFILE_ID
         ep.device_type = zigpy.profiles.zgp.DeviceType.PROXY_BASIC
         
-        ep.add_output_cluster(zigpy.profiles.zgp.GREENPOWER_CLUSTER_ID)
+        ep.add_input_cluster(zigpy.profiles.zgp.GREENPOWER_CLUSTER_ID)
         self.status = zigpy.device.Status.ENDPOINTS_INIT
 
     @property
@@ -96,7 +96,7 @@ class GreenPowerDevice(zigpy.device.Device):
             return
 
         # hdr, args, dst_addressing=dst_addressing
-        cluster = self.endpoints[packet.src_ep].out_clusters[packet.cluster_id]
+        cluster = self.endpoints[packet.src_ep].in_clusters[packet.cluster_id]
         dst_addressing = packet.dst.addr_mode if packet.dst is not None else None
         cluster.handle_message(
             hdr, args, 
