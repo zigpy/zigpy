@@ -287,21 +287,6 @@ class GreenPowerExtData(Struct):
         result = aesccm.encrypt(nonce, key_bytes, None)
         return result[0:16]
 
-
-    def __new__(cls: GreenPowerExtData, *args, **kwargs) -> GreenPowerExtData:
-        kwargs.setdefault("unicast_sink", EUI64.UNKNOWN)
-        kwargs.setdefault("security_level", GPSecurityLevel.NoSecurity)
-        kwargs.setdefault("security_key_type", GPSecurityKeyType.NoKey)
-        kwargs.setdefault("frame_counter", 0)
-        kwargs.setdefault("raw_key", KeyData.UNKNOWN)
-        kwargs.setdefault("assigned_alias", False)
-        kwargs.setdefault("fixed_location", False)
-        kwargs.setdefault("rx_on_cap", False)
-        kwargs.setdefault("sequence_number_cap", True)
-        return super().__new__(cls, *args, **kwargs)
-    
-
-
 class GPDataFrame(Struct):
     options: basic.bitmap8
     frame_control_ext: basic.bitmap8 = StructField(

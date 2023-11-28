@@ -111,13 +111,6 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         device.packet_received(packet)
 
     async def initialize(self):
-        # self._application.add_listener(self)
-
-        #try:
-        #    await self._application._device.endpoints[GREENPOWER_ENDPOINT_ID].add_to_group(GREENPOWER_BROADCAST_GROUP)
-        #except (IndexError, KeyError):
-        #    LOGGER.warn("No GP endpoint to add to GP Group; GP broadcasts will not function")
-        
         try:
             self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.max_sink_table_entries.id, 0xFF)
             self._push_sink_table()
@@ -132,6 +125,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         if not isinstance(device, GreenPowerDevice):
             LOGGER.warning("Green Power Controller got a request to remove a device that is not a GP device; refusing.")
             return
+        LOGGER.debug("Green Power Controller removing device %s", str(device.gpd_id))
         entry = device.ext_data
         pairing = GreenPowerProxy.GPPairingSchema(options=0)
         pairing.remove_gpd = 1
@@ -140,6 +134,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         # as it happens, we don't have to be too careful here, we can just broadcast the leave
         # message and be done with it
         await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.pairing, pairing.as_dict())
+        LOGGER.debug("Green Power Controller removed %s successfully", str(device.gpd_id))
 
     def handle_unknown_tunneled_green_power_frame(self, packet: t.ZigbeePacket):
         # if we're not listening for commissioning packets, don't worry too much about it
@@ -179,6 +174,9 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             communication_mode=comm_mode,
             frame_counter=0,
             raw_key=commission_payload.gpd_key or t.KeyData.UNKNOWN,
+            assigned_alias=False,
+            fixed_location=False,
+            rx_on_cap=commission_payload.rx_on_cap,
             sequence_number_cap=commission_payload.mac_seq_num_cap,
         )
 

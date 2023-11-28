@@ -228,6 +228,7 @@ CREATE TABLE network_backups_v13 (
 
 -- green power
 
+DROP TABLE IF EXISTS green_power_data_v13;
 CREATE TABLE green_power_data_v13 (
     ieee ieee NOT NULL,
     gpd_id INTEGER NOT NULL,
@@ -247,3 +248,6 @@ CREATE TABLE green_power_data_v13 (
         REFERENCES devices_v13(ieee)
         ON DELETE CASCADE
 );
+
+CREATE UNIQUE INDEX green_power_data_idx_v13
+    ON green_power_data_v13(ieee);

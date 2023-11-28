@@ -19,8 +19,7 @@ class EnoceanPTM215ZDevice(GreenPowerDevice):
         if device.ext_data.security_level != GPSecurityLevel.FullFrameCounterAndMIC:
             return False
         # Finally match against GPD ID prefix
-        idstr = str(device.ext_data.gpd_id)
-        return idstr.startswith("0x017")
+        return str(device.ext_data.gpd_id).startswith("0x017")
     
     def __init__(self, application: ControllerApplication, ext: GreenPowerExtData):
         super().__init__(application, ext)
