@@ -77,10 +77,11 @@ class GreenPowerDevice(zigpy.device.Device):
         if packet.rssi is not None:
             self.rssi = packet.rssi
 
+        cluster = self.endpoints[packet.src_ep].in_clusters[packet.cluster_id]
         # We don't get ZDO for ZGP devices, assume ZCL
         endpoint = self.endpoints[packet.src_ep]
         data = packet.data.serialize()
-        hdr, _ = foundation.ZCLHeader.deserialize(data)
+        hdr, rest = foundation.ZCLHeader.deserialize(data)
 
         try:
             hdr, args = endpoint.deserialize(packet.cluster_id, data)
@@ -95,17 +96,11 @@ class GreenPowerDevice(zigpy.device.Device):
         if error is not None:
             return
 
-        # hdr, args, dst_addressing=dst_addressing
-        cluster = self.endpoints[packet.src_ep].in_clusters[packet.cluster_id]
-        dst_addressing = packet.dst.addr_mode if packet.dst is not None else None
         cluster.handle_message(
             hdr, args, 
-            dst_addressing=dst_addressing
+            dst_addressing=packet.dst.addr_mode if packet.dst is not None else None
         )
         
-        # if hdr.command_id == 0x00 and packet.src_ep == zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID:
-        #     notif: GPNotificationSchema = args
-
         # Pass the request off to a listener, if one is registered
         for listener in itertools.chain(
             self._application._req_listeners[zigpy.listeners.ANY_DEVICE],

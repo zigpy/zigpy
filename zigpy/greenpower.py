@@ -105,10 +105,18 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         try:
             device: GreenPowerDevice = self._application.get_device_with_address(packet.src)
         except KeyError:
-            self.handle_unknown_tunneled_green_power_frame(packet)
-            return
+            pass
         
-        device.packet_received(packet)
+        # this kinda stinks, but we peek in there and see early if we're dealing
+        # with a notification packet
+        hdr, rest = foundation.ZCLHeader.deserialize(packet.data.value)
+        if hdr.command_id == GreenPowerProxy.ServerCommandDefs.commissioning_notification.id:
+            self.handle_commissioning_packet(packet)
+        
+        if device is not None:
+            device.packet_received(packet)
+        else:
+            LOGGER.debug("GP controller got packet from unknown addr %s", str(packet.src))
 
     async def initialize(self):
         try:
@@ -136,7 +144,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.pairing, pairing.as_dict())
         LOGGER.debug("Green Power Controller removed %s successfully", str(device.gpd_id))
 
-    def handle_unknown_tunneled_green_power_frame(self, packet: t.ZigbeePacket):
+    def handle_commissioning_packet(self, packet: t.ZigbeePacket):
         # if we're not listening for commissioning packets, don't worry too much about it
         # we can't really scan for these things so don't worry about the ZDO followup either
         if self._controller_state != ControllerState.Commissioning or self._commissioning_mode == CommissioningMode.Direct:
