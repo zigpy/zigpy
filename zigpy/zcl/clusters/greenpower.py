@@ -267,9 +267,6 @@ class GreenPowerProxy(Cluster):
     GPResponseOptions: Final = GPResponseOptions
     GPCommissioningNotificationSchema: Final = GPCommissioningNotificationSchema
 
-    def handle_message(self, data):
-        self.log("Green Power Cluster direct message received")
-    
     class AttributeDefs(BaseAttributeDefs):
         max_sink_table_entries: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint8_t, access="r", mandatory=True
