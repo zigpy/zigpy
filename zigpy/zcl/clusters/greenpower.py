@@ -51,7 +51,7 @@ class GPPairingSearchOptions(t.bitmap16):
     def request_security_key(self) -> t.uint1_t:
         return t.uint1_t((self >> 7) & 0x01)
 
-class GPNotificationSchema(t.Struct):
+class GPNotificationSchema(CommandSchema):
     options: t.bitmap16
     gpd_id: GreenPowerDeviceID
     frame_counter: t.uint32_t
