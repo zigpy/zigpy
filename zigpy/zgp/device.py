@@ -66,10 +66,6 @@ class GreenPowerDevice(zigpy.device.Device):
         # Rx capable path will involve this bad boy for sure?
         pass
 
-    def handle_notification(self, notification: GPNotificationSchema):
-        
-        pass
-
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         assert packet.src_ep == zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID
         assert packet.cluster_id == zigpy.profiles.zgp.GREENPOWER_CLUSTER_ID
@@ -99,13 +95,16 @@ class GreenPowerDevice(zigpy.device.Device):
         if error is not None:
             return
 
-        if hdr.command_id == 0x00 and packet.src_ep == zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID:
-            notif: GPNotificationSchema = args
-            self.handle_notification(notif)
-            if notif.distance is not None:
-                # at some point do we want to use this as rssi instead?
-                pass
-            
+        # hdr, args, dst_addressing=dst_addressing
+        cluster = self.endpoints[packet.src_ep].out_clusters[packet.cluster_id]
+        dst_addressing = packet.dst.addr_mode if packet.dst is not None else None
+        cluster.handle_message(
+            hdr, args, 
+            dst_addressing=dst_addressing
+        )
+        
+        # if hdr.command_id == 0x00 and packet.src_ep == zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID:
+        #     notif: GPNotificationSchema = args
 
         # Pass the request off to a listener, if one is registered
         for listener in itertools.chain(
@@ -117,3 +116,4 @@ class GreenPowerDevice(zigpy.device.Device):
                 listener, zigpy.listeners.FutureListener
             ):
                 break
+        
