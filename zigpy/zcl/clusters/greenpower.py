@@ -306,7 +306,7 @@ class GreenPowerProxy(Cluster):
         notification: Final = ZCLCommandDef(
             id=0x00,
             schema=GPNotificationSchema,
-            direction=Direction.Client_to_Server,
+            direction=False,
         )
         
         pairing_search: Final = ZCLCommandDef(
@@ -315,13 +315,13 @@ class GreenPowerProxy(Cluster):
                 "options": GPPairingSearchOptions,
                 "gpd_id": GreenPowerDeviceID,
             },
-            direction=Direction.Client_to_Server,
+            direction=False,
         )
 
         commissioning_notification: Final = ZCLCommandDef(
             id=0x04,
             schema=GPCommissioningNotificationSchema,
-            direction=Direction.Client_to_Server,
+            direction=False,
         )
         
     class ClientCommandDefs(BaseCommandDefs):
@@ -332,7 +332,7 @@ class GreenPowerProxy(Cluster):
                 "gpd_id": GreenPowerDeviceID,
                 "frame_counter": t.uint32_t
             },
-            direction=Direction.Server_to_Client,
+            direction=True,
         )
 
         pairing: Final = ZCLCommandDef(
@@ -347,7 +347,7 @@ class GreenPowerProxy(Cluster):
                 "options": GPProxyCommissioningModeOptions,
                 "window?": t.uint16_t
             },
-            direction=Direction.Server_to_Client
+            direction=True
         )
 
         response: Final = ZCLCommandDef(
@@ -360,6 +360,6 @@ class GreenPowerProxy(Cluster):
                 "gpd_command_id": t.uint8_t,
                 "gpd_command_payload": t.LongOctetString,
             },
-            direction=Direction.Server_to_Client
+            direction=True
         )
 

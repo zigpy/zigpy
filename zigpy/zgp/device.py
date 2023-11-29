@@ -1,22 +1,28 @@
 from __future__ import annotations
+import asyncio
 import itertools
 import typing
 
 import zigpy.device
 import zigpy.exceptions
 import zigpy.listeners
-import zigpy.profiles.zgp
+from zigpy.profiles.zgp import (
+    GREENPOWER_ENDPOINT_ID,
+    GREENPOWER_CLUSTER_ID,
+)
 import zigpy.types as t
-from zigpy.zcl.clusters.greenpower import GPNotificationSchema
+from zigpy.zcl.clusters.greenpower import GPNotificationSchema, GreenPowerProxy
 import zigpy.zcl.foundation as foundation
 from zigpy.zgp.foundation import GPDeviceDescriptors
 from zigpy.zgp.types import (
+    GPCommunicationMode,
     GreenPowerDeviceID,
     GreenPowerDeviceData
 )
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
+    from zigpy.zcl.clusters.greenpower import GPNotificationResponseOptions
 
 class StrippedNotifSchema(foundation.CommandSchema):
     gpd_id: GreenPowerDeviceID
@@ -67,8 +73,8 @@ class GreenPowerDevice(zigpy.device.Device):
         pass
 
     def packet_received(self, packet: t.ZigbeePacket) -> None:
-        assert packet.src_ep == zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID
-        assert packet.cluster_id == zigpy.profiles.zgp.GREENPOWER_CLUSTER_ID
+        assert packet.src_ep == GREENPOWER_ENDPOINT_ID
+        assert packet.cluster_id == GREENPOWER_CLUSTER_ID
 
         # Set radio details that can be read from any type of packet
         self.last_seen = packet.timestamp
@@ -99,6 +105,10 @@ class GreenPowerDevice(zigpy.device.Device):
         # We've gotta convert this to something nice that we can hand to
         # ZGP. TODO: command payloads too, but I don't know if we'll need that at all
         if isinstance(args, GPNotificationSchema):
+            asyncio.ensure_future(
+                self._send_notif_response_packet(args),
+                loop=asyncio.get_running_loop()
+            )
             args = StrippedNotifSchema(
                 gpd_id=args.gpd_id,
                 command_id=args.command_id,
@@ -119,4 +129,22 @@ class GreenPowerDevice(zigpy.device.Device):
                 listener, zigpy.listeners.FutureListener
             ):
                 break
-        
+
+    async def _send_notif_response_packet(self, notif: GPNotificationSchema):
+        if self.green_power_data.communication_mode in (GPCommunicationMode.Unicast, GPCommunicationMode.UnicastLightweight):
+            target_device = self.application.get_device(self.green_power_data.unicast_proxy)
+            if target_device is not None:
+                # send notification response
+                endpoint = target_device.endpoints[GREENPOWER_ENDPOINT_ID]
+                cluster = endpoint.out_clusters[GREENPOWER_CLUSTER_ID]
+                await self._application._greenpower.send_no_response_command(
+                    target_device, 
+                    GreenPowerProxy.ClientCommandDefs.notification_response, 
+                    {
+                        "options":cluster.GPNotificationResponseOptions(first_to_forward=1),
+                        "gpd_id":self.gpd_id,
+                        "frame_counter":notif.frame_counter
+                    }
+                )
+            else:
+                self.error("Could not respove unicast proxy device to reply with response; failing!")

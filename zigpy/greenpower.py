@@ -15,6 +15,7 @@ from zigpy.zcl.clusters.general import (
     Basic,
 )
 from zigpy.zcl.clusters.greenpower import (
+    GPNotificationSchema,
     GreenPowerProxy,
 )
 if sys.version_info[:2] < (3, 11):
@@ -30,6 +31,7 @@ import zigpy.listeners
 import zigpy.profiles.zgp
 from zigpy.profiles.zgp import (
     GREENPOWER_BROADCAST_GROUP,
+    GREENPOWER_CLUSTER_ID,
     GREENPOWER_DEFAULT_LINK_KEY,
     GREENPOWER_ENDPOINT_ID,
 )
@@ -55,6 +57,7 @@ import zigpy.zdo.types
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
+    from zigpy.zcl.foundation import ZCLCommandDef
 
 LOGGER = logging.getLogger(__name__)
 
@@ -101,9 +104,26 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
     def _gp_cluster(self) -> zigpy.zcl.Cluster:
         return self._gp_endpoint.in_clusters[GreenPowerProxy.cluster_id]
 
+    async def initialize(self):
+        try:
+            self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.max_sink_table_entries.id, 0xFF)
+            self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.link_key.id, GREENPOWER_DEFAULT_LINK_KEY)
+            self._push_sink_table()
+        except:
+            LOGGER.warn("GP Controller failed to write initialization attrs")
+        
+        self._controller_state = ControllerState.Operational
+        LOGGER.info("Green Power Controller initialized!")
+
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         try:
             device: GreenPowerDevice = self._application.get_device_with_address(packet.src)
+            # unicast forward, resolve to GPD
+            if not device.is_green_power_device:
+                if packet.cluster_id == GREENPOWER_CLUSTER_ID and packet.src_ep == GREENPOWER_ENDPOINT_ID:
+                    data = packet.data.serialize()
+                    hdr, args = self._gp_endpoint.deserialize(packet.cluster_id, data)
+                    device = self._get_gp_device_with_srcid(args.gpd_id)
         except KeyError:
             pass
         
@@ -112,22 +132,16 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         hdr, rest = foundation.ZCLHeader.deserialize(packet.data.value)
         if hdr.command_id == GreenPowerProxy.ServerCommandDefs.commissioning_notification.id:
             self.handle_commissioning_packet(packet)
+            return
         
+        if device is not None and not device.is_green_power_device:
+            LOGGER.warn("GP controller got GP packet from non-GP device %s", str(packet.src))
+            return
+
         if device is not None:
             device.packet_received(packet)
         else:
             LOGGER.debug("GP controller got packet from unknown addr %s", str(packet.src))
-
-    async def initialize(self):
-        try:
-            self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.max_sink_table_entries.id, 0xFF)
-            self._push_sink_table()
-            self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.link_key.id, GREENPOWER_DEFAULT_LINK_KEY)
-        except:
-            LOGGER.warn("GP Controller failed to write initialization attrs")
-        
-        self._controller_state = ControllerState.Operational
-        LOGGER.info("Green Power Controller initialized!")
 
     async def remove_device(self, device: GreenPowerDevice):
         if not isinstance(device, GreenPowerDevice):
@@ -173,7 +187,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             await self.remove_device(device)
 
         comm_mode = GPCommunicationMode.GroupcastForwardToCommGroup if CommissioningMode.ProxyBroadcast in self._commissioning_mode else GPCommunicationMode.UnicastLightweight
-        ext_data = GreenPowerDeviceData(
+        green_power_data = GreenPowerDeviceData(
             gpd_id=src_id,
             device_id=commission_payload.device_type,
             unicast_proxy=self._proxy_unicast_target and self._proxy_unicast_target.ieee or t.EUI64.UNKNOWN,
@@ -189,11 +203,11 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         )
 
         if new_join:
-            device = GreenPowerDevice(self._application, ext_data)
+            device = GreenPowerDevice(self._application, green_power_data)
             self._application.device_initialized(device)
             device = self._application.get_device(ieee)
         else:
-            device.green_power_data = ext_data
+            device.green_power_data = green_power_data
             
         if CommissioningMode.ProxyBroadcast in self._commissioning_mode or CommissioningMode.ProxyUnicast in self._commissioning_mode:
             pairing = GreenPowerProxy.GPPairingSchema(options=0)
@@ -202,19 +216,23 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             pairing.gpd_id = src_id
             pairing.gpd_mac_seq_num_cap = commission_payload.mac_seq_num_cap
             pairing.security_frame_counter_present = 1 # always true for pairing p.106 l.25
-            pairing.frame_counter = ext_data.frame_counter
+            pairing.frame_counter = green_power_data.frame_counter
             pairing.security_level = commission_payload.security_level
             pairing.security_key_type = commission_payload.key_type
             pairing.device_id = commission_payload.device_type
 
             if commission_payload.gpd_key is not None:
                 pairing.security_key_present = 1
-                pairing.key = ext_data.encrypt_key()
+                pairing.key = green_power_data.encrypt_key()
 
             if CommissioningMode.ProxyUnicast in self._commissioning_mode:
                 pairing.sink_IEEE = self._application.state.node_info.ieee
                 pairing.sink_nwk_addr = self._application.state.node_info.nwk
-                await self._proxy_unicast_target.endpoints[GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].pairing(pairing)
+                await self.send_no_response_command(
+                    self._proxy_unicast_target,
+                    GreenPowerProxy.ClientCommandDefs.pairing,
+                    pairing.as_dict()
+                )
             elif CommissioningMode.ProxyBroadcast in self._commissioning_mode:
                 pairing.sink_group = GREENPOWER_BROADCAST_GROUP
                 await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.pairing, pairing.as_dict())
@@ -251,16 +269,20 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             self._commissioning_mode = CommissioningMode.Direct
         elif device is not None:
             # No GP endpoint nothing doing sorry
-            if not device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID]:
+            if not device.endpoints[GREENPOWER_ENDPOINT_ID]:
                 LOGGER.warning("Device %s does not have green power support and cannot be used to commssion GP devices", str(device.ieee))
                 return
             
-            await device.endpoints[zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].proxy_commissioning_mode(
-                options = GreenPowerProxy.GPProxyCommissioningModeOptions(
-                    enter=1,
-                    exit_mode=GPProxyCommissioningModeExitMode.OnExpireOrExplicitExit
-                ),
-                window = time_s
+            await self.send_no_response_command(
+                device,
+                GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode,
+                {
+                    "options": GreenPowerProxy.GPProxyCommissioningModeOptions(
+                        enter=1,
+                        exit_mode=GPProxyCommissioningModeExitMode.OnExpireOrExplicitExit
+                    ),
+                    "window": time_s
+                }
             )
             LOGGER.debug("Successfully sent commissioning open request to %s", str(device.ieee))
             self._controller_state = ControllerState.Commissioning
@@ -298,8 +320,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         if CommissioningMode.ProxyBroadcast in self._commissioning_mode:
             await self._send_commissioning_broadcast_command(0)
         elif CommissioningMode.ProxyUnicast in self._commissioning_mode:
-            await self._proxy_unicast_target.endpoints[GREENPOWER_ENDPOINT_ID].out_clusters[GreenPowerProxy.cluster_id].proxy_commissioning_mode(
-                options=GreenPowerProxy.GPProxyCommissioningModeOptions(enter=0),
+            await self.send_no_response_command(
+                self._proxy_unicast_target,
+                GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode,
+                {"options": GreenPowerProxy.GPProxyCommissioningModeOptions(enter=0)}
             )
             LOGGER.debug("Successfully sent commissioning close request to %s", str(self._proxy_unicast_target.ieee))
             # we need to give the network and devices time to settle
@@ -308,18 +332,6 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self._controller_state = ControllerState.Operational
         self._commissioning_mode = CommissioningMode.NotCommissioning
         self._proxy_unicast_target = None
-
-    def _encrypt_key(self, gpd_id: GreenPowerDeviceID, key: t.KeyData) -> bytes:
-        # A.1.5.9.1
-        link_key_bytes = GREENPOWER_DEFAULT_LINK_KEY.serialize()
-        key_bytes = key.serialize()
-        src_bytes = gpd_id.to_bytes(4, "little")
-        nonce = src_bytes + src_bytes + src_bytes + 0x05.to_bytes(1)
-        assert len(nonce) == 13
-
-        aesccm = AESCCM(link_key_bytes, tag_length=16)
-        result = aesccm.encrypt(nonce, key_bytes, None)
-        return result[0:16]
 
     async def _permit_timeout(self, time_s: int):
         """After timeout we just fall out of commissioning mode"""
@@ -346,13 +358,48 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
 
         await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode, named_arguments)
 
+    async def send_no_response_command(
+        self,
+        device: zigpy.device.Device,
+        command: ZCLCommandDef,
+        kwargs: dict = {}
+    ):
+        tsn = self._application.get_sequence()
+        hdr, request = Cluster._create_request(
+            self=None,
+            general=False,
+            command_id=command.id,
+            schema=command.schema,
+            tsn=tsn,
+            disable_default_response=True,
+            direction=command.direction,
+            args=(),
+            kwargs=kwargs,
+        )
+        await self._application.send_packet(
+            t.ZigbeePacket(
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK, address=self._application.state.node_info.nwk
+                ),
+                src_ep=GREENPOWER_ENDPOINT_ID,
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk),
+                dst_ep=GREENPOWER_ENDPOINT_ID,
+                tsn=tsn,
+                profile_id=zigpy.profiles.zgp.PROFILE_ID,
+                cluster_id=GREENPOWER_CLUSTER_ID,
+                data=t.SerializableBytes(hdr.serialize() + request.serialize()),
+                tx_options=t.TransmitOptions.NONE,
+                radius=30,
+            )
+        )
+
     async def _zcl_broadcast(
         self,
-        command: zigpy.foundation.ZCLCommandDef,
+        command: ZCLCommandDef,
         kwargs: dict = {},
         address: t.BroadcastAddress = BroadcastAddress.RX_ON_WHEN_IDLE,
-        dst_ep: t.uint16_t = zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID,
-        cluster_id: t.uint16_t = GreenPowerProxy.cluster_id,
+        dst_ep: t.uint16_t = GREENPOWER_ENDPOINT_ID,
+        cluster_id: t.uint16_t = GREENPOWER_CLUSTER_ID,
         profile_id: t.uint16_t = zigpy.profiles.zgp.PROFILE_ID,
         radius=30,
     ):
@@ -376,7 +423,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 src=t.AddrModeAddress(
                     addr_mode=t.AddrMode.NWK, address=self._application.state.node_info.nwk
                 ),
-                src_ep=zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID,
+                src_ep=GREENPOWER_ENDPOINT_ID,
                 dst=t.AddrModeAddress(addr_mode=t.AddrMode.Broadcast, address=address),
                 dst_ep=dst_ep,
                 tsn=tsn,
@@ -394,7 +441,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         return [
             d for ieee,d in self._application.devices.items() if d.is_green_power_device
         ]
-    
+
     def _get_gp_device_with_srcid(self, src_id: GreenPowerDeviceID) -> GreenPowerDevice | None:
         for device in self._get_all_gp_devices():
             device: GreenPowerDevice = device
