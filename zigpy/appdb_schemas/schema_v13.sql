@@ -233,7 +233,7 @@ CREATE TABLE green_power_data_v13 (
     ieee ieee NOT NULL,
     gpd_id INTEGER NOT NULL,
     device_id INTEGER NOT NULL,
-    unicast_sink ieee NOT NULL,
+    unicast_proxy ieee NOT NULL,
     security_level INTEGER NOT NULL,
     security_key_type INTEGER NOT NULL,
     communication_mode INTEGER NOT NULL,

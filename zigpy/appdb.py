@@ -445,7 +445,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self._save_node_descriptor(device)
 
         if isinstance(device, zigpy.zgp.device.GreenPowerDevice):
-            await self._save_zgp_ext_data(device.ext_data)
+            await self._save_zgp_ext_data(device.green_power_data)
             await self._db.commit()
             return
 
@@ -490,7 +490,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 ieee=excluded.ieee,
                 gpd_id=excluded.gpd_id,
                 device_id=excluded.device_id,
-                unicast_sink=excluded.unicast_sink,
+                unicast_proxy=excluded.unicast_proxy,
                 security_level=excluded.security_level,
                 security_key_type=excluded.security_key_type,
                 communication_mode=excluded.communication_mode,
@@ -797,7 +797,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(f"SELECT * FROM green_power_data{DB_V}") as cursor:
             async for (ieee, *fields) in cursor:
                 dev = self._application.get_device(ieee)
-                data = zigpy.zgp.GreenPowerExtData(*fields)
+                data = zigpy.zgp.GreenPowerDeviceData(*fields)
                 dev = zigpy.zgp.device.GreenPowerDevice(self._application, data)
                 self._application.devices[ieee] = dev
 

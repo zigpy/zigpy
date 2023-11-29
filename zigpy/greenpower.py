@@ -39,7 +39,7 @@ from zigpy.types import (
 )
 from zigpy.zgp import (
     GreenPowerDeviceID,
-    GreenPowerExtData,
+    GreenPowerDeviceData,
     GPCommissioningPayload,
     GPCommunicationMode,
     GPProxyCommissioningModeExitMode,
@@ -134,7 +134,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             LOGGER.warning("Green Power Controller got a request to remove a device that is not a GP device; refusing.")
             return
         LOGGER.debug("Green Power Controller removing device %s", str(device.gpd_id))
-        entry = device.ext_data
+        entry = device.green_power_data
         pairing = GreenPowerProxy.GPPairingSchema(options=0)
         pairing.remove_gpd = 1
         pairing.gpd_id = entry.gpd_id
@@ -173,10 +173,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             await self.remove_device(device)
 
         comm_mode = GPCommunicationMode.GroupcastForwardToCommGroup if CommissioningMode.ProxyBroadcast in self._commissioning_mode else GPCommunicationMode.UnicastLightweight
-        ext_data = GreenPowerExtData(
+        ext_data = GreenPowerDeviceData(
             gpd_id=src_id,
             device_id=commission_payload.device_type,
-            unicast_sink=self._proxy_unicast_target and self._proxy_unicast_target.ieee or t.EUI64.UNKNOWN,
+            unicast_proxy=self._proxy_unicast_target and self._proxy_unicast_target.ieee or t.EUI64.UNKNOWN,
             security_level=commission_payload.security_level,
             security_key_type=commission_payload.key_type,
             communication_mode=comm_mode,
@@ -193,7 +193,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             self._application.device_initialized(device)
             device = self._application.get_device(ieee)
         else:
-            device.ext_data = ext_data
+            device.green_power_data = ext_data
             
         if CommissioningMode.ProxyBroadcast in self._commissioning_mode or CommissioningMode.ProxyUnicast in self._commissioning_mode:
             pairing = GreenPowerProxy.GPPairingSchema(options=0)
@@ -398,14 +398,14 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
     def _get_gp_device_with_srcid(self, src_id: GreenPowerDeviceID) -> GreenPowerDevice | None:
         for device in self._get_all_gp_devices():
             device: GreenPowerDevice = device
-            if device.ext_data is not None and device.gpd_id == src_id:
+            if device.green_power_data is not None and device.gpd_id == src_id:
                 return device
         return None
 
     def _push_sink_table(self):
         sink_table_bytes: bytes = bytes()
         for device in self._get_all_gp_devices():
-            sink_table_bytes = sink_table_bytes + device.ext_data.sink_table_entry.serialize()
+            sink_table_bytes = sink_table_bytes + device.green_power_data.sink_table_entry.serialize()
         result = t.LongOctetString(t.uint16_t(len(sink_table_bytes)).serialize() + sink_table_bytes)
         self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.sink_table.id, result)
 

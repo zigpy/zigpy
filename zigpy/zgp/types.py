@@ -226,10 +226,10 @@ class SinkTableEntry(Struct):
     def security_use(self, value: basic.uint1_t):
         self.options = (self.options & ~(1 << 9)) | (value << 9)
 
-class GreenPowerExtData(Struct):
+class GreenPowerDeviceData(Struct):
     gpd_id: GreenPowerDeviceID
     device_id: GPDeviceType
-    unicast_sink: EUI64
+    unicast_proxy: EUI64
     security_level: GPSecurityLevel
     security_key_type: GPSecurityKeyType
     communication_mode: GPCommunicationMode

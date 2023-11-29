@@ -14,7 +14,7 @@ CustomEndpointType = "CustomEndpoint"
 DeviceType = "Device"
 EndpointType = "Endpoint"
 GreenPowerDeviceType = "GreenPowerDevice"
-GreenPowerExtData = "GreenPowerExtData"
+GreenPowerDeviceData = "GreenPowerDeviceData"
 ZDOType = "ZDO"
 AddressingMode = "AddressingMode"
 
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     DeviceType = zigpy.device.Device
     EndpointType = zigpy.endpoint.Endpoint
     GreenPowerDeviceType = zigpy.zgp.device.GreenPowerDevice
-    GreenPowerExtData = zigpy.zgp.GreenPowerExtData
+    GreenPowerDeviceData = zigpy.zgp.GreenPowerDeviceData
     ZDOType = zigpy.zdo.ZDO
 
     AddressingMode = Union[

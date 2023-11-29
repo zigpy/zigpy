@@ -40,7 +40,7 @@ def get_device(
     if device.is_green_power_device:
         found_type = next((ty for ty in _GP_REGISTRY if ty.match(device)), None)
         if found_type is not None:
-            device = found_type(device._application, device.ext_data)
+            device = found_type(device._application, device.green_power_data)
     
     if device.is_green_power_device:
         return device

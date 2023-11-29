@@ -9,6 +9,8 @@ import sys
 import typing
 import warnings
 
+from zigpy.zgp.types import GreenPowerDeviceData
+
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
 else:
@@ -81,8 +83,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status = Status.NEW
 
     @property
+    def green_power_data(self) -> GreenPowerDeviceData | None:
+        return None
+
+    @property
     def is_green_power_device(self) -> bool:
-        return False
+        return self.green_power_data is not None
 
     @property
     def name(self) -> str:

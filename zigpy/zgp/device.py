@@ -12,7 +12,7 @@ import zigpy.zcl.foundation as foundation
 from zigpy.zgp.foundation import GPDeviceDescriptors
 from zigpy.zgp.types import (
     GreenPowerDeviceID,
-    GreenPowerExtData
+    GreenPowerDeviceData
 )
 
 if typing.TYPE_CHECKING:
@@ -27,10 +27,10 @@ class GreenPowerDevice(zigpy.device.Device):
     def match(cls, device: typing.Self) -> bool:
         return True
     
-    def __init__(self, application: ControllerApplication, ext: GreenPowerExtData):
-        super().__init__(application, ext.ieee, ext.nwk)
-        device_type = ext.device_id
-        self._gp_ext = ext
+    def __init__(self, application: ControllerApplication, data: GreenPowerDeviceData):
+        super().__init__(application, data.ieee, data.nwk)
+        device_type = data.device_id
+        self._green_power_data = data
         self.skip_configuration = True
         self.status = zigpy.device.Status.NEW
         # self.node_desc = zdo.types.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
@@ -49,16 +49,12 @@ class GreenPowerDevice(zigpy.device.Device):
         self.status = zigpy.device.Status.ENDPOINTS_INIT
 
     @property
-    def ext_data(self) -> GreenPowerExtData:
-        return self._gp_ext
+    def green_power_data(self) -> GreenPowerDeviceData | None:
+        return self._green_power_data
 
     @property
     def gpd_id(self) -> GreenPowerDeviceID:
-        return self._gp_ext.gpd_id    
-
-    @property
-    def is_green_power_device(self) -> bool:
-        return True
+        return self._green_power_data.gpd_id
 
     @property
     def is_initialized(self) -> bool:
