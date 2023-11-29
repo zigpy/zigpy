@@ -18,6 +18,10 @@ from zigpy.zgp.types import (
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
 
+class StrippedNotifSchema(foundation.CommandSchema):
+    gpd_id: GreenPowerDeviceID
+    command_id: t.uint8_t
+
 class GreenPowerDevice(zigpy.device.Device):
     @classmethod
     def match(cls, device: typing.Self) -> bool:
@@ -95,6 +99,14 @@ class GreenPowerDevice(zigpy.device.Device):
 
         if error is not None:
             return
+
+        # We've gotta convert this to something nice that we can hand to
+        # ZGP. TODO: command payloads too, but I don't know if we'll need that at all
+        if isinstance(args, GPNotificationSchema):
+            args = StrippedNotifSchema(
+                gpd_id=args.gpd_id,
+                command_id=args.command_id,
+            )
 
         cluster.handle_message(
             hdr, args, 
