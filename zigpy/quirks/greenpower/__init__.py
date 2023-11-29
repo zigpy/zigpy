@@ -1,6 +1,6 @@
 from __future__ import annotations
 from .ptm215z import EnoceanPTM215ZDevice
-from .ptm125ze import EnoceanPTM215ZEDevice
+from .ptm215ze import EnoceanPTM215ZEDevice
 from .tuya_selfpowered import TuyaSelfPoweredSwitch
 import zigpy.quirks
 
