@@ -178,13 +178,23 @@ class SinkTableEntry(Struct):
         if self.sec_options is None:
             return GPSecurityLevel.NoSecurity
         return GPSecurityLevel(self.sec_options & 0b11)
+    @security_level.setter
+    def security_level(self, value: GPSecurityLevel):
+        if self.sec_options is None:
+            return
+        self.sec_options = (self.sec_options & ~(0b11)) | (value)
 
     @property
     def security_key_type(self) -> GPSecurityKeyType:
         if self.sec_options is None:
             return GPSecurityKeyType.NoKey
         return GPSecurityKeyType((self.sec_options >> 2) & 0b111)
-    
+    @security_key_type.setter
+    def security_key_type(self, value: GPSecurityKeyType):
+        if self.sec_options is None:
+            return
+        self.sec_options = (self.sec_options & ~(0b111 << 2)) | (value << 2)
+
     @property
     def communication_mode(self) -> GPCommunicationMode:
         return GPCommunicationMode((self.options >> 3) & 0b11)

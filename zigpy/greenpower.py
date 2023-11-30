@@ -110,8 +110,8 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.max_sink_table_entries.id, 0xFF)
             self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.link_key.id, GREENPOWER_DEFAULT_LINK_KEY)
             self._push_sink_table()
-        except:
-            LOGGER.warn("GP Controller failed to write initialization attrs")
+        except Exception as e:
+            LOGGER.warn("GP Controller failed to write initialization attrs: %s", e)
         
         self._controller_state = ControllerState.Operational
         LOGGER.info("Green Power Controller initialized!")
