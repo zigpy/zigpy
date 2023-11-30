@@ -104,10 +104,12 @@ class GreenPowerDevice(zigpy.device.Device):
         # We've gotta convert this to something nice that we can hand to
         # ZGP. TODO: command payloads too, but I don't know if we'll need that at all
         if isinstance(args, GPNotificationSchema):
-            asyncio.ensure_future(
-                self._send_notif_response_packet(args),
-                loop=asyncio.get_running_loop()
-            )
+            # Nobody seems to support notify response, tho the spec calls for it.
+            # I'm gonna remove it as it just clogs up the network for no reason
+            # asyncio.ensure_future(
+            #     self._send_notif_response_packet(args),
+            #     loop=asyncio.get_running_loop()
+            # )
             args = StrippedNotifSchema(
                 gpd_id=args.gpd_id,
                 command_id=args.command_id,
