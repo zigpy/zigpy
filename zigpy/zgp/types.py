@@ -65,11 +65,9 @@ class GPCommunicationMode(basic.enum2):
     GroupcastForwardToCommGroup = 0b10
     UnicastLightweight = 0b11
 
-
 class GPCommunicationDirection(basic.enum1):
     GPDtoGPP = 0
     GPPtoGPD = 1
-
 
 # Figure 71
 class GPCommissioningPayload(Struct):
@@ -94,6 +92,9 @@ class GPCommissioningPayload(Struct):
     @property
     def rx_on_cap(self) -> basic.uint1_t:
         return basic.uint1_t((self.options >> 1) & 0x1)
+    @property
+    def application_info_present(self) -> basic.uint1_t:
+        return basic.uint1_t((self.options >> 2) & 0x1)
     @property
     def pan_id_req(self) -> basic.uint1_t:
         return basic.uint1_t((self.options >> 4) & 0x1)
@@ -401,4 +402,3 @@ class GPDataFrame(Struct):
             instance.command_payload = basic.SerializableBytes(data)
         
         return instance, bytes()
-    

@@ -77,6 +77,7 @@ class CommissioningMode(enum.Flag):
 class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """Controller that tracks the current GPS state"""
     def __init__(self, application: ControllerApplication):
+        super().__init__()
         self._application: ControllerApplication = application
         self.__controller_state: ControllerState = ControllerState.Uninitialized
         self._commissioning_mode: CommissioningMode = CommissioningMode.NotCommissioning
@@ -116,35 +117,53 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         LOGGER.info("Green Power Controller initialized!")
 
     def packet_received(self, packet: t.ZigbeePacket) -> None:
+        assert packet.src_ep == GREENPOWER_ENDPOINT_ID
+        assert packet.cluster_id == GREENPOWER_CLUSTER_ID
+
+        hdr, args = self._gp_endpoint.deserialize(packet.cluster_id, packet.data.serialize())
+
+        # try our best to resolve who is talking and what they're asking,
+        # so we can filter based on frame counter
+        gp_device: GreenPowerDevice = None
         try:
-            device: GreenPowerDevice = self._application.get_device_with_address(packet.src)
+            device: zigpy.device.Device = self._application.get_device_with_address(packet.src)
             # unicast forward, resolve to GPD
             if not device.is_green_power_device:
-                if packet.cluster_id == GREENPOWER_CLUSTER_ID and packet.src_ep == GREENPOWER_ENDPOINT_ID:
-                    data = packet.data.serialize()
-                    hdr, args = self._gp_endpoint.deserialize(packet.cluster_id, data)
-                    device = self._get_gp_device_with_srcid(args.gpd_id)
+                # by this time we should be able to inspect the incoming args and resolve
+                # the GP device, but if not bail out and handle it down the pipe
+                gp_device = self._get_gp_device_with_srcid(args.gpd_id)
+            else:
+                gp_device = device
         except KeyError:
             pass
         
-        # this kinda stinks, but we peek in there and see early if we're dealing
-        # with a notification packet
-        hdr, rest = foundation.ZCLHeader.deserialize(packet.data.value)
+        # peek in and see if we're dealing with an infrastructure command, or a standard
+        # notification packet. if it's infrastructure, route the message
         if hdr.command_id == GreenPowerProxy.ServerCommandDefs.commissioning_notification.id:
             self.handle_commissioning_packet(packet)
             return
-        
-        if device is not None and not device.is_green_power_device:
-            LOGGER.warn("GP controller got GP packet from non-GP device %s", str(packet.src))
+        elif hdr.command_id == GreenPowerProxy.ServerCommandDefs.pairing_search.id:
+            self.handle_pairing_search(packet)
             return
+        elif hdr.command_id == GreenPowerProxy.ServerCommandDefs.notification.id:
+            if gp_device is None:
+                LOGGER.warn("GP controller got non-infrastructure packet from non-GP device %s", str(packet.src))
+                return
 
-        if device is not None:
-            device.packet_received(packet)
-        else:
-            LOGGER.debug("GP controller got packet from unknown addr %s", str(packet.src))
+            # XXX: wraparound?
+            if args.frame_counter != 0 and gp_device.green_power_data.frame_counter >= args.frame_counter:
+                LOGGER.debug("Passing duplicate green power frame %s", str(args.frame_counter))
+                return
+
+            gp_device.green_power_data.frame_counter = args.frame_counter
+            self.listener_event("gpd_counter_updated", gp_device.ieee, gp_device.green_power_data.frame_counter)
+
+            # At this point we're through the infrastructure stuff, forward the notification packet
+            # into the GP device proper for processing
+            gp_device.packet_received(packet)
 
     async def remove_device(self, device: GreenPowerDevice):
-        if not isinstance(device, GreenPowerDevice):
+        if not device.is_green_power_device:
             LOGGER.warning("Green Power Controller got a request to remove a device that is not a GP device; refusing.")
             return
         LOGGER.debug("Green Power Controller removing device %s", str(device.gpd_id))
@@ -168,6 +187,11 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         if hdr.command_id == GreenPowerProxy.ServerCommandDefs.commissioning_notification.id:
             # here we go
             notif, rest = GreenPowerProxy.GPCommissioningNotificationSchema.deserialize(rest)
+
+            if notif.security_failed:
+                LOGGER.debug("Got GP commissioning frame with bad security parameters; passing")
+                return
+            
             if notif.security_level == GPSecurityLevel.NoSecurity and notif.command_id == GPCommand.Commissioning:
                 LOGGER.debug("Received valid GP commissioning packet from %s", str(notif.gpd_id))
                 comm_payload, rest = GPCommissioningPayload.deserialize(notif.payload)
@@ -176,6 +200,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                     loop=asyncio.get_running_loop()
                 )
 
+    def handle_pairing_search(self, packet: t.ZigbeePacket):
+        # I guess... 
+        return
+
     async def _handle_commissioning_data_frame(self, src_id: GreenPowerDeviceID, commission_payload: GPCommissioningPayload, from_zcl: bool) -> bool:
         new_join = True
         ieee = t.EUI64(src_id.serialize() + bytes([0,0,0,0]))
@@ -183,8 +211,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         if self._get_gp_device_with_srcid(src_id) is not None:
             new_join = False
             device = self._application.get_device(ieee)
+            LOGGER.debug("Skipping commissioning packet for known device %s", str(src_id))
+            return # handle the frame counter checks first!
             # signal to proxy devices that we're updating the proxy tables...
-            await self.remove_device(device)
+            # await self.remove_device(device)
 
         comm_mode = GPCommunicationMode.GroupcastForwardToCommGroup if CommissioningMode.ProxyBroadcast in self._commissioning_mode else GPCommunicationMode.UnicastLightweight
         green_power_data = GreenPowerDeviceData(
@@ -194,10 +224,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             security_level=commission_payload.security_level,
             security_key_type=commission_payload.key_type,
             communication_mode=comm_mode,
-            frame_counter=0,
+            frame_counter=commission_payload.gpd_outgoing_counter if commission_payload.gpd_outgoing_counter_present else 0,
             raw_key=commission_payload.gpd_key or t.KeyData.UNKNOWN,
             assigned_alias=False,
-            fixed_location=False,
+            fixed_location=commission_payload.fixed_loc,
             rx_on_cap=commission_payload.rx_on_cap,
             sequence_number_cap=commission_payload.mac_seq_num_cap,
         )
@@ -205,7 +235,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         if new_join:
             device = GreenPowerDevice(self._application, green_power_data)
             self._application.device_initialized(device)
-            device = self._application.get_device(ieee)
+            device = self._application.get_device(ieee) # quirks may have overwritten this
         else:
             device.green_power_data = green_power_data
             
@@ -438,16 +468,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         await asyncio.sleep(0.2)
 
     def _get_all_gp_devices(self) -> typing.List[GreenPowerDevice]:
-        return [
-            d for ieee,d in self._application.devices.items() if d.is_green_power_device
-        ]
+        return [d for _,d in self._application.devices.items() if d.is_green_power_device]
 
     def _get_gp_device_with_srcid(self, src_id: GreenPowerDeviceID) -> GreenPowerDevice | None:
-        for device in self._get_all_gp_devices():
-            device: GreenPowerDevice = device
-            if device.green_power_data is not None and device.gpd_id == src_id:
-                return device
-        return None
+        return next((d for d in self._get_all_gp_devices() if d.gpd_id == src_id), None)
 
     def _push_sink_table(self):
         sink_table_bytes: bytes = bytes()

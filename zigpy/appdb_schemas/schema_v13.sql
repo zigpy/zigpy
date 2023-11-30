@@ -251,3 +251,6 @@ CREATE TABLE green_power_data_v13 (
 
 CREATE UNIQUE INDEX green_power_data_idx_v13
     ON green_power_data_v13(ieee);
+
+CREATE UNIQUE INDEX green_power_data_idx_gpdid_v13
+    ON green_power_data_v13(gpd_id);

@@ -349,6 +349,19 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         await self._db.commit()
 
+    def gpd_counter_updated(self, ieee: t.EUI64, counter: t.uint32_t):
+        """GPD sent an updated frame counter."""
+        self.enqueue("_gpd_counter_updated", ieee, counter)
+
+    async def _gpd_counter_updated(self, ieee: t.EUI64, counter: t.uint32_t):
+        await self._db.execute(
+            f"UPDATE green_power_data{DB_V} SET frame_counter = :counter WHERE ieee = :ieee",
+            {
+                "counter": counter,
+                "ieee": ieee
+            }
+        )
+
     def routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
         """Route update from Mgmt_Rtg_req."""
         self.enqueue("_routes_updated", ieee, routes)

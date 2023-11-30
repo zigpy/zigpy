@@ -118,6 +118,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             return
 
         self.add_listener(self._dblistener)
+        self._greenpower.add_listener(self._dblistener)
         self.groups.add_listener(self._dblistener)
         self.backups.add_listener(self._dblistener)
         self.topology.add_listener(self._dblistener)
@@ -129,6 +130,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.topology.remove_listener(self._dblistener)
         self.backups.remove_listener(self._dblistener)
         self.groups.remove_listener(self._dblistener)
+        self._greenpower.remove_listener(self._dblistener)
         self.remove_listener(self._dblistener)
 
     async def initialize(self, *, auto_form: bool = False) -> None:

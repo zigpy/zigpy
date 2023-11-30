@@ -83,12 +83,11 @@ class GreenPowerDevice(zigpy.device.Device):
         if packet.rssi is not None:
             self.rssi = packet.rssi
 
-        cluster = self.endpoints[packet.src_ep].in_clusters[packet.cluster_id]
-        # We don't get ZDO for ZGP devices, assume ZCL
         endpoint = self.endpoints[packet.src_ep]
-        data = packet.data.serialize()
-        hdr, rest = foundation.ZCLHeader.deserialize(data)
+        cluster = endpoint.in_clusters[packet.cluster_id]
 
+        # We don't get ZDO for ZGP devices, assume ZCL
+        data = packet.data.serialize()
         try:
             hdr, args = endpoint.deserialize(packet.cluster_id, data)
         except Exception as exc:
