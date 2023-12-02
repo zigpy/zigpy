@@ -14,11 +14,10 @@ class EnoceanPTM215ZEDevice(GreenPowerDevice):
         # First check simple security and type parameters
         if device.green_power_data.device_id != GPDeviceType.SWITCH_ON_OFF:
             return False
-        # XXX: NEED A SNIFF TO KNOW FOR SURE
-        # if device.green_power_data.security_key_type != GPSecurityKeyType.IndividualKey:
-        #     return False
-        # if device.green_power_data.security_level != GPSecurityLevel.FullFrameCounterAndMIC:
-        #     return False
+        if device.green_power_data.security_key_type != GPSecurityKeyType.IndividualKey:
+            return False
+        if device.green_power_data.security_level != GPSecurityLevel.FullFrameCounterAndMIC:
+            return False
         # Finally match against GPD ID prefix
         return str(device.green_power_data.gpd_id).startswith("0x015")
     
