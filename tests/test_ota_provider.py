@@ -1,3 +1,4 @@
+import hashlib
 import os.path
 from unittest import mock
 import uuid
@@ -58,9 +59,11 @@ def file_image_with_version(file_image_name):
 
 @pytest.fixture
 def ikea_image_with_version():
-    def img(version=100, image_type=IMAGE_TYPE):
+    def img(image_type=IMAGE_TYPE):
         img = zigpy.ota.provider.IKEAImage(
-            MANUFACTURER_ID, image_type, version, 66, mock.sentinel.url
+            image_type=image_type,
+            binary_url=mock.sentinel.url,
+            sha3_256_sum=mock.sentinel.sha3_256_sum,
         )
         return img
 
@@ -186,7 +189,10 @@ async def test_ikea_get_image_no_cache(ikea_prov, ikea_image):
     ikea_prov._cache.__getitem__.side_effect = KeyError()
     ikea_prov.refresh_firmware_list = AsyncMock()
 
-    non_ikea = zigpy.ota.image.ImageKey(mock.sentinel.manufacturer, IMAGE_TYPE)
+    non_ikea = zigpy.ota.image.ImageKey(
+        ota_p.Trådfri.MANUFACTURER_ID + 1,
+        IMAGE_TYPE,
+    )
 
     # Non IKEA manufacturer_id, don't bother doing anything at all
     r = await ikea_prov.get_image(non_ikea)
@@ -218,68 +224,81 @@ async def test_ikea_get_image(ikea_prov, key, ikea_image):
 
 
 @patch("aiohttp.ClientSession.get")
-async def test_ikea_refresh_list(mock_get, ikea_prov, ikea_image_with_version):
-    ver1, img_type1 = (0x12345678, mock.sentinel.img_type_1)
-    ver2, img_type2 = (0x23456789, mock.sentinel.img_type_2)
-    img1 = ikea_image_with_version(version=ver1, image_type=img_type1)
-    img2 = ikea_image_with_version(version=ver2, image_type=img_type2)
-
+async def test_ikea_refresh_list(mock_get, ikea_prov):
     mock_get.return_value.__aenter__.return_value.json = AsyncMock(
         side_effect=[
             [
                 {
-                    "fw_binary_url": "http://localhost/ota.ota.signed",
-                    "fw_build_version": 123,
-                    "fw_filesize": 128,
+                    "fw_image_type": 4557,
+                    "fw_type": 2,
+                    "fw_sha3_256": "896edfb0a9d8314fb49d44fb11dc91fb5bb55e2ee1f793d53189cb13f884e13c",
+                    "fw_binary_url": "https://fw.ota.homesmart.ikea.com/files/rodret-dimmer-soc_release_prod_v16777287_9812b73c-b02e-4678-b737-d21251a34fd2.ota",
+                },
+                {
+                    "fw_update_prio": 5,
+                    "fw_filesize": 242071587,
+                    "fw_type": 3,
                     "fw_hotfix_version": 1,
-                    "fw_image_type": 2,
-                    "fw_major_version": 3,
-                    "fw_manufacturer_id": MANUFACTURER_ID,
-                    "fw_minor_version": 4,
-                    "fw_type": 2,
+                    "fw_major_version": 2,
+                    "fw_binary_checksum": "8c17b203bede63ea53e36d345b628cc7f2faecc18d4406458a12f8f25e54718a24495d30a03fe3244799bfaa50de72d99e6c0d2f7553a8465e37c10c22ba75fc",
+                    "fw_minor_version": 453,
+                    "fw_sha3_256": "657ed8fd0f6e5e6700acdc6afd64829cebacb1dd03b3f5453258b4bd77b674ed",
+                    "fw_binary_url": "https://fw.ota.homesmart.ikea.com/files/DIRIGERA_release_prod_v2.453.1_348f0dce-3c34-49a2-b64c-a1caa202104c.raucb",
                 },
                 {
-                    "fw_binary_url": "http://localhost/ota1.ota.signed",
-                    "fw_file_version_MSB": img1.version >> 16,
-                    "fw_file_version_LSB": img1.version & 0xFFFF,
-                    "fw_filesize": 129,
-                    "fw_image_type": img1.image_type,
-                    "fw_manufacturer_id": MANUFACTURER_ID,
+                    "fw_image_type": 4552,
                     "fw_type": 2,
-                },
-                {
-                    "fw_binary_url": "http://localhost/ota2.ota.signed",
-                    "fw_file_version_MSB": img2.version >> 16,
-                    "fw_file_version_LSB": img2.version & 0xFFFF,
-                    "fw_filesize": 130,
-                    "fw_image_type": img2.image_type,
-                    "fw_manufacturer_id": MANUFACTURER_ID,
-                    "fw_type": 2,
+                    "fw_sha3_256": "1b5fbea79c5b41864352a938a90ad25d9a0118054bf1cdc0314ef9636a60143a",
+                    "fw_binary_url": "https://fw.ota.homesmart.ikea.com/files/tradfri-motion-sensor2_release_prod_v604241925_8afa2f7c-19c3-4ddf-a96c-233714179022.ota",
                 },
             ]
         ]
     )
-    mock_get.return_value.__aenter__.return_value.status = 202
+    mock_get.return_value.__aenter__.return_value.status = 200
     mock_get.return_value.__aenter__.return_value.reason = "OK"
 
     await ikea_prov.refresh_firmware_list()
     assert mock_get.call_count == 1
     assert len(ikea_prov._cache) == 2
-    assert img1.key in ikea_prov._cache
-    assert img2.key in ikea_prov._cache
-    cached_1 = ikea_prov._cache[img1.key]
-    assert cached_1.image_type == img1.image_type
-    assert cached_1.url == "http://localhost/ota1.ota.signed"
 
-    cached_2 = ikea_prov._cache[img2.key]
-    assert cached_2.image_type == img2.image_type
-    assert cached_2.url == "http://localhost/ota2.ota.signed"
+    image1 = ikea_prov._cache[
+        zigpy.ota.image.ImageKey(ota_p.Trådfri.MANUFACTURER_ID, 4557)
+    ]
+    image2 = ikea_prov._cache[
+        zigpy.ota.image.ImageKey(ota_p.Trådfri.MANUFACTURER_ID, 4552)
+    ]
+
+    assert image1 == ota_p.IKEAImage(
+        image_type=4557,
+        binary_url="https://fw.ota.homesmart.ikea.com/files/rodret-dimmer-soc_release_prod_v16777287_9812b73c-b02e-4678-b737-d21251a34fd2.ota",
+        sha3_256_sum="896edfb0a9d8314fb49d44fb11dc91fb5bb55e2ee1f793d53189cb13f884e13c",
+    )
+
+    assert image1.version == 16777287
+
+    assert image2 == ota_p.IKEAImage(
+        image_type=4552,
+        binary_url="https://fw.ota.homesmart.ikea.com/files/tradfri-motion-sensor2_release_prod_v604241925_8afa2f7c-19c3-4ddf-a96c-233714179022.ota",
+        sha3_256_sum="1b5fbea79c5b41864352a938a90ad25d9a0118054bf1cdc0314ef9636a60143a",
+    )
+    assert image2.version == 604241925
 
     assert not ikea_prov.expired
 
 
+def test_ikea_bad_version():
+    image = ota_p.IKEAImage(
+        image_type=4552,
+        binary_url="https://fw.ota.homesmart.ikea.com/files/DIRIGERA_release_prod_v2.453.1_348f0dce-3c34-49a2-b64c-a1caa202104c.raucb",
+        sha3_256_sum="1b5fbea79c5b41864352a938a90ad25d9a0118054bf1cdc0314ef9636a60143a",
+    )
+
+    with pytest.raises(ValueError):
+        image.version
+
+
 @patch("aiohttp.ClientSession.get")
-async def test_ikea_refresh_list_locked(mock_get, ikea_prov, ikea_image_with_version):
+async def test_ikea_refresh_list_locked(mock_get, ikea_prov):
     await ikea_prov._locks[ota_p.LOCK_REFRESH].acquire()
 
     mock_get.return_value.__aenter__.return_value.json = AsyncMock(side_effect=[[]])
@@ -319,6 +338,7 @@ async def test_ikea_fetch_image(mock_get, ikea_image_with_version):
 
     img = ikea_image_with_version(image_type=0x2101)
     img.url = mock.sentinel.url
+    img.sha3_256_sum = hashlib.sha3_256(container).hexdigest()
 
     mock_get.return_value.__aenter__.return_value.read = AsyncMock(
         side_effect=[container]

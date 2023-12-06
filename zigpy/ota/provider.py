@@ -10,6 +10,8 @@ import io
 import logging
 import os
 import os.path
+import re
+import ssl
 import tarfile
 import typing
 import urllib.parse
@@ -101,50 +103,70 @@ class Basic(zigpy.util.LocalLogMixin, ABC):
 
 @attr.s
 class IKEAImage:
-    manufacturer_id = attr.ib()
-    image_type = attr.ib()
-    version = attr.ib(default=None)
-    image_size = attr.ib(default=None)
-    url = attr.ib(default=None)
+    image_type: int = attr.ib()
+    binary_url: str = attr.ib()
+    sha3_256_sum: str = attr.ib()
 
     @classmethod
     def new(cls, data: dict[str, str | int]) -> IKEAImage:
-        res = cls(data["fw_manufacturer_id"], data["fw_image_type"])
-        res.file_version = data["fw_file_version_MSB"] << 16
-        res.file_version |= data["fw_file_version_LSB"]
-        res.image_size = data["fw_filesize"]
-        res.url = data["fw_binary_url"]
-        return res
+        return cls(
+            image_type=data["fw_image_type"],
+            sha3_256_sum=data["fw_sha3_256"],
+            binary_url=data["fw_binary_url"],
+        )
+
+    @property
+    def version(self) -> int:
+        file_version_match = re.match(r".*_v(?P<v>\d+)_.*", self.binary_url)
+        if file_version_match is None:
+            raise ValueError(f"Couldn't parse firmware version from {self}")
+
+        return int(file_version_match.group("v"), 10)
 
     @property
     def key(self) -> ImageKey:
-        return ImageKey(self.manufacturer_id, self.image_type)
+        return ImageKey(Trådfri.MANUFACTURER_ID, self.image_type)
 
     async def fetch_image(self) -> BaseOTAImage | None:
         async with aiohttp.ClientSession() as req:
-            LOGGER.debug("Downloading %s for %s", self.url, self.key)
-            async with req.get(self.url) as rsp:
+            LOGGER.debug("Downloading %s for %s", self.binary_url, self.key)
+            async with req.get(self.binary_url, ssl=Trådfri.SSL_CTX) as rsp:
                 data = await rsp.read()
+
+        assert hashlib.sha3_256(data).hexdigest() == self.sha3_256_sum
 
         ota_image, _ = parse_ota_image(data)
         assert ota_image.header.key == self.key
 
-        LOGGER.debug(
-            "Finished downloading %s bytes from %s for %s ver %s",
-            self.image_size,
-            self.url,
-            self.key,
-            self.version,
-        )
+        LOGGER.debug("Finished downloading %s", self)
         return ota_image
 
 
 class Trådfri(Basic):
     """IKEA OTA Firmware provider."""
 
-    UPDATE_URL = "http://fw.ota.homesmart.ikea.net/feed/version_info.json"
+    UPDATE_URL = "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json"
     MANUFACTURER_ID = 4476
     HEADERS = {"accept": "application/json;q=0.9,*/*;q=0.8"}
+
+    # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
+    SSL_CTX = ssl.create_default_context(
+        cadata="""\
+-----BEGIN CERTIFICATE-----
+MIICGDCCAZ+gAwIBAgIUdfH0KDnENv/dEcxH8iVqGGGDqrowCgYIKoZIzj0EAwMw
+SzELMAkGA1UEBhMCU0UxGjAYBgNVBAoMEUlLRUEgb2YgU3dlZGVuIEFCMSAwHgYD
+VQQDDBdJS0VBIEhvbWUgc21hcnQgUm9vdCBDQTAgFw0yMTA1MjYxOTAxMDlaGA8y
+MDcxMDUxNDE5MDEwOFowSzELMAkGA1UEBhMCU0UxGjAYBgNVBAoMEUlLRUEgb2Yg
+U3dlZGVuIEFCMSAwHgYDVQQDDBdJS0VBIEhvbWUgc21hcnQgUm9vdCBDQTB2MBAG
+ByqGSM49AgEGBSuBBAAiA2IABIDRUvKGFMUu2zIhTdgfrfNcPULwMlc0TGSrDLBA
+oTr0SMMV4044CRZQbl81N4qiuHGhFzCnXapZogkiVuFu7ZqSslsFuELFjc6ZxBjk
+Kmud+pQM6QQdsKTE/cS06dA+P6NCMEAwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4E
+FgQUcdlEnfX0MyZA4zAdY6CLOye9wfwwDgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49
+BAMDA2cAMGQCMG6mFIeB2GCFch3r0Gre4xRH+f5pn/bwLr9yGKywpeWvnUPsQ1KW
+ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
+2kVHW/Mz9/xwpy4u
+-----END CERTIFICATE-----"""
+    )
 
     async def initialize_provider(self, ota_config: dict) -> None:
         self.info("OTA provider enabled")
@@ -158,7 +180,7 @@ class Trådfri(Basic):
 
         async with self._locks[LOCK_REFRESH]:
             async with aiohttp.ClientSession(headers=self.HEADERS) as req:
-                async with req.get(self.UPDATE_URL) as rsp:
+                async with req.get(self.UPDATE_URL, ssl=self.SSL_CTX) as rsp:
                     # IKEA does not always respond with an appropriate Content-Type
                     # but the response is always JSON
                     if not (200 <= rsp.status <= 299):
@@ -173,7 +195,7 @@ class Trådfri(Basic):
         self.debug("Finished downloading firmware update list")
         self._cache.clear()
         for fw in fw_lst:
-            if "fw_file_version_MSB" not in fw:
+            if "fw_image_type" not in fw:
                 continue
             img = IKEAImage.new(fw)
             self._cache[img.key] = img
