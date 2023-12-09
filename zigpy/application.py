@@ -67,7 +67,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def __init__(self, config: dict) -> None:
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
         self.state: zigpy.state.State = zigpy.state.State()
-        self._greenpower = zigpy.greenpower.GreenPowerController(self)
+        self._greenpower = self._create_greenpower_controller()
         self._listeners = {}
         self._config = self.SCHEMA(config)
         self._dblistener = None
@@ -1352,6 +1352,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def _device(self) -> zigpy.device.Device:
         """The device being controlled."""
         return self.get_device(ieee=self.state.node_info.ieee)
+
+    def _create_greenpower_controller(self) -> zigpy.greenpower.GreenPowerController:
+        return zigpy.greenpower.GreenPowerController(self)
 
     def _persist_coordinator_model_strings_in_db(self) -> None:
         cluster = self._device.endpoints[1].add_input_cluster(
