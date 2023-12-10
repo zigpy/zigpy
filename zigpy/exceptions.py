@@ -18,10 +18,6 @@ class ControllerException(ZigbeeException):
     """Application controller failed in some way."""
 
 
-class ControllerShutDownError(ControllerException):
-    """Application controller has been shut down."""
-
-
 class APIException(ZigbeeException):
     """Radio API failed in some way."""
 

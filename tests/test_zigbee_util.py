@@ -569,60 +569,6 @@ async def test_dynamic_bounded_semaphore_errors(event_loop):
     assert sem.max_value == 1
 
 
-async def test_dynamic_bounded_semaphore_cancel_all_no_exc(event_loop):
-    """Test semaphore `cancel_all`, no exception."""
-
-    sem = util.DynamicBoundedSemaphore(1)
-
-    async def acquire():
-        async with sem:
-            await asyncio.sleep(60)
-
-    async with sem:
-        acquire1 = asyncio.create_task(acquire())
-        acquire2 = asyncio.create_task(acquire())
-        await asyncio.sleep(0.1)
-
-        # Cancel all tasks
-        sem.cancel_all()
-
-        with pytest.raises(asyncio.CancelledError):
-            await acquire1
-
-        with pytest.raises(asyncio.CancelledError):
-            await acquire2
-
-    assert not sem.locked()
-    assert sem.value == 1
-
-
-async def test_dynamic_bounded_semaphore_cancel_all_exc(event_loop):
-    """Test semaphore `cancel_all`, specific exception."""
-
-    sem = util.DynamicBoundedSemaphore(1)
-
-    async def acquire():
-        async with sem:
-            await asyncio.sleep(60)
-
-    async with sem:
-        acquire1 = asyncio.create_task(acquire())
-        acquire2 = asyncio.create_task(acquire())
-        await asyncio.sleep(0.1)
-
-        # Cancel all tasks
-        sem.cancel_all(exc=RuntimeError("foo"))
-
-        with pytest.raises(RuntimeError):
-            await acquire1
-
-        with pytest.raises(RuntimeError):
-            await acquire2
-
-    assert not sem.locked()
-    assert sem.value == 1
-
-
 @pytest.mark.parametrize(
     "plot",
     [

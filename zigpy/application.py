@@ -420,10 +420,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if self._watchdog_task is not None:
             self._watchdog_task.cancel()
 
-        self._concurrent_requests_semaphore.cancel_all(
-            exc=zigpy.exceptions.ControllerShutDownError()
-        )
-
         self.backups.stop_periodic_backups()
         self.topology.stop_periodic_scans()
 
