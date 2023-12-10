@@ -346,6 +346,7 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
 
         self._waiters: collections.deque = collections.deque()
         self._wakeup_scheduled: bool = False
+        self._cancelling: bool = False
 
     @property
     @functools.lru_cache(maxsize=None)
@@ -353,7 +354,7 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
         return asyncio.get_running_loop()
 
     def _wake_up_next(self) -> None:
-        while self._waiters:
+        while self._waiters and not self._cancelling:
             waiter = self._waiters.popleft()
 
             if not waiter.done():
@@ -429,6 +430,26 @@ class DynamicBoundedSemaphore(asyncio.Semaphore):
 
         self._value += 1
         self._wake_up_next()
+
+    def cancel_all(self, exc: BaseException | None = None) -> None:
+        """Cancel all pending waiters.
+
+        If exc is None, waiters will be cancelled. Otherwise, they will be given the
+        provided exception.
+        """
+        self._cancelling = True
+
+        while self._waiters:
+            waiter = self._waiters.popleft()
+
+            if not waiter.done():
+                if exc is None:
+                    waiter.cancel()
+                else:
+                    waiter.set_exception(exc)
+
+        self._cancelling = False
+        self._wakeup_scheduled = False
 
     async def __aenter__(self) -> None:
         await self.acquire()
