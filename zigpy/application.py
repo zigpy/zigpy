@@ -656,21 +656,21 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         while True:
             await asyncio.sleep(self._watchdog_period)
-            now = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc).timestamp()
+
+            if self._concurrent_requests_semaphore.locked():
+                LOGGER.debug("Skipping watchdog poll, request semaphore is blocked")
+                continue
 
             if any(
                 dev.last_seen is not None
-                and (now - dev.last_seen).total_seconds() < self._watchdog_period
+                and now - dev.last_seen < self._watchdog_period
                 for dev in self.devices.values()
             ):
                 LOGGER.debug(
                     "Skipping watchdog poll, devices active in last %ss",
                     self._watchdog_period,
                 )
-                continue
-
-            if self._concurrent_requests_semaphore.locked():
-                LOGGER.debug("Skipping watchdog poll, request semaphore is blocked")
                 continue
 
             try:
