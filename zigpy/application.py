@@ -652,7 +652,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         while True:
             await asyncio.sleep(self._watchdog_period)
 
+            if self._concurrent_requests_semaphore.locked():
+                LOGGER.debug("Skipping watchdog poll, request semaphore is blocked")
+                continue
+
             try:
+                LOGGER.debug("Feeding watchdog")
                 await self._watchdog_feed()
             except Exception as e:
                 LOGGER.warning("Watchdog failure", exc_info=e)
