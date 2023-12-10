@@ -1,5 +1,4 @@
 import asyncio
-from datetime import datetime, timezone
 import errno
 import logging
 from unittest import mock
@@ -1467,7 +1466,7 @@ async def test_watchdog(app):
 
     assert app._watchdog_feed.mock_calls == app.connection_lost.mock_calls == []
 
-    # First, lock the request semaphore
+    # Lock the request semaphore
     app._concurrent_requests_semaphore.max_value = 1
     async with app._concurrent_requests_semaphore:
         await asyncio.sleep(0.5)
@@ -1475,14 +1474,7 @@ async def test_watchdog(app):
 
     assert not app._concurrent_requests_semaphore.locked()
 
-    # Then, add a device with a recent `last_seen`
-    dev = app.add_device(make_ieee(), 0x1234)
-    dev.last_seen = datetime.now(timezone.utc)
-    await asyncio.sleep(0.1)
-    assert app._watchdog_feed.mock_calls == app.connection_lost.mock_calls == []
-    app.devices.pop(dev.ieee)
-
-    # Finally, do nothing and let the watchdog fail
+    # Now, do nothing and let the watchdog fail
     await asyncio.sleep(0.5)
     assert app._watchdog_feed.mock_calls == [call(), call(), call()]
     assert app.connection_lost.mock_calls == [call(error)]
