@@ -659,7 +659,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             now = datetime.now(timezone.utc)
 
             if any(
-                (now - dev.last_seen).total_seconds() < self._watchdog_period
+                dev.last_seen is not None
+                and (now - dev.last_seen).total_seconds() < self._watchdog_period
                 for dev in self.devices.values()
             ):
                 LOGGER.debug(
