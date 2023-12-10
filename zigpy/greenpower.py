@@ -113,6 +113,11 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         except Exception as e:
             LOGGER.warn("GP Controller failed to write initialization attrs: %s", e)
         
+        try:
+            await self._gp_endpoint.add_to_group(GREENPOWER_BROADCAST_GROUP)
+        except Exception as e:
+            LOGGER.debug("GP endpoint failed to add to broadcast group: %s", e)
+
         self._controller_state = ControllerState.Operational
         LOGGER.info("Green Power Controller initialized!")
 
