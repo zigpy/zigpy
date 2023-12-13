@@ -64,12 +64,12 @@ class GreenPowerDevice(zigpy.device.Device):
 
     @property
     def is_initialized(self) -> bool:
-        # Tx only paths are just done when we get em
+        """We assume the green power controller has done our accounting for us"""
         return True 
 
     @zigpy.util.retryable_request(tries=5, delay=0.5)
     async def _initialize(self) -> None:
-        # Rx capable path will involve this bad boy for sure?
+        """Expand this to build clusters if provided in commissioning notification"""
         pass
 
     def packet_received(self, packet: t.ZigbeePacket) -> None:

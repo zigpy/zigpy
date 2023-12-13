@@ -42,14 +42,17 @@ from zigpy.types import (
 from zigpy.zgp import (
     GreenPowerDeviceID,
     GreenPowerDeviceData,
+    GPChannelSearchPayload,
     GPCommissioningPayload,
     GPCommunicationMode,
-    GPProxyCommissioningModeExitMode,
     GPDataFrame,
+    GPProxyCommissioningModeExitMode,
+    GPReplyPayload,
     GPSecurityLevel,
 )
 from zigpy.zgp.device import GreenPowerDevice
 from zigpy.zgp.foundation import GPCommand
+from zigpy.zgp.security import zgp_decrypt, zgp_encrypt
 
 import zigpy.util
 import zigpy.zcl
@@ -114,6 +117,8 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             LOGGER.warn("GP Controller failed to write initialization attrs: %s", e)
         
         try:
+            # group = self._application.groups.add_group(GREENPOWER_BROADCAST_GROUP, "Green Power Broadcast")
+            # group.add_member(self._gp_endpoint)
             await self._gp_endpoint.add_to_group(GREENPOWER_BROADCAST_GROUP)
         except Exception as e:
             LOGGER.debug("GP endpoint failed to add to broadcast group: %s", e)
@@ -188,7 +193,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         if self._controller_state != ControllerState.Commissioning or self._commissioning_mode == CommissioningMode.Direct:
             return
 
-        hdr, rest = foundation.ZCLHeader.deserialize(packet.data.value)
+        hdr, rest = foundation.ZCLHeader.deserialize(packet.data.serialize())
         if hdr.command_id == GreenPowerProxy.ServerCommandDefs.commissioning_notification.id:
             # here we go
             notif, rest = GreenPowerProxy.GPCommissioningNotificationSchema.deserialize(rest)
@@ -197,86 +202,27 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 LOGGER.debug("Got GP commissioning frame with bad security parameters; passing")
                 return
             
-            if notif.security_level == GPSecurityLevel.NoSecurity and notif.command_id == GPCommand.Commissioning:
-                LOGGER.debug("Received valid GP commissioning packet from %s", str(notif.gpd_id))
-                comm_payload, rest = GPCommissioningPayload.deserialize(notif.payload)
-                asyncio.ensure_future(
-                    self._handle_commissioning_data_frame(notif.gpd_id, comm_payload, True),
-                    loop=asyncio.get_running_loop()
-                )
+            if notif.security_level == GPSecurityLevel.NoSecurity:
+                if notif.command_id == GPCommand.ChannelSearch:
+                    LOGGER.debug("Channel search packet from %s", str(notif.gpd_id))
+                    cs_payload, rest = GPChannelSearchPayload.deserialize(notif.payload)
+                    asyncio.ensure_future(
+                        self._handle_channel_Search(cs_payload, packet, notif),
+                        loop=asyncio.get_running_loop()
+                    )
+
+                if notif.command_id == GPCommand.Commissioning:
+                    LOGGER.debug("Received valid GP commissioning packet from %s", str(notif.gpd_id))
+                    comm_payload, rest = GPCommissioningPayload.deserialize(notif.payload)
+                    asyncio.ensure_future(
+                        self._handle_commissioning_data_frame(notif.gpd_id, comm_payload, packet, notif),
+                        loop=asyncio.get_running_loop()
+                    )
 
     def handle_pairing_search(self, packet: t.ZigbeePacket):
         # I guess... 
         return
 
-    async def _handle_commissioning_data_frame(self, src_id: GreenPowerDeviceID, commission_payload: GPCommissioningPayload, from_zcl: bool) -> bool:
-        new_join = True
-        ieee = t.EUI64(src_id.serialize() + bytes([0,0,0,0]))
-        device: GreenPowerDevice = None
-        if self._get_gp_device_with_srcid(src_id) is not None:
-            new_join = False
-            device = self._application.get_device(ieee)
-            LOGGER.debug("Skipping commissioning packet for known device %s", str(src_id))
-            return # handle the frame counter checks first!
-            # signal to proxy devices that we're updating the proxy tables...
-            # await self.remove_device(device)
-
-        comm_mode = GPCommunicationMode.GroupcastForwardToCommGroup if CommissioningMode.ProxyBroadcast in self._commissioning_mode else GPCommunicationMode.UnicastLightweight
-        green_power_data = GreenPowerDeviceData(
-            gpd_id=src_id,
-            device_id=commission_payload.device_type,
-            unicast_proxy=self._proxy_unicast_target and self._proxy_unicast_target.ieee or t.EUI64.UNKNOWN,
-            security_level=commission_payload.security_level,
-            security_key_type=commission_payload.key_type,
-            communication_mode=comm_mode,
-            frame_counter=commission_payload.gpd_outgoing_counter if commission_payload.gpd_outgoing_counter_present else 0,
-            raw_key=commission_payload.gpd_key or t.KeyData.UNKNOWN,
-            assigned_alias=False,
-            fixed_location=commission_payload.fixed_loc,
-            rx_on_cap=commission_payload.rx_on_cap,
-            sequence_number_cap=commission_payload.mac_seq_num_cap,
-        )
-
-        if new_join:
-            device = GreenPowerDevice(self._application, green_power_data)
-            self._application.device_initialized(device)
-            device = self._application.get_device(ieee) # quirks may have overwritten this
-        else:
-            device.green_power_data = green_power_data
-            
-        if CommissioningMode.ProxyBroadcast in self._commissioning_mode or CommissioningMode.ProxyUnicast in self._commissioning_mode:
-            pairing = GreenPowerProxy.GPPairingSchema(options=0)
-            pairing.add_sink = 1
-            pairing.communication_mode = comm_mode
-            pairing.gpd_id = src_id
-            pairing.gpd_mac_seq_num_cap = commission_payload.mac_seq_num_cap
-            pairing.security_frame_counter_present = 1 # always true for pairing p.106 l.25
-            pairing.frame_counter = green_power_data.frame_counter
-            pairing.security_level = commission_payload.security_level
-            pairing.security_key_type = commission_payload.key_type
-            pairing.device_id = commission_payload.device_type
-
-            if commission_payload.gpd_key is not None:
-                pairing.security_key_present = 1
-                pairing.key = green_power_data.encrypt_key()
-
-            if CommissioningMode.ProxyUnicast in self._commissioning_mode:
-                pairing.sink_IEEE = self._application.state.node_info.ieee
-                pairing.sink_nwk_addr = self._application.state.node_info.nwk
-                await self.send_no_response_command(
-                    self._proxy_unicast_target,
-                    GreenPowerProxy.ClientCommandDefs.pairing,
-                    pairing.as_dict()
-                )
-            elif CommissioningMode.ProxyBroadcast in self._commissioning_mode:
-                pairing.sink_group = GREENPOWER_BROADCAST_GROUP
-                await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.pairing, pairing.as_dict())
-
-            return True
-        else:
-            """Direct commissioning mode... deal later"""
-            return False
-        
     async def handle_received_green_power_frame(self, frame: GPDataFrame):
         """Build this out later to allow for direct interaction and commissioning"""
 
@@ -376,6 +322,134 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self._commissioning_mode = CommissioningMode.NotCommissioning
         self._timeout_task = None
 
+    async def _handle_channel_Search(self, search_payload: GPChannelSearchPayload, packet: t.ZigbeePacket, notif: GreenPowerProxy.GPCommissioningNotificationSchema) -> bool:
+        response = GreenPowerProxy.GPResponseSchema(options=0)
+        if notif.proxy_info_present:
+            response.temp_master_short_addr = notif.gpp_short_addr
+        else:
+            LOGGER.warn("Cannot commission with no temp master addr!")
+            return False
+        
+        response.temp_master_tx_channel = search_payload.next_channel
+        response.gpd_id = notif.gpd_id
+        # response.set_commisioning_response(self._application.state.network_info.pan_id)
+        response.gpd_command_id = GPCommand.ChannelSearchResponse
+        # Spare having to create an intermediary representation for this one thing; the format is:
+        # [CommandID = ChannelSearchResponse, options = net channel - 11] (aka channel packed into 4 bits)
+        response.gpd_command_payload = t.LVBytes(
+            GPCommand.ChannelSearchResponse.to_bytes(1) + 
+            (self._application.state.network_info.channel - 11).to_bytes(1)
+        )
+        await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.response, response.as_dict())
+        return False
+
+    async def _send_rx_cap_pair_response(self, packet: t.ZigbeePacket, notif: GreenPowerProxy.GPCommissioningNotificationSchema, commission_payload: GPCommissioningPayload, green_power_data: GreenPowerDeviceData) -> bool:
+        # First, build the response schema for the GPP...
+        response = GreenPowerProxy.GPResponseSchema(options=0)
+        if notif.proxy_info_present:
+            response.temp_master_short_addr = notif.gpp_short_addr
+        else:
+            LOGGER.warn("Cannot commission with no temp master addr!")
+            return False
+        response.temp_master_tx_channel = self._application.state.network_info.channel - 11
+        response.gpd_id = notif.gpd_id
+        
+        # Great now we can build the reply to the GPD itself
+        payload: GPReplyPayload = GPReplyPayload(options=0)
+        payload.security_key_type = commission_payload.key_type
+        payload.security_level = commission_payload.security_level
+        if commission_payload.pan_id_req:
+            payload.pan_id_present = 1
+            payload.pan_id = self._application.state.network_info.pan_id
+        if commission_payload.gpd_key_present:
+            payload.key_present = 1
+            payload.key = green_power_data.raw_key
+        response.gpd_command_id = GPCommand.CommissioningResponse
+        response.gpd_command_payload = t.LVBytes(payload.serialize())
+        await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.response, response.as_dict())
+        return True
+    
+    async def _send_pairing(self, green_power_data: GreenPowerDeviceData, commission_payload: GPCommissioningPayload, comm_mode: GPCommunicationMode) -> bool:
+        if CommissioningMode.ProxyBroadcast in self._commissioning_mode or CommissioningMode.ProxyUnicast in self._commissioning_mode:
+            pairing = GreenPowerProxy.GPPairingSchema(options=0)
+            pairing.add_sink = 1
+            pairing.gpd_fixed = green_power_data.fixed_location
+            pairing.communication_mode = comm_mode
+            pairing.gpd_id = green_power_data.gpd_id
+            pairing.gpd_mac_seq_num_cap = commission_payload.mac_seq_num_cap
+            pairing.security_frame_counter_present = 1 # always true for pairing p.106 l.25
+            pairing.frame_counter = green_power_data.frame_counter
+            pairing.security_level = commission_payload.security_level
+            pairing.security_key_type = commission_payload.key_type
+            pairing.device_id = commission_payload.device_type
+
+            if commission_payload.gpd_key is not None:
+                pairing.security_key_present = 1
+                pairing.key = green_power_data.encrypt_key_for_gpp()
+
+            if CommissioningMode.ProxyUnicast in self._commissioning_mode:
+                pairing.sink_IEEE = self._application.state.node_info.ieee
+                pairing.sink_nwk_addr = self._application.state.node_info.nwk
+                await self.send_no_response_command(
+                    self._proxy_unicast_target,
+                    GreenPowerProxy.ClientCommandDefs.pairing,
+                    pairing.as_dict()
+                )
+            elif CommissioningMode.ProxyBroadcast in self._commissioning_mode:
+                pairing.sink_group = GREENPOWER_BROADCAST_GROUP
+                await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.pairing, pairing.as_dict())
+
+            return True
+        else:
+            """Direct commissioning mode... deal later"""
+            return False
+
+    async def _handle_commissioning_data_frame(self, src_id: GreenPowerDeviceID, commission_payload: GPCommissioningPayload, packet: t.ZigbeePacket | None = None, notif: GreenPowerProxy.GPCommissioningNotificationSchema | None = None) -> bool:
+        new_join = True
+        ieee = t.EUI64(src_id.serialize() + bytes([0,0,0,0]))
+        device: GreenPowerDevice = None
+        if self._get_gp_device_with_srcid(src_id) is not None:
+            new_join = False
+            device = self._application.get_device(ieee)
+            LOGGER.debug("Skipping commissioning packet for known device %s", str(src_id))
+            return False # handle the frame counter checks first!
+            # signal to proxy devices that we're updating the proxy tables...
+            # await self.remove_device(device)
+
+        comm_mode = GPCommunicationMode.GroupcastForwardToCommGroup if CommissioningMode.ProxyBroadcast in self._commissioning_mode else GPCommunicationMode.UnicastLightweight
+        green_power_data = GreenPowerDeviceData(
+            gpd_id=src_id,
+            device_id=commission_payload.device_type,
+            unicast_proxy=self._proxy_unicast_target and self._proxy_unicast_target.ieee or t.EUI64.UNKNOWN,
+            security_level=commission_payload.security_level,
+            security_key_type=commission_payload.key_type,
+            communication_mode=comm_mode,
+            frame_counter=commission_payload.gpd_outgoing_counter if commission_payload.gpd_outgoing_counter_present else 0,
+            raw_key=commission_payload.get_decrypted_key(src_id),
+            assigned_alias=False,
+            fixed_location=commission_payload.fixed_loc,
+            rx_on_cap=commission_payload.rx_on_cap,
+            sequence_number_cap=commission_payload.mac_seq_num_cap,
+            manufacturer_id=commission_payload.manufacturer_id if commission_payload.manufacturer_id_present else 0,
+            model_id=commission_payload.model_id if commission_payload.model_id_present else 0,
+        )
+
+        if green_power_data.rx_on_cap:
+            result = await self._send_rx_cap_pair_response(packet, notif, commission_payload, green_power_data)
+            if not result:
+                LOGGER.warn("Failed to send Rx response packet!")
+                return False
+            LOGGER.debug("Successfully sent RX cap response. Continuing.")
+
+        if new_join:
+            device = GreenPowerDevice(self._application, green_power_data)
+            self._application.device_initialized(device)
+            device = self._application.get_device(ieee) # quirks may have overwritten this
+        else:
+            device.green_power_data = green_power_data
+        
+        return await self._send_pairing(green_power_data, commission_payload, comm_mode)
+        
     async def _send_commissioning_broadcast_command(self, time_s: int):
         named_arguments = None
         if time_s > 0:

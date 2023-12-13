@@ -495,9 +495,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         await self._db.executemany(q, rows)
 
-    async def _save_zgp_ext_data(self, data: zigpy.typing.GreenPowerExtData) -> None:
+    async def _save_zgp_ext_data(self, data: zigpy.typing.GreenPowerDeviceData) -> None:
         q = f"""INSERT INTO green_power_data{DB_V}
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (ieee)
                     DO UPDATE SET
                 ieee=excluded.ieee,
@@ -512,7 +512,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 assigned_alias=excluded.assigned_alias,
                 fixed_location=excluded.fixed_location,
                 rx_on_cap=excluded.rx_on_cap,
-                sequence_number_cap=excluded.sequence_number_cap"""
+                sequence_number_cap=excluded.sequence_number_cap,
+                manufacturer_id=excluded.manufacturer_id,
+                model_id=excluded.model_id"""
 
         await self.execute(q, (data.ieee,) + data.as_tuple())
 

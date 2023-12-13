@@ -10,6 +10,7 @@ from zigpy.profiles.zgp import (
 )
 
 from .foundation import GPDeviceType
+from .security import zgp_decrypt, zgp_encrypt
 from zigpy.types import basic
 from zigpy.types.struct import Struct, StructField
 from zigpy.types.named import (
@@ -69,6 +70,87 @@ class GPCommunicationDirection(basic.enum1):
     GPDtoGPP = 0
     GPPtoGPD = 1
 
+# Figure 76
+class GPChannelSearchPayload(Struct):
+    options: basic.bitmap8
+    @property
+    def next_channel(self) -> int:
+        return self.options & 0xF
+    @property
+    def next_next_channel(self) -> int:
+        return self.options >> 4
+
+class GPReplyPayload(Struct):
+    options: basic.uint8_t
+    pan_id: NWK = StructField(
+        requires=lambda s: s.pan_id_present,
+        optional=True)
+    key: KeyData = StructField(
+        requires=lambda s: s.key_present,
+        optional=True)
+    key_mic: basic.uint32_t = StructField(
+        requires=lambda s: s.key_encrypted,
+        optional=True)
+    frame_counter: basic.uint32_t = StructField(
+        requires=lambda s: s.key_encrypted and s.security_level >= GPSecurityLevel.FullFrameCounterAndMIC,
+        optional=True)
+
+    @property
+    def pan_id_present(self) -> bool:
+        return self.options & 0b1
+    @pan_id_present.setter
+    def pan_id_present(self, value: bool):
+        self.options = (self.options & (~0b1)) | value 
+
+    @property
+    def key_present(self) -> bool:
+        return self.options & 0b10
+    @key_present.setter
+    def key_present(self, value: basic.uint1_t):
+        self.options = (self.options & (~0b10)) | (value << 1)
+
+    @property
+    def key_encrypted(self) -> bool:
+        return bool(self.options & 0b100)
+    @key_encrypted.setter
+    def key_encrypted(self, value):
+        self.options = (self.options & (~0b100)) | (value << 2)
+
+    @property
+    def security_level(self) -> GPSecurityLevel:
+        return GPSecurityLevel((self.options >> 3) & 0b11)
+    @security_level.setter
+    def security_level(self, value: GPSecurityLevel):
+        self.options = (self.options & (~0b11000)) | (value << 3)
+
+    @property
+    def security_key_type(self) -> GPSecurityKeyType:
+        return GPSecurityKeyType((self.options >> 5) & 0b111)
+    @security_key_type.setter
+    def security_key_type(self, value: GPSecurityKeyType):
+        self.options = (self.options & (~0b11100000)) | (value << 5)
+
+    def set_key_no_encryption(self, key:KeyData):
+        self.key_present = 1
+        self.key = key
+
+    def set_key_with_encryption(self, key: KeyData, src_id: GreenPowerDeviceID, frame_counter: basic.uint32_t):
+        self.key_present = 1
+        self.key_encrypted = 1
+        srcbytes = src_id.serialize()
+        frame_counter_plusone = basic.uint32_t(frame_counter+1)
+        encrypted_key, mic = zgp_encrypt(
+            GREENPOWER_DEFAULT_LINK_KEY.serialize(),
+            srcbytes+srcbytes+frame_counter_plusone.serialize()+bytes([0x05]),
+            srcbytes,
+            key.serialize()
+        )
+        self.key, _ = KeyData.deserialize(encrypted_key)
+        self.key_mic, _ = basic.uint32_t.deserialize(mic)
+        # This is new, apparently!
+        if self.security_level >= GPSecurityLevel.FullFrameCounterAndMIC:
+            self.frame_counter = frame_counter
+
 # Figure 71
 class GPCommissioningPayload(Struct):
     device_type: basic.uint8_t
@@ -84,6 +166,18 @@ class GPCommissioningPayload(Struct):
         optional=True)
     gpd_outgoing_counter: basic.uint32_t = StructField(
         requires=lambda s: s.gpd_outgoing_counter_present,
+        optional=True)
+    application_information: basic.uint8_t = StructField(
+        requires=lambda s: s.application_info_present,
+        optional=True)
+    manufacturer_id: basic.uint16_t = StructField(
+        requires=lambda s: s.manufacturer_id_present,
+        optional=True)
+    model_id: basic.uint16_t = StructField(
+        requires=lambda s: s.model_id_present,
+        optional=True)
+    command_ids: basic.LVBytes = StructField(
+        requires=lambda s: s.command_list_present,
         optional=True)
 
     @property
@@ -123,6 +217,39 @@ class GPCommissioningPayload(Struct):
     @property
     def gpd_outgoing_counter_present(self) -> basic.uint1_t:
         return self.ext_opts_present and basic.uint1_t((self.ext_options >> 7) & 0x1) or 0
+    @property
+    def manufacturer_id_present(self) -> bool:
+        return self.application_info_present and (self.application_information & 0b1)
+    @property
+    def model_id_present(self) -> bool:
+        return self.application_info_present and ((self.application_information >> 1) & 0b1)
+    @property
+    def command_list_present(self) -> bool:
+        return self.application_info_present and ((self.application_information >> 2) & 0b1)
+    @property
+    def cluster_reports_present(self) -> bool:
+        return self.application_info_present and ((self.application_information >> 3) & 0b1)
+
+    def get_decrypted_key(self, src_id: GreenPowerDeviceID) -> KeyData:
+        if not self.gpd_key_present:
+            return KeyData.UNKNOWN
+        
+        if not self.gpd_key_encryption:
+            return self.gpd_key
+        
+        # else has gpd key and encrypted
+        srcbytes = src_id.serialize()
+        decrypted, passed, _ = zgp_decrypt(
+            GREENPOWER_DEFAULT_LINK_KEY.serialize(), 
+            srcbytes+srcbytes+srcbytes+bytes([0x05]),
+            srcbytes,
+            self.gpd_key.serialize(),
+            self.gpd_key_mic.serialize()
+        )
+        if not passed:
+            raise Exception(f"Failed to decrypt incoming GPD key from {src_id}; failing")
+        key, _ = KeyData.deserialize(decrypted)
+        return key
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[GPCommissioningPayload, bytes]:
@@ -139,15 +266,17 @@ class GPCommissioningPayload(Struct):
         
         if instance.gpd_outgoing_counter_present:
             instance.gpd_outgoing_counter, data = basic.uint32_t.deserialize(data)
+
+        if instance.application_info_present:
+            instance.application_information, data = basic.uint8_t.deserialize(data)
+            if instance.manufacturer_id_present:
+                instance.manufacturer_id, data = basic.uint16_t.deserialize(data)
+            if instance.model_id_present:
+                instance.model_id, data = basic.uint16_t.deserialize(data)
+            if instance.command_list_present:
+                instance.command_ids, data = basic.LVBytes.deserialize(data)
         
         return [instance, data]
-
-# Figure 74
-class GPCommissioningReplyPayload(Struct):
-    options: basic.bitmap8
-    pan_id: basic.uint16_t = StructField(optional=True)
-    security_key: KeyData = StructField(optional=True)
-    gpd_key_mic: basic.uint32_t = StructField(optional=True)
 
 # Table 27
 class SinkTableEntry(Struct):
@@ -250,6 +379,8 @@ class GreenPowerDeviceData(Struct):
     fixed_location: bool
     rx_on_cap: bool
     sequence_number_cap: bool
+    manufacturer_id: basic.uint16_t
+    model_id: basic.uint16_t
 
     @property
     def ieee(self) -> EUI64:
@@ -278,7 +409,7 @@ class GreenPowerDeviceData(Struct):
             instance.security_level = self.security_level
             instance.security_key_type = self.security_key_type
             if instance.security_key_type != GPSecurityKeyType.NoKey:
-                instance.key = self.encrypt_key()
+                instance.key = self.encrypt_key_for_gpp()
         instance.rx_on_cap = self.rx_on_cap
         instance.sequence_number_cap = self.sequence_number_cap
         if instance.sequence_number_cap:
@@ -286,17 +417,18 @@ class GreenPowerDeviceData(Struct):
         
         return instance
 
-    def encrypt_key(self) -> bytes:
+    def encrypt_key_for_gpp(self) -> bytes:
         # A.1.5.9.1
         link_key_bytes = GREENPOWER_DEFAULT_LINK_KEY.serialize()
         key_bytes = self.raw_key.serialize()
-        src_bytes = self.gpd_id.to_bytes(4, "little")
-        nonce = src_bytes + src_bytes + src_bytes + 0x05.to_bytes(1)
-        assert len(nonce) == 13
-
+        src_bytes = self.gpd_id.serialize()
+        nonce = src_bytes + src_bytes + src_bytes + bytes([0x05])
         aesccm = AESCCM(link_key_bytes, tag_length=16)
         result = aesccm.encrypt(nonce, key_bytes, None)
         return result[0:16]
+    
+    def decrypt_key(self, key: KeyData) -> [KeyData, bytes]:
+        pass
 
 class GPDataFrame(Struct):
     options: basic.bitmap8
@@ -354,32 +486,34 @@ class GPDataFrame(Struct):
     def direction(self) -> GPCommunicationDirection:
         return self.has_frame_control_ext and GPCommunicationDirection((self.frame_control_ext >> 7) & 0x01) or GPCommunicationDirection.GPDtoGPP
     
+    # Very likely originated from code found here: https://lucidar.me/en/zigbee/zigbee-frame-encryption-with-aes-128-ccm/
     def calculate_mic(self, key: KeyData) -> basic.uint32_t:
         key_bytes = key.serialize()
-        src_id: bytes = self.src_id.to_bytes(4, "little")
-        frame_counter: bytes = self.frame_counter.to_bytes(4, "little")
-        nonce = src_id + src_id + frame_counter + (0x05).to_bytes(1)
-        header = self.options.to_bytes(1) + self.frame_control_ext.to_bytes(1)
+        src_id = self.src_id.serialize()
+        frame_counter = self.frame_counter.serialize()
+        nonce = src_id + src_id + frame_counter + bytes([0x05])
+        header = self.options.serialize() + self.frame_control_ext.serialize()
         header = header + src_id + frame_counter
         a = header + self.command_payload
         La = len(a).to_bytes(2)
         AddAuthData = La + a
-        AddAuthData += (0x00).to_bytes(1) * (16 - len(AddAuthData))
-        B0: bytes = (0x49).to_bytes(1) + nonce
-        B0 += (0x00).to_bytes(1) * (16 - len(B0))
-        B1: bytes = AddAuthData
-        X0 = (0x00000000000000000000000000000000).to_bytes(16)
+        AddAuthData += bytes([0x00] * (16 - len(AddAuthData)))
+        B0 = bytes([0x49]) + nonce
+        B0 += bytes([0x00] * (16 - len(B0)))
+        B1 = AddAuthData
+        X0 = bytes([0x00] * 16)
         cipher = Cipher(algorithms.AES(key_bytes), modes.CBC(B0))
         encryptor = cipher.encryptor()
         X1 = encryptor.update(X0) + encryptor.finalize()
         cipher = Cipher(algorithms.AES(key_bytes), modes.CBC(B1))
         encryptor = cipher.encryptor()
         X2 = encryptor.update(X1) + encryptor.finalize()
-        A0 = (0x01).to_bytes(1) + nonce + (0x0000).to_bytes(2)
-        cipher = Cipher(algorithms.AES(key_bytes), modes.CTR(int.from_bytes(A0, byteorder="big")))
+        A0 = bytes([0x01]) + nonce + bytes([0x00, 0x00])
+        cipher = Cipher(algorithms.AES(key_bytes), modes.CTR(int.from_bytes(A0, "big")))
         encryptor = cipher.encryptor()
-        result = encryptor.update(X2[0:4]) + encryptor.finalize()
-        return basic.uint32_t.from_bytes(result, byteorder="little")
+        result_bytes = encryptor.update(X2[0:4]) + encryptor.finalize()
+        result, _ = basic.uint32_t.deserialize(result_bytes)
+        return result
 
     @classmethod
     def deserialize(cls: GPDataFrame, data: bytes) -> tuple[GPDataFrame, bytes]:

@@ -77,6 +77,9 @@ class GPCommand(t.enum8):
     ShortPress1of2 = 0x67
     ShortPress2of2 = 0x68
     Commissioning = 0xe0
+    ChannelSearch = 0xe3
+    CommissioningResponse = 0xf0
+    ChannelSearchResponse = 0xf3
 
 GPDeviceDescriptors = {
     GPDeviceType.SWITCH_SIMPLE_ONE_STATE: "Simple Generic 1-state",

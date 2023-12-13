@@ -243,6 +243,8 @@ CREATE TABLE green_power_data_v13 (
     fixed_location BOOLEAN NOT NULL,
     rx_on_cap BOOLEAN NOT NULL,
     sequence_number_cap BOOLEAN NOT NULL,
+    manufacturer_id INTEGER NOT NULL,
+    model_id INTEGER NOT NULL
 
     FOREIGN KEY(ieee)
         REFERENCES devices_v13(ieee)
