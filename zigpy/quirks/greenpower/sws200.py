@@ -23,6 +23,44 @@ class PhilipsSWS200(GreenPowerDevice):
         ("initial_switch_press", "button_1"): {
             "command": "notification",
             "cluster_id": GREENPOWER_CLUSTER_ID,
+            "params": {"command_id": 0x10}
+        },
+        ("release", "button_1"): {
+            "command": "notification",
+            "cluster_id": GREENPOWER_CLUSTER_ID,
+            "params": {"command_id": 0x18}
+        },
+
+        ("initial_switch_press", "button_2"): {
+            "command": "notification",
+            "cluster_id": GREENPOWER_CLUSTER_ID,
+            "params": {"command_id": 0x11}
+        },
+        ("release", "button_2"): {
+            "command": "notification",
+            "cluster_id": GREENPOWER_CLUSTER_ID,
+            "params": {"command_id": 0x19}
+        },
+
+        ("initial_switch_press", "button_3"): {
+            "command": "notification",
+            "cluster_id": GREENPOWER_CLUSTER_ID,
+            "params": {"command_id": 0x12}
+        },
+        ("release", "button_3"): {
+            "command": "notification",
+            "cluster_id": GREENPOWER_CLUSTER_ID,
+            "params": {"command_id": 0x1A}
+        },
+
+        ("initial_switch_press", "button_4"): {
+            "command": "notification",
+            "cluster_id": GREENPOWER_CLUSTER_ID,
             "params": {"command_id": 0x22}
+        },
+        ("release", "button_4"): {
+            "command": "notification",
+            "cluster_id": GREENPOWER_CLUSTER_ID,
+            "params": {"command_id": 0x23}
         },
     }
