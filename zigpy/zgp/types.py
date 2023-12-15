@@ -138,10 +138,11 @@ class GPReplyPayload(Struct):
         self.key_present = 1
         self.key_encrypted = 1
         srcbytes = src_id.serialize()
-        frame_counter_plusone = basic.uint32_t(frame_counter+1)
+        frame_counter = basic.uint32_t(frame_counter+1)
+        # A.1.5.3.3.3
         encrypted_key, mic = zgp_encrypt(
             GREENPOWER_DEFAULT_LINK_KEY.serialize(),
-            srcbytes+srcbytes+frame_counter_plusone.serialize()+bytes([0x05]),
+            srcbytes+srcbytes+frame_counter.serialize()+bytes([0x05]),
             srcbytes,
             key.serialize()
         )

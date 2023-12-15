@@ -271,22 +271,6 @@ class GPResponseSchema(CommandSchema):
     def application_id(self, value: GPApplicationID):
         self.options = (self.options & ~(0b111)) | value
 
-    # Figure 74
-    def set_commisioning_response(self, panid: t.PanId | None = None, key: t.KeyData | None = None, security_level: GPSecurityLevel = GPSecurityLevel.NoSecurity, key_type: GPSecurityKeyType = GPSecurityKeyType.NoKey):
-        self.gpd_command_id = GPCommand.CommissioningResponse
-        payload_bytes = bytes()
-        # A.4.2.1.2.1 Options field
-        cmdopts: t.uint8_t = 0
-        if panid is not None:
-            cmdopts |= 0b01
-            payload_bytes = payload_bytes + panid.serialize()
-        if key is not None:
-            cmdopts |= 0b10
-            payload_bytes = payload_bytes + key.serialize()
-        cmdopts |= security_level << 3
-        cmdopts |= key_type << 5
-        self.gpd_command_payload = t.LVBytes(cmdopts.to_bytes(1) + payload_bytes)
-
     def __new__(cls: GPResponseSchema, *args, **kwargs) -> GPResponseSchema:
         kwargs.setdefault("options", 0)
         return super().__new__(cls, *args, **kwargs)
