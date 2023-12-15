@@ -418,18 +418,15 @@ class GreenPowerDeviceData(Struct):
         
         return instance
 
-    def encrypt_key_for_gpp(self) -> bytes:
+    def encrypt_key_for_gpp(self) -> tuple[bytes, bytes]:
         # A.1.5.9.1
-        link_key_bytes = GREENPOWER_DEFAULT_LINK_KEY.serialize()
-        key_bytes = self.raw_key.serialize()
         src_bytes = self.gpd_id.serialize()
-        nonce = src_bytes + src_bytes + src_bytes + bytes([0x05])
-        aesccm = AESCCM(link_key_bytes, tag_length=16)
-        result = aesccm.encrypt(nonce, key_bytes, None)
-        return result[0:16]
-    
-    def decrypt_key(self, key: KeyData) -> [KeyData, bytes]:
-        pass
+        return zgp_encrypt(
+            GREENPOWER_DEFAULT_LINK_KEY.serialize(),
+            src_bytes + src_bytes + src_bytes + bytes([0x05]),
+            src_bytes,
+            self.raw_key.serialize()
+        )
 
 class GPDataFrame(Struct):
     options: basic.bitmap8

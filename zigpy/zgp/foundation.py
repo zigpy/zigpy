@@ -76,6 +76,7 @@ class GPCommand(t.enum8):
     ShortPress1of1 = 0x66
     ShortPress1of2 = 0x67
     ShortPress2of2 = 0x68
+    AttributeReporting = 0xA0
     Commissioning = 0xe0
     CommissionSuccess = 0xe2
     ChannelSearch = 0xe3

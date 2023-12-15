@@ -425,7 +425,8 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
 
             if green_power_data.raw_key != t.KeyData.UNKNOWN:
                 pairing.security_key_present = 1
-                pairing.key = green_power_data.encrypt_key_for_gpp()
+                encrypted_key, _ = green_power_data.encrypt_key_for_gpp()
+                pairing.key = encrypted_key
 
             if CommissioningMode.ProxyUnicast in self._commissioning_mode:
                 pairing.sink_IEEE = self._application.state.node_info.ieee
