@@ -231,26 +231,26 @@ class GPCommissioningPayload(Struct):
     def cluster_reports_present(self) -> bool:
         return self.application_info_present and ((self.application_information >> 3) & 0b1)
 
-    def get_decrypted_key(self, src_id: GreenPowerDeviceID) -> KeyData:
+    def get_validated_key(self, src_id: GreenPowerDeviceID) -> KeyData:
         if not self.gpd_key_present:
             return KeyData.UNKNOWN
         
-        if not self.gpd_key_encryption:
-            return self.gpd_key
-        
-        # else has gpd key and encrypted
-        srcbytes = src_id.serialize()
-        decrypted, passed, _ = zgp_decrypt(
-            GREENPOWER_DEFAULT_LINK_KEY.serialize(), 
-            srcbytes+srcbytes+srcbytes+bytes([0x05]),
-            srcbytes,
-            self.gpd_key.serialize(),
-            self.gpd_key_mic.serialize()
-        )
-        if not passed:
-            raise Exception(f"Failed to decrypt incoming GPD key from {src_id}; failing")
-        key, _ = KeyData.deserialize(decrypted)
-        return key
+        # if we have MIC for key, test it
+        if self.gpd_key_encryption:
+            # else has gpd key with tagged mic
+            srcbytes = src_id.serialize()
+            _, passed, _ = zgp_decrypt(
+                GREENPOWER_DEFAULT_LINK_KEY.serialize(), 
+                srcbytes+srcbytes+srcbytes+bytes([0x05]),
+                srcbytes,
+                self.gpd_key.serialize(),
+                self.gpd_key_mic.serialize()
+            )
+            if not passed:
+                raise Exception(f"Failed to decrypt incoming GPD key from {src_id}; failing")
+
+        # either we couldn't validate or the validation passed  
+        return self.gpd_key
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[GPCommissioningPayload, bytes]:
