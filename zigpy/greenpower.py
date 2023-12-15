@@ -459,14 +459,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         device: GreenPowerDevice = None
         rx_on = commission_payload.rx_on_cap
 
-        # Nasty business, but for now mirror logic in Herdsman ...
-        if rx_on:
-            comm_mode = GPCommunicationMode.GroupcastForwardToDGroup
-        else:
-            if CommissioningMode.ProxyBroadcast in self._commissioning_mode:
-                comm_mode = GPCommunicationMode.GroupcastForwardToCommGroup  
-            else: 
-                comm_mode = GPCommunicationMode.UnicastLightweight
+        if CommissioningMode.ProxyBroadcast in self._commissioning_mode:
+            comm_mode = GPCommunicationMode.GroupcastForwardToCommGroup  
+        else: 
+            comm_mode = GPCommunicationMode.UnicastLightweight
         
         green_power_data = GreenPowerDeviceData(
             gpd_id=src_id,
