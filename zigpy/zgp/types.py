@@ -16,6 +16,7 @@ from zigpy.types.struct import Struct, StructField
 from zigpy.types.named import (
     EUI64,
     NWK,
+    ClusterId,
     KeyData
 )
 
@@ -152,6 +153,11 @@ class GPReplyPayload(Struct):
         if self.security_level >= GPSecurityLevel.FullFrameCounterAndMIC:
             self.frame_counter = frame_counter
 
+def ClusterListFactory(len: basic.uint4_t) -> basic.CALLABLE_T:
+    class _ClusterList(basic.FixedList, item_type=ClusterId, length=len):
+        pass
+    return _ClusterList
+
 # Figure 71
 class GPCommissioningPayload(Struct):
     device_type: basic.uint8_t
@@ -180,6 +186,20 @@ class GPCommissioningPayload(Struct):
     command_ids: basic.LVBytes = StructField(
         requires=lambda s: s.command_list_present,
         optional=True)
+    server_cluster_length: basic.uint4_t = StructField(
+        requires=lambda s: s.cluster_reports_present,
+        optional=True)
+    client_cluster_length: basic.uint4_t = StructField(
+        requires=lambda s: s.cluster_reports_present,
+        optional=True)
+    server_cluster_list: None = StructField(
+        requires=lambda s: s.cluster_reports_present and s.server_cluster_length > 0,
+        optional=True,
+        dynamic_type=lambda s: ClusterListFactory(s.server_cluster_length))
+    client_cluster_list: None = StructField(
+        requires=lambda s: s.cluster_reports_present and s.client_cluster_length > 0,
+        optional=True,
+        dynamic_type=lambda s: ClusterListFactory(s.client_cluster_length))
 
     @property
     def mac_seq_num_cap(self) -> basic.uint1_t:
@@ -276,6 +296,14 @@ class GPCommissioningPayload(Struct):
                 instance.model_id, data = basic.uint16_t.deserialize(data)
             if instance.command_list_present:
                 instance.command_ids, data = basic.LVBytes.deserialize(data)
+            if instance.cluster_reports_present:
+                l, data = basic.uint8_t.deserialize(data)
+                instance.server_cluster_length = l & 0b1111
+                instance.client_cluster_length = l >> 4
+                if instance.server_cluster_length > 0:
+                    instance.server_cluster_list, data = ClusterListFactory(instance.server_cluster_length).deserialize(data)
+                if instance.client_cluster_length > 0:
+                    instance.client_cluster_list, data = ClusterListFactory(instance.client_cluster_length).deserialize(data)
         
         return [instance, data]
 
