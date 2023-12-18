@@ -6,6 +6,7 @@ import typing
 import zigpy.device
 import zigpy.exceptions
 import zigpy.listeners
+import zigpy.profiles.zgp
 from zigpy.profiles.zgp import (
     GREENPOWER_ENDPOINT_ID,
     GREENPOWER_CLUSTER_ID,
@@ -65,7 +66,7 @@ class GreenPowerDevice(zigpy.device.Device):
     @property
     def is_initialized(self) -> bool:
         """We assume the green power controller has done our accounting for us"""
-        return True 
+        return GREENPOWER_ENDPOINT_ID in self.endpoints
 
     @zigpy.util.retryable_request(tries=5, delay=0.5)
     async def _initialize(self) -> None:
@@ -106,10 +107,7 @@ class GreenPowerDevice(zigpy.device.Device):
         if isinstance(args, GPNotificationSchema):
             # Nobody seems to support notify response, tho the spec calls for it.
             # I'm gonna remove it as it just clogs up the network for no reason
-            # asyncio.ensure_future(
-            #     self._send_notif_response_packet(args),
-            #     loop=asyncio.get_running_loop()
-            # )
+            # asyncio.create_task(self._send_notif_response_packet(args))
             args = StrippedNotifSchema(
                 gpd_id=args.gpd_id,
                 command_id=args.command_id,
