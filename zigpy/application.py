@@ -1010,10 +1010,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         assert packet.src is not None
         assert packet.dst is not None
 
-        # XXX: suck up all the ZGP profile ID packets
+        # First, pre-filter ZGP stuff; if it's infrastructure commands, return otherwise continue processing
         if packet.profile_id == zigpy.profiles.zgp.PROFILE_ID:
-            self._greenpower.packet_received(packet)
-            return
+            if self._greenpower.packet_received(packet):
+                return
 
         # Peek into ZDO packets to handle possible ZDO notifications
         if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):

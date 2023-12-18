@@ -128,11 +128,14 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self._controller_state = ControllerState.Operational
         LOGGER.info("Green Power Controller initialized!")
 
-    def packet_received(self, packet: t.ZigbeePacket) -> None:
+    def packet_received(self, packet: t.ZigbeePacket) -> bool:
         assert packet.src_ep == GREENPOWER_ENDPOINT_ID
         assert packet.cluster_id == GREENPOWER_CLUSTER_ID
 
         hdr, args = self._gp_endpoint.deserialize(packet.cluster_id, packet.data.serialize())
+        if hdr.frame_control.frame_type != foundation.FrameType.CLUSTER_COMMAND:
+            # attribute read, etc?? Kick back to higher level.
+            return False
 
         # try our best to resolve who is talking and what they're asking,
         # so we can filter based on frame counter
@@ -173,6 +176,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             # At this point we're through the infrastructure stuff, forward the notification packet
             # into the GP device proper for processing
             gp_device.packet_received(packet)
+        return True
 
     async def remove_device(self, device: GreenPowerDevice):
         if not device.is_green_power_device:
