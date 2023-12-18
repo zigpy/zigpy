@@ -115,6 +115,15 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             self._application.add_listener(self)
             self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.max_sink_table_entries.id, 0xFF)
             self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.link_key.id, GREENPOWER_DEFAULT_LINK_KEY)
+            self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.communication_mode.id, GPCommunicationMode.GroupcastForwardToCommGroup)
+            self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.commissioning_exit_mode.id, GPProxyCommissioningModeExitMode.NotDefined)
+            self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.commissioning_window.id, 60)
+            self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.security_level.id, GPSecurityLevel.NoSecurity)
+            # Table 30; we support everything but: translation table (bit 18), short MICs (bit 14), direct communication (bit 9,6,1)
+            # Bits 20-23 are empty/reserved
+            self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.functionality.id, 0xBBDBD)
+            # Table 31, all on.
+            self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.active_functionality.id, 0xFFFFFF)
             self._push_sink_table()
         except Exception as e:
             LOGGER.warn("GP Controller failed to write initialization attrs: %s", e)

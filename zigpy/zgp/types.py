@@ -428,9 +428,7 @@ class GreenPowerDeviceData(Struct):
             radius=0xFF
         )
         if self.communication_mode in (GPCommunicationMode.GroupcastForwardToCommGroup, GPCommunicationMode.GroupcastForwardToDGroup):
-            instance.group_list=basic.LVBytes(
-                GREENPOWER_BROADCAST_GROUP.to_bytes(2, "little") + 0xFF.to_bytes(1) + 0xFF.to_bytes(1)
-            )
+            instance.group_list=basic.LVBytes(GREENPOWER_BROADCAST_GROUP.to_bytes(2, "little") + bytes([0xFF, 0xFF]))
 
         instance.security_use = self.security_level is not GPSecurityLevel.NoSecurity
         if instance.security_use:
@@ -438,7 +436,8 @@ class GreenPowerDeviceData(Struct):
             instance.security_level = self.security_level
             instance.security_key_type = self.security_key_type
             if instance.security_key_type != GPSecurityKeyType.NoKey:
-                instance.key = self.encrypt_key_for_gpp()
+                enc, _ = self.encrypt_key_for_gpp()
+                instance.key = KeyData(enc)
         instance.rx_on_cap = self.rx_on_cap
         instance.sequence_number_cap = self.sequence_number_cap
         if instance.sequence_number_cap:
@@ -469,7 +468,10 @@ class GPDataFrame(Struct):
         optional=True)
     command_id: basic.uint32_t
     command_payload: basic.SerializableBytes = StructField(optional=True)
-    mic: basic.uint32_t = StructField(optional=True) # TODO: this could be 0/2/4, fix with dynamic_type, tho that hits before options is populated
+    mic: None = StructField(
+        requires=lambda s: s.security_level >= GPSecurityLevel.ShortFrameCounterAndMIC,
+        optional=True,
+        dynamic_type=lambda s: basic.uint32_t if s.security_level >= GPSecurityLevel.FullFrameCounterAndMIC else basic.uint16_t)
 
     @property
     def auto_commissioning(self) -> bool:
@@ -501,7 +503,7 @@ class GPDataFrame(Struct):
 
     @property
     def has_frame_counter(self) -> bool: 
-        return self.has_frame_control_ext and self.security_level in (GPSecurityLevel.FullFrameCounterAndMIC, GPSecurityLevel.Encrypted)
+        return self.has_frame_control_ext and self.security_level in (GPSecurityLevel.ShortFrameCounterAndMIC, GPSecurityLevel.FullFrameCounterAndMIC, GPSecurityLevel.Encrypted)
 
     @property
     def has_src_id(self) -> bool: 
@@ -512,34 +514,18 @@ class GPDataFrame(Struct):
     def direction(self) -> GPCommunicationDirection:
         return self.has_frame_control_ext and GPCommunicationDirection((self.frame_control_ext >> 7) & 0x01) or GPCommunicationDirection.GPDtoGPP
     
-    # Very likely originated from code found here: https://lucidar.me/en/zigbee/zigbee-frame-encryption-with-aes-128-ccm/
-    def calculate_mic(self, key: KeyData) -> basic.uint32_t:
-        key_bytes = key.serialize()
+    def calculate_mic(self, link_key: KeyData) -> basic.uint32_t:
+        # A.1.5.4.2
         src_id = self.src_id.serialize()
         frame_counter = self.frame_counter.serialize()
+        # Figure 10
         nonce = src_id + src_id + frame_counter + bytes([0x05])
-        header = self.options.serialize() + self.frame_control_ext.serialize()
-        header = header + src_id + frame_counter
-        a = header + self.command_payload
-        La = len(a).to_bytes(2)
-        AddAuthData = La + a
-        AddAuthData += bytes([0x00] * (16 - len(AddAuthData)))
-        B0 = bytes([0x49]) + nonce
-        B0 += bytes([0x00] * (16 - len(B0)))
-        B1 = AddAuthData
-        X0 = bytes([0x00] * 16)
-        cipher = Cipher(algorithms.AES(key_bytes), modes.CBC(B0))
-        encryptor = cipher.encryptor()
-        X1 = encryptor.update(X0) + encryptor.finalize()
-        cipher = Cipher(algorithms.AES(key_bytes), modes.CBC(B1))
-        encryptor = cipher.encryptor()
-        X2 = encryptor.update(X1) + encryptor.finalize()
-        A0 = bytes([0x01]) + nonce + bytes([0x00, 0x00])
-        cipher = Cipher(algorithms.AES(key_bytes), modes.CTR(int.from_bytes(A0, "big")))
-        encryptor = cipher.encryptor()
-        result_bytes = encryptor.update(X2[0:4]) + encryptor.finalize()
-        result, _ = basic.uint32_t.deserialize(result_bytes)
-        return result
+        # p.48 l.24
+        header = self.options.serialize() + self.frame_control_ext.serialize() + src_id + frame_counter
+        # p.48 l.22
+        payload = self.command_id.serialize() + self.command_payload.serialize()
+        _, mic = zgp_encrypt(link_key.serialize(), nonce, header, payload)
+        return mic
 
     @classmethod
     def deserialize(cls: GPDataFrame, data: bytes) -> tuple[GPDataFrame, bytes]:

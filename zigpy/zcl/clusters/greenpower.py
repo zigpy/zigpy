@@ -299,25 +299,31 @@ class GreenPowerProxy(Cluster):
             id=0x0002, type=GPCommunicationMode, access="rw", mandatory=True
         )
         commissioning_exit_mode: Final = ZCLAttributeDef(
-            id=0x0003, type=t.bitmap8, access="rw", mandatory=True
+            id=0x0003, type=GPProxyCommissioningModeExitMode, access="rw", mandatory=True
         )
         commissioning_window: Final = ZCLAttributeDef(
             id=0x0004, type=t.uint16_t, access="rw"
         )
         security_level: Final = ZCLAttributeDef(
-            id=0x0005, type=t.bitmap8, access="rw", mandatory=True
+            id=0x0005, type=GPSecurityLevel, access="rw", mandatory=True
         )
         functionality: Final = ZCLAttributeDef(
-            id=0x0006, type=t.bitmap24, access="r", mandatory=True
+            id=0x0006, type=t.bitmap24, access="rw", mandatory=True
         )
         active_functionality: Final = ZCLAttributeDef(
             id=0x0007, type=t.bitmap24, access="r", mandatory=True
         )
+        gpp_max_table_entries: Final = ZCLAttributeDef(
+            id=0x0010, type=t.uint8_t, access="r"
+        )
+        gpp_proxy_table: Final = ZCLAttributeDef(
+            id=0x0011, type=t.LongOctetString, access="r"
+        )
         gpp_functionality: Final = ZCLAttributeDef(
-            id=0x0016, type=t.bitmap24, access="r", mandatory=True
+            id=0x0016, type=t.bitmap24, access="r"
         )
         gpp_active_functionality: Final = ZCLAttributeDef(
-            id=0x0017, type=t.bitmap24, access="r", mandatory=True
+            id=0x0017, type=t.bitmap24, access="r"
         )
         link_key: Final = ZCLAttributeDef(
             id=0x0022, type=t.KeyData, access="r", mandatory=True
