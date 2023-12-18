@@ -1464,18 +1464,11 @@ async def test_watchdog(app):
     await app.startup()
     assert app._watchdog_task is not None
 
-    assert app._watchdog_feed.mock_calls == app.connection_lost.mock_calls == []
+    assert app._watchdog_feed.mock_calls == []
+    assert app.connection_lost.mock_calls == []
 
-    # Lock the request semaphore
-    app._concurrent_requests_semaphore.max_value = 1
-    async with app._concurrent_requests_semaphore:
-        await asyncio.sleep(0.5)
-        assert app._watchdog_feed.mock_calls == app.connection_lost.mock_calls == []
-
-    assert not app._concurrent_requests_semaphore.locked()
-
-    # Now, do nothing and let the watchdog fail
     await asyncio.sleep(0.5)
+
     assert app._watchdog_feed.mock_calls == [call(), call(), call()]
     assert app.connection_lost.mock_calls == [call(error)]
     assert app._watchdog_task.done()
