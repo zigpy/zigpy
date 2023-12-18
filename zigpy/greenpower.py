@@ -129,9 +129,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             LOGGER.warn("GP Controller failed to write initialization attrs: %s", e)
         
         try:
-            # group = self._application.groups.add_group(GREENPOWER_BROADCAST_GROUP, "Green Power Broadcast")
-            # group.add_member(self._gp_endpoint)
-            await self._gp_endpoint.add_to_group(GREENPOWER_BROADCAST_GROUP)
+            await self._gp_endpoint.add_to_group(GREENPOWER_BROADCAST_GROUP, "Green Power Broadcast")
         except Exception as e:
             LOGGER.debug("GP endpoint failed to add to broadcast group: %s", e)
 
@@ -372,6 +370,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self._controller_state = ControllerState.Operational
         self._commissioning_mode = CommissioningMode.NotCommissioning
         self._timeout_task = None
+        self._gp_cluster.update_attribute(GreenPowerProxy.AttributeDefs.commissioning_exit_mode.id, GPProxyCommissioningModeExitMode.NotDefined)
 
     async def _handle_success(self, notif: GreenPowerProxy.GPCommissioningNotificationSchema) -> bool:
         src_id = notif.gpd_id
