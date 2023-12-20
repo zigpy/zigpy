@@ -555,8 +555,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         ieee = t.EUI64(ieee)
 
+        # Filter out Annce messages with unknown IEEE (ZGP devices)
+        if ieee == t.EUI64.UNKNOWN:
+            return
+
         try:
             dev = self.get_device(ieee=ieee)
+            # don't mess with GPD's here (how did we even get this far?)
+            if dev.is_green_power_device:
+                return
         except KeyError:
             dev = self.add_device(ieee, nwk)
             LOGGER.info("New device 0x%04x (%s) joined the network", nwk, ieee)
@@ -1268,12 +1275,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             return
 
         await zigpy.zdo.broadcast(
-            self,  # app
-            zdo_types.ZDOCmd.Mgmt_Permit_Joining_req,  # command
-            0x0000,  # grpid
-            0x00,  # radius
-            time_s,
-            0,
+            app=self,  # app
+            command=zdo_types.ZDOCmd.Mgmt_Permit_Joining_req,  # command
+            grpid=0x0000,  # grpid
+            radius=0x00,  # radius
+            PermitDuration=time_s,
+            TC_Significant=0,
             broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
         )
         await self.permit_ncp(time_s)

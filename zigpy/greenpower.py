@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESCCM
 
 from zigpy import zdo
 from zigpy.types.basic import LVBytes, Optional
+from zigpy.types.named import EUI64
 from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.clusters.general import (
     Basic,
@@ -468,6 +469,24 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         else:
             pairing.sink_group = GREENPOWER_BROADCAST_GROUP
         
+        # A.3.6.3.4.1, send Device_annce on behalf of GPD
+        # according to Figure 68 and Figure 70, this is done before Pairing command is sent.
+        # Figure 62 says security cap is a single bit and it's the only thing set... okay.
+        cap = (bool(self._application.state.network_info.security_level > 0) & 0x1) << 6
+        await zigpy.zdo.broadcast(
+            app=self._application,
+            command=zigpy.zdo.types.ZDOCmd.Device_annce, # command
+            grpid=None,
+            radius=0xFF,  # Explicitly set the maximum radius
+            sequence=0x00, # p.146 l.11, sequence is always 0
+            broadcast_address=BroadcastAddress.ALL_DEVICES,
+            NWKAddr=green_power_data.nwk,
+            IEEEAddr=EUI64.UNKNOWN, # p.146 l.15, IEEE field is unknown
+            Capability=cap,
+        )
+        # let that broadcast percolate a bit...
+        await asyncio.sleep(0.5)
+
         # "target device" is for when we only want to send the pairing command
         # to a single device as opposed to a broadcast
         if target_device is not None:

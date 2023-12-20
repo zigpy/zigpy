@@ -237,6 +237,7 @@ def broadcast(
     command,
     grpid,
     radius,
+    sequence = None,
     *args,
     broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
     **kwargs,
@@ -247,7 +248,8 @@ def broadcast(
     named_args.update(kwargs)
     assert set(named_args.keys()) & set(params)
 
-    sequence = app.get_sequence()
+    if sequence is None:
+        sequence = app.get_sequence()
     data = bytes([sequence]) + t.serialize(named_args.values(), param_types)
 
     return zigpy.device.broadcast(
