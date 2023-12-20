@@ -14,6 +14,7 @@ from .security import zgp_decrypt, zgp_encrypt
 from zigpy.types import basic
 from zigpy.types.struct import Struct, StructField
 from zigpy.types.named import (
+    Group,
     EUI64,
     NWK,
     ClusterId,
@@ -417,8 +418,27 @@ class GreenPowerDeviceData(Struct):
     
     @property
     def nwk(self) -> NWK:
-        return NWK(self.gpd_id & 0xFFFF)
-    
+        # A.3.6.3.3.1: Derivation of alias source address
+        # Take 2 LSB of GPD ID, test against reserved NWK addrs
+        nwk = self.gpd_id & 0xFFFF
+        if nwk in (0x0000, 0xFFF7):
+            # if there's a conflict with reserved NWKs, XOR with 3-4LSB
+            nwk ^= (self.gpd_id >> 4) & 0xFFFF
+            if nwk in (0x0000, 0xFFF7):
+                # Still? c'mon...
+                if self.gpd_id & 0xFFFF == 0x0000:
+                    # p.145 l.15, though EXTREMELY unlikely
+                    nwk = 0x0007
+                else:
+                    # p.145 l.16
+                    nwk = (self.gpd_id & 0xFFFF) - 0x0008
+        return NWK(nwk)
+
+    @property
+    def derived_group(self) -> Group:
+        # A.3.6.1.4: same as proxy alias
+        return Group(self.nwk)
+
     @property
     def sink_table_entry(self) -> SinkTableEntry:
         instance = SinkTableEntry(
