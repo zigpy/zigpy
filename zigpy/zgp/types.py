@@ -405,7 +405,7 @@ class GreenPowerDeviceData(Struct):
     communication_mode: GPCommunicationMode
     frame_counter: basic.uint32_t
     raw_key: KeyData
-    assigned_alias: bool
+    assigned_nwk: NWK
     fixed_location: bool
     rx_on_cap: bool
     sequence_number_cap: bool
@@ -418,6 +418,14 @@ class GreenPowerDeviceData(Struct):
     
     @property
     def nwk(self) -> NWK:
+        return self.assigned_nwk if self.has_assigned_alias else self.derived_nwk
+    
+    @property
+    def has_assigned_alias(self) -> bool:
+        return self.assigned_nwk != 0x0000
+
+    @property
+    def derived_nwk(self) -> NWK:
         # A.3.6.3.3.1: Derivation of alias source address
         # Take 2 LSB of GPD ID, test against reserved NWK addrs
         nwk = self.gpd_id & 0xFFFF

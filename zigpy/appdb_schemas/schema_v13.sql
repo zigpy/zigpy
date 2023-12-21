@@ -238,7 +238,7 @@ CREATE TABLE green_power_data_v13 (
     communication_mode INTEGER NOT NULL,
     frame_counter INTEGER NOT NULL,
     raw_key key_data NOT NULL,
-    assigned_alias BOOLEAN NOT NULL,
+    assigned_nwk INTEGER NOT NULL,
     fixed_location BOOLEAN NOT NULL,
     rx_on_cap BOOLEAN NOT NULL,
     sequence_number_cap BOOLEAN NOT NULL,

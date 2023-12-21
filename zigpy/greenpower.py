@@ -529,7 +529,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             communication_mode=comm_mode,
             frame_counter=commission_payload.gpd_outgoing_counter if commission_payload.gpd_outgoing_counter_present else 0,
             raw_key=commission_payload.get_validated_key(src_id),
-            assigned_alias=False,
+            assigned_nwk=0x0000,
             fixed_location=commission_payload.fixed_loc,
             rx_on_cap=rx_on,
             sequence_number_cap=commission_payload.mac_seq_num_cap,
