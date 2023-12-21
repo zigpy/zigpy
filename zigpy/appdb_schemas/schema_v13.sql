@@ -227,7 +227,6 @@ CREATE TABLE network_backups_v13 (
 );
 
 -- green power
-
 DROP TABLE IF EXISTS green_power_data_v13;
 CREATE TABLE green_power_data_v13 (
     ieee ieee NOT NULL,
@@ -244,7 +243,7 @@ CREATE TABLE green_power_data_v13 (
     rx_on_cap BOOLEAN NOT NULL,
     sequence_number_cap BOOLEAN NOT NULL,
     manufacturer_id INTEGER NOT NULL,
-    model_id INTEGER NOT NULL
+    model_id INTEGER NOT NULL,
 
     FOREIGN KEY(ieee)
         REFERENCES devices_v13(ieee)
