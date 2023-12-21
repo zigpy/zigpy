@@ -248,10 +248,12 @@ class GPProxyCommissioningModeOptions(t.Struct):
     enter: t.uint1_t
     exit_mode: GPProxyCommissioningModeExitMode
     channel_present: t.uint1_t
-    reserved: t.uint3_t
+    unicast: t.uint1_t
+    reserved: t.uint2_t
     def __new__(cls: GPProxyCommissioningModeOptions, *args, **kwargs) -> GPProxyCommissioningModeOptions:
         kwargs.setdefault("exit_mode", GPProxyCommissioningModeExitMode.NotDefined)
         kwargs.setdefault("channel_present", 0)
+        kwargs.setdefault("unicast", 0)
         kwargs.setdefault("reserved", 0)
         return super().__new__(cls, *args, **kwargs)
 

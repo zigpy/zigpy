@@ -287,7 +287,8 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 {
                     "options": GreenPowerProxy.GPProxyCommissioningModeOptions(
                         enter=1,
-                        exit_mode=GPProxyCommissioningModeExitMode.OnExpireOrExplicitExit
+                        exit_mode=GPProxyCommissioningModeExitMode.OnExpireOrExplicitExit,
+                        unicast=1
                     ),
                     "window": time_s
                 }
