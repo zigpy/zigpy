@@ -441,7 +441,15 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             # XXX: next steps: encrypt it, need an exemplary capture
             # payload.set_key_with_encryption(green_power_data.raw_key, notif.gpd_id, commission_payload.gpd_outgoing_counter)
         response.gpd_command_payload = t.LVBytes(payload.serialize())
-        await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.response, response.as_dict())
+
+        if self._proxy_unicast_target is not None:
+            await self.send_no_response_command(
+                self._proxy_unicast_target,
+                GreenPowerProxy.ClientCommandDefs.response,
+                response.as_dict()
+            )
+        else:
+            await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.response, response.as_dict())
         return True
     
     async def _send_pairing(self, green_power_data: GreenPowerDeviceData, target_device: zigpy.device.Device | None = None, new_join: bool = False) -> bool:
@@ -570,9 +578,9 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             return await self._send_pairing(green_power_data, self._proxy_unicast_target, new_join)
         
     async def _send_commissioning_broadcast_command(self, time_s: int):
-        named_arguments = None
+        kwargs = {}
         if time_s > 0:
-            named_arguments = {
+            kwargs = {
                 "options": GreenPowerProxy.GPProxyCommissioningModeOptions(
                     enter=1,
                     exit_mode=GPProxyCommissioningModeExitMode.OnExpireOrExplicitExit
@@ -580,11 +588,9 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 "window": time_s
             }
         else:
-            named_arguments = {
-                "options": GreenPowerProxy.GPProxyCommissioningModeOptions(enter=0)
-            }
+            kwargs = {"options": GreenPowerProxy.GPProxyCommissioningModeOptions(enter=0)}
 
-        await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode, named_arguments)
+        await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode, kwargs)
 
     async def send_no_response_command(
         self,

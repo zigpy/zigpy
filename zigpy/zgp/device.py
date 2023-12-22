@@ -1,6 +1,6 @@
 from __future__ import annotations
-import asyncio
 import itertools
+import logging
 import typing
 
 import zigpy.device
@@ -15,15 +15,13 @@ import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import GPNotificationSchema, GreenPowerProxy
 import zigpy.zcl.foundation as foundation
 from zigpy.zgp.foundation import GPDeviceDescriptors
-from zigpy.zgp.types import (
-    GPCommunicationMode,
-    GreenPowerDeviceID,
-    GreenPowerDeviceData
-)
+from zigpy.zgp.types import GPCommunicationMode, GreenPowerDeviceID, GreenPowerDeviceData
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
     from zigpy.zcl.clusters.greenpower import GPNotificationResponseOptions
+
+LOGGER = logging.getLogger(__name__)
 
 class StrippedNotifSchema(foundation.CommandSchema):
     gpd_id: GreenPowerDeviceID
@@ -74,8 +72,13 @@ class GreenPowerDevice(zigpy.device.Device):
         pass
 
     def packet_received(self, packet: t.ZigbeePacket) -> None:
-        assert packet.src_ep == GREENPOWER_ENDPOINT_ID
-        assert packet.cluster_id == GREENPOWER_CLUSTER_ID
+        if packet.src_ep != GREENPOWER_ENDPOINT_ID:
+            LOGGER.warn("Not GP endpoint message sent to %s:%d; why?", self.green_power_data.gpd_id._hex_repr(), packet.src_ep)
+            return
+        # assert packet.src_ep == GREENPOWER_ENDPOINT_ID
+        if packet.cluster_id != GREENPOWER_CLUSTER_ID:
+            LOGGER.warn("Not GP cluster message sent to %s:%d; why?", self.green_power_data.gpd_id._hex_repr(), packet.cluster_id)
+            return
 
         # Set radio details that can be read from any type of packet
         self.last_seen = packet.timestamp
