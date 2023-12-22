@@ -2,24 +2,16 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import enum
+import functools
 import logging
 import sys
 import typing 
 
 from cryptography.hazmat.primitives.ciphers.aead import AESCCM
 
-from zigpy import zdo
-from zigpy.types.basic import LVBytes, Optional
 from zigpy.types.named import EUI64
 from zigpy.zcl import Cluster, foundation
-from zigpy.zcl.clusters.general import (
-    Basic,
-)
-from zigpy.zcl.clusters.greenpower import (
-    GPNotificationSchema,
-    GreenPowerProxy,
-)
-from zigpy.zgp.types import GPSecurityKeyType
+from zigpy.zcl.clusters.greenpower import GreenPowerProxy
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
 else:
@@ -38,9 +30,6 @@ from zigpy.profiles.zgp import (
     GREENPOWER_ENDPOINT_ID,
 )
 import zigpy.types as t
-from zigpy.types import (
-    BroadcastAddress,
-)
 from zigpy.zgp import (
     GreenPowerDeviceID,
     GreenPowerDeviceData,
@@ -54,6 +43,7 @@ from zigpy.zgp import (
 )
 from zigpy.zgp.device import GreenPowerDevice
 from zigpy.zgp.foundation import GPCommand
+from zigpy.zgp.message_concentrator import MessageConcentrator
 from zigpy.zgp.security import zgp_decrypt, zgp_encrypt
 
 import zigpy.util
@@ -88,6 +78,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self._commissioning_mode: CommissioningMode = CommissioningMode.NotCommissioning
         self._proxy_unicast_target: zigpy.device.Device | None = None
         self._timeout_task: asyncio.Task = None
+        self._ch_req_concentrator: MessageConcentrator[GreenPowerDeviceID, GreenPowerProxy.GPCommissioningNotificationSchema] = MessageConcentrator()
         self._rxon_inflight: dict[GreenPowerDeviceID, GreenPowerDeviceData] = {}
 
     @property 
@@ -205,46 +196,40 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
     def handle_commissioning_packet(self, packet: t.ZigbeePacket):
         # if we're not listening for commissioning packets, don't worry too much about it
         # we can't really scan for these things so don't worry about the ZDO followup either
+        _, rest = foundation.ZCLHeader.deserialize(packet.data.serialize())
+        notif, rest = GreenPowerProxy.GPCommissioningNotificationSchema.deserialize(rest)
         if self._controller_state != ControllerState.Commissioning or self._commissioning_mode == CommissioningMode.Direct:
+            LOGGER.debug("Ignoring unexpected commissioning packet from %s", notif.gpd_id)
+            return
+        
+        LOGGER.debug("Parsing ZGP commission command %s from %s", notif.command_id._hex_repr(), notif.gpd_id)
+        # So... according to Figure 70, Success GPDF is sent before ZGP Pairing is sent, which in my mind means
+        # we should have NoSecurity set. The SWS200, however, starts sending Success frames with
+        # security flags before Pairing is sent, meaning we get a security_failed flag. Try to ignore it.
+        # (Check Encrypted first to make sure we're not responding incorrectly to unrelated stuff)
+        if notif.security_level != GPSecurityLevel.Encrypted and notif.command_id == GPCommand.CommissionSuccess:
+            LOGGER.debug("Received commission success packet %s", str(notif.gpd_id))
+            asyncio.create_task(
+                self._handle_success(notif),
+                name="Handle Success"
+            )
             return
 
-        hdr, rest = foundation.ZCLHeader.deserialize(packet.data.serialize())
-        if hdr.command_id == GreenPowerProxy.ServerCommandDefs.commissioning_notification.id:
-            # here we go
-            notif, rest = GreenPowerProxy.GPCommissioningNotificationSchema.deserialize(rest)
-            LOGGER.debug("Parsing ZGP command %s from %s", notif.command_id._hex_repr(), notif.gpd_id)
-
-            # So... according to Figure 70, Success GPDF is sent before ZGP Pairing is sent, which in my mind means
-            # we should have NoSecurity set. The SWS200, however, starts sending Success frames with
-            # security flags before Pairing is sent, meaning we get a security_failed flag. Try to ignore it.
-            # (Check Encrypted first to make sure we're not responding incorrectly to unrelated stuff)
-            if notif.security_level != GPSecurityLevel.Encrypted and notif.command_id == GPCommand.CommissionSuccess:
-                LOGGER.debug("Received commission success packet %s", str(notif.gpd_id))
+        if notif.security_failed:
+            LOGGER.debug("Got GP commissioning frame with bad security parameters; passing")
+            return
+        
+        if notif.security_level == GPSecurityLevel.NoSecurity:
+            if notif.command_id == GPCommand.ChannelSearch:
+                LOGGER.debug("Channel search packet from %s", str(notif.gpd_id))
+                self._ch_req_concentrator.push(notif.gpd_id, notif, self._channel_search_concentrated)
+            elif notif.command_id == GPCommand.Commissioning:
+                LOGGER.debug("Received valid GP commissioning packet from %s", str(notif.gpd_id))
+                comm_payload, rest = GPCommissioningPayload.deserialize(notif.payload)
                 asyncio.create_task(
-                    self._handle_success(notif),
-                    name="Handle Success"
+                    self._handle_commissioning_data_frame(notif.gpd_id, comm_payload, packet, notif),
+                    name="Handle Commission Data Frame"
                 )
-                return
-
-            if notif.security_failed:
-                LOGGER.debug("Got GP commissioning frame with bad security parameters; passing")
-                return
-            
-            if notif.security_level == GPSecurityLevel.NoSecurity:
-                if notif.command_id == GPCommand.ChannelSearch:
-                    LOGGER.debug("Channel search packet from %s", str(notif.gpd_id))
-                    cs_payload, rest = GPChannelSearchPayload.deserialize(notif.payload)
-                    asyncio.create_task(
-                        self._handle_channel_Search(cs_payload, packet, notif),
-                        name="Handle Channel Search"
-                    )
-                elif notif.command_id == GPCommand.Commissioning:
-                    LOGGER.debug("Received valid GP commissioning packet from %s", str(notif.gpd_id))
-                    comm_payload, rest = GPCommissioningPayload.deserialize(notif.payload)
-                    asyncio.create_task(
-                        self._handle_commissioning_data_frame(notif.gpd_id, comm_payload, packet, notif),
-                        name="Handle Commission Data Frame"
-                    )
 
     def handle_pairing_search(self, packet: t.ZigbeePacket):
         # I guess... 
@@ -325,7 +310,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             gp_data = gp_device.green_power_data
             # groupcast forward devices should be added to new devices to ensure reliability
             if gp_data.communication_mode in (GPCommunicationMode.GroupcastForwardToCommGroup , GPCommunicationMode.GroupcastForwardToDGroup):
-                await self._send_pairing(gp_device.green_power_data, new_device)
+                await self._send_pairing(gp_device.green_power_data, new_device, False)
                 await asyncio.sleep(0.2)
 
     async def _stop_permit(self):
@@ -394,16 +379,29 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         else:
             device.green_power_data = gp_data
         
-        return await self._send_pairing(gp_data, self._proxy_unicast_target)
+        return await self._send_pairing(gp_data, self._proxy_unicast_target, new_join)
 
-    async def _handle_channel_Search(self, search_payload: GPChannelSearchPayload, packet: t.ZigbeePacket, notif: GreenPowerProxy.GPCommissioningNotificationSchema) -> bool:
+    def _channel_search_concentrated(self, gpd_id: GreenPowerDeviceID, notifs: list[GreenPowerProxy.GPCommissioningNotificationSchema]) -> None:
+        LOGGER.debug("Finished concentrating Channel Search packets. %d found.", len(notifs))
+        # Elect first notif with proxy info
+        elected_notif = next((n for n in notifs if n.proxy_info_present), None)
+        # No proxy info found ... extremely unlikely.
+        if elected_notif is None:
+            LOGGER.warn("Cannot respond to channel search with no temp master addr!")
+            return
+        LOGGER.debug("Elected %s as temp master.", elected_notif.gpp_short_addr._hex_repr())
+        # Find shortest distance notif
+        elected_notif = functools.reduce(lambda a,b: b if b.proxy_info_present and b.distance < a.distance else a, notifs, elected_notif)
+        asyncio.create_task(
+            self._handle_channel_search(elected_notif),
+            name="Handle Channel Search"
+        )
+        pass
+
+    async def _handle_channel_search(self, notif: GreenPowerProxy.GPCommissioningNotificationSchema) -> bool:
+        search_payload, _ = GPChannelSearchPayload.deserialize(notif.payload)
         response = GreenPowerProxy.GPResponseSchema(options=0)
-        if notif.proxy_info_present:
-            response.temp_master_short_addr = notif.gpp_short_addr
-        else:
-            LOGGER.warn("Cannot commission with no temp master addr!")
-            return False
-        
+        response.temp_master_short_addr = notif.gpp_short_addr
         response.temp_master_tx_channel = search_payload.next_channel
         response.gpd_id = notif.gpd_id
         response.gpd_command_id = GPCommand.ChannelSearchResponse
@@ -413,6 +411,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             GPCommand.ChannelSearchResponse.to_bytes(1) + 
             (self._application.state.network_info.channel - 11).to_bytes(1)
         )
+        LOGGER.debug("Sending channel search packet with %s as temp master.", notif.gpp_short_addr._hex_repr())
         await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.response, response.as_dict())
         return False
 
@@ -430,7 +429,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         
         # Great now we can build the reply to the GPD itself
         payload: GPReplyPayload = GPReplyPayload(options=0)
-        # XXX: these are None for the time being
+        # XXX: Should these be None to prevent security failure on Success?
         payload.security_key_type = green_power_data.security_key_type
         payload.security_level = green_power_data.security_level
         if commission_payload.pan_id_req:
@@ -445,7 +444,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.response, response.as_dict())
         return True
     
-    async def _send_pairing(self, green_power_data: GreenPowerDeviceData, target_device: zigpy.device.Device | None = None) -> bool:
+    async def _send_pairing(self, green_power_data: GreenPowerDeviceData, target_device: zigpy.device.Device | None = None, new_join: bool = False) -> bool:
         LOGGER.debug("Sending pairing info for %s", green_power_data.gpd_id)
         pairing = GreenPowerProxy.GPPairingSchema(options=0)
         pairing.add_sink = 1
@@ -458,6 +457,9 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         pairing.security_level = green_power_data.security_level
         pairing.security_key_type = green_power_data.security_key_type
         pairing.device_id = green_power_data.device_id
+        if green_power_data.has_assigned_alias:
+            pairing.assigned_alias_present = 1
+            pairing.alias = green_power_data.nwk
 
         if green_power_data.raw_key != t.KeyData.UNKNOWN:
             pairing.security_key_present = 1
@@ -480,7 +482,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             grpid=None,
             radius=0xFF,  # Explicitly set the maximum radius
             sequence=0x00, # p.146 l.11, sequence is always 0
-            broadcast_address=BroadcastAddress.ALL_DEVICES,
+            broadcast_address=t.BroadcastAddress.ALL_DEVICES,
             NWKAddr=green_power_data.nwk,
             IEEEAddr=EUI64.UNKNOWN, # p.146 l.15, IEEE field is unknown
             Capability=cap,
@@ -565,7 +567,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             else:
                 device.green_power_data = green_power_data
             
-            return await self._send_pairing(green_power_data, self._proxy_unicast_target)
+            return await self._send_pairing(green_power_data, self._proxy_unicast_target, new_join)
         
     async def _send_commissioning_broadcast_command(self, time_s: int):
         named_arguments = None
@@ -623,7 +625,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         self,
         command: ZCLCommandDef,
         kwargs: dict = {},
-        address: t.BroadcastAddress = BroadcastAddress.RX_ON_WHEN_IDLE,
+        address: t.BroadcastAddress = t.BroadcastAddress.RX_ON_WHEN_IDLE,
         dst_ep: t.uint16_t = GREENPOWER_ENDPOINT_ID,
         cluster_id: t.uint16_t = GREENPOWER_CLUSTER_ID,
         profile_id: t.uint16_t = zigpy.profiles.zgp.PROFILE_ID,
