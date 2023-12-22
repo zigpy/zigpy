@@ -509,7 +509,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 communication_mode=excluded.communication_mode,
                 frame_counter=excluded.frame_counter,
                 raw_key=excluded.raw_key,
-                assigned_alias=excluded.assigned_alias,
+                assigned_nwk=excluded.assigned_nwk,
                 fixed_location=excluded.fixed_location,
                 rx_on_cap=excluded.rx_on_cap,
                 sequence_number_cap=excluded.sequence_number_cap,
