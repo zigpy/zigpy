@@ -398,7 +398,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         )
         pass
 
-    async def _handle_channel_search(self, notif: GreenPowerProxy.GPCommissioningNotificationSchema) -> bool:
+    async def _handle_channel_search(self, notif: GreenPowerProxy.GPCommissioningNotificationSchema):
         search_payload, _ = GPChannelSearchPayload.deserialize(notif.payload)
         response = GreenPowerProxy.GPResponseSchema(options=0)
         response.temp_master_short_addr = notif.gpp_short_addr
@@ -412,8 +412,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             (self._application.state.network_info.channel - 11).to_bytes(1)
         )
         LOGGER.debug("Sending channel search packet with %s as temp master.", notif.gpp_short_addr._hex_repr())
-        await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.response, response.as_dict())
-        return False
+        await self._send_broadcast_or_unicast(
+            GreenPowerProxy.ClientCommandDefs.response,
+            response.as_dict(),
+            self._proxy_unicast_target)
 
     async def _send_rx_cap_pair_response(self, notif: GreenPowerProxy.GPCommissioningNotificationSchema, commission_payload: GPCommissioningPayload, green_power_data: GreenPowerDeviceData) -> bool:
         # First, build the response schema for the GPP...
@@ -442,14 +444,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             # payload.set_key_with_encryption(green_power_data.raw_key, notif.gpd_id, commission_payload.gpd_outgoing_counter)
         response.gpd_command_payload = t.LVBytes(payload.serialize())
 
-        if self._proxy_unicast_target is not None:
-            await self.send_no_response_command(
-                self._proxy_unicast_target,
-                GreenPowerProxy.ClientCommandDefs.response,
-                response.as_dict()
-            )
-        else:
-            await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.response, response.as_dict())
+        await self._send_broadcast_or_unicast(
+            GreenPowerProxy.ClientCommandDefs.response, 
+            response.as_dict(), 
+            self._proxy_unicast_target)
         return True
     
     async def _send_pairing(self, green_power_data: GreenPowerDeviceData, target_device: zigpy.device.Device | None = None, new_join: bool = False) -> bool:
@@ -500,15 +498,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
 
         # "target device" is for when we only want to send the pairing command
         # to a single device as opposed to a broadcast
-        if target_device is not None:
-            await self.send_no_response_command(
-                target_device,
-                GreenPowerProxy.ClientCommandDefs.pairing,
-                pairing.as_dict()
-            )
-        else:
-            await self._zcl_broadcast(GreenPowerProxy.ClientCommandDefs.pairing, pairing.as_dict())
-
+        await self._send_broadcast_or_unicast(
+            GreenPowerProxy.ClientCommandDefs.pairing, 
+            pairing.as_dict(), 
+            target_device)
         return True
 
     async def __dup_comm_frame_timeout(self, src_id: GreenPowerDeviceID, sleep_time: float = 5):
@@ -626,6 +619,13 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 radius=30,
             )
         )
+
+    async def _send_broadcast_or_unicast(self, command: ZCLCommandDef, kwargs: dict = {}, device: zigpy.device.Device | None = None):
+        if device is not None:
+            await self.send_no_response_command(device, command, kwargs)
+        else:
+            await self._zcl_broadcast(command, kwargs)
+
 
     async def _zcl_broadcast(
         self,
