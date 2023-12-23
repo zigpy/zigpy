@@ -7,24 +7,19 @@ import zigpy.device
 import zigpy.exceptions
 import zigpy.listeners
 import zigpy.profiles.zgp
-from zigpy.profiles.zgp import (
-    GREENPOWER_ENDPOINT_ID,
-    GREENPOWER_CLUSTER_ID,
-)
+from zigpy.profiles.zgp import GREENPOWER_ENDPOINT_ID, GREENPOWER_CLUSTER_ID
 import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import GPNotificationSchema, GreenPowerProxy
 import zigpy.zcl.foundation as foundation
-from zigpy.zgp.foundation import GPDeviceDescriptors
-from zigpy.zgp.types import GPCommunicationMode, GreenPowerDeviceID, GreenPowerDeviceData
+from zigpy.zgp.foundation import GPDeviceDescriptors, GPCommand
+from zigpy.zgp.types import GPCommunicationMode, GreenPowerDeviceID, GreenPowerDeviceData, GPAttributeReportingPayload
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
-    from zigpy.zcl.clusters.greenpower import GPNotificationResponseOptions
 
 LOGGER = logging.getLogger(__name__)
 
 class StrippedNotifSchema(foundation.CommandSchema):
-    gpd_id: GreenPowerDeviceID
     command_id: t.uint8_t
 
 class GreenPowerDevice(zigpy.device.Device):
@@ -105,17 +100,33 @@ class GreenPowerDevice(zigpy.device.Device):
         if error is not None:
             return
 
-        # We've gotta convert this to something nice that we can hand to
-        # ZGP. TODO: command payloads too, but I don't know if we'll need that at all
         if isinstance(args, GPNotificationSchema):
-            # Nobody seems to support notify response, tho the spec calls for it.
-            # I'm gonna remove it as it just clogs up the network for no reason
-            # asyncio.create_task(self._send_notif_response_packet(args))
+            if args.command_id == GPCommand.AttributeReporting:
+                attrs, _ = GPAttributeReportingPayload.deserialize(args.payload)
+                # we need EP1 for attr reporting, should be added in Quirks
+                ep = self.endpoints[1]
+                cluster = ep.in_clusters[attrs.cluster_id]
+                for report in attrs.reports:
+                    LOGGER.debug("Updating %s attr %s:%s with value %s", self.gpd_id, attrs.cluster_id._hex_repr(), report.attribute_id._hex_repr(), str(report.data))
+                    cluster.update_attribute(
+                        attrid=report.attribute_id,
+                        value=report.data,
+                    )
+                # XXX: not sure about this, but I think this is right; I don't think
+                # we should be propagating the attr updates all the way to ZHA, that
+                # should happen at some other layer, right?
+                return
+            elif args.command_id == GPCommand.ManufacturerSpecificReporting:
+                LOGGER.debug("GP Device skipping manu. specific attr reporting!")
+                return
+            
+            # We've gotta convert this to something nice that we can hand to
+            # ZHA, otherwise it'll get mad about LVBytes.
+            # TODO: command payloads too, but I don't know if we'll need that at all
             args = StrippedNotifSchema(
-                gpd_id=args.gpd_id,
                 command_id=args.command_id,
             )
-
+            
         cluster.handle_message(
             hdr, args, 
             dst_addressing=packet.dst.addr_mode if packet.dst is not None else None
@@ -132,6 +143,8 @@ class GreenPowerDevice(zigpy.device.Device):
             ):
                 break
 
+    # Nobody seems to support notify response, tho the spec calls for it.
+    # For future reference: this should happen on unicast comm mode notifs
     async def _send_notif_response_packet(self, notif: GPNotificationSchema):
         if self.green_power_data.communication_mode in (GPCommunicationMode.Unicast, GPCommunicationMode.UnicastLightweight):
             target_device = self.application.get_device(self.green_power_data.unicast_proxy)
