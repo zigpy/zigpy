@@ -1,25 +1,16 @@
 from __future__ import annotations
 import typing
-from click import command
 
 from cryptography.hazmat.primitives.ciphers.aead import AESCCM
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from zigpy.profiles.zgp import (
-    GREENPOWER_BROADCAST_GROUP,
-    GREENPOWER_DEFAULT_LINK_KEY
-)
 
 from .foundation import GPDeviceType
 from .security import zgp_decrypt, zgp_encrypt
+from zigpy.profiles.zgp import GREENPOWER_BROADCAST_GROUP, GREENPOWER_DEFAULT_LINK_KEY
 from zigpy.types import basic
 from zigpy.types.struct import Struct, StructField
-from zigpy.types.named import (
-    Group,
-    EUI64,
-    NWK,
-    ClusterId,
-    KeyData
-)
+from zigpy.types.named import ClusterId, EUI64, Group, KeyData, NWK
+from zigpy.zcl.foundation import DATA_TYPES as ZCL_DATA_TYPES
 
 if typing.TYPE_CHECKING:
     from typing_extensions import Self
@@ -307,6 +298,30 @@ class GPCommissioningPayload(Struct):
                     instance.client_cluster_list, data = ClusterListFactory(instance.client_cluster_length).deserialize(data)
         
         return [instance, data]
+
+
+class AttributeReport(Struct):
+    attribute_id: basic.uint16_t
+    attr_data_type: basic.uint8_t
+    data: None = StructField(dynamic_type=lambda s: ZCL_DATA_TYPES[s.attr_data_type][1])
+
+    @classmethod
+    def deserialize(cls: AttributeReport, data: bytes) -> tuple[AttributeReport, bytes]:
+        attr_id, data = basic.uint16_t.deserialize(data)
+        data_type, data = basic.uint8_t.deserialize(data)
+        deserialized, data = ZCL_DATA_TYPES[data_type][1].deserialize(data)
+        return [AttributeReport(
+            attribute_id=attr_id,
+            attr_data_type=data_type,
+            data=deserialized
+        ), data]
+
+
+# Figure 80
+class GPAttributeReportingPayload(Struct):
+    cluster_id: ClusterId
+    reports: basic.List[AttributeReport] 
+
 
 # Table 27
 class SinkTableEntry(Struct):
