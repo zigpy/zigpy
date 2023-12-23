@@ -9,8 +9,6 @@ import sys
 import typing
 import warnings
 
-from zigpy.zgp.types import GreenPowerDeviceData
-
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
 else:
@@ -38,6 +36,7 @@ import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
+    from zigpy.zgp.types import GreenPowerDeviceData
 
 APS_REPLY_TIMEOUT = 5
 APS_REPLY_TIMEOUT_EXTENDED = 28
