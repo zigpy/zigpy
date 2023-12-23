@@ -42,7 +42,6 @@ import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
-import zigpy.quirks.greenpower
 
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)

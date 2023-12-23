@@ -22,7 +22,7 @@ import zigpy.types as t
 from zigpy.types.basic import uint16_t
 import zigpy.zcl
 import zigpy.zcl.foundation as foundation
-import zigpy.zgp
+import zigpy.zgp.device
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -41,8 +41,6 @@ def get_device(
         found_type = next((ty for ty in _GP_REGISTRY if ty.match(device)), None)
         if found_type is not None:
             device = found_type(device._application, device.green_power_data)
-    
-    if device.is_green_power_device:
         return device
 
     if registry is None:
@@ -69,6 +67,16 @@ def register_uninitialized_device_message_handler(handler: typing.Callable) -> N
     """
     if handler not in _uninitialized_device_message_handlers:
         _uninitialized_device_message_handlers.append(handler)
+
+class CustomGreenPowerDevice(zigpy.zgp.device.GreenPowerDevice):
+    def __init_subclass__(cls, priority) -> None:
+        cls.priority = priority
+        _GP_REGISTRY.append(cls)
+        _GP_REGISTRY.sort(key=lambda c: c.priority)
+
+    @classmethod
+    def match(cls, device: zigpy.zgp.device.GreenPowerDevice) -> bool:
+        return False
 
 class CustomDevice(zigpy.device.Device):
     replacement: dict[str, typing.Any] = {}
