@@ -2602,4 +2602,5 @@ class PollControl(Cluster):
 
 # Backwards Compat
 from .greenpower import GreenPowerProxy
+
 GreenPowerProxy: Final = GreenPowerProxy

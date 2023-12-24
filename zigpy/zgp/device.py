@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import itertools
 import logging
 import typing
@@ -7,26 +8,33 @@ import zigpy.device
 import zigpy.exceptions
 import zigpy.listeners
 import zigpy.profiles.zgp
-from zigpy.profiles.zgp import GREENPOWER_ENDPOINT_ID, GREENPOWER_CLUSTER_ID
+from zigpy.profiles.zgp import GREENPOWER_CLUSTER_ID, GREENPOWER_ENDPOINT_ID
 import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import GPNotificationSchema, GreenPowerProxy
 import zigpy.zcl.foundation as foundation
-from zigpy.zgp.foundation import GPDeviceDescriptors, GPCommand
-from zigpy.zgp.types import GPCommunicationMode, GreenPowerDeviceID, GreenPowerDeviceData, GPAttributeReportingPayload
+from zigpy.zgp.foundation import GPCommand, GPDeviceDescriptors
+from zigpy.zgp.types import (
+    GPAttributeReportingPayload,
+    GPCommunicationMode,
+    GreenPowerDeviceData,
+    GreenPowerDeviceID,
+)
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
 
 LOGGER = logging.getLogger(__name__)
 
+
 class StrippedNotifSchema(foundation.CommandSchema):
     command_id: t.uint8_t
+
 
 class GreenPowerDevice(zigpy.device.Device):
     @classmethod
     def match(cls, device: typing.Self) -> bool:
         return True
-    
+
     def __init__(self, application: ControllerApplication, data: GreenPowerDeviceData):
         super().__init__(application, data.ieee, data.nwk)
         device_type = data.device_id
@@ -39,12 +47,12 @@ class GreenPowerDevice(zigpy.device.Device):
             self.model = GPDeviceDescriptors[device_type]
         else:
             self.model = "GreenPowerDevice"
-        
+
         ep = self.add_endpoint(zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID)
-        ep.status = 1 # XXX: resolve circular imports
+        ep.status = 1  # XXX: resolve circular imports
         ep.profile_id = zigpy.profiles.zgp.PROFILE_ID
         ep.device_type = zigpy.profiles.zgp.DeviceType.PROXY_BASIC
-        
+
         ep.add_input_cluster(zigpy.profiles.zgp.GREENPOWER_CLUSTER_ID)
         self.status = zigpy.device.Status.ENDPOINTS_INIT
 
@@ -64,15 +72,22 @@ class GreenPowerDevice(zigpy.device.Device):
     @zigpy.util.retryable_request(tries=5, delay=0.5)
     async def _initialize(self) -> None:
         """Expand this to build clusters if provided in commissioning notification"""
-        pass
 
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         if packet.src_ep != GREENPOWER_ENDPOINT_ID:
-            LOGGER.warn("Not GP endpoint message sent to %s:%d; why?", self.green_power_data.gpd_id._hex_repr(), packet.src_ep)
+            LOGGER.warn(
+                "Not GP endpoint message sent to %s:%d; why?",
+                self.green_power_data.gpd_id._hex_repr(),
+                packet.src_ep,
+            )
             return
         # assert packet.src_ep == GREENPOWER_ENDPOINT_ID
         if packet.cluster_id != GREENPOWER_CLUSTER_ID:
-            LOGGER.warn("Not GP cluster message sent to %s:%d; why?", self.green_power_data.gpd_id._hex_repr(), packet.cluster_id)
+            LOGGER.warn(
+                "Not GP cluster message sent to %s:%d; why?",
+                self.green_power_data.gpd_id._hex_repr(),
+                packet.cluster_id,
+            )
             return
 
         # Set radio details that can be read from any type of packet
@@ -107,7 +122,13 @@ class GreenPowerDevice(zigpy.device.Device):
                 ep = self.endpoints[1]
                 cluster = ep.in_clusters[attrs.cluster_id]
                 for report in attrs.reports:
-                    LOGGER.debug("Updating %s attr %s:%s with value %s", self.gpd_id, attrs.cluster_id._hex_repr(), report.attribute_id._hex_repr(), str(report.data))
+                    LOGGER.debug(
+                        "Updating %s attr %s:%s with value %s",
+                        self.gpd_id,
+                        attrs.cluster_id._hex_repr(),
+                        report.attribute_id._hex_repr(),
+                        str(report.data),
+                    )
                     cluster.update_attribute(
                         attrid=report.attribute_id,
                         value=report.data,
@@ -119,19 +140,20 @@ class GreenPowerDevice(zigpy.device.Device):
             elif args.command_id == GPCommand.ManufacturerSpecificReporting:
                 LOGGER.debug("GP Device skipping manu. specific attr reporting!")
                 return
-            
+
             # We've gotta convert this to something nice that we can hand to
             # ZHA, otherwise it'll get mad about LVBytes.
             # TODO: command payloads too, but I don't know if we'll need that at all
             args = StrippedNotifSchema(
                 command_id=args.command_id,
             )
-            
+
         cluster.handle_message(
-            hdr, args, 
-            dst_addressing=packet.dst.addr_mode if packet.dst is not None else None
+            hdr,
+            args,
+            dst_addressing=packet.dst.addr_mode if packet.dst is not None else None,
         )
-        
+
         # Pass the request off to a listener, if one is registered
         for listener in itertools.chain(
             self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
@@ -146,20 +168,29 @@ class GreenPowerDevice(zigpy.device.Device):
     # Nobody seems to support notify response, tho the spec calls for it.
     # For future reference: this should happen on unicast comm mode notifs
     async def _send_notif_response_packet(self, notif: GPNotificationSchema):
-        if self.green_power_data.communication_mode in (GPCommunicationMode.Unicast, GPCommunicationMode.UnicastLightweight):
-            target_device = self.application.get_device(self.green_power_data.unicast_proxy)
+        if self.green_power_data.communication_mode in (
+            GPCommunicationMode.Unicast,
+            GPCommunicationMode.UnicastLightweight,
+        ):
+            target_device = self.application.get_device(
+                self.green_power_data.unicast_proxy
+            )
             if target_device is not None:
                 # send notification response
                 endpoint = target_device.endpoints[GREENPOWER_ENDPOINT_ID]
                 cluster = endpoint.out_clusters[GREENPOWER_CLUSTER_ID]
                 await self._application._greenpower.send_no_response_command(
-                    target_device, 
-                    GreenPowerProxy.ClientCommandDefs.notification_response, 
+                    target_device,
+                    GreenPowerProxy.ClientCommandDefs.notification_response,
                     {
-                        "options":cluster.GPNotificationResponseOptions(first_to_forward=1),
-                        "gpd_id":self.gpd_id,
-                        "frame_counter":notif.frame_counter
-                    }
+                        "options": cluster.GPNotificationResponseOptions(
+                            first_to_forward=1
+                        ),
+                        "gpd_id": self.gpd_id,
+                        "frame_counter": notif.frame_counter,
+                    },
                 )
             else:
-                self.error("Could not respove unicast proxy device to reply with response; failing!")
+                self.error(
+                    "Could not respove unicast proxy device to reply with response; failing!"
+                )

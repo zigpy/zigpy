@@ -23,9 +23,9 @@ import zigpy.state
 import zigpy.types as t
 import zigpy.typing
 import zigpy.util
-import zigpy.zgp.device
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zdo import types as zdo_t
+import zigpy.zgp.device
 
 LOGGER = logging.getLogger(__name__)
 
@@ -73,6 +73,7 @@ sqlite3 = _import_compatible_sqlite3(min_version=MIN_SQLITE_VERSION)
 def _register_sqlite_adapters():
     def adapt_ieee(eui64):
         return str(eui64)
+
     def adapt_key_data(key):
         return str(key)
 
@@ -82,9 +83,9 @@ def _register_sqlite_adapters():
 
     def convert_ieee(s):
         return t.EUI64.convert(s.decode())
+
     def convert_key_data(s):
         return t.KeyData.convert(s.decode())
-
 
     sqlite3.register_converter("ieee", convert_ieee)
     sqlite3.register_converter("key_data", convert_key_data)
@@ -356,10 +357,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _gpd_counter_updated(self, ieee: t.EUI64, counter: t.uint32_t):
         await self._db.execute(
             f"UPDATE green_power_data{DB_V} SET frame_counter = :counter WHERE ieee = :ieee",
-            {
-                "counter": counter,
-                "ieee": ieee
-            }
+            {"counter": counter, "ieee": ieee},
         )
 
     def routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:

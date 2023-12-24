@@ -237,7 +237,7 @@ def broadcast(
     command,
     grpid,
     radius,
-    sequence = None,
+    sequence=None,
     *args,
     broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
     **kwargs,

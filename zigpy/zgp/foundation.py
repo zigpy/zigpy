@@ -1,5 +1,6 @@
 import zigpy.types as t
 
+
 # Table 51
 class GPDeviceType(t.enum8):
     SWITCH_SIMPLE_ONE_STATE = 0x00
@@ -21,6 +22,7 @@ class GPDeviceType(t.enum8):
     SENSOR_PRESSURE = 0x31
     SENSOR_FLOW = 0x32
     SENSOR_ENVIRONMENT_INDOOR = 0x33
+
 
 class GPCommand(t.enum8):
     Identify = 0x00
@@ -78,11 +80,12 @@ class GPCommand(t.enum8):
     ShortPress2of2 = 0x68
     AttributeReporting = 0xA0
     ManufacturerSpecificReporting = 0xA1
-    Commissioning = 0xe0
-    CommissionSuccess = 0xe2
-    ChannelSearch = 0xe3
-    CommissioningResponse = 0xf0
-    ChannelSearchResponse = 0xf3
+    Commissioning = 0xE0
+    CommissionSuccess = 0xE2
+    ChannelSearch = 0xE3
+    CommissioningResponse = 0xF0
+    ChannelSearchResponse = 0xF3
+
 
 GPDeviceDescriptors = {
     GPDeviceType.SWITCH_SIMPLE_ONE_STATE: "Simple Generic 1-state",
@@ -100,5 +103,5 @@ GPDeviceDescriptors = {
     GPDeviceType.SENSOR_TEMPERATURE: "Temperature Sensor",
     GPDeviceType.SENSOR_PRESSURE: "Pressure Sensor",
     GPDeviceType.SENSOR_FLOW: "Flow Sensor",
-    GPDeviceType.SENSOR_ENVIRONMENT_INDOOR: "Indoor Environment Sensor"
+    GPDeviceType.SENSOR_ENVIRONMENT_INDOOR: "Indoor Environment Sensor",
 }

@@ -14,8 +14,6 @@ import typing
 from typing import Any, Coroutine, TypeVar
 import warnings
 
-from zigpy.profiles.zgp import GREENPOWER_ENDPOINT_ID
-
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
 else:
@@ -527,7 +525,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     if device.node_desc is not None and device.node_desc.is_end_device
                     else 7
                 ):
-                    await device.zdo.leave(remove_children=remove_children, rejoin=rejoin)
+                    await device.zdo.leave(
+                        remove_children=remove_children, rejoin=rejoin
+                    )
         except (zigpy.exceptions.DeliveryError, asyncio.TimeoutError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
@@ -750,7 +750,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 output_clusters=[],
             )
         )
-        
+
         try:
             await self.add_endpoint(
                 zdo_types.SimpleDescriptor(
@@ -758,12 +758,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     profile=zigpy.profiles.zgp.PROFILE_ID,
                     device_type=zigpy.profiles.zgp.DeviceType.TARGET,
                     device_version=0b0000,
-                    input_clusters=[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id],
-                    output_clusters=[zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id],
+                    input_clusters=[
+                        zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id
+                    ],
+                    output_clusters=[
+                        zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id
+                    ],
                 )
             )
         except Exception as e:
-            LOGGER.warn("Failed to add ZGP endpoint; here's hoping it works anyway. Message: %s", str(e))
+            LOGGER.warn(
+                "Failed to add ZGP endpoint; here's hoping it works anyway. Message: %s",
+                str(e),
+            )
 
         for endpoint in self.config[conf.CONF_ADDITIONAL_ENDPOINTS]:
             await self.add_endpoint(endpoint)
@@ -1314,7 +1321,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def get_endpoint_id(self, cluster_id: int, is_server_cluster: bool = False) -> int:
         """Returns coordinator endpoint id for specified cluster id."""
-        if(cluster_id == zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id):
+        if cluster_id == zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id:
             return zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID
         return DEFAULT_ENDPOINT_ID
 

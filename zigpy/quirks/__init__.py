@@ -33,6 +33,7 @@ _DEVICE_REGISTRY = DeviceRegistry()
 _GP_REGISTRY = []
 _uninitialized_device_message_handlers = []
 
+
 def get_device(
     device: zigpy.device.Device, registry: DeviceRegistry | None = None
 ) -> zigpy.device.Device:
@@ -68,6 +69,7 @@ def register_uninitialized_device_message_handler(handler: typing.Callable) -> N
     if handler not in _uninitialized_device_message_handlers:
         _uninitialized_device_message_handlers.append(handler)
 
+
 class CustomGreenPowerDevice(zigpy.zgp.device.GreenPowerDevice):
     def __init_subclass__(cls, priority) -> None:
         cls.priority = priority
@@ -77,6 +79,7 @@ class CustomGreenPowerDevice(zigpy.zgp.device.GreenPowerDevice):
     @classmethod
     def match(cls, device: zigpy.zgp.device.GreenPowerDevice) -> bool:
         return False
+
 
 class CustomDevice(zigpy.device.Device):
     replacement: dict[str, typing.Any] = {}

@@ -69,6 +69,7 @@ class DeviceType(t.enum16):
     CONTROL_BRIDGE = 0x0840
     ON_OFF_SENSOR = 0x0850
 
+
 CLUSTERS = {
     # Generic
     DeviceType.ON_OFF_SWITCH: ([0x0007], [0x0004, 0x0005, 0x0006]),
