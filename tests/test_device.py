@@ -116,13 +116,12 @@ async def test_request(dev):
 async def test_request_without_reply(dev):
     seq = int_sentinel.tsn
 
-    async def mock_req(*args, **kwargs):
-        dev._pending[seq].result.set_result(sentinel.result)
-
-    dev.application.send_packet = AsyncMock(side_effect=mock_req)
+    dev._pending.new = MagicMock()
+    dev.application.send_packet = AsyncMock()
     r = await dev.request(1, 2, 3, 3, seq, b"", expect_reply=False)
     assert r is None
     assert dev._application.send_packet.call_count == 1
+    assert len(dev._pending.new.mock_calls) == 0
 
 
 async def test_failed_request(dev):
