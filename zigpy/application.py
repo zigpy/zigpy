@@ -131,6 +131,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         settings if necessary.
         """
 
+        # Make sure the first thing we do is feed the watchdog
+        if self.config[conf.CONF_WATCHDOG_ENABLED]:
+            await self.watchdog_feed()
+            self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+
         last_backup = self.backups.most_recent_backup()
 
         try:
@@ -209,9 +214,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             self.topology.start_periodic_scans(
                 period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
             )
-
-        if self.config[conf.CONF_WATCHDOG_ENABLED]:
-            self._watchdog_task = asyncio.create_task(self._watchdog_loop())
 
         # Only initialize OTA after we've fully loaded
         await self.ota.initialize()
@@ -637,9 +639,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """
         raise NotImplementedError()  # pragma: no cover
 
-    async def _watchdog_feed(self) -> None:
+    async def watchdog_feed(self) -> None:
         """
         Reset the firmware watchdog timer.
+        """
+        LOGGER.debug("Feeding watchdog")
+        await self._watchdog_feed()
+
+    async def _watchdog_feed(self) -> None:
+        """
+        Reset the firmware watchdog timer. Implemented by the radio library.
         """
 
     async def _watchdog_loop(self) -> None:
@@ -653,8 +662,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             await asyncio.sleep(self._watchdog_period)
 
             try:
-                LOGGER.debug("Feeding watchdog")
-                await self._watchdog_feed()
+                await self.watchdog_feed()
             except Exception as e:
                 LOGGER.warning("Watchdog failure", exc_info=e)
 
