@@ -131,6 +131,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         settings if necessary.
         """
 
+        # Make sure the first thing we do is feed the watchdog
+        if self.config[conf.CONF_WATCHDOG_ENABLED]:
+            self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+
         last_backup = self.backups.most_recent_backup()
 
         try:
@@ -209,9 +213,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             self.topology.start_periodic_scans(
                 period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
             )
-
-        if self.config[conf.CONF_WATCHDOG_ENABLED]:
-            self._watchdog_task = asyncio.create_task(self._watchdog_loop())
 
         # Only initialize OTA after we've fully loaded
         await self.ota.initialize()
@@ -650,8 +651,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         LOGGER.debug("Starting watchdog loop")
 
         while True:
-            await asyncio.sleep(self._watchdog_period)
-
             try:
                 LOGGER.debug("Feeding watchdog")
                 await self._watchdog_feed()
@@ -662,6 +661,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 self.connection_lost(e)
 
                 break
+
+            await asyncio.sleep(self._watchdog_period)
 
         LOGGER.debug("Stopping watchdog loop")
 
