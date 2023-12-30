@@ -1464,7 +1464,8 @@ async def test_watchdog(app):
     await app.startup()
     assert app._watchdog_task is not None
 
-    assert app._watchdog_feed.mock_calls == []
+    # We call it once during startup synchronously
+    assert app._watchdog_feed.mock_calls == [call()]
     assert app.connection_lost.mock_calls == []
 
     await asyncio.sleep(0.5)
