@@ -289,10 +289,10 @@ class Request(typing.Generic[T]):
 
 
 class Requests(dict, typing.Generic[T]):
-    def new(self, sequence: T) -> Request:
+    def new(self, sequence: T) -> Request[T]:
         """Wrap new request into a context manager."""
         if sequence in self:
-            LOGGER.debug("Duplicate %s TSN: pending %s", self)
+            LOGGER.debug("Duplicate %s TSN: pending %s", sequence, self)
             raise ControllerException(f"Duplicate TSN: {sequence}")
 
         return Request(self, sequence)
