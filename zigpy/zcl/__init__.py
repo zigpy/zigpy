@@ -320,7 +320,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         request.serialize()  # Throw an error before generating a new TSN
 
         if tsn is None:
-            tsn = self._endpoint.device.application.get_sequence()
+            tsn = self._endpoint.device.get_sequence()
 
         frame_control = foundation.FrameControl(
             frame_type=(
