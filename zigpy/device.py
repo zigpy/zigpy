@@ -73,7 +73,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._manufacturer: str | None = None
         self._model: str | None = None
         self.node_desc: zdo_t.NodeDescriptor | None = None
-        self._pending: zigpy.util.Requests = zigpy.util.Requests()
+        self._pending: zigpy.util.Requests[t.uint8_t] = zigpy.util.Requests()
         self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
 
