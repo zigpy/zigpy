@@ -295,22 +295,26 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             timeout = APS_REPLY_TIMEOUT_EXTENDED
             extended_timeout = True
 
-        with self._pending.new(sequence) as req:
-            await self._application.request(
-                self,
-                profile,
-                cluster,
-                src_ep,
-                dst_ep,
-                sequence,
-                data,
-                expect_reply=expect_reply,
-                use_ieee=use_ieee,
-                extended_timeout=extended_timeout,
-            )
+        send_request = self._application.request(
+            self,
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            sequence,
+            data,
+            expect_reply=expect_reply,
+            use_ieee=use_ieee,
+            extended_timeout=extended_timeout,
+        )
 
-            if not expect_reply:
-                return None
+        if not expect_reply:
+            await send_request
+            return None
+
+        # Only create a pending request if we are expecting a reply
+        with self._pending.new(sequence) as req:
+            await send_request
 
             async with asyncio_timeout(timeout):
                 return await req.result
