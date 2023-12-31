@@ -386,8 +386,8 @@ async def test_read_attributes_uncached():
             )
 
     epmock = MagicMock()
-    epmock._device.application.get_sequence.return_value = 123
-    epmock.device.application.get_sequence.return_value = 123
+    epmock._device.get_sequence.return_value = 123
+    epmock.device.get_sequence.return_value = 123
     cluster = TestCluster(epmock, True)
     cluster2 = TestCluster2(epmock, True)
 
@@ -478,8 +478,8 @@ async def test_read_attributes_default_response():
             )
 
     epmock = MagicMock()
-    epmock._device.application.get_sequence.return_value = 123
-    epmock.device.application.get_sequence.return_value = 123
+    epmock._device.get_sequence.return_value = 123
+    epmock.device.get_sequence.return_value = 123
     cluster = TestCluster(epmock, True)
 
     async def mockrequest(
@@ -1023,6 +1023,8 @@ async def test_request_with_kwargs(real_device):
     ep = quirked.endpoints[1]
 
     with patch.object(ep, "request", AsyncMock()) as request_mock:
+        ep.device.get_sequence = MagicMock(return_value=1)
+
         await ep.level.move_to_level(0x00, 123)
         await ep.level.move_to_level(0x00, transition_time=123)
         await ep.level.move_to_level(level=0x00, transition_time=123)

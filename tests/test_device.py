@@ -464,7 +464,7 @@ async def test_request_exception_propagation(dev, event_loop):
     ep.add_input_cluster(Basic.cluster_id)
     ep.deserialize = MagicMock(side_effect=RuntimeError())
 
-    dev.application.get_sequence = MagicMock(return_value=tsn)
+    dev.get_sequence = MagicMock(return_value=tsn)
 
     event_loop.call_soon(
         dev.packet_received,

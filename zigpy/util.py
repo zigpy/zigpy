@@ -253,12 +253,14 @@ def convert_install_code(code: bytes) -> t.KeyData:
     return aes_mmo_hash(code)
 
 
-class Request:
+T = typing.TypeVar("T")
+
+
+class Request(typing.Generic[T]):
     """Request context manager."""
 
-    def __init__(self, pending: dict, sequence: t.uint8_t) -> None:
+    def __init__(self, pending: dict, sequence: T) -> None:
         """Init context manager for requests."""
-        assert sequence not in pending
         self._pending = pending
         self._result: asyncio.Future = asyncio.Future()
         self._sequence = sequence
@@ -268,8 +270,8 @@ class Request:
         return self._result
 
     @property
-    def sequence(self) -> t.uint8_t:
-        """Send Future."""
+    def sequence(self) -> T:
+        """Request sequence."""
         return self._sequence
 
     def __enter__(self) -> Request:
@@ -286,14 +288,14 @@ class Request:
         return not exc_type
 
 
-class Requests(dict):
-    def new(self, sequence: t.uint8_t) -> Request:
+class Requests(dict, typing.Generic[T]):
+    def new(self, sequence: T) -> Request[T]:
         """Wrap new request into a context manager."""
-        try:
-            return Request(self, sequence)
-        except AssertionError:
-            LOGGER.debug("Duplicate %s TSN", sequence)
-            raise ControllerException(f"duplicate {sequence} TSN") from AssertionError
+        if sequence in self:
+            LOGGER.debug("Duplicate %s TSN: pending %s", sequence, self)
+            raise ControllerException(f"Duplicate TSN: {sequence}")
+
+        return Request(self, sequence)
 
 
 class CatchingTaskMixin(LocalLogMixin):

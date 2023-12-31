@@ -73,12 +73,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._manufacturer: str | None = None
         self._model: str | None = None
         self.node_desc: zdo_t.NodeDescriptor | None = None
-        self._pending: zigpy.util.Requests = zigpy.util.Requests()
+        self._pending: zigpy.util.Requests[t.uint8_t] = zigpy.util.Requests()
         self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
+        self._send_sequence: int = 0
 
         # Retained for backwards compatibility, will be removed in a future release
         self.status = Status.NEW
+
+    def get_sequence(self) -> t.uint8_t:
+        self._send_sequence = (self._send_sequence + 1) % 256
+        return self._send_sequence
 
     @property
     def name(self) -> str:
