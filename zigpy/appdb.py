@@ -585,12 +585,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     def network_backup_removed(self, backup: zigpy.backups.NetworkBackup) -> None:
-        self.enqueue("_network_backup_removed", json.dumps(backup.as_dict()))
+        self.enqueue("_network_backup_removed", backup.backup_time)
 
-    async def _network_backup_removed(self, backup_json: str) -> None:
-        q = f"""DELETE FROM network_backups{DB_V} WHERE backup_json=?"""
+    async def _network_backup_removed(self, backup_time: datetime) -> None:
+        q = f"""DELETE FROM network_backups{DB_V}
+                    WHERE json_extract(backup_json, '$.backup_time')=?"""
 
-        await self.execute(q, (backup_json,))
+        await self.execute(q, (backup_time.isoformat(),))
         await self._db.commit()
 
     async def load(self) -> None:
