@@ -1075,6 +1075,37 @@ async def test_appdb_network_backups(tmp_path, backup_factory):  # noqa: F811
     await app3.shutdown()
 
 
+async def test_appdb_network_backups_format_change(
+    tmp_path, backup_factory
+):  # noqa: F811
+    db = tmp_path / "test.db"
+
+    backup = backup_factory()
+    backup.as_dict = MagicMock(return_value={"some new key": 1, **backup.as_dict()})
+
+    app1 = await make_app_with_db(db)
+    app1.backups.add_backup(backup)
+    await app1.shutdown()
+
+    # The backup is reloaded from the database as well
+    app2 = await make_app_with_db(db)
+    assert len(app2.backups.backups) == 1
+    assert app2.backups.backups[0] == backup
+
+    new_backup = backup_factory()
+    new_backup.network_info.network_key.tx_counter += 10000
+
+    app2.backups.add_backup(new_backup)
+    await app2.shutdown()
+
+    # The database will contain only the single backup
+    with patch("zigpy.backups.BackupManager.add_backup") as mock_add_backup:
+        app3 = await make_app_with_db(db)
+        await app3.shutdown()
+
+    assert mock_add_backup.mock_calls == [call(new_backup, suppress_event=True)]
+
+
 async def test_appdb_persist_coordinator_info(tmp_path):  # noqa: F811
     db = tmp_path / "test.db"
 
