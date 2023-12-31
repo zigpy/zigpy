@@ -31,8 +31,14 @@ class Group(ListenableMixin, dict):
         self._group_id: t.Group = t.Group(group_id)
         self._name: str = name
         self._endpoint: GroupEndpoint = GroupEndpoint(self)
+        self._send_sequence = 0
+
         if groups is not None:
             self.add_listener(groups)
+
+    def get_sequence(self) -> t.uint8_t:
+        self._send_sequence = (self._send_sequence + 1) % 256
+        return self._send_sequence
 
     def add_member(self, ep: Endpoint, suppress_event: bool = False) -> Group:
         if not isinstance(ep, Endpoint):
