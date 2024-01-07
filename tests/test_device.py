@@ -124,6 +124,22 @@ async def test_request_without_reply(dev):
     assert len(dev._pending.new.mock_calls) == 0
 
 
+async def test_request_tsn_error(dev):
+    seq = int_sentinel.tsn
+
+    dev._pending.new = MagicMock(side_effect=zigpy.exceptions.ControllerException())
+    dev.application.request = MagicMock()
+    dev.application.send_packet = AsyncMock()
+
+    # We don't leave a dangling coroutine on error
+    with pytest.raises(zigpy.exceptions.ControllerException):
+        await dev.request(1, 2, 3, 3, seq, b"")
+
+    assert dev._application.send_packet.call_count == 0
+    assert dev._application.request.call_count == 0
+    assert len(dev._pending.new.mock_calls) == 1
+
+
 async def test_failed_request(dev):
     assert dev.last_seen is None
     dev._application.send_packet = AsyncMock(

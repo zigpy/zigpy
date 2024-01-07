@@ -300,7 +300,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             timeout = APS_REPLY_TIMEOUT_EXTENDED
             extended_timeout = True
 
-        send_request = self._application.request(
+        # Use a lambda so we don't leave the coroutine unawaited in case of an exception
+        send_request = lambda: self._application.request(  # noqa: E731
             self,
             profile,
             cluster,
@@ -314,12 +315,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         )
 
         if not expect_reply:
-            await send_request
+            await send_request()
             return None
 
         # Only create a pending request if we are expecting a reply
         with self._pending.new(sequence) as req:
-            await send_request
+            await send_request()
 
             async with asyncio_timeout(timeout):
                 return await req.result
