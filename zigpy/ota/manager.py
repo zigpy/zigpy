@@ -75,7 +75,7 @@ class OTAManager:
         self.stack.close()
 
     async def _image_query_req(
-        self, hdr: foundation.ZCLHeader, command: foundation.CommandSchema
+        self, hdr: foundation.ZCLHeader, command: Ota.QueryNextImageCommand
     ) -> None:
         """Handle image query request."""
         assert self.ota_cluster
@@ -89,10 +89,28 @@ class OTAManager:
         )
 
     async def _image_block_req(
-        self, hdr: foundation.ZCLHeader, command: foundation.CommandSchema
+        self, hdr: foundation.ZCLHeader, command: Ota.ImageBlockCommand
     ) -> None:
         """Handle image block request."""
         assert self.ota_cluster
+        self.device.debug(
+            (
+                "OTA image_block handler for '%s %s': field_control=%s"
+                ", manufacturer_id=%s, image_type=%s, file_version=%s"
+                ", file_offset=%s, max_data_size=%s, request_node_addr=%s"
+                ", block_request_delay=%s"
+            ),
+            self.device.manufacturer,
+            self.device.model,
+            command.field_control,
+            command.manufacturer_code,
+            command.image_type,
+            command.file_version,
+            command.file_offset,
+            command.maximum_data_size,
+            command.request_node_addr,
+            command.minimum_block_period,
+        )
         block = self._image_data[
             command.file_offset : command.file_offset + command.maximum_data_size
         ]
@@ -124,6 +142,18 @@ class OTAManager:
     ) -> None:
         """Handle upgrade end request."""
         assert self.ota_cluster
+        self.device.debug(
+            (
+                "OTA upgrade_end handler for '%s %s': status=%s"
+                ", manufacturer_id=%s, image_type=%s, file_version=%s"
+            ),
+            self.device.manufacturer,
+            self.device.model,
+            command.status,
+            self.image.header.manufacturer_id,
+            self.image.header.image_type,
+            self.image.header.file_version,
+        )
         await self.ota_cluster.upgrade_end_response(
             manufacturer_code=self.image.header.manufacturer_id,
             image_type=self.image.header.image_type,
@@ -161,8 +191,7 @@ async def update_firmware(
     def progress(current: int, total: int):
         progress = (100 * current) / total
         device.info(
-            "OTA progress for %s: (%d / %d): %0.4f%%",
-            device,
+            "OTA upgrade progress: (%d / %d): %0.4f%%",
             current,
             total,
             progress,
