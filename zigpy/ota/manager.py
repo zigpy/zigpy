@@ -43,7 +43,7 @@ class OTAManager:
             self.device._application.callback_for_response(
                 src=self.device,
                 filters=[
-                    Ota.ServerCommandDefs.query_next_image.schema(),
+                    Ota.QueryNextImageCommand(),
                 ],
                 callback=self._image_query_req,
             )
@@ -53,7 +53,7 @@ class OTAManager:
             self.device._application.callback_for_response(
                 src=self.device,
                 filters=[
-                    Ota.ServerCommandDefs.image_block.schema(),
+                    Ota.ImageBlockCommand(),
                 ],
                 callback=self._image_block_req,
             )
