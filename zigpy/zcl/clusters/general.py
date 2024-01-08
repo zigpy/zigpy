@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Final
 
 import zigpy.types as t
-from zigpy.typing import AddressingMode
+from zigpy.typing import AddressingMode, EndpointType
 from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
@@ -2156,6 +2156,10 @@ class Ota(Cluster):
             direction=True,
         )
 
+    def __init__(self, endpoint: EndpointType, is_server: bool = True) -> None:
+        super().__init__(endpoint, is_server)
+        self._image_event_sent: bool = False
+
     def handle_cluster_request(
         self,
         hdr: foundation.ZCLHeader,
@@ -2207,6 +2211,9 @@ class Ota(Cluster):
         tsn,
         model=None,
     ):
+        # TODO this is a massive HACK and needs to be addressed
+        if self._image_event_sent:
+            return
         self.debug(
             (
                 "OTA query_next_image handler for '%s %s': "
@@ -2239,11 +2246,13 @@ class Ota(Cluster):
             )
             if should_update:
                 self.endpoint.device.listener_event("device_ota_update_available", img)
+                self._image_event_sent = True
         else:
             self.debug("No OTA image is available")
-        await self.query_next_image_response(
-            foundation.Status.NO_IMAGE_AVAILABLE, tsn=tsn
-        )
+        if not self._image_event_sent:
+            await self.query_next_image_response(
+                foundation.Status.NO_IMAGE_AVAILABLE, tsn=tsn
+            )
 
 
 class ScheduleRecord(t.Struct):
