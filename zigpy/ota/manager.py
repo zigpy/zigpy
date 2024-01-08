@@ -181,8 +181,9 @@ class OTAManager:
 async def update_firmware(
     device: Device,
     image: BaseOTAImage,
+    progress_callback: callable = None,
     force: bool = False,
-) -> None:
+) -> foundation.Status:
     """Update the firmware on a Zigbee device."""
     if force:
         # Force it to send the image even if it's the same version
@@ -196,11 +197,9 @@ async def update_firmware(
             total,
             progress,
         )
-        device.listener_event(
-            "device_ota_progress",
-            {"current": current, "total": total, "progress": progress},
-        )
+        if progress_callback is not None:
+            progress_callback(current, total, progress)
 
     with OTAManager(device, image, progress_callback=progress) as ota:
         await ota.notify()
-        await ota.wait()
+        return await ota.wait()
