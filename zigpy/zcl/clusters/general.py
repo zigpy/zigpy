@@ -2156,10 +2156,6 @@ class Ota(Cluster):
             direction=True,
         )
 
-    def __init__(self, endpoint: EndpointType, is_server: bool = True) -> None:
-        super().__init__(endpoint, is_server)
-        self._image_event_sent: bool = False
-
     def handle_cluster_request(
         self,
         hdr: foundation.ZCLHeader,
@@ -2211,9 +2207,10 @@ class Ota(Cluster):
         tsn,
         model=None,
     ):
-        # TODO this is a massive HACK and needs to be addressed
-        if self._image_event_sent:
+        # we don't want the cluster to do anything here because it would interfere with the OTA manager
+        if self.endpoint.device.ota_in_progress:
             return
+
         self.debug(
             (
                 "OTA query_next_image handler for '%s %s': "
@@ -2245,14 +2242,15 @@ class Ota(Cluster):
                 should_update,
             )
             if should_update:
+                # send an event to listener(s) to let them know that an image is available
                 self.endpoint.device.listener_event("device_ota_update_available", img)
-                self._image_event_sent = True
         else:
             self.debug("No OTA image is available")
-        if not self._image_event_sent:
-            await self.query_next_image_response(
-                foundation.Status.NO_IMAGE_AVAILABLE, tsn=tsn
-            )
+
+        # always send no image available response so that the device doesn't update autonomously
+        await self.query_next_image_response(
+            foundation.Status.NO_IMAGE_AVAILABLE, tsn=tsn
+        )
 
 
 class ScheduleRecord(t.Struct):

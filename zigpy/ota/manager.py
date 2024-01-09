@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import TYPE_CHECKING
 
-from zigpy.device import Device
-from zigpy.ota.image import BaseOTAImage
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import Ota
+
+if TYPE_CHECKING:
+    from zigpy.device import Device
+    from zigpy.ota.image import BaseOTAImage
 
 
 class OTAManager:
