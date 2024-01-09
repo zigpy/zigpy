@@ -495,12 +495,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             expect_reply=False,
             use_ieee=use_ieee,
         )
-    
+
     async def update_firmware(
-            self, 
-            firmware_image: BaseOTAImage, 
-            progress_callback: callable = None, 
-            force: bool = False
+        self,
+        firmware_image: BaseOTAImage,
+        progress_callback: callable = None,
+        force: bool = False,
     ) -> None:
         """Update device firmware."""
         if self.ota_in_progress:

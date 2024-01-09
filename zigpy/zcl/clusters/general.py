@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Final
 
 import zigpy.types as t
-from zigpy.typing import AddressingMode, EndpointType
+from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
