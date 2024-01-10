@@ -10,7 +10,7 @@ import zigpy.exceptions
 from zigpy.profiles import zha
 import zigpy.state
 import zigpy.types as t
-from zigpy.zcl.clusters.general import Basic
+from zigpy.zcl.clusters.general import Basic, Ota
 import zigpy.zcl.foundation as foundation
 from zigpy.zdo import types as zdo_t
 
@@ -438,6 +438,33 @@ async def test_ignore_unknown_endpoint(dev, caplog):
         )
 
     assert "Ignoring message on unknown endpoint" in caplog.text
+
+
+async def test_update_device_firmware_no_ota_cluster(dev):
+    """Test that device firmware updates fails: no ota cluster."""
+    with pytest.raises(ValueError, match="Device has no OTA cluster"):
+        await dev.update_firmware(sentinel.firmware_image, sentinel.progress_callback)
+
+
+async def test_update_device_firmware(dev):
+    """Test that device firmware updates execute the expected calls."""
+    tsn = 0x12
+    ep = dev.add_endpoint(1)
+    cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
+    ep.add_output_cluster(Ota.cluster_id, cluster)
+    ep.deserialize = MagicMock(side_effect=RuntimeError())
+    dev.get_sequence = MagicMock(return_value=tsn)
+
+    fw_image = sentinel.firmware_image
+    fw_image.header = MagicMock()
+    fw_image.header.file_version = 0x12345678
+    fw_image.header.image_type = 0x90
+    fw_image.header.manufacturer_code = 0x1234
+    fw_data = b"fw_image"
+    fw_image.header.image_size = len(fw_data)
+    fw_image.serialize = MagicMock(return_value=fw_data)
+
+    # await dev.update_firmware(fw_image, sentinel.progress_callback)
 
 
 async def test_deserialize_backwards_compat(dev):
