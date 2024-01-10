@@ -603,9 +603,20 @@ async def test_update_device_firmware(monkeypatch, dev):
     progress_callback = MagicMock()
     await dev.update_firmware(fw_image, progress_callback)
 
+    assert dev.application.send_packet.await_count == 5
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
+
+    progress_callback.reset_mock()
+    dev.application.send_packet.reset_mock()
+    await dev.update_firmware(fw_image, progress_callback=progress_callback, force=True)
+
+    assert dev.application.send_packet.await_count == 5
+    assert progress_callback.call_count == 2
+    assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
+    assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
+    assert fw_image.header.file_version == 0xFFFFFFFF - 1
 
 
 async def test_deserialize_backwards_compat(dev):
