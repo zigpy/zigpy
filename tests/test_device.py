@@ -453,6 +453,13 @@ async def test_update_device_firmware_no_ota_cluster(dev):
         await dev.update_firmware(sentinel.firmware_image, sentinel.progress_callback)
 
 
+async def test_update_device_firmware_already_in_progress(dev, caplog):
+    """Test that device firmware updates no ops when update is in progress."""
+    dev.ota_in_progress = True
+    await dev.update_firmware(sentinel.firmware_image, sentinel.progress_callback)
+    assert "OTA already in progress" in caplog.text
+
+
 async def test_update_device_firmware(monkeypatch, dev):
     """Test that device firmware updates execute the expected calls."""
     tsn = 0x12
