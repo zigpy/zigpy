@@ -447,6 +447,11 @@ async def test_update_device_firmware_no_ota_cluster(dev):
     with pytest.raises(ValueError, match="Device has no OTA cluster"):
         await dev.update_firmware(sentinel.firmware_image, sentinel.progress_callback)
 
+    dev.add_endpoint(1)
+    dev.endpoints[1].output_clusters = MagicMock(side_effect=KeyError)
+    with pytest.raises(ValueError, match="Device has no OTA cluster"):
+        await dev.update_firmware(sentinel.firmware_image, sentinel.progress_callback)
+
 
 async def test_update_device_firmware(monkeypatch, dev):
     """Test that device firmware updates execute the expected calls."""
