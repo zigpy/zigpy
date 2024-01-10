@@ -3,11 +3,12 @@ import re
 
 import pytest
 
+from zigpy import device
 import zigpy.endpoint
-import zigpy.ota as ota
 import zigpy.types as types
 import zigpy.zcl as zcl
 import zigpy.zcl.clusters.security as sec
+from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
@@ -123,9 +124,22 @@ async def test_time_cluster_unsupported():
 
 
 @pytest.fixture
-def ota_cluster():
-    ep = MagicMock()
-    ep.device.application.ota = MagicMock(spec_set=ota.OTA)
+def dev(monkeypatch, app_mock):
+    monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
+    ieee = types.EUI64(map(types.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
+
+    dev = device.Device(app_mock, ieee, 65535)
+    node_desc = zdo_t.NodeDescriptor(1, 1, 1, 4, 5, 6, 7, 8)
+    with patch.object(
+        dev.zdo, "Node_Desc_req", new=AsyncMock(return_value=(0, 0xFFFF, node_desc))
+    ):
+        yield dev
+
+
+@pytest.fixture
+def ota_cluster(dev):
+    ep = dev.add_endpoint(1)
+    # ep.device.application.ota = MagicMock(spec_set=ota.OTA)
 
     cluster = zcl.Cluster._registry[0x0019](ep)
 
@@ -170,7 +184,7 @@ def _ota_next_image(cluster, has_image=True, upgradeable=False):
     async def get_ota_mock(*args):
         if upgradeable:
             img = MagicMock()
-            img.should_update.return_value = True
+            img.should_update = MagicMock(return_value=True)
             img.key.manufacturer_id = sentinel.manufacturer_id
             img.key.image_type = sentinel.image_type
             img.version = sentinel.image_version
@@ -182,7 +196,9 @@ def _ota_next_image(cluster, has_image=True, upgradeable=False):
             img = None
         return img
 
-    cluster.endpoint.device.application.ota.get_ota_image.side_effect = get_ota_mock
+    cluster.endpoint.device.application.ota.get_ota_image = MagicMock(
+        side_effect=get_ota_mock
+    )
     return cluster._handle_query_next_image(
         sentinel.field_ctrl,
         sentinel.manufacturer_id,
@@ -223,6 +239,11 @@ async def test_ota_handle_query_next_image_upgradeable(ota_cluster):
     ota_cluster.query_next_image_response = AsyncMock()
     ota_cluster.endpoint.device.ota_in_progress = False
 
+    class Listener:
+        device_ota_update_available = MagicMock()
+
+    listener = Listener()
+    ota_cluster.endpoint.device.add_listener(listener)
     await _ota_next_image(ota_cluster, has_image=True, upgradeable=True)
     assert ota_cluster.query_next_image_response.call_count == 1
     assert (
@@ -230,6 +251,7 @@ async def test_ota_handle_query_next_image_upgradeable(ota_cluster):
         == zcl.foundation.Status.NO_IMAGE_AVAILABLE
     )
     assert len(ota_cluster.query_next_image_response.call_args[0]) == 1
+    assert listener.device_ota_update_available.call_count == 1
 
 
 def test_ias_zone_type():
