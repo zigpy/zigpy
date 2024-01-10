@@ -320,6 +320,12 @@ def test_cached_image_wrapping(image):
     assert cached_img.header is image.header
 
 
+def test_cached_image_serialize(image):
+    cached_img = CachedImage(image)
+    cached_image_data = cached_img.serialize()
+    assert cached_image_data == image.serialize()
+
+
 def wrap_ikea(data):
     header = bytearray(100)
     header[0:4] = b"NGIS"
