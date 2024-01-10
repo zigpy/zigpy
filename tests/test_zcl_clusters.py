@@ -193,6 +193,45 @@ def _ota_next_image(cluster, has_image=True, upgradeable=False):
     )
 
 
+async def test_ota_handle_query_next_image_no_img(ota_cluster):
+    ota_cluster.query_next_image_response = AsyncMock()
+    ota_cluster.endpoint.device.ota_in_progress = False
+
+    await _ota_next_image(ota_cluster, has_image=False, upgradeable=False)
+    assert ota_cluster.query_next_image_response.call_count == 1
+    assert (
+        ota_cluster.query_next_image_response.call_args[0][0]
+        == zcl.foundation.Status.NO_IMAGE_AVAILABLE
+    )
+    assert len(ota_cluster.query_next_image_response.call_args[0]) == 1
+
+
+async def test_ota_handle_query_next_image_not_upgradeable(ota_cluster):
+    ota_cluster.query_next_image_response = AsyncMock()
+    ota_cluster.endpoint.device.ota_in_progress = False
+
+    await _ota_next_image(ota_cluster, has_image=True, upgradeable=False)
+    assert ota_cluster.query_next_image_response.call_count == 1
+    assert (
+        ota_cluster.query_next_image_response.call_args[0][0]
+        == zcl.foundation.Status.NO_IMAGE_AVAILABLE
+    )
+    assert len(ota_cluster.query_next_image_response.call_args[0]) == 1
+
+
+async def test_ota_handle_query_next_image_upgradeable(ota_cluster):
+    ota_cluster.query_next_image_response = AsyncMock()
+    ota_cluster.endpoint.device.ota_in_progress = False
+
+    await _ota_next_image(ota_cluster, has_image=True, upgradeable=True)
+    assert ota_cluster.query_next_image_response.call_count == 1
+    assert (
+        ota_cluster.query_next_image_response.call_args[0][0]
+        == zcl.foundation.Status.NO_IMAGE_AVAILABLE
+    )
+    assert len(ota_cluster.query_next_image_response.call_args[0]) == 1
+
+
 def test_ias_zone_type():
     extra = b"\xaa\x55"
     zone, rest = sec.IasZone.ZoneType.deserialize(b"\x0d\x00" + extra)
