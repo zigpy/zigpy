@@ -30,7 +30,7 @@ if typing.TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 _DEVICE_REGISTRY = DeviceRegistry()
-_GP_REGISTRY = []
+_GP_REGISTRY: list[zigpy.zgp.device.GreenPowerDevice] = []
 _uninitialized_device_message_handlers = []
 
 

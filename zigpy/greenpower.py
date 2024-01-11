@@ -4,17 +4,7 @@ import asyncio
 import enum
 import functools
 import logging
-import sys
 import typing
-
-from zigpy.types.named import EUI64
-from zigpy.zcl import Cluster, foundation
-from zigpy.zcl.clusters.greenpower import GreenPowerProxy
-
-if sys.version_info[:2] < (3, 11):
-    pass  # pragma: no cover
-else:
-    pass  # pragma: no cover
 
 import zigpy.application
 import zigpy.device
@@ -28,8 +18,11 @@ from zigpy.profiles.zgp import (
     GREENPOWER_ENDPOINT_ID,
 )
 import zigpy.types as t
+from zigpy.types.named import EUI64
 import zigpy.util
 import zigpy.zcl
+from zigpy.zcl import Cluster, foundation
+from zigpy.zcl.clusters.greenpower import GreenPowerProxy
 import zigpy.zdo.types
 from zigpy.zgp import (
     GPChannelSearchPayload,
@@ -68,7 +61,7 @@ class CommissioningMode(enum.Flag):
     ProxyBroadcast = 0b100
 
 
-class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
+class GreenPowerController(zigpy.util.ListenableMixin):
     """Controller that tracks the current GPS state"""
 
     def __init__(self, application: ControllerApplication):
@@ -82,6 +75,8 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             GreenPowerDeviceID, GreenPowerProxy.GPCommissioningNotificationSchema
         ] = MessageConcentrator()
         self._rxon_inflight: dict[GreenPowerDeviceID, GreenPowerDeviceData] = {}
+
+        self._tasks: set[asyncio.Task] = set()
 
     @property
     def _controller_state(self):
@@ -103,7 +98,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
 
     @property
     def _gp_cluster(self) -> zigpy.zcl.Cluster:
-        return self._gp_endpoint.in_clusters[GreenPowerProxy.cluster_id]
+        return self._gp_endpoint.in_clusters[GreenPowerProxy.cluster_id]  # type: ignore
 
     async def initialize(self):
         try:
@@ -165,11 +160,15 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
 
         # try our best to resolve who is talking and what they're asking,
         # so we can filter based on frame counter
-        gp_device: GreenPowerDevice = None
+        gp_device: GreenPowerDevice
+
         try:
             device: zigpy.device.Device = self._application.get_device_with_address(
                 packet.src
             )
+        except KeyError:
+            pass
+        else:
             # unicast forward, resolve to GPD
             if not device.is_green_power_device:
                 # by this time we should be able to inspect the incoming args and resolve
@@ -177,8 +176,6 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                 gp_device = self._get_gp_device_with_srcid(args.gpd_id)
             else:
                 gp_device = device
-        except KeyError:
-            pass
 
         # peek in and see if we're dealing with an infrastructure command, or a standard
         # notification packet. if it's infrastructure, route the message
@@ -272,7 +269,9 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             and notif.command_id == GPCommand.CommissionSuccess
         ):
             LOGGER.debug("Received commission success packet %s", str(notif.gpd_id))
-            asyncio.create_task(self._handle_success(notif), name="Handle Success")
+            self._tasks.add(
+                asyncio.create_task(self._handle_success(notif), name="Handle Success")
+            )
             return
 
         if notif.security_failed:
@@ -292,11 +291,13 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
                     "Received valid GP commissioning packet from %s", str(notif.gpd_id)
                 )
                 comm_payload, rest = GPCommissioningPayload.deserialize(notif.payload)
-                asyncio.create_task(
-                    self._handle_commissioning_data_frame(
-                        notif.gpd_id, comm_payload, packet, notif
-                    ),
-                    name="Handle Commission Data Frame",
+                self._tasks.add(
+                    asyncio.create_task(
+                        self._handle_commissioning_data_frame(
+                            notif.gpd_id, comm_payload, packet, notif
+                        ),
+                        name="Handle Commission Data Frame",
+                    )
                 )
 
     def handle_pairing_search(self, packet: t.ZigbeePacket):
@@ -366,7 +367,9 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
     def device_initialized(self, new_device: zigpy.device.Device):
         # This comes from Application when a new device completes initialization
         if not new_device.is_green_power_device:
-            asyncio.create_task(self._send_pairing_to_new_device(new_device))
+            self._tasks.add(
+                asyncio.create_task(self._send_pairing_to_new_device(new_device))
+            )
 
     async def _send_pairing_to_new_device(self, new_device: zigpy.device.Device):
         # GP Devices can't help other GP devices, pass
@@ -498,8 +501,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             notifs,
             elected_notif,
         )
-        asyncio.create_task(
-            self._handle_channel_search(elected_notif), name="Handle Channel Search"
+        self._tasks.add(
+            asyncio.create_task(
+                self._handle_channel_search(elected_notif), name="Handle Channel Search"
+            )
         )
 
     async def _handle_channel_search(
@@ -701,6 +706,7 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         if rx_on:
             self._rxon_inflight[src_id] = green_power_data
             timeouttask = asyncio.create_task(self.__dup_comm_frame_timeout(src_id))
+            self._tasks.add(timeouttask)
             result = await self._send_rx_cap_pair_response(
                 notif, commission_payload, green_power_data
             )
@@ -840,10 +846,12 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
             d for _, d in self._application.devices.items() if d.is_green_power_device
         ]
 
-    def _get_gp_device_with_srcid(
-        self, src_id: GreenPowerDeviceID
-    ) -> GreenPowerDevice | None:
-        return next((d for d in self._get_all_gp_devices() if d.gpd_id == src_id), None)
+    def _get_gp_device_with_srcid(self, src_id: GreenPowerDeviceID) -> GreenPowerDevice:
+        for dev in self._get_all_gp_devices():
+            if dev.gpd_id == src_id:
+                return dev
+
+        raise KeyError(f"No Green Power device exists with src_id={src_id}")
 
     def _push_sink_table(self):
         sink_table_bytes: bytes = b""

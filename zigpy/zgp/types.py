@@ -162,7 +162,7 @@ class GPReplyPayload(Struct):
             self.frame_counter = frame_counter
 
 
-def ClusterListFactory(len: basic.uint4_t) -> basic.CALLABLE_T:
+def ClusterListFactory(len: basic.uint4_t) -> type[basic.FixedList]:
     class _ClusterList(basic.FixedList, item_type=ClusterId, length=len):
         pass
 
@@ -347,9 +347,9 @@ class GPCommissioningPayload(Struct):
             if instance.command_list_present:
                 instance.command_ids, data = basic.LVBytes.deserialize(data)
             if instance.cluster_reports_present:
-                l, data = basic.uint8_t.deserialize(data)
-                instance.server_cluster_length = l & 0b1111
-                instance.client_cluster_length = l >> 4
+                packed_len, data = basic.uint8_t.deserialize(data)
+                instance.server_cluster_length = packed_len & 0b1111
+                instance.client_cluster_length = packed_len >> 4
                 if instance.server_cluster_length > 0:
                     instance.server_cluster_list, data = ClusterListFactory(
                         instance.server_cluster_length

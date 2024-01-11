@@ -767,10 +767,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     device_type=zigpy.profiles.zgp.DeviceType.TARGET,
                     device_version=0b0000,
                     input_clusters=[
-                        zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id
+                        zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id  # type: ignore
                     ],
                     output_clusters=[
-                        zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id
+                        zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id  # type: ignore
                     ],
                 )
             )
@@ -1329,7 +1329,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def get_endpoint_id(self, cluster_id: int, is_server_cluster: bool = False) -> int:
         """Returns coordinator endpoint id for specified cluster id."""
-        if cluster_id == zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id:
+        if cluster_id == zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id:  # type: ignore
             return zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID
         return DEFAULT_ENDPOINT_ID
 

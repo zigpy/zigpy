@@ -21,6 +21,8 @@ from zigpy.zgp.types import (
 )
 
 if typing.TYPE_CHECKING:
+    from typing_extensions import Self
+
     from zigpy.application import ControllerApplication
 
 LOGGER = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ class StrippedNotifSchema(foundation.CommandSchema):
 
 class GreenPowerDevice(zigpy.device.Device):
     @classmethod
-    def match(cls, device: typing.Self) -> bool:
+    def match(cls, device: Self) -> bool:
         return True
 
     def __init__(self, application: ControllerApplication, data: GreenPowerDeviceData):
@@ -57,7 +59,7 @@ class GreenPowerDevice(zigpy.device.Device):
         self.status = zigpy.device.Status.ENDPOINTS_INIT
 
     @property
-    def green_power_data(self) -> GreenPowerDeviceData | None:
+    def green_power_data(self) -> GreenPowerDeviceData:
         return self._green_power_data
 
     @property

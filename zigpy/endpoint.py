@@ -212,6 +212,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             raise KeyError(f"No cluster ID 0x{cluster_id:04x} on {self.unique_id}")
 
         cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id))
+        assert cluster is not None
         return cluster.deserialize(data)
 
     def handle_message(
