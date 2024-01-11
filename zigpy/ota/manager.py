@@ -81,21 +81,24 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: Ota.QueryNextImageCommand
     ) -> None:
         """Handle image query request."""
-        assert self.ota_cluster
-        await self.ota_cluster.query_next_image_response(
-            status=foundation.Status.SUCCESS,
-            manufacturer_code=self.image.header.manufacturer_id,
-            image_type=self.image.header.image_type,
-            file_version=self.image.header.file_version,
-            image_size=self.image.header.image_size,
-            tsn=hdr.tsn,
-        )
+        try:
+            assert self.ota_cluster
+            await self.ota_cluster.query_next_image_response(
+                status=foundation.Status.SUCCESS,
+                manufacturer_code=self.image.header.manufacturer_id,
+                image_type=self.image.header.image_type,
+                file_version=self.image.header.file_version,
+                image_size=self.image.header.image_size,
+                tsn=hdr.tsn,
+            )
+        except Exception as ex:
+            self.device.debug("OTA query_next_image handler - exception: %s", ex)
+            self._upgrade_end_future.set_result(foundation.Status.FAILURE)
 
     async def _image_block_req(
         self, hdr: foundation.ZCLHeader, command: Ota.ImageBlockCommand
     ) -> None:
         """Handle image block request."""
-        assert self.ota_cluster
         self.device.debug(
             (
                 "OTA image_block handler for '%s %s': field_control=%s"
@@ -114,67 +117,96 @@ class OTAManager:
             command.request_node_addr,
             command.minimum_block_period,
         )
-        block = self._image_data[
-            command.file_offset : command.file_offset + command.maximum_data_size
-        ]
+
+        try:
+            block = self._image_data[
+                command.file_offset : command.file_offset + command.maximum_data_size
+            ]
+        except IndexError:
+            self.device.debug(
+                "OTA image_block handler - unable to provide requested data for request: %s",
+                command,
+            )
+            block = None
 
         if not block:
-            await self.ota_cluster.image_block_response(
-                status=foundation.Status.MALFORMED_COMMAND,
-                tsn=hdr.tsn,
-            )
+            try:
+                assert self.ota_cluster
+                await self.ota_cluster.image_block_response(
+                    status=foundation.Status.MALFORMED_COMMAND,
+                    tsn=hdr.tsn,
+                )
+            except Exception as ex:
+                self.device.debug("OTA image_block handler - exception: %s", ex)
+
+            self._upgrade_end_future.set_result(foundation.Status.MALFORMED_COMMAND)
             return
 
-        await self.ota_cluster.image_block_response(
-            status=foundation.Status.SUCCESS,
-            manufacturer_code=self.image.header.manufacturer_id,
-            image_type=self.image.header.image_type,
-            file_version=self.image.header.file_version,
-            file_offset=command.file_offset,
-            image_data=block,
-            tsn=hdr.tsn,
-        )
-
-        if self.progress_callback is not None:
-            self.progress_callback(
-                command.file_offset + len(block), len(self._image_data)
+        try:
+            assert self.ota_cluster
+            await self.ota_cluster.image_block_response(
+                status=foundation.Status.SUCCESS,
+                manufacturer_code=self.image.header.manufacturer_id,
+                image_type=self.image.header.image_type,
+                file_version=self.image.header.file_version,
+                file_offset=command.file_offset,
+                image_data=block,
+                tsn=hdr.tsn,
             )
+
+            if self.progress_callback is not None:
+                self.progress_callback(
+                    command.file_offset + len(block), len(self._image_data)
+                )
+        except Exception as ex:
+            self.device.debug("OTA image_block handler - exception: %s", ex)
+            self._upgrade_end_future.set_result(foundation.Status.FAILURE)
 
     async def _upgrade_end(
         self, hdr: foundation.ZCLHeader, command: foundation.CommandSchema
     ) -> None:
         """Handle upgrade end request."""
-        assert self.ota_cluster
-        self.device.debug(
-            (
-                "OTA upgrade_end handler for '%s %s': status=%s"
-                ", manufacturer_id=%s, image_type=%s, file_version=%s"
-            ),
-            self.device.manufacturer,
-            self.device.model,
-            command.status,
-            self.image.header.manufacturer_id,
-            self.image.header.image_type,
-            self.image.header.file_version,
-        )
-        await self.ota_cluster.upgrade_end_response(
-            manufacturer_code=self.image.header.manufacturer_id,
-            image_type=self.image.header.image_type,
-            file_version=self.image.header.file_version,
-            current_time=0x00000000,
-            upgrade_time=0x00000000,
-            tsn=hdr.tsn,
-        )
+        try:
+            assert self.ota_cluster
+            self.device.debug(
+                (
+                    "OTA upgrade_end handler for '%s %s': status=%s"
+                    ", manufacturer_id=%s, image_type=%s, file_version=%s"
+                ),
+                self.device.manufacturer,
+                self.device.model,
+                command.status,
+                self.image.header.manufacturer_id,
+                self.image.header.image_type,
+                self.image.header.file_version,
+            )
+            await self.ota_cluster.upgrade_end_response(
+                manufacturer_code=self.image.header.manufacturer_id,
+                image_type=self.image.header.image_type,
+                file_version=self.image.header.file_version,
+                current_time=0x00000000,
+                upgrade_time=0x00000000,
+                tsn=hdr.tsn,
+            )
 
-        self._upgrade_end_future.set_result(command.status)
+            self._upgrade_end_future.set_result(command.status)
+        except Exception as ex:
+            self.device.debug("OTA upgrade_end handler - exception: %s", ex)
+            self._upgrade_end_future.set_result(foundation.Status.FAILURE)
 
     async def notify(self) -> None:
         """Notify device of new image."""
-        assert self.ota_cluster
-        await self.ota_cluster.image_notify(
-            payload_type=(self.ota_cluster.ImageNotifyCommand.PayloadType.QueryJitter),
-            query_jitter=100,
-        )
+        try:
+            assert self.ota_cluster
+            await self.ota_cluster.image_notify(
+                payload_type=(
+                    self.ota_cluster.ImageNotifyCommand.PayloadType.QueryJitter
+                ),
+                query_jitter=100,
+            )
+        except Exception as ex:
+            self.device.debug("OTA image_notify handler - exception: %s", ex)
+            self._upgrade_end_future.set_result(foundation.Status.FAILURE)
 
     async def wait(self) -> foundation.Status:
         """Wait for upgrade end response."""
