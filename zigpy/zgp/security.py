@@ -16,7 +16,7 @@ def __build_authdata(authHeader: bytes, plaintextData: bytes) -> bytes:
 def calculate_mic(
     key: bytes, nonce: bytes, authData: bytes, plaintextData: bytes
 ) -> bytes:
-    B0 = __pad(bytes([0x49]) + nonce + len(plaintextData).to_bytes(2))
+    B0 = __pad(bytes([0x49]) + nonce + len(plaintextData).to_bytes(2, byteorder="big"))
     X0 = bytes([0x00] * 16)
     cipher = Cipher(algorithms.AES(key), modes.CBC(X0))
     encryptor = cipher.encryptor()

@@ -514,8 +514,10 @@ class GreenPowerController(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin)
         # Spare having to create an intermediary representation for this one thing; the format is:
         # [CommandID = ChannelSearchResponse, options = net channel - 11] (aka channel packed into 4 bits)
         response.gpd_command_payload = t.LVBytes(
-            GPCommand.ChannelSearchResponse.to_bytes(1)
-            + (self._application.state.network_info.channel - 11).to_bytes(1)
+            GPCommand.ChannelSearchResponse.to_bytes(1, byteorder="little")
+            + (self._application.state.network_info.channel - 11).to_bytes(
+                1, byteorder="little"
+            )
         )
         LOGGER.debug(
             "Sending channel search packet with %s as temp master.",
