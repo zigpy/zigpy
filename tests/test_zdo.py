@@ -44,10 +44,12 @@ def test_deserialize_unknown(zdo_f):
 
 
 async def test_request(zdo_f):
-    await zdo_f.request(2, 65535)
-    app = zdo_f._device._application
-    assert zdo_f.device.request.call_count == 1
-    assert app.get_sequence.call_count == 1
+    with patch.object(
+        zdo_f._device, "get_sequence", wraps=zdo_f._device.get_sequence
+    ) as get_sequence:
+        await zdo_f.request(2, 65535)
+        assert zdo_f.device.request.call_count == 1
+        assert get_sequence.call_count == 1
 
 
 async def test_bind(zdo_f):
@@ -217,8 +219,8 @@ async def test_reply_tsn_override(zdo_f, monkeypatch):
     await zdo_f.reply(sentinel.cmd, sentinel.arg1, sentinel.arg2)
     seq = zdo_f.device.request.call_args[0][4]
     data = zdo_f.device.request.call_args[0][5]
-    assert seq == 123
-    assert data[0] == 123
+    assert seq == 1
+    assert data[0] == 1
     assert data[1:3] == b"\xaa\x55"
 
     # override tsn

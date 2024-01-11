@@ -91,8 +91,8 @@ def test_manufacturer_specific_cluster():
 def cluster_by_id():
     def _cluster(cluster_id=0):
         epmock = MagicMock()
-        epmock._device.application.get_sequence.return_value = DEFAULT_TSN
-        epmock.device.application.get_sequence.return_value = DEFAULT_TSN
+        epmock._device.get_sequence.return_value = DEFAULT_TSN
+        epmock.device.get_sequence.return_value = DEFAULT_TSN
         epmock.request = AsyncMock()
         epmock.reply = AsyncMock()
         return zcl.Cluster.from_id(epmock, cluster_id)
@@ -108,7 +108,7 @@ def cluster(cluster_by_id):
 @pytest.fixture
 def client_cluster():
     epmock = AsyncMock()
-    epmock.device.application.get_sequence = MagicMock(return_value=DEFAULT_TSN)
+    epmock.device.get_sequence = MagicMock(return_value=DEFAULT_TSN)
     return zcl.Cluster.from_id(epmock, 3)
 
 
@@ -1040,8 +1040,8 @@ async def test_zcl_request_direction():
     dev = MagicMock()
 
     ep = zigpy.endpoint.Endpoint(dev, 1)
-    ep._device.application.get_sequence.return_value = DEFAULT_TSN
-    ep.device.application.get_sequence.return_value = DEFAULT_TSN
+    ep._device.get_sequence.return_value = DEFAULT_TSN
+    ep.device.get_sequence.return_value = DEFAULT_TSN
     ep.request = AsyncMock()
 
     ep.add_input_cluster(zcl.clusters.general.OnOff.cluster_id)

@@ -116,13 +116,28 @@ async def test_request(dev):
 async def test_request_without_reply(dev):
     seq = int_sentinel.tsn
 
-    async def mock_req(*args, **kwargs):
-        dev._pending[seq].result.set_result(sentinel.result)
-
-    dev.application.send_packet = AsyncMock(side_effect=mock_req)
+    dev._pending.new = MagicMock()
+    dev.application.send_packet = AsyncMock()
     r = await dev.request(1, 2, 3, 3, seq, b"", expect_reply=False)
     assert r is None
     assert dev._application.send_packet.call_count == 1
+    assert len(dev._pending.new.mock_calls) == 0
+
+
+async def test_request_tsn_error(dev):
+    seq = int_sentinel.tsn
+
+    dev._pending.new = MagicMock(side_effect=zigpy.exceptions.ControllerException())
+    dev.application.request = MagicMock()
+    dev.application.send_packet = AsyncMock()
+
+    # We don't leave a dangling coroutine on error
+    with pytest.raises(zigpy.exceptions.ControllerException):
+        await dev.request(1, 2, 3, 3, seq, b"")
+
+    assert dev._application.send_packet.call_count == 0
+    assert dev._application.request.call_count == 0
+    assert len(dev._pending.new.mock_calls) == 1
 
 
 async def test_failed_request(dev):
@@ -465,7 +480,7 @@ async def test_request_exception_propagation(dev, event_loop):
     ep.add_input_cluster(Basic.cluster_id)
     ep.deserialize = MagicMock(side_effect=RuntimeError())
 
-    dev.application.get_sequence = MagicMock(return_value=tsn)
+    dev.get_sequence = MagicMock(return_value=tsn)
 
     event_loop.call_soon(
         dev.packet_received,

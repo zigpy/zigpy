@@ -6,7 +6,7 @@ import zigpy.group
 import zigpy.types as t
 import zigpy.zcl
 
-from .async_mock import AsyncMock, MagicMock, sentinel
+from .async_mock import AsyncMock, MagicMock, call, sentinel
 
 FIXTURE_GRP_ID = 0x1001
 FIXTURE_GRP_NAME = "fixture group"
@@ -212,19 +212,17 @@ def test_group_cluster_from_cluster_name():
 
 
 async def test_group_ep_request(group_endpoint):
-    assert group_endpoint.device is not None
-    await group_endpoint.request(
-        sentinel.cluster,
-        sentinel.seq,
-        sentinel.data,
-        sentinel.extra_arg,
-        extra_kwarg=sentinel.extra_kwarg,
-    )
-    assert group_endpoint.device.request.call_count == 1
-    assert group_endpoint.device.request.await_count == 1
-    assert group_endpoint.device.request.call_args[0][1] is sentinel.cluster
-    assert group_endpoint.device.request.call_args[0][2] is sentinel.seq
-    assert group_endpoint.device.request.call_args[0][3] is sentinel.data
+    on_off = zigpy.group.GroupCluster.from_attr(group_endpoint, "on_off")
+    await on_off.on()
+
+    assert group_endpoint.device.request.mock_calls == [
+        call(
+            260,  # profile
+            0x0006,  # cluster
+            1,  # sequence
+            b"\x01\x01\x01",  # data
+        )
+    ]
 
 
 def test_group_ep_reply(group_endpoint):

@@ -74,12 +74,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._manufacturer: str | None = None
         self._model: str | None = None
         self.node_desc: zdo_t.NodeDescriptor | None = None
-        self._pending: zigpy.util.Requests = zigpy.util.Requests()
+        self._pending: zigpy.util.Requests[t.uint8_t] = zigpy.util.Requests()
         self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
+        self._send_sequence: int = 0
 
         # Retained for backwards compatibility, will be removed in a future release
         self.status = Status.NEW
+
+    def get_sequence(self) -> t.uint8_t:
+        self._send_sequence = (self._send_sequence + 1) % 256
+        return self._send_sequence
 
     @property
     def green_power_data(self) -> GreenPowerDeviceData | None:
@@ -304,22 +309,27 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             timeout = APS_REPLY_TIMEOUT_EXTENDED
             extended_timeout = True
 
-        with self._pending.new(sequence) as req:
-            await self._application.request(
-                self,
-                profile,
-                cluster,
-                src_ep,
-                dst_ep,
-                sequence,
-                data,
-                expect_reply=expect_reply,
-                use_ieee=use_ieee,
-                extended_timeout=extended_timeout,
-            )
+        # Use a lambda so we don't leave the coroutine unawaited in case of an exception
+        send_request = lambda: self._application.request(  # noqa: E731
+            self,
+            profile,
+            cluster,
+            src_ep,
+            dst_ep,
+            sequence,
+            data,
+            expect_reply=expect_reply,
+            use_ieee=use_ieee,
+            extended_timeout=extended_timeout,
+        )
 
-            if not expect_reply:
-                return None
+        if not expect_reply:
+            await send_request()
+            return None
+
+        # Only create a pending request if we are expecting a reply
+        with self._pending.new(sequence) as req:
+            await send_request()
 
             async with asyncio_timeout(timeout):
                 return await req.result
