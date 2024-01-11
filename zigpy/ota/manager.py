@@ -118,16 +118,9 @@ class OTAManager:
             command.minimum_block_period,
         )
 
-        try:
-            block = self._image_data[
-                command.file_offset : command.file_offset + command.maximum_data_size
-            ]
-        except IndexError:
-            self.device.debug(
-                "OTA image_block handler - unable to provide requested data for request: %s",
-                command,
-            )
-            block = None
+        block = self._image_data[
+            command.file_offset : command.file_offset + command.maximum_data_size
+        ]
 
         if not block:
             try:
@@ -137,7 +130,9 @@ class OTAManager:
                     tsn=hdr.tsn,
                 )
             except Exception as ex:
-                self.device.debug("OTA image_block handler - exception: %s", ex)
+                self.device.debug(
+                    "OTA image_block handler[MALFORMED_COMMAND] - exception: %s", ex
+                )
 
             self._upgrade_end_future.set_result(foundation.Status.MALFORMED_COMMAND)
             return

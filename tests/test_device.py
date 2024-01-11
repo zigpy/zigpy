@@ -460,7 +460,7 @@ async def test_update_device_firmware_already_in_progress(dev, caplog):
     assert "OTA already in progress" in caplog.text
 
 
-async def test_update_device_firmware(monkeypatch, dev):
+async def test_update_device_firmware(monkeypatch, dev, caplog):
     """Test that device firmware updates execute the expected calls."""
     tsn = 0x12
     ep = dev.add_endpoint(1)
@@ -624,6 +624,114 @@ async def test_update_device_firmware(monkeypatch, dev):
     assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
     assert fw_image.header.file_version == 0xFFFFFFFF - 1
+
+    # _image_query_req exception test
+    dev.application.send_packet.reset_mock()
+    progress_callback.reset_mock()
+    image_notify = cluster.image_notify
+    cluster.image_notify = AsyncMock(side_effect=zigpy.exceptions.DeliveryError("Foo"))
+    await dev.update_firmware(fw_image, progress_callback=progress_callback)
+    assert dev.application.send_packet.await_count == 0
+    assert progress_callback.call_count == 0
+    assert "OTA image_notify handler - exception" in caplog.text
+    cluster.image_notify = image_notify
+    caplog.clear()
+
+    # _image_query_req exception test
+    dev.application.send_packet.reset_mock()
+    progress_callback.reset_mock()
+    query_next_image_response = cluster.query_next_image_response
+    cluster.query_next_image_response = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("Foo")
+    )
+    await dev.update_firmware(fw_image, progress_callback=progress_callback)
+    assert dev.application.send_packet.await_count == 1  # just image notify
+    assert progress_callback.call_count == 0
+    assert "OTA query_next_image handler - exception" in caplog.text
+    cluster.query_next_image_response = query_next_image_response
+    caplog.clear()
+
+    # _image_block_req exception test
+    dev.application.send_packet.reset_mock()
+    progress_callback.reset_mock()
+    image_block_response = cluster.image_block_response
+    cluster.image_block_response = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("Foo")
+    )
+    await dev.update_firmware(fw_image, progress_callback=progress_callback)
+    assert (
+        dev.application.send_packet.await_count == 2
+    )  # just image notify + query next image
+    assert progress_callback.call_count == 0
+    assert "OTA image_block handler - exception" in caplog.text
+    cluster.image_block_response = image_block_response
+    caplog.clear()
+
+    # _upgrade_end exception test
+    dev.application.send_packet.reset_mock()
+    progress_callback.reset_mock()
+    upgrade_end_response = cluster.upgrade_end_response
+    cluster.upgrade_end_response = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("Foo")
+    )
+    await dev.update_firmware(fw_image, progress_callback=progress_callback)
+    assert (
+        dev.application.send_packet.await_count == 4
+    )  # just image notify, qne, and 2 img blocks
+    assert progress_callback.call_count == 2
+    assert "OTA upgrade_end handler - exception" in caplog.text
+    cluster.upgrade_end_response = upgrade_end_response
+    caplog.clear()
+
+    async def send_packet(packet: t.ZigbeePacket):
+        if packet.cluster_id == Ota.cluster_id:
+            hdr, cmd = cluster.deserialize(packet.data.serialize())
+            if isinstance(cmd, Ota.ImageNotifyCommand):
+                dev.application.packet_received(
+                    make_packet(
+                        "query_next_image",
+                        field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+                        manufacturer_code=fw_image.header.manufacturer_id,
+                        image_type=fw_image.header.image_type,
+                        current_file_version=fw_image.header.file_version - 10,
+                        hardware_version=1,
+                    )
+                )
+            elif isinstance(
+                cmd, Ota.ClientCommandDefs.query_next_image_response.schema
+            ):
+                assert cmd.status == foundation.Status.SUCCESS
+                assert cmd.manufacturer_code == fw_image.header.manufacturer_id
+                assert cmd.image_type == fw_image.header.image_type
+                assert cmd.file_version == fw_image.header.file_version
+                assert cmd.image_size == fw_image.header.image_size
+                dev.application.packet_received(
+                    make_packet(
+                        "image_block",
+                        field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+                        manufacturer_code=fw_image.header.manufacturer_id,
+                        image_type=fw_image.header.image_type,
+                        file_version=fw_image.header.file_version,
+                        file_offset=300,
+                        maximum_data_size=40,
+                        request_node_addr=dev.ieee,
+                    )
+                )
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+
+    progress_callback.reset_mock()
+    image_block_response = cluster.image_block_response
+    cluster.image_block_response = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("Foo")
+    )
+    await dev.update_firmware(fw_image, progress_callback=progress_callback)
+    assert (
+        dev.application.send_packet.await_count == 2
+    )  # just image notify, qne, img block response fails
+    assert progress_callback.call_count == 0
+    assert "OTA image_block handler[MALFORMED_COMMAND] - exception" in caplog.text
+    cluster.image_block_response = image_block_response
 
 
 async def test_deserialize_backwards_compat(dev):
