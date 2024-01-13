@@ -501,7 +501,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         firmware_image: BaseOTAImage,
         progress_callback: callable = None,
         force: bool = False,
-    ) -> None:
+    ) -> foundation.Status:
         """Update device firmware."""
         if self.ota_in_progress:
             self.debug("OTA already in progress")
@@ -510,13 +510,16 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.ota_in_progress = True
 
         try:
-            await update_firmware(self, firmware_image, progress_callback, force)
+            result = await update_firmware(
+                self, firmware_image, progress_callback, force
+            )
         except Exception as exc:
             self.ota_in_progress = False
             self.debug("OTA failed!", exc_info=exc)
             raise exc
 
         self.ota_in_progress = False
+        return result
 
     def radio_details(self, lqi=None, rssi=None) -> None:
         if lqi is not None:
