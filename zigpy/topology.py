@@ -81,7 +81,7 @@ class Topology(zigpy.util.ListenableMixin):
                 # not be interrupted if a manual scan is initiated
                 LOGGER.debug("Topology scan cancelled")
             except (Exception, asyncio.CancelledError):
-                LOGGER.warning("Topology scan failed", exc_info=True)
+                LOGGER.debug("Topology scan failed", exc_info=True)
 
     async def scan(
         self, devices: typing.Iterable[zigpy.device.Device] | None = None

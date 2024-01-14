@@ -272,14 +272,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 commands = self.server_commands
 
             if hdr.command_id not in commands:
-                self.warning("Unknown cluster command %s %s", hdr.command_id, data)
+                self.debug("Unknown cluster command %s %s", hdr.command_id, data)
                 return hdr, data
 
             command = commands[hdr.command_id]
         else:
             # General command
             if hdr.command_id not in foundation.GENERAL_COMMANDS:
-                self.warning("Unknown foundation command %s %s", hdr.command_id, data)
+                self.debug("Unknown foundation command %s %s", hdr.command_id, data)
                 return hdr, data
 
             command = foundation.GENERAL_COMMANDS[hdr.command_id]
@@ -290,7 +290,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self.debug("Decoded ZCL frame: %s:%r", type(self).__name__, response)
 
         if data:
-            self.warning("Data remains after deserializing ZCL frame: %r", data)
+            self.debug("Data remains after deserializing ZCL frame: %r", data)
 
         return hdr, response
 
