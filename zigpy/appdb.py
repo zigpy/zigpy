@@ -196,7 +196,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def enqueue(self, cb_name: str, *args) -> None:
         """Enqueue an async callback handler action."""
         if not self.running:
-            LOGGER.warning("Discarding %s event", cb_name)
+            LOGGER.debug("Discarding %s event", cb_name)
             return
         self._callback_handlers.put_nowait((cb_name, args))
 
