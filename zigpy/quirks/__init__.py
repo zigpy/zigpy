@@ -191,6 +191,9 @@ class CustomCluster(zigpy.zcl.Cluster):
     ) -> typing.Coroutine:
         command = self.server_commands[command_id]
 
+        if manufacturer is None:
+            manufacturer = self.manufacturer_id_override
+
         if manufacturer is None and (
             self._is_manuf_specific or command.is_manufacturer_specific
         ):
@@ -216,6 +219,9 @@ class CustomCluster(zigpy.zcl.Cluster):
         **kwargs: typing.Any,
     ):
         command = self.client_commands[command_id]
+
+        if manufacturer is None:
+            manufacturer = self.manufacturer_id_override
 
         if manufacturer is None and (
             self._is_manuf_specific or command.is_manufacturer_specific
@@ -281,6 +287,9 @@ class CustomCluster(zigpy.zcl.Cluster):
         **kwargs,
     ):
         """Configure reporting ZCL foundation command."""
+        if manufacturer is None:
+            manufacturer = self.manufacturer_id_override
+
         if manufacturer is None and self._has_manuf_attr(
             [a.attrid for a in config_records]
         ):
@@ -300,6 +309,9 @@ class CustomCluster(zigpy.zcl.Cluster):
         **kwargs,
     ):
         """Read attributes ZCL foundation command."""
+        if manufacturer is None:
+            manufacturer = self.manufacturer_id_override
+
         if manufacturer is None and self._has_manuf_attr(attribute_ids):
             manufacturer = self.endpoint.manufacturer_id
         return await super()._read_attributes(
@@ -314,6 +326,9 @@ class CustomCluster(zigpy.zcl.Cluster):
         **kwargs,
     ):
         """Write attribute ZCL foundation command."""
+        if manufacturer is None:
+            manufacturer = self.manufacturer_id_override
+
         if manufacturer is None and self._has_manuf_attr(
             [a.attrid for a in attributes]
         ):
@@ -330,6 +345,9 @@ class CustomCluster(zigpy.zcl.Cluster):
         **kwargs,
     ):
         """Write attribute undivided ZCL foundation command."""
+        if manufacturer is None:
+            manufacturer = self.manufacturer_id_override
+
         if manufacturer is None and self._has_manuf_attr(
             [a.attrid for a in attributes]
         ):

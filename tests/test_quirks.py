@@ -978,7 +978,19 @@ async def test_manuf_id_disable(real_device):
             {"attr0": 1}, manufacturer=zcl.foundation.ZCLHeader.NO_MANUFACTURER_ID
         )
 
-    assert len(request_mock.mock_calls) == 3
+    # And it can be disabled by defaulting to NO_MANUFACTURER_ID
+    with patch.object(ep, "request", AsyncMock()) as request_mock:
+        request_mock.return_value = (zcl.foundation.Status.SUCCESS, "done")
+        ep.just_a_cluster.manufacturer_id_override = (
+            zcl.foundation.ZCLHeader.NO_MANUFACTURER_ID
+        )
+        await ep.just_a_cluster.command(
+            ep.just_a_cluster.commands_by_name["server_cmd0"].id
+        )
+        await ep.just_a_cluster.read_attributes(["attr0"])
+        await ep.just_a_cluster.write_attributes({"attr0": 1})
+
+    assert len(request_mock.mock_calls) == 6
 
     for mock_call in request_mock.mock_calls:
         data = mock_call.args[2]
