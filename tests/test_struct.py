@@ -872,6 +872,7 @@ def test_int_comparison(expose_global):
     )
     assert fw_ver == 0x264F0900
     assert int(fw_ver) == 0x264F0900
+    assert "0x264F0900" in str(fw_ver)
 
     assert int(fw_ver) <= fw_ver
     assert fw_ver <= int(fw_ver)

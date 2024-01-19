@@ -392,7 +392,12 @@ class Struct:
             if value is not None:
                 fields.append(f"*{attr}={value!r}")
 
-        return f"{type(self).__name__}({', '.join(fields)})"
+        extra = ""
+
+        if self._int_type is not None:
+            extra = f"<{self._int_type(int(self))._hex_repr()}>"
+
+        return f"{type(self).__name__}{extra}({', '.join(fields)})"
 
     @property
     def is_valid(self) -> bool:
