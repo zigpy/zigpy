@@ -90,7 +90,8 @@ class FixedIntType(int):
 
         n = super().__new__(cls, *args, **kwargs)
 
-        if not cls.min_value <= n <= cls.max_value:
+        # We use `n + 0` to convert `n` into an integer without calling `int()`
+        if not cls.min_value <= n + 0 <= cls.max_value:
             raise ValueError(
                 f"{int(n)} is not an {'un' if not cls._signed else ''}signed"
                 f" {cls._bits} bit integer"
