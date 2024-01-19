@@ -879,3 +879,9 @@ def test_int_comparison(expose_global):
 
     assert int(fw_ver) - 1 < fw_ver
     assert fw_ver < int(fw_ver) + 1
+
+    assert int(fw_ver) >= fw_ver
+    assert fw_ver >= int(fw_ver)
+
+    assert int(fw_ver) + 1 > fw_ver
+    assert fw_ver > int(fw_ver) - 1
