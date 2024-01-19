@@ -347,6 +347,30 @@ class Struct:
 
         return int(n)
 
+    def __lt__(self, other: object) -> bool:
+        if self._int_type is None or not isinstance(other, int):
+            return NotImplemented
+
+        return int(self) < int(other)
+
+    def __le__(self, other: object) -> bool:
+        if self._int_type is None or not isinstance(other, int):
+            return NotImplemented
+
+        return int(self) <= int(other)
+
+    def __gt__(self, other: object) -> bool:
+        if self._int_type is None or not isinstance(other, int):
+            return NotImplemented
+
+        return int(self) > int(other)
+
+    def __ge__(self, other: object) -> bool:
+        if self._int_type is None or not isinstance(other, int):
+            return NotImplemented
+
+        return int(self) >= int(other)
+
     def __repr__(self) -> str:
         fields = []
 
