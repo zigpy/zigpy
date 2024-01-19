@@ -885,3 +885,34 @@ def test_int_comparison(expose_global):
 
     assert int(fw_ver) + 1 > fw_ver
     assert fw_ver > int(fw_ver) - 1
+
+
+def test_int_comparison_non_int(expose_global):
+    @expose_global
+    class FirmwarePlatform(t.enum8):
+        Conbee = 0x05
+        Conbee_II = 0x07
+        Conbee_III = 0x09
+
+    # This isn't an integer
+    class FirmwareVersion(t.Struct):
+        reserved: t.uint8_t
+        platform: FirmwarePlatform
+        minor: t.uint8_t
+        major: t.uint8_t
+
+    fw_ver = FirmwareVersion(
+        reserved=0, platform=FirmwarePlatform.Conbee_III, minor=79, major=38
+    )
+
+    with pytest.raises(TypeError):
+        fw_ver < 0
+
+    with pytest.raises(TypeError):
+        fw_ver <= 0
+
+    with pytest.raises(TypeError):
+        fw_ver > 0
+
+    with pytest.raises(TypeError):
+        fw_ver >= 0
