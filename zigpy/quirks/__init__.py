@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import logging
 import typing
 
@@ -17,7 +18,15 @@ from zigpy.const import (  # noqa: F401
 )
 import zigpy.device
 import zigpy.endpoint
-from zigpy.quirks.registry import DeviceRegistry  # noqa: F401
+from zigpy.quirks.registry import (  # noqa: F401
+    AutoQuirkRegistryEntry,
+    DeviceRegistry,
+    ExposesBinarySensorMetadata,
+    ExposesEnumSelectMetadata,
+    ExposesNumberMetadata,
+    ExposesSwitchMetadata,
+    ExposesWriteAttributeButtonMetadata,
+)
 import zigpy.types as t
 from zigpy.types.basic import uint16_t
 import zigpy.zcl
@@ -114,6 +123,75 @@ class CustomDevice(zigpy.device.Device):
         ep = custom_ep_type(self, endpoint_id, replacement_data, replace_device)
         self.endpoints[endpoint_id] = ep
         return ep
+
+
+class CustomDeviceV2(zigpy.device.Device):
+    """Implementation of a quirks v2 custom device."""
+
+    def __init__(
+        self,
+        application: ControllerApplication,
+        ieee: t.EUI64,
+        nwk: t.NWK,
+        replaces: zigpy.device.Device,
+        quirk_metadata: AutoQuirkRegistryEntry,
+    ) -> None:
+        super().__init__(application, ieee, nwk)
+        self._exposes_metadata: dict[
+            tuple[int, int, zigpy.zcl.ClusterType],
+            list[
+                ExposesEnumSelectMetadata
+                | ExposesSwitchMetadata
+                | ExposesNumberMetadata
+                | ExposesBinarySensorMetadata
+                | ExposesWriteAttributeButtonMetadata
+            ],
+        ] = collections.defaultdict(list)
+
+        def set_device_attr(attr):
+            setattr(self, attr, getattr(replaces, attr))
+
+        for attr in ("lqi", "rssi", "last_seen", "relays"):
+            setattr(self, attr, getattr(replaces, attr))
+
+        set_device_attr("status")
+        set_device_attr(SIG_NODE_DESC)
+        set_device_attr(SIG_MANUFACTURER)
+        set_device_attr(SIG_MODEL)
+        set_device_attr(SIG_SKIP_CONFIG)
+        for endpoint_id, endpoint in replaces.endpoints.items():
+            self.endpoints[endpoint_id] = endpoint
+
+        for add_meta in quirk_metadata.adds_metadata:
+            add_meta(self)
+
+        for remove_meta in quirk_metadata.removes_metadata:
+            remove_meta(self)
+
+        for replace_meta in quirk_metadata.replaces_metadata:
+            replace_meta(self)
+
+        for patch_meta in quirk_metadata.patches_metadata:
+            patch_meta(self)
+
+        for entity_meta in quirk_metadata.entity_metadata:
+            entity_meta(self)
+
+    @property
+    def exposes_metadata(
+        self,
+    ) -> dict[
+        tuple[int, int, zigpy.zcl.ClusterType],
+        list[
+            ExposesEnumSelectMetadata
+            | ExposesSwitchMetadata
+            | ExposesNumberMetadata
+            | ExposesBinarySensorMetadata
+            | ExposesWriteAttributeButtonMetadata
+        ],
+    ]:
+        """Return the metadata for exposed entities."""
+        return self._exposes_metadata
 
 
 class CustomEndpoint(zigpy.endpoint.Endpoint):

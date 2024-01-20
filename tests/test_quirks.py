@@ -18,9 +18,10 @@ from zigpy.const import (
 import zigpy.device
 import zigpy.endpoint
 import zigpy.quirks
-from zigpy.quirks.registry import DeviceRegistry
+from zigpy.quirks.registry import DeviceRegistry, HAEntityType
 import zigpy.types as t
 import zigpy.zcl as zcl
+from zigpy.zcl.clusters.general import Basic, OnOff
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
@@ -1031,3 +1032,39 @@ async def test_request_with_kwargs(real_device):
 
         assert len(request_mock.mock_calls) == 3
         assert all(c == request_mock.mock_calls[0] for c in request_mock.mock_calls)
+
+
+async def test_quirks_v2(real_device):
+    registry = DeviceRegistry()
+
+    # fmt: off
+    registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
+        .adds(Basic.cluster_id) \
+        .adds(OnOff.cluster_id) \
+        .exposes_enum_select(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+    # fmt: on
+
+    quirked = registry.get_device(real_device)
+    assert isinstance(quirked, zigpy.quirks.CustomDeviceV2)
+
+    ep = quirked.endpoints[1]
+
+    assert ep.basic is not None
+    assert isinstance(ep.basic, Basic)
+
+    assert ep.on_off is not None
+    assert isinstance(ep.on_off, OnOff)
+
+    additional_entities = quirked.exposes_metadata[
+        (1, OnOff.cluster_id, zcl.ClusterType.Server)
+    ]
+    assert len(additional_entities) == 1
+    assert additional_entities[0].endpoint_id == 1
+    assert additional_entities[0].cluster_id == OnOff.cluster_id
+    assert additional_entities[0].cluster_type == zcl.ClusterType.Server
+    assert (
+        additional_entities[0].entity_metadata.attribute_name
+        == OnOff.AttributeDefs.start_up_on_off.name
+    )
+    assert additional_entities[0].entity_metadata.enum == OnOff.StartUpOnOff
+    assert additional_entities[0].entity_metadata.ha_entity_type == HAEntityType.CONFIG
