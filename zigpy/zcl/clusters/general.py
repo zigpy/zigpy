@@ -2581,6 +2581,9 @@ class PollControl(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs(BaseCommandDefs):
+        checkin: Final = ZCLCommandDef(id=0x0000, schema={}, direction=False)
+
+    class ClientCommandDefs(BaseCommandDefs):
         checkin_response: Final = ZCLCommandDef(
             id=0x00,
             schema={"start_fast_polling": t.Bool, "fast_poll_timeout": t.uint16_t},
@@ -2595,9 +2598,6 @@ class PollControl(Cluster):
             schema={"new_short_poll_interval": t.uint16_t},
             direction=False,
         )
-
-    class ClientCommandDefs(BaseCommandDefs):
-        checkin: Final = ZCLCommandDef(id=0x0000, schema={}, direction=False)
 
 
 class GreenPowerProxy(Cluster):
