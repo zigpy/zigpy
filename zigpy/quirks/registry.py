@@ -19,6 +19,7 @@ from zigpy.const import (
     SIG_MODELS_INFO,
 )
 from zigpy.endpoint import Endpoint
+from zigpy.exceptions import MultipleQuirksMatchException
 import zigpy.quirks
 from zigpy.typing import CustomDeviceType, DeviceType
 
@@ -79,10 +80,22 @@ class DeviceRegistry:
 
         key = (device.manufacturer, device.model)
         if key in self._registry_v2:
+            matches = []
             entries = self._registry_v2[key]
             if len(entries) == 1:
+                if entries[0].matches_device(device):
+                    matches.append(entries[0])
+            else:
+                for entry in entries:
+                    if entry.matches_device(device):
+                        matches.append(entry)
+            if len(matches) > 1:
+                raise MultipleQuirksMatchException(
+                    f"Multiple matches found for device {device}: {matches}"
+                )
+            if len(matches) == 1:
                 return zigpy.quirks.CustomDeviceV2(
-                    device.application, device.ieee, device.nwk, device, entries[0]
+                    device.application, device.ieee, device.nwk, device, matches[0]
                 )
 
         dev_ep = set(device.endpoints) - {0}
@@ -198,6 +211,85 @@ MatcherType = typing.Callable[
 ]
 
 
+def signature_matches(
+    signature: dict[str, typing.Any],
+) -> MatcherType:
+    """Return True if device matches signature."""
+
+    def _match(a: dict | typing.Iterable, b: dict | typing.Iterable) -> bool:
+        return set(a) == set(b)
+
+    def _filter(device: zigpy.device.Device) -> bool:
+        """Return True if device matches signature."""
+        if device.model != signature.get(SIG_MODEL, device.model):
+            _LOGGER.debug("Fail, because device model mismatch: '%s'", device.model)
+            return False
+
+        if device.manufacturer != signature.get(SIG_MANUFACTURER, device.manufacturer):
+            _LOGGER.debug(
+                "Fail, because device manufacturer mismatch: '%s'",
+                device.manufacturer,
+            )
+            return False
+
+        dev_ep = set(device.endpoints) - {0}
+
+        sig = signature.get(SIG_ENDPOINTS)
+        if sig is None:
+            return False
+
+        if not _match(sig, dev_ep):
+            _LOGGER.debug(
+                "Fail because endpoint list mismatch: %s %s",
+                set(sig.keys()),
+                dev_ep,
+            )
+            return False
+
+        if not all(
+            device[eid].profile_id
+            == sig[eid].get(SIG_EP_PROFILE, device[eid].profile_id)
+            for eid in sig
+        ):
+            _LOGGER.debug("Fail because profile_id mismatch on at least one endpoint")
+            return False
+
+        if not all(
+            device[eid].device_type
+            == sig[eid].get(SIG_EP_TYPE, device[eid].device_type)
+            for eid in sig
+        ):
+            _LOGGER.debug("Fail because device_type mismatch on at least one endpoint")
+            return False
+
+        if not all(
+            _match(device[eid].in_clusters, ep.get(SIG_EP_INPUT, []))
+            for eid, ep in sig.items()
+        ):
+            _LOGGER.debug(
+                "Fail because input cluster mismatch on at least one endpoint"
+            )
+            return False
+
+        if not all(
+            _match(device[eid].out_clusters, ep.get(SIG_EP_OUTPUT, []))
+            for eid, ep in sig.items()
+        ):
+            _LOGGER.debug(
+                "Fail because output cluster mismatch on at least one endpoint"
+            )
+            return False
+
+        _LOGGER.debug(
+            "Device matches filter signature - device ieee[%s]: filter signature[%s]",
+            device.ieee,
+            signature,
+        )
+        return True
+
+    return _filter
+
+
 @dataclasses.dataclass(frozen=True)
 class AddsMetadata:
     """Adds metadata for adding a cluster to a device."""
@@ -207,6 +299,8 @@ class AddsMetadata:
     cluster_type: zigpy.zcl.ClusterType = dataclasses.field(
         default=zigpy.zcl.ClusterType.Server
     )
+    # pass to cluster as kwargs? thinking things like _CONSTANT_ATTRIBUTES, battery settings, etc
+    cluster_config: dict[str, typing.Any] = dataclasses.field(default_factory=dict)
 
     def __call__(self, device: zigpy.quirks.CustomDeviceV2):
         """Process the add."""
@@ -429,7 +523,7 @@ class AutoQuirkRegistryEntry:
     """Auto quirk registry entry."""
 
     registry: dict[tuple[str, str], list[AutoQuirkRegistryEntry]] = None
-    matchers: list[MatcherType] = dataclasses.field(default_factory=list)
+    filters: list[MatcherType] = dataclasses.field(default_factory=list)
     adds_metadata: list[AddsMetadata] = dataclasses.field(default_factory=list)
     removes_metadata: list[RemovesMetadata] = dataclasses.field(default_factory=list)
     replaces_metadata: list[ReplacesMetadata] = dataclasses.field(default_factory=list)
@@ -637,3 +731,12 @@ class AutoQuirkRegistryEntry:
         """Add a device automation trigger and returns self."""
         self.device_automation_triggers_metadata.update(device_automation_triggers)
         return self
+
+    def matches(self, filter_function: MatcherType):
+        """Add a filter and returns self."""
+        self.filters.append(filter_function)
+        return self
+
+    def matches_device(self, device: zigpy.device.Device) -> bool:
+        """Process all filters and return True if all pass."""
+        return all(_filter(device) for _filter in self.filters)

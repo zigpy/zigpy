@@ -17,8 +17,9 @@ from zigpy.const import (
 )
 import zigpy.device
 import zigpy.endpoint
+from zigpy.exceptions import MultipleQuirksMatchException
 import zigpy.quirks
-from zigpy.quirks.registry import DeviceRegistry, HAEntityType
+from zigpy.quirks.registry import DeviceRegistry, HAEntityType, signature_matches
 import zigpy.types as t
 import zigpy.zcl as zcl
 from zigpy.zcl.clusters.general import Basic, OnOff
@@ -1037,8 +1038,21 @@ async def test_request_with_kwargs(real_device):
 async def test_quirks_v2(real_device):
     registry = DeviceRegistry()
 
+    signature = {
+        SIG_MODELS_INFO: (("manufacturer", "model"),),
+        SIG_ENDPOINTS: {
+            1: {
+                SIG_EP_PROFILE: 255,
+                SIG_EP_TYPE: 255,
+                SIG_EP_INPUT: [3],
+                SIG_EP_OUTPUT: [6],
+            }
+        },
+    }
+
     # fmt: off
     registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
+        .matches(signature_matches(signature)) \
         .adds(Basic.cluster_id) \
         .adds(OnOff.cluster_id) \
         .exposes_enum_select(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
@@ -1068,3 +1082,51 @@ async def test_quirks_v2(real_device):
     )
     assert additional_entities[0].entity_metadata.enum == OnOff.StartUpOnOff
     assert additional_entities[0].entity_metadata.ha_entity_type == HAEntityType.CONFIG
+
+
+async def test_quirks_v2_signature_match(real_device):
+    registry = DeviceRegistry()
+
+    signature_no_match = {
+        SIG_MODELS_INFO: (("manufacturer", "model"),),
+        SIG_ENDPOINTS: {
+            1: {
+                SIG_EP_PROFILE: 260,
+                SIG_EP_TYPE: 255,
+                SIG_EP_INPUT: [3],
+            }
+        },
+    }
+    # fmt: off
+    registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
+        .matches(signature_matches(signature_no_match)) \
+        .adds(Basic.cluster_id) \
+        .adds(OnOff.cluster_id) \
+        .exposes_enum_select(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+    # fmt: on
+
+    quirked = registry.get_device(real_device)
+    assert not isinstance(quirked, zigpy.quirks.CustomDeviceV2)
+
+
+async def test_quirks_v2_multiple_matches_raises(real_device):
+    registry = DeviceRegistry()
+
+    # fmt: off
+    registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
+        .adds(Basic.cluster_id) \
+        .adds(OnOff.cluster_id) \
+        .exposes_enum_select(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+    # fmt: on
+
+    # fmt: off
+    registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
+        .adds(Basic.cluster_id) \
+        .adds(OnOff.cluster_id) \
+        .exposes_enum_select(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+    # fmt: on
+
+    with pytest.raises(
+        MultipleQuirksMatchException, match="Multiple matches found for device"
+    ):
+        registry.get_device(real_device)
