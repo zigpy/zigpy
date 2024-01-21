@@ -98,7 +98,6 @@ class DeviceRegistry:
                     device.application, device.ieee, device.nwk, device, matches[0]
                 )
 
-        dev_ep = set(device.endpoints) - {0}
         _LOGGER.debug(
             "Checking quirks for %s %s (%s)",
             device.manufacturer,
@@ -111,69 +110,10 @@ class DeviceRegistry:
             self.registry[None][device.model],
             self.registry[None][None],
         ):
+            matcher = signature_matches(candidate.signature)
             _LOGGER.debug("Considering %s", candidate)
 
-            if device.model != candidate.signature.get(SIG_MODEL, device.model):
-                _LOGGER.debug("Fail, because device model mismatch: '%s'", device.model)
-                continue
-
-            if device.manufacturer != candidate.signature.get(
-                SIG_MANUFACTURER, device.manufacturer
-            ):
-                _LOGGER.debug(
-                    "Fail, because device manufacturer mismatch: '%s'",
-                    device.manufacturer,
-                )
-                continue
-
-            sig = candidate.signature.get(SIG_ENDPOINTS)
-            if sig is None:
-                continue
-
-            if not self._match(sig, dev_ep):
-                _LOGGER.debug(
-                    "Fail because endpoint list mismatch: %s %s",
-                    set(sig.keys()),
-                    dev_ep,
-                )
-                continue
-
-            if not all(
-                device[eid].profile_id
-                == sig[eid].get(SIG_EP_PROFILE, device[eid].profile_id)
-                for eid in sig
-            ):
-                _LOGGER.debug(
-                    "Fail because profile_id mismatch on at least one endpoint"
-                )
-                continue
-
-            if not all(
-                device[eid].device_type
-                == sig[eid].get(SIG_EP_TYPE, device[eid].device_type)
-                for eid in sig
-            ):
-                _LOGGER.debug(
-                    "Fail because device_type mismatch on at least one endpoint"
-                )
-                continue
-
-            if not all(
-                self._match(device[eid].in_clusters, ep.get(SIG_EP_INPUT, []))
-                for eid, ep in sig.items()
-            ):
-                _LOGGER.debug(
-                    "Fail because input cluster mismatch on at least one endpoint"
-                )
-                continue
-
-            if not all(
-                self._match(device[eid].out_clusters, ep.get(SIG_EP_OUTPUT, []))
-                for eid, ep in sig.items()
-            ):
-                _LOGGER.debug(
-                    "Fail because output cluster mismatch on at least one endpoint"
-                )
+            if not matcher(device):
                 continue
 
             _LOGGER.debug(
@@ -183,10 +123,6 @@ class DeviceRegistry:
             break
 
         return device
-
-    @staticmethod
-    def _match(a: dict | typing.Iterable, b: dict | typing.Iterable) -> bool:
-        return set(a) == set(b)
 
     @property
     def registry(self) -> TYPE_MANUF_QUIRKS_DICT:
