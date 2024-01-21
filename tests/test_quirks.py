@@ -18,11 +18,25 @@ from zigpy.const import (
 import zigpy.device
 import zigpy.endpoint
 from zigpy.exceptions import MultipleQuirksMatchException
+from zigpy.profiles import zha
 import zigpy.quirks
 from zigpy.quirks.registry import DeviceRegistry, HAEntityType, signature_matches
 import zigpy.types as t
 import zigpy.zcl as zcl
-from zigpy.zcl.clusters.general import Basic, OnOff
+from zigpy.zcl import ClusterType, foundation
+from zigpy.zcl.clusters.general import (
+    Alarms,
+    Basic,
+    Groups,
+    Identify,
+    LevelControl,
+    OnOff,
+    Ota,
+    PowerConfiguration,
+    Scenes,
+)
+from zigpy.zcl.clusters.homeautomation import Diagnostic
+from zigpy.zcl.clusters.lightlink import LightLink
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
@@ -1130,3 +1144,163 @@ async def test_quirks_v2_multiple_matches_raises(real_device):
         MultipleQuirksMatchException, match="Multiple matches found for device"
     ):
         registry.get_device(real_device)
+
+
+async def test_quirks_v2_matches_v1(app_mock):
+    registry = DeviceRegistry()
+
+    class PowerConfig1CRCluster(zigpy.quirks.CustomCluster, PowerConfiguration):
+        """Updating power attributes: 1 CR2032."""
+
+        _CONSTANT_ATTRIBUTES = {
+            PowerConfiguration.AttributeDefs.battery_size.id: 10,
+            PowerConfiguration.AttributeDefs.battery_quantity.id: 1,
+            PowerConfiguration.AttributeDefs.battery_rated_voltage.id: 30,
+        }
+
+    class ScenesCluster(zigpy.quirks.CustomCluster, Scenes):
+        """Ikea Scenes cluster."""
+
+        server_commands = Scenes.server_commands.copy()
+        server_commands.update(
+            {
+                0x0007: foundation.ZCLCommandDef(
+                    "press",
+                    {"param1": t.int16s, "param2": t.int8s, "param3": t.int8s},
+                    False,
+                    is_manufacturer_specific=True,
+                ),
+                0x0008: foundation.ZCLCommandDef(
+                    "hold",
+                    {"param1": t.int16s, "param2": t.int8s},
+                    False,
+                    is_manufacturer_specific=True,
+                ),
+                0x0009: foundation.ZCLCommandDef(
+                    "release",
+                    {
+                        "param1": t.int16s,
+                    },
+                    False,
+                    is_manufacturer_specific=True,
+                ),
+            }
+        )
+
+    class IkeaTradfriRemote3(zigpy.quirks.CustomDevice):
+        """Custom device representing variation of IKEA five button remote."""
+
+        signature = {
+            # <SimpleDescriptor endpoint=1 profile=260 device_type=2064
+            # device_version=2
+            # input_clusters=[0, 1, 3, 9, 2821, 4096]
+            # output_clusters=[3, 4, 5, 6, 8, 25, 4096]>
+            SIG_MODELS_INFO: [("IKEA of Sweden", "TRADFRI remote control")],
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: zha.PROFILE_ID,
+                    SIG_EP_TYPE: zha.DeviceType.COLOR_SCENE_CONTROLLER,
+                    SIG_EP_INPUT: [
+                        Basic.cluster_id,
+                        PowerConfiguration.cluster_id,
+                        Identify.cluster_id,
+                        Alarms.cluster_id,
+                        Diagnostic.cluster_id,
+                        LightLink.cluster_id,
+                    ],
+                    SIG_EP_OUTPUT: [
+                        Identify.cluster_id,
+                        Groups.cluster_id,
+                        Scenes.cluster_id,
+                        OnOff.cluster_id,
+                        LevelControl.cluster_id,
+                        Ota.cluster_id,
+                        LightLink.cluster_id,
+                    ],
+                }
+            },
+        }
+
+        replacement = {
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: zha.PROFILE_ID,
+                    SIG_EP_TYPE: zha.DeviceType.COLOR_SCENE_CONTROLLER,
+                    SIG_EP_INPUT: [
+                        Basic.cluster_id,
+                        PowerConfig1CRCluster,
+                        Identify.cluster_id,
+                        Alarms.cluster_id,
+                        LightLink.cluster_id,
+                    ],
+                    SIG_EP_OUTPUT: [
+                        Identify.cluster_id,
+                        Groups.cluster_id,
+                        ScenesCluster,
+                        OnOff.cluster_id,
+                        LevelControl.cluster_id,
+                        Ota.cluster_id,
+                        LightLink.cluster_id,
+                    ],
+                }
+            }
+        }
+
+    ieee = sentinel.ieee
+    nwk = 0x2233
+    ikea_device = zigpy.device.Device(app_mock, ieee, nwk)
+
+    ikea_device.add_endpoint(1)
+    ikea_device[1].profile_id = zha.PROFILE_ID
+    ikea_device[1].device_type = zha.DeviceType.COLOR_SCENE_CONTROLLER
+    ikea_device.model = "TRADFRI remote control"
+    ikea_device.manufacturer = "IKEA of Sweden"
+    ikea_device[1].add_input_cluster(Basic.cluster_id)
+    ikea_device[1].add_input_cluster(PowerConfiguration.cluster_id)
+    ikea_device[1].add_input_cluster(Identify.cluster_id)
+    ikea_device[1].add_input_cluster(Alarms.cluster_id)
+    ikea_device[1].add_input_cluster(Diagnostic.cluster_id)
+    ikea_device[1].add_input_cluster(LightLink.cluster_id)
+
+    ikea_device[1].add_output_cluster(Identify.cluster_id)
+    ikea_device[1].add_output_cluster(Groups.cluster_id)
+    ikea_device[1].add_output_cluster(Scenes.cluster_id)
+    ikea_device[1].add_output_cluster(OnOff.cluster_id)
+    ikea_device[1].add_output_cluster(LevelControl.cluster_id)
+    ikea_device[1].add_output_cluster(Ota.cluster_id)
+    ikea_device[1].add_output_cluster(LightLink.cluster_id)
+
+    registry.add_to_registry(IkeaTradfriRemote3)
+
+    quirked = registry.get_device(ikea_device)
+
+    assert isinstance(quirked, IkeaTradfriRemote3)
+
+    registry = DeviceRegistry()
+    # fmt: off
+    registry.add_to_registry_v2(ikea_device.manufacturer, ikea_device.model) \
+        .replaces(PowerConfig1CRCluster) \
+        .replaces(ScenesCluster, cluster_type=ClusterType.Client)
+    # fmt: on
+
+    quirked_v2 = registry.get_device(ikea_device)
+
+    assert isinstance(quirked_v2, zigpy.quirks.CustomDeviceV2)
+
+    assert len(quirked_v2.endpoints[1].in_clusters) == 6
+    assert len(quirked_v2.endpoints[1].out_clusters) == 7
+
+    assert isinstance(
+        quirked_v2.endpoints[1].in_clusters[PowerConfig1CRCluster.cluster_id],
+        PowerConfig1CRCluster,
+    )
+
+    assert isinstance(
+        quirked_v2.endpoints[1].out_clusters[ScenesCluster.cluster_id], ScenesCluster
+    )
+
+    for id, cluster in quirked.endpoints[1].in_clusters.items():
+        assert isinstance(quirked_v2.endpoints[1].in_clusters[id], type(cluster))
+
+    for id, cluster in quirked.endpoints[1].out_clusters.items():
+        assert isinstance(quirked_v2.endpoints[1].out_clusters[id], type(cluster))

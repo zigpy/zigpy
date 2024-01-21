@@ -572,14 +572,16 @@ class AutoQuirkRegistryEntry:
     def replaces(
         self,
         replacement_cluster_class: type[zigpy.zcl.Cluster | zigpy.quirks.CustomCluster],
-        cluster_id: int,
+        cluster_id: int | None = None,
         cluster_type: zigpy.zcl.ClusterType = zigpy.zcl.ClusterType.Server,
         endpoint_id: int = 1,
     ):
         """Add a ReplacesMetadata entry and returns self."""
         remove = RemovesMetadata(
             endpoint_id=endpoint_id,
-            cluster_id=cluster_id,
+            cluster_id=cluster_id
+            if cluster_id is not None
+            else replacement_cluster_class.cluster_id,
             cluster_type=cluster_type,
         )
         add = AddsMetadata(
