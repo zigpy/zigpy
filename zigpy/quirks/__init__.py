@@ -20,6 +20,7 @@ import zigpy.device
 import zigpy.endpoint
 from zigpy.quirks.registry import (  # noqa: F401
     AutoQuirkRegistryEntry,
+    ClusterApplicationMetadata,
     DeviceRegistry,
     ExposesBinarySensorMetadata,
     ExposesEnumSelectMetadata,
@@ -193,6 +194,24 @@ class CustomDeviceV2(zigpy.device.Device):
         """Return the metadata for exposed entities."""
         return self._exposes_metadata
 
+    async def apply_custom_configuration(self, *args, **kwargs):
+        """Hook for applications to instruct instances to apply custom configuration."""
+        for endpoint in self.endpoints.values():
+            for cluster in endpoint.in_clusters.values():
+                if (
+                    isinstance(cluster, CustomCluster)
+                    and cluster.apply_custom_configuration
+                    != CustomCluster.apply_custom_configuration
+                ):
+                    await cluster.apply_custom_configuration(*args, **kwargs)
+            for cluster in endpoint.out_clusters.values():
+                if (
+                    isinstance(cluster, CustomCluster)
+                    and cluster.apply_custom_configuration
+                    != CustomCluster.apply_custom_configuration
+                ):
+                    await cluster.apply_custom_configuration(*args, **kwargs)
+
 
 class CustomEndpoint(zigpy.endpoint.Endpoint):
     def __init__(
@@ -238,6 +257,8 @@ class CustomCluster(zigpy.zcl.Cluster):
     _CONSTANT_ATTRIBUTES: dict[int, typing.Any] | None = None
 
     manufacturer_id_override: t.uint16_t | None = None
+
+    application_metadata: ClusterApplicationMetadata | None = None
 
     @property
     def _is_manuf_specific(self) -> bool:
@@ -433,6 +454,9 @@ class CustomCluster(zigpy.zcl.Cluster):
             return self._CONSTANT_ATTRIBUTES[attr_def.id]
 
         return super().get(key, default)
+
+    async def apply_custom_configuration(self, *args, **kwargs):
+        """Hook for applications to instruct instances to apply custom configuration."""
 
 
 def handle_message_from_uninitialized_sender(

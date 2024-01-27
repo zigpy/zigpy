@@ -22,6 +22,7 @@ from zigpy.endpoint import Endpoint
 from zigpy.exceptions import MultipleQuirksMatchException
 import zigpy.quirks
 from zigpy.typing import CustomDeviceType, DeviceType
+from zigpy.zcl.foundation import ZCLAttributeDef
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -232,6 +233,16 @@ def signature_matches(
 
 
 @dataclasses.dataclass(frozen=True)
+class ClusterApplicationMetadata:
+    """Adds metadata for applications leveraging zigpy to interact with custom clusters."""
+
+    zcl_init_attributes: set[str] = dataclasses.field(default_factory=set)
+    zcl_report_config: dict[str, tuple[int, int, int]] = dataclasses.field(
+        default_factory=dict
+    )
+
+
+@dataclasses.dataclass(frozen=True)
 class AddsMetadata:
     """Adds metadata for adding a cluster to a device."""
 
@@ -240,9 +251,13 @@ class AddsMetadata:
     cluster_type: zigpy.zcl.ClusterType = dataclasses.field(
         default=zigpy.zcl.ClusterType.Server
     )
-    # pass to cluster as kwargs? thinking things like _CONSTANT_ATTRIBUTES, battery settings,
-    # zcl init attrs, attribute reporting config, etc
-    cluster_config: dict[str, typing.Any] = dataclasses.field(default_factory=dict)
+    zcl_init_attributes: set[ZCLAttributeDef] = dataclasses.field(default_factory=set)
+    constant_attributes: dict[ZCLAttributeDef, typing.Any] = dataclasses.field(
+        default_factory=dict
+    )
+    zcl_report_config: dict[ZCLAttributeDef, tuple[int, int, int]] = dataclasses.field(
+        default_factory=dict
+    )
 
     def __call__(self, device: zigpy.quirks.CustomDeviceV2):
         """Process the add."""
@@ -259,7 +274,24 @@ class AddsMetadata:
             cluster = self.cluster(endpoint, is_server=True)
             cluster_id = cluster.cluster_id
 
-        add_cluster(cluster_id, cluster)
+        cluster = add_cluster(cluster_id, cluster)
+
+        if self.constant_attributes:
+            cluster._CONSTANT_ATTRIBUTES = {
+                attribute.name: value
+                for attribute, value in self.constant_attributes.items()
+            }
+
+        if self.zcl_init_attributes or self.zcl_report_config:
+            cluster.application_metadata = ClusterApplicationMetadata(
+                zcl_init_attributes={
+                    attribute.name for attribute in self.zcl_init_attributes
+                },
+                zcl_report_config={
+                    attribute.name: report_config
+                    for attribute, report_config in self.zcl_report_config.items()
+                },
+            )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -497,12 +529,18 @@ class AutoQuirkRegistryEntry:
         cluster: int | type[zigpy.zcl.Cluster | zigpy.quirks.CustomCluster],
         cluster_type: zigpy.zcl.ClusterType = zigpy.zcl.ClusterType.Server,
         endpoint_id: int = 1,
+        zcl_init_attributes: set[ZCLAttributeDef] | None = None,
+        constant_attributes: dict[ZCLAttributeDef, typing.Any] | None = None,
+        zcl_report_config: dict[ZCLAttributeDef, tuple[int, int, int]] | None = None,
     ):
         """Add an AddsMetadata entry and returns self."""
         add = AddsMetadata(
             endpoint_id=endpoint_id,
             cluster=cluster,
             cluster_type=cluster_type,
+            zcl_init_attributes=zcl_init_attributes or set(),
+            constant_attributes=constant_attributes or {},
+            zcl_report_config=zcl_report_config or {},
         )
         self.adds_metadata.append(add)
         return self

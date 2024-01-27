@@ -1064,10 +1064,20 @@ async def test_quirks_v2(real_device):
         },
     }
 
+    class TestCustomCluster(zigpy.quirks.CustomCluster, Basic):
+        class AttributeDefs(zcl.foundation.BaseAttributeDefs):
+            foo: Final = zcl.foundation.ZCLAttributeDef(id=0x0000, type=t.uint8_t)
+            bar: Final = zcl.foundation.ZCLAttributeDef(id=0x0000, type=t.uint8_t)
+            report: Final = zcl.foundation.ZCLAttributeDef(id=0x0000, type=t.uint8_t)
+
     # fmt: off
     registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
         .matches(signature_matches(signature)) \
-        .adds(Basic.cluster_id) \
+        .adds(
+            TestCustomCluster,
+            constant_attributes={TestCustomCluster.AttributeDefs.foo: 3},
+            zcl_init_attributes={TestCustomCluster.AttributeDefs.bar},
+            zcl_report_config={TestCustomCluster.AttributeDefs.report: (1, 2, 3)}) \
         .adds(OnOff.cluster_id) \
         .exposes_enum_select(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
     # fmt: on
@@ -1079,6 +1089,17 @@ async def test_quirks_v2(real_device):
 
     assert ep.basic is not None
     assert isinstance(ep.basic, Basic)
+    assert isinstance(ep.basic, TestCustomCluster)
+    assert ep.basic._CONSTANT_ATTRIBUTES[TestCustomCluster.AttributeDefs.foo.name] == 3
+    assert (
+        TestCustomCluster.AttributeDefs.bar.name
+        in ep.basic.application_metadata.zcl_init_attributes
+    )
+    assert len(ep.basic.application_metadata.zcl_init_attributes) == 1
+    assert ep.basic.application_metadata.zcl_report_config[
+        TestCustomCluster.AttributeDefs.report.name
+    ] == (1, 2, 3)
+    assert len(ep.basic.application_metadata.zcl_report_config) == 1
 
     assert ep.on_off is not None
     assert isinstance(ep.on_off, OnOff)
