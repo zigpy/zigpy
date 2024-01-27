@@ -460,7 +460,7 @@ class ExposesWriteAttributeButtonMetadata:
         ].append(self)
 
 
-@dataclasses.dataclass(kw_only=True)
+@dataclasses.dataclass
 class AutoQuirkRegistryEntry:
     """Auto quirk registry entry."""
 
