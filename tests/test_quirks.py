@@ -1146,6 +1146,42 @@ async def test_quirks_v2_multiple_matches_raises(real_device):
         registry.get_device(real_device)
 
 
+async def test_quirks_v2_with_custom_device_class(real_device):
+    registry = DeviceRegistry()
+
+    class CustomTestDevice(zigpy.quirks.CustomDeviceV2):
+        pass
+
+    # fmt: off
+    registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
+        .with_device_class(CustomTestDevice) \
+        .adds(Basic.cluster_id) \
+        .adds(OnOff.cluster_id) \
+        .exposes_enum_select(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+    # fmt: on
+
+    assert isinstance(registry.get_device(real_device), CustomTestDevice)
+
+
+async def test_quirks_v2_with_custom_device_class_raises(real_device):
+    registry = DeviceRegistry()
+
+    class CustomTestDevice(zigpy.quirks.CustomDevice):
+        pass
+
+    with pytest.raises(
+        AssertionError,
+        match="is not a subclass of zigpy.quirks.CustomDeviceV2",
+    ):
+        # fmt: off
+        registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
+            .with_device_class(CustomTestDevice) \
+            .adds(Basic.cluster_id) \
+            .adds(OnOff.cluster_id) \
+            .exposes_enum_select(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+        # fmt: on
+
+
 async def test_quirks_v2_matches_v1(app_mock):
     registry = DeviceRegistry()
 

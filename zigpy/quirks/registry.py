@@ -80,7 +80,7 @@ class DeviceRegistry:
 
         key = (device.manufacturer, device.model)
         if key in self._registry_v2:
-            matches = []
+            matches: list[AutoQuirkRegistryEntry] = []
             entries = self._registry_v2[key]
             if len(entries) == 1:
                 if entries[0].matches_device(device):
@@ -94,8 +94,13 @@ class DeviceRegistry:
                     f"Multiple matches found for device {device}: {matches}"
                 )
             if len(matches) == 1:
+                quirk_entry: AutoQuirkRegistryEntry = matches[0]
+                if quirk_entry.custom_device_class:
+                    return quirk_entry.custom_device_class(
+                        device.application, device.ieee, device.nwk, device, quirk_entry
+                    )
                 return zigpy.quirks.CustomDeviceV2(
-                    device.application, device.ieee, device.nwk, device, matches[0]
+                    device.application, device.ieee, device.nwk, device, quirk_entry
                 )
 
         _LOGGER.debug(
@@ -235,7 +240,8 @@ class AddsMetadata:
     cluster_type: zigpy.zcl.ClusterType = dataclasses.field(
         default=zigpy.zcl.ClusterType.Server
     )
-    # pass to cluster as kwargs? thinking things like _CONSTANT_ATTRIBUTES, battery settings, etc
+    # pass to cluster as kwargs? thinking things like _CONSTANT_ATTRIBUTES, battery settings,
+    # zcl init attrs, attribute reporting config, etc
     cluster_config: dict[str, typing.Any] = dataclasses.field(default_factory=dict)
 
     def __call__(self, device: zigpy.quirks.CustomDeviceV2):
@@ -460,6 +466,9 @@ class AutoQuirkRegistryEntry:
 
     registry: dict[tuple[str, str], list[AutoQuirkRegistryEntry]] = None
     filters: list[MatcherType] = dataclasses.field(default_factory=list)
+    custom_device_class: type[zigpy.quirks.CustomDeviceV2] | None = dataclasses.field(
+        default=None
+    )
     adds_metadata: list[AddsMetadata] = dataclasses.field(default_factory=list)
     removes_metadata: list[RemovesMetadata] = dataclasses.field(default_factory=list)
     replaces_metadata: list[ReplacesMetadata] = dataclasses.field(default_factory=list)
@@ -474,6 +483,14 @@ class AutoQuirkRegistryEntry:
     device_automation_triggers_metadata: dict[
         tuple[str, str], dict[str, str]
     ] = dataclasses.field(default_factory=dict)
+
+    def with_device_class(self, custom_device_class: type[zigpy.quirks.CustomDeviceV2]):
+        """Set the custom device class and returns self."""
+        assert issubclass(
+            custom_device_class, zigpy.quirks.CustomDeviceV2
+        ), f"{custom_device_class} is not a subclass of zigpy.quirks.CustomDeviceV2"
+        self.custom_device_class = custom_device_class
+        return self
 
     def adds(
         self,
