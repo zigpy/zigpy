@@ -1218,11 +1218,11 @@ async def test_request_future_matching(app, make_initialized_device):
 
     assert not app._req_listeners[device]
 
-    with app._wait_for_response(
+    with app.wait_for_response(
         device, [ota.commands_by_name["query_next_image"].schema()]
     ) as rsp_fut:
         # Attach two listeners
-        with app._wait_for_response(
+        with app.wait_for_response(
             device, [ota.commands_by_name["query_next_image"].schema()]
         ) as rsp_fut2:
             assert app._req_listeners[device]
@@ -1283,7 +1283,7 @@ async def test_request_callback_matching(app, make_initialized_device):
 
     assert not app._req_listeners[device]
 
-    with app._callback_for_response(
+    with app.callback_for_response(
         device, [ota.commands_by_name["query_next_image"].schema()], mock_callback
     ):
         assert app._req_listeners[device]

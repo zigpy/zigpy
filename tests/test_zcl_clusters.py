@@ -1,14 +1,14 @@
 import asyncio
 import re
-from unittest.mock import ANY
 
 import pytest
 
+from zigpy import device
 import zigpy.endpoint
-import zigpy.ota as ota
 import zigpy.types as types
 import zigpy.zcl as zcl
 import zigpy.zcl.clusters.security as sec
+from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
@@ -124,9 +124,22 @@ async def test_time_cluster_unsupported():
 
 
 @pytest.fixture
-def ota_cluster():
-    ep = MagicMock()
-    ep.device.application.ota = MagicMock(spec_set=ota.OTA)
+def dev(monkeypatch, app_mock):
+    monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
+    ieee = types.EUI64(map(types.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
+
+    dev = device.Device(app_mock, ieee, 65535)
+    node_desc = zdo_t.NodeDescriptor(1, 1, 1, 4, 5, 6, 7, 8)
+    with patch.object(
+        dev.zdo, "Node_Desc_req", new=AsyncMock(return_value=(0, 0xFFFF, node_desc))
+    ):
+        yield dev
+
+
+@pytest.fixture
+def ota_cluster(dev):
+    ep = dev.add_endpoint(1)
+    # ep.device.application.ota = MagicMock(spec_set=ota.OTA)
 
     cluster = zcl.Cluster._registry[0x0019](ep)
 
@@ -144,7 +157,7 @@ async def test_ota_handle_cluster_req(ota_cluster):
     assert ota_cluster._handle_cluster_request.call_count == 1
 
 
-async def test_ota_handle_cluster_req_wrapper(ota_cluster):
+async def test_ota_handle_cluster_req_wrapper(ota_cluster, caplog):
     ota_cluster._handle_query_next_image = AsyncMock()
     ota_cluster._handle_image_block = AsyncMock()
     ota_cluster._handle_upgrade_end = AsyncMock()
@@ -159,32 +172,6 @@ async def test_ota_handle_cluster_req_wrapper(ota_cluster):
     ota_cluster._handle_image_block.reset_mock()
     ota_cluster._handle_upgrade_end.reset_mock()
 
-    hdr.command_id = 0x03
-    await ota_cluster._handle_cluster_request(hdr, [sentinel.block_args])
-    assert ota_cluster._handle_query_next_image.call_count == 0
-    assert ota_cluster._handle_image_block.call_count == 1
-    assert ota_cluster._handle_image_block.call_args[0][0] == sentinel.block_args
-    assert ota_cluster._handle_upgrade_end.call_count == 0
-    ota_cluster._handle_query_next_image.reset_mock()
-    ota_cluster._handle_image_block.reset_mock()
-    ota_cluster._handle_upgrade_end.reset_mock()
-
-    hdr.command_id = 0x06
-    await ota_cluster._handle_cluster_request(hdr, [sentinel.end_args])
-    assert ota_cluster._handle_query_next_image.call_count == 0
-    assert ota_cluster._handle_image_block.call_count == 0
-    assert ota_cluster._handle_upgrade_end.call_count == 1
-    assert ota_cluster._handle_upgrade_end.call_args[0][0] == sentinel.end_args
-    ota_cluster._handle_query_next_image.reset_mock()
-    ota_cluster._handle_image_block.reset_mock()
-    ota_cluster._handle_upgrade_end.reset_mock()
-
-    hdr.command_id = 0x78
-    await ota_cluster._handle_cluster_request(hdr, [sentinel.just_args])
-    assert ota_cluster._handle_query_next_image.call_count == 0
-    assert ota_cluster._handle_image_block.call_count == 0
-    assert ota_cluster._handle_upgrade_end.call_count == 0
-
     # This command isn't currently handled
     hdr.command_id = 0x08
     await ota_cluster._handle_cluster_request(hdr, [sentinel.just_args])
@@ -192,12 +179,20 @@ async def test_ota_handle_cluster_req_wrapper(ota_cluster):
     assert ota_cluster._handle_image_block.call_count == 0
     assert ota_cluster._handle_upgrade_end.call_count == 0
 
+    # This command doesn't exist
+    hdr.command_id = 0x28
+    await ota_cluster._handle_cluster_request(hdr, [sentinel.just_args])
+    assert ota_cluster._handle_query_next_image.call_count == 0
+    assert ota_cluster._handle_image_block.call_count == 0
+    assert ota_cluster._handle_upgrade_end.call_count == 0
+    assert "Unknown OTA command id" in caplog.text
+
 
 def _ota_next_image(cluster, has_image=True, upgradeable=False):
     async def get_ota_mock(*args):
         if upgradeable:
             img = MagicMock()
-            img.should_update.return_value = True
+            img.should_update = MagicMock(return_value=True)
             img.key.manufacturer_id = sentinel.manufacturer_id
             img.key.image_type = sentinel.image_type
             img.version = sentinel.image_version
@@ -209,7 +204,9 @@ def _ota_next_image(cluster, has_image=True, upgradeable=False):
             img = None
         return img
 
-    cluster.endpoint.device.application.ota.get_ota_image.side_effect = get_ota_mock
+    cluster.endpoint.device.application.ota.get_ota_image = MagicMock(
+        side_effect=get_ota_mock
+    )
     return cluster._handle_query_next_image(
         sentinel.field_ctrl,
         sentinel.manufacturer_id,
@@ -222,6 +219,7 @@ def _ota_next_image(cluster, has_image=True, upgradeable=False):
 
 async def test_ota_handle_query_next_image_no_img(ota_cluster):
     ota_cluster.query_next_image_response = AsyncMock()
+    ota_cluster.endpoint.device.ota_in_progress = False
 
     await _ota_next_image(ota_cluster, has_image=False, upgradeable=False)
     assert ota_cluster.query_next_image_response.call_count == 1
@@ -234,6 +232,7 @@ async def test_ota_handle_query_next_image_no_img(ota_cluster):
 
 async def test_ota_handle_query_next_image_not_upgradeable(ota_cluster):
     ota_cluster.query_next_image_response = AsyncMock()
+    ota_cluster.endpoint.device.ota_in_progress = False
 
     await _ota_next_image(ota_cluster, has_image=True, upgradeable=False)
     assert ota_cluster.query_next_image_response.call_count == 1
@@ -246,143 +245,21 @@ async def test_ota_handle_query_next_image_not_upgradeable(ota_cluster):
 
 async def test_ota_handle_query_next_image_upgradeable(ota_cluster):
     ota_cluster.query_next_image_response = AsyncMock()
+    ota_cluster.endpoint.device.ota_in_progress = False
 
+    class Listener:
+        device_ota_update_available = MagicMock()
+
+    listener = Listener()
+    ota_cluster.endpoint.device.add_listener(listener)
     await _ota_next_image(ota_cluster, has_image=True, upgradeable=True)
     assert ota_cluster.query_next_image_response.call_count == 1
     assert (
         ota_cluster.query_next_image_response.call_args[0][0]
-        == zcl.foundation.Status.SUCCESS
+        == zcl.foundation.Status.NO_IMAGE_AVAILABLE
     )
-    assert (
-        ota_cluster.query_next_image_response.call_args[0][1]
-        == sentinel.manufacturer_id
-    )
-    assert ota_cluster.query_next_image_response.call_args[0][2] == sentinel.image_type
-    assert (
-        ota_cluster.query_next_image_response.call_args[0][3] == sentinel.image_version
-    )
-    assert ota_cluster.query_next_image_response.call_args[0][4] == sentinel.image_size
-
-
-def _ota_image_block(cluster, has_image=True, correct_version=True, wrong_offset=False):
-    async def get_ota_mock(*args):
-        if has_image:
-            img = MagicMock(spec_set=ota.CachedImage)
-            img.should_update.return_value = True
-            img.key.manufacturer_id = sentinel.manufacturer_id
-            img.key.image_type = sentinel.image_type
-            img.version = sentinel.image_version
-            img.header.image_size = IMAGE_SIZE
-            if wrong_offset:
-                img.get_image_block.side_effect = ValueError()
-            else:
-                img.get_image_block.return_value = sentinel.data
-            if not correct_version:
-                img.version = sentinel.wrong_image_version
-        else:
-            img = None
-        return img
-
-    cluster.endpoint.device.application.ota.get_ota_image.side_effect = get_ota_mock
-    return cluster._handle_image_block(
-        sentinel.field_ctrl,
-        sentinel.manufacturer_id,
-        sentinel.image_type,
-        sentinel.image_version,
-        IMAGE_OFFSET,
-        sentinel.max_data_size,
-        sentinel.addr,
-        sentinel.delay,
-        tsn=0x21,
-    )
-
-
-async def test_ota_handle_image_block_no_img(ota_cluster):
-    await _ota_image_block(ota_cluster, has_image=False, correct_version=True)
-    ota_cluster.reply.assert_called_once_with(
-        False,
-        ota_cluster.commands_by_name["image_block_response"].id,
-        ota_cluster.commands_by_name["image_block_response"].schema,
-        *(
-            ota_cluster.commands_by_name["image_block_response"]
-            .schema(status=zcl.foundation.Status.ABORT)
-            .as_tuple(skip_missing=True)
-        ),
-        manufacturer=None,
-        tsn=ANY,
-    )
-    ota_cluster.reply.reset_mock()
-
-    await _ota_image_block(ota_cluster, has_image=False, correct_version=False)
-    ota_cluster.reply.assert_called_once_with(
-        False,
-        ota_cluster.commands_by_name["image_block_response"].id,
-        ota_cluster.commands_by_name["image_block_response"].schema,
-        *(
-            ota_cluster.commands_by_name["image_block_response"]
-            .schema(status=zcl.foundation.Status.ABORT)
-            .as_tuple(skip_missing=True)
-        ),
-        manufacturer=None,
-        tsn=ANY,
-    )
-
-
-async def test_ota_handle_image_block(ota_cluster):
-    ota_cluster.image_block_response = AsyncMock()
-
-    await _ota_image_block(ota_cluster, has_image=True, correct_version=True)
-    assert ota_cluster.image_block_response.call_count == 1
-    assert (
-        ota_cluster.image_block_response.call_args[0][0]
-        == zcl.foundation.Status.SUCCESS
-    )
-    assert ota_cluster.image_block_response.call_args[0][1] == sentinel.manufacturer_id
-    assert ota_cluster.image_block_response.call_args[0][2] == sentinel.image_type
-    assert ota_cluster.image_block_response.call_args[0][3] == sentinel.image_version
-    assert ota_cluster.image_block_response.call_args[0][4] == IMAGE_OFFSET
-    assert ota_cluster.image_block_response.call_args[0][5] == sentinel.data
-    ota_cluster.image_block_response.reset_mock()
-
-    await _ota_image_block(ota_cluster, has_image=True, correct_version=False)
-    assert ota_cluster.image_block_response.call_count == 1
-    assert (
-        ota_cluster.image_block_response.call_args[0][0] == zcl.foundation.Status.ABORT
-    )
-    assert len(ota_cluster.image_block_response.call_args[0]) == 1
-
-
-async def test_ota_handle_image_block_wrong_offset(ota_cluster):
-    ota_cluster.image_block_response = AsyncMock()
-
-    await _ota_image_block(
-        ota_cluster, has_image=True, correct_version=True, wrong_offset=True
-    )
-    assert ota_cluster.image_block_response.call_count == 1
-    assert (
-        ota_cluster.image_block_response.call_args[0][0]
-        == zcl.foundation.Status.MALFORMED_COMMAND
-    )
-    assert len(ota_cluster.image_block_response.call_args[0]) == 1
-
-
-async def test_ota_handle_upgrade_end(ota_cluster):
-    ota_cluster.upgrade_end_response = AsyncMock()
-
-    await ota_cluster._handle_upgrade_end(
-        sentinel.status,
-        sentinel.manufacturer_id,
-        sentinel.image_type,
-        sentinel.image_version,
-        tsn=0x21,
-    )
-
-    assert ota_cluster.upgrade_end_response.call_count == 1
-    assert ota_cluster.upgrade_end_response.call_args[0][0] == sentinel.manufacturer_id
-    assert ota_cluster.upgrade_end_response.call_args[0][1] == sentinel.image_type
-    assert ota_cluster.upgrade_end_response.call_args[0][2] == sentinel.image_version
-    assert ota_cluster.upgrade_end_response.call_args[0][3] == 0x0000
-    assert ota_cluster.upgrade_end_response.call_args[0][4] == 0x0000
+    assert len(ota_cluster.query_next_image_response.call_args[0]) == 1
+    assert listener.device_ota_update_available.call_count == 1
 
 
 def test_ias_zone_type():

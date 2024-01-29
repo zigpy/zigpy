@@ -2187,10 +2187,6 @@ class Ota(Cluster):
             await self._handle_query_next_image(
                 *args, tsn=tsn, model=self.endpoint.model
             )
-        elif cmd_name == "image_block":
-            await self._handle_image_block(*args, tsn=tsn, model=self.endpoint.model)
-        elif cmd_name == "upgrade_end":
-            await self._handle_upgrade_end(*args, tsn=tsn)
         else:
             self.debug(
                 "no '%s' OTA command handler for '%s %s': %s",
@@ -2211,6 +2207,10 @@ class Ota(Cluster):
         tsn,
         model=None,
     ):
+        # we don't want the cluster to do anything here because it would interfere with the OTA manager
+        if self.endpoint.device.ota_in_progress:
+            return
+
         self.debug(
             (
                 "OTA query_next_image handler for '%s %s': "
@@ -2242,100 +2242,14 @@ class Ota(Cluster):
                 should_update,
             )
             if should_update:
-                self.info(
-                    "Updating: %s %s", self.endpoint.manufacturer, self.endpoint.model
-                )
-                await self.query_next_image_response(
-                    foundation.Status.SUCCESS,
-                    img.key.manufacturer_id,
-                    img.key.image_type,
-                    img.version,
-                    img.header.image_size,
-                    tsn=tsn,
-                )
-                return
+                # send an event to listener(s) to let them know that an image is available
+                self.endpoint.device.listener_event("device_ota_update_available", img)
         else:
             self.debug("No OTA image is available")
+
+        # always send no image available response so that the device doesn't update autonomously
         await self.query_next_image_response(
             foundation.Status.NO_IMAGE_AVAILABLE, tsn=tsn
-        )
-
-    async def _handle_image_block(
-        self,
-        field_ctr,
-        manufacturer_id,
-        image_type,
-        file_version,
-        file_offset,
-        max_data_size,
-        request_node_addr,
-        block_request_delay,
-        *,
-        tsn=None,
-        model=None,
-    ):
-        self.debug(
-            (
-                "OTA image_block handler for '%s %s': field_control=%s"
-                ", manufacturer_id=%s, image_type=%s, file_version=%s"
-                ", file_offset=%s, max_data_size=%s, request_node_addr=%s"
-                ", block_request_delay=%s"
-            ),
-            self.endpoint.manufacturer,
-            self.endpoint.model,
-            field_ctr,
-            manufacturer_id,
-            image_type,
-            file_version,
-            file_offset,
-            max_data_size,
-            request_node_addr,
-            block_request_delay,
-        )
-        img = await self.endpoint.device.application.ota.get_ota_image(
-            manufacturer_id, image_type, model
-        )
-        if img is None or img.version != file_version:
-            self.debug("OTA image is not available")
-            await self.image_block_response(foundation.Status.ABORT, tsn=tsn)
-            return
-        self.debug(
-            "OTA upgrade progress: %0.1f", 100.0 * file_offset / img.header.image_size
-        )
-        try:
-            block = img.get_image_block(file_offset, max_data_size)
-        except ValueError:
-            await self.image_block_response(
-                foundation.Status.MALFORMED_COMMAND, tsn=tsn
-            )
-        else:
-            await self.image_block_response(
-                foundation.Status.SUCCESS,
-                img.key.manufacturer_id,
-                img.key.image_type,
-                img.version,
-                file_offset,
-                block,
-                tsn=tsn,
-            )
-
-    async def _handle_upgrade_end(
-        self, status, manufacturer_id, image_type, file_ver, *, tsn
-    ):
-        self.debug(
-            (
-                "OTA upgrade_end handler for '%s %s': status=%s"
-                ", manufacturer_id=%s, image_type=%s, file_version=%s"
-            ),
-            self.endpoint.manufacturer,
-            self.endpoint.model,
-            status,
-            manufacturer_id,
-            image_type,
-            file_ver,
-        )
-        await self.upgrade_end_response(
-            manufacturer_id, image_type, file_ver, 0x00000000, 0x00000000, tsn=tsn
         )
 
 

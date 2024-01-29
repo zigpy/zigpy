@@ -9,6 +9,8 @@ import sys
 import typing
 import warnings
 
+from zigpy.ota.manager import update_firmware
+
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
 else:
@@ -36,6 +38,7 @@ import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
+    from zigpy.ota.image import BaseOTAImage
 
 APS_REPLY_TIMEOUT = 5
 APS_REPLY_TIMEOUT_EXTENDED = 28
@@ -66,6 +69,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
         self.lqi: int | None = None
         self.rssi: int | None = None
+        self.ota_in_progress: bool = False
         self._last_seen: datetime | None = None
         self._initialize_task: asyncio.Task | None = None
         self._group_scan_task: asyncio.Task | None = None
@@ -491,6 +495,31 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             expect_reply=False,
             use_ieee=use_ieee,
         )
+
+    async def update_firmware(
+        self,
+        firmware_image: BaseOTAImage,
+        progress_callback: callable = None,
+        force: bool = False,
+    ) -> foundation.Status:
+        """Update device firmware."""
+        if self.ota_in_progress:
+            self.debug("OTA already in progress")
+            return
+
+        self.ota_in_progress = True
+
+        try:
+            result = await update_firmware(
+                self, firmware_image, progress_callback, force
+            )
+        except Exception as exc:
+            self.ota_in_progress = False
+            self.debug("OTA failed!", exc_info=exc)
+            raise exc
+
+        self.ota_in_progress = False
+        return result
 
     def radio_details(self, lqi=None, rssi=None) -> None:
         if lqi is not None:

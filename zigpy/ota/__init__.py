@@ -107,6 +107,12 @@ class CachedImage:
 
         return self.cached_data[offset : offset + min(self.MAXIMUM_DATA_SIZE, size)]
 
+    def serialize(self) -> bytes:
+        """Serialize the image."""
+        if self.cached_data is None:
+            self.cached_data = self.image.serialize()
+        return self.cached_data
+
 
 class OTA(zigpy.util.ListenableMixin):
     """OTA Manager."""
