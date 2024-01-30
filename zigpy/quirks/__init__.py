@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import logging
 import typing
+from zigpy import zdo
 
 from zigpy.const import (  # noqa: F401
     SIG_ENDPOINTS,
@@ -73,6 +74,8 @@ def register_uninitialized_device_message_handler(handler: typing.Callable) -> N
 
 
 class CustomDevice(zigpy.device.Device):
+    """Implementation of a quirks v1 custom device."""
+
     replacement: dict[str, typing.Any] = {}
     signature = None
 
@@ -126,7 +129,7 @@ class CustomDevice(zigpy.device.Device):
         return ep
 
 
-class CustomDeviceV2(zigpy.device.Device):
+class CustomDeviceV2(CustomDevice):
     """Implementation of a quirks v2 custom device."""
 
     def __init__(
@@ -137,7 +140,11 @@ class CustomDeviceV2(zigpy.device.Device):
         replaces: zigpy.device.Device,
         quirk_metadata: AutoQuirkRegistryEntry,
     ) -> None:
-        super().__init__(application, ieee, nwk)
+        # this is done to simplify extending from CustomDevice
+        self._replacement_from_replaces(replaces)
+        super().__init__(application, ieee, nwk, replaces)
+        # we no longer need this after calling super().__init__
+        self.replacement = {}
         self._exposes_metadata: dict[
             tuple[int, int, zigpy.zcl.ClusterType],
             list[
@@ -148,20 +155,7 @@ class CustomDeviceV2(zigpy.device.Device):
                 | ExposesWriteAttributeButtonMetadata
             ],
         ] = collections.defaultdict(list)
-
-        def set_device_attr(attr):
-            setattr(self, attr, getattr(replaces, attr))
-
-        for attr in ("lqi", "rssi", "last_seen", "relays"):
-            setattr(self, attr, getattr(replaces, attr))
-
-        set_device_attr("status")
-        set_device_attr(SIG_NODE_DESC)
-        set_device_attr(SIG_MANUFACTURER)
-        set_device_attr(SIG_MODEL)
-        set_device_attr(SIG_SKIP_CONFIG)
-        for endpoint_id, endpoint in replaces.endpoints.items():
-            self.endpoints[endpoint_id] = endpoint
+        self._quirk_metadata: AutoQuirkRegistryEntry = quirk_metadata
 
         for add_meta in quirk_metadata.adds_metadata:
             add_meta(self)
@@ -177,6 +171,25 @@ class CustomDeviceV2(zigpy.device.Device):
 
         for entity_meta in quirk_metadata.entity_metadata:
             entity_meta(self)
+
+    def _replacement_from_replaces(self, replaces: zigpy.device.Device) -> None:
+        """Set replacement data from replaces device."""
+        self.replacement = {
+            SIG_ENDPOINTS: {
+                key: {
+                    SIG_EP_PROFILE: endpoint.profile_id,
+                    SIG_EP_TYPE: endpoint.device_type,
+                    SIG_EP_INPUT: [
+                        cluster.cluster_id for cluster in endpoint.in_clusters.values()
+                    ],
+                    SIG_EP_OUTPUT: [
+                        cluster.cluster_id for cluster in endpoint.out_clusters.values()
+                    ],
+                }
+            }
+            for key, endpoint in replaces.endpoints.items()
+            if not isinstance(endpoint, zdo.ZDO)
+        }
 
     @property
     def exposes_metadata(
