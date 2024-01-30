@@ -3,8 +3,8 @@ from __future__ import annotations
 import collections
 import logging
 import typing
-from zigpy import zdo
 
+from zigpy import zdo
 from zigpy.const import (  # noqa: F401
     SIG_ENDPOINTS,
     SIG_EP_INPUT,
