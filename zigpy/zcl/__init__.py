@@ -399,7 +399,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             manufacturer=manufacturer,
             tsn=tsn,
             disable_default_response=True,
-            direction=foundation.Direction.Client_to_Server,
+            direction=(
+                foundation.Direction.Server_to_Client
+                if self.is_client
+                else foundation.Direction.Client_to_Server
+            ),
             args=args,
             kwargs=kwargs,
         )
