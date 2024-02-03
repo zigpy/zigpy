@@ -5,6 +5,7 @@ from unittest import mock
 
 import pytest
 
+import zigpy.device
 import zigpy.endpoint
 import zigpy.types as t
 import zigpy.zcl as zcl
@@ -1066,3 +1067,54 @@ async def test_zcl_request_direction():
         direction=zcl.clusters.lighting.Color.Direction.Shortest_distance,
         transition_time=10,
     )
+
+
+async def test_zcl_reply_direction(app_mock):
+    """Test that the reply header's `direction` field is properly set."""
+    dev = zigpy.device.Device(
+        application=app_mock,
+        ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"),
+        nwk=0x1234,
+    )
+
+    dev._send_sequence = DEFAULT_TSN
+
+    ep = dev.add_endpoint(1)
+    ep.add_input_cluster(zcl.clusters.general.OnOff.cluster_id)
+
+    hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=0,
+            direction=foundation.Direction.Client_to_Server,
+            disable_default_response=0,
+            reserved=0,
+        ),
+        tsn=87,
+        command_id=foundation.GeneralCommand.Report_Attributes,
+    )
+
+    attr = zcl.foundation.Attribute()
+    attr.attrid = zcl.clusters.general.OnOff.AttributeDefs.on_off.id
+    attr.value = zcl.foundation.TypeValue()
+    attr.value.value = t.Bool.true
+
+    cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Report_Attributes
+    ].schema([attr])
+
+    ep.handle_message(
+        profile=260,
+        cluster=zcl.clusters.general.OnOff.cluster_id,
+        hdr=hdr,
+        args=cmd,
+    )
+
+    await asyncio.sleep(0.1)
+
+    packet = app_mock.send_packet.mock_calls[0].args[0]
+    assert packet.cluster_id == zcl.clusters.general.OnOff.cluster_id
+
+    # The direction is correct
+    packet_hdr, _ = foundation.ZCLHeader.deserialize(packet.data.serialize())
+    assert packet_hdr.direction == foundation.Direction.Server_to_Client
