@@ -219,7 +219,7 @@ def test_frame_control():
 
 def test_frame_control_general():
     frc = foundation.FrameControl.general(
-        direction=foundation.Direction.Server_to_Client
+        direction=foundation.Direction.Client_to_Server
     )
     assert frc.is_cluster is False
     assert frc.is_general is True
@@ -233,21 +233,21 @@ def test_frame_control_general():
     assert frc.serialize() == b"\x04"
 
     frc = foundation.FrameControl.general(
-        direction=foundation.Direction.Server_to_Client
+        direction=foundation.Direction.Client_to_Server
     )
-    assert frc.direction == foundation.Direction.Server_to_Client
+    assert frc.direction == foundation.Direction.Client_to_Server
     assert frc.serialize() == b"\x00"
-    frc.direction = foundation.Direction.Client_to_Server
+    frc.direction = foundation.Direction.Server_to_Client
     assert frc.serialize() == b"\x08"
     assert (
         foundation.FrameControl.general(
-            direction=foundation.Direction.Client_to_Server
+            direction=foundation.Direction.Server_to_Client
         ).serialize()
         == b"\x18"
     )
 
     frc = foundation.FrameControl.general(
-        direction=foundation.Direction.Server_to_Client
+        direction=foundation.Direction.Client_to_Server
     )
     assert not frc.disable_default_response
     assert frc.serialize() == b"\x00"
@@ -259,7 +259,7 @@ def test_frame_control_general():
 
 def test_frame_control_cluster():
     frc = foundation.FrameControl.cluster(
-        direction=foundation.Direction.Server_to_Client
+        direction=foundation.Direction.Client_to_Server
     )
     assert frc.is_cluster is True
     assert frc.is_general is False
@@ -273,23 +273,23 @@ def test_frame_control_cluster():
     assert frc.serialize() == b"\x05"
 
     frc = foundation.FrameControl.cluster(
-        direction=foundation.Direction.Server_to_Client
+        direction=foundation.Direction.Client_to_Server
     )
-    assert frc.direction == foundation.Direction.Server_to_Client
-    assert frc.serialize() == b"\x01"
-    frc.direction = foundation.Direction.Server_to_Client
+    assert frc.direction == foundation.Direction.Client_to_Server
     assert frc.serialize() == b"\x01"
     frc.direction = foundation.Direction.Client_to_Server
+    assert frc.serialize() == b"\x01"
+    frc.direction = foundation.Direction.Server_to_Client
     assert frc.serialize() == b"\x09"
     assert (
         foundation.FrameControl.cluster(
-            direction=foundation.Direction.Client_to_Server
+            direction=foundation.Direction.Server_to_Client
         ).serialize()
         == b"\x19"
     )
 
     frc = foundation.FrameControl.cluster(
-        direction=foundation.Direction.Server_to_Client
+        direction=foundation.Direction.Client_to_Server
     )
     assert not frc.disable_default_response
     assert frc.serialize() == b"\x01"
@@ -307,7 +307,7 @@ def test_frame_header():
 
     assert rest == extra
     assert hdr.command_id == 0x0A
-    assert hdr.direction == foundation.Direction.Client_to_Server
+    assert hdr.direction == foundation.Direction.Server_to_Client
     assert hdr.manufacturer == 0x115F
     assert hdr.tsn == 0xC0
 
@@ -618,7 +618,7 @@ def test_schema():
         schema={
             "uh oh": t.uint16_t,
         },
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
     )
 
     with pytest.raises(ValueError):
@@ -632,7 +632,7 @@ def test_schema():
             "bar?": t.uint16_t,
             "baz?": t.uint8_t,
         },
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
     )
     s = s.with_compiled_schema()
 
@@ -647,7 +647,7 @@ def test_schema():
     assert s.schema.baz.type is t.uint8_t
     assert s.schema.baz.optional
 
-    assert "test" in str(s) and "direction=<Direction.Server_to_Client" in str(s)
+    assert "test" in str(s) and "direction=<Direction.Client_to_Server" in str(s)
 
     for kwargs, value in [
         ({"foo": 1}, b"\x01"),
@@ -668,7 +668,7 @@ def test_command_schema_error_on_tuple():
         id=0x12,
         name="test",
         schema=(t.uint16_t,),
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
     )
 
     with pytest.raises(ValueError):
@@ -704,7 +704,7 @@ def test_invalid_command_def_name():
         schema={
             "foo": t.uint8_t,
         },
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
     )
 
     with pytest.raises(ValueError):
@@ -754,7 +754,7 @@ def test_attribute_command_iteration():
             schema={
                 "foo": t.uint8_t,
             },
-            direction=foundation.Direction.Server_to_Client,
+            direction=foundation.Direction.Client_to_Server,
         )
 
     class Commands2(Commands1):
@@ -764,7 +764,7 @@ def test_attribute_command_iteration():
             schema={
                 "foo": t.uint8_t,
             },
-            direction=foundation.Direction.Server_to_Client,
+            direction=foundation.Direction.Client_to_Server,
         )
 
     assert list(Commands1) == [Commands1.command1]

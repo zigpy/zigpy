@@ -28,7 +28,7 @@ def test_deserialize_general(endpoint):
     hdr, args = endpoint.deserialize(0, b"\x00\x01\x00")
     assert hdr.tsn == 1
     assert hdr.command_id == 0
-    assert hdr.direction == foundation.Direction.Server_to_Client
+    assert hdr.direction == foundation.Direction.Client_to_Server
 
 
 def test_deserialize_general_unknown(endpoint):
@@ -37,7 +37,7 @@ def test_deserialize_general_unknown(endpoint):
     assert hdr.frame_control.is_general is True
     assert hdr.frame_control.is_cluster is False
     assert hdr.command_id == 255
-    assert hdr.direction == foundation.Direction.Server_to_Client
+    assert hdr.direction == foundation.Direction.Client_to_Server
 
 
 def test_deserialize_cluster(endpoint):
@@ -46,7 +46,7 @@ def test_deserialize_cluster(endpoint):
     assert hdr.frame_control.is_general is False
     assert hdr.frame_control.is_cluster is True
     assert hdr.command_id == 0
-    assert hdr.direction == foundation.Direction.Server_to_Client
+    assert hdr.direction == foundation.Direction.Client_to_Server
 
 
 def test_deserialize_cluster_client(endpoint):
@@ -56,7 +56,7 @@ def test_deserialize_cluster_client(endpoint):
     assert hdr.frame_control.is_cluster is True
     assert hdr.command_id == 0
     assert list(args) == [0x4241]
-    assert hdr.direction == foundation.Direction.Client_to_Server
+    assert hdr.direction == foundation.Direction.Server_to_Client
 
 
 def test_deserialize_cluster_unknown(endpoint):
@@ -68,7 +68,7 @@ def test_deserialize_cluster_command_unknown(endpoint):
     hdr, args = endpoint.deserialize(0, b"\x01\x01\xff")
     assert hdr.tsn == 1
     assert hdr.command_id == 255
-    assert hdr.direction == foundation.Direction.Server_to_Client
+    assert hdr.direction == foundation.Direction.Client_to_Server
 
 
 def test_unknown_cluster():
@@ -1052,14 +1052,14 @@ async def test_zcl_request_direction():
     # Input cluster
     await ep.in_clusters[zcl.clusters.general.OnOff.cluster_id].on()
     hdr1, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
-    assert hdr1.direction == foundation.Direction.Server_to_Client
+    assert hdr1.direction == foundation.Direction.Client_to_Server
 
     ep.request.reset_mock()
 
     # Output cluster
     await ep.out_clusters[zcl.clusters.general.OnOff.cluster_id].on()
     hdr2, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
-    assert hdr2.direction == foundation.Direction.Client_to_Server
+    assert hdr2.direction == foundation.Direction.Server_to_Client
 
     # Color cluster that also uses `direction` as a kwarg
     await ep.light_color.move_to_hue(
@@ -1086,7 +1086,7 @@ async def test_zcl_reply_direction(app_mock):
         frame_control=foundation.FrameControl(
             frame_type=foundation.FrameType.GLOBAL_COMMAND,
             is_manufacturer_specific=0,
-            direction=foundation.Direction.Client_to_Server,
+            direction=foundation.Direction.Server_to_Client,
             disable_default_response=0,
             reserved=0,
         ),
@@ -1117,4 +1117,4 @@ async def test_zcl_reply_direction(app_mock):
 
     # The direction is correct
     packet_hdr, _ = foundation.ZCLHeader.deserialize(packet.data.serialize())
-    assert packet_hdr.direction == foundation.Direction.Server_to_Client
+    assert packet_hdr.direction == foundation.Direction.Client_to_Server
