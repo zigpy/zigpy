@@ -128,3 +128,36 @@ async def test_callback_listener_error(caplog):
 
     assert "Caught an exception while executing callback" in caplog.text
     assert "RuntimeError: Uh oh" in caplog.text
+
+
+async def test_listener_callback_matches():
+    listener = listeners.CallbackListener(
+        matchers=[lambda hdr, command: True],
+        callback=mock.Mock(),
+    )
+
+    assert listener.resolve(make_hdr(off()), off())
+    assert listener.callback.mock_calls == [mock.call(make_hdr(off()), off())]
+
+
+async def test_listener_callback_no_matches():
+    listener = listeners.CallbackListener(
+        matchers=[lambda hdr, command: False],
+        callback=mock.Mock(),
+    )
+
+    assert not listener.resolve(make_hdr(off()), off())
+    assert listener.callback.mock_calls == []
+
+
+async def test_listener_callback_invalid(caplog):
+    listener = listeners.CallbackListener(
+        matchers=[object()],
+        callback=mock.Mock(),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        assert not listener.resolve(make_hdr(off()), off())
+
+    assert listener.callback.mock_calls == []
+    assert f"Matcher {listener.matchers[0]!r} and command" in caplog.text

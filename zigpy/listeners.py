@@ -34,8 +34,16 @@ class BaseRequestListener:
                 command, foundation.CommandSchema
             ):
                 match = command.matches(matcher)
-            else:
+            elif callable(matcher):
                 match = matcher(hdr, command)
+            else:
+                match = None
+                LOGGER.warning(
+                    "Matcher %r and command %r %r are incompatible",
+                    matcher,
+                    hdr,
+                    command,
+                )
 
             if match:
                 return self._resolve(hdr, command)
