@@ -508,7 +508,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
             command_id=cluster.commands_by_name[cmd_name].id,
             schema=cluster.commands_by_name[cmd_name].schema,
             disable_default_response=False,
-            direction=foundation.Direction.Server_to_Client,
+            direction=foundation.Direction.Client_to_Server,
             args=(),
             kwargs=kwargs,
         )
@@ -797,7 +797,7 @@ async def test_request_exception_propagation(dev, event_loop):
                     frame_control=foundation.FrameControl(
                         frame_type=foundation.FrameType.CLUSTER_COMMAND,
                         is_manufacturer_specific=False,
-                        direction=foundation.Direction.Client_to_Server,
+                        direction=foundation.Direction.Server_to_Client,
                         disable_default_response=True,
                         reserved=0,
                     ),

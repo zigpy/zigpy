@@ -266,7 +266,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         if hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND:
             # Cluster command
-            if hdr.direction == foundation.Direction.Client_to_Server:
+            if hdr.direction == foundation.Direction.Server_to_Client:
                 commands = self.client_commands
             else:
                 commands = self.server_commands
@@ -313,7 +313,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             schema = convert_list_schema(
                 command_id=command_id,
                 schema=schema,
-                direction=foundation.Direction.Server_to_Client,
+                direction=foundation.Direction.Client_to_Server,
             )
 
         request = schema(*args, **kwargs)  # type:ignore[operator]
@@ -362,9 +362,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             tsn=tsn,
             disable_default_response=self.is_client,
             direction=(
-                foundation.Direction.Client_to_Server
+                foundation.Direction.Server_to_Client
                 if self.is_client
-                else foundation.Direction.Server_to_Client
+                else foundation.Direction.Client_to_Server
             ),
             args=args,
             kwargs=kwargs,
@@ -399,7 +399,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             manufacturer=manufacturer,
             tsn=tsn,
             disable_default_response=True,
-            direction=foundation.Direction.Client_to_Server,
+            direction=(
+                foundation.Direction.Server_to_Client
+                if self.is_client
+                else foundation.Direction.Client_to_Server
+            ),
             args=args,
             kwargs=kwargs,
         )
@@ -870,7 +874,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     ):
         command = foundation.GENERAL_COMMANDS[command_id]
 
-        if command.direction == foundation.Direction.Client_to_Server:
+        if command.direction == foundation.Direction.Server_to_Client:
             # should reply be retryable?
             return self.reply(
                 True,

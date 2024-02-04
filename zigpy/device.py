@@ -437,7 +437,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         # Resolve the future if this is a response to a request
         if hdr.tsn in self._pending and (
-            hdr.direction == foundation.Direction.Client_to_Server
+            hdr.direction == foundation.Direction.Server_to_Client
             if isinstance(hdr, foundation.ZCLHeader)
             else hdr.is_reply
         ):

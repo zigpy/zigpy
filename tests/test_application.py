@@ -1193,7 +1193,7 @@ async def test_request_future_matching(app, make_initialized_device):
         command_id=ota.commands_by_name["query_next_image"].id,
         schema=ota.commands_by_name["query_next_image"].schema,
         disable_default_response=False,
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
         args=(),
         kwargs={
             "field_control": 0,
@@ -1256,7 +1256,7 @@ async def test_request_callback_matching(app, make_initialized_device):
         command_id=ota.commands_by_name["query_next_image"].id,
         schema=ota.commands_by_name["query_next_image"].schema,
         disable_default_response=False,
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
         args=(),
         kwargs={
             "field_control": 0,
