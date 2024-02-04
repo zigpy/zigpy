@@ -55,8 +55,8 @@ def real_device(app_mock):
     real_device[1].device_type = 255
     real_device.model = "model"
     real_device.manufacturer = "manufacturer"
-    real_device[1].add_input_cluster(3)
-    real_device[1].add_output_cluster(6)
+    real_device[1].add_server_cluster(3)
+    real_device[1].add_client_cluster(6)
     return real_device
 
 
@@ -71,8 +71,8 @@ def real_device_2(app_mock):
     real_device[1].device_type = 255
     real_device.model = "model"
     real_device.manufacturer = "A different manufacturer"
-    real_device[1].add_input_cluster(3)
-    real_device[1].add_output_cluster(6)
+    real_device[1].add_server_cluster(3)
+    real_device[1].add_client_cluster(6)
     return real_device
 
 
@@ -281,13 +281,13 @@ def test_custom_device(app_mock):
     assert test_device[1].profile_id == sentinel.profile_id
     assert test_device[1].device_type == sentinel.device_type
 
-    assert 0x0000 in test_device[1].in_clusters
-    assert 0x8888 in test_device[1].in_clusters
-    assert isinstance(test_device[1].in_clusters[0x8888], Device.MyCluster)
+    assert 0x0000 in test_device[1].server_clusters
+    assert 0x8888 in test_device[1].server_clusters
+    assert isinstance(test_device[1].server_clusters[0x8888], Device.MyCluster)
 
-    assert 0x0001 in test_device[1].out_clusters
-    assert 0x8888 in test_device[1].out_clusters
-    assert isinstance(test_device[1].out_clusters[0x8888], Device.MyCluster)
+    assert 0x0001 in test_device[1].client_clusters
+    assert 0x8888 in test_device[1].client_clusters
+    assert isinstance(test_device[1].client_clusters[0x8888], Device.MyCluster)
 
     assert isinstance(test_device[2], Device.MyEndpoint)
 
@@ -942,7 +942,7 @@ async def test_manuf_id_disable(real_device):
     real_device.manufacturer_id_override = 0x1234
 
     ep = real_device.endpoints[1]
-    ep.add_input_cluster(TestCluster.cluster_id, TestCluster(ep))
+    ep.add_server_cluster(TestCluster.cluster_id, TestCluster(ep))
     assert isinstance(ep.just_a_cluster, TestCluster)
 
     assert ep.manufacturer_id == 0x1234

@@ -35,8 +35,8 @@ async def _test_initialize(ep, profile):
     await ep.initialize()
 
     assert ep.status > endpoint.Status.NEW
-    assert 5 in ep.in_clusters
-    assert 6 in ep.out_clusters
+    assert 5 in ep.server_clusters
+    assert 6 in ep.client_clusters
 
 
 async def test_inactive_initialize(ep):
@@ -83,54 +83,54 @@ async def test_reinitialize(ep):
     assert ep.profile_id == 10
 
 
-def test_add_input_cluster(ep):
-    ep.add_input_cluster(0)
-    assert 0 in ep.in_clusters
-    assert ep.in_clusters[0].is_server is True
-    assert ep.in_clusters[0].is_client is False
+def test_add_server_cluster(ep):
+    ep.add_server_cluster(0)
+    assert 0 in ep.server_clusters
+    assert ep.server_clusters[0].is_server is True
+    assert ep.server_clusters[0].is_client is False
 
 
 def test_add_custom_input_cluster(ep):
     mock_cluster = MagicMock()
-    ep.add_input_cluster(0, mock_cluster)
-    assert 0 in ep.in_clusters
-    assert ep.in_clusters[0] is mock_cluster
+    ep.add_server_cluster(0, mock_cluster)
+    assert 0 in ep.server_clusters
+    assert ep.server_clusters[0] is mock_cluster
 
 
-def test_add_output_cluster(ep):
-    ep.add_output_cluster(0)
-    assert 0 in ep.out_clusters
-    assert ep.out_clusters[0].is_server is False
-    assert ep.out_clusters[0].is_client is True
+def test_add_client_cluster(ep):
+    ep.add_client_cluster(0)
+    assert 0 in ep.client_clusters
+    assert ep.client_clusters[0].is_server is False
+    assert ep.client_clusters[0].is_client is True
 
 
 def test_add_custom_output_cluster(ep):
     mock_cluster = MagicMock()
-    ep.add_output_cluster(0, mock_cluster)
-    assert 0 in ep.out_clusters
-    assert ep.out_clusters[0] is mock_cluster
+    ep.add_client_cluster(0, mock_cluster)
+    assert 0 in ep.client_clusters
+    assert ep.client_clusters[0] is mock_cluster
 
 
-def test_multiple_add_input_cluster(ep):
-    ep.add_input_cluster(0)
-    assert ep.in_clusters[0].cluster_id == 0
-    ep.in_clusters[0].cluster_id = 1
-    assert ep.in_clusters[0].cluster_id == 1
-    ep.add_input_cluster(0)
-    assert ep.in_clusters[0].cluster_id == 1
+def test_multiple_add_server_cluster(ep):
+    ep.add_server_cluster(0)
+    assert ep.server_clusters[0].cluster_id == 0
+    ep.server_clusters[0].cluster_id = 1
+    assert ep.server_clusters[0].cluster_id == 1
+    ep.add_server_cluster(0)
+    assert ep.server_clusters[0].cluster_id == 1
 
 
-def test_multiple_add_output_cluster(ep):
-    ep.add_output_cluster(0)
-    assert ep.out_clusters[0].cluster_id == 0
-    ep.out_clusters[0].cluster_id = 1
-    assert ep.out_clusters[0].cluster_id == 1
-    ep.add_output_cluster(0)
-    assert ep.out_clusters[0].cluster_id == 1
+def test_multiple_add_client_cluster(ep):
+    ep.add_client_cluster(0)
+    assert ep.client_clusters[0].cluster_id == 0
+    ep.client_clusters[0].cluster_id = 1
+    assert ep.client_clusters[0].cluster_id == 1
+    ep.add_client_cluster(0)
+    assert ep.client_clusters[0].cluster_id == 1
 
 
 def test_handle_message(ep):
-    c = ep.add_input_cluster(0)
+    c = ep.add_server_cluster(0)
     c.handle_message = MagicMock()
     ep.handle_message(sentinel.profile, 0, sentinel.hdr, sentinel.data)
     c.handle_message.assert_called_once_with(
@@ -139,7 +139,7 @@ def test_handle_message(ep):
 
 
 def test_handle_message_output(ep):
-    c = ep.add_output_cluster(0)
+    c = ep.add_client_cluster(0)
     c.handle_message = MagicMock()
     ep.handle_message(sentinel.profile, 0, sentinel.hdr, sentinel.data)
     c.handle_message.assert_called_once_with(
@@ -156,7 +156,7 @@ def test_handle_request_unknown(ep):
 def test_cluster_attr(ep):
     with pytest.raises(AttributeError):
         ep.basic
-    ep.add_input_cluster(0)
+    ep.add_server_cluster(0)
     ep.basic
 
 
@@ -210,9 +210,9 @@ def _mk_rar(attrid, value, status=0):
 
 
 def _get_model_info(ep, attributes={}):
-    clus = ep.add_input_cluster(0)
-    assert 0 in ep.in_clusters
-    assert ep.in_clusters[0] is clus
+    clus = ep.add_server_cluster(0)
+    assert 0 in ep.server_clusters
+    assert ep.server_clusters[0] is clus
 
     async def mockrequest(
         foundation, command, schema, args, manufacturer=None, **kwargs
@@ -267,7 +267,7 @@ async def test_init_endpoint_info_none(ep):
 
 
 async def test_get_model_info_missing_basic_cluster(ep):
-    assert zcl.clusters.general.Basic.cluster_id not in ep.in_clusters
+    assert zcl.clusters.general.Basic.cluster_id not in ep.server_clusters
 
     model, manuf = await ep.get_model_info()
 
@@ -366,7 +366,7 @@ def _group_add_mock(ep, status=ZCLStatus.SUCCESS, no_groups_cluster=False):
         return [status, sentinel.group_id]
 
     if not no_groups_cluster:
-        ep.add_input_cluster(4)
+        ep.add_server_cluster(4)
     ep.request = MagicMock(side_effect=mock_req)
 
     ep.device.application.groups = MagicMock(spec_set=group.Groups)
@@ -423,7 +423,7 @@ def _group_remove_mock(ep, success=True, no_groups_cluster=False, not_member=Fal
         return [ZCLStatus.DUPLICATE_EXISTS, sentinel.group_id]
 
     if not no_groups_cluster:
-        ep.add_input_cluster(4)
+        ep.add_server_cluster(4)
     ep.request = MagicMock(side_effect=mock_req)
 
     ep.device.application.groups = MagicMock(spec_set=group.Groups)
@@ -498,7 +498,7 @@ async def test_group_membership_scan(ep):
     assert ep.device.application.groups.update_group_membership.call_count == 0
     assert ep.device.request.call_count == 0
 
-    ep.add_input_cluster(4)
+    ep.add_server_cluster(4)
     ep.device.request.return_value = [0, [1, 3, 7]]
     await ep.group_membership_scan()
     assert ep.device.application.groups.update_group_membership.call_count == 1
@@ -514,7 +514,7 @@ async def test_group_membership_scan_fail(ep):
     """Test group membership scan failure."""
 
     ep.device.application.groups.update_group_membership = MagicMock()
-    ep.add_input_cluster(4)
+    ep.add_server_cluster(4)
     ep.device.request.side_effect = asyncio.TimeoutError
     await ep.group_membership_scan()
     assert ep.device.application.groups.update_group_membership.call_count == 0
@@ -525,7 +525,7 @@ async def test_group_membership_scan_fail_default_response(ep, caplog):
     """Test group membership scan failure because group commands are unsupported."""
 
     ep.device.application.groups.update_group_membership = MagicMock()
-    ep.add_input_cluster(4)
+    ep.add_server_cluster(4)
     ep.device.request.side_effect = asyncio.TimeoutError
 
     with patch.object(ep.groups, "get_membership", new=AsyncMock()) as get_membership:
@@ -549,14 +549,14 @@ def test_endpoint_repr(ep):
     ep.status = endpoint.Status.ZDO_INIT
 
     # All standard
-    ep.add_input_cluster(0x0001)
-    ep.add_input_cluster(0x0002)
+    ep.add_server_cluster(0x0001)
+    ep.add_server_cluster(0x0002)
 
-    ep.add_output_cluster(0x0006)
-    ep.add_output_cluster(0x0008)
+    ep.add_client_cluster(0x0006)
+    ep.add_client_cluster(0x0008)
 
     # Spec-violating but still happens (https://github.com/zigpy/zigpy/issues/758)
-    ep.add_input_cluster(0xEF00)
+    ep.add_server_cluster(0xEF00)
 
     assert "ZDO_INIT" in repr(ep)
 

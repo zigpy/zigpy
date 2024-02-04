@@ -143,7 +143,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
             else:
                 cluster = c(self, is_server=True)
                 cluster_id = cluster.cluster_id
-            self.add_input_cluster(cluster_id, cluster)
+            self.add_server_cluster(cluster_id, cluster)
 
         for c in replacement_data.get(SIG_EP_OUTPUT, []):
             if isinstance(c, int):
@@ -152,7 +152,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
             else:
                 cluster = c(self, is_server=False)
                 cluster_id = cluster.cluster_id
-            self.add_output_cluster(cluster_id, cluster)
+            self.add_client_cluster(cluster_id, cluster)
 
 
 class CustomCluster(zigpy.zcl.Cluster):

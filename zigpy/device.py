@@ -398,8 +398,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         # TODO: this isn't actually necessary, we can parse most packets by cluster ID.
         if (
             packet.dst_ep != zdo.ZDO_ENDPOINT
-            and packet.cluster_id not in endpoint.in_clusters
-            and packet.cluster_id not in endpoint.out_clusters
+            and packet.cluster_id not in endpoint.server_clusters
+            and packet.cluster_id not in endpoint.client_clusters
         ):
             self.debug(
                 "Ignoring message on unknown cluster %s for endpoint %s",
@@ -615,13 +615,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             if endpoint_id == 0:  # ZDO
                 continue
             signature.setdefault(SIG_ENDPOINTS, {})
-            in_clusters = list(endpoint.in_clusters)
-            out_clusters = list(endpoint.out_clusters)
+            server_clusters = list(endpoint.server_clusters)
+            client_clusters = list(endpoint.client_clusters)
             signature[SIG_ENDPOINTS][endpoint_id] = {
                 SIG_EP_PROFILE: endpoint.profile_id,
                 SIG_EP_TYPE: endpoint.device_type,
-                SIG_EP_INPUT: in_clusters,
-                SIG_EP_OUTPUT: out_clusters,
+                SIG_EP_INPUT: server_clusters,
+                SIG_EP_OUTPUT: client_clusters,
             }
         return signature
 

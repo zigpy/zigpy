@@ -493,7 +493,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_input_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
         clusters = [
             (endpoint.device.ieee, endpoint.endpoint_id, cluster.cluster_id)
-            for cluster in endpoint.in_clusters.values()
+            for cluster in endpoint.server_clusters.values()
         ]
         q = f"""INSERT INTO in_clusters{DB_V} VALUES (?, ?, ?)
                     ON CONFLICT (ieee, endpoint_id, cluster)
@@ -510,7 +510,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 value,
                 cluster._attr_last_updated.get(attrid, UNIX_EPOCH).timestamp(),
             )
-            for cluster in ep.in_clusters.values()
+            for cluster in ep.server_clusters.values()
             for attrid, value in cluster._attr_cache.items()
         ]
         q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?, ?)
@@ -521,7 +521,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_unsupported_attributes(self, ep: zigpy.typing.EndpointType) -> None:
         clusters = [
             (ep.device.ieee, ep.endpoint_id, cluster.cluster_id, attr)
-            for cluster in ep.in_clusters.values()
+            for cluster in ep.server_clusters.values()
             for attr in cluster.unsupported_attributes
             if isinstance(attr, int)
         ]
@@ -533,7 +533,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_output_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
         clusters = [
             (endpoint.device.ieee, endpoint.endpoint_id, cluster.cluster_id)
-            for cluster in endpoint.out_clusters.values()
+            for cluster in endpoint.client_clusters.values()
         ]
         q = f"""INSERT INTO out_clusters{DB_V} VALUES (?, ?, ?)
                     ON CONFLICT (ieee, endpoint_id, cluster)
@@ -641,11 +641,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
                 ep = dev.endpoints[endpoint_id]
 
-                if cluster not in ep.in_clusters:
+                if cluster not in ep.server_clusters:
                     continue
 
-                ep.in_clusters[cluster]._attr_cache[attrid] = value
-                ep.in_clusters[cluster]._attr_last_updated[
+                ep.server_clusters[cluster]._attr_cache[attrid] = value
+                ep.server_clusters[cluster]._attr_last_updated[
                     attrid
                 ] = datetime.fromtimestamp(last_updated, timezone.utc)
 
@@ -679,7 +679,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     continue
 
                 try:
-                    cluster = ep.in_clusters[cluster_id]
+                    cluster = ep.server_clusters[cluster_id]
                 except KeyError:
                     continue
 
@@ -721,13 +721,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             async for (ieee, endpoint_id, cluster) in cursor:
                 dev = self._application.get_device(ieee)
                 ep = dev.endpoints[endpoint_id]
-                ep.add_input_cluster(cluster)
+                ep.add_server_cluster(cluster)
 
         async with self.execute(f"SELECT * FROM out_clusters{DB_V}") as cursor:
             async for (ieee, endpoint_id, cluster) in cursor:
                 dev = self._application.get_device(ieee)
                 ep = dev.endpoints[endpoint_id]
-                ep.add_output_cluster(cluster)
+                ep.add_client_cluster(cluster)
 
     async def _load_groups(self) -> None:
         async with self.execute(f"SELECT * FROM groups{DB_V}") as cursor:

@@ -120,7 +120,7 @@ class DeviceRegistry:
                 continue
 
             if not all(
-                self._match(device[eid].in_clusters, ep.get(SIG_EP_INPUT, []))
+                self._match(device[eid].server_clusters, ep.get(SIG_EP_INPUT, []))
                 for eid, ep in sig.items()
             ):
                 _LOGGER.debug(
@@ -129,7 +129,7 @@ class DeviceRegistry:
                 continue
 
             if not all(
-                self._match(device[eid].out_clusters, ep.get(SIG_EP_OUTPUT, []))
+                self._match(device[eid].client_clusters, ep.get(SIG_EP_OUTPUT, []))
                 for eid, ep in sig.items()
             ):
                 _LOGGER.debug(

@@ -45,8 +45,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status: Status = Status.NEW
         self.profile_id: int | None = None
         self.device_type: zigpy.profiles.zha.DeviceType | None = None
-        self.in_clusters: dict = {}
-        self.out_clusters: dict = {}
+        self.server_clusters: dict = {}
+        self.client_clusters: dict = {}
         self._cluster_attr: dict = {}
 
         self._member_of: dict = {}
@@ -83,10 +83,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
 
             for cluster in sd.input_clusters:
-                self.add_input_cluster(cluster)
+                self.add_server_cluster(cluster)
 
             for cluster in sd.output_clusters:
-                self.add_output_cluster(cluster)
+                self.add_client_cluster(cluster)
 
         self.status = Status.ZDO_INIT
 
@@ -98,12 +98,12 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         (a server cluster supported by the device)
         """
         if cluster is None:
-            if cluster_id in self.in_clusters:
-                return self.in_clusters[cluster_id]
+            if cluster_id in self.server_clusters:
+                return self.server_clusters[cluster_id]
 
             cluster = zigpy.zcl.Cluster.from_id(self, cluster_id, is_server=True)
 
-        self.in_clusters[cluster_id] = cluster
+        self.server_clusters[cluster_id] = cluster
 
         if cluster.ep_attribute is not None:
             self._cluster_attr[cluster.ep_attribute] = cluster
@@ -116,7 +116,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return cluster
 
-    def add_output_cluster(
+    def add_client_cluster(
         self, cluster_id: int, cluster: zigpy.zcl.Cluster | None = None
     ) -> zigpy.zcl.Cluster:
         """Adds an endpoint's output cluster
@@ -124,12 +124,12 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         (a client cluster supported by the device)
         """
         if cluster is None:
-            if cluster_id in self.out_clusters:
-                return self.out_clusters[cluster_id]
+            if cluster_id in self.client_clusters:
+                return self.client_clusters[cluster_id]
 
             cluster = zigpy.zcl.Cluster.from_id(self, cluster_id, is_server=False)
 
-        self.out_clusters[cluster_id] = cluster
+        self.client_clusters[cluster_id] = cluster
         return cluster
 
     async def add_to_group(self, grp_id: int, name: str | None = None) -> ZCLStatus:
@@ -180,7 +180,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.device.application.groups.update_group_membership(self, groups)
 
     async def get_model_info(self) -> tuple[str | None, str | None]:
-        if zigpy.zcl.clusters.general.Basic.cluster_id not in self.in_clusters:
+        if zigpy.zcl.clusters.general.Basic.cluster_id not in self.server_clusters:
             return None, None
 
         # Some devices can't handle multiple attributes in the same read request
@@ -208,10 +208,15 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self, cluster_id: t.ClusterId, data: bytes
     ) -> tuple[ZCLHeader, CommandSchema]:
         """Deserialize data for ZCL"""
-        if cluster_id not in self.in_clusters and cluster_id not in self.out_clusters:
+        if (
+            cluster_id not in self.server_clusters
+            and cluster_id not in self.client_clusters
+        ):
             raise KeyError(f"No cluster ID 0x{cluster_id:04x} on {self.unique_id}")
 
-        cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id))
+        cluster = self.server_clusters.get(
+            cluster_id, self.client_clusters.get(cluster_id)
+        )
         return cluster.deserialize(data)
 
     def handle_message(
@@ -223,10 +228,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         *,
         dst_addressing: AddressingMode | None = None,
     ) -> None:
-        if cluster in self.in_clusters:
-            handler = self.in_clusters[cluster].handle_message
-        elif cluster in self.out_clusters:
-            handler = self.out_clusters[cluster].handle_message
+        if cluster in self.server_clusters:
+            handler = self.server_clusters[cluster].handle_message
+        elif cluster in self.client_clusters:
+            handler = self.client_clusters[cluster].handle_message
         else:
             self.debug("Message on unknown cluster 0x%04x", cluster)
             self.listener_event("unknown_cluster_message", hdr.command_id, args)
@@ -348,8 +353,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return (
             f"<{type(self).__name__}"
             f" id={self.endpoint_id}"
-            f" in=[{cluster_repr(self.in_clusters.values())}]"
-            f" out=[{cluster_repr(self.out_clusters.values())}]"
+            f" in=[{cluster_repr(self.server_clusters.values())}]"
+            f" out=[{cluster_repr(self.client_clusters.values())}]"
             f" status={self.status!r}"
             f">"
         )
