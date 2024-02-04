@@ -93,6 +93,28 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def add_input_cluster(
         self, cluster_id: int, cluster: zigpy.zcl.Cluster | None = None
     ) -> zigpy.zcl.Cluster:
+        """Backwards-compatible method to add a server cluster."""
+        return self.add_server_cluster(cluster_id, cluster)
+
+    def add_output_cluster(
+        self, cluster_id: int, cluster: zigpy.zcl.Cluster | None = None
+    ) -> zigpy.zcl.Cluster:
+        """Backwards-compatible method to add a client cluster."""
+        return self.add_client_cluster(cluster_id, cluster)
+
+    @property
+    def in_clusters(self) -> dict:
+        """Backwards-compatible accessor for `server_clusters`."""
+        return self.server_clusters
+
+    @property
+    def out_clusters(self) -> dict:
+        """Backwards-compatible accessor for `client_clusters`."""
+        return self.client_clusters
+
+    def add_server_cluster(
+        self, cluster_id: int, cluster: zigpy.zcl.Cluster | None = None
+    ) -> zigpy.zcl.Cluster:
         """Adds an endpoint's input cluster
 
         (a server cluster supported by the device)
