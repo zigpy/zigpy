@@ -7,6 +7,7 @@ import pytest
 from zigpy import listeners
 from zigpy.zcl import foundation
 import zigpy.zcl.clusters.general
+import zigpy.zdo.types as zdo_t
 
 
 def make_hdr(cmd, **kwargs):
@@ -161,3 +162,20 @@ async def test_listener_callback_invalid(caplog):
 
     assert listener.callback.mock_calls == []
     assert f"Matcher {listener.matchers[0]!r} and command" in caplog.text
+
+
+async def test_listener_callback_zdo(caplog):
+    listener = listeners.CallbackListener(
+        matchers=[
+            query_next_image(manufacturer_code=0x1234),
+        ],
+        callback=mock.Mock(),
+    )
+
+    zdo_hdr = zdo_t.ZDOHeader(command_id=zdo_t.ZDOCmd.NWK_addr_req, tsn=0x01)
+    zdo_cmd = [0x0000]
+
+    with caplog.at_level(logging.WARNING):
+        assert not listener.resolve(zdo_hdr, zdo_cmd)
+
+    assert caplog.text == ""
