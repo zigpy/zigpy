@@ -151,7 +151,7 @@ async def test_listener_callback_no_matches():
     assert listener.callback.mock_calls == []
 
 
-async def test_listener_callback_invalid(caplog):
+async def test_listener_callback_invalid_matcher(caplog):
     listener = listeners.CallbackListener(
         matchers=[object()],
         callback=mock.Mock(),
@@ -159,6 +159,19 @@ async def test_listener_callback_invalid(caplog):
 
     with caplog.at_level(logging.WARNING):
         assert not listener.resolve(make_hdr(off()), off())
+
+    assert listener.callback.mock_calls == []
+    assert f"Matcher {listener.matchers[0]!r} and command" in caplog.text
+
+
+async def test_listener_callback_invalid_call(caplog):
+    listener = listeners.CallbackListener(
+        matchers=[on()],
+        callback=mock.Mock(),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        assert not listener.resolve(make_hdr(on()), b"data")
 
     assert listener.callback.mock_calls == []
     assert f"Matcher {listener.matchers[0]!r} and command" in caplog.text
