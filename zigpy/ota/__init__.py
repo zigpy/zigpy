@@ -8,6 +8,7 @@ import attr
 
 from zigpy.config import (
     CONF_OTA,
+    CONF_OTA_ALLOW_FILE_PROVIDERS,
     CONF_OTA_DIR,
     CONF_OTA_IKEA,
     CONF_OTA_INOVELLI,
@@ -123,7 +124,7 @@ class OTA(zigpy.util.ListenableMixin):
         self._not_initialized = True
         self._listeners = {}
         ota_config = app.config[CONF_OTA]
-        if ota_config[CONF_OTA_DIR]:
+        if ota_config[CONF_OTA_DIR] and ota_config[CONF_OTA_ALLOW_FILE_PROVIDERS]:
             self.add_listener(zigpy.ota.provider.FileStore())
         if ota_config[CONF_OTA_IKEA]:
             self.add_listener(zigpy.ota.provider.Trådfri())

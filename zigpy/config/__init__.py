@@ -20,6 +20,7 @@ from zigpy.config.defaults import (
     CONF_NWK_TC_LINK_KEY_DEFAULT,
     CONF_NWK_UPDATE_ID_DEFAULT,
     CONF_NWK_VALIDATE_SETTINGS_DEFAULT,
+    CONF_OTA_ALLOW_FILE_PROVIDERS_DEFAULT,
     CONF_OTA_IKEA_DEFAULT,
     CONF_OTA_INOVELLI_DEFAULT,
     CONF_OTA_LEDVANCE_DEFAULT,
@@ -37,6 +38,7 @@ from zigpy.config.defaults import (
 from zigpy.config.validators import (
     cv_boolean,
     cv_deprecated,
+    cv_exact_object,
     cv_hex,
     cv_key,
     cv_simple_descriptor,
@@ -64,6 +66,7 @@ CONF_NWK_BACKUP_ENABLED = "backup_enabled"
 CONF_NWK_BACKUP_PERIOD = "backup_period"
 CONF_NWK_VALIDATE_SETTINGS = "validate_network_settings"
 CONF_OTA = "ota"
+CONF_OTA_ALLOW_FILE_PROVIDERS = "allow_file_providers"
 CONF_OTA_DIR = "otau_directory"
 CONF_OTA_IKEA = "ikea_provider"
 CONF_OTA_IKEA_URL = "ikea_update_url"
@@ -133,6 +136,13 @@ SCHEMA_OTA_PROVIDER = vol.Schema(
 
 SCHEMA_OTA = {
     vol.Optional(CONF_OTA_DIR, default=CONF_OTA_OTAU_DIR_DEFAULT): vol.Any(None, str),
+    vol.Optional(
+        CONF_OTA_ALLOW_FILE_PROVIDERS, default=CONF_OTA_ALLOW_FILE_PROVIDERS_DEFAULT
+    ): cv_exact_object(
+        "I understand I can *destroy* my devices by enabling OTA updates from files."
+        " Some OTA updates can be mistakenly applied to the wrong device, breaking it."
+        " Use at your own risk."
+    ),
     vol.Optional(CONF_OTA_IKEA, default=CONF_OTA_IKEA_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_INOVELLI, default=CONF_OTA_INOVELLI_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_LEDVANCE, default=CONF_OTA_LEDVANCE_DEFAULT): cv_boolean,
