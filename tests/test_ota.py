@@ -3,12 +3,19 @@ import datetime
 import pytest
 
 import zigpy.application
+from zigpy.config import (
+    CONF_OTA,
+    CONF_OTA_ALLOW_FILE_PROVIDERS,
+    CONF_OTA_ALLOW_FILE_PROVIDERS_STRING,
+    CONF_OTA_DIR,
+)
 import zigpy.ota
 import zigpy.ota.image
 import zigpy.ota.provider
 import zigpy.ota.validators
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
+from .conftest import make_app
 
 MANUFACTURER_ID = sentinel.manufacturer_id
 IMAGE_TYPE = sentinel.image_type
@@ -52,6 +59,41 @@ def ota():
     with patch("zigpy.ota.provider.Trådfri", tradfri):
         with patch("zigpy.ota.check_invalid", check_invalid):
             yield zigpy.ota.OTA(app)
+
+
+@pytest.mark.parametrize(
+    ("config", "result"),
+    [
+        ({}, False),
+        (
+            {
+                CONF_OTA_ALLOW_FILE_PROVIDERS: (
+                    CONF_OTA_ALLOW_FILE_PROVIDERS_STRING + " "
+                ),
+                CONF_OTA_DIR: "/dev/null",
+            },
+            False,
+        ),
+        (
+            {
+                CONF_OTA_ALLOW_FILE_PROVIDERS: CONF_OTA_ALLOW_FILE_PROVIDERS_STRING,
+                CONF_OTA_DIR: "/dev/null",
+            },
+            True,
+        ),
+    ],
+)
+async def test_ota_file_provider_gate(config: dict, result: bool):
+    with patch("zigpy.ota.provider.FileStore", new=AsyncMock()) as mock_file_store:
+        app = make_app({CONF_OTA: config})
+
+    app.start_network = AsyncMock(wraps=app.start_network)
+    app.form_network = AsyncMock()
+    app.permit = AsyncMock()
+
+    await app.startup(auto_form=False)
+
+    assert len(mock_file_store.mock_calls) == int(result)
 
 
 async def test_ota_initialize(ota):

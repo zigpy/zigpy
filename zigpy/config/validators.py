@@ -82,10 +82,13 @@ def cv_deprecated(message: str) -> typing.Callable[[typing.Any], typing.Any]:
     return wrapper
 
 
-def cv_exact_object(string: str) -> typing.Callable[[typing.Any], bool]:
+def cv_exact_object(expected_value: str) -> typing.Callable[[typing.Any], bool]:
     """Factory function for creating an exact object comparison validator."""
 
     def wrapper(obj: typing.Any) -> typing.Any:
-        return obj == string
+        if obj != expected_value:
+            return False
+
+        return expected_value
 
     return wrapper

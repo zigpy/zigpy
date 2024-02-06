@@ -86,6 +86,12 @@ CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
 CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
 CONF_WATCHDOG_ENABLED = "watchdog_enabled"
 
+CONF_OTA_ALLOW_FILE_PROVIDERS_STRING = (
+    "I understand I can *destroy* my devices by enabling OTA updates from files."
+    " Some OTA updates can be mistakenly applied to the wrong device, breaking it."
+    " I am consciously using this at my own risk."
+)
+
 
 SCHEMA_DEVICE = vol.Schema(
     {
@@ -138,11 +144,7 @@ SCHEMA_OTA = {
     vol.Optional(CONF_OTA_DIR, default=CONF_OTA_OTAU_DIR_DEFAULT): vol.Any(None, str),
     vol.Optional(
         CONF_OTA_ALLOW_FILE_PROVIDERS, default=CONF_OTA_ALLOW_FILE_PROVIDERS_DEFAULT
-    ): cv_exact_object(
-        "I understand I can *destroy* my devices by enabling OTA updates from files."
-        " Some OTA updates can be mistakenly applied to the wrong device, breaking it."
-        " Use at your own risk."
-    ),
+    ): vol.All(cv_exact_object(CONF_OTA_ALLOW_FILE_PROVIDERS_STRING)),
     vol.Optional(CONF_OTA_IKEA, default=CONF_OTA_IKEA_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_INOVELLI, default=CONF_OTA_INOVELLI_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_LEDVANCE, default=CONF_OTA_LEDVANCE_DEFAULT): cv_boolean,

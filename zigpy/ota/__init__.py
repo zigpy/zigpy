@@ -124,8 +124,11 @@ class OTA(zigpy.util.ListenableMixin):
         self._not_initialized = True
         self._listeners = {}
         ota_config = app.config[CONF_OTA]
-        if ota_config[CONF_OTA_DIR] and ota_config[CONF_OTA_ALLOW_FILE_PROVIDERS]:
-            self.add_listener(zigpy.ota.provider.FileStore())
+        if ota_config[CONF_OTA_DIR]:
+            if ota_config[CONF_OTA_ALLOW_FILE_PROVIDERS]:
+                self.add_listener(zigpy.ota.provider.FileStore())
+            else:
+                LOGGER.info("OTA file providers are currently disabled")
         if ota_config[CONF_OTA_IKEA]:
             self.add_listener(zigpy.ota.provider.Trådfri())
         if ota_config[CONF_OTA_INOVELLI]:
