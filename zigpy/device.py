@@ -392,7 +392,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         if self._packet_debouncer.filter(
             # Be conservative with deduplication
-            obj=packet.replace(timestamp=None, lqi=None, rssi=None),
+            obj=packet.replace(timestamp=None, tsn=None, lqi=None, rssi=None),
             expire_in=PACKET_DEBOUNCE_WINDOW,
         ):
             self.debug("Filtering duplicate packet")
