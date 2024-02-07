@@ -20,14 +20,10 @@ from zigpy.const import (  # noqa: F401
 import zigpy.device
 import zigpy.endpoint
 from zigpy.quirks.registry import (  # noqa: F401
-    AutoQuirkRegistryEntry,
     ClusterApplicationMetadata,
     DeviceRegistry,
-    ExposesBinarySensorMetadata,
-    ExposesEnumSelectMetadata,
-    ExposesNumberMetadata,
-    ExposesSwitchMetadata,
-    ExposesWriteAttributeButtonMetadata,
+    EntityMetadata,
+    QuirksV2RegistryEntry,
 )
 import zigpy.types as t
 from zigpy.types.basic import uint16_t
@@ -138,7 +134,7 @@ class CustomDeviceV2(CustomDevice):
         ieee: t.EUI64,
         nwk: t.NWK,
         replaces: zigpy.device.Device,
-        quirk_metadata: AutoQuirkRegistryEntry,
+        quirk_metadata: QuirksV2RegistryEntry,
     ) -> None:
         # this is done to simplify extending from CustomDevice
         self._replacement_from_replaces(replaces)
@@ -147,15 +143,9 @@ class CustomDeviceV2(CustomDevice):
         self.replacement = {}
         self._exposes_metadata: dict[
             tuple[int, int, zigpy.zcl.ClusterType],
-            list[
-                ExposesEnumSelectMetadata
-                | ExposesSwitchMetadata
-                | ExposesNumberMetadata
-                | ExposesBinarySensorMetadata
-                | ExposesWriteAttributeButtonMetadata
-            ],
+            list[EntityMetadata],
         ] = collections.defaultdict(list)
-        self._quirk_metadata: AutoQuirkRegistryEntry = quirk_metadata
+        self._quirk_metadata: QuirksV2RegistryEntry = quirk_metadata
 
         for add_meta in quirk_metadata.adds_metadata:
             add_meta(self)
@@ -194,16 +184,7 @@ class CustomDeviceV2(CustomDevice):
     @property
     def exposes_metadata(
         self,
-    ) -> dict[
-        tuple[int, int, zigpy.zcl.ClusterType],
-        list[
-            ExposesEnumSelectMetadata
-            | ExposesSwitchMetadata
-            | ExposesNumberMetadata
-            | ExposesBinarySensorMetadata
-            | ExposesWriteAttributeButtonMetadata
-        ],
-    ]:
+    ) -> dict[tuple[int, int, zigpy.zcl.ClusterType], list[EntityMetadata],]:
         """Return the metadata for exposed entities."""
         return self._exposes_metadata
 

@@ -37,12 +37,12 @@ class DeviceRegistry:
         self._registry: TYPE_MANUF_QUIRKS_DICT = collections.defaultdict(
             lambda: collections.defaultdict(list)
         )
-        self._registry_v2: dict[tuple[str, str], list[AutoQuirkRegistryEntry]] = {}
+        self._registry_v2: dict[tuple[str, str], list[QuirksV2RegistryEntry]] = {}
 
     def add_to_registry_v2(self, manufacturer, model):
         """Add an entry to the registry."""
         key = (manufacturer, model)
-        entry = AutoQuirkRegistryEntry()
+        entry = QuirksV2RegistryEntry()
         entry.registry = self._registry_v2
         if key not in self._registry_v2:
             self._registry_v2[key] = []
@@ -81,7 +81,7 @@ class DeviceRegistry:
 
         key = (device.manufacturer, device.model)
         if key in self._registry_v2:
-            matches: list[AutoQuirkRegistryEntry] = []
+            matches: list[QuirksV2RegistryEntry] = []
             entries = self._registry_v2[key]
             if len(entries) == 1:
                 if entries[0].matches_device(device):
@@ -95,7 +95,7 @@ class DeviceRegistry:
                     f"Multiple matches found for device {device}: {matches}"
                 )
             if len(matches) == 1:
-                quirk_entry: AutoQuirkRegistryEntry = matches[0]
+                quirk_entry: QuirksV2RegistryEntry = matches[0]
                 if quirk_entry.custom_device_class:
                     return quirk_entry.custom_device_class(
                         device.application, device.ieee, device.nwk, device, quirk_entry
@@ -349,38 +349,37 @@ class PatchesMetadata:
         cluster[method_name] = types.MethodType(self.replacement_method, cluster)
 
 
-class HAEntityType(enum.Enum):
+class EntityType(enum.Enum):
     """Entity type."""
 
     CONFIG = "config"
     DIAGNOSTIC = "diagnostic"
+    STANDARD = "standard"
+
+
+class EnumEntityPlatform(enum.Enum):
+    """Enum entity platform."""
+
+    BINARY_SENSOR = "binary_sensor"
+    BUTTON = "button"
+    NUMBER = "number"
+    SENSOR = "sensor"
+    SELECT = "select"
+    SWITCH = "switch"
 
 
 @dataclasses.dataclass(frozen=True)
-class EnumSelectMetadata:
-    """Metadata for exposed select entity."""
+class EnumMetadata:
+    """Metadata for exposed enum based entity."""
 
     enum: type[enum.Enum]
-    ha_entity_type: HAEntityType
-    attribute_name: str | None = dataclasses.field(default=None)
 
 
 @dataclasses.dataclass(frozen=True)
-class ExposesEnumSelectMetadata:
-    """Metadata for exposed select entity."""
+class ZCLEnumMetadata(EnumMetadata):
+    """Metadata for exposed ZCL enum based entity."""
 
-    entity_metadata: EnumSelectMetadata
-    cluster_id: int
-    endpoint_id: int = dataclasses.field(default=1)
-    cluster_type: zigpy.zcl.ClusterType = dataclasses.field(
-        default=zigpy.zcl.ClusterType.Server
-    )
-
-    def __call__(self, device: zigpy.quirks.CustomDeviceV2):
-        """Apply the patch."""
-        device.exposes_metadata[
-            (self.endpoint_id, self.cluster_id, self.cluster_type)
-        ].append(self)
+    attribute_name: str | None = dataclasses.field(default=None)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -390,24 +389,6 @@ class SwitchMetadata:
     attribute_name: str
     force_inverted: bool = dataclasses.field(default=False)
     invert_attribute_name: str | None = dataclasses.field(default=None)
-
-
-@dataclasses.dataclass(frozen=True)
-class ExposesSwitchMetadata:
-    """Metadata for exposed switch entity."""
-
-    entity_metadata: SwitchMetadata
-    cluster_id: int
-    endpoint_id: int = dataclasses.field(default=1)
-    cluster_type: zigpy.zcl.ClusterType = dataclasses.field(
-        default=zigpy.zcl.ClusterType.Server
-    )
-
-    def __call__(self, device: zigpy.quirks.CustomDeviceV2):
-        """Apply the patch."""
-        device.exposes_metadata[
-            (self.endpoint_id, self.cluster_id, self.cluster_type)
-        ].append(self)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -424,46 +405,10 @@ class NumberMetadata:
 
 
 @dataclasses.dataclass(frozen=True)
-class ExposesNumberMetadata:
-    """Metadata for exposed number entity."""
-
-    entity_metadata: NumberMetadata
-    cluster_id: int
-    endpoint_id: int = dataclasses.field(default=1)
-    cluster_type: zigpy.zcl.ClusterType = dataclasses.field(
-        default=zigpy.zcl.ClusterType.Server
-    )
-
-    def __call__(self, device: zigpy.quirks.CustomDeviceV2):
-        """Apply the patch."""
-        device.exposes_metadata[
-            (self.endpoint_id, self.cluster_id, self.cluster_type)
-        ].append(self)
-
-
-@dataclasses.dataclass(frozen=True)
 class BinarySensorMetadata:
     """Metadata for exposed binary sensor entity."""
 
     attribute_name: str
-
-
-@dataclasses.dataclass(frozen=True)
-class ExposesBinarySensorMetadata:
-    """Metadata for exposed binary sensor entity."""
-
-    entity_metadata: BinarySensorMetadata
-    cluster_id: int
-    endpoint_id: int = dataclasses.field(default=1)
-    cluster_type: zigpy.zcl.ClusterType = dataclasses.field(
-        default=zigpy.zcl.ClusterType.Server
-    )
-
-    def __call__(self, device: zigpy.quirks.CustomDeviceV2):
-        """Apply the patch."""
-        device.exposes_metadata[
-            (self.endpoint_id, self.cluster_id, self.cluster_type)
-        ].append(self)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -475,10 +420,19 @@ class WriteAttributeButtonMetadata:
 
 
 @dataclasses.dataclass(frozen=True)
-class ExposesWriteAttributeButtonMetadata:
-    """Metadata for exposed binary sensor entity."""
+class EntityMetadata:
+    """Metadata for exposed select entity."""
 
-    entity_metadata: WriteAttributeButtonMetadata
+    entity_metadata: (
+        EnumMetadata
+        | ZCLEnumMetadata
+        | SwitchMetadata
+        | NumberMetadata
+        | BinarySensorMetadata
+        | WriteAttributeButtonMetadata
+    )
+    entity_platform: EnumEntityPlatform
+    entity_type: EntityType
     cluster_id: int
     endpoint_id: int = dataclasses.field(default=1)
     cluster_type: zigpy.zcl.ClusterType = dataclasses.field(
@@ -486,17 +440,17 @@ class ExposesWriteAttributeButtonMetadata:
     )
 
     def __call__(self, device: zigpy.quirks.CustomDeviceV2):
-        """Apply the patch."""
+        """Add the entity metadata to the quirks v2 device."""
         device.exposes_metadata[
             (self.endpoint_id, self.cluster_id, self.cluster_type)
         ].append(self)
 
 
 @dataclasses.dataclass
-class AutoQuirkRegistryEntry:
-    """Auto quirk registry entry."""
+class QuirksV2RegistryEntry:
+    """Quirks V2 registry entry."""
 
-    registry: dict[tuple[str, str], list[AutoQuirkRegistryEntry]] = None
+    registry: dict[tuple[str, str], list[QuirksV2RegistryEntry]] = None
     filters: list[MatcherType] = dataclasses.field(default_factory=list)
     custom_device_class: type[zigpy.quirks.CustomDeviceV2] | None = dataclasses.field(
         default=None
@@ -504,14 +458,8 @@ class AutoQuirkRegistryEntry:
     adds_metadata: list[AddsMetadata] = dataclasses.field(default_factory=list)
     removes_metadata: list[RemovesMetadata] = dataclasses.field(default_factory=list)
     replaces_metadata: list[ReplacesMetadata] = dataclasses.field(default_factory=list)
-    patches_metadata: list[typing.Callable] = dataclasses.field(default_factory=list)
-    entity_metadata: list[
-        ExposesEnumSelectMetadata
-        | ExposesSwitchMetadata
-        | ExposesNumberMetadata
-        | ExposesBinarySensorMetadata
-        | ExposesWriteAttributeButtonMetadata
-    ] = dataclasses.field(default_factory=list)
+    patches_metadata: list[PatchesMetadata] = dataclasses.field(default_factory=list)
+    entity_metadata: list[EntityMetadata] = dataclasses.field(default_factory=list)
     device_automation_triggers_metadata: dict[
         tuple[str, str], dict[str, str]
     ] = dataclasses.field(default_factory=dict)
@@ -601,27 +549,30 @@ class AutoQuirkRegistryEntry:
         self.patches_metadata.append(patch)
         return self
 
-    def exposes_enum_select(
+    def exposes_enum_entity(
         self,
         attribute_name: str,
         enum_class: type[enum.Enum],
         cluster_id: int,
         cluster_type: zigpy.zcl.ClusterType = zigpy.zcl.ClusterType.Server,
         endpoint_id: int = 1,
-        ha_entity_type: HAEntityType = HAEntityType.CONFIG,
+        entity_type: EntityType = EntityType.CONFIG,
+        entity_platform: EnumEntityPlatform = EnumEntityPlatform.SELECT,
     ):
-        """Add a patch and returns self."""
-        expose = ExposesEnumSelectMetadata(
-            endpoint_id=endpoint_id,
-            cluster_id=cluster_id,
-            cluster_type=cluster_type,
-            entity_metadata=EnumSelectMetadata(
-                attribute_name=attribute_name,
-                enum=enum_class,
-                ha_entity_type=ha_entity_type,
-            ),
+        """Add a enum and return self."""
+        self.entity_metadata.append(
+            EntityMetadata(
+                endpoint_id=endpoint_id,
+                cluster_id=cluster_id,
+                cluster_type=cluster_type,
+                entity_type=entity_type,
+                entity_platform=entity_platform,
+                entity_metadata=ZCLEnumMetadata(
+                    attribute_name=attribute_name,
+                    enum=enum_class,
+                ),
+            )
         )
-        self.entity_metadata.append(expose)
         return self
 
     def exposes_switch(
@@ -632,19 +583,23 @@ class AutoQuirkRegistryEntry:
         endpoint_id: int = 1,
         force_inverted: bool = False,
         invert_attribute_name: str | None = None,
+        entity_platform=EnumEntityPlatform.SWITCH,
     ):
-        """Add a patch and returns self."""
-        expose = ExposesSwitchMetadata(
-            endpoint_id=endpoint_id,
-            cluster_id=cluster_id,
-            cluster_type=cluster_type,
-            entity_metadata=SwitchMetadata(
-                attribute_name=attribute_name,
-                force_inverted=force_inverted,
-                invert_attribute_name=invert_attribute_name,
-            ),
+        """Add a switch and return self."""
+        self.entity_metadata.append(
+            EntityMetadata(
+                endpoint_id=endpoint_id,
+                cluster_id=cluster_id,
+                cluster_type=cluster_type,
+                entity_platform=entity_platform,
+                entity_type=EntityType.CONFIG,
+                entity_metadata=SwitchMetadata(
+                    attribute_name=attribute_name,
+                    force_inverted=force_inverted,
+                    invert_attribute_name=invert_attribute_name,
+                ),
+            )
         )
-        self.entity_metadata.append(expose)
         return self
 
     def exposes_number(
@@ -660,22 +615,25 @@ class AutoQuirkRegistryEntry:
         mode: str | None = None,
         multiplier: float | None = None,
     ):
-        """Add a patch and returns self."""
-        expose = ExposesNumberMetadata(
-            endpoint_id=endpoint_id,
-            cluster_id=cluster_id,
-            cluster_type=cluster_type,
-            entity_metadata=NumberMetadata(
-                attribute_name=attribute_name,
-                min=min_value,
-                max=max_value,
-                step=step,
-                unit=unit,
-                mode=mode,
-                multiplier=multiplier,
-            ),
+        """Add a number and return self."""
+        self.entity_metadata.append(
+            EntityMetadata(
+                endpoint_id=endpoint_id,
+                cluster_id=cluster_id,
+                cluster_type=cluster_type,
+                entity_platform=EnumEntityPlatform.NUMBER,
+                entity_type=EntityType.CONFIG,
+                entity_metadata=NumberMetadata(
+                    attribute_name=attribute_name,
+                    min=min_value,
+                    max=max_value,
+                    step=step,
+                    unit=unit,
+                    mode=mode,
+                    multiplier=multiplier,
+                ),
+            )
         )
-        self.entity_metadata.append(expose)
         return self
 
     def exposes_binary_sensor(
@@ -685,16 +643,19 @@ class AutoQuirkRegistryEntry:
         cluster_type: zigpy.zcl.ClusterType = zigpy.zcl.ClusterType.Server,
         endpoint_id: int = 1,
     ):
-        """Add a patch and returns self."""
-        expose = ExposesBinarySensorMetadata(
-            endpoint_id=endpoint_id,
-            cluster_id=cluster_id,
-            cluster_type=cluster_type,
-            entity_metadata=BinarySensorMetadata(
-                attribute_name=attribute_name,
-            ),
+        """Add a binary sensor and return self."""
+        self.entity_metadata.append(
+            EntityMetadata(
+                endpoint_id=endpoint_id,
+                cluster_id=cluster_id,
+                cluster_type=cluster_type,
+                entity_platform=EnumEntityPlatform.BINARY_SENSOR,
+                entity_type=EntityType.DIAGNOSTIC,
+                entity_metadata=BinarySensorMetadata(
+                    attribute_name=attribute_name,
+                ),
+            )
         )
-        self.entity_metadata.append(expose)
         return self
 
     def exposes_write_attribute_button(
@@ -704,18 +665,22 @@ class AutoQuirkRegistryEntry:
         cluster_id: int,
         cluster_type: zigpy.zcl.ClusterType = zigpy.zcl.ClusterType.Server,
         endpoint_id: int = 1,
+        entity_type: EntityType = EntityType.CONFIG,
     ):
-        """Add a patch and returns self."""
-        expose = ExposesWriteAttributeButtonMetadata(
-            endpoint_id=endpoint_id,
-            cluster_id=cluster_id,
-            cluster_type=cluster_type,
-            entity_metadata=WriteAttributeButtonMetadata(
-                attribute_name=attribute_name,
-                attribute_value=attribute_value,
-            ),
+        """Add a write attribute button and return self."""
+        self.entity_metadata.append(
+            EntityMetadata(
+                endpoint_id=endpoint_id,
+                cluster_id=cluster_id,
+                cluster_type=cluster_type,
+                entity_platform=EnumEntityPlatform.BUTTON,
+                entity_type=entity_type,
+                entity_metadata=WriteAttributeButtonMetadata(
+                    attribute_name=attribute_name,
+                    attribute_value=attribute_value,
+                ),
+            )
         )
-        self.entity_metadata.append(expose)
         return self
 
     def device_automation_triggers(
