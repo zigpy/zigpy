@@ -391,8 +391,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.rssi = packet.rssi
 
         if self._packet_debouncer.filter(
-            # Be conservative with deduplication and only ignore the timestamp
-            obj=packet.replace(timestamp=None),
+            # Be conservative with deduplication
+            obj=packet.replace(timestamp=None, lqi=None, rssi=None),
             expire_in=PACKET_DEBOUNCE_WINDOW,
         ):
             self.debug("Filtering duplicate packet")
