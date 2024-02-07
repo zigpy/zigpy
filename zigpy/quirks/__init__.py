@@ -1,10 +1,9 @@
+"""Zigpy quirks module."""
 from __future__ import annotations
 
-import collections
 import logging
 import typing
 
-from zigpy import zdo
 from zigpy.const import (  # noqa: F401
     SIG_ENDPOINTS,
     SIG_EP_INPUT,
@@ -19,12 +18,7 @@ from zigpy.const import (  # noqa: F401
 )
 import zigpy.device
 import zigpy.endpoint
-from zigpy.quirks.registry import (  # noqa: F401
-    ClusterApplicationMetadata,
-    DeviceRegistry,
-    EntityMetadata,
-    QuirksV2RegistryEntry,
-)
+from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
 from zigpy.types.basic import uint16_t
 import zigpy.zcl
@@ -32,6 +26,7 @@ import zigpy.zcl.foundation as foundation
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
+    from zigpy.quirks.v2 import ClusterApplicationMetadata
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -125,89 +120,9 @@ class CustomDevice(zigpy.device.Device):
         return ep
 
 
-class CustomDeviceV2(CustomDevice):
-    """Implementation of a quirks v2 custom device."""
-
-    def __init__(
-        self,
-        application: ControllerApplication,
-        ieee: t.EUI64,
-        nwk: t.NWK,
-        replaces: zigpy.device.Device,
-        quirk_metadata: QuirksV2RegistryEntry,
-    ) -> None:
-        # this is done to simplify extending from CustomDevice
-        self._replacement_from_replaces(replaces)
-        super().__init__(application, ieee, nwk, replaces)
-        # we no longer need this after calling super().__init__
-        self.replacement = {}
-        self._exposes_metadata: dict[
-            tuple[int, int, zigpy.zcl.ClusterType],
-            list[EntityMetadata],
-        ] = collections.defaultdict(list)
-        self._quirk_metadata: QuirksV2RegistryEntry = quirk_metadata
-
-        for add_meta in quirk_metadata.adds_metadata:
-            add_meta(self)
-
-        for remove_meta in quirk_metadata.removes_metadata:
-            remove_meta(self)
-
-        for replace_meta in quirk_metadata.replaces_metadata:
-            replace_meta(self)
-
-        for patch_meta in quirk_metadata.patches_metadata:
-            patch_meta(self)
-
-        for entity_meta in quirk_metadata.entity_metadata:
-            entity_meta(self)
-
-    def _replacement_from_replaces(self, replaces: zigpy.device.Device) -> None:
-        """Set replacement data from replaces device."""
-        self.replacement = {
-            SIG_ENDPOINTS: {
-                key: {
-                    SIG_EP_PROFILE: endpoint.profile_id,
-                    SIG_EP_TYPE: endpoint.device_type,
-                    SIG_EP_INPUT: [
-                        cluster.cluster_id for cluster in endpoint.in_clusters.values()
-                    ],
-                    SIG_EP_OUTPUT: [
-                        cluster.cluster_id for cluster in endpoint.out_clusters.values()
-                    ],
-                }
-            }
-            for key, endpoint in replaces.endpoints.items()
-            if not isinstance(endpoint, zdo.ZDO)
-        }
-
-    @property
-    def exposes_metadata(
-        self,
-    ) -> dict[tuple[int, int, zigpy.zcl.ClusterType], list[EntityMetadata],]:
-        """Return the metadata for exposed entities."""
-        return self._exposes_metadata
-
-    async def apply_custom_configuration(self, *args, **kwargs):
-        """Hook for applications to instruct instances to apply custom configuration."""
-        for endpoint in self.endpoints.values():
-            for cluster in endpoint.in_clusters.values():
-                if (
-                    isinstance(cluster, CustomCluster)
-                    and cluster.apply_custom_configuration
-                    != CustomCluster.apply_custom_configuration
-                ):
-                    await cluster.apply_custom_configuration(*args, **kwargs)
-            for cluster in endpoint.out_clusters.values():
-                if (
-                    isinstance(cluster, CustomCluster)
-                    and cluster.apply_custom_configuration
-                    != CustomCluster.apply_custom_configuration
-                ):
-                    await cluster.apply_custom_configuration(*args, **kwargs)
-
-
 class CustomEndpoint(zigpy.endpoint.Endpoint):
+    """Custom endpoint implementation for quirks."""
+
     def __init__(
         self,
         device: CustomDevice,
@@ -247,6 +162,8 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
 
 
 class CustomCluster(zigpy.zcl.Cluster):
+    """Custom cluster implementation for quirks."""
+
     _skip_registry = True
     _CONSTANT_ATTRIBUTES: dict[int, typing.Any] | None = None
 
@@ -451,6 +368,91 @@ class CustomCluster(zigpy.zcl.Cluster):
 
     async def apply_custom_configuration(self, *args, **kwargs):
         """Hook for applications to instruct instances to apply custom configuration."""
+
+
+FilterType = typing.Callable[
+    [zigpy.device.Device],
+    bool,
+]
+
+
+def signature_matches(
+    signature: dict[str, typing.Any],
+) -> FilterType:
+    """Return True if device matches signature."""
+
+    def _match(a: dict | typing.Iterable, b: dict | typing.Iterable) -> bool:
+        return set(a) == set(b)
+
+    def _filter(device: zigpy.device.Device) -> bool:
+        """Return True if device matches signature."""
+        if device.model != signature.get(SIG_MODEL, device.model):
+            _LOGGER.debug("Fail, because device model mismatch: '%s'", device.model)
+            return False
+
+        if device.manufacturer != signature.get(SIG_MANUFACTURER, device.manufacturer):
+            _LOGGER.debug(
+                "Fail, because device manufacturer mismatch: '%s'",
+                device.manufacturer,
+            )
+            return False
+
+        dev_ep = set(device.endpoints) - {0}
+
+        sig = signature.get(SIG_ENDPOINTS)
+        if sig is None:
+            return False
+
+        if not _match(sig, dev_ep):
+            _LOGGER.debug(
+                "Fail because endpoint list mismatch: %s %s",
+                set(sig.keys()),
+                dev_ep,
+            )
+            return False
+
+        if not all(
+            device[eid].profile_id
+            == sig[eid].get(SIG_EP_PROFILE, device[eid].profile_id)
+            for eid in sig
+        ):
+            _LOGGER.debug("Fail because profile_id mismatch on at least one endpoint")
+            return False
+
+        if not all(
+            device[eid].device_type
+            == sig[eid].get(SIG_EP_TYPE, device[eid].device_type)
+            for eid in sig
+        ):
+            _LOGGER.debug("Fail because device_type mismatch on at least one endpoint")
+            return False
+
+        if not all(
+            _match(device[eid].in_clusters, ep.get(SIG_EP_INPUT, []))
+            for eid, ep in sig.items()
+        ):
+            _LOGGER.debug(
+                "Fail because input cluster mismatch on at least one endpoint"
+            )
+            return False
+
+        if not all(
+            _match(device[eid].out_clusters, ep.get(SIG_EP_OUTPUT, []))
+            for eid, ep in sig.items()
+        ):
+            _LOGGER.debug(
+                "Fail because output cluster mismatch on at least one endpoint"
+            )
+            return False
+
+        _LOGGER.debug(
+            "Device matches filter signature - device ieee[%s]: filter signature[%s]",
+            device.ieee,
+            signature,
+        )
+        return True
+
+    return _filter
 
 
 def handle_message_from_uninitialized_sender(
