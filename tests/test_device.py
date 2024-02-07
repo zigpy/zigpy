@@ -462,11 +462,9 @@ async def test_update_device_firmware_already_in_progress(dev, caplog):
 
 async def test_update_device_firmware(monkeypatch, dev, caplog):
     """Test that device firmware updates execute the expected calls."""
-    tsn = 0x12
     ep = dev.add_endpoint(1)
     cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
     ep.add_output_cluster(Ota.cluster_id, cluster)
-    dev.get_sequence = MagicMock(return_value=tsn)
 
     async def mockrequest(nwk, tries=None, delay=None):
         return [0, None, [0, 1, 2, 3, 4]]
@@ -782,6 +780,8 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
 
 async def test_deserialize_backwards_compat(dev):
     """Test that deserialization uses the method if it is overloaded."""
+    dev._packet_debouncer.filter = MagicMock(return_value=False)
+
     packet = t.ZigbeePacket(
         profile_id=260,
         cluster_id=Basic.cluster_id,
