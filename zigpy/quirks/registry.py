@@ -464,13 +464,22 @@ class QuirksV2RegistryEntry:
         tuple[str, str], dict[str, str]
     ] = dataclasses.field(default_factory=dict)
 
-    def with_device_class(self, custom_device_class: type[zigpy.quirks.CustomDeviceV2]):
+    def device_class(self, custom_device_class: type[zigpy.quirks.CustomDeviceV2]):
         """Set the custom device class and returns self."""
         assert issubclass(
             custom_device_class, zigpy.quirks.CustomDeviceV2
         ), f"{custom_device_class} is not a subclass of zigpy.quirks.CustomDeviceV2"
         self.custom_device_class = custom_device_class
         return self
+
+    def filter(self, filter_function: MatcherType):
+        """Add a filter and returns self."""
+        self.filters.append(filter_function)
+        return self
+
+    def matches_device(self, device: zigpy.device.Device) -> bool:
+        """Process all filters and return True if all pass."""
+        return all(_filter(device) for _filter in self.filters)
 
     def adds(
         self,
@@ -549,7 +558,7 @@ class QuirksV2RegistryEntry:
         self.patches_metadata.append(patch)
         return self
 
-    def exposes_enum_entity(
+    def enum(
         self,
         attribute_name: str,
         enum_class: type[enum.Enum],
@@ -575,7 +584,7 @@ class QuirksV2RegistryEntry:
         )
         return self
 
-    def exposes_switch(
+    def switch(
         self,
         attribute_name: str,
         cluster_id: int,
@@ -602,7 +611,7 @@ class QuirksV2RegistryEntry:
         )
         return self
 
-    def exposes_number(
+    def number(
         self,
         attribute_name: str,
         cluster_id: int,
@@ -636,7 +645,7 @@ class QuirksV2RegistryEntry:
         )
         return self
 
-    def exposes_binary_sensor(
+    def binary_sensor(
         self,
         attribute_name: str,
         cluster_id: int,
@@ -658,7 +667,7 @@ class QuirksV2RegistryEntry:
         )
         return self
 
-    def exposes_write_attribute_button(
+    def write_attr_button(
         self,
         attribute_name: str,
         attribute_value: int,
@@ -689,12 +698,3 @@ class QuirksV2RegistryEntry:
         """Add a device automation trigger and returns self."""
         self.device_automation_triggers_metadata.update(device_automation_triggers)
         return self
-
-    def matches(self, filter_function: MatcherType):
-        """Add a filter and returns self."""
-        self.filters.append(filter_function)
-        return self
-
-    def matches_device(self, device: zigpy.device.Device) -> bool:
-        """Process all filters and return True if all pass."""
-        return all(_filter(device) for _filter in self.filters)

@@ -1072,14 +1072,14 @@ async def test_quirks_v2(real_device):
 
     # fmt: off
     registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
-        .matches(signature_matches(signature)) \
+        .filter(signature_matches(signature)) \
         .adds(
             TestCustomCluster,
             constant_attributes={TestCustomCluster.AttributeDefs.foo: 3},
             zcl_init_attributes={TestCustomCluster.AttributeDefs.bar},
             zcl_report_config={TestCustomCluster.AttributeDefs.report: (1, 2, 3)}) \
         .adds(OnOff.cluster_id) \
-        .exposes_enum_entity(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+        .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
     # fmt: on
 
     quirked = registry.get_device(real_device)
@@ -1134,10 +1134,10 @@ async def test_quirks_v2_signature_match(real_device):
     }
     # fmt: off
     registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
-        .matches(signature_matches(signature_no_match)) \
+        .filter(signature_matches(signature_no_match)) \
         .adds(Basic.cluster_id) \
         .adds(OnOff.cluster_id) \
-        .exposes_enum_entity(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+        .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
     # fmt: on
 
     quirked = registry.get_device(real_device)
@@ -1151,14 +1151,14 @@ async def test_quirks_v2_multiple_matches_raises(real_device):
     registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
         .adds(Basic.cluster_id) \
         .adds(OnOff.cluster_id) \
-        .exposes_enum_entity(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+        .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
     # fmt: on
 
     # fmt: off
     registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
         .adds(Basic.cluster_id) \
         .adds(OnOff.cluster_id) \
-        .exposes_enum_entity(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+        .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
     # fmt: on
 
     with pytest.raises(
@@ -1175,10 +1175,10 @@ async def test_quirks_v2_with_custom_device_class(real_device):
 
     # fmt: off
     registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
-        .with_device_class(CustomTestDevice) \
+        .device_class(CustomTestDevice) \
         .adds(Basic.cluster_id) \
         .adds(OnOff.cluster_id) \
-        .exposes_enum_entity(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+        .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
     # fmt: on
 
     assert isinstance(registry.get_device(real_device), CustomTestDevice)
@@ -1196,10 +1196,10 @@ async def test_quirks_v2_with_custom_device_class_raises(real_device):
     ):
         # fmt: off
         registry.add_to_registry_v2(real_device.manufacturer, real_device.model) \
-            .with_device_class(CustomTestDevice) \
+            .device_class(CustomTestDevice) \
             .adds(Basic.cluster_id) \
             .adds(OnOff.cluster_id) \
-            .exposes_enum_entity(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+            .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
         # fmt: on
 
 
