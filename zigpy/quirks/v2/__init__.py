@@ -322,7 +322,7 @@ class EntityMetadata:
 
 
 @dataclasses.dataclass
-class QuirksV2RegistryEntry:
+class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
     """Quirks V2 registry entry."""
 
     registry: dict[tuple[str, str], list[QuirksV2RegistryEntry]] = None
@@ -362,7 +362,7 @@ class QuirksV2RegistryEntry:
         zcl_init_attributes: set[ZCLAttributeDef] | None = None,
         constant_attributes: dict[ZCLAttributeDef, typing.Any] | None = None,
         zcl_report_config: dict[ZCLAttributeDef, tuple[int, int, int]] | None = None,
-    ):
+    ):  # pylint: disable=too-many-arguments
         """Add an AddsMetadata entry and returns self."""
         add = AddsMetadata(
             endpoint_id=endpoint_id,
@@ -440,7 +440,7 @@ class QuirksV2RegistryEntry:
         endpoint_id: int = 1,
         entity_type: EntityType = EntityType.CONFIG,
         entity_platform: EnumEntityPlatform = EnumEntityPlatform.SELECT,
-    ):
+    ):  # pylint: disable=too-many-arguments
         """Add a enum and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -466,7 +466,7 @@ class QuirksV2RegistryEntry:
         force_inverted: bool = False,
         invert_attribute_name: str | None = None,
         entity_platform=EnumEntityPlatform.SWITCH,
-    ):
+    ):  # pylint: disable=too-many-arguments
         """Add a switch and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -496,7 +496,7 @@ class QuirksV2RegistryEntry:
         unit: str | None = None,
         mode: str | None = None,
         multiplier: float | None = None,
-    ):
+    ):  # pylint: disable=too-many-arguments
         """Add a number and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -548,7 +548,7 @@ class QuirksV2RegistryEntry:
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
         entity_type: EntityType = EntityType.CONFIG,
-    ):
+    ):  # pylint: disable=too-many-arguments
         """Add a write attribute button and return self."""
         self.entity_metadata.append(
             EntityMetadata(
