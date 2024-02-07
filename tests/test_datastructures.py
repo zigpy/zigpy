@@ -290,6 +290,9 @@ async def test_debouncer():
     """ "Test debouncer."""
 
     debouncer = datastructures.Debouncer()
+    debouncer.clean()
+    assert repr(debouncer) == "<Debouncer [tracked:0]>"
+
     obj1 = object()
     assert not debouncer.is_filtered(obj1)
     assert not debouncer.filter(obj1, expire_in=0.1)
@@ -299,7 +302,7 @@ async def test_debouncer():
     assert debouncer.filter(obj1, expire_in=0.1)
     assert debouncer.filter(obj1, expire_in=1)
     assert debouncer.is_filtered(obj1)
-    assert len(debouncer._queue) == 1
+    assert repr(debouncer) == "<Debouncer [tracked:1]>"
 
     obj2 = object()
     assert not debouncer.is_filtered(obj2)
@@ -311,14 +314,14 @@ async def test_debouncer():
 
     assert debouncer.is_filtered(obj1)
     assert debouncer.is_filtered(obj2)
-    assert len(debouncer._queue) == 2
+    assert repr(debouncer) == "<Debouncer [tracked:2]>"
 
     await asyncio.sleep(0.1)
     assert not debouncer.is_filtered(obj1)
     assert debouncer.is_filtered(obj2)
-    assert len(debouncer._queue) == 1
+    assert repr(debouncer) == "<Debouncer [tracked:1]>"
 
     await asyncio.sleep(0.1)
     assert not debouncer.is_filtered(obj1)
     assert not debouncer.is_filtered(obj2)
-    assert len(debouncer._queue) == 0
+    assert repr(debouncer) == "<Debouncer [tracked:0]>"
