@@ -868,3 +868,46 @@ async def test_request_exception_propagation(dev, event_loop):
         await ep.basic.reset_fact_default()
 
     assert type(exc.value.__cause__) is RuntimeError
+
+
+async def test_debouncing(dev):
+    """Test that request debouncing filters out duplicate packets."""
+
+    ep = dev.add_endpoint(1)
+    cluster = ep.add_input_cluster(0xEF00)
+
+    packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        src_ep=1,
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        dst_ep=1,
+        source_route=None,
+        extended_timeout=False,
+        tsn=202,
+        profile_id=260,
+        cluster_id=cluster.cluster_id,
+        data=t.SerializableBytes(b"\t6\x02\x00\x89m\x02\x00\x04\x00\x00\x00\x00"),
+        tx_options=t.TransmitOptions.NONE,
+        radius=0,
+        non_member_radius=0,
+        lqi=148,
+        rssi=-63,
+    )
+
+    packet_received = MagicMock()
+
+    with dev.application.callback_for_response(
+        src=dev,
+        filters=[lambda hdr, cmd: True],
+        callback=packet_received,
+    ):
+        for i in range(10):
+            new_packet = packet.replace(
+                timestamp=None,
+                tsn=packet.tsn + i,
+                lqi=packet.lqi + i,
+                rssi=packet.rssi + i,
+            )
+            dev.packet_received(new_packet)
+
+    assert len(packet_received.mock_calls) == 1
