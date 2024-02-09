@@ -325,7 +325,7 @@ class EntityMetadata:
 class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
     """Quirks V2 registry entry."""
 
-    registry: dict[tuple[str, str], list[QuirksV2RegistryEntry]] = None
+    registry: DeviceRegistry = None
     filters: list[FilterType] = dataclasses.field(default_factory=list)
     custom_device_class: type[CustomDeviceV2] | None = dataclasses.field(default=None)
     adds_metadata: list[AddsMetadata] = dataclasses.field(default_factory=list)
@@ -336,6 +336,10 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
     device_automation_triggers_metadata: dict[
         tuple[str, str], dict[str, str]
     ] = dataclasses.field(default_factory=dict)
+
+    def also_applies_to(self, manufacturer: str, model: str):
+        """Register this quirks v2 entry for an additional manufacturer and model."""
+        return self.registry.add_to_registry_v2(manufacturer, model, self)
 
     def device_class(self, custom_device_class: type[CustomDeviceV2]):
         """Set the custom device class and returns self."""
@@ -582,9 +586,8 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
 
 
 def add_to_registry_v2(
-    manufacturer, model, registry: DeviceRegistry = _DEVICE_REGISTRY
-):
+    manufacturer: str, model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
+) -> QuirksV2RegistryEntry:
     """Add an entry to the registry."""
     entry = QuirksV2RegistryEntry()
-    registry.add_to_registry_v2(manufacturer, model, entry)
-    return entry
+    return registry.add_to_registry_v2(manufacturer, model, entry)

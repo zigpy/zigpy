@@ -31,18 +31,9 @@ class DeviceRegistry:
         self._registry: TYPE_MANUF_QUIRKS_DICT = collections.defaultdict(
             lambda: collections.defaultdict(list)
         )
-        self._registry_v2: dict[tuple[str, str], list[QuirksV2RegistryEntry]] = {}
-
-    def add_to_registry_v2(
-        self, manufacturer: str, model: str, entry: QuirksV2RegistryEntry
-    ):
-        """Add an entry to the registry."""
-        key = (manufacturer, model)
-        entry.registry = self._registry_v2
-        if key not in self._registry_v2:
-            self._registry_v2[key] = []
-        self._registry_v2[key].append(entry)
-        return entry
+        self._registry_v2: dict[
+            tuple[str, str], list[QuirksV2RegistryEntry]
+        ] = collections.defaultdict(list)
 
     def add_to_registry(self, custom_device: CustomDeviceType) -> None:
         """Add a device to the registry"""
@@ -56,6 +47,16 @@ class DeviceRegistry:
             model = custom_device.signature.get(SIG_MODEL)
             if custom_device not in self.registry[manufacturer][model]:
                 self.registry[manufacturer][model].insert(0, custom_device)
+
+    def add_to_registry_v2(
+        self, manufacturer: str, model: str, entry: QuirksV2RegistryEntry
+    ):
+        """Add an entry to the registry."""
+        key = (manufacturer, model)
+        if not entry.registry:
+            entry.registry = self
+        self._registry_v2[key].append(entry)
+        return entry
 
     def remove(self, custom_device: CustomDeviceType) -> None:
         """Remove a device from the registry"""

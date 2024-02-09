@@ -204,6 +204,34 @@ async def test_quirks_v2_with_custom_device_class(device_mock):
     assert isinstance(registry.get_device(device_mock), CustomTestDevice)
 
 
+async def test_quirks_v2_also_applies_to(device_mock):
+    """Test adding the same quirk for multiple manufacturers and models."""
+    registry = DeviceRegistry()
+
+    class CustomTestDevice(CustomDeviceV2):
+        """Custom test device for testing quirks v2."""
+
+    # fmt: off
+    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
+        .also_applies_to("manufacturer2", "model2") \
+        .also_applies_to("manufacturer3", "model3") \
+        .device_class(CustomTestDevice) \
+        .adds(Basic.cluster_id) \
+        .adds(OnOff.cluster_id) \
+        .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
+    # fmt: on
+
+    assert isinstance(registry.get_device(device_mock), CustomTestDevice)
+
+    device_mock.manufacturer = "manufacturer2"
+    device_mock.model = "model2"
+    assert isinstance(registry.get_device(device_mock), CustomTestDevice)
+
+    device_mock.manufacturer = "manufacturer3"
+    device_mock.model = "model3"
+    assert isinstance(registry.get_device(device_mock), CustomTestDevice)
+
+
 async def test_quirks_v2_with_custom_device_class_raises(device_mock):
     """Test adding a quirk with a custom device class to the registry raises
 
