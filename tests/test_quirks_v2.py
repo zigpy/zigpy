@@ -79,15 +79,12 @@ async def test_quirks_v2(device_mock):
         ):  # pylint: disable=too-few-public-methods
             """Attribute definitions for the custom cluster."""
 
-            foo: Final = ZCLAttributeDef(
-                id=0x0000, type=t.uint8_t
-            )  # pylint: disable=disallowed-name
-            bar: Final = ZCLAttributeDef(
-                id=0x0000, type=t.uint8_t
-            )  # pylint: disable=disallowed-name
-            report: Final = ZCLAttributeDef(
-                id=0x0000, type=t.uint8_t
-            )  # pylint: disable=invalid-name
+            # pylint: disable=disallowed-name
+            foo: Final = ZCLAttributeDef(id=0x0000, type=t.uint8_t)
+            # pylint: disable=disallowed-name
+            bar: Final = ZCLAttributeDef(id=0x0000, type=t.uint8_t)
+            # pylint: disable=disallowed-name, invalid-name
+            report: Final = ZCLAttributeDef(id=0x0000, type=t.uint8_t)
 
     # fmt: off
     add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
@@ -109,9 +106,8 @@ async def test_quirks_v2(device_mock):
     assert ep.basic is not None
     assert isinstance(ep.basic, Basic)
     assert isinstance(ep.basic, TestCustomCluster)
-    assert (
-        ep.basic._CONSTANT_ATTRIBUTES[TestCustomCluster.AttributeDefs.foo.name] == 3
-    )  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    assert ep.basic._CONSTANT_ATTRIBUTES[TestCustomCluster.AttributeDefs.foo.name] == 3
     assert (
         TestCustomCluster.AttributeDefs.bar.name
         in ep.basic.application_metadata.zcl_init_attributes
