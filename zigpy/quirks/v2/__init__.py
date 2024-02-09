@@ -290,10 +290,19 @@ class BinarySensorMetadata:
 
 @dataclasses.dataclass(frozen=True)
 class WriteAttributeButtonMetadata:
-    """Metadata for exposed button entit that writes an attribute when pressed."""
+    """Metadata for exposed button entity that writes an attribute when pressed."""
 
     attribute_name: str
     attribute_value: int
+
+
+@dataclasses.dataclass(frozen=True)
+class ZCLCommandButtonMetadata:
+    """Metadata for exposed button entity that executes a ZCL command when pressed."""
+
+    command_name: str
+    arguments: tuple = dataclasses.field(default_factory=tuple)
+    kwargs: dict = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -307,6 +316,7 @@ class EntityMetadata:
         | NumberMetadata
         | BinarySensorMetadata
         | WriteAttributeButtonMetadata
+        | ZCLCommandButtonMetadata
     )
     entity_platform: EnumEntityPlatform
     entity_type: EntityType
