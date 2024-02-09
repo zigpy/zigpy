@@ -35,6 +35,8 @@ _LOGGER = logging.getLogger(__name__)
 class CustomDeviceV2(CustomDevice):
     """Implementation of a quirks v2 custom device."""
 
+    _copy_attr_cache = True
+
     def __init__(
         self,
         application: ControllerApplication,

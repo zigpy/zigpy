@@ -123,6 +123,8 @@ class CustomDevice(zigpy.device.Device):
 class CustomEndpoint(zigpy.endpoint.Endpoint):
     """Custom endpoint implementation for quirks."""
 
+    _copy_attr_cache = False
+
     def __init__(
         self,
         device: CustomDevice,
@@ -150,15 +152,16 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                 cluster = c(self, is_server=True)
                 cluster_id = cluster.cluster_id
             cluster = self.add_input_cluster(cluster_id, cluster)
-            if (
-                endpoint_id in replace_device.endpoints
-                and cluster_id in replace_device.endpoints[endpoint_id].in_clusters
-            ):
-                cluster._attr_cache = (
-                    replace_device[endpoint_id]
-                    .in_clusters[cluster_id]
-                    ._attr_cache.copy()
-                )
+            if self._copy_attr_cache:
+                if (
+                    endpoint_id in replace_device.endpoints
+                    and cluster_id in replace_device.endpoints[endpoint_id].in_clusters
+                ):
+                    cluster._attr_cache = (
+                        replace_device[endpoint_id]
+                        .in_clusters[cluster_id]
+                        ._attr_cache.copy()
+                    )
 
         for c in replacement_data.get(SIG_EP_OUTPUT, []):
             if isinstance(c, int):
@@ -168,15 +171,16 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                 cluster = c(self, is_server=False)
                 cluster_id = cluster.cluster_id
             cluster = self.add_output_cluster(cluster_id, cluster)
-            if (
-                endpoint_id in replace_device.endpoints
-                and cluster_id in replace_device.endpoints[endpoint_id].out_clusters
-            ):
-                cluster._attr_cache = (
-                    replace_device[endpoint_id]
-                    .out_clusters[cluster_id]
-                    ._attr_cache.copy()
-                )
+            if self._copy_attr_cache:
+                if (
+                    endpoint_id in replace_device.endpoints
+                    and cluster_id in replace_device.endpoints[endpoint_id].out_clusters
+                ):
+                    cluster._attr_cache = (
+                        replace_device[endpoint_id]
+                        .out_clusters[cluster_id]
+                        ._attr_cache.copy()
+                    )
 
 
 class CustomCluster(zigpy.zcl.Cluster):
