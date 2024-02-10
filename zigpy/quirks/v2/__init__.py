@@ -239,8 +239,8 @@ class EntityType(enum.Enum):
     STANDARD = "standard"
 
 
-class EnumEntityPlatform(enum.Enum):
-    """Enum entity platform."""
+class EntityPlatform(enum.Enum):
+    """Entity platform."""
 
     BINARY_SENSOR = "binary_sensor"
     BUTTON = "button"
@@ -262,6 +262,16 @@ class ZCLEnumMetadata(EnumMetadata):
     """Metadata for exposed ZCL enum based entity."""
 
     attribute_name: str | None = dataclasses.field(default=None)
+
+
+@dataclasses.dataclass(frozen=True)
+class ZCLSensorMetadata:
+    """Metadata for exposed ZCL attribute based sensor entity."""
+
+    attribute_name: str | None = dataclasses.field(default=None)
+    decimals: int | None = dataclasses.field(default=None)
+    divisor: int | None = dataclasses.field(default=None)
+    multiplier: int | None = dataclasses.field(default=None)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -323,7 +333,7 @@ class EntityMetadata:
         | WriteAttributeButtonMetadata
         | ZCLCommandButtonMetadata
     )
-    entity_platform: EnumEntityPlatform
+    entity_platform: EntityPlatform
     entity_type: EntityType
     cluster_id: int
     endpoint_id: int = dataclasses.field(default=1)
@@ -458,7 +468,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
         entity_type: EntityType = EntityType.CONFIG,
-        entity_platform: EnumEntityPlatform = EnumEntityPlatform.SELECT,
+        entity_platform: EntityPlatform = EntityPlatform.SELECT,
     ):  # pylint: disable=too-many-arguments
         """Add a enum and return self."""
         self.entity_metadata.append(
@@ -476,6 +486,35 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         )
         return self
 
+    def sensor(
+        self,
+        attribute_name: str,
+        cluster_id: int,
+        cluster_type: ClusterType = ClusterType.Server,
+        endpoint_id: int = 1,
+        decimals: int = 1,
+        divisor: int = 1,
+        multiplier: int = 1,
+        entity_type: EntityType = EntityType.STANDARD,
+    ):  # pylint: disable=too-many-arguments
+        """Add a switch and return self."""
+        self.entity_metadata.append(
+            EntityMetadata(
+                endpoint_id=endpoint_id,
+                cluster_id=cluster_id,
+                cluster_type=cluster_type,
+                entity_platform=EntityPlatform.SENSOR,
+                entity_type=entity_type,
+                entity_metadata=ZCLSensorMetadata(
+                    attribute_name=attribute_name,
+                    decimals=decimals,
+                    divisor=divisor,
+                    multiplier=multiplier,
+                ),
+            )
+        )
+        return self
+
     def switch(
         self,
         attribute_name: str,
@@ -484,7 +523,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         endpoint_id: int = 1,
         force_inverted: bool = False,
         invert_attribute_name: str | None = None,
-        entity_platform=EnumEntityPlatform.SWITCH,
+        entity_platform=EntityPlatform.SWITCH,
     ):  # pylint: disable=too-many-arguments
         """Add a switch and return self."""
         self.entity_metadata.append(
@@ -522,7 +561,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
-                entity_platform=EnumEntityPlatform.NUMBER,
+                entity_platform=EntityPlatform.NUMBER,
                 entity_type=EntityType.CONFIG,
                 entity_metadata=NumberMetadata(
                     attribute_name=attribute_name,
@@ -550,7 +589,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
-                entity_platform=EnumEntityPlatform.BINARY_SENSOR,
+                entity_platform=EntityPlatform.BINARY_SENSOR,
                 entity_type=EntityType.DIAGNOSTIC,
                 entity_metadata=BinarySensorMetadata(
                     attribute_name=attribute_name,
@@ -574,7 +613,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
-                entity_platform=EnumEntityPlatform.BUTTON,
+                entity_platform=EntityPlatform.BUTTON,
                 entity_type=entity_type,
                 entity_metadata=WriteAttributeButtonMetadata(
                     attribute_name=attribute_name,
