@@ -103,9 +103,7 @@ async def test_quirks_v2(device_mock):
         .filter(signature_matches(signature)) \
         .adds(
             TestCustomCluster,
-            constant_attributes={TestCustomCluster.AttributeDefs.foo: 3},
-            zcl_init_attributes={TestCustomCluster.AttributeDefs.bar},
-            zcl_report_config={TestCustomCluster.AttributeDefs.report: (1, 2, 3)}) \
+            constant_attributes={TestCustomCluster.AttributeDefs.foo: 3}) \
         .adds(OnOff.cluster_id) \
         .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
     # fmt: on
@@ -120,15 +118,6 @@ async def test_quirks_v2(device_mock):
     assert isinstance(ep.basic, TestCustomCluster)
     # pylint: disable=protected-access
     assert ep.basic._CONSTANT_ATTRIBUTES[TestCustomCluster.AttributeDefs.foo.name] == 3
-    assert (
-        TestCustomCluster.AttributeDefs.bar.name
-        in ep.basic.application_metadata.zcl_init_attributes
-    )
-    assert len(ep.basic.application_metadata.zcl_init_attributes) == 1
-    assert ep.basic.application_metadata.zcl_report_config[
-        TestCustomCluster.AttributeDefs.report.name
-    ] == (1, 2, 3)
-    assert len(ep.basic.application_metadata.zcl_report_config) == 1
 
     assert ep.on_off is not None
     assert isinstance(ep.on_off, OnOff)

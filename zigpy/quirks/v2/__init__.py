@@ -122,27 +122,13 @@ class CustomDeviceV2(CustomDevice):
 
 
 @dataclasses.dataclass(frozen=True)
-class ClusterApplicationMetadata:
-    """Adds metadata for applications leveraging zigpy to interact with custom clusters."""
-
-    zcl_init_attributes: set[str] = dataclasses.field(default_factory=set)
-    zcl_report_config: dict[str, tuple[int, int, int]] = dataclasses.field(
-        default_factory=dict
-    )
-
-
-@dataclasses.dataclass(frozen=True)
 class AddsMetadata:
     """Adds metadata for adding a cluster to a device."""
 
     cluster: int | type[Cluster | CustomCluster]
     endpoint_id: int = dataclasses.field(default=1)
     cluster_type: ClusterType = dataclasses.field(default=ClusterType.Server)
-    zcl_init_attributes: set[ZCLAttributeDef] = dataclasses.field(default_factory=set)
     constant_attributes: dict[ZCLAttributeDef, typing.Any] = dataclasses.field(
-        default_factory=dict
-    )
-    zcl_report_config: dict[ZCLAttributeDef, tuple[int, int, int]] = dataclasses.field(
         default_factory=dict
     )
 
@@ -168,17 +154,6 @@ class AddsMetadata:
                 attribute.name: value
                 for attribute, value in self.constant_attributes.items()
             }
-
-        if self.zcl_init_attributes or self.zcl_report_config:
-            cluster.application_metadata = ClusterApplicationMetadata(
-                zcl_init_attributes={
-                    attribute.name for attribute in self.zcl_init_attributes
-                },
-                zcl_report_config={
-                    attribute.name: report_config
-                    for attribute, report_config in self.zcl_report_config.items()
-                },
-            )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -369,18 +344,14 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         cluster: int | type[Cluster | CustomCluster],
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
-        zcl_init_attributes: set[ZCLAttributeDef] | None = None,
         constant_attributes: dict[ZCLAttributeDef, typing.Any] | None = None,
-        zcl_report_config: dict[ZCLAttributeDef, tuple[int, int, int]] | None = None,
     ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
         """Add an AddsMetadata entry and returns self."""
         add = AddsMetadata(
             endpoint_id=endpoint_id,
             cluster=cluster,
             cluster_type=cluster_type,
-            zcl_init_attributes=zcl_init_attributes or set(),
             constant_attributes=constant_attributes or {},
-            zcl_report_config=zcl_report_config or {},
         )
         self.adds_metadata.append(add)
         return self

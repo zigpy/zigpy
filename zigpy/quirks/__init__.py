@@ -26,7 +26,6 @@ import zigpy.zcl.foundation as foundation
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
-    from zigpy.quirks.v2 import ClusterApplicationMetadata
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -190,8 +189,6 @@ class CustomCluster(zigpy.zcl.Cluster):
     _CONSTANT_ATTRIBUTES: dict[int, typing.Any] | None = None
 
     manufacturer_id_override: t.uint16_t | None = None
-
-    application_metadata: ClusterApplicationMetadata | None = None
 
     @property
     def _is_manuf_specific(self) -> bool:
