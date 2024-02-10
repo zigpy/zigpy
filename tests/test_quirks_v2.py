@@ -204,6 +204,21 @@ async def test_quirks_v2_with_custom_device_class(device_mock):
     assert isinstance(registry.get_device(device_mock), CustomTestDevice)
 
 
+async def test_quirks_v2_removes(device_mock):
+    """Test adding a quirk that removes a cluster to the registry."""
+    registry = DeviceRegistry()
+
+    # fmt: off
+    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
+        .removes(Identify.cluster_id)
+    # fmt: on
+
+    quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked_device, CustomDeviceV2)
+
+    assert quirked_device.endpoints[1].in_clusters.get(Identify.cluster_id) is None
+
+
 async def test_quirks_v2_also_applies_to(device_mock):
     """Test adding the same quirk for multiple manufacturers and models."""
     registry = DeviceRegistry()

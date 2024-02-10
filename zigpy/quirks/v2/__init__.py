@@ -2,11 +2,9 @@
 from __future__ import annotations
 
 import collections
-from collections.abc import Callable
 import dataclasses
 import enum
 import logging
-import types
 import typing
 from typing import TYPE_CHECKING
 
@@ -66,9 +64,6 @@ class CustomDeviceV2(CustomDevice):
 
         for replace_meta in quirk_metadata.replaces_metadata:
             replace_meta(self)
-
-        for patch_meta in quirk_metadata.patches_metadata:
-            patch_meta(self)
 
         for entity_meta in quirk_metadata.entity_metadata:
             entity_meta(self)
@@ -210,27 +205,6 @@ class ReplacesMetadata:
         self.add(device)
 
 
-@dataclasses.dataclass(frozen=True)
-class PatchesMetadata:
-    """Patches metadata for replacing a method on a cluster on a device."""
-
-    replacement_method: Callable
-    cluster_id: int
-    endpoint_id: int = dataclasses.field(default=1)
-    cluster_type: ClusterType = dataclasses.field(default=ClusterType.Server)
-
-    def __call__(self, device: CustomDeviceV2):
-        """Apply the patch."""
-        endpoint = device.endpoints[self.endpoint_id]
-        cluster = (
-            endpoint.in_clusters[self.cluster_id]
-            if self.cluster_type == ClusterType.Server
-            else endpoint.out_clusters[self.cluster_id]
-        )
-        method_name = self.replacement_method.__name__
-        cluster[method_name] = types.MethodType(self.replacement_method, cluster)
-
-
 class EntityType(enum.Enum):
     """Entity type."""
 
@@ -356,17 +330,18 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
     adds_metadata: list[AddsMetadata] = dataclasses.field(default_factory=list)
     removes_metadata: list[RemovesMetadata] = dataclasses.field(default_factory=list)
     replaces_metadata: list[ReplacesMetadata] = dataclasses.field(default_factory=list)
-    patches_metadata: list[PatchesMetadata] = dataclasses.field(default_factory=list)
     entity_metadata: list[EntityMetadata] = dataclasses.field(default_factory=list)
     device_automation_triggers_metadata: dict[
         tuple[str, str], dict[str, str]
     ] = dataclasses.field(default_factory=dict)
 
-    def also_applies_to(self, manufacturer: str, model: str):
+    def also_applies_to(self, manufacturer: str, model: str) -> QuirksV2RegistryEntry:
         """Register this quirks v2 entry for an additional manufacturer and model."""
         return self.registry.add_to_registry_v2(manufacturer, model, self)
 
-    def device_class(self, custom_device_class: type[CustomDeviceV2]):
+    def device_class(
+        self, custom_device_class: type[CustomDeviceV2]
+    ) -> QuirksV2RegistryEntry:
         """Set the custom device class and returns self."""
         assert issubclass(
             custom_device_class, CustomDeviceV2
@@ -374,7 +349,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         self.custom_device_class = custom_device_class
         return self
 
-    def filter(self, filter_function: FilterType):
+    def filter(self, filter_function: FilterType) -> QuirksV2RegistryEntry:
         """Add a filter and returns self."""
         self.filters.append(filter_function)
         return self
@@ -391,7 +366,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         zcl_init_attributes: set[ZCLAttributeDef] | None = None,
         constant_attributes: dict[ZCLAttributeDef, typing.Any] | None = None,
         zcl_report_config: dict[ZCLAttributeDef, tuple[int, int, int]] | None = None,
-    ):  # pylint: disable=too-many-arguments
+    ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
         """Add an AddsMetadata entry and returns self."""
         add = AddsMetadata(
             endpoint_id=endpoint_id,
@@ -409,7 +384,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         cluster_id: int,
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
-    ):
+    ) -> QuirksV2RegistryEntry:
         """Add a RemovesMetadata entry and returns self."""
         remove = RemovesMetadata(
             endpoint_id=endpoint_id,
@@ -425,7 +400,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         cluster_id: int | None = None,
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
-    ):
+    ) -> QuirksV2RegistryEntry:
         """Add a ReplacesMetadata entry and returns self."""
         remove = RemovesMetadata(
             endpoint_id=endpoint_id,
@@ -443,23 +418,6 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         self.replaces_metadata.append(replace)
         return self
 
-    def patches(
-        self,
-        replacement_method: Callable,
-        cluster_id: int,
-        cluster_type: ClusterType = ClusterType.Server,
-        endpoint_id: int = 1,
-    ):
-        """Add a patch and returns self."""
-        patch = PatchesMetadata(
-            endpoint_id=endpoint_id,
-            cluster_id=cluster_id,
-            cluster_type=cluster_type,
-            replacement_method=replacement_method,
-        )
-        self.patches_metadata.append(patch)
-        return self
-
     def enum(
         self,
         attribute_name: str,
@@ -469,7 +427,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         endpoint_id: int = 1,
         entity_type: EntityType = EntityType.CONFIG,
         entity_platform: EntityPlatform = EntityPlatform.SELECT,
-    ):  # pylint: disable=too-many-arguments
+    ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
         """Add a enum and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -496,7 +454,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         divisor: int = 1,
         multiplier: int = 1,
         entity_type: EntityType = EntityType.STANDARD,
-    ):  # pylint: disable=too-many-arguments
+    ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
         """Add a switch and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -524,7 +482,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         force_inverted: bool = False,
         invert_attribute_name: str | None = None,
         entity_platform=EntityPlatform.SWITCH,
-    ):  # pylint: disable=too-many-arguments
+    ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
         """Add a switch and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -554,7 +512,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         unit: str | None = None,
         mode: str | None = None,
         multiplier: float | None = None,
-    ):  # pylint: disable=too-many-arguments
+    ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
         """Add a number and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -582,7 +540,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         cluster_id: int,
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
-    ):
+    ) -> QuirksV2RegistryEntry:
         """Add a binary sensor and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -606,7 +564,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
         entity_type: EntityType = EntityType.CONFIG,
-    ):  # pylint: disable=too-many-arguments
+    ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
         """Add a write attribute button and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -625,7 +583,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
 
     def device_automation_triggers(
         self, device_automation_triggers: dict[tuple[str, str], dict[str, str]]
-    ):
+    ) -> QuirksV2RegistryEntry:
         """Add a device automation trigger and returns self."""
         self.device_automation_triggers_metadata.update(device_automation_triggers)
         return self
