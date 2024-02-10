@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import collections
+from collections.abc import Callable
 import dataclasses
 import enum
 import logging
@@ -101,6 +102,8 @@ class CustomDeviceV2(CustomDevice):
     async def apply_custom_configuration(self, *args, **kwargs):
         """Hook for applications to instruct instances to apply custom configuration."""
         for endpoint in self.endpoints.values():
+            if isinstance(endpoint, ZDO):
+                continue
             for cluster in endpoint.in_clusters.values():
                 if (
                     isinstance(cluster, CustomCluster)
@@ -211,7 +214,7 @@ class ReplacesMetadata:
 class PatchesMetadata:
     """Patches metadata for replacing a method on a cluster on a device."""
 
-    replacement_method: typing.Callable
+    replacement_method: Callable
     cluster_id: int
     endpoint_id: int = dataclasses.field(default=1)
     cluster_type: ClusterType = dataclasses.field(default=ClusterType.Server)
@@ -432,7 +435,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
 
     def patches(
         self,
-        replacement_method: typing.Callable,
+        replacement_method: Callable,
         cluster_id: int,
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
