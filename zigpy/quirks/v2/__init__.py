@@ -34,8 +34,9 @@ _LOGGER = logging.getLogger(__name__)
 class CustomDeviceV2(CustomDevice):
     """Implementation of a quirks v2 custom device."""
 
-    _copy_attr_cache = True
+    _copy_cluster_attr_cache = True
 
+    # pylint: disable=too-many-arguments
     def __init__(
         self,
         application: ControllerApplication,
@@ -67,6 +68,11 @@ class CustomDeviceV2(CustomDevice):
 
         for entity_meta in quirk_metadata.entity_metadata:
             entity_meta(self)
+
+        if quirk_metadata.device_automation_triggers_metadata:
+            self.device_automation_triggers = (
+                quirk_metadata.device_automation_triggers_metadata
+            )
 
     def _replacement_from_replaces(self, replaces: Device) -> None:
         """Set replacement data from replaces device."""

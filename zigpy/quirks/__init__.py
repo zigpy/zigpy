@@ -67,6 +67,8 @@ def register_uninitialized_device_message_handler(handler: typing.Callable) -> N
 class CustomDevice(zigpy.device.Device):
     """Implementation of a quirks v1 custom device."""
 
+    _copy_cluster_attr_cache = False
+
     replacement: dict[str, typing.Any] = {}
     signature = None
 
@@ -123,8 +125,6 @@ class CustomDevice(zigpy.device.Device):
 class CustomEndpoint(zigpy.endpoint.Endpoint):
     """Custom endpoint implementation for quirks."""
 
-    _copy_attr_cache = False
-
     def __init__(
         self,
         device: CustomDevice,
@@ -152,7 +152,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                 cluster = c(self, is_server=True)
                 cluster_id = cluster.cluster_id
             cluster = self.add_input_cluster(cluster_id, cluster)
-            if self._copy_attr_cache:
+            if self.device._copy_cluster_attr_cache:
                 if (
                     endpoint_id in replace_device.endpoints
                     and cluster_id in replace_device.endpoints[endpoint_id].in_clusters
@@ -171,7 +171,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                 cluster = c(self, is_server=False)
                 cluster_id = cluster.cluster_id
             cluster = self.add_output_cluster(cluster_id, cluster)
-            if self._copy_attr_cache:
+            if self.device._copy_cluster_attr_cache:
                 if (
                     endpoint_id in replace_device.endpoints
                     and cluster_id in replace_device.endpoints[endpoint_id].out_clusters
