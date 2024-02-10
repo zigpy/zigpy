@@ -1,6 +1,7 @@
 """Tests for the quirks v2 module."""
 
 from typing import Final
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -17,7 +18,18 @@ from zigpy.exceptions import MultipleQuirksMatchException
 from zigpy.profiles import zha
 from zigpy.quirks import CustomCluster, CustomDevice, signature_matches
 from zigpy.quirks.registry import DeviceRegistry
-from zigpy.quirks.v2 import CustomDeviceV2, EntityType, add_to_registry_v2
+from zigpy.quirks.v2 import (
+    BinarySensorMetadata,
+    CustomDeviceV2,
+    EntityMetadata,
+    EntityPlatform,
+    EntityType,
+    NumberMetadata,
+    SwitchMetadata,
+    WriteAttributeButtonMetadata,
+    ZCLSensorMetadata,
+    add_to_registry_v2,
+)
 import zigpy.types as t
 from zigpy.zcl import ClusterType
 from zigpy.zcl.clusters.general import (
@@ -219,6 +231,229 @@ async def test_quirks_v2_removes(device_mock):
     assert quirked_device.endpoints[1].in_clusters.get(Identify.cluster_id) is None
 
 
+async def test_quirks_v2_apply_custom_configuration(device_mock):
+    """Test adding a quirk custom configuration to the registry."""
+    registry = DeviceRegistry()
+
+    class CustomOnOffCluster(CustomCluster, OnOff):
+        """Custom on off cluster for testing quirks v2."""
+
+    # fmt: off
+    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
+        .adds(CustomOnOffCluster) \
+        .adds(CustomOnOffCluster, cluster_type=ClusterType.Client)
+    # fmt: on
+
+    quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked_device, CustomDeviceV2)
+
+    # pylint: disable=line-too-long
+    quirked_cluster: CustomOnOffCluster = quirked_device.endpoints[1].in_clusters[
+        CustomOnOffCluster.cluster_id
+    ]
+    assert isinstance(quirked_cluster, CustomOnOffCluster)
+
+    quirked_cluster.apply_custom_configuration = AsyncMock()
+
+    quirked_client_cluster: CustomOnOffCluster = quirked_device.endpoints[
+        1
+    ].out_clusters[CustomOnOffCluster.cluster_id]
+    assert isinstance(quirked_client_cluster, CustomOnOffCluster)
+
+    quirked_client_cluster.apply_custom_configuration = AsyncMock()
+
+    await quirked_device.apply_custom_configuration()
+
+    assert quirked_cluster.apply_custom_configuration.await_count == 1
+    assert quirked_client_cluster.apply_custom_configuration.await_count == 1
+
+
+async def test_quirks_v2_sensor(device_mock):
+    """Test adding a quirk that defines a sensor to the registry."""
+    registry = DeviceRegistry()
+
+    # fmt: off
+    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
+        .adds(OnOff.cluster_id) \
+        .sensor(OnOff.AttributeDefs.on_time.name, OnOff.cluster_id)
+    # fmt: on
+
+    quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked_device, CustomDeviceV2)
+
+    assert quirked_device.endpoints[1].in_clusters.get(OnOff.cluster_id) is not None
+
+    # pylint: disable=line-too-long
+    sensor_metadata: EntityMetadata = quirked_device.exposes_metadata[
+        (1, OnOff.cluster_id, ClusterType.Server)
+    ][0]
+    assert sensor_metadata.entity_type == EntityType.STANDARD
+    assert sensor_metadata.entity_platform == EntityPlatform.SENSOR
+    assert sensor_metadata.cluster_id == OnOff.cluster_id
+    assert sensor_metadata.endpoint_id == 1
+    assert sensor_metadata.cluster_type == ClusterType.Server
+    assert isinstance(sensor_metadata.entity_metadata, ZCLSensorMetadata)
+    assert (
+        sensor_metadata.entity_metadata.attribute_name
+        == OnOff.AttributeDefs.on_time.name
+    )
+    assert sensor_metadata.entity_metadata.decimals == 1
+    assert sensor_metadata.entity_metadata.divisor == 1
+    assert sensor_metadata.entity_metadata.multiplier == 1
+
+
+async def test_quirks_v2_switch(device_mock):
+    """Test adding a quirk that defines a switch to the registry."""
+    registry = DeviceRegistry()
+
+    # pylint: disable=line-too-long
+    # fmt: off
+    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
+        .adds(OnOff.cluster_id) \
+        .switch(OnOff.AttributeDefs.on_time.name, OnOff.cluster_id, force_inverted=True, invert_attribute_name=OnOff.AttributeDefs.off_wait_time.name)
+    # fmt: on
+
+    quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked_device, CustomDeviceV2)
+
+    assert quirked_device.endpoints[1].in_clusters.get(OnOff.cluster_id) is not None
+
+    switch_metadata: EntityMetadata = quirked_device.exposes_metadata[
+        (1, OnOff.cluster_id, ClusterType.Server)
+    ][0]
+    assert switch_metadata.entity_type == EntityType.CONFIG
+    assert switch_metadata.entity_platform == EntityPlatform.SWITCH
+    assert switch_metadata.cluster_id == OnOff.cluster_id
+    assert switch_metadata.endpoint_id == 1
+    assert switch_metadata.cluster_type == ClusterType.Server
+    assert isinstance(switch_metadata.entity_metadata, SwitchMetadata)
+    assert (
+        switch_metadata.entity_metadata.attribute_name
+        == OnOff.AttributeDefs.on_time.name
+    )
+    assert switch_metadata.entity_metadata.force_inverted is True
+    assert (
+        switch_metadata.entity_metadata.invert_attribute_name
+        == OnOff.AttributeDefs.off_wait_time.name
+    )
+
+
+async def test_quirks_v2_number(device_mock):
+    """Test adding a quirk that defines a number to the registry."""
+    registry = DeviceRegistry()
+
+    # fmt: off
+    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
+        .adds(OnOff.cluster_id) \
+        .number(
+            OnOff.AttributeDefs.on_time.name,
+            OnOff.cluster_id,
+            min_value=0,
+            max_value=100,
+            step=1,
+            unit="s",
+    )
+    # fmt: on
+
+    quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked_device, CustomDeviceV2)
+
+    assert quirked_device.endpoints[1].in_clusters.get(OnOff.cluster_id) is not None
+
+    # pylint: disable=line-too-long
+    number_metadata: EntityMetadata = quirked_device.exposes_metadata[
+        (1, OnOff.cluster_id, ClusterType.Server)
+    ][0]
+    assert number_metadata.entity_type == EntityType.CONFIG
+    assert number_metadata.entity_platform == EntityPlatform.NUMBER
+    assert number_metadata.cluster_id == OnOff.cluster_id
+    assert number_metadata.endpoint_id == 1
+    assert number_metadata.cluster_type == ClusterType.Server
+    assert isinstance(number_metadata.entity_metadata, NumberMetadata)
+    assert (
+        number_metadata.entity_metadata.attribute_name
+        == OnOff.AttributeDefs.on_time.name
+    )
+    assert number_metadata.entity_metadata.min == 0
+    assert number_metadata.entity_metadata.max == 100
+    assert number_metadata.entity_metadata.step == 1
+    assert number_metadata.entity_metadata.unit == "s"
+    assert number_metadata.entity_metadata.mode is None
+    assert number_metadata.entity_metadata.multiplier is None
+
+
+async def test_quirks_v2_binary_sensor(device_mock):
+    """Test adding a quirk that defines a binary sensor to the registry."""
+    registry = DeviceRegistry()
+
+    # fmt: off
+    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
+        .adds(OnOff.cluster_id) \
+        .binary_sensor(
+            OnOff.AttributeDefs.on_off.name,
+            OnOff.cluster_id,
+    )
+    # fmt: on
+
+    quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked_device, CustomDeviceV2)
+
+    assert quirked_device.endpoints[1].in_clusters.get(OnOff.cluster_id) is not None
+
+    # pylint: disable=line-too-long
+    binary_sensor_metadata: EntityMetadata = quirked_device.exposes_metadata[
+        (1, OnOff.cluster_id, ClusterType.Server)
+    ][0]
+    assert binary_sensor_metadata.entity_type == EntityType.DIAGNOSTIC
+    assert binary_sensor_metadata.entity_platform == EntityPlatform.BINARY_SENSOR
+    assert binary_sensor_metadata.cluster_id == OnOff.cluster_id
+    assert binary_sensor_metadata.endpoint_id == 1
+    assert binary_sensor_metadata.cluster_type == ClusterType.Server
+    assert isinstance(binary_sensor_metadata.entity_metadata, BinarySensorMetadata)
+    assert (
+        binary_sensor_metadata.entity_metadata.attribute_name
+        == OnOff.AttributeDefs.on_off.name
+    )
+
+
+async def test_quirks_v2_write_attribute_button(device_mock):
+    """Test adding a quirk that defines a write attr button to the registry."""
+    registry = DeviceRegistry()
+
+    # fmt: off
+    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
+        .adds(OnOff.cluster_id) \
+        .write_attr_button(
+            OnOff.AttributeDefs.on_time.name,
+            20,
+            OnOff.cluster_id,
+    )
+    # fmt: on
+
+    quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked_device, CustomDeviceV2)
+
+    assert quirked_device.endpoints[1].in_clusters.get(OnOff.cluster_id) is not None
+
+    # pylint: disable=line-too-long
+    write_attribute_button: EntityMetadata = quirked_device.exposes_metadata[
+        (1, OnOff.cluster_id, ClusterType.Server)
+    ][0]
+    assert write_attribute_button.entity_type == EntityType.CONFIG
+    assert write_attribute_button.entity_platform == EntityPlatform.BUTTON
+    assert write_attribute_button.cluster_id == OnOff.cluster_id
+    assert write_attribute_button.endpoint_id == 1
+    assert write_attribute_button.cluster_type == ClusterType.Server
+    assert isinstance(
+        write_attribute_button.entity_metadata, WriteAttributeButtonMetadata
+    )
+    assert (
+        write_attribute_button.entity_metadata.attribute_name
+        == OnOff.AttributeDefs.on_time.name
+    )
+    assert write_attribute_button.entity_metadata.attribute_value == 20
+
+
 async def test_quirks_v2_also_applies_to(device_mock):
     """Test adding the same quirk for multiple manufacturers and models."""
     registry = DeviceRegistry()
@@ -311,6 +546,30 @@ async def test_quirks_v2_matches_v1(app_mock):
             }
         )
 
+    # pylint: disable=invalid-name
+    SHORT_PRESS = "remote_button_short_press"
+    TURN_ON = "turn_on"
+    COMMAND = "command"
+    COMMAND_RELEASE = "release"
+    COMMAND_TOGGLE = "toggle"
+    CLUSTER_ID = "cluster_id"
+    ENDPOINT_ID = "endpoint_id"
+    PARAMS = "params"
+    LONG_PRESS = "remote_button_long_press"
+    triggers = {
+        (SHORT_PRESS, TURN_ON): {
+            COMMAND: COMMAND_TOGGLE,
+            CLUSTER_ID: 6,
+            ENDPOINT_ID: 1,
+        },
+        (LONG_PRESS, TURN_ON): {
+            COMMAND: COMMAND_RELEASE,
+            CLUSTER_ID: 5,
+            ENDPOINT_ID: 1,
+            PARAMS: {"param1": 0},
+        },
+    }
+
     class IkeaTradfriRemote3(CustomDevice):
         """Custom device representing variation of IKEA five button remote."""
 
@@ -370,6 +629,8 @@ async def test_quirks_v2_matches_v1(app_mock):
             }
         }
 
+        device_automation_triggers = triggers
+
     ieee = sentinel.ieee
     nwk = 0x2233
     ikea_device = Device(app_mock, ieee, nwk)
@@ -404,7 +665,8 @@ async def test_quirks_v2_matches_v1(app_mock):
     # fmt: off
     add_to_registry_v2(ikea_device.manufacturer, ikea_device.model, registry=registry) \
         .replaces(PowerConfig1CRCluster) \
-        .replaces(ScenesCluster, cluster_type=ClusterType.Client)
+        .replaces(ScenesCluster, cluster_type=ClusterType.Client) \
+        .device_automation_triggers(triggers)
     # fmt: on
 
     quirked_v2 = registry.get_device(ikea_device)
@@ -432,3 +694,5 @@ async def test_quirks_v2_matches_v1(app_mock):
         assert isinstance(
             quirked_v2.endpoints[1].out_clusters[cluster_id], type(cluster)
         )
+
+    assert quirked.device_automation_triggers == quirked_v2.device_automation_triggers
