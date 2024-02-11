@@ -339,13 +339,14 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         """Process all filters and return True if all pass."""
         return all(_filter(device) for _filter in self.filters)
 
+    # pylint: disable=too-many-arguments
     def adds(
         self,
         cluster: int | type[Cluster | CustomCluster],
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
         constant_attributes: dict[ZCLAttributeDef, typing.Any] | None = None,
-    ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
+    ) -> QuirksV2RegistryEntry:
         """Add an AddsMetadata entry and returns self."""
         add = AddsMetadata(
             endpoint_id=endpoint_id,
@@ -404,7 +405,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         endpoint_id: int = 1,
         entity_type: EntityType = EntityType.CONFIG,
         entity_platform: EntityPlatform = EntityPlatform.SELECT,
-    ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
+    ) -> QuirksV2RegistryEntry:
         """Add a enum and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -431,7 +432,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         divisor: int = 1,
         multiplier: int = 1,
         entity_type: EntityType = EntityType.STANDARD,
-    ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
+    ) -> QuirksV2RegistryEntry:
         """Add a switch and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -459,7 +460,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         force_inverted: bool = False,
         invert_attribute_name: str | None = None,
         entity_platform=EntityPlatform.SWITCH,
-    ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
+    ) -> QuirksV2RegistryEntry:
         """Add a switch and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -489,7 +490,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         unit: str | None = None,
         mode: str | None = None,
         multiplier: float | None = None,
-    ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
+    ) -> QuirksV2RegistryEntry:
         """Add a number and return self."""
         self.entity_metadata.append(
             EntityMetadata(
@@ -541,7 +542,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
         entity_type: EntityType = EntityType.CONFIG,
-    ) -> QuirksV2RegistryEntry:  # pylint: disable=too-many-arguments
+    ) -> QuirksV2RegistryEntry:
         """Add a write attribute button and return self."""
         self.entity_metadata.append(
             EntityMetadata(
