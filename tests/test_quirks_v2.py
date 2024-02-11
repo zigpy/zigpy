@@ -27,6 +27,7 @@ from zigpy.quirks.v2 import (
     NumberMetadata,
     SwitchMetadata,
     WriteAttributeButtonMetadata,
+    ZCLCommandButtonMetadata,
     ZCLSensorMetadata,
     add_to_registry_v2,
 )
@@ -441,6 +442,48 @@ async def test_quirks_v2_write_attribute_button(device_mock):
         == OnOff.AttributeDefs.on_time.name
     )
     assert write_attribute_button.entity_metadata.attribute_value == 20
+
+
+async def test_quirks_v2_command_button(device_mock):
+    """Test adding a quirk that defines a command button to the registry."""
+    registry = DeviceRegistry()
+
+    # fmt: off
+    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
+        .adds(OnOff.cluster_id) \
+        .command_button(
+            OnOff.ServerCommandDefs.on_with_timed_off.name,
+            OnOff.cluster_id,
+            command_kwargs={
+                "on_off_control": OnOff.OnOffControl.Accept_Only_When_On
+            }
+    )
+    # fmt: on
+
+    quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked_device, CustomDeviceV2)
+
+    assert quirked_device.endpoints[1].in_clusters.get(OnOff.cluster_id) is not None
+
+    # pylint: disable=line-too-long
+    button: EntityMetadata = quirked_device.exposes_metadata[
+        (1, OnOff.cluster_id, ClusterType.Server)
+    ][0]
+    assert button.entity_type == EntityType.CONFIG
+    assert button.entity_platform == EntityPlatform.BUTTON
+    assert button.cluster_id == OnOff.cluster_id
+    assert button.endpoint_id == 1
+    assert button.cluster_type == ClusterType.Server
+    assert isinstance(button.entity_metadata, ZCLCommandButtonMetadata)
+    assert (
+        button.entity_metadata.command_name
+        == OnOff.ServerCommandDefs.on_with_timed_off.name
+    )
+    assert len(button.entity_metadata.kwargs) == 1
+    assert (
+        button.entity_metadata.kwargs["on_off_control"]
+        == OnOff.OnOffControl.Accept_Only_When_On
+    )
 
 
 async def test_quirks_v2_also_applies_to(device_mock):

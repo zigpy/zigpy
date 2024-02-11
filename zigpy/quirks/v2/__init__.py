@@ -6,7 +6,7 @@ import dataclasses
 import enum
 import logging
 import typing
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -271,8 +271,8 @@ class ZCLCommandButtonMetadata:
     """Metadata for exposed button entity that executes a ZCL command when pressed."""
 
     command_name: str
-    arguments: tuple = dataclasses.field(default_factory=tuple)
-    kwargs: dict = dataclasses.field(default_factory=dict)
+    args: tuple | None
+    kwargs: dict[str, Any] | None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -554,6 +554,33 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                 entity_metadata=WriteAttributeButtonMetadata(
                     attribute_name=attribute_name,
                     attribute_value=attribute_value,
+                ),
+            )
+        )
+        return self
+
+    def command_button(
+        self,
+        command_name: str,
+        cluster_id: int,
+        command_args: tuple | None = None,
+        command_kwargs: dict[str, Any] | None = None,
+        cluster_type: ClusterType = ClusterType.Server,
+        endpoint_id: int = 1,
+        entity_type: EntityType = EntityType.CONFIG,
+    ) -> QuirksV2RegistryEntry:
+        """Add a zcl command button and return self."""
+        self.entity_metadata.append(
+            EntityMetadata(
+                endpoint_id=endpoint_id,
+                cluster_id=cluster_id,
+                cluster_type=cluster_type,
+                entity_platform=EntityPlatform.BUTTON,
+                entity_type=entity_type,
+                entity_metadata=ZCLCommandButtonMetadata(
+                    command_name=command_name,
+                    args=command_args,
+                    kwargs=command_kwargs,
                 ),
             )
         )
