@@ -38,7 +38,7 @@ import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
-    from zigpy.ota.image import BaseOTAImage
+    from zigpy.ota.provider import OtaImageWithMetadata
 
 APS_REPLY_TIMEOUT = 5
 APS_REPLY_TIMEOUT_EXTENDED = 28
@@ -498,7 +498,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     async def update_firmware(
         self,
-        firmware_image: BaseOTAImage,
+        image: OtaImageWithMetadata,
         progress_callback: callable = None,
         force: bool = False,
     ) -> foundation.Status:
@@ -511,7 +511,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         try:
             result = await update_firmware(
-                self, firmware_image, progress_callback, force
+                device=self,
+                image=image,
+                progress_callback=progress_callback,
+                force=force,
             )
         except Exception as exc:
             self.debug("OTA failed!", exc_info=exc)
