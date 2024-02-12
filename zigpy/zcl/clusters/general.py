@@ -2186,7 +2186,11 @@ class Ota(Cluster):
             return
 
         # send an event to listener(s) to let them know that an image is available
-        self.endpoint.device.listener_event("device_ota_update_available", img)
+        self.endpoint.device.listener_event(
+            "device_ota_update_available",
+            img,
+            cmd.current_file_version,
+        )
 
 
 class ScheduleRecord(t.Struct):
