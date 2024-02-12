@@ -85,26 +85,27 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
 
     @property
     def specificity(self) -> int:
-        """Return a numerical representation of the metadata."""
+        """Return a numerical representation of the metadata specificity.
+        Higher specificity is preferred to lower when picking a final OTA image."""
         total = 0
 
         if self.metadata.manufacturer_names:
-            total += 1
+            total += 100
 
         if self.metadata.model_names:
+            total += 100
+
+        if self.metadata.min_current_file_version is not None:
+            total += 10
+
+        if self.metadata.max_current_file_version is not None:
             total += 10
 
         if self.min_hardware_version is not None:
-            total += 10
+            total += 1
 
         if self.max_hardware_version is not None:
-            total += 10
-
-        if self.metadata.min_current_file_version is not None:
-            total += 100
-
-        if self.metadata.max_current_file_version is not None:
-            total += 100
+            total += 1
 
         return total
 
