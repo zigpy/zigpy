@@ -47,6 +47,7 @@ from zigpy.zcl.clusters.general import (
 from zigpy.zcl.clusters.homeautomation import Diagnostic
 from zigpy.zcl.clusters.lightlink import LightLink
 from zigpy.zcl.foundation import BaseAttributeDefs, ZCLAttributeDef, ZCLCommandDef
+from zigpy.zdo.types import LogicalType, NodeDescriptor
 
 from .async_mock import sentinel
 
@@ -236,6 +237,60 @@ async def test_quirks_v2_with_custom_device_class(device_mock):
     )
 
     assert isinstance(registry.get_device(device_mock), CustomTestDevice)
+
+
+async def test_quirks_v2_with_node_descriptor(device_mock):
+    """Test adding a quirk with an overridden node descriptor to the registry."""
+    registry = DeviceRegistry()
+
+    node_descriptor = NodeDescriptor(
+        logical_type=LogicalType.Router,
+        complex_descriptor_available=0,
+        user_descriptor_available=0,
+        reserved=0,
+        aps_flags=0,
+        frequency_band=NodeDescriptor.FrequencyBand.Freq2400MHz,
+        mac_capability_flags=NodeDescriptor.MACCapabilityFlags.AllocateAddress,
+        manufacturer_code=4174,
+        maximum_buffer_size=82,
+        maximum_incoming_transfer_size=82,
+        server_mask=0,
+        maximum_outgoing_transfer_size=82,
+        descriptor_capability_field=NodeDescriptor.DescriptorCapability.NONE,
+    )
+
+    assert device_mock.node_desc != node_descriptor
+
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .node_descriptor(node_descriptor)
+    )
+
+    quirked: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked, CustomDeviceV2)
+    assert quirked.node_desc == node_descriptor
+
+
+async def test_quirks_v2_skip_configuration(device_mock):
+    """Test adding a quirk that skips configuration to the registry."""
+    registry = DeviceRegistry()
+
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .skip_configuration()
+    )
+
+    quirked: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked, CustomDeviceV2)
+    assert quirked.skip_configuration is True
 
 
 async def test_quirks_v2_removes(device_mock):

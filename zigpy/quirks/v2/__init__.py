@@ -14,12 +14,15 @@ from zigpy.const import (
     SIG_EP_OUTPUT,
     SIG_EP_PROFILE,
     SIG_EP_TYPE,
+    SIG_NODE_DESC,
+    SIG_SKIP_CONFIG,
 )
 from zigpy.quirks import _DEVICE_REGISTRY, CustomCluster, CustomDevice, FilterType
 from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
 from zigpy.zcl import ClusterType
 from zigpy.zdo import ZDO
+from zigpy.zdo.types import NodeDescriptor
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -45,6 +48,7 @@ class CustomDeviceV2(CustomDevice):
         replaces: Device,
         quirk_metadata: QuirksV2RegistryEntry,
     ) -> None:
+        self._quirk_metadata: QuirksV2RegistryEntry = quirk_metadata
         # this is done to simplify extending from CustomDevice
         self._replacement_from_replaces(replaces)
         super().__init__(application, ieee, nwk, replaces)
@@ -55,7 +59,6 @@ class CustomDeviceV2(CustomDevice):
             tuple[int, int, ClusterType],
             list[EntityMetadata],
         ] = collections.defaultdict(list)
-        self._quirk_metadata: QuirksV2RegistryEntry = quirk_metadata
 
         for add_meta in quirk_metadata.adds_metadata:
             add_meta(self)
@@ -92,6 +95,13 @@ class CustomDeviceV2(CustomDevice):
             for key, endpoint in replaces.endpoints.items()
             if not isinstance(endpoint, ZDO)
         }
+        self.replacement[
+            SIG_SKIP_CONFIG
+        ] = self._quirk_metadata.skip_device_configuration
+        if self._quirk_metadata.device_node_descriptor:
+            self.replacement[
+                SIG_NODE_DESC
+            ] = self._quirk_metadata.device_node_descriptor
 
     @property
     def exposes_metadata(
@@ -308,6 +318,8 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
     registry: DeviceRegistry = None
     filters: list[FilterType] = dataclasses.field(default_factory=list)
     custom_device_class: type[CustomDeviceV2] | None = dataclasses.field(default=None)
+    device_node_descriptor: NodeDescriptor | None = dataclasses.field(default=None)
+    skip_device_configuration: bool = dataclasses.field(default=False)
     adds_metadata: list[AddsMetadata] = dataclasses.field(default_factory=list)
     removes_metadata: list[RemovesMetadata] = dataclasses.field(default_factory=list)
     replaces_metadata: list[ReplacesMetadata] = dataclasses.field(default_factory=list)
@@ -320,6 +332,15 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         """Register this quirks v2 entry for an additional manufacturer and model."""
         return self.registry.add_to_registry_v2(manufacturer, model, self)
 
+    def filter(self, filter_function: FilterType) -> QuirksV2RegistryEntry:
+        """Add a filter and returns self."""
+        self.filters.append(filter_function)
+        return self
+
+    def matches_device(self, device: Device) -> bool:
+        """Process all filters and return True if all pass."""
+        return all(_filter(device) for _filter in self.filters)
+
     def device_class(
         self, custom_device_class: type[CustomDeviceV2]
     ) -> QuirksV2RegistryEntry:
@@ -330,14 +351,17 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         self.custom_device_class = custom_device_class
         return self
 
-    def filter(self, filter_function: FilterType) -> QuirksV2RegistryEntry:
-        """Add a filter and returns self."""
-        self.filters.append(filter_function)
+    def node_descriptor(self, node_descriptor: NodeDescriptor) -> QuirksV2RegistryEntry:
+        """Set the node descriptor and returns self."""
+        self.device_node_descriptor = node_descriptor
         return self
 
-    def matches_device(self, device: Device) -> bool:
-        """Process all filters and return True if all pass."""
-        return all(_filter(device) for _filter in self.filters)
+    def skip_configuration(
+        self, skip_configuration: bool = True
+    ) -> QuirksV2RegistryEntry:
+        """Set the skip_configuration and returns self."""
+        self.skip_device_configuration = skip_configuration
+        return self
 
     # pylint: disable=too-many-arguments
     def adds(
