@@ -450,3 +450,15 @@ class Singleton:
 
     def __hash__(self) -> int:
         return hash(self.name)
+
+
+def filter_relays(relays: list[int]) -> list[int]:
+    """Filter out invalid relays."""
+    filtered_relays = []
+
+    # BUG: relays sometimes include 0x0000 or duplicate entries
+    for relay in relays:
+        if relay != 0x0000 and relay not in filtered_relays:
+            filtered_relays.append(relay)
+
+    return filtered_relays

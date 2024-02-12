@@ -745,7 +745,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(f"SELECT * FROM relays{DB_V}") as cursor:
             async for (ieee, value) in cursor:
                 dev = self._application.get_device(ieee)
-                dev.relays, _ = t.Relays.deserialize(value)
+                relays, _ = t.Relays.deserialize(value)
+                dev.relays = zigpy.util.filter_relays(relays)
 
     async def _load_neighbors(self) -> None:
         async with self.execute(f"SELECT * FROM neighbors{DB_V}") as cursor:
