@@ -31,6 +31,8 @@ if typing.TYPE_CHECKING:
     import zigpy.application
     from zigpy.zcl.clusters.general import Ota
 
+    query_next_image = Ota.ServerCommandDefs.query_next_image.schema
+
 _LOGGER = logging.getLogger(__name__)
 
 TIMEDELTA_0 = datetime.timedelta()
@@ -112,7 +114,7 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
     def check_compatibility(
         self,
         device: zigpy.device.Device,
-        query_cmd: Ota.ServerCommands.query_next_image,
+        query_cmd: query_next_image,
     ) -> bool:
         """Check if an OTA image and its metadata is compatible with a device."""
         if self.metadata.file_version <= query_cmd.current_file_version:
@@ -232,7 +234,7 @@ class OTA:
     async def get_ota_image(
         self,
         device: zigpy.device.Device,
-        query_cmd: Ota.ServerCommands.query_next_image,
+        query_cmd: query_next_image,
     ) -> OtaImageWithMetadata | None:
         # Only consider providers that are compatible with the device
         compatible_providers = [
