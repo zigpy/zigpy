@@ -99,15 +99,22 @@ async def test_quirks_v2(device_mock):
             # pylint: disable=disallowed-name, invalid-name
             report: Final = ZCLAttributeDef(id=0x0000, type=t.uint8_t)
 
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .filter(signature_matches(signature)) \
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .filter(signature_matches(signature))
         .adds(
             TestCustomCluster,
-            constant_attributes={TestCustomCluster.AttributeDefs.foo: 3}) \
-        .adds(OnOff.cluster_id) \
-        .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
-    # fmt: on
+            constant_attributes={TestCustomCluster.AttributeDefs.foo: 3},
+        )
+        .adds(OnOff.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            OnOff.StartUpOnOff,
+            OnOff.cluster_id,
+        )
+    )
 
     quirked = registry.get_device(device_mock)
     assert isinstance(quirked, CustomDeviceV2)
@@ -152,13 +159,20 @@ async def test_quirks_v2_signature_match(device_mock):
             }
         },
     }
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .filter(signature_matches(signature_no_match)) \
-        .adds(Basic.cluster_id) \
-        .adds(OnOff.cluster_id) \
-        .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
-    # fmt: on
+
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .filter(signature_matches(signature_no_match))
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            OnOff.StartUpOnOff,
+            OnOff.cluster_id,
+        )
+    )
 
     quirked = registry.get_device(device_mock)
     assert not isinstance(quirked, CustomDeviceV2)
@@ -168,19 +182,31 @@ async def test_quirks_v2_multiple_matches_raises(device_mock):
     """Test that adding multiple quirks v2 entries for the same device raises."""
     registry = DeviceRegistry()
 
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .adds(Basic.cluster_id) \
-        .adds(OnOff.cluster_id) \
-        .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
-    # fmt: on
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            OnOff.StartUpOnOff,
+            OnOff.cluster_id,
+        )
+    )
 
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .adds(Basic.cluster_id) \
-        .adds(OnOff.cluster_id) \
-        .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
-    # fmt: on
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            OnOff.StartUpOnOff,
+            OnOff.cluster_id,
+        )
+    )
 
     with pytest.raises(
         MultipleQuirksMatchException, match="Multiple matches found for device"
@@ -195,13 +221,19 @@ async def test_quirks_v2_with_custom_device_class(device_mock):
     class CustomTestDevice(CustomDeviceV2):
         """Custom test device for testing quirks v2."""
 
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .device_class(CustomTestDevice) \
-        .adds(Basic.cluster_id) \
-        .adds(OnOff.cluster_id) \
-        .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
-    # fmt: on
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .device_class(CustomTestDevice)
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            OnOff.StartUpOnOff,
+            OnOff.cluster_id,
+        )
+    )
 
     assert isinstance(registry.get_device(device_mock), CustomTestDevice)
 
@@ -210,10 +242,11 @@ async def test_quirks_v2_removes(device_mock):
     """Test adding a quirk that removes a cluster to the registry."""
     registry = DeviceRegistry()
 
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .removes(Identify.cluster_id)
-    # fmt: on
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        ).removes(Identify.cluster_id)
+    )
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
     assert isinstance(quirked_device, CustomDeviceV2)
@@ -228,11 +261,13 @@ async def test_quirks_v2_apply_custom_configuration(device_mock):
     class CustomOnOffCluster(CustomCluster, OnOff):
         """Custom on off cluster for testing quirks v2."""
 
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .adds(CustomOnOffCluster) \
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(CustomOnOffCluster)
         .adds(CustomOnOffCluster, cluster_type=ClusterType.Client)
-    # fmt: on
+    )
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
     assert isinstance(quirked_device, CustomDeviceV2)
@@ -262,11 +297,13 @@ async def test_quirks_v2_sensor(device_mock):
     """Test adding a quirk that defines a sensor to the registry."""
     registry = DeviceRegistry()
 
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .adds(OnOff.cluster_id) \
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(OnOff.cluster_id)
         .sensor(OnOff.AttributeDefs.on_time.name, OnOff.cluster_id)
-    # fmt: on
+    )
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
     assert isinstance(quirked_device, CustomDeviceV2)
@@ -296,12 +333,18 @@ async def test_quirks_v2_switch(device_mock):
     """Test adding a quirk that defines a switch to the registry."""
     registry = DeviceRegistry()
 
-    # pylint: disable=line-too-long
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .adds(OnOff.cluster_id) \
-        .switch(OnOff.AttributeDefs.on_time.name, OnOff.cluster_id, force_inverted=True, invert_attribute_name=OnOff.AttributeDefs.off_wait_time.name)
-    # fmt: on
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(OnOff.cluster_id)
+        .switch(
+            OnOff.AttributeDefs.on_time.name,
+            OnOff.cluster_id,
+            force_inverted=True,
+            invert_attribute_name=OnOff.AttributeDefs.off_wait_time.name,
+        )
+    )
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
     assert isinstance(quirked_device, CustomDeviceV2)
@@ -332,9 +375,11 @@ async def test_quirks_v2_number(device_mock):
     """Test adding a quirk that defines a number to the registry."""
     registry = DeviceRegistry()
 
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .adds(OnOff.cluster_id) \
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(OnOff.cluster_id)
         .number(
             OnOff.AttributeDefs.on_time.name,
             OnOff.cluster_id,
@@ -342,8 +387,8 @@ async def test_quirks_v2_number(device_mock):
             max_value=100,
             step=1,
             unit="s",
+        )
     )
-    # fmt: on
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
     assert isinstance(quirked_device, CustomDeviceV2)
@@ -376,14 +421,16 @@ async def test_quirks_v2_binary_sensor(device_mock):
     """Test adding a quirk that defines a binary sensor to the registry."""
     registry = DeviceRegistry()
 
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .adds(OnOff.cluster_id) \
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(OnOff.cluster_id)
         .binary_sensor(
             OnOff.AttributeDefs.on_off.name,
             OnOff.cluster_id,
+        )
     )
-    # fmt: on
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
     assert isinstance(quirked_device, CustomDeviceV2)
@@ -410,15 +457,17 @@ async def test_quirks_v2_write_attribute_button(device_mock):
     """Test adding a quirk that defines a write attr button to the registry."""
     registry = DeviceRegistry()
 
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .adds(OnOff.cluster_id) \
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(OnOff.cluster_id)
         .write_attr_button(
             OnOff.AttributeDefs.on_time.name,
             20,
             OnOff.cluster_id,
+        )
     )
-    # fmt: on
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
     assert isinstance(quirked_device, CustomDeviceV2)
@@ -448,17 +497,17 @@ async def test_quirks_v2_command_button(device_mock):
     """Test adding a quirk that defines a command button to the registry."""
     registry = DeviceRegistry()
 
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .adds(OnOff.cluster_id) \
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(OnOff.cluster_id)
         .command_button(
             OnOff.ServerCommandDefs.on_with_timed_off.name,
             OnOff.cluster_id,
-            command_kwargs={
-                "on_off_control": OnOff.OnOffControl.Accept_Only_When_On
-            }
+            command_kwargs={"on_off_control": OnOff.OnOffControl.Accept_Only_When_On},
+        )
     )
-    # fmt: on
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
     assert isinstance(quirked_device, CustomDeviceV2)
@@ -493,15 +542,21 @@ async def test_quirks_v2_also_applies_to(device_mock):
     class CustomTestDevice(CustomDeviceV2):
         """Custom test device for testing quirks v2."""
 
-    # fmt: off
-    add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-        .also_applies_to("manufacturer2", "model2") \
-        .also_applies_to("manufacturer3", "model3") \
-        .device_class(CustomTestDevice) \
-        .adds(Basic.cluster_id) \
-        .adds(OnOff.cluster_id) \
-        .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
-    # fmt: on
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .also_applies_to("manufacturer2", "model2")
+        .also_applies_to("manufacturer3", "model3")
+        .device_class(CustomTestDevice)
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            OnOff.StartUpOnOff,
+            OnOff.cluster_id,
+        )
+    )
 
     assert isinstance(registry.get_device(device_mock), CustomTestDevice)
 
@@ -527,13 +582,19 @@ async def test_quirks_v2_with_custom_device_class_raises(device_mock):
         AssertionError,
         match="is not a subclass of CustomDeviceV2",
     ):
-        # fmt: off
-        add_to_registry_v2(device_mock.manufacturer, device_mock.model, registry=registry) \
-            .device_class(CustomTestDevice) \
-            .adds(Basic.cluster_id) \
-            .adds(OnOff.cluster_id) \
-            .enum(OnOff.AttributeDefs.start_up_on_off.name, OnOff.StartUpOnOff, OnOff.cluster_id)
-        # fmt: on
+        (
+            add_to_registry_v2(
+                device_mock.manufacturer, device_mock.model, registry=registry
+            )
+            .device_class(CustomTestDevice)
+            .adds(Basic.cluster_id)
+            .adds(OnOff.cluster_id)
+            .enum(
+                OnOff.AttributeDefs.start_up_on_off.name,
+                OnOff.StartUpOnOff,
+                OnOff.cluster_id,
+            )
+        )
 
 
 async def test_quirks_v2_matches_v1(app_mock):
@@ -694,12 +755,15 @@ async def test_quirks_v2_matches_v1(app_mock):
     assert isinstance(quirked, IkeaTradfriRemote3)
 
     registry = DeviceRegistry()
-    # fmt: off
-    add_to_registry_v2(ikea_device.manufacturer, ikea_device.model, registry=registry) \
-        .replaces(PowerConfig1CRCluster) \
-        .replaces(ScenesCluster, cluster_type=ClusterType.Client) \
+
+    (
+        add_to_registry_v2(
+            ikea_device.manufacturer, ikea_device.model, registry=registry
+        )
+        .replaces(PowerConfig1CRCluster)
+        .replaces(ScenesCluster, cluster_type=ClusterType.Client)
         .device_automation_triggers(triggers)
-    # fmt: on
+    )
 
     quirked_v2 = registry.get_device(ikea_device)
 
