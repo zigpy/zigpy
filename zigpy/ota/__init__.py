@@ -7,9 +7,8 @@ import logging
 import attr
 
 from zigpy.config import (
-    CONF_OTA,
-    CONF_OTA_ALLOW_FILE_PROVIDERS,
-    CONF_OTA_DIR,
+    CONF_OTA_ADVANCED_DIR,
+    CONF_OTA_ALLOW_ADVANCED_DIR,
     CONF_OTA_IKEA,
     CONF_OTA_INOVELLI,
     CONF_OTA_LEDVANCE,
@@ -19,12 +18,12 @@ from zigpy.config import (
     CONF_OTA_SALUS,
     CONF_OTA_SONOFF,
     CONF_OTA_THIRDREALITY,
+    CONF_OTA_Z2M_LOCAL_INDEX,
+    CONF_OTA_Z2M_REMOTE_INDEX,
 )
 from zigpy.ota.image import BaseOTAImage, ImageKey, OTAImageHeader
 import zigpy.ota.provider
-from zigpy.ota.validators import check_invalid
 import zigpy.types as t
-from zigpy.typing import ControllerApplicationType
 import zigpy.util
 
 LOGGER = logging.getLogger(__name__)
@@ -73,11 +72,12 @@ class OTA:
         self._providers = []
         self._image_cache = {}
 
-        if self._config[CONF_OTA_DIR]:
-            if self._config[CONF_OTA_ALLOW_FILE_PROVIDERS]:
-                self.providers.append(zigpy.ota.provider.FileStore())
-            else:
-                LOGGER.info("OTA file providers are currently disabled")
+        if self._config[CONF_OTA_ALLOW_ADVANCED_DIR]:
+            self.providers.append(
+                zigpy.ota.provider.AdvancedFileProvider(
+                    self._config[CONF_OTA_ADVANCED_DIR]
+                )
+            )
 
         if self._config[CONF_OTA_IKEA]:
             self.providers.append(zigpy.ota.provider.Trådfri())
@@ -105,7 +105,21 @@ class OTA:
                 )
             )
 
-   def should_update(
+        if self._config[CONF_OTA_Z2M_LOCAL_INDEX]:
+            self.providers.append(
+                zigpy.ota.provider.LocalZ2MProvider(
+                    self._config[CONF_OTA_Z2M_LOCAL_INDEX]
+                )
+            )
+
+        if self._config[CONF_OTA_Z2M_REMOTE_INDEX]:
+            self.providers.append(
+                zigpy.ota.provider.RemoteZ2MProvider(
+                    self._config[CONF_OTA_Z2M_REMOTE_INDEX]
+                )
+            )
+
+    def should_update(
         self,
         image: BaseOTAImage,
         device: zigpy.device.Device,
@@ -157,10 +171,6 @@ class OTA:
         if not images:
             return None
 
-
-
-        cached = CachedImage.new(
-            max(results, key=lambda img: img.header.file_version)
-        )
+        cached = CachedImage.new(max(results, key=lambda img: img.header.file_version))
         self._image_cache[key] = cached
         return cached

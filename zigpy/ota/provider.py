@@ -111,7 +111,7 @@ class BaseOtaProvider:
         if not self.MANUFACTURER_IDS:
             raise NotImplementedError
 
-        return device.manufacturer in self.MANUFACTURER_IDS
+        return device.manufacturer_id in self.MANUFACTURER_IDS
 
     async def load(self) -> typing.AsyncGenerator[BaseOtaImage, None]:
         raise NotImplementedError
@@ -311,8 +311,15 @@ class ThirdReality(BaseOtaProvider):
 
 
 class RemoteProvider(BaseOtaProvider):
-    def __init__(self, url: str):
+    def __init__(self, url: str, manufacturer_ids: list[int] | None = None):
         self.url = url
+        self.manufacturer_ids
+
+    def compatible_with_device(self, device: zigpy.device.Device) -> bool:
+        if self.manufacturer_ids is None:
+            return True
+
+        return device.manufacturer_id in self.manufacturer_ids
 
     async def load(self):
         async with aiohttp.ClientSession(
@@ -409,6 +416,9 @@ def _load_z2m_index(index: dict, *, index_root: pathlib.Path | None = None):
 class LocalZ2MProvider(BaseOtaProvider):
     def __init__(self, index_file: pathlib.Path):
         self.index_file = index_file
+
+    def compatible_with_device(self, device: zigpy.device.Device) -> bool:
+        return True
 
     @classmethod
     def from_config_dir(cls, config_dir: pathlib.Path):
