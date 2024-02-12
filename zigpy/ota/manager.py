@@ -13,6 +13,10 @@ if TYPE_CHECKING:
     from zigpy.ota.image import BaseOTAImage
 
 
+# Devices often ask for bigger blocks than radios can send
+MAXIMUM_IMAGE_BLOCK_SIZE = 40
+
+
 class OTAManager:
     """Class to manage OTA updates for a device."""
 
@@ -119,7 +123,8 @@ class OTAManager:
         )
 
         block = self._image_data[
-            command.file_offset : command.file_offset + command.maximum_data_size
+            command.file_offset : command.file_offset
+            + min(MAXIMUM_IMAGE_BLOCK_SIZE, command.maximum_data_size)
         ]
 
         if not block:
