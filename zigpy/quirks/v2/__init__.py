@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import collections
 import dataclasses
-import enum
+from enum import Enum
 import logging
 import typing
 from typing import TYPE_CHECKING, Any
@@ -19,6 +19,10 @@ from zigpy.const import (
 )
 from zigpy.quirks import _DEVICE_REGISTRY, CustomCluster, CustomDevice, FilterType
 from zigpy.quirks.registry import DeviceRegistry
+from zigpy.quirks.v2.homeassistant import EntityPlatform, EntityType
+from zigpy.quirks.v2.homeassistant.binary_sensor import BinarySensorDeviceClass
+from zigpy.quirks.v2.homeassistant.number import NumberDeviceClass
+from zigpy.quirks.v2.homeassistant.sensor import SensorDeviceClass, SensorStateClass
 import zigpy.types as t
 from zigpy.zcl import ClusterType
 from zigpy.zdo import ZDO
@@ -196,30 +200,11 @@ class ReplacesMetadata:
         self.add(device)
 
 
-class EntityType(enum.Enum):
-    """Entity type."""
-
-    CONFIG = "config"
-    DIAGNOSTIC = "diagnostic"
-    STANDARD = "standard"
-
-
-class EntityPlatform(enum.Enum):
-    """Entity platform."""
-
-    BINARY_SENSOR = "binary_sensor"
-    BUTTON = "button"
-    NUMBER = "number"
-    SENSOR = "sensor"
-    SELECT = "select"
-    SWITCH = "switch"
-
-
 @dataclasses.dataclass(frozen=True)
 class EnumMetadata:
     """Metadata for exposed enum based entity."""
 
-    enum: type[enum.Enum]
+    enum: type[Enum]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -237,6 +222,8 @@ class ZCLSensorMetadata:
     decimals: int | None = dataclasses.field(default=None)
     divisor: int | None = dataclasses.field(default=None)
     multiplier: int | None = dataclasses.field(default=None)
+    device_class: SensorDeviceClass | None = dataclasses.field(default=None)
+    state_class: SensorStateClass | None = dataclasses.field(default=None)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -259,6 +246,7 @@ class NumberMetadata:
     unit: str | None = dataclasses.field(default=None)
     mode: str | None = dataclasses.field(default=None)
     multiplier: float | None = dataclasses.field(default=None)
+    device_class: NumberDeviceClass | None = dataclasses.field(default=None)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -266,6 +254,7 @@ class BinarySensorMetadata:
     """Metadata for exposed binary sensor entity."""
 
     attribute_name: str
+    device_class: BinarySensorDeviceClass | None = dataclasses.field(default=None)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -287,7 +276,7 @@ class ZCLCommandButtonMetadata:
 
 @dataclasses.dataclass(frozen=True)
 class EntityMetadata:
-    """Metadata for exposed select entity."""
+    """Metadata for an exposed entity."""
 
     entity_metadata: (
         EnumMetadata
@@ -423,7 +412,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
     def enum(
         self,
         attribute_name: str,
-        enum_class: type[enum.Enum],
+        enum_class: type[Enum],
         cluster_id: int,
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
@@ -456,6 +445,8 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         divisor: int = 1,
         multiplier: int = 1,
         entity_type: EntityType = EntityType.STANDARD,
+        device_class: SensorDeviceClass | None = None,
+        state_class: SensorStateClass | None = None,
     ) -> QuirksV2RegistryEntry:
         """Add a switch and return self."""
         self.entity_metadata.append(
@@ -470,6 +461,8 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                     decimals=decimals,
                     divisor=divisor,
                     multiplier=multiplier,
+                    device_class=device_class,
+                    state_class=state_class,
                 ),
             )
         )
@@ -514,6 +507,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         unit: str | None = None,
         mode: str | None = None,
         multiplier: float | None = None,
+        device_class: NumberDeviceClass | None = None,
     ) -> QuirksV2RegistryEntry:
         """Add a number and return self."""
         self.entity_metadata.append(
@@ -531,6 +525,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                     unit=unit,
                     mode=mode,
                     multiplier=multiplier,
+                    device_class=device_class,
                 ),
             )
         )
@@ -542,6 +537,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         cluster_id: int,
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
+        device_class: BinarySensorDeviceClass | None = None,
     ) -> QuirksV2RegistryEntry:
         """Add a binary sensor and return self."""
         self.entity_metadata.append(
@@ -553,6 +549,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                 entity_type=EntityType.DIAGNOSTIC,
                 entity_metadata=BinarySensorMetadata(
                     attribute_name=attribute_name,
+                    device_class=device_class,
                 ),
             )
         )
