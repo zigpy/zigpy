@@ -68,7 +68,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._dblistener = None
         self._groups = zigpy.group.Groups(self)
         self._listeners = {}
-        self._ota = zigpy.ota.OTA(self)
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()
 
@@ -78,6 +77,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
         )
 
+        self.ota = zigpy.ota.OTA(self, config[conf.CONF_OTA])
         self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
         self.topology: zigpy.topology.Topology = zigpy.topology.Topology(self)
 
@@ -1316,10 +1316,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @property
     def groups(self) -> zigpy.group.Groups:
         return self._groups
-
-    @property
-    def ota(self) -> zigpy.ota.OTA:
-        return self._ota
 
     @property
     def _device(self) -> zigpy.device.Device:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import hashlib
 import io
 import json
@@ -22,7 +23,7 @@ import zigpy.util
 LOGGER = logging.getLogger(__name__)
 
 
-class BaseOtaImage:
+class BaseOtaImageMetadata:
     file_version: int
     manufacturer_id: int
     image_type: int
@@ -45,7 +46,8 @@ class BaseOtaImage:
 
         if self.file_size is not None and len(data) != self.file_size:
             raise ValueError(
-                f"Image size is invalid: expected {self.file_size}," f" got {len(data)}"
+                f"Image size is invalid: expected {self.file_size} bytes,"
+                f" got {len(data)} bytes"
             )
 
         if self.checksum is not None:
@@ -59,10 +61,12 @@ class BaseOtaImage:
                     f" got {hasher.hexdigest()}"
                 )
 
-        return self._cached_contents
+        image, _ = parse_ota_image(data)
+        return image
 
 
-class RemoteOtaImage(BaseOTAImage):
+@attrs.define(frozen=True)
+class RemoteOtaImageMetadata(BaseOtaImageMetadata):
     url: str
 
     async def _fetch(self) -> bytes:
@@ -71,7 +75,8 @@ class RemoteOtaImage(BaseOTAImage):
                 return await rsp.read()
 
 
-class LocalOtaImage(BaseOTAImage):
+@attrs.define(frozen=True)
+class LocalOtaImageMetadata(BaseOtaImageMetadata):
     path: pathlib.Path
 
     async def _fetch(self) -> bytes:
@@ -79,7 +84,8 @@ class LocalOtaImage(BaseOTAImage):
         return await loop.run_in_executor(None, self.path.read_bytes)
 
 
-class SalusRemoteOtaImage(RemoteOtaImage):
+@attrs.define(frozen=True)
+class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
     async def _fetch(self) -> bytes:
         loop = asyncio.get_running_loop()
         data = await super()._fetch()
@@ -106,6 +112,12 @@ class SalusRemoteOtaImage(RemoteOtaImage):
 
 class BaseOtaProvider:
     MANUFACTURER_IDS: list[int] = []
+    INDEX_EXPIRATION_TIME = datetime.timedelta(hours=24)
+
+    def __init__(self):
+        self._index_last_updated = datetime.datetime.fromtimestamp(
+            0, tz=datetime.timezone.utc
+        )
 
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
         if not self.MANUFACTURER_IDS:
@@ -113,14 +125,26 @@ class BaseOtaProvider:
 
         return device.manufacturer_id in self.MANUFACTURER_IDS
 
-    async def load(self) -> typing.AsyncGenerator[BaseOtaImage, None]:
+    async def load_index(self) -> list[BaseOtaImageMetadata] | None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        # Don't hammer the OTA indexes too frequently
+        if now - self._index_last_updated < self.INDEX_EXPIRATION_TIME:
+            return
+
+        try:
+            return [meta async for meta in self._load_index()]
+        finally:
+            self._index_last_updated = now
+
+    async def _load_index(self) -> typing.AsyncGenerator[BaseOtaImageMetadata, None]:
         raise NotImplementedError
 
 
 class Trådfri(BaseOtaProvider):
     MANUFACTURER_IDS = [4476]
 
-    async def load(self):
+    async def _load_index(self):
         # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
         ssl_ctx = ssl.create_default_context(
             cadata="""\
@@ -159,7 +183,7 @@ class Trådfri(BaseOtaProvider):
 
             file_version_match = re.match(r".*_v(?P<v>\d+)_.*", fw["fw_binary_url"])
 
-            yield RemoteOtaImage(
+            yield RemoteOtaImageMetadata(
                 file_version=int(file_version_match.group("v"), 10),
                 manufacturer_id=self.MANUFACTURER_IDS[0],
                 image_type=fw["fw_type"],
@@ -172,7 +196,7 @@ class Ledvance(BaseOtaProvider):
     # This isn't static but no more than these two have ever existed
     MANUFACTURER_IDS = [4489, 4364]
 
-    async def load(self):
+    async def _load_index(self):
         async with aiohttp.ClientSession(
             headers={"accept": "application/json"}, raise_for_status=True
         ) as req:
@@ -193,7 +217,7 @@ class Ledvance(BaseOtaProvider):
                 | (version_parts["revision"] << 0)
             )
 
-            yield RemoteOtaImage(
+            yield RemoteOtaImageMetadata(
                 file_version=int(fw["fullName"].split("/")[1], 16),
                 manufacturer_id=identity["company"],
                 image_type=identity["product"],
@@ -219,7 +243,7 @@ class Ledvance(BaseOtaProvider):
 class Salus(BaseOtaProvider):
     MANUFACTURER_IDS = [4216]
 
-    async def load(self):
+    async def _load_index(self):
         async with aiohttp.ClientSession(
             headers={"accept": "application/json"}, raise_for_status=True
         ) as req:
@@ -229,7 +253,7 @@ class Salus(BaseOtaProvider):
                 fw_lst = await rsp.json()
 
         for fw in fw_lst["versions"]:
-            yield SalusRemoteOtaImage(
+            yield SalusRemoteOtaImageMetadata(
                 file_version=int(fw["version"]),
                 model_names=[fw["model"]],
                 manufacturer_id=4216,
@@ -243,7 +267,7 @@ class Salus(BaseOtaProvider):
 class Sonoff(BaseOtaProvider):
     MANUFACTURER_IDS = [4742]
 
-    async def load(self):
+    async def _load_index(self):
         async with aiohttp.ClientSession(
             headers={"accept": "application/json;q=0.9,*/*;q=0.8"},
             raise_for_status=True,
@@ -254,7 +278,7 @@ class Sonoff(BaseOtaProvider):
                 fw_lst = await rsp.json()
 
         for fw in fw_lst:
-            yield RemoteOtaImage(
+            yield RemoteOtaImageMetadata(
                 file_version=fw["fw_file_version"],
                 manufacturer_id=fw["fw_manufacturer_id"],
                 image_type=fw["fw_image_type"],
@@ -266,7 +290,7 @@ class Sonoff(BaseOtaProvider):
 class Inovelli(BaseOtaProvider):
     MANUFACTURER_IDS = [4655]
 
-    async def load(self):
+    async def _load_index(self):
         async with aiohttp.ClientSession(
             headers={"accept": "application/json"}, raise_for_status=True
         ) as req:
@@ -277,7 +301,7 @@ class Inovelli(BaseOtaProvider):
 
         for model, firmwares in fw_lst.items():
             for fw in firmwares:
-                yield RemoteOtaImage(
+                yield RemoteOtaImageMetadata(
                     file_version=int(fw["version"], 16),
                     manufacturer_id=fw["manufacturer_id"],
                     image_type=fw["image_type"],
@@ -291,7 +315,7 @@ class Inovelli(BaseOtaProvider):
 class ThirdReality(BaseOtaProvider):
     MANUFACTURER_IDS = [4659, 4877]
 
-    async def load(self):
+    async def _load_index(self):
         async with aiohttp.ClientSession(
             headers={"accept": "application/json"}, raise_for_status=True
         ) as req:
@@ -299,7 +323,7 @@ class ThirdReality(BaseOtaProvider):
                 fw_lst = await rsp.json()
 
         for fw in fw_lst["versions"]:
-            yield RemoteOtaImage(
+            yield RemoteOtaImageMetadata(
                 file_version=fw["fileVersion"],
                 manufacturer_id=fw["manufacturerId"],
                 model_names=[fw["modelId"]],
@@ -321,7 +345,7 @@ class RemoteProvider(BaseOtaProvider):
 
         return device.manufacturer_id in self.manufacturer_ids
 
-    async def load(self):
+    async def _load_index(self):
         async with aiohttp.ClientSession(
             headers={"accept": "application/json"}, raise_for_status=True
         ) as req:
@@ -329,7 +353,7 @@ class RemoteProvider(BaseOtaProvider):
                 fw_lst = await rsp.json()
 
         for fw in fw_lst:
-            yield RemoteOtaImage(
+            yield RemoteOtaImageMetadata(
                 file_version=fw["file_version"],
                 manufacturer_id=fw["manufacturer_id"],
                 image_type=fw["image_type"],
@@ -352,7 +376,7 @@ class AdvancedFileProvider(BaseOtaProvider):
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
         return True
 
-    async def load(self):
+    async def _load_index(self):
         loop = asyncio.get_running_loop()
 
         for path in self.image_dir.rglob("*"):
@@ -367,7 +391,7 @@ class AdvancedFileProvider(BaseOtaProvider):
                 LOGGER.debug("Failed to parse image %s: %r", path, exc)
                 continue
 
-            yield LocalOtaImage(
+            yield LocalOtaImageMetadata(
                 file_version=image.header.file_version,
                 manufacturer_id=image.header.manufacturer_id,
                 image_type=image.header.image_type,
@@ -382,35 +406,25 @@ class AdvancedFileProvider(BaseOtaProvider):
 
 
 def _load_z2m_index(index: dict, *, index_root: pathlib.Path | None = None):
-    asyncio.get_running_loop()
-
     for obj in index:
+        # fmt: off
+        shared_kwargs = {
+            "file_version": obj["fileVersion"],
+            "manufacturer_id": obj["manufacturerCode"],
+            "image_type": obj["imageType"],
+            "checksum": "sha512:" + obj["sha512"],
+            "file_size": obj["fileSize"],
+            "manufacturer_names": obj.get("manufacturerNames", []),
+            "model_names": [obj["modelId"]] if "modelId" in obj else [],
+            "min_current_file_version": obj.get("minFileVersion"),
+            "max_current_file_version": obj.get("maxFileVersion"),
+        }
+        # fmt: on
+
         if "path" in obj and index_root is not None:
-            yield LocalOtaImage(
-                file_version=obj["fileVersion"],
-                manufacturer_id=obj["manufacturerCode"],
-                image_type=obj["imageType"],
-                checksum="sha512:" + obj["sha512"],
-                file_size=obj["fileSize"],
-                manufacturer_names=obj.get("manufacturerNames", []),
-                model_names=[obj["modelId"]] if "modelId" in obj else [],
-                path=index_root / obj["path"],
-                min_current_file_version=obj.get("minFileVersion"),
-                max_current_file_version=obj.get("maxFileVersion"),
-            )
+            yield LocalOtaImageMetadata(**shared_kwargs, path=index_root / obj["path"])
         else:
-            yield RemoteOtaImage(
-                file_version=obj["fileVersion"],
-                manufacturer_id=obj["manufacturerCode"],
-                image_type=obj["imageType"],
-                checksum="sha512:" + obj["sha512"],
-                file_size=obj["fileSize"],
-                manufacturer_names=obj.get("manufacturerNames", []),
-                model_names=[obj["modelId"]] if "modelId" in obj else [],
-                url=obj["url"],
-                min_current_file_version=obj.get("minFileVersion"),
-                max_current_file_version=obj.get("maxFileVersion"),
-            )
+            yield RemoteOtaImageMetadata(**shared_kwargs, url=obj["url"])
 
 
 class LocalZ2MProvider(BaseOtaProvider):
@@ -420,25 +434,14 @@ class LocalZ2MProvider(BaseOtaProvider):
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
         return True
 
-    @classmethod
-    def from_config_dir(cls, config_dir: pathlib.Path):
-        index = next(config_dir.rglob("index.json"), None)
-
-        if index is None:
-            raise ValueError(f"Not Z2M index file exists in {index}")
-
-        return cls(index)
-
-    def compatible_with_device(self, device: zigpy.device.Device) -> bool:
-        return True
-
-    async def load(self):
+    async def _load_index(self):
         index_text = await asyncio.get_running_loop().run_in_executor(
             None, self.index_file.read_text
         )
         index = json.loads(index_text)
 
-        yield from _load_z2m_index(index, index_root=self.index_file.parent)
+        async for img in _load_z2m_index(index, index_root=self.index_file.parent):
+            yield img
 
 
 class RemoteZ2MProvider(BaseOtaProvider):
@@ -448,11 +451,12 @@ class RemoteZ2MProvider(BaseOtaProvider):
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
         return True
 
-    async def load(self):
+    async def _load_index(self):
         async with aiohttp.ClientSession(
             headers={"accept": "application/json"}, raise_for_status=True
         ) as req:
             async with req.get(self.url) as rsp:
                 fw_lst = await rsp.json()
 
-        yield from _load_z2m_index(fw_lst)
+        async for img in _load_z2m_index(fw_lst):
+            yield img

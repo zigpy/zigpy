@@ -81,8 +81,8 @@ CONF_OTA_SONOFF = "sonoff_provider"
 CONF_OTA_SONOFF_URL = "sonoff_update_url"
 CONF_OTA_THIRDREALITY = "thirdreality_provider"
 CONF_OTA_REMOTE_PROVIDERS = "remote_providers"
-CONF_OTA_Z2M_LOCAL_INDEX: z2m_local_index
-CONF_OTA_Z2M_REMOTE_INDEX: z2m_remote_index
+CONF_OTA_Z2M_LOCAL_INDEX = "z2m_local_index"
+CONF_OTA_Z2M_REMOTE_INDEX = "z2m_remote_index"
 CONF_OTA_PROVIDER_URL = "url"
 CONF_OTA_PROVIDER_MANUF_IDS = "manufacturer_ids"
 CONF_SOURCE_ROUTING = "source_routing"
