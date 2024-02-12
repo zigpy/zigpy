@@ -514,11 +514,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 self, firmware_image, progress_callback, force
             )
         except Exception as exc:
-            self.ota_in_progress = False
             self.debug("OTA failed!", exc_info=exc)
             raise exc
+        finally:
+            self.ota_in_progress = False
 
-        self.ota_in_progress = False
         return result
 
     def radio_details(self, lqi=None, rssi=None) -> None:

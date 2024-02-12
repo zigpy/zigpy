@@ -31,31 +31,15 @@ LOGGER = logging.getLogger(__name__)
 
 TIMEDELTA_0 = datetime.timedelta()
 DELAY_EXPIRATION = datetime.timedelta(hours=2)
+OTA_FETCH_TIMEOUT = 20
 
 
 @attr.s
 class CachedImage:
     MAXIMUM_DATA_SIZE = 40
-    DEFAULT_EXPIRATION = datetime.timedelta(hours=18)
 
     image = attr.ib(default=None)
-    expires_on = attr.ib(default=None)
     cached_data = attr.ib(default=None)
-
-    @classmethod
-    def new(cls, img: BaseOTAImage) -> CachedImage:
-        expiration = datetime.datetime.now() + cls.DEFAULT_EXPIRATION
-        return cls(img, expiration)
-
-    @property
-    def expired(self) -> bool:
-        if self.expires_on is None:
-            return False
-        return self.expires_on - datetime.datetime.now() < TIMEDELTA_0
-
-    @property
-    def key(self) -> ImageKey:
-        return self.image.header.key
 
     @property
     def header(self) -> OTAImageHeader:
@@ -65,12 +49,67 @@ class CachedImage:
     def version(self) -> int:
         return self.image.header.file_version
 
-    def should_update(
+    def get_image_block(self, offset: t.uint32_t, size: t.uint8_t) -> bytes:
+        if self.cached_data is None:
+            self.cached_data = self.image.serialize()
+
+        if offset > len(self.cached_data):
+            raise ValueError("Offset exceeds image size")
+
+        return self.cached_data[offset : offset + min(self.MAXIMUM_DATA_SIZE, size)]
+
+    def serialize(self) -> bytes:
+        """Serialize the image."""
+        if self.cached_data is None:
+            self.cached_data = self.image.serialize()
+        return self.cached_data
+
+
+class OTA:
+    """OTA Manager."""
+
+    def __init__(self, config: dict[str, typing.Any]) -> None:
+        self._config = config
+        self._providers = []
+        self._image_cache = {}
+
+        if self._config[CONF_OTA_DIR]:
+            if self._config[CONF_OTA_ALLOW_FILE_PROVIDERS]:
+                self.providers.append(zigpy.ota.provider.FileStore())
+            else:
+                LOGGER.info("OTA file providers are currently disabled")
+
+        if self._config[CONF_OTA_IKEA]:
+            self.providers.append(zigpy.ota.provider.Trådfri())
+
+        if self._config[CONF_OTA_INOVELLI]:
+            self.providers.append(zigpy.ota.provider.Inovelli())
+
+        if self._config[CONF_OTA_LEDVANCE]:
+            self.providers.append(zigpy.ota.provider.Ledvance())
+
+        if self._config[CONF_OTA_SALUS]:
+            self.providers.append(zigpy.ota.provider.Salus())
+
+        if self._config[CONF_OTA_SONOFF]:
+            self.providers.append(zigpy.ota.provider.Sonoff())
+
+        if self._config[CONF_OTA_THIRDREALITY]:
+            self.providers.append(zigpy.ota.provider.ThirdReality())
+
+        for provider_config in self._config[CONF_OTA_REMOTE_PROVIDERS]:
+            self.providers.append(
+                zigpy.ota.provider.RemoteProvider(
+                    url=provider_config[CONF_OTA_PROVIDER_URL],
+                    manufacturer_ids=provider_config[CONF_OTA_PROVIDER_MANUF_IDS],
+                )
+            )
+
+   def should_update(
         self,
-        manufacturer_id: t.uint16_t,
-        img_type: t.uint16_t,
-        ver: t.uint32_t,
-        hw_ver: None = None,
+        image: BaseOTAImage,
+        device: zigpy.device.Device,
+        query_cmd: zigpy.zcl.clusters.general.Ota.ServerCommands.query_next_image.schema,
     ) -> bool:
         """Check if it should upgrade"""
 
@@ -93,101 +132,35 @@ class CachedImage:
 
         return True
 
-    def get_image_block(self, offset: t.t.uint32_t, size: t.uint8_t) -> bytes:
-        if (
-            self.expires_on is not None
-            and self.expires_on - datetime.datetime.now() < DELAY_EXPIRATION
-        ):
-            self.expires_on += DELAY_EXPIRATION
-
-        if self.cached_data is None:
-            self.cached_data = self.image.serialize()
-
-        if offset > len(self.cached_data):
-            raise ValueError("Offset exceeds image size")
-
-        return self.cached_data[offset : offset + min(self.MAXIMUM_DATA_SIZE, size)]
-
-    def serialize(self) -> bytes:
-        """Serialize the image."""
-        if self.cached_data is None:
-            self.cached_data = self.image.serialize()
-        return self.cached_data
-
-
-class OTA(zigpy.util.ListenableMixin):
-    """OTA Manager."""
-
-    def __init__(self, app: ControllerApplicationType, *args, **kwargs) -> None:
-        self._app: ControllerApplicationType = app
-        self._image_cache: dict[ImageKey, CachedImage] = {}
-        self._not_initialized = True
-        self._listeners = {}
-        ota_config = app.config[CONF_OTA]
-        if ota_config[CONF_OTA_DIR]:
-            if ota_config[CONF_OTA_ALLOW_FILE_PROVIDERS]:
-                self.add_listener(zigpy.ota.provider.FileStore())
-            else:
-                LOGGER.info("OTA file providers are currently disabled")
-        if ota_config[CONF_OTA_IKEA]:
-            self.add_listener(zigpy.ota.provider.Trådfri())
-        if ota_config[CONF_OTA_INOVELLI]:
-            self.add_listener(zigpy.ota.provider.Inovelli())
-        if ota_config[CONF_OTA_LEDVANCE]:
-            self.add_listener(zigpy.ota.provider.Ledvance())
-        if ota_config[CONF_OTA_SALUS]:
-            self.add_listener(zigpy.ota.provider.Salus())
-        if ota_config[CONF_OTA_SONOFF]:
-            self.add_listener(zigpy.ota.provider.Sonoff())
-        if ota_config[CONF_OTA_THIRDREALITY]:
-            self.add_listener(zigpy.ota.provider.ThirdReality())
-
-        for provider_config in ota_config[CONF_OTA_REMOTE_PROVIDERS]:
-            self.add_listener(
-                zigpy.ota.provider.RemoteProvider(
-                    url=provider_config[CONF_OTA_PROVIDER_URL],
-                    manufacturer_ids=provider_config[CONF_OTA_PROVIDER_MANUF_IDS],
-                )
-            )
-
-    async def initialize(self) -> None:
-        await self.async_event("initialize_provider", self._app.config[CONF_OTA])
-        self._not_initialized = False
-
     async def get_ota_image(
         self,
-        manufacturer_id: t.uint16_t,
-        image_type: t.uint16_t,
-        model: str | None = None,
+        device: zigpy.device.Device,
+        query_cmd: zigpy.zcl.clusters.general.Ota.ServerCommands.query_next_image.schema,
     ) -> CachedImage | None:
-        if manufacturer_id in (
-            zigpy.ota.provider.Salus.MANUFACTURER_ID,
-        ):  # Salus/computime do not pass a useful image_type
-            # in the message from the device. So construct key based on model name.
-            key = ImageKey(manufacturer_id, model)
-        else:
-            key = ImageKey(manufacturer_id, image_type)
-        if key in self._image_cache and not self._image_cache[key].expired:
-            return self._image_cache[key]
+        results = []
 
-        images = await self.async_event("get_image", key)
-        valid_images = []
-
-        for image in images:
-            if image is None or check_invalid(image):
+        for result_coro in asyncio.as_completed(
+            zigpy.util.timeout(p.get_image(device, query_cmd), OTA_FETCH_TIMEOUT)
+            for p in self._providers
+        ):
+            try:
+                image = await result_coro
+            except Exception as exc:
+                _LOGGER.debug("Failed to get image from provider", exc_info=exc)
                 continue
 
-            valid_images.append(image)
+            if image is None:
+                continue
 
-        if not valid_images:
+            results.append(image)
+
+        if not images:
             return None
 
+
+
         cached = CachedImage.new(
-            max(valid_images, key=lambda img: img.header.file_version)
+            max(results, key=lambda img: img.header.file_version)
         )
         self._image_cache[key] = cached
         return cached
-
-    @property
-    def not_initialized(self):
-        return self._not_initialized
