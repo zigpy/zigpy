@@ -56,7 +56,7 @@ class ListenableMixin:
         for listener, include_context in self._listeners.values():
             method = getattr(listener, method_name, None)
 
-            if not method:
+            if method is None:
                 continue
 
             try:
@@ -75,7 +75,7 @@ class ListenableMixin:
         for listener, include_context in self._listeners.values():
             method = getattr(listener, method_name, None)
 
-            if not method:
+            if method is None:
                 continue
 
             if include_context:

@@ -2169,12 +2169,13 @@ class Ota(Cluster):
             )
 
     async def _handle_query_next_image(self, hdr, cmd):
-        # we don't want the cluster to do anything here because it would interfere with the OTA manager
+        # We don't want the cluster to do anything here because it would interfere with
+        # the OTA manager
         device = self.endpoint.device
         if device.ota_in_progress:
             return
 
-        # always send no image available response so that the device doesn't update autonomously
+        # Always send no image available response so that the device stops asking
         await self.query_next_image_response(
             foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn
         )

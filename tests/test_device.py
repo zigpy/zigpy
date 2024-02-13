@@ -507,7 +507,16 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         ),
     )
 
+    fw_image_force = fw_image.replace(
+        firmware=fw_image.firmware.replace(
+            header=fw_image.firmware.header.replace(
+                file_version=0xFFFFFFFF - 1,
+            )
+        )
+    )
+
     dev.application.ota.get_ota_image = MagicMock(side_effect=ValueError("No image"))
+    dev.update_firmware = MagicMock(wraps=dev.update_firmware)
 
     def make_packet(cmd_name: str, **kwargs):
         req_hdr, req_cmd = cluster._create_request(
@@ -536,6 +545,11 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         return ota_packet
 
     async def send_packet(packet: t.ZigbeePacket):
+        if dev.update_firmware.mock_calls[-1].kwargs.get("force", False):
+            active_fw_image = fw_image_force
+        else:
+            active_fw_image = fw_image
+
         if packet.cluster_id == Ota.cluster_id:
             hdr, cmd = cluster.deserialize(packet.data.serialize())
             if isinstance(cmd, Ota.ImageNotifyCommand):
@@ -543,9 +557,10 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                     make_packet(
                         "query_next_image",
                         field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
-                        manufacturer_code=fw_image.firmware.header.manufacturer_id,
-                        image_type=fw_image.firmware.header.image_type,
-                        current_file_version=fw_image.firmware.header.file_version - 10,
+                        manufacturer_code=active_fw_image.firmware.header.manufacturer_id,
+                        image_type=active_fw_image.firmware.header.image_type,
+                        current_file_version=active_fw_image.firmware.header.file_version
+                        - 10,
                         hardware_version=1,
                     )
                 )
@@ -553,17 +568,20 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                 cmd, Ota.ClientCommandDefs.query_next_image_response.schema
             ):
                 assert cmd.status == foundation.Status.SUCCESS
-                assert cmd.manufacturer_code == fw_image.firmware.header.manufacturer_id
-                assert cmd.image_type == fw_image.firmware.header.image_type
-                assert cmd.file_version == fw_image.firmware.header.file_version
-                assert cmd.image_size == fw_image.firmware.header.image_size
+                assert (
+                    cmd.manufacturer_code
+                    == active_fw_image.firmware.header.manufacturer_id
+                )
+                assert cmd.image_type == active_fw_image.firmware.header.image_type
+                assert cmd.file_version == active_fw_image.firmware.header.file_version
+                assert cmd.image_size == active_fw_image.firmware.header.image_size
                 dev.application.packet_received(
                     make_packet(
                         "image_block",
                         field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
-                        manufacturer_code=fw_image.firmware.header.manufacturer_id,
-                        image_type=fw_image.firmware.header.image_type,
-                        file_version=fw_image.firmware.header.file_version,
+                        manufacturer_code=active_fw_image.firmware.header.manufacturer_id,
+                        image_type=active_fw_image.firmware.header.image_type,
+                        file_version=active_fw_image.firmware.header.file_version,
                         file_offset=0,
                         maximum_data_size=40,
                         request_node_addr=dev.ieee,
@@ -574,19 +592,21 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                     assert cmd.status == foundation.Status.SUCCESS
                     assert (
                         cmd.manufacturer_code
-                        == fw_image.firmware.header.manufacturer_id
+                        == active_fw_image.firmware.header.manufacturer_id
                     )
-                    assert cmd.image_type == fw_image.firmware.header.image_type
-                    assert cmd.file_version == fw_image.firmware.header.file_version
+                    assert cmd.image_type == active_fw_image.firmware.header.image_type
+                    assert (
+                        cmd.file_version == active_fw_image.firmware.header.file_version
+                    )
                     assert cmd.file_offset == 0
-                    assert cmd.image_data == fw_image.firmware.serialize()[0:40]
+                    assert cmd.image_data == active_fw_image.firmware.serialize()[0:40]
                     dev.application.packet_received(
                         make_packet(
                             "image_block",
                             field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
-                            manufacturer_code=fw_image.firmware.header.manufacturer_id,
-                            image_type=fw_image.firmware.header.image_type,
-                            file_version=fw_image.firmware.header.file_version,
+                            manufacturer_code=active_fw_image.firmware.header.manufacturer_id,
+                            image_type=active_fw_image.firmware.header.image_type,
+                            file_version=active_fw_image.firmware.header.file_version,
                             file_offset=40,
                             maximum_data_size=40,
                             request_node_addr=dev.ieee,
@@ -596,26 +616,31 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                     assert cmd.status == foundation.Status.SUCCESS
                     assert (
                         cmd.manufacturer_code
-                        == fw_image.firmware.header.manufacturer_id
+                        == active_fw_image.firmware.header.manufacturer_id
                     )
-                    assert cmd.image_type == fw_image.firmware.header.image_type
-                    assert cmd.file_version == fw_image.firmware.header.file_version
+                    assert cmd.image_type == active_fw_image.firmware.header.image_type
+                    assert (
+                        cmd.file_version == active_fw_image.firmware.header.file_version
+                    )
                     assert cmd.file_offset == 40
-                    assert cmd.image_data == fw_image.firmware.serialize()[40:70]
+                    assert cmd.image_data == active_fw_image.firmware.serialize()[40:70]
                     dev.application.packet_received(
                         make_packet(
                             "upgrade_end",
                             status=foundation.Status.SUCCESS,
-                            manufacturer_code=fw_image.firmware.header.manufacturer_id,
-                            image_type=fw_image.firmware.header.image_type,
-                            file_version=fw_image.firmware.header.file_version,
+                            manufacturer_code=active_fw_image.firmware.header.manufacturer_id,
+                            image_type=active_fw_image.firmware.header.image_type,
+                            file_version=active_fw_image.firmware.header.file_version,
                         )
                     )
 
             elif isinstance(cmd, Ota.ClientCommandDefs.upgrade_end_response.schema):
-                assert cmd.manufacturer_code == fw_image.firmware.header.manufacturer_id
-                assert cmd.image_type == fw_image.firmware.header.image_type
-                assert cmd.file_version == fw_image.firmware.header.file_version
+                assert (
+                    cmd.manufacturer_code
+                    == active_fw_image.firmware.header.manufacturer_id
+                )
+                assert cmd.image_type == active_fw_image.firmware.header.image_type
+                assert cmd.file_version == active_fw_image.firmware.header.file_version
                 assert cmd.current_time == 0
                 assert cmd.upgrade_time == 0
 
@@ -639,7 +664,6 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
-    assert fw_image.firmware.header.file_version == 0xFFFFFFFF - 1
     assert result == foundation.Status.SUCCESS
 
     # _image_query_req exception test
@@ -650,7 +674,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
     assert dev.application.send_packet.await_count == 0
     assert progress_callback.call_count == 0
-    assert "OTA image_notify handler - exception" in caplog.text
+    assert "OTA image_notify handler exception" in caplog.text
     assert result == foundation.Status.FAILURE
     cluster.image_notify = image_notify
     caplog.clear()
@@ -665,7 +689,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
     assert dev.application.send_packet.await_count == 1  # just image notify
     assert progress_callback.call_count == 0
-    assert "OTA query_next_image handler - exception" in caplog.text
+    assert "OTA query_next_image handler exception" in caplog.text
     assert result == foundation.Status.FAILURE
     cluster.query_next_image_response = query_next_image_response
     caplog.clear()
@@ -682,7 +706,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         dev.application.send_packet.await_count == 2
     )  # just image notify + query next image
     assert progress_callback.call_count == 0
-    assert "OTA image_block handler - exception" in caplog.text
+    assert "OTA image_block handler exception" in caplog.text
     assert result == foundation.Status.FAILURE
     cluster.image_block_response = image_block_response
     caplog.clear()
@@ -699,7 +723,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         dev.application.send_packet.await_count == 4
     )  # just image notify, qne, and 2 img blocks
     assert progress_callback.call_count == 2
-    assert "OTA upgrade_end handler - exception" in caplog.text
+    assert "OTA upgrade_end handler exception" in caplog.text
     assert result == foundation.Status.FAILURE
     cluster.upgrade_end_response = upgrade_end_response
     caplog.clear()
@@ -751,7 +775,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         dev.application.send_packet.await_count == 2
     )  # just image notify, qne, img block response fails
     assert progress_callback.call_count == 0
-    assert "OTA image_block handler[MALFORMED_COMMAND] - exception" in caplog.text
+    assert "OTA image_block handler[MALFORMED_COMMAND] exception" in caplog.text
     assert result == foundation.Status.MALFORMED_COMMAND
     cluster.image_block_response = image_block_response
 

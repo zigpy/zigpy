@@ -96,7 +96,7 @@ class OTAManager:
                 tsn=hdr.tsn,
             )
         except Exception as ex:
-            self.device.debug("OTA query_next_image handler - exception: %s", ex)
+            self.device.debug("OTA query_next_image handler exception", exc_info=ex)
             self._upgrade_end_future.set_result(foundation.Status.FAILURE)
 
     async def _image_block_req(
@@ -117,7 +117,7 @@ class OTAManager:
                 )
             except Exception as ex:
                 self.device.debug(
-                    "OTA image_block handler[MALFORMED_COMMAND] - exception: %s", ex
+                    "OTA image_block handler[MALFORMED_COMMAND] exception", exc_info=ex
                 )
 
             self._upgrade_end_future.set_result(foundation.Status.MALFORMED_COMMAND)
@@ -140,7 +140,7 @@ class OTAManager:
                     command.file_offset + len(block), len(self._image_data)
                 )
         except Exception as ex:
-            self.device.debug("OTA image_block handler - exception: %s", ex)
+            self.device.debug("OTA image_block handler exception", exc_info=ex)
             self._upgrade_end_future.set_result(foundation.Status.FAILURE)
 
     async def _upgrade_end(
@@ -160,7 +160,7 @@ class OTAManager:
 
             self._upgrade_end_future.set_result(command.status)
         except Exception as ex:
-            self.device.debug("OTA upgrade_end handler - exception: %s", ex)
+            self.device.debug("OTA upgrade_end handler exception", exc_info=ex)
             self._upgrade_end_future.set_result(foundation.Status.FAILURE)
 
     async def notify(self) -> None:
@@ -174,7 +174,7 @@ class OTAManager:
                 query_jitter=100,
             )
         except Exception as ex:
-            self.device.debug("OTA image_notify handler - exception: %s", ex)
+            self.device.debug("OTA image_notify handler exception", exc_info=ex)
             self._upgrade_end_future.set_result(foundation.Status.FAILURE)
 
     async def wait(self) -> foundation.Status:
