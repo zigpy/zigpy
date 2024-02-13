@@ -17,6 +17,15 @@ if TYPE_CHECKING:
 MAXIMUM_IMAGE_BLOCK_SIZE = 40
 
 
+def find_ota_cluster(device: Device) -> Ota:
+    """Finds the first OTA cluster available on the device."""
+    for ep in device.non_zdo_endpoints:
+        if Ota.cluster_id in ep.out_clusters:
+            return ep.out_clusters[Ota.cluster_id]
+    else:
+        raise ValueError("Device has no OTA cluster")
+
+
 class OTAManager:
     """Class to manage OTA updates for a device."""
 
@@ -27,16 +36,7 @@ class OTAManager:
         progress_callback=None,
     ) -> None:
         self.device = device
-        self.ota_cluster = None
-
-        for ep in device.non_zdo_endpoints:
-            try:
-                self.ota_cluster = ep.out_clusters[Ota.cluster_id]
-                break
-            except KeyError:
-                pass
-        else:
-            raise ValueError("Device has no OTA cluster")
+        self.ota_cluster = find_ota_cluster(device)
 
         self.image = image
         self._image_data = image.firmware.serialize()

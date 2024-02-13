@@ -9,7 +9,8 @@ import sys
 import typing
 import warnings
 
-from zigpy.ota.manager import update_firmware
+from zigpy.ota.manager import find_ota_cluster, update_firmware
+from zigpy.zcl.clusters.general import Ota
 
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
@@ -521,6 +522,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             raise exc
         finally:
             self.ota_in_progress = False
+
+        if result == foundation.Status.SUCCESS:
+            # Clear the current file version when the update succeeds
+            ota = find_ota_cluster(self)
+            ota.update_attribute(Ota.AttributeDefs.current_file_version, None)
 
         return result
 
