@@ -134,6 +134,17 @@ class SubElement(t.Struct):
     tag_id: ElementTagId
     data: LVBytes32
 
+    def __repr__(self) -> str:
+        if len(self.data) > 32:
+            data = self.data[:25].hex() + "..." + self.data[-7:].hex()
+        else:
+            data = self.data.hex()
+
+        return (
+            f"<{self.__class__.__name__}(tag_id={self.tag_id!r},"
+            f" data=[{len(self.data)}:{data}])>"
+        )
+
 
 class BaseOTAImage:
     """Base OTA image container type. Not all images are valid Zigbee OTA images but are
