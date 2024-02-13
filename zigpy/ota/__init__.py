@@ -185,32 +185,32 @@ class OTA:
         ] = {}
 
         if self._config[CONF_OTA_ALLOW_ADVANCED_DIR]:
-            self.providers.append(
+            self.register_provider(
                 zigpy.ota.provider.AdvancedFileProvider(
                     self._config[CONF_OTA_ADVANCED_DIR]
                 )
             )
 
         if self._config[CONF_OTA_IKEA]:
-            self.providers.append(zigpy.ota.provider.Trådfri())
+            self.register_provider(zigpy.ota.provider.Trådfri())
 
         if self._config[CONF_OTA_INOVELLI]:
-            self.providers.append(zigpy.ota.provider.Inovelli())
+            self.register_provider(zigpy.ota.provider.Inovelli())
 
         if self._config[CONF_OTA_LEDVANCE]:
-            self.providers.append(zigpy.ota.provider.Ledvance())
+            self.register_provider(zigpy.ota.provider.Ledvance())
 
         if self._config[CONF_OTA_SALUS]:
-            self.providers.append(zigpy.ota.provider.Salus())
+            self.register_provider(zigpy.ota.provider.Salus())
 
         if self._config[CONF_OTA_SONOFF]:
-            self.providers.append(zigpy.ota.provider.Sonoff())
+            self.register_provider(zigpy.ota.provider.Sonoff())
 
         if self._config[CONF_OTA_THIRDREALITY]:
-            self.providers.append(zigpy.ota.provider.ThirdReality())
+            self.register_provider(zigpy.ota.provider.ThirdReality())
 
         for provider_config in self._config[CONF_OTA_REMOTE_PROVIDERS]:
-            self.providers.append(
+            self.register_provider(
                 zigpy.ota.provider.RemoteProvider(
                     url=provider_config[CONF_OTA_PROVIDER_URL],
                     manufacturer_ids=provider_config[CONF_OTA_PROVIDER_MANUF_IDS],
@@ -218,18 +218,23 @@ class OTA:
             )
 
         if self._config[CONF_OTA_Z2M_LOCAL_INDEX]:
-            self.providers.append(
+            self.register_provider(
                 zigpy.ota.provider.LocalZ2MProvider(
                     self._config[CONF_OTA_Z2M_LOCAL_INDEX]
                 )
             )
 
         if self._config[CONF_OTA_Z2M_REMOTE_INDEX]:
-            self.providers.append(
+            self.register_provider(
                 zigpy.ota.provider.RemoteZ2MProvider(
                     self._config[CONF_OTA_Z2M_REMOTE_INDEX]
                 )
             )
+
+    def register_provider(self, provider: zigpy.ota.provider.BaseOtaProvider) -> None:
+        """Register a new OTA provider."""
+        _LOGGER.debug("Registering new OTA provider: %s", provider)
+        self._providers.append(provider)
 
     async def get_ota_image(
         self,
