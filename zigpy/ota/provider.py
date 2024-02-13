@@ -42,6 +42,9 @@ class BaseOtaImageMetadata:
     min_current_file_version: int | None = None
     max_current_file_version: int | None = None
 
+    async def _fetch(self) -> bytes:
+        raise NotImplementedError()
+
     async def fetch(self) -> BaseOTAImage:
         data = await self._fetch()
 
@@ -88,9 +91,9 @@ class LocalOtaImageMetadata(BaseOtaImageMetadata):
 @attrs.define(frozen=True, kw_only=True)
 class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
     async def _fetch(self) -> bytes:
-        loop = asyncio.get_running_loop()
         data = await super()._fetch()
 
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._extract_ota, data)
 
     def _extract_ota(self, data: bytes) -> bytes:

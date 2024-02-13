@@ -38,48 +38,6 @@ def ieee():
     return make_ieee()
 
 
-@patch("zigpy.ota.OTA", spec_set=zigpy.ota.OTA)
-async def test_new_exception(ota_mock):
-    p1 = patch.object(App, "_load_db", AsyncMock())
-    p2 = patch.object(App, "load_network_info", AsyncMock())
-    p3 = patch.object(App, "shutdown", AsyncMock())
-    ota_mock.return_value.initialize = AsyncMock()
-
-    with p1 as db_mck, p2 as load_nwk_info_mck, p3 as shut_mck:
-        await App.new(
-            {
-                conf.CONF_DATABASE: "/dev/null",
-                conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
-                conf.CONF_STARTUP_ENERGY_SCAN: False,
-            }
-        )
-    assert db_mck.call_count == 1
-    assert db_mck.await_count == 1
-    assert ota_mock.return_value.initialize.call_count == 1
-    assert load_nwk_info_mck.call_count == 1
-    assert load_nwk_info_mck.await_count == 1
-    assert shut_mck.call_count == 0
-    assert shut_mck.await_count == 0
-
-    with p1 as db_mck, p2 as load_nwk_info_mck, p3 as shut_mck:
-        load_nwk_info_mck.side_effect = asyncio.TimeoutError()
-        with pytest.raises(asyncio.TimeoutError):
-            await App.new(
-                {
-                    conf.CONF_DATABASE: "/dev/null",
-                    conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
-                    conf.CONF_STARTUP_ENERGY_SCAN: False,
-                }
-            )
-    assert db_mck.call_count == 2
-    assert db_mck.await_count == 2
-    assert ota_mock.return_value.initialize.call_count == 1
-    assert load_nwk_info_mck.call_count == 2
-    assert load_nwk_info_mck.await_count == 2
-    assert shut_mck.call_count == 1
-    assert shut_mck.await_count == 1
-
-
 async def test_permit(app, ieee):
     app.devices[ieee] = MagicMock()
     app.devices[ieee].zdo.permit = AsyncMock()

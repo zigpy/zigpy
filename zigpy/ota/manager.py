@@ -192,7 +192,7 @@ async def update_firmware(
     if force:
         # Force it to send the image even if it's the same version
         image = image.replace(
-            image=image.firmware.replace(
+            firmware=image.firmware.replace(
                 header=image.firmware.header.replace(
                     file_version=0xFFFFFFFF - 1,
                 )
