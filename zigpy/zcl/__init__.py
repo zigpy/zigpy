@@ -815,12 +815,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self._update_attribute(attrid, value)
 
     def _update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
-        now = datetime.now(timezone.utc)
-
-        self._attr_cache[attrid] = value
-        self._attr_last_updated[attrid] = now
-
-        self.listener_event("attribute_updated", attrid, value, now)
+        if value is None:
+            self._attr_cache.pop(attrid)
+            self._attr_last_updated.pop(attrid)
+            self.listener_event("attribute_cleared", attrid)
+        else:
+            now = datetime.now(timezone.utc)
+            self._attr_cache[attrid] = value
+            self._attr_last_updated[attrid] = now
+            self.listener_event("attribute_updated", attrid, value, now)
 
     def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
         msg = "[%s:%s:0x%04x] " + msg
