@@ -1147,7 +1147,12 @@ async def test_appdb_attribute_clear(tmp_path):
         dev2.endpoints[1].basic._attr_cache[Basic.AttributeDefs.zcl_version.id] == 0x12
     )
 
+    # This attribute exists
     dev2.endpoints[1].basic.update_attribute(Basic.AttributeDefs.zcl_version.id, None)
+
+    # This attribute won't exist
+    dev2.endpoints[1].basic.update_attribute(Basic.AttributeDefs.manufacturer.id, None)
+
     assert Basic.AttributeDefs.zcl_version.id not in dev2.endpoints[1].basic._attr_cache
     await app2.shutdown()
 
