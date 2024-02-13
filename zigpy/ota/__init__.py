@@ -44,7 +44,11 @@ MAXIMUM_DATA_SIZE = 40
 @dataclasses.dataclass(frozen=True)
 class OtaImageWithMetadata(t.BaseDataclassMixin):
     metadata: zigpy.ota.provider.BaseOtaImageMetadata
-    image: BaseOTAImage | None
+    firmware: BaseOTAImage | None
+
+    @property
+    def version(self) -> int:
+        return self.metadata.file_version
 
     def get_image_block(
         self,
@@ -53,8 +57,8 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         *,
         maximum_data_size=MAXIMUM_DATA_SIZE,
     ) -> bytes:
-        assert self.image is not None
-        data = self.image.serialize()
+        assert self.firmware is not None
+        data = self.firmware.serialize()
 
         if offset > len(data):
             raise ValueError("Offset exceeds image size")
@@ -66,10 +70,10 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         if self.metadata.min_hardware_version is not None:
             return self.metadata.min_hardware_version
         elif (
-            self.img is not None
-            and self.img.header.minimum_hardware_version is not None
+            self.firmware is not None
+            and self.firmware.header.minimum_hardware_version is not None
         ):
-            return self.img.header.minimum_hardware_version
+            return self.firmware.header.minimum_hardware_version
         else:
             return None
 
@@ -78,10 +82,10 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         if self.metadata.max_hardware_version is not None:
             return self.metadata.max_hardware_version
         elif (
-            self.img is not None
-            and self.img.header.maximum_hardware_version is not None
+            self.firmware is not None
+            and self.firmware.header.maximum_hardware_version is not None
         ):
-            return self.img.header.maximum_hardware_version
+            return self.firmware.header.maximum_hardware_version
         else:
             return None
 
@@ -103,10 +107,10 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         if self.metadata.max_current_file_version is not None:
             total += 10
 
-        if self.min_hardware_version is not None:
+        if self._min_hardware_version is not None:
             total += 1
 
-        if self.max_hardware_version is not None:
+        if self._max_hardware_version is not None:
             total += 1
 
         return total
@@ -120,7 +124,7 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         if self.metadata.file_version <= query_cmd.current_file_version:
             return False
 
-        if self.metadata.manufacturer_id != query_cmd.manufacturer_id:
+        if self.metadata.manufacturer_id != query_cmd.manufacturer_code:
             return False
 
         if self.metadata.image_type != query_cmd.image_type:
@@ -147,26 +151,26 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         ):
             return False
 
-        if (
-            self._min_hardware_version is not None
-            and query_cmd.hardware_version < self._min_hardware_version
+        if self._min_hardware_version is not None and (
+            query_cmd.hardware_version is None
+            or query_cmd.hardware_version < self._min_hardware_version
         ):
             return False
 
-        if (
-            self._max_hardware_version is not None
-            and query_cmd.hardware_version > self._max_hardware_version
+        if self._max_hardware_version is not None and (
+            query_cmd.hardware_version is None
+            or query_cmd.hardware_version > self._max_hardware_version
         ):
             return False
 
         return True
 
     async def fetch(self) -> OtaImageWithMetadata:
-        image = await zigpy.util.timeout(self.metadata.fetch(), OTA_FETCH_TIMEOUT)
+        firmware = await zigpy.util.timeout(self.metadata.fetch(), OTA_FETCH_TIMEOUT)
 
         return self.replace(
             metadata=self.metadata,
-            image=image,
+            firmware=firmware,
         )
 
 
@@ -179,37 +183,40 @@ class OTA:
         application: zigpy.application.ControllerApplication,
     ) -> None:
         self._config = config
+        self._application = application
+
         self._providers: list[zigpy.ota.provider.BaseOtaProvider] = []
         self._image_cache: dict[
             zigpy.ota.provider.BaseOtaImageMetadata, OtaImageWithMetadata
         ] = {}
 
-        if self._config[CONF_OTA_ALLOW_ADVANCED_DIR]:
+        self._register_providers(self._config)
+
+    def _register_providers(self, config: dict[str, typing.Any]) -> None:
+        if config[CONF_OTA_ALLOW_ADVANCED_DIR]:
             self.register_provider(
-                zigpy.ota.provider.AdvancedFileProvider(
-                    self._config[CONF_OTA_ADVANCED_DIR]
-                )
+                zigpy.ota.provider.AdvancedFileProvider(config[CONF_OTA_ADVANCED_DIR])
             )
 
-        if self._config[CONF_OTA_IKEA]:
+        if config[CONF_OTA_IKEA]:
             self.register_provider(zigpy.ota.provider.Trådfri())
 
-        if self._config[CONF_OTA_INOVELLI]:
+        if config[CONF_OTA_INOVELLI]:
             self.register_provider(zigpy.ota.provider.Inovelli())
 
-        if self._config[CONF_OTA_LEDVANCE]:
+        if config[CONF_OTA_LEDVANCE]:
             self.register_provider(zigpy.ota.provider.Ledvance())
 
-        if self._config[CONF_OTA_SALUS]:
+        if config[CONF_OTA_SALUS]:
             self.register_provider(zigpy.ota.provider.Salus())
 
-        if self._config[CONF_OTA_SONOFF]:
+        if config[CONF_OTA_SONOFF]:
             self.register_provider(zigpy.ota.provider.Sonoff())
 
-        if self._config[CONF_OTA_THIRDREALITY]:
+        if config[CONF_OTA_THIRDREALITY]:
             self.register_provider(zigpy.ota.provider.ThirdReality())
 
-        for provider_config in self._config[CONF_OTA_REMOTE_PROVIDERS]:
+        for provider_config in config[CONF_OTA_REMOTE_PROVIDERS]:
             self.register_provider(
                 zigpy.ota.provider.RemoteProvider(
                     url=provider_config[CONF_OTA_PROVIDER_URL],
@@ -217,18 +224,14 @@ class OTA:
                 )
             )
 
-        if self._config[CONF_OTA_Z2M_LOCAL_INDEX]:
+        if config[CONF_OTA_Z2M_LOCAL_INDEX]:
             self.register_provider(
-                zigpy.ota.provider.LocalZ2MProvider(
-                    self._config[CONF_OTA_Z2M_LOCAL_INDEX]
-                )
+                zigpy.ota.provider.LocalZ2MProvider(config[CONF_OTA_Z2M_LOCAL_INDEX])
             )
 
-        if self._config[CONF_OTA_Z2M_REMOTE_INDEX]:
+        if config[CONF_OTA_Z2M_REMOTE_INDEX]:
             self.register_provider(
-                zigpy.ota.provider.RemoteZ2MProvider(
-                    self._config[CONF_OTA_Z2M_REMOTE_INDEX]
-                )
+                zigpy.ota.provider.RemoteZ2MProvider(config[CONF_OTA_Z2M_REMOTE_INDEX])
             )
 
     def register_provider(self, provider: zigpy.ota.provider.BaseOtaProvider) -> None:
@@ -253,9 +256,7 @@ class OTA:
                     provider.load_index(), OTA_FETCH_TIMEOUT
                 )
             except Exception as exc:
-                _LOGGER.debug(
-                    "Failed to load provider %s index", provider, exc_info=exc
-                )
+                _LOGGER.debug("Failed to load provider %s", provider, exc_info=exc)
                 continue
 
             if index is None:
@@ -265,7 +266,7 @@ class OTA:
             for meta in index:
                 if meta not in self._image_cache:
                     self._image_cache[meta] = OtaImageWithMetadata(
-                        metadata=meta, image=None
+                        metadata=meta, firmware=None
                     )
 
         # Find all superficially compatible images. Note that if an image's contents
@@ -279,7 +280,7 @@ class OTA:
 
         # Fetch all the candidates that are missing from the cache
         for result_coro in asyncio.as_completed(
-            img.fetch() for img in pre_candidates if img.image is None
+            [img.fetch() for img in pre_candidates.values() if img.firmware is None]
         ):
             try:
                 img = await result_coro
@@ -287,6 +288,7 @@ class OTA:
                 _LOGGER.debug("Failed to download image", exc_info=exc)
                 continue
 
+            _LOGGER.debug("Caching image %s", img)
             self._image_cache[img.metadata] = img
             pre_candidates[img.metadata] = img
 
@@ -297,7 +299,8 @@ class OTA:
 
         for img in pre_candidates.values():
             if img.check_compatibility(device, query_cmd):
-                key = (img.header.file_version, img.specificity)
+                assert img.firmware is not None
+                key = (img.firmware.header.file_version, img.specificity)
 
                 if key < highest_version:
                     continue
@@ -310,17 +313,20 @@ class OTA:
         if not highest_version_images:
             # If no image is actually compatible with the device (i.e. the metadata is
             # incomplete and after an image download we exclude the file), we are done
+            _LOGGER.debug("No firmware is compatible with the device")
             return None
 
         # If there are multiple candidates with the same specificity and version but
         # having different contents, bail out
-        first_image = highest_version_images[0].image
+        first_fw = highest_version_images[0].firmware
 
-        if any(img.image != first_image for img in highest_version_images[1:]):
+        if any(img.firmware != first_fw for img in highest_version_images[1:]):
             _LOGGER.warning(
                 "Multiple compatible OTA images for device %s exist, not picking",
                 device,
             )
             return None
+
+        _LOGGER.debug("Picking firmware %s", highest_version_images[0])
 
         return highest_version_images[0]
