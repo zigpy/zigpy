@@ -233,6 +233,8 @@ class SwitchMetadata:
     attribute_name: str
     force_inverted: bool = dataclasses.field(default=False)
     invert_attribute_name: str | None = dataclasses.field(default=None)
+    off_value: int = dataclasses.field(default=0)
+    on_value: int = dataclasses.field(default=1)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -476,6 +478,8 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         endpoint_id: int = 1,
         force_inverted: bool = False,
         invert_attribute_name: str | None = None,
+        off_value: int = 0,
+        on_value: int = 1,
         entity_platform=EntityPlatform.SWITCH,
     ) -> QuirksV2RegistryEntry:
         """Add a switch and return self."""
@@ -490,6 +494,8 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                     attribute_name=attribute_name,
                     force_inverted=force_inverted,
                     invert_attribute_name=invert_attribute_name,
+                    off_value=off_value,
+                    on_value=on_value,
                 ),
             )
         )
