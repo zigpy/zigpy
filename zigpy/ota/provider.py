@@ -351,6 +351,7 @@ class ThirdReality(BaseOtaProvider):
 
 class RemoteProvider(BaseOtaProvider):
     def __init__(self, url: str, manufacturer_ids: list[int] | None = None):
+        super().__init__()
         self.url = url
         self.manufacturer_ids
 
@@ -385,6 +386,7 @@ class RemoteProvider(BaseOtaProvider):
 
 class AdvancedFileProvider(BaseOtaProvider):
     def __init__(self, image_dir: pathlib.Path):
+        super().__init__()
         self.image_dir = image_dir
 
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
@@ -443,6 +445,7 @@ def _load_z2m_index(index: dict, *, index_root: pathlib.Path | None = None):
 
 class LocalZ2MProvider(BaseOtaProvider):
     def __init__(self, index_file: pathlib.Path):
+        super().__init__()
         self.index_file = index_file
 
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
@@ -456,12 +459,13 @@ class LocalZ2MProvider(BaseOtaProvider):
         )
         index = json.loads(index_text)
 
-        async for img in _load_z2m_index(index, index_root=self.index_file.parent):
+        for img in _load_z2m_index(index, index_root=self.index_file.parent):
             yield img
 
 
 class RemoteZ2MProvider(BaseOtaProvider):
     def __init__(self, url: str):
+        super().__init__()
         self.url = url
 
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
@@ -471,7 +475,7 @@ class RemoteZ2MProvider(BaseOtaProvider):
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         async with session.get(self.url) as rsp:
-            fw_lst = await rsp.json()
+            fw_lst = await rsp.json(content_type=None)
 
-        async for img in _load_z2m_index(fw_lst):
+        for img in _load_z2m_index(fw_lst):
             yield img

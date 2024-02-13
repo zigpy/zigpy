@@ -239,6 +239,22 @@ class OTA:
         _LOGGER.debug("Registering new OTA provider: %s", provider)
         self._providers.append(provider)
 
+    @zigpy.util.combine_concurrent_calls
+    async def _load_provider_index(
+        self, provider: zigpy.ota.provider.BaseOtaProvider
+    ) -> list[zigpy.ota.provider.BaseOtaImageMetadata]:
+        """Load the index of a provider."""
+
+        return await zigpy.util.timeout(provider.load_index(), OTA_FETCH_TIMEOUT)
+
+    @zigpy.util.combine_concurrent_calls
+    async def _fetch_image(
+        self, image: OtaImageWithMetadata
+    ) -> list[OtaImageWithMetadata]:
+        """Load the index of a provider."""
+
+        return await zigpy.util.timeout(image.fetch(), OTA_FETCH_TIMEOUT)
+
     async def get_ota_image(
         self,
         device: zigpy.device.Device,
@@ -252,17 +268,21 @@ class OTA:
         # Load the index of every provider
         for provider in compatible_providers:
             try:
-                index = await zigpy.util.timeout(
-                    provider.load_index(), OTA_FETCH_TIMEOUT
-                )
+                index = await self._load_provider_index(provider)
             except Exception as exc:
                 _LOGGER.debug("Failed to load provider %s", provider, exc_info=exc)
                 continue
 
             if index is None:
+                _LOGGER.debug(
+                    "Provider %s was recently contacted, ignoring for now", provider
+                )
                 continue
 
-            # Cache its images
+            _LOGGER.debug("Loaded %d images from provider", len(index))
+
+            # Cache its images. If the concurrent call's result was shared, the first
+            # caller will cache these images
             for meta in index:
                 if meta not in self._image_cache:
                     self._image_cache[meta] = OtaImageWithMetadata(
@@ -280,7 +300,11 @@ class OTA:
 
         # Fetch all the candidates that are missing from the cache
         for result_coro in asyncio.as_completed(
-            [img.fetch() for img in pre_candidates.values() if img.firmware is None]
+            [
+                self._fetch_image(img)
+                for img in pre_candidates.values()
+                if img.firmware is None
+            ]
         ):
             try:
                 img = await result_coro
@@ -288,8 +312,11 @@ class OTA:
                 _LOGGER.debug("Failed to download image", exc_info=exc)
                 continue
 
-            _LOGGER.debug("Caching image %s", img)
-            self._image_cache[img.metadata] = img
+            # Cache the image if it isn't already cached
+            if self._image_cache[img.metadata].firmware is None:
+                _LOGGER.debug("Caching image %s", img)
+                self._image_cache[img.metadata] = img
+
             pre_candidates[img.metadata] = img
 
         # Now we have all of the necessary metadata to fully vet the candidates and

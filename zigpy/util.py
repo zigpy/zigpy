@@ -462,3 +462,35 @@ async def timeout(coro: typing.Awaitable, timeout: float) -> typing.Any:
     """Wrap a coroutine in a timeout."""
     async with asyncio_timeout(timeout):
         return await coro
+
+
+def combine_concurrent_calls(
+    function: typing.Callable[..., typing.Coroutine[typing.Any, typing.Any, typing.Any]]
+) -> typing.Callable[..., typing.Coroutine[typing.Any, typing.Any, typing.Any]]:
+    """
+    Decorator that allows concurrent calls to expensive coroutines to share a result.
+    """
+
+    tasks: dict[tuple, asyncio.Task] = {}
+    signature = inspect.signature(function)
+
+    @functools.wraps(function)
+    async def replacement(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
+        bound = signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+
+        # XXX: all args and kwargs are assumed to be hashable
+        key = tuple(bound.arguments.items())
+
+        if key in tasks:
+            return await tasks[key]
+
+        tasks[key] = asyncio.create_task(function(*args, **kwargs))
+
+        try:
+            return await tasks[key]
+        finally:
+            assert tasks[key].done()
+            del tasks[key]
+
+    return replacement
