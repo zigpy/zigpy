@@ -5,15 +5,9 @@ import asyncio
 import functools
 import inspect
 import logging
-import sys
 import traceback
 import typing
 import warnings
-
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
-else:
-    from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
 from crccheck.crc import CrcX25
 from cryptography.hazmat.primitives.ciphers import Cipher
@@ -456,12 +450,6 @@ class Singleton:
 
     def __hash__(self) -> int:
         return hash(self.name)
-
-
-async def timeout(coro: typing.Awaitable, timeout: float) -> typing.Any:
-    """Wrap a coroutine in a timeout."""
-    async with asyncio_timeout(timeout):
-        return await coro
 
 
 def combine_concurrent_calls(

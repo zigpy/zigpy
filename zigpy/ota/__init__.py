@@ -5,6 +5,7 @@ import asyncio
 import dataclasses
 import datetime
 import logging
+import sys
 import typing
 
 from zigpy.config import (
@@ -27,6 +28,11 @@ from zigpy.ota.image import BaseOTAImage
 import zigpy.ota.provider
 import zigpy.types as t
 import zigpy.util
+
+if sys.version_info[:2] < (3, 11):
+    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
+else:
+    from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
 if typing.TYPE_CHECKING:
     import zigpy.application
@@ -167,7 +173,8 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         return True
 
     async def fetch(self) -> OtaImageWithMetadata:
-        firmware = await zigpy.util.timeout(self.metadata.fetch(), OTA_FETCH_TIMEOUT)
+        async with asyncio_timeout(OTA_FETCH_TIMEOUT):
+            firmware = await self.metadata.fetch()
 
         return self.replace(
             metadata=self.metadata,
@@ -247,7 +254,8 @@ class OTA:
     ) -> list[zigpy.ota.provider.BaseOtaImageMetadata]:
         """Load the index of a provider."""
 
-        return await zigpy.util.timeout(provider.load_index(), OTA_FETCH_TIMEOUT)
+        async with asyncio_timeout(OTA_FETCH_TIMEOUT):
+            return await provider.load_index()
 
     @zigpy.util.combine_concurrent_calls
     async def _fetch_image(
@@ -255,7 +263,8 @@ class OTA:
     ) -> list[OtaImageWithMetadata]:
         """Load the index of a provider."""
 
-        return await zigpy.util.timeout(image.fetch(), OTA_FETCH_TIMEOUT)
+        async with asyncio_timeout(OTA_FETCH_TIMEOUT):
+            return await image.fetch()
 
     async def get_ota_image(
         self,
