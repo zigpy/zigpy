@@ -526,7 +526,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if result == foundation.Status.SUCCESS:
             # Clear the current file version when the update succeeds
             ota = find_ota_cluster(self)
-            ota.update_attribute(Ota.AttributeDefs.current_file_version, None)
+            ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
 
         return result
 
