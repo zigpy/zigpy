@@ -160,15 +160,15 @@ SCHEMA_OTA = {
     # Z2M OTA providers
     vol.Optional(
         CONF_OTA_Z2M_LOCAL_INDEX, default=CONF_OTA_Z2M_LOCAL_INDEX_DEFAULT
-    ): cv_json_file,
+    ): vol.Any(None, cv_json_file),
     vol.Optional(
         CONF_OTA_Z2M_REMOTE_INDEX, default=CONF_OTA_Z2M_REMOTE_INDEX_DEFAULT
-    ): vol.Url(),
+    ): vol.Any(None, vol.Url()),
     # Advanced OTA config. You *do not* need to use this unless you're testing a new
     # OTA firmware that has no known metadata.
-    vol.Optional(
-        CONF_OTA_ADVANCED_DIR, default=CONF_OTA_ADVANCED_DIR_DEFAULT
-    ): cv_boolean,
+    vol.Optional(CONF_OTA_ADVANCED_DIR, default=CONF_OTA_ADVANCED_DIR_DEFAULT): vol.Any(
+        None, str
+    ),
     vol.Optional(
         CONF_OTA_ALLOW_ADVANCED_DIR, default=CONF_OTA_ALLOW_ADVANCED_DIR_DEFAULT
     ): vol.All(cv_exact_object(CONF_OTA_ALLOW_ADVANCED_DIR_STRING)),
