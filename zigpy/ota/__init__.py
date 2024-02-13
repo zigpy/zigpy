@@ -10,6 +10,7 @@ import typing
 from zigpy.config import (
     CONF_OTA_ADVANCED_DIR,
     CONF_OTA_ALLOW_ADVANCED_DIR,
+    CONF_OTA_ENABLED,
     CONF_OTA_IKEA,
     CONF_OTA_INOVELLI,
     CONF_OTA_LEDVANCE,
@@ -190,7 +191,8 @@ class OTA:
             zigpy.ota.provider.BaseOtaImageMetadata, OtaImageWithMetadata
         ] = {}
 
-        self._register_providers(self._config)
+        if config[CONF_OTA_ENABLED]:
+            self._register_providers(self._config)
 
     def _register_providers(self, config: dict[str, typing.Any]) -> None:
         if config[CONF_OTA_ALLOW_ADVANCED_DIR]:
