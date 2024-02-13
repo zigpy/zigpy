@@ -274,7 +274,7 @@ class Salus(BaseOtaProvider):
         for fw in fw_lst["versions"]:
             yield SalusRemoteOtaImageMetadata(  # type: ignore[call-arg]
                 file_version=int(fw["version"]),
-                model_names=[fw["model"]],
+                model_names=(fw["model"],),
                 manufacturer_id=self.MANUFACTURER_IDS[0],
                 image_type=None,
                 checksum=None,
@@ -321,7 +321,7 @@ class Inovelli(BaseOtaProvider):
                     file_version=int(fw["version"], 16),
                     manufacturer_id=fw["manufacturer_id"],
                     image_type=fw["image_type"],
-                    model_names=[model],
+                    model_names=(model,),
                     checksum=None,
                     file_size=None,
                     url=fw["firmware"],
@@ -341,7 +341,7 @@ class ThirdReality(BaseOtaProvider):
             yield RemoteOtaImageMetadata(  # type: ignore[call-arg]
                 file_version=fw["fileVersion"],
                 manufacturer_id=fw["manufacturerId"],
-                model_names=[fw["modelId"]],
+                model_names=(fw["modelId"],),
                 image_type=fw["imageType"],
                 checksum=None,
                 file_size=None,
