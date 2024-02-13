@@ -816,6 +816,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def _update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
         if value is None:
+            if attrid not in self._attr_cache:
+                return
+
             self._attr_cache.pop(attrid)
             self._attr_last_updated.pop(attrid)
             self.listener_event("attribute_cleared", attrid)
