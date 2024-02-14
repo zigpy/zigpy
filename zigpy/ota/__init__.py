@@ -85,22 +85,39 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
             return None
 
     @property
-    def _max_hardware_version(self) -> int | None:
-        if self.metadata.max_hardware_version is not None:
-            return self.metadata.max_hardware_version
+    def _manufacturer_id(self) -> int | None:
+        if self.metadata.manufacturer_id is not None:
+            return self.metadata.manufacturer_id
         elif (
             self.firmware is not None
-            and self.firmware.header.maximum_hardware_version is not None
+            and self.firmware.header.manufacturer_id is not None
         ):
-            return self.firmware.header.maximum_hardware_version
+            return self.firmware.header.manufacturer_id
+        else:
+            return None
+
+    @property
+    def _image_type(self) -> int | None:
+        if self.metadata.image_type is not None:
+            return self.metadata.image_type
+        elif self.firmware is not None and self.firmware.header.image_type is not None:
+            return self.firmware.header.image_type
         else:
             return None
 
     @property
     def specificity(self) -> int:
         """Return a numerical representation of the metadata specificity.
-        Higher specificity is preferred to lower when picking a final OTA image."""
+        Higher specificity is preferred to lower when picking a final OTA image.
+        """
+
         total = 0
+
+        if self._manufacturer_id is not None:
+            total += 1000
+
+        if self._image_type is not None:
+            total += 1000
 
         if self.metadata.manufacturer_names:
             total += 100
@@ -131,10 +148,13 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         if self.metadata.file_version <= query_cmd.current_file_version:
             return False
 
-        if self.metadata.manufacturer_id != query_cmd.manufacturer_code:
+        if (
+            self._manufacturer_id is not None
+            and self._manufacturer_id != query_cmd.manufacturer_code
+        ):
             return False
 
-        if self.metadata.image_type != query_cmd.image_type:
+        if self._image_type is not None and self._image_type != query_cmd.image_type:
             return False
 
         if self.metadata.model_names and device.model not in self.metadata.model_names:

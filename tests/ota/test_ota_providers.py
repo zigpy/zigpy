@@ -165,7 +165,6 @@ async def test_salus_provider():
         assert isinstance(meta, providers.SalusRemoteOtaImageMetadata)
         assert meta.url == obj["url"].replace("http://", "https://")
         assert meta.file_version == int(obj["version"], 16)
-        assert meta.manufacturer_id == provider.MANUFACTURER_IDS[0]
         assert meta.model_names == (obj["model"],)
 
 
@@ -245,3 +244,22 @@ async def test_third_reality_provider():
         assert meta.image_type == obj["imageType"]
         assert meta.manufacturer_id == obj["manufacturerId"]
         assert meta.file_version == obj["fileVersion"]
+
+
+async def test_salus_unzipping_valid():
+    valid_tarball = (FILES_DIR / "salus/Arjonstop_00000013.tar.gz").read_bytes()
+
+    meta = providers.SalusRemoteOtaImageMetadata(
+        file_version=0x00000013,
+        model_names=("Arjonstop",),
+        url="https://eu.salusconnect.io/download/firmware/e18c41d0-c3e7-48cc-bba5-aacc3f289640/Arjonstop_00000013.tar.gz",
+    )
+
+    with aioresponses() as mock_http:
+        mock_http.get(meta.url, body=valid_tarball, content_type="application/gzip")
+        ota_image = await meta.fetch()
+
+    assert ota_image.header.file_version == meta.file_version == 19
+
+    # This exists only in the OTA image
+    assert ota_image.header.manufacturer_id == 43981

@@ -26,8 +26,8 @@ LOGGER = logging.getLogger(__name__)
 @attrs.define(frozen=True, kw_only=True)
 class BaseOtaImageMetadata:
     file_version: int
-    manufacturer_id: int
-    image_type: int
+    manufacturer_id: int | None = None
+    image_type: int | None = None
 
     checksum: str | None = None
     file_size: int | None = None
@@ -102,7 +102,7 @@ class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
 
         with tarfile.open(fileobj=img_tgz) as tar:
             for item in tar:
-                if not item.name.endswith((".ota", ".json")):
+                if not item.name.endswith((".ota", ".json", ".zigbee")):
                     continue
 
                 f = tar.extractfile(item)
@@ -113,6 +113,7 @@ class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
         if "networkinfo.json" not in files:
             raise ValueError("Archive does not contain a valid OTA image")
 
+        # Each archive contains a `networkinfo.json` file and a `.ota` file
         networkinfo_json = json.loads(files["networkinfo.json"])
         upgrade = networkinfo_json["upgrade"][0]
         ota_contents = files[upgrade["filename"]]
@@ -265,7 +266,7 @@ class Ledvance(BaseOtaProvider):
 
 
 class Salus(BaseOtaProvider):
-    MANUFACTURER_IDS = [4216]
+    MANUFACTURER_IDS = [4216, 43981]
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -285,7 +286,7 @@ class Salus(BaseOtaProvider):
             yield SalusRemoteOtaImageMetadata(  # type: ignore[call-arg]
                 file_version=int(fw["version"], 16),
                 model_names=(fw["model"],),
-                manufacturer_id=self.MANUFACTURER_IDS[0],
+                manufacturer_id=None,
                 image_type=None,
                 checksum=None,
                 file_size=None,
