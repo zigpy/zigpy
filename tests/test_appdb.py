@@ -1140,24 +1140,25 @@ async def test_appdb_attribute_clear(tmp_path):
 
     await app.shutdown()
 
-    # Upon reload, the attribute is cleared
+    # Upon reload, the attribute exists and is in the cache
     app2 = await make_app_with_db(db)
     dev2 = app2.get_device(ieee=dev.ieee)
     assert (
         dev2.endpoints[1].basic._attr_cache[Basic.AttributeDefs.zcl_version.id] == 0x12
     )
 
-    # This attribute exists
+    # Clear an existing attribute
     dev2.endpoints[1].basic.update_attribute(Basic.AttributeDefs.zcl_version.id, None)
 
-    # This attribute won't exist
+    # Clear an attribute not in the cache
     dev2.endpoints[1].basic.update_attribute(Basic.AttributeDefs.manufacturer.id, None)
 
     assert Basic.AttributeDefs.zcl_version.id not in dev2.endpoints[1].basic._attr_cache
+    await asyncio.sleep(0.1)
     await app2.shutdown()
 
     # The attribute has been removed from the database
     app3 = await make_app_with_db(db)
-    app3.get_device(ieee=dev.ieee)
-    assert Basic.AttributeDefs.zcl_version.id not in dev2.endpoints[1].basic._attr_cache
+    dev3 = app3.get_device(ieee=dev.ieee)
+    assert Basic.AttributeDefs.zcl_version.id not in dev3.endpoints[1].basic._attr_cache
     await app3.shutdown()
