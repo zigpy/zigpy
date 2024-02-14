@@ -154,12 +154,30 @@ def test_header_string():
 
     hdr_str, rest = firmware.HeaderString.deserialize(data + extra)
     assert rest == extra
-    assert hdr_str == header_string
+
+    with pytest.raises(ValueError):
+        firmware.HeaderString(b"foo")
+
+    with pytest.raises(ValueError):
+        firmware.HeaderString(b"a" * 33)
 
     hdr_str, rest = firmware.HeaderString.deserialize(data)
     assert rest == b""
-    assert hdr_str == header_string
+    assert header_string in str(hdr_str)
     assert firmware.HeaderString(header_string).serialize() == data
+
+
+def test_header_string_roundtrip_invalid():
+    data = bytes.fromhex(
+        "5a757d364000603e400013704000010000009f364000b015400020904000ffff"
+    )
+
+    hdr_str, rest = firmware.HeaderString.deserialize(data)
+    assert not rest
+    assert hdr_str == firmware.HeaderString(data)
+
+    assert hdr_str.serialize() == data
+    assert data.hex() in str(hdr_str)
 
 
 def test_header_string_too_short():

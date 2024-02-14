@@ -27,18 +27,39 @@ class HWVersion(t.uint16_t):
         )
 
 
-class HeaderString(str):
+class HeaderString(bytes):
     _size = 32
+
+    def __new__(cls, value: str | bytes):
+        if isinstance(value, str):
+            value = value.encode("utf-8").ljust(cls._size, b"\x00")
+
+        if len(value) != cls._size:
+            raise ValueError(f"HeaderString must be exactly {cls._size} bytes long")
+
+        return super().__new__(cls, value)
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[HeaderString, bytes]:
         if len(data) < cls._size:
             raise ValueError(f"Data is too short. Should be at least {cls._size}")
-        raw = data[: cls._size].split(b"\x00")[0]
-        return cls(raw.decode("utf8", errors="replace")), data[cls._size :]
+
+        raw = data[: cls._size]
+        return cls(raw), data[cls._size :]
 
     def serialize(self) -> bytes:
-        return self.encode("utf8").ljust(self._size, b"\x00")
+        return self
+
+    def __str__(self) -> str:
+        return repr(self)
+
+    def __repr__(self) -> str:
+        try:
+            text = repr(self.rstrip(b"\x00").decode("utf-8"))
+        except UnicodeDecodeError:
+            text = f"{len(self)}:{self.hex()}"
+
+        return f"<{text}>"
 
 
 class FieldControl(t.bitmap16):
