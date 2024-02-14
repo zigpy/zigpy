@@ -593,7 +593,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             WHERE
                 ieee = :ieee
                 AND endpoint_id = :endpoint_id
-                AND cluster = :cluster
+                AND cluster = :cluster_id
                 AND attrid = :attrid
             """
 

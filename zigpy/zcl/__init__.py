@@ -1003,6 +1003,9 @@ class ClusterPersistingListener:
     ) -> None:
         self._applistener.attribute_updated(self._cluster, attrid, value, timestamp)
 
+    def attribute_cleared(self, attrid: int | t.uint16_t) -> None:
+        self._applistener.attribute_cleared(self._cluster, attrid)
+
     def cluster_command(self, *args, **kwargs) -> None:
         pass
 
