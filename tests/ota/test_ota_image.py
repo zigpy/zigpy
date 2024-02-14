@@ -182,6 +182,24 @@ def test_subelement_too_short():
         firmware.SubElement.deserialize(b"\x00\x02\x02\x00\x00\x00a")
 
 
+def test_subelement_repr():
+    sub1 = firmware.SubElement(
+        tag_id=firmware.ElementTagId.UPGRADE_IMAGE, data=b"\x00" * 32
+    )
+    assert (
+        "32:0000000000000000000000000000000000000000000000000000000000000000"
+        in repr(sub1)
+    )
+
+    sub2 = firmware.SubElement(
+        tag_id=firmware.ElementTagId.UPGRADE_IMAGE, data=b"\x00" * 33
+    )
+    assert (
+        "33:00000000000000000000000000000000000000000000000000...00000000000000"
+        in repr(sub2)
+    )
+
+
 @pytest.fixture
 def raw_header():
     def data(elements_size=0):
