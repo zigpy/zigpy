@@ -3,12 +3,12 @@ import pathlib
 
 from aioresponses import aioresponses
 
-from zigpy.ota import provider
+from zigpy.ota import providers
 
 FILES_DIR = pathlib.Path(__file__).parent / "files"
 
 
-def _test_z2m_index_entry(obj: dict, meta: provider.BaseOtaImageMetadata) -> bool:
+def _test_z2m_index_entry(obj: dict, meta: providers.BaseOtaImageMetadata) -> bool:
     assert meta.checksum == "sha512:" + obj["sha512"]
     assert meta.image_type == obj["imageType"]
     assert meta.file_size == obj["fileSize"]
@@ -35,7 +35,7 @@ async def test_remote_z2m_provider():
 
     index_url = "https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json"
 
-    z2m_provider = provider.RemoteZ2MProvider(index_url)
+    z2m_provider = providers.RemoteZ2MProvider(index_url)
 
     with aioresponses() as mock_http:
         mock_http.get(
@@ -50,7 +50,7 @@ async def test_remote_z2m_provider():
 
     for obj, meta in zip(index_obj, index):
         assert _test_z2m_index_entry(obj, meta)
-        assert isinstance(meta, provider.RemoteOtaImageMetadata)
+        assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.url == obj["url"]
 
 
@@ -58,7 +58,7 @@ async def test_local_z2m_provider():
     index_json = (FILES_DIR / "z2m_index.json").read_text()
     index_obj = json.loads(index_json)
 
-    z2m_provider = provider.LocalZ2MProvider(FILES_DIR / "z2m_index.json")
+    z2m_provider = providers.LocalZ2MProvider(FILES_DIR / "z2m_index.json")
     index = await z2m_provider.load_index()
 
     assert len(index) == len(index_obj)
@@ -66,9 +66,9 @@ async def test_local_z2m_provider():
     for obj, meta in zip(index_obj, index):
         assert _test_z2m_index_entry(obj, meta)
 
-        if isinstance(meta, provider.RemoteOtaImageMetadata):
+        if isinstance(meta, providers.RemoteOtaImageMetadata):
             assert meta.url == obj["url"]
-        elif isinstance(meta, provider.LocalOtaImageMetadata):
+        elif isinstance(meta, providers.LocalOtaImageMetadata):
             assert meta.path == FILES_DIR / obj["path"]
         else:
             assert False
@@ -78,7 +78,7 @@ async def test_trådfri_provider():
     version_info_json = (FILES_DIR / "ikea_version_info.json").read_text()
     version_info_obj = json.loads(version_info_json)
 
-    ikea_provider = provider.Trådfri()
+    ikea_provider = providers.Trådfri()
 
     with aioresponses() as mock_http:
         mock_http.get(
@@ -100,21 +100,21 @@ async def test_trådfri_provider():
     assert len(index) == len(version_info_obj) - 1 == len(filtered_version_info_obj)
 
     for obj, meta in zip(filtered_version_info_obj, index):
-        assert isinstance(meta, provider.RemoteOtaImageMetadata)
+        assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.file_version == int(
             obj["fw_binary_url"].split("_v", 1)[1].split("_", 1)[0]
         )
         assert meta.image_type == obj["fw_image_type"]
         assert meta.checksum == "sha3-256:" + obj["fw_sha3_256"]
         assert meta.url == obj["fw_binary_url"]
-        assert meta.manufacturer_id == provider.Trådfri.MANUFACTURER_IDS[0] == 4476
+        assert meta.manufacturer_id == providers.Trådfri.MANUFACTURER_IDS[0] == 4476
 
 
 async def test_ledvance_provider():
     firmwares_json = (FILES_DIR / "ledvance_firmwares.json").read_text()
     firmwares_obj = json.loads(firmwares_json)
 
-    ledvance_provider = provider.Ledvance()
+    ledvance_provider = providers.Ledvance()
 
     with aioresponses() as mock_http:
         mock_http.get(
@@ -128,7 +128,7 @@ async def test_ledvance_provider():
     assert len(index) == len(firmwares_obj["firmwares"])
 
     for obj, meta in zip(firmwares_obj["firmwares"], index):
-        assert isinstance(meta, provider.RemoteOtaImageMetadata)
+        assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.image_type == obj["identity"]["product"]
         assert meta.checksum == "sha256:" + obj["shA256"]
         assert meta.changelog == obj["releaseNotes"]
@@ -149,7 +149,7 @@ async def test_salus_provider():
     firmware_json = (FILES_DIR / "salus_firmware.json").read_text()
     firmware_obj = json.loads(firmware_json)
 
-    salus_provider = provider.Salus()
+    salus_provider = providers.Salus()
 
     with aioresponses() as mock_http:
         mock_http.get(
@@ -163,7 +163,7 @@ async def test_salus_provider():
     assert len(index) == len(firmware_obj["versions"]) - 1 == len(filtered_firmware_obj)
 
     for obj, meta in zip(filtered_firmware_obj, index):
-        assert isinstance(meta, provider.SalusRemoteOtaImageMetadata)
+        assert isinstance(meta, providers.SalusRemoteOtaImageMetadata)
         assert meta.url == obj["url"].replace("http://", "https://")
         assert meta.file_version == int(obj["version"], 16)
         assert meta.manufacturer_id == salus_provider.MANUFACTURER_IDS[0]
@@ -174,7 +174,7 @@ async def test_sonoff_provider():
     upgrade_json = (FILES_DIR / "sonoff_upgrade.json").read_text()
     upgrade_obj = json.loads(upgrade_json)
 
-    sonoff_provider = provider.Sonoff()
+    sonoff_provider = providers.Sonoff()
 
     with aioresponses() as mock_http:
         mock_http.get(
@@ -187,7 +187,7 @@ async def test_sonoff_provider():
     assert len(index) == len(upgrade_obj)
 
     for obj, meta in zip(upgrade_obj, index):
-        assert isinstance(meta, provider.RemoteOtaImageMetadata)
+        assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.url == obj["fw_binary_url"]
         assert meta.file_version == obj["fw_file_version"]
         assert meta.file_size == obj["fw_filesize"]
@@ -200,7 +200,7 @@ async def test_inovelli_provider():
     firmware_json = (FILES_DIR / "inovelli_firmware-zha.json").read_text()
     upgrade_obj = json.loads(firmware_json)
 
-    inovelli_provider = provider.Inovelli()
+    inovelli_provider = providers.Inovelli()
 
     with aioresponses() as mock_http:
         mock_http.get(
@@ -214,7 +214,7 @@ async def test_inovelli_provider():
     assert len(index) == len(unpacked_objs)
 
     for (model, obj), meta in zip(unpacked_objs, index):
-        assert isinstance(meta, provider.RemoteOtaImageMetadata)
+        assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.file_version == int(obj["version"], 16)
         assert meta.url == obj["firmware"]
         assert meta.manufacturer_id == obj["manufacturer_id"]
@@ -226,7 +226,7 @@ async def test_third_reality_provider():
     firmware_json = (FILES_DIR / "thirdreality_firmware.json").read_text()
     firmware_obj = json.loads(firmware_json)
 
-    third_reality_provider = provider.ThirdReality()
+    third_reality_provider = providers.ThirdReality()
 
     with aioresponses() as mock_http:
         mock_http.get(
@@ -240,7 +240,7 @@ async def test_third_reality_provider():
     assert len(index) == len(firmware_obj["versions"])
 
     for obj, meta in zip(firmware_obj["versions"], index):
-        assert isinstance(meta, provider.RemoteOtaImageMetadata)
+        assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.model_names == (obj["modelId"],)
         assert meta.url == obj["url"]
         assert meta.image_type == obj["imageType"]

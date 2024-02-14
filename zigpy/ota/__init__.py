@@ -25,7 +25,7 @@ from zigpy.config import (
     CONF_OTA_Z2M_REMOTE_INDEX,
 )
 from zigpy.ota.image import BaseOTAImage
-import zigpy.ota.provider
+import zigpy.ota.providers
 import zigpy.types as t
 import zigpy.util
 
@@ -50,7 +50,7 @@ MAXIMUM_DATA_SIZE = 40
 
 @dataclasses.dataclass(frozen=True)
 class OtaImageWithMetadata(t.BaseDataclassMixin):
-    metadata: zigpy.ota.provider.BaseOtaImageMetadata
+    metadata: zigpy.ota.providers.BaseOtaImageMetadata
     firmware: BaseOTAImage | None
 
     @property
@@ -193,9 +193,9 @@ class OTA:
         self._config = config
         self._application = application
 
-        self._providers: list[zigpy.ota.provider.BaseOtaProvider] = []
+        self._providers: list[zigpy.ota.providers.BaseOtaProvider] = []
         self._image_cache: dict[
-            zigpy.ota.provider.BaseOtaImageMetadata, OtaImageWithMetadata
+            zigpy.ota.providers.BaseOtaImageMetadata, OtaImageWithMetadata
         ] = {}
 
         if config[CONF_OTA_ENABLED]:
@@ -204,30 +204,30 @@ class OTA:
     def _register_providers(self, config: dict[str, typing.Any]) -> None:
         if config[CONF_OTA_ALLOW_ADVANCED_DIR]:
             self.register_provider(
-                zigpy.ota.provider.AdvancedFileProvider(config[CONF_OTA_ADVANCED_DIR])
+                zigpy.ota.providers.AdvancedFileProvider(config[CONF_OTA_ADVANCED_DIR])
             )
 
         if config[CONF_OTA_IKEA]:
-            self.register_provider(zigpy.ota.provider.Trådfri())
+            self.register_provider(zigpy.ota.providers.Trådfri())
 
         if config[CONF_OTA_INOVELLI]:
-            self.register_provider(zigpy.ota.provider.Inovelli())
+            self.register_provider(zigpy.ota.providers.Inovelli())
 
         if config[CONF_OTA_LEDVANCE]:
-            self.register_provider(zigpy.ota.provider.Ledvance())
+            self.register_provider(zigpy.ota.providers.Ledvance())
 
         if config[CONF_OTA_SALUS]:
-            self.register_provider(zigpy.ota.provider.Salus())
+            self.register_provider(zigpy.ota.providers.Salus())
 
         if config[CONF_OTA_SONOFF]:
-            self.register_provider(zigpy.ota.provider.Sonoff())
+            self.register_provider(zigpy.ota.providers.Sonoff())
 
         if config[CONF_OTA_THIRDREALITY]:
-            self.register_provider(zigpy.ota.provider.ThirdReality())
+            self.register_provider(zigpy.ota.providers.ThirdReality())
 
         for provider_config in config[CONF_OTA_REMOTE_PROVIDERS]:
             self.register_provider(
-                zigpy.ota.provider.RemoteProvider(
+                zigpy.ota.providers.RemoteProvider(
                     url=provider_config[CONF_OTA_PROVIDER_URL],
                     manufacturer_ids=provider_config[CONF_OTA_PROVIDER_MANUF_IDS],
                 )
@@ -235,23 +235,23 @@ class OTA:
 
         if config[CONF_OTA_Z2M_LOCAL_INDEX]:
             self.register_provider(
-                zigpy.ota.provider.LocalZ2MProvider(config[CONF_OTA_Z2M_LOCAL_INDEX])
+                zigpy.ota.providers.LocalZ2MProvider(config[CONF_OTA_Z2M_LOCAL_INDEX])
             )
 
         if config[CONF_OTA_Z2M_REMOTE_INDEX]:
             self.register_provider(
-                zigpy.ota.provider.RemoteZ2MProvider(config[CONF_OTA_Z2M_REMOTE_INDEX])
+                zigpy.ota.providers.RemoteZ2MProvider(config[CONF_OTA_Z2M_REMOTE_INDEX])
             )
 
-    def register_provider(self, provider: zigpy.ota.provider.BaseOtaProvider) -> None:
+    def register_provider(self, provider: zigpy.ota.providers.BaseOtaProvider) -> None:
         """Register a new OTA provider."""
         _LOGGER.debug("Registering new OTA provider: %s", provider)
         self._providers.append(provider)
 
     @zigpy.util.combine_concurrent_calls
     async def _load_provider_index(
-        self, provider: zigpy.ota.provider.BaseOtaProvider
-    ) -> list[zigpy.ota.provider.BaseOtaImageMetadata]:
+        self, provider: zigpy.ota.providers.BaseOtaProvider
+    ) -> list[zigpy.ota.providers.BaseOtaImageMetadata]:
         """Load the index of a provider."""
 
         async with asyncio_timeout(OTA_FETCH_TIMEOUT):

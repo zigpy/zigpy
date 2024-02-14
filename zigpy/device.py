@@ -39,7 +39,7 @@ import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
-    from zigpy.ota.provider import OtaImageWithMetadata
+    from zigpy.ota.providers import OtaImageWithMetadata
 
 APS_REPLY_TIMEOUT = 5
 APS_REPLY_TIMEOUT_EXTENDED = 28

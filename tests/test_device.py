@@ -485,7 +485,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     await dev.initialize()
 
     fw_image = zigpy.ota.OtaImageWithMetadata(
-        metadata=zigpy.ota.provider.BaseOtaImageMetadata(
+        metadata=zigpy.ota.providers.BaseOtaImageMetadata(
             file_version=0x12345678,
             manufacturer_id=0x1234,
             image_type=0x90,

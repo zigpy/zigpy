@@ -10,7 +10,7 @@ from zigpy.zcl.clusters.general import Ota
 
 if TYPE_CHECKING:
     from zigpy.device import Device
-    from zigpy.ota.provider import OtaImageWithMetadata
+    from zigpy.ota.providers import OtaImageWithMetadata
 
 
 # Devices often ask for bigger blocks than radios can send
