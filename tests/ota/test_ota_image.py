@@ -30,6 +30,21 @@ def image():
     return img
 
 
+def test_image_serialization_bad_length(image):
+    assert image.serialize()
+    image.header.image_size += 1
+
+    with pytest.raises(ValueError):
+        image.serialize()
+
+    image.header.image_size -= 1
+    assert image.serialize()
+
+    image.header.image_size -= 1
+    with pytest.raises(ValueError):
+        image.serialize()
+
+
 def test_hw_version():
     hw = firmware.HWVersion(0x0A01)
     assert hw.version == 10
