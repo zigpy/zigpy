@@ -169,3 +169,55 @@ async def test_sonoff_provider():
         assert meta.image_type == obj["fw_image_type"]
         assert meta.manufacturer_id == obj["fw_manufacturer_id"]
         assert meta.model_names == (obj["model_id"],)
+
+
+async def test_inovelli_provider():
+    firmware_json = (FILES_DIR / "inovelli_firmware-zha.json").read_text()
+    upgrade_obj = json.loads(firmware_json)
+
+    inovelli_provider = provider.Inovelli()
+
+    with aioresponses() as mock_http:
+        mock_http.get(
+            "https://files.inovelli.com/firmware/firmware-zha.json",
+            body=firmware_json,
+        )
+
+        index = await inovelli_provider.load_index()
+
+    unpacked_objs = [(model, obj) for model, fws in upgrade_obj.items() for obj in fws]
+    assert len(index) == len(unpacked_objs)
+
+    for (model, obj), meta in zip(unpacked_objs, index):
+        assert isinstance(meta, provider.RemoteOtaImageMetadata)
+        assert meta.file_version == int(obj["version"], 16)
+        assert meta.url == obj["firmware"]
+        assert meta.manufacturer_id == obj["manufacturer_id"]
+        assert meta.image_type == obj["image_type"]
+        assert meta.model_names == (model,)
+
+
+async def test_third_reality_provider():
+    firmware_json = (FILES_DIR / "thirdreality_firmware.json").read_text()
+    firmware_obj = json.loads(firmware_json)
+
+    third_reality_provider = provider.ThirdReality()
+
+    with aioresponses() as mock_http:
+        mock_http.get(
+            "https://tr-zha.s3.amazonaws.com/firmware.json",
+            body=firmware_json,
+            content_type="application/json",
+        )
+
+        index = await third_reality_provider.load_index()
+
+    assert len(index) == len(firmware_obj["versions"])
+
+    for obj, meta in zip(firmware_obj["versions"], index):
+        assert isinstance(meta, provider.RemoteOtaImageMetadata)
+        assert meta.model_names == (obj["modelId"],)
+        assert meta.url == obj["url"]
+        assert meta.image_type == obj["imageType"]
+        assert meta.manufacturer_id == obj["manufacturerId"]
+        assert meta.file_version == obj["fileVersion"]
