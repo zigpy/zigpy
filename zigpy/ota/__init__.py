@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import datetime
 import logging
 import sys
 import typing
@@ -42,10 +41,7 @@ if typing.TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-TIMEDELTA_0 = datetime.timedelta()
-DELAY_EXPIRATION = datetime.timedelta(hours=2)
 OTA_FETCH_TIMEOUT = 20
-MAXIMUM_DATA_SIZE = 40
 
 
 @dataclasses.dataclass(frozen=True)
@@ -56,21 +52,6 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
     @property
     def version(self) -> int:
         return self.metadata.file_version
-
-    def get_image_block(
-        self,
-        offset: t.uint32_t,
-        size: t.uint8_t,
-        *,
-        maximum_data_size=MAXIMUM_DATA_SIZE,
-    ) -> bytes:
-        assert self.firmware is not None
-        data = self.firmware.serialize()
-
-        if offset > len(data):
-            raise ValueError("Offset exceeds image size")
-
-        return data[offset : offset + min(self.MAXIMUM_DATA_SIZE, size)]
 
     @property
     def _min_hardware_version(self) -> int | None:
@@ -85,13 +66,22 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
             return None
 
     @property
+    def _max_hardware_version(self) -> int | None:
+        if self.metadata.max_hardware_version is not None:
+            return self.metadata.max_hardware_version
+        elif (
+            self.firmware is not None
+            and self.firmware.header.maximum_hardware_version is not None
+        ):
+            return self.firmware.header.maximum_hardware_version
+        else:
+            return None
+
+    @property
     def _manufacturer_id(self) -> int | None:
         if self.metadata.manufacturer_id is not None:
             return self.metadata.manufacturer_id
-        elif (
-            self.firmware is not None
-            and self.firmware.header.manufacturer_id is not None
-        ):
+        elif self.firmware is not None:
             return self.firmware.header.manufacturer_id
         else:
             return None
@@ -100,7 +90,7 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
     def _image_type(self) -> int | None:
         if self.metadata.image_type is not None:
             return self.metadata.image_type
-        elif self.firmware is not None and self.firmware.header.image_type is not None:
+        elif self.firmware is not None:
             return self.firmware.header.image_type
         else:
             return None
@@ -113,16 +103,16 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
 
         total = 0
 
-        if self._manufacturer_id is not None:
+        if self.metadata.manufacturer_names:
+            total += 1000
+
+        if self.metadata.model_names:
             total += 1000
 
         if self._image_type is not None:
-            total += 1000
-
-        if self.metadata.manufacturer_names:
             total += 100
 
-        if self.metadata.model_names:
+        if self._manufacturer_id is not None:
             total += 100
 
         if self.metadata.min_current_file_version is not None:
@@ -136,6 +126,10 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
 
         if self._max_hardware_version is not None:
             total += 1
+
+        # Boost the specificity
+        if self.metadata.specificity is not None:
+            total += self.metadata.specificity
 
         return total
 
@@ -193,8 +187,7 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         return True
 
     async def fetch(self) -> OtaImageWithMetadata:
-        async with asyncio_timeout(OTA_FETCH_TIMEOUT):
-            firmware = await self.metadata.fetch()
+        firmware = await self.metadata.fetch()
 
         return self.replace(
             metadata=self.metadata,

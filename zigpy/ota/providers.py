@@ -18,13 +18,14 @@ import aiohttp
 import attrs
 
 from zigpy.ota.image import BaseOTAImage, parse_ota_image
+import zigpy.types as t
 import zigpy.util
 
 LOGGER = logging.getLogger(__name__)
 
 
 @attrs.define(frozen=True, kw_only=True)
-class BaseOtaImageMetadata:
+class BaseOtaImageMetadata(t.BaseDataclassMixin):
     file_version: int
     manufacturer_id: int | None = None
     image_type: int | None = None
@@ -41,6 +42,7 @@ class BaseOtaImageMetadata:
     max_hardware_version: int | None = None
     min_current_file_version: int | None = None
     max_current_file_version: int | None = None
+    specificity: int | None = None
 
     async def _fetch(self) -> bytes:
         raise NotImplementedError()
@@ -395,6 +397,7 @@ class RemoteProvider(BaseOtaProvider):
                 min_current_file_version=fw.get("min_current_file_version"),
                 max_current_file_version=fw.get("max_current_file_version"),
                 changelog=fw.get("changelog"),
+                specificity=fw.get("specificity"),
             )
 
 

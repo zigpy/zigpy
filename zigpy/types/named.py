@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import enum
 import typing
 
+import attrs
+
 from . import basic
 from .struct import Struct
 
@@ -14,7 +16,10 @@ if typing.TYPE_CHECKING:
 
 class BaseDataclassMixin:
     def replace(self, **kwargs) -> Self:
-        return dataclasses.replace(self, **kwargs)
+        if dataclasses.is_dataclass(self):
+            return dataclasses.replace(self, **kwargs)
+        else:
+            return attrs.evolve(self, **kwargs)
 
 
 def _hex_string_to_bytes(hex_string: str) -> bytes:

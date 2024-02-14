@@ -177,7 +177,12 @@ class OTAImage(t.Struct, BaseOTAImage):
 
     def serialize(self) -> bytes:
         res = super().serialize()
-        assert len(res) == self.header.image_size
+
+        if self.header.image_size != len(res):
+            raise ValueError(
+                f"Image size in header ({self.header.image_size} bytes)"
+                f" does not match actual image size ({len(res)} bytes)"
+            )
 
         return res
 
