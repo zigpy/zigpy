@@ -145,6 +145,31 @@ async def test_ledvance_provider():
         )
 
 
+async def test_salus_provider():
+    firmware_json = (FILES_DIR / "salus_firmware.json").read_text()
+    firmware_obj = json.loads(firmware_json)
+
+    salus_provider = provider.Salus()
+
+    with aioresponses() as mock_http:
+        mock_http.get(
+            "https://eu.salusconnect.io/demo/default/status/firmware",
+            body=firmware_json,
+        )
+
+        index = await salus_provider.load_index()
+
+    filtered_firmware_obj = [o for o in firmware_obj["versions"] if o["version"] != ""]
+    assert len(index) == len(firmware_obj["versions"]) - 1 == len(filtered_firmware_obj)
+
+    for obj, meta in zip(filtered_firmware_obj, index):
+        assert isinstance(meta, provider.SalusRemoteOtaImageMetadata)
+        assert meta.url == obj["url"].replace("http://", "https://")
+        assert meta.file_version == int(obj["version"], 16)
+        assert meta.manufacturer_id == salus_provider.MANUFACTURER_IDS[0]
+        assert meta.model_names == (obj["model"],)
+
+
 async def test_sonoff_provider():
     upgrade_json = (FILES_DIR / "sonoff_upgrade.json").read_text()
     upgrade_obj = json.loads(upgrade_json)

@@ -98,20 +98,29 @@ class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
 
     def _extract_ota(self, data: bytes) -> bytes:
         img_tgz = io.BytesIO(data)
+        files = {}
 
         with tarfile.open(fileobj=img_tgz) as tar:
             for item in tar:
-                if not item.name.endswith(".ota"):
+                if not item.name.endswith((".ota", ".json")):
                     continue
 
                 f = tar.extractfile(item)
 
-                if f is None:
-                    raise ValueError(f"Could not extract {item.name} from OTA archive")
+                if f is not None:
+                    files[item.name] = f.read()
 
-                return f.read()
+        if "networkinfo.json" not in files:
+            raise ValueError("Archive does not contain a valid OTA image")
 
-        raise ValueError("No OTA image found in archive")
+        networkinfo_json = json.loads(files["networkinfo.json"])
+        upgrade = networkinfo_json["upgrade"][0]
+        ota_contents = files[upgrade["filename"]]
+
+        if hashlib.md5(ota_contents).hexdigest().upper() != upgrade["checksum"]:
+            raise ValueError("Embedded OTA file has invalid MD5 checksum")
+
+        return ota_contents
 
 
 @attrs.define(frozen=True, kw_only=True)
@@ -267,14 +276,21 @@ class Salus(BaseOtaProvider):
             fw_lst = await rsp.json()
 
         for fw in fw_lst["versions"]:
+            # A text file is present in the firmware list, ignore it
+            if fw["version"] == "":
+                continue
+
+            # Not every firmware is actually Zigbee but since they filter by model name
+            # there is no chance an invalid one will be shown
             yield SalusRemoteOtaImageMetadata(  # type: ignore[call-arg]
-                file_version=int(fw["version"]),
+                file_version=int(fw["version"], 16),
                 model_names=(fw["model"],),
                 manufacturer_id=self.MANUFACTURER_IDS[0],
                 image_type=None,
                 checksum=None,
                 file_size=None,
-                url=fw["url"],
+                # Upgrade HTTP to HTTPS, the server supports it
+                url=fw["url"].replace("http://", "https://", 1),
             )
 
 
