@@ -1,3 +1,4 @@
+import hashlib
 import json
 import pathlib
 
@@ -256,6 +257,73 @@ async def test_third_reality_provider():
         assert meta.image_type == obj["imageType"]
         assert meta.manufacturer_id == obj["manufacturerId"]
         assert meta.file_version == obj["fileVersion"]
+
+
+async def test_remote_provider():
+    index_json = (FILES_DIR / "remote_index.json").read_text()
+    index_obj = json.loads(index_json)
+
+    provider = providers.RemoteProvider(
+        "https://example.org/fw/index.json", manufacturer_ids=[1, 2, 3]
+    )
+
+    with aioresponses() as mock_http:
+        mock_http.get(
+            "https://example.org/fw/index.json",
+            body=index_json,
+            content_type="application/json",
+        )
+
+        index = await provider.load_index()
+
+    assert len(index) == len(index_obj["firmwares"])
+
+    for obj, meta in zip(index_obj["firmwares"], index):
+        assert isinstance(meta, providers.RemoteOtaImageMetadata)
+        assert meta.url == obj["binary_url"]
+        assert meta.file_version == obj["file_version"]
+        assert meta.file_size == obj["file_size"]
+        assert meta.image_type == obj["image_type"]
+        assert meta.manufacturer_names == tuple(obj["manufacturer_names"])
+        assert meta.model_names == tuple(obj["model_names"])
+        assert meta.manufacturer_id == obj["manufacturer_id"]
+        assert meta.changelog == obj["changelog"]
+        assert meta.checksum == obj["checksum"]
+        assert meta.min_hardware_version == obj["min_hardware_version"]
+        assert meta.max_hardware_version == obj["max_hardware_version"]
+        assert meta.min_current_file_version == obj["min_current_file_version"]
+        assert meta.max_current_file_version == obj["max_current_file_version"]
+        assert meta.specificity == obj["specificity"]
+
+        # An unknown manufacturer ID will still be used
+        assert meta.manufacturer_id in provider.manufacturer_ids
+
+    assert provider.manufacturer_ids == [1, 2, 3, 4454]
+
+
+async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
+    files = list((FILES_DIR / "local_provider").glob("[!.]*"))
+    files.sort(key=lambda f: f.name)
+
+    (tmp_path / "foo/bar").mkdir(parents=True)
+    (tmp_path / "foo/bar" / files[0].name).write_bytes(files[0].read_bytes())
+    (tmp_path / "foo" / files[1].name).write_bytes(files[1].read_bytes())
+    (tmp_path / "empty").mkdir(parents=True)
+    (tmp_path / "bad.ota").write_bytes(b"This is not an OTA file")
+
+    provider = providers.AdvancedFileProvider(tmp_path)
+    index = await provider.load_index()
+
+    assert index is not None
+    index.sort(key=lambda m: m.path.name)
+
+    assert len(index) == len(files)
+
+    for path, meta in zip(files, index):
+        assert isinstance(meta, providers.LocalOtaImageMetadata)
+        assert meta.path.name == path.name
+        assert meta.checksum == "sha1:" + hashlib.sha1(path.read_bytes()).hexdigest()
+        assert meta.file_size == len(path.read_bytes())
 
 
 async def test_salus_unzipping_valid():

@@ -375,17 +375,17 @@ class RemoteProvider(BaseOtaProvider):
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         async with session.get(self.url) as rsp:
-            fw_lst = await rsp.json()
+            index = await rsp.json()
 
-        for fw in fw_lst:
-            yield RemoteOtaImageMetadata(  # type: ignore[call-arg]
+        for fw in index["firmwares"]:
+            meta = RemoteOtaImageMetadata(  # type: ignore[call-arg]
                 file_version=fw["file_version"],
                 manufacturer_id=fw["manufacturer_id"],
                 image_type=fw["image_type"],
                 manufacturer_names=tuple(fw.get("manufacturer_names", [])),
                 model_names=tuple(fw.get("model_names", [])),
                 checksum=fw["checksum"],
-                file_size=fw.get("file_size"),
+                file_size=fw["file_size"],
                 url=fw["binary_url"],
                 min_hardware_version=fw.get("min_hardware_version"),
                 max_hardware_version=fw.get("max_hardware_version"),
@@ -394,6 +394,20 @@ class RemoteProvider(BaseOtaProvider):
                 changelog=fw.get("changelog"),
                 specificity=fw.get("specificity"),
             )
+
+            # To ensure all remote images can be used, extend the list of known
+            # manufacturer IDs at runtime if we encounter a new one
+            if (
+                self.manufacturer_ids is not None
+                and meta.manufacturer_id not in self.manufacturer_ids
+            ):
+                LOGGER.warning(
+                    "Remote provider manufacturer ID is unknown: %d",
+                    meta.manufacturer_id,
+                )
+                self.manufacturer_ids.append(meta.manufacturer_id)
+
+            yield meta
 
 
 class AdvancedFileProvider(BaseOtaProvider):
@@ -421,11 +435,15 @@ class AdvancedFileProvider(BaseOtaProvider):
                 LOGGER.debug("Failed to parse image %s: %r", path, exc)
                 continue
 
+            # This protects against images being swapped out in the local filesystem
+            hasher = await loop.run_in_executor(None, hashlib.sha1, data)
+
             yield LocalOtaImageMetadata(  # type: ignore[call-arg]
+                path=path,
                 file_version=image.header.file_version,
                 manufacturer_id=image.header.manufacturer_id,
                 image_type=image.header.image_type,
-                checksum=None,
+                checksum="sha1:" + hasher.hexdigest(),
                 file_size=len(data),
                 manufacturer_names=(),
                 model_names=(),
