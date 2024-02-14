@@ -1,5 +1,5 @@
 import hashlib
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -20,13 +20,13 @@ def image_with_metadata() -> OtaImageWithMetadata:
             image_type=0x5678,
             manufacturer_id=0x1234,
             header_version=256,
-            header_length=56,
+            header_length=60,
             field_control=zigpy.ota.image.FieldControl.HARDWARE_VERSIONS_PRESENT,
             minimum_hardware_version=1,
             maximum_hardware_version=5,
             stack_version=2,
             header_string="This is a test header!",
-            image_size=56 + 2 + 4 + 4 + 8,
+            image_size=60 + 2 + 4 + 8,
         ),
         subelements=[zigpy.ota.image.SubElement(tag_id=0x0000, data=b"fw_image")],
     )
@@ -43,7 +43,7 @@ def image_with_metadata() -> OtaImageWithMetadata:
         min_hardware_version=1,
         max_hardware_version=5,
         min_current_file_version=0x12345678 - 10,
-        max_current_file_version=0x12345678 - 1,
+        max_current_file_version=0x12345678 - 2,
         specificity=0,
     )
 
@@ -120,6 +120,8 @@ async def test_metadata_compatibility(
     dev.model = "model1"
     dev.manufacturer = "manufacturer1"
 
+    assert image_with_metadata.version == 0x12345678
+
     query_cmd = Ota.ServerCommandDefs.query_next_image.schema(
         field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
         manufacturer_code=0x1234,
@@ -154,7 +156,7 @@ async def test_metadata_compatibility(
     )
 
     assert not image_with_metadata.check_compatibility(
-        dev, query_cmd.replace(current_file_version=0x12345678 + 100)
+        dev, query_cmd.replace(current_file_version=0x12345678 - 1)
     )
 
     assert not image_with_metadata.check_compatibility(
@@ -175,3 +177,19 @@ async def test_metadata_compatibility(
     )
 
     await app.shutdown()
+
+
+async def test_metadata_fetch(image_with_metadata: OtaImageWithMetadata) -> None:
+    image_without_firmware = image_with_metadata.replace(firmware=None)
+    assert image_with_metadata.firmware is not None
+
+    # Pretend we download the image contents
+    object.__setattr__(
+        image_without_firmware.metadata,
+        "_fetch",
+        AsyncMock(return_value=image_with_metadata.firmware.serialize()),
+    )
+
+    # New image is identical
+    new_img = await image_without_firmware.fetch()
+    assert new_img == image_with_metadata
