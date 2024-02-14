@@ -296,6 +296,7 @@ class Sonoff(BaseOtaProvider):
                 image_type=fw["fw_image_type"],
                 file_size=fw["fw_filesize"],
                 url=fw["fw_binary_url"],
+                model_names=(fw["model_id"],),
             )
 
 

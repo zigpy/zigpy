@@ -101,6 +101,9 @@ async def test_trådfri_provider():
 
     for obj, meta in zip(filtered_version_info_obj, index):
         assert isinstance(meta, provider.RemoteOtaImageMetadata)
+        assert meta.file_version == int(
+            obj["fw_binary_url"].split("_v", 1)[1].split("_", 1)[0]
+        )
         assert meta.image_type == obj["fw_image_type"]
         assert meta.checksum == "sha3-256:" + obj["fw_sha3_256"]
         assert meta.url == obj["fw_binary_url"]
@@ -140,3 +143,29 @@ async def test_ledvance_provider():
             f".{obj['identity']['version']['build']}"
             f".{obj['identity']['version']['revision']}"
         )
+
+
+async def test_sonoff_provider():
+    upgrade_json = (FILES_DIR / "sonoff_upgrade.json").read_text()
+    upgrade_obj = json.loads(upgrade_json)
+
+    sonoff_provider = provider.Sonoff()
+
+    with aioresponses() as mock_http:
+        mock_http.get(
+            "https://zigbee-ota.sonoff.tech/releases/upgrade.json",
+            body=upgrade_json,
+        )
+
+        index = await sonoff_provider.load_index()
+
+    assert len(index) == len(upgrade_obj)
+
+    for obj, meta in zip(upgrade_obj, index):
+        assert isinstance(meta, provider.RemoteOtaImageMetadata)
+        assert meta.url == obj["fw_binary_url"]
+        assert meta.file_version == obj["fw_file_version"]
+        assert meta.file_size == obj["fw_filesize"]
+        assert meta.image_type == obj["fw_image_type"]
+        assert meta.manufacturer_id == obj["fw_manufacturer_id"]
+        assert meta.model_names == (obj["model_id"],)
