@@ -2,10 +2,22 @@ import json
 import pathlib
 
 from aioresponses import aioresponses
+import attrs
+import pytest
 
-from zigpy.ota import providers
+from zigpy.ota import OtaImageWithMetadata, providers
+
+from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 
 FILES_DIR = pathlib.Path(__file__).parent / "files"
+
+
+@attrs.define(frozen=True, kw_only=True)
+class SelfContainedOtaImageMetadata(providers.BaseOtaImageMetadata):
+    test_data: bytes
+
+    async def _fetch(self) -> bytes:
+        return self.test_data
 
 
 def _test_z2m_index_entry(obj: dict, meta: providers.BaseOtaImageMetadata) -> bool:
@@ -263,3 +275,28 @@ async def test_salus_unzipping_valid():
 
     # This exists only in the OTA image
     assert ota_image.header.manufacturer_id == 43981
+
+
+async def test_ota_fetch_size_and_checksum_validation(
+    image_with_metadata: OtaImageWithMetadata,
+) -> None:
+    assert image_with_metadata.firmware is not None
+
+    meta = SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+        file_version=image_with_metadata.metadata.file_version,
+        checksum=image_with_metadata.metadata.checksum,
+        file_size=image_with_metadata.metadata.file_size,
+        test_data=image_with_metadata.firmware.serialize(),
+    )
+
+    fw = await meta.fetch()
+    assert fw == image_with_metadata.firmware
+
+    with pytest.raises(ValueError):
+        await meta.replace(file_size=meta.file_size + 1).fetch()
+
+    assert meta.checksum is not None
+    assert not meta.checksum.endswith("c")
+
+    with pytest.raises(ValueError):
+        await meta.replace(checksum=meta.checksum[:-1] + "c").fetch()

@@ -96,30 +96,25 @@ class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
         data = await super()._fetch()
 
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._extract_ota, data)
+        return await loop.run_in_executor(None, self._extract_ota_from_tar, data)
 
-    def _extract_ota(self, data: bytes) -> bytes:
-        img_tgz = io.BytesIO(data)
+    def _extract_ota_from_tar(self, data: bytes) -> bytes:
         files = {}
 
-        with tarfile.open(fileobj=img_tgz) as tar:
-            for item in tar:
-                if not item.name.endswith((".ota", ".json", ".zigbee")):
-                    continue
+        with tarfile.open(fileobj=io.BytesIO(data)) as tar:
+            for tarinfo in tar:
+                if tarinfo.isfile():
+                    f = tar.extractfile(tarinfo)
+                    assert f is not None
 
-                f = tar.extractfile(item)
+                    files[tarinfo.name] = f.read()
 
-                if f is not None:
-                    files[item.name] = f.read()
-
-        if "networkinfo.json" not in files:
-            raise ValueError("Archive does not contain a valid OTA image")
-
-        # Each archive contains a `networkinfo.json` file and a `.ota` file
+        # Each archive contains a `networkinfo.json` file and an OTA file
         networkinfo_json = json.loads(files["networkinfo.json"])
         upgrade = networkinfo_json["upgrade"][0]
         ota_contents = files[upgrade["filename"]]
 
+        # Pick the first file, there will only be one for Zigbee devices
         if hashlib.md5(ota_contents).hexdigest().upper() != upgrade["checksum"]:
             raise ValueError("Embedded OTA file has invalid MD5 checksum")
 
@@ -279,12 +274,12 @@ class Salus(BaseOtaProvider):
             fw_lst = await rsp.json()
 
         for fw in fw_lst["versions"]:
-            # A text file is present in the firmware list, ignore it
+            # A plain text file is present in the firmware list, ignore it
             if fw["version"] == "":
                 continue
 
             # Not every firmware is actually Zigbee but since they filter by model name
-            # there is no chance an invalid one will be shown
+            # there is little chance an invalid one will ever be matched
             yield SalusRemoteOtaImageMetadata(  # type: ignore[call-arg]
                 file_version=int(fw["version"], 16),
                 model_names=(fw["model"],),
