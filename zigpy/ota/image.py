@@ -12,12 +12,6 @@ import zigpy.types as t
 LOGGER = logging.getLogger(__name__)
 
 
-@attr.s(frozen=True)
-class ImageKey:
-    manufacturer_id = attr.ib(default=None)
-    image_type = attr.ib(default=None)
-
-
 class HWVersion(t.uint16_t):
     @property
     def version(self):
@@ -100,10 +94,6 @@ class OTAImageHeader(t.Struct):
         if self.field_control is None:
             return None
         return bool(self.field_control & FieldControl.HARDWARE_VERSIONS_PRESENT)
-
-    @property
-    def key(self) -> ImageKey:
-        return ImageKey(self.manufacturer_id, self.image_type)
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[OTAImageHeader, bytes]:

@@ -30,17 +30,6 @@ def image():
     return img
 
 
-@pytest.fixture
-def key():
-    return firmware.ImageKey(MANUFACTURER_ID, IMAGE_TYPE)
-
-
-def test_firmware_key():
-    key = firmware.ImageKey(MANUFACTURER_ID, IMAGE_TYPE)
-    assert key.manufacturer_id is MANUFACTURER_ID
-    assert key.image_type is IMAGE_TYPE
-
-
 def test_hw_version():
     hw = firmware.HWVersion(0x0A01)
     assert hw.version == 10
