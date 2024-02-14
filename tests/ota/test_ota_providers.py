@@ -100,7 +100,43 @@ async def test_trådfri_provider():
     assert len(index) == len(version_info_obj) - 1 == len(filtered_version_info_obj)
 
     for obj, meta in zip(filtered_version_info_obj, index):
+        assert isinstance(meta, provider.RemoteOtaImageMetadata)
         assert meta.image_type == obj["fw_image_type"]
         assert meta.checksum == "sha3-256:" + obj["fw_sha3_256"]
         assert meta.url == obj["fw_binary_url"]
         assert meta.manufacturer_id == provider.Trådfri.MANUFACTURER_IDS[0] == 4476
+
+
+async def test_ledvance_provider():
+    firmwares_json = (FILES_DIR / "ledvance_firmwares.json").read_text()
+    firmwares_obj = json.loads(firmwares_json)
+
+    ledvance_provider = provider.Ledvance()
+
+    with aioresponses() as mock_http:
+        mock_http.get(
+            "https://api.update.ledvance.com/v1/zigbee/firmwares",
+            body=firmwares_json,
+            content_type="application/json; charset=utf-8",
+        )
+
+        index = await ledvance_provider.load_index()
+
+    assert len(index) == len(firmwares_obj["firmwares"])
+
+    for obj, meta in zip(firmwares_obj["firmwares"], index):
+        assert isinstance(meta, provider.RemoteOtaImageMetadata)
+        assert meta.image_type == obj["identity"]["product"]
+        assert meta.checksum == "sha256:" + obj["shA256"]
+        assert meta.changelog == obj["releaseNotes"]
+        assert meta.file_size == obj["length"]
+        assert meta.manufacturer_id == obj["identity"]["company"]
+        assert meta.url == (
+            f"https://api.update.ledvance.com/v1/zigbee/firmwares/download"
+            f"?Company={obj['identity']['company']}"
+            f"&Product={obj['identity']['product']}"
+            f"&Version={obj['identity']['version']['major']}"
+            f".{obj['identity']['version']['minor']}"
+            f".{obj['identity']['version']['build']}"
+            f".{obj['identity']['version']['revision']}"
+        )

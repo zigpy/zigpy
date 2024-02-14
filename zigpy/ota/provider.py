@@ -230,15 +230,7 @@ class Ledvance(BaseOtaProvider):
 
         for fw in fw_lst["firmwares"]:
             identity = fw["identity"]
-            version_parts = identity["version"]
-
-            # This matches the OTA file's `image_version` for every image
-            (
-                (version_parts["major"] << 24)
-                | (version_parts["minor"] << 16)
-                | (version_parts["build"] << 8)
-                | (version_parts["revision"] << 0)
-            )
+            version = identity["version"]
 
             yield RemoteOtaImageMetadata(  # type: ignore[call-arg]
                 file_version=int(fw["fullName"].split("/")[1], 16),
@@ -253,13 +245,13 @@ class Ledvance(BaseOtaProvider):
                             "Company": identity["company"],
                             "Product": identity["product"],
                             "Version": (
-                                f"{version_parts['major']}.{version_parts['minor']}"
-                                f".{version_parts['build']}.{version_parts['revision']}"
+                                f"{version['major']}.{version['minor']}"
+                                f".{version['build']}.{version['revision']}"
                             ),
                         }
                     )
                 ),
-                release_notes=fw["releaseNotes"],
+                changelog=fw["releaseNotes"],
             )
 
 
