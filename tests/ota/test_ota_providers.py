@@ -320,10 +320,15 @@ async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
     assert len(index) == len(files)
 
     for path, meta in zip(files, index):
+        data = path.read_bytes()
+
         assert isinstance(meta, providers.LocalOtaImageMetadata)
         assert meta.path.name == path.name
-        assert meta.checksum == "sha1:" + hashlib.sha1(path.read_bytes()).hexdigest()
-        assert meta.file_size == len(path.read_bytes())
+        assert meta.checksum == "sha1:" + hashlib.sha1(data).hexdigest()
+        assert meta.file_size == len(data)
+
+        fw = await meta.fetch()
+        assert fw.serialize() == data
 
 
 async def test_salus_unzipping_valid():
