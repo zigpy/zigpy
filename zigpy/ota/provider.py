@@ -349,7 +349,7 @@ class RemoteProvider(BaseOtaProvider):
     def __init__(self, url: str, manufacturer_ids: list[int] | None = None):
         super().__init__()
         self.url = url
-        self.manufacturer_ids
+        self.manufacturer_ids = manufacturer_ids
 
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
         if self.manufacturer_ids is None:
@@ -368,15 +368,16 @@ class RemoteProvider(BaseOtaProvider):
                 file_version=fw["file_version"],
                 manufacturer_id=fw["manufacturer_id"],
                 image_type=fw["image_type"],
-                manufacturer_names=(),
-                model_names=() if "model_names" not in fw else tuple(fw["model_names"]),
+                manufacturer_names=tuple(fw.get("manufacturer_names", [])),
+                model_names=tuple(fw.get("model_names", [])),
                 checksum=fw["checksum"],
-                file_size=None,
+                file_size=fw.get("file_size"),
                 url=fw["binary_url"],
                 min_hardware_version=fw.get("min_hardware_version"),
                 max_hardware_version=fw.get("max_hardware_version"),
                 min_current_file_version=fw.get("min_current_file_version"),
                 max_current_file_version=fw.get("max_current_file_version"),
+                changelog=fw.get("changelog"),
             )
 
 
