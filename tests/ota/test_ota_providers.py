@@ -1,16 +1,55 @@
 import hashlib
 import json
 import pathlib
+import typing
+from unittest.mock import Mock
 
 from aioresponses import aioresponses
 import attrs
 import pytest
 
+import zigpy.device
 from zigpy.ota import OtaImageWithMetadata, providers
+import zigpy.types as t
 
+from tests.conftest import make_node_desc
 from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 
 FILES_DIR = pathlib.Path(__file__).parent / "files"
+
+
+@pytest.fixture
+def make_device() -> (
+    typing.Callable[
+        [typing.Optional[str], typing.Optional[str], typing.Optional[int]],
+        zigpy.device.Device,
+    ]
+):
+    def inner(
+        model: str | None = None,
+        manufacturer: str | None = None,
+        manufacturer_id: int | None = None,
+    ) -> zigpy.device.Device:
+        dev = zigpy.device.Device(
+            application=Mock(),
+            ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"),
+            nwk=0x1234,
+        )
+
+        dev.node_desc = make_node_desc()
+
+        if manufacturer_id is not None:
+            dev.node_desc.manufacturer_code = manufacturer_id
+
+        if model is not None:
+            dev.model = model
+
+        if manufacturer is not None:
+            dev.manufacturer = manufacturer
+
+        return dev
+
+    return inner
 
 
 @attrs.define(frozen=True, kw_only=True)
@@ -42,11 +81,16 @@ def _test_z2m_index_entry(obj: dict, meta: providers.BaseOtaImageMetadata) -> bo
     return True
 
 
-async def test_local_z2m_provider():
+async def test_local_z2m_provider(make_device):
     index_json = (FILES_DIR / "z2m_index.json").read_text()
     index_obj = json.loads(index_json)
 
     provider = providers.LocalZ2MProvider(FILES_DIR / "z2m_index.json")
+
+    # Compatible with all devices
+    assert provider.compatible_with_device(make_device(manufacturer_id=1234))
+    assert provider.compatible_with_device(make_device(manufacturer_id=5678))
+
     index = await provider.load_index()
 
     assert len(index) == len(index_obj)
@@ -62,12 +106,16 @@ async def test_local_z2m_provider():
             assert False
 
 
-async def test_remote_z2m_provider():
+async def test_remote_z2m_provider(make_device):
     index_json = (FILES_DIR / "z2m_index.json").read_text()
     index_obj = json.loads(index_json)
 
     index_url = "https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json"
     provider = providers.RemoteZ2MProvider(index_url)
+
+    # Compatible with all devices
+    assert provider.compatible_with_device(make_device(manufacturer_id=1234))
+    assert provider.compatible_with_device(make_device(manufacturer_id=5678))
 
     with aioresponses() as mock_http:
         mock_http.get(
@@ -86,11 +134,15 @@ async def test_remote_z2m_provider():
         assert meta.url == obj["url"]
 
 
-async def test_trådfri_provider():
+async def test_trådfri_provider(make_device):
     index_json = (FILES_DIR / "ikea_version_info.json").read_text()
     index_obj = json.loads(index_json)
 
     provider = providers.Trådfri()
+
+    # Compatible only with IKEA devices
+    assert provider.compatible_with_device(make_device(manufacturer_id=4476))
+    assert not provider.compatible_with_device(make_device(manufacturer_id=4477))
 
     with aioresponses() as mock_http:
         mock_http.get(
@@ -139,6 +191,32 @@ async def test_trådfri_provider():
         img = await meta.fetch()
 
     assert img.serialize() == ota_contents
+
+
+async def test_trådfri_provider_invalid_json():
+    index_json = (FILES_DIR / "ikea_version_info.json").read_text()
+    index_obj = json.loads(index_json) + [
+        {
+            "fw_image_type": 10242,
+            "fw_type": 2,
+            "fw_sha3_256": "e68e61bd57291e0b6358242e72ee2dfe098cb8b769f572b5b8f8e7a34dbcfaca",
+            # We expect the version to be in the URL
+            "fw_binary_url": "https://fw.ota.homesmart.ikea.com/files/bad.ota",
+        }
+    ]
+
+    provider = providers.Trådfri()
+
+    with aioresponses() as mock_http:
+        mock_http.get(
+            "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json",
+            body=index_json,
+            content_type="application/json",
+        )
+
+        index = await provider.load_index()
+
+    assert len(index) == len(index_obj) - 2
 
 
 async def test_ledvance_provider():
@@ -278,13 +356,23 @@ async def test_third_reality_provider():
         assert meta.file_version == obj["fileVersion"]
 
 
-async def test_remote_provider():
+async def test_remote_provider(make_device):
     index_json = (FILES_DIR / "remote_index.json").read_text()
     index_obj = json.loads(index_json)
 
+    # A provider with no manufacturer IDs is compatible with all images
+    assert providers.RemoteProvider("foo").compatible_with_device(
+        make_device(manufacturer_id=4476)
+    )
+
+    # Ours will have a predefined list, however
     provider = providers.RemoteProvider(
         "https://example.org/fw/index.json", manufacturer_ids=[1, 2, 3]
     )
+
+    # It is not initially compatible with the device
+    assert not provider.compatible_with_device(make_device(manufacturer_id=4476))
+    assert not provider.compatible_with_device(make_device(manufacturer_id=4454))
 
     with aioresponses() as mock_http:
         mock_http.get(
@@ -294,6 +382,10 @@ async def test_remote_provider():
         )
 
         index = await provider.load_index()
+
+    # Once the index is populated, it's now compatible with the known devices
+    assert not provider.compatible_with_device(make_device(manufacturer_id=4476))
+    assert provider.compatible_with_device(make_device(manufacturer_id=4454))
 
     assert len(index) == len(index_obj["firmwares"])
 
@@ -320,7 +412,7 @@ async def test_remote_provider():
     assert provider.manufacturer_ids == [1, 2, 3, 4454]
 
 
-async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
+async def test_advanced_file_provider(tmp_path: pathlib.Path, make_device) -> None:
     files = list((FILES_DIR / "local_provider").glob("[!.]*"))
     files.sort(key=lambda f: f.name)
 
@@ -331,6 +423,11 @@ async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
     (tmp_path / "bad.ota").write_bytes(b"This is not an OTA file")
 
     provider = providers.AdvancedFileProvider(tmp_path)
+
+    # The provider is compatible with all devices
+    assert provider.compatible_with_device(make_device(manufacturer_id=4476))
+    assert provider.compatible_with_device(make_device(manufacturer_id=4454))
+
     index = await provider.load_index()
 
     assert index is not None
