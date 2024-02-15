@@ -159,6 +159,11 @@ async def test_trådfri_provider(make_device):
 
         index = await provider.load_index()
 
+    # The provider will not allow itself to be loaded a second time this quickly
+    with aioresponses() as mock_http:
+        assert (await provider.load_index()) is None
+        mock_http.assert_not_called()
+
     # Skip the gateway firmware
     filtered_version_info_obj = [obj for obj in index_obj if obj["fw_type"] == 2]
     assert len(index) == len(index_obj) - 1 == len(filtered_version_info_obj)
@@ -200,7 +205,7 @@ async def test_trådfri_provider_invalid_json():
             "fw_image_type": 10242,
             "fw_type": 2,
             "fw_sha3_256": "e68e61bd57291e0b6358242e72ee2dfe098cb8b769f572b5b8f8e7a34dbcfaca",
-            # We expect the version to be in the URL
+            # We extract the version from the URL. Here, it is invalid.
             "fw_binary_url": "https://fw.ota.homesmart.ikea.com/files/bad.ota",
         }
     ]
@@ -210,7 +215,7 @@ async def test_trådfri_provider_invalid_json():
     with aioresponses() as mock_http:
         mock_http.get(
             "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json",
-            body=index_json,
+            body=json.dumps(index_obj),
             content_type="application/json",
         )
 
