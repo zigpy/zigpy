@@ -121,6 +121,25 @@ async def test_trådfri_provider():
         assert meta.url == obj["fw_binary_url"]
         assert meta.manufacturer_id == providers.Trådfri.MANUFACTURER_IDS[0] == 4476
 
+    meta = index[0]
+    assert meta.image_type == 10242
+
+    ota_contents = (
+        FILES_DIR
+        / "ikea/mgm210l-light-cws-cv-rgbw_release_prod_v268572245_3ae78af7-14fd-44df-bca2-6d366f2e9d02.ota"
+    ).read_bytes()
+
+    with aioresponses() as mock_http:
+        mock_http.get(
+            meta.url,
+            body=ota_contents,
+            content_type="binary/octet-stream",
+        )
+
+        img = await meta.fetch()
+
+    assert img.serialize() == ota_contents
+
 
 async def test_ledvance_provider():
     index_json = (FILES_DIR / "ledvance_firmwares.json").read_text()
