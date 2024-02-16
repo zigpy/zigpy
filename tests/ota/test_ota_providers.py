@@ -1,6 +1,8 @@
 import hashlib
+import io
 import json
 import pathlib
+import tarfile
 from unittest.mock import Mock
 
 from aioresponses import aioresponses
@@ -459,6 +461,48 @@ async def test_salus_unzipping_valid():
 
     # This exists only in the OTA image
     assert ota_image.header.manufacturer_id == 43981
+
+
+async def test_salus_unzipping_invalid():
+    def _add_file_to_tar(tar: tarfile.TarFile, path: str, contents: bytes) -> None:
+        info = tarfile.TarInfo(name=path)
+        info.size = len(contents)
+        tar.addfile(tarinfo=info, fileobj=io.BytesIO(contents))
+
+    f = io.BytesIO()
+
+    with tarfile.open(mode="w:gz", fileobj=f) as tar:
+        _add_file_to_tar(tar, path="Jasco_5_0_1_OnOff_45856_v6.ota", contents=b"bad")
+        _add_file_to_tar(
+            tar,
+            path="networkinfo.json",
+            contents=json.dumps(
+                {
+                    "upgrade": [
+                        {
+                            "filename": "Jasco_5_0_1_OnOff_45856_v6.ota",
+                            "version": "00000006",
+                            "checksum": "AAAAAA03B382B7DD79B81FC50E13BEB7",
+                            "type": 4,
+                        }
+                    ]
+                }
+            ).encode("utf-8"),
+        )
+
+    meta = providers.SalusRemoteOtaImageMetadata(
+        file_version=0x00000006,
+        model_names=("45856",),
+        url="http://eu.salusconnect.io/download/firmware/a65779cd-13cd-41e5-a7e0-5346f24a0f62/45856_00000006.tar.gz",
+    )
+
+    with aioresponses() as mock_http:
+        mock_http.get(meta.url, body=f.getvalue(), content_type="application/gzip")
+
+        with pytest.raises(
+            ValueError, match="Embedded OTA file has invalid MD5 checksum"
+        ):
+            await meta.fetch()
 
 
 async def test_ota_fetch_size_and_checksum_validation(
