@@ -22,6 +22,9 @@ from zigpy.config.defaults import (
     CONF_NWK_VALIDATE_SETTINGS_DEFAULT,
     CONF_OTA_ADVANCED_DIR_DEFAULT,
     CONF_OTA_ALLOW_ADVANCED_DIR_DEFAULT,
+    CONF_OTA_BROADCAST_ENABLED_DEFAULT,
+    CONF_OTA_BROADCAST_INITIAL_DELAY_DEFAULT,
+    CONF_OTA_BROADCAST_INTERVAL_DEFAULT,
     CONF_OTA_ENABLED_DEFAULT,
     CONF_OTA_IKEA_DEFAULT,
     CONF_OTA_INOVELLI_DEFAULT,
@@ -72,6 +75,9 @@ CONF_NWK_VALIDATE_SETTINGS = "validate_network_settings"
 CONF_OTA = "ota"
 CONF_OTA_ADVANCED_DIR = "advanced_ota_dir"
 CONF_OTA_ALLOW_ADVANCED_DIR = "allow_advanced_ota_dir"
+CONF_OTA_BROADCAST_ENABLED = "broadcast_enabled"
+CONF_OTA_BROADCAST_INITIAL_DELAY = "broadcast_initial_delay"
+CONF_OTA_BROADCAST_INTERVAL = "broadcast_interval"
 CONF_OTA_DIR = "otau_dir"
 CONF_OTA_ENABLED = "enabled"
 CONF_OTA_IKEA = "ikea_provider"
@@ -150,6 +156,16 @@ SCHEMA_OTA_PROVIDER = vol.Schema(
 
 SCHEMA_OTA = {
     vol.Optional(CONF_OTA_ENABLED, default=CONF_OTA_ENABLED_DEFAULT): cv_boolean,
+    vol.Optional(
+        CONF_OTA_BROADCAST_ENABLED, default=CONF_OTA_BROADCAST_ENABLED_DEFAULT
+    ): cv_boolean,
+    vol.Optional(
+        CONF_OTA_BROADCAST_INITIAL_DELAY,
+        default=CONF_OTA_BROADCAST_INITIAL_DELAY_DEFAULT,
+    ): vol.All(int, vol.Range(min=1)),
+    vol.Optional(
+        CONF_OTA_BROADCAST_INTERVAL, default=CONF_OTA_BROADCAST_INTERVAL_DEFAULT
+    ): vol.All(int, vol.Range(min=1)),
     vol.Optional(CONF_OTA_IKEA, default=CONF_OTA_IKEA_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_INOVELLI, default=CONF_OTA_INOVELLI_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_LEDVANCE, default=CONF_OTA_LEDVANCE_DEFAULT): cv_boolean,

@@ -10,6 +10,9 @@ import typing
 from zigpy.config import (
     CONF_OTA_ADVANCED_DIR,
     CONF_OTA_ALLOW_ADVANCED_DIR,
+    CONF_OTA_BROADCAST_ENABLED,
+    CONF_OTA_BROADCAST_INITIAL_DELAY,
+    CONF_OTA_BROADCAST_INTERVAL,
     CONF_OTA_ENABLED,
     CONF_OTA_IKEA,
     CONF_OTA_INOVELLI,
@@ -215,6 +218,39 @@ class OTA:
         if config[CONF_OTA_ENABLED]:
             self._register_providers(self._config)
 
+        self._broadcast_loop_task = None
+
+        if config[CONF_OTA_BROADCAST_ENABLED]:
+            self._broadcast_loop_task = asyncio.create_task(
+                self.broadcast_loop(
+                    initial_delay=config[CONF_OTA_BROADCAST_INITIAL_DELAY],
+                    interval=config[CONF_OTA_BROADCAST_INTERVAL],
+                )
+            )
+
+    async def broadcast_loop(
+        self, initial_delay: int | float, interval: int | float
+    ) -> None:
+        """Periodically broadcast an image notification to get devices to check in."""
+
+        await asyncio.sleep(initial_delay)
+
+        while True:
+            _LOGGER.debug("Broadcasting OTA notification")
+
+            try:
+                await self.broadcast_notify()
+            except Exception:
+                _LOGGER.debug("OTA broadcast failed", exc_info=True)
+
+            await asyncio.sleep(interval)
+
+    def stop_periodic_broadcasts(self) -> None:
+        """Stop the periodic OTA broadcasts."""
+        if self._broadcast_loop_task is not None:
+            self._broadcast_loop_task.cancel()
+            self._broadcast_loop_task = None
+
     def _register_providers(self, config: dict[str, typing.Any]) -> None:
         if config[CONF_OTA_ALLOW_ADVANCED_DIR]:
             self.register_provider(
@@ -300,7 +336,8 @@ class OTA:
 
             if index is None:
                 _LOGGER.debug(
-                    "Provider %s was recently contacted, ignoring for now", provider
+                    "Provider %s was recently contacted, using cached response",
+                    provider,
                 )
                 continue
 

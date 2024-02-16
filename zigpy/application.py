@@ -419,6 +419,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if self._watchdog_task is not None:
             self._watchdog_task.cancel()
 
+        self.ota.stop_periodic_broadcasts()
         self.backups.stop_periodic_backups()
         self.topology.stop_periodic_scans()
 
