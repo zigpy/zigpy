@@ -2171,8 +2171,8 @@ class Ota(Cluster):
                 self._handle_query_next_image(hdr, args),
             )
         elif (
-            hdr.direction == foundation.Direction.Server_to_Client
-            and hdr.command_id == self.ClientCommandDefs.image_block.id
+            hdr.direction == foundation.Direction.Client_to_Server
+            and hdr.command_id == self.ServerCommandDefs.image_block.id
         ):
             self.create_catching_task(
                 self._handle_image_block_req(hdr, args),

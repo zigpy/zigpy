@@ -208,6 +208,35 @@ async def test_ota_handle_query_next_image(ota_cluster):
     ]
 
 
+async def test_ota_handle_image_block_req(ota_cluster):
+    dev = ota_cluster.endpoint.device
+
+    ota_cluster.image_block_response = AsyncMock()
+    dev.ota_in_progress = False
+
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.image_block.id
+    )
+    cmd = MagicMock()
+
+    # Stop the upgrade, none is in progress
+    ota_cluster.handle_cluster_request(hdr, cmd)
+    await asyncio.sleep(0)
+
+    assert ota_cluster.image_block_response.mock_calls == [
+        call(zcl.foundation.Status.ABORT, tsn=hdr.tsn)
+    ]
+
+    ota_cluster.image_block_response.reset_mock()
+
+    # If we flip the progress flag, send nothing
+    dev.ota_in_progress = True
+    ota_cluster.handle_cluster_request(hdr, cmd)
+    await asyncio.sleep(0)
+
+    assert ota_cluster.image_block_response.mock_calls == []
+
+
 def test_ias_zone_type():
     extra = b"\xaa\x55"
     zone, rest = sec.IasZone.ZoneType.deserialize(b"\x0d\x00" + extra)
