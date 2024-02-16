@@ -2163,9 +2163,19 @@ class Ota(Cluster):
         *,
         dst_addressing: AddressingMode | None = None,
     ):
-        if hdr.command_id == self.ServerCommandDefs.query_next_image.id:
+        if (
+            hdr.direction == foundation.Direction.Client_to_Server
+            and hdr.command_id == self.ServerCommandDefs.query_next_image.id
+        ):
             self.create_catching_task(
                 self._handle_query_next_image(hdr, args),
+            )
+        elif (
+            hdr.direction == foundation.Direction.Server_to_Client
+            and hdr.command_id == self.ClientCommandDefs.image_block.id
+        ):
+            self.create_catching_task(
+                self._handle_image_block_req(hdr, args),
             )
 
     async def _handle_query_next_image(self, hdr, cmd):
@@ -2192,6 +2202,16 @@ class Ota(Cluster):
             img,
             cmd.current_file_version,
         )
+
+    async def _handle_image_block_req(self, hdr, cmd):
+        # We don't want the cluster to do anything here because it would interfere with
+        # the OTA manager
+        device = self.endpoint.device
+        if device.ota_in_progress:
+            return
+
+        # Abort any running firmware update (i.e. the integration is reloaded midway)
+        await self.image_block_response(foundation.Status.ABORT, tsn=hdr.tsn)
 
 
 class ScheduleRecord(t.Struct):

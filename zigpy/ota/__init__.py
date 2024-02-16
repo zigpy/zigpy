@@ -372,7 +372,10 @@ class OTA:
         if not highest_version_images:
             # If no image is actually compatible with the device (i.e. the metadata is
             # incomplete and after an image download we exclude the file), we are done
-            _LOGGER.debug("No firmware is compatible with the device")
+            _LOGGER.debug(
+                "No new firmware is compatible with the device or the device is already"
+                " fully up-to-date"
+            )
             return None
 
         # If there are multiple candidates with the same specificity and version but
