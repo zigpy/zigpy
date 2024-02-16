@@ -162,10 +162,10 @@ SCHEMA_OTA = {
     vol.Optional(
         CONF_OTA_BROADCAST_INITIAL_DELAY,
         default=CONF_OTA_BROADCAST_INITIAL_DELAY_DEFAULT,
-    ): vol.All(int, vol.Range(min=1)),
+    ): vol.All(vol.Coerce(float), vol.Range(min=0)),
     vol.Optional(
         CONF_OTA_BROADCAST_INTERVAL, default=CONF_OTA_BROADCAST_INTERVAL_DEFAULT
-    ): vol.All(int, vol.Range(min=1)),
+    ): vol.All(vol.Coerce(float), vol.Range(min=0)),
     vol.Optional(CONF_OTA_IKEA, default=CONF_OTA_IKEA_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_INOVELLI, default=CONF_OTA_INOVELLI_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_LEDVANCE, default=CONF_OTA_LEDVANCE_DEFAULT): cv_boolean,

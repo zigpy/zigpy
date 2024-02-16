@@ -215,6 +215,17 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 period=(60 * self.config[zigpy.config.CONF_TOPO_SCAN_PERIOD])
             )
 
+        if (
+            self.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED]
+            and self.config[conf.CONF_OTA][conf.CONF_OTA_BROADCAST_ENABLED]
+        ):
+            self.ota.start_periodic_broadcasts(
+                initial_delay=self._config[conf.CONF_OTA][
+                    conf.CONF_OTA_BROADCAST_INITIAL_DELAY
+                ],
+                interval=self._config[conf.CONF_OTA][conf.CONF_OTA_BROADCAST_INTERVAL],
+            )
+
     async def startup(self, *, auto_form: bool = False) -> None:
         """Starts a network, optionally forming one with random settings if necessary."""
 

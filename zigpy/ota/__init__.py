@@ -10,9 +10,6 @@ import typing
 from zigpy.config import (
     CONF_OTA_ADVANCED_DIR,
     CONF_OTA_ALLOW_ADVANCED_DIR,
-    CONF_OTA_BROADCAST_ENABLED,
-    CONF_OTA_BROADCAST_INITIAL_DELAY,
-    CONF_OTA_BROADCAST_INTERVAL,
     CONF_OTA_ENABLED,
     CONF_OTA_IKEA,
     CONF_OTA_INOVELLI,
@@ -215,18 +212,10 @@ class OTA:
             zigpy.ota.providers.BaseOtaImageMetadata, OtaImageWithMetadata
         ] = {}
 
-        if config[CONF_OTA_ENABLED]:
-            self._register_providers(self._config)
-
         self._broadcast_loop_task = None
 
-        if config[CONF_OTA_BROADCAST_ENABLED]:
-            self._broadcast_loop_task = asyncio.create_task(
-                self.broadcast_loop(
-                    initial_delay=config[CONF_OTA_BROADCAST_INITIAL_DELAY],
-                    interval=config[CONF_OTA_BROADCAST_INTERVAL],
-                )
-            )
+        if config[CONF_OTA_ENABLED]:
+            self._register_providers(self._config)
 
     async def broadcast_loop(
         self, initial_delay: int | float, interval: int | float
@@ -244,6 +233,17 @@ class OTA:
                 _LOGGER.debug("OTA broadcast failed", exc_info=True)
 
             await asyncio.sleep(interval)
+
+    def start_periodic_broadcasts(
+        self, initial_delay: int | float, interval: int | float
+    ) -> None:
+        """Start the periodic OTA broadcasts."""
+        self._broadcast_loop_task = asyncio.create_task(
+            self.broadcast_loop(
+                initial_delay=initial_delay,
+                interval=interval,
+            )
+        )
 
     def stop_periodic_broadcasts(self) -> None:
         """Stop the periodic OTA broadcasts."""

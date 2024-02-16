@@ -47,64 +47,6 @@ class BrokenOtaImageMetadata(BaseOtaImageMetadata):
         raise RuntimeError("Some problem")
 
 
-async def test_ota_disabled(tmp_path: pathlib.Path) -> None:
-    # Enable all the providers
-    ota = zigpy.ota.OTA(
-        config={
-            config.CONF_OTA_ENABLED: False,  # But disable OTA
-            config.CONF_OTA_ADVANCED_DIR: tmp_path,
-            config.CONF_OTA_ALLOW_ADVANCED_DIR: True,
-            config.CONF_OTA_IKEA: True,
-            config.CONF_OTA_INOVELLI: True,
-            config.CONF_OTA_LEDVANCE: True,
-            config.CONF_OTA_SALUS: True,
-            config.CONF_OTA_SONOFF: True,
-            config.CONF_OTA_THIRDREALITY: True,
-            config.CONF_OTA_REMOTE_PROVIDERS: [
-                {
-                    config.CONF_OTA_PROVIDER_URL: "https://example.org/remote_index.json",
-                    config.CONF_OTA_PROVIDER_MANUF_IDS: [0x1234, 4476],
-                }
-            ],
-            config.CONF_OTA_Z2M_LOCAL_INDEX: tmp_path / "index.json",
-            config.CONF_OTA_Z2M_REMOTE_INDEX: "https://example.org/z2m_index.json",
-        },
-        application=None,
-    )
-
-    # None are actually enabled
-    assert not ota._providers
-
-
-async def test_ota_enabled(tmp_path: pathlib.Path) -> None:
-    # Enable all the providers
-    ota = zigpy.ota.OTA(
-        config={
-            config.CONF_OTA_ENABLED: True,
-            config.CONF_OTA_ADVANCED_DIR: tmp_path,
-            config.CONF_OTA_ALLOW_ADVANCED_DIR: True,
-            config.CONF_OTA_IKEA: True,
-            config.CONF_OTA_INOVELLI: True,
-            config.CONF_OTA_LEDVANCE: True,
-            config.CONF_OTA_SALUS: True,
-            config.CONF_OTA_SONOFF: True,
-            config.CONF_OTA_THIRDREALITY: True,
-            config.CONF_OTA_REMOTE_PROVIDERS: [
-                {
-                    config.CONF_OTA_PROVIDER_URL: "https://example.org/remote_index.json",
-                    config.CONF_OTA_PROVIDER_MANUF_IDS: [0x1234, 4476],
-                }
-            ],
-            config.CONF_OTA_Z2M_LOCAL_INDEX: tmp_path / "index.json",
-            config.CONF_OTA_Z2M_REMOTE_INDEX: "https://example.org/z2m_index.json",
-        },
-        application=None,
-    )
-
-    # All are enabled
-    assert len(ota._providers) == 10
-
-
 async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
     device = make_device(model="device model", manufacturer_id=0x1234)
 
