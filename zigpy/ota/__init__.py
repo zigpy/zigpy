@@ -303,7 +303,7 @@ class OTA:
                 )
                 continue
 
-            _LOGGER.debug("Loaded %d images from provider", len(index))
+            _LOGGER.debug("Loaded %d images from provider: %s", len(index), provider)
 
             # Cache its images. If the concurrent call's result was shared, the first
             # caller will cache these images

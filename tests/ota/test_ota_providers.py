@@ -1,7 +1,6 @@
 import hashlib
 import json
 import pathlib
-import typing
 from unittest.mock import Mock
 
 from aioresponses import aioresponses
@@ -18,38 +17,29 @@ from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 FILES_DIR = pathlib.Path(__file__).parent / "files"
 
 
-@pytest.fixture
-def make_device() -> (
-    typing.Callable[
-        [typing.Optional[str], typing.Optional[str], typing.Optional[int]],
-        zigpy.device.Device,
-    ]
-):
-    def inner(
-        model: str | None = None,
-        manufacturer: str | None = None,
-        manufacturer_id: int | None = None,
-    ) -> zigpy.device.Device:
-        dev = zigpy.device.Device(
-            application=Mock(),
-            ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"),
-            nwk=0x1234,
-        )
+def make_device(
+    model: str | None = None,
+    manufacturer: str | None = None,
+    manufacturer_id: int | None = None,
+) -> zigpy.device.Device:
+    dev = zigpy.device.Device(
+        application=Mock(),
+        ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"),
+        nwk=0x1234,
+    )
 
-        dev.node_desc = make_node_desc()
+    dev.node_desc = make_node_desc()
 
-        if manufacturer_id is not None:
-            dev.node_desc.manufacturer_code = manufacturer_id
+    if manufacturer_id is not None:
+        dev.node_desc.manufacturer_code = manufacturer_id
 
-        if model is not None:
-            dev.model = model
+    if model is not None:
+        dev.model = model
 
-        if manufacturer is not None:
-            dev.manufacturer = manufacturer
+    if manufacturer is not None:
+        dev.manufacturer = manufacturer
 
-        return dev
-
-    return inner
+    return dev
 
 
 @attrs.define(frozen=True, kw_only=True)
@@ -81,7 +71,7 @@ def _test_z2m_index_entry(obj: dict, meta: providers.BaseOtaImageMetadata) -> bo
     return True
 
 
-async def test_local_z2m_provider(make_device):
+async def test_local_z2m_provider():
     index_json = (FILES_DIR / "z2m_index.json").read_text()
     index_obj = json.loads(index_json)
 
@@ -106,7 +96,7 @@ async def test_local_z2m_provider(make_device):
             assert False
 
 
-async def test_remote_z2m_provider(make_device):
+async def test_remote_z2m_provider():
     index_json = (FILES_DIR / "z2m_index.json").read_text()
     index_obj = json.loads(index_json)
 
@@ -134,7 +124,7 @@ async def test_remote_z2m_provider(make_device):
         assert meta.url == obj["url"]
 
 
-async def test_trådfri_provider(make_device):
+async def test_trådfri_provider():
     index_json = (FILES_DIR / "ikea_version_info.json").read_text()
     index_obj = json.loads(index_json)
 
@@ -361,7 +351,7 @@ async def test_third_reality_provider():
         assert meta.file_version == obj["fileVersion"]
 
 
-async def test_remote_provider(make_device):
+async def test_remote_provider():
     index_json = (FILES_DIR / "remote_index.json").read_text()
     index_obj = json.loads(index_json)
 
@@ -417,7 +407,7 @@ async def test_remote_provider(make_device):
     assert provider.manufacturer_ids == [1, 2, 3, 4454]
 
 
-async def test_advanced_file_provider(tmp_path: pathlib.Path, make_device) -> None:
+async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
     files = list((FILES_DIR / "local_provider").glob("[!.]*"))
     files.sort(key=lambda f: f.name)
 

@@ -155,7 +155,6 @@ SCHEMA_OTA = {
     vol.Optional(CONF_OTA_LEDVANCE, default=CONF_OTA_LEDVANCE_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_SALUS, default=CONF_OTA_SALUS_DEFAULT): cv_boolean,
     vol.Optional(CONF_OTA_SONOFF, default=CONF_OTA_SONOFF_DEFAULT): cv_boolean,
-    vol.Optional(CONF_OTA_SONOFF_URL): vol.Url(),
     vol.Optional(
         CONF_OTA_THIRDREALITY, default=CONF_OTA_THIRDREALITY_DEFAULT
     ): cv_boolean,
@@ -176,9 +175,12 @@ SCHEMA_OTA = {
         CONF_OTA_ALLOW_ADVANCED_DIR, default=CONF_OTA_ALLOW_ADVANCED_DIR_DEFAULT
     ): vol.All(cv_exact_object(CONF_OTA_ALLOW_ADVANCED_DIR_STRING)),
     # Deprecated keys
+    vol.Optional(CONF_OTA_SONOFF_URL): vol.Any(
+        cv_deprecated("The `sonoff_update_url` key has been removed")
+    ),
     vol.Optional(CONF_OTA_DIR): vol.Any(
         cv_deprecated(
-            "`otau_dir` has been removed. Use `z2m_local_index` or `z2m_remote_index`."
+            "`otau_dir` has been removed, use `z2m_local_index` or `z2m_remote_index`"
         )
     ),
     vol.Optional(CONF_OTA_IKEA_URL): vol.All(
