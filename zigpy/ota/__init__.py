@@ -43,6 +43,7 @@ if typing.TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 OTA_FETCH_TIMEOUT = 20
+MAX_DEVICES_CHECKING_IN_PER_BROADCAST = 15
 
 
 @dataclasses.dataclass(frozen=True)
@@ -432,11 +433,22 @@ class OTA:
         return highest_version_images[0]
 
     async def broadcast_notify(
-        self, broadcast_address=t.BroadcastAddress.ALL_DEVICES
+        self,
+        broadcast_address: t.BroadcastAddress = t.BroadcastAddress.ALL_DEVICES,
+        jitter: int | None = None,
     ) -> None:
         tsn = self._application.get_sequence()
 
         command = Ota.ClientCommandDefs.image_notify
+
+        # To avoid flooding huge networks, set the jitter such that we will probably
+        # have a fixed number of devices checking in at once. All devices should
+        # eventually check in, just not every time.
+        if jitter is None:
+            num_devices = len(self._application.devices)
+            jitter = 100 * min(
+                max(0, MAX_DEVICES_CHECKING_IN_PER_BROADCAST / max(1, num_devices)), 1
+            )
 
         hdr, request = Ota._create_request(
             self=None,
@@ -449,7 +461,7 @@ class OTA:
             args=(),
             kwargs={
                 "payload_type": Ota.ImageNotifyCommand.PayloadType.QueryJitter,
-                "query_jitter": 100,
+                "query_jitter": jitter,
             },
         )
 
