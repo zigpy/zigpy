@@ -27,6 +27,8 @@ from zigpy.ota.image import BaseOTAImage
 import zigpy.ota.providers
 import zigpy.types as t
 import zigpy.util
+from zigpy.zcl import foundation
+from zigpy.zcl.clusters.general import Ota
 
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
@@ -35,7 +37,6 @@ else:
 
 if typing.TYPE_CHECKING:
     import zigpy.application
-    from zigpy.zcl.clusters.general import Ota
 
     query_next_image = Ota.ServerCommandDefs.query_next_image.schema
 
@@ -392,3 +393,47 @@ class OTA:
         _LOGGER.debug("Picking firmware %s", highest_version_images[0])
 
         return highest_version_images[0]
+
+    async def broadcast_notify(
+        self, broadcast_address=t.BroadcastAddress.ALL_DEVICES
+    ) -> None:
+        tsn = self._application.get_sequence()
+
+        command = Ota.ClientCommandDefs.image_notify
+
+        hdr, request = Ota._create_request(
+            self=None,
+            general=False,
+            command_id=command.id,
+            schema=command.schema,
+            tsn=tsn,
+            disable_default_response=True,
+            direction=foundation.Direction.Server_to_Client,
+            args=(),
+            kwargs={
+                "payload_type": Ota.ImageNotifyCommand.PayloadType.QueryJitter,
+                "query_jitter": 100,
+            },
+        )
+
+        # Broadcast
+        await self._application.send_packet(
+            t.ZigbeePacket(
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=self._application.state.node_info.nwk,
+                ),
+                src_ep=1,
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.Broadcast,
+                    address=broadcast_address,
+                ),
+                dst_ep=0xFF,
+                tsn=tsn,
+                profile_id=zigpy.profiles.zha.PROFILE_ID,
+                cluster_id=Ota.cluster_id,
+                data=t.SerializableBytes(hdr.serialize() + request.serialize()),
+                tx_options=t.TransmitOptions.NONE,
+                radius=30,
+            )
+        )
