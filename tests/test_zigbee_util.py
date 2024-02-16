@@ -539,3 +539,22 @@ async def test_combine_concurrent_calls():
             await coro
 
     assert f.slow_error_calls == 2
+
+
+def test_deprecated():
+    @util.deprecated("This function is deprecated")
+    def foo():
+        return 1
+
+    with pytest.deprecated_call():
+        foo()
+
+    class Bar:
+        pass
+
+    obj = util.deprecated_attrs({"foo": Bar})
+
+    assert obj("foo") == Bar
+
+    with pytest.raises(AttributeError):
+        obj("baz")
