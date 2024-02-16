@@ -85,10 +85,17 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: Ota.QueryNextImageCommand
     ) -> None:
         """Handle image query request."""
+
+        # If we try to send a device an old image (e.g. cache issue), don't bother
+        if not self.image.check_compatibility(self.device, command):
+            status = foundation.Status.NO_IMAGE_AVAILABLE
+        else:
+            status = foundation.Status.SUCCESS
+
         try:
             assert self.ota_cluster
             await self.ota_cluster.query_next_image_response(
-                status=foundation.Status.SUCCESS,
+                status=status,
                 manufacturer_code=self.image.firmware.header.manufacturer_id,
                 image_type=self.image.firmware.header.image_type,
                 file_version=self.image.firmware.header.file_version,
@@ -97,7 +104,10 @@ class OTAManager:
             )
         except Exception as ex:
             self.device.debug("OTA query_next_image handler exception", exc_info=ex)
-            self._upgrade_end_future.set_result(foundation.Status.FAILURE)
+            status = foundation.Status.FAILURE
+
+        if status != foundation.Status.SUCCESS:
+            self._upgrade_end_future.set_result(status)
 
     async def _image_block_req(
         self, hdr: foundation.ZCLHeader, command: Ota.ImageBlockCommand
