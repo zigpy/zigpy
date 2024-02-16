@@ -322,19 +322,27 @@ class OTA:
             if img.check_compatibility(device, query_cmd)
         }
 
+        undownloaded_images = [
+            img for img in pre_candidates.values() if img.firmware is None
+        ]
+
         # Fetch all the candidates that are missing from the cache
-        for result_coro in asyncio.as_completed(
-            [
-                self._fetch_image(img)
-                for img in pre_candidates.values()
-                if img.firmware is None
-            ]
-        ):
-            try:
-                img = await result_coro
-            except Exception as exc:
-                _LOGGER.debug("Failed to download image", exc_info=exc)
+        results = await asyncio.gather(
+            *(self._fetch_image(img) for img in undownloaded_images),
+            return_exceptions=True,
+        )
+
+        for img, result in zip(undownloaded_images, results):
+            if isinstance(result, BaseException):
+                _LOGGER.debug(
+                    "Failed to download image, ignoring: %s", img, exc_info=result
+                )
+                pre_candidates.pop(img.metadata, None)
                 continue
+
+            # `img` is the metadata without downloaded firmware: `result` is the same
+            # image with downloaded firmware
+            img = result
 
             # Cache the image if it isn't already cached
             if self._image_cache[img.metadata].firmware is None:
