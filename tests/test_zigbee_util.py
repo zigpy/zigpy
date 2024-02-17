@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import sys
@@ -467,3 +469,16 @@ def test_singleton():
     obj = {}
     obj[singleton] = 5
     assert obj[singleton] == 5
+
+
+@pytest.mark.parametrize(
+    "input_relays, expected_relays",
+    [
+        ([0x0000, 0x0000, 0x0001, 0x0001, 0x0002], [0x0001, 0x0002]),
+        ([0x0001, 0x0002], [0x0001, 0x0002]),
+        ([], []),
+        ([0x0000], []),
+    ],
+)
+def test_relay_filtering(input_relays: list[int], expected_relays: list[int]):
+    assert util.filter_relays(input_relays) == expected_relays

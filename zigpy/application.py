@@ -598,8 +598,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 f"discover_unknown_device_from_relays-nwk={nwk!r}",
             )
         else:
-            # `relays` is a property with a setter that emits an event
-            device.relays = relays
+            device.relays = zigpy.util.filter_relays(relays)
 
     @classmethod
     async def probe(cls, device_config: dict[str, Any]) -> bool | dict[str, Any]:
