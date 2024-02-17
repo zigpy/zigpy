@@ -10,6 +10,7 @@ from zigpy.zcl.clusters.general import Ota
 import zigpy.zdo.types as zdo_t
 
 from tests.conftest import make_app, make_node_desc
+from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 
 
 def make_packet(dev: zigpy.device.Device, cluster: Cluster, cmd_name: str, **kwargs):
