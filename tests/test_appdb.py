@@ -22,11 +22,12 @@ import zigpy.ota
 from zigpy.quirks import CustomDevice
 import zigpy.types as t
 import zigpy.zcl
+from zigpy.zcl.clusters.general import Basic
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
 from tests.async_mock import AsyncMock, MagicMock, call, patch
-from tests.conftest import make_app, make_ieee
+from tests.conftest import make_app, make_ieee, make_node_desc
 from tests.test_backups import backup_factory  # noqa: F401
 
 
@@ -1118,3 +1119,46 @@ async def test_appdb_persist_coordinator_info(tmp_path):  # noqa: F811
         await app.shutdown()
 
     assert mock_save_attr_cache.mock_calls == [call(app._device.endpoints[1])]
+
+
+async def test_appdb_attribute_clear(tmp_path):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    app.device_initialized(dev)
+
+    basic.update_attribute(Basic.AttributeDefs.zcl_version.id, 0x12)
+
+    await app.shutdown()
+
+    # Upon reload, the attribute exists and is in the cache
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee=dev.ieee)
+    assert (
+        dev2.endpoints[1].basic._attr_cache[Basic.AttributeDefs.zcl_version.id] == 0x12
+    )
+
+    # Clear an existing attribute
+    dev2.endpoints[1].basic.update_attribute(Basic.AttributeDefs.zcl_version.id, None)
+
+    # Clear an attribute not in the cache
+    dev2.endpoints[1].basic.update_attribute(Basic.AttributeDefs.manufacturer.id, None)
+
+    assert Basic.AttributeDefs.zcl_version.id not in dev2.endpoints[1].basic._attr_cache
+    await asyncio.sleep(0.1)
+    await app2.shutdown()
+
+    # The attribute has been removed from the database
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(ieee=dev.ieee)
+    assert Basic.AttributeDefs.zcl_version.id not in dev3.endpoints[1].basic._attr_cache
+    await app3.shutdown()

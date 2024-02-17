@@ -284,6 +284,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             timestamp,
         )
 
+    def attribute_cleared(self, cluster: zigpy.typing.ClusterType, attrid: int) -> None:
+        self.enqueue(
+            "_clear_attribute",
+            cluster.endpoint.device.ieee,
+            cluster.endpoint.endpoint_id,
+            cluster.cluster_id,
+            attrid,
+        )
+
     def unsupported_attribute_added(
         self, cluster: zigpy.typing.ClusterType, attrid: int
     ) -> None:
@@ -568,6 +577,33 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "value": value,
                 "timestamp": timestamp.timestamp(),
                 "min_update_delta": MIN_UPDATE_DELTA,
+            },
+        )
+        await self._db.commit()
+
+    async def _clear_attribute(
+        self,
+        ieee: t.EUI64,
+        endpoint_id: int,
+        cluster_id: int,
+        attrid: int,
+    ) -> None:
+        q = f"""
+            DELETE FROM attributes_cache{DB_V}
+            WHERE
+                ieee = :ieee
+                AND endpoint_id = :endpoint_id
+                AND cluster = :cluster_id
+                AND attrid = :attrid
+            """
+
+        await self.execute(
+            q,
+            {
+                "ieee": ieee,
+                "endpoint_id": endpoint_id,
+                "cluster_id": cluster_id,
+                "attrid": attrid,
             },
         )
         await self._db.commit()
