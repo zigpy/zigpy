@@ -174,3 +174,47 @@ class PriorityLock(PriorityDynamicBoundedSemaphore):
 
 # Backwards compatibility
 DynamicBoundedSemaphore = PriorityDynamicBoundedSemaphore
+
+
+class ReschedulableTimeout:
+    """Timeout object made to be efficiently rescheduled continuously."""
+
+    def __init__(self, callback: typing.Callable[[], None]) -> None:
+        self._timer: asyncio.TimerHandle | None = None
+        self._callback = callback
+
+        self._when: float = 0
+
+    @functools.cached_property
+    def _loop(self) -> asyncio.AbstractEventLoop:
+        return asyncio.get_running_loop()
+
+    def _timeout_trigger(self) -> None:
+        now = self._loop.time()
+
+        # If we triggered early, reschedule
+        if self._when > now:
+            self._reschedule()
+            return
+
+        self._timer = None
+        self._callback()
+
+    def _reschedule(self) -> None:
+        if self._timer is not None:
+            self._timer.cancel()
+
+        self._timer = self._loop.call_at(self._when, self._timeout_trigger)
+
+    def reschedule(self, delay: float) -> None:
+        last_when = self._when
+        self._when = self._loop.time() + delay
+
+        if self._timer is None or self._timer.when() <= last_when:
+            # If the current timer will expire too late (or isn't running), reschedule
+            self._reschedule()
+
+    def cancel(self) -> None:
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
