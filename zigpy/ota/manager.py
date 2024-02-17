@@ -157,6 +157,8 @@ class OTAManager:
                 tsn=hdr.tsn,
             )
 
+            self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
+
             if self.progress_callback is not None:
                 self.progress_callback(
                     command.file_offset + len(block), len(self._image_data)
