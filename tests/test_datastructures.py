@@ -267,20 +267,10 @@ async def test_reschedulable_timeout_reschedule():
     timeout = datastructures.ReschedulableTimeout(callback)
 
     timeout.reschedule(0.1)
-    timeout.reschedule(0.1)
-    timeout.reschedule(0.1)
-    timeout.reschedule(0.1)
-    timeout.reschedule(0.1)
+    timeout.reschedule(0.2)
+    await asyncio.sleep(0.19)
     assert len(callback.mock_calls) == 0
-    timeout.reschedule(0.1)
-    timeout.reschedule(0.1)
-    await asyncio.sleep(0.09)
-    assert len(callback.mock_calls) == 0
-    timeout.reschedule(0.1)
-    timeout.reschedule(0.1)
     await asyncio.sleep(0.02)
-    assert len(callback.mock_calls) == 0
-    await asyncio.sleep(0.09)
     assert len(callback.mock_calls) == 1
 
 

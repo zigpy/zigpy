@@ -207,11 +207,10 @@ class ReschedulableTimeout:
         self._timer = self._loop.call_at(self._when, self._timeout_trigger)
 
     def reschedule(self, delay: float) -> None:
-        last_when = self._when
         self._when = self._loop.time() + delay
 
-        if self._timer is None or self._timer.when() <= last_when:
-            # If the current timer will expire too late (or isn't running), reschedule
+        # If the current timer will expire too late (or isn't running), reschedule
+        if self._timer is None or self._timer.when() > self._when:
             self._reschedule()
 
     def cancel(self) -> None:
