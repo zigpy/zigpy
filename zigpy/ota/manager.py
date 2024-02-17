@@ -214,11 +214,10 @@ async def update_firmware(
     if force:
         # Force it to send the image even if it's the same version
         image = image.replace(
+            metadata=image.metadata.replace(file_version=0xFFFFFFFF - 1),
             firmware=image.firmware.replace(
-                header=image.firmware.header.replace(
-                    file_version=0xFFFFFFFF - 1,
-                )
-            )
+                header=image.firmware.header.replace(file_version=0xFFFFFFFF - 1)
+            ),
         )
 
     def progress(current: int, total: int):
