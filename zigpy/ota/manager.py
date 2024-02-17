@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING
 
+import zigpy.datastructures
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import Ota
 
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 
 # Devices often ask for bigger blocks than radios can send
 MAXIMUM_IMAGE_BLOCK_SIZE = 40
+MAX_TIME_WITHOUT_PROGRESS = 10
 
 
 def find_ota_cluster(device: Device) -> Ota:
@@ -43,6 +45,10 @@ class OTAManager:
         self.progress_callback = progress_callback
 
         self._upgrade_end_future = asyncio.get_running_loop().create_future()
+        self._stall_timer = zigpy.datastructures.ReschedulableTimeout(
+            self._stall_callback
+        )
+
         self.stack = contextlib.ExitStack()
 
     def __enter__(self) -> OTAManager:
@@ -81,6 +87,15 @@ class OTAManager:
     def __exit__(self, *exc_details) -> None:
         self.stack.close()
 
+    def _stall_callback(self) -> None:
+        """Handle the stall timer expiring."""
+        self._finish(foundation.Status.TIMEOUT)
+
+    def _finish(self, status: foundation.Status) -> None:
+        """Finish the OTA process."""
+        self._stall_timer.cancel()
+        self._upgrade_end_future.set_result(status)
+
     async def _image_query_req(
         self, hdr: foundation.ZCLHeader, command: Ota.QueryNextImageCommand
     ) -> None:
@@ -93,7 +108,6 @@ class OTAManager:
             status = foundation.Status.SUCCESS
 
         try:
-            assert self.ota_cluster
             await self.ota_cluster.query_next_image_response(
                 status=status,
                 manufacturer_code=self.image.firmware.header.manufacturer_id,
@@ -107,7 +121,7 @@ class OTAManager:
             status = foundation.Status.FAILURE
 
         if status != foundation.Status.SUCCESS:
-            self._upgrade_end_future.set_result(status)
+            self._finish(status)
 
     async def _image_block_req(
         self, hdr: foundation.ZCLHeader, command: Ota.ImageBlockCommand
@@ -120,7 +134,6 @@ class OTAManager:
 
         if not block:
             try:
-                assert self.ota_cluster
                 await self.ota_cluster.image_block_response(
                     status=foundation.Status.MALFORMED_COMMAND,
                     tsn=hdr.tsn,
@@ -130,11 +143,10 @@ class OTAManager:
                     "OTA image_block handler[MALFORMED_COMMAND] exception", exc_info=ex
                 )
 
-            self._upgrade_end_future.set_result(foundation.Status.MALFORMED_COMMAND)
+            self._finish(foundation.Status.MALFORMED_COMMAND)
             return
 
         try:
-            assert self.ota_cluster
             await self.ota_cluster.image_block_response(
                 status=foundation.Status.SUCCESS,
                 manufacturer_code=self.image.firmware.header.manufacturer_id,
@@ -151,14 +163,13 @@ class OTAManager:
                 )
         except Exception as ex:
             self.device.debug("OTA image_block handler exception", exc_info=ex)
-            self._upgrade_end_future.set_result(foundation.Status.FAILURE)
+            self._finish(foundation.Status.FAILURE)
 
     async def _upgrade_end(
         self, hdr: foundation.ZCLHeader, command: foundation.CommandSchema
     ) -> None:
         """Handle upgrade end request."""
         try:
-            assert self.ota_cluster
             await self.ota_cluster.upgrade_end_response(
                 manufacturer_code=self.image.firmware.header.manufacturer_id,
                 image_type=self.image.firmware.header.image_type,
@@ -168,15 +179,14 @@ class OTAManager:
                 tsn=hdr.tsn,
             )
 
-            self._upgrade_end_future.set_result(command.status)
+            self._finish(command.status)
         except Exception as ex:
             self.device.debug("OTA upgrade_end handler exception", exc_info=ex)
-            self._upgrade_end_future.set_result(foundation.Status.FAILURE)
+            self._finish(foundation.Status.FAILURE)
 
     async def notify(self) -> None:
         """Notify device of new image."""
         try:
-            assert self.ota_cluster
             await self.ota_cluster.image_notify(
                 payload_type=(
                     self.ota_cluster.ImageNotifyCommand.PayloadType.QueryJitter
@@ -185,7 +195,9 @@ class OTAManager:
             )
         except Exception as ex:
             self.device.debug("OTA image_notify handler exception", exc_info=ex)
-            self._upgrade_end_future.set_result(foundation.Status.FAILURE)
+            self._finish(foundation.Status.FAILURE)
+        else:
+            self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
 
     async def wait(self) -> foundation.Status:
         """Wait for upgrade end response."""
