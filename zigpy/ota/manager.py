@@ -27,7 +27,7 @@ class OTAManager:
 
         for ep in device.non_zdo_endpoints:
             try:
-                self.ota_cluster = ep.out_clusters[Ota.cluster_id]
+                self.ota_cluster = ep.client_clusters[Ota.cluster_id]
                 break
             except KeyError:
                 pass

@@ -167,7 +167,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         hdr: types.ZDOHeader,
         addr: t.NWK,
         profile: int,
-        in_clusters: list,
+        server_clusters: list,
         out_cluster: list,
         dst_addressing: AddressingMode | None = None,
     ):

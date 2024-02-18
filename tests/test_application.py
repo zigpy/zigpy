@@ -1186,7 +1186,7 @@ def test_get_device_with_address_nwk(app, device):
 
 async def test_request_future_matching(app, make_initialized_device):
     device = make_initialized_device(app)
-    ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
+    ota = device.endpoints[1].add_client_cluster(clusters.general.Ota.cluster_id)
 
     req_hdr, req_cmd = ota._create_request(
         general=False,
@@ -1249,7 +1249,7 @@ async def test_request_future_matching(app, make_initialized_device):
 
 async def test_request_callback_matching(app, make_initialized_device):
     device = make_initialized_device(app)
-    ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
+    ota = device.endpoints[1].add_client_cluster(clusters.general.Ota.cluster_id)
 
     req_hdr, req_cmd = ota._create_request(
         general=False,

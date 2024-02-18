@@ -420,7 +420,7 @@ async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribut
     def get_device(dev):
         if dev.ieee == t.EUI64.convert("00:0d:6f:ff:fe:a6:11:7a"):
             ep = dev.add_endpoint(123)
-            ep.add_input_cluster(456)
+            ep.add_server_cluster(456)
 
         return dev
 
@@ -430,7 +430,7 @@ async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribut
 
     if with_quirk_attribute:
         dev = app.get_device(ieee=t.EUI64.convert("00:0d:6f:ff:fe:a6:11:7a"))
-        assert dev.endpoints[123].in_clusters[456]._attr_cache[789] == "test"
+        assert dev.endpoints[123].server_clusters[456]._attr_cache[789] == "test"
 
     await app.shutdown()
 

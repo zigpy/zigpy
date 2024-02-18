@@ -38,7 +38,7 @@ async def test_initialize(monkeypatch, dev):
 
     async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
-        self.add_input_cluster(Basic.cluster_id)
+        self.add_server_cluster(Basic.cluster_id)
 
     async def mock_ep_get_model_info(self):
         if self.endpoint_id == 1:
@@ -174,7 +174,7 @@ def test_radio_details(dev):
 
 async def test_handle_message_read_report_conf(dev):
     ep = dev.add_endpoint(3)
-    ep.add_input_cluster(0x702)
+    ep.add_server_cluster(0x702)
     tsn = 0x56
     req_mock = MagicMock()
     dev._pending[tsn] = req_mock
@@ -465,7 +465,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     tsn = 0x12
     ep = dev.add_endpoint(1)
     cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
-    ep.add_output_cluster(Ota.cluster_id, cluster)
+    ep.add_client_cluster(Ota.cluster_id, cluster)
     dev.get_sequence = MagicMock(return_value=tsn)
 
     async def mockrequest(nwk, tries=None, delay=None):
@@ -473,7 +473,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
 
     async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
-        self.add_input_cluster(Basic.cluster_id)
+        self.add_server_cluster(Basic.cluster_id)
 
     async def mock_ep_get_model_info(self):
         if self.endpoint_id == 1:
@@ -764,7 +764,7 @@ async def test_deserialize_backwards_compat(dev):
     )
 
     ep = dev.add_endpoint(1)
-    ep.add_input_cluster(Basic.cluster_id)
+    ep.add_server_cluster(Basic.cluster_id)
 
     dev.packet_received(packet)
 
@@ -780,7 +780,7 @@ async def test_request_exception_propagation(dev, event_loop):
     tsn = 0x12
 
     ep = dev.add_endpoint(1)
-    ep.add_input_cluster(Basic.cluster_id)
+    ep.add_server_cluster(Basic.cluster_id)
     ep.deserialize = MagicMock(side_effect=RuntimeError())
 
     dev.get_sequence = MagicMock(return_value=tsn)

@@ -19,8 +19,8 @@ DEFAULT_TSN = 123
 @pytest.fixture
 def endpoint():
     ep = zigpy.endpoint.Endpoint(MagicMock(), 1)
-    ep.add_input_cluster(0)
-    ep.add_input_cluster(3)
+    ep.add_server_cluster(0)
+    ep.add_server_cluster(3)
     return ep
 
 
@@ -766,7 +766,7 @@ async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
         b"\x06\x24\x02\x00\x05\x00\x00\x64\x29\xF8\x07\x65\x21\xD9\x0E\x66\x2B\x84\x87"
         b"\x01\x00\x0A\x21\x00\x00",
     )
-    cluster = endpoint.in_clusters[0]
+    cluster = endpoint.server_clusters[0]
     p1 = patch.object(cluster, "_update_attribute")
     p2 = patch.object(cluster, "general_command")
     with p1 as attr_lst_mock, p2 as general_cmd_mock:
@@ -1045,19 +1045,19 @@ async def test_zcl_request_direction():
     ep.device.get_sequence.return_value = DEFAULT_TSN
     ep.request = AsyncMock()
 
-    ep.add_input_cluster(zcl.clusters.general.OnOff.cluster_id)
-    ep.add_input_cluster(zcl.clusters.lighting.Color.cluster_id)
-    ep.add_output_cluster(zcl.clusters.general.OnOff.cluster_id)
+    ep.add_server_cluster(zcl.clusters.general.OnOff.cluster_id)
+    ep.add_server_cluster(zcl.clusters.lighting.Color.cluster_id)
+    ep.add_client_cluster(zcl.clusters.general.OnOff.cluster_id)
 
     # Input cluster
-    await ep.in_clusters[zcl.clusters.general.OnOff.cluster_id].on()
+    await ep.server_clusters[zcl.clusters.general.OnOff.cluster_id].on()
     hdr1, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
     assert hdr1.direction == foundation.Direction.Client_to_Server
 
     ep.request.reset_mock()
 
     # Output cluster
-    await ep.out_clusters[zcl.clusters.general.OnOff.cluster_id].on()
+    await ep.client_clusters[zcl.clusters.general.OnOff.cluster_id].on()
     hdr2, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
     assert hdr2.direction == foundation.Direction.Server_to_Client
 
