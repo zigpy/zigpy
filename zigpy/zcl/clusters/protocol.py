@@ -20,8 +20,8 @@ class DateTime(t.Struct):
 
 
 class GenericTunnel(Cluster):
-    cluster_id: Final = 0x0600
-    ep_attribute: Final = "generic_tunnel"
+    cluster_id = 0x0600
+    ep_attribute = "generic_tunnel"
 
     class AttributeDefs(BaseAttributeDefs):
         max_income_trans_size: Final = ZCLAttributeDef(id=0x0001, type=t.uint16_t)
@@ -41,8 +41,8 @@ class GenericTunnel(Cluster):
 
 
 class BacnetProtocolTunnel(Cluster):
-    cluster_id: Final = 0x0601
-    ep_attribute: Final = "bacnet_tunnel"
+    cluster_id = 0x0601
+    ep_attribute = "bacnet_tunnel"
 
     class ServerCommandDefs(BaseCommandDefs):
         transfer_npdu: Final = ZCLCommandDef(
@@ -51,22 +51,22 @@ class BacnetProtocolTunnel(Cluster):
 
 
 class AnalogInputRegular(Cluster):
-    cluster_id: Final = 0x0602
-    ep_attribute: Final = "bacnet_regular_analog_input"
+    cluster_id = 0x0602
+    ep_attribute = "bacnet_regular_analog_input"
 
     class AttributeDefs(BaseAttributeDefs):
         cov_increment: Final = ZCLAttributeDef(id=0x0016, type=t.Single)
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
-        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_name = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         update_interval: Final = ZCLAttributeDef(id=0x0076, type=t.uint8_t)
-        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+        profile_name = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
 class AnalogInputExtended(Cluster):
-    cluster_id: Final = 0x0603
-    ep_attribute: Final = "bacnet_extended_analog_input"
+    cluster_id = 0x0603
+    ep_attribute = "bacnet_extended_analog_input"
 
     class AttributeDefs(BaseAttributeDefs):
         acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
@@ -90,22 +90,22 @@ class AnalogInputExtended(Cluster):
 
 
 class AnalogOutputRegular(Cluster):
-    cluster_id: Final = 0x0604
-    ep_attribute: Final = "bacnet_regular_analog_output"
+    cluster_id = 0x0604
+    ep_attribute = "bacnet_regular_analog_output"
 
     class AttributeDefs(BaseAttributeDefs):
         cov_increment: Final = ZCLAttributeDef(id=0x0016, type=t.Single)
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
-        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_name = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         update_interval: Final = ZCLAttributeDef(id=0x0076, type=t.uint8_t)
-        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+        profile_name = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
 class AnalogOutputExtended(Cluster):
-    cluster_id: Final = 0x0605
-    ep_attribute: Final = "bacnet_extended_analog_output"
+    cluster_id = 0x0605
+    ep_attribute = "bacnet_extended_analog_output"
 
     class AttributeDefs(BaseAttributeDefs):
         acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
@@ -123,20 +123,20 @@ class AnalogOutputExtended(Cluster):
 
 
 class AnalogValueRegular(Cluster):
-    cluster_id: Final = 0x0606
-    ep_attribute: Final = "bacnet_regular_analog_value"
+    cluster_id = 0x0606
+    ep_attribute = "bacnet_regular_analog_value"
 
     class AttributeDefs(BaseAttributeDefs):
         cov_increment: Final = ZCLAttributeDef(id=0x0016, type=t.Single)
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
-        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_name = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
-        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+        profile_name = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
 class AnalogValueExtended(Cluster):
-    cluster_id: Final = 0x0607
-    ep_attribute: Final = "bacnet_extended_analog_value"
+    cluster_id = 0x0607
+    ep_attribute = "bacnet_extended_analog_value"
 
     class AttributeDefs(BaseAttributeDefs):
         acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
@@ -152,8 +152,8 @@ class AnalogValueExtended(Cluster):
 
 
 class BinaryInputRegular(Cluster):
-    cluster_id: Final = 0x0608
-    ep_attribute: Final = "bacnet_regular_binary_input"
+    cluster_id = 0x0608
+    ep_attribute = "bacnet_regular_binary_input"
 
     class AttributeDefs(BaseAttributeDefs):
         change_of_state_count: Final = ZCLAttributeDef(id=0x000F, type=t.uint32_t)
@@ -161,16 +161,16 @@ class BinaryInputRegular(Cluster):
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
         elapsed_active_time: Final = ZCLAttributeDef(id=0x0021, type=t.uint32_t)
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
-        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_name = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=DateTime)
         time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=DateTime)
-        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+        profile_name = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
 class BinaryInputExtended(Cluster):
-    cluster_id: Final = 0x0609
-    ep_attribute: Final = "bacnet_extended_binary_input"
+    cluster_id = 0x0609
+    ep_attribute = "bacnet_extended_binary_input"
 
     class AttributeDefs(BaseAttributeDefs):
         acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
@@ -185,8 +185,8 @@ class BinaryInputExtended(Cluster):
 
 
 class BinaryOutputRegular(Cluster):
-    cluster_id: Final = 0x060A
-    ep_attribute: Final = "bacnet_regular_binary_output"
+    cluster_id = 0x060A
+    ep_attribute = "bacnet_regular_binary_output"
 
     class AttributeDefs(BaseAttributeDefs):
         change_of_state_count: Final = ZCLAttributeDef(id=0x000F, type=t.uint32_t)
@@ -195,16 +195,16 @@ class BinaryOutputRegular(Cluster):
         elapsed_active_time: Final = ZCLAttributeDef(id=0x0021, type=t.uint32_t)
         feed_back_value: Final = ZCLAttributeDef(id=0x0028, type=t.enum8)
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
-        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_name = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=DateTime)
         time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=DateTime)
-        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+        profile_name = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
 class BinaryOutputExtended(Cluster):
-    cluster_id: Final = 0x060B
-    ep_attribute: Final = "bacnet_extended_binary_output"
+    cluster_id = 0x060B
+    ep_attribute = "bacnet_extended_binary_output"
 
     class AttributeDefs(BaseAttributeDefs):
         acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
@@ -218,24 +218,24 @@ class BinaryOutputExtended(Cluster):
 
 
 class BinaryValueRegular(Cluster):
-    cluster_id: Final = 0x060C
-    ep_attribute: Final = "bacnet_regular_binary_value"
+    cluster_id = 0x060C
+    ep_attribute = "bacnet_regular_binary_value"
 
     class AttributeDefs(BaseAttributeDefs):
         change_of_state_count: Final = ZCLAttributeDef(id=0x000F, type=t.uint32_t)
         change_of_state_time: Final = ZCLAttributeDef(id=0x0010, type=DateTime)
         elapsed_active_time: Final = ZCLAttributeDef(id=0x0021, type=t.uint32_t)
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
-        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_name = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=DateTime)
         time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=DateTime)
-        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+        profile_name = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
 class BinaryValueExtended(Cluster):
-    cluster_id: Final = 0x060D
-    ep_attribute: Final = "bacnet_extended_binary_value"
+    cluster_id = 0x060D
+    ep_attribute = "bacnet_extended_binary_value"
 
     class AttributeDefs(BaseAttributeDefs):
         acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
@@ -250,20 +250,20 @@ class BinaryValueExtended(Cluster):
 
 
 class MultistateInputRegular(Cluster):
-    cluster_id: Final = 0x060E
-    ep_attribute: Final = "bacnet_regular_multistate_input"
+    cluster_id = 0x060E
+    ep_attribute = "bacnet_regular_multistate_input"
 
     class AttributeDefs(BaseAttributeDefs):
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
-        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_name = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
-        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+        profile_name = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
 class MultistateInputExtended(Cluster):
-    cluster_id: Final = 0x060F
-    ep_attribute: Final = "bacnet_extended_multistate_input"
+    cluster_id = 0x060F
+    ep_attribute = "bacnet_extended_multistate_input"
 
     class AttributeDefs(BaseAttributeDefs):
         acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
@@ -279,21 +279,21 @@ class MultistateInputExtended(Cluster):
 
 
 class MultistateOutputRegular(Cluster):
-    cluster_id: Final = 0x0610
-    ep_attribute: Final = "bacnet_regular_multistate_output"
+    cluster_id = 0x0610
+    ep_attribute = "bacnet_regular_multistate_output"
 
     class AttributeDefs(BaseAttributeDefs):
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
         feed_back_value: Final = ZCLAttributeDef(id=0x0028, type=t.enum8)
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
-        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_name = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
-        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+        profile_name = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
 class MultistateOutputExtended(Cluster):
-    cluster_id: Final = 0x0611
-    ep_attribute: Final = "bacnet_extended_multistate_output"
+    cluster_id = 0x0611
+    ep_attribute = "bacnet_extended_multistate_output"
 
     class AttributeDefs(BaseAttributeDefs):
         acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)
@@ -307,19 +307,19 @@ class MultistateOutputExtended(Cluster):
 
 
 class MultistateValueRegular(Cluster):
-    cluster_id: Final = 0x0612
-    ep_attribute: Final = "bacnet_regular_multistate_value"
+    cluster_id = 0x0612
+    ep_attribute = "bacnet_regular_multistate_value"
 
     class AttributeDefs(BaseAttributeDefs):
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
-        object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
+        object_name = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
-        profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
+        profile_name = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
 class MultistateValueExtended(Cluster):
-    cluster_id: Final = 0x0613
-    ep_attribute: Final = "bacnet_extended_multistate_value"
+    cluster_id = 0x0613
+    ep_attribute = "bacnet_extended_multistate_value"
 
     class AttributeDefs(BaseAttributeDefs):
         acked_transitions: Final = ZCLAttributeDef(id=0x0000, type=t.bitmap8)

@@ -20,7 +20,7 @@ class ZoneState(t.enum8):
     Enrolled = 0x01
 
 
-class ZoneType(t.enum_factory(t.uint16_t, "manufacturer_specific")):
+class ZoneType(t.enum16):
     """Zone type enum."""
 
     Standard_CIE = 0x0000
@@ -75,9 +75,9 @@ class IasZone(Cluster):
     ZoneStatus: Final = ZoneStatus
     EnrollResponse: Final = EnrollResponse
 
-    cluster_id: Final = 0x0500
-    name: Final = "IAS Zone"
-    ep_attribute: Final = "ias_zone"
+    cluster_id = 0x0500
+    name = "IAS Zone"
+    ep_attribute = "ias_zone"
 
     class AttributeDefs(BaseAttributeDefs):
         # Zone Information
@@ -187,7 +187,7 @@ class ArmNotification(t.enum8):
     Already_Disarmed = 0x06
 
 
-class AudibleNotification(t.enum_factory(t.uint8_t, "manufacturer_specific")):
+class AudibleNotification(t.enum8):
     """IAS ACE audible notification enum."""
 
     Mute = 0x00
@@ -241,9 +241,9 @@ class IasAce(Cluster):
     ZoneStatus: Final = IasZone.ZoneStatus
     ZoneStatusRsp: Final = ZoneStatusRsp
 
-    cluster_id: Final = 0x0501
-    name: Final = "IAS Ancillary Control Equipment"
-    ep_attribute: Final = "ias_ace"
+    cluster_id = 0x0501
+    name = "IAS Ancillary Control Equipment"
+    ep_attribute = "ias_ace"
 
     class AttributeDefs(BaseAttributeDefs):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
@@ -484,9 +484,9 @@ class IasWd(Cluster):
     Warning: Final = WarningType
     Squawk: Final = Squawk
 
-    cluster_id: Final = 0x0502
-    name: Final = "IAS Warning Device"
-    ep_attribute: Final = "ias_wd"
+    cluster_id = 0x0502
+    name = "IAS Warning Device"
+    ep_attribute = "ias_wd"
 
     class AttributeDefs(BaseAttributeDefs):
         max_duration: Final = ZCLAttributeDef(

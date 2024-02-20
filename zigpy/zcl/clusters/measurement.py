@@ -18,9 +18,9 @@ class LightSensorType(t.enum8):
 class IlluminanceMeasurement(Cluster):
     LightSensorType: Final = LightSensorType
 
-    cluster_id: Final = 0x0400
-    name: Final = "Illuminance Measurement"
-    ep_attribute: Final = "illuminance"
+    cluster_id = 0x0400
+    name = "Illuminance Measurement"
+    ep_attribute = "illuminance"
 
     class AttributeDefs(BaseAttributeDefs):
         measured_value: Final = ZCLAttributeDef(
@@ -50,9 +50,9 @@ class IlluminanceLevelSensing(Cluster):
     LevelStatus: Final = LevelStatus
     LightSensorType: Final = LightSensorType
 
-    cluster_id: Final = 0x0401
-    name: Final = "Illuminance Level Sensing"
-    ep_attribute: Final = "illuminance_level"
+    cluster_id = 0x0401
+    name = "Illuminance Level Sensing"
+    ep_attribute = "illuminance_level"
 
     class AttributeDefs(BaseAttributeDefs):
         level_status: Final = ZCLAttributeDef(
@@ -70,9 +70,9 @@ class IlluminanceLevelSensing(Cluster):
 
 
 class TemperatureMeasurement(Cluster):
-    cluster_id: Final = 0x0402
-    name: Final = "Temperature Measurement"
-    ep_attribute: Final = "temperature"
+    cluster_id = 0x0402
+    name = "Temperature Measurement"
+    ep_attribute = "temperature"
 
     class AttributeDefs(BaseAttributeDefs):
         # Temperature Measurement Information
@@ -93,9 +93,9 @@ class TemperatureMeasurement(Cluster):
 
 
 class PressureMeasurement(Cluster):
-    cluster_id: Final = 0x0403
-    name: Final = "Pressure Measurement"
-    ep_attribute: Final = "pressure"
+    cluster_id = 0x0403
+    name = "Pressure Measurement"
+    ep_attribute = "pressure"
 
     class AttributeDefs(BaseAttributeDefs):
         # Pressure Measurement Information
@@ -122,9 +122,9 @@ class PressureMeasurement(Cluster):
 
 
 class FlowMeasurement(Cluster):
-    cluster_id: Final = 0x0404
-    name: Final = "Flow Measurement"
-    ep_attribute: Final = "flow"
+    cluster_id = 0x0404
+    name = "Flow Measurement"
+    ep_attribute = "flow"
 
     class AttributeDefs(BaseAttributeDefs):
         measured_value: Final = ZCLAttributeDef(
@@ -142,9 +142,9 @@ class FlowMeasurement(Cluster):
 
 
 class RelativeHumidity(Cluster):
-    cluster_id: Final = 0x0405
-    name: Final = "Relative Humidity Measurement"
-    ep_attribute: Final = "humidity"
+    cluster_id = 0x0405
+    name = "Relative Humidity Measurement"
+    ep_attribute = "humidity"
 
     class AttributeDefs(BaseAttributeDefs):
         measured_value: Final = ZCLAttributeDef(
@@ -184,9 +184,9 @@ class OccupancySensing(Cluster):
     OccupancySensorType: Final = OccupancySensorType
     OccupancySensorTypeBitmap: Final = OccupancySensorTypeBitmap
 
-    cluster_id: Final = 0x0406
-    name: Final = "Occupancy Sensing"
-    ep_attribute: Final = "occupancy"
+    cluster_id = 0x0406
+    name = "Occupancy Sensing"
+    ep_attribute = "occupancy"
 
     class AttributeDefs(BaseAttributeDefs):
         # Occupancy Sensor Information
@@ -231,9 +231,9 @@ class OccupancySensing(Cluster):
 
 
 class LeafWetness(Cluster):
-    cluster_id: Final = 0x0407
-    name: Final = "Leaf Wetness Measurement"
-    ep_attribute: Final = "leaf_wetness"
+    cluster_id = 0x0407
+    name = "Leaf Wetness Measurement"
+    ep_attribute = "leaf_wetness"
 
     class AttributeDefs(BaseAttributeDefs):
         # Leaf Wetness Measurement Information
@@ -252,9 +252,9 @@ class LeafWetness(Cluster):
 
 
 class SoilMoisture(Cluster):
-    cluster_id: Final = 0x0408
-    name: Final = "Soil Moisture Measurement"
-    ep_attribute: Final = "soil_moisture"
+    cluster_id = 0x0408
+    name = "Soil Moisture Measurement"
+    ep_attribute = "soil_moisture"
 
     class AttributeDefs(BaseAttributeDefs):
         # Soil Moisture Measurement Information
@@ -273,9 +273,9 @@ class SoilMoisture(Cluster):
 
 
 class PH(Cluster):
-    cluster_id: Final = 0x0409
-    name: Final = "pH Measurement"
-    ep_attribute: Final = "ph"
+    cluster_id = 0x0409
+    name = "pH Measurement"
+    ep_attribute = "ph"
 
     class AttributeDefs(BaseAttributeDefs):
         # pH Measurement Information
@@ -294,9 +294,9 @@ class PH(Cluster):
 
 
 class ElectricalConductivity(Cluster):
-    cluster_id: Final = 0x040A
-    name: Final = "Electrical Conductivity"
-    ep_attribute: Final = "electrical_conductivity"
+    cluster_id = 0x040A
+    name = "Electrical Conductivity"
+    ep_attribute = "electrical_conductivity"
 
     class AttributeDefs(BaseAttributeDefs):
         measured_value: Final = ZCLAttributeDef(
@@ -314,9 +314,9 @@ class ElectricalConductivity(Cluster):
 
 
 class WindSpeed(Cluster):
-    cluster_id: Final = 0x040B
-    name: Final = "Wind Speed Measurement"
-    ep_attribute: Final = "wind_speed"
+    cluster_id = 0x040B
+    name = "Wind Speed Measurement"
+    ep_attribute = "wind_speed"
 
     class AttributeDefs(BaseAttributeDefs):
         # Wind Speed Measurement Information
@@ -353,200 +353,200 @@ class _ConcentrationMixin:
 
 
 class CarbonMonoxideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x040C
-    name: Final = "Carbon Monoxide (CO) Concentration"
-    ep_attribute: Final = "carbon_monoxide_concentration"
+    cluster_id = 0x040C
+    name = "Carbon Monoxide (CO) Concentration"
+    ep_attribute = "carbon_monoxide_concentration"
 
 
 class CarbonDioxideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x040D
-    name: Final = "Carbon Dioxide (CO₂) Concentration"
-    ep_attribute: Final = "carbon_dioxide_concentration"
+    cluster_id = 0x040D
+    name = "Carbon Dioxide (CO₂) Concentration"
+    ep_attribute = "carbon_dioxide_concentration"
 
 
 class EthyleneConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x040E
-    name: Final = "Ethylene (CH₂) Concentration"
-    ep_attribute: Final = "ethylene_concentration"
+    cluster_id = 0x040E
+    name = "Ethylene (CH₂) Concentration"
+    ep_attribute = "ethylene_concentration"
 
 
 class EthyleneOxideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x040F
-    name: Final = "Ethylene Oxide (C₂H₄O) Concentration"
-    ep_attribute: Final = "ethylene_oxide_concentration"
+    cluster_id = 0x040F
+    name = "Ethylene Oxide (C₂H₄O) Concentration"
+    ep_attribute = "ethylene_oxide_concentration"
 
 
 class HydrogenConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0410
-    name: Final = "Hydrogen (H) Concentration"
-    ep_attribute: Final = "hydrogen_concentration"
+    cluster_id = 0x0410
+    name = "Hydrogen (H) Concentration"
+    ep_attribute = "hydrogen_concentration"
 
 
 class HydrogenSulfideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0411
-    name: Final = "Hydrogen Sulfide (H₂S) Concentration"
-    ep_attribute: Final = "hydrogen_sulfide_concentration"
+    cluster_id = 0x0411
+    name = "Hydrogen Sulfide (H₂S) Concentration"
+    ep_attribute = "hydrogen_sulfide_concentration"
 
 
 class NitricOxideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0412
-    name: Final = "Nitric Oxide (NO) Concentration"
-    ep_attribute: Final = "nitric_oxide_concentration"
+    cluster_id = 0x0412
+    name = "Nitric Oxide (NO) Concentration"
+    ep_attribute = "nitric_oxide_concentration"
 
 
 class NitrogenDioxideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0413
-    name: Final = "Nitrogen Dioxide (NO₂) Concentration"
-    ep_attribute: Final = "nitrogen_dioxide_concentration"
+    cluster_id = 0x0413
+    name = "Nitrogen Dioxide (NO₂) Concentration"
+    ep_attribute = "nitrogen_dioxide_concentration"
 
 
 class OxygenConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0414
-    name: Final = "Oxygen (O₂) Concentration"
-    ep_attribute: Final = "oxygen_concentration"
+    cluster_id = 0x0414
+    name = "Oxygen (O₂) Concentration"
+    ep_attribute = "oxygen_concentration"
 
 
 class OzoneConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0415
-    name: Final = "Ozone (O₃) Concentration"
-    ep_attribute: Final = "ozone_concentration"
+    cluster_id = 0x0415
+    name = "Ozone (O₃) Concentration"
+    ep_attribute = "ozone_concentration"
 
 
 class SulfurDioxideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0416
-    name: Final = "Sulfur Dioxide (SO₂) Concentration"
-    ep_attribute: Final = "sulfur_dioxide_concentration"
+    cluster_id = 0x0416
+    name = "Sulfur Dioxide (SO₂) Concentration"
+    ep_attribute = "sulfur_dioxide_concentration"
 
 
 class DissolvedOxygenConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0417
-    name: Final = "Dissolved Oxygen (DO) Concentration"
-    ep_attribute: Final = "dissolved_oxygen_concentration"
+    cluster_id = 0x0417
+    name = "Dissolved Oxygen (DO) Concentration"
+    ep_attribute = "dissolved_oxygen_concentration"
 
 
 class BromateConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0418
-    name: Final = "Bromate Concentration"
-    ep_attribute: Final = "bromate_concentration"
+    cluster_id = 0x0418
+    name = "Bromate Concentration"
+    ep_attribute = "bromate_concentration"
 
 
 class ChloraminesConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0419
-    name: Final = "Chloramines Concentration"
-    ep_attribute: Final = "chloramines_concentration"
+    cluster_id = 0x0419
+    name = "Chloramines Concentration"
+    ep_attribute = "chloramines_concentration"
 
 
 class ChlorineConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x041A
-    name: Final = "Chlorine Concentration"
-    ep_attribute: Final = "chlorine_concentration"
+    cluster_id = 0x041A
+    name = "Chlorine Concentration"
+    ep_attribute = "chlorine_concentration"
 
 
 class FecalColiformAndEColiFraction(_ConcentrationMixin, Cluster):
     """Percent of positive samples"""
 
-    cluster_id: Final = 0x041B
-    name: Final = "Fecal coliform & E. Coli Fraction"
-    ep_attribute: Final = "fecal_coliform_and_e_coli_fraction"
+    cluster_id = 0x041B
+    name = "Fecal coliform & E. Coli Fraction"
+    ep_attribute = "fecal_coliform_and_e_coli_fraction"
 
 
 class FluorideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x041C  # XXX: spec repeats 0x041B but this seems like a mistake
-    name: Final = "Fluoride Concentration"
-    ep_attribute: Final = "fluoride_concentration"
+    cluster_id = 0x041C  # XXX: spec repeats 0x041B but this seems like a mistake
+    name = "Fluoride Concentration"
+    ep_attribute = "fluoride_concentration"
 
 
 class HaloaceticAcidsConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x041D
-    name: Final = "Haloacetic Acids Concentration"
-    ep_attribute: Final = "haloacetic_acids_concentration"
+    cluster_id = 0x041D
+    name = "Haloacetic Acids Concentration"
+    ep_attribute = "haloacetic_acids_concentration"
 
 
 class TotalTrihalomethanesConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x041E
-    name: Final = "Total Trihalomethanes Concentration"
-    ep_attribute: Final = "total_trihalomethanes_concentration"
+    cluster_id = 0x041E
+    name = "Total Trihalomethanes Concentration"
+    ep_attribute = "total_trihalomethanes_concentration"
 
 
 class TotalColiformBacteriaFraction(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x041F
-    name: Final = "Total Coliform Bacteria Fraction"
-    ep_attribute: Final = "total_coliform_bacteria_fraction"
+    cluster_id = 0x041F
+    name = "Total Coliform Bacteria Fraction"
+    ep_attribute = "total_coliform_bacteria_fraction"
 
 
 # XXX: is this a concentration? What are the units?
 class Turbidity(_ConcentrationMixin, Cluster):
     """Cloudiness of particles in water where an average person would notice a 5 or higher"""
 
-    cluster_id: Final = 0x0420
-    name: Final = "Turbidity"
-    ep_attribute: Final = "turbidity"
+    cluster_id = 0x0420
+    name = "Turbidity"
+    ep_attribute = "turbidity"
 
 
 class CopperConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0421
-    name: Final = "Copper Concentration"
-    ep_attribute: Final = "copper_concentration"
+    cluster_id = 0x0421
+    name = "Copper Concentration"
+    ep_attribute = "copper_concentration"
 
 
 class LeadConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0422
-    name: Final = "Lead Concentration"
-    ep_attribute: Final = "lead_concentration"
+    cluster_id = 0x0422
+    name = "Lead Concentration"
+    ep_attribute = "lead_concentration"
 
 
 class ManganeseConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0423
-    name: Final = "Manganese Concentration"
-    ep_attribute: Final = "manganese_concentration"
+    cluster_id = 0x0423
+    name = "Manganese Concentration"
+    ep_attribute = "manganese_concentration"
 
 
 class SulfateConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0424
-    name: Final = "Sulfate Concentration"
-    ep_attribute: Final = "sulfate_concentration"
+    cluster_id = 0x0424
+    name = "Sulfate Concentration"
+    ep_attribute = "sulfate_concentration"
 
 
 class BromodichloromethaneConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0425
-    name: Final = "Bromodichloromethane Concentration"
-    ep_attribute: Final = "bromodichloromethane_concentration"
+    cluster_id = 0x0425
+    name = "Bromodichloromethane Concentration"
+    ep_attribute = "bromodichloromethane_concentration"
 
 
 class BromoformConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0426
-    name: Final = "Bromoform Concentration"
-    ep_attribute: Final = "bromoform_concentration"
+    cluster_id = 0x0426
+    name = "Bromoform Concentration"
+    ep_attribute = "bromoform_concentration"
 
 
 class ChlorodibromomethaneConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0427
-    name: Final = "Chlorodibromomethane Concentration"
-    ep_attribute: Final = "chlorodibromomethane_concentration"
+    cluster_id = 0x0427
+    name = "Chlorodibromomethane Concentration"
+    ep_attribute = "chlorodibromomethane_concentration"
 
 
 class ChloroformConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0428
-    name: Final = "Chloroform Concentration"
-    ep_attribute: Final = "chloroform_concentration"
+    cluster_id = 0x0428
+    name = "Chloroform Concentration"
+    ep_attribute = "chloroform_concentration"
 
 
 class SodiumConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0429
-    name: Final = "Sodium Concentration"
-    ep_attribute: Final = "sodium_concentration"
+    cluster_id = 0x0429
+    name = "Sodium Concentration"
+    ep_attribute = "sodium_concentration"
 
 
 # XXX: is this a concentration? What are the units?
 class PM25(_ConcentrationMixin, Cluster):
     """Particulate Matter 2.5 microns or less"""
 
-    cluster_id: Final = 0x042A
-    name: Final = "PM2.5"
-    ep_attribute: Final = "pm25"
+    cluster_id = 0x042A
+    name = "PM2.5"
+    ep_attribute = "pm25"
 
 
 class FormaldehydeConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x042B
-    name: Final = "Formaldehyde Concentration"
-    ep_attribute: Final = "formaldehyde_concentration"
+    cluster_id = 0x042B
+    name = "Formaldehyde Concentration"
+    ep_attribute = "formaldehyde_concentration"

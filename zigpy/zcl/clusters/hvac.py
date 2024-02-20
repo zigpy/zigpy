@@ -67,9 +67,9 @@ class Pump(Cluster):
     OperationMode: Final = OperationMode
     PumpStatus: Final = PumpStatus
 
-    cluster_id: Final = 0x0200
-    name: Final = "Pump Configuration and Control"
-    ep_attribute: Final = "pump"
+    cluster_id = 0x0200
+    name = "Pump Configuration and Control"
+    ep_attribute = "pump"
 
     class AttributeDefs(BaseAttributeDefs):
         # Pump Information
@@ -347,8 +347,8 @@ class Thermostat(Cluster):
     RunningMode: Final = RunningMode
     RunningState: Final = RunningState
 
-    cluster_id: Final = 0x0201
-    ep_attribute: Final = "thermostat"
+    cluster_id = 0x0201
+    ep_attribute = "thermostat"
 
     class AttributeDefs(BaseAttributeDefs):
         # Thermostat Information
@@ -571,9 +571,9 @@ class Fan(Cluster):
     FanMode: Final = FanMode
     FanModeSequence: Final = FanModeSequence
 
-    cluster_id: Final = 0x0202
-    name: Final = "Fan Control"
-    ep_attribute: Final = "fan"
+    cluster_id = 0x0202
+    name = "Fan Control"
+    ep_attribute = "fan"
 
     class AttributeDefs(BaseAttributeDefs):
         fan_mode: Final = ZCLAttributeDef(id=0x0000, type=FanMode, access="")
@@ -604,8 +604,8 @@ class Dehumidification(Cluster):
     DehumidificationLockout: Final = DehumidificationLockout
     RelativeHumidityDisplay: Final = RelativeHumidityDisplay
 
-    cluster_id: Final = 0x0203
-    ep_attribute: Final = "dehumidification"
+    cluster_id = 0x0203
+    ep_attribute = "dehumidification"
 
     class AttributeDefs(BaseAttributeDefs):
         # Dehumidification Information
@@ -665,9 +665,9 @@ class UserInterface(Cluster):
     KeypadLockout: Final = KeypadLockout
     ScheduleProgrammingVisibility: Final = ScheduleProgrammingVisibility
 
-    cluster_id: Final = 0x0204
-    name: Final = "Thermostat User Interface Configuration"
-    ep_attribute: Final = "thermostat_ui"
+    cluster_id = 0x0204
+    name = "Thermostat User Interface Configuration"
+    ep_attribute = "thermostat_ui"
 
     class AttributeDefs(BaseAttributeDefs):
         temperature_display_mode: Final = ZCLAttributeDef(

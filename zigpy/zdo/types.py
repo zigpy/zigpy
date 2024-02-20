@@ -452,7 +452,7 @@ class _CommandID(t.uint16_t, repr="hex"):
     pass
 
 
-class ZDOCmd(t.enum_factory(_CommandID)):
+class ZDOCmd(_CommandID, t.BaseEnum):
     # Device and Service Discovery Server Requests
     NWK_addr_req = 0x0000
     IEEE_addr_req = 0x0001

@@ -166,10 +166,19 @@ disable_error_code = [
     "misc",
     "attr-defined",
     "assignment",
-    "arg-type"
+    "arg-type",
+    "has-type",
 ]
 # Only report on selected files
 follow_imports = "silent"
+
+[[tool.mypy.overrides]]
+module = [
+    "zigpy.appdb_schemas",
+    "zigpy.types.basic",
+    "zigpy.types.named",
+]
+disable_error_code = []
 
 [tool.coverage.run]
 source = ["zigpy"]
