@@ -296,6 +296,7 @@ class EntityMetadata:
     cluster_type: ClusterType = dataclasses.field(default=ClusterType.Server)
     initially_disabled: bool = dataclasses.field(default=False)
     attribute_initialized_from_cache: bool = dataclasses.field(default=True)
+    translation_key: str | None = dataclasses.field(default=None)
 
     def __call__(self, device: CustomDeviceV2):
         """Add the entity metadata to the quirks v2 device."""
@@ -424,6 +425,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         entity_platform: EntityPlatform = EntityPlatform.SELECT,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
+        translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
         """Add a enum and return self."""
         self.entity_metadata.append(
@@ -439,6 +441,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                 ),
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
+                translation_key=translation_key,
             )
         )
         return self
@@ -457,6 +460,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         state_class: SensorStateClass | None = None,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
+        translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
         """Add a switch and return self."""
         self.entity_metadata.append(
@@ -476,6 +480,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                 ),
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
+                translation_key=translation_key,
             )
         )
         return self
@@ -493,6 +498,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         entity_platform=EntityPlatform.SWITCH,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
+        translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
         """Add a switch and return self."""
         self.entity_metadata.append(
@@ -511,6 +517,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                 ),
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
+                translation_key=translation_key,
             )
         )
         return self
@@ -530,6 +537,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         device_class: NumberDeviceClass | None = None,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
+        translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
         """Add a number and return self."""
         self.entity_metadata.append(
@@ -551,6 +559,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                 ),
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
+                translation_key=translation_key,
             )
         )
         return self
@@ -564,6 +573,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         device_class: BinarySensorDeviceClass | None = None,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
+        translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
         """Add a binary sensor and return self."""
         self.entity_metadata.append(
@@ -579,6 +589,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                 ),
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
+                translation_key=translation_key,
             )
         )
         return self
@@ -593,6 +604,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         entity_type: EntityType = EntityType.CONFIG,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
+        translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
         """Add a write attribute button and return self."""
         self.entity_metadata.append(
@@ -608,6 +620,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                 ),
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
+                translation_key=translation_key,
             )
         )
         return self
@@ -622,6 +635,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         endpoint_id: int = 1,
         entity_type: EntityType = EntityType.CONFIG,
         initially_disabled: bool = False,
+        translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
         """Add a zcl command button and return self."""
         self.entity_metadata.append(
@@ -637,6 +651,7 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
                     kwargs=command_kwargs,
                 ),
                 initially_disabled=initially_disabled,
+                translation_key=translation_key,
             )
         )
         return self
