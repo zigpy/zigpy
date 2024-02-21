@@ -38,12 +38,15 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+# pylint: disable=too-many-instance-attributes
+# pylint: disable=too-many-arguments
+
+
 class CustomDeviceV2(CustomDevice):
     """Implementation of a quirks v2 custom device."""
 
     _copy_cluster_attr_cache = True
 
-    # pylint: disable=too-many-arguments
     def __init__(
         self,
         application: ControllerApplication,
@@ -306,7 +309,7 @@ class EntityMetadata:
 
 
 @dataclasses.dataclass
-class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
+class QuirksV2RegistryEntry:
     """Quirks V2 registry entry."""
 
     registry: DeviceRegistry = None
@@ -357,7 +360,6 @@ class QuirksV2RegistryEntry:  # pylint: disable=too-many-instance-attributes
         self.skip_device_configuration = skip_configuration
         return self
 
-    # pylint: disable=too-many-arguments
     def adds(
         self,
         cluster: int | type[Cluster | CustomCluster],
