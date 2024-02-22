@@ -50,7 +50,7 @@ class ListenableMixin:
         for listener, include_context in self._listeners.values():
             method = getattr(listener, method_name, None)
 
-            if not method:
+            if method is None:
                 continue
 
             try:
@@ -69,7 +69,7 @@ class ListenableMixin:
         for listener, include_context in self._listeners.values():
             method = getattr(listener, method_name, None)
 
-            if not method:
+            if method is None:
                 continue
 
             if include_context:
@@ -462,3 +462,35 @@ def filter_relays(relays: list[int]) -> list[int]:
             filtered_relays.append(relay)
 
     return filtered_relays
+
+
+def combine_concurrent_calls(
+    function: typing.Callable[..., typing.Coroutine[typing.Any, typing.Any, typing.Any]]
+) -> typing.Callable[..., typing.Coroutine[typing.Any, typing.Any, typing.Any]]:
+    """
+    Decorator that allows concurrent calls to expensive coroutines to share a result.
+    """
+
+    tasks: dict[tuple, asyncio.Task] = {}
+    signature = inspect.signature(function)
+
+    @functools.wraps(function)
+    async def replacement(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
+        bound = signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+
+        # XXX: all args and kwargs are assumed to be hashable
+        key = tuple(bound.arguments.items())
+
+        if key in tasks:
+            return await tasks[key]
+
+        tasks[key] = asyncio.create_task(function(*args, **kwargs))
+
+        try:
+            return await tasks[key]
+        finally:
+            assert tasks[key].done()
+            del tasks[key]
+
+    return replacement

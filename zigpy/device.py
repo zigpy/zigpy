@@ -9,7 +9,8 @@ import sys
 import typing
 import warnings
 
-from zigpy.ota.manager import update_firmware
+from zigpy.ota.manager import find_ota_cluster, update_firmware
+from zigpy.zcl.clusters.general import Ota
 
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
@@ -38,7 +39,7 @@ import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
-    from zigpy.ota.image import BaseOTAImage
+    from zigpy.ota.providers import OtaImageWithMetadata
 
 APS_REPLY_TIMEOUT = 5
 APS_REPLY_TIMEOUT_EXTENDED = 28
@@ -498,7 +499,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     async def update_firmware(
         self,
-        firmware_image: BaseOTAImage,
+        image: OtaImageWithMetadata,
         progress_callback: callable = None,
         force: bool = False,
     ) -> foundation.Status:
@@ -511,14 +512,22 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         try:
             result = await update_firmware(
-                self, firmware_image, progress_callback, force
+                device=self,
+                image=image,
+                progress_callback=progress_callback,
+                force=force,
             )
         except Exception as exc:
-            self.ota_in_progress = False
             self.debug("OTA failed!", exc_info=exc)
             raise exc
+        finally:
+            self.ota_in_progress = False
 
-        self.ota_in_progress = False
+        if result == foundation.Status.SUCCESS:
+            # Clear the current file version when the update succeeds
+            ota = find_ota_cluster(self)
+            ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
+
         return result
 
     def radio_details(self, lqi=None, rssi=None) -> None:

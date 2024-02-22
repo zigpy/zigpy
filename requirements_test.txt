@@ -10,5 +10,6 @@ pytest-timeout
 freezegun
 ruff==0.0.261
 tomli
+aioresponses
 
 pysqlite3-binary; platform_system=="Linux" and python_version<"3.12"

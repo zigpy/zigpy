@@ -7,10 +7,11 @@ from zigpy import device
 import zigpy.endpoint
 import zigpy.types as types
 import zigpy.zcl as zcl
+from zigpy.zcl.clusters.general import Ota
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
 
-from .async_mock import AsyncMock, MagicMock, patch, sentinel
+from .async_mock import AsyncMock, MagicMock, call, patch, sentinel
 
 IMAGE_SIZE = 0x2345
 IMAGE_OFFSET = 0x2000
@@ -139,7 +140,6 @@ def dev(monkeypatch, app_mock):
 @pytest.fixture
 def ota_cluster(dev):
     ep = dev.add_endpoint(1)
-    # ep.device.application.ota = MagicMock(spec_set=ota.OTA)
 
     cluster = zcl.Cluster._registry[0x0019](ep)
 
@@ -149,117 +149,92 @@ def ota_cluster(dev):
         yield cluster
 
 
-async def test_ota_handle_cluster_req(ota_cluster):
-    ota_cluster._handle_cluster_request = AsyncMock()
-
-    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(123, 0x00)
-    ota_cluster.handle_cluster_request(hdr, sentinel.args)
-    assert ota_cluster._handle_cluster_request.call_count == 1
-
-
 async def test_ota_handle_cluster_req_wrapper(ota_cluster, caplog):
     ota_cluster._handle_query_next_image = AsyncMock()
-    ota_cluster._handle_image_block = AsyncMock()
-    ota_cluster._handle_upgrade_end = AsyncMock()
 
     hdr = zigpy.zcl.foundation.ZCLHeader.cluster(123, 0x01)
-    await ota_cluster._handle_cluster_request(hdr, [sentinel.args])
+    ota_cluster.handle_cluster_request(hdr, [sentinel.args])
     assert ota_cluster._handle_query_next_image.call_count == 1
-    assert ota_cluster._handle_query_next_image.call_args[0][0] == sentinel.args
-    assert ota_cluster._handle_image_block.call_count == 0
-    assert ota_cluster._handle_upgrade_end.call_count == 0
+    assert ota_cluster._handle_query_next_image.mock_calls[0].args == (
+        hdr,
+        [sentinel.args],
+    )
     ota_cluster._handle_query_next_image.reset_mock()
-    ota_cluster._handle_image_block.reset_mock()
-    ota_cluster._handle_upgrade_end.reset_mock()
 
     # This command isn't currently handled
     hdr.command_id = 0x08
-    await ota_cluster._handle_cluster_request(hdr, [sentinel.just_args])
+    ota_cluster.handle_cluster_request(hdr, [sentinel.just_args])
     assert ota_cluster._handle_query_next_image.call_count == 0
-    assert ota_cluster._handle_image_block.call_count == 0
-    assert ota_cluster._handle_upgrade_end.call_count == 0
-
-    # This command doesn't exist
-    hdr.command_id = 0x28
-    await ota_cluster._handle_cluster_request(hdr, [sentinel.just_args])
-    assert ota_cluster._handle_query_next_image.call_count == 0
-    assert ota_cluster._handle_image_block.call_count == 0
-    assert ota_cluster._handle_upgrade_end.call_count == 0
-    assert "Unknown OTA command id" in caplog.text
 
 
-def _ota_next_image(cluster, has_image=True, upgradeable=False):
-    async def get_ota_mock(*args):
-        if upgradeable:
-            img = MagicMock()
-            img.should_update = MagicMock(return_value=True)
-            img.key.manufacturer_id = sentinel.manufacturer_id
-            img.key.image_type = sentinel.image_type
-            img.version = sentinel.image_version
-            img.header.image_size = sentinel.image_size
-        elif has_image:
-            img = MagicMock()
-            img.should_update.return_value = False
-        else:
-            img = None
-        return img
+async def test_ota_handle_query_next_image(ota_cluster):
+    dev = ota_cluster.endpoint.device
 
-    cluster.endpoint.device.application.ota.get_ota_image = MagicMock(
-        side_effect=get_ota_mock
-    )
-    return cluster._handle_query_next_image(
-        sentinel.field_ctrl,
-        sentinel.manufacturer_id,
-        sentinel.image_type,
-        sentinel.current_file_version,
-        sentinel.hw_version,
-        tsn=0x21,
-    )
-
-
-async def test_ota_handle_query_next_image_no_img(ota_cluster):
     ota_cluster.query_next_image_response = AsyncMock()
-    ota_cluster.endpoint.device.ota_in_progress = False
+    dev.ota_in_progress = False
 
-    await _ota_next_image(ota_cluster, has_image=False, upgradeable=False)
-    assert ota_cluster.query_next_image_response.call_count == 1
-    assert (
-        ota_cluster.query_next_image_response.call_args[0][0]
-        == zcl.foundation.Status.NO_IMAGE_AVAILABLE
+    listener = MagicMock()
+    dev.add_listener(listener)
+
+    # TODO: get rid of `sentinel` and mock the actual command
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.query_next_image.id
     )
-    assert len(ota_cluster.query_next_image_response.call_args[0]) == 1
+    cmd = MagicMock()
+
+    # No image is available
+    dev.application.ota.get_ota_image = AsyncMock(return_value=None)
+    ota_cluster.handle_cluster_request(hdr, cmd)
+    await asyncio.sleep(0)
+
+    assert ota_cluster.query_next_image_response.mock_calls == [
+        call(zcl.foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn)
+    ]
+    assert listener.device_ota_update_available.mock_calls == []
+
+    ota_cluster.query_next_image_response.reset_mock()
+
+    # Now one is available
+    img = MagicMock()
+    dev.application.ota.get_ota_image = AsyncMock(return_value=img)
+    ota_cluster.handle_cluster_request(hdr, cmd)
+    await asyncio.sleep(0)
+
+    assert ota_cluster.query_next_image_response.mock_calls == [
+        call(zcl.foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn)
+    ]
+    assert listener.device_ota_update_available.mock_calls == [
+        call(img, cmd.current_file_version)
+    ]
 
 
-async def test_ota_handle_query_next_image_not_upgradeable(ota_cluster):
-    ota_cluster.query_next_image_response = AsyncMock()
-    ota_cluster.endpoint.device.ota_in_progress = False
+async def test_ota_handle_image_block_req(ota_cluster):
+    dev = ota_cluster.endpoint.device
 
-    await _ota_next_image(ota_cluster, has_image=True, upgradeable=False)
-    assert ota_cluster.query_next_image_response.call_count == 1
-    assert (
-        ota_cluster.query_next_image_response.call_args[0][0]
-        == zcl.foundation.Status.NO_IMAGE_AVAILABLE
+    ota_cluster.image_block_response = AsyncMock()
+    dev.ota_in_progress = False
+
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.image_block.id
     )
-    assert len(ota_cluster.query_next_image_response.call_args[0]) == 1
+    cmd = MagicMock()
 
+    # Stop the upgrade, none is in progress
+    ota_cluster.handle_cluster_request(hdr, cmd)
+    await asyncio.sleep(0)
 
-async def test_ota_handle_query_next_image_upgradeable(ota_cluster):
-    ota_cluster.query_next_image_response = AsyncMock()
-    ota_cluster.endpoint.device.ota_in_progress = False
+    assert ota_cluster.image_block_response.mock_calls == [
+        call(zcl.foundation.Status.ABORT, tsn=hdr.tsn)
+    ]
 
-    class Listener:
-        device_ota_update_available = MagicMock()
+    ota_cluster.image_block_response.reset_mock()
 
-    listener = Listener()
-    ota_cluster.endpoint.device.add_listener(listener)
-    await _ota_next_image(ota_cluster, has_image=True, upgradeable=True)
-    assert ota_cluster.query_next_image_response.call_count == 1
-    assert (
-        ota_cluster.query_next_image_response.call_args[0][0]
-        == zcl.foundation.Status.NO_IMAGE_AVAILABLE
-    )
-    assert len(ota_cluster.query_next_image_response.call_args[0]) == 1
-    assert listener.device_ota_update_available.call_count == 1
+    # If we flip the progress flag, send nothing
+    dev.ota_in_progress = True
+    ota_cluster.handle_cluster_request(hdr, cmd)
+    await asyncio.sleep(0)
+
+    assert ota_cluster.image_block_response.mock_calls == []
 
 
 def test_ias_zone_type():

@@ -12,12 +12,6 @@ import zigpy.types as t
 LOGGER = logging.getLogger(__name__)
 
 
-@attr.s(frozen=True)
-class ImageKey:
-    manufacturer_id = attr.ib(default=None)
-    image_type = attr.ib(default=None)
-
-
 class HWVersion(t.uint16_t):
     @property
     def version(self):
@@ -33,18 +27,39 @@ class HWVersion(t.uint16_t):
         )
 
 
-class HeaderString(str):
+class HeaderString(bytes):
     _size = 32
+
+    def __new__(cls, value: str | bytes):
+        if isinstance(value, str):
+            value = value.encode("utf-8").ljust(cls._size, b"\x00")
+
+        if len(value) != cls._size:
+            raise ValueError(f"HeaderString must be exactly {cls._size} bytes long")
+
+        return super().__new__(cls, value)
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[HeaderString, bytes]:
         if len(data) < cls._size:
             raise ValueError(f"Data is too short. Should be at least {cls._size}")
-        raw = data[: cls._size].split(b"\x00")[0]
-        return cls(raw.decode("utf8", errors="replace")), data[cls._size :]
+
+        raw = data[: cls._size]
+        return cls(raw), data[cls._size :]
 
     def serialize(self) -> bytes:
-        return self.encode("utf8").ljust(self._size, b"\x00")
+        return self
+
+    def __str__(self) -> str:
+        return repr(self)
+
+    def __repr__(self) -> str:
+        try:
+            text = repr(self.rstrip(b"\x00").decode("utf-8"))
+        except UnicodeDecodeError:
+            text = f"{len(self)}:{self.hex()}"
+
+        return f"<{text}>"
 
 
 class FieldControl(t.bitmap16):
@@ -101,10 +116,6 @@ class OTAImageHeader(t.Struct):
             return None
         return bool(self.field_control & FieldControl.HARDWARE_VERSIONS_PRESENT)
 
-    @property
-    def key(self) -> ImageKey:
-        return ImageKey(self.manufacturer_id, self.image_type)
-
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[OTAImageHeader, bytes]:
         hdr, data = super().deserialize(data)
@@ -133,6 +144,17 @@ class LVBytes32(t.LVBytes):
 class SubElement(t.Struct):
     tag_id: ElementTagId
     data: LVBytes32
+
+    def __repr__(self) -> str:
+        if len(self.data) > 32:
+            data = self.data[:25].hex() + "..." + self.data[-7:].hex()
+        else:
+            data = self.data.hex()
+
+        return (
+            f"<{self.__class__.__name__}(tag_id={self.tag_id!r},"
+            f" data=[{len(self.data)}:{data}])>"
+        )
 
 
 class BaseOTAImage:
@@ -176,7 +198,12 @@ class OTAImage(t.Struct, BaseOTAImage):
 
     def serialize(self) -> bytes:
         res = super().serialize()
-        assert len(res) == self.header.image_size
+
+        if self.header.image_size != len(res):
+            raise ValueError(
+                f"Image size in header ({self.header.image_size} bytes)"
+                f" does not match actual image size ({len(res)} bytes)"
+            )
 
         return res
 

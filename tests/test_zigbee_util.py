@@ -482,3 +482,94 @@ def test_singleton():
 )
 def test_relay_filtering(input_relays: list[int], expected_relays: list[int]):
     assert util.filter_relays(input_relays) == expected_relays
+
+
+async def test_combine_concurrent_calls():
+    class TestFuncs:
+        def __init__(self):
+            self.slow_calls = 0
+            self.slow_error_calls = 0
+
+        async def slow(self, n=None):
+            await asyncio.sleep(0.1)
+            self.slow_calls += 1
+            return (self.slow_calls, n)
+
+        async def slow_error(self, n=None):
+            await asyncio.sleep(0.1)
+            self.slow_error_calls += 1
+            raise RuntimeError()
+
+        combined_slow = util.combine_concurrent_calls(slow)
+        combined_slow_error = util.combine_concurrent_calls(slow_error)
+
+    f = TestFuncs()
+
+    assert f.slow_calls == 0
+
+    await f.slow()
+    assert f.slow_calls == 1
+
+    await f.combined_slow()
+    assert f.slow_calls == 2
+
+    results = await asyncio.gather(*[f.combined_slow() for _ in range(5)])
+    assert results == [(3, None)] * 5
+    assert f.slow_calls == 3
+
+    results = await asyncio.gather(*[f.combined_slow() for _ in range(5)])
+    assert results == [(4, None)] * 5
+    assert f.slow_calls == 4
+
+    # Unique keyword arguments
+    results = await asyncio.gather(*[f.combined_slow(n=i) for i in range(5)])
+    assert results == [(5 + i, 0 + i) for i in range(5)]
+    assert f.slow_calls == 9
+
+    # Non-unique keyword arguments
+    results = await asyncio.gather(*[f.combined_slow(i // 2) for i in range(5)])
+    assert results == [(10, 0), (10, 0), (11, 1), (11, 1), (12, 2)]
+    assert f.slow_calls == 12
+
+    # Mixed keyword and non-keyword
+    results = await asyncio.gather(
+        f.combined_slow(0),
+        f.combined_slow(n=0),
+        f.combined_slow(1),
+        f.combined_slow(n=1),
+        f.combined_slow(n=1),
+    )
+    assert results == [(13, 0), (13, 0), (14, 1), (14, 1), (14, 1)]
+    assert f.slow_calls == 14
+
+    assert f.slow_error_calls == 0
+
+    with pytest.raises(RuntimeError):
+        await f.slow_error()
+
+    assert f.slow_error_calls == 1
+
+    for coro in asyncio.as_completed([f.combined_slow_error() for _ in range(5)]):
+        with pytest.raises(RuntimeError):
+            await coro
+
+    assert f.slow_error_calls == 2
+
+
+def test_deprecated():
+    @util.deprecated("This function is deprecated")
+    def foo():
+        return 1
+
+    with pytest.deprecated_call():
+        foo()
+
+    class Bar:
+        pass
+
+    obj = util.deprecated_attrs({"foo": Bar})
+
+    assert obj("foo") == Bar
+
+    with pytest.raises(AttributeError):
+        obj("baz")

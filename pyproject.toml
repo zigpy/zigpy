@@ -144,7 +144,7 @@ combine_as_imports = true
 
 [tool.codespell]
 ignore-words-list = "ser,nd,hass"
-skip = ["./.*", "test/*", "pyproject.toml"]
+skip = "./.*,tests/*,pyproject.toml"
 quiet-level = 2
 
 [tool.mypy]

@@ -2163,94 +2163,55 @@ class Ota(Cluster):
         *,
         dst_addressing: AddressingMode | None = None,
     ):
-        self.create_catching_task(
-            self._handle_cluster_request(hdr, args, dst_addressing=dst_addressing),
-        )
+        if (
+            hdr.direction == foundation.Direction.Client_to_Server
+            and hdr.command_id == self.ServerCommandDefs.query_next_image.id
+        ):
+            self.create_catching_task(
+                self._handle_query_next_image(hdr, args),
+            )
+        elif (
+            hdr.direction == foundation.Direction.Client_to_Server
+            and hdr.command_id == self.ServerCommandDefs.image_block.id
+        ):
+            self.create_catching_task(
+                self._handle_image_block_req(hdr, args),
+            )
 
-    async def _handle_cluster_request(
-        self,
-        hdr: foundation.ZCLHeader,
-        args: list[Any],
-        *,
-        dst_addressing: AddressingMode | None = None,
-    ):
-        """Parse OTA commands."""
-        tsn, command_id = hdr.tsn, hdr.command_id
-
-        try:
-            cmd_name = self.server_commands[command_id].name
-        except KeyError:
-            self.warning("Unknown OTA command id %d (%s)", command_id, args)
+    async def _handle_query_next_image(self, hdr, cmd):
+        # We don't want the cluster to do anything here because it would interfere with
+        # the OTA manager
+        device = self.endpoint.device
+        if device.ota_in_progress:
             return
 
-        if cmd_name == "query_next_image":
-            await self._handle_query_next_image(
-                *args, tsn=tsn, model=self.endpoint.model
-            )
-        else:
-            self.debug(
-                "no '%s' OTA command handler for '%s %s': %s",
-                cmd_name,
-                self.endpoint.manufacturer,
-                self.endpoint.model,
-                args,
-            )
-
-    async def _handle_query_next_image(
-        self,
-        field_ctrl,
-        manufacturer_id,
-        image_type,
-        current_file_version,
-        hardware_version,
-        *,
-        tsn,
-        model=None,
-    ):
-        # we don't want the cluster to do anything here because it would interfere with the OTA manager
-        if self.endpoint.device.ota_in_progress:
-            return
-
-        self.debug(
-            (
-                "OTA query_next_image handler for '%s %s': "
-                "field_control=%s, manufacturer_id=%s, image_type=%s, "
-                "current_file_version=%s, hardware_version=%s, model=%r"
-            ),
-            self.endpoint.manufacturer,
-            self.endpoint.model,
-            field_ctrl,
-            manufacturer_id,
-            image_type,
-            current_file_version,
-            hardware_version,
-            model,
-        )
-
-        img = await self.endpoint.device.application.ota.get_ota_image(
-            manufacturer_id, image_type, model
-        )
-
-        if img is not None:
-            should_update = img.should_update(
-                manufacturer_id, image_type, current_file_version, hardware_version
-            )
-            self.debug(
-                "OTA image version: %s, size: %s. Update needed: %s",
-                img.version,
-                img.header.image_size,
-                should_update,
-            )
-            if should_update:
-                # send an event to listener(s) to let them know that an image is available
-                self.endpoint.device.listener_event("device_ota_update_available", img)
-        else:
-            self.debug("No OTA image is available")
-
-        # always send no image available response so that the device doesn't update autonomously
+        # Always send no image available response so that the device stops asking
         await self.query_next_image_response(
-            foundation.Status.NO_IMAGE_AVAILABLE, tsn=tsn
+            foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn
         )
+
+        img = await device.application.ota.get_ota_image(device, cmd)
+
+        if img is None:
+            self.debug("No OTA image is available")
+            return
+
+        # send an event to listener(s) to let them know that an image is available
+        self.endpoint.device.listener_event(
+            "device_ota_update_available",
+            img,
+            cmd.current_file_version,
+        )
+
+    async def _handle_image_block_req(self, hdr, cmd):
+        # We don't want the cluster to do anything here because it would interfere with
+        # the OTA manager
+        device = self.endpoint.device
+        if device.ota_in_progress:
+            return
+
+        # Abort any running firmware update (i.e. the integration is reloaded midway)
+        await self.image_block_response(foundation.Status.ABORT, tsn=hdr.tsn)
 
 
 class ScheduleRecord(t.Struct):

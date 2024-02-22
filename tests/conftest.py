@@ -17,12 +17,7 @@ from zigpy.config import (
     CONF_DEVICE,
     CONF_DEVICE_PATH,
     CONF_OTA,
-    CONF_OTA_IKEA,
-    CONF_OTA_INOVELLI,
-    CONF_OTA_LEDVANCE,
-    CONF_OTA_SALUS,
-    CONF_OTA_SONOFF,
-    CONF_OTA_THIRDREALITY,
+    CONF_OTA_ENABLED,
 )
 import zigpy.state as app_state
 import zigpy.types as t
@@ -134,12 +129,7 @@ def make_app(
             CONF_DATABASE: None,
             CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"},
             CONF_OTA: {
-                CONF_OTA_IKEA: False,
-                CONF_OTA_INOVELLI: False,
-                CONF_OTA_LEDVANCE: False,
-                CONF_OTA_SALUS: False,
-                CONF_OTA_SONOFF: False,
-                CONF_OTA_THIRDREALITY: False,
+                CONF_OTA_ENABLED: False,
             },
         },
         config_updates,
