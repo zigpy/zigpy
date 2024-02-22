@@ -225,6 +225,7 @@ class ZCLSensorMetadata:
     decimals: int | None = dataclasses.field(default=None)
     divisor: int | None = dataclasses.field(default=None)
     multiplier: int | None = dataclasses.field(default=None)
+    unit: str | None = dataclasses.field(default=None)
     device_class: SensorDeviceClass | None = dataclasses.field(default=None)
     state_class: SensorStateClass | None = dataclasses.field(default=None)
 
@@ -460,6 +461,7 @@ class QuirksV2RegistryEntry:
         entity_type: EntityType = EntityType.STANDARD,
         device_class: SensorDeviceClass | None = None,
         state_class: SensorStateClass | None = None,
+        unit: str | None = None,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
@@ -477,6 +479,7 @@ class QuirksV2RegistryEntry:
                     decimals=decimals,
                     divisor=divisor,
                     multiplier=multiplier,
+                    unit=unit,
                     device_class=device_class,
                     state_class=state_class,
                 ),
