@@ -222,7 +222,6 @@ class ZCLSensorMetadata:
     """Metadata for exposed ZCL attribute based sensor entity."""
 
     attribute_name: str | None = dataclasses.field(default=None)
-    decimals: int | None = dataclasses.field(default=None)
     divisor: int | None = dataclasses.field(default=None)
     multiplier: int | None = dataclasses.field(default=None)
     unit: str | None = dataclasses.field(default=None)
@@ -455,7 +454,6 @@ class QuirksV2RegistryEntry:
         cluster_id: int,
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
-        decimals: int = 1,
         divisor: int = 1,
         multiplier: int = 1,
         entity_type: EntityType = EntityType.STANDARD,
@@ -476,7 +474,6 @@ class QuirksV2RegistryEntry:
                 entity_type=entity_type,
                 entity_metadata=ZCLSensorMetadata(
                     attribute_name=attribute_name,
-                    decimals=decimals,
                     divisor=divisor,
                     multiplier=multiplier,
                     unit=unit,

@@ -379,7 +379,6 @@ async def test_quirks_v2_sensor(device_mock):
         sensor_metadata.entity_metadata.attribute_name
         == OnOff.AttributeDefs.on_time.name
     )
-    assert sensor_metadata.entity_metadata.decimals == 1
     assert sensor_metadata.entity_metadata.divisor == 1
     assert sensor_metadata.entity_metadata.multiplier == 1
 
