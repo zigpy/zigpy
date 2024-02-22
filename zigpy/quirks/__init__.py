@@ -1,3 +1,4 @@
+"""Zigpy quirks module."""
 from __future__ import annotations
 
 import logging
@@ -17,7 +18,7 @@ from zigpy.const import (  # noqa: F401
 )
 import zigpy.device
 import zigpy.endpoint
-from zigpy.quirks.registry import DeviceRegistry  # noqa: F401
+from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
 from zigpy.types.basic import uint16_t
 import zigpy.zcl
@@ -63,6 +64,10 @@ def register_uninitialized_device_message_handler(handler: typing.Callable) -> N
 
 
 class CustomDevice(zigpy.device.Device):
+    """Implementation of a quirks v1 custom device."""
+
+    _copy_cluster_attr_cache = False
+
     replacement: dict[str, typing.Any] = {}
     signature = None
 
@@ -117,6 +122,8 @@ class CustomDevice(zigpy.device.Device):
 
 
 class CustomEndpoint(zigpy.endpoint.Endpoint):
+    """Custom endpoint implementation for quirks."""
+
     def __init__(
         self,
         device: CustomDevice,
@@ -143,7 +150,17 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
             else:
                 cluster = c(self, is_server=True)
                 cluster_id = cluster.cluster_id
-            self.add_input_cluster(cluster_id, cluster)
+            cluster = self.add_input_cluster(cluster_id, cluster)
+            if self.device._copy_cluster_attr_cache:
+                if (
+                    endpoint_id in replace_device.endpoints
+                    and cluster_id in replace_device.endpoints[endpoint_id].in_clusters
+                ):
+                    cluster._attr_cache = (
+                        replace_device[endpoint_id]
+                        .in_clusters[cluster_id]
+                        ._attr_cache.copy()
+                    )
 
         for c in replacement_data.get(SIG_EP_OUTPUT, []):
             if isinstance(c, int):
@@ -152,10 +169,22 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
             else:
                 cluster = c(self, is_server=False)
                 cluster_id = cluster.cluster_id
-            self.add_output_cluster(cluster_id, cluster)
+            cluster = self.add_output_cluster(cluster_id, cluster)
+            if self.device._copy_cluster_attr_cache:
+                if (
+                    endpoint_id in replace_device.endpoints
+                    and cluster_id in replace_device.endpoints[endpoint_id].out_clusters
+                ):
+                    cluster._attr_cache = (
+                        replace_device[endpoint_id]
+                        .out_clusters[cluster_id]
+                        ._attr_cache.copy()
+                    )
 
 
 class CustomCluster(zigpy.zcl.Cluster):
+    """Custom cluster implementation for quirks."""
+
     _skip_registry = True
     _CONSTANT_ATTRIBUTES: dict[int, typing.Any] | None = None
 
@@ -355,6 +384,94 @@ class CustomCluster(zigpy.zcl.Cluster):
             return self._CONSTANT_ATTRIBUTES[attr_def.id]
 
         return super().get(key, default)
+
+    async def apply_custom_configuration(self, *args, **kwargs):
+        """Hook for applications to instruct instances to apply custom configuration."""
+
+
+FilterType = typing.Callable[
+    [zigpy.device.Device],
+    bool,
+]
+
+
+def signature_matches(
+    signature: dict[str, typing.Any],
+) -> FilterType:
+    """Return True if device matches signature."""
+
+    def _match(a: dict | typing.Iterable, b: dict | typing.Iterable) -> bool:
+        return set(a) == set(b)
+
+    def _filter(device: zigpy.device.Device) -> bool:
+        """Return True if device matches signature."""
+        if device.model != signature.get(SIG_MODEL, device.model):
+            _LOGGER.debug("Fail, because device model mismatch: '%s'", device.model)
+            return False
+
+        if device.manufacturer != signature.get(SIG_MANUFACTURER, device.manufacturer):
+            _LOGGER.debug(
+                "Fail, because device manufacturer mismatch: '%s'",
+                device.manufacturer,
+            )
+            return False
+
+        dev_ep = set(device.endpoints) - {0}
+
+        sig = signature.get(SIG_ENDPOINTS)
+        if sig is None:
+            return False
+
+        if not _match(sig, dev_ep):
+            _LOGGER.debug(
+                "Fail because endpoint list mismatch: %s %s",
+                set(sig.keys()),
+                dev_ep,
+            )
+            return False
+
+        if not all(
+            device[eid].profile_id
+            == sig[eid].get(SIG_EP_PROFILE, device[eid].profile_id)
+            for eid in sig
+        ):
+            _LOGGER.debug("Fail because profile_id mismatch on at least one endpoint")
+            return False
+
+        if not all(
+            device[eid].device_type
+            == sig[eid].get(SIG_EP_TYPE, device[eid].device_type)
+            for eid in sig
+        ):
+            _LOGGER.debug("Fail because device_type mismatch on at least one endpoint")
+            return False
+
+        if not all(
+            _match(device[eid].in_clusters, ep.get(SIG_EP_INPUT, []))
+            for eid, ep in sig.items()
+        ):
+            _LOGGER.debug(
+                "Fail because input cluster mismatch on at least one endpoint"
+            )
+            return False
+
+        if not all(
+            _match(device[eid].out_clusters, ep.get(SIG_EP_OUTPUT, []))
+            for eid, ep in sig.items()
+        ):
+            _LOGGER.debug(
+                "Fail because output cluster mismatch on at least one endpoint"
+            )
+            return False
+
+        _LOGGER.debug(
+            "Device matches filter signature - device ieee[%s]: filter signature[%s]",
+            device.ieee,
+            signature,
+        )
+        return True
+
+    return _filter
 
 
 def handle_message_from_uninitialized_sender(
