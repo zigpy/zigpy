@@ -27,6 +27,7 @@ from zigpy.const import (
     SIG_MODEL,
     SIG_NODE_DESC,
 )
+import zigpy.datastructures
 import zigpy.endpoint
 import zigpy.exceptions
 import zigpy.listeners
@@ -41,9 +42,12 @@ if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
     from zigpy.ota.providers import OtaImageWithMetadata
 
+
+LOGGER = logging.getLogger(__name__)
+
 APS_REPLY_TIMEOUT = 5
 APS_REPLY_TIMEOUT_EXTENDED = 28
-LOGGER = logging.getLogger(__name__)
+PACKET_DEBOUNCE_WINDOW = 10
 
 
 class Status(enum.IntEnum):
@@ -82,6 +86,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
         self._send_sequence: int = 0
+
+        self._packet_debouncer = zigpy.datastructures.Debouncer()
 
         # Retained for backwards compatibility, will be removed in a future release
         self.status = Status.NEW
@@ -383,6 +389,14 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         if packet.rssi is not None:
             self.rssi = packet.rssi
+
+        if self._packet_debouncer.filter(
+            # Be conservative with deduplication
+            obj=packet.replace(timestamp=None, tsn=None, lqi=None, rssi=None),
+            expire_in=PACKET_DEBOUNCE_WINDOW,
+        ):
+            self.debug("Filtering duplicate packet")
+            return
 
         # Filter out packets that refer to unknown endpoints or clusters
         if packet.src_ep not in self.endpoints:

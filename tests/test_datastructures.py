@@ -284,3 +284,44 @@ async def test_reschedulable_timeout_cancel():
     timeout.cancel()
     await asyncio.sleep(0.02)
     assert len(callback.mock_calls) == 0
+
+
+async def test_debouncer():
+    """ "Test debouncer."""
+
+    debouncer = datastructures.Debouncer()
+    debouncer.clean()
+    assert repr(debouncer) == "<Debouncer [tracked:0]>"
+
+    obj1 = object()
+    assert not debouncer.is_filtered(obj1)
+    assert not debouncer.filter(obj1, expire_in=0.1)
+    assert debouncer.is_filtered(obj1)
+
+    assert debouncer.filter(obj1, expire_in=1)
+    assert debouncer.filter(obj1, expire_in=0.1)
+    assert debouncer.filter(obj1, expire_in=1)
+    assert debouncer.is_filtered(obj1)
+    assert repr(debouncer) == "<Debouncer [tracked:1]>"
+
+    obj2 = object()
+    assert not debouncer.is_filtered(obj2)
+    assert not debouncer.filter(obj2, expire_in=0.2)
+    assert debouncer.filter(obj1, expire_in=1)
+    assert debouncer.filter(obj2, expire_in=1)
+    assert debouncer.filter(obj1, expire_in=1)
+    assert debouncer.filter(obj2, expire_in=1)
+
+    assert debouncer.is_filtered(obj1)
+    assert debouncer.is_filtered(obj2)
+    assert repr(debouncer) == "<Debouncer [tracked:2]>"
+
+    await asyncio.sleep(0.1)
+    assert not debouncer.is_filtered(obj1)
+    assert debouncer.is_filtered(obj2)
+    assert repr(debouncer) == "<Debouncer [tracked:1]>"
+
+    await asyncio.sleep(0.1)
+    assert not debouncer.is_filtered(obj1)
+    assert not debouncer.is_filtered(obj2)
+    assert repr(debouncer) == "<Debouncer [tracked:0]>"
