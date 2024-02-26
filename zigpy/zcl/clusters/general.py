@@ -2481,10 +2481,14 @@ class GreenPowerProxy(Cluster):
 
 
 class KeepAlive(Cluster):
+    """Keep Alive cluster definition."""
+
     cluster_id: Final = 0x0025
     ep_attribute: Final = "keep_alive"
 
     class AttributeDefs(BaseAttributeDefs):
+        """Keep Alive cluster attributes."""
+
         tc_keep_alive_base: Final = ZCLAttributeDef(
             id=0x0000, type=t.uint8_t, access="r", mandatory=True
         )
