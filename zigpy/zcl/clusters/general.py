@@ -2478,3 +2478,16 @@ class PollControl(Cluster):
 class GreenPowerProxy(Cluster):
     cluster_id: Final = 0x0021
     ep_attribute: Final = "green_power"
+
+
+class KeepAlive(Cluster):
+    cluster_id: Final = 0x0025
+    ep_attribute: Final = "keep_alive"
+
+    class AttributeDefs(BaseAttributeDefs):
+        tc_keep_alive_base: Final = ZCLAttributeDef(
+            id=0x0000, type=t.uint8_t, access="r", mandatory=True
+        )
+        tc_keep_alive_jitter: Final = ZCLAttributeDef(
+            id=0x0001, type=t.uint16_t, access="r", mandatory=True
+        )
