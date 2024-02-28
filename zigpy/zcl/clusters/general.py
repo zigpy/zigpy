@@ -2163,6 +2163,12 @@ class Ota(Cluster):
         *,
         dst_addressing: AddressingMode | None = None,
     ):
+        # We don't want the cluster to do anything here because it would interfere with
+        # the OTA manager
+        device = self.endpoint.device
+        if device.ota_in_progress:
+            return
+
         if (
             hdr.direction == foundation.Direction.Client_to_Server
             and hdr.command_id == self.ServerCommandDefs.query_next_image.id
@@ -2179,17 +2185,12 @@ class Ota(Cluster):
             )
 
     async def _handle_query_next_image(self, hdr, cmd):
-        # We don't want the cluster to do anything here because it would interfere with
-        # the OTA manager
-        device = self.endpoint.device
-        if device.ota_in_progress:
-            return
-
         # Always send no image available response so that the device stops asking
         await self.query_next_image_response(
             foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn
         )
 
+        device = self.endpoint.device
         img = await device.application.ota.get_ota_image(device, cmd)
 
         if img is None:
@@ -2197,19 +2198,13 @@ class Ota(Cluster):
             return
 
         # send an event to listener(s) to let them know that an image is available
-        self.endpoint.device.listener_event(
+        device.listener_event(
             "device_ota_update_available",
             img,
             cmd.current_file_version,
         )
 
     async def _handle_image_block_req(self, hdr, cmd):
-        # We don't want the cluster to do anything here because it would interfere with
-        # the OTA manager
-        device = self.endpoint.device
-        if device.ota_in_progress:
-            return
-
         # Abort any running firmware update (i.e. the integration is reloaded midway)
         await self.image_block_response(foundation.Status.ABORT, tsn=hdr.tsn)
 

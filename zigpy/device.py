@@ -49,6 +49,11 @@ APS_REPLY_TIMEOUT = 5
 APS_REPLY_TIMEOUT_EXTENDED = 28
 PACKET_DEBOUNCE_WINDOW = 10
 
+AFTER_OTA_ATTR_READ_DELAY = 10
+OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
+    tries=4, delay=AFTER_OTA_ATTR_READ_DELAY
+)
+
 
 class Status(enum.IntEnum):
     """The status of a Device. Maintained for backwards compatibility."""
@@ -537,10 +542,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         finally:
             self.ota_in_progress = False
 
-        if result == foundation.Status.SUCCESS:
-            # Clear the current file version when the update succeeds
-            ota = find_ota_cluster(self)
-            ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
+        if result != foundation.Status.SUCCESS:
+            return result
+
+        # Clear the current file version when the update succeeds
+        ota = find_ota_cluster(self)
+        ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
+
+        await asyncio.sleep(AFTER_OTA_ATTR_READ_DELAY)
+        await OTA_RETRY_DECORATOR(ota.read_attributes)(
+            [Ota.AttributeDefs.current_file_version.name]
+        )
 
         return result
 

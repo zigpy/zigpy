@@ -12,6 +12,7 @@ import zigpy.ota.image
 from zigpy.profiles import zha
 import zigpy.state
 import zigpy.types as t
+import zigpy.util
 from zigpy.zcl.clusters.general import Basic, Ota
 import zigpy.zcl.foundation as foundation
 from zigpy.zdo import types as zdo_t
@@ -460,6 +461,11 @@ async def test_update_device_firmware_already_in_progress(dev, caplog):
     assert "OTA already in progress" in caplog.text
 
 
+@patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
+@patch(
+    "zigpy.device.OTA_RETRY_DECORATOR",
+    zigpy.util.retryable_request(tries=1, delay=0.01),
+)
 async def test_update_device_firmware(monkeypatch, dev, caplog):
     """Test that device firmware updates execute the expected calls."""
     ep = dev.add_endpoint(1)
@@ -641,12 +647,70 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                 assert cmd.file_version == active_fw_image.firmware.header.file_version
                 assert cmd.current_time == 0
                 assert cmd.upgrade_time == 0
+            elif isinstance(
+                cmd,
+                foundation.GENERAL_COMMANDS[
+                    foundation.GeneralCommand.Read_Attributes
+                ].schema,
+            ):
+                assert cmd.attribute_ids == [Ota.AttributeDefs.current_file_version.id]
+
+                req_hdr, req_cmd = cluster._create_request(
+                    general=True,
+                    command_id=foundation.GeneralCommand.Read_Attributes_rsp,
+                    schema=foundation.GENERAL_COMMANDS[
+                        foundation.GeneralCommand.Read_Attributes_rsp
+                    ].schema,
+                    tsn=hdr.tsn,
+                    disable_default_response=True,
+                    direction=foundation.Direction.Server_to_Client,
+                    args=(),
+                    kwargs={
+                        "status_records": [
+                            foundation.ReadAttributeRecord(
+                                attrid=Ota.AttributeDefs.current_file_version.id,
+                                status=foundation.Status.SUCCESS,
+                                value=foundation.TypeValue(
+                                    type=foundation.DATA_TYPES.pytype_to_datatype_id(
+                                        t.uint32_t
+                                    ),
+                                    value=active_fw_image.firmware.header.file_version,
+                                ),
+                            )
+                        ]
+                    },
+                )
+
+                dev.application.packet_received(
+                    t.ZigbeePacket(
+                        src=t.AddrModeAddress(
+                            addr_mode=t.AddrMode.NWK, address=dev.nwk
+                        ),
+                        src_ep=1,
+                        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+                        dst_ep=1,
+                        tsn=hdr.tsn,
+                        profile_id=260,
+                        cluster_id=cluster.cluster_id,
+                        data=t.SerializableBytes(
+                            req_hdr.serialize() + req_cmd.serialize()
+                        ),
+                        lqi=255,
+                        rssi=-30,
+                    )
+                )
 
     dev.application.send_packet = AsyncMock(side_effect=send_packet)
     progress_callback = MagicMock()
     result = await dev.update_firmware(fw_image, progress_callback)
+    assert (
+        dev.endpoints[1]
+        .out_clusters[Ota.cluster_id]
+        ._attr_cache[Ota.AttributeDefs.current_file_version.id]
+        == 0x12345678
+    )
 
-    assert dev.application.send_packet.await_count == 5
+    assert dev.application.send_packet.await_count == 6
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
@@ -658,7 +722,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         fw_image, progress_callback=progress_callback, force=True
     )
 
-    assert dev.application.send_packet.await_count == 5
+    assert dev.application.send_packet.await_count == 6
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
