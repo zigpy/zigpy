@@ -161,7 +161,12 @@ class OTAManager:
 
             self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
 
-            if self.progress_callback is not None:
+            # Image block requests can sometimes succeed after the device aborts the
+            # update. We should not allow the progress callback to be called.
+            if (
+                self.progress_callback is not None
+                and not self._upgrade_end_future.done()
+            ):
                 self.progress_callback(
                     command.file_offset + len(block), len(self._image_data)
                 )
