@@ -48,7 +48,11 @@ LOGGER = logging.getLogger(__name__)
 APS_REPLY_TIMEOUT = 5
 APS_REPLY_TIMEOUT_EXTENDED = 28
 PACKET_DEBOUNCE_WINDOW = 10
-AFTER_OTA_ATTR_READ_DELAY = 5
+
+AFTER_OTA_ATTR_READ_DELAY = 10
+OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
+    tries=4, delay=AFTER_OTA_ATTR_READ_DELAY
+)
 
 
 class Status(enum.IntEnum):
@@ -546,9 +550,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
 
         await asyncio.sleep(AFTER_OTA_ATTR_READ_DELAY)
-
-        # Read the new file version
-        await ota.read_attributes([Ota.AttributeDefs.current_file_version.name])
+        await OTA_RETRY_DECORATOR(ota.read_attributes)(
+            [Ota.AttributeDefs.current_file_version.name]
+        )
 
         return result
 
