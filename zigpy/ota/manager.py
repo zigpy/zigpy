@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 # Devices often ask for bigger blocks than radios can send
 MAXIMUM_IMAGE_BLOCK_SIZE = 40
-MAX_TIME_WITHOUT_PROGRESS = 10
+MAX_TIME_WITHOUT_PROGRESS = 30
 
 
 def find_ota_cluster(device: Device) -> Ota:
@@ -94,7 +94,9 @@ class OTAManager:
     def _finish(self, status: foundation.Status) -> None:
         """Finish the OTA process."""
         self._stall_timer.cancel()
-        self._upgrade_end_future.set_result(status)
+
+        if not self._upgrade_end_future.done():
+            self._upgrade_end_future.set_result(status)
 
     async def _image_query_req(
         self, hdr: foundation.ZCLHeader, command: Ota.QueryNextImageCommand
