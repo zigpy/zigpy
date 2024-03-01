@@ -327,8 +327,14 @@ class Inovelli(BaseOtaProvider):
 
         for model, firmwares in fw_lst.items():
             for fw in firmwares:
+                version = int(fw["version"], 16)
+
+                if version > 0x0000000B:
+                    # Only the first firmware was in hex, all others are decimal
+                    version = int(fw["version"])
+
                 yield RemoteOtaImageMetadata(  # type: ignore[call-arg]
-                    file_version=int(fw["version"], 16),
+                    file_version=version,
                     manufacturer_id=fw["manufacturer_id"],
                     image_type=fw["image_type"],
                     model_names=(model,),
