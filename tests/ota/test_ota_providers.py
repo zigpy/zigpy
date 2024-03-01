@@ -322,7 +322,12 @@ async def test_inovelli_provider():
 
     for (model, obj), meta in zip(unpacked_objs, index):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
-        assert meta.file_version == int(obj["version"], 16)
+
+        if obj["version"] == "0000000B":
+            assert meta.file_version == 0x0000000B
+        else:
+            assert meta.file_version == int(obj["version"])
+
         assert meta.url == obj["firmware"]
         assert meta.manufacturer_id == obj["manufacturer_id"]
         assert meta.image_type == obj["image_type"]
