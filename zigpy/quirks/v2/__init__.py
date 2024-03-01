@@ -98,9 +98,9 @@ class CustomDeviceV2(CustomDevice):
                         cluster.cluster_id for cluster in endpoint.out_clusters.values()
                     ],
                 }
+                for key, endpoint in replaces.endpoints.items()
+                if not isinstance(endpoint, ZDO)
             }
-            for key, endpoint in replaces.endpoints.items()
-            if not isinstance(endpoint, ZDO)
         }
         self.replacement[
             SIG_SKIP_CONFIG
