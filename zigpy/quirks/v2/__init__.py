@@ -327,7 +327,8 @@ class QuirksV2RegistryEntry:
 
     def also_applies_to(self, manufacturer: str, model: str) -> QuirksV2RegistryEntry:
         """Register this quirks v2 entry for an additional manufacturer and model."""
-        return self.registry.add_to_registry_v2(manufacturer, model, self)
+        self.registry.add_to_registry_v2(manufacturer, model, self)
+        return self
 
     def filter(self, filter_function: FilterType) -> QuirksV2RegistryEntry:
         """Add a filter and returns self."""
@@ -678,5 +679,4 @@ def add_to_registry_v2(
     manufacturer: str, model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
 ) -> QuirksV2RegistryEntry:
     """Add an entry to the registry."""
-    entry = QuirksV2RegistryEntry()
-    return registry.add_to_registry_v2(manufacturer, model, entry)
+    return registry.add_to_registry_v2(manufacturer, model, QuirksV2RegistryEntry())

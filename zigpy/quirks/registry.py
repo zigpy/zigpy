@@ -50,7 +50,7 @@ class DeviceRegistry:
 
     def add_to_registry_v2(
         self, manufacturer: str, model: str, entry: QuirksV2RegistryEntry
-    ):
+    ) -> QuirksV2RegistryEntry:
         """Add an entry to the registry."""
         key = (manufacturer, model)
         if not entry.registry:
