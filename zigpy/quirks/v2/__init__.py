@@ -55,7 +55,7 @@ class CustomDeviceV2(CustomDevice):
         replaces: Device,
         quirk_metadata: QuirksV2RegistryEntry,
     ) -> None:
-        self._quirk_metadata: QuirksV2RegistryEntry = quirk_metadata
+        self.quirk_metadata: QuirksV2RegistryEntry = quirk_metadata
         # this is done to simplify extending from CustomDevice
         self._replacement_from_replaces(replaces)
         super().__init__(application, ieee, nwk, replaces)
@@ -104,11 +104,9 @@ class CustomDeviceV2(CustomDevice):
         }
         self.replacement[
             SIG_SKIP_CONFIG
-        ] = self._quirk_metadata.skip_device_configuration
-        if self._quirk_metadata.device_node_descriptor:
-            self.replacement[
-                SIG_NODE_DESC
-            ] = self._quirk_metadata.device_node_descriptor
+        ] = self.quirk_metadata.skip_device_configuration
+        if self.quirk_metadata.device_node_descriptor:
+            self.replacement[SIG_NODE_DESC] = self.quirk_metadata.device_node_descriptor
 
     @property
     def exposes_metadata(
