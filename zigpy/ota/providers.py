@@ -467,7 +467,7 @@ def _load_z2m_index(index: dict, *, index_root: pathlib.Path | None = None):
             "image_type": obj["imageType"],
             "checksum": "sha512:" + obj["sha512"],
             "file_size": obj["fileSize"],
-            "manufacturer_names": tuple(obj.get("manufacturerNames", [])),
+            "manufacturer_names": tuple(obj.get("manufacturerName", [])),
             "model_names": tuple([obj["modelId"]] if "modelId" in obj else []),
             "min_current_file_version": obj.get("minFileVersion"),
             "max_current_file_version": obj.get("maxFileVersion"),
