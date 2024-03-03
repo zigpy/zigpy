@@ -603,9 +603,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             try:
                 attr.value.value = attr_def.type(value)
             except ValueError as e:
+                if isinstance(attrid, int):
+                    attrid = f"0x{attrid:04X}"
                 self.error(
-                    "Failed to convert attribute 0x%04X from %s (%s) to type %s: %s",
-                    attrid,
+                    "Failed to convert attribute %s from %s (%s) to type %s: %s",
+                    str(attrid),
                     value,
                     type(value),
                     attr_def.type,
