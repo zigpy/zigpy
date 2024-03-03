@@ -1,4 +1,5 @@
 """Quirks v2 module."""
+
 from __future__ import annotations
 
 import collections
@@ -55,7 +56,7 @@ class CustomDeviceV2(CustomDevice):
         replaces: Device,
         quirk_metadata: QuirksV2RegistryEntry,
     ) -> None:
-        self._quirk_metadata: QuirksV2RegistryEntry = quirk_metadata
+        self.quirk_metadata: QuirksV2RegistryEntry = quirk_metadata
         # this is done to simplify extending from CustomDevice
         self._replacement_from_replaces(replaces)
         super().__init__(application, ieee, nwk, replaces)
@@ -104,17 +105,19 @@ class CustomDeviceV2(CustomDevice):
         }
         self.replacement[
             SIG_SKIP_CONFIG
-        ] = self._quirk_metadata.skip_device_configuration
-        if self._quirk_metadata.device_node_descriptor:
-            self.replacement[
-                SIG_NODE_DESC
-            ] = self._quirk_metadata.device_node_descriptor
+        ] = self.quirk_metadata.skip_device_configuration
+        if self.quirk_metadata.device_node_descriptor:
+            self.replacement[SIG_NODE_DESC] = self.quirk_metadata.device_node_descriptor
 
     @property
     def exposes_metadata(
         self,
     ) -> dict[tuple[int, int, ClusterType], list[EntityMetadata],]:
-        """Return the metadata for exposed entities."""
+        """Return EntityMetadata for exposed entities.
+
+        The key is a tuple of (endpoint_id, cluster_id, cluster_type).
+        The value is a list of EntityMetadata instances.
+        """
         return self._exposes_metadata
 
     async def apply_custom_configuration(self, *args, **kwargs):
@@ -327,21 +330,32 @@ class QuirksV2RegistryEntry:
 
     def also_applies_to(self, manufacturer: str, model: str) -> QuirksV2RegistryEntry:
         """Register this quirks v2 entry for an additional manufacturer and model."""
-        return self.registry.add_to_registry_v2(manufacturer, model, self)
+        self.registry.add_to_registry_v2(manufacturer, model, self)
+        return self
 
     def filter(self, filter_function: FilterType) -> QuirksV2RegistryEntry:
-        """Add a filter and returns self."""
+        """Add a filter and returns self.
+
+        The filter function should take a single argument, a zigpy.device.Device
+        instance, and return a boolean if the condition the filter is testing
+        passes.
+
+        Ex: def some_filter(device: zigpy.device.Device) -> bool:
+        """
         self.filters.append(filter_function)
         return self
 
     def matches_device(self, device: Device) -> bool:
-        """Process all filters and return True if all pass."""
+        """Determine if this quirk should be applied to the passed in device."""
         return all(_filter(device) for _filter in self.filters)
 
     def device_class(
         self, custom_device_class: type[CustomDeviceV2]
     ) -> QuirksV2RegistryEntry:
-        """Set the custom device class and returns self."""
+        """Set the custom device class to be used in this quirk and returns self.
+
+        The custom device class must be a subclass of CustomDeviceV2.
+        """
         assert issubclass(
             custom_device_class, CustomDeviceV2
         ), f"{custom_device_class} is not a subclass of CustomDeviceV2"
@@ -349,14 +363,22 @@ class QuirksV2RegistryEntry:
         return self
 
     def node_descriptor(self, node_descriptor: NodeDescriptor) -> QuirksV2RegistryEntry:
-        """Set the node descriptor and returns self."""
+        """Set the node descriptor and returns self.
+
+        The node descriptor must be a NodeDescriptor instance and it will be used
+        to replace the node descriptor of the device when the quirk is applied.
+        """
         self.device_node_descriptor = node_descriptor
         return self
 
     def skip_configuration(
         self, skip_configuration: bool = True
     ) -> QuirksV2RegistryEntry:
-        """Set the skip_configuration and returns self."""
+        """Set the skip_configuration and returns self.
+
+        If skip_configuration is True, reporting configuration will not be
+        applied to any cluster on this device.
+        """
         self.skip_device_configuration = skip_configuration
         return self
 
@@ -367,7 +389,18 @@ class QuirksV2RegistryEntry:
         endpoint_id: int = 1,
         constant_attributes: dict[ZCLAttributeDef, typing.Any] | None = None,
     ) -> QuirksV2RegistryEntry:
-        """Add an AddsMetadata entry and returns self."""
+        """Add an AddsMetadata entry and returns self.
+
+        This method allows adding a cluster to a device when the quirk is applied.
+
+        If cluster is an int, it will be used as the cluster_id. If cluster is a
+        subclass of Cluster or CustomCluster, it will be used to create a new
+        cluster instance.
+
+        If constant_attributes is provided, it should be a dictionary of ZCLAttributeDef
+        instances and their values. These attributes will be added to the cluster when
+        the quirk is applied and the values will be constant.
+        """
         add = AddsMetadata(
             endpoint_id=endpoint_id,
             cluster=cluster,
@@ -383,7 +416,10 @@ class QuirksV2RegistryEntry:
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
     ) -> QuirksV2RegistryEntry:
-        """Add a RemovesMetadata entry and returns self."""
+        """Add a RemovesMetadata entry and returns self.
+
+        This method allows removing a cluster from a device when the quirk is applied.
+        """
         remove = RemovesMetadata(
             endpoint_id=endpoint_id,
             cluster_id=cluster_id,
@@ -399,7 +435,17 @@ class QuirksV2RegistryEntry:
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
     ) -> QuirksV2RegistryEntry:
-        """Add a ReplacesMetadata entry and returns self."""
+        """Add a ReplacesMetadata entry and returns self.
+
+        This method allows replacing a cluster on a device when the quirk is applied.
+
+        replacement_cluster_class should be a subclass of Cluster or CustomCluster and
+        will be used to create a new cluster instance to replace the existing cluster.
+
+        If cluster_id is provided, it will be used as the cluster_id for the cluster to
+        be removed. If cluster_id is not provided, the cluster_id of the replacement
+        cluster will be used.
+        """
         remove = RemovesMetadata(
             endpoint_id=endpoint_id,
             cluster_id=cluster_id
@@ -429,7 +475,10 @@ class QuirksV2RegistryEntry:
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
-        """Add a enum and return self."""
+        """Add an EntityMetadata containing ZCLEnumMetadata and return self.
+
+        This method allows exposing an enum based entity in Home Assistant.
+        """
         self.entity_metadata.append(
             EntityMetadata(
                 endpoint_id=endpoint_id,
@@ -464,7 +513,10 @@ class QuirksV2RegistryEntry:
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
-        """Add a switch and return self."""
+        """Add an EntityMetadata containing ZCLSensorMetadata and return self.
+
+        This method allows exposing a sensor entity in Home Assistant.
+        """
         self.entity_metadata.append(
             EntityMetadata(
                 endpoint_id=endpoint_id,
@@ -502,7 +554,10 @@ class QuirksV2RegistryEntry:
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
-        """Add a switch and return self."""
+        """Add an EntityMetadata containing SwitchMetadata and return self.
+
+        This method allows exposing a switch entity in Home Assistant.
+        """
         self.entity_metadata.append(
             EntityMetadata(
                 endpoint_id=endpoint_id,
@@ -541,7 +596,10 @@ class QuirksV2RegistryEntry:
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
-        """Add a number and return self."""
+        """Add an EntityMetadata containing NumberMetadata and return self.
+
+        This method allows exposing a number entity in Home Assistant.
+        """
         self.entity_metadata.append(
             EntityMetadata(
                 endpoint_id=endpoint_id,
@@ -577,7 +635,10 @@ class QuirksV2RegistryEntry:
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
-        """Add a binary sensor and return self."""
+        """Add an EntityMetadata containing BinarySensorMetadata and return self.
+
+        This method allows exposing a binary sensor entity in Home Assistant.
+        """
         self.entity_metadata.append(
             EntityMetadata(
                 endpoint_id=endpoint_id,
@@ -608,7 +669,11 @@ class QuirksV2RegistryEntry:
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
-        """Add a write attribute button and return self."""
+        """Add an EntityMetadata containing WriteAttributeButtonMetadata and return self.
+
+        This method allows exposing a button entity in Home Assistant that writes
+        a value to an attribute when pressed.
+        """
         self.entity_metadata.append(
             EntityMetadata(
                 endpoint_id=endpoint_id,
@@ -639,7 +704,11 @@ class QuirksV2RegistryEntry:
         initially_disabled: bool = False,
         translation_key: str | None = None,
     ) -> QuirksV2RegistryEntry:
-        """Add a zcl command button and return self."""
+        """Add an EntityMetadata containing ZCLCommandButtonMetadata and return self.
+
+        This method allows exposing a button entity in Home Assistant that executes
+        a ZCL command when pressed.
+        """
         self.entity_metadata.append(
             EntityMetadata(
                 endpoint_id=endpoint_id,
@@ -661,12 +730,12 @@ class QuirksV2RegistryEntry:
     def device_automation_triggers(
         self, device_automation_triggers: dict[tuple[str, str], dict[str, str]]
     ) -> QuirksV2RegistryEntry:
-        """Add a device automation trigger and returns self."""
+        """Add device automation triggers and returns self."""
         self.device_automation_triggers_metadata.update(device_automation_triggers)
         return self
 
     def create_device(self, device: Device) -> CustomDeviceV2:
-        """Create a quirked device."""
+        """Create the quirked device."""
         if self.custom_device_class:
             return self.custom_device_class(
                 device.application, device.ieee, device.nwk, device, self
@@ -678,5 +747,4 @@ def add_to_registry_v2(
     manufacturer: str, model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
 ) -> QuirksV2RegistryEntry:
     """Add an entry to the registry."""
-    entry = QuirksV2RegistryEntry()
-    return registry.add_to_registry_v2(manufacturer, model, entry)
+    return registry.add_to_registry_v2(manufacturer, model, QuirksV2RegistryEntry())

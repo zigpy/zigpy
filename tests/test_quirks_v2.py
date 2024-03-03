@@ -119,6 +119,7 @@ async def test_quirks_v2(device_mock):
 
     quirked = registry.get_device(device_mock)
     assert isinstance(quirked, CustomDeviceV2)
+    assert quirked in registry
 
     ep = quirked.endpoints[1]
 
@@ -144,6 +145,9 @@ async def test_quirks_v2(device_mock):
     )
     assert additional_entities[0].entity_metadata.enum == OnOff.StartUpOnOff
     assert additional_entities[0].entity_type == EntityType.CONFIG
+
+    registry.remove(quirked)
+    assert quirked not in registry
 
 
 async def test_quirks_v2_signature_match(device_mock):

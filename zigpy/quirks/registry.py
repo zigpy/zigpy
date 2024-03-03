@@ -1,4 +1,5 @@
 """Zigpy quirks registry."""
+
 from __future__ import annotations
 
 import collections
@@ -50,7 +51,7 @@ class DeviceRegistry:
 
     def add_to_registry_v2(
         self, manufacturer: str, model: str, entry: QuirksV2RegistryEntry
-    ):
+    ) -> QuirksV2RegistryEntry:
         """Add an entry to the registry."""
         key = (manufacturer, model)
         if not entry.registry:
@@ -60,6 +61,12 @@ class DeviceRegistry:
 
     def remove(self, custom_device: CustomDeviceType) -> None:
         """Remove a device from the registry"""
+
+        if hasattr(custom_device, "quirk_metadata"):
+            key = (custom_device.manufacturer, custom_device.model)
+            self._registry_v2[key].remove(custom_device.quirk_metadata)
+            return
+
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
         if models_info:
             for manuf, model in models_info:
@@ -125,11 +132,21 @@ class DeviceRegistry:
         return self._registry
 
     def __contains__(self, device: CustomDeviceType) -> bool:
+        """Check if a device is in the registry."""
+
+        if hasattr(device, "quirk_metadata"):
+            manufacturer, model = device.manufacturer, device.model
+            return device.quirk_metadata in self._registry_v2[(manufacturer, model)]
+
         manufacturer, model = device.signature.get(
             SIG_MODELS_INFO,
-            [(device.signature.get(SIG_MANUFACTURER), device.signature.get(SIG_MODEL))],
+            [
+                (
+                    device.signature.get(SIG_MANUFACTURER),
+                    device.signature.get(SIG_MODEL),
+                )
+            ],
         )[0]
-
         return device in itertools.chain(
             self.registry[manufacturer][model],
             self.registry[manufacturer][None],
