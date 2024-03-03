@@ -16,6 +16,7 @@ import urllib.parse
 
 import aiohttp
 import attrs
+import jsonschema
 
 from zigpy.ota.image import BaseOTAImage, parse_ota_image
 import zigpy.types as t
@@ -192,6 +193,57 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
 -----END CERTIFICATE-----"""
     )
 
+    JSON_SCHEMA = {
+        "type": "array",
+        "items": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "fw_image_type": {"type": "integer"},
+                        "fw_type": {"type": "integer"},
+                        "fw_sha3_256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "fw_binary_url": {"type": "string", "format": "uri"},
+                    },
+                    "required": [
+                        "fw_image_type",
+                        "fw_type",
+                        "fw_sha3_256",
+                        "fw_binary_url",
+                    ],
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "fw_update_prio": {"type": "integer"},
+                        "fw_filesize": {"type": "integer"},
+                        "fw_type": {"type": "integer"},
+                        "fw_hotfix_version": {"type": "integer"},
+                        "fw_major_version": {"type": "integer"},
+                        "fw_binary_checksum": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{128}$",
+                        },
+                        "fw_minor_version": {"type": "integer"},
+                        "fw_sha3_256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "fw_binary_url": {"type": "string", "format": "uri"},
+                    },
+                    "required": [
+                        "fw_update_prio",
+                        "fw_filesize",
+                        "fw_type",
+                        "fw_hotfix_version",
+                        "fw_major_version",
+                        "fw_binary_checksum",
+                        "fw_minor_version",
+                        "fw_sha3_256",
+                        "fw_binary_url",
+                    ],
+                },
+            ]
+        },
+    }
+
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
@@ -202,6 +254,8 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
             # IKEA does not always respond with an appropriate Content-Type but the
             # response is always JSON
             fw_lst = await rsp.json(content_type=None)
+
+        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
         for fw in fw_lst:
             # Skip the gateway image
@@ -227,6 +281,62 @@ class Ledvance(BaseOtaProvider):
     # This isn't static but no more than these two have ever existed
     MANUFACTURER_IDS = [4489, 4364]
 
+    JSON_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "firmwares": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "blob": {"type": ["null", "string"]},
+                        "identity": {
+                            "type": "object",
+                            "properties": {
+                                "company": {"type": "integer"},
+                                "product": {"type": "integer"},
+                                "version": {
+                                    "type": "object",
+                                    "properties": {
+                                        "major": {"type": "integer"},
+                                        "minor": {"type": "integer"},
+                                        "build": {"type": "integer"},
+                                        "revision": {"type": "integer"},
+                                    },
+                                    "required": ["major", "minor", "build", "revision"],
+                                },
+                            },
+                            "required": ["company", "product", "version"],
+                        },
+                        "releaseNotes": {"type": "string"},
+                        "shA256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                        "name": {"type": "string"},
+                        "productName": {"type": "string"},
+                        "fullName": {"type": "string"},
+                        "extension": {"type": "string"},
+                        "released": {"type": "string", "format": "date-time"},
+                        "salesRegion": {"type": ["string", "null"]},
+                        "length": {"type": "integer"},
+                    },
+                    "required": [
+                        "blob",
+                        "identity",
+                        "releaseNotes",
+                        "shA256",
+                        "name",
+                        "productName",
+                        "fullName",
+                        "extension",
+                        "released",
+                        "salesRegion",
+                        "length",
+                    ],
+                },
+            }
+        },
+        "required": ["firmwares"],
+    }
+
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
@@ -234,6 +344,8 @@ class Ledvance(BaseOtaProvider):
             "https://api.update.ledvance.com/v1/zigbee/firmwares"
         ) as rsp:
             fw_lst = await rsp.json()
+
+        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
         for fw in fw_lst["firmwares"]:
             identity = fw["identity"]
@@ -265,6 +377,28 @@ class Ledvance(BaseOtaProvider):
 class Salus(BaseOtaProvider):
     MANUFACTURER_IDS = [4216, 43981]
 
+    JSON_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "versions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "model": {"type": "string"},
+                        "version": {
+                            "type": "string",
+                            "pattern": "^(|[0-9A-F]{8}|[0-9A-F]{12})$",
+                        },
+                        "url": {"type": "string", "format": "uri"},
+                    },
+                    "required": ["model", "version", "url"],
+                },
+            }
+        },
+        "required": ["versions"],
+    }
+
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
@@ -272,6 +406,8 @@ class Salus(BaseOtaProvider):
             "https://eu.salusconnect.io/demo/default/status/firmware"
         ) as rsp:
             fw_lst = await rsp.json()
+
+        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
         for fw in fw_lst["versions"]:
             # A plain text file is present in the firmware list, ignore it
@@ -295,6 +431,29 @@ class Salus(BaseOtaProvider):
 class Sonoff(BaseOtaProvider):
     MANUFACTURER_IDS = [4742]
 
+    JSON_SCHEMA = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "fw_binary_url": {"type": "string", "format": "uri"},
+                "fw_file_version": {"type": "integer"},
+                "fw_filesize": {"type": "integer"},
+                "fw_image_type": {"type": "integer"},
+                "fw_manufacturer_id": {"type": "integer"},
+                "model_id": {"type": "string"},
+            },
+            "required": [
+                "fw_binary_url",
+                "fw_file_version",
+                "fw_filesize",
+                "fw_image_type",
+                "fw_manufacturer_id",
+                "model_id",
+            ],
+        },
+    }
+
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
@@ -302,6 +461,8 @@ class Sonoff(BaseOtaProvider):
             "https://zigbee-ota.sonoff.tech/releases/upgrade.json"
         ) as rsp:
             fw_lst = await rsp.json()
+
+        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
         for fw in fw_lst:
             yield RemoteOtaImageMetadata(  # type: ignore[call-arg]
@@ -317,6 +478,35 @@ class Sonoff(BaseOtaProvider):
 class Inovelli(BaseOtaProvider):
     MANUFACTURER_IDS = [4655]
 
+    JSON_SCHEMA = {
+        "type": "object",
+        "patternProperties": {
+            "^[A-Z0-9_-]+$": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "version": {
+                            "type": "string",
+                            "pattern": "^(?:[0-9A-F]{8}|[0-9]+)$",
+                        },
+                        "channel": {"type": "string"},
+                        "firmware": {"type": "string", "format": "uri"},
+                        "manufacturer_id": {"type": "integer"},
+                        "image_type": {"type": "integer"},
+                    },
+                    "required": [
+                        "version",
+                        "channel",
+                        "firmware",
+                        "manufacturer_id",
+                        "image_type",
+                    ],
+                },
+            }
+        },
+    }
+
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
@@ -324,6 +514,8 @@ class Inovelli(BaseOtaProvider):
             "https://files.inovelli.com/firmware/firmware-zha.json"
         ) as rsp:
             fw_lst = await rsp.json()
+
+        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
         for model, firmwares in fw_lst.items():
             for fw in firmwares:
@@ -347,11 +539,45 @@ class Inovelli(BaseOtaProvider):
 class ThirdReality(BaseOtaProvider):
     MANUFACTURER_IDS = [4659, 4877]
 
+    JSON_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "versions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "modelId": {"type": "string"},
+                        "url": {"type": "string", "format": "uri"},
+                        "version": {
+                            "type": "string",
+                            "pattern": "^\\d+\\.\\d+\\.\\d+$",
+                        },
+                        "imageType": {"type": "integer"},
+                        "manufacturerId": {"type": "integer"},
+                        "fileVersion": {"type": "integer"},
+                    },
+                    "required": [
+                        "modelId",
+                        "url",
+                        "version",
+                        "imageType",
+                        "manufacturerId",
+                        "fileVersion",
+                    ],
+                },
+            }
+        },
+        "required": ["versions"],
+    }
+
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         async with session.get("https://tr-zha.s3.amazonaws.com/firmware.json") as rsp:
             fw_lst = await rsp.json()
+
+        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
         for fw in fw_lst["versions"]:
             yield RemoteOtaImageMetadata(  # type: ignore[call-arg]
@@ -366,6 +592,58 @@ class ThirdReality(BaseOtaProvider):
 
 
 class RemoteProvider(BaseOtaProvider):
+    JSON_SCHEMA = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+            "firmwares": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "binary_url": {"type": "string", "format": "uri"},
+                        "file_version": {"type": "integer"},
+                        "file_size": {"type": "integer"},
+                        "image_type": {"type": "integer"},
+                        "manufacturer_names": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "model_names": {"type": "array", "items": {"type": "string"}},
+                        "manufacturer_id": {"type": "integer"},
+                        "changelog": {"type": "string"},
+                        "checksum": {
+                            "type": "string",
+                            "pattern": "^sha3-256:[a-f0-9]{64}$",
+                        },
+                        "min_hardware_version": {"type": "integer"},
+                        "max_hardware_version": {"type": "integer"},
+                        "min_current_file_version": {"type": "integer"},
+                        "max_current_file_version": {"type": "integer"},
+                        "specificity": {"type": "integer"},
+                    },
+                    "required": [
+                        "binary_url",
+                        "file_version",
+                        "file_size",
+                        "image_type",
+                        # "manufacturer_names",
+                        # "model_names",
+                        "manufacturer_id",
+                        # "changelog",
+                        "checksum",
+                        # "min_hardware_version",
+                        # "max_hardware_version",
+                        # "min_current_file_version",
+                        # "max_current_file_version",
+                        # "specificity",
+                    ],
+                },
+            }
+        },
+        "required": ["firmwares"],
+    }
+
     def __init__(self, url: str, manufacturer_ids: list[int] | None = None):
         super().__init__()
         self.url = url
@@ -382,6 +660,8 @@ class RemoteProvider(BaseOtaProvider):
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         async with session.get(self.url) as rsp:
             index = await rsp.json()
+
+        jsonschema.validate(index, self.JSON_SCHEMA)
 
         for fw in index["firmwares"]:
             meta = RemoteOtaImageMetadata(  # type: ignore[call-arg]
@@ -479,13 +759,43 @@ def _load_z2m_index(index: dict, *, index_root: pathlib.Path | None = None):
             yield RemoteOtaImageMetadata(**shared_kwargs, url=obj["url"])  # type: ignore[call-arg]
 
 
-class LocalZ2MProvider(BaseOtaProvider):
-    def __init__(self, index_file: pathlib.Path):
-        super().__init__()
-        self.index_file = index_file
+class BaseZ2MProvider(BaseOtaProvider):
+    JSON_SCHEMA = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "fileVersion": {"type": "integer"},
+                "fileSize": {"type": "integer"},
+                "manufacturerCode": {"type": "integer"},
+                "imageType": {"type": "integer"},
+                "sha512": {"type": "string", "pattern": "^[a-f0-9]{128}$"},
+                "url": {"type": "string", "format": "uri"},
+                "path": {"type": "string"},
+                "minFileVersion": {"type": "integer"},
+                "maxFileVersion": {"type": "integer"},
+                "manufacturerName": {"type": "array", "items": {"type": "string"}},
+                "modelId": {"type": "string"},
+            },
+            "required": [
+                "fileVersion",
+                "fileSize",
+                "manufacturerCode",
+                "imageType",
+                "sha512",
+                "url",
+            ],
+        },
+    }
 
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
         return True
+
+
+class LocalZ2MProvider(BaseZ2MProvider):
+    def __init__(self, index_file: pathlib.Path):
+        super().__init__()
+        self.index_file = index_file
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -495,23 +805,24 @@ class LocalZ2MProvider(BaseOtaProvider):
         )
         index = json.loads(index_text)
 
+        jsonschema.validate(index, self.JSON_SCHEMA)
+
         for img in _load_z2m_index(index, index_root=self.index_file.parent):
             yield img
 
 
-class RemoteZ2MProvider(BaseOtaProvider):
+class RemoteZ2MProvider(BaseZ2MProvider):
     def __init__(self, url: str):
         super().__init__()
         self.url = url
-
-    def compatible_with_device(self, device: zigpy.device.Device) -> bool:
-        return True
 
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         async with session.get(self.url) as rsp:
             fw_lst = await rsp.json(content_type=None)
+
+        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
         for img in _load_z2m_index(fw_lst):
             yield img
