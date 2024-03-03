@@ -67,8 +67,8 @@ def _test_z2m_index_entry(obj: dict, meta: providers.BaseOtaImageMetadata) -> bo
     else:
         assert meta.model_names == ()
 
-    if "manufacturerNames" in obj:
-        assert meta.manufacturer_names == tuple(obj["manufacturerNames"])
+    if "manufacturerName" in obj:
+        assert meta.manufacturer_names == tuple(obj["manufacturerName"])
     else:
         assert meta.manufacturer_names == ()
 
