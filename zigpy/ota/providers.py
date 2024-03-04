@@ -357,6 +357,7 @@ class Ledvance(BaseOtaProvider):
                 image_type=identity["product"],
                 checksum="sha256:" + fw["shA256"],
                 file_size=fw["length"],
+                model_names=(fw["productName"],),
                 url=(
                     "https://api.update.ledvance.com/v1/zigbee/firmwares/download?"
                     + urllib.parse.urlencode(

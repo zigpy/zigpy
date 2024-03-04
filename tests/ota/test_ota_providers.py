@@ -248,19 +248,32 @@ async def test_ledvance_provider():
     for obj, meta in zip(index_obj["firmwares"], index):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.image_type == obj["identity"]["product"]
-        assert meta.checksum == "sha256:" + obj["shA256"]
-        assert meta.changelog == obj["releaseNotes"]
-        assert meta.file_size == obj["length"]
+        assert meta.checksum == "sha256:" + obj.pop("shA256")
+        assert meta.changelog == obj.pop("releaseNotes")
+        assert meta.file_size == obj.pop("length")
         assert meta.manufacturer_id == obj["identity"]["company"]
+        assert meta.model_names == (obj.pop("productName"),)
         assert meta.url == (
             f"https://api.update.ledvance.com/v1/zigbee/firmwares/download"
-            f"?Company={obj['identity']['company']}"
-            f"&Product={obj['identity']['product']}"
-            f"&Version={obj['identity']['version']['major']}"
-            f".{obj['identity']['version']['minor']}"
-            f".{obj['identity']['version']['build']}"
-            f".{obj['identity']['version']['revision']}"
+            f"?Company={obj['identity'].pop('company')}"
+            f"&Product={obj['identity'].pop('product')}"
+            f"&Version={obj['identity']['version'].pop('major')}"
+            f".{obj['identity']['version'].pop('minor')}"
+            f".{obj['identity']['version'].pop('build')}"
+            f".{obj['identity']['version'].pop('revision')}"
         )
+
+        assert not obj["identity"].pop("version")
+        assert not obj.pop("identity")
+
+        obj.pop("blob")
+        obj.pop("extension")
+        obj.pop("fullName")
+        obj.pop("name")
+        obj.pop("released")
+        obj.pop("salesRegion")
+
+        assert not obj
 
 
 async def test_salus_provider():
