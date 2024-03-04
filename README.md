@@ -25,7 +25,7 @@ For specific instructions on how-to install and test zigpy or contribute bug-rep
 
 - [Guidelines in CONTRIBUTING.md](./CONTRIBUTING.md)
 
-This CONTRIBUTING.md file will contain information about using zigpy, testing new releases, troubleshooting and bug-reporting as, as well as library + code instructions for developers and more. This file also contain short summeries and links to other related projects that directly or indirectly depends in zigpy libraries.
+This CONTRIBUTING.md file will contain information about using zigpy, testing new releases, troubleshooting and bug-reporting as, as well as library + code instructions for developers and more. This file also contain short summaries and links to other related projects that directly or indirectly depends in zigpy libraries.
 
 You can contribute to this project either as an end-user, a tester (advanced user contributing constructive issue/bug-reports) or as a developer contributing code.
 

@@ -205,7 +205,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def enqueue(self, cb_name: str, *args) -> None:
         """Enqueue an async callback handler action."""
         if not self.running:
-            LOGGER.warning("Discarding %s event", cb_name)
+            LOGGER.debug("Discarding %s event", cb_name)
             return
         self._callback_handlers.put_nowait((cb_name, args))
 
@@ -291,6 +291,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             attrid,
             value,
             timestamp,
+        )
+
+    def attribute_cleared(self, cluster: zigpy.typing.ClusterType, attrid: int) -> None:
+        self.enqueue(
+            "_clear_attribute",
+            cluster.endpoint.device.ieee,
+            cluster.endpoint.endpoint_id,
+            cluster.cluster_id,
+            attrid,
         )
 
     def unsupported_attribute_added(
@@ -619,6 +628,33 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         await self._db.commit()
 
+    async def _clear_attribute(
+        self,
+        ieee: t.EUI64,
+        endpoint_id: int,
+        cluster_id: int,
+        attrid: int,
+    ) -> None:
+        q = f"""
+            DELETE FROM attributes_cache{DB_V}
+            WHERE
+                ieee = :ieee
+                AND endpoint_id = :endpoint_id
+                AND cluster = :cluster_id
+                AND attrid = :attrid
+            """
+
+        await self.execute(
+            q,
+            {
+                "ieee": ieee,
+                "endpoint_id": endpoint_id,
+                "cluster_id": cluster_id,
+                "attrid": attrid,
+            },
+        )
+        await self._db.commit()
+
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
         self.enqueue("_network_backup_created", json.dumps(backup.as_dict()))
 
@@ -793,7 +829,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(f"SELECT * FROM relays{DB_V}") as cursor:
             async for (ieee, value) in cursor:
                 dev = self._application.get_device(ieee)
-                dev.relays, _ = t.Relays.deserialize(value)
+                relays, _ = t.Relays.deserialize(value)
+                dev.relays = zigpy.util.filter_relays(relays)
 
     async def _load_neighbors(self) -> None:
         async with self.execute(f"SELECT * FROM neighbors{DB_V}") as cursor:

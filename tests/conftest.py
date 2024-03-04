@@ -12,7 +12,13 @@ from unittest.mock import Mock
 import pytest
 
 import zigpy.application
-from zigpy.config import CONF_DATABASE, CONF_DEVICE, CONF_DEVICE_PATH
+from zigpy.config import (
+    CONF_DATABASE,
+    CONF_DEVICE,
+    CONF_DEVICE_PATH,
+    CONF_OTA,
+    CONF_OTA_ENABLED,
+)
 import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
@@ -122,6 +128,9 @@ def make_app(
         {
             CONF_DATABASE: None,
             CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"},
+            CONF_OTA: {
+                CONF_OTA_ENABLED: False,
+            },
         },
         config_updates,
     )

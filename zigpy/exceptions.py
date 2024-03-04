@@ -70,3 +70,11 @@ class NetworkSettingsInconsistent(ZigbeeException):
 
 class CorruptDatabase(ZigbeeException):
     """The SQLite database is corrupt or otherwise inconsistent"""
+
+
+class QuirksException(Exception):
+    """Base exception class"""
+
+
+class MultipleQuirksMatchException(QuirksException):
+    """Thrown when multiple v2 quirks match a device"""

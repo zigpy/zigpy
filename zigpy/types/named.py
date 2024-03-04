@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import enum
 import typing
 
+import attrs
+
 from . import basic
 from .struct import Struct
 
@@ -14,7 +16,10 @@ if typing.TYPE_CHECKING:
 
 class BaseDataclassMixin:
     def replace(self, **kwargs) -> Self:
-        return dataclasses.replace(self, **kwargs)
+        if dataclasses.is_dataclass(self):
+            return dataclasses.replace(self, **kwargs)
+        else:
+            return attrs.evolve(self, **kwargs)
 
 
 def _hex_string_to_bytes(hex_string: str) -> bytes:
@@ -551,6 +556,9 @@ class AddrModeAddress(BaseDataclassMixin):
                 AddrMode.Broadcast: BroadcastAddress,
             }[self.addr_mode](self.address)
 
+    def __hash__(self) -> int:
+        return hash((self.addr_mode, self.address))
+
 
 class TransmitOptions(enum.Flag):
     NONE = 0
@@ -600,3 +608,25 @@ class ZigbeePacket(BaseDataclassMixin):
     # Options for incoming packets
     lqi: basic.uint8_t | None = dataclasses.field(default=None)
     rssi: basic.int8s | None = dataclasses.field(default=None)
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.timestamp,
+                self.src,
+                self.src_ep,
+                self.dst,
+                self.dst_ep,
+                self.source_route,
+                self.extended_timeout,
+                self.tsn,
+                self.profile_id,
+                self.cluster_id,
+                self.data,
+                self.tx_options,
+                self.radius,
+                self.non_member_radius,
+                self.lqi,
+                self.rssi,
+            )
+        )

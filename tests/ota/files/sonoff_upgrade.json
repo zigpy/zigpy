@@ -1,0 +1,26 @@
+[
+  {
+    "fw_binary_url": "https://zigbee-ota.sonoff.tech/releases/86-0001-00001101.zigbee",
+    "fw_file_version": 4353,
+    "fw_filesize": 131086,
+    "fw_image_type": 1,
+    "fw_manufacturer_id": 4742,
+    "model_id": "ZBMINI-L"
+  },
+  {
+    "fw_binary_url": "https://zigbee-ota.sonoff.tech/releases/zigbeeminil2_100E_stand_ota_file.ota",
+    "fw_file_version": 4110,
+    "fw_filesize": 259018,
+    "fw_image_type": 4,
+    "fw_manufacturer_id": 4742,
+    "model_id": "ZBMINIL2"
+  },
+  {
+    "fw_binary_url": "https://zigbee-ota.sonoff.tech/releases/snzb-06p_v1.0.5.ota",
+    "fw_file_version": 4101,
+    "fw_filesize": 258206,
+    "fw_image_type": 2060,
+    "fw_manufacturer_id": 4742,
+    "model_id": "SNZB-06P"
+  }
+]

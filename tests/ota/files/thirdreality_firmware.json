@@ -1,0 +1,116 @@
+{
+    "versions": [
+        {
+            "modelId": "3RAP0149BZ",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/Air_Pressure_Sensor_PROD_OTA_V6_v1.00.06.ota",
+            "version": "1.00.06",
+            "imageType": 54190,
+            "manufacturerId": 4659,
+            "fileVersion": 6
+        },
+        {
+            "modelId": "3RSB22BZ",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/Button_PROD_OTA_V28_v1.00.28.ota",
+            "version": "1.00.28",
+            "imageType": 54184,
+            "manufacturerId": 4659,
+            "fileVersion": 28
+        },
+        {
+            "modelId": "3RDS17BZ",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/Door_Sensor_PROD_OTA_V48_v1.00.48.ota",
+            "version": "1.00.48",
+            "imageType": 54178,
+            "manufacturerId": 4659,
+            "fileVersion": 48
+        },
+        {
+            "modelId": "3RSNL02043Z",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/FW_ha_v0.00.50.ota",
+            "version": "0.00.50",
+            "imageType": 0,
+            "manufacturerId": 4877,
+            "fileVersion": 50
+        },
+        {
+            "modelId": "3RMS16BZ",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/Motion_Sensor_PROD_OTA_V51_v1.00.51.ota",
+            "version": "1.00.51",
+            "imageType": 54177,
+            "manufacturerId": 4659,
+            "fileVersion": 51
+        },
+        {
+            "modelId": "TRZB3",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/SmartCurtainModule_Zigbee_PROD_OTA_V12_v1.00.12.ota",
+            "version": "1.00.12",
+            "imageType": 54186,
+            "manufacturerId": 4659,
+            "fileVersion": 12
+        },
+        {
+            "modelId": "3RSB015BZ",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/SmartCurtain_PROD_OTA_V68_v1.00.68.ota",
+            "version": "1.00.68",
+            "imageType": 54183,
+            "manufacturerId": 4659,
+            "fileVersion": 68
+        },
+        {
+            "modelId": "3RSP019BZ",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/SmartPlug_Zigbee_PROD_OTA_V74_v1.00.74.ota",
+            "version": "1.00.74",
+            "imageType": 54182,
+            "manufacturerId": 4659,
+            "fileVersion": 268513355
+        },
+        {
+            "modelId": "3RSP02028BZ",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/SmartPlug_Zigbee_PROD_OTA_V74_v1.00.74.ota",
+            "version": "1.00.74",
+            "imageType": 54182,
+            "manufacturerId": 4659,
+            "fileVersion": 268513355
+        },
+        {
+            "modelId": "3RSPE01044BZ",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/SmartPlug_Zigbee_PROD_OTA_V74_v1.00.74.ota",
+            "version": "1.00.74",
+            "imageType": 54182,
+            "manufacturerId": 4659,
+            "fileVersion": 268513355
+        },
+        {
+            "modelId": "3RSS009Z",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/SmartSwitchGen3_PROD_OTA_V18_v1.00.18.ota",
+            "version": "1.00.18",
+            "imageType": 54181,
+            "manufacturerId": 4659,
+            "fileVersion": 18
+        },
+        {
+            "modelId": "3RTHS24BZ",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/TRTL_ThermalSensor_PROD_OTA_V23_1.00.23.ota",
+            "version": "1.00.23",
+            "imageType": 54185,
+            "manufacturerId": 4659,
+            "fileVersion": 23
+        },
+        {
+            "modelId": "3RVS01031Z",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/Vibrate_Sensor_PROD_OTA_V40_v1.00.40.ota",
+            "version": "1.00.40",
+            "imageType": 54187,
+            "manufacturerId": 4659,
+            "fileVersion": 40
+        },
+        {
+            "modelId": "3RWS18BZ",
+            "url": "https://tr-zha.s3.amazonaws.com/firmware/Water_Leak_Sensor_PROD_OTA_V56_v1.00.56.ota",
+            "version": "1.00.56",
+            "imageType": 54179,
+            "manufacturerId": 4659,
+            "fileVersion": 56
+        }
+    ]
+}

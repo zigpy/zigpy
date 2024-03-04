@@ -38,48 +38,6 @@ def ieee():
     return make_ieee()
 
 
-@patch("zigpy.ota.OTA", spec_set=zigpy.ota.OTA)
-async def test_new_exception(ota_mock):
-    p1 = patch.object(App, "_load_db", AsyncMock())
-    p2 = patch.object(App, "load_network_info", AsyncMock())
-    p3 = patch.object(App, "shutdown", AsyncMock())
-    ota_mock.return_value.initialize = AsyncMock()
-
-    with p1 as db_mck, p2 as load_nwk_info_mck, p3 as shut_mck:
-        await App.new(
-            {
-                conf.CONF_DATABASE: "/dev/null",
-                conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
-                conf.CONF_STARTUP_ENERGY_SCAN: False,
-            }
-        )
-    assert db_mck.call_count == 1
-    assert db_mck.await_count == 1
-    assert ota_mock.return_value.initialize.call_count == 1
-    assert load_nwk_info_mck.call_count == 1
-    assert load_nwk_info_mck.await_count == 1
-    assert shut_mck.call_count == 0
-    assert shut_mck.await_count == 0
-
-    with p1 as db_mck, p2 as load_nwk_info_mck, p3 as shut_mck:
-        load_nwk_info_mck.side_effect = asyncio.TimeoutError()
-        with pytest.raises(asyncio.TimeoutError):
-            await App.new(
-                {
-                    conf.CONF_DATABASE: "/dev/null",
-                    conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
-                    conf.CONF_STARTUP_ENERGY_SCAN: False,
-                }
-            )
-    assert db_mck.call_count == 2
-    assert db_mck.await_count == 2
-    assert ota_mock.return_value.initialize.call_count == 1
-    assert load_nwk_info_mck.call_count == 2
-    assert load_nwk_info_mck.await_count == 2
-    assert shut_mck.call_count == 1
-    assert shut_mck.await_count == 1
-
-
 async def test_permit(app, ieee):
     app.devices[ieee] = MagicMock()
     app.devices[ieee].zdo.permit = AsyncMock()
@@ -1186,6 +1144,8 @@ def test_get_device_with_address_nwk(app, device):
 
 async def test_request_future_matching(app, make_initialized_device):
     device = make_initialized_device(app)
+    device._packet_debouncer.filter = MagicMock(return_value=False)
+
     ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
 
     req_hdr, req_cmd = ota._create_request(
@@ -1193,7 +1153,7 @@ async def test_request_future_matching(app, make_initialized_device):
         command_id=ota.commands_by_name["query_next_image"].id,
         schema=ota.commands_by_name["query_next_image"].schema,
         disable_default_response=False,
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
         args=(),
         kwargs={
             "field_control": 0,
@@ -1218,11 +1178,11 @@ async def test_request_future_matching(app, make_initialized_device):
 
     assert not app._req_listeners[device]
 
-    with app._wait_for_response(
+    with app.wait_for_response(
         device, [ota.commands_by_name["query_next_image"].schema()]
     ) as rsp_fut:
         # Attach two listeners
-        with app._wait_for_response(
+        with app.wait_for_response(
             device, [ota.commands_by_name["query_next_image"].schema()]
         ) as rsp_fut2:
             assert app._req_listeners[device]
@@ -1249,6 +1209,7 @@ async def test_request_future_matching(app, make_initialized_device):
 
 async def test_request_callback_matching(app, make_initialized_device):
     device = make_initialized_device(app)
+    device._packet_debouncer.filter = MagicMock(return_value=False)
     ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
 
     req_hdr, req_cmd = ota._create_request(
@@ -1256,7 +1217,7 @@ async def test_request_callback_matching(app, make_initialized_device):
         command_id=ota.commands_by_name["query_next_image"].id,
         schema=ota.commands_by_name["query_next_image"].schema,
         disable_default_response=False,
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
         args=(),
         kwargs={
             "field_control": 0,
@@ -1283,7 +1244,7 @@ async def test_request_callback_matching(app, make_initialized_device):
 
     assert not app._req_listeners[device]
 
-    with app._callback_for_response(
+    with app.callback_for_response(
         device, [ota.commands_by_name["query_next_image"].schema()], mock_callback
     ):
         assert app._req_listeners[device]

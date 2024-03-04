@@ -16,13 +16,14 @@ requires-python = ">=3.8"
 dependencies = [
     "attrs",
     "aiohttp",
-    "aiosqlite>=0.16.0",
+    "aiosqlite>=0.20.0",
     "async_timeout",
     "crccheck",
     "cryptography",
     'importlib_resources; python_version<"3.9"',
     'async-timeout; python_version<"3.11"',
     "voluptuous",
+    "jsonschema",
     'pyserial-asyncio; platform_system!="Windows"',
     'pyserial-asyncio!=0.5; platform_system=="Windows"',
     "typing_extensions",
@@ -144,7 +145,7 @@ combine_as_imports = true
 
 [tool.codespell]
 ignore-words-list = "ser,nd,hass"
-skip = ["./.*", "test/*", "pyproject.toml"]
+skip = "./.*,tests/*,pyproject.toml"
 quiet-level = 2
 
 [tool.mypy]

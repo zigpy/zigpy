@@ -174,3 +174,97 @@ class PriorityLock(PriorityDynamicBoundedSemaphore):
 
 # Backwards compatibility
 DynamicBoundedSemaphore = PriorityDynamicBoundedSemaphore
+
+
+class ReschedulableTimeout:
+    """Timeout object made to be efficiently rescheduled continuously."""
+
+    def __init__(self, callback: typing.Callable[[], None]) -> None:
+        self._timer: asyncio.TimerHandle | None = None
+        self._callback = callback
+
+        self._when: float = 0
+
+    @functools.cached_property
+    def _loop(self) -> asyncio.AbstractEventLoop:
+        return asyncio.get_running_loop()
+
+    def _timeout_trigger(self) -> None:
+        now = self._loop.time()
+
+        # If we triggered early, reschedule
+        if self._when > now:
+            self._reschedule()
+            return
+
+        self._timer = None
+        self._callback()
+
+    def _reschedule(self) -> None:
+        if self._timer is not None:
+            self._timer.cancel()
+
+        self._timer = self._loop.call_at(self._when, self._timeout_trigger)
+
+    def reschedule(self, delay: float) -> None:
+        self._when = self._loop.time() + delay
+
+        # If the current timer will expire too late (or isn't running), reschedule
+        if self._timer is None or self._timer.when() > self._when:
+            self._reschedule()
+
+    def cancel(self) -> None:
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+
+
+class Debouncer:
+    """Generic debouncer supporting per-invocation expiration."""
+
+    def __init__(self):
+        self._times: dict[typing.Any, float] = {}
+        self._queue: list[tuple[float, typing.Any]] = []
+
+    @functools.cached_property
+    def _loop(self) -> asyncio.BaseEventLoop:
+        return asyncio.get_running_loop()
+
+    def clean(self, now: float | None = None) -> None:
+        """Clean up stale timers."""
+        if now is None:
+            now = self._loop.time()
+
+        # We store the negative expiration time to ensure we can pop expiring objects
+        while self._queue and -self._queue[-1][0] < now:
+            _, obj = self._queue.pop()
+            self._times.pop(obj)
+
+    def is_filtered(self, obj: typing.Any, now: float | None = None) -> bool:
+        """Check if an object will be filtered."""
+        if now is None:
+            now = self._loop.time()
+
+        # Clean up stale timers
+        self.clean(now)
+
+        # If an object still exists after cleaning, it won't be expired
+        return obj in self._times
+
+    def filter(self, obj: typing.Any, expire_in: float) -> bool:
+        """Check if an object should be filtered. If not, store it."""
+        now = self._loop.time()
+
+        # If the object is filtered, do nothing
+        if self.is_filtered(obj, now=now):
+            return True
+
+        # Otherwise, queue it
+        self._times[obj] = now + expire_in
+        heapq.heappush(self._queue, (-(now + expire_in), obj))
+
+        return False
+
+    def __repr__(self) -> str:
+        """String representation of the debouncer."""
+        return f"<{self.__class__.__name__} [tracked:{len(self._queue)}]>"
