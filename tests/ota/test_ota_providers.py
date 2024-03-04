@@ -55,20 +55,21 @@ class SelfContainedOtaImageMetadata(providers.BaseOtaImageMetadata):
 
 
 def _test_z2m_index_entry(obj: dict, meta: providers.BaseOtaImageMetadata) -> bool:
-    assert meta.checksum == "sha512:" + obj["sha512"]
-    assert meta.image_type == obj["imageType"]
-    assert meta.file_size == obj["fileSize"]
-    assert meta.manufacturer_id == obj["manufacturerCode"]
-    assert meta.min_current_file_version == obj.get("minFileVersion", None)
-    assert meta.max_current_file_version == obj.get("maxFileVersion", None)
+    assert meta.checksum == "sha512:" + obj.pop("sha512")
+    assert meta.image_type == obj.pop("imageType")
+    assert meta.file_size == obj.pop("fileSize")
+    assert meta.file_version == obj.pop("fileVersion")
+    assert meta.manufacturer_id == obj.pop("manufacturerCode")
+    assert meta.min_current_file_version == obj.pop("minFileVersion", None)
+    assert meta.max_current_file_version == obj.pop("maxFileVersion", None)
 
     if "modelId" in obj:
-        assert meta.model_names == (obj["modelId"],)
+        assert meta.model_names == (obj.pop("modelId"),)
     else:
         assert meta.model_names == ()
 
     if "manufacturerName" in obj:
-        assert meta.manufacturer_names == tuple(obj["manufacturerName"])
+        assert meta.manufacturer_names == tuple(obj.pop("manufacturerName"))
     else:
         assert meta.manufacturer_names == ()
 
@@ -93,11 +94,14 @@ async def test_local_z2m_provider():
         assert _test_z2m_index_entry(obj, meta)
 
         if isinstance(meta, providers.RemoteOtaImageMetadata):
-            assert meta.url == obj["url"]
+            assert meta.url == obj.pop("url")
         elif isinstance(meta, providers.LocalOtaImageMetadata):
-            assert meta.path == FILES_DIR / obj["path"]
+            assert meta.path == FILES_DIR / obj.pop("path")
+            obj.pop("url")
         else:
             assert False
+
+        assert not obj
 
 
 async def test_remote_z2m_provider():
@@ -125,7 +129,10 @@ async def test_remote_z2m_provider():
     for obj, meta in zip(index_obj, index):
         assert _test_z2m_index_entry(obj, meta)
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
-        assert meta.url == obj["url"]
+        assert meta.url == obj.pop("url")
+        obj.pop("path", None)
+
+        assert not obj
 
 
 async def test_trådfri_provider():
@@ -167,10 +174,13 @@ async def test_trådfri_provider():
         assert meta.file_version == int(
             obj["fw_binary_url"].split("_v", 1)[1].split("_", 1)[0]
         )
-        assert meta.image_type == obj["fw_image_type"]
-        assert meta.checksum == "sha3-256:" + obj["fw_sha3_256"]
-        assert meta.url == obj["fw_binary_url"]
+        assert meta.image_type == obj.pop("fw_image_type")
+        assert meta.checksum == "sha3-256:" + obj.pop("fw_sha3_256")
+        assert meta.url == obj.pop("fw_binary_url")
         assert meta.manufacturer_id == providers.Trådfri.MANUFACTURER_IDS[0] == 4476
+
+        obj.pop("fw_type")
+        assert not obj
 
     meta = index[0]
     assert meta.image_type == 10242
