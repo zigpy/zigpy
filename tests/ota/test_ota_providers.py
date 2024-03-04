@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import json
@@ -7,6 +8,7 @@ import pathlib
 import tarfile
 from unittest.mock import Mock
 
+import aiohttp
 from aioresponses import aioresponses
 import attrs
 import pytest
@@ -19,6 +21,33 @@ from tests.conftest import make_node_desc
 from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 
 FILES_DIR = pathlib.Path(__file__).parent / "files"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def download_external_files():
+    urls = json.loads((FILES_DIR / "external/urls.json").read_text())
+
+    for path, obj in urls.items():
+        path = FILES_DIR / "external" / path
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        if not path.is_file():
+
+            async def download():
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        obj["url"],
+                        ssl=False,
+                        raise_for_status=True,
+                    ) as resp:
+                        data = await resp.read()
+
+                path.write_bytes(data)
+
+            asyncio.run(download())
+
+        algorithm, digest = obj["checksum"].split(":")
+        assert hashlib.new(algorithm, path.read_bytes()).hexdigest() == digest
 
 
 def make_device(
@@ -187,7 +216,7 @@ async def test_trådfri_provider():
 
     ota_contents = (
         FILES_DIR
-        / "ikea/mgm210l-light-cws-cv-rgbw_release_prod_v268572245_3ae78af7-14fd-44df-bca2-6d366f2e9d02.ota"
+        / "external/dl/ikea/mgm210l-light-cws-cv-rgbw_release_prod_v268572245_3ae78af7-14fd-44df-bca2-6d366f2e9d02.ota"
     ).read_bytes()
 
     with aioresponses() as mock_http:
@@ -451,7 +480,7 @@ async def test_remote_provider():
 
 
 async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
-    files = list((FILES_DIR / "local_provider").glob("[!.]*"))
+    files = list((FILES_DIR / "external/dl/local_provider").glob("[!.]*"))
     files.sort(key=lambda f: f.name)
 
     (tmp_path / "foo/bar").mkdir(parents=True)
@@ -486,7 +515,9 @@ async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
 
 
 async def test_salus_unzipping_valid():
-    valid_tarball = (FILES_DIR / "salus/Arjonstop_00000013.tar.gz").read_bytes()
+    valid_tarball = (
+        FILES_DIR / "external/dl/salus/Arjonstop_00000013.tar.gz"
+    ).read_bytes()
 
     meta = providers.SalusRemoteOtaImageMetadata(
         file_version=0x00000013,
