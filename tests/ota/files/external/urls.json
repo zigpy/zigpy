@@ -1,0 +1,18 @@
+{
+    "dl/ikea/mgm210l-light-cws-cv-rgbw_release_prod_v268572245_3ae78af7-14fd-44df-bca2-6d366f2e9d02.ota": {
+        "url": "https://fw.ota.homesmart.ikea.com/files/mgm210l-light-cws-cv-rgbw_release_prod_v268572245_3ae78af7-14fd-44df-bca2-6d366f2e9d02.ota",
+        "checksum": "sha3-256:e68e61bd57291e0b6358242e72ee2dfe098cb8b769f572b5b8f8e7a34dbcfaca"
+    },
+    "dl/local_provider/1135-0000-201000A0-FLS-PP3_RGBW.zigbee": {
+        "url": "https://deconz.dresden-elektronik.de/otau/1135-0000-201000A0-FLS-PP3_RGBW.zigbee",
+        "checksum": "sha3-256:23415a1c54353219bb7de3e72ba6050d9e849be0954eebda9b5783d34d0723d1"
+    },
+    "dl/local_provider/RDL2016091_1_E11-G13_V0.0.9_20170921_release.ota": {
+        "url": "https://us-fm.cloud.sengled.com/sengled/zigbee/firmware/RDL2016091_1_E11-G13_V0.0.9_20170921_release.ota",
+        "checksum": "sha3-256:542122a6f0f48075c3f089afcf9a4f86af2741672bc8c9cc7d5759ceed5c0e63"
+    },
+    "dl/salus/Arjonstop_00000013.tar.gz": {
+        "url": "https://eu.salusconnect.io/download/firmware/e18c41d0-c3e7-48cc-bba5-aacc3f289640/Arjonstop_00000013.tar.gz",
+        "checksum": "sha3-256:7bf35862e4e879d06f335c8bead52d48618fd3a8390a6c26e84ecee03ad77b2d"
+    }
+}
