@@ -43,6 +43,11 @@ Note! Zigbee 3.0 support or not in zigpy depends primarily on your Zigbee coordi
 - **Texas Instruments** based Zigbee radios with all compatible Z-Stack firmware via the [zigpy-znp](https://github.com/zha-ng/zigpy-znp) library for zigpy.
 - **ZiGate** based ZigBee radios via the [zigpy-zigate](https://github.com/zigpy/zigpy-zigate) library for zigpy.
 
+### Experimental and unofficial zigpy radio libraries from third parties
+
+- **Espressif Zigbee NCP Serial Protocol (ESP ZNSP)** based ESP32-C6/ESP32-H2 Zigbee radios via the [zigpy-espzb](https://github.com/lhespress/zigpy-espzb) library for zigpy.
+- **ZOI (ZBOSS Open Initiative)** based Zigbee radios compatible with ZBOSS NCP firmware via the [zigpy-zboss](https://github.com/kardia-as/zigpy-zboss) library for zigpy.
+
 ### Legacy or obsolete zigpy radio libraries
 
 - Texas Instruments with Z-Stack legacy firmware via the [zigpy-cc](https://github.com/zigpy/zigpy-cc) library for zigpy.
