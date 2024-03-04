@@ -25,6 +25,7 @@ from .async_mock import AsyncMock, MagicMock, patch, sentinel
 from .conftest import (
     NCP_IEEE,
     App,
+    add_initialized_device,
     make_app,
     make_ieee,
     make_neighbor,
@@ -65,10 +66,14 @@ async def test_permit_delivery_failure(app, ieee):
 
 
 async def test_permit_broadcast(app):
+    await app.startup()
+
     app.permit_ncp = AsyncMock()
     app.send_packet = AsyncMock()
     await app.permit(time_s=30)
-    assert app.send_packet.call_count == 1
+
+    # One NWK permit broadcast, one ZGP permit broadcast
+    assert app.send_packet.call_count == 2
     assert app.permit_ncp.call_count == 1
 
     assert app.send_packet.mock_calls[0].args[0].dst.addr_mode == t.AddrMode.Broadcast
@@ -105,9 +110,11 @@ async def test_known_device_left(app, ieee):
         app.listener_event.assert_called_once_with("device_left", dev)
 
 
-async def _remove(
+async def _test_remove(
     app, ieee, retval, zdo_reply=True, delivery_failure=True, has_node_desc=True
 ):
+    device = add_initialized_device(app, 0x1234, ieee)
+
     async def leave(*args, **kwargs):
         if zdo_reply:
             return retval
@@ -116,39 +123,40 @@ async def _remove(
         else:
             raise asyncio.TimeoutError
 
-    device = MagicMock()
-    device.ieee = ieee
-    device.zdo.leave.side_effect = leave
+    device.zdo.leave = AsyncMock(side_effect=leave)
 
-    if has_node_desc:
-        device.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4388, 82, 255, 0, 255, 0)
-    else:
+    if not has_node_desc:
         device.node_desc = None
 
-    app.devices[ieee] = device
     await app.remove(ieee)
+
     for _i in range(1, 20):
         await asyncio.sleep(0)
+
     assert ieee not in app.devices
 
 
 async def test_remove(app, ieee):
     """Test remove with successful zdo status."""
+    await app.startup()
 
     with patch.object(app, "_remove_device", wraps=app._remove_device) as remove_device:
-        await _remove(app, ieee, [0])
+        await _test_remove(app, ieee, [0])
         assert remove_device.await_count == 1
 
 
 async def test_remove_with_failed_zdo(app, ieee):
     """Test remove with unsuccessful zdo status."""
+    await app.startup()
 
     with patch.object(app, "_remove_device", wraps=app._remove_device) as remove_device:
-        await _remove(app, ieee, [1])
+        await _test_remove(app, ieee, [1])
         assert remove_device.await_count == 1
 
 
 async def test_remove_nonexistent(app, ieee):
+    await app.startup()
+
     with patch.object(app, "_remove_device", AsyncMock()) as remove_device:
         await app.remove(ieee)
         for _i in range(1, 20):
@@ -158,20 +166,26 @@ async def test_remove_nonexistent(app, ieee):
 
 
 async def test_remove_with_unreachable_device(app, ieee):
+    await app.startup()
+
     with patch.object(app, "_remove_device", wraps=app._remove_device) as remove_device:
-        await _remove(app, ieee, [0], zdo_reply=False)
+        await _test_remove(app, ieee, [0], zdo_reply=False)
         assert remove_device.await_count == 1
 
 
 async def test_remove_with_reply_timeout(app, ieee):
+    await app.startup()
+
     with patch.object(app, "_remove_device", wraps=app._remove_device) as remove_device:
-        await _remove(app, ieee, [0], zdo_reply=False, delivery_failure=False)
+        await _test_remove(app, ieee, [0], zdo_reply=False, delivery_failure=False)
         assert remove_device.await_count == 1
 
 
 async def test_remove_without_node_desc(app, ieee):
+    await app.startup()
+
     with patch.object(app, "_remove_device", wraps=app._remove_device) as remove_device:
-        await _remove(app, ieee, [0], has_node_desc=False)
+        await _test_remove(app, ieee, [0], has_node_desc=False)
         assert remove_device.await_count == 1
 
 
@@ -1063,9 +1077,13 @@ async def test_packet_received_ieee_no_rejoin(app, device, zdo_packet, caplog):
 
 
 @patch("zigpy.device.Device.initialize", AsyncMock())
-async def test_packet_received_ieee_rejoin(app, device, zdo_packet, caplog):
-    device.is_initialized = True
-    app.devices[device.ieee] = device
+async def test_packet_received_ieee_rejoin(
+    app, device, zdo_packet, make_initialized_device, caplog
+):
+    await app.startup()
+
+    device = make_initialized_device(app)
+    device.schedule_initialize = MagicMock(wraps=device.schedule_initialize)
 
     app.handle_join = MagicMock(wraps=app.handle_join)
 
