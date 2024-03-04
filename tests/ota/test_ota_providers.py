@@ -295,9 +295,10 @@ async def test_salus_provider():
 
     for obj, meta in zip(filtered_firmware_obj, index):
         assert isinstance(meta, providers.SalusRemoteOtaImageMetadata)
-        assert meta.url == obj["url"].replace("http://", "https://")
-        assert meta.file_version == int(obj["version"], 16)
-        assert meta.model_names == (obj["model"],)
+        assert meta.url == obj.pop("url").replace("http://", "https://")
+        assert meta.file_version == int(obj.pop("version"), 16)
+        assert meta.model_names == (obj.pop("model"),)
+        assert not obj
 
 
 async def test_sonoff_provider():
@@ -318,12 +319,13 @@ async def test_sonoff_provider():
 
     for obj, meta in zip(index_obj, index):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
-        assert meta.url == obj["fw_binary_url"]
-        assert meta.file_version == obj["fw_file_version"]
-        assert meta.file_size == obj["fw_filesize"]
-        assert meta.image_type == obj["fw_image_type"]
-        assert meta.manufacturer_id == obj["fw_manufacturer_id"]
-        assert meta.model_names == (obj["model_id"],)
+        assert meta.url == obj.pop("fw_binary_url")
+        assert meta.file_version == obj.pop("fw_file_version")
+        assert meta.file_size == obj.pop("fw_filesize")
+        assert meta.image_type == obj.pop("fw_image_type")
+        assert meta.manufacturer_id == obj.pop("fw_manufacturer_id")
+        assert meta.model_names == (obj.pop("model_id"),)
+        assert not obj
 
 
 async def test_inovelli_provider():
@@ -351,10 +353,15 @@ async def test_inovelli_provider():
         else:
             assert meta.file_version == int(obj["version"])
 
-        assert meta.url == obj["firmware"]
-        assert meta.manufacturer_id == obj["manufacturer_id"]
-        assert meta.image_type == obj["image_type"]
+        obj.pop("version")
+
+        assert meta.url == obj.pop("firmware")
+        assert meta.manufacturer_id == obj.pop("manufacturer_id")
+        assert meta.image_type == obj.pop("image_type")
         assert meta.model_names == (model,)
+
+        obj.pop("channel")
+        assert not obj
 
 
 async def test_third_reality_provider():
@@ -376,11 +383,14 @@ async def test_third_reality_provider():
 
     for obj, meta in zip(index_obj["versions"], index):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
-        assert meta.model_names == (obj["modelId"],)
-        assert meta.url == obj["url"]
-        assert meta.image_type == obj["imageType"]
-        assert meta.manufacturer_id == obj["manufacturerId"]
-        assert meta.file_version == obj["fileVersion"]
+        assert meta.model_names == (obj.pop("modelId"),)
+        assert meta.url == obj.pop("url")
+        assert meta.image_type == obj.pop("imageType")
+        assert meta.manufacturer_id == obj.pop("manufacturerId")
+        assert meta.file_version == obj.pop("fileVersion")
+
+        obj.pop("version")
+        assert not obj
 
 
 async def test_remote_provider():
@@ -418,20 +428,21 @@ async def test_remote_provider():
 
     for obj, meta in zip(index_obj["firmwares"], index):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
-        assert meta.url == obj["binary_url"]
-        assert meta.file_version == obj["file_version"]
-        assert meta.file_size == obj["file_size"]
-        assert meta.image_type == obj["image_type"]
-        assert meta.manufacturer_names == tuple(obj["manufacturer_names"])
-        assert meta.model_names == tuple(obj["model_names"])
-        assert meta.manufacturer_id == obj["manufacturer_id"]
-        assert meta.changelog == obj["changelog"]
-        assert meta.checksum == obj["checksum"]
-        assert meta.min_hardware_version == obj["min_hardware_version"]
-        assert meta.max_hardware_version == obj["max_hardware_version"]
-        assert meta.min_current_file_version == obj["min_current_file_version"]
-        assert meta.max_current_file_version == obj["max_current_file_version"]
-        assert meta.specificity == obj["specificity"]
+        assert meta.url == obj.pop("binary_url")
+        assert meta.file_version == obj.pop("file_version")
+        assert meta.file_size == obj.pop("file_size")
+        assert meta.image_type == obj.pop("image_type")
+        assert meta.manufacturer_names == tuple(obj.pop("manufacturer_names"))
+        assert meta.model_names == tuple(obj.pop("model_names"))
+        assert meta.manufacturer_id == obj.pop("manufacturer_id")
+        assert meta.changelog == obj.pop("changelog")
+        assert meta.checksum == obj.pop("checksum")
+        assert meta.min_hardware_version == obj.pop("min_hardware_version")
+        assert meta.max_hardware_version == obj.pop("max_hardware_version")
+        assert meta.min_current_file_version == obj.pop("min_current_file_version")
+        assert meta.max_current_file_version == obj.pop("max_current_file_version")
+        assert meta.specificity == obj.pop("specificity")
+        assert not obj
 
         # An unknown manufacturer ID will still be used
         assert meta.manufacturer_id in provider.manufacturer_ids
