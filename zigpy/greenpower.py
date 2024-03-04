@@ -135,7 +135,7 @@ class GreenPowerController(zigpy.util.ListenableMixin):
             )
             self._push_sink_table()
         except Exception as e:
-            LOGGER.warn("GP Controller failed to write initialization attrs: %s", e)
+            LOGGER.warning("GP Controller failed to write initialization attrs: %s", e)
 
         try:
             await self._gp_endpoint.add_to_group(
@@ -190,7 +190,7 @@ class GreenPowerController(zigpy.util.ListenableMixin):
             return
         elif hdr.command_id == GreenPowerProxy.ServerCommandDefs.notification.id:
             if gp_device is None:
-                LOGGER.warn(
+                LOGGER.warning(
                     "GP controller got non-infrastructure packet from non-GP device %s",
                     str(packet.src),
                 )
@@ -490,7 +490,7 @@ class GreenPowerController(zigpy.util.ListenableMixin):
         elected_notif = next((n for n in notifs if n.proxy_info_present), None)
         # No proxy info found ... extremely unlikely.
         if elected_notif is None:
-            LOGGER.warn("Cannot respond to channel search with no temp master addr!")
+            LOGGER.warning("Cannot respond to channel search with no temp master addr!")
             return
         LOGGER.debug(
             "Elected %s as temp master.", elected_notif.gpp_short_addr._hex_repr()
@@ -545,7 +545,7 @@ class GreenPowerController(zigpy.util.ListenableMixin):
         if notif.proxy_info_present:
             response.temp_master_short_addr = notif.gpp_short_addr
         else:
-            LOGGER.warn("Cannot commission with no temp master addr!")
+            LOGGER.warning("Cannot commission with no temp master addr!")
             return False
         response.temp_master_tx_channel = (
             self._application.state.network_info.channel - 11
@@ -711,7 +711,7 @@ class GreenPowerController(zigpy.util.ListenableMixin):
                 notif, commission_payload, green_power_data
             )
             if not result:
-                LOGGER.warn("Failed to send Rx response packet!")
+                LOGGER.warning("Failed to send Rx response packet!")
                 timeouttask.cancel()
                 self._rxon_inflight.pop(src_id)
                 return False
