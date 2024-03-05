@@ -38,6 +38,7 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     model_names: tuple[str] = ()
 
     changelog: str | None = None
+    release_notes: str | None = None
 
     min_hardware_version: int | None = None
     max_hardware_version: int | None = None
@@ -374,7 +375,7 @@ class Ledvance(BaseOtaProvider):
                         }
                     )
                 ),
-                changelog=fw["releaseNotes"],
+                release_notes=fw["releaseNotes"],
                 source="Ledvance",
             )
 
@@ -687,6 +688,7 @@ class RemoteProvider(BaseOtaProvider):
                 min_current_file_version=fw.get("min_current_file_version"),
                 max_current_file_version=fw.get("max_current_file_version"),
                 changelog=fw.get("changelog"),
+                release_notes=fw.get("release_notes"),
                 specificity=fw.get("specificity"),
                 source=f"Remote provider ({self.url})",
             )
