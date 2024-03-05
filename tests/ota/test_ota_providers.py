@@ -278,7 +278,7 @@ async def test_ledvance_provider():
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.image_type == obj["identity"]["product"]
         assert meta.checksum == "sha256:" + obj.pop("shA256")
-        assert meta.changelog == obj.pop("releaseNotes")
+        assert meta.release_notes == obj.pop("releaseNotes")
         assert meta.file_size == obj.pop("length")
         assert meta.manufacturer_id == obj["identity"]["company"]
         assert meta.model_names == (obj.pop("productName"),)
@@ -465,6 +465,7 @@ async def test_remote_provider():
         assert meta.model_names == tuple(obj.pop("model_names"))
         assert meta.manufacturer_id == obj.pop("manufacturer_id")
         assert meta.changelog == obj.pop("changelog")
+        assert meta.release_notes == obj.pop("release_notes")
         assert meta.checksum == obj.pop("checksum")
         assert meta.min_hardware_version == obj.pop("min_hardware_version")
         assert meta.max_hardware_version == obj.pop("max_hardware_version")

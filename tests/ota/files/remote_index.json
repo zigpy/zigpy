@@ -9,6 +9,7 @@
             "model_names": ["Test Model 1", "Test Model 2"],
             "manufacturer_id": 4454,
             "changelog": "A changelog",
+            "release_notes": "Long release notes",
             "checksum": "sha3-256:28d4883705ac932160b51f09d2c4697f288d5bb11174677c6e43247288f6c794",
             "min_hardware_version": 0,
             "max_hardware_version": 257,
