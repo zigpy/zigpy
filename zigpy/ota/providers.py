@@ -425,10 +425,6 @@ class Salus(BaseOtaProvider):
             yield SalusRemoteOtaImageMetadata(  # type: ignore[call-arg]
                 file_version=int(fw["version"], 16),
                 model_names=(fw["model"],),
-                manufacturer_id=None,
-                image_type=None,
-                checksum=None,
-                file_size=None,
                 # Upgrade HTTP to HTTPS, the server supports it
                 url=fw["url"].replace("http://", "https://", 1),
                 source="SALUS",
@@ -538,8 +534,6 @@ class Inovelli(BaseOtaProvider):
                     manufacturer_id=fw["manufacturer_id"],
                     image_type=fw["image_type"],
                     model_names=(model,),
-                    checksum=None,
-                    file_size=None,
                     url=fw["firmware"],
                     source="Inovelli",
                 )
@@ -594,8 +588,6 @@ class ThirdReality(BaseOtaProvider):
                 manufacturer_id=fw["manufacturerId"],
                 model_names=(fw["modelId"],),
                 image_type=fw["imageType"],
-                checksum=None,
-                file_size=None,
                 url=fw["url"],
                 source="ThirdReality",
             )
@@ -743,9 +735,6 @@ class AdvancedFileProvider(BaseOtaProvider):
                 image_type=image.header.image_type,
                 checksum="sha1:" + hasher.hexdigest(),
                 file_size=len(data),
-                manufacturer_names=(),
-                model_names=(),
-                changelog=None,
                 min_hardware_version=image.header.minimum_hardware_version,
                 max_hardware_version=image.header.maximum_hardware_version,
                 source=f"Advanced file provider ({self.image_dir})",
