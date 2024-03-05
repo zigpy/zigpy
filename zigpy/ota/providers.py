@@ -614,6 +614,7 @@ class RemoteProvider(BaseOtaProvider):
                         "model_names": {"type": "array", "items": {"type": "string"}},
                         "manufacturer_id": {"type": "integer"},
                         "changelog": {"type": "string"},
+                        "release_notes": {"type": "string"},
                         "checksum": {
                             "type": "string",
                             "pattern": "^sha3-256:[a-f0-9]{64}$",
@@ -638,6 +639,7 @@ class RemoteProvider(BaseOtaProvider):
                         # "max_hardware_version",
                         # "min_current_file_version",
                         # "max_current_file_version",
+                        # "release_notes",
                         # "specificity",
                     ],
                 },
