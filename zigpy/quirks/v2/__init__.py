@@ -145,14 +145,14 @@ class CustomDeviceV2(CustomDevice):
 class AddsMetadata:
     """Adds metadata for adding a cluster to a device."""
 
-    cluster: int | type[Cluster | CustomCluster]
+    cluster: int | type[Cluster | CustomCluster] = dataclasses.field(kw_only=True)
     endpoint_id: int = dataclasses.field(default=1)
     cluster_type: ClusterType = dataclasses.field(default=ClusterType.Server)
     constant_attributes: dict[ZCLAttributeDef, typing.Any] = dataclasses.field(
         default_factory=dict
     )
 
-    def __call__(self, device: CustomDeviceV2):
+    def __call__(self, device: CustomDeviceV2) -> None:
         """Process the add."""
         endpoint: Endpoint = device.endpoints[self.endpoint_id]
         if self.cluster_type == ClusterType.Server:
@@ -180,11 +180,11 @@ class AddsMetadata:
 class RemovesMetadata:
     """Removes metadata for removing a cluster from a device."""
 
-    cluster_id: int
+    cluster_id: int = dataclasses.field(kw_only=True)
     endpoint_id: int = dataclasses.field(default=1)
     cluster_type: ClusterType = dataclasses.field(default=ClusterType.Server)
 
-    def __call__(self, device: CustomDeviceV2):
+    def __call__(self, device: CustomDeviceV2) -> None:
         """Process the remove."""
         endpoint = device.endpoints[self.endpoint_id]
         if self.cluster_type == ClusterType.Server:
@@ -197,31 +197,64 @@ class RemovesMetadata:
 class ReplacesMetadata:
     """Replaces metadata for replacing a cluster on a device."""
 
-    remove: RemovesMetadata
-    add: AddsMetadata
+    remove: RemovesMetadata = dataclasses.field(kw_only=True)
+    add: AddsMetadata = dataclasses.field(kw_only=True)
 
-    def __call__(self, device: CustomDeviceV2):
+    def __call__(self, device: CustomDeviceV2) -> None:
         """Process the replace."""
         self.remove(device)
         self.add(device)
 
 
 @dataclasses.dataclass(frozen=True)
-class EnumMetadata:
-    """Metadata for exposed enum based entity."""
+class EntityMetadata:
+    """Metadata for an exposed entity."""
 
-    enum: type[Enum]
+    entity_platform: EntityPlatform = dataclasses.field(kw_only=True)
+    entity_type: EntityType = dataclasses.field(kw_only=True)
+    cluster_id: int = dataclasses.field(kw_only=True)
+    endpoint_id: int = dataclasses.field(default=1)
+    cluster_type: ClusterType = dataclasses.field(default=ClusterType.Server)
+    initially_disabled: bool = dataclasses.field(default=False)
+    attribute_initialized_from_cache: bool = dataclasses.field(default=True)
+    translation_key: str | None = dataclasses.field(default=None)
+
+    def __post_init__(self) -> None:
+        self._validate()
+
+    def __call__(self, device: CustomDeviceV2) -> None:
+        """Add the entity metadata to the quirks v2 device."""
+        self._validate()
+        device.exposes_metadata[
+            (self.endpoint_id, self.cluster_id, self.cluster_type)
+        ].append(self)
+
+    def _validate(self) -> None:
+        """Validate the entity metadata."""
+        has_unit: bool = hasattr(self, "unit") and getattr(self, "unit") is not None
+        has_device_class: bool = hasattr(self, "device_class") and (
+            getattr(self, "device_class") is not None
+        )
+        if has_device_class and has_unit:
+            raise ValueError(
+                f"EntityMetadata cannot have both unit and device_class: {self}"
+            )
+        if has_device_class and self.translation_key is not None:
+            raise ValueError(
+                f"EntityMetadata cannot have both a translation_key and a device_class: {self}"
+            )
 
 
 @dataclasses.dataclass(frozen=True)
-class ZCLEnumMetadata(EnumMetadata):
+class ZCLEnumMetadata(EntityMetadata):
     """Metadata for exposed ZCL enum based entity."""
 
-    attribute_name: str | None = dataclasses.field(default=None)
+    enum: type[Enum] = dataclasses.field(kw_only=True)
+    attribute_name: str = dataclasses.field(kw_only=True)
 
 
 @dataclasses.dataclass(frozen=True)
-class ZCLSensorMetadata:
+class ZCLSensorMetadata(EntityMetadata):
     """Metadata for exposed ZCL attribute based sensor entity."""
 
     attribute_name: str | None = dataclasses.field(default=None)
@@ -233,10 +266,10 @@ class ZCLSensorMetadata:
 
 
 @dataclasses.dataclass(frozen=True)
-class SwitchMetadata:
+class SwitchMetadata(EntityMetadata):
     """Metadata for exposed switch entity."""
 
-    attribute_name: str
+    attribute_name: str = dataclasses.field(kw_only=True)
     force_inverted: bool = dataclasses.field(default=False)
     invert_attribute_name: str | None = dataclasses.field(default=None)
     off_value: int = dataclasses.field(default=0)
@@ -244,10 +277,10 @@ class SwitchMetadata:
 
 
 @dataclasses.dataclass(frozen=True)
-class NumberMetadata:
+class NumberMetadata(EntityMetadata):
     """Metadata for exposed number entity."""
 
-    attribute_name: str
+    attribute_name: str = dataclasses.field(kw_only=True)
     min: float | None = dataclasses.field(default=None)
     max: float | None = dataclasses.field(default=None)
     step: float | None = dataclasses.field(default=None)
@@ -258,57 +291,28 @@ class NumberMetadata:
 
 
 @dataclasses.dataclass(frozen=True)
-class BinarySensorMetadata:
+class BinarySensorMetadata(EntityMetadata):
     """Metadata for exposed binary sensor entity."""
 
-    attribute_name: str
+    attribute_name: str = dataclasses.field(kw_only=True)
     device_class: BinarySensorDeviceClass | None = dataclasses.field(default=None)
 
 
 @dataclasses.dataclass(frozen=True)
-class WriteAttributeButtonMetadata:
+class WriteAttributeButtonMetadata(EntityMetadata):
     """Metadata for exposed button entity that writes an attribute when pressed."""
 
-    attribute_name: str
-    attribute_value: int
+    attribute_name: str = dataclasses.field(kw_only=True)
+    attribute_value: int = dataclasses.field(kw_only=True)
 
 
 @dataclasses.dataclass(frozen=True)
-class ZCLCommandButtonMetadata:
+class ZCLCommandButtonMetadata(EntityMetadata):
     """Metadata for exposed button entity that executes a ZCL command when pressed."""
 
-    command_name: str
-    args: tuple | None
-    kwargs: dict[str, Any] | None
-
-
-@dataclasses.dataclass(frozen=True)
-class EntityMetadata:
-    """Metadata for an exposed entity."""
-
-    entity_metadata: (
-        EnumMetadata
-        | ZCLEnumMetadata
-        | SwitchMetadata
-        | NumberMetadata
-        | BinarySensorMetadata
-        | WriteAttributeButtonMetadata
-        | ZCLCommandButtonMetadata
-    )
-    entity_platform: EntityPlatform
-    entity_type: EntityType
-    cluster_id: int
-    endpoint_id: int = dataclasses.field(default=1)
-    cluster_type: ClusterType = dataclasses.field(default=ClusterType.Server)
-    initially_disabled: bool = dataclasses.field(default=False)
-    attribute_initialized_from_cache: bool = dataclasses.field(default=True)
-    translation_key: str | None = dataclasses.field(default=None)
-
-    def __call__(self, device: CustomDeviceV2):
-        """Add the entity metadata to the quirks v2 device."""
-        device.exposes_metadata[
-            (self.endpoint_id, self.cluster_id, self.cluster_type)
-        ].append(self)
+    command_name: str = dataclasses.field(kw_only=True)
+    args: tuple | None = dataclasses.field(default=None)
+    kwargs: dict[str, Any] | None = dataclasses.field(default=None)
 
 
 @dataclasses.dataclass
@@ -323,7 +327,14 @@ class QuirksV2RegistryEntry:
     adds_metadata: list[AddsMetadata] = dataclasses.field(default_factory=list)
     removes_metadata: list[RemovesMetadata] = dataclasses.field(default_factory=list)
     replaces_metadata: list[ReplacesMetadata] = dataclasses.field(default_factory=list)
-    entity_metadata: list[EntityMetadata] = dataclasses.field(default_factory=list)
+    entity_metadata: list[
+        ZCLEnumMetadata
+        | SwitchMetadata
+        | NumberMetadata
+        | BinarySensorMetadata
+        | WriteAttributeButtonMetadata
+        | ZCLCommandButtonMetadata
+    ] = dataclasses.field(default_factory=list)
     device_automation_triggers_metadata: dict[
         tuple[str, str], dict[str, str]
     ] = dataclasses.field(default_factory=dict)
@@ -480,19 +491,17 @@ class QuirksV2RegistryEntry:
         This method allows exposing an enum based entity in Home Assistant.
         """
         self.entity_metadata.append(
-            EntityMetadata(
+            ZCLEnumMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
                 entity_type=entity_type,
                 entity_platform=entity_platform,
-                entity_metadata=ZCLEnumMetadata(
-                    attribute_name=attribute_name,
-                    enum=enum_class,
-                ),
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                enum=enum_class,
+                attribute_name=attribute_name,
             )
         )
         return self
@@ -518,23 +527,21 @@ class QuirksV2RegistryEntry:
         This method allows exposing a sensor entity in Home Assistant.
         """
         self.entity_metadata.append(
-            EntityMetadata(
+            ZCLSensorMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
                 entity_platform=EntityPlatform.SENSOR,
                 entity_type=entity_type,
-                entity_metadata=ZCLSensorMetadata(
-                    attribute_name=attribute_name,
-                    divisor=divisor,
-                    multiplier=multiplier,
-                    unit=unit,
-                    device_class=device_class,
-                    state_class=state_class,
-                ),
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                attribute_name=attribute_name,
+                divisor=divisor,
+                multiplier=multiplier,
+                unit=unit,
+                device_class=device_class,
+                state_class=state_class,
             )
         )
         return self
@@ -559,22 +566,20 @@ class QuirksV2RegistryEntry:
         This method allows exposing a switch entity in Home Assistant.
         """
         self.entity_metadata.append(
-            EntityMetadata(
+            SwitchMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
                 entity_platform=entity_platform,
                 entity_type=EntityType.CONFIG,
-                entity_metadata=SwitchMetadata(
-                    attribute_name=attribute_name,
-                    force_inverted=force_inverted,
-                    invert_attribute_name=invert_attribute_name,
-                    off_value=off_value,
-                    on_value=on_value,
-                ),
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                attribute_name=attribute_name,
+                force_inverted=force_inverted,
+                invert_attribute_name=invert_attribute_name,
+                off_value=off_value,
+                on_value=on_value,
             )
         )
         return self
@@ -601,25 +606,23 @@ class QuirksV2RegistryEntry:
         This method allows exposing a number entity in Home Assistant.
         """
         self.entity_metadata.append(
-            EntityMetadata(
+            NumberMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
                 entity_platform=EntityPlatform.NUMBER,
                 entity_type=EntityType.CONFIG,
-                entity_metadata=NumberMetadata(
-                    attribute_name=attribute_name,
-                    min=min_value,
-                    max=max_value,
-                    step=step,
-                    unit=unit,
-                    mode=mode,
-                    multiplier=multiplier,
-                    device_class=device_class,
-                ),
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                attribute_name=attribute_name,
+                min=min_value,
+                max=max_value,
+                step=step,
+                unit=unit,
+                mode=mode,
+                multiplier=multiplier,
+                device_class=device_class,
             )
         )
         return self
@@ -640,19 +643,17 @@ class QuirksV2RegistryEntry:
         This method allows exposing a binary sensor entity in Home Assistant.
         """
         self.entity_metadata.append(
-            EntityMetadata(
+            BinarySensorMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
                 entity_platform=EntityPlatform.BINARY_SENSOR,
                 entity_type=EntityType.DIAGNOSTIC,
-                entity_metadata=BinarySensorMetadata(
-                    attribute_name=attribute_name,
-                    device_class=device_class,
-                ),
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                attribute_name=attribute_name,
+                device_class=device_class,
             )
         )
         return self
@@ -675,19 +676,17 @@ class QuirksV2RegistryEntry:
         a value to an attribute when pressed.
         """
         self.entity_metadata.append(
-            EntityMetadata(
+            WriteAttributeButtonMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
                 entity_platform=EntityPlatform.BUTTON,
                 entity_type=entity_type,
-                entity_metadata=WriteAttributeButtonMetadata(
-                    attribute_name=attribute_name,
-                    attribute_value=attribute_value,
-                ),
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                attribute_name=attribute_name,
+                attribute_value=attribute_value,
             )
         )
         return self
@@ -710,19 +709,17 @@ class QuirksV2RegistryEntry:
         a ZCL command when pressed.
         """
         self.entity_metadata.append(
-            EntityMetadata(
+            ZCLCommandButtonMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
                 entity_platform=EntityPlatform.BUTTON,
                 entity_type=entity_type,
-                entity_metadata=ZCLCommandButtonMetadata(
-                    command_name=command_name,
-                    args=command_args,
-                    kwargs=command_kwargs,
-                ),
                 initially_disabled=initially_disabled,
                 translation_key=translation_key,
+                command_name=command_name,
+                args=command_args,
+                kwargs=command_kwargs,
             )
         )
         return self
