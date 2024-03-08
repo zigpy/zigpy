@@ -412,7 +412,7 @@ class QuirksV2RegistryEntry:
         instances and their values. These attributes will be added to the cluster when
         the quirk is applied and the values will be constant.
         """
-        add = AddsMetadata(
+        add = AddsMetadata(  # type: ignore[call-arg]
             endpoint_id=endpoint_id,
             cluster=cluster,
             cluster_type=cluster_type,
@@ -431,7 +431,7 @@ class QuirksV2RegistryEntry:
 
         This method allows removing a cluster from a device when the quirk is applied.
         """
-        remove = RemovesMetadata(
+        remove = RemovesMetadata(  # type: ignore[call-arg]
             endpoint_id=endpoint_id,
             cluster_id=cluster_id,
             cluster_type=cluster_type,
@@ -457,19 +457,19 @@ class QuirksV2RegistryEntry:
         be removed. If cluster_id is not provided, the cluster_id of the replacement
         cluster will be used.
         """
-        remove = RemovesMetadata(
+        remove = RemovesMetadata(  # type: ignore[call-arg]
             endpoint_id=endpoint_id,
             cluster_id=cluster_id
             if cluster_id is not None
             else replacement_cluster_class.cluster_id,
             cluster_type=cluster_type,
         )
-        add = AddsMetadata(
+        add = AddsMetadata(  # type: ignore[call-arg]
             endpoint_id=endpoint_id,
             cluster=replacement_cluster_class,
             cluster_type=cluster_type,
         )
-        replace = ReplacesMetadata(remove=remove, add=add)
+        replace = ReplacesMetadata(remove=remove, add=add)  # type: ignore[call-arg]
         self.replaces_metadata.append(replace)
         return self
 
@@ -491,7 +491,7 @@ class QuirksV2RegistryEntry:
         This method allows exposing an enum based entity in Home Assistant.
         """
         self.entity_metadata.append(
-            ZCLEnumMetadata(
+            ZCLEnumMetadata(  # type: ignore[call-arg]
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -527,7 +527,7 @@ class QuirksV2RegistryEntry:
         This method allows exposing a sensor entity in Home Assistant.
         """
         self.entity_metadata.append(
-            ZCLSensorMetadata(
+            ZCLSensorMetadata(  # type: ignore[call-arg]
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -566,7 +566,7 @@ class QuirksV2RegistryEntry:
         This method allows exposing a switch entity in Home Assistant.
         """
         self.entity_metadata.append(
-            SwitchMetadata(
+            SwitchMetadata(  # type: ignore[call-arg]
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -606,7 +606,7 @@ class QuirksV2RegistryEntry:
         This method allows exposing a number entity in Home Assistant.
         """
         self.entity_metadata.append(
-            NumberMetadata(
+            NumberMetadata(  # type: ignore[call-arg]
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -643,7 +643,7 @@ class QuirksV2RegistryEntry:
         This method allows exposing a binary sensor entity in Home Assistant.
         """
         self.entity_metadata.append(
-            BinarySensorMetadata(
+            BinarySensorMetadata(  # type: ignore[call-arg]
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -676,7 +676,7 @@ class QuirksV2RegistryEntry:
         a value to an attribute when pressed.
         """
         self.entity_metadata.append(
-            WriteAttributeButtonMetadata(
+            WriteAttributeButtonMetadata(  # type: ignore[call-arg]
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -709,7 +709,7 @@ class QuirksV2RegistryEntry:
         a ZCL command when pressed.
         """
         self.entity_metadata.append(
-            ZCLCommandButtonMetadata(
+            ZCLCommandButtonMetadata(  # type: ignore[call-arg]
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
