@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import collections
-import dataclasses
 from enum import Enum
 import logging
 import typing
 from typing import TYPE_CHECKING, Any
+
+import attrs
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -41,6 +42,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=too-many-arguments
+# pylint: disable=too-few-public-methods
 
 
 class CustomDeviceV2(CustomDevice):
@@ -141,16 +143,14 @@ class CustomDeviceV2(CustomDevice):
                     await cluster.apply_custom_configuration(*args, **kwargs)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@attrs.define(frozen=True, kw_only=True)
 class AddsMetadata:
     """Adds metadata for adding a cluster to a device."""
 
-    cluster: int | type[Cluster | CustomCluster] = dataclasses.field()
-    endpoint_id: int = dataclasses.field(default=1)
-    cluster_type: ClusterType = dataclasses.field(default=ClusterType.Server)
-    constant_attributes: dict[ZCLAttributeDef, typing.Any] = dataclasses.field(
-        default_factory=dict
-    )
+    cluster: int | type[Cluster | CustomCluster] = attrs.field()
+    endpoint_id: int = attrs.field(default=1)
+    cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
+    constant_attributes: dict[ZCLAttributeDef, typing.Any] = attrs.field(factory=dict)
 
     def __call__(self, device: CustomDeviceV2) -> None:
         """Process the add."""
@@ -176,13 +176,13 @@ class AddsMetadata:
             }
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@attrs.define(frozen=True, kw_only=True)
 class RemovesMetadata:
     """Removes metadata for removing a cluster from a device."""
 
-    cluster_id: int = dataclasses.field()
-    endpoint_id: int = dataclasses.field(default=1)
-    cluster_type: ClusterType = dataclasses.field(default=ClusterType.Server)
+    cluster_id: int = attrs.field()
+    endpoint_id: int = attrs.field(default=1)
+    cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
 
     def __call__(self, device: CustomDeviceV2) -> None:
         """Process the remove."""
@@ -193,12 +193,12 @@ class RemovesMetadata:
             endpoint.out_clusters.pop(self.cluster_id, None)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@attrs.define(frozen=True, kw_only=True)
 class ReplacesMetadata:
     """Replaces metadata for replacing a cluster on a device."""
 
-    remove: RemovesMetadata = dataclasses.field()
-    add: AddsMetadata = dataclasses.field()
+    remove: RemovesMetadata = attrs.field()
+    add: AddsMetadata = attrs.field()
 
     def __call__(self, device: CustomDeviceV2) -> None:
         """Process the replace."""
@@ -206,20 +206,20 @@ class ReplacesMetadata:
         self.add(device)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@attrs.define(frozen=True, kw_only=True)
 class EntityMetadata:
     """Metadata for an exposed entity."""
 
-    entity_platform: EntityPlatform = dataclasses.field()
-    entity_type: EntityType = dataclasses.field()
-    cluster_id: int = dataclasses.field()
-    endpoint_id: int = dataclasses.field(default=1)
-    cluster_type: ClusterType = dataclasses.field(default=ClusterType.Server)
-    initially_disabled: bool = dataclasses.field(default=False)
-    attribute_initialized_from_cache: bool = dataclasses.field(default=True)
-    translation_key: str | None = dataclasses.field(default=None)
+    entity_platform: EntityPlatform = attrs.field()
+    entity_type: EntityType = attrs.field()
+    cluster_id: int = attrs.field()
+    endpoint_id: int = attrs.field(default=1)
+    cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
+    initially_disabled: bool = attrs.field(default=False)
+    attribute_initialized_from_cache: bool = attrs.field(default=True)
+    translation_key: str | None = attrs.field(default=None)
 
-    def __post_init__(self) -> None:
+    def __attrs_post_init__(self) -> None:
         self._validate()
 
     def __call__(self, device: CustomDeviceV2) -> None:
@@ -245,88 +245,88 @@ class EntityMetadata:
             )
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@attrs.define(frozen=True, kw_only=True)
 class ZCLEnumMetadata(EntityMetadata):
     """Metadata for exposed ZCL enum based entity."""
 
-    enum: type[Enum] = dataclasses.field()
-    attribute_name: str = dataclasses.field()
+    enum: type[Enum] = attrs.field()
+    attribute_name: str = attrs.field()
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@attrs.define(frozen=True, kw_only=True)
 class ZCLSensorMetadata(EntityMetadata):
     """Metadata for exposed ZCL attribute based sensor entity."""
 
-    attribute_name: str | None = dataclasses.field(default=None)
-    divisor: int | None = dataclasses.field(default=None)
-    multiplier: int | None = dataclasses.field(default=None)
-    unit: str | None = dataclasses.field(default=None)
-    device_class: SensorDeviceClass | None = dataclasses.field(default=None)
-    state_class: SensorStateClass | None = dataclasses.field(default=None)
+    attribute_name: str | None = attrs.field(default=None)
+    divisor: int | None = attrs.field(default=None)
+    multiplier: int | None = attrs.field(default=None)
+    unit: str | None = attrs.field(default=None)
+    device_class: SensorDeviceClass | None = attrs.field(default=None)
+    state_class: SensorStateClass | None = attrs.field(default=None)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@attrs.define(frozen=True, kw_only=True)
 class SwitchMetadata(EntityMetadata):
     """Metadata for exposed switch entity."""
 
-    attribute_name: str = dataclasses.field()
-    force_inverted: bool = dataclasses.field(default=False)
-    invert_attribute_name: str | None = dataclasses.field(default=None)
-    off_value: int = dataclasses.field(default=0)
-    on_value: int = dataclasses.field(default=1)
+    attribute_name: str = attrs.field()
+    force_inverted: bool = attrs.field(default=False)
+    invert_attribute_name: str | None = attrs.field(default=None)
+    off_value: int = attrs.field(default=0)
+    on_value: int = attrs.field(default=1)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@attrs.define(frozen=True, kw_only=True)
 class NumberMetadata(EntityMetadata):
     """Metadata for exposed number entity."""
 
-    attribute_name: str = dataclasses.field()
-    min: float | None = dataclasses.field(default=None)
-    max: float | None = dataclasses.field(default=None)
-    step: float | None = dataclasses.field(default=None)
-    unit: str | None = dataclasses.field(default=None)
-    mode: str | None = dataclasses.field(default=None)
-    multiplier: float | None = dataclasses.field(default=None)
-    device_class: NumberDeviceClass | None = dataclasses.field(default=None)
+    attribute_name: str = attrs.field()
+    min: float | None = attrs.field(default=None)
+    max: float | None = attrs.field(default=None)
+    step: float | None = attrs.field(default=None)
+    unit: str | None = attrs.field(default=None)
+    mode: str | None = attrs.field(default=None)
+    multiplier: float | None = attrs.field(default=None)
+    device_class: NumberDeviceClass | None = attrs.field(default=None)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@attrs.define(frozen=True, kw_only=True)
 class BinarySensorMetadata(EntityMetadata):
     """Metadata for exposed binary sensor entity."""
 
-    attribute_name: str = dataclasses.field()
-    device_class: BinarySensorDeviceClass | None = dataclasses.field(default=None)
+    attribute_name: str = attrs.field()
+    device_class: BinarySensorDeviceClass | None = attrs.field(default=None)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@attrs.define(frozen=True, kw_only=True)
 class WriteAttributeButtonMetadata(EntityMetadata):
     """Metadata for exposed button entity that writes an attribute when pressed."""
 
-    attribute_name: str = dataclasses.field()
-    attribute_value: int = dataclasses.field()
+    attribute_name: str = attrs.field()
+    attribute_value: int = attrs.field()
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@attrs.define(frozen=True, kw_only=True)
 class ZCLCommandButtonMetadata(EntityMetadata):
     """Metadata for exposed button entity that executes a ZCL command when pressed."""
 
-    command_name: str = dataclasses.field()
-    args: tuple | None = dataclasses.field(default=None)
-    kwargs: dict[str, Any] | None = dataclasses.field(default=None)
+    command_name: str = attrs.field()
+    args: tuple | None = attrs.field(default=None)
+    kwargs: dict[str, Any] | None = attrs.field(default=None)
 
 
-@dataclasses.dataclass
+@attrs.define
 class QuirksV2RegistryEntry:
     """Quirks V2 registry entry."""
 
     registry: DeviceRegistry = None
-    filters: list[FilterType] = dataclasses.field(default_factory=list)
-    custom_device_class: type[CustomDeviceV2] | None = dataclasses.field(default=None)
-    device_node_descriptor: NodeDescriptor | None = dataclasses.field(default=None)
-    skip_device_configuration: bool = dataclasses.field(default=False)
-    adds_metadata: list[AddsMetadata] = dataclasses.field(default_factory=list)
-    removes_metadata: list[RemovesMetadata] = dataclasses.field(default_factory=list)
-    replaces_metadata: list[ReplacesMetadata] = dataclasses.field(default_factory=list)
+    filters: list[FilterType] = attrs.field(factory=list)
+    custom_device_class: type[CustomDeviceV2] | None = attrs.field(default=None)
+    device_node_descriptor: NodeDescriptor | None = attrs.field(default=None)
+    skip_device_configuration: bool = attrs.field(default=False)
+    adds_metadata: list[AddsMetadata] = attrs.field(factory=list)
+    removes_metadata: list[RemovesMetadata] = attrs.field(factory=list)
+    replaces_metadata: list[ReplacesMetadata] = attrs.field(factory=list)
     entity_metadata: list[
         ZCLEnumMetadata
         | SwitchMetadata
@@ -334,10 +334,10 @@ class QuirksV2RegistryEntry:
         | BinarySensorMetadata
         | WriteAttributeButtonMetadata
         | ZCLCommandButtonMetadata
-    ] = dataclasses.field(default_factory=list)
+    ] = attrs.field(factory=list)
     device_automation_triggers_metadata: dict[
         tuple[str, str], dict[str, str]
-    ] = dataclasses.field(default_factory=dict)
+    ] = attrs.field(factory=dict)
 
     def also_applies_to(self, manufacturer: str, model: str) -> QuirksV2RegistryEntry:
         """Register this quirks v2 entry for an additional manufacturer and model."""
