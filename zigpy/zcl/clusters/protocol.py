@@ -20,7 +20,7 @@ class DateTime(t.Struct):
 
 
 class GenericTunnel(Cluster):
-    cluster_id: Final = 0x0600
+    cluster_id: Final[t.uint16_t] = 0x0600
     ep_attribute: Final = "generic_tunnel"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -41,7 +41,7 @@ class GenericTunnel(Cluster):
 
 
 class BacnetProtocolTunnel(Cluster):
-    cluster_id: Final = 0x0601
+    cluster_id: Final[t.uint16_t] = 0x0601
     ep_attribute: Final = "bacnet_tunnel"
 
     class ServerCommandDefs(BaseCommandDefs):
@@ -51,7 +51,7 @@ class BacnetProtocolTunnel(Cluster):
 
 
 class AnalogInputRegular(Cluster):
-    cluster_id: Final = 0x0602
+    cluster_id: Final[t.uint16_t] = 0x0602
     ep_attribute: Final = "bacnet_regular_analog_input"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -65,7 +65,7 @@ class AnalogInputRegular(Cluster):
 
 
 class AnalogInputExtended(Cluster):
-    cluster_id: Final = 0x0603
+    cluster_id: Final[t.uint16_t] = 0x0603
     ep_attribute: Final = "bacnet_extended_analog_input"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -90,7 +90,7 @@ class AnalogInputExtended(Cluster):
 
 
 class AnalogOutputRegular(Cluster):
-    cluster_id: Final = 0x0604
+    cluster_id: Final[t.uint16_t] = 0x0604
     ep_attribute: Final = "bacnet_regular_analog_output"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -104,7 +104,7 @@ class AnalogOutputRegular(Cluster):
 
 
 class AnalogOutputExtended(Cluster):
-    cluster_id: Final = 0x0605
+    cluster_id: Final[t.uint16_t] = 0x0605
     ep_attribute: Final = "bacnet_extended_analog_output"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -123,7 +123,7 @@ class AnalogOutputExtended(Cluster):
 
 
 class AnalogValueRegular(Cluster):
-    cluster_id: Final = 0x0606
+    cluster_id: Final[t.uint16_t] = 0x0606
     ep_attribute: Final = "bacnet_regular_analog_value"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -135,7 +135,7 @@ class AnalogValueRegular(Cluster):
 
 
 class AnalogValueExtended(Cluster):
-    cluster_id: Final = 0x0607
+    cluster_id: Final[t.uint16_t] = 0x0607
     ep_attribute: Final = "bacnet_extended_analog_value"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -152,7 +152,7 @@ class AnalogValueExtended(Cluster):
 
 
 class BinaryInputRegular(Cluster):
-    cluster_id: Final = 0x0608
+    cluster_id: Final[t.uint16_t] = 0x0608
     ep_attribute: Final = "bacnet_regular_binary_input"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -169,7 +169,7 @@ class BinaryInputRegular(Cluster):
 
 
 class BinaryInputExtended(Cluster):
-    cluster_id: Final = 0x0609
+    cluster_id: Final[t.uint16_t] = 0x0609
     ep_attribute: Final = "bacnet_extended_binary_input"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -185,7 +185,7 @@ class BinaryInputExtended(Cluster):
 
 
 class BinaryOutputRegular(Cluster):
-    cluster_id: Final = 0x060A
+    cluster_id: Final[t.uint16_t] = 0x060A
     ep_attribute: Final = "bacnet_regular_binary_output"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -203,7 +203,7 @@ class BinaryOutputRegular(Cluster):
 
 
 class BinaryOutputExtended(Cluster):
-    cluster_id: Final = 0x060B
+    cluster_id: Final[t.uint16_t] = 0x060B
     ep_attribute: Final = "bacnet_extended_binary_output"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -218,7 +218,7 @@ class BinaryOutputExtended(Cluster):
 
 
 class BinaryValueRegular(Cluster):
-    cluster_id: Final = 0x060C
+    cluster_id: Final[t.uint16_t] = 0x060C
     ep_attribute: Final = "bacnet_regular_binary_value"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -234,7 +234,7 @@ class BinaryValueRegular(Cluster):
 
 
 class BinaryValueExtended(Cluster):
-    cluster_id: Final = 0x060D
+    cluster_id: Final[t.uint16_t] = 0x060D
     ep_attribute: Final = "bacnet_extended_binary_value"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -250,7 +250,7 @@ class BinaryValueExtended(Cluster):
 
 
 class MultistateInputRegular(Cluster):
-    cluster_id: Final = 0x060E
+    cluster_id: Final[t.uint16_t] = 0x060E
     ep_attribute: Final = "bacnet_regular_multistate_input"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -262,7 +262,7 @@ class MultistateInputRegular(Cluster):
 
 
 class MultistateInputExtended(Cluster):
-    cluster_id: Final = 0x060F
+    cluster_id: Final[t.uint16_t] = 0x060F
     ep_attribute: Final = "bacnet_extended_multistate_input"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -279,7 +279,7 @@ class MultistateInputExtended(Cluster):
 
 
 class MultistateOutputRegular(Cluster):
-    cluster_id: Final = 0x0610
+    cluster_id: Final[t.uint16_t] = 0x0610
     ep_attribute: Final = "bacnet_regular_multistate_output"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -292,7 +292,7 @@ class MultistateOutputRegular(Cluster):
 
 
 class MultistateOutputExtended(Cluster):
-    cluster_id: Final = 0x0611
+    cluster_id: Final[t.uint16_t] = 0x0611
     ep_attribute: Final = "bacnet_extended_multistate_output"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -307,7 +307,7 @@ class MultistateOutputExtended(Cluster):
 
 
 class MultistateValueRegular(Cluster):
-    cluster_id: Final = 0x0612
+    cluster_id: Final[t.uint16_t] = 0x0612
     ep_attribute: Final = "bacnet_regular_multistate_value"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -318,7 +318,7 @@ class MultistateValueRegular(Cluster):
 
 
 class MultistateValueExtended(Cluster):
-    cluster_id: Final = 0x0613
+    cluster_id: Final[t.uint16_t] = 0x0613
     ep_attribute: Final = "bacnet_extended_multistate_value"
 
     class AttributeDefs(BaseAttributeDefs):

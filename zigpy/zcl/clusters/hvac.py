@@ -67,7 +67,7 @@ class Pump(Cluster):
     OperationMode: Final = OperationMode
     PumpStatus: Final = PumpStatus
 
-    cluster_id: Final = 0x0200
+    cluster_id: Final[t.uint16_t] = 0x0200
     name: Final = "Pump Configuration and Control"
     ep_attribute: Final = "pump"
 
@@ -347,7 +347,7 @@ class Thermostat(Cluster):
     RunningMode: Final = RunningMode
     RunningState: Final = RunningState
 
-    cluster_id: Final = 0x0201
+    cluster_id: Final[t.uint16_t] = 0x0201
     ep_attribute: Final = "thermostat"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -571,7 +571,7 @@ class Fan(Cluster):
     FanMode: Final = FanMode
     FanModeSequence: Final = FanModeSequence
 
-    cluster_id: Final = 0x0202
+    cluster_id: Final[t.uint16_t] = 0x0202
     name: Final = "Fan Control"
     ep_attribute: Final = "fan"
 
@@ -604,7 +604,7 @@ class Dehumidification(Cluster):
     DehumidificationLockout: Final = DehumidificationLockout
     RelativeHumidityDisplay: Final = RelativeHumidityDisplay
 
-    cluster_id: Final = 0x0203
+    cluster_id: Final[t.uint16_t] = 0x0203
     ep_attribute: Final = "dehumidification"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -665,7 +665,7 @@ class UserInterface(Cluster):
     KeypadLockout: Final = KeypadLockout
     ScheduleProgrammingVisibility: Final = ScheduleProgrammingVisibility
 
-    cluster_id: Final = 0x0204
+    cluster_id: Final[t.uint16_t] = 0x0204
     name: Final = "Thermostat User Interface Configuration"
     ep_attribute: Final = "thermostat_ui"
 

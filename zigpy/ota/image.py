@@ -22,9 +22,7 @@ class HWVersion(t.uint16_t):
         return self & 0x00FF
 
     def __repr__(self):
-        return "<{} version={} revision={}>".format(
-            self.__class__.__name__, self.version, self.revision
-        )
+        return f"<{self.__class__.__name__} version={self.version} revision={self.revision}>"
 
 
 class HeaderString(bytes):
@@ -157,6 +155,7 @@ class SubElement(t.Struct):
         )
 
 
+@attr.s(kw_only=True)
 class BaseOTAImage:
     """Base OTA image container type. Not all images are valid Zigbee OTA images but are
     nonetheless accepted by devices. Only requirement is that the image contains a valid
@@ -173,6 +172,7 @@ class BaseOTAImage:
         raise NotImplementedError()  # pragma: no cover
 
 
+@attr.s(kw_only=True)
 class OTAImage(t.Struct, BaseOTAImage):
     """Zigbee OTA image according to 11.4 of the ZCL specification."""
 
@@ -208,13 +208,13 @@ class OTAImage(t.Struct, BaseOTAImage):
         return res
 
 
-@attr.s
+@attr.s(kw_only=True)
 class HueSBLOTAImage(BaseOTAImage):
     """Unique OTA image format for certain Hue devices. Starts with a valid header but does
     not contain any valid subelements beyond that point.
     """
 
-    SUBELEMENTS_MAGIC = b"\x2A\x00\x01"
+    SUBELEMENTS_MAGIC = b"\x2a\x00\x01"
 
     header = attr.ib(default=None)
     data = attr.ib(default=None)
@@ -242,7 +242,7 @@ class HueSBLOTAImage(BaseOTAImage):
                 f"Only Hue images are expected. Got: {header.manufacturer_id}"
             )
 
-        return cls(header=header, data=firmware), data[header.image_size :]
+        return cls(header=header, data=firmware), data[header.image_size :]  # type: ignore
 
 
 def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:
