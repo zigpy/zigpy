@@ -155,7 +155,6 @@ class SubElement(t.Struct):
         )
 
 
-@attr.s(kw_only=True)
 class BaseOTAImage:
     """Base OTA image container type. Not all images are valid Zigbee OTA images but are
     nonetheless accepted by devices. Only requirement is that the image contains a valid
@@ -172,7 +171,6 @@ class BaseOTAImage:
         raise NotImplementedError()  # pragma: no cover
 
 
-@attr.s(kw_only=True)
 class OTAImage(t.Struct, BaseOTAImage):
     """Zigbee OTA image according to 11.4 of the ZCL specification."""
 
@@ -208,7 +206,7 @@ class OTAImage(t.Struct, BaseOTAImage):
         return res
 
 
-@attr.s(kw_only=True)
+@attr.s
 class HueSBLOTAImage(BaseOTAImage):
     """Unique OTA image format for certain Hue devices. Starts with a valid header but does
     not contain any valid subelements beyond that point.
