@@ -17,7 +17,7 @@ if typing.TYPE_CHECKING:
 class BaseDataclassMixin:
     def replace(self, **kwargs) -> Self:
         if dataclasses.is_dataclass(self):
-            return dataclasses.replace(self, **kwargs)
+            return dataclasses.replace(self, **kwargs)  # type: ignore
         else:
             return attrs.evolve(self, **kwargs)
 

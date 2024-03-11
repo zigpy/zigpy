@@ -18,7 +18,7 @@ class LightSensorType(t.enum8):
 class IlluminanceMeasurement(Cluster):
     LightSensorType: Final = LightSensorType
 
-    cluster_id: Final = 0x0400
+    cluster_id: Final[t.uint16_t] = 0x0400
     name: Final = "Illuminance Measurement"
     ep_attribute: Final = "illuminance"
 
@@ -50,7 +50,7 @@ class IlluminanceLevelSensing(Cluster):
     LevelStatus: Final = LevelStatus
     LightSensorType: Final = LightSensorType
 
-    cluster_id: Final = 0x0401
+    cluster_id: Final[t.uint16_t] = 0x0401
     name: Final = "Illuminance Level Sensing"
     ep_attribute: Final = "illuminance_level"
 
@@ -70,7 +70,7 @@ class IlluminanceLevelSensing(Cluster):
 
 
 class TemperatureMeasurement(Cluster):
-    cluster_id: Final = 0x0402
+    cluster_id: Final[t.uint16_t] = 0x0402
     name: Final = "Temperature Measurement"
     ep_attribute: Final = "temperature"
 
@@ -93,7 +93,7 @@ class TemperatureMeasurement(Cluster):
 
 
 class PressureMeasurement(Cluster):
-    cluster_id: Final = 0x0403
+    cluster_id: Final[t.uint16_t] = 0x0403
     name: Final = "Pressure Measurement"
     ep_attribute: Final = "pressure"
 
@@ -122,7 +122,7 @@ class PressureMeasurement(Cluster):
 
 
 class FlowMeasurement(Cluster):
-    cluster_id: Final = 0x0404
+    cluster_id: Final[t.uint16_t] = 0x0404
     name: Final = "Flow Measurement"
     ep_attribute: Final = "flow"
 
@@ -142,7 +142,7 @@ class FlowMeasurement(Cluster):
 
 
 class RelativeHumidity(Cluster):
-    cluster_id: Final = 0x0405
+    cluster_id: Final[t.uint16_t] = 0x0405
     name: Final = "Relative Humidity Measurement"
     ep_attribute: Final = "humidity"
 
@@ -184,7 +184,7 @@ class OccupancySensing(Cluster):
     OccupancySensorType: Final = OccupancySensorType
     OccupancySensorTypeBitmap: Final = OccupancySensorTypeBitmap
 
-    cluster_id: Final = 0x0406
+    cluster_id: Final[t.uint16_t] = 0x0406
     name: Final = "Occupancy Sensing"
     ep_attribute: Final = "occupancy"
 
@@ -231,7 +231,7 @@ class OccupancySensing(Cluster):
 
 
 class LeafWetness(Cluster):
-    cluster_id: Final = 0x0407
+    cluster_id: Final[t.uint16_t] = 0x0407
     name: Final = "Leaf Wetness Measurement"
     ep_attribute: Final = "leaf_wetness"
 
@@ -252,7 +252,7 @@ class LeafWetness(Cluster):
 
 
 class SoilMoisture(Cluster):
-    cluster_id: Final = 0x0408
+    cluster_id: Final[t.uint16_t] = 0x0408
     name: Final = "Soil Moisture Measurement"
     ep_attribute: Final = "soil_moisture"
 
@@ -273,7 +273,7 @@ class SoilMoisture(Cluster):
 
 
 class PH(Cluster):
-    cluster_id: Final = 0x0409
+    cluster_id: Final[t.uint16_t] = 0x0409
     name: Final = "pH Measurement"
     ep_attribute: Final = "ph"
 
@@ -294,7 +294,7 @@ class PH(Cluster):
 
 
 class ElectricalConductivity(Cluster):
-    cluster_id: Final = 0x040A
+    cluster_id: Final[t.uint16_t] = 0x040A
     name: Final = "Electrical Conductivity"
     ep_attribute: Final = "electrical_conductivity"
 
@@ -314,7 +314,7 @@ class ElectricalConductivity(Cluster):
 
 
 class WindSpeed(Cluster):
-    cluster_id: Final = 0x040B
+    cluster_id: Final[t.uint16_t] = 0x040B
     name: Final = "Wind Speed Measurement"
     ep_attribute: Final = "wind_speed"
 
@@ -353,91 +353,91 @@ class _ConcentrationMixin:
 
 
 class CarbonMonoxideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x040C
+    cluster_id: Final[t.uint16_t] = 0x040C
     name: Final = "Carbon Monoxide (CO) Concentration"
     ep_attribute: Final = "carbon_monoxide_concentration"
 
 
 class CarbonDioxideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x040D
+    cluster_id: Final[t.uint16_t] = 0x040D
     name: Final = "Carbon Dioxide (CO₂) Concentration"
     ep_attribute: Final = "carbon_dioxide_concentration"
 
 
 class EthyleneConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x040E
+    cluster_id: Final[t.uint16_t] = 0x040E
     name: Final = "Ethylene (CH₂) Concentration"
     ep_attribute: Final = "ethylene_concentration"
 
 
 class EthyleneOxideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x040F
+    cluster_id: Final[t.uint16_t] = 0x040F
     name: Final = "Ethylene Oxide (C₂H₄O) Concentration"
     ep_attribute: Final = "ethylene_oxide_concentration"
 
 
 class HydrogenConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0410
+    cluster_id: Final[t.uint16_t] = 0x0410
     name: Final = "Hydrogen (H) Concentration"
     ep_attribute: Final = "hydrogen_concentration"
 
 
 class HydrogenSulfideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0411
+    cluster_id: Final[t.uint16_t] = 0x0411
     name: Final = "Hydrogen Sulfide (H₂S) Concentration"
     ep_attribute: Final = "hydrogen_sulfide_concentration"
 
 
 class NitricOxideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0412
+    cluster_id: Final[t.uint16_t] = 0x0412
     name: Final = "Nitric Oxide (NO) Concentration"
     ep_attribute: Final = "nitric_oxide_concentration"
 
 
 class NitrogenDioxideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0413
+    cluster_id: Final[t.uint16_t] = 0x0413
     name: Final = "Nitrogen Dioxide (NO₂) Concentration"
     ep_attribute: Final = "nitrogen_dioxide_concentration"
 
 
 class OxygenConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0414
+    cluster_id: Final[t.uint16_t] = 0x0414
     name: Final = "Oxygen (O₂) Concentration"
     ep_attribute: Final = "oxygen_concentration"
 
 
 class OzoneConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0415
+    cluster_id: Final[t.uint16_t] = 0x0415
     name: Final = "Ozone (O₃) Concentration"
     ep_attribute: Final = "ozone_concentration"
 
 
 class SulfurDioxideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0416
+    cluster_id: Final[t.uint16_t] = 0x0416
     name: Final = "Sulfur Dioxide (SO₂) Concentration"
     ep_attribute: Final = "sulfur_dioxide_concentration"
 
 
 class DissolvedOxygenConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0417
+    cluster_id: Final[t.uint16_t] = 0x0417
     name: Final = "Dissolved Oxygen (DO) Concentration"
     ep_attribute: Final = "dissolved_oxygen_concentration"
 
 
 class BromateConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0418
+    cluster_id: Final[t.uint16_t] = 0x0418
     name: Final = "Bromate Concentration"
     ep_attribute: Final = "bromate_concentration"
 
 
 class ChloraminesConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0419
+    cluster_id: Final[t.uint16_t] = 0x0419
     name: Final = "Chloramines Concentration"
     ep_attribute: Final = "chloramines_concentration"
 
 
 class ChlorineConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x041A
+    cluster_id: Final[t.uint16_t] = 0x041A
     name: Final = "Chlorine Concentration"
     ep_attribute: Final = "chlorine_concentration"
 
@@ -445,31 +445,33 @@ class ChlorineConcentration(_ConcentrationMixin, Cluster):
 class FecalColiformAndEColiFraction(_ConcentrationMixin, Cluster):
     """Percent of positive samples"""
 
-    cluster_id: Final = 0x041B
+    cluster_id: Final[t.uint16_t] = 0x041B
     name: Final = "Fecal coliform & E. Coli Fraction"
     ep_attribute: Final = "fecal_coliform_and_e_coli_fraction"
 
 
 class FluorideConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x041C  # XXX: spec repeats 0x041B but this seems like a mistake
+    cluster_id: Final[t.uint16_t] = (
+        0x041C  # XXX: spec repeats 0x041B but this seems like a mistake
+    )
     name: Final = "Fluoride Concentration"
     ep_attribute: Final = "fluoride_concentration"
 
 
 class HaloaceticAcidsConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x041D
+    cluster_id: Final[t.uint16_t] = 0x041D
     name: Final = "Haloacetic Acids Concentration"
     ep_attribute: Final = "haloacetic_acids_concentration"
 
 
 class TotalTrihalomethanesConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x041E
+    cluster_id: Final[t.uint16_t] = 0x041E
     name: Final = "Total Trihalomethanes Concentration"
     ep_attribute: Final = "total_trihalomethanes_concentration"
 
 
 class TotalColiformBacteriaFraction(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x041F
+    cluster_id: Final[t.uint16_t] = 0x041F
     name: Final = "Total Coliform Bacteria Fraction"
     ep_attribute: Final = "total_coliform_bacteria_fraction"
 
@@ -478,61 +480,61 @@ class TotalColiformBacteriaFraction(_ConcentrationMixin, Cluster):
 class Turbidity(_ConcentrationMixin, Cluster):
     """Cloudiness of particles in water where an average person would notice a 5 or higher"""
 
-    cluster_id: Final = 0x0420
+    cluster_id: Final[t.uint16_t] = 0x0420
     name: Final = "Turbidity"
     ep_attribute: Final = "turbidity"
 
 
 class CopperConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0421
+    cluster_id: Final[t.uint16_t] = 0x0421
     name: Final = "Copper Concentration"
     ep_attribute: Final = "copper_concentration"
 
 
 class LeadConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0422
+    cluster_id: Final[t.uint16_t] = 0x0422
     name: Final = "Lead Concentration"
     ep_attribute: Final = "lead_concentration"
 
 
 class ManganeseConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0423
+    cluster_id: Final[t.uint16_t] = 0x0423
     name: Final = "Manganese Concentration"
     ep_attribute: Final = "manganese_concentration"
 
 
 class SulfateConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0424
+    cluster_id: Final[t.uint16_t] = 0x0424
     name: Final = "Sulfate Concentration"
     ep_attribute: Final = "sulfate_concentration"
 
 
 class BromodichloromethaneConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0425
+    cluster_id: Final[t.uint16_t] = 0x0425
     name: Final = "Bromodichloromethane Concentration"
     ep_attribute: Final = "bromodichloromethane_concentration"
 
 
 class BromoformConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0426
+    cluster_id: Final[t.uint16_t] = 0x0426
     name: Final = "Bromoform Concentration"
     ep_attribute: Final = "bromoform_concentration"
 
 
 class ChlorodibromomethaneConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0427
+    cluster_id: Final[t.uint16_t] = 0x0427
     name: Final = "Chlorodibromomethane Concentration"
     ep_attribute: Final = "chlorodibromomethane_concentration"
 
 
 class ChloroformConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0428
+    cluster_id: Final[t.uint16_t] = 0x0428
     name: Final = "Chloroform Concentration"
     ep_attribute: Final = "chloroform_concentration"
 
 
 class SodiumConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x0429
+    cluster_id: Final[t.uint16_t] = 0x0429
     name: Final = "Sodium Concentration"
     ep_attribute: Final = "sodium_concentration"
 
@@ -541,12 +543,12 @@ class SodiumConcentration(_ConcentrationMixin, Cluster):
 class PM25(_ConcentrationMixin, Cluster):
     """Particulate Matter 2.5 microns or less"""
 
-    cluster_id: Final = 0x042A
+    cluster_id: Final[t.uint16_t] = 0x042A
     name: Final = "PM2.5"
     ep_attribute: Final = "pm25"
 
 
 class FormaldehydeConcentration(_ConcentrationMixin, Cluster):
-    cluster_id: Final = 0x042B
+    cluster_id: Final[t.uint16_t] = 0x042B
     name: Final = "Formaldehyde Concentration"
     ep_attribute: Final = "formaldehyde_concentration"

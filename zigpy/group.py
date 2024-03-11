@@ -85,9 +85,7 @@ class Group(ListenableMixin, dict):
         )
 
     def __repr__(self) -> str:
-        return "<{} group_id={} name='{}' members={}>".format(
-            self.__class__.__name__, self.group_id, self.name, super().__repr__()
-        )
+        return f"<{self.__class__.__name__} group_id={self.group_id} name='{self.name}' members={super().__repr__()}>"
 
     @property
     def application(self) -> ControllerApplication:

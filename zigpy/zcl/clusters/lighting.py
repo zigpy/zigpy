@@ -100,7 +100,7 @@ class Color(Cluster):
     DriftCompensation: Final = DriftCompensation
     Options: Final = Options
 
-    cluster_id: Final = 0x0300
+    cluster_id: Final[t.uint16_t] = 0x0300
     name: Final = "Color Control"
     ep_attribute: Final = "light_color"
 
@@ -443,7 +443,7 @@ class Ballast(Cluster):
     BallastStatus: Final = BallastStatus
     LampAlarmMode: Final = LampAlarmMode
 
-    cluster_id: Final = 0x0301
+    cluster_id: Final[t.uint16_t] = 0x0301
     ep_attribute: Final = "light_ballast"
 
     class AttributeDefs(BaseAttributeDefs):

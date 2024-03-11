@@ -13,7 +13,7 @@ from zigpy.zcl.foundation import (
 
 
 class ApplianceIdentification(Cluster):
-    cluster_id: Final = 0x0B00
+    cluster_id: Final[t.uint16_t] = 0x0B00
     name: Final = "Appliance Identification"
     ep_attribute: Final = "appliance_id"
 
@@ -51,7 +51,7 @@ class ApplianceIdentification(Cluster):
 
 
 class MeterIdentification(Cluster):
-    cluster_id: Final = 0x0B01
+    cluster_id: Final[t.uint16_t] = 0x0B01
     name: Final = "Meter Identification"
     ep_attribute: Final = "meter_id"
 
@@ -95,7 +95,7 @@ class MeterIdentification(Cluster):
 
 
 class ApplianceEventAlerts(Cluster):
-    cluster_id: Final = 0x0B02
+    cluster_id: Final[t.uint16_t] = 0x0B02
     name: Final = "Appliance Event Alerts"
     ep_attribute: Final = "appliance_event"
 
@@ -113,7 +113,7 @@ class ApplianceEventAlerts(Cluster):
 
 
 class ApplianceStatistics(Cluster):
-    cluster_id: Final = 0x0B03
+    cluster_id: Final[t.uint16_t] = 0x0B03
     name: Final = "Appliance Statistics"
     ep_attribute: Final = "appliance_stats"
 
@@ -169,7 +169,7 @@ class ACAlarmsMask(t.bitmap16):
 
 
 class ElectricalMeasurement(Cluster):
-    cluster_id: Final = 0x0B04
+    cluster_id: Final[t.uint16_t] = 0x0B04
     name: Final = "Electrical Measurement"
     ep_attribute: Final = "electrical_measurement"
 
@@ -543,7 +543,7 @@ class ElectricalMeasurement(Cluster):
 
 
 class Diagnostic(Cluster):
-    cluster_id: Final = 0x0B05
+    cluster_id: Final[t.uint16_t] = 0x0B05
     ep_attribute: Final = "diagnostic"
 
     class AttributeDefs(BaseAttributeDefs):

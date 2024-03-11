@@ -1,35 +1,4 @@
 repos:
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.8.0
-    hooks:
-      - id: pyupgrade
-        args: [--py38-plus]
-
-  - repo: https://github.com/PyCQA/autoflake
-    rev: v2.2.0
-    hooks:
-      - id: autoflake
-
-  - repo: https://github.com/psf/black
-    rev: 23.3.0
-    hooks:
-      - id: black
-        args:
-          - --quiet
-
-  - repo: https://github.com/pycqa/flake8
-    rev: 6.0.0
-    hooks:
-      - id: flake8
-        entry: pflake8
-        additional_dependencies: 
-          - pyproject-flake8==6.0.0.post1
-
-  - repo: https://github.com/PyCQA/isort
-    rev: 5.12.0
-    hooks:
-      - id: isort
-
   - repo: https://github.com/codespell-project/codespell
     rev: v2.2.6
     hooks:
@@ -38,14 +7,12 @@ repos:
         args: ["--toml", "pyproject.toml"]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v0.982
+    rev: v1.9.0
     hooks:
       - id: mypy
-        additional_dependencies:
-          - pydantic
   
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.0.277
+    rev: v0.3.2
     hooks:
       - id: ruff
         args: ["--fix", "--exit-non-zero-on-fix", "--config", "pyproject.toml"]
