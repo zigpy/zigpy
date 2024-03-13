@@ -6,7 +6,7 @@ import collections
 from enum import Enum
 import logging
 import typing
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
 import attrs
 
@@ -69,7 +69,6 @@ class CustomDeviceV2(CustomDevice):
             tuple[int, int, ClusterType],
             list[EntityMetadata],
         ] = collections.defaultdict(list)
-        self.quirk_location: Final[str] = quirk_metadata.quirk_location
 
         for add_meta in quirk_metadata.adds_metadata:
             add_meta(self)
