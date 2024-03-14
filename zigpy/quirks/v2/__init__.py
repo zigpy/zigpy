@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import collections
 from enum import Enum
+import inspect
 import logging
-import sys
 import typing
 from typing import TYPE_CHECKING, Any
 
@@ -749,11 +749,9 @@ def add_to_registry_v2(
     manufacturer: str, model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
 ) -> QuirksV2RegistryEntry:
     """Add an entry to the registry."""
-    file_name, line_no, _, stack_info = logging.root.findCaller(
-        stack_info=True, stacklevel=1 if sys.version_info[:2] < (3, 11) else 2
-    )
-    _LOGGER.warning("stack_info: %s", stack_info)
-    location: str = f"file[{file_name}]-line:{line_no}"
+    stack: list[inspect.FrameInfo] = inspect.stack()
+    caller: inspect.FrameInfo = stack[1]
+    location: str = f"file[{caller.filename}]-line:{caller.lineno}"
     quirk_entry = QuirksV2RegistryEntry()
     quirk_entry.quirk_location = location
     return registry.add_to_registry_v2(manufacturer, model, quirk_entry)
