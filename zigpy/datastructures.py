@@ -224,7 +224,10 @@ class Debouncer:
 
     def __init__(self):
         self._times: dict[typing.Any, float] = {}
-        self._queue: list[tuple[float, typing.Any]] = []
+        self._queue: list[tuple[float, int, typing.Any]] = []
+
+        self._last_time: int = 0
+        self._dedup_counter: int = 0
 
     @functools.cached_property
     def _loop(self) -> asyncio.BaseEventLoop:
@@ -237,7 +240,7 @@ class Debouncer:
 
         # We store the negative expiration time to ensure we can pop expiring objects
         while self._queue and -self._queue[-1][0] < now:
-            _, obj = self._queue.pop()
+            _, _, obj = self._queue.pop()
             self._times.pop(obj)
 
     def is_filtered(self, obj: typing.Any, now: float | None = None) -> bool:
@@ -255,13 +258,21 @@ class Debouncer:
         """Check if an object should be filtered. If not, store it."""
         now = self._loop.time()
 
+        # For platforms with low-resolution clocks, we need to make sure that `obj` will
+        # never be compared by `heapq`!
+        if now > self._last_time:
+            self._last_time = now
+            self._dedup_counter = 0
+
+        self._dedup_counter += 1
+
         # If the object is filtered, do nothing
         if self.is_filtered(obj, now=now):
             return True
 
         # Otherwise, queue it
         self._times[obj] = now + expire_in
-        heapq.heappush(self._queue, (-(now + expire_in), obj))
+        heapq.heappush(self._queue, (-(now + expire_in), self._dedup_counter, obj))
 
         return False
 
