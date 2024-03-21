@@ -107,3 +107,13 @@ def cv_json_file(value: str) -> pathlib.Path:
         raise vol.Invalid(f"{value} is not a JSON file")
 
     return path
+
+
+def cv_folder(value: str) -> pathlib.Path:
+    """Validate a folder path."""
+    path = pathlib.Path(value)
+
+    if not path.is_dir():
+        raise vol.Invalid(f"{value} is not a directory")
+
+    return path
