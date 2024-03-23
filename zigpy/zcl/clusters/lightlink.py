@@ -78,7 +78,7 @@ class EndpointInfoRecord(t.Struct):
 
 
 class LightLink(Cluster):
-    cluster_id: Final = 0x1000
+    cluster_id: Final[t.uint16_t] = 0x1000
     ep_attribute: Final = "lightlink"
 
     class ServerCommandDefs(BaseCommandDefs):

@@ -140,10 +140,10 @@ async def test_quirks_v2(device_mock):
     assert additional_entities[0].cluster_id == OnOff.cluster_id
     assert additional_entities[0].cluster_type == ClusterType.Server
     assert (
-        additional_entities[0].entity_metadata.attribute_name
+        additional_entities[0].attribute_name
         == OnOff.AttributeDefs.start_up_on_off.name
     )
-    assert additional_entities[0].entity_metadata.enum == OnOff.StartUpOnOff
+    assert additional_entities[0].enum == OnOff.StartUpOnOff
     assert additional_entities[0].entity_type == EntityType.CONFIG
 
     registry.remove(quirked)
@@ -378,13 +378,50 @@ async def test_quirks_v2_sensor(device_mock):
     assert sensor_metadata.cluster_id == OnOff.cluster_id
     assert sensor_metadata.endpoint_id == 1
     assert sensor_metadata.cluster_type == ClusterType.Server
-    assert isinstance(sensor_metadata.entity_metadata, ZCLSensorMetadata)
-    assert (
-        sensor_metadata.entity_metadata.attribute_name
-        == OnOff.AttributeDefs.on_time.name
-    )
-    assert sensor_metadata.entity_metadata.divisor == 1
-    assert sensor_metadata.entity_metadata.multiplier == 1
+    assert isinstance(sensor_metadata, ZCLSensorMetadata)
+    assert sensor_metadata.attribute_name == OnOff.AttributeDefs.on_time.name
+    assert sensor_metadata.divisor == 1
+    assert sensor_metadata.multiplier == 1
+
+
+async def test_quirks_v2_sensor_validation_failure_translation_key(device_mock):
+    """Test translation key and device class both set causes exception."""
+    registry = DeviceRegistry()
+
+    with pytest.raises(
+        ValueError, match="cannot have both a translation_key and a device_class"
+    ):
+        (
+            add_to_registry_v2(
+                device_mock.manufacturer, device_mock.model, registry=registry
+            )
+            .adds(OnOff.cluster_id)
+            .sensor(
+                OnOff.AttributeDefs.on_time.name,
+                OnOff.cluster_id,
+                device_class="bad",
+                translation_key="bad",
+            )
+        )
+
+
+async def test_quirks_v2_sensor_validation_failure_unit(device_mock):
+    """Test unit and device class both set causes exception."""
+    registry = DeviceRegistry()
+
+    with pytest.raises(ValueError, match="cannot have both unit and device_class"):
+        (
+            add_to_registry_v2(
+                device_mock.manufacturer, device_mock.model, registry=registry
+            )
+            .adds(OnOff.cluster_id)
+            .sensor(
+                OnOff.AttributeDefs.on_time.name,
+                OnOff.cluster_id,
+                device_class="bad",
+                unit="bad",
+            )
+        )
 
 
 async def test_quirks_v2_switch(device_mock):
@@ -417,15 +454,11 @@ async def test_quirks_v2_switch(device_mock):
     assert switch_metadata.cluster_id == OnOff.cluster_id
     assert switch_metadata.endpoint_id == 1
     assert switch_metadata.cluster_type == ClusterType.Server
-    assert isinstance(switch_metadata.entity_metadata, SwitchMetadata)
+    assert isinstance(switch_metadata, SwitchMetadata)
+    assert switch_metadata.attribute_name == OnOff.AttributeDefs.on_time.name
+    assert switch_metadata.force_inverted is True
     assert (
-        switch_metadata.entity_metadata.attribute_name
-        == OnOff.AttributeDefs.on_time.name
-    )
-    assert switch_metadata.entity_metadata.force_inverted is True
-    assert (
-        switch_metadata.entity_metadata.invert_attribute_name
-        == OnOff.AttributeDefs.off_wait_time.name
+        switch_metadata.invert_attribute_name == OnOff.AttributeDefs.off_wait_time.name
     )
 
 
@@ -462,17 +495,14 @@ async def test_quirks_v2_number(device_mock):
     assert number_metadata.cluster_id == OnOff.cluster_id
     assert number_metadata.endpoint_id == 1
     assert number_metadata.cluster_type == ClusterType.Server
-    assert isinstance(number_metadata.entity_metadata, NumberMetadata)
-    assert (
-        number_metadata.entity_metadata.attribute_name
-        == OnOff.AttributeDefs.on_time.name
-    )
-    assert number_metadata.entity_metadata.min == 0
-    assert number_metadata.entity_metadata.max == 100
-    assert number_metadata.entity_metadata.step == 1
-    assert number_metadata.entity_metadata.unit == "s"
-    assert number_metadata.entity_metadata.mode is None
-    assert number_metadata.entity_metadata.multiplier is None
+    assert isinstance(number_metadata, NumberMetadata)
+    assert number_metadata.attribute_name == OnOff.AttributeDefs.on_time.name
+    assert number_metadata.min == 0
+    assert number_metadata.max == 100
+    assert number_metadata.step == 1
+    assert number_metadata.unit == "s"
+    assert number_metadata.mode is None
+    assert number_metadata.multiplier is None
 
 
 async def test_quirks_v2_binary_sensor(device_mock):
@@ -504,11 +534,8 @@ async def test_quirks_v2_binary_sensor(device_mock):
     assert binary_sensor_metadata.cluster_id == OnOff.cluster_id
     assert binary_sensor_metadata.endpoint_id == 1
     assert binary_sensor_metadata.cluster_type == ClusterType.Server
-    assert isinstance(binary_sensor_metadata.entity_metadata, BinarySensorMetadata)
-    assert (
-        binary_sensor_metadata.entity_metadata.attribute_name
-        == OnOff.AttributeDefs.on_off.name
-    )
+    assert isinstance(binary_sensor_metadata, BinarySensorMetadata)
+    assert binary_sensor_metadata.attribute_name == OnOff.AttributeDefs.on_off.name
 
 
 async def test_quirks_v2_write_attribute_button(device_mock):
@@ -541,14 +568,9 @@ async def test_quirks_v2_write_attribute_button(device_mock):
     assert write_attribute_button.cluster_id == OnOff.cluster_id
     assert write_attribute_button.endpoint_id == 1
     assert write_attribute_button.cluster_type == ClusterType.Server
-    assert isinstance(
-        write_attribute_button.entity_metadata, WriteAttributeButtonMetadata
-    )
-    assert (
-        write_attribute_button.entity_metadata.attribute_name
-        == OnOff.AttributeDefs.on_time.name
-    )
-    assert write_attribute_button.entity_metadata.attribute_value == 20
+    assert isinstance(write_attribute_button, WriteAttributeButtonMetadata)
+    assert write_attribute_button.attribute_name == OnOff.AttributeDefs.on_time.name
+    assert write_attribute_button.attribute_value == 20
 
 
 async def test_quirks_v2_command_button(device_mock):
@@ -581,16 +603,10 @@ async def test_quirks_v2_command_button(device_mock):
     assert button.cluster_id == OnOff.cluster_id
     assert button.endpoint_id == 1
     assert button.cluster_type == ClusterType.Server
-    assert isinstance(button.entity_metadata, ZCLCommandButtonMetadata)
-    assert (
-        button.entity_metadata.command_name
-        == OnOff.ServerCommandDefs.on_with_timed_off.name
-    )
-    assert len(button.entity_metadata.kwargs) == 1
-    assert (
-        button.entity_metadata.kwargs["on_off_control"]
-        == OnOff.OnOffControl.Accept_Only_When_On
-    )
+    assert isinstance(button, ZCLCommandButtonMetadata)
+    assert button.command_name == OnOff.ServerCommandDefs.on_with_timed_off.name
+    assert len(button.kwargs) == 1
+    assert button.kwargs["on_off_control"] == OnOff.OnOffControl.Accept_Only_When_On
 
 
 async def test_quirks_v2_also_applies_to(device_mock):

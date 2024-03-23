@@ -53,7 +53,7 @@ class SerializableBytes:
 
     def __init__(self, value: bytes = b"") -> None:
         if isinstance(value, type(self)):
-            value = value.value
+            value = value.value  # type: ignore
         elif not isinstance(value, (bytes, bytearray)):
             raise ValueError(f"Object is not bytes: {value!r}")  # noqa: TRY004
 
@@ -460,7 +460,7 @@ def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
         class _NewEnum(int_type, enum.Flag):
             # Rebind classmethods to our own class
             _missing_ = classmethod(enum.IntFlag._missing_.__func__)
-            _create_pseudo_member_ = classmethod(
+            _create_pseudo_member_ = classmethod(  # type: ignore
                 enum.IntFlag._create_pseudo_member_.__func__
             )
 

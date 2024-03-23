@@ -33,7 +33,7 @@ class Shade(Cluster):
     ShadeStatus: Final = ShadeStatus
     ShadeMode: Final = ShadeMode
 
-    cluster_id: Final = 0x0100
+    cluster_id: Final[t.uint16_t] = 0x0100
     name: Final = "Shade Configuration"
     ep_attribute: Final = "shade"
 
@@ -288,7 +288,7 @@ class DoorLock(Cluster):
     DayMask: Final = DayMask
     EventType: Final = EventType
 
-    cluster_id: Final = 0x0101
+    cluster_id: Final[t.uint16_t] = 0x0101
     name: Final = "Door Lock"
     ep_attribute: Final = "door_lock"
 
@@ -730,7 +730,7 @@ class WindowCovering(Cluster):
     ConfigStatus: Final = ConfigStatus
     WindowCoveringMode: Final = WindowCoveringMode
 
-    cluster_id: Final = 0x0102
+    cluster_id: Final[t.uint16_t] = 0x0102
     name: Final = "Window Covering"
     ep_attribute: Final = "window_covering"
 

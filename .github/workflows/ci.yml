@@ -9,7 +9,7 @@ jobs:
     uses: zigpy/workflows/.github/workflows/ci.yml@main
     with:
       CODE_FOLDER: zigpy
-      CACHE_VERSION: 2
-      PRE_COMMIT_CACHE_PATH:  ~/.cache/pre-commit
+      CACHE_VERSION: 3
+      PRE_COMMIT_CACHE_PATH: ~/.cache/pre-commit
       PYTHON_VERSION_DEFAULT: 3.9.15
       MINIMUM_COVERAGE_PERCENTAGE: 99

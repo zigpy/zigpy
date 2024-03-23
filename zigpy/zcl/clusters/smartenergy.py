@@ -13,12 +13,12 @@ from zigpy.zcl.foundation import (
 
 
 class Price(Cluster):
-    cluster_id: Final = 0x0700
+    cluster_id: Final[t.uint16_t] = 0x0700
     ep_attribute: Final = "smartenergy_price"
 
 
 class Drlc(Cluster):
-    cluster_id: Final = 0x0701
+    cluster_id: Final[t.uint16_t] = 0x0701
     ep_attribute: Final = "smartenergy_drlc"
 
 
@@ -44,7 +44,7 @@ class RegisteredTier(t.enum8):
 class Metering(Cluster):
     RegisteredTier: Final = RegisteredTier
 
-    cluster_id: Final = 0x0702
+    cluster_id: Final[t.uint16_t] = 0x0702
     ep_attribute: Final = "smartenergy_metering"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -440,45 +440,45 @@ class Metering(Cluster):
 
 
 class Messaging(Cluster):
-    cluster_id: Final = 0x0703
+    cluster_id: Final[t.uint16_t] = 0x0703
     ep_attribute: Final = "smartenergy_messaging"
 
 
 class Tunneling(Cluster):
-    cluster_id: Final = 0x0704
+    cluster_id: Final[t.uint16_t] = 0x0704
     ep_attribute: Final = "smartenergy_tunneling"
 
 
 class Prepayment(Cluster):
-    cluster_id: Final = 0x0705
+    cluster_id: Final[t.uint16_t] = 0x0705
     ep_attribute: Final = "smartenergy_prepayment"
 
 
 class EnergyManagement(Cluster):
-    cluster_id: Final = 0x0706
+    cluster_id: Final[t.uint16_t] = 0x0706
     ep_attribute: Final = "smartenergy_energy_management"
 
 
 class Calendar(Cluster):
-    cluster_id: Final = 0x0707
+    cluster_id: Final[t.uint16_t] = 0x0707
     ep_attribute: Final = "smartenergy_calendar"
 
 
 class DeviceManagement(Cluster):
-    cluster_id: Final = 0x0708
+    cluster_id: Final[t.uint16_t] = 0x0708
     ep_attribute: Final = "smartenergy_device_management"
 
 
 class Events(Cluster):
-    cluster_id: Final = 0x0709
+    cluster_id: Final[t.uint16_t] = 0x0709
     ep_attribute: Final = "smartenergy_events"
 
 
 class MduPairing(Cluster):
-    cluster_id: Final = 0x070A
+    cluster_id: Final[t.uint16_t] = 0x070A
     ep_attribute: Final = "smartenergy_mdu_pairing"
 
 
 class KeyEstablishment(Cluster):
-    cluster_id: Final = 0x0800
+    cluster_id: Final[t.uint16_t] = 0x0800
     ep_attribute: Final = "smartenergy_key_establishment"

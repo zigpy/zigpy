@@ -75,7 +75,7 @@ class IasZone(Cluster):
     ZoneStatus: Final = ZoneStatus
     EnrollResponse: Final = EnrollResponse
 
-    cluster_id: Final = 0x0500
+    cluster_id: Final[t.uint16_t] = 0x0500
     name: Final = "IAS Zone"
     ep_attribute: Final = "ias_zone"
 
@@ -241,7 +241,7 @@ class IasAce(Cluster):
     ZoneStatus: Final = IasZone.ZoneStatus
     ZoneStatusRsp: Final = ZoneStatusRsp
 
-    cluster_id: Final = 0x0501
+    cluster_id: Final[t.uint16_t] = 0x0501
     name: Final = "IAS Ancillary Control Equipment"
     ep_attribute: Final = "ias_ace"
 
@@ -484,7 +484,7 @@ class IasWd(Cluster):
     Warning: Final = WarningType
     Squawk: Final = Squawk
 
-    cluster_id: Final = 0x0502
+    cluster_id: Final[t.uint16_t] = 0x0502
     name: Final = "IAS Warning Device"
     ep_attribute: Final = "ias_wd"
 

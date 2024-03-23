@@ -217,7 +217,7 @@ class Basic(Cluster):
     GenericDeviceClass: Final = GenericDeviceClass
     GenericLightingDeviceType: Final = GenericLightingDeviceType
 
-    cluster_id: Final = 0x0000
+    cluster_id: Final[t.uint16_t] = 0x0000
     ep_attribute: Final = "basic"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -310,7 +310,7 @@ class PowerConfiguration(Cluster):
     MainsAlarmMask: Final = MainsAlarmMask
     BatterySize: Final = BatterySize
 
-    cluster_id: Final = 0x0001
+    cluster_id: Final[t.uint16_t] = 0x0001
     name: Final = "Power Configuration"
     ep_attribute: Final = "power"
 
@@ -505,7 +505,7 @@ class DeviceTemperature(Cluster):
 
     DeviceTempAlarmMask: Final = DeviceTempAlarmMask
 
-    cluster_id: Final = 0x0002
+    cluster_id: Final[t.uint16_t] = 0x0002
     name: Final = "Device Temperature"
     ep_attribute: Final = "device_temperature"
 
@@ -560,7 +560,7 @@ class Identify(Cluster):
     EffectIdentifier: Final = EffectIdentifier
     EffectVariant: Final = EffectVariant
 
-    cluster_id: Final = 0x0003
+    cluster_id: Final[t.uint16_t] = 0x0003
     ep_attribute: Final = "identify"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -600,7 +600,7 @@ class Groups(Cluster):
 
     NameSupport: Final = NameSupport
 
-    cluster_id: Final = 0x0004
+    cluster_id: Final[t.uint16_t] = 0x0004
     ep_attribute: Final = "groups"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -666,7 +666,7 @@ class Scenes(Cluster):
 
     NameSupport: Final = NameSupport
 
-    cluster_id: Final = 0x0005
+    cluster_id: Final[t.uint16_t] = 0x0005
     ep_attribute: Final = "scenes"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -877,7 +877,7 @@ class OnOff(Cluster):
 
     DYING_LIGHT_DIM_UP_THEN_FADE_TO_OFF = 0x00
 
-    cluster_id: Final = 0x0006
+    cluster_id: Final[t.uint16_t] = 0x0006
     name: Final = "On/Off"
     ep_attribute: Final = "on_off"
 
@@ -937,7 +937,7 @@ class OnOffConfiguration(Cluster):
     SwitchType: Final = SwitchType
     SwitchActions: Final = SwitchActions
 
-    cluster_id: Final = 0x0007
+    cluster_id: Final[t.uint16_t] = 0x0007
     name: Final = "On/Off Switch Configuration"
     ep_attribute: Final = "on_off_config"
 
@@ -976,7 +976,7 @@ class LevelControl(Cluster):
     StepMode: Final = StepMode
     Options: Final = Options
 
-    cluster_id: Final = 0x0008
+    cluster_id: Final[t.uint16_t] = 0x0008
     name: Final = "Level control"
     ep_attribute: Final = "level"
 
@@ -1082,7 +1082,7 @@ class Alarms(Cluster):
     configuring alarm functionality.
     """
 
-    cluster_id: Final = 0x0009
+    cluster_id: Final[t.uint16_t] = 0x0009
     ep_attribute: Final = "alarms"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -1134,7 +1134,7 @@ class Time(Cluster):
 
     TimeStatus: Final = TimeStatus
 
-    cluster_id: Final = 0x000A
+    cluster_id: Final[t.uint16_t] = 0x000A
     ep_attribute: Final = "time"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -1214,7 +1214,7 @@ class RSSILocation(Cluster):
     LocationMethod: Final = LocationMethod
     NeighborInfo: Final = NeighborInfo
 
-    cluster_id: Final = 0x000B
+    cluster_id: Final[t.uint16_t] = 0x000B
     ep_attribute: Final = "rssi_location"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -1390,7 +1390,7 @@ class Reliability(t.enum8):
 class AnalogInput(Cluster):
     Reliability: Final = Reliability
 
-    cluster_id: Final = 0x000C
+    cluster_id: Final[t.uint16_t] = 0x000C
     ep_attribute: Final = "analog_input"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -1425,7 +1425,7 @@ class AnalogInput(Cluster):
 
 
 class AnalogOutput(Cluster):
-    cluster_id: Final = 0x000D
+    cluster_id: Final[t.uint16_t] = 0x000D
     ep_attribute: Final = "analog_output"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -1465,7 +1465,7 @@ class AnalogOutput(Cluster):
 
 
 class AnalogValue(Cluster):
-    cluster_id: Final = 0x000E
+    cluster_id: Final[t.uint16_t] = 0x000E
     ep_attribute: Final = "analog_value"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -1498,7 +1498,7 @@ class AnalogValue(Cluster):
 
 
 class BinaryInput(Cluster):
-    cluster_id: Final = 0x000F
+    cluster_id: Final[t.uint16_t] = 0x000F
     name: Final = "Binary Input (Basic)"
     ep_attribute: Final = "binary_input"
 
@@ -1531,7 +1531,7 @@ class BinaryInput(Cluster):
 
 
 class BinaryOutput(Cluster):
-    cluster_id: Final = 0x0010
+    cluster_id: Final[t.uint16_t] = 0x0010
     ep_attribute: Final = "binary_output"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -1580,7 +1580,7 @@ class BinaryOutput(Cluster):
 
 
 class BinaryValue(Cluster):
-    cluster_id: Final = 0x0011
+    cluster_id: Final[t.uint16_t] = 0x0011
     ep_attribute: Final = "binary_value"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -1622,7 +1622,7 @@ class BinaryValue(Cluster):
 
 
 class MultistateInput(Cluster):
-    cluster_id: Final = 0x0012
+    cluster_id: Final[t.uint16_t] = 0x0012
     ep_attribute: Final = "multistate_input"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -1655,7 +1655,7 @@ class MultistateInput(Cluster):
 
 
 class MultistateOutput(Cluster):
-    cluster_id: Final = 0x0013
+    cluster_id: Final[t.uint16_t] = 0x0013
     ep_attribute: Final = "multistate_output"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -1691,7 +1691,7 @@ class MultistateOutput(Cluster):
 
 
 class MultistateValue(Cluster):
-    cluster_id: Final = 0x0014
+    cluster_id: Final[t.uint16_t] = 0x0014
     ep_attribute: Final = "multistate_value"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -1745,7 +1745,7 @@ class Commissioning(Cluster):
     StartupControl: Final = StartupControl
     NetworkKeyType: Final = NetworkKeyType
 
-    cluster_id: Final = 0x0015
+    cluster_id: Final[t.uint16_t] = 0x0015
     ep_attribute: Final = "commissioning"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -1862,7 +1862,7 @@ class Commissioning(Cluster):
 
 
 class Partition(Cluster):
-    cluster_id: Final = 0x0016
+    cluster_id: Final[t.uint16_t] = 0x0016
     ep_attribute: Final = "partition"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -2046,7 +2046,7 @@ class Ota(Cluster):
     ImagePageCommand: Final = ImagePageCommand
     ImageBlockResponseCommand: Final = ImageBlockResponseCommand
 
-    cluster_id: Final = 0x0019
+    cluster_id: Final[t.uint16_t] = 0x0019
     ep_attribute: Final = "ota"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -2237,7 +2237,7 @@ class PowerProfile(Cluster):
     PowerProfilePhase: Final = PowerProfilePhase
     PowerProfile: Final = PowerProfileType
 
-    cluster_id: Final = 0x001A
+    cluster_id: Final[t.uint16_t] = 0x001A
     ep_attribute: Final = "power_profile"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -2408,7 +2408,7 @@ class PowerProfile(Cluster):
 
 
 class ApplianceControl(Cluster):
-    cluster_id: Final = 0x001B
+    cluster_id: Final[t.uint16_t] = 0x001B
     ep_attribute: Final = "appliance_control"
 
     class AttributeDefs(BaseAttributeDefs):
@@ -2424,7 +2424,7 @@ class ApplianceControl(Cluster):
 
 
 class PollControl(Cluster):
-    cluster_id: Final = 0x0020
+    cluster_id: Final[t.uint16_t] = 0x0020
     name: Final = "Poll Control"
     ep_attribute: Final = "poll_control"
 
@@ -2476,7 +2476,7 @@ class PollControl(Cluster):
 class KeepAlive(Cluster):
     """Keep Alive cluster definition."""
 
-    cluster_id: Final = 0x0025
+    cluster_id: Final[t.uint16_t] = 0x0025
     ep_attribute: Final = "keep_alive"
 
     class AttributeDefs(BaseAttributeDefs):

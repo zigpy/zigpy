@@ -46,7 +46,6 @@ testing = [
     "pytest-cov",
     "pytest-timeout",
     "freezegun",
-    "ruff==0.0.261",
     'pysqlite3-binary; platform_system=="Linux" and python_version<"3.12"',
 ]
 
@@ -112,7 +111,7 @@ line-length = 88
 "zigpy/ota/provider.py" = ["SIM117"]
 
 [tool.pyupgrade]
-py37plus = true
+py38plus = true
 
 [tool.autoflake8]
 in-place = true
@@ -149,7 +148,6 @@ skip = "./.*,tests/*,pyproject.toml"
 quiet-level = 2
 
 [tool.mypy]
-plugins = ["pydantic.mypy"]
 ignore_missing_imports = true
 install_types = true
 non_interactive = true
