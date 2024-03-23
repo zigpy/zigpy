@@ -323,7 +323,7 @@ class GPResponseSchema(CommandSchema):
 
 
 class GreenPowerProxy(Cluster):
-    cluster_id: Final = GREENPOWER_CLUSTER_ID
+    cluster_id: Final[t.uint16_t] = GREENPOWER_CLUSTER_ID
     name: Final = "Green Power"
     ep_attribute: Final = "green_power"
 
