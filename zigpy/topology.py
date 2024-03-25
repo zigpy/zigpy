@@ -54,6 +54,12 @@ class Topology(zigpy.util.ListenableMixin):
         )
         self.routes: dict[t.EUI64, list[zdo_t.Route]] = collections.defaultdict(list)
 
+        # Scan progress in %
+        self.scan_progress = 0
+
+    def is_scan_in_progress(self) -> Bool:
+        return self._scan_task is not None and not self._scan_task.done()
+
     def start_periodic_scans(self, period: int | float) -> None:
         self.stop_periodic_scans()
         self._scan_loop_task = asyncio.create_task(self._scan_loop(period))
@@ -157,6 +163,7 @@ class Topology(zigpy.util.ListenableMixin):
         self, devices: typing.Iterable[zigpy.device.Device] | None = None
     ) -> None:
         """Scan topology."""
+        self.scan_progress = 0
 
         if devices is None:
             # We iterate over a copy of the devices as opposed to the live dictionary
@@ -166,6 +173,7 @@ class Topology(zigpy.util.ListenableMixin):
             LOGGER.debug(
                 "Scanning topology (%d/%d) of %s", index + 1, len(devices), device
             )
+            self.scan_progress = index /len(devices)
 
             # Ignore devices that aren't routers
             if device.node_desc is None or not (
