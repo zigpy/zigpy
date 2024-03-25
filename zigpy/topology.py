@@ -57,7 +57,7 @@ class Topology(zigpy.util.ListenableMixin):
         # Scan progress in %
         self.scan_progress = 0
 
-    def is_scan_in_progress(self) -> Bool:
+    def is_scan_in_progress(self) -> bool:
         return self._scan_task is not None and not self._scan_task.done()
 
     def start_periodic_scans(self, period: int | float) -> None:
