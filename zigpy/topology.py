@@ -173,7 +173,7 @@ class Topology(zigpy.util.ListenableMixin):
             LOGGER.debug(
                 "Scanning topology (%d/%d) of %s", index + 1, len(devices), device
             )
-            self.scan_progress = index /len(devices)
+            self.scan_progress = index / len(devices)
 
             # Ignore devices that aren't routers
             if device.node_desc is None or not (
