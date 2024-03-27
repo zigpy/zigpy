@@ -420,3 +420,22 @@ async def test_periodic_scan_priority(topology):
 
     # Our two manual scans succeeded and the periodic one was attempted
     assert len(mock_scan.mock_calls) == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_in_progress,expected_result", [
+    (True, True),  # ID: scan_in_progress
+    (False, False),  # ID: no_scan_in_progress
+])
+async def test_is_scan_in_progress(topology, is_in_progress, expected_result):
+    # Arrange
+    if is_in_progress:
+        topology._scan_task = asyncio.create_task(asyncio.sleep(0))
+    else:
+        topology._scan_task = None
+
+    # Act
+    result = topology.is_scan_in_progress()
+
+    # Assert
+    assert result == expected_result
