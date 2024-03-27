@@ -45,6 +45,7 @@ from zigpy.config.validators import (
     cv_boolean,
     cv_deprecated,
     cv_exact_object,
+    cv_folder,
     cv_hex,
     cv_json_file,
     cv_key,
@@ -185,7 +186,7 @@ SCHEMA_OTA = {
     # Advanced OTA config. You *do not* need to use this unless you're testing a new
     # OTA firmware that has no known metadata.
     vol.Optional(CONF_OTA_ADVANCED_DIR, default=CONF_OTA_ADVANCED_DIR_DEFAULT): vol.Any(
-        None, str
+        None, cv_folder
     ),
     vol.Optional(
         CONF_OTA_ALLOW_ADVANCED_DIR, default=CONF_OTA_ALLOW_ADVANCED_DIR_DEFAULT
