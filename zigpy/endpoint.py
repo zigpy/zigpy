@@ -45,8 +45,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status: Status = Status.NEW
         self.profile_id: int | None = None
         self.device_type: zigpy.profiles.zha.DeviceType | None = None
-        self.in_clusters: dict = {}
-        self.out_clusters: dict = {}
+        self.in_clusters: dict[int, zigpy.zcl.Cluster] = {}
+        self.out_clusters: dict[int, zigpy.zcl.Cluster] = {}
         self._cluster_attr: dict = {}
 
         self._member_of: dict = {}
@@ -212,6 +212,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             raise KeyError(f"No cluster ID 0x{cluster_id:04x} on {self.unique_id}")
 
         cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id))
+        assert cluster is not None
         return cluster.deserialize(data)
 
     def handle_message(

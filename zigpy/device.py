@@ -41,6 +41,7 @@ import zigpy.zdo.types as zdo_t
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
     from zigpy.ota.providers import OtaImageWithMetadata
+    from zigpy.zgp.types import GreenPowerDeviceData
 
 
 LOGGER = logging.getLogger(__name__)
@@ -100,6 +101,14 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def get_sequence(self) -> t.uint8_t:
         self._send_sequence = (self._send_sequence + 1) % 256
         return self._send_sequence
+
+    @property
+    def green_power_data(self) -> GreenPowerDeviceData | None:
+        return None
+
+    @property
+    def is_green_power_device(self) -> bool:
+        return self.green_power_data is not None
 
     @property
     def name(self) -> str:

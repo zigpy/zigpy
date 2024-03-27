@@ -25,10 +25,11 @@ import zigpy.typing
 import zigpy.util
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zdo import types as zdo_t
+import zigpy.zgp.device
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 12
+DB_VERSION = 13
 DB_V = f"_v{DB_VERSION}"
 MIN_SQLITE_VERSION = (3, 24, 0)
 
@@ -73,13 +74,21 @@ def _register_sqlite_adapters():
     def adapt_ieee(eui64):
         return str(eui64)
 
+    def adapt_key_data(key):
+        return str(key)
+
     sqlite3.register_adapter(t.EUI64, adapt_ieee)
+    sqlite3.register_adapter(t.KeyData, adapt_key_data)
     sqlite3.register_adapter(t.ExtendedPanId, adapt_ieee)
 
     def convert_ieee(s):
         return t.EUI64.convert(s.decode())
 
+    def convert_key_data(s):
+        return t.KeyData.convert(s.decode())
+
     sqlite3.register_converter("ieee", convert_ieee)
+    sqlite3.register_converter("key_data", convert_key_data)
 
 
 def aiosqlite_connect(
@@ -350,6 +359,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         await self._db.commit()
 
+    def gpd_counter_updated(self, ieee: t.EUI64, counter: t.uint32_t):
+        """GPD sent an updated frame counter."""
+        self.enqueue("_gpd_counter_updated", ieee, counter)
+
+    async def _gpd_counter_updated(self, ieee: t.EUI64, counter: t.uint32_t):
+        await self._db.execute(
+            f"UPDATE green_power_data{DB_V} SET frame_counter = :counter WHERE ieee = :ieee",
+            {"counter": counter, "ieee": ieee},
+        )
+
     def routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
         """Route update from Mgmt_Rtg_req."""
         self.enqueue("_routes_updated", ieee, routes)
@@ -445,6 +464,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if device.node_desc is not None:
             await self._save_node_descriptor(device)
 
+        if isinstance(device, zigpy.zgp.device.GreenPowerDevice):
+            await self._save_zgp_ext_data(device.green_power_data)
+            await self._db.commit()
+            return
+
         if isinstance(device, zigpy.quirks.CustomDevice):
             await self._db.commit()
             return
@@ -477,6 +501,29 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         status=excluded.status"""
 
         await self._db.executemany(q, rows)
+
+    async def _save_zgp_ext_data(self, data: zigpy.typing.GreenPowerDeviceData) -> None:
+        q = f"""INSERT INTO green_power_data{DB_V}
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (ieee)
+                    DO UPDATE SET
+                ieee=excluded.ieee,
+                gpd_id=excluded.gpd_id,
+                device_id=excluded.device_id,
+                unicast_proxy=excluded.unicast_proxy,
+                security_level=excluded.security_level,
+                security_key_type=excluded.security_key_type,
+                communication_mode=excluded.communication_mode,
+                frame_counter=excluded.frame_counter,
+                raw_key=excluded.raw_key,
+                assigned_nwk=excluded.assigned_nwk,
+                fixed_location=excluded.fixed_location,
+                rx_on_cap=excluded.rx_on_cap,
+                sequence_number_cap=excluded.sequence_number_cap,
+                manufacturer_id=excluded.manufacturer_id,
+                model_id=excluded.model_id"""
+
+        await self.execute(q, (data.ieee,) + data.as_tuple())
 
     async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
         q = f"""INSERT INTO node_descriptors{DB_V}
@@ -639,6 +686,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Quirks require the manufacturer and model name to be populated
         await self._load_attributes("attrid=4 OR attrid=5")
+        await self._load_zgp_ext_data()
 
         for device in self._application.devices.values():
             device = zigpy.quirks.get_device(device)
@@ -796,6 +844,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 route = zdo_t.Route(*fields)
                 self._application.topology.routes[ieee].append(route)
 
+    async def _load_zgp_ext_data(self) -> None:
+        async with self.execute(f"SELECT * FROM green_power_data{DB_V}") as cursor:
+            async for (ieee, *fields) in cursor:
+                dev = self._application.get_device(ieee)
+                data = zigpy.zgp.GreenPowerDeviceData(*fields)
+                dev = zigpy.zgp.device.GreenPowerDevice(self._application, data)
+                self._application.devices[ieee] = dev
+
     async def _load_network_backups(self) -> None:
         self._application.backups.backups.clear()
 
@@ -902,6 +958,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v10, 10),
                 (self._migrate_to_v11, 11),
                 (self._migrate_to_v12, 12),
+                (self._migrate_to_v13, 13),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -1206,3 +1263,24 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     "INSERT INTO attributes_cache_v12 VALUES (?, ?, ?, ?, ?, ?)",
                     (ieee, endpoint_id, cluster_id, attrid, value, 0),
                 )
+
+    async def _migrate_to_v13(self):
+        """Schema v13 added a `green_power_data` table."""
+
+        await self._migrate_tables(
+            {
+                "devices_v12": "devices_v13",
+                "endpoints_v12": "endpoints_v13",
+                "in_clusters_v12": "in_clusters_v13",
+                "neighbors_v12": "neighbors_v13",
+                "routes_v12": "routes_v13",
+                "node_descriptors_v12": "node_descriptors_v13",
+                "out_clusters_v12": "out_clusters_v13",
+                "groups_v12": "groups_v13",
+                "group_members_v12": "group_members_v13",
+                "relays_v12": "relays_v13",
+                "attributes_cache_v12": "attributes_cache_v13",
+                "unsupported_attributes_v12": "unsupported_attributes_v13",
+                "network_backups_v12": "network_backups_v13",
+            }
+        )
