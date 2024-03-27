@@ -75,4 +75,4 @@ ENV/
 .DS_Store
 
 # Don't keep track of downloaded OTA files
-tests/ota/files/remote/dl
+tests/ota/files/external/dl

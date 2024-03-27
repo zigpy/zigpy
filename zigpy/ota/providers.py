@@ -38,12 +38,15 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     model_names: tuple[str] = ()
 
     changelog: str | None = None
+    release_notes: str | None = None
 
     min_hardware_version: int | None = None
     max_hardware_version: int | None = None
     min_current_file_version: int | None = None
     max_current_file_version: int | None = None
     specificity: int | None = None
+
+    source: str = "Unknown"
 
     async def _fetch(self) -> bytes:
         raise NotImplementedError()
@@ -274,6 +277,7 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
                 image_type=fw["fw_image_type"],
                 checksum="sha3-256:" + fw["fw_sha3_256"],
                 url=fw["fw_binary_url"],
+                source="IKEA",
             )
 
 
@@ -371,7 +375,8 @@ class Ledvance(BaseOtaProvider):
                         }
                     )
                 ),
-                changelog=fw["releaseNotes"],
+                release_notes=fw["releaseNotes"],
+                source="Ledvance",
             )
 
 
@@ -420,12 +425,9 @@ class Salus(BaseOtaProvider):
             yield SalusRemoteOtaImageMetadata(  # type: ignore[call-arg]
                 file_version=int(fw["version"], 16),
                 model_names=(fw["model"],),
-                manufacturer_id=None,
-                image_type=None,
-                checksum=None,
-                file_size=None,
                 # Upgrade HTTP to HTTPS, the server supports it
                 url=fw["url"].replace("http://", "https://", 1),
+                source="SALUS",
             )
 
 
@@ -473,6 +475,7 @@ class Sonoff(BaseOtaProvider):
                 file_size=fw["fw_filesize"],
                 url=fw["fw_binary_url"],
                 model_names=(fw["model_id"],),
+                source="Sonoff",
             )
 
 
@@ -531,9 +534,8 @@ class Inovelli(BaseOtaProvider):
                     manufacturer_id=fw["manufacturer_id"],
                     image_type=fw["image_type"],
                     model_names=(model,),
-                    checksum=None,
-                    file_size=None,
                     url=fw["firmware"],
+                    source="Inovelli",
                 )
 
 
@@ -586,9 +588,8 @@ class ThirdReality(BaseOtaProvider):
                 manufacturer_id=fw["manufacturerId"],
                 model_names=(fw["modelId"],),
                 image_type=fw["imageType"],
-                checksum=None,
-                file_size=None,
                 url=fw["url"],
+                source="ThirdReality",
             )
 
 
@@ -613,6 +614,7 @@ class RemoteProvider(BaseOtaProvider):
                         "model_names": {"type": "array", "items": {"type": "string"}},
                         "manufacturer_id": {"type": "integer"},
                         "changelog": {"type": "string"},
+                        "release_notes": {"type": "string"},
                         "checksum": {
                             "type": "string",
                             "pattern": "^sha3-256:[a-f0-9]{64}$",
@@ -637,6 +639,7 @@ class RemoteProvider(BaseOtaProvider):
                         # "max_hardware_version",
                         # "min_current_file_version",
                         # "max_current_file_version",
+                        # "release_notes",
                         # "specificity",
                     ],
                 },
@@ -679,7 +682,9 @@ class RemoteProvider(BaseOtaProvider):
                 min_current_file_version=fw.get("min_current_file_version"),
                 max_current_file_version=fw.get("max_current_file_version"),
                 changelog=fw.get("changelog"),
+                release_notes=fw.get("release_notes"),
                 specificity=fw.get("specificity"),
+                source=f"Remote provider ({self.url})",
             )
 
             # To ensure all remote images can be used, extend the list of known
@@ -732,11 +737,9 @@ class AdvancedFileProvider(BaseOtaProvider):
                 image_type=image.header.image_type,
                 checksum="sha1:" + hasher.hexdigest(),
                 file_size=len(data),
-                manufacturer_names=(),
-                model_names=(),
-                changelog=None,
                 min_hardware_version=image.header.minimum_hardware_version,
                 max_hardware_version=image.header.maximum_hardware_version,
+                source=f"Advanced file provider ({self.image_dir})",
             )
 
 
@@ -752,6 +755,7 @@ def _load_z2m_index(index: dict, *, index_root: pathlib.Path | None = None):
             "model_names": tuple([obj["modelId"]] if "modelId" in obj else []),
             "min_current_file_version": obj.get("minFileVersion"),
             "max_current_file_version": obj.get("maxFileVersion"),
+            "source": "",  # Set in a subclass
         }
 
         if "path" in obj and index_root is not None:
@@ -809,7 +813,7 @@ class LocalZ2MProvider(BaseZ2MProvider):
         jsonschema.validate(index, self.JSON_SCHEMA)
 
         for img in _load_z2m_index(index, index_root=self.index_file.parent):
-            yield img
+            yield img.replace(source=f"Local Z2M provider ({self.index_file})")
 
 
 class RemoteZ2MProvider(BaseZ2MProvider):
@@ -826,4 +830,4 @@ class RemoteZ2MProvider(BaseZ2MProvider):
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
         for img in _load_z2m_index(fw_lst):
-            yield img
+            yield img.replace(source=f"Remote Z2M provider ({self.url})")
