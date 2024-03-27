@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import collections
 from enum import Enum
+import inspect
 import logging
 import typing
 from typing import TYPE_CHECKING, Any
@@ -105,16 +106,19 @@ class CustomDeviceV2(CustomDevice):
                 if not isinstance(endpoint, ZDO)
             }
         }
-        self.replacement[
-            SIG_SKIP_CONFIG
-        ] = self.quirk_metadata.skip_device_configuration
+        self.replacement[SIG_SKIP_CONFIG] = (
+            self.quirk_metadata.skip_device_configuration
+        )
         if self.quirk_metadata.device_node_descriptor:
             self.replacement[SIG_NODE_DESC] = self.quirk_metadata.device_node_descriptor
 
     @property
     def exposes_metadata(
         self,
-    ) -> dict[tuple[int, int, ClusterType], list[EntityMetadata],]:
+    ) -> dict[
+        tuple[int, int, ClusterType],
+        list[EntityMetadata],
+    ]:
         """Return EntityMetadata for exposed entities.
 
         The key is a tuple of (endpoint_id, cluster_id, cluster_type).
@@ -320,6 +324,7 @@ class QuirksV2RegistryEntry:
     """Quirks V2 registry entry."""
 
     registry: DeviceRegistry = None
+    quirk_location: str = None
     filters: list[FilterType] = attrs.field(factory=list)
     custom_device_class: type[CustomDeviceV2] | None = attrs.field(default=None)
     device_node_descriptor: NodeDescriptor | None = attrs.field(default=None)
@@ -335,9 +340,9 @@ class QuirksV2RegistryEntry:
         | WriteAttributeButtonMetadata
         | ZCLCommandButtonMetadata
     ] = attrs.field(factory=list)
-    device_automation_triggers_metadata: dict[
-        tuple[str, str], dict[str, str]
-    ] = attrs.field(factory=dict)
+    device_automation_triggers_metadata: dict[tuple[str, str], dict[str, str]] = (
+        attrs.field(factory=dict)
+    )
 
     def also_applies_to(self, manufacturer: str, model: str) -> QuirksV2RegistryEntry:
         """Register this quirks v2 entry for an additional manufacturer and model."""
@@ -744,4 +749,9 @@ def add_to_registry_v2(
     manufacturer: str, model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
 ) -> QuirksV2RegistryEntry:
     """Add an entry to the registry."""
-    return registry.add_to_registry_v2(manufacturer, model, QuirksV2RegistryEntry())
+    stack: list[inspect.FrameInfo] = inspect.stack()
+    caller: inspect.FrameInfo = stack[1]
+    location: str = f"file[{caller.filename}]-line:{caller.lineno}"
+    quirk_entry = QuirksV2RegistryEntry()
+    quirk_entry.quirk_location = location
+    return registry.add_to_registry_v2(manufacturer, model, quirk_entry)

@@ -120,6 +120,9 @@ async def test_quirks_v2(device_mock):
     quirked = registry.get_device(device_mock)
     assert isinstance(quirked, CustomDeviceV2)
     assert quirked in registry
+    # this would need to be updated if the line number of the call to add_to_registry_v2
+    # changes in this test in the future
+    assert quirked.quirk_metadata.quirk_location.endswith("zigpy/tests/test_quirks_v2.py]-line:104")
 
     ep = quirked.endpoints[1]
 
