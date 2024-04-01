@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import abc
+import contextlib
 import asyncio
+import dataclasses
 import functools
 import inspect
 import logging
@@ -21,73 +23,97 @@ import zigpy.types as t
 LOGGER = logging.getLogger(__name__)
 
 
+@dataclasses.dataclass(frozen=True)
+class ListenerMeta:
+    """Listener for events."""
+
+    obj: typing.Any
+    context: bool
+
+
 class ListenableMixin:
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._listeners: dict[int, tuple[typing.Callable, bool]] = {}
+        self._listeners: list[ListenerMeta] = []
 
-    def _add_listener(self, listener: typing.Any, include_context: bool) -> int:
-        id_ = id(listener)
-        while id_ in self._listeners:
-            id_ += 1
-        self._listeners[id_] = (listener, include_context)
-        return id_
+    def add_listener(
+        self, listener: typing.Any, *, context: bool = False
+    ) -> ListenerMeta:
+        meta = ListenerMeta(obj=listener, context=context)
+        self._listeners.append(meta)
 
-    def add_listener(self, listener: typing.Any) -> int:
-        return self._add_listener(listener, include_context=False)
+        return meta
 
-    def add_context_listener(self, listener: CatchingTaskMixin) -> int:
-        return self._add_listener(listener, include_context=True)
+    def add_context_listener(self, listener: CatchingTaskMixin) -> ListenerMeta:
+        return self.add_listener(listener, context=True)
 
-    def remove_listener(self, listener: typing.Any) -> None:
-        for id_, (attached_listener, _) in self._listeners.items():
-            if attached_listener is listener:
-                del self._listeners[id_]
-                break
+    def remove_listener(self, listener: ListenerMeta) -> None:
+        if not isinstance(listener, ListenerMeta):
+            for meta in self._listeners:
+                if meta.obj == listener:
+                    listener = meta
+                    break
+            else:
+                return
 
-    def listener_event(self, method_name: str, *args) -> list[typing.Any | None]:
+        with contextlib.suppress(ValueError):
+            self._listeners.remove(listener)
+
+    def listener_event(
+        self, method_name: str, *args, **kwargs
+    ) -> list[typing.Any | None]:
         result = []
-        for listener, include_context in self._listeners.values():
-            method = getattr(listener, method_name, None)
+
+        for listener in self._listeners:
+            method = getattr(listener.obj, method_name, None)
 
             if method is None:
                 continue
 
             try:
-                if include_context:
-                    result.append(method(self, *args))
+                if listener.context:
+                    result.append(method(self, *args, **kwargs))
                 else:
-                    result.append(method(*args))
+                    result.append(method(*args, **kwargs))
             except Exception as e:
                 LOGGER.debug(
-                    "Error calling listener %r with args %r", method, args, exc_info=e
+                    "Error calling listener %r with args %r and kwargs %r",
+                    method,
+                    args,
+                    kwargs,
+                    exc_info=e,
                 )
+
         return result
 
-    async def async_event(self, method_name: str, *args) -> list[typing.Any]:
+    async def async_event(self, method_name: str, *args, **kwargs) -> list[typing.Any]:
         tasks = []
-        for listener, include_context in self._listeners.values():
-            method = getattr(listener, method_name, None)
+
+        for listener in self._listeners:
+            method = getattr(listener.obj, method_name, None)
 
             if method is None:
                 continue
 
-            if include_context:
-                tasks.append(method(self, *args))
+            if listener.context:
+                tasks.append(method(self, *args, **kwargs))
             else:
-                tasks.append(method(*args))
+                tasks.append(method(*args, **kwargs))
 
         results = []
+
         for result in await asyncio.gather(*tasks, return_exceptions=True):
             if isinstance(result, Exception):
                 LOGGER.debug(
-                    "Error calling listener %r with args %r",
+                    "Error calling listener %r with args %r and kwargs %r",
                     method,
                     args,
+                    kwargs,
                     exc_info=result,
                 )
             else:
                 results.append(result)
+
         return results
 
 

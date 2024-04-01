@@ -14,8 +14,7 @@ from .async_mock import AsyncMock, MagicMock, call, patch, sentinel
 
 
 class Listenable(util.ListenableMixin):
-    def __init__(self):
-        self._listeners = {}
+    pass
 
 
 def test_listenable():
