@@ -40,8 +40,8 @@ class Topology(zigpy.util.ListenableMixin):
 
     def __init__(self, app: zigpy.application.ControllerApplication) -> None:
         """Instantiate."""
+        super().__init__()
         self._app: zigpy.application.ControllerApplication = app
-        self._listeners: dict = {}
         self._scan_task: asyncio.Task | None = None
         self._scan_loop_task: asyncio.Task | None = None
 

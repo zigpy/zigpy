@@ -72,6 +72,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     manufacturer_id_override = None
 
     def __init__(self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK):
+        super().__init__()
         self._application: ControllerApplication = application
         self._ieee: t.EUI64 = ieee
         self.nwk: t.NWK = t.NWK(nwk)
@@ -83,7 +84,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._last_seen: datetime | None = None
         self._initialize_task: asyncio.Task | None = None
         self._group_scan_task: asyncio.Task | None = None
-        self._listeners = {}
         self._manufacturer: str | None = None
         self._model: str | None = None
         self.node_desc: zdo_t.NodeDescriptor | None = None

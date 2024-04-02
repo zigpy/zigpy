@@ -61,13 +61,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     _probe_configs: list[dict[str, Any]] = []
 
     def __init__(self, config: dict) -> None:
+        super().__init__()
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
         self.state: zigpy.state.State = zigpy.state.State()
-        self._listeners = {}
         self._config = self.SCHEMA(config)
         self._dblistener = None
         self._groups = zigpy.group.Groups(self)
-        self._listeners = {}
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()
 

@@ -209,11 +209,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             cls._registry_range[cls.cluster_id_range] = cls
 
     def __init__(self, endpoint: EndpointType, is_server: bool = True) -> None:
+        super().__init__()
         self._endpoint: EndpointType = endpoint
         self._attr_cache: dict[int, Any] = {}
         self._attr_last_updated: dict[int, datetime] = {}
         self.unsupported_attributes: set[int | str] = set()
-        self._listeners = {}
         self._type: ClusterType = (
             ClusterType.Server if is_server else ClusterType.Client
         )

@@ -27,8 +27,8 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         Rejoin = 1 << 7
 
     def __init__(self, device):
+        super().__init__()
         self._device = device
-        self._listeners = {}
 
     def _serialize(self, command, *args):
         schema = types.CLUSTERS[command][1]
