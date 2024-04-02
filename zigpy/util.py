@@ -49,6 +49,11 @@ class ListenableMixin:
 
     def remove_listener(self, listener: ListenerMeta) -> None:
         if not isinstance(listener, ListenerMeta):
+            warnings.warn(
+                "Pass the output of `add_context_listener`, not the function itself",
+                DeprecationWarning,
+            )
+
             for meta in self._listeners:
                 if meta.obj == listener:
                     listener = meta
