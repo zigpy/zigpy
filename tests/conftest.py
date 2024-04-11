@@ -19,6 +19,7 @@ from zigpy.config import (
     CONF_OTA,
     CONF_OTA_ENABLED,
 )
+import zigpy.greenpower
 import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
@@ -139,6 +140,8 @@ def make_app(
     app.state.node_info = app_state.NodeInfo(
         nwk=t.NWK(0x0000), ieee=NCP_IEEE, logical_type=zdo_t.LogicalType.Coordinator
     )
+
+    app.greenpower._controller_state = zigpy.greenpower.ControllerState.Operational
 
     app.device_initialized = Mock(wraps=app.device_initialized)
     app.listener_event = Mock(wraps=app.listener_event)

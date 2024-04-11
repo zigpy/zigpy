@@ -15,6 +15,9 @@ from zigpy.zcl.foundation import (
     ZCLCommandDef,
 )
 
+# Backwards compatibility for when ZGP was still included in this file
+from .greenpower import GreenPowerProxy  # noqa: F401
+
 
 class PowerSource(t.enum8):
     """Power source enum."""
@@ -2468,11 +2471,6 @@ class PollControl(Cluster):
 
     class ClientCommandDefs(BaseCommandDefs):
         checkin: Final = ZCLCommandDef(id=0x0000, schema={}, direction=False)
-
-
-class GreenPowerProxy(Cluster):
-    cluster_id: Final[t.uint16_t] = 0x0021
-    ep_attribute: Final = "green_power"
 
 
 class KeepAlive(Cluster):

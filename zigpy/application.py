@@ -26,6 +26,7 @@ import zigpy.const as const
 import zigpy.device
 import zigpy.endpoint
 import zigpy.exceptions
+import zigpy.greenpower
 import zigpy.group
 import zigpy.listeners
 import zigpy.ota
@@ -77,6 +78,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
         )
 
+        self.greenpower = zigpy.greenpower.GreenPowerController(self)
         self.ota = zigpy.ota.OTA(config[conf.CONF_OTA], self)
         self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
         self.topology: zigpy.topology.Topology = zigpy.topology.Topology(self)
@@ -113,6 +115,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             return
 
         self.add_listener(self._dblistener)
+        self.greenpower.add_listener(self._dblistener)
         self.groups.add_listener(self._dblistener)
         self.backups.add_listener(self._dblistener)
         self.topology.add_listener(self._dblistener)
@@ -124,6 +127,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.topology.remove_listener(self._dblistener)
         self.backups.remove_listener(self._dblistener)
         self.groups.remove_listener(self._dblistener)
+        self.greenpower.remove_listener(self._dblistener)
         self.remove_listener(self._dblistener)
 
     async def initialize(self, *, auto_form: bool = False) -> None:
@@ -232,6 +236,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         try:
             await self.connect()
             await self.initialize(auto_form=auto_form)
+            await self.greenpower.initialize()
         except Exception as e:
             await self.shutdown(db=False)
 
@@ -434,6 +439,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.backups.stop_periodic_backups()
         self.topology.stop_periodic_scans()
 
+        # always ensure we let the network know we're no longer servicing ZGP requests
+        await self.greenpower._stop_permit()
+
         try:
             await self.disconnect()
         except Exception:
@@ -522,12 +530,17 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> None:
         """Send a remove request then pop the device."""
         try:
-            async with asyncio_timeout(
-                30
-                if device.node_desc is not None and device.node_desc.is_end_device
-                else 7
-            ):
-                await device.zdo.leave(remove_children=remove_children, rejoin=rejoin)
+            if device.is_green_power_device:
+                await self.greenpower.remove_device(device)
+            else:
+                async with asyncio_timeout(
+                    30
+                    if device.node_desc is not None and device.node_desc.is_end_device
+                    else 7
+                ):
+                    await device.zdo.leave(
+                        remove_children=remove_children, rejoin=rejoin
+                    )
         except (zigpy.exceptions.DeliveryError, asyncio.TimeoutError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
@@ -554,8 +567,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         ieee = t.EUI64(ieee)
 
+        # Filter out Annce messages with unknown IEEE (ZGP devices)
+        if ieee == t.EUI64.UNKNOWN:
+            return
+
         try:
             dev = self.get_device(ieee=ieee)
+            # don't mess with GPD's here (how did we even get this far?)
+            if dev.is_green_power_device:
+                return
         except KeyError:
             dev = self.add_device(ieee, nwk)
             LOGGER.info("New device 0x%04x (%s) joined the network", nwk, ieee)
@@ -748,6 +768,27 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 output_clusters=[],
             )
         )
+
+        try:
+            await self.add_endpoint(
+                zdo_types.SimpleDescriptor(
+                    endpoint=zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID,
+                    profile=zigpy.profiles.zgp.PROFILE_ID,
+                    device_type=zigpy.profiles.zgp.DeviceType.TARGET,
+                    device_version=0b0000,
+                    input_clusters=[
+                        zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id  # type: ignore
+                    ],
+                    output_clusters=[
+                        zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id  # type: ignore
+                    ],
+                )
+            )
+        except Exception as e:
+            LOGGER.warn(
+                "Failed to add ZGP endpoint; here's hoping it works anyway. Message: %s",
+                str(e),
+            )
 
         for endpoint in self.config[conf.CONF_ADDITIONAL_ENDPOINTS]:
             await self.add_endpoint(endpoint)
@@ -1000,6 +1041,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         assert packet.src is not None
         assert packet.dst is not None
 
+        # First, pre-filter ZGP stuff; if it's infrastructure commands, return otherwise continue processing
+        if packet.profile_id == zigpy.profiles.zgp.PROFILE_ID:
+            if self.greenpower.packet_received(packet):
+                return
+
         # Peek into ZDO packets to handle possible ZDO notifications
         if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
             self._maybe_parse_zdo(packet)
@@ -1243,6 +1289,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     dev = self.get_device(ieee=node)
                     r = await dev.zdo.permit(time_s)
                     LOGGER.debug("Sent 'mgmt_permit_joining_req' to %s: %s", node, r)
+                    await self.greenpower.permit(time_s, dev)
                 except KeyError:
                     LOGGER.warning("Device '%s' not found", node)
                 except zigpy.exceptions.DeliveryError as ex:
@@ -1252,15 +1299,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             return
 
         await zigpy.zdo.broadcast(
-            self,  # app
-            zdo_types.ZDOCmd.Mgmt_Permit_Joining_req,  # command
-            0x0000,  # grpid
-            0x00,  # radius
-            time_s,
-            0,
+            app=self,  # app
+            command=zdo_types.ZDOCmd.Mgmt_Permit_Joining_req,  # command
+            grpid=0x0000,  # grpid
+            radius=0x00,  # radius
+            PermitDuration=time_s,
+            TC_Significant=0,
             broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
         )
         await self.permit_ncp(time_s)
+        await self.greenpower.permit(time_s)
 
     def get_sequence(self) -> t.uint8_t:
         self._send_sequence = (self._send_sequence + 1) % 256
@@ -1291,6 +1339,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def get_endpoint_id(self, cluster_id: int, is_server_cluster: bool = False) -> int:
         """Returns coordinator endpoint id for specified cluster id."""
+        if cluster_id == zigpy.zcl.clusters.general.GreenPowerProxy.cluster_id:  # type: ignore
+            return zigpy.profiles.zgp.GREENPOWER_ENDPOINT_ID
         return DEFAULT_ENDPOINT_ID
 
     def get_dst_address(self, cluster: zigpy.zcl.Cluster) -> zdo_types.MultiAddress:

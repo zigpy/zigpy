@@ -70,7 +70,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     _skip_registry: bool = False
 
     # Most clusters are identified by a single cluster ID
-    cluster_id: t.uint16_t = None
+    cluster_id: t.ClusterId = None
 
     # Clusters are accessible by name from their endpoint as an attribute
     ep_attribute: str = None
@@ -92,7 +92,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def __init_subclass__(cls) -> None:
         if cls.cluster_id is not None:
-            cls.cluster_id = t.ClusterId(cls.cluster_id)
+            cls.cluster_id: t.ClusterId = t.ClusterId(cls.cluster_id)
 
         # Compile the old command definitions
         for commands in [cls.server_commands, cls.client_commands]:
