@@ -93,7 +93,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def clusters(self) -> list[zigpy.zcl.Cluster]:
         """Return all clusters on this endpoint."""
-        return list(self.in_clusters.values()) + list(self.out_clusters.values())
+        return [*self.in_clusters.values(), *self.out_clusters.values()]
 
     def add_input_cluster(
         self, cluster_id: int, cluster: zigpy.zcl.Cluster | None = None
