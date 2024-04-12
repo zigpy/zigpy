@@ -743,7 +743,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(
             f"SELECT * FROM unsupported_attributes{DB_V}"
         ) as cursor:
-            async for (ieee, endpoint_id, cluster_id, attr_id) in cursor:
+            async for (ieee, endpoint_id, cluster_type, cluster_id, attr_id) in cursor:
                 dev = self._application.get_device(ieee)
 
                 try:
@@ -751,8 +751,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 except KeyError:
                     continue
 
+                clusters = (
+                    ep.in_clusters
+                    if cluster_type == ClusterType.Server
+                    else ep.out_clusters
+                )
+
                 try:
-                    cluster = ep.in_clusters[cluster_id]
+                    cluster = clusters[cluster_id]
                 except KeyError:
                     continue
 
