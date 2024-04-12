@@ -90,6 +90,11 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.status = Status.ZDO_INIT
 
+    @property
+    def clusters(self) -> list[zigpy.zcl.Cluster]:
+        """Return all clusters on this endpoint."""
+        return [*self.in_clusters.values(), *self.out_clusters.values()]
+
     def add_input_cluster(
         self, cluster_id: int, cluster: zigpy.zcl.Cluster | None = None
     ) -> zigpy.zcl.Cluster:
@@ -130,6 +135,13 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             cluster = zigpy.zcl.Cluster.from_id(self, cluster_id, is_server=False)
 
         self.out_clusters[cluster_id] = cluster
+
+        if self._device.application._dblistener is not None:
+            listener = zigpy.zcl.ClusterPersistingListener(
+                self._device.application._dblistener, cluster
+            )
+            cluster.add_listener(listener)
+
         return cluster
 
     async def add_to_group(self, grp_id: int, name: str | None = None) -> ZCLStatus:

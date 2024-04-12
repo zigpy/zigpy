@@ -137,18 +137,22 @@ async def test_database(tmp_path):
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = 0xFFFD  # Invalid
-    clus = ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
+    in_clus = ep.add_input_cluster(0)
+    out_clus = ep.add_output_cluster(0)
     ep = dev.add_endpoint(3)
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 49246
     ep.device_type = profiles.zll.DeviceType.COLOR_LIGHT
     app.device_initialized(dev)
-    clus.update_attribute(0, 99)
-    clus.update_attribute(4, bytes("Custom", "ascii"))
-    clus.update_attribute(5, bytes("Model", "ascii"))
-    clus.listener_event("cluster_command", 0)
-    clus.listener_event("general_command")
+
+    in_clus.update_attribute(0, 99)
+    in_clus.update_attribute(4, bytes("Custom", "ascii"))
+    in_clus.update_attribute(5, bytes("Model", "ascii"))
+    in_clus.listener_event("cluster_command", 0)
+    in_clus.listener_event("general_command")
+
+    out_clus.update_attribute(0, 99)
+
     dev.relays = relays_1
     signature = dev.get_signature()
     assert ep.endpoint_id in signature[SIG_ENDPOINTS]
@@ -199,9 +203,10 @@ async def test_database(tmp_path):
     assert dev.endpoints[2].in_clusters[0]._attr_cache[0] == 99
     assert dev.endpoints[2].in_clusters[0]._attr_cache[4] == bytes("Custom", "ascii")
     assert dev.endpoints[2].in_clusters[0]._attr_cache[5] == bytes("Model", "ascii")
+    assert dev.endpoints[2].out_clusters[0].cluster_id == 0x0000
+    assert dev.endpoints[2].out_clusters[0]._attr_cache[0] == 99
     assert dev.endpoints[2].manufacturer == "Custom"
     assert dev.endpoints[2].model == "Model"
-    assert dev.endpoints[2].out_clusters[1].cluster_id == 1
     assert dev.endpoints[3].device_type == profiles.zll.DeviceType.COLOR_LIGHT
     assert dev.relays == relays_1
     # The timestamp won't be restored exactly but it is more than close enough
@@ -786,13 +791,16 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
-    clus = ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
-    clus.update_attribute(4, "Custom")
-    clus.update_attribute(5, "Model")
+    in_clus = ep.add_input_cluster(0)
+    in_clus.update_attribute(4, "Custom")
+    in_clus.update_attribute(5, "Model")
     app.device_initialized(dev)
-    clus.add_unsupported_attribute(0x0010)
-    clus.add_unsupported_attribute("physical_env")
+
+    in_clus.add_unsupported_attribute(0x0010)
+    in_clus.add_unsupported_attribute("physical_env")
+
+    out_clus = ep.add_output_cluster(0)
+    out_clus.add_unsupported_attribute(0x0010)
     await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
@@ -801,7 +809,9 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
     assert 0x0010 in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert 0x0010 in dev.endpoints[3].out_clusters[0].unsupported_attributes
     assert "location_desc" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "location_desc" in dev.endpoints[3].out_clusters[0].unsupported_attributes
     assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
     await app2.shutdown()
@@ -819,15 +829,19 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     dev = app3.get_device(ieee)
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
-    cluster = dev.endpoints[3].in_clusters[0]
-    assert 0x0010 in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    cluster.request = mockrequest
-    await cluster.read_attributes([0x0010], allow_cache=False)
-    assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "location_desc" not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert dev.endpoints[3].in_clusters[0].get(0x0010) == "Not Removed"
-    assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+
+    in_cluster = dev.endpoints[3].in_clusters[0]
+    assert 0x0010 in in_cluster.unsupported_attributes
+    in_cluster.request = mockrequest
+    await in_cluster.read_attributes([0x0010], allow_cache=False)
+    assert 0x0010 not in in_cluster.unsupported_attributes
+    assert "location_desc" not in in_cluster.unsupported_attributes
+    assert in_cluster.get(0x0010) == "Not Removed"
+    assert 0x0011 in in_cluster.unsupported_attributes
+    assert "physical_env" in in_cluster.unsupported_attributes
+
+    out_cluster = dev.endpoints[3].out_clusters[0]
+    out_cluster.remove_unsupported_attribute(0x0010)
     await app3.shutdown()
 
     # Everything should've been saved - check that it re-loads
@@ -836,6 +850,7 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
     assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert 0x0010 not in dev.endpoints[3].out_clusters[0].unsupported_attributes
     assert dev.endpoints[3].in_clusters[0].get(0x0010) == "Not Removed"
     assert "location_desc" not in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
