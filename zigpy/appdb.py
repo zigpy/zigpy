@@ -312,8 +312,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self,
         ieee: t.EUI64,
         endpoint_id: int,
-        cluster_id: int,
         cluster_type: ClusterType,
+        cluster_id: int,
         attrid: int,
     ) -> None:
         q = f"""INSERT INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?, ?)
