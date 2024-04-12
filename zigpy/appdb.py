@@ -1288,7 +1288,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             async for (ieee, endpoint_id, cluster_id, attrid) in cursor:
                 await self.execute(
                     "INSERT INTO unsupported_attributes_v13 VALUES (?, ?, ?, ?, ?)",
-                    (ieee, endpoint_id, ClusterType.Client, cluster_id, attrid),
+                    (ieee, endpoint_id, ClusterType.Server, cluster_id, attrid),
                 )
 
         async with self.execute("SELECT * FROM attributes_cache_v12") as cursor:
@@ -1305,7 +1305,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     (
                         ieee,
                         endpoint_id,
-                        ClusterType.Client,
+                        ClusterType.Server,
                         cluster_id,
                         attrid,
                         value,
