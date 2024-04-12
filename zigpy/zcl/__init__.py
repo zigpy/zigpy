@@ -791,6 +791,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         )
 
     @property
+    def cluster_type(self) -> ClusterType:
+        """Return the type of this cluster."""
+        return self._type
+
+    @property
     def is_client(self) -> bool:
         """Return True if this is a client cluster."""
         return self._type == ClusterType.Client
