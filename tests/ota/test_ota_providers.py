@@ -365,7 +365,7 @@ async def test_inovelli_provider():
 
     with aioresponses() as mock_http:
         mock_http.get(
-            "https://files.inovelli.com/firmware/firmware-zha.json",
+            "https://files.inovelli.com/firmware/firmware-zha-v2.json",
             body=index_json,
         )
 
