@@ -515,7 +515,7 @@ class Inovelli(BaseOtaProvider):
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         async with session.get(
-            "https://files.inovelli.com/firmware/firmware-zha.json"
+            "https://files.inovelli.com/firmware/firmware-zha-v2.json"
         ) as rsp:
             fw_lst = await rsp.json()
 
