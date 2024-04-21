@@ -1,5 +1,17 @@
+from __future__ import annotations
+
+import typing
+
+if typing.TYPE_CHECKING:
+    import zigpy.backups
+
+
 class ZigbeeException(Exception):
     """Base exception class"""
+
+
+class ParsingError(ZigbeeException):
+    """Failed to parse a frame"""
 
 
 class ControllerException(ZigbeeException):
@@ -13,9 +25,13 @@ class APIException(ZigbeeException):
 class DeliveryError(ZigbeeException):
     """Message delivery failed in some way"""
 
-    def __init__(self, message: str, status=None):
+    def __init__(self, message: str, status: int | None = None):
         super().__init__(message)
         self.status = status
+
+
+class SendError(DeliveryError):
+    """Message could not be enqueued."""
 
 
 class InvalidResponse(ZigbeeException):
@@ -41,6 +57,24 @@ class FormationFailure(RadioException):
 class NetworkSettingsInconsistent(ZigbeeException):
     """Loaded network settings are different from what is in the database"""
 
+    def __init__(
+        self,
+        message: str,
+        new_state: zigpy.backups.NetworkBackup,
+        old_state: zigpy.backups.NetworkBackup,
+    ) -> None:
+        super().__init__(message)
+        self.new_state = new_state
+        self.old_state = old_state
+
 
 class CorruptDatabase(ZigbeeException):
     """The SQLite database is corrupt or otherwise inconsistent"""
+
+
+class QuirksException(Exception):
+    """Base exception class"""
+
+
+class MultipleQuirksMatchException(QuirksException):
+    """Thrown when multiple v2 quirks match a device"""

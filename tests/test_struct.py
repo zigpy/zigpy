@@ -32,6 +32,21 @@ def expose_global():
         del globals()[obj.__name__]
 
 
+def test_enum_fields():
+    class EnumNamed(t.enum8):
+        NAME1 = 0x01
+        NAME2 = 0x10
+
+    assert EnumNamed("0x01") == EnumNamed.NAME1
+    assert EnumNamed("1") == EnumNamed.NAME1
+    assert EnumNamed("0x10") == EnumNamed.NAME2
+    assert EnumNamed("16") == EnumNamed.NAME2
+    assert EnumNamed("NAME1") == EnumNamed.NAME1
+    assert EnumNamed("NAME2") == EnumNamed.NAME2
+    assert EnumNamed("EnumNamed.NAME1") == EnumNamed.NAME1
+    assert EnumNamed("EnumNamed.NAME2") == EnumNamed.NAME2
+
+
 def test_struct_fields():
     class TestStruct(t.Struct):
         a: t.uint8_t
@@ -407,13 +422,6 @@ def test_optional_struct_special_case():
         OptionalTestStruct(foo=0x00),
         b"",
     )
-
-
-def test_old_style_struct():
-    with pytest.raises(TypeError):
-        # `_fields` would typically be ignored but this would be very bad
-        class OldStruct(t.Struct):
-            _fields = [("foo", t.uint8_t)]
 
 
 def test_conflicting_types():
@@ -823,3 +831,88 @@ def test_matching(expose_global):
     assert s.matches(TestStruct(bar=InnerStruct()))
     assert s.matches(TestStruct(bar=InnerStruct(field1=2, field2="asd")))
     assert not s.matches(TestStruct(bar=InnerStruct(field1=3)))
+
+
+def test_dynamic_type():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+        baz: None = t.StructField(
+            dynamic_type=lambda s: t.LVBytes if s.foo == 0x00 else t.uint8_t
+        )
+
+    assert TestStruct.deserialize(b"\x00\x04test") == (
+        TestStruct(foo=0x00, baz=b"test"),
+        b"",
+    )
+    assert TestStruct.deserialize(b"\x01\x04test") == (
+        TestStruct(foo=0x01, baz=0x04),
+        b"test",
+    )
+
+    assert TestStruct(foo=0x00, baz=b"test").serialize() == b"\x00\x04test"
+    assert TestStruct(foo=0x01, baz=0x04).serialize() == b"\x01\x04"
+
+
+def test_int_comparison(expose_global):
+    @expose_global
+    class FirmwarePlatform(t.enum8):
+        Conbee = 0x05
+        Conbee_II = 0x07
+        Conbee_III = 0x09
+
+    class FirmwareVersion(t.Struct, t.uint32_t):
+        reserved: t.uint8_t
+        platform: FirmwarePlatform
+        minor: t.uint8_t
+        major: t.uint8_t
+
+    fw_ver = FirmwareVersion(0x264F0900)
+    assert fw_ver == FirmwareVersion(
+        reserved=0, platform=FirmwarePlatform.Conbee_III, minor=79, major=38
+    )
+    assert fw_ver == 0x264F0900
+    assert int(fw_ver) == 0x264F0900
+    assert "0x264F0900" in str(fw_ver)
+
+    assert int(fw_ver) <= fw_ver
+    assert fw_ver <= int(fw_ver)
+
+    assert int(fw_ver) - 1 < fw_ver
+    assert fw_ver < int(fw_ver) + 1
+
+    assert int(fw_ver) >= fw_ver
+    assert fw_ver >= int(fw_ver)
+
+    assert int(fw_ver) + 1 > fw_ver
+    assert fw_ver > int(fw_ver) - 1
+
+
+def test_int_comparison_non_int(expose_global):
+    @expose_global
+    class FirmwarePlatform(t.enum8):
+        Conbee = 0x05
+        Conbee_II = 0x07
+        Conbee_III = 0x09
+
+    # This isn't an integer
+    class FirmwareVersion(t.Struct):
+        reserved: t.uint8_t
+        platform: FirmwarePlatform
+        minor: t.uint8_t
+        major: t.uint8_t
+
+    fw_ver = FirmwareVersion(
+        reserved=0, platform=FirmwarePlatform.Conbee_III, minor=79, major=38
+    )
+
+    with pytest.raises(TypeError):
+        fw_ver < 0
+
+    with pytest.raises(TypeError):
+        fw_ver <= 0
+
+    with pytest.raises(TypeError):
+        fw_ver > 0
+
+    with pytest.raises(TypeError):
+        fw_ver >= 0

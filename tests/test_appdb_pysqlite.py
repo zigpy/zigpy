@@ -19,7 +19,7 @@ else:
                 attr: getattr(pysqlite3, attr)
                 for attr in dir(pysqlite3)
                 if hasattr(sqlite3, attr)
-            }
+            },
         ):
             # Ensure the module was patched
             assert sqlite3.connect is pysqlite3.connect

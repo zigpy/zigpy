@@ -5,7 +5,6 @@ import enum
 import functools
 import keyword
 import typing
-import warnings
 
 import zigpy.types as t
 
@@ -15,9 +14,7 @@ def _hex_uint16_repr(v: int) -> str:
 
 
 def ensure_valid_name(name: str | None) -> None:
-    """
-    Ensures that the name of an attribute or command is valid.
-    """
+    """Ensures that the name of an attribute or command is valid."""
     if name is not None and not name.isidentifier():
         raise ValueError(f"{name!r} is not a valid identifier name.")
 
@@ -101,11 +98,11 @@ class TypeValue:
         self.type = type
         self.value = value
 
-    def serialize(self):
+    def serialize(self) -> bytes:
         return self.type.to_bytes(1, "little") + self.value.serialize()
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data: bytes) -> tuple[TypeValue, bytes]:
         type, data = t.uint8_t.deserialize(data)
         python_type = DATA_TYPES[type][1]
         value, data = python_type.deserialize(data)
@@ -125,7 +122,7 @@ class TypedCollection(TypeValue):
     def deserialize(cls, data):
         type, data = t.uint8_t.deserialize(data)
         python_type = DATA_TYPES[type][1]
-        values, data = t.LVList[python_type].deserialize(data)
+        values, data = t.LVList[python_type, t.uint16_t].deserialize(data)
 
         return cls(type=type, value=values), data
 
@@ -145,13 +142,26 @@ class Set(TypedCollection):
 class DataTypes(dict):
     """DataTypes container."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        data_types: dict[
+            int,
+            tuple[
+                str,
+                typing.Any,
+                typing.Literal[Null]
+                | typing.Literal[Discrete]
+                | typing.Literal[Analog]
+                | typing.Literal[None],
+            ],
+        ],
+    ) -> None:
+        super().__init__(data_types)
         self._idx_by_class = {
             _type: type_id for type_id, (name, _type, ad) in self.items()
         }
 
-    def pytype_to_datatype_id(self, python_type) -> int:
+    def pytype_to_datatype_id(self, python_type: typing.Any) -> int:
         """Return Zigbee Datatype ID for a give python type."""
 
         # We return the most specific parent class
@@ -397,7 +407,7 @@ class ConfigureReportingResponseRecord(t.Struct):
     attrid: t.uint16_t = t.StructField(repr=_hex_uint16_repr)
 
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data: bytes) -> tuple[ConfigureReportingResponseRecord, bytes]:
         r = cls()
         r.status, data = Status.deserialize(data)
         if r.status == Status.SUCCESS:
@@ -418,7 +428,7 @@ class ConfigureReportingResponseRecord(t.Struct):
             r += t.uint16_t(self.attrid).serialize()
         return r
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         r = f"{self.__class__.__name__}(status={self.status}"
         if self.status != Status.SUCCESS:
             r += f", direction={self.direction}, attrid={self.attrid}"
@@ -481,17 +491,18 @@ class FrameType(t.enum2):
 class Direction(t.enum1):
     """ZCL frame control direction."""
 
-    Server_to_Client = 0
-    Client_to_Server = 1
+    Client_to_Server = 0
+    Server_to_Client = 1
 
     @classmethod
     def _from_is_reply(cls, is_reply: bool) -> Direction:
-        return cls.Client_to_Server if is_reply else cls.Server_to_Client
+        return cls.Server_to_Client if is_reply else cls.Client_to_Server
 
 
 class FrameControl(t.Struct, t.uint8_t):
     """The frame control field contains information defining the command type
-    and other control flags."""
+    and other control flags.
+    """
 
     frame_type: FrameType
     is_manufacturer_specific: t.uint1_t
@@ -499,63 +510,31 @@ class FrameControl(t.Struct, t.uint8_t):
     disable_default_response: t.uint1_t
     reserved: t.uint3_t
 
-    @property
-    def is_reply(self) -> bool | None:
-        warnings.warn("`is_reply` is deprecated, use `direction`", DeprecationWarning)
-
-        if self.direction is None:
-            return None
-
-        return bool(self.direction)
-
-    @is_reply.setter
-    def is_reply(self, value: bool | None):
-        warnings.warn("`is_reply` is deprecated, use `direction`", DeprecationWarning)
-
-        if value is None:
-            self.direction = None
-        else:
-            self.direction = Direction(value)
-
     @classmethod
     def cluster(
         cls,
-        direction: Direction = Direction.Server_to_Client,
-        is_reply: bool | None = None,
+        direction: Direction = Direction.Client_to_Server,
         is_manufacturer_specific: bool = False,
     ):
-        if is_reply is not None:
-            warnings.warn(
-                "`is_reply` is deprecated, use `direction`", DeprecationWarning
-            )
-            direction = Direction(is_reply)
-
         return cls(
             frame_type=FrameType.CLUSTER_COMMAND,
             is_manufacturer_specific=is_manufacturer_specific,
             direction=direction,
-            disable_default_response=(direction == Direction.Client_to_Server),
+            disable_default_response=(direction == Direction.Server_to_Client),
             reserved=0b000,
         )
 
     @classmethod
     def general(
         cls,
-        direction: Direction = Direction.Server_to_Client,
-        is_reply: bool | None = None,
+        direction: Direction = Direction.Client_to_Server,
         is_manufacturer_specific: bool = False,
     ):
-        if is_reply is not None:
-            warnings.warn(
-                "`is_reply` is deprecated, use `direction`", DeprecationWarning
-            )
-            direction = Direction(is_reply)
-
         return cls(
             frame_type=FrameType.GLOBAL_COMMAND,
             is_manufacturer_specific=is_manufacturer_specific,
             direction=direction,
-            disable_default_response=(direction == Direction.Client_to_Server),
+            disable_default_response=(direction == Direction.Server_to_Client),
             reserved=0b000,
         )
 
@@ -581,7 +560,11 @@ class ZCLHeader(t.Struct):
     command_id: t.uint8_t
 
     def __new__(
-        cls, frame_control=None, manufacturer=None, tsn=None, command_id=None
+        cls: type[ZCLHeader],
+        frame_control: FrameControl | None = None,
+        manufacturer: t.uint16_t | None = None,
+        tsn: int | t.uint8_t | None = None,
+        command_id: int | GeneralCommand | None = None,
     ) -> ZCLHeader:
         # Allow "auto manufacturer ID" to be disabled in higher layers
         if manufacturer is cls.NO_MANUFACTURER_ID:
@@ -593,16 +576,15 @@ class ZCLHeader(t.Struct):
         return super().__new__(cls, frame_control, manufacturer, tsn, command_id)
 
     @property
-    def is_reply(self) -> bool:
-        """Return direction of Frame Control."""
-        return self.frame_control.direction == Direction.Client_to_Server
-
-    @property
     def direction(self) -> bool:
         """Return direction of Frame Control."""
         return self.frame_control.direction
 
-    def __setattr__(self, name, value) -> None:
+    def __setattr__(
+        self,
+        name: str,
+        value: t.uint16_t | FrameControl | t.uint8_t | GeneralCommand | None,
+    ) -> None:
         if name == "manufacturer" and value is self.NO_MANUFACTURER_ID:
             value = None
 
@@ -617,12 +599,10 @@ class ZCLHeader(t.Struct):
         tsn: int | t.uint8_t,
         command_id: int | t.uint8_t,
         manufacturer: int | t.uint16_t | None = None,
-        is_reply: bool = None,
-        direction: Direction = Direction.Server_to_Client,
+        direction: Direction = Direction.Client_to_Server,
     ) -> ZCLHeader:
         return cls(
             frame_control=FrameControl.general(
-                is_reply=is_reply,  # deprecated
                 direction=direction,
                 is_manufacturer_specific=(manufacturer is not None),
             ),
@@ -637,12 +617,10 @@ class ZCLHeader(t.Struct):
         tsn: int | t.uint8_t,
         command_id: int | t.uint8_t,
         manufacturer: int | t.uint16_t | None = None,
-        is_reply: bool = None,
-        direction: Direction = Direction.Server_to_Client,
+        direction: Direction = Direction.Client_to_Server,
     ) -> ZCLHeader:
         return cls(
             frame_control=FrameControl.cluster(
-                is_reply=is_reply,  # deprecated
                 direction=direction,
                 is_manufacturer_specific=(manufacturer is not None),
             ),
@@ -653,30 +631,30 @@ class ZCLHeader(t.Struct):
 
 
 @dataclasses.dataclass(frozen=True)
-class ZCLCommandDef:
-    name: str = None
+class ZCLCommandDef(t.BaseDataclassMixin):
+    id: t.uint8_t = None
     schema: CommandSchema = None
     direction: Direction = None
-    id: t.uint8_t = None
     is_manufacturer_specific: bool = None
 
-    # Deprecated
-    is_reply: bool = None
+    # set later
+    name: str = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        # Backwards compatibility with positional syntax where the name was first
+        if isinstance(self.id, str):
+            object.__setattr__(self, "name", self.id)
+            object.__setattr__(self, "id", None)
+
         ensure_valid_name(self.name)
 
-        if self.is_reply is not None:
-            warnings.warn(
-                "`is_reply` is deprecated, use `direction`", DeprecationWarning
+        if isinstance(self.direction, bool):
+            object.__setattr__(
+                self, "direction", Direction._from_is_reply(self.direction)
             )
-            object.__setattr__(self, "direction", Direction(self.is_reply))
 
-        object.__setattr__(self, "is_reply", bool(self.direction))
-
-    def with_compiled_schema(self):
-        """
-        Return a copy of the ZCL command definition object with its dictionary command
+    def with_compiled_schema(self) -> ZCLCommandDef:
+        """Return a copy of the ZCL command definition object with its dictionary command
         schema converted into a `CommandSchema` subclass.
         """
 
@@ -728,25 +706,18 @@ class ZCLCommandDef:
             f")"
         )
 
-    def replace(self, **kwargs) -> ZCLCommandDef:
-        return dataclasses.replace(self, is_reply=None, **kwargs)
-
-    def __getitem__(self, key):
-        warnings.warn("Attributes should be accessed by name", DeprecationWarning)
-        return (self.name, self.schema, self.direction)[key]
-
 
 class CommandSchema(t.Struct, tuple):
-    """
-    Struct subclass that behaves more like a tuple.
-    """
+    """Struct subclass that behaves more like a tuple."""
 
     command: ZCLCommandDef = None
 
     def __iter__(self):
         return iter(self.as_tuple())
 
-    def __getitem__(self, item):
+    def __getitem__(
+        self, item: slice | typing.SupportsIndex
+    ) -> typing.Any | tuple[typing.Any, ...]:
         return self.as_tuple()[item]
 
     def __len__(self) -> int:
@@ -797,8 +768,8 @@ ZCLAttributeAccess._names = {
 
 
 @dataclasses.dataclass(frozen=True)
-class ZCLAttributeDef:
-    name: str = None
+class ZCLAttributeDef(t.BaseDataclassMixin):
+    id: t.uint16_t = None
     type: type = None
     access: ZCLAttributeAccess = dataclasses.field(
         default=(
@@ -810,21 +781,22 @@ class ZCLAttributeDef:
     mandatory: bool = False
     is_manufacturer_specific: bool = False
 
-    # The ID will be specified later
-    id: t.uint16_t = None
+    # The name will be specified later
+    name: str = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        # Backwards compatibility with positional syntax where the name was first
+        if isinstance(self.id, str):
+            object.__setattr__(self, "name", self.id)
+            object.__setattr__(self, "id", None)
+
         if self.id is not None and not isinstance(self.id, t.uint16_t):
             object.__setattr__(self, "id", t.uint16_t(self.id))
 
         if isinstance(self.access, str):
-            ZCLAttributeAccess.NONE
             object.__setattr__(self, "access", ZCLAttributeAccess.from_str(self.access))
 
         ensure_valid_name(self.name)
-
-    def replace(self, **kwargs) -> ZCLAttributeDef:
-        return dataclasses.replace(self, **kwargs)
 
     def __repr__(self) -> str:
         return (
@@ -838,9 +810,20 @@ class ZCLAttributeDef:
             f")"
         )
 
-    def __getitem__(self, key):
-        warnings.warn("Attributes should be accessed by name", DeprecationWarning)
-        return (self.name, self.type)[key]
+
+class IterableMemberMeta(type):
+    def __iter__(cls) -> typing.Iterable[typing.Any]:
+        for name in dir(cls):
+            if not name.startswith("_"):
+                yield getattr(cls, name)
+
+
+class BaseCommandDefs(metaclass=IterableMemberMeta):
+    pass
+
+
+class BaseAttributeDefs(metaclass=IterableMemberMeta):
+    pass
 
 
 class GeneralCommand(t.enum8):
@@ -874,89 +857,89 @@ class GeneralCommand(t.enum8):
 GENERAL_COMMANDS = COMMANDS = {
     GeneralCommand.Read_Attributes: ZCLCommandDef(
         schema={"attribute_ids": t.List[t.uint16_t]},
-        direction=Direction.Server_to_Client,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Read_Attributes_rsp: ZCLCommandDef(
         schema={"status_records": t.List[ReadAttributeRecord]},
-        direction=Direction.Client_to_Server,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Write_Attributes: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, direction=Direction.Server_to_Client
+        schema={"attributes": t.List[Attribute]}, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Write_Attributes_Undivided: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, direction=Direction.Server_to_Client
+        schema={"attributes": t.List[Attribute]}, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Write_Attributes_rsp: ZCLCommandDef(
         schema={"status_records": WriteAttributesResponse},
-        direction=Direction.Client_to_Server,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Write_Attributes_No_Response: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, direction=Direction.Server_to_Client
+        schema={"attributes": t.List[Attribute]}, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Configure_Reporting: ZCLCommandDef(
         schema={"config_records": t.List[AttributeReportingConfig]},
-        direction=Direction.Server_to_Client,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Configure_Reporting_rsp: ZCLCommandDef(
         schema={"status_records": ConfigureReportingResponse},
-        direction=Direction.Client_to_Server,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Read_Reporting_Configuration: ZCLCommandDef(
         schema={"attribute_records": t.List[ReadReportingConfigRecord]},
-        direction=Direction.Server_to_Client,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Read_Reporting_Configuration_rsp: ZCLCommandDef(
         schema={"attribute_configs": t.List[AttributeReportingConfigWithStatus]},
-        direction=Direction.Client_to_Server,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Report_Attributes: ZCLCommandDef(
         schema={"attribute_reports": t.List[Attribute]},
-        direction=Direction.Server_to_Client,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Default_Response: ZCLCommandDef(
         schema={"command_id": t.uint8_t, "status": Status},
-        direction=Direction.Client_to_Server,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Attributes: ZCLCommandDef(
         schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
-        direction=Direction.Server_to_Client,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Discover_Attributes_rsp: ZCLCommandDef(
         schema={
             "discovery_complete": t.Bool,
             "attribute_info": t.List[DiscoverAttributesResponseRecord],
         },
-        direction=Direction.Client_to_Server,
+        direction=Direction.Server_to_Client,
     ),
-    # Command.Read_Attributes_Structured: ZCLCommandDef(schema=(, ), direction=Direction.Server_to_Client),
-    # Command.Write_Attributes_Structured: ZCLCommandDef(schema=(, ), direction=Direction.Server_to_Client),
-    # Command.Write_Attributes_Structured_rsp: ZCLCommandDef(schema=(, ), direction=Direction.Client_to_Server),
+    # Command.Read_Attributes_Structured: ZCLCommandDef(schema=(, ), direction=Direction.Client_to_Server),
+    # Command.Write_Attributes_Structured: ZCLCommandDef(schema=(, ), direction=Direction.Client_to_Server),
+    # Command.Write_Attributes_Structured_rsp: ZCLCommandDef(schema=(, ), direction=Direction.Server_to_Client),
     GeneralCommand.Discover_Commands_Received: ZCLCommandDef(
         schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
-        direction=Direction.Server_to_Client,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Discover_Commands_Received_rsp: ZCLCommandDef(
         schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
-        direction=Direction.Client_to_Server,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Commands_Generated: ZCLCommandDef(
         schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
-        direction=Direction.Server_to_Client,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Discover_Commands_Generated_rsp: ZCLCommandDef(
         schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
-        direction=Direction.Client_to_Server,
+        direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Attribute_Extended: ZCLCommandDef(
         schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
-        direction=Direction.Server_to_Client,
+        direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Discover_Attribute_Extended_rsp: ZCLCommandDef(
         schema={
             "discovery_complete": t.Bool,
             "extended_attr_info": t.List[DiscoverAttributesExtendedResponseRecord],
         },
-        direction=Direction.Client_to_Server,
+        direction=Direction.Server_to_Client,
     ),
 }
 
@@ -966,8 +949,8 @@ for command_id, command_def in list(GENERAL_COMMANDS.items()):
     ).with_compiled_schema()
 
 ZCL_CLUSTER_REVISION_ATTR = ZCLAttributeDef(
-    "cluster_revision", type=t.uint16_t, access="r", mandatory=True
+    id=0xFFFD, type=t.uint16_t, access="r", mandatory=True
 )
 ZCL_REPORTING_STATUS_ATTR = ZCLAttributeDef(
-    "attr_reporting_status", type=AttributeReportingStatus, access="r"
+    id=0xFFFE, type=AttributeReportingStatus, access="r"
 )

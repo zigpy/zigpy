@@ -49,15 +49,13 @@ class Bits(list):
 
 
 class SerializableBytes:
-    """
-    A container object for raw bytes that enforces `serialize()` will be called.
-    """
+    """A container object for raw bytes that enforces `serialize()` will be called."""
 
     def __init__(self, value: bytes = b"") -> None:
         if isinstance(value, type(self)):
-            value = value.value
+            value = value.value  # type: ignore
         elif not isinstance(value, (bytes, bytearray)):
-            raise ValueError(f"Object is not bytes: {value!r}")
+            raise ValueError(f"Object is not bytes: {value!r}")  # noqa: TRY004
 
         self.value = value
 
@@ -72,6 +70,9 @@ class SerializableBytes:
 
     def __repr__(self) -> str:
         return f"Serialized[{self.value!r}]"
+
+    def __hash__(self) -> int:
+        return hash(self.value)
 
 
 NOT_SET = object()
@@ -92,7 +93,8 @@ class FixedIntType(int):
 
         n = super().__new__(cls, *args, **kwargs)
 
-        if not cls.min_value <= n <= cls.max_value:
+        # We use `n + 0` to convert `n` into an integer without calling `int()`
+        if not cls.min_value <= n + 0 <= cls.max_value:
             raise ValueError(
                 f"{int(n)} is not an {'un' if not cls._signed else ''}signed"
                 f" {cls._bits} bit integer"
@@ -147,10 +149,13 @@ class FixedIntType(int):
         elif cls._byteorder is None:
             cls._byteorder = "little"
 
-        # XXX: The enum module uses the first class with __new__ in its __dict__ as the
-        #      member type. We have to ensure this is true for every subclass.
-        if "__new__" not in cls.__dict__:
-            cls.__new__ = cls.__new__
+        if sys.version_info < (3, 10):
+            # XXX: The enum module uses the first class with __new__ in its __dict__
+            #      as the member type. We have to ensure this is true for
+            #      every subclass.
+            # Fixed with https://github.com/python/cpython/pull/26658
+            if "__new__" not in cls.__dict__:
+                cls.__new__ = cls.__new__
 
         # XXX: The enum module sabotages pickling using the same logic.
         if "__reduce_ex__" not in cls.__dict__:
@@ -360,24 +365,94 @@ class uint64_t_be(uint_t_be, bits=64):
     pass
 
 
-class _IntEnumMeta(enum.EnumMeta):
+class AlwaysCreateEnumType(enum.EnumMeta):
+    """Enum metaclass that skips the functional creation API."""
+
+    def __call__(cls, value, names=None, *values) -> type[enum.Enum]:  # type: ignore
+        """Custom implementation of Enum.__new__.
+
+        From https://github.com/python/cpython/blob/v3.11.5/Lib/enum.py#L1091-L1140
+        """
+        # all enum instances are actually created during class construction
+        # without calling this method; this method is called by the metaclass'
+        # __call__ (i.e. Color(3) ), and by pickle
+        if type(value) is cls:
+            # For lookups like Color(Color.RED)
+            return value
+        # by-value search for a matching enum member
+        # see if it's in the reverse mapping (for hashable values)
+        try:
+            return cls._value2member_map_[value]
+        except KeyError:
+            # Not found, no need to do long O(n) search
+            pass
+        except TypeError:
+            # not there, now do long search -- O(n) behavior
+            for member in cls._member_map_.values():
+                if member._value_ == value:
+                    return member
+        # still not found -- try _missing_ hook
+        try:
+            exc = None
+            result = cls._missing_(value)
+        except Exception as e:
+            exc = e
+            result = None
+        try:
+            if isinstance(result, cls):
+                return result
+            elif (
+                enum.Flag is not None
+                and issubclass(cls, enum.Flag)
+                and cls._boundary_ is enum.EJECT
+                and isinstance(result, int)
+            ):
+                return result
+            else:
+                ve_exc = ValueError(f"{value!r} is not a valid {cls.__qualname__}")
+                if result is None and exc is None:
+                    raise ve_exc
+                elif exc is None:
+                    exc = TypeError(
+                        f"error in {cls.__name__}._missing_: returned {result!r} instead of None or a valid member"
+                    )
+                if not isinstance(exc, ValueError):
+                    exc.__context__ = ve_exc
+                raise exc
+        finally:
+            # ensure all variables that could hold an exception are destroyed
+            exc = None
+            ve_exc = None
+
+
+class _IntEnumMeta(AlwaysCreateEnumType):
     def __call__(cls, value, names=None, *args, **kwargs):
-        if isinstance(value, str) and value.startswith("0x"):
-            value = int(value, base=16)
-        else:
-            value = int(value)
+        if isinstance(value, str):
+            if value.startswith("0x"):
+                value = int(value, base=16)
+            elif value.isnumeric():
+                value = int(value)
+            elif value.startswith(cls.__name__ + "."):
+                value = cls[value[len(cls.__name__) + 1 :]].value
+            else:
+                value = cls[value].value
         return super().__call__(value, names, *args, **kwargs)
 
 
 def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
-    """
-    Mixins are broken by Python 3.8.6 so we must dynamically create the enum with the
+    """Mixins are broken by Python 3.8.6 so we must dynamically create the enum with the
     appropriate methods but with only one non-Enum parent class.
     """
 
     if sys.version_info >= (3, 11):
 
-        class _NewEnum(int_type, enum.ReprEnum, enum.Flag, boundary=enum.KEEP):
+        class _NewEnum(
+            int_type,
+            enum.ReprEnum,
+            enum.Flag,
+            boundary=enum.KEEP,
+            metaclass=AlwaysCreateEnumType,
+        ):
             pass
 
     else:
@@ -385,7 +460,7 @@ def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
         class _NewEnum(int_type, enum.Flag):
             # Rebind classmethods to our own class
             _missing_ = classmethod(enum.IntFlag._missing_.__func__)
-            _create_pseudo_member_ = classmethod(
+            _create_pseudo_member_ = classmethod(  # type: ignore
                 enum.IntFlag._create_pseudo_member_.__func__
             )
 
@@ -575,14 +650,13 @@ class BaseFloat(float):
 
     @staticmethod
     def _convert_format(*, src: BaseFloat, dst: BaseFloat, n: int) -> int:
-        """
-        Converts an integer representing a float from one format into another. Note:
+        """Converts an integer representing a float from one format into another. Note:
 
-         1. Format is assumed to be little endian: 0b[sign bit] [exponent] [fraction]
-         2. Truncates/extends the exponent, preserving the special cases of all 1's
-            and all 0's.
-         3. Truncates/extends the fractional bits from the right, allowing lossless
-            conversion to a "bigger" representation.
+        1. Format is assumed to be little endian: 0b[sign bit] [exponent] [fraction]
+        2. Truncates/extends the exponent, preserving the special cases of all 1's
+        and all 0's.
+        3. Truncates/extends the fractional bits from the right, allowing lossless
+        conversion to a "bigger" representation.
         """
 
         src_sign = n >> (src._exponent_bits + src._fraction_bits)
@@ -705,7 +779,7 @@ class KwargTypeMeta(type):
         def __init_subclass__(cls, **kwargs):
             filtered_kwargs = kwargs.copy()
 
-            for name, value in kwargs.items():
+            for name, _value in kwargs.items():
                 if name in cls_kwarg_attrs:
                     setattr(cls, f"_{name}", filtered_kwargs.pop(name))
 
@@ -767,7 +841,7 @@ class KwargTypeMeta(type):
             return False
 
         # They must also have the same class kwargs
-        for key in cls._getitem_kwargs.keys():
+        for key in cls._getitem_kwargs:
             key = f"_{key}"
 
             if getattr(cls, key) != getattr(subclass, key):
@@ -820,7 +894,7 @@ class LVList(list, metaclass=KwargTypeMeta):
         assert cls._item_type is not None
         length, data = cls._length_type.deserialize(data)
         r = cls()
-        for i in range(length):
+        for _i in range(length):
             item, data = cls._item_type.deserialize(data)
             r.append(item)
         return r, data
@@ -846,7 +920,7 @@ class FixedList(list, metaclass=KwargTypeMeta):
     def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
         assert cls._item_type is not None
         r = cls()
-        for i in range(cls._length):
+        for _i in range(cls._length):
             item, data = cls._item_type.deserialize(data)
             r.append(item)
         return r, data

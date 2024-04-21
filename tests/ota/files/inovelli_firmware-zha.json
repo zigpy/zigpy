@@ -1,0 +1,106 @@
+{
+  "VZM31-SN": [
+    {
+      "version": "0000000B",
+      "channel": "beta",
+      "firmware": "https://files.inovelli.com/firmware/VZM31-SN/Beta/1.11/VZM31-SN_1.11.ota",
+      "manufacturer_id": 4655,
+      "image_type": 257
+    },
+    {
+      "version": "16842764",
+      "channel": "beta",
+      "firmware": "https://files.inovelli.com/firmware/VZM31-SN/Beta/1.12/VZM31-SN_1.12.ota",
+      "manufacturer_id": 4655,
+      "image_type": 257
+    },
+    {
+      "version": "16843021",
+      "channel": "beta",
+      "firmware": "https://files.inovelli.com/firmware/VZM31-SN/Beta/1.13/VZM31-SN_1.13.ota",
+      "manufacturer_id": 4655,
+      "image_type": 257
+    },
+    {
+      "version": "16908805",
+      "channel": "beta",
+      "firmware": "https://files.inovelli.com/firmware/VZM31-SN/Beta/2.05/VZM31-SN_2.05.ota",
+      "manufacturer_id": 4655,
+      "image_type": 257
+    },
+    {
+      "version": "16908806",
+      "channel": "beta",
+      "firmware": "https://files.inovelli.com/firmware/VZM31-SN/Beta/2.06/VZM31-SN_2.06.ota",
+      "manufacturer_id": 4655,
+      "image_type": 257
+    },
+    {
+      "version": "16908807",
+      "channel": "beta",
+      "firmware": "https://files.inovelli.com/firmware/VZM31-SN/Beta/2.07/VZM31-SN_2.07.ota",
+      "manufacturer_id": 4655,
+      "image_type": 257
+    },
+    {
+      "version": "16908808",
+      "channel": "beta",
+      "firmware": "https://files.inovelli.com/firmware/VZM31-SN/Beta/2.08/VZM31-SN_2.08.ota",
+      "manufacturer_id": 4655,
+      "image_type": 257
+    }
+  ],
+  "VZM35-SN": [
+    {
+      "version": "33685506",
+      "channel": "beta",
+      "firmware": "https://files.inovelli.com/firmware/VZM35-SN/Beta/0.02/VZM35-SN_0.02.ota",
+      "manufacturer_id": 4655,
+      "image_type": 258
+    },
+    {
+      "version": "33685760",
+      "channel": "beta",
+      "firmware": "https://files.inovelli.com/firmware/VZM35-SN/1.00/VZM35-SN_1.00.ota",
+      "manufacturer_id": 4655,
+      "image_type": 258
+    },
+    {
+      "version": "33685762",
+      "channel": "beta",
+      "firmware": "https://files.inovelli.com/firmware/VZM35-SN/1.02/VZM35-SN_1.02.ota",
+      "manufacturer_id": 4655,
+      "image_type": 258
+    },
+    {
+      "version": "33685764",
+      "channel": "beta",
+      "firmware": "https://files.inovelli.com/firmware/VZM35-SN/1.04/VZM35-SN_1.04.ota",
+      "manufacturer_id": 4655,
+      "image_type": 258
+    }
+  ],
+  "VZM36": [
+    {
+      "version": "67174402",
+      "channel": "beta",
+      "firmware": "https://inov.li/IRbxhx1646F/VZM36_0.02.ota",
+      "manufacturer_id": 4655,
+      "image_type": 1025
+    },
+    {
+      "version": "67174403",
+      "channel": "beta",
+      "firmware": "https://inov.li/IRbxhx1646F/VZM36_0.03.ota",
+      "manufacturer_id": 4655,
+      "image_type": 1025
+    },
+    {
+      "version": "67174404",
+      "channel": "beta",
+      "firmware": "https://inov.li/IRbxhx1646F/VZM36_0.04.ota",
+      "manufacturer_id": 4655,
+      "image_type": 1025
+    }
+  ]
+}

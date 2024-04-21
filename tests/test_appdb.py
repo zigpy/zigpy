@@ -1,5 +1,6 @@
 import asyncio
-from datetime import datetime, timezone
+import contextlib
+from datetime import datetime, timedelta, timezone
 import pathlib
 import sqlite3
 import sys
@@ -21,11 +22,12 @@ import zigpy.ota
 from zigpy.quirks import CustomDevice
 import zigpy.types as t
 import zigpy.zcl
+from zigpy.zcl.clusters.general import Basic
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
-from tests.async_mock import AsyncMock, MagicMock, patch
-from tests.conftest import App, make_ieee
+from tests.async_mock import AsyncMock, MagicMock, call, patch
+from tests.conftest import make_app, make_ieee, make_node_desc
 from tests.test_backups import backup_factory  # noqa: F401
 
 
@@ -43,27 +45,19 @@ def auto_kill_aiosqlite():
         except ValueError:
             pass
         else:
-            try:
+            with contextlib.suppress(zigpy.appdb.sqlite3.ProgrammingError):
                 conn.close()
-            except zigpy.appdb.sqlite3.ProgrammingError:
-                pass
 
         thread._running = False
 
 
-async def make_app(database_file):
+async def make_app_with_db(database_file):
     if isinstance(database_file, pathlib.Path):
         database_file = str(database_file)
 
-    with patch("zigpy.ota.OTA.initialize", AsyncMock()):
-        app = await App.new(
-            conf.ZIGPY_SCHEMA(
-                {
-                    conf.CONF_DATABASE: database_file,
-                    conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
-                }
-            )
-        )
+    app = make_app({conf.CONF_DATABASE: database_file})
+    await app._load_db()
+
     return app
 
 
@@ -114,20 +108,20 @@ def fake_get_device(device):
 async def test_no_database(tmp_path):
     with patch("zigpy.appdb.PersistingListener.new", AsyncMock()) as db_mock:
         db_mock.return_value.load.side_effect = AsyncMock()
-        await make_app(None)
+        await make_app_with_db(None)
     assert db_mock.return_value.load.call_count == 0
 
     db = tmp_path / "test.db"
     with patch("zigpy.appdb.PersistingListener.new", AsyncMock()) as db_mock:
         db_mock.return_value.load.side_effect = AsyncMock()
-        await make_app(db)
+        await make_app_with_db(db)
     assert db_mock.return_value.load.call_count == 1
 
 
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
 async def test_database(tmp_path):
     db = tmp_path / "test.db"
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     ieee = make_ieee()
     relays_1 = [t.NWK(0x1234), t.NWK(0x2345)]
     relays_2 = [t.NWK(0x3456), t.NWK(0x4567)]
@@ -143,18 +137,22 @@ async def test_database(tmp_path):
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = 0xFFFD  # Invalid
-    clus = ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
+    in_clus = ep.add_input_cluster(0)
+    out_clus = ep.add_output_cluster(0)
     ep = dev.add_endpoint(3)
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 49246
     ep.device_type = profiles.zll.DeviceType.COLOR_LIGHT
     app.device_initialized(dev)
-    clus._update_attribute(0, 99)
-    clus._update_attribute(4, bytes("Custom", "ascii"))
-    clus._update_attribute(5, bytes("Model", "ascii"))
-    clus.listener_event("cluster_command", 0)
-    clus.listener_event("general_command")
+
+    in_clus.update_attribute(0, 99)
+    in_clus.update_attribute(4, bytes("Custom", "ascii"))
+    in_clus.update_attribute(5, bytes("Model", "ascii"))
+    in_clus.listener_event("cluster_command", 0)
+    in_clus.listener_event("general_command")
+
+    out_clus.update_attribute(0, 99)
+
     dev.relays = relays_1
     signature = dev.get_signature()
     assert ep.endpoint_id in signature[SIG_ENDPOINTS]
@@ -187,8 +185,8 @@ async def test_database(tmp_path):
     dev = app.get_device(custom_ieee)
     app.device_initialized(dev)
     dev.relays = relays_2
-    dev.endpoints[1].level._update_attribute(0x0011, 17)
-    dev.endpoints[99].level._update_attribute(0x0011, 17)
+    dev.endpoints[1].level.update_attribute(0x0011, 17)
+    dev.endpoints[99].level.update_attribute(0x0011, 17)
     assert dev.endpoints[1].in_clusters[0x0008]._attr_cache[0x0011] == 17
     assert dev.endpoints[99].in_clusters[0x0008]._attr_cache[0x0011] == 17
     custom_dev_last_seen = dev.last_seen
@@ -198,16 +196,17 @@ async def test_database(tmp_path):
 
     # Everything should've been saved - check that it re-loads
     with patch("zigpy.quirks.get_device", fake_get_device):
-        app2 = await make_app(db)
+        app2 = await make_app_with_db(db)
     dev = app2.get_device(ieee)
     assert dev.endpoints[1].device_type == profiles.zha.DeviceType.PUMP
     assert dev.endpoints[2].device_type == 0xFFFD
     assert dev.endpoints[2].in_clusters[0]._attr_cache[0] == 99
     assert dev.endpoints[2].in_clusters[0]._attr_cache[4] == bytes("Custom", "ascii")
     assert dev.endpoints[2].in_clusters[0]._attr_cache[5] == bytes("Model", "ascii")
+    assert dev.endpoints[2].out_clusters[0].cluster_id == 0x0000
+    assert dev.endpoints[2].out_clusters[0]._attr_cache[0] == 99
     assert dev.endpoints[2].manufacturer == "Custom"
     assert dev.endpoints[2].model == "Model"
-    assert dev.endpoints[2].out_clusters[1].cluster_id == 1
     assert dev.endpoints[3].device_type == profiles.zll.DeviceType.COLOR_LIGHT
     assert dev.relays == relays_1
     # The timestamp won't be restored exactly but it is more than close enough
@@ -225,7 +224,7 @@ async def test_database(tmp_path):
     app.handle_leave(99, ieee)
     await app2.shutdown()
 
-    app3 = await make_app(db)
+    app3 = await make_app_with_db(db)
     assert ieee in app3.devices
 
     async def mockleave(*args, **kwargs):
@@ -233,12 +232,12 @@ async def test_database(tmp_path):
 
     app3.devices[ieee].zdo.leave = mockleave
     await app3.remove(ieee)
-    for i in range(1, 20):
+    for _i in range(1, 20):
         await asyncio.sleep(0)
     assert ieee not in app3.devices
     await app3.shutdown()
 
-    app4 = await make_app(db)
+    app4 = await make_app_with_db(db)
     assert ieee not in app4.devices
     dev = app4.get_device(custom_ieee)
     assert dev.relays is None
@@ -248,7 +247,7 @@ async def test_database(tmp_path):
 @patch("zigpy.device.Device.schedule_group_membership_scan", MagicMock())
 async def _test_null_padded(tmp_path, test_manufacturer=None, test_model=None):
     db = tmp_path / "test.db"
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     ieee = make_ieee()
     with patch(
         "zigpy.device.Device.schedule_initialize",
@@ -265,14 +264,14 @@ async def _test_null_padded(tmp_path, test_manufacturer=None, test_model=None):
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
     app.device_initialized(dev)
-    clus._update_attribute(4, test_manufacturer)
-    clus._update_attribute(5, test_model)
+    clus.update_attribute(4, test_manufacturer)
+    clus.update_attribute(5, test_model)
     clus.listener_event("cluster_command", 0)
     clus.listener_event("zdo_command")
     await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
-    app2 = await make_app(db)
+    app2 = await make_app_with_db(db)
     dev = app2.get_device(ieee)
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
     assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
@@ -335,7 +334,7 @@ async def test_groups(mock_request, tmp_path):
     mock_request.return_value = [ZCLStatus.SUCCESS, group_id]
 
     db = tmp_path / "test.db"
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     ieee = make_ieee()
     app.handle_join(99, ieee, 0)
 
@@ -370,7 +369,7 @@ async def test_groups(mock_request, tmp_path):
     del app, dev, dev_b, ep, ep_b
 
     # Everything should've been saved - check that it re-loads
-    app2 = await make_app(db)
+    app2 = await make_app_with_db(db)
     dev2 = app2.get_device(ieee)
     assert group_id in app2.groups
     group = app2.groups[group_id]
@@ -387,7 +386,7 @@ async def test_groups(mock_request, tmp_path):
     await app2.shutdown()
     del app2, dev2, dev2_b
 
-    app3 = await make_app(db)
+    app3 = await make_app_with_db(db)
     dev3 = app3.get_device(ieee)
     assert group_id in app3.groups
     group = app3.groups[group_id]
@@ -404,7 +403,7 @@ async def test_groups(mock_request, tmp_path):
     await app3.shutdown()
     del app3, dev3, dev3_b
 
-    app4 = await make_app(db)
+    app4 = await make_app_with_db(db)
     dev4 = app4.get_device(ieee)
     assert group_id in app4.groups
     assert not app4.groups[group_id]
@@ -413,7 +412,7 @@ async def test_groups(mock_request, tmp_path):
     await app4.shutdown()
     del app4, dev4
 
-    app5 = await make_app(db)
+    app5 = await make_app_with_db(db)
     assert not app5.groups
     await app5.shutdown()
 
@@ -423,7 +422,7 @@ async def test_attribute_update(tmp_path, dev_init):
     """Test attribute update for initialized and uninitialized devices."""
 
     db = tmp_path / "test.db"
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     ieee = make_ieee()
     with patch(
         "zigpy.device.Device.schedule_initialize",
@@ -439,20 +438,76 @@ async def test_attribute_update(tmp_path, dev_init):
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
-    clus = ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
-    clus._update_attribute(4, test_manufacturer)
-    clus._update_attribute(5, test_model)
+    clus = ep.add_input_cluster(0x0000)
+    ep.add_output_cluster(0x0001)
+    clus.update_attribute(0x0004, test_manufacturer)
+    clus.update_attribute(0x0005, test_model)
     app.device_initialized(dev)
     await app.shutdown()
 
+    attr_update_time = clus._attr_last_updated[0x0004]
+
     # Everything should've been saved - check that it re-loads
-    app2 = await make_app(db)
+    app2 = await make_app_with_db(db)
     dev = app2.get_device(ieee)
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
-    assert dev.endpoints[3].in_clusters[0]._attr_cache[4] == test_manufacturer
-    assert dev.endpoints[3].in_clusters[0]._attr_cache[5] == test_model
+
+    clus = dev.endpoints[3].in_clusters[0x0000]
+    assert clus._attr_cache[0x0004] == test_manufacturer
+    assert clus._attr_cache[0x0005] == test_model
+
+    assert (attr_update_time - clus._attr_last_updated[0x0004]) < timedelta(seconds=0.1)
+
+    await app2.shutdown()
+
+
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
+async def test_attribute_update_short_interval(tmp_path):
+    """Test updating an attribute twice in a short interval."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0x0000)
+    ep.add_output_cluster(0x0001)
+    clus.update_attribute(0x0004, "Custom")
+    clus.update_attribute(0x0005, "Model")
+    app.device_initialized(dev)
+
+    # wait for the device initialization to write attribute cache to db
+    await asyncio.sleep(0.01)
+
+    # update an attribute twice in a short interval
+    clus.update_attribute(0x4000, "1.0")
+    attr_update_time_first = clus._attr_last_updated[0x4000]
+
+    # update attribute again 10 seconds later
+    fake_time = datetime.utcnow() + timedelta(seconds=10)
+    with freezegun.freeze_time(fake_time):
+        clus.update_attribute(0x4000, "2.0")
+
+    await app.shutdown()
+
+    # Everything should've been saved - check that it re-loads
+    app2 = await make_app_with_db(db)
+    dev = app2.get_device(ieee)
+
+    clus = dev.endpoints[3].in_clusters[0x0000]
+    assert clus._attr_cache[0x4000] == "2.0"  # verify second attribute update was saved
+
+    # verify the first update attribute time was not overwritten, as it was within the short interval
+    assert (attr_update_time_first - clus._attr_last_updated[0x0004]) < timedelta(
+        seconds=0.1
+    )
 
     await app2.shutdown()
 
@@ -516,7 +571,7 @@ async def test_topology(tmp_path):
     nwk = 0x9876
 
     db = tmp_path / "test.db"
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     app.handle_join(nwk, ieee, 0x0000)
 
     dev = app.get_device(ieee)
@@ -569,7 +624,7 @@ async def test_topology(tmp_path):
     del dev
 
     # Everything should've been saved - check that it re-loads
-    app2 = await make_app(db)
+    app2 = await make_app_with_db(db)
     app2.get_device(ieee)
 
     assert len(app2.topology.neighbors[ieee]) == 2
@@ -586,7 +641,7 @@ async def test_topology(tmp_path):
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
 async def test_device_rejoin(tmp_path):
     db = tmp_path / "test.db"
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     ieee = make_ieee()
     nwk = 199
     app.handle_join(nwk, ieee, 0)
@@ -599,13 +654,13 @@ async def test_device_rejoin(tmp_path):
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
     app.device_initialized(dev)
-    clus._update_attribute(4, "Custom")
-    clus._update_attribute(5, "Model")
+    clus.update_attribute(4, "Custom")
+    clus.update_attribute(5, "Model")
     await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
     with patch("zigpy.quirks.get_device", fake_get_device):
-        app2 = await make_app(db)
+        app2 = await make_app_with_db(db)
     dev = app2.get_device(ieee)
     assert dev.nwk == nwk
     assert dev.endpoints[1].device_type == profiles.zha.DeviceType.PUMP
@@ -620,7 +675,7 @@ async def test_device_rejoin(tmp_path):
         app2.device_initialized(dev)
     await app2.shutdown()
 
-    app3 = await make_app(db)
+    app3 = await make_app_with_db(db)
     dev = app3.get_device(ieee)
     assert dev.nwk == nwk + 1
     assert dev.endpoints[1].device_type == profiles.zha.DeviceType.PUMP
@@ -633,7 +688,7 @@ async def test_device_rejoin(tmp_path):
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
 async def test_stopped_appdb_listener(tmp_path):
     db = tmp_path / "test.db"
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     ieee = make_ieee()
     app.handle_join(99, ieee, 0)
 
@@ -647,14 +702,14 @@ async def test_stopped_appdb_listener(tmp_path):
     app.device_initialized(dev)
 
     with patch("zigpy.appdb.PersistingListener._save_attribute") as mock_attr_save:
-        clus._update_attribute(0, 99)
-        clus._update_attribute(4, bytes("Custom", "ascii"))
-        clus._update_attribute(5, bytes("Model", "ascii"))
+        clus.update_attribute(0, 99)
+        clus.update_attribute(4, bytes("Custom", "ascii"))
+        clus.update_attribute(5, bytes("Model", "ascii"))
         await app.shutdown()
         assert mock_attr_save.call_count == 3
 
-        clus._update_attribute(0, 100)
-        for i in range(100):
+        clus.update_attribute(0, 100)
+        for _i in range(100):
             await asyncio.sleep(0)
         assert mock_attr_save.call_count == 3
 
@@ -667,7 +722,7 @@ async def test_invalid_node_desc(tmp_path):
     nwk_1 = 0x1111
 
     db = tmp_path / "test.db"
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     app.handle_join(nwk_1, ieee_1, 0)
 
     dev_1 = app.get_device(ieee_1)
@@ -681,7 +736,7 @@ async def test_invalid_node_desc(tmp_path):
     await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
-    app2 = await make_app(db)
+    app2 = await make_app_with_db(db)
     dev_2 = app2.get_device(ieee=ieee_1)
     assert dev_2.node_desc is None
     assert dev_2.nwk == dev_1.nwk
@@ -723,7 +778,7 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     """Test adding unsupported attributes for initialized and uninitialized devices."""
 
     db = tmp_path / "test.db"
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     ieee = make_ieee()
     with patch(
         "zigpy.device.Device.schedule_initialize",
@@ -736,22 +791,27 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
-    clus = ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
-    clus._update_attribute(4, "Custom")
-    clus._update_attribute(5, "Model")
+    in_clus = ep.add_input_cluster(0)
+    in_clus.update_attribute(4, "Custom")
+    in_clus.update_attribute(5, "Model")
     app.device_initialized(dev)
-    clus.add_unsupported_attribute(0x0010)
-    clus.add_unsupported_attribute("physical_env")
+
+    in_clus.add_unsupported_attribute(0x0010)
+    in_clus.add_unsupported_attribute("physical_env")
+
+    out_clus = ep.add_output_cluster(0)
+    out_clus.add_unsupported_attribute(0x0010)
     await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
-    app2 = await make_app(db)
+    app2 = await make_app_with_db(db)
     dev = app2.get_device(ieee)
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
     assert 0x0010 in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert 0x0010 in dev.endpoints[3].out_clusters[0].unsupported_attributes
     assert "location_desc" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "location_desc" in dev.endpoints[3].out_clusters[0].unsupported_attributes
     assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
     await app2.shutdown()
@@ -765,28 +825,33 @@ async def test_unsupported_attribute(tmp_path, dev_init):
         return [[rar0010]]
 
     # Now lets remove an unsupported attribute and make sure it is removed
-    app3 = await make_app(db)
+    app3 = await make_app_with_db(db)
     dev = app3.get_device(ieee)
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
-    cluster = dev.endpoints[3].in_clusters[0]
-    assert 0x0010 in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    cluster.request = mockrequest
-    await cluster.read_attributes([0x0010], allow_cache=False)
-    assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "location_desc" not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "Not Removed" == dev.endpoints[3].in_clusters[0].get(0x0010)
-    assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+
+    in_cluster = dev.endpoints[3].in_clusters[0]
+    assert 0x0010 in in_cluster.unsupported_attributes
+    in_cluster.request = mockrequest
+    await in_cluster.read_attributes([0x0010], allow_cache=False)
+    assert 0x0010 not in in_cluster.unsupported_attributes
+    assert "location_desc" not in in_cluster.unsupported_attributes
+    assert in_cluster.get(0x0010) == "Not Removed"
+    assert 0x0011 in in_cluster.unsupported_attributes
+    assert "physical_env" in in_cluster.unsupported_attributes
+
+    out_cluster = dev.endpoints[3].out_clusters[0]
+    out_cluster.remove_unsupported_attribute(0x0010)
     await app3.shutdown()
 
     # Everything should've been saved - check that it re-loads
-    app4 = await make_app(db)
+    app4 = await make_app_with_db(db)
     dev = app4.get_device(ieee)
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
     assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "Not Removed" == dev.endpoints[3].in_clusters[0].get(0x0010)
+    assert 0x0010 not in dev.endpoints[3].out_clusters[0].unsupported_attributes
+    assert dev.endpoints[3].in_clusters[0].get(0x0010) == "Not Removed"
     assert "location_desc" not in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
@@ -798,7 +863,7 @@ async def test_load_unsupp_attr_wrong_cluster(tmp_path):
     """Test loading unsupported attribute from the wrong cluster."""
 
     db = tmp_path / "test.db"
-    app = await make_app(db)
+    app = await make_app_with_db(db)
 
     ieee = make_ieee()
     app.handle_join(99, ieee, 0)
@@ -810,8 +875,8 @@ async def test_load_unsupp_attr_wrong_cluster(tmp_path):
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
-    clus._update_attribute(4, "Custom")
-    clus._update_attribute(5, "Model")
+    clus.update_attribute(4, "Custom")
+    clus.update_attribute(5, "Model")
     app.device_initialized(dev)
     await app.shutdown()
     del clus
@@ -819,7 +884,7 @@ async def test_load_unsupp_attr_wrong_cluster(tmp_path):
     del dev
 
     # add unsupported attr for missing endpoint
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     dev = app.get_device(ieee)
     ep = dev.endpoints[3]
     clus = ep.add_input_cluster(2)
@@ -830,13 +895,63 @@ async def test_load_unsupp_attr_wrong_cluster(tmp_path):
     del dev
 
     # reload
-    app = await make_app(db)
+    app = await make_app_with_db(db)
+    await app.shutdown()
+
+
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
+async def test_load_unsupp_attr_missing_endpoint(tmp_path):
+    """Test loading unsupported attribute from the wrong cluster."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+
+    ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0x0000)
+    ep.add_output_cluster(0x0001)
+    clus.update_attribute(0x0004, "Custom")
+    clus.update_attribute(0x0005, "Model")
+
+    ep = dev.add_endpoint(4)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0x0006)
+    app.device_initialized(dev)
+
+    # Make an attribute unsupported
+    clus.add_unsupported_attribute(0x0000)
+
+    await app.shutdown()
+    del clus
+    del ep
+    del dev
+
+    def remove_cluster(device):
+        device.endpoints.pop(4)
+        return device
+
+    # Simulate a quirk that removes the entire endpoint
+    with patch("zigpy.quirks.get_device", side_effect=remove_cluster):
+        # The application should still load
+        app = await make_app_with_db(db)
+
+    dev = app.get_device(ieee)
+    assert 4 not in dev.endpoints
     await app.shutdown()
 
 
 async def test_last_seen(tmp_path):
     db = tmp_path / "test.db"
-    app = await make_app(db)
+    app = await make_app_with_db(db)
 
     ieee = make_ieee()
     app.handle_join(99, ieee, 0)
@@ -848,22 +963,22 @@ async def test_last_seen(tmp_path):
     ep.device_type = profiles.zha.DeviceType.PUMP
     clus = ep.add_input_cluster(0)
     ep.add_output_cluster(1)
-    clus._update_attribute(4, "Custom")
-    clus._update_attribute(5, "Model")
+    clus.update_attribute(4, "Custom")
+    clus.update_attribute(5, "Model")
     app.device_initialized(dev)
 
     old_last_seen = dev.last_seen
     await app.shutdown()
 
     # The `last_seen` of a joined device persists
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     dev = app.get_device(ieee=ieee)
     await app.shutdown()
 
     next_last_seen = dev.last_seen
     assert abs(next_last_seen - old_last_seen) < 0.01
 
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     dev = app.get_device(ieee=ieee)
 
     # Last-seen is only written to the db every 30s (no write case)
@@ -873,12 +988,12 @@ async def test_last_seen(tmp_path):
 
     await app.shutdown()
 
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     dev = app.get_device(ieee=ieee)
     assert dev.last_seen == next_last_seen  # no change
     await app.shutdown()
 
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     dev = app.get_device(ieee=ieee)
 
     # Last-seen is only written to the db every 30s (write case)
@@ -889,7 +1004,7 @@ async def test_last_seen(tmp_path):
     await app.shutdown()
 
     # And it will be updated when the database next loads
-    app = await make_app(db)
+    app = await make_app_with_db(db)
     dev = app.get_device(ieee=ieee)
     assert dev.last_seen >= next_last_seen + 35  # updated
     await app.shutdown()
@@ -953,12 +1068,12 @@ async def test_appdb_network_backups(tmp_path, backup_factory):  # noqa: F811
 
     backup = backup_factory()
 
-    app1 = await make_app(db)
+    app1 = await make_app_with_db(db)
     app1.backups.add_backup(backup)
     await app1.shutdown()
 
     # The backup is reloaded from the database as well
-    app2 = await make_app(db)
+    app2 = await make_app_with_db(db)
     assert len(app2.backups.backups) == 1
     assert app2.backups.backups[0] == backup
 
@@ -969,8 +1084,96 @@ async def test_appdb_network_backups(tmp_path, backup_factory):  # noqa: F811
     await app2.shutdown()
 
     # The database will contain only the single backup
-    app3 = await make_app(db)
+    app3 = await make_app_with_db(db)
     assert len(app3.backups.backups) == 1
     assert app3.backups.backups[0] == new_backup
     assert app3.backups.backups[0] != backup
+    await app3.shutdown()
+
+
+async def test_appdb_network_backups_format_change(
+    tmp_path, backup_factory
+):  # noqa: F811
+    db = tmp_path / "test.db"
+
+    backup = backup_factory()
+    backup.as_dict = MagicMock(return_value={"some new key": 1, **backup.as_dict()})
+
+    app1 = await make_app_with_db(db)
+    app1.backups.add_backup(backup)
+    await app1.shutdown()
+
+    # The backup is reloaded from the database as well
+    app2 = await make_app_with_db(db)
+    assert len(app2.backups.backups) == 1
+    assert app2.backups.backups[0] == backup
+
+    new_backup = backup_factory()
+    new_backup.network_info.network_key.tx_counter += 10000
+
+    app2.backups.add_backup(new_backup)
+    await app2.shutdown()
+
+    # The database will contain only the single backup
+    with patch("zigpy.backups.BackupManager.add_backup") as mock_add_backup:
+        app3 = await make_app_with_db(db)
+        await app3.shutdown()
+
+    assert mock_add_backup.mock_calls == [call(new_backup, suppress_event=True)]
+
+
+async def test_appdb_persist_coordinator_info(tmp_path):  # noqa: F811
+    db = tmp_path / "test.db"
+
+    with patch(
+        "zigpy.appdb.PersistingListener._save_attribute_cache",
+        wraps=zigpy.appdb.PersistingListener._save_attribute_cache,
+    ) as mock_save_attr_cache:
+        app = await make_app_with_db(db)
+        await app.initialize()
+        await app.shutdown()
+
+    assert mock_save_attr_cache.mock_calls == [call(app._device.endpoints[1])]
+
+
+async def test_appdb_attribute_clear(tmp_path):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    app.device_initialized(dev)
+
+    basic.update_attribute(Basic.AttributeDefs.zcl_version.id, 0x12)
+
+    await app.shutdown()
+
+    # Upon reload, the attribute exists and is in the cache
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee=dev.ieee)
+    assert (
+        dev2.endpoints[1].basic._attr_cache[Basic.AttributeDefs.zcl_version.id] == 0x12
+    )
+
+    # Clear an existing attribute
+    dev2.endpoints[1].basic.update_attribute(Basic.AttributeDefs.zcl_version.id, None)
+
+    # Clear an attribute not in the cache
+    dev2.endpoints[1].basic.update_attribute(Basic.AttributeDefs.manufacturer.id, None)
+
+    assert Basic.AttributeDefs.zcl_version.id not in dev2.endpoints[1].basic._attr_cache
+    await asyncio.sleep(0.1)
+    await app2.shutdown()
+
+    # The attribute has been removed from the database
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(ieee=dev.ieee)
+    assert Basic.AttributeDefs.zcl_version.id not in dev3.endpoints[1].basic._attr_cache
     await app3.shutdown()

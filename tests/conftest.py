@@ -1,15 +1,24 @@
 """Common fixtures."""
 from __future__ import annotations
 
+import asyncio
 import copy
 import logging
+import sys
+import threading
 import typing
 from unittest.mock import Mock
 
 import pytest
 
 import zigpy.application
-from zigpy.config import CONF_DATABASE, CONF_DEVICE, CONF_DEVICE_PATH
+from zigpy.config import (
+    CONF_DATABASE,
+    CONF_DEVICE,
+    CONF_DEVICE_PATH,
+    CONF_OTA,
+    CONF_OTA_ENABLED,
+)
 import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
@@ -19,6 +28,7 @@ from .async_mock import AsyncMock, MagicMock
 if typing.TYPE_CHECKING:
     import zigpy.device
 
+_LOGGER = logging.getLogger(__name__)
 
 NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
 
@@ -58,7 +68,21 @@ class App(zigpy.application.ControllerApplication):
         pass
 
     async def start_network(self):
-        pass
+        dev = add_initialized_device(
+            app=self, nwk=self.state.node_info.nwk, ieee=self.state.node_info.ieee
+        )
+        dev.model = "Coordinator Model"
+        dev.manufacturer = "Coordinator Manufacturer"
+
+        dev.zdo.Mgmt_NWK_Update_req = AsyncMock(
+            return_value=[
+                zdo_t.Status.SUCCESS,
+                t.Channels.ALL_CHANNELS,
+                0,
+                0,
+                [80] * 16,
+            ]
+        )
 
     async def force_remove(self, dev):
         pass
@@ -69,7 +93,7 @@ class App(zigpy.application.ControllerApplication):
     async def permit_ncp(self, time_s=60):
         pass
 
-    async def permit_with_key(self, node, code, time_s=60):
+    async def permit_with_link_key(self, node, link_key, time_s=60):
         pass
 
     async def reset_network_info(self):
@@ -79,7 +103,7 @@ class App(zigpy.application.ControllerApplication):
         pass
 
     async def load_network_info(self, *, load_devices=False):
-        pass
+        self.state.network_info.channel = 15
 
 
 def recursive_dict_merge(
@@ -88,7 +112,7 @@ def recursive_dict_merge(
     result = copy.deepcopy(obj)
 
     for key, update in updates.items():
-        if isinstance(update, dict):
+        if isinstance(update, dict) and key in result:
             result[key] = recursive_dict_merge(result[key], update)
         else:
             result[key] = update
@@ -101,7 +125,13 @@ def make_app(
     app_base: zigpy.application.ControllerApplication = App,
 ) -> zigpy.application.ControllerApplication:
     config = recursive_dict_merge(
-        {CONF_DATABASE: None, CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"}},
+        {
+            CONF_DATABASE: None,
+            CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/null"},
+            CONF_OTA: {
+                CONF_OTA_ENABLED: False,
+            },
+        },
         config_updates,
     )
 
@@ -155,6 +185,18 @@ def make_node_desc(
     )
 
 
+def add_initialized_device(app, nwk, ieee):
+    dev = app.add_device(nwk=nwk, ieee=ieee)
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
+
+    return dev
+
+
 @pytest.fixture
 def make_initialized_device():
     count = 1
@@ -162,14 +204,7 @@ def make_initialized_device():
     def inner(app):
         nonlocal count
 
-        dev = app.add_device(nwk=0x1000 + count, ieee=make_ieee(count))
-        dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
-
-        ep = dev.add_endpoint(1)
-        ep.status = zigpy.endpoint.Status.ZDO_INIT
-        ep.profile_id = 260
-        ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
-
+        dev = add_initialized_device(app, nwk=0x1000 + count, ieee=make_ieee(count))
         count += 1
 
         return dev
@@ -230,3 +265,40 @@ def make_route(
         Reserved=0,
         NextHop=next_hop,
     )
+
+
+# Taken from Home Assistant's `conftest.py`
+@pytest.fixture(autouse=True)
+def verify_cleanup(
+    event_loop: asyncio.AbstractEventLoop,
+) -> typing.Generator[None, None, None]:
+    """Verify that the test has cleaned up resources correctly."""
+    # Skip with Python 3.8 and below
+    if sys.version_info < (3, 9):
+        yield
+        return
+
+    threads_before = frozenset(threading.enumerate())
+    tasks_before = asyncio.all_tasks(event_loop)
+    yield
+
+    event_loop.run_until_complete(event_loop.shutdown_default_executor())
+
+    # Warn and clean-up lingering tasks and timers
+    # before moving on to the next test.
+    tasks = asyncio.all_tasks(event_loop) - tasks_before
+    for task in tasks:
+        _LOGGER.warning("Linger task after test %r", task)
+        task.cancel()
+    if tasks:
+        event_loop.run_until_complete(asyncio.wait(tasks))
+
+    for handle in event_loop._scheduled:  # type: ignore[attr-defined]
+        if not handle.cancelled():
+            _LOGGER.warning("Lingering timer after test %r", handle)
+            handle.cancel()
+
+    # Verify no threads where left behind.
+    threads = frozenset(threading.enumerate()) - threads_before
+    for thread in threads:
+        assert isinstance(thread, threading._DummyThread)

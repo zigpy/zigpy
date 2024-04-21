@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import pathlib
 import typing
 import warnings
 
@@ -7,6 +9,8 @@ import voluptuous as vol
 
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def cv_boolean(value: bool | int | str) -> bool:
@@ -76,7 +80,40 @@ def cv_deprecated(message: str) -> typing.Callable[[typing.Any], typing.Any]:
     """Factory function for creating a deprecation warning validator."""
 
     def wrapper(obj: typing.Any) -> typing.Any:
+        _LOGGER.warning(message)
         warnings.warn(message, DeprecationWarning, stacklevel=2)
         return obj
 
     return wrapper
+
+
+def cv_exact_object(expected_value: str) -> typing.Callable[[typing.Any], bool]:
+    """Factory function for creating an exact object comparison validator."""
+
+    def wrapper(obj: typing.Any) -> typing.Any:
+        if obj != expected_value:
+            return False
+
+        return expected_value
+
+    return wrapper
+
+
+def cv_json_file(value: str) -> pathlib.Path:
+    """Validate a JSON file."""
+    path = pathlib.Path(value)
+
+    if not path.is_file():
+        raise vol.Invalid(f"{value} is not a JSON file")
+
+    return path
+
+
+def cv_folder(value: str) -> pathlib.Path:
+    """Validate a folder path."""
+    path = pathlib.Path(value)
+
+    if not path.is_dir():
+        raise vol.Invalid(f"{value} is not a directory")
+
+    return path

@@ -49,17 +49,16 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
 
         return hdr, args
 
-    @zigpy.util.retryable_request
     def request(self, command, *args, use_ieee=False):
         data = self._serialize(command, *args)
-        tsn = self.device.application.get_sequence()
+        tsn = self.device.get_sequence()
         data = t.uint8_t(tsn).serialize() + data
         return self._device.request(0, command, 0, 0, tsn, data, use_ieee=use_ieee)
 
     def reply(self, command, *args, tsn=None, use_ieee=False):
         data = self._serialize(command, *args)
         if tsn is None:
-            tsn = self.device.application.get_sequence()
+            tsn = self.device.get_sequence()
         data = t.uint8_t(tsn).serialize() + data
         return self._device.reply(0, command, 0, 0, tsn, data, use_ieee=use_ieee)
 

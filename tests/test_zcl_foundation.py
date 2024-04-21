@@ -110,20 +110,6 @@ def test_attribute_reporting_config_only_dir_and_attrid():
     assert repr(arc) == repr(arc2)
 
 
-def test_typed_collection():
-    tc = foundation.TypedCollection()
-    tc.type = 0x20
-    tc.value = t.LVList[t.uint8_t]([t.uint8_t(i) for i in range(100)])
-    ser = tc.serialize()
-
-    assert len(ser) == 1 + 1 + 100  # type, length, values
-
-    tc2, data = foundation.TypedCollection.deserialize(ser)
-
-    assert tc2.type == 0x20
-    assert tc2.value == list(range(100))
-
-
 def test_write_attribute_status_record():
     attr_id = b"\x01\x00"
     extra = b"12da-"
@@ -233,7 +219,7 @@ def test_frame_control():
 
 def test_frame_control_general():
     frc = foundation.FrameControl.general(
-        direction=foundation.Direction.Server_to_Client
+        direction=foundation.Direction.Client_to_Server
     )
     assert frc.is_cluster is False
     assert frc.is_general is True
@@ -247,21 +233,21 @@ def test_frame_control_general():
     assert frc.serialize() == b"\x04"
 
     frc = foundation.FrameControl.general(
-        direction=foundation.Direction.Server_to_Client
+        direction=foundation.Direction.Client_to_Server
     )
-    assert frc.direction == foundation.Direction.Server_to_Client
+    assert frc.direction == foundation.Direction.Client_to_Server
     assert frc.serialize() == b"\x00"
-    frc.direction = foundation.Direction.Client_to_Server
+    frc.direction = foundation.Direction.Server_to_Client
     assert frc.serialize() == b"\x08"
     assert (
         foundation.FrameControl.general(
-            direction=foundation.Direction.Client_to_Server
+            direction=foundation.Direction.Server_to_Client
         ).serialize()
         == b"\x18"
     )
 
     frc = foundation.FrameControl.general(
-        direction=foundation.Direction.Server_to_Client
+        direction=foundation.Direction.Client_to_Server
     )
     assert not frc.disable_default_response
     assert frc.serialize() == b"\x00"
@@ -273,7 +259,7 @@ def test_frame_control_general():
 
 def test_frame_control_cluster():
     frc = foundation.FrameControl.cluster(
-        direction=foundation.Direction.Server_to_Client
+        direction=foundation.Direction.Client_to_Server
     )
     assert frc.is_cluster is True
     assert frc.is_general is False
@@ -287,23 +273,23 @@ def test_frame_control_cluster():
     assert frc.serialize() == b"\x05"
 
     frc = foundation.FrameControl.cluster(
-        direction=foundation.Direction.Server_to_Client
+        direction=foundation.Direction.Client_to_Server
     )
-    assert frc.direction == foundation.Direction.Server_to_Client
-    assert frc.serialize() == b"\x01"
-    frc.direction = foundation.Direction.Server_to_Client
+    assert frc.direction == foundation.Direction.Client_to_Server
     assert frc.serialize() == b"\x01"
     frc.direction = foundation.Direction.Client_to_Server
+    assert frc.serialize() == b"\x01"
+    frc.direction = foundation.Direction.Server_to_Client
     assert frc.serialize() == b"\x09"
     assert (
         foundation.FrameControl.cluster(
-            direction=foundation.Direction.Client_to_Server
+            direction=foundation.Direction.Server_to_Client
         ).serialize()
         == b"\x19"
     )
 
     frc = foundation.FrameControl.cluster(
-        direction=foundation.Direction.Server_to_Client
+        direction=foundation.Direction.Client_to_Server
     )
     assert not frc.disable_default_response
     assert frc.serialize() == b"\x01"
@@ -321,7 +307,7 @@ def test_frame_header():
 
     assert rest == extra
     assert hdr.command_id == 0x0A
-    assert hdr.direction == foundation.Direction.Client_to_Server
+    assert hdr.direction == foundation.Direction.Server_to_Client
     assert hdr.manufacturer == 0x115F
     assert hdr.tsn == 0xC0
 
@@ -632,7 +618,7 @@ def test_schema():
         schema={
             "uh oh": t.uint16_t,
         },
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
     )
 
     with pytest.raises(ValueError):
@@ -646,7 +632,7 @@ def test_schema():
             "bar?": t.uint16_t,
             "baz?": t.uint8_t,
         },
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
     )
     s = s.with_compiled_schema()
 
@@ -661,12 +647,12 @@ def test_schema():
     assert s.schema.baz.type is t.uint8_t
     assert s.schema.baz.optional
 
-    assert "test" in str(s) and "direction=<Direction.Server_to_Client" in str(s)
+    assert "test" in str(s) and "direction=<Direction.Client_to_Server" in str(s)
 
     for kwargs, value in [
-        (dict(foo=1), b"\x01"),
-        (dict(foo=1, bar=2), b"\x01\x02\x00"),
-        (dict(foo=1, bar=2, baz=3), b"\x01\x02\x00\x03"),
+        ({"foo": 1}, b"\x01"),
+        ({"foo": 1, "bar": 2}, b"\x01\x02\x00"),
+        ({"foo": 1, "bar": 2, "baz": 3}, b"\x01\x02\x00\x03"),
     ]:
         assert s.schema(**kwargs) == s.schema(*kwargs.values())
         assert s.schema(**kwargs).serialize() == value
@@ -682,7 +668,7 @@ def test_command_schema_error_on_tuple():
         id=0x12,
         name="test",
         schema=(t.uint16_t,),
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
     )
 
     with pytest.raises(ValueError):
@@ -711,34 +697,6 @@ def test_zcl_attribute_definition():
     assert a.replace(access="w").access == foundation.ZCLAttributeAccess.Write
 
 
-def test_zcl_attribute_item_access_warning():
-    a = foundation.ZCLAttributeDef(
-        id=0x1234,
-        name="test",
-        type=t.uint16_t,
-    )
-
-    with pytest.deprecated_call():
-        assert a[0] == a.name
-        assert a[1] == a.type
-
-
-def test_zcl_command_item_access_warning():
-    s = foundation.ZCLCommandDef(
-        id=0x12,
-        name="test",
-        schema={
-            "foo": t.uint8_t,
-        },
-        direction=foundation.Direction.Server_to_Client,
-    )
-
-    with pytest.deprecated_call():
-        assert s[0] == s.name
-        assert s[1] == s.schema
-        assert s[2] == s.direction
-
-
 def test_invalid_command_def_name():
     command = foundation.ZCLCommandDef(
         id=0x12,
@@ -746,7 +704,7 @@ def test_invalid_command_def_name():
         schema={
             "foo": t.uint8_t,
         },
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
     )
 
     with pytest.raises(ValueError):
@@ -770,86 +728,6 @@ def test_invalid_attribute_def_name():
         attr.replace(name="123name")
 
 
-def test_frame_control_is_reply_compat():
-    fc = foundation.FrameControl()
-
-    fc.is_reply = True
-    assert fc.is_reply
-    assert fc.direction == foundation.Direction.Client_to_Server
-
-    fc.is_reply = False
-    assert not fc.is_reply
-    assert fc.direction == foundation.Direction.Server_to_Client
-
-    fc.is_reply = None
-    assert fc.is_reply is None
-    assert fc.direction is None
-
-    assert (
-        foundation.FrameControl.cluster(is_reply=False).direction
-        == foundation.Direction.Server_to_Client
-    )
-    assert (
-        foundation.FrameControl.cluster(is_reply=True).direction
-        == foundation.Direction.Client_to_Server
-    )
-    assert (
-        foundation.FrameControl.cluster(
-            direction=foundation.Direction.Server_to_Client
-        ).direction
-        == foundation.Direction.Server_to_Client
-    )
-    assert (
-        foundation.FrameControl.cluster(
-            direction=foundation.Direction.Client_to_Server
-        ).direction
-        == foundation.Direction.Client_to_Server
-    )
-
-    assert (
-        foundation.FrameControl.general(is_reply=False).direction
-        == foundation.Direction.Server_to_Client
-    )
-    assert (
-        foundation.FrameControl.general(is_reply=True).direction
-        == foundation.Direction.Client_to_Server
-    )
-    assert (
-        foundation.FrameControl.general(
-            direction=foundation.Direction.Server_to_Client
-        ).direction
-        == foundation.Direction.Server_to_Client
-    )
-    assert (
-        foundation.FrameControl.general(
-            direction=foundation.Direction.Client_to_Server
-        ).direction
-        == foundation.Direction.Client_to_Server
-    )
-
-
-def test_zcl_header_is_reply_compat():
-    hdr1 = foundation.ZCLHeader.general(tsn=12, command_id=34, is_reply=True)
-    assert hdr1.is_reply
-    assert hdr1.direction == foundation.Direction.Client_to_Server
-
-    hdr2 = foundation.ZCLHeader.general(tsn=12, command_id=34, is_reply=False)
-    assert not hdr2.is_reply
-    assert hdr2.direction == foundation.Direction.Server_to_Client
-
-    hdr3 = foundation.ZCLHeader.general(
-        tsn=12, command_id=34, direction=foundation.Direction.Client_to_Server
-    )
-    assert hdr3.is_reply
-    assert hdr3.direction == foundation.Direction.Client_to_Server
-
-    hdr4 = foundation.ZCLHeader.general(
-        tsn=12, command_id=34, direction=foundation.Direction.Server_to_Client
-    )
-    assert not hdr4.is_reply
-    assert hdr4.direction == foundation.Direction.Server_to_Client
-
-
 def test_zcl_attribute_access():
     A = foundation.ZCLAttributeAccess
 
@@ -866,3 +744,79 @@ def test_zcl_attribute_access():
 
     with pytest.raises(ValueError):
         A.from_str("q")
+
+
+def test_attribute_command_iteration():
+    class Commands1(foundation.BaseCommandDefs):
+        command1 = foundation.ZCLCommandDef(
+            id=0x12,
+            name="test",
+            schema={
+                "foo": t.uint8_t,
+            },
+            direction=foundation.Direction.Client_to_Server,
+        )
+
+    class Commands2(Commands1):
+        command2 = foundation.ZCLCommandDef(
+            id=0x12,
+            name="test2",
+            schema={
+                "foo": t.uint8_t,
+            },
+            direction=foundation.Direction.Client_to_Server,
+        )
+
+    assert list(Commands1) == [Commands1.command1]
+    assert list(Commands2) == [Commands2.command1, Commands2.command2]
+
+
+def test_attribute_definition_backwards_compat():
+    assert foundation.ZCLAttributeDef(0x1234, t.uint8_t) == foundation.ZCLAttributeDef(
+        id=0x1234, type=t.uint8_t
+    )
+    assert foundation.ZCLAttributeDef("name", t.uint8_t) == foundation.ZCLAttributeDef(
+        name="name", type=t.uint8_t
+    )
+
+
+def test_command_definition_backwards_compat():
+    assert foundation.ZCLCommandDef(0x12, {}) == foundation.ZCLCommandDef(
+        id=0x12, schema={}
+    )
+    assert foundation.ZCLCommandDef("name", {}) == foundation.ZCLCommandDef(
+        name="name", schema={}
+    )
+
+
+def test_array():
+    data = bytes.fromhex(
+        "183c010100004841040006000d0106000206010d0206000206020d0306000206030d04060002"
+    )
+    hdr, data = foundation.ZCLHeader.deserialize(data)
+
+    command = foundation.GENERAL_COMMANDS[hdr.command_id]
+    rsp, rest = command.schema.deserialize(data)
+
+    assert rest == b""
+
+    assert rsp.status_records == [
+        foundation.ReadAttributeRecord(
+            attrid=0x0001,
+            status=foundation.Status.SUCCESS,
+            value=foundation.TypeValue(
+                type=foundation.DATA_TYPES.pytype_to_datatype_id(foundation.Array),
+                value=foundation.Array(
+                    type=foundation.DATA_TYPES.pytype_to_datatype_id(t.LVBytes),
+                    value=t.LVList[t.LVBytes, t.uint16_t](
+                        [
+                            b"\x00\r\x01\x06\x00\x02",
+                            b"\x01\r\x02\x06\x00\x02",
+                            b"\x02\r\x03\x06\x00\x02",
+                            b"\x03\r\x04\x06\x00\x02",
+                        ]
+                    ),
+                ),
+            ),
+        )
+    ]

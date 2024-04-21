@@ -12,12 +12,6 @@ import zigpy.types as t
 LOGGER = logging.getLogger(__name__)
 
 
-@attr.s(frozen=True)
-class ImageKey:
-    manufacturer_id = attr.ib(default=None)
-    image_type = attr.ib(default=None)
-
-
 class HWVersion(t.uint16_t):
     @property
     def version(self):
@@ -28,23 +22,42 @@ class HWVersion(t.uint16_t):
         return self & 0x00FF
 
     def __repr__(self):
-        return "<{} version={} revision={}>".format(
-            self.__class__.__name__, self.version, self.revision
-        )
+        return f"<{self.__class__.__name__} version={self.version} revision={self.revision}>"
 
 
-class HeaderString(str):
+class HeaderString(bytes):
     _size = 32
 
+    def __new__(cls, value: str | bytes):
+        if isinstance(value, str):
+            value = value.encode("utf-8").ljust(cls._size, b"\x00")
+
+        if len(value) != cls._size:
+            raise ValueError(f"HeaderString must be exactly {cls._size} bytes long")
+
+        return super().__new__(cls, value)
+
     @classmethod
-    def deserialize(cls, data):
+    def deserialize(cls, data: bytes) -> tuple[HeaderString, bytes]:
         if len(data) < cls._size:
             raise ValueError(f"Data is too short. Should be at least {cls._size}")
-        raw = data[: cls._size].split(b"\x00")[0]
-        return cls(raw.decode("utf8", errors="replace")), data[cls._size :]
 
-    def serialize(self):
-        return self.encode("utf8").ljust(self._size, b"\x00")
+        raw = data[: cls._size]
+        return cls(raw), data[cls._size :]
+
+    def serialize(self) -> bytes:
+        return self
+
+    def __str__(self) -> str:
+        return repr(self)
+
+    def __repr__(self) -> str:
+        try:
+            text = repr(self.rstrip(b"\x00").decode("utf-8"))
+        except UnicodeDecodeError:
+            text = f"{len(self)}:{self.hex()}"
+
+        return f"<{text}>"
 
 
 class FieldControl(t.bitmap16):
@@ -101,12 +114,8 @@ class OTAImageHeader(t.Struct):
             return None
         return bool(self.field_control & FieldControl.HARDWARE_VERSIONS_PRESENT)
 
-    @property
-    def key(self):
-        return ImageKey(self.manufacturer_id, self.image_type)
-
     @classmethod
-    def deserialize(cls, data) -> tuple[OTAImageHeader, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[OTAImageHeader, bytes]:
         hdr, data = super().deserialize(data)
         if hdr.upgrade_file_id != cls.MAGIC_VALUE:
             raise ValueError(
@@ -134,10 +143,20 @@ class SubElement(t.Struct):
     tag_id: ElementTagId
     data: LVBytes32
 
+    def __repr__(self) -> str:
+        if len(self.data) > 32:
+            data = self.data[:25].hex() + "..." + self.data[-7:].hex()
+        else:
+            data = self.data.hex()
+
+        return (
+            f"<{self.__class__.__name__}(tag_id={self.tag_id!r},"
+            f" data=[{len(self.data)}:{data}])>"
+        )
+
 
 class BaseOTAImage:
-    """
-    Base OTA image container type. Not all images are valid Zigbee OTA images but are
+    """Base OTA image container type. Not all images are valid Zigbee OTA images but are
     nonetheless accepted by devices. Only requirement is that the image contains a valid
     OTAImageHeader property and can be serialized/deserialized.
     """
@@ -153,15 +172,13 @@ class BaseOTAImage:
 
 
 class OTAImage(t.Struct, BaseOTAImage):
-    """
-    Zigbee OTA image according to 11.4 of the ZCL specification.
-    """
+    """Zigbee OTA image according to 11.4 of the ZCL specification."""
 
     header: OTAImageHeader
     subelements: t.List[SubElement]
 
     @classmethod
-    def deserialize(cls, data) -> tuple[OTAImage, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[OTAImage, bytes]:
         hdr, data = OTAImageHeader.deserialize(data)
         elements_len = hdr.image_size - hdr.header_length
 
@@ -177,21 +194,25 @@ class OTAImage(t.Struct, BaseOTAImage):
 
         return image, data
 
-    def serialize(self):
+    def serialize(self) -> bytes:
         res = super().serialize()
-        assert len(res) == self.header.image_size
+
+        if self.header.image_size != len(res):
+            raise ValueError(
+                f"Image size in header ({self.header.image_size} bytes)"
+                f" does not match actual image size ({len(res)} bytes)"
+            )
 
         return res
 
 
 @attr.s
 class HueSBLOTAImage(BaseOTAImage):
-    """
-    Unique OTA image format for certain Hue devices. Starts with a valid header but does
+    """Unique OTA image format for certain Hue devices. Starts with a valid header but does
     not contain any valid subelements beyond that point.
     """
 
-    SUBELEMENTS_MAGIC = b"\x2A\x00\x01"
+    SUBELEMENTS_MAGIC = b"\x2a\x00\x01"
 
     header = attr.ib(default=None)
     data = attr.ib(default=None)
@@ -200,7 +221,7 @@ class HueSBLOTAImage(BaseOTAImage):
         return self.header.serialize() + self.data
 
     @classmethod
-    def deserialize(cls, data) -> tuple[HueSBLOTAImage, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[HueSBLOTAImage, bytes]:
         header, remaining_data = OTAImageHeader.deserialize(data)
         firmware = remaining_data[: header.image_size - len(header.serialize())]
 
@@ -219,13 +240,11 @@ class HueSBLOTAImage(BaseOTAImage):
                 f"Only Hue images are expected. Got: {header.manufacturer_id}"
             )
 
-        return cls(header=header, data=firmware), data[header.image_size :]
+        return cls(header=header, data=firmware), data[header.image_size :]  # type: ignore
 
 
 def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:
-    """
-    Attempts to extract any known OTA image type from data. Does not validate firmware.
-    """
+    """Attempts to extract any known OTA image type from data. Does not validate firmware."""
 
     if len(data) > 4 and int.from_bytes(data[0:4], "little") + 21 == len(data):
         # Legrand OTA images are prefixed with their unwrapped size and include a 1 + 16

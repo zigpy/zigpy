@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import sys
@@ -44,6 +46,16 @@ def test_listenable():
     listener.event.assert_has_calls([call("test1"), call("test1")], any_order=True)
     context_listener.event.assert_has_calls([call(listen, "test1")], any_order=True)
     broken_listener.event.assert_has_calls([call("test1")], any_order=True)
+    assert listener.event.call_count == 2
+    assert context_listener.event.call_count == 1
+    assert broken_listener.event.call_count == 1
+
+    listen.remove_listener(object())
+    listen.remove_listener(listener)
+    listen.remove_listener(listener)
+    listen.remove_listener(broken_listener)
+    listen.remove_listener(context_listener)
+    listen.listener_event("event", "test1")
     assert listener.event.call_count == 2
     assert context_listener.event.call_count == 1
     assert broken_listener.event.call_count == 1
@@ -135,7 +147,7 @@ async def test_retry_once():
 async def _test_retryable(exception, retry_exceptions, n, tries=3, delay=0.001):
     counter = 0
 
-    @util.retryable(retry_exceptions)
+    @util.retryable(retry_exceptions, tries=tries, delay=delay)
     async def count(x, y, z):
         assert x == y == z == 9
         nonlocal counter
@@ -145,7 +157,7 @@ async def _test_retryable(exception, retry_exceptions, n, tries=3, delay=0.001):
             exc._counter = counter
             raise exc
 
-    await count(9, 9, 9, tries=tries, delay=delay)
+    await count(9, 9, 9)
     return counter
 
 
@@ -379,181 +391,185 @@ async def test_catching_task_unexpected_exception(to_raise, exception, caplog):
     assert len(records) == 3
 
 
-async def test_dynamic_bounded_semaphore_simple_locking():
-    """Test simple, serial locking/unlocking."""
-    sem = util.DynamicBoundedSemaphore()
+@pytest.mark.parametrize(
+    "plot",
+    [
+        r"""
+            11  #########
+            12  #################################################################
+            13  ##################################################################
+            14  ################################################################
+            15  ##############
+            16  ######################################################
+            17  #########################
+            18  ##########
+            19  ###########
+            20  ################
+            21  ###########
+            22  ###########
+            23  #
+            24  ##
+           [25] #################
+            26  ##
+        """,
+        r"""
+            11  ##################
+            12
+            13
+            14  ########
+            15  ##################
+            16  ########
+            17
+            18
+            19  ########
+            20  ##################
+            21  ########
+            22
+            23
+            24  ########
+           [25] ##################
+            26
+        """,
+        r"""
+            11  ##################
+            12  #
+            13  #
+            14  ########
+            15  ##################
+            16  ########
+            17
+            18
+            19  ########
+           [20] ##################
+            21  ########
+            22
+            23
+            24  ########
+            25  ##################
+            26  ########
+        """,
+    ],
+)
+def test_picking_optimal_channel(plot):
+    expected_channel = int(plot.split("[")[1].split("]")[0])
+    plot = plot.replace("[", " ").replace("]", " ")
+    channel_energy = {
+        int(line.split()[0]): line.count("#") for line in plot.strip().splitlines()
+    }
 
-    assert "unlocked" not in repr(sem) and "locked" in repr(sem)
-
-    assert sem.value == 0
-    assert sem.max_value == 0
-    assert sem.locked()
-
-    # Invalid max value
-    with pytest.raises(ValueError):
-        sem.max_value = -1
-
-    assert sem.value == 0
-    assert sem.max_value == 0
-    assert sem.locked()
-
-    # Max value is now specified
-    sem.max_value = 1
-    assert not sem.locked()
-    assert sem.max_value == 1
-    assert sem.value == 1
-
-    assert "unlocked" in repr(sem)
-
-    # Semaphore can now be acquired
-    async with sem:
-        assert sem.value == 0
-        assert sem.locked()
-
-    assert not sem.locked()
-    assert sem.max_value == 1
-    assert sem.value == 1
-
-    await sem.acquire()
-    assert sem.value == 0
-    assert sem.locked()
-    sem.release()
-
-    assert not sem.locked()
-    assert sem.max_value == 1
-    assert sem.value == 1
-
-    with pytest.raises(ValueError):
-        sem.release()
-
-
-async def test_dynamic_bounded_semaphore_multiple_locking():
-    """Test multiple locking/unlocking."""
-    sem = util.DynamicBoundedSemaphore(5)
-
-    assert sem.value == 5
-    assert not sem.locked()
-
-    async with sem:
-        assert sem.value == 4
-        assert not sem.locked()
-
-        async with sem, sem, sem:
-            assert sem.value == 1
-            assert not sem.locked()
-
-            with pytest.raises(RuntimeError):
-                async with sem:
-                    assert sem.locked()
-                    assert sem.value == 0
-
-                    raise RuntimeError()
-
-            assert not sem.locked()
-            assert sem.value == 1
-
-        assert sem.value == 4
-        assert not sem.locked()
-
-    assert sem.value == 5
-    assert not sem.locked()
+    assert util.pick_optimal_channel(channel_energy) == expected_channel
 
 
-async def test_dynamic_bounded_semaphore_runtime_limit_increase(event_loop):
-    """Test changing the max_value at runtime."""
+def test_singleton():
+    singleton = util.Singleton("NAME")
 
-    sem = util.DynamicBoundedSemaphore(2)
+    assert str(singleton) == repr(singleton) == "<Singleton 'NAME'>"
+    assert singleton == singleton
 
-    def set_limit(n):
-        sem.max_value = n
-
-    event_loop.call_later(0.1, set_limit, 3)
-
-    async with sem:
-        # Play with the value, testing edge cases
-        sem.max_value = 100
-        assert sem.value == 99
-        assert not sem.locked()
-
-        sem.max_value = 2
-        assert sem.value == 1
-        assert not sem.locked()
-
-        sem.max_value = 1
-        assert sem.value == 0
-        assert sem.locked()
-
-        # Setting it to `0` seems undefined but we keep track of locks so it works
-        sem.max_value = 0
-        assert sem.value == -1
-        assert sem.locked()
-
-        sem.max_value = 2
-        assert sem.value == 1
-        assert not sem.locked()
-
-        async with sem:
-            assert sem.locked()
-            assert sem.value == 0
-            assert sem.max_value == 2
-
-            async with sem:
-                # We're now locked until the limit is increased
-                pass
-
-            assert not sem.locked()
-            assert sem.value == 1
-            assert sem.max_value == 3
-
-        assert sem.value == 2
-        assert sem.max_value == 3
-
-    assert sem.value == 3
-    assert sem.max_value == 3
+    obj = {}
+    obj[singleton] = 5
+    assert obj[singleton] == 5
 
 
-async def test_dynamic_bounded_semaphore_errors(event_loop):
-    """Test semaphore handling errors and cancellation."""
+@pytest.mark.parametrize(
+    "input_relays, expected_relays",
+    [
+        ([0x0000, 0x0000, 0x0001, 0x0001, 0x0002], [0x0001, 0x0002]),
+        ([0x0001, 0x0002], [0x0001, 0x0002]),
+        ([], []),
+        ([0x0000], []),
+    ],
+)
+def test_relay_filtering(input_relays: list[int], expected_relays: list[int]):
+    assert util.filter_relays(input_relays) == expected_relays
 
-    sem = util.DynamicBoundedSemaphore(1)
 
-    def set_limit(n):
-        sem.max_value = n
+async def test_combine_concurrent_calls():
+    class TestFuncs:
+        def __init__(self):
+            self.slow_calls = 0
+            self.slow_error_calls = 0
 
-    async def acquire():
-        async with sem:
-            await asyncio.sleep(60)
+        async def slow(self, n=None):
+            await asyncio.sleep(0.1)
+            self.slow_calls += 1
+            return (self.slow_calls, n)
 
-    # The first acquire call will succeed
-    acquire1 = asyncio.create_task(acquire())
+        async def slow_error(self, n=None):
+            await asyncio.sleep(0.1)
+            self.slow_error_calls += 1
+            raise RuntimeError()
 
-    # The remaining two will stall
-    acquire2 = asyncio.create_task(acquire())
-    acquire3 = asyncio.create_task(acquire())
-    await asyncio.sleep(0.1)
+        combined_slow = util.combine_concurrent_calls(slow)
+        combined_slow_error = util.combine_concurrent_calls(slow_error)
 
-    # Cancel the first one, which holds the lock
-    acquire1.cancel()
+    f = TestFuncs()
 
-    # But also cancel the second one, which was waiting
-    acquire2.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await acquire1
+    assert f.slow_calls == 0
 
-    with pytest.raises(asyncio.CancelledError):
-        await acquire2
+    await f.slow()
+    assert f.slow_calls == 1
 
-    await asyncio.sleep(0.1)
+    await f.combined_slow()
+    assert f.slow_calls == 2
 
-    # The third one will have succeeded
-    assert sem.locked()
-    assert sem.value == 0
-    assert sem.max_value == 1
+    results = await asyncio.gather(*[f.combined_slow() for _ in range(5)])
+    assert results == [(3, None)] * 5
+    assert f.slow_calls == 3
 
-    acquire3.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await acquire3
+    results = await asyncio.gather(*[f.combined_slow() for _ in range(5)])
+    assert results == [(4, None)] * 5
+    assert f.slow_calls == 4
 
-    assert not sem.locked()
-    assert sem.value == 1
-    assert sem.max_value == 1
+    # Unique keyword arguments
+    results = await asyncio.gather(*[f.combined_slow(n=i) for i in range(5)])
+    assert results == [(5 + i, 0 + i) for i in range(5)]
+    assert f.slow_calls == 9
+
+    # Non-unique keyword arguments
+    results = await asyncio.gather(*[f.combined_slow(i // 2) for i in range(5)])
+    assert results == [(10, 0), (10, 0), (11, 1), (11, 1), (12, 2)]
+    assert f.slow_calls == 12
+
+    # Mixed keyword and non-keyword
+    results = await asyncio.gather(
+        f.combined_slow(0),
+        f.combined_slow(n=0),
+        f.combined_slow(1),
+        f.combined_slow(n=1),
+        f.combined_slow(n=1),
+    )
+    assert results == [(13, 0), (13, 0), (14, 1), (14, 1), (14, 1)]
+    assert f.slow_calls == 14
+
+    assert f.slow_error_calls == 0
+
+    with pytest.raises(RuntimeError):
+        await f.slow_error()
+
+    assert f.slow_error_calls == 1
+
+    for coro in asyncio.as_completed([f.combined_slow_error() for _ in range(5)]):
+        with pytest.raises(RuntimeError):
+            await coro
+
+    assert f.slow_error_calls == 2
+
+
+def test_deprecated():
+    @util.deprecated("This function is deprecated")
+    def foo():
+        return 1
+
+    with pytest.deprecated_call():
+        foo()
+
+    class Bar:
+        pass
+
+    obj = util.deprecated_attrs({"foo": Bar})
+
+    assert obj("foo") == Bar
+
+    with pytest.raises(AttributeError):
+        obj("baz")

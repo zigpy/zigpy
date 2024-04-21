@@ -1,22 +1,29 @@
 from __future__ import annotations
 
 import dataclasses
+from datetime import datetime, timezone
 import enum
-from typing import Iterable
+import typing
+
+import attrs
 
 from . import basic
 from .struct import Struct
 
+if typing.TYPE_CHECKING:
+    from typing_extensions import Self
+
 
 class BaseDataclassMixin:
-    def replace(self, **kwargs):
-        return dataclasses.replace(self, **kwargs)
+    def replace(self, **kwargs) -> Self:
+        if dataclasses.is_dataclass(self):
+            return dataclasses.replace(self, **kwargs)  # type: ignore
+        else:
+            return attrs.evolve(self, **kwargs)
 
 
 def _hex_string_to_bytes(hex_string: str) -> bytes:
-    """
-    Parses a hex string with optional colon delimiters and whitespace into bytes.
-    """
+    """Parses a hex string with optional colon delimiters and whitespace into bytes."""
 
     # Strips out whitespace and colons
     cleaned = "".join(hex_string.replace(":", "").split()).upper()
@@ -39,7 +46,7 @@ class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
     def __repr__(self) -> str:
         return ":".join("%02x" % i for i in self[::-1])
 
-    def __hash__(self):
+    def __hash__(self) -> int:  # type: ignore
         return hash(repr(self))
 
     @classmethod
@@ -104,7 +111,7 @@ class Channels(basic.bitmap32):
     CHANNEL_26 = 0x04000000
 
     @classmethod
-    def from_channel_list(cls: Channels, channels: Iterable[int]) -> Channels:
+    def from_channel_list(cls: Channels, channels: typing.Iterable[int]) -> Channels:
         mask = cls.NO_CHANNELS
 
         for channel in channels:
@@ -540,7 +547,7 @@ class AddrModeAddress(BaseDataclassMixin):
     addr_mode: AddrMode
     address: NWK | Group | EUI64 | BroadcastAddress | None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.addr_mode is not None and self.address is not None:
             self.address = {
                 AddrMode.Group: Group,
@@ -548,6 +555,9 @@ class AddrModeAddress(BaseDataclassMixin):
                 AddrMode.IEEE: EUI64,
                 AddrMode.Broadcast: BroadcastAddress,
             }[self.addr_mode](self.address)
+
+    def __hash__(self) -> int:
+        return hash((self.addr_mode, self.address))
 
 
 class TransmitOptions(enum.Flag):
@@ -559,12 +569,15 @@ class TransmitOptions(enum.Flag):
 
 @dataclasses.dataclass
 class ZigbeePacket(BaseDataclassMixin):
-    """
-    Container for the information in an incoming or outgoing ZDO or ZCL packet.
+    """Container for the information in an incoming or outgoing ZDO or ZCL packet.
 
     The radio library is expected to fill this object in with all received data and pass
     it to zigpy for every type of packet.
     """
+
+    timestamp: datetime = dataclasses.field(
+        compare=False, default_factory=lambda: datetime.now(timezone.utc)
+    )
 
     # Set to `None` when the packet is outgoing
     src: AddrModeAddress | None = dataclasses.field(default=None)
@@ -595,3 +608,25 @@ class ZigbeePacket(BaseDataclassMixin):
     # Options for incoming packets
     lqi: basic.uint8_t | None = dataclasses.field(default=None)
     rssi: basic.int8s | None = dataclasses.field(default=None)
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.timestamp,
+                self.src,
+                self.src_ep,
+                self.dst,
+                self.dst_ep,
+                self.source_route,
+                self.extended_timeout,
+                self.tsn,
+                self.profile_id,
+                self.cluster_id,
+                self.data,
+                self.tx_options,
+                self.radius,
+                self.non_member_radius,
+                self.lqi,
+                self.rssi,
+            )
+        )

@@ -1,3 +1,5 @@
-from . import zha, zll
+from __future__ import annotations
 
-PROFILES = {zha.PROFILE_ID: zha, zll.PROFILE_ID: zll}
+from . import zgp, zha, zll
+
+PROFILES = {zha.PROFILE_ID: zha, zll.PROFILE_ID: zll, zgp.PROFILE_ID: zgp}

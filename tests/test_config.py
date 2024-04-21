@@ -1,5 +1,6 @@
 """Test configuration."""
 
+import pathlib
 import warnings
 
 import pytest
@@ -184,3 +185,45 @@ def test_deprecated():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         assert schema({}) == {}
+
+
+def test_cv_json_file(tmp_path: pathlib.Path) -> None:
+    """Test `cv_json_file` validator."""
+
+    path = tmp_path / "file.json"
+
+    # Does not exist
+    with pytest.raises(vol.Invalid):
+        zigpy.config.validators.cv_json_file(str(path))
+
+    # Not a file
+    path.mkdir()
+
+    with pytest.raises(vol.Invalid):
+        zigpy.config.validators.cv_json_file(str(path))
+
+    path.rmdir()
+
+    # File exists
+    path.write_text("{}")
+    assert zigpy.config.validators.cv_json_file(str(path)) == path
+
+
+def test_cv_folder(tmp_path: pathlib.Path) -> None:
+    """ "Test `cv_folder` validator."""
+
+    folder_path = tmp_path / "folder"
+    file_path = tmp_path / "not_folder"
+
+    # Does not exist
+    with pytest.raises(vol.Invalid):
+        zigpy.config.validators.cv_folder(str(folder_path))
+
+    # Not a folder
+    file_path.write_text("")
+    with pytest.raises(vol.Invalid):
+        zigpy.config.validators.cv_folder(str(file_path))
+
+    # Folder exists
+    folder_path.mkdir()
+    assert zigpy.config.validators.cv_folder(str(folder_path)) == folder_path

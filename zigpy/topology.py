@@ -22,6 +22,9 @@ if typing.TYPE_CHECKING:
     import zigpy.application
 
 
+RETRY_SLOW = zigpy.util.retryable_request(tries=3, delay=1)
+
+
 class ScanNotSupported(Exception):
     pass
 
@@ -35,7 +38,7 @@ INVALID_NEIGHBOR_IEEES = {
 class Topology(zigpy.util.ListenableMixin):
     """Topology scanner."""
 
-    def __init__(self, app: zigpy.application.ControllerApplication):
+    def __init__(self, app: zigpy.application.ControllerApplication) -> None:
         """Instantiate."""
         self._app: zigpy.application.ControllerApplication = app
         self._listeners: dict = {}
@@ -55,7 +58,7 @@ class Topology(zigpy.util.ListenableMixin):
         self.stop_periodic_scans()
         self._scan_loop_task = asyncio.create_task(self._scan_loop(period))
 
-    def stop_periodic_scans(self):
+    def stop_periodic_scans(self) -> None:
         if self._scan_loop_task is not None:
             self._scan_loop_task.cancel()
 
@@ -78,7 +81,7 @@ class Topology(zigpy.util.ListenableMixin):
                 # not be interrupted if a manual scan is initiated
                 LOGGER.debug("Topology scan cancelled")
             except (Exception, asyncio.CancelledError):
-                LOGGER.warning("Topology scan failed", exc_info=True)
+                LOGGER.debug("Topology scan failed", exc_info=True)
 
     async def scan(
         self, devices: typing.Iterable[zigpy.device.Device] | None = None
@@ -101,7 +104,7 @@ class Topology(zigpy.util.ListenableMixin):
         table = []
 
         while True:
-            status, rsp = await scan_request(index, tries=3, delay=1)
+            status, rsp = await RETRY_SLOW(scan_request)(index)
 
             if status != zdo_t.Status.SUCCESS:
                 raise ScanNotSupported()

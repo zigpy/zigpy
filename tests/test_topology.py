@@ -50,7 +50,7 @@ def patch_device_tables(
     neighbors: list | BaseException | zdo_t.Status,
     routes: list | BaseException | zdo_t.Status,
 ):
-    def mgmt_lqi_req(StartIndex: t.uint8_t, **kwargs):
+    def mgmt_lqi_req(StartIndex: t.uint8_t):
         status = zdo_t.Status.SUCCESS
         entries = 0
         start_index = 0
@@ -66,17 +66,17 @@ def patch_device_tables(
             table = neighbors[StartIndex : StartIndex + 3]
 
         return list(
-            dict(
-                Status=status,
-                Neighbors=zdo_t.Neighbors(
+            {
+                "Status": status,
+                "Neighbors": zdo_t.Neighbors(
                     Entries=entries,
                     StartIndex=start_index,
                     NeighborTableList=table,
                 ),
-            ).values()
+            }.values()
         )
 
-    def mgmt_rtg_req(StartIndex: t.uint8_t, **kwargs):
+    def mgmt_rtg_req(StartIndex: t.uint8_t):
         status = zdo_t.Status.SUCCESS
         entries = 0
         start_index = 0
@@ -92,21 +92,25 @@ def patch_device_tables(
             table = routes[StartIndex : StartIndex + 3]
 
         return list(
-            dict(
-                Status=status,
-                Routes=zdo_t.Routes(
+            {
+                "Status": status,
+                "Routes": zdo_t.Routes(
                     Entries=entries,
                     StartIndex=start_index,
                     RoutingTableList=table,
                 ),
-            ).values()
+            }.values()
         )
 
     lqi_req_patch = mock.patch.object(
-        device.zdo, "Mgmt_Lqi_req", mock.AsyncMock(side_effect=mgmt_lqi_req)
+        device.zdo,
+        "Mgmt_Lqi_req",
+        mock.AsyncMock(side_effect=mgmt_lqi_req, spec_set=device.zdo.Mgmt_Lqi_req),
     )
     rtg_req_patch = mock.patch.object(
-        device.zdo, "Mgmt_Rtg_req", mock.AsyncMock(side_effect=mgmt_rtg_req)
+        device.zdo,
+        "Mgmt_Rtg_req",
+        mock.AsyncMock(side_effect=mgmt_rtg_req, spec_set=device.zdo.Mgmt_Rtg_req),
     )
 
     with lqi_req_patch, rtg_req_patch:
@@ -136,8 +140,8 @@ async def test_scan_failures(
     with patch_device_tables(dev, neighbors=neighbors, routes=routes):
         await topology.scan()
 
-        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 1
-        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1
+        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 1 if not neighbors else 3
+        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1 if not routes else 3
 
     assert not topology.neighbors[dev.ieee]
     assert not topology.routes[dev.ieee]

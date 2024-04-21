@@ -12,7 +12,7 @@ def create_ebl_image(tags):
     # All images start with a 140-byte "0x0000" header
     tags = [(b"\x00\x00", b"jklm" * 35)] + tags
 
-    assert all([len(tag) == 2 for tag, value in tags])
+    assert all(len(tag) == 2 for tag, value in tags)
     image = b"".join(tag + len(value).to_bytes(2, "big") + value for tag, value in tags)
 
     # And end with a checksum
@@ -32,7 +32,7 @@ def create_gbl_image(tags):
     # All images start with an 8-byte header
     tags = [(b"\xEB\x17\xA6\x03", b"\x00\x00\x00\x03\x01\x01\x00\x00")] + tags
 
-    assert all([len(tag) == 4 for tag, value in tags])
+    assert all(len(tag) == 4 for tag, value in tags)
     image = b"".join(
         tag + len(value).to_bytes(4, "little") + value for tag, value in tags
     )
