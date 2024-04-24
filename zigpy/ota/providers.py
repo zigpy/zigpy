@@ -540,7 +540,7 @@ class Inovelli(BaseOtaProvider):
 
 
 class ThirdReality(BaseOtaProvider):
-    MANUFACTURER_IDS = [4659, 4877]
+    MANUFACTURER_IDS = []
 
     JSON_SCHEMA = {
         "type": "object",
@@ -574,6 +574,20 @@ class ThirdReality(BaseOtaProvider):
         "required": ["versions"],
     }
 
+    def __init__(self):
+        self.MANUFACTURER_IDS = asyncio.run(self.getThirdrealityManuIds())
+
+    async def getThirdrealityManuIds(self):
+        try:
+            session = aiohttp.ClientSession()
+            async with session.get("https://tr-zha.s3.amazonaws.com/manufacturer_id_list.json") as rsp:
+                manfids_list = await rsp.json()
+            return manfids_list["manufacturer_ids"]
+        except Exception as e:
+            raise e
+        finally:
+            await session.close()
+
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
@@ -591,6 +605,7 @@ class ThirdReality(BaseOtaProvider):
                 url=fw["url"],
                 source="ThirdReality",
             )
+
 
 
 class RemoteProvider(BaseOtaProvider):
