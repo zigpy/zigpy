@@ -540,7 +540,7 @@ class Inovelli(BaseOtaProvider):
 
 
 class ThirdReality(BaseOtaProvider):
-    MANUFACTURER_IDS = [4659,5127]
+    MANUFACTURER_IDS = [4659, 5127]
 
     JSON_SCHEMA = {
         "type": "object",
@@ -591,8 +591,6 @@ class ThirdReality(BaseOtaProvider):
                 url=fw["url"],
                 source="ThirdReality",
             )
-
-
 
 class RemoteProvider(BaseOtaProvider):
     JSON_SCHEMA = {
