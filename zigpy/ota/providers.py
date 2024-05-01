@@ -592,6 +592,7 @@ class ThirdReality(BaseOtaProvider):
                 source="ThirdReality",
             )
 
+
 class RemoteProvider(BaseOtaProvider):
     JSON_SCHEMA = {
         "$schema": "http://json-schema.org/draft-07/schema#",
