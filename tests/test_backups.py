@@ -213,6 +213,7 @@ def zigate_backup_json():
 
 
 def test_state_backup_as_dict(backup):
+    breakpoint()
     obj = json.loads(json.dumps(backup.as_dict()))
     restored_backup = type(backup).from_dict(obj)
     assert backup == restored_backup

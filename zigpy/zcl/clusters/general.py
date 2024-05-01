@@ -2241,16 +2241,11 @@ class Ota(Cluster):
         )
 
         device = self.endpoint.device
-        img = await device.application.ota.get_ota_image(device, cmd)
+        images_result = await device.application.ota.get_ota_images(device, cmd)
 
-        if img is None:
-            self.debug("No OTA image is available")
-            return
-
-        # send an event to listener(s) to let them know that an image is available
         device.listener_event(
-            "device_ota_update_available",
-            img,
+            "device_ota_image_query_result",
+            images_result,
             cmd.current_file_version,
         )
 

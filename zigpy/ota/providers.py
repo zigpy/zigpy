@@ -59,6 +59,7 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     max_current_file_version: int | None = None
     specificity: int | None = None
 
+    complete: bool = False
     source: str = "Unknown"
 
     async def _fetch(self) -> bytes:
