@@ -437,7 +437,9 @@ class OTA:
             for img in candidates
             if img.check_version(query_cmd.current_file_version)
         }
-        downgrades = {img.metadata: img for img in candidates if img not in upgrades}
+        downgrades = {
+            img.metadata: img for img in candidates if img.metadata not in upgrades
+        }
 
         # Only download upgrade images, downgrades are used just to indicate the latest
         # version
