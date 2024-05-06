@@ -2246,7 +2246,7 @@ class Ota(Cluster):
         device.listener_event(
             "device_ota_image_query_result",
             images_result,
-            cmd.current_file_version,
+            cmd,
         )
 
     async def _handle_image_block_req(self, hdr, cmd):
