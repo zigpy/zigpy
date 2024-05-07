@@ -184,7 +184,8 @@ class Trådfri(BaseOtaProvider):
     JSON_SCHEMA = json_schemas.TRADFRI_SCHEMA
 
     # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
-    SSL_CTX = ssl.create_default_context(
+    SSL_CTX = ssl.create_default_context()
+    SSL_CTX.load_verify_locations(
         cadata="""\
 -----BEGIN CERTIFICATE-----
 MIICGDCCAZ+gAwIBAgIUdfH0KDnENv/dEcxH8iVqGGGDqrowCgYIKoZIzj0EAwMw
@@ -202,7 +203,6 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
 -----END CERTIFICATE-----"""
     )
 
-
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
@@ -218,20 +218,38 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
             if "fw_image_type" not in fw:
                 continue
 
-            file_version_match = re.match(r".*_v(?P<v>\d+)_.*", fw["fw_binary_url"])
+            if "fw_sha3_256" in fw:
+                # New style IKEA
+                file_version_match = re.match(r".*_v(?P<v>\d+)_.*", fw["fw_binary_url"])
 
-            if file_version_match is None:
-                LOGGER.warning("Could not parse IKEA OTA JSON: %r", fw)
-                continue
+                if file_version_match is None:
+                    LOGGER.warning("Could not parse IKEA OTA JSON: %r", fw)
+                    continue
 
-            yield IkeaRemoteOtaImageMetadata(  # type: ignore[call-arg]
-                file_version=int(file_version_match.group("v"), 10),
-                manufacturer_id=self.MANUFACTURER_IDS[0],
-                image_type=fw["fw_image_type"],
-                checksum="sha3-256:" + fw["fw_sha3_256"],
-                url=fw["fw_binary_url"],
-                source="IKEA",
-            )
+                yield IkeaRemoteOtaImageMetadata(  # type: ignore[call-arg]
+                    file_version=int(file_version_match.group("v"), 10),
+                    manufacturer_id=self.MANUFACTURER_IDS[0],
+                    image_type=fw["fw_image_type"],
+                    checksum="sha3-256:" + fw["fw_sha3_256"],
+                    url=fw["fw_binary_url"],
+                    source="IKEA (DIRIGERA)",
+                )
+            else:
+                # Old style IKEA
+                if fw["fw_type"] != 2:
+                    continue
+
+                yield IkeaRemoteOtaImageMetadata(  # type: ignore[call-arg]
+                    file_version=(
+                        (fw["fw_file_version_MSB"] << 16)
+                        | (fw["fw_file_version_LSB"] << 0)
+                    ),
+                    manufacturer_id=fw["fw_manufacturer_id"],
+                    image_type=fw["fw_image_type"],
+                    file_size=fw["fw_filesize"],
+                    url=fw["fw_binary_url"],
+                    source="IKEA (TRÅDFRI)",
+                )
 
 
 class Ledvance(BaseOtaProvider):
