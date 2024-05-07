@@ -135,10 +135,12 @@ class IkeaRemoteOtaImageMetadata(RemoteOtaImageMetadata):
 
 
 class BaseOtaProvider:
+    DEFAULT_URL: str | None = None
     MANUFACTURER_IDS: list[int] = []
     INDEX_EXPIRATION_TIME = datetime.timedelta(hours=24)
 
-    def __init__(self):
+    def __init__(self, url: str | bool | None = None) -> None:
+        self._url = self.DEFAULT_URL if url in (True, None) else url
         self._index_last_updated = datetime.datetime.fromtimestamp(
             0, tz=datetime.timezone.utc
         )
@@ -175,6 +177,7 @@ class BaseOtaProvider:
 
 
 class Trådfri(BaseOtaProvider):
+    DEFAULT_URL = "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json"
     MANUFACTURER_IDS = [4476]
 
     # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
@@ -250,10 +253,7 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(
-            "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json",
-            ssl=self.SSL_CTX,
-        ) as rsp:
+        async with session.get(self._url, ssl=self.SSL_CTX) as rsp:
             # IKEA does not always respond with an appropriate Content-Type but the
             # response is always JSON
             fw_lst = await rsp.json(content_type=None)
@@ -282,6 +282,8 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
 
 
 class Ledvance(BaseOtaProvider):
+    DEFAULT_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
+
     # This isn't static but no more than these two have ever existed
     MANUFACTURER_IDS = [4489, 4364]
 
@@ -344,9 +346,7 @@ class Ledvance(BaseOtaProvider):
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(
-            "https://api.update.ledvance.com/v1/zigbee/firmwares"
-        ) as rsp:
+        async with session.get(self._url) as rsp:
             fw_lst = await rsp.json()
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
@@ -363,7 +363,8 @@ class Ledvance(BaseOtaProvider):
                 file_size=fw["length"],
                 model_names=(fw["productName"],),
                 url=(
-                    "https://api.update.ledvance.com/v1/zigbee/firmwares/download?"
+                    self._url
+                    + "/download?"
                     + urllib.parse.urlencode(
                         {
                             "Company": identity["company"],
@@ -381,6 +382,7 @@ class Ledvance(BaseOtaProvider):
 
 
 class Salus(BaseOtaProvider):
+    DEFAULT_URL = "https://eu.salusconnect.io/demo/default/status/firmware"
     MANUFACTURER_IDS = [4216, 43981]
 
     JSON_SCHEMA = {
@@ -408,9 +410,7 @@ class Salus(BaseOtaProvider):
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(
-            "https://eu.salusconnect.io/demo/default/status/firmware"
-        ) as rsp:
+        async with session.get(self._url) as rsp:
             fw_lst = await rsp.json()
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
@@ -432,6 +432,7 @@ class Salus(BaseOtaProvider):
 
 
 class Sonoff(BaseOtaProvider):
+    DEFAULT_URL = "https://zigbee-ota.sonoff.tech/releases/upgrade.json"
     MANUFACTURER_IDS = [4742]
 
     JSON_SCHEMA = {
@@ -460,9 +461,7 @@ class Sonoff(BaseOtaProvider):
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(
-            "https://zigbee-ota.sonoff.tech/releases/upgrade.json"
-        ) as rsp:
+        async with session.get(self._url) as rsp:
             fw_lst = await rsp.json()
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
@@ -480,6 +479,7 @@ class Sonoff(BaseOtaProvider):
 
 
 class Inovelli(BaseOtaProvider):
+    DEFAULT_URL = "https://files.inovelli.com/firmware/firmware-zha-v2.json"
     MANUFACTURER_IDS = [4655]
 
     JSON_SCHEMA = {
@@ -514,9 +514,7 @@ class Inovelli(BaseOtaProvider):
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(
-            "https://files.inovelli.com/firmware/firmware-zha-v2.json"
-        ) as rsp:
+        async with session.get(self._url) as rsp:
             fw_lst = await rsp.json()
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
@@ -540,6 +538,7 @@ class Inovelli(BaseOtaProvider):
 
 
 class ThirdReality(BaseOtaProvider):
+    DEFAULT_URL = "https://tr-zha.s3.amazonaws.com/firmware.json"
     MANUFACTURER_IDS = [4659, 4877, 5127]
 
     JSON_SCHEMA = {
@@ -577,7 +576,7 @@ class ThirdReality(BaseOtaProvider):
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get("https://tr-zha.s3.amazonaws.com/firmware.json") as rsp:
+        async with session.get(self._url) as rsp:
             fw_lst = await rsp.json()
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
@@ -649,8 +648,7 @@ class RemoteProvider(BaseOtaProvider):
     }
 
     def __init__(self, url: str, manufacturer_ids: list[int] | None = None):
-        super().__init__()
-        self.url = url
+        super().__init__(url)
         self.manufacturer_ids = manufacturer_ids
 
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
@@ -662,7 +660,7 @@ class RemoteProvider(BaseOtaProvider):
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(self.url) as rsp:
+        async with session.get(self._url) as rsp:
             index = await rsp.json()
 
         jsonschema.validate(index, self.JSON_SCHEMA)
@@ -684,7 +682,7 @@ class RemoteProvider(BaseOtaProvider):
                 changelog=fw.get("changelog"),
                 release_notes=fw.get("release_notes"),
                 specificity=fw.get("specificity"),
-                source=f"Remote provider ({self.url})",
+                source=f"Remote provider ({self._url})",
             )
 
             # To ensure all remote images can be used, extend the list of known
@@ -704,7 +702,7 @@ class RemoteProvider(BaseOtaProvider):
 
 class AdvancedFileProvider(BaseOtaProvider):
     def __init__(self, image_dir: pathlib.Path):
-        super().__init__()
+        super().__init__(url=None)
         self.image_dir = image_dir
 
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
@@ -799,7 +797,7 @@ class BaseZ2MProvider(BaseOtaProvider):
 
 class LocalZ2MProvider(BaseZ2MProvider):
     def __init__(self, index_file: pathlib.Path):
-        super().__init__()
+        super().__init__(url=None)
         self.index_file = index_file
 
     async def _load_index(
@@ -817,17 +815,17 @@ class LocalZ2MProvider(BaseZ2MProvider):
 
 
 class RemoteZ2MProvider(BaseZ2MProvider):
-    def __init__(self, url: str):
-        super().__init__()
-        self.url = url
+    DEFAULT_URL = (
+        "https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json"
+    )
 
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(self.url) as rsp:
+        async with session.get(self._url) as rsp:
             fw_lst = await rsp.json(content_type=None)
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
         for img in _load_z2m_index(fw_lst):
-            yield img.replace(source=f"Remote Z2M provider ({self.url})")
+            yield img.replace(source=f"Remote Z2M provider ({self._url})")
