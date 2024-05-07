@@ -52,9 +52,7 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     async def _fetch(self) -> bytes:
         raise NotImplementedError()
 
-    async def fetch(self) -> BaseOTAImage:
-        data = await self._fetch()
-
+    async def _validate(self, data: bytes) -> None:
         if self.file_size is not None and len(data) != self.file_size:
             raise ValueError(
                 f"Image size is invalid: expected {self.file_size} bytes,"
@@ -71,6 +69,10 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
                     f"Image checksum is invalid: expected {checksum},"
                     f" got {hasher.hexdigest()}"
                 )
+
+    async def fetch(self) -> BaseOTAImage:
+        data = await self._fetch()
+        await self._validate(data)
 
         image, _ = parse_ota_image(data)
         return image
@@ -133,6 +135,36 @@ class IkeaRemoteOtaImageMetadata(RemoteOtaImageMetadata):
             # Use IKEA's self-signed certificate
             async with req.get(self.url, ssl=Trådfri.SSL_CTX) as rsp:
                 return await rsp.read()
+
+
+@attrs.define(frozen=True, kw_only=True)
+class SignedIkeaRemoteOtaImageMetadata(IkeaRemoteOtaImageMetadata):
+    async def _validate(self, data: bytes) -> None:
+        ota_offset = int.from_bytes(data[16:20], "little")
+        ota_size = int.from_bytes(data[20:24], "little")
+        block_size = int.from_bytes(data[32:36], "little")
+        num_block_hashes = int.from_bytes(data[36:40], "little")
+
+        if (
+            not data.startswith(b"NGIS")
+            or self.file_size != ota_size
+            or 40 + 32 * num_block_hashes != ota_offset
+            or block_size * num_block_hashes < ota_size
+        ):
+            raise ValueError(f"Invalid signed container: {data[:32].hex()}")
+
+        loop = asyncio.get_running_loop()
+
+        for block_num in range(num_block_hashes):
+            offset = ota_offset + block_size * block_num
+            size = block_size - max(0, offset + block_size - (ota_offset + ota_size))
+
+            block = data[offset : offset + size]
+            expected_checksum = data[40 + 32 * block_num : 40 + 32 * (block_num + 1)]
+            hasher = await loop.run_in_executor(None, hashlib.sha256, block)
+
+            if hasher.digest() != expected_checksum:
+                raise ValueError(f"Block {block_num} has invalid checksum")
 
 
 class BaseOtaProvider:
@@ -239,7 +271,7 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
                 if fw["fw_type"] != 2:
                     continue
 
-                yield IkeaRemoteOtaImageMetadata(  # type: ignore[call-arg]
+                yield SignedIkeaRemoteOtaImageMetadata(  # type: ignore[call-arg]
                     file_version=(
                         (fw["fw_file_version_MSB"] << 16)
                         | (fw["fw_file_version_LSB"] << 0)
@@ -247,7 +279,7 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
                     manufacturer_id=fw["fw_manufacturer_id"],
                     image_type=fw["fw_image_type"],
                     file_size=fw["fw_filesize"],
-                    url=fw["fw_binary_url"],
+                    url=fw["fw_binary_url"].replace("http://", "https://", 1),
                     source="IKEA (TRÅDFRI)",
                 )
 
