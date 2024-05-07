@@ -304,6 +304,53 @@ async def test_trådfri_provider_old(index_url: str, index_file: str) -> None:
     assert img.serialize() in ota_contents
 
 
+async def test_trådfri_provider_bad_image() -> None:
+    index_json = (FILES_DIR / "ikea_version_info_old.json").read_text()
+    provider = providers.Trådfri("http://fw.ota.homesmart.ikea.net/feed/version_info.json")
+
+    with aioresponses() as mock_http:
+        mock_http.get("http://fw.ota.homesmart.ikea.net/feed/version_info.json", body=index_json, content_type="application/json")
+
+        index = await provider.load_index()
+
+    assert index is not None
+    meta = next(m for m in index if "TRADFRI-motion-sensor-2-" in m.url)
+    assert meta.image_type == 4552
+
+    ota_contents = (
+        FILES_DIR
+        / "external/dl/ikea/10039874-1.0-TRADFRI-motion-sensor-2-2.0.022.ota.ota.signed"
+    ).read_bytes()
+
+    # Flip a bit
+    with aioresponses() as mock_http:
+        flipped_contents = bytearray(ota_contents)
+        flipped_contents[50000] ^= 0b00010000
+
+        mock_http.get(
+            meta.url,
+            body=bytes(flipped_contents),
+            content_type="binary/octet-stream",
+        )
+
+        with pytest.raises(ValueError, match="Block 3 has invalid checksum"):
+            await meta.fetch()
+
+    # Mess with the header
+    with aioresponses() as mock_http:
+        bad_contents = bytearray(ota_contents)
+        bad_contents[0:4] = b'<htm'
+
+        mock_http.get(
+            meta.url,
+            body=bytes(bad_contents),
+            content_type="binary/octet-stream",
+        )
+
+        with pytest.raises(ValueError, match="Invalid signed container"):
+            await meta.fetch()
+
+
 async def test_trådfri_provider_invalid_json():
     index_json = (FILES_DIR / "ikea_version_info_dirigera.json").read_text()
     index_obj = json.loads(index_json) + [

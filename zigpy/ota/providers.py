@@ -151,7 +151,7 @@ class SignedIkeaRemoteOtaImageMetadata(IkeaRemoteOtaImageMetadata):
             or 40 + 32 * num_block_hashes != ota_offset
             or block_size * num_block_hashes < ota_size
         ):
-            raise ValueError(f"Invalid signed container: {data[:32].hex()}")
+            raise ValueError(f"Invalid signed container: {data[:16]!r}")
 
         loop = asyncio.get_running_loop()
 
