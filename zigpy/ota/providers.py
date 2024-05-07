@@ -21,6 +21,7 @@ import jsonschema
 from zigpy.ota.image import BaseOTAImage, parse_ota_image
 import zigpy.types as t
 import zigpy.util
+from zigpy.ota import json_schemas
 
 LOGGER = logging.getLogger(__name__)
 
@@ -135,8 +136,9 @@ class IkeaRemoteOtaImageMetadata(RemoteOtaImageMetadata):
 
 
 class BaseOtaProvider:
-    DEFAULT_URL: str | None = None
     MANUFACTURER_IDS: list[int] = []
+    DEFAULT_URL: str | None = None
+    JSON_SCHEMA: dict | None = None
     INDEX_EXPIRATION_TIME = datetime.timedelta(hours=24)
 
     def __init__(self, url: str | bool | None = None) -> None:
@@ -177,8 +179,9 @@ class BaseOtaProvider:
 
 
 class Trådfri(BaseOtaProvider):
-    DEFAULT_URL = "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json"
     MANUFACTURER_IDS = [4476]
+    DEFAULT_URL = "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json"
+    JSON_SCHEMA = json_schemas.TRADFRI_SCHEMA
 
     # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
     SSL_CTX = ssl.create_default_context(
@@ -199,56 +202,6 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
 -----END CERTIFICATE-----"""
     )
 
-    JSON_SCHEMA = {
-        "type": "array",
-        "items": {
-            "oneOf": [
-                {
-                    "type": "object",
-                    "properties": {
-                        "fw_image_type": {"type": "integer"},
-                        "fw_type": {"type": "integer"},
-                        "fw_sha3_256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-                        "fw_binary_url": {"type": "string", "format": "uri"},
-                    },
-                    "required": [
-                        "fw_image_type",
-                        "fw_type",
-                        "fw_sha3_256",
-                        "fw_binary_url",
-                    ],
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "fw_update_prio": {"type": "integer"},
-                        "fw_filesize": {"type": "integer"},
-                        "fw_type": {"type": "integer"},
-                        "fw_hotfix_version": {"type": "integer"},
-                        "fw_major_version": {"type": "integer"},
-                        "fw_binary_checksum": {
-                            "type": "string",
-                            "pattern": "^[a-f0-9]{128}$",
-                        },
-                        "fw_minor_version": {"type": "integer"},
-                        "fw_sha3_256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-                        "fw_binary_url": {"type": "string", "format": "uri"},
-                    },
-                    "required": [
-                        "fw_update_prio",
-                        "fw_filesize",
-                        "fw_type",
-                        "fw_hotfix_version",
-                        "fw_major_version",
-                        "fw_binary_checksum",
-                        "fw_minor_version",
-                        "fw_sha3_256",
-                        "fw_binary_url",
-                    ],
-                },
-            ]
-        },
-    }
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -282,66 +235,10 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
 
 
 class Ledvance(BaseOtaProvider):
-    DEFAULT_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
-
     # This isn't static but no more than these two have ever existed
     MANUFACTURER_IDS = [4489, 4364]
-
-    JSON_SCHEMA = {
-        "type": "object",
-        "properties": {
-            "firmwares": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "blob": {"type": ["null", "string"]},
-                        "identity": {
-                            "type": "object",
-                            "properties": {
-                                "company": {"type": "integer"},
-                                "product": {"type": "integer"},
-                                "version": {
-                                    "type": "object",
-                                    "properties": {
-                                        "major": {"type": "integer"},
-                                        "minor": {"type": "integer"},
-                                        "build": {"type": "integer"},
-                                        "revision": {"type": "integer"},
-                                    },
-                                    "required": ["major", "minor", "build", "revision"],
-                                },
-                            },
-                            "required": ["company", "product", "version"],
-                        },
-                        "releaseNotes": {"type": "string"},
-                        "shA256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-                        "name": {"type": "string"},
-                        "productName": {"type": "string"},
-                        "fullName": {"type": "string"},
-                        "extension": {"type": "string"},
-                        "released": {"type": "string", "format": "date-time"},
-                        "salesRegion": {"type": ["string", "null"]},
-                        "length": {"type": "integer"},
-                    },
-                    "required": [
-                        "blob",
-                        "identity",
-                        "releaseNotes",
-                        "shA256",
-                        "name",
-                        "productName",
-                        "fullName",
-                        "extension",
-                        "released",
-                        "salesRegion",
-                        "length",
-                    ],
-                },
-            }
-        },
-        "required": ["firmwares"],
-    }
+    DEFAULT_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
+    JSON_SCHEMA = json_schemas.LEDVANCE_SCHEMA
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -382,30 +279,9 @@ class Ledvance(BaseOtaProvider):
 
 
 class Salus(BaseOtaProvider):
-    DEFAULT_URL = "https://eu.salusconnect.io/demo/default/status/firmware"
     MANUFACTURER_IDS = [4216, 43981]
-
-    JSON_SCHEMA = {
-        "type": "object",
-        "properties": {
-            "versions": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "model": {"type": "string"},
-                        "version": {
-                            "type": "string",
-                            "pattern": "^(|[0-9A-F]{8}|[0-9A-F]{12})$",
-                        },
-                        "url": {"type": "string", "format": "uri"},
-                    },
-                    "required": ["model", "version", "url"],
-                },
-            }
-        },
-        "required": ["versions"],
-    }
+    DEFAULT_URL = "https://eu.salusconnect.io/demo/default/status/firmware"
+    JSON_SCHEMA = json_schemas.SALUS_SCHEMA
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -432,31 +308,9 @@ class Salus(BaseOtaProvider):
 
 
 class Sonoff(BaseOtaProvider):
-    DEFAULT_URL = "https://zigbee-ota.sonoff.tech/releases/upgrade.json"
     MANUFACTURER_IDS = [4742]
-
-    JSON_SCHEMA = {
-        "type": "array",
-        "items": {
-            "type": "object",
-            "properties": {
-                "fw_binary_url": {"type": "string", "format": "uri"},
-                "fw_file_version": {"type": "integer"},
-                "fw_filesize": {"type": "integer"},
-                "fw_image_type": {"type": "integer"},
-                "fw_manufacturer_id": {"type": "integer"},
-                "model_id": {"type": "string"},
-            },
-            "required": [
-                "fw_binary_url",
-                "fw_file_version",
-                "fw_filesize",
-                "fw_image_type",
-                "fw_manufacturer_id",
-                "model_id",
-            ],
-        },
-    }
+    DEFAULT_URL = "https://zigbee-ota.sonoff.tech/releases/upgrade.json"
+    JSON_SCHEMA = json_schemas.SONOFF_SCHEMA
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -479,37 +333,9 @@ class Sonoff(BaseOtaProvider):
 
 
 class Inovelli(BaseOtaProvider):
-    DEFAULT_URL = "https://files.inovelli.com/firmware/firmware-zha-v2.json"
     MANUFACTURER_IDS = [4655]
-
-    JSON_SCHEMA = {
-        "type": "object",
-        "patternProperties": {
-            "^[A-Z0-9_-]+$": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "version": {
-                            "type": "string",
-                            "pattern": "^(?:[0-9A-F]{8}|[0-9]+)$",
-                        },
-                        "channel": {"type": "string"},
-                        "firmware": {"type": "string", "format": "uri"},
-                        "manufacturer_id": {"type": "integer"},
-                        "image_type": {"type": "integer"},
-                    },
-                    "required": [
-                        "version",
-                        "channel",
-                        "firmware",
-                        "manufacturer_id",
-                        "image_type",
-                    ],
-                },
-            }
-        },
-    }
+    DEFAULT_URL = "https://files.inovelli.com/firmware/firmware-zha-v2.json"
+    JSON_SCHEMA = json_schemas.INOVELLI_SCHEMA
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -538,40 +364,9 @@ class Inovelli(BaseOtaProvider):
 
 
 class ThirdReality(BaseOtaProvider):
-    DEFAULT_URL = "https://tr-zha.s3.amazonaws.com/firmware.json"
     MANUFACTURER_IDS = [4659, 4877, 5127]
-
-    JSON_SCHEMA = {
-        "type": "object",
-        "properties": {
-            "versions": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "modelId": {"type": "string"},
-                        "url": {"type": "string", "format": "uri"},
-                        "version": {
-                            "type": "string",
-                            "pattern": "^\\d+\\.\\d+\\.\\d+$",
-                        },
-                        "imageType": {"type": "integer"},
-                        "manufacturerId": {"type": "integer"},
-                        "fileVersion": {"type": "integer"},
-                    },
-                    "required": [
-                        "modelId",
-                        "url",
-                        "version",
-                        "imageType",
-                        "manufacturerId",
-                        "fileVersion",
-                    ],
-                },
-            }
-        },
-        "required": ["versions"],
-    }
+    DEFAULT_URL = "https://tr-zha.s3.amazonaws.com/firmware.json"
+    JSON_SCHEMA = json_schemas.THIRD_REALITY_SCHEMA
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -593,59 +388,7 @@ class ThirdReality(BaseOtaProvider):
 
 
 class RemoteProvider(BaseOtaProvider):
-    JSON_SCHEMA = {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object",
-        "properties": {
-            "firmwares": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "binary_url": {"type": "string", "format": "uri"},
-                        "file_version": {"type": "integer"},
-                        "file_size": {"type": "integer"},
-                        "image_type": {"type": "integer"},
-                        "manufacturer_names": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
-                        "model_names": {"type": "array", "items": {"type": "string"}},
-                        "manufacturer_id": {"type": "integer"},
-                        "changelog": {"type": "string"},
-                        "release_notes": {"type": "string"},
-                        "checksum": {
-                            "type": "string",
-                            "pattern": "^sha3-256:[a-f0-9]{64}$",
-                        },
-                        "min_hardware_version": {"type": "integer"},
-                        "max_hardware_version": {"type": "integer"},
-                        "min_current_file_version": {"type": "integer"},
-                        "max_current_file_version": {"type": "integer"},
-                        "specificity": {"type": "integer"},
-                    },
-                    "required": [
-                        "binary_url",
-                        "file_version",
-                        "file_size",
-                        "image_type",
-                        # "manufacturer_names",
-                        # "model_names",
-                        "manufacturer_id",
-                        # "changelog",
-                        "checksum",
-                        # "min_hardware_version",
-                        # "max_hardware_version",
-                        # "min_current_file_version",
-                        # "max_current_file_version",
-                        # "release_notes",
-                        # "specificity",
-                    ],
-                },
-            }
-        },
-        "required": ["firmwares"],
-    }
+    JSON_SCHEMA = json_schemas.REMOTE_PROVIDER_SCHEMA
 
     def __init__(self, url: str, manufacturer_ids: list[int] | None = None):
         super().__init__(url)
@@ -763,33 +506,7 @@ def _load_z2m_index(index: dict, *, index_root: pathlib.Path | None = None):
 
 
 class BaseZ2MProvider(BaseOtaProvider):
-    JSON_SCHEMA = {
-        "type": "array",
-        "items": {
-            "type": "object",
-            "properties": {
-                "fileVersion": {"type": "integer"},
-                "fileSize": {"type": "integer"},
-                "manufacturerCode": {"type": "integer"},
-                "imageType": {"type": "integer"},
-                "sha512": {"type": "string", "pattern": "^[a-f0-9]{128}$"},
-                "url": {"type": "string", "format": "uri"},
-                "path": {"type": "string"},
-                "minFileVersion": {"type": "integer"},
-                "maxFileVersion": {"type": "integer"},
-                "manufacturerName": {"type": "array", "items": {"type": "string"}},
-                "modelId": {"type": "string"},
-            },
-            "required": [
-                "fileVersion",
-                "fileSize",
-                "manufacturerCode",
-                "imageType",
-                "sha512",
-                "url",
-            ],
-        },
-    }
+    JSON_SCHEMA = json_schemas.Z2M_SCHEMA
 
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
         return True
