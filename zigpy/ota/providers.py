@@ -25,6 +25,13 @@ from zigpy.ota import json_schemas
 
 LOGGER = logging.getLogger(__name__)
 
+OTA_PROVIDER_TYPES: dict[str, type[BaseOtaProvider]] = {}
+
+
+def register_provider(provider: type[BaseOtaProvider]) -> None:
+    """Register a new OTA provider."""
+    OTA_PROVIDER_TYPES[provider.NAME] = provider
+
 
 @attrs.define(frozen=True, kw_only=True)
 class BaseOtaImageMetadata(t.BaseDataclassMixin):
@@ -168,22 +175,32 @@ class SignedIkeaRemoteOtaImageMetadata(IkeaRemoteOtaImageMetadata):
 
 
 class BaseOtaProvider:
+    NAME: str
     MANUFACTURER_IDS: list[int] = []
     DEFAULT_URL: str | None = None
     JSON_SCHEMA: dict | None = None
     INDEX_EXPIRATION_TIME = datetime.timedelta(hours=24)
 
-    def __init__(self, url: str | bool | None = None) -> None:
+    def __init__(
+        self,
+        url: str | bool | None = None,
+        manufacturer_ids: list[int] | None = None,
+    ) -> None:
         self._url = self.DEFAULT_URL if url in (True, None) else url
         self._index_last_updated = datetime.datetime.fromtimestamp(
             0, tz=datetime.timezone.utc
         )
 
-    def compatible_with_device(self, device: zigpy.device.Device) -> bool:
-        if not self.MANUFACTURER_IDS:
-            raise NotImplementedError
+        if manufacturer_ids is not None:
+            self.manufacturer_ids = manufacturer_ids
+        else:
+            self.manufacturer_ids = self.MANUFACTURER_IDS[:]
 
-        return device.manufacturer_id in self.MANUFACTURER_IDS
+    def compatible_with_device(self, device: zigpy.device.Device) -> bool:
+        if not self.manufacturer_ids:
+            return True
+
+        return device.manufacturer_id in self.manufacturer_ids
 
     async def load_index(self) -> list[BaseOtaImageMetadata] | None:
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -209,8 +226,19 @@ class BaseOtaProvider:
 
         raise NotImplementedError
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
 
+        return (
+            self._url == other._url
+            and self.manufacturer_ids == other.manufacturer_ids
+        )
+
+
+@register_provider
 class Trådfri(BaseOtaProvider):
+    NAME = "ikea"
     MANUFACTURER_IDS = [4476]
     DEFAULT_URL = "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json"
     JSON_SCHEMA = json_schemas.TRADFRI_SCHEMA
@@ -284,7 +312,9 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
                 )
 
 
+@register_provider
 class Ledvance(BaseOtaProvider):
+    NAME = "ledvance"
     # This isn't static but no more than these two have ever existed
     MANUFACTURER_IDS = [4489, 4364]
     DEFAULT_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
@@ -357,7 +387,9 @@ class Salus(BaseOtaProvider):
             )
 
 
+@register_provider
 class Sonoff(BaseOtaProvider):
+    NAME = "sonoff"
     MANUFACTURER_IDS = [4742]
     DEFAULT_URL = "https://zigbee-ota.sonoff.tech/releases/upgrade.json"
     JSON_SCHEMA = json_schemas.SONOFF_SCHEMA
@@ -382,7 +414,9 @@ class Sonoff(BaseOtaProvider):
             )
 
 
+@register_provider
 class Inovelli(BaseOtaProvider):
+    NAME = "inovelli"
     MANUFACTURER_IDS = [4655]
     DEFAULT_URL = "https://files.inovelli.com/firmware/firmware-zha-v2.json"
     JSON_SCHEMA = json_schemas.INOVELLI_SCHEMA
@@ -413,7 +447,9 @@ class Inovelli(BaseOtaProvider):
                 )
 
 
+@register_provider
 class ThirdReality(BaseOtaProvider):
+    NAME = "thirdreality"
     MANUFACTURER_IDS = [4659, 4877, 5127]
     DEFAULT_URL = "https://tr-zha.s3.amazonaws.com/firmware.json"
     JSON_SCHEMA = json_schemas.THIRD_REALITY_SCHEMA
@@ -437,76 +473,164 @@ class ThirdReality(BaseOtaProvider):
             )
 
 
-class RemoteProvider(BaseOtaProvider):
-    JSON_SCHEMA = json_schemas.REMOTE_PROVIDER_SCHEMA
+class BaseZigpyProvider(BaseOtaProvider):
+    JSON_SCHEMA = json_schemas.REMOTE_SCHEMA
 
-    def __init__(self, url: str, manufacturer_ids: list[int] | None = None):
-        super().__init__(url)
-        self.manufacturer_ids = manufacturer_ids
+    @classmethod
+    def _load_zigpy_index(cls, index: dict, *, index_root: pathlib.Path | None = None):
+        jsonschema.validate(index, cls.JSON_SCHEMA)
 
-    def compatible_with_device(self, device: zigpy.device.Device) -> bool:
-        if self.manufacturer_ids is None:
-            return True
+        for fw in index:
+            shared_kwargs = {
+                "file_version": fw["file_version"],
+                "manufacturer_id": fw["manufacturer_id"],
+                "image_type": fw["image_type"],
+                "manufacturer_names": tuple(fw.get("manufacturer_names", [])),
+                "model_names": tuple(fw.get("model_names", [])),
+                "checksum": fw["checksum"],
+                "file_size": fw["file_size"],
+                "min_hardware_version": fw.get("min_hardware_version"),
+                "max_hardware_version": fw.get("max_hardware_version"),
+                "min_current_file_version": fw.get("min_current_file_version"),
+                "max_current_file_version": fw.get("max_current_file_version"),
+                "changelog": fw.get("changelog"),
+                "release_notes": fw.get("release_notes"),
+                "specificity": fw.get("specificity"),
+                "source": "",  # Set in a subclass
+            }
 
-        return device.manufacturer_id in self.manufacturer_ids
+            if "path" in fw and index_root is not None:
+                yield LocalOtaImageMetadata(**shared_kwargs, path=index_root / fw["path"])  # type: ignore[call-arg]
+            else:
+                yield RemoteOtaImageMetadata(**shared_kwargs, url=fw["url"])  # type: ignore[call-arg]
+
+
+@register_provider
+class LocalZigpyProvider(BaseZigpyProvider):
+    NAME = "zigpy_local"
+
+    def __init__(self, index_file: pathlib.Path, manufacturer_ids: list[int] | None = None):
+        super().__init__(url=None, manufacturer_ids=manufacturer_ids)
+        self.index_file = index_file
+
+    async def _load_index(
+        self, session: aiohttp.ClientSession
+    ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
+        index_text = await asyncio.get_running_loop().run_in_executor(
+            None, self.index_file.read_text
+        )
+        index = json.loads(index_text)
+
+        for img in self._load_zigpy_index(index, index_root=self.index_file.parent):
+            yield img.replace(source=f"Local zigpy provider ({self.index_file})")
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            super().__eq__(other)
+            and self.index_file == other.index_file
+        )
+
+
+
+@register_provider
+class RemoteZigpyProvider(BaseZigpyProvider):
+    NAME = "zigpy"
 
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         async with session.get(self._url) as rsp:
-            index = await rsp.json()
+            fw_lst = await rsp.json(content_type=None)
 
-        jsonschema.validate(index, self.JSON_SCHEMA)
+        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
-        for fw in index["firmwares"]:
-            meta = RemoteOtaImageMetadata(  # type: ignore[call-arg]
-                file_version=fw["file_version"],
-                manufacturer_id=fw["manufacturer_id"],
-                image_type=fw["image_type"],
-                manufacturer_names=tuple(fw.get("manufacturer_names", [])),
-                model_names=tuple(fw.get("model_names", [])),
-                checksum=fw["checksum"],
-                file_size=fw["file_size"],
-                url=fw["binary_url"],
-                min_hardware_version=fw.get("min_hardware_version"),
-                max_hardware_version=fw.get("max_hardware_version"),
-                min_current_file_version=fw.get("min_current_file_version"),
-                max_current_file_version=fw.get("max_current_file_version"),
-                changelog=fw.get("changelog"),
-                release_notes=fw.get("release_notes"),
-                specificity=fw.get("specificity"),
-                source=f"Remote provider ({self._url})",
-            )
-
-            # To ensure all remote images can be used, extend the list of known
-            # manufacturer IDs at runtime if we encounter a new one
-            if (
-                self.manufacturer_ids is not None
-                and meta.manufacturer_id not in self.manufacturer_ids
-            ):
-                LOGGER.warning(
-                    "Remote provider manufacturer ID is unknown: %d",
-                    meta.manufacturer_id,
-                )
-                self.manufacturer_ids.append(meta.manufacturer_id)
-
-            yield meta
+        for img in self._load_zigpy_index(fw_lst):
+            yield img.replace(source=f"Remote zigpy provider ({self._url})")
 
 
-class AdvancedFileProvider(BaseOtaProvider):
-    def __init__(self, image_dir: pathlib.Path):
+class BaseZ2MProvider(BaseOtaProvider):
+    JSON_SCHEMA = json_schemas.Z2M_SCHEMA
+
+    @classmethod
+    def _load_z2m_index(cls, index: dict, *, index_root: pathlib.Path | None = None):
+        jsonschema.validate(index, cls.JSON_SCHEMA)
+
+        for fw in index:
+            shared_kwargs = {
+                "file_version": fw["fileVersion"],
+                "manufacturer_id": fw["manufacturerCode"],
+                "image_type": fw["imageType"],
+                "checksum": "sha512:" + fw["sha512"],
+                "file_size": fw["fileSize"],
+                "manufacturer_names": tuple(fw.get("manufacturerName", [])),
+                "model_names": tuple([fw["modelId"]] if "modelId" in fw else []),
+                "min_current_file_version": fw.get("minFileVersion"),
+                "max_current_file_version": fw.get("maxFileVersion"),
+                "source": "",  # Set in a subclass
+            }
+
+            if "path" in fw and index_root is not None:
+                yield LocalOtaImageMetadata(**shared_kwargs, path=index_root / fw["path"])  # type: ignore[call-arg]
+            else:
+                yield RemoteOtaImageMetadata(**shared_kwargs, url=fw["url"])  # type: ignore[call-arg]
+
+
+@register_provider
+class LocalZ2MProvider(BaseZ2MProvider):
+    NAME = "z2m_local"
+
+    def __init__(self, index_file: pathlib.Path):
         super().__init__(url=None)
-        self.image_dir = image_dir
+        self.index_file = index_file
 
-    def compatible_with_device(self, device: zigpy.device.Device) -> bool:
-        return True
+    async def _load_index(
+        self, session: aiohttp.ClientSession
+    ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
+        index_text = await asyncio.get_running_loop().run_in_executor(
+            None, self.index_file.read_text
+        )
+        index = json.loads(index_text)
+
+        for img in self._load_z2m_index(index, index_root=self.index_file.parent):
+            yield img.replace(source=f"Local Z2M provider ({self.index_file})")
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            super().__eq__(other)
+            and self.index_file == other.index_file
+        )
+
+@register_provider
+class RemoteZ2MProvider(BaseZ2MProvider):
+    NAME = "z2m"
+    DEFAULT_URL = (
+        "https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json"
+    )
+
+    async def _load_index(
+        self, session: aiohttp.ClientSession
+    ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
+        async with session.get(self._url) as rsp:
+            fw_lst = await rsp.json(content_type=None)
+
+        for img in self._load_z2m_index(fw_lst):
+            yield img.replace(source=f"Remote Z2M provider ({self._url})")
+
+
+@register_provider
+class AdvancedFileProvider(BaseOtaProvider):
+    NAME = "advanced"
+
+    def __init__(self, path: pathlib.Path, manufacturer_ids: list[int] | None = None):
+        super().__init__(url=None, manufacturer_ids=manufacturer_ids)
+        self.path = path
 
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         loop = asyncio.get_running_loop()
 
-        for path in self.image_dir.rglob("*"):
+        for path in self.path.rglob("*"):
             if not path.is_file():
                 continue
 
@@ -530,69 +654,11 @@ class AdvancedFileProvider(BaseOtaProvider):
                 file_size=len(data),
                 min_hardware_version=image.header.minimum_hardware_version,
                 max_hardware_version=image.header.maximum_hardware_version,
-                source=f"Advanced file provider ({self.image_dir})",
+                source=f"Advanced file provider ({self.path})",
             )
 
-
-def _load_z2m_index(index: dict, *, index_root: pathlib.Path | None = None):
-    for obj in index:
-        shared_kwargs = {
-            "file_version": obj["fileVersion"],
-            "manufacturer_id": obj["manufacturerCode"],
-            "image_type": obj["imageType"],
-            "checksum": "sha512:" + obj["sha512"],
-            "file_size": obj["fileSize"],
-            "manufacturer_names": tuple(obj.get("manufacturerName", [])),
-            "model_names": tuple([obj["modelId"]] if "modelId" in obj else []),
-            "min_current_file_version": obj.get("minFileVersion"),
-            "max_current_file_version": obj.get("maxFileVersion"),
-            "source": "",  # Set in a subclass
-        }
-
-        if "path" in obj and index_root is not None:
-            yield LocalOtaImageMetadata(**shared_kwargs, path=index_root / obj["path"])  # type: ignore[call-arg]
-        else:
-            yield RemoteOtaImageMetadata(**shared_kwargs, url=obj["url"])  # type: ignore[call-arg]
-
-
-class BaseZ2MProvider(BaseOtaProvider):
-    JSON_SCHEMA = json_schemas.Z2M_SCHEMA
-
-    def compatible_with_device(self, device: zigpy.device.Device) -> bool:
-        return True
-
-
-class LocalZ2MProvider(BaseZ2MProvider):
-    def __init__(self, index_file: pathlib.Path):
-        super().__init__(url=None)
-        self.index_file = index_file
-
-    async def _load_index(
-        self, session: aiohttp.ClientSession
-    ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        index_text = await asyncio.get_running_loop().run_in_executor(
-            None, self.index_file.read_text
+    def __eq__(self, other: object) -> bool:
+        return (
+            super().__eq__(other)
+            and self.path == other.path
         )
-        index = json.loads(index_text)
-
-        jsonschema.validate(index, self.JSON_SCHEMA)
-
-        for img in _load_z2m_index(index, index_root=self.index_file.parent):
-            yield img.replace(source=f"Local Z2M provider ({self.index_file})")
-
-
-class RemoteZ2MProvider(BaseZ2MProvider):
-    DEFAULT_URL = (
-        "https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json"
-    )
-
-    async def _load_index(
-        self, session: aiohttp.ClientSession
-    ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(self._url) as rsp:
-            fw_lst = await rsp.json(content_type=None)
-
-        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
-
-        for img in _load_z2m_index(fw_lst):
-            yield img.replace(source=f"Remote Z2M provider ({self._url})")

@@ -9,6 +9,8 @@ import voluptuous as vol
 
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
+import zigpy.ota.providers
+import zigpy.config
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -87,14 +89,14 @@ def cv_deprecated(message: str) -> typing.Callable[[typing.Any], typing.Any]:
     return wrapper
 
 
-def cv_exact_object(expected_value: str) -> typing.Callable[[typing.Any], bool]:
+def cv_exact_object(expected_value: str) -> typing.Callable[[typing.Any], typing.Literal[True]]:
     """Factory function for creating an exact object comparison validator."""
 
-    def wrapper(obj: typing.Any) -> typing.Any:
+    def wrapper(obj: typing.Any) -> typing.Literal[True]:
         if obj != expected_value:
-            return False
+            raise vol.Invalid(f"Expected {expected_value!r}, got {obj!r}")
 
-        return expected_value
+        return True
 
     return wrapper
 
@@ -117,3 +119,37 @@ def cv_folder(value: str) -> pathlib.Path:
         raise vol.Invalid(f"{value} is not a directory")
 
     return path
+
+
+def cv_ota_provider(obj: dict) -> zigpy.ota.providers.BaseOtaProvider:
+    """Validate OTA provider."""
+    provider_type = obj.get(zigpy.config.CONF_OTA_PROVIDER_TYPE)
+
+    if provider_type not in zigpy.ota.providers.OTA_PROVIDERS:
+        raise vol.Invalid(f"Unsupported OTA provider type: {provider_type!r}")
+
+    provider_cls = zigpy.ota.providers.OTA_PROVIDERS[provider_type]
+
+    if provider_type in (
+        "ikea",
+        "ledvance",
+        "sonoff",
+        "inovelli",
+        "thirdreality",
+        "z2m",
+    ):
+        return provider_cls(**zigpy.config.SCHEMA_OTA_PROVIDER_URL(obj))
+    elif provider_type in (
+        "z2m_local",
+        "zigpy_local",
+    ):
+        return provider_cls(**zigpy.config.SCHEMA_OTA_PROVIDER_JSON_INDEX(obj))
+    elif provider_type in ("advanced_file",):
+        config = zigpy.config.SCHEMA_OTA_PROVIDER_FOLDER(obj)
+        config.pop("warning")  # The warning is just for the user
+
+        return provider_cls(**config)
+    elif provider_type in ("zigpy",):
+        return provider_cls(**zigpy.config.SCHEMA_OTA_PROVIDER_URL_REQUIRED(obj))
+    else:
+        raise RuntimeError("Unknown OTA provider type")  # pragma: no cover

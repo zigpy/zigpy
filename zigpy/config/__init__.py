@@ -20,20 +20,11 @@ from zigpy.config.defaults import (
     CONF_NWK_TC_LINK_KEY_DEFAULT,
     CONF_NWK_UPDATE_ID_DEFAULT,
     CONF_NWK_VALIDATE_SETTINGS_DEFAULT,
-    CONF_OTA_ADVANCED_DIR_DEFAULT,
-    CONF_OTA_ALLOW_ADVANCED_DIR_DEFAULT,
+    CONF_OTA_PROVIDERS_DEFAULT,
+    CONF_OTA_EXTRA_PROVIDERS_DEFAULT,
     CONF_OTA_BROADCAST_ENABLED_DEFAULT,
     CONF_OTA_BROADCAST_INITIAL_DELAY_DEFAULT,
     CONF_OTA_BROADCAST_INTERVAL_DEFAULT,
-    CONF_OTA_ENABLED_DEFAULT,
-    CONF_OTA_IKEA_DEFAULT,
-    CONF_OTA_INOVELLI_DEFAULT,
-    CONF_OTA_LEDVANCE_DEFAULT,
-    CONF_OTA_SALUS_DEFAULT,
-    CONF_OTA_SONOFF_DEFAULT,
-    CONF_OTA_THIRDREALITY_DEFAULT,
-    CONF_OTA_Z2M_LOCAL_INDEX_DEFAULT,
-    CONF_OTA_Z2M_REMOTE_INDEX_DEFAULT,
     CONF_SOURCE_ROUTING_DEFAULT,
     CONF_STARTUP_ENERGY_SCAN_DEFAULT,
     CONF_TOPO_SCAN_ENABLED_DEFAULT,
@@ -50,6 +41,7 @@ from zigpy.config.validators import (
     cv_json_file,
     cv_key,
     cv_simple_descriptor,
+    cv_ota_provider,
 )
 import zigpy.types as t
 
@@ -74,25 +66,15 @@ CONF_NWK_BACKUP_ENABLED = "backup_enabled"
 CONF_NWK_BACKUP_PERIOD = "backup_period"
 CONF_NWK_VALIDATE_SETTINGS = "validate_network_settings"
 CONF_OTA = "ota"
-CONF_OTA_ADVANCED_DIR = "advanced_ota_dir"
-CONF_OTA_ALLOW_ADVANCED_DIR = "allow_advanced_ota_dir"
+CONF_OTA_PROVIDERS = "providers"
+CONF_OTA_EXTRA_PROVIDERS = "extra_providers"
+CONF_OTA_PROVIDER_TYPE = "type"
+CONF_OTA_PROVIDER_URL = "url"
+CONF_OTA_PROVIDER_PATH = "path"
+CONF_OTA_PROVIDER_WARNING = "warning"
 CONF_OTA_BROADCAST_ENABLED = "broadcast_enabled"
 CONF_OTA_BROADCAST_INITIAL_DELAY = "broadcast_initial_delay"
 CONF_OTA_BROADCAST_INTERVAL = "broadcast_interval"
-CONF_OTA_DIR = "otau_dir"
-CONF_OTA_ENABLED = "enabled"
-CONF_OTA_IKEA = "ikea_provider"
-CONF_OTA_IKEA_URL = "ikea_update_url"
-CONF_OTA_INOVELLI = "inovelli_provider"
-CONF_OTA_LEDVANCE = "ledvance_provider"
-CONF_OTA_SALUS = "salus_provider"
-CONF_OTA_SONOFF = "sonoff_provider"
-CONF_OTA_SONOFF_URL = "sonoff_update_url"
-CONF_OTA_THIRDREALITY = "thirdreality_provider"
-CONF_OTA_REMOTE_PROVIDERS = "remote_providers"
-CONF_OTA_Z2M_LOCAL_INDEX = "z2m_local_index"
-CONF_OTA_Z2M_REMOTE_INDEX = "z2m_remote_index"
-CONF_OTA_PROVIDER_URL = "url"
 CONF_OTA_PROVIDER_MANUF_IDS = "manufacturer_ids"
 CONF_SOURCE_ROUTING = "source_routing"
 CONF_STARTUP_ENERGY_SCAN = "startup_energy_scan"
@@ -106,6 +88,23 @@ CONF_OTA_ALLOW_ADVANCED_DIR_STRING = (
     " Some OTA updates can be mistakenly applied to the wrong device, breaking it."
     " I am consciously using this at my own risk."
 )
+
+# Deprecated keys
+CONF_OTA_ADVANCED_DIR = "advanced_ota_dir"
+CONF_OTA_ALLOW_ADVANCED_DIR = "allow_advanced_ota_dir"
+CONF_OTA_DIR = "otau_dir"
+CONF_OTA_ENABLED = "enabled"
+CONF_OTA_IKEA = "ikea_provider"
+CONF_OTA_IKEA_URL = "ikea_update_url"
+CONF_OTA_INOVELLI = "inovelli_provider"
+CONF_OTA_LEDVANCE = "ledvance_provider"
+CONF_OTA_SALUS = "salus_provider"
+CONF_OTA_SONOFF = "sonoff_provider"
+CONF_OTA_SONOFF_URL = "sonoff_update_url"
+CONF_OTA_THIRDREALITY = "thirdreality_provider"
+CONF_OTA_REMOTE_PROVIDERS = "remote_providers"
+CONF_OTA_Z2M_LOCAL_INDEX = "z2m_local_index"
+CONF_OTA_Z2M_REMOTE_INDEX = "z2m_remote_index"
 
 
 SCHEMA_DEVICE = vol.Schema(
@@ -148,15 +147,39 @@ SCHEMA_NETWORK = vol.Schema(
     }
 )
 
-SCHEMA_OTA_PROVIDER = vol.Schema(
+SCHEMA_OTA_PROVIDER_URL = vol.Schema(
     {
-        vol.Required(CONF_OTA_PROVIDER_URL): str,
-        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
+        vol.Required(CONF_OTA_PROVIDER_TYPE): str,
+        vol.Optional(CONF_OTA_PROVIDER_URL): vol.URL(),
     }
 )
 
+SCHEMA_OTA_PROVIDER_URL_REQUIRED = vol.Schema(
+    {
+        vol.Required(CONF_OTA_PROVIDER_TYPE): str,
+        vol.Required(CONF_OTA_PROVIDER_URL): vol.URL(),
+    }
+)
+
+SCHEMA_OTA_PROVIDER_JSON_INDEX = vol.Schema(
+    {
+        vol.Required(CONF_OTA_PROVIDER_TYPE): str,
+        vol.Optional(CONF_OTA_PROVIDER_PATH): cv_json_file,
+    }
+)
+
+SCHEMA_OTA_PROVIDER_FOLDER = vol.Schema(
+    {
+        vol.Required(CONF_OTA_PROVIDER_TYPE): str,
+        vol.Optional(CONF_OTA_PROVIDER_PATH): cv_folder,
+        vol.Optional(CONF_OTA_PROVIDER_WARNING): cv_exact_object(
+            CONF_OTA_ALLOW_ADVANCED_DIR_STRING
+        ),
+    }
+)
+
+
 SCHEMA_OTA = {
-    vol.Optional(CONF_OTA_ENABLED, default=CONF_OTA_ENABLED_DEFAULT): cv_boolean,
     vol.Optional(
         CONF_OTA_BROADCAST_ENABLED, default=CONF_OTA_BROADCAST_ENABLED_DEFAULT
     ): cv_boolean,
@@ -167,42 +190,128 @@ SCHEMA_OTA = {
     vol.Optional(
         CONF_OTA_BROADCAST_INTERVAL, default=CONF_OTA_BROADCAST_INTERVAL_DEFAULT
     ): vol.All(vol.Coerce(float), vol.Range(min=0)),
-    vol.Optional(CONF_OTA_IKEA, default=CONF_OTA_IKEA_DEFAULT): vol.Any(cv_boolean, vol.Url()),
-    vol.Optional(CONF_OTA_INOVELLI, default=CONF_OTA_INOVELLI_DEFAULT): vol.Any(cv_boolean, vol.Url()),
-    vol.Optional(CONF_OTA_LEDVANCE, default=CONF_OTA_LEDVANCE_DEFAULT): vol.Any(cv_boolean, vol.Url()),
-    vol.Optional(CONF_OTA_SALUS, default=CONF_OTA_SALUS_DEFAULT): vol.Any(cv_boolean, vol.Url()),
-    vol.Optional(CONF_OTA_SONOFF, default=CONF_OTA_SONOFF_DEFAULT): vol.Any(cv_boolean, vol.Url()),
-    vol.Optional(
-        CONF_OTA_THIRDREALITY, default=CONF_OTA_THIRDREALITY_DEFAULT
-    ): vol.Any(cv_boolean, vol.Url()),
-    vol.Optional(CONF_OTA_REMOTE_PROVIDERS, default=[]): [SCHEMA_OTA_PROVIDER],
+    vol.Optional(CONF_OTA_PROVIDERS, default=CONF_OTA_PROVIDERS_DEFAULT): [
+        cv_ota_provider
+    ],
+    vol.Optional(CONF_OTA_EXTRA_PROVIDERS, default=CONF_OTA_EXTRA_PROVIDERS_DEFAULT): [
+        cv_ota_provider
+    ],
+}
+
+SCHEMA_OTA_DEPRECATED = {
+    vol.Optional(CONF_OTA_ENABLED): vol.Any(
+        None,
+        cv_deprecated(
+            "The OTA `enabled` key is deprecated. To disable OTA, clear the list of OTA"
+            " providers: `providers: []`"
+        ),
+        cv_boolean,
+    ),
+    # Deprecated OTA providers
+    vol.Optional(CONF_OTA_IKEA): vol.Any(
+        None,
+        cv_deprecated(
+            "The `ikea_provider` key is deprecated, migrate your configuration"
+            " to the `providers` list instead: `providers: [{'type': 'ikea'}]`"
+        ),
+        cv_boolean,
+        vol.Url(),
+    ),
+    vol.Optional(CONF_OTA_INOVELLI): vol.Any(
+        None,
+        cv_deprecated(
+            "The `inovelli_provider` key is deprecated, migrate your configuration"
+            " to the `providers` list instead: `providers: [{'type': 'inovelli'}]`"
+        ),
+        cv_boolean,
+        vol.Url(),
+    ),
+    vol.Optional(CONF_OTA_LEDVANCE): vol.Any(
+        None,
+        cv_deprecated(
+            "The `ledvance_provider` key is deprecated, migrate your configuration"
+            " to the `providers` list instead: `providers: [{'type': 'ledvance'}]`"
+        ),
+        cv_boolean,
+        vol.Url(),
+    ),
+    vol.Optional(CONF_OTA_SALUS): vol.Any(
+        None,
+        cv_deprecated(
+            "The `salus_provider` key is deprecated, migrate your configuration"
+            " to the `providers` list instead: `providers: [{'type': 'salus'}]`"
+        ),
+        cv_boolean,
+        vol.Url(),
+    ),
+    vol.Optional(CONF_OTA_SONOFF): vol.Any(
+        None,
+        cv_deprecated(
+            "The `sonoff_provider` key is deprecated, migrate your configuration"
+            " to the `providers` list instead: `providers: [{'type': 'sonoff'}]`"
+        ),
+        cv_boolean,
+        vol.Url(),
+    ),
+    vol.Optional(CONF_OTA_THIRDREALITY): vol.Any(
+        None,
+        cv_deprecated(
+            "The `thirdreality_provider` key is deprecated, migrate your configuration"
+            " to the `providers` list instead: `providers: [{'type': 'thirdreality'}]`"
+        ),
+        cv_boolean,
+        vol.Url(),
+    ),
     # Z2M OTA providers
-    vol.Optional(
-        CONF_OTA_Z2M_LOCAL_INDEX, default=CONF_OTA_Z2M_LOCAL_INDEX_DEFAULT
-    ): vol.Any(None, cv_json_file),
-    vol.Optional(
-        CONF_OTA_Z2M_REMOTE_INDEX, default=CONF_OTA_Z2M_REMOTE_INDEX_DEFAULT
-    ): vol.Any(None, cv_boolean, vol.Url()),
+    vol.Optional(CONF_OTA_Z2M_LOCAL_INDEX): vol.Any(
+        None,
+        cv_deprecated(
+            "The `z2m_local_index` key is deprecated, migrate your configuration"
+            " to the `providers` list instead: `providers: [{'type': 'z2m_local',"
+            " 'path': '/path/to/index.json'}]`"
+        ),
+        cv_json_file,
+    ),
+    vol.Optional(CONF_OTA_Z2M_REMOTE_INDEX): vol.Any(
+        None,
+        cv_deprecated(
+            "The `z2m_index` key is deprecated, migrate your configuration"
+            " to the `providers` list instead: `providers: [{'type': 'z2m'}]"
+        ),
+        cv_boolean,
+        vol.Url(),
+    ),
     # Advanced OTA config. You *do not* need to use this unless you're testing a new
     # OTA firmware that has no known metadata.
-    vol.Optional(CONF_OTA_ADVANCED_DIR, default=CONF_OTA_ADVANCED_DIR_DEFAULT): vol.Any(
-        None, cv_folder
+    vol.Optional(CONF_OTA_ADVANCED_DIR): vol.Any(
+        None,
+        cv_deprecated(
+            "The `advanced_ota_dir` key is deprecated, migrate your configuration"
+            " to the `providers` list instead: `providers: [{'type': 'advanced',"
+            " 'warning': 'I understand ...'}]"
+        ),
+        cv_folder,
     ),
-    vol.Optional(
-        CONF_OTA_ALLOW_ADVANCED_DIR, default=CONF_OTA_ALLOW_ADVANCED_DIR_DEFAULT
-    ): vol.All(cv_exact_object(CONF_OTA_ALLOW_ADVANCED_DIR_STRING)),
-    # Deprecated keys
+    # Unused keys
+    vol.Optional(CONF_OTA_ALLOW_ADVANCED_DIR): vol.Any(
+        None,
+        cv_deprecated(
+            "The `allow_advanced_ota_dir` key is deprecated, migrate your configuration"
+            " to the `providers` list instead: `providers: [{'type': 'advanced',"
+            " 'warning': 'I understand ...'}]"
+        ),
+        cv_exact_object(CONF_OTA_ALLOW_ADVANCED_DIR_STRING),
+    ),
     vol.Optional(CONF_OTA_SONOFF_URL): vol.Any(
         cv_deprecated("The `sonoff_update_url` key has been removed")
     ),
     vol.Optional(CONF_OTA_DIR): vol.Any(
         cv_deprecated(
-            "`otau_dir` has been removed, use `z2m_local_index` or `z2m_remote_index`"
+            "`otau_dir` has been removed, use the `z2m` or `zigpy` providers instead"
         )
     ),
     vol.Optional(CONF_OTA_IKEA_URL): vol.All(
-        cv_deprecated("The `ikea_update_url` key is deprecated and should be removed"),
-        vol.Url(),
+        cv_deprecated("The `ikea_update_url` key has been removed")
     ),
 }
 
@@ -210,7 +319,7 @@ ZIGPY_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_DATABASE, default=None): vol.Any(None, str),
         vol.Optional(CONF_NWK, default={}): SCHEMA_NETWORK,
-        vol.Optional(CONF_OTA, default={}): SCHEMA_OTA,
+        vol.Optional(CONF_OTA, default={}): {**SCHEMA_OTA, **SCHEMA_OTA_DEPRECATED},
         vol.Optional(
             CONF_TOPO_SCAN_PERIOD, default=CONF_TOPO_SCAN_PERIOD_DEFAULT
         ): vol.All(int, vol.Range(min=20)),

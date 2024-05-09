@@ -19,6 +19,8 @@ from zigpy.config import (
     CONF_OTA_PROVIDER_URL,
     CONF_OTA_REMOTE_PROVIDERS,
     CONF_OTA_SALUS,
+CONF_OTA_PROVIDERS,
+CONF_OTA_EXTRA_PROVIDERS,
     CONF_OTA_SONOFF,
     CONF_OTA_THIRDREALITY,
     CONF_OTA_Z2M_LOCAL_INDEX,
@@ -254,62 +256,83 @@ class OTA:
             self._broadcast_loop_task = None
 
     def _register_providers(self, config: dict[str, typing.Any]) -> None:
-        if config[CONF_OTA_ALLOW_ADVANCED_DIR]:
-            self.register_provider(
-                zigpy.ota.providers.AdvancedFileProvider(config[CONF_OTA_ADVANCED_DIR])
-            )
+        # Config gets a little complicated when you mix deprecated config and the new
+        # providers config. We treat every option as an "intent" and merge configs in
+        # the end.
+        with_providers: list[zigpy.ota.providers.BaseOtaProvider] = [
+            *config[CONF_OTA_PROVIDERS],
+            *config[CONF_OTA_EXTRA_PROVIDERS],
+        ]
+        without_providers: list[zigpy.ota.providers.BaseOtaProvider] = []
 
-        if config[CONF_OTA_IKEA]:
-            self.register_provider(
-                zigpy.ota.providers.Trådfri(url=config[CONF_OTA_IKEA])
-            )
+        def register_deprecated_provider(
+            enabled: bool | str | None,
+            provider: type[zigpy.ota.providers.BaseOtaProvider],
+            config: dict[str, typing.Any] | None = None,
+        ) -> None:
+            if isinstance(enabled, str) and not config:
+                config = {"url": enabled}
+                enabled = True
 
-        if config[CONF_OTA_INOVELLI]:
-            self.register_provider(
-                zigpy.ota.providers.Inovelli(url=config[CONF_OTA_INOVELLI])
-            )
+            if enabled is True:
+                with_providers.append(provider(config))
+            elif enabled is False:
+                without_providers.append(provider(config))
+            elif config is None:
+                pass
 
-        if config[CONF_OTA_LEDVANCE]:
-            self.register_provider(
-                zigpy.ota.providers.Ledvance(url=config[CONF_OTA_LEDVANCE])
-            )
-
-        if config[CONF_OTA_SALUS]:
-            self.register_provider(
-                zigpy.ota.providers.Salus(url=config[CONF_OTA_SALUS])
-            )
-
-        if config[CONF_OTA_SONOFF]:
-            self.register_provider(
-                zigpy.ota.providers.Sonoff(url=config[CONF_OTA_SONOFF])
-            )
-
-        if config[CONF_OTA_THIRDREALITY]:
-            self.register_provider(
-                zigpy.ota.providers.ThirdReality(url=config[CONF_OTA_THIRDREALITY])
-            )
+        register_deprecated_provider(
+            enabled=config[CONF_OTA_IKEA],
+            provider=zigpy.ota.providers.Trådfri,
+        )
+        register_deprecated_provider(
+            enabled=config[CONF_OTA_INOVELLI],
+            provider=zigpy.ota.providers.Inovelli,
+        )
+        register_deprecated_provider(
+            enabled=config[CONF_OTA_LEDVANCE],
+            provider=zigpy.ota.providers.Ledvance,
+        )
+        register_deprecated_provider(
+            enabled=config[CONF_OTA_SALUS],
+            provider=zigpy.ota.providers.Salus,
+        )
+        register_deprecated_provider(
+            enabled=config[CONF_OTA_SONOFF],
+            provider=zigpy.ota.providers.Sonoff,
+        )
+        register_deprecated_provider(
+            enabled=config[CONF_OTA_THIRDREALITY],
+            provider=zigpy.ota.providers.ThirdReality,
+        )
+        register_deprecated_provider(
+            enabled=config[CONF_OTA_Z2M_REMOTE_INDEX],
+            provider=zigpy.ota.providers.RemoteZ2MProvider,
+        )
+        register_deprecated_provider(
+            enabled=config[CONF_OTA_ALLOW_ADVANCED_DIR],
+            provider=zigpy.ota.providers.AdvancedFileProvider,
+            config={"path": config[CONF_OTA_ADVANCED_DIR]},
+        )
+        register_deprecated_provider(
+            enabled=config[CONF_OTA_Z2M_LOCAL_INDEX],
+            provider=zigpy.ota.providers.LocalZ2MProvider,
+            config={"index_file": config[CONF_OTA_Z2M_LOCAL_INDEX]},
+        )
 
         for provider_config in config[CONF_OTA_REMOTE_PROVIDERS]:
-            self.register_provider(
-                zigpy.ota.providers.RemoteProvider(
-                    url=provider_config[CONF_OTA_PROVIDER_URL],
-                    manufacturer_ids=provider_config[CONF_OTA_PROVIDER_MANUF_IDS],
-                )
+            register_deprecated_provider(
+                enabled=True,
+                provider=zigpy.ota.providers.RemoteProvider,
+                config={
+                    "url": provider_config[CONF_OTA_PROVIDER_URL],
+                    "manufacturer_ids": provider_config[CONF_OTA_PROVIDER_MANUF_IDS],
+                },
             )
 
-        if config[CONF_OTA_Z2M_LOCAL_INDEX]:
-            self.register_provider(
-                zigpy.ota.providers.LocalZ2MProvider(
-                    index_file=config[CONF_OTA_Z2M_LOCAL_INDEX]
-                )
-            )
-
-        if config[CONF_OTA_Z2M_REMOTE_INDEX]:
-            self.register_provider(
-                zigpy.ota.providers.RemoteZ2MProvider(
-                    url=config[CONF_OTA_Z2M_REMOTE_INDEX]
-                )
-            )
+        for provider in with_providers:
+            if provider not in without_providers:
+                self.register_provider(provider)
 
     def register_provider(self, provider: zigpy.ota.providers.BaseOtaProvider) -> None:
         """Register a new OTA provider."""
