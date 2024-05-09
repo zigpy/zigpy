@@ -23,6 +23,7 @@ from zigpy.config.defaults import (
     CONF_OTA_PROVIDERS_DEFAULT,
     CONF_OTA_EXTRA_PROVIDERS_DEFAULT,
     CONF_OTA_BROADCAST_ENABLED_DEFAULT,
+    CONF_OTA_ENABLED_DEFAULT,
     CONF_OTA_BROADCAST_INITIAL_DELAY_DEFAULT,
     CONF_OTA_BROADCAST_INTERVAL_DEFAULT,
     CONF_SOURCE_ROUTING_DEFAULT,
@@ -67,6 +68,7 @@ CONF_NWK_BACKUP_PERIOD = "backup_period"
 CONF_NWK_VALIDATE_SETTINGS = "validate_network_settings"
 CONF_OTA = "ota"
 CONF_OTA_PROVIDERS = "providers"
+CONF_OTA_ENABLED = "enabled"
 CONF_OTA_EXTRA_PROVIDERS = "extra_providers"
 CONF_OTA_PROVIDER_TYPE = "type"
 CONF_OTA_PROVIDER_URL = "url"
@@ -93,7 +95,6 @@ CONF_OTA_ALLOW_ADVANCED_DIR_STRING = (
 CONF_OTA_ADVANCED_DIR = "advanced_ota_dir"
 CONF_OTA_ALLOW_ADVANCED_DIR = "allow_advanced_ota_dir"
 CONF_OTA_DIR = "otau_dir"
-CONF_OTA_ENABLED = "enabled"
 CONF_OTA_IKEA = "ikea_provider"
 CONF_OTA_IKEA_URL = "ikea_update_url"
 CONF_OTA_INOVELLI = "inovelli_provider"
@@ -150,14 +151,16 @@ SCHEMA_NETWORK = vol.Schema(
 SCHEMA_OTA_PROVIDER_URL = vol.Schema(
     {
         vol.Required(CONF_OTA_PROVIDER_TYPE): str,
-        vol.Optional(CONF_OTA_PROVIDER_URL): vol.URL(),
+        vol.Optional(CONF_OTA_PROVIDER_URL): vol.Url(),
+        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
     }
 )
 
 SCHEMA_OTA_PROVIDER_URL_REQUIRED = vol.Schema(
     {
         vol.Required(CONF_OTA_PROVIDER_TYPE): str,
-        vol.Required(CONF_OTA_PROVIDER_URL): vol.URL(),
+        vol.Required(CONF_OTA_PROVIDER_URL): vol.Url(),
+        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
     }
 )
 
@@ -165,6 +168,7 @@ SCHEMA_OTA_PROVIDER_JSON_INDEX = vol.Schema(
     {
         vol.Required(CONF_OTA_PROVIDER_TYPE): str,
         vol.Optional(CONF_OTA_PROVIDER_PATH): cv_json_file,
+        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
     }
 )
 
@@ -175,11 +179,20 @@ SCHEMA_OTA_PROVIDER_FOLDER = vol.Schema(
         vol.Optional(CONF_OTA_PROVIDER_WARNING): cv_exact_object(
             CONF_OTA_ALLOW_ADVANCED_DIR_STRING
         ),
+        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
     }
 )
 
+# Deprecated
+SCHEMA_OTA_PROVIDER_REMOTE = vol.Schema(
+    {
+        vol.Required(CONF_OTA_PROVIDER_URL): str,
+        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
+    }
+)
 
-SCHEMA_OTA = {
+SCHEMA_OTA_BASE = {
+    vol.Optional(CONF_OTA_ENABLED, default=CONF_OTA_ENABLED_DEFAULT): cv_boolean,
     vol.Optional(
         CONF_OTA_BROADCAST_ENABLED, default=CONF_OTA_BROADCAST_ENABLED_DEFAULT
     ): cv_boolean,
@@ -199,108 +212,134 @@ SCHEMA_OTA = {
 }
 
 SCHEMA_OTA_DEPRECATED = {
-    vol.Optional(CONF_OTA_ENABLED): vol.Any(
-        None,
-        cv_deprecated(
-            "The OTA `enabled` key is deprecated. To disable OTA, clear the list of OTA"
-            " providers: `providers: []`"
-        ),
-        cv_boolean,
-    ),
     # Deprecated OTA providers
-    vol.Optional(CONF_OTA_IKEA): vol.Any(
-        None,
-        cv_deprecated(
-            "The `ikea_provider` key is deprecated, migrate your configuration"
-            " to the `providers` list instead: `providers: [{'type': 'ikea'}]`"
-        ),
-        cv_boolean,
-        vol.Url(),
+    vol.Optional(CONF_OTA_IKEA): (
+        vol.All(
+            cv_deprecated(
+                "The `ikea_provider` key is deprecated, migrate your configuration"
+                " to the `extra_providers` list instead: `extra_providers: [{'type': 'ikea'}]`"
+            ),
+            vol.Any(
+                cv_boolean,
+                vol.Url(),
+            ),
+        )
     ),
-    vol.Optional(CONF_OTA_INOVELLI): vol.Any(
-        None,
-        cv_deprecated(
-            "The `inovelli_provider` key is deprecated, migrate your configuration"
-            " to the `providers` list instead: `providers: [{'type': 'inovelli'}]`"
-        ),
-        cv_boolean,
-        vol.Url(),
+    vol.Optional(CONF_OTA_INOVELLI): (
+        vol.All(
+            cv_deprecated(
+                "The `inovelli_provider` key is deprecated, migrate your configuration"
+                " to the `extra_providers` list instead: `extra_providers: [{'type': 'inovelli'}]`"
+            ),
+            vol.Any(
+                cv_boolean,
+                vol.Url(),
+            ),
+        )
     ),
-    vol.Optional(CONF_OTA_LEDVANCE): vol.Any(
-        None,
-        cv_deprecated(
-            "The `ledvance_provider` key is deprecated, migrate your configuration"
-            " to the `providers` list instead: `providers: [{'type': 'ledvance'}]`"
-        ),
-        cv_boolean,
-        vol.Url(),
+    vol.Optional(CONF_OTA_LEDVANCE): (
+        vol.All(
+            cv_deprecated(
+                "The `ledvance_provider` key is deprecated, migrate your configuration"
+                " to the `extra_providers` list instead: `extra_providers: [{'type': 'ledvance'}]`"
+            ),
+            vol.Any(
+                cv_boolean,
+                vol.Url(),
+            ),
+        )
     ),
-    vol.Optional(CONF_OTA_SALUS): vol.Any(
-        None,
-        cv_deprecated(
-            "The `salus_provider` key is deprecated, migrate your configuration"
-            " to the `providers` list instead: `providers: [{'type': 'salus'}]`"
-        ),
-        cv_boolean,
-        vol.Url(),
+    vol.Optional(CONF_OTA_SALUS): (
+        vol.All(
+            cv_deprecated(
+                "The `salus_provider` key is deprecated, migrate your configuration"
+                " to the `extra_providers` list instead: `extra_providers: [{'type': 'salus'}]`"
+            ),
+            vol.Any(
+                cv_boolean,
+                vol.Url(),
+            ),
+        )
     ),
-    vol.Optional(CONF_OTA_SONOFF): vol.Any(
-        None,
-        cv_deprecated(
-            "The `sonoff_provider` key is deprecated, migrate your configuration"
-            " to the `providers` list instead: `providers: [{'type': 'sonoff'}]`"
-        ),
-        cv_boolean,
-        vol.Url(),
+    vol.Optional(CONF_OTA_SONOFF): (
+        vol.All(
+            cv_deprecated(
+                "The `sonoff_provider` key is deprecated, migrate your configuration"
+                " to the `extra_providers` list instead: `extra_providers: [{'type': 'sonoff'}]`"
+            ),
+            vol.Any(
+                cv_boolean,
+                vol.Url(),
+            ),
+        )
     ),
-    vol.Optional(CONF_OTA_THIRDREALITY): vol.Any(
-        None,
-        cv_deprecated(
-            "The `thirdreality_provider` key is deprecated, migrate your configuration"
-            " to the `providers` list instead: `providers: [{'type': 'thirdreality'}]`"
-        ),
-        cv_boolean,
-        vol.Url(),
+    vol.Optional(CONF_OTA_THIRDREALITY): (
+        vol.All(
+            cv_deprecated(
+                "The `thirdreality_provider` key is deprecated, migrate your configuration"
+                " to the `extra_providers` list instead: `extra_providers: [{'type': 'thirdreality'}]`"
+            ),
+            vol.Any(
+                cv_boolean,
+                vol.Url(),
+            ),
+        )
     ),
     # Z2M OTA providers
-    vol.Optional(CONF_OTA_Z2M_LOCAL_INDEX): vol.Any(
-        None,
-        cv_deprecated(
-            "The `z2m_local_index` key is deprecated, migrate your configuration"
-            " to the `providers` list instead: `providers: [{'type': 'z2m_local',"
-            " 'path': '/path/to/index.json'}]`"
-        ),
-        cv_json_file,
+    vol.Optional(CONF_OTA_Z2M_LOCAL_INDEX): (
+        vol.All(
+            cv_deprecated(
+                "The `z2m_local_index` key is deprecated, migrate your configuration"
+                " to the `extra_providers` list instead: `extra_providers: [{'type': 'z2m_local',"
+                " 'path': '/path/to/index.json'}]`"
+            ),
+            cv_json_file,
+        )
     ),
-    vol.Optional(CONF_OTA_Z2M_REMOTE_INDEX): vol.Any(
-        None,
-        cv_deprecated(
-            "The `z2m_index` key is deprecated, migrate your configuration"
-            " to the `providers` list instead: `providers: [{'type': 'z2m'}]"
-        ),
-        cv_boolean,
-        vol.Url(),
+    vol.Optional(CONF_OTA_Z2M_REMOTE_INDEX): (
+        vol.All(
+            cv_deprecated(
+                "The `z2m_index` key is deprecated, migrate your configuration"
+                " to the `extra_providers` list instead: `extra_providers: [{'type': 'z2m'}]"
+            ),
+            vol.Any(
+                cv_boolean,
+                vol.Url(),
+            ),
+        )
     ),
     # Advanced OTA config. You *do not* need to use this unless you're testing a new
     # OTA firmware that has no known metadata.
-    vol.Optional(CONF_OTA_ADVANCED_DIR): vol.Any(
-        None,
-        cv_deprecated(
-            "The `advanced_ota_dir` key is deprecated, migrate your configuration"
-            " to the `providers` list instead: `providers: [{'type': 'advanced',"
-            " 'warning': 'I understand ...'}]"
-        ),
-        cv_folder,
+    vol.Optional(CONF_OTA_ADVANCED_DIR): (
+        vol.All(
+            cv_deprecated(
+                "The `advanced_ota_dir` key is deprecated, migrate your configuration"
+                " to the `extra_providers` list instead: `extra_providers: [{'type': 'advanced',"
+                " 'warning': 'I understand ...'}]"
+            ),
+            cv_folder,
+        )
     ),
     # Unused keys
-    vol.Optional(CONF_OTA_ALLOW_ADVANCED_DIR): vol.Any(
-        None,
-        cv_deprecated(
-            "The `allow_advanced_ota_dir` key is deprecated, migrate your configuration"
-            " to the `providers` list instead: `providers: [{'type': 'advanced',"
-            " 'warning': 'I understand ...'}]"
-        ),
-        cv_exact_object(CONF_OTA_ALLOW_ADVANCED_DIR_STRING),
+    vol.Optional(CONF_OTA_ALLOW_ADVANCED_DIR): (
+        vol.All(
+            cv_deprecated(
+                "The `allow_advanced_ota_dir` key is deprecated, migrate your configuration"
+                " to the `extra_providers` list instead: `extra_providers: [{'type': 'advanced',"
+                " 'warning': 'I understand ...'}]"
+            ),
+            cv_exact_object(CONF_OTA_ALLOW_ADVANCED_DIR_STRING),
+        )
+    ),
+    vol.Optional(CONF_OTA_REMOTE_PROVIDERS): (
+        vol.All(
+            cv_deprecated(
+                "The `remote_providers` key is deprecated, migrate your configuration"
+                " to the `extra_providers` list instead: `extra_providers: [{'type': 'remote',"
+                " 'url': 'https://example.com'}]`"
+            ),
+            [SCHEMA_OTA_PROVIDER_REMOTE],
+        )
     ),
     vol.Optional(CONF_OTA_SONOFF_URL): vol.Any(
         cv_deprecated("The `sonoff_update_url` key has been removed")
@@ -315,11 +354,13 @@ SCHEMA_OTA_DEPRECATED = {
     ),
 }
 
+SCHEMA_OTA = vol.Schema({**SCHEMA_OTA_BASE, **SCHEMA_OTA_DEPRECATED})
+
 ZIGPY_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_DATABASE, default=None): vol.Any(None, str),
         vol.Optional(CONF_NWK, default={}): SCHEMA_NETWORK,
-        vol.Optional(CONF_OTA, default={}): {**SCHEMA_OTA, **SCHEMA_OTA_DEPRECATED},
+        vol.Optional(CONF_OTA, default={}): SCHEMA_OTA,
         vol.Optional(
             CONF_TOPO_SCAN_PERIOD, default=CONF_TOPO_SCAN_PERIOD_DEFAULT
         ): vol.All(int, vol.Range(min=20)),

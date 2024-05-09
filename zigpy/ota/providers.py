@@ -28,9 +28,10 @@ LOGGER = logging.getLogger(__name__)
 OTA_PROVIDER_TYPES: dict[str, type[BaseOtaProvider]] = {}
 
 
-def register_provider(provider: type[BaseOtaProvider]) -> None:
+def register_provider(provider: type[BaseOtaProvider]) -> type[BaseOtaProvider]:
     """Register a new OTA provider."""
     OTA_PROVIDER_TYPES[provider.NAME] = provider
+    return provider
 
 
 @attrs.define(frozen=True, kw_only=True)
@@ -234,6 +235,9 @@ class BaseOtaProvider:
             self._url == other._url
             and self.manufacturer_ids == other.manufacturer_ids
         )
+
+    # We don't want the above `__eq__` to change object hashing semantics
+    __hash__ = object.__hash__
 
 
 @register_provider
@@ -474,13 +478,13 @@ class ThirdReality(BaseOtaProvider):
 
 
 class BaseZigpyProvider(BaseOtaProvider):
-    JSON_SCHEMA = json_schemas.REMOTE_SCHEMA
+    JSON_SCHEMA = json_schemas.REMOTE_PROVIDER_SCHEMA
 
     @classmethod
     def _load_zigpy_index(cls, index: dict, *, index_root: pathlib.Path | None = None):
         jsonschema.validate(index, cls.JSON_SCHEMA)
 
-        for fw in index:
+        for fw in index["firmwares"]:
             shared_kwargs = {
                 "file_version": fw["file_version"],
                 "manufacturer_id": fw["manufacturer_id"],
@@ -502,7 +506,7 @@ class BaseZigpyProvider(BaseOtaProvider):
             if "path" in fw and index_root is not None:
                 yield LocalOtaImageMetadata(**shared_kwargs, path=index_root / fw["path"])  # type: ignore[call-arg]
             else:
-                yield RemoteOtaImageMetadata(**shared_kwargs, url=fw["url"])  # type: ignore[call-arg]
+                yield RemoteOtaImageMetadata(**shared_kwargs, url=fw["binary_url"])  # type: ignore[call-arg]
 
 
 @register_provider
@@ -526,7 +530,7 @@ class LocalZigpyProvider(BaseZigpyProvider):
 
     def __eq__(self, other: object) -> bool:
         return (
-            super().__eq__(other)
+            super() == other
             and self.index_file == other.index_file
         )
 
@@ -596,7 +600,7 @@ class LocalZ2MProvider(BaseZ2MProvider):
 
     def __eq__(self, other: object) -> bool:
         return (
-            super().__eq__(other)
+            super() == other
             and self.index_file == other.index_file
         )
 
@@ -659,6 +663,6 @@ class AdvancedFileProvider(BaseOtaProvider):
 
     def __eq__(self, other: object) -> bool:
         return (
-            super().__eq__(other)
+            super() == other
             and self.path == other.path
         )

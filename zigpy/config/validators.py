@@ -9,7 +9,6 @@ import voluptuous as vol
 
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
-import zigpy.ota.providers
 import zigpy.config
 
 _LOGGER = logging.getLogger(__name__)
@@ -123,6 +122,8 @@ def cv_folder(value: str) -> pathlib.Path:
 
 def cv_ota_provider(obj: dict) -> zigpy.ota.providers.BaseOtaProvider:
     """Validate OTA provider."""
+    import zigpy.ota.providers
+
     provider_type = obj.get(zigpy.config.CONF_OTA_PROVIDER_TYPE)
 
     if provider_type not in zigpy.ota.providers.OTA_PROVIDERS:

@@ -13,18 +13,22 @@ from tests.conftest import make_app
 
 
 async def test_ota_disabled(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "index.json").write_text("{}")
+
     # Enable all the providers
     ota = zigpy.ota.OTA(
-        config={
+        config=config.SCHEMA_OTA({
             config.CONF_OTA_ENABLED: False,  # But disable OTA
             config.CONF_OTA_ADVANCED_DIR: tmp_path,
-            config.CONF_OTA_ALLOW_ADVANCED_DIR: True,
+            config.CONF_OTA_ALLOW_ADVANCED_DIR: config.CONF_OTA_ALLOW_ADVANCED_DIR_STRING,
             config.CONF_OTA_IKEA: True,
             config.CONF_OTA_INOVELLI: True,
             config.CONF_OTA_LEDVANCE: True,
             config.CONF_OTA_SALUS: True,
             config.CONF_OTA_SONOFF: True,
             config.CONF_OTA_THIRDREALITY: True,
+            config.CONF_OTA_PROVIDERS: [],
+            config.CONF_OTA_EXTRA_PROVIDERS: [],
             config.CONF_OTA_REMOTE_PROVIDERS: [
                 {
                     config.CONF_OTA_PROVIDER_URL: "https://example.org/remote_index.json",
@@ -33,7 +37,7 @@ async def test_ota_disabled(tmp_path: pathlib.Path) -> None:
             ],
             config.CONF_OTA_Z2M_LOCAL_INDEX: tmp_path / "index.json",
             config.CONF_OTA_Z2M_REMOTE_INDEX: "https://example.org/z2m_index.json",
-        },
+        }),
         application=None,
     )
 
@@ -42,19 +46,23 @@ async def test_ota_disabled(tmp_path: pathlib.Path) -> None:
 
 
 async def test_ota_enabled(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "index.json").write_text("{}")
+
     # Enable all the providers
     ota = zigpy.ota.OTA(
-        config={
+        config=config.SCHEMA_OTA({
             config.CONF_OTA_ENABLED: True,
             config.CONF_OTA_BROADCAST_ENABLED: False,
             config.CONF_OTA_ADVANCED_DIR: tmp_path,
-            config.CONF_OTA_ALLOW_ADVANCED_DIR: True,
+            config.CONF_OTA_ALLOW_ADVANCED_DIR: config.CONF_OTA_ALLOW_ADVANCED_DIR_STRING,
             config.CONF_OTA_IKEA: True,
             config.CONF_OTA_INOVELLI: True,
             config.CONF_OTA_LEDVANCE: True,
             config.CONF_OTA_SALUS: True,
             config.CONF_OTA_SONOFF: True,
             config.CONF_OTA_THIRDREALITY: True,
+            config.CONF_OTA_PROVIDERS: [],
+            config.CONF_OTA_EXTRA_PROVIDERS: [],
             config.CONF_OTA_REMOTE_PROVIDERS: [
                 {
                     config.CONF_OTA_PROVIDER_URL: "https://example.org/remote_index.json",
@@ -63,7 +71,7 @@ async def test_ota_enabled(tmp_path: pathlib.Path) -> None:
             ],
             config.CONF_OTA_Z2M_LOCAL_INDEX: tmp_path / "index.json",
             config.CONF_OTA_Z2M_REMOTE_INDEX: "https://example.org/z2m_index.json",
-        },
+        }),
         application=None,
     )
 

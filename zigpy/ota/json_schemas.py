@@ -303,6 +303,7 @@ REMOTE_PROVIDER_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "binary_url": {"type": "string", "format": "uri"},
+                    "path": {"type": "string"},
                     "file_version": {"type": "integer"},
                     "file_size": {"type": "integer"},
                     "image_type": {"type": "integer"},
@@ -325,7 +326,8 @@ REMOTE_PROVIDER_SCHEMA = {
                     "specificity": {"type": "integer"},
                 },
                 "required": [
-                    "binary_url",
+                    # "binary_url",
+                    # "path",
                     "file_version",
                     "file_size",
                     "image_type",

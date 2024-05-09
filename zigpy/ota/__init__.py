@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pathlib
 import asyncio
 import dataclasses
 import logging
@@ -19,8 +20,8 @@ from zigpy.config import (
     CONF_OTA_PROVIDER_URL,
     CONF_OTA_REMOTE_PROVIDERS,
     CONF_OTA_SALUS,
-CONF_OTA_PROVIDERS,
-CONF_OTA_EXTRA_PROVIDERS,
+    CONF_OTA_PROVIDERS,
+    CONF_OTA_EXTRA_PROVIDERS,
     CONF_OTA_SONOFF,
     CONF_OTA_THIRDREALITY,
     CONF_OTA_Z2M_LOCAL_INDEX,
@@ -282,48 +283,48 @@ class OTA:
                 pass
 
         register_deprecated_provider(
-            enabled=config[CONF_OTA_IKEA],
+            enabled=config.get(CONF_OTA_IKEA),
             provider=zigpy.ota.providers.Trådfri,
         )
         register_deprecated_provider(
-            enabled=config[CONF_OTA_INOVELLI],
+            enabled=config.get(CONF_OTA_INOVELLI),
             provider=zigpy.ota.providers.Inovelli,
         )
         register_deprecated_provider(
-            enabled=config[CONF_OTA_LEDVANCE],
+            enabled=config.get(CONF_OTA_LEDVANCE),
             provider=zigpy.ota.providers.Ledvance,
         )
         register_deprecated_provider(
-            enabled=config[CONF_OTA_SALUS],
+            enabled=config.get(CONF_OTA_SALUS),
             provider=zigpy.ota.providers.Salus,
         )
         register_deprecated_provider(
-            enabled=config[CONF_OTA_SONOFF],
+            enabled=config.get(CONF_OTA_SONOFF),
             provider=zigpy.ota.providers.Sonoff,
         )
         register_deprecated_provider(
-            enabled=config[CONF_OTA_THIRDREALITY],
+            enabled=config.get(CONF_OTA_THIRDREALITY),
             provider=zigpy.ota.providers.ThirdReality,
         )
         register_deprecated_provider(
-            enabled=config[CONF_OTA_Z2M_REMOTE_INDEX],
+            enabled=config.get(CONF_OTA_Z2M_REMOTE_INDEX),
             provider=zigpy.ota.providers.RemoteZ2MProvider,
         )
         register_deprecated_provider(
-            enabled=config[CONF_OTA_ALLOW_ADVANCED_DIR],
+            enabled=config.get(CONF_OTA_ALLOW_ADVANCED_DIR),
             provider=zigpy.ota.providers.AdvancedFileProvider,
-            config={"path": config[CONF_OTA_ADVANCED_DIR]},
+            config={"path": config.get(CONF_OTA_ADVANCED_DIR)},
         )
         register_deprecated_provider(
-            enabled=config[CONF_OTA_Z2M_LOCAL_INDEX],
+            enabled=isinstance(config.get(CONF_OTA_Z2M_LOCAL_INDEX), pathlib.Path),
             provider=zigpy.ota.providers.LocalZ2MProvider,
-            config={"index_file": config[CONF_OTA_Z2M_LOCAL_INDEX]},
+            config={"index_file": config.get(CONF_OTA_Z2M_LOCAL_INDEX)},
         )
 
-        for provider_config in config[CONF_OTA_REMOTE_PROVIDERS]:
+        for provider_config in config.get(CONF_OTA_REMOTE_PROVIDERS, []):
             register_deprecated_provider(
                 enabled=True,
-                provider=zigpy.ota.providers.RemoteProvider,
+                provider=zigpy.ota.providers.RemoteZigpyProvider,
                 config={
                     "url": provider_config[CONF_OTA_PROVIDER_URL],
                     "manufacturer_ids": provider_config[CONF_OTA_PROVIDER_MANUF_IDS],
@@ -331,7 +332,7 @@ class OTA:
             )
 
         for provider in with_providers:
-            if provider not in without_providers:
+            if not any(p.has_same_config(provider) for p in without_providers):
                 self.register_provider(provider)
 
     def register_provider(self, provider: zigpy.ota.providers.BaseOtaProvider) -> None:

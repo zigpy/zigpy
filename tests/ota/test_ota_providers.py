@@ -542,23 +542,19 @@ async def test_third_reality_provider():
         assert not obj
 
 
-async def test_remote_provider():
+async def test_remote_zigpy_provider():
     index_json = (FILES_DIR / "remote_index.json").read_text()
     index_obj = json.loads(index_json)
 
     # A provider with no manufacturer IDs is compatible with all images
-    assert providers.RemoteProvider("foo").compatible_with_device(
+    assert providers.RemoteZigpyProvider("foo").compatible_with_device(
         make_device(manufacturer_id=4476)
     )
 
     # Ours will have a predefined list, however
-    provider = providers.RemoteProvider(
+    provider = providers.RemoteZigpyProvider(
         "https://example.org/fw/index.json", manufacturer_ids=[1, 2, 3]
     )
-
-    # It is not initially compatible with the device
-    assert not provider.compatible_with_device(make_device(manufacturer_id=4476))
-    assert not provider.compatible_with_device(make_device(manufacturer_id=4454))
 
     with aioresponses() as mock_http:
         mock_http.get(
@@ -568,10 +564,6 @@ async def test_remote_provider():
         )
 
         index = await provider.load_index()
-
-    # Once the index is populated, it's now compatible with the known devices
-    assert not provider.compatible_with_device(make_device(manufacturer_id=4476))
-    assert provider.compatible_with_device(make_device(manufacturer_id=4454))
 
     assert len(index) == len(index_obj["firmwares"])
 
@@ -594,10 +586,7 @@ async def test_remote_provider():
         assert meta.specificity == obj.pop("specificity")
         assert not obj
 
-        # An unknown manufacturer ID will still be used
-        assert meta.manufacturer_id in provider.manufacturer_ids
-
-    assert provider.manufacturer_ids == [1, 2, 3, 4454]
+    assert provider.manufacturer_ids == [1, 2, 3]
 
 
 async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
