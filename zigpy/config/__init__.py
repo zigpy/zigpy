@@ -21,6 +21,7 @@ from zigpy.config.defaults import (
     CONF_NWK_UPDATE_ID_DEFAULT,
     CONF_NWK_VALIDATE_SETTINGS_DEFAULT,
     CONF_OTA_PROVIDERS_DEFAULT,
+    CONF_OTA_DISABLE_PROVIDERS_DEFAULT,
     CONF_OTA_EXTRA_PROVIDERS_DEFAULT,
     CONF_OTA_BROADCAST_ENABLED_DEFAULT,
     CONF_OTA_ENABLED_DEFAULT,
@@ -70,6 +71,7 @@ CONF_OTA = "ota"
 CONF_OTA_PROVIDERS = "providers"
 CONF_OTA_ENABLED = "enabled"
 CONF_OTA_EXTRA_PROVIDERS = "extra_providers"
+CONF_OTA_DISABLE_PROVIDERS = "disable_providers"
 CONF_OTA_PROVIDER_TYPE = "type"
 CONF_OTA_PROVIDER_URL = "url"
 CONF_OTA_PROVIDER_PATH = "path"
@@ -205,6 +207,9 @@ SCHEMA_OTA_BASE = {
     ): vol.All(vol.Coerce(float), vol.Range(min=0)),
     vol.Optional(CONF_OTA_PROVIDERS, default=CONF_OTA_PROVIDERS_DEFAULT): [
         cv_ota_provider
+    ],
+    vol.Optional(CONF_OTA_DISABLE_PROVIDERS, default=CONF_OTA_DISABLE_PROVIDERS_DEFAULT): [
+        str
     ],
     vol.Optional(CONF_OTA_EXTRA_PROVIDERS, default=CONF_OTA_EXTRA_PROVIDERS_DEFAULT): [
         cv_ota_provider

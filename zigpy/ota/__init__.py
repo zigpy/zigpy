@@ -18,6 +18,7 @@ from zigpy.config import (
     CONF_OTA_LEDVANCE,
     CONF_OTA_PROVIDER_MANUF_IDS,
     CONF_OTA_PROVIDER_URL,
+    CONF_OTA_DISABLE_PROVIDERS,
     CONF_OTA_REMOTE_PROVIDERS,
     CONF_OTA_SALUS,
     CONF_OTA_PROVIDERS,
@@ -332,7 +333,10 @@ class OTA:
             )
 
         for provider in with_providers:
-            if not any(p.has_same_config(provider) for p in without_providers):
+            if (
+                not any(p.has_same_config(provider) for p in without_providers)
+                and provider.name not in config[CONF_OTA_DISABLE_PROVIDERS]
+            ):
                 self.register_provider(provider)
 
     def register_provider(self, provider: zigpy.ota.providers.BaseOtaProvider) -> None:
