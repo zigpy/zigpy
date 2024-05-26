@@ -265,7 +265,9 @@ class OTA:
             *config[CONF_OTA_PROVIDERS],
             *config[CONF_OTA_EXTRA_PROVIDERS],
         ]
-        without_providers: list[zigpy.ota.providers.BaseOtaProvider] = []
+        without_providers: set[type[zigpy.ota.providers.BaseOtaProvider]] = set(
+            config[CONF_OTA_DISABLE_PROVIDERS]
+        )
 
         def register_deprecated_provider(
             enabled: bool | str | None,
@@ -277,10 +279,10 @@ class OTA:
                 enabled = True
 
             if enabled is True:
-                with_providers.append(provider(config))
+                with_providers.append(provider(**config))
             elif enabled is False:
-                without_providers.append(provider(config))
-            elif config is None:
+                without_providers.add(provider)
+            else:
                 pass
 
         register_deprecated_provider(
@@ -332,12 +334,21 @@ class OTA:
                 },
             )
 
+        replaced_providers: list[zigpy.ota.providers.BaseOtaProvider] = []
+
         for provider in with_providers:
-            if (
-                not any(p.has_same_config(provider) for p in without_providers)
-                and provider.name not in config[CONF_OTA_DISABLE_PROVIDERS]
-            ):
-                self.register_provider(provider)
+            if type(provider) in without_providers:
+                continue
+
+            if provider.replace_existing:
+                replaced_providers = [
+                    p for p in replaced_providers if type(p) != type(provider)
+                ]
+
+            replaced_providers.append(provider)
+
+        for provider in replaced_providers:
+            self.register_provider(provider)
 
     def register_provider(self, provider: zigpy.ota.providers.BaseOtaProvider) -> None:
         """Register a new OTA provider."""

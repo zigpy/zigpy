@@ -11,6 +11,9 @@ import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 import zigpy.config
 
+if typing.TYPE_CHECKING:
+    import zigpy.ota.providers
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -88,7 +91,9 @@ def cv_deprecated(message: str) -> typing.Callable[[typing.Any], typing.Any]:
     return wrapper
 
 
-def cv_exact_object(expected_value: str) -> typing.Callable[[typing.Any], typing.Literal[True]]:
+def cv_exact_object(
+    expected_value: str,
+) -> typing.Callable[[typing.Any], typing.Literal[True]]:
     """Factory function for creating an exact object comparison validator."""
 
     def wrapper(obj: typing.Any) -> typing.Literal[True]:
@@ -118,6 +123,16 @@ def cv_folder(value: str) -> pathlib.Path:
         raise vol.Invalid(f"{value} is not a directory")
 
     return path
+
+
+def cv_ota_provider_name(name: str) -> type[zigpy.ota.providers.BaseOtaProvider]:
+    """Validate OTA provider name."""
+    import zigpy.ota.providers
+
+    if name not in zigpy.ota.providers.OTA_PROVIDERS:
+        raise vol.Invalid(f"Unsupported OTA provider name: {name!r}")
+
+    return zigpy.ota.providers.OTA_PROVIDERS[name]
 
 
 def cv_ota_provider(obj: dict) -> zigpy.ota.providers.BaseOtaProvider:

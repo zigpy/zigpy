@@ -39,6 +39,7 @@ from zigpy.config.validators import (
     cv_deprecated,
     cv_exact_object,
     cv_folder,
+    cv_ota_provider_name,
     cv_hex,
     cv_json_file,
     cv_key,
@@ -75,7 +76,7 @@ CONF_OTA_DISABLE_PROVIDERS = "disable_providers"
 CONF_OTA_PROVIDER_TYPE = "type"
 CONF_OTA_PROVIDER_URL = "url"
 CONF_OTA_PROVIDER_PATH = "path"
-CONF_OTA_PROVIDER_REPLACE_EXISTING = "replace"
+CONF_OTA_PROVIDER_REPLACE_EXISTING = "replace_existing"
 CONF_OTA_PROVIDER_WARNING = "warning"
 CONF_OTA_BROADCAST_ENABLED = "broadcast_enabled"
 CONF_OTA_BROADCAST_INITIAL_DELAY = "broadcast_initial_delay"
@@ -153,7 +154,7 @@ SCHEMA_NETWORK = vol.Schema(
 
 SCHEMA_OTA_PROVIDER_BASE = vol.Schema(
     {
-        vol.Required(CONF_OTA_PROVIDER_TYPE): str,
+        vol.Required(CONF_OTA_PROVIDER_TYPE): cv_ota_provider_name,
         vol.Optional(CONF_OTA_PROVIDER_REPLACE_EXISTING, default=False): bool,
         vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
     }
@@ -208,7 +209,7 @@ SCHEMA_OTA_BASE = {
         cv_ota_provider
     ],
     vol.Optional(CONF_OTA_DISABLE_PROVIDERS, default=CONF_OTA_DISABLE_PROVIDERS_DEFAULT): [
-        str
+        cv_ota_provider_name
     ],
     vol.Optional(CONF_OTA_EXTRA_PROVIDERS, default=CONF_OTA_EXTRA_PROVIDERS_DEFAULT): [
         cv_ota_provider
