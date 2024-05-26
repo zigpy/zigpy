@@ -75,6 +75,7 @@ CONF_OTA_DISABLE_PROVIDERS = "disable_providers"
 CONF_OTA_PROVIDER_TYPE = "type"
 CONF_OTA_PROVIDER_URL = "url"
 CONF_OTA_PROVIDER_PATH = "path"
+CONF_OTA_PROVIDER_REPLACE_EXISTING = "replace"
 CONF_OTA_PROVIDER_WARNING = "warning"
 CONF_OTA_BROADCAST_ENABLED = "broadcast_enabled"
 CONF_OTA_BROADCAST_INITIAL_DELAY = "broadcast_initial_delay"
@@ -150,39 +151,37 @@ SCHEMA_NETWORK = vol.Schema(
     }
 )
 
-SCHEMA_OTA_PROVIDER_URL = vol.Schema(
+SCHEMA_OTA_PROVIDER_BASE = vol.Schema(
     {
         vol.Required(CONF_OTA_PROVIDER_TYPE): str,
-        vol.Optional(CONF_OTA_PROVIDER_URL): vol.Url(),
+        vol.Optional(CONF_OTA_PROVIDER_REPLACE_EXISTING, default=False): bool,
         vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
     }
 )
 
-SCHEMA_OTA_PROVIDER_URL_REQUIRED = vol.Schema(
-    {
-        vol.Required(CONF_OTA_PROVIDER_TYPE): str,
-        vol.Required(CONF_OTA_PROVIDER_URL): vol.Url(),
-        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
-    }
+SCHEMA_OTA_PROVIDER_URL = vol.extend(
+    SCHEMA_OTA_PROVIDER_BASE,
+    {vol.Optional(CONF_OTA_PROVIDER_URL): vol.Url()},
 )
 
-SCHEMA_OTA_PROVIDER_JSON_INDEX = vol.Schema(
-    {
-        vol.Required(CONF_OTA_PROVIDER_TYPE): str,
-        vol.Optional(CONF_OTA_PROVIDER_PATH): cv_json_file,
-        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
-    }
+SCHEMA_OTA_PROVIDER_URL_REQUIRED = vol.extend(
+    SCHEMA_OTA_PROVIDER_BASE,
+    {vol.Required(CONF_OTA_PROVIDER_URL): vol.Url()},
 )
 
-SCHEMA_OTA_PROVIDER_FOLDER = vol.Schema(
+SCHEMA_OTA_PROVIDER_JSON_INDEX = vol.extend(
+    SCHEMA_OTA_PROVIDER_BASE,
+    {vol.Optional(CONF_OTA_PROVIDER_PATH): cv_json_file},
+)
+
+SCHEMA_OTA_PROVIDER_FOLDER = vol.extend(
+    SCHEMA_OTA_PROVIDER_BASE,
     {
-        vol.Required(CONF_OTA_PROVIDER_TYPE): str,
         vol.Optional(CONF_OTA_PROVIDER_PATH): cv_folder,
         vol.Optional(CONF_OTA_PROVIDER_WARNING): cv_exact_object(
             CONF_OTA_ALLOW_ADVANCED_DIR_STRING
         ),
-        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
-    }
+    },
 )
 
 # Deprecated
