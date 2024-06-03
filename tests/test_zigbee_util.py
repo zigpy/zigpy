@@ -60,6 +60,17 @@ def test_listenable():
     assert context_listener.event.call_count == 1
     assert broken_listener.event.call_count == 1
 
+def test_listenable_mutating():
+    listen = Listenable()
+    mutating_listener = MagicMock()
+    mutating_listener.event.side_effect = lambda value: listen.remove_listener(mutating_listener)
+
+    listen.add_listener(mutating_listener)
+    listen.listener_event("event", "value")
+
+    assert mutating_listener.event.mock_calls == [call("value")]
+    assert listen._listeners == {}
+
 
 class Logger(util.LocalLogMixin):
     log = MagicMock()
