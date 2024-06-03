@@ -76,7 +76,7 @@ CONF_OTA_DISABLE_PROVIDERS = "disable_providers"
 CONF_OTA_PROVIDER_TYPE = "type"
 CONF_OTA_PROVIDER_URL = "url"
 CONF_OTA_PROVIDER_PATH = "path"
-CONF_OTA_PROVIDER_REPLACE_EXISTING = "replace_existing"
+CONF_OTA_PROVIDER_OVERRIDE_PREVIOUS = "override_previous"
 CONF_OTA_PROVIDER_WARNING = "warning"
 CONF_OTA_BROADCAST_ENABLED = "broadcast_enabled"
 CONF_OTA_BROADCAST_INITIAL_DELAY = "broadcast_initial_delay"
@@ -155,7 +155,7 @@ SCHEMA_NETWORK = vol.Schema(
 SCHEMA_OTA_PROVIDER_BASE = vol.Schema(
     {
         vol.Required(CONF_OTA_PROVIDER_TYPE): cv_ota_provider_name,
-        vol.Optional(CONF_OTA_PROVIDER_REPLACE_EXISTING, default=False): bool,
+        vol.Optional(CONF_OTA_PROVIDER_OVERRIDE_PREVIOUS, default=False): bool,
         vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
     }
 )

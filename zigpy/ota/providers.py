@@ -187,7 +187,7 @@ class BaseOtaProvider:
         url: str | bool | None = None,
         manufacturer_ids: list[int] | None = None,
         *,
-        replace_existing: bool = False,
+        override_previous: bool = False,
     ) -> None:
         self._url = self.DEFAULT_URL if url in (True, None) else url
         self._index_last_updated = datetime.datetime.fromtimestamp(
@@ -199,7 +199,7 @@ class BaseOtaProvider:
         else:
             self.manufacturer_ids = self.MANUFACTURER_IDS[:]
 
-        self.replace_existing = replace_existing
+        self.override_previous = override_previous
 
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
         if not self.manufacturer_ids:
