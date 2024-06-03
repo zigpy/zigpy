@@ -160,29 +160,25 @@ SCHEMA_OTA_PROVIDER_BASE = vol.Schema(
     }
 )
 
-SCHEMA_OTA_PROVIDER_URL = vol.extend(
-    SCHEMA_OTA_PROVIDER_BASE,
-    {vol.Optional(CONF_OTA_PROVIDER_URL): vol.Url()},
+SCHEMA_OTA_PROVIDER_URL = SCHEMA_OTA_PROVIDER_BASE.extend(
+    {vol.Optional(CONF_OTA_PROVIDER_URL): vol.Url()}
 )
 
-SCHEMA_OTA_PROVIDER_URL_REQUIRED = vol.extend(
-    SCHEMA_OTA_PROVIDER_BASE,
-    {vol.Required(CONF_OTA_PROVIDER_URL): vol.Url()},
+SCHEMA_OTA_PROVIDER_URL_REQUIRED = SCHEMA_OTA_PROVIDER_BASE.extend(
+    {vol.Required(CONF_OTA_PROVIDER_URL): vol.Url()}
 )
 
-SCHEMA_OTA_PROVIDER_JSON_INDEX = vol.extend(
-    SCHEMA_OTA_PROVIDER_BASE,
-    {vol.Optional(CONF_OTA_PROVIDER_PATH): cv_json_file},
+SCHEMA_OTA_PROVIDER_JSON_INDEX = SCHEMA_OTA_PROVIDER_BASE.extend(
+    {vol.Optional(CONF_OTA_PROVIDER_PATH): cv_json_file}
 )
 
-SCHEMA_OTA_PROVIDER_FOLDER = vol.extend(
-    SCHEMA_OTA_PROVIDER_BASE,
+SCHEMA_OTA_PROVIDER_FOLDER = SCHEMA_OTA_PROVIDER_BASE.extend(
     {
         vol.Optional(CONF_OTA_PROVIDER_PATH): cv_folder,
         vol.Optional(CONF_OTA_PROVIDER_WARNING): cv_exact_object(
             CONF_OTA_ALLOW_ADVANCED_DIR_STRING
         ),
-    },
+    }
 )
 
 # Deprecated
@@ -208,9 +204,9 @@ SCHEMA_OTA_BASE = {
     vol.Optional(CONF_OTA_PROVIDERS, default=CONF_OTA_PROVIDERS_DEFAULT): [
         cv_ota_provider
     ],
-    vol.Optional(CONF_OTA_DISABLE_PROVIDERS, default=CONF_OTA_DISABLE_PROVIDERS_DEFAULT): [
-        cv_ota_provider_name
-    ],
+    vol.Optional(
+        CONF_OTA_DISABLE_PROVIDERS, default=CONF_OTA_DISABLE_PROVIDERS_DEFAULT
+    ): [cv_ota_provider_name],
     vol.Optional(CONF_OTA_EXTRA_PROVIDERS, default=CONF_OTA_EXTRA_PROVIDERS_DEFAULT): [
         cv_ota_provider
     ],

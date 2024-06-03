@@ -278,6 +278,9 @@ class OTA:
                 config = {"url": enabled}
                 enabled = True
 
+            if not config:
+                config = {}
+
             if enabled is True:
                 with_providers.append(provider(**config))
             elif enabled is False:
@@ -340,7 +343,7 @@ class OTA:
             if type(provider) in without_providers:
                 continue
 
-            if provider.replace_existing:
+            if provider.override_previous:
                 replaced_providers = [
                     p for p in replaced_providers if type(p) != type(provider)
                 ]
