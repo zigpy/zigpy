@@ -47,7 +47,7 @@ class ListenableMixin:
 
     def listener_event(self, method_name: str, *args) -> list[typing.Any | None]:
         result = []
-        for listener, include_context in self._listeners.values():
+        for listener, include_context in tuple(self._listeners.values()):
             method = getattr(listener, method_name, None)
 
             if method is None:
@@ -66,7 +66,7 @@ class ListenableMixin:
 
     async def async_event(self, method_name: str, *args) -> list[typing.Any]:
         tasks = []
-        for listener, include_context in self._listeners.values():
+        for listener, include_context in tuple(self._listeners.values()):
             method = getattr(listener, method_name, None)
 
             if method is None:
