@@ -677,7 +677,7 @@ class DoorLock(Cluster):
                 "local_time": t.LocalTime,
                 "data?": t.CharacterString,
             },
-            direction=False,
+            direction=True,
         )
         programming_event_notification: Final = ZCLCommandDef(
             id=0x21,
@@ -691,7 +691,7 @@ class DoorLock(Cluster):
                 "local_time": t.LocalTime,
                 "data?": t.CharacterString,
             },
-            direction=False,
+            direction=True,
         )
 
 
