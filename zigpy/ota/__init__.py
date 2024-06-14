@@ -260,34 +260,22 @@ class OTA:
             )
 
         if config[CONF_OTA_IKEA]:
-            self.register_provider(
-                zigpy.ota.providers.Trådfri(url=config[CONF_OTA_IKEA])
-            )
+            self.register_provider(zigpy.ota.providers.Trådfri())
 
         if config[CONF_OTA_INOVELLI]:
-            self.register_provider(
-                zigpy.ota.providers.Inovelli(url=config[CONF_OTA_INOVELLI])
-            )
+            self.register_provider(zigpy.ota.providers.Inovelli())
 
         if config[CONF_OTA_LEDVANCE]:
-            self.register_provider(
-                zigpy.ota.providers.Ledvance(url=config[CONF_OTA_LEDVANCE])
-            )
+            self.register_provider(zigpy.ota.providers.Ledvance())
 
         if config[CONF_OTA_SALUS]:
-            self.register_provider(
-                zigpy.ota.providers.Salus(url=config[CONF_OTA_SALUS])
-            )
+            self.register_provider(zigpy.ota.providers.Salus())
 
         if config[CONF_OTA_SONOFF]:
-            self.register_provider(
-                zigpy.ota.providers.Sonoff(url=config[CONF_OTA_SONOFF])
-            )
+            self.register_provider(zigpy.ota.providers.Sonoff())
 
         if config[CONF_OTA_THIRDREALITY]:
-            self.register_provider(
-                zigpy.ota.providers.ThirdReality(url=config[CONF_OTA_THIRDREALITY])
-            )
+            self.register_provider(zigpy.ota.providers.ThirdReality())
 
         for provider_config in config[CONF_OTA_REMOTE_PROVIDERS]:
             self.register_provider(
@@ -299,16 +287,12 @@ class OTA:
 
         if config[CONF_OTA_Z2M_LOCAL_INDEX]:
             self.register_provider(
-                zigpy.ota.providers.LocalZ2MProvider(
-                    index_file=config[CONF_OTA_Z2M_LOCAL_INDEX]
-                )
+                zigpy.ota.providers.LocalZ2MProvider(config[CONF_OTA_Z2M_LOCAL_INDEX])
             )
 
         if config[CONF_OTA_Z2M_REMOTE_INDEX]:
             self.register_provider(
-                zigpy.ota.providers.RemoteZ2MProvider(
-                    url=config[CONF_OTA_Z2M_REMOTE_INDEX]
-                )
+                zigpy.ota.providers.RemoteZ2MProvider(config[CONF_OTA_Z2M_REMOTE_INDEX])
             )
 
     def register_provider(self, provider: zigpy.ota.providers.BaseOtaProvider) -> None:
