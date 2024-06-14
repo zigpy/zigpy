@@ -3,10 +3,6 @@
         "url": "https://fw.ota.homesmart.ikea.com/files/mgm210l-light-cws-cv-rgbw_release_prod_v268572245_3ae78af7-14fd-44df-bca2-6d366f2e9d02.ota",
         "checksum": "sha3-256:e68e61bd57291e0b6358242e72ee2dfe098cb8b769f572b5b8f8e7a34dbcfaca"
     },
-    "dl/ikea/10039874-1.0-TRADFRI-motion-sensor-2-2.0.022.ota.ota.signed": {
-        "url": "https://fw.ota.homesmart.ikea.net/global/GW1.0/01.21.031/bin/10039874-1.0-TRADFRI-motion-sensor-2-2.0.022.ota.ota.signed",
-        "checksum": "sha3-256:105f6c3670822282b949a4a13886d6eac6befbb67dea8ad20546816acbbc6864"
-    },
     "dl/local_provider/1135-0000-201000A0-FLS-PP3_RGBW.zigbee": {
         "url": "https://deconz.dresden-elektronik.de/otau/1135-0000-201000A0-FLS-PP3_RGBW.zigbee",
         "checksum": "sha3-256:23415a1c54353219bb7de3e72ba6050d9e849be0954eebda9b5783d34d0723d1"

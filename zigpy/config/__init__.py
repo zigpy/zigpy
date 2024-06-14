@@ -167,14 +167,14 @@ SCHEMA_OTA = {
     vol.Optional(
         CONF_OTA_BROADCAST_INTERVAL, default=CONF_OTA_BROADCAST_INTERVAL_DEFAULT
     ): vol.All(vol.Coerce(float), vol.Range(min=0)),
-    vol.Optional(CONF_OTA_IKEA, default=CONF_OTA_IKEA_DEFAULT): vol.Any(cv_boolean, vol.Url()),
-    vol.Optional(CONF_OTA_INOVELLI, default=CONF_OTA_INOVELLI_DEFAULT): vol.Any(cv_boolean, vol.Url()),
-    vol.Optional(CONF_OTA_LEDVANCE, default=CONF_OTA_LEDVANCE_DEFAULT): vol.Any(cv_boolean, vol.Url()),
-    vol.Optional(CONF_OTA_SALUS, default=CONF_OTA_SALUS_DEFAULT): vol.Any(cv_boolean, vol.Url()),
-    vol.Optional(CONF_OTA_SONOFF, default=CONF_OTA_SONOFF_DEFAULT): vol.Any(cv_boolean, vol.Url()),
+    vol.Optional(CONF_OTA_IKEA, default=CONF_OTA_IKEA_DEFAULT): cv_boolean,
+    vol.Optional(CONF_OTA_INOVELLI, default=CONF_OTA_INOVELLI_DEFAULT): cv_boolean,
+    vol.Optional(CONF_OTA_LEDVANCE, default=CONF_OTA_LEDVANCE_DEFAULT): cv_boolean,
+    vol.Optional(CONF_OTA_SALUS, default=CONF_OTA_SALUS_DEFAULT): cv_boolean,
+    vol.Optional(CONF_OTA_SONOFF, default=CONF_OTA_SONOFF_DEFAULT): cv_boolean,
     vol.Optional(
         CONF_OTA_THIRDREALITY, default=CONF_OTA_THIRDREALITY_DEFAULT
-    ): vol.Any(cv_boolean, vol.Url()),
+    ): cv_boolean,
     vol.Optional(CONF_OTA_REMOTE_PROVIDERS, default=[]): [SCHEMA_OTA_PROVIDER],
     # Z2M OTA providers
     vol.Optional(
@@ -182,7 +182,7 @@ SCHEMA_OTA = {
     ): vol.Any(None, cv_json_file),
     vol.Optional(
         CONF_OTA_Z2M_REMOTE_INDEX, default=CONF_OTA_Z2M_REMOTE_INDEX_DEFAULT
-    ): vol.Any(None, cv_boolean, vol.Url()),
+    ): vol.Any(None, vol.Url()),
     # Advanced OTA config. You *do not* need to use this unless you're testing a new
     # OTA firmware that has no known metadata.
     vol.Optional(CONF_OTA_ADVANCED_DIR, default=CONF_OTA_ADVANCED_DIR_DEFAULT): vol.Any(
