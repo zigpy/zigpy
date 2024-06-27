@@ -58,7 +58,7 @@ class DeviceRegistry:
             if not entry.registry:
                 entry.registry = self
             self._registry_v2[key].append(entry)        
-        return self._registry_v2[key]
+        return self._registry_v2[key][0]
 
     def remove(self, custom_device: CustomDeviceType) -> None:
         """Remove a device from the registry"""
