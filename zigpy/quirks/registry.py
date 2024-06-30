@@ -57,7 +57,7 @@ class DeviceRegistry:
         if key not in self._registry_v2:
             if not entry.registry:
                 entry.registry = self
-            self._registry_v2[key].append(entry)        
+            self._registry_v2[key].append(entry)
         return self._registry_v2[key][0]
 
     def remove(self, custom_device: CustomDeviceType) -> None:
