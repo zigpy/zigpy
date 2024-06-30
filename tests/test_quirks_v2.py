@@ -186,7 +186,7 @@ async def test_quirks_v2_signature_match(device_mock):
     assert not isinstance(quirked, CustomDeviceV2)
 
 
-async def test_quirks_v2_multiple_matches_raises(device_mock):
+async def test_quirks_v2_multiple_quirks_added_once(device_mock):
     """Test that adding multiple quirks v2 entries for the same device raises."""
     registry = DeviceRegistry()
 
@@ -216,10 +216,8 @@ async def test_quirks_v2_multiple_matches_raises(device_mock):
         )
     )
 
-    with pytest.raises(
-        MultipleQuirksMatchException, match="Multiple matches found for device"
-    ):
-        registry.get_device(device_mock)
+    quirked = registry.get_device(device_mock)
+    assert not isinstance(quirked, CustomDeviceV2)
 
 
 async def test_quirks_v2_with_custom_device_class(device_mock):
