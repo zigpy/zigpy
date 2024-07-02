@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import hashlib
+import dataclasses
 import io
 import json
 import logging
@@ -130,26 +131,7 @@ class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
 
 @attrs.define(frozen=True, kw_only=True)
 class IkeaRemoteOtaImageMetadata(RemoteOtaImageMetadata):
-    # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
-    ssl_ctx = ssl.create_default_context()
-    ssl_ctx.load_verify_locations(
-        cadata="""\
------BEGIN CERTIFICATE-----
-MIICGDCCAZ+gAwIBAgIUdfH0KDnENv/dEcxH8iVqGGGDqrowCgYIKoZIzj0EAwMw
-SzELMAkGA1UEBhMCU0UxGjAYBgNVBAoMEUlLRUEgb2YgU3dlZGVuIEFCMSAwHgYD
-VQQDDBdJS0VBIEhvbWUgc21hcnQgUm9vdCBDQTAgFw0yMTA1MjYxOTAxMDlaGA8y
-MDcxMDUxNDE5MDEwOFowSzELMAkGA1UEBhMCU0UxGjAYBgNVBAoMEUlLRUEgb2Yg
-U3dlZGVuIEFCMSAwHgYDVQQDDBdJS0VBIEhvbWUgc21hcnQgUm9vdCBDQTB2MBAG
-ByqGSM49AgEGBSuBBAAiA2IABIDRUvKGFMUu2zIhTdgfrfNcPULwMlc0TGSrDLBA
-oTr0SMMV4044CRZQbl81N4qiuHGhFzCnXapZogkiVuFu7ZqSslsFuELFjc6ZxBjk
-Kmud+pQM6QQdsKTE/cS06dA+P6NCMEAwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4E
-FgQUcdlEnfX0MyZA4zAdY6CLOye9wfwwDgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49
-BAMDA2cAMGQCMG6mFIeB2GCFch3r0Gre4xRH+f5pn/bwLr9yGKywpeWvnUPsQ1KW
-ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
-2kVHW/Mz9/xwpy4u
------END CERTIFICATE-----"""
-    )
-
+    ssl_ctx = dataclasses.field(default_factory=lambda: Trådfri.SSL_CTX)
 
 class BaseOtaProvider:
     MANUFACTURER_IDS: list[int] = []
@@ -193,7 +175,26 @@ class BaseOtaProvider:
 
 class Trådfri(BaseOtaProvider):
     MANUFACTURER_IDS = [4476]
-    SSL_CTX = IkeaRemoteOtaImageMetadata.ssl_ctx
+
+    # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
+    SSL_CTX: ssl.SSLContext = ssl.create_default_context()
+    SSL_CTX.load_verify_locations(
+        cadata="""\
+-----BEGIN CERTIFICATE-----
+MIICGDCCAZ+gAwIBAgIUdfH0KDnENv/dEcxH8iVqGGGDqrowCgYIKoZIzj0EAwMw
+SzELMAkGA1UEBhMCU0UxGjAYBgNVBAoMEUlLRUEgb2YgU3dlZGVuIEFCMSAwHgYD
+VQQDDBdJS0VBIEhvbWUgc21hcnQgUm9vdCBDQTAgFw0yMTA1MjYxOTAxMDlaGA8y
+MDcxMDUxNDE5MDEwOFowSzELMAkGA1UEBhMCU0UxGjAYBgNVBAoMEUlLRUEgb2Yg
+U3dlZGVuIEFCMSAwHgYDVQQDDBdJS0VBIEhvbWUgc21hcnQgUm9vdCBDQTB2MBAG
+ByqGSM49AgEGBSuBBAAiA2IABIDRUvKGFMUu2zIhTdgfrfNcPULwMlc0TGSrDLBA
+oTr0SMMV4044CRZQbl81N4qiuHGhFzCnXapZogkiVuFu7ZqSslsFuELFjc6ZxBjk
+Kmud+pQM6QQdsKTE/cS06dA+P6NCMEAwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4E
+FgQUcdlEnfX0MyZA4zAdY6CLOye9wfwwDgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49
+BAMDA2cAMGQCMG6mFIeB2GCFch3r0Gre4xRH+f5pn/bwLr9yGKywpeWvnUPsQ1KW
+ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
+2kVHW/Mz9/xwpy4u
+-----END CERTIFICATE-----"""
+    )
 
     JSON_SCHEMA = {
         "type": "array",
