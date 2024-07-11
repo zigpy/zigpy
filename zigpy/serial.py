@@ -27,7 +27,7 @@ async def create_serial_connection(
     protocol_factory: typing.Callable[[], asyncio.Protocol],
     url: str,
     *,
-    baudrate: int,
+    baudrate: int = 115200,  # We default to 115200 instead of 9600
     parity: Literal[
         pyserial.PARITY_NONE,
         pyserial.PARITY_EVEN,
