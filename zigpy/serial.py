@@ -6,9 +6,9 @@ import typing
 import urllib.parse
 
 import async_timeout
-import serial as pyserial
 
 from typing import Literal
+from zigpy.typing import UndefinedType, UNDEFINED
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_SOCKET_PORT = 6638
@@ -28,26 +28,26 @@ async def create_serial_connection(
     url: str,
     *,
     baudrate: int = 115200,  # We default to 115200 instead of 9600
-    parity: Literal[
-        pyserial.PARITY_NONE,
-        pyserial.PARITY_EVEN,
-        pyserial.PARITY_ODD,
-        pyserial.PARITY_MARK,
-        pyserial.PARITY_SPACE,
-    ] = pyserial.PARITY_NONE,
-    stopbits: Literal[
-        pyserial.STOPBITS_ONE,
-        pyserial.STOPBITS_ONE_POINT_FIVE,
-        pyserial.STOPBITS_TWO,
-    ] = pyserial.STOPBITS_ONE,
     exclusive: bool = True,  # We open serial ports exclusively by default
-    xonxoff: bool = False,
-    rtscts: bool = False,
+    xonxoff: bool | UndefinedType = UNDEFINED,
+    rtscts: bool | UndefinedType = UNDEFINED,
+    flow_control: Literal["hardware", "software", None] | UndefinedType = UNDEFINED,
     **kwargs: typing.Any,
 ) -> tuple[asyncio.Transport, asyncio.Protocol]:
     """Wrapper around pyserial-asyncio that transparently substitutes a normal TCP
     transport and protocol when a `socket` connection URI is provided.
     """
+
+    if flow_control is not UNDEFINED:
+        xonxoff = (flow_control == "software")
+        rtscts = (flow_control == "hardware")
+
+    if xonxoff is UNDEFINED:
+        xonxoff = False
+
+    if rtscts is UNDEFINED:
+        rtscts = False
+
     LOGGER.debug(
         "Opening a serial connection to %r (baudrate=%s, xonxoff=%s, rtscts=%s)",
         url,
