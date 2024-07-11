@@ -506,12 +506,9 @@ async def async_iterate_in_chunks(
     iterator = iter(iterable)
 
     while True:
-        try:
-            chunk = await loop.run_in_executor(
-                None, list, itertools.islice(iterator, chunk_size)
-            )
-        except StopIteration:
-            break
+        chunk = await loop.run_in_executor(
+            None, list, itertools.islice(iterator, chunk_size)
+        )
 
         if not chunk:
             break
