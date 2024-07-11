@@ -8,6 +8,8 @@ import urllib.parse
 import async_timeout
 import serial as pyserial
 
+from typing import Literal
+
 LOGGER = logging.getLogger(__name__)
 DEFAULT_SOCKET_PORT = 6638
 SOCKET_CONNECT_TIMEOUT = 5
@@ -25,8 +27,19 @@ async def create_serial_connection(
     protocol_factory: typing.Callable[[], asyncio.Protocol],
     url: str,
     *,
-    parity=pyserial.PARITY_NONE,
-    stopbits=pyserial.STOPBITS_ONE,
+    baudrate: int,
+    parity: Literal[
+        pyserial.PARITY_NONE,
+        pyserial.PARITY_EVEN,
+        pyserial.PARITY_ODD,
+        pyserial.PARITY_MARK,
+        pyserial.PARITY_SPACE,
+    ] = pyserial.PARITY_NONE,
+    stopbits: Literal[
+        pyserial.STOPBITS_ONE,
+        pyserial.STOPBITS_ONE_POINT_FIVE,
+        pyserial.STOPBITS_TWO,
+    ] = pyserial.STOPBITS_ONE,
     exclusive: bool = True,  # We open serial ports exclusively by default
     xonxoff: bool = False,
     rtscts: bool = False,
@@ -35,7 +48,6 @@ async def create_serial_connection(
     """Wrapper around pyserial-asyncio that transparently substitutes a normal TCP
     transport and protocol when a `socket` connection URI is provided.
     """
-    baudrate: int | None = kwargs.get("baudrate")
     LOGGER.debug("Opening a serial connection to %r (%s baudrate)", url, baudrate)
 
     parsed_url = urllib.parse.urlparse(url)
