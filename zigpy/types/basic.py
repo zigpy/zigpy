@@ -928,10 +928,21 @@ class FixedList(list, metaclass=KwargTypeMeta):
 
 class CharacterString(str):
     _prefix_length = 1
+    _invalid_length = (1 << (8 * _prefix_length)) - 1
+
+    def __new__(cls, value: str, *, invalid: bool = False) -> CharacterString:
+        instance = super().__new__(cls, value)
+        instance.invalid = invalid
+
+        return instance
 
     def serialize(self) -> bytes:
         if len(self) >= pow(256, self._prefix_length) - 1:
             raise ValueError("String is too long")
+
+        if self.invalid:
+            return self._invalid_length.to_bytes(self._prefix_length, "little")
+
         return len(self).to_bytes(
             self._prefix_length, "little", signed=False
         ) + self.encode("utf8")
@@ -942,6 +953,9 @@ class CharacterString(str):
             raise ValueError("Data is too short")
 
         length = int.from_bytes(data[: cls._prefix_length], "little")
+
+        if length == cls._invalid_length:
+            return cls("", invalid=True), data[cls._prefix_length :]  # type:ignore[call-arg]
 
         if len(data) < cls._prefix_length + length:
             raise ValueError("Data is too short")

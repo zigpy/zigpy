@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import hashlib
+import dataclasses
 import io
 import json
 import logging
@@ -90,9 +91,12 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
 class RemoteOtaImageMetadata(BaseOtaImageMetadata):
     url: str
 
+    # If a provider uses a self-signed certificate, it can override this
+    ssl_ctx: ssl.SSLContext | None = None
+
     async def _fetch(self) -> bytes:
         async with aiohttp.ClientSession(raise_for_status=True) as req:
-            async with req.get(self.url) as rsp:
+            async with req.get(self.url, ssl=self.ssl_ctx) as rsp:
                 return await rsp.read()
 
 
@@ -138,6 +142,8 @@ class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
 
 @attrs.define(frozen=True, kw_only=True)
 class IkeaRemoteOtaImageMetadata(RemoteOtaImageMetadata):
+    ssl_ctx = dataclasses.field(default_factory=lambda: Trådfri.SSL_CTX)
+
     async def _fetch(self) -> bytes:
         async with aiohttp.ClientSession(raise_for_status=True) as req:
             # Use IKEA's self-signed certificate
@@ -147,6 +153,8 @@ class IkeaRemoteOtaImageMetadata(RemoteOtaImageMetadata):
 
 @attrs.define(frozen=True, kw_only=True)
 class SignedIkeaRemoteOtaImageMetadata(IkeaRemoteOtaImageMetadata):
+    ssl_ctx = dataclasses.field(default_factory=lambda: Trådfri.SSL_CTX)
+
     async def _validate(self, data: bytes) -> None:
         ota_offset = int.from_bytes(data[16:20], "little")
         ota_size = int.from_bytes(data[20:24], "little")
@@ -252,7 +260,7 @@ class Trådfri(BaseOtaProvider):
     JSON_SCHEMA = json_schemas.TRADFRI_SCHEMA
 
     # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
-    SSL_CTX = ssl.create_default_context()
+    SSL_CTX: ssl.SSLContext = ssl.create_default_context()
     SSL_CTX.load_verify_locations(
         cadata="""\
 -----BEGIN CERTIFICATE-----
@@ -270,6 +278,8 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
 2kVHW/Mz9/xwpy4u
 -----END CERTIFICATE-----"""
     )
+
+    JSON_SCHEMA = json_schemas.TRADFRI_SCHEMA
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -314,6 +324,7 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
                     ),
                     manufacturer_id=fw["fw_manufacturer_id"],
                     image_type=fw["fw_image_type"],
+                    # The file size is of the contained image, not the container!
                     file_size=fw["fw_filesize"],
                     url=fw["fw_binary_url"].replace("http://", "https://", 1),
                     source="IKEA (TRÅDFRI)",
@@ -348,8 +359,7 @@ class Ledvance(BaseOtaProvider):
                 file_size=fw["length"],
                 model_names=(fw["productName"],),
                 url=(
-                    self._url
-                    + "/download?"
+                    "https://api.update.ledvance.com/v1/zigbee/firmwares/download?"
                     + urllib.parse.urlencode(
                         {
                             "Company": identity["company"],
@@ -367,14 +377,17 @@ class Ledvance(BaseOtaProvider):
 
 
 class Salus(BaseOtaProvider):
+    NAME = "salus"
     MANUFACTURER_IDS = [4216, 43981]
-    DEFAULT_URL = "https://eu.salusconnect.io/demo/default/status/firmware"
+
     JSON_SCHEMA = json_schemas.SALUS_SCHEMA
 
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(self._url) as rsp:
+        async with session.get(
+            "https://eu.salusconnect.io/demo/default/status/firmware"
+        ) as rsp:
             fw_lst = await rsp.json()
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
@@ -399,13 +412,15 @@ class Salus(BaseOtaProvider):
 class Sonoff(BaseOtaProvider):
     NAME = "sonoff"
     MANUFACTURER_IDS = [4742]
-    DEFAULT_URL = "https://zigbee-ota.sonoff.tech/releases/upgrade.json"
+
     JSON_SCHEMA = json_schemas.SONOFF_SCHEMA
 
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(self._url) as rsp:
+        async with session.get(
+            "https://zigbee-ota.sonoff.tech/releases/upgrade.json"
+        ) as rsp:
             fw_lst = await rsp.json()
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
@@ -426,13 +441,15 @@ class Sonoff(BaseOtaProvider):
 class Inovelli(BaseOtaProvider):
     NAME = "inovelli"
     MANUFACTURER_IDS = [4655]
-    DEFAULT_URL = "https://files.inovelli.com/firmware/firmware-zha-v2.json"
+
     JSON_SCHEMA = json_schemas.INOVELLI_SCHEMA
 
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(self._url) as rsp:
+        async with session.get(
+            "https://files.inovelli.com/firmware/firmware-zha-v2.json"
+        ) as rsp:
             fw_lst = await rsp.json()
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
@@ -459,13 +476,13 @@ class Inovelli(BaseOtaProvider):
 class ThirdReality(BaseOtaProvider):
     NAME = "thirdreality"
     MANUFACTURER_IDS = [4659, 4877, 5127]
-    DEFAULT_URL = "https://tr-zha.s3.amazonaws.com/firmware.json"
+
     JSON_SCHEMA = json_schemas.THIRD_REALITY_SCHEMA
 
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(self._url) as rsp:
+        async with session.get("https://tr-zha.s3.amazonaws.com/firmware.json") as rsp:
             fw_lst = await rsp.json()
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
@@ -542,7 +559,7 @@ class LocalZigpyProvider(BaseZigpyProvider):
 
 @register_provider
 class RemoteZigpyProvider(BaseZigpyProvider):
-    NAME = "zigpy"
+    NAME = "zigpy_remote"
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -560,7 +577,13 @@ class BaseZ2MProvider(BaseOtaProvider):
     JSON_SCHEMA = json_schemas.Z2M_SCHEMA
 
     @classmethod
-    def _load_z2m_index(cls, index: dict, *, index_root: pathlib.Path | None = None):
+    def _load_z2m_index(
+        cls,
+        index: dict,
+        *,
+        index_root: pathlib.Path | None = None,
+        ssl_ctx: ssl.SSLContext | None = None,
+    ) -> typing.Iterator[LocalOtaImageMetadata | RemoteOtaImageMetadata]:
         jsonschema.validate(index, cls.JSON_SCHEMA)
 
         for fw in index:
@@ -580,7 +603,7 @@ class BaseZ2MProvider(BaseOtaProvider):
             if "path" in fw and index_root is not None:
                 yield LocalOtaImageMetadata(**shared_kwargs, path=index_root / fw["path"])  # type: ignore[call-arg]
             else:
-                yield RemoteOtaImageMetadata(**shared_kwargs, url=fw["url"])  # type: ignore[call-arg]
+                yield RemoteOtaImageMetadata(**shared_kwargs, url=fw["url"], ssl_ctx=ssl_ctx)  # type: ignore[call-arg]
 
 
 @register_provider
@@ -588,7 +611,7 @@ class LocalZ2MProvider(BaseZ2MProvider):
     NAME = "z2m_local"
 
     def __init__(self, index_file: pathlib.Path):
-        super().__init__(url=None)
+        super().__init__()
         self.index_file = index_file
 
     async def _load_index(
@@ -615,10 +638,32 @@ class RemoteZ2MProvider(BaseZ2MProvider):
         "https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json"
     )
 
+    # `openssl s_client -connect otau.meethue.com:443 -showcerts`
+    SSL_CTX = ssl.create_default_context()
+    SSL_CTX.load_verify_locations(
+        cadata="""\
+-----BEGIN CERTIFICATE-----
+MIIBwDCCAWagAwIBAgIJAJtrMkoTxs+WMAoGCCqGSM49BAMCMDIxCzAJBgNVBAYT
+Ak5MMRQwEgYDVQQKDAtQaGlsaXBzIEh1ZTENMAsGA1UEAwwEcm9vdDAgFw0xNjA4
+MjUwNzU5NDNaGA8yMDY4MDEwNTA3NTk0M1owMjELMAkGA1UEBhMCTkwxFDASBgNV
+BAoMC1BoaWxpcHMgSHVlMQ0wCwYDVQQDDARyb290MFkwEwYHKoZIzj0CAQYIKoZI
+zj0DAQcDQgAEENC1JOl6BxJrwCb+YK655zlM57VKFSi5OHDsmlCaF/EfTGGgU08/
+JUtkCyMlHUUoYBZyzCBKXqRKkrT512evEKNjMGEwHQYDVR0OBBYEFAlkFYACVzir
+qTr++cWia8AKH/fOMB8GA1UdIwQYMBaAFAlkFYACVzirqTr++cWia8AKH/fOMA8G
+A1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49BAMCA0gAMEUC
+IQDcGfyXaUl5hjr5YE8m2piXhMcDzHTNbO1RvGgz4r9IswIgFTTw/R85KyfIiW+E
+clwJRVSsq8EApeFREenCkRM0EIk=
+-----END CERTIFICATE-----"""
+    )
+
+    def __init__(self, url: str):
+        super().__init__()
+        self.url = url
+
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(self._url) as rsp:
+        async with session.get(self.url) as rsp:
             fw_lst = await rsp.json(content_type=None)
 
         for img in self._load_z2m_index(fw_lst):
@@ -638,32 +683,35 @@ class AdvancedFileProvider(BaseOtaProvider):
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         loop = asyncio.get_running_loop()
 
-        for path in self.path.rglob("*"):
-            if not path.is_file():
-                continue
+        paths = await loop.run_in_executor(None, self.path.rglob, "*")
 
-            data = await loop.run_in_executor(None, path.read_bytes)
+        async for chunk in zigpy.util.async_iterate_in_chunks(paths, chunk_size=100):
+            for path in chunk:
+                if not path.is_file():
+                    continue
 
-            try:
-                image, _ = parse_ota_image(data)
-            except Exception as exc:
-                LOGGER.debug("Failed to parse image %s: %r", path, exc)
-                continue
+                data = await loop.run_in_executor(None, path.read_bytes)
 
-            # This protects against images being swapped out in the local filesystem
-            hasher = await loop.run_in_executor(None, hashlib.sha1, data)
+                try:
+                    image, _ = parse_ota_image(data)
+                except Exception as exc:
+                    LOGGER.debug("Failed to parse image %s: %r", path, exc)
+                    continue
 
-            yield LocalOtaImageMetadata(  # type: ignore[call-arg]
-                path=path,
-                file_version=image.header.file_version,
-                manufacturer_id=image.header.manufacturer_id,
-                image_type=image.header.image_type,
-                checksum="sha1:" + hasher.hexdigest(),
-                file_size=len(data),
-                min_hardware_version=image.header.minimum_hardware_version,
-                max_hardware_version=image.header.maximum_hardware_version,
-                source=f"Advanced file provider ({self.path})",
-            )
+                # This protects against images being swapped out in the local filesystem
+                hasher = await loop.run_in_executor(None, hashlib.sha1, data)
+
+                yield LocalOtaImageMetadata(  # type: ignore[call-arg]
+                    path=path,
+                    file_version=image.header.file_version,
+                    manufacturer_id=image.header.manufacturer_id,
+                    image_type=image.header.image_type,
+                    checksum="sha1:" + hasher.hexdigest(),
+                    file_size=len(data),
+                    min_hardware_version=image.header.minimum_hardware_version,
+                    max_hardware_version=image.header.maximum_hardware_version,
+                    source=f"Advanced file provider ({self.path})",
+                )
 
     def __eq__(self, other: object) -> bool:
         return (

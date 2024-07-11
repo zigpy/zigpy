@@ -371,6 +371,15 @@ def test_char_string_too_short():
         t.CharacterString.deserialize(b"\x04123")
 
 
+def test_char_string_invalid():
+    r, rest = t.CharacterString.deserialize(b"\xFFabcd")
+    assert r == ""
+    assert r.invalid is True
+    assert rest == b"abcd"
+
+    assert r.serialize() == b"\xFF"
+
+
 def test_long_char_string():
     orig_len = 65532
     to_serialize = "".join(itertools.repeat("a", orig_len))
