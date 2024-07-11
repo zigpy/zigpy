@@ -27,6 +27,9 @@ async def create_serial_connection(
     *,
     parity=pyserial.PARITY_NONE,
     stopbits=pyserial.STOPBITS_ONE,
+    exclusive: bool = True,  # We open serial ports exclusively by default
+    xonxoff: bool = False,
+    rtscts: bool = False,
     **kwargs: typing.Any,
 ) -> tuple[asyncio.Transport, asyncio.Protocol]:
     """Wrapper around pyserial-asyncio that transparently substitutes a normal TCP
@@ -46,7 +49,13 @@ async def create_serial_connection(
             )
     else:
         transport, protocol = await pyserial_asyncio.create_serial_connection(
-            loop, protocol_factory, url=url, **kwargs
+            loop,
+            protocol_factory,
+            url=url,
+            exclusive=exclusive,
+            xonxoff=xonxoff,
+            rtscts=rtscts,
+            **kwargs,
         )
 
     return transport, protocol
