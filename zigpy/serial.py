@@ -48,7 +48,13 @@ async def create_serial_connection(
     """Wrapper around pyserial-asyncio that transparently substitutes a normal TCP
     transport and protocol when a `socket` connection URI is provided.
     """
-    LOGGER.debug("Opening a serial connection to %r (%s baudrate)", url, baudrate)
+    LOGGER.debug(
+        "Opening a serial connection to %r (baudrate=%s, xonxoff=%s, rtscts=%s)",
+        url,
+        baudrate,
+        xonxoff,
+        rtscts,
+    )
 
     parsed_url = urllib.parse.urlparse(url)
 
