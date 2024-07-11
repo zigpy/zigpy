@@ -715,32 +715,35 @@ class AdvancedFileProvider(BaseOtaProvider):
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         loop = asyncio.get_running_loop()
 
-        for path in self.image_dir.rglob("*"):
-            if not path.is_file():
-                continue
+        paths = await loop.run_in_executor(None, self.image_dir.rglob, "*")
 
-            data = await loop.run_in_executor(None, path.read_bytes)
+        async for chunk in zigpy.util.async_iterate_in_chunks(paths, chunk_size=100):
+            for path in chunk:
+                if not path.is_file():
+                    continue
 
-            try:
-                image, _ = parse_ota_image(data)
-            except Exception as exc:
-                LOGGER.debug("Failed to parse image %s: %r", path, exc)
-                continue
+                data = await loop.run_in_executor(None, path.read_bytes)
 
-            # This protects against images being swapped out in the local filesystem
-            hasher = await loop.run_in_executor(None, hashlib.sha1, data)
+                try:
+                    image, _ = parse_ota_image(data)
+                except Exception as exc:
+                    LOGGER.debug("Failed to parse image %s: %r", path, exc)
+                    continue
 
-            yield LocalOtaImageMetadata(  # type: ignore[call-arg]
-                path=path,
-                file_version=image.header.file_version,
-                manufacturer_id=image.header.manufacturer_id,
-                image_type=image.header.image_type,
-                checksum="sha1:" + hasher.hexdigest(),
-                file_size=len(data),
-                min_hardware_version=image.header.minimum_hardware_version,
-                max_hardware_version=image.header.maximum_hardware_version,
-                source=f"Advanced file provider ({self.image_dir})",
-            )
+                # This protects against images being swapped out in the local filesystem
+                hasher = await loop.run_in_executor(None, hashlib.sha1, data)
+
+                yield LocalOtaImageMetadata(  # type: ignore[call-arg]
+                    path=path,
+                    file_version=image.header.file_version,
+                    manufacturer_id=image.header.manufacturer_id,
+                    image_type=image.header.image_type,
+                    checksum="sha1:" + hasher.hexdigest(),
+                    file_size=len(data),
+                    min_hardware_version=image.header.minimum_hardware_version,
+                    max_hardware_version=image.header.maximum_hardware_version,
+                    source=f"Advanced file provider ({self.image_dir})",
+                )
 
 
 def _load_z2m_index(

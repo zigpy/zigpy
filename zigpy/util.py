@@ -8,6 +8,7 @@ import logging
 import traceback
 import typing
 import warnings
+import itertools
 
 from crccheck.crc import CrcX25
 from cryptography.hazmat.primitives.ciphers import Cipher
@@ -19,6 +20,8 @@ from zigpy.exceptions import ControllerException, ZigbeeException
 import zigpy.types as t
 
 LOGGER = logging.getLogger(__name__)
+
+_T = typing.TypeVar("_T")
 
 
 class ListenableMixin:
@@ -494,3 +497,20 @@ def combine_concurrent_calls(
             del tasks[key]
 
     return replacement
+
+async def async_iterate_in_chunks(
+    iterable: typing.Iterable[_T], chunk_size: int
+) -> typing.AsyncGenerator[list[_T], None]:
+    """Safely iterate over a synchronous iterable in chunks."""
+    loop = asyncio.get_running_loop()
+    iterator = iter(iterable)
+
+    while True:
+        chunk = await loop.run_in_executor(
+            None, list, itertools.islice(iterator, chunk_size)
+        )
+
+        if not chunk:
+            break
+
+        yield chunk
