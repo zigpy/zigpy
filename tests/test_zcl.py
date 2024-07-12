@@ -415,8 +415,10 @@ async def test_write_unknown_attribute(cluster):
 
 async def test_write_attributes_wrong_type(cluster):
     with patch.object(cluster, "_write_attributes", new=AsyncMock()):
-        await cluster.write_attributes({18: 0x2222})
-        assert cluster._write_attributes.call_count == 1
+        with pytest.raises(ValueError):
+            await cluster.write_attributes({18: 0x2222})
+
+        assert cluster._write_attributes.call_count == 0
 
 
 async def test_write_attributes_raw(cluster):

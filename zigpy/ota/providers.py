@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import hashlib
+import dataclasses
 import io
 import json
 import logging
@@ -79,9 +80,12 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
 class RemoteOtaImageMetadata(BaseOtaImageMetadata):
     url: str
 
+    # If a provider uses a self-signed certificate, it can override this
+    ssl_ctx: ssl.SSLContext | None = None
+
     async def _fetch(self) -> bytes:
         async with aiohttp.ClientSession(raise_for_status=True) as req:
-            async with req.get(self.url) as rsp:
+            async with req.get(self.url, ssl=self.ssl_ctx) as rsp:
                 return await rsp.read()
 
 
@@ -127,12 +131,7 @@ class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
 
 @attrs.define(frozen=True, kw_only=True)
 class IkeaRemoteOtaImageMetadata(RemoteOtaImageMetadata):
-    async def _fetch(self) -> bytes:
-        async with aiohttp.ClientSession(raise_for_status=True) as req:
-            # Use IKEA's self-signed certificate
-            async with req.get(self.url, ssl=Trådfri.SSL_CTX) as rsp:
-                return await rsp.read()
-
+    ssl_ctx = dataclasses.field(default_factory=lambda: Trådfri.SSL_CTX)
 
 class BaseOtaProvider:
     MANUFACTURER_IDS: list[int] = []
@@ -178,7 +177,8 @@ class Trådfri(BaseOtaProvider):
     MANUFACTURER_IDS = [4476]
 
     # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
-    SSL_CTX = ssl.create_default_context(
+    SSL_CTX: ssl.SSLContext = ssl.create_default_context()
+    SSL_CTX.load_verify_locations(
         cadata="""\
 -----BEGIN CERTIFICATE-----
 MIICGDCCAZ+gAwIBAgIUdfH0KDnENv/dEcxH8iVqGGGDqrowCgYIKoZIzj0EAwMw
@@ -715,35 +715,43 @@ class AdvancedFileProvider(BaseOtaProvider):
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         loop = asyncio.get_running_loop()
 
-        for path in self.image_dir.rglob("*"):
-            if not path.is_file():
-                continue
+        paths = await loop.run_in_executor(None, self.image_dir.rglob, "*")
 
-            data = await loop.run_in_executor(None, path.read_bytes)
+        async for chunk in zigpy.util.async_iterate_in_chunks(paths, chunk_size=100):
+            for path in chunk:
+                if not path.is_file():
+                    continue
 
-            try:
-                image, _ = parse_ota_image(data)
-            except Exception as exc:
-                LOGGER.debug("Failed to parse image %s: %r", path, exc)
-                continue
+                data = await loop.run_in_executor(None, path.read_bytes)
 
-            # This protects against images being swapped out in the local filesystem
-            hasher = await loop.run_in_executor(None, hashlib.sha1, data)
+                try:
+                    image, _ = parse_ota_image(data)
+                except Exception as exc:
+                    LOGGER.debug("Failed to parse image %s: %r", path, exc)
+                    continue
 
-            yield LocalOtaImageMetadata(  # type: ignore[call-arg]
-                path=path,
-                file_version=image.header.file_version,
-                manufacturer_id=image.header.manufacturer_id,
-                image_type=image.header.image_type,
-                checksum="sha1:" + hasher.hexdigest(),
-                file_size=len(data),
-                min_hardware_version=image.header.minimum_hardware_version,
-                max_hardware_version=image.header.maximum_hardware_version,
-                source=f"Advanced file provider ({self.image_dir})",
-            )
+                # This protects against images being swapped out in the local filesystem
+                hasher = await loop.run_in_executor(None, hashlib.sha1, data)
+
+                yield LocalOtaImageMetadata(  # type: ignore[call-arg]
+                    path=path,
+                    file_version=image.header.file_version,
+                    manufacturer_id=image.header.manufacturer_id,
+                    image_type=image.header.image_type,
+                    checksum="sha1:" + hasher.hexdigest(),
+                    file_size=len(data),
+                    min_hardware_version=image.header.minimum_hardware_version,
+                    max_hardware_version=image.header.maximum_hardware_version,
+                    source=f"Advanced file provider ({self.image_dir})",
+                )
 
 
-def _load_z2m_index(index: dict, *, index_root: pathlib.Path | None = None):
+def _load_z2m_index(
+    index: dict,
+    *,
+    index_root: pathlib.Path | None = None,
+    ssl_ctx: ssl.SSLContext | None = None,
+) -> typing.Iterator[LocalOtaImageMetadata | RemoteOtaImageMetadata]:
     for obj in index:
         shared_kwargs = {
             "file_version": obj["fileVersion"],
@@ -761,7 +769,7 @@ def _load_z2m_index(index: dict, *, index_root: pathlib.Path | None = None):
         if "path" in obj and index_root is not None:
             yield LocalOtaImageMetadata(**shared_kwargs, path=index_root / obj["path"])  # type: ignore[call-arg]
         else:
-            yield RemoteOtaImageMetadata(**shared_kwargs, url=obj["url"])  # type: ignore[call-arg]
+            yield RemoteOtaImageMetadata(**shared_kwargs, url=obj["url"], ssl_ctx=ssl_ctx)  # type: ignore[call-arg]
 
 
 class BaseZ2MProvider(BaseOtaProvider):
@@ -817,6 +825,24 @@ class LocalZ2MProvider(BaseZ2MProvider):
 
 
 class RemoteZ2MProvider(BaseZ2MProvider):
+    # `openssl s_client -connect otau.meethue.com:443 -showcerts`
+    SSL_CTX = ssl.create_default_context()
+    SSL_CTX.load_verify_locations(
+        cadata="""\
+-----BEGIN CERTIFICATE-----
+MIIBwDCCAWagAwIBAgIJAJtrMkoTxs+WMAoGCCqGSM49BAMCMDIxCzAJBgNVBAYT
+Ak5MMRQwEgYDVQQKDAtQaGlsaXBzIEh1ZTENMAsGA1UEAwwEcm9vdDAgFw0xNjA4
+MjUwNzU5NDNaGA8yMDY4MDEwNTA3NTk0M1owMjELMAkGA1UEBhMCTkwxFDASBgNV
+BAoMC1BoaWxpcHMgSHVlMQ0wCwYDVQQDDARyb290MFkwEwYHKoZIzj0CAQYIKoZI
+zj0DAQcDQgAEENC1JOl6BxJrwCb+YK655zlM57VKFSi5OHDsmlCaF/EfTGGgU08/
+JUtkCyMlHUUoYBZyzCBKXqRKkrT512evEKNjMGEwHQYDVR0OBBYEFAlkFYACVzir
+qTr++cWia8AKH/fOMB8GA1UdIwQYMBaAFAlkFYACVzirqTr++cWia8AKH/fOMA8G
+A1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49BAMCA0gAMEUC
+IQDcGfyXaUl5hjr5YE8m2piXhMcDzHTNbO1RvGgz4r9IswIgFTTw/R85KyfIiW+E
+clwJRVSsq8EApeFREenCkRM0EIk=
+-----END CERTIFICATE-----"""
+    )
+
     def __init__(self, url: str):
         super().__init__()
         self.url = url
@@ -829,5 +855,5 @@ class RemoteZ2MProvider(BaseZ2MProvider):
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
-        for img in _load_z2m_index(fw_lst):
+        for img in _load_z2m_index(fw_lst, ssl_ctx=self.SSL_CTX):
             yield img.replace(source=f"Remote Z2M provider ({self.url})")

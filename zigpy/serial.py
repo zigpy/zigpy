@@ -6,7 +6,9 @@ import typing
 import urllib.parse
 
 import async_timeout
-import serial as pyserial
+
+from typing import Literal
+from zigpy.typing import UndefinedType, UNDEFINED
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_SOCKET_PORT = 6638
@@ -25,15 +27,34 @@ async def create_serial_connection(
     protocol_factory: typing.Callable[[], asyncio.Protocol],
     url: str,
     *,
-    parity=pyserial.PARITY_NONE,
-    stopbits=pyserial.STOPBITS_ONE,
+    baudrate: int = 115200,  # We default to 115200 instead of 9600
+    exclusive: bool = True,  # We open serial ports exclusively by default
+    xonxoff: bool | UndefinedType = UNDEFINED,
+    rtscts: bool | UndefinedType = UNDEFINED,
+    flow_control: Literal["hardware", "software", None] | UndefinedType = UNDEFINED,
     **kwargs: typing.Any,
 ) -> tuple[asyncio.Transport, asyncio.Protocol]:
     """Wrapper around pyserial-asyncio that transparently substitutes a normal TCP
     transport and protocol when a `socket` connection URI is provided.
     """
-    baudrate: int | None = kwargs.get("baudrate")
-    LOGGER.debug("Opening a serial connection to %r (%s baudrate)", url, baudrate)
+
+    if flow_control is not UNDEFINED:
+        xonxoff = (flow_control == "software")
+        rtscts = (flow_control == "hardware")
+
+    if xonxoff is UNDEFINED:
+        xonxoff = False
+
+    if rtscts is UNDEFINED:
+        rtscts = False
+
+    LOGGER.debug(
+        "Opening a serial connection to %r (baudrate=%s, xonxoff=%s, rtscts=%s)",
+        url,
+        baudrate,
+        xonxoff,
+        rtscts,
+    )
 
     parsed_url = urllib.parse.urlparse(url)
 
@@ -46,7 +67,13 @@ async def create_serial_connection(
             )
     else:
         transport, protocol = await pyserial_asyncio.create_serial_connection(
-            loop, protocol_factory, url=url, **kwargs
+            loop,
+            protocol_factory,
+            url=url,
+            exclusive=exclusive,
+            xonxoff=xonxoff,
+            rtscts=rtscts,
+            **kwargs,
         )
 
     return transport, protocol
