@@ -28,7 +28,7 @@ async def create_serial_connection(
     url: str,
     *,
     baudrate: int = 115200,  # We default to 115200 instead of 9600
-    exclusive: bool = True,  # We open serial ports exclusively by default
+    exclusive: bool = False,
     xonxoff: bool | UndefinedType = UNDEFINED,
     rtscts: bool | UndefinedType = UNDEFINED,
     flow_control: Literal["hardware", "software", None] | UndefinedType = UNDEFINED,
