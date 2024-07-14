@@ -202,7 +202,7 @@ class AddsMetadata:
 
     def __eq__(self, other: object) -> bool:
         """Return whether this object is equal to another object."""
-        if not isinstance(other, QuirksV2RegistryEntry):
+        if not isinstance(other, AddsMetadata):
             return False
         return self.__hash__() == other.__hash__()
 
@@ -374,7 +374,7 @@ class ZCLCommandButtonMetadata(EntityMetadata):
 
     def __eq__(self, other: object) -> bool:
         """Return whether this object is equal to another object."""
-        if not isinstance(other, QuirksV2RegistryEntry):
+        if not isinstance(other, ZCLCommandButtonMetadata):
             return False
         return self.__hash__() == other.__hash__()
 
