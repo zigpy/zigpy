@@ -51,13 +51,9 @@ class DeviceRegistry:
 
     def add_to_registry_v2(
         self, manufacturer: str, model: str, entry: QuirksV2RegistryEntry
-    ) -> QuirksV2RegistryEntry:
+    ) -> None:
         """Add an entry to the registry."""
-        key = (manufacturer, model)
-        if not entry.registry:
-            entry.registry = self
-        self._registry_v2[key].add(entry)
-        return entry
+        self._registry_v2[(manufacturer, model)].add(entry)
 
     def remove(self, custom_device: CustomDeviceType) -> None:
         """Remove a device from the registry"""

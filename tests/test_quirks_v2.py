@@ -113,6 +113,7 @@ async def test_quirks_v2(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
         )
+        .build()
     )
 
     quirked = registry.get_device(device_mock)
@@ -180,6 +181,7 @@ async def test_quirks_v2_signature_match(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
         )
+        .build()
     )
 
     quirked = registry.get_device(device_mock)
@@ -201,6 +203,50 @@ async def test_quirks_v2_multiple_matches_raises(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
         )
+        .build()
+    )
+
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .adds(Identify.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            OnOff.StartUpOnOff,
+            OnOff.cluster_id,
+        )
+        .build()
+    )
+
+    with pytest.raises(
+        MultipleQuirksMatchException, match="Multiple matches found for device"
+    ):
+        registry.get_device(device_mock)
+
+
+async def test_quirks_v2_multiple_matches_not_raises(device_mock):
+    """Test that adding multiple quirks v2 entries for the same device doesn't raise.
+
+       When the quirk is EXACTLY the same the semantics of sets prevents us from
+       having multiple quirks in the registry.
+    """
+    registry = DeviceRegistry()
+
+    (
+        add_to_registry_v2(
+            device_mock.manufacturer, device_mock.model, registry=registry
+        )
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            OnOff.StartUpOnOff,
+            OnOff.cluster_id,
+        )
+        .build()
     )
 
     (
@@ -214,12 +260,10 @@ async def test_quirks_v2_multiple_matches_raises(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
         )
+        .build()
     )
 
-    with pytest.raises(
-        MultipleQuirksMatchException, match="Multiple matches found for device"
-    ):
-        registry.get_device(device_mock)
+    assert isinstance(registry.get_device(device_mock), CustomDeviceV2)
 
 
 async def test_quirks_v2_with_custom_device_class(device_mock):
@@ -241,6 +285,7 @@ async def test_quirks_v2_with_custom_device_class(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
         )
+        .build()
     )
 
     assert isinstance(registry.get_device(device_mock), CustomTestDevice)
@@ -275,6 +320,7 @@ async def test_quirks_v2_with_node_descriptor(device_mock):
         .adds(Basic.cluster_id)
         .adds(OnOff.cluster_id)
         .node_descriptor(node_descriptor)
+        .build()
     )
 
     quirked: CustomDeviceV2 = registry.get_device(device_mock)
@@ -293,6 +339,7 @@ async def test_quirks_v2_skip_configuration(device_mock):
         .adds(Basic.cluster_id)
         .adds(OnOff.cluster_id)
         .skip_configuration()
+        .build()
     )
 
     quirked: CustomDeviceV2 = registry.get_device(device_mock)
@@ -308,6 +355,7 @@ async def test_quirks_v2_removes(device_mock):
         add_to_registry_v2(
             device_mock.manufacturer, device_mock.model, registry=registry
         ).removes(Identify.cluster_id)
+        .build()
     )
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
@@ -329,6 +377,7 @@ async def test_quirks_v2_apply_custom_configuration(device_mock):
         )
         .adds(CustomOnOffCluster)
         .adds(CustomOnOffCluster, cluster_type=ClusterType.Client)
+        .build()
     )
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
@@ -365,6 +414,7 @@ async def test_quirks_v2_sensor(device_mock):
         )
         .adds(OnOff.cluster_id)
         .sensor(OnOff.AttributeDefs.on_time.name, OnOff.cluster_id)
+        .build()
     )
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
@@ -405,6 +455,7 @@ async def test_quirks_v2_sensor_validation_failure_translation_key(device_mock):
                 device_class="bad",
                 translation_key="bad",
             )
+            .build()
         )
 
 
@@ -424,6 +475,7 @@ async def test_quirks_v2_sensor_validation_failure_unit(device_mock):
                 device_class="bad",
                 unit="bad",
             )
+            .build()
         )
 
 
@@ -442,6 +494,7 @@ async def test_quirks_v2_switch(device_mock):
             force_inverted=True,
             invert_attribute_name=OnOff.AttributeDefs.off_wait_time.name,
         )
+        .build()
     )
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
@@ -482,6 +535,7 @@ async def test_quirks_v2_number(device_mock):
             step=1,
             unit="s",
         )
+        .build()
     )
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
@@ -521,6 +575,7 @@ async def test_quirks_v2_binary_sensor(device_mock):
             OnOff.AttributeDefs.on_off.name,
             OnOff.cluster_id,
         )
+        .build()
     )
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
@@ -555,6 +610,7 @@ async def test_quirks_v2_write_attribute_button(device_mock):
             20,
             OnOff.cluster_id,
         )
+        .build()
     )
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
@@ -590,6 +646,7 @@ async def test_quirks_v2_command_button(device_mock):
             OnOff.cluster_id,
             command_kwargs={"on_off_control": OnOff.OnOffControl.Accept_Only_When_On},
         )
+        .build()
     )
 
     quirked_device: CustomDeviceV2 = registry.get_device(device_mock)
@@ -633,6 +690,7 @@ async def test_quirks_v2_also_applies_to(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
         )
+        .build()
     )
 
     assert isinstance(registry.get_device(device_mock), CustomTestDevice)
@@ -672,6 +730,7 @@ async def test_quirks_v2_with_custom_device_class_raises(device_mock):
                 OnOff.StartUpOnOff,
                 OnOff.cluster_id,
             )
+            .build()
         )
 
 
@@ -841,6 +900,7 @@ async def test_quirks_v2_matches_v1(app_mock):
         .replaces(PowerConfig1CRCluster)
         .replaces(ScenesCluster, cluster_type=ClusterType.Client)
         .device_automation_triggers(triggers)
+        .build()
     )
 
     quirked_v2 = registry.get_device(ikea_device)
