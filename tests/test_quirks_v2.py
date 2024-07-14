@@ -192,7 +192,7 @@ async def test_quirks_v2_multiple_matches_raises(device_mock):
     """Test that adding multiple quirks v2 entries for the same device raises."""
     registry = DeviceRegistry()
 
-    (
+    entry1 = (
         add_to_registry_v2(
             device_mock.manufacturer, device_mock.model, registry=registry
         )
@@ -206,7 +206,7 @@ async def test_quirks_v2_multiple_matches_raises(device_mock):
         .build()
     )
 
-    (
+    entry2 = (
         add_to_registry_v2(
             device_mock.manufacturer, device_mock.model, registry=registry
         )
@@ -220,6 +220,8 @@ async def test_quirks_v2_multiple_matches_raises(device_mock):
         )
         .build()
     )
+
+    assert entry1 != entry2
 
     with pytest.raises(
         MultipleQuirksMatchException, match="Multiple matches found for device"
@@ -235,7 +237,7 @@ async def test_quirks_v2_multiple_matches_not_raises(device_mock):
     """
     registry = DeviceRegistry()
 
-    (
+    entry1 = (
         add_to_registry_v2(
             device_mock.manufacturer, device_mock.model, registry=registry
         )
@@ -249,7 +251,7 @@ async def test_quirks_v2_multiple_matches_not_raises(device_mock):
         .build()
     )
 
-    (
+    entry2 = (
         add_to_registry_v2(
             device_mock.manufacturer, device_mock.model, registry=registry
         )
@@ -263,6 +265,7 @@ async def test_quirks_v2_multiple_matches_not_raises(device_mock):
         .build()
     )
 
+    assert entry1 == entry2
     assert isinstance(registry.get_device(device_mock), CustomDeviceV2)
 
 
