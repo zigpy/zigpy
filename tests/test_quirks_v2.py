@@ -118,6 +118,7 @@ async def test_quirks_v2(device_mock):
 
     # coverage for overridden __eq__ method
     assert entry.adds_metadata[0] != entry.adds_metadata[1]
+    assert entry.adds_metadata[0] != entry
 
     quirked = registry.get_device(device_mock)
     assert isinstance(quirked, CustomDeviceV2)
@@ -225,6 +226,7 @@ async def test_quirks_v2_multiple_matches_raises(device_mock):
     )
 
     assert entry1 != entry2
+    assert entry1 != registry
 
     with pytest.raises(
         MultipleQuirksMatchException, match="Multiple matches found for device"
@@ -269,6 +271,7 @@ async def test_quirks_v2_multiple_matches_not_raises(device_mock):
     )
 
     assert entry1 == entry2
+    assert entry1 != registry
     assert isinstance(registry.get_device(device_mock), CustomDeviceV2)
 
 
@@ -683,6 +686,7 @@ async def test_quirks_v2_command_button(device_mock):
     assert button != quirked_device.exposes_metadata[
         (1, OnOff.cluster_id, ClusterType.Server)
     ][1]
+    assert button != quirked_device
 
 
 
