@@ -748,12 +748,6 @@ class QuirksV2RegistryEntry:
         """Return the hash of the quirks v2 registry entry."""
         return hash(self.quirk_location)
 
-    def __eq__(self, other: Any) -> bool:
-        """Check if the quirks v2 registry entry is equal to another object."""
-        if not isinstance(other, QuirksV2RegistryEntry):
-            return False
-        return self.quirk_location == other.quirk_location
-
 
 def add_to_registry_v2(
     manufacturer: str, model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
