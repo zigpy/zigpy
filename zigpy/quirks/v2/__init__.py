@@ -498,7 +498,9 @@ class QuirksV2RegistryEntryBuilder:
     ) -> QuirksV2RegistryEntryBuilder:
         """Register this quirks v2 entry for an additional manufacturer and model."""
         self.manufacturer_model_metadata.append(
-            ManufacturerModelMetadata(manufacturer=manufacturer, model=model)
+            ManufacturerModelMetadata(  # type: ignore[call-arg]
+                manufacturer=manufacturer, model=model
+            )
         )
         return self
 
@@ -889,7 +891,7 @@ class QuirksV2RegistryEntryBuilder:
 
     def build(self) -> QuirksV2RegistryEntry:
         """Build the quirks v2 registry entry."""
-        quirk: QuirksV2RegistryEntry = QuirksV2RegistryEntry(
+        quirk: QuirksV2RegistryEntry = QuirksV2RegistryEntry(  # type: ignore[call-arg]
             manufacturer_model_metadata=tuple(self.manufacturer_model_metadata),
             quirk_location=self.quirk_location,
             filters=tuple(self.filters),
