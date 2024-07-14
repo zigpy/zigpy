@@ -448,6 +448,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             except Exception:
                 LOGGER.warning("Failed to disconnect from database", exc_info=True)
 
+        LOGGER.debug("Waiting for radio disconnection event")
         await self._connection_lost_event.wait()
         self._connection_lost_event.clear()
 
