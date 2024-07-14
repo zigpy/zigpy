@@ -61,6 +61,7 @@ async def test_serial_normal(
     assert len(mock_calls) == 1
 
     assert mock_calls[0].kwargs["url"] == "/dev/ttyUSB1"
+    assert mock_calls[0].kwargs["baudrate"] == 115200
 
     for kwarg in expected_kwargs:
         assert mock_calls[0].kwargs[kwarg] == expected_kwargs[kwarg]
