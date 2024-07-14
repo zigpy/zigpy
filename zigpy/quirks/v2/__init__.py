@@ -462,7 +462,7 @@ class QuirksV2RegistryEntry:
         """Return whether this object is equal to another object."""
         if not isinstance(other, QuirksV2RegistryEntry):
             return False
-        return self._cached_hash == other._cached_hash
+        return self.__hash__() == other.__hash__()
 
 
 @attrs.define
