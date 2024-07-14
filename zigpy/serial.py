@@ -70,6 +70,7 @@ async def create_serial_connection(
             loop,
             protocol_factory,
             url=url,
+            baudrate=baudrate,
             exclusive=exclusive,
             xonxoff=xonxoff,
             rtscts=rtscts,
