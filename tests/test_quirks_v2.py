@@ -14,7 +14,6 @@ from zigpy.const import (
     SIG_MODELS_INFO,
 )
 from zigpy.device import Device
-from zigpy.exceptions import MultipleQuirksMatchException
 from zigpy.profiles import zha
 from zigpy.quirks import CustomCluster, CustomDevice, signature_matches
 from zigpy.quirks.registry import DeviceRegistry
@@ -187,13 +186,16 @@ async def test_quirks_v2_signature_match(device_mock):
 
 
 async def test_quirks_v2_multiple_quirks_added_once(device_mock):
-    """Test that adding multiple quirks v2 entries for the same device raises."""
+    """Test that adding multiple quirks v2 entries for the same device is registgered once."""
     registry = DeviceRegistry()
 
+    class CustomTestDevice1(CustomDeviceV2):
+        """Custom test device for testing quirks v2."""
     (
         add_to_registry_v2(
             device_mock.manufacturer, device_mock.model, registry=registry
         )
+        .device_class(CustomTestDevice1)
         .adds(Basic.cluster_id)
         .adds(OnOff.cluster_id)
         .enum(
@@ -203,10 +205,13 @@ async def test_quirks_v2_multiple_quirks_added_once(device_mock):
         )
     )
 
+    class CustomTestDevice2(CustomDeviceV2):
+        """Custom test device for testing quirks v2."""
     (
         add_to_registry_v2(
             device_mock.manufacturer, device_mock.model, registry=registry
         )
+        .device_class(CustomTestDevice2)
         .adds(Basic.cluster_id)
         .adds(OnOff.cluster_id)
         .enum(
@@ -217,7 +222,7 @@ async def test_quirks_v2_multiple_quirks_added_once(device_mock):
     )
 
     quirked = registry.get_device(device_mock)
-    assert not isinstance(quirked, CustomDeviceV2)
+    assert isinstance(quirked, CustomTestDevice1)
 
 
 async def test_quirks_v2_with_custom_device_class(device_mock):
