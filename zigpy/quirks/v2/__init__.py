@@ -5,12 +5,10 @@ from __future__ import annotations
 import collections
 from enum import Enum
 import inspect
+from frozendict import frozendict, deepfreeze
 import logging
 import typing
 from typing import TYPE_CHECKING, Any
-
-from attr._make import _CacheHashWrapper
-import attrs
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -30,6 +28,7 @@ from zigpy.quirks.v2.homeassistant.sensor import SensorDeviceClass, SensorStateC
 import zigpy.types as t
 from zigpy.zcl import ClusterType
 from zigpy.zdo import ZDO
+import attrs
 from zigpy.zdo.types import NodeDescriptor
 
 if TYPE_CHECKING:
@@ -152,11 +151,10 @@ class CustomDeviceV2(CustomDevice):
 class AddsMetadata:
     """Adds metadata for adding a cluster to a device."""
 
-    _cached_hash: int = 0
     cluster: int | type[Cluster | CustomCluster] = attrs.field()
     endpoint_id: int = attrs.field(default=1)
     cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
-    constant_attributes: dict[ZCLAttributeDef, typing.Any] = attrs.field(factory=dict)
+    constant_attributes: frozendict[ZCLAttributeDef, typing.Any] = attrs.field(factory=frozendict, converter=deepfreeze)
 
     def __call__(self, device: CustomDeviceV2) -> None:
         """Process the add."""
@@ -180,31 +178,6 @@ class AddsMetadata:
                 attribute.name: value
                 for attribute, value in self.constant_attributes.items()
             }
-
-    def __hash__(self) -> int:
-        """Return the hash of the quirks v2 registry entry."""
-        if self._cached_hash == 0:
-            object.__setattr__(
-                self,
-                "_cached_hash",
-                _CacheHashWrapper(
-                    hash(
-                        (
-                            self.cluster,
-                            self.cluster_type,
-                            self.endpoint_id,
-                            tuple(sorted(self.constant_attributes.items())),
-                        )
-                    )
-                ),
-            )
-        return self._cached_hash
-
-    def __eq__(self, other: object) -> bool:
-        """Return whether this object is equal to another object."""
-        if not isinstance(other, AddsMetadata):
-            return False
-        return self.__hash__() == other.__hash__()
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -341,42 +314,9 @@ class WriteAttributeButtonMetadata(EntityMetadata):
 class ZCLCommandButtonMetadata(EntityMetadata):
     """Metadata for exposed button entity that executes a ZCL command when pressed."""
 
-    _cached_hash: int = 0
     command_name: str = attrs.field()
     args: tuple | None = attrs.field(default=None)
-    kwargs: dict[str, Any] | None = attrs.field(default=None)
-
-    def __hash__(self) -> int:
-        """Return the hash of the quirks v2 registry entry."""
-        if self._cached_hash == 0:
-            object.__setattr__(
-                self,
-                "_cached_hash",
-                _CacheHashWrapper(
-                    hash(
-                        (
-                            self.entity_platform,
-                            self.entity_type,
-                            self.cluster_id,
-                            self.endpoint_id,
-                            self.cluster_type,
-                            self.initially_disabled,
-                            self.attribute_initialized_from_cache,
-                            self.translation_key,
-                            self.command_name,
-                            self.args,
-                            tuple(sorted(self.kwargs.items())) if self.kwargs else None,
-                        )
-                    )
-                ),
-            )
-        return self._cached_hash
-
-    def __eq__(self, other: object) -> bool:
-        """Return whether this object is equal to another object."""
-        if not isinstance(other, ZCLCommandButtonMetadata):
-            return False
-        return self.__hash__() == other.__hash__()
+    kwargs: frozendict[str, Any] | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -391,7 +331,6 @@ class ManufacturerModelMetadata:
 class QuirksV2RegistryEntry:
     """Quirks V2 registry entry."""
 
-    _cached_hash: int = 0
     quirk_location: str = None
     manufacturer_model_metadata: tuple[ManufacturerModelMetadata] = attrs.field(
         factory=tuple
@@ -411,8 +350,8 @@ class QuirksV2RegistryEntry:
         | WriteAttributeButtonMetadata
         | ZCLCommandButtonMetadata
     ] = attrs.field(factory=tuple)
-    device_automation_triggers_metadata: dict[tuple[str, str], dict[str, str]] = (
-        attrs.field(factory=dict)
+    device_automation_triggers_metadata: frozendict[tuple[str, str], frozendict[str, str]] = (
+        attrs.field(factory=frozendict, converter=deepfreeze)
     )
 
     def matches_device(self, device: Device) -> bool:
@@ -426,43 +365,6 @@ class QuirksV2RegistryEntry:
                 device.application, device.ieee, device.nwk, device, self
             )
         return CustomDeviceV2(device.application, device.ieee, device.nwk, device, self)
-
-    def __hash__(self) -> int:
-        """Return the hash of the quirks v2 registry entry."""
-        if self._cached_hash == 0:
-            object.__setattr__(
-                self,
-                "_cached_hash",
-                _CacheHashWrapper(
-                    hash(
-                        (
-                            self.manufacturer_model_metadata,
-                            self.filters,
-                            self.custom_device_class,
-                            self.device_node_descriptor.as_tuple()
-                            if self.device_node_descriptor
-                            else None,
-                            self.skip_device_configuration,
-                            self.adds_metadata,
-                            self.removes_metadata,
-                            self.replaces_metadata,
-                            self.entity_metadata,
-                            # triggers can be nested a few layers deep.
-                            # Using the keys should be sufficient.
-                            tuple(
-                                sorted(self.device_automation_triggers_metadata.keys())
-                            ),
-                        )
-                    )
-                ),
-            )
-        return self._cached_hash
-
-    def __eq__(self, other: object) -> bool:
-        """Return whether this object is equal to another object."""
-        if not isinstance(other, QuirksV2RegistryEntry):
-            return False
-        return self.__hash__() == other.__hash__()
 
 
 @attrs.define
