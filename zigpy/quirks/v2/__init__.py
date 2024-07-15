@@ -315,8 +315,8 @@ class ZCLCommandButtonMetadata(EntityMetadata):
     """Metadata for exposed button entity that executes a ZCL command when pressed."""
 
     command_name: str = attrs.field()
-    args: tuple | None = attrs.field(default=None)
-    kwargs: frozendict[str, Any] | None = attrs.field(default=None)
+    args: tuple = attrs.field(default=tuple)
+    kwargs: frozendict[str, Any] = attrs.field(default=frozendict, converter=frozendict)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
