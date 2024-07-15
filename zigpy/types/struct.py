@@ -79,7 +79,7 @@ class Struct:
             ),
             None,
         )
-        cls._hash: int | None = None
+        cls._hash = -1
         cls._frozen = False
 
     def __new__(cls: type[_STRUCT], *args, **kwargs) -> _STRUCT:
@@ -333,10 +333,8 @@ class Struct:
 
         instance = type(self)(**d)
 
-        # If this is a frozen instance, all sub-structs are also frozen. We don't need
-        # to recursively re-freeze.
         if self._frozen:
-            instance._frozen = True
+            instance = instance.freeze()
 
         return instance
 
@@ -451,28 +449,18 @@ class Struct:
         return super().__setattr__(name, value)
 
     def __hash__(self) -> int:
-        if self._hash is not None:
-            return self._hash
-
         if self._frozen:
-            # Compute the hash lazily
-            object.__setattr__(
-                self,
-                "_hash",
-                hash(
-                    (
-                        type(self),
-                        tuple(getattr(self, f.name) for f in self.fields),
-                    )
-                ),
-            )
-
             return self._hash
 
-        return super().__hash__()
+        # XXX: This implementation is incorrect only for a single case:
+        # `isinstance(struct, collections.abc.Hashable)` always returns True
+        raise TypeError(f"Unhashable type: {type(self)}")
 
     def freeze(self) -> Self:
         """Freeze a Struct instance, making it hashable and immutable."""
+        if self._frozen:
+            return self
+
         kwargs = {}
 
         for f in self.fields:
@@ -483,7 +471,9 @@ class Struct:
 
             kwargs[f.name] = value
 
-        instance = type(self)(**kwargs)
+        cls = self._real_cls()
+        instance = cls(**kwargs)
+        instance._hash = hash((cls, tuple(kwargs.items())))
         instance._frozen = True
 
         return instance

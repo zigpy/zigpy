@@ -932,13 +932,21 @@ def test_frozen_struct():
     struct = OuterStruct(a=1, inner=OuterStruct.InnerStruct(b=2, c=3), d=4)
     frozen = struct.freeze()
 
+    with pytest.raises(TypeError, match="Unhashable type"):
+        hash(struct)
+
     # Setting attributes has no effect
     assert frozen.a == 1
+    assert frozen.inner.b == 2
 
     with pytest.raises(AttributeError):
         frozen.a = 2
 
+    with pytest.raises(AttributeError):
+        frozen.inner.b = 5
+
     assert frozen.a == 1
+    assert frozen.inner.b == 2
 
     assert {frozen: 2}[frozen] == 2
     assert {frozen, frozen} == {frozen}
