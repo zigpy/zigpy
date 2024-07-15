@@ -5,6 +5,7 @@ import inspect
 import typing
 
 import zigpy.types as t
+from typing_extensions import Self
 
 NoneType = type(None)
 
@@ -78,6 +79,8 @@ class Struct:
             ),
             None,
         )
+        cls._hash: int | None = None
+        cls._frozen = False
 
     def __new__(cls: type[_STRUCT], *args, **kwargs) -> _STRUCT:
         cls = cls._real_cls()
@@ -328,7 +331,14 @@ class Struct:
         d = self.as_dict().copy()
         d.update(kwargs)
 
-        return type(self)(**d)
+        instance = type(self)(**d)
+
+        # If this is a frozen instance, all sub-structs are also frozen. We don't need
+        # to recursively re-freeze.
+        if self._frozen:
+            instance._frozen = True
+
+        return instance
 
     def __eq__(self, other: object) -> bool:
         if self._int_type is not None and isinstance(other, int):
@@ -392,10 +402,18 @@ class Struct:
             if value is not None:
                 fields.append(f"*{attr}={value!r}")
 
-        extra = ""
+        extra_parts = []
 
         if self._int_type is not None:
-            extra = f"<{self._int_type(int(self))._hex_repr()}>"
+            extra_parts.append(f"{self._int_type(int(self))._hex_repr()}")
+
+        if self._frozen:
+            extra_parts.append("frozen")
+
+        if extra_parts:
+            extra = f"<{', '.join(extra_parts)}>"
+        else:
+            extra = ""
 
         return f"{type(self).__name__}{extra}({', '.join(fields)})"
 
@@ -425,3 +443,47 @@ class Struct:
                 return False
 
         return True
+
+    def __setattr__(self, name: str, value: typing.Any) -> None:
+        if self._frozen:
+            raise AttributeError("Frozen structs are immutable, use `replace` instead")
+
+        return super().__setattr__(name, value)
+
+    def __hash__(self) -> int:
+        if self._hash is not None:
+            return self._hash
+
+        if self._frozen:
+            # Compute the hash lazily
+            object.__setattr__(
+                self,
+                "_hash",
+                hash(
+                    (
+                        type(self),
+                        tuple(getattr(self, f.name) for f in self.fields),
+                    )
+                ),
+            )
+
+            return self._hash
+
+        return super().__hash__()
+
+    def freeze(self) -> Self:
+        """Freeze a Struct instance, making it hashable and immutable."""
+        kwargs = {}
+
+        for f in self.fields:
+            value = getattr(self, f.name)
+
+            if isinstance(value, Struct):
+                value = value.freeze()
+
+            kwargs[f.name] = value
+
+        instance = type(self)(**kwargs)
+        instance._frozen = True
+
+        return instance

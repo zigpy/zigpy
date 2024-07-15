@@ -916,3 +916,31 @@ def test_int_comparison_non_int(expose_global):
 
     with pytest.raises(TypeError):
         fw_ver >= 0
+
+
+def test_frozen_struct():
+    class OuterStruct(t.Struct):
+        class InnerStruct(t.Struct):
+            b: t.uint8_t
+            c: t.uint8_t
+
+        a: t.uint8_t
+        inner: None = t.StructField(type=InnerStruct)
+        d: t.uint8_t
+        e: t.uint16_t
+
+    struct = OuterStruct(a=1, inner=OuterStruct.InnerStruct(b=2, c=3), d=4)
+    frozen = struct.freeze()
+
+    # Setting attributes has no effect
+    assert frozen.a == 1
+
+    with pytest.raises(AttributeError):
+        frozen.a = 2
+
+    assert frozen.a == 1
+
+    assert {frozen: 2}[frozen] == 2
+    assert {frozen, frozen} == {frozen}
+    assert frozen == frozen.replace(a=1)
+    assert {frozen, frozen, frozen.replace(a=1), frozen.replace(a=2)} == {frozen, frozen.replace(a=2)}
