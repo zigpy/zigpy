@@ -72,9 +72,8 @@ class SerialProtocol(asyncio.Protocol):
         if self._transport is None:
             return
 
-        self.close()
-        self._buffer.clear()
         self._transport.close()
+        self._buffer.clear()
 
         LOGGER.debug("Waiting for serial port to close")
         await self._disconnected_event.wait()
@@ -82,6 +81,7 @@ class SerialProtocol(asyncio.Protocol):
         LOGGER.debug("Disconnected from serial port")
 
         self._transport = None
+        self.close()
 
     async def _wait_for_pyserial_to_actually_close(self) -> None:
         # pyserial-asyncio calls `connection_lost` *before* the serial port is closed
@@ -151,7 +151,5 @@ async def create_serial_connection(
                 raise exc.__context__ from None
 
             raise
-
-    await protocol.wait_until_connected()
 
     return transport, protocol
