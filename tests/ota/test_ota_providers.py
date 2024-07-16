@@ -127,7 +127,7 @@ async def test_local_z2m_provider():
             assert meta.path == FILES_DIR / obj.pop("path")
             obj.pop("url")
         else:
-            assert False
+            pytest.fail(f"Unexpected metadata type: {meta!r}")
 
         assert not obj
 
