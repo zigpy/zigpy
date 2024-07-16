@@ -54,7 +54,7 @@ class Topology(zigpy.util.ListenableMixin):
         )
         self.routes: dict[t.EUI64, list[zdo_t.Route]] = collections.defaultdict(list)
 
-    def start_periodic_scans(self, period: int | float) -> None:
+    def start_periodic_scans(self, period: float) -> None:
         self.stop_periodic_scans()
         self._scan_loop_task = asyncio.create_task(self._scan_loop(period))
 
@@ -62,7 +62,7 @@ class Topology(zigpy.util.ListenableMixin):
         if self._scan_loop_task is not None:
             self._scan_loop_task.cancel()
 
-    async def _scan_loop(self, period: int | float) -> None:
+    async def _scan_loop(self, period: float) -> None:
         """Delay scan by creating a task."""
 
         while True:

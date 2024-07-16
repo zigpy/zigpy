@@ -122,7 +122,7 @@ async def retry(
     func: typing.Callable[[], typing.Awaitable[typing.Any]],
     retry_exceptions: typing.Iterable[BaseException],
     tries: int = 3,
-    delay: int | float = 0.1,
+    delay: float = 0.1,
 ) -> typing.Any:
     """Retry a function in case of exception
 

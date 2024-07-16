@@ -206,7 +206,7 @@ class BackupManager(ListenableMixin):
 
         self.backups.append(backup)
 
-    def start_periodic_backups(self, period: int | float) -> None:
+    def start_periodic_backups(self, period: float) -> None:
         self.stop_periodic_backups()
         self._backup_task = asyncio.create_task(self._backup_loop(period))
 
@@ -214,7 +214,7 @@ class BackupManager(ListenableMixin):
         if self._backup_task is not None:
             self._backup_task.cancel()
 
-    async def _backup_loop(self, period: int | float):
+    async def _backup_loop(self, period: float):
         while True:
             try:
                 await self.create_backup()

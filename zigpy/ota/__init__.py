@@ -220,7 +220,7 @@ class OTA:
             self._register_providers(self._config)
 
     async def broadcast_loop(
-        self, initial_delay: int | float, interval: int | float
+        self, initial_delay: float, interval: float
     ) -> None:
         """Periodically broadcast an image notification to get devices to check in."""
 
@@ -237,7 +237,7 @@ class OTA:
             await asyncio.sleep(interval)
 
     def start_periodic_broadcasts(
-        self, initial_delay: int | float, interval: int | float
+        self, initial_delay: float, interval: float
     ) -> None:
         """Start the periodic OTA broadcasts."""
         self._broadcast_loop_task = asyncio.create_task(
