@@ -119,38 +119,6 @@ split-on-trailing-comma = false
 "tests/*.py" = ["F811"]
 "zigpy/ota/provider.py" = ["SIM117"]
 
-[tool.pyupgrade]
-py38plus = true
-
-[tool.autoflake8]
-in-place = true
-recursive = false
-expand-star-imports = false
-exclude = [".venv", ".git", ".tox", "docs", "venv", "bin", "lib", "deps", "build"]
-
-[tool.flake8]
-exclude = [".venv", ".git", ".tox", "docs", "venv", "bin", "lib", "deps", "build"]
-# To work with Black
-max-line-length = 88
-ignore = [
-    "W503",  # W503: Line break occurred before a binary operator
-    "E203",  # E203: Whitespace before ':'
-    "E501",  # E501: line too long
-
-]
-
-per-file-ignores = """
-    tests/*.py: F811
-"""
-
-[tool.isort]
-profile = "black"
-# will group `import x` and `from x import` of the same module.
-force_sort_within_sections = true
-known_first_party = ["zigpy", "tests"]
-forced_separate = "tests"
-combine_as_imports = true
-
 [tool.codespell]
 ignore-words-list = "ser,nd,hass"
 skip = "./.*,tests/*,pyproject.toml"
