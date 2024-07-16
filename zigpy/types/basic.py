@@ -777,9 +777,9 @@ class KwargTypeMeta(type):
         def __init_subclass__(cls, **kwargs):
             filtered_kwargs = kwargs.copy()
 
-            for name in kwargs:
-                if name in cls_kwarg_attrs:
-                    setattr(cls, f"_{name}", filtered_kwargs.pop(name))
+            for key in kwargs:
+                if key in cls_kwarg_attrs:
+                    setattr(cls, f"_{key}", filtered_kwargs.pop(key))
 
             super().__init_subclass__(**filtered_kwargs)
 

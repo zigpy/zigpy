@@ -624,17 +624,17 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             if new_config not in device_configs:
                 device_configs.append(new_config)
 
-        for device_config in device_configs:
-            app = cls(cls.SCHEMA({conf.CONF_DEVICE: device_config}))
+        for config in device_configs:
+            app = cls(cls.SCHEMA({conf.CONF_DEVICE: config}))
 
             try:
                 await app.connect()
             except Exception:  # noqa: BLE001
                 LOGGER.debug(
-                    "Failed to probe with config %s", device_config, exc_info=True
+                    "Failed to probe with config %s", config, exc_info=True
                 )
             else:
-                return device_config
+                return config
             finally:
                 await app.disconnect()
 
