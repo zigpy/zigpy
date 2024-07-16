@@ -291,7 +291,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         )
         if not isinstance(results[0], list):
             for attrid in attrs_to_read:
-                succeeded.append(
+                succeeded.append(  # noqa: PERF401
                     foundation.ReadAttributeRecord(
                         attrid,
                         results[0],
