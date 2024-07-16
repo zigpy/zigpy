@@ -418,9 +418,10 @@ class Struct:
     def is_valid(self) -> bool:
         try:
             self.serialize()
-            return True
         except ValueError:
             return False
+        else:
+            return True
 
     def matches(self, other: Struct) -> bool:
         if not isinstance(self, type(other)) and not isinstance(other, type(self)):

@@ -144,7 +144,8 @@ def check_invalid(image: BaseOTAImage) -> bool:
 
     try:
         validate_ota_image(image)
-        return False
     except ValidationError as e:
         LOGGER.warning("Image %s is invalid: %s", image.header, e)
         return True
+    else:
+        return False
