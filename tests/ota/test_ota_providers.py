@@ -32,7 +32,7 @@ def download_external_files():
 
         if not path.is_file():
 
-            async def download():
+            async def download(path: pathlib.Path = path, obj: dict = obj) -> None:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(
                         obj["url"],
