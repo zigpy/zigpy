@@ -904,16 +904,16 @@ def test_int_comparison_non_int(expose_global):
     )
 
     with pytest.raises(TypeError):
-        fw_ver < 0
+        fw_ver < 0  # noqa: B015
 
     with pytest.raises(TypeError):
-        fw_ver <= 0
+        fw_ver <= 0  # noqa: B015
 
     with pytest.raises(TypeError):
-        fw_ver > 0
+        fw_ver > 0  # noqa: B015
 
     with pytest.raises(TypeError):
-        fw_ver >= 0
+        fw_ver >= 0  # noqa: B015
 
 
 def test_frozen_struct():

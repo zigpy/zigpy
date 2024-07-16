@@ -344,4 +344,4 @@ async def test_debouncer_low_resolution_clock():
 
         # The two objects cannot be compared
         with pytest.raises(TypeError):
-            obj1 < obj2
+            obj1 < obj2  # noqa: B015
