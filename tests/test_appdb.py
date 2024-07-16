@@ -490,7 +490,7 @@ async def test_attribute_update_short_interval(tmp_path):
     attr_update_time_first = clus._attr_last_updated[0x4000]
 
     # update attribute again 10 seconds later
-    fake_time = datetime.utcnow() + timedelta(seconds=10)
+    fake_time = datetime.now(timezone.utc) + timedelta(seconds=10)
     with freezegun.freeze_time(fake_time):
         clus.update_attribute(0x4000, "2.0")
 

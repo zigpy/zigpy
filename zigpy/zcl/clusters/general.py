@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Final
 
 import zigpy.types as t
@@ -1166,8 +1166,8 @@ class Time(Cluster):
             data = {}
             for attr in args[0][0]:
                 if attr == 0:
-                    epoch = datetime(2000, 1, 1, 0, 0, 0, 0)
-                    diff = datetime.utcnow() - epoch
+                    epoch = datetime(2000, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
+                    diff = datetime.now(timezone.utc) - epoch
                     data[attr] = diff.total_seconds()
                 elif attr == 1:
                     data[attr] = 7
