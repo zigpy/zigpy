@@ -182,6 +182,7 @@ ignore = [
     "RET506",
     "RET507",
     "C901",
+    "PERF203",
 
     # From Home Assistant
     "D202", # No blank lines allowed after function docstring
