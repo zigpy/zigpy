@@ -932,6 +932,9 @@ def test_frozen_struct():
     struct = OuterStruct(a=1, inner=OuterStruct.InnerStruct(b=2, c=3), d=4)
     frozen = struct.freeze()
 
+    assert 'frozen' not in repr(struct)
+    assert 'frozen' in repr(frozen)
+
     with pytest.raises(TypeError, match="Unhashable type"):
         hash(struct)
 
