@@ -64,7 +64,7 @@ class BaseRequestListener:
         which can sometimes be unavoidable.
         """
 
-        raise NotImplementedError()  # pragma: no cover
+        raise NotImplementedError  # pragma: no cover
 
     def cancel(self):
         """Implement by subclasses to cancel the listener.
@@ -72,7 +72,7 @@ class BaseRequestListener:
         Return value indicates whether or not the listener is cancelable.
         """
 
-        raise NotImplementedError()  # pragma: no cover
+        raise NotImplementedError  # pragma: no cover
 
 
 @dataclasses.dataclass(frozen=True)
@@ -115,7 +115,7 @@ class CallbackListener(BaseRequestListener):
                 )
                 self._tasks.add(task)
                 task.add_done_callback(self._tasks.remove)
-        except Exception:
+        except Exception:  # noqa: BLE001
             LOGGER.warning(
                 "Caught an exception while executing callback", exc_info=True
             )

@@ -231,7 +231,7 @@ class OTA:
 
             try:
                 await self.broadcast_notify()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 _LOGGER.debug("OTA broadcast failed", exc_info=True)
 
             await asyncio.sleep(interval)
@@ -332,7 +332,7 @@ class OTA:
         for provider in compatible_providers:
             try:
                 index = await self._load_provider_index(provider)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 _LOGGER.debug("Failed to load provider %s", provider, exc_info=exc)
                 continue
 

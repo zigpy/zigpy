@@ -10,7 +10,7 @@ from zigpy.ota.providers import BaseOtaImageMetadata
 from zigpy.zcl.clusters.general import Ota
 
 
-@pytest.fixture
+@pytest.fixture()
 def image_with_metadata() -> OtaImageWithMetadata:
     firmware = zigpy.ota.image.OTAImage(
         header=zigpy.ota.image.OTAImageHeader(

@@ -2,9 +2,9 @@ import asyncio
 
 import pytest
 
+from zigpy import zdo
 import zigpy.device
 import zigpy.types as t
-import zigpy.zdo as zdo
 import zigpy.zdo.types as zdo_types
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -20,7 +20,7 @@ def test_commands():
             assert hasattr(paramtype, "deserialize")
 
 
-@pytest.fixture
+@pytest.fixture()
 def zdo_f(app):
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     dev = zigpy.device.Device(app, ieee, 65535)
@@ -71,13 +71,13 @@ async def test_unbind(zdo_f):
 
 
 @pytest.mark.parametrize(
-    "remove_children, rejoin, flags",
-    (
+    ("remove_children", "rejoin", "flags"),
+    [
         (False, False, 0),
         (False, True, 0x80),
         (True, False, 0x40),
         (True, True, 0xC0),
-    ),
+    ],
 )
 async def test_leave(zdo_f, remove_children, rejoin, flags):
     """Test ZDO leave request options."""

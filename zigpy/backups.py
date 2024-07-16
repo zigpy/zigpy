@@ -218,7 +218,7 @@ class BackupManager(ListenableMixin):
         while True:
             try:
                 await self.create_backup()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 LOGGER.warning("Failed to create a network backup", exc_info=True)
 
             LOGGER.debug("Waiting for %ss before backing up again", period)

@@ -24,8 +24,7 @@ def find_ota_cluster(device: Device) -> Ota:
     for ep in device.non_zdo_endpoints:
         if Ota.cluster_id in ep.out_clusters:
             return ep.out_clusters[Ota.cluster_id]
-    else:
-        raise ValueError("Device has no OTA cluster")
+    raise ValueError("Device has no OTA cluster")
 
 
 class OTAManager:
@@ -118,7 +117,7 @@ class OTAManager:
                 image_size=self.image.firmware.header.image_size,
                 tsn=hdr.tsn,
             )
-        except Exception as ex:
+        except Exception as ex:  # noqa: BLE001
             self.device.debug("OTA query_next_image handler exception", exc_info=ex)
             status = foundation.Status.FAILURE
 
@@ -140,7 +139,7 @@ class OTAManager:
                     status=foundation.Status.MALFORMED_COMMAND,
                     tsn=hdr.tsn,
                 )
-            except Exception as ex:
+            except Exception as ex:  # noqa: BLE001
                 self.device.debug(
                     "OTA image_block handler[MALFORMED_COMMAND] exception", exc_info=ex
                 )
@@ -170,7 +169,7 @@ class OTAManager:
                 self.progress_callback(
                     command.file_offset + len(block), len(self._image_data)
                 )
-        except Exception as ex:
+        except Exception as ex:  # noqa: BLE001
             self.device.debug("OTA image_block handler exception", exc_info=ex)
             self._finish(foundation.Status.FAILURE)
 
@@ -189,7 +188,7 @@ class OTAManager:
             )
 
             self._finish(command.status)
-        except Exception as ex:
+        except Exception as ex:  # noqa: BLE001
             self.device.debug("OTA upgrade_end handler exception", exc_info=ex)
             self._finish(foundation.Status.FAILURE)
 
@@ -202,7 +201,7 @@ class OTAManager:
                 ),
                 query_jitter=100,
             )
-        except Exception as ex:
+        except Exception as ex:  # noqa: BLE001
             self.device.debug("OTA image_notify handler exception", exc_info=ex)
             self._finish(foundation.Status.FAILURE)
         else:
@@ -216,7 +215,7 @@ class OTAManager:
 async def update_firmware(
     device: Device,
     image: OtaImageWithMetadata,
-    progress_callback: callable = None,
+    progress_callback: callable | None = None,
     force: bool = False,
 ) -> foundation.Status:
     """Update the firmware on a Zigbee device."""

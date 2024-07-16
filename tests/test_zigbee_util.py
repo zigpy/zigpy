@@ -216,7 +216,7 @@ def test_zigbee_security_hash():
 
 
 @pytest.mark.parametrize(
-    "message, expected_key",
+    ("message", "expected_key"),
     [
         (
             bytes.fromhex("11223344556677884AF7"),
@@ -387,7 +387,7 @@ async def test_catching_task_expected_exception(exception, caplog):
 
 
 @pytest.mark.parametrize(
-    "to_raise, exception", [(RuntimeError, None), (asyncio.TimeoutError, RuntimeError)]
+    ("to_raise", "exception"), [(RuntimeError, None), (asyncio.TimeoutError, RuntimeError)]
 )
 async def test_catching_task_unexpected_exception(to_raise, exception, caplog):
     """Test CatchingTaskMixin unexpected exceptions."""
@@ -485,7 +485,7 @@ def test_singleton():
 
 
 @pytest.mark.parametrize(
-    "input_relays, expected_relays",
+    ("input_relays", "expected_relays"),
     [
         ([0x0000, 0x0000, 0x0001, 0x0001, 0x0002], [0x0001, 0x0002]),
         ([0x0001, 0x0002], [0x0001, 0x0002]),
@@ -511,7 +511,7 @@ async def test_combine_concurrent_calls():
         async def slow_error(self, n=None):
             await asyncio.sleep(0.1)
             self.slow_error_calls += 1
-            raise RuntimeError()
+            raise RuntimeError
 
         combined_slow = util.combine_concurrent_calls(slow)
         combined_slow_error = util.combine_concurrent_calls(slow_error)

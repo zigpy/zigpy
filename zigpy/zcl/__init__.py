@@ -687,11 +687,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         manufacturer: int | None = None,
     ) -> list[foundation.ConfigureReportingResponseRecord]:
         """Configure attribute reporting for a single attribute."""
-        response = await self.configure_reporting_multiple(
+        return await self.configure_reporting_multiple(
             {attribute: (min_interval, max_interval, reportable_change)},
             manufacturer=manufacturer,
         )
-        return response
 
     async def configure_reporting_multiple(
         self,
@@ -834,11 +833,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
         msg = "[%s:%s:0x%04x] " + msg
-        args = (
-            self._endpoint.device.name,
-            self._endpoint.endpoint_id,
-            self.cluster_id,
-        ) + args
+        args = (self._endpoint.device.name, self._endpoint.endpoint_id, self.cluster_id, *args)
         return LOGGER.log(lvl, msg, *args, **kwargs)
 
     def __getattr__(self, name: str) -> functools.partial:

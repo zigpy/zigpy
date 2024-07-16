@@ -32,7 +32,7 @@ from zigpy.zdo import types as zdo_t
 
 @pytest.fixture(autouse=True)
 def auto_kill_aiosqlite():
-    """aiosqlite's background thread does not let pytest exit when a failure occurs"""
+    """Aiosqlite's background thread does not let pytest exit when a failure occurs"""
     yield
 
     for thread in threading.enumerate():
@@ -165,7 +165,7 @@ async def test_database(tmp_path):
     ts = time.time()
     dev.last_seen = ts
     dev_last_seen = dev.last_seen
-    assert isinstance(dev.last_seen, float)
+    assert isinstance(dev.last_seen,float)
     assert abs(dev.last_seen - ts) < 0.01
 
     # Test a CustomDevice
@@ -189,7 +189,7 @@ async def test_database(tmp_path):
     assert dev.endpoints[1].in_clusters[0x0008]._attr_cache[0x0011] == 17
     assert dev.endpoints[99].in_clusters[0x0008]._attr_cache[0x0011] == 17
     custom_dev_last_seen = dev.last_seen
-    assert isinstance(custom_dev_last_seen, float)
+    assert isinstance(custom_dev_last_seen,float)
 
     await app.shutdown()
 
@@ -416,7 +416,7 @@ async def test_groups(mock_request, tmp_path):
     await app5.shutdown()
 
 
-@pytest.mark.parametrize("dev_init", (True, False))
+@pytest.mark.parametrize("dev_init", [True, False])
 async def test_attribute_update(tmp_path, dev_init):
     """Test attribute update for initialized and uninitialized devices."""
 
@@ -715,7 +715,7 @@ async def test_stopped_appdb_listener(tmp_path):
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
 async def test_invalid_node_desc(tmp_path):
-    """devices without a valid node descriptor should not save the node descriptor."""
+    """Devices without a valid node descriptor should not save the node descriptor."""
 
     ieee_1 = make_ieee(1)
     nwk_1 = 0x1111
@@ -772,7 +772,7 @@ async def test_appdb_worker_exception(tmp_path):
     assert save_mock.await_count == 3
 
 
-@pytest.mark.parametrize("dev_init", (True, False))
+@pytest.mark.parametrize("dev_init", [True, False])
 async def test_unsupported_attribute(tmp_path, dev_init):
     """Test adding unsupported attributes for initialized and uninitialized devices."""
 
@@ -1010,7 +1010,7 @@ async def test_last_seen(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "stdlib_version,use_sqlite",
+    ("stdlib_version", "use_sqlite"),
     [
         ((1, 0, 0), False),
         ((2, 0, 0), False),
@@ -1036,15 +1036,14 @@ def test_pysqlite_load_success(stdlib_version, use_sqlite):
 
 
 @pytest.mark.parametrize(
-    "stdlib_version,pysqlite3_version",
+    ("stdlib_version", "pysqlite3_version"),
     [
         ((1, 0, 0), None),
         ((1, 0, 0), (1, 0, 1)),
     ],
 )
 def test_pysqlite_load_failure(stdlib_version, pysqlite3_version):
-    """
-    Test that the internal import SQLite helper will throw an error when no compatible
+    """Test that the internal import SQLite helper will throw an error when no compatible
     module can be found.
     """
 

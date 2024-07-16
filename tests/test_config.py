@@ -11,7 +11,7 @@ import zigpy.config.validators
 
 
 @pytest.mark.parametrize(
-    "value, result",
+    ("value", "result"),
     [
         (False, False),
         (True, True),
@@ -93,8 +93,8 @@ def test_config_validation_key_success():
 
 
 @pytest.mark.parametrize(
-    "value, result",
-    (
+    ("value", "result"),
+    [
         (0x1234, 0x1234),
         ("0x1234", 0x1234),
         (1234, 1234),
@@ -104,7 +104,7 @@ def test_config_validation_key_success():
         ("1234abcd", vol.Invalid),
         ("0xabGG", vol.Invalid),
         (None, vol.Invalid),
-    ),
+    ],
 )
 def test_config_validation_hex_number(value, result):
     """Test hex number config validation."""
@@ -117,15 +117,15 @@ def test_config_validation_hex_number(value, result):
 
 
 @pytest.mark.parametrize(
-    "value, result",
-    (
+    ("value", "result"),
+    [
         (1, vol.Invalid),
         (11, 11),
         (0x11, 17),
         ("26", 26),
         (27, vol.Invalid),
         ("27", vol.Invalid),
-    ),
+    ],
 )
 def test_schema_network_channel(value, result):
     """Test network schema for channel."""

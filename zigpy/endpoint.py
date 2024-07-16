@@ -293,7 +293,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:
         msg = "[0x%04x:%s] " + msg
-        args = (self._device.nwk, self._endpoint_id) + args
+        args = (self._device.nwk, self._endpoint_id, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)
 
     @property

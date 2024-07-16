@@ -200,7 +200,7 @@ def test_floats(value):
 
 
 @pytest.mark.parametrize(
-    "value, only_double",
+    ("value", "only_double"),
     [
         (2, False),
         (1.25, False),

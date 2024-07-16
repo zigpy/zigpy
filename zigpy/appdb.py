@@ -57,14 +57,13 @@ def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.Modul
 
         if module.sqlite_version_info >= min_version:
             return module
-    else:
-        min_ver = ".".join(map(str, min_version))
+    min_ver = ".".join(map(str, min_version))
 
-        raise RuntimeError(
-            f"zigpy requires SQLite {min_ver} or newer. If your distribution does not"
-            f" provide a more recent release, install pysqlite3 with"
-            f" `pip install pysqlite3-binary`"
-        )
+    raise RuntimeError(
+        f"zigpy requires SQLite {min_ver} or newer. If your distribution does not"
+        f" provide a more recent release, install pysqlite3 with"
+        f" `pip install pysqlite3-binary`"
+    )
 
 
 sqlite3 = _import_compatible_sqlite3(min_version=MIN_SQLITE_VERSION)
@@ -149,7 +148,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         try:
             await listener.initialize_tables()
-        except Exception:
+        except Exception:  # noqa: BLE001
             await listener.shutdown()
             raise
 
@@ -171,7 +170,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     args,
                     str(exc),
                 )
-            except Exception as ex:
+            except Exception as ex:  # noqa: BLE001
                 LOGGER.error(
                     "Unexpected error while processing %s(%s): %s", cb_name, args, ex
                 )
@@ -359,7 +358,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     ) -> None:
         await self.execute(f"DELETE FROM neighbors{DB_V} WHERE device_ieee = ?", [ieee])
 
-        rows = [(ieee,) + neighbor.as_tuple() for neighbor in neighbors]
+        rows = [(ieee, *neighbor.as_tuple()) for neighbor in neighbors]
 
         await self._db.executemany(
             f"INSERT INTO neighbors{DB_V} VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows
@@ -373,7 +372,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
         await self.execute(f"DELETE FROM routes{DB_V} WHERE device_ieee = ?", [ieee])
 
-        rows = [(ieee,) + route.as_tuple() for route in routes]
+        rows = [(ieee, *route.as_tuple()) for route in routes]
 
         await self._db.executemany(
             f"INSERT INTO routes{DB_V} VALUES (?,?,?,?,?,?,?,?)", rows
@@ -512,7 +511,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 maximum_outgoing_transfer_size=excluded.maximum_outgoing_transfer_size,
                 descriptor_capability_field=excluded.descriptor_capability_field"""
 
-        await self.execute(q, (device.ieee,) + device.node_desc.as_tuple())
+        await self.execute(q, (device.ieee, *device.node_desc.as_tuple()))
 
     async def _save_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
         clusters = [
@@ -685,7 +684,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_network_backups()
         await self._register_device_listeners()
 
-    async def _load_attributes(self, filter: str = None) -> None:
+    async def _load_attributes(self, filter: str | None = None) -> None:
         if filter:
             query = f"SELECT * FROM attributes_cache{DB_V} WHERE {filter}"
         else:
@@ -864,7 +863,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         try:
             yield
-        except Exception:
+        except Exception:  # noqa: BLE001
             await self.execute("ROLLBACK")
             raise
         else:
@@ -1016,7 +1015,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     await self.execute(
                         "INSERT INTO node_descriptors_v4"
                         " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (dev_ieee,) + node_desc.as_tuple(),
+                        (dev_ieee, *node_desc.as_tuple()),
                     )
 
         # The `neighbors` table was added in v3 but the version number was not
@@ -1037,7 +1036,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
                     await self.execute(
                         "INSERT INTO neighbors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (dev_ieee,) + neighbor.as_tuple(),
+                        (dev_ieee, *neighbor.as_tuple()),
                     )
 
     async def _migrate_to_v5(self):

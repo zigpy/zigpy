@@ -33,7 +33,7 @@ from .conftest import (
 )
 
 
-@pytest.fixture
+@pytest.fixture()
 def ieee():
     return make_ieee()
 
@@ -564,7 +564,7 @@ async def test_form_network_find_best_channel(app):
         start_network.await_count += 1
 
         if start_network.await_count == 1:
-            raise NetworkNotFormed()
+            raise NetworkNotFormed
 
         return await orig_start_network(*args, **kwargs)
 
@@ -756,7 +756,7 @@ async def test_request_concurrency():
 
                 if packet % 10 == 7:
                     # Fail randomly
-                    raise asyncio.DeliveryError()
+                    raise asyncio.DeliveryError
 
     app = make_app({conf.CONF_MAX_CONCURRENT_REQUESTS: 16}, app_base=SlowApp)
 
@@ -771,7 +771,7 @@ async def test_request_concurrency():
     assert peak_concurrency == 16
 
 
-@pytest.fixture
+@pytest.fixture()
 def device():
     device = MagicMock()
     device.nwk = 0xABCD
@@ -780,7 +780,7 @@ def device():
     return device
 
 
-@pytest.fixture
+@pytest.fixture()
 def packet(app, device):
     return t.ZigbeePacket(
         src=t.AddrModeAddress(
@@ -926,7 +926,7 @@ async def test_send_broadcast(app, packet):
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def zdo_packet(app, device):
     return t.ZigbeePacket(
         src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk),
@@ -1313,7 +1313,7 @@ async def test_energy_scan_not_implemented(app):
 
 
 @pytest.mark.parametrize(
-    "scan, message_present",
+    ("scan", "message_present"),
     [
         ({c: 0 for c in t.Channels.ALL_CHANNELS}, False),
         ({c: 255 for c in t.Channels.ALL_CHANNELS}, True),
@@ -1474,7 +1474,7 @@ async def test_probe(app):
 
         async def connect(self):
             if self._config[conf.CONF_DEVICE][conf.CONF_DEVICE_BAUDRATE] != 115200:
-                raise asyncio.TimeoutError()
+                raise asyncio.TimeoutError
 
     # Only one baudrate is valid
     assert (await BaudSpecificApp.probe({conf.CONF_DEVICE_PATH: "/dev/null"})) == {
@@ -1485,7 +1485,7 @@ async def test_probe(app):
 
     class NeverConnectsApp(App):
         async def connect(self):
-            raise asyncio.TimeoutError()
+            raise asyncio.TimeoutError
 
     # No settings will work
     assert (await NeverConnectsApp.probe({conf.CONF_DEVICE_PATH: "/dev/null"})) is False

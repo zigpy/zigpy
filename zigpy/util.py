@@ -61,7 +61,7 @@ class ListenableMixin:
                     result.append(method(self, *args))
                 else:
                     result.append(method(*args))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 LOGGER.debug(
                     "Error calling listener %r with args %r", method, args, exc_info=e
                 )
@@ -470,9 +470,7 @@ def filter_relays(relays: list[int]) -> list[int]:
 def combine_concurrent_calls(
     function: typing.Callable[..., typing.Coroutine[typing.Any, typing.Any, typing.Any]]
 ) -> typing.Callable[..., typing.Coroutine[typing.Any, typing.Any, typing.Any]]:
-    """
-    Decorator that allows concurrent calls to expensive coroutines to share a result.
-    """
+    """Decorator that allows concurrent calls to expensive coroutines to share a result."""
 
     tasks: dict[tuple, asyncio.Task] = {}
     signature = inspect.signature(function)

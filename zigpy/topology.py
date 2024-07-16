@@ -107,7 +107,7 @@ class Topology(zigpy.util.ListenableMixin):
             status, rsp = await RETRY_SLOW(scan_request)(index)
 
             if status != zdo_t.Status.SUCCESS:
-                raise ScanNotSupported()
+                raise ScanNotSupported
 
             entries = getattr(rsp, entries_attr)
 
@@ -189,7 +189,7 @@ class Topology(zigpy.util.ListenableMixin):
 
             try:
                 self.neighbors[device.ieee] = await self._scan_neighbors(device)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 LOGGER.debug("Failed to scan neighbors of %s", device, exc_info=e)
             else:
                 LOGGER.info(
@@ -208,7 +208,7 @@ class Topology(zigpy.util.ListenableMixin):
                     for route in routes
                     if route.RouteStatus != zdo_t.RouteStatus.Inactive
                 ]
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 LOGGER.debug("Failed to scan routes of %s", device, exc_info=e)
             else:
                 LOGGER.info(

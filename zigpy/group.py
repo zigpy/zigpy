@@ -246,7 +246,7 @@ class GroupEndpoint(LocalLogMixin):
 
     def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:
         msg = "[0x%04x] " + msg
-        args = (self._group.group_id,) + args
+        args = (self._group.group_id, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)
 
     def __getitem__(self, item: int):

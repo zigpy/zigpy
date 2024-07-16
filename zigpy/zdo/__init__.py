@@ -32,8 +32,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
 
     def _serialize(self, command, *args):
         schema = types.CLUSTERS[command][1]
-        data = t.serialize(args, schema)
-        return data
+        return t.serialize(args, schema)
 
     def deserialize(self, cluster_id, data):
         if cluster_id not in types.CLUSTERS:
@@ -214,7 +213,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
 
     def log(self, lvl, msg, *args, **kwargs):
         msg = "[0x%04x:zdo] " + msg
-        args = (self._device.nwk,) + args
+        args = (self._device.nwk, *args)
         return LOGGER.log(lvl, msg, *args, **kwargs)
 
     @property

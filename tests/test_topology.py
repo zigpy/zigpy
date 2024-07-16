@@ -22,7 +22,7 @@ def remove_request_delay():
         yield
 
 
-@pytest.fixture
+@pytest.fixture()
 def topology(make_initialized_device):
     app = App(
         conf.ZIGPY_SCHEMA(
@@ -124,7 +124,7 @@ async def test_scan_no_devices(topology) -> None:
 
 
 @pytest.mark.parametrize(
-    "neighbors, routes",
+    ("neighbors", "routes"),
     [
         ([], asyncio.TimeoutError()),
         ([], []),

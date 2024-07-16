@@ -44,7 +44,7 @@ class BroadcastAddress(basic.enum16):
 class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
     # EUI 64-bit ID (an IEEE address).
     def __repr__(self) -> str:
-        return ":".join("%02x" % i for i in self[::-1])
+        return ":".join(f"{i:02x}" for i in self[::-1])
 
     def __hash__(self) -> int:  # type: ignore
         return hash(repr(self))

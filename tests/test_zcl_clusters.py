@@ -3,10 +3,8 @@ import re
 
 import pytest
 
-from zigpy import device
+from zigpy import device, types, zcl
 import zigpy.endpoint
-import zigpy.types as types
-import zigpy.zcl as zcl
 from zigpy.zcl.clusters.general import Ota
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
@@ -25,7 +23,7 @@ def test_registry():
 
 
 def test_attributes():
-    for _cluster_id, cluster in zcl.Cluster._registry.items():
+    for cluster in zcl.Cluster._registry.values():
         for attrid, attr in cluster.attributes.items():
             assert 0 <= attrid <= 0xFFFF
             assert isinstance(attr, zcl.foundation.ZCLAttributeDef)
@@ -37,7 +35,7 @@ def test_attributes():
 
 
 def _test_commands(cmdattr):
-    for _cluster_id, cluster in zcl.Cluster._registry.items():
+    for cluster in zcl.Cluster._registry.values():
         for cmdid, cmdspec in getattr(cluster, cmdattr).items():
             assert 0 <= cmdid <= 0xFF
 
@@ -60,7 +58,7 @@ def test_client_commands():
 
 def test_ep_attributes():
     seen = set()
-    for _cluster_id, cluster in zcl.Cluster._registry.items():
+    for cluster in zcl.Cluster._registry.values():
         assert isinstance(cluster.ep_attribute, str)
         assert re.match(r"^[a-z_][a-z0-9_]*$", cluster.ep_attribute)
         assert cluster.ep_attribute not in seen
@@ -124,7 +122,7 @@ async def test_time_cluster_unsupported():
     assert ep.reply.call_args[0][2][-6:] == b"\xc7\x00\x86\x80\x00\x86"
 
 
-@pytest.fixture
+@pytest.fixture()
 def dev(monkeypatch, app_mock):
     monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
     ieee = types.EUI64(map(types.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
@@ -137,7 +135,7 @@ def dev(monkeypatch, app_mock):
         yield dev
 
 
-@pytest.fixture
+@pytest.fixture()
 def ota_cluster(dev):
     ep = dev.add_endpoint(1)
 
@@ -277,8 +275,8 @@ def test_basic_cluster_power_source():
 
 
 @pytest.mark.parametrize(
-    "raw, mode, name",
-    (
+    ("raw", "mode", "name"),
+    [
         (0x00, 0, "Stop"),
         (0x01, 0, "Stop"),
         (0x02, 0, "Stop"),
@@ -287,7 +285,7 @@ def test_basic_cluster_power_source():
         (0x31, 3, "Emergency"),
         (0x32, 3, "Emergency"),
         (0x33, 3, "Emergency"),
-    ),
+    ],
 )
 def test_security_iaswd_warning_mode(raw, mode, name):
     """Test warning command class of IasWD cluster."""
@@ -370,8 +368,8 @@ def test_security_iaswd_warning_siren():
 
 
 @pytest.mark.parametrize(
-    "raw, mode, name",
-    (
+    ("raw", "mode", "name"),
+    [
         (0x00, 0, "Armed"),
         (0x01, 0, "Armed"),
         (0x02, 0, "Armed"),
@@ -380,7 +378,7 @@ def test_security_iaswd_warning_siren():
         (0x11, 1, "Disarmed"),
         (0x12, 1, "Disarmed"),
         (0x13, 1, "Disarmed"),
-    ),
+    ],
 )
 def test_security_iaswd_squawk_mode(raw, mode, name):
     """Test squawk command class of IasWD cluster."""

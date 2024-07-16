@@ -5,7 +5,7 @@ import pathlib
 from unittest.mock import patch
 
 from tests.conftest import make_app
-import zigpy.config as config
+from zigpy import config
 import zigpy.device
 import zigpy.ota
 import zigpy.types as t

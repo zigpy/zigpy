@@ -15,7 +15,7 @@ import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
 
-@pytest.fixture
+@pytest.fixture()
 def test_db(tmp_path):
     def inner(filename):
         databases = pathlib.Path(__file__).parent / "databases"
@@ -264,7 +264,7 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
 
 
 @pytest.mark.parametrize(
-    "fail_on_sql,fail_on_count",
+    ("fail_on_sql", "fail_on_count"),
     [
         ("INSERT INTO node_descriptors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 0),
         ("INSERT INTO neighbors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 5),
@@ -485,12 +485,12 @@ async def test_last_seen_initial_migration(test_db):
 
     assert dev.last_seen is None
     dev.update_last_seen()
-    assert isinstance(dev.last_seen, float)
+    assert isinstance(dev.last_seen,float)
     await app.shutdown()
 
     # But the device's `last_seen` will still update properly when it's actually set
     app = await make_app_with_db(test_db_v5)
-    assert isinstance(app.get_device(nwk=0xBD4D).last_seen, float)
+    assert isinstance(app.get_device(nwk=0xBD4D).last_seen,float)
     await app.shutdown()
 
 

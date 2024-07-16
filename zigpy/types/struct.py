@@ -48,7 +48,7 @@ class StructField:
 
         try:
             return field_type(value)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             raise ValueError(
                 f"Failed to convert {self.name}={value!r} from type"
                 f" {type(value)} to {field_type}"
@@ -184,7 +184,7 @@ class Struct:
                         f"Value for field {field.name!r} is required: {self!r}"
                     )
                 else:
-                    pass  # Python bug, the following `continue` is never covered
+                    # Python bug, the following `continue` is never covered
                     continue  # pragma: no cover
 
             assigned_fields.append((field, value))
@@ -280,9 +280,7 @@ class Struct:
         bitfields = []
 
         for field in cls.fields:
-            if field.requires is not None and not field.requires(instance):
-                continue
-            elif not data and field.optional:
+            if field.requires is not None and not field.requires(instance) or not data and field.optional:
                 continue
 
             field_type = field.get_type(struct=instance)

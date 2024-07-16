@@ -165,10 +165,10 @@ class BaseOTAImage:
 
     @classmethod
     def deserialize(cls, data) -> tuple[BaseOTAImage, bytes]:
-        raise NotImplementedError()  # pragma: no cover
+        raise NotImplementedError  # pragma: no cover
 
     def serialize(self):
-        raise NotImplementedError()  # pragma: no cover
+        raise NotImplementedError  # pragma: no cover
 
 
 class OTAImage(t.Struct, BaseOTAImage):

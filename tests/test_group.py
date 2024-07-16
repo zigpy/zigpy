@@ -12,14 +12,14 @@ FIXTURE_GRP_ID = 0x1001
 FIXTURE_GRP_NAME = "fixture group"
 
 
-@pytest.fixture
+@pytest.fixture()
 def endpoint(app_mock):
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     dev = zigpy.device.Device(app_mock, ieee, 65535)
     return zigpy.endpoint.Endpoint(dev, 3)
 
 
-@pytest.fixture
+@pytest.fixture()
 def groups(app_mock):
     groups = zigpy.group.Groups(app_mock)
     groups.listener_event = MagicMock()
@@ -27,14 +27,14 @@ def groups(app_mock):
     return groups
 
 
-@pytest.fixture
+@pytest.fixture()
 def group():
     groups_mock = MagicMock(spec_set=zigpy.group.Groups)
     groups_mock.application.mrequest = AsyncMock()
     return zigpy.group.Group(FIXTURE_GRP_ID, FIXTURE_GRP_NAME, groups_mock)
 
 
-@pytest.fixture
+@pytest.fixture()
 def group_endpoint(group):
     group.request = AsyncMock()
     return zigpy.group.GroupEndpoint(group)

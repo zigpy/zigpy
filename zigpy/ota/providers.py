@@ -50,7 +50,7 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     source: str = "Unknown"
 
     async def _fetch(self) -> bytes:
-        raise NotImplementedError()
+        raise NotImplementedError
 
     async def fetch(self) -> BaseOTAImage:
         data = await self._fetch()
@@ -153,7 +153,7 @@ class BaseOtaProvider:
 
         # Don't hammer the OTA indexes too frequently
         if now - self._index_last_updated < self.INDEX_EXPIRATION_TIME:
-            return
+            return None
 
         try:
             async with aiohttp.ClientSession(
@@ -726,7 +726,7 @@ class AdvancedFileProvider(BaseOtaProvider):
 
                 try:
                     image, _ = parse_ota_image(data)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     LOGGER.debug("Failed to parse image %s: %r", path, exc)
                     continue
 

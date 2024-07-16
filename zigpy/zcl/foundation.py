@@ -149,10 +149,7 @@ class DataTypes(dict):
             tuple[
                 str,
                 typing.Any,
-                typing.Literal[Null]
-                | typing.Literal[Discrete]
-                | typing.Literal[Analog]
-                | typing.Literal[None],
+                typing.Literal[Null, Discrete, Analog, None],
             ],
         ],
     ) -> None:
