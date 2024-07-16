@@ -811,7 +811,7 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
 
 
 class IterableMemberMeta(type):
-    def __iter__(cls) -> typing.Iterable[typing.Any]:
+    def __iter__(cls) -> typing.Iterator[typing.Any]:
         for name in dir(cls):
             if not name.startswith("_"):
                 yield getattr(cls, name)
