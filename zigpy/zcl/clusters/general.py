@@ -1172,10 +1172,9 @@ class Time(Cluster):
                 elif attr == 1:
                     data[attr] = 7
                 elif attr == 2:
-                    diff = datetime.fromtimestamp(86400) - datetime.utcfromtimestamp(
-                        86400
-                    )
-                    data[attr] = diff.total_seconds()
+                    local_time = datetime.fromtimestamp(86400).astimezone()
+                    utc_time = datetime.fromtimestamp(86400, timezone.utc)
+                    data[attr] = (local_time - utc_time).total_seconds()
                 elif attr == 7:
                     epoch = datetime(2000, 1, 1, 0, 0, 0, 0)
                     diff = datetime.now() - epoch
