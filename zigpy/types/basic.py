@@ -927,6 +927,8 @@ class FixedList(list, metaclass=KwargTypeMeta):
 
 
 class CharacterString(str):
+    __slots__ = ()
+
     _prefix_length = 1
     _invalid_length = (1 << (8 * _prefix_length)) - 1
 
