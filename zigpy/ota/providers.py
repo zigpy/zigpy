@@ -131,7 +131,7 @@ class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
 
 @attrs.define(frozen=True, kw_only=True)
 class IkeaRemoteOtaImageMetadata(RemoteOtaImageMetadata):
-    ssl_ctx = dataclasses.field(default_factory=lambda: Trådfri.SSL_CTX)
+    ssl_ctx = dataclasses.field(default_factory=lambda: Tradfri.SSL_CTX)
 
 class BaseOtaProvider:
     MANUFACTURER_IDS: list[int] = []
@@ -173,7 +173,7 @@ class BaseOtaProvider:
         raise NotImplementedError
 
 
-class Trådfri(BaseOtaProvider):
+class Tradfri(BaseOtaProvider):
     MANUFACTURER_IDS = [4476]
 
     # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`

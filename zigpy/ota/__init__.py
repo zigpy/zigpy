@@ -260,7 +260,7 @@ class OTA:
             )
 
         if config[CONF_OTA_IKEA]:
-            self.register_provider(zigpy.ota.providers.Trådfri())
+            self.register_provider(zigpy.ota.providers.Tradfri())
 
         if config[CONF_OTA_INOVELLI]:
             self.register_provider(zigpy.ota.providers.Inovelli())

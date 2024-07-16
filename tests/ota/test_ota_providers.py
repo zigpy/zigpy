@@ -163,11 +163,11 @@ async def test_remote_z2m_provider():
         assert not obj
 
 
-async def test_trådfri_provider():
+async def test_tradfri_provider():
     index_json = (FILES_DIR / "ikea_version_info.json").read_text()
     index_obj = json.loads(index_json)
 
-    provider = providers.Trådfri()
+    provider = providers.Tradfri()
 
     # Compatible only with IKEA devices
     assert provider.compatible_with_device(make_device(manufacturer_id=4476))
@@ -205,7 +205,7 @@ async def test_trådfri_provider():
         assert meta.image_type == obj.pop("fw_image_type")
         assert meta.checksum == "sha3-256:" + obj.pop("fw_sha3_256")
         assert meta.url == obj.pop("fw_binary_url")
-        assert meta.manufacturer_id == providers.Trådfri.MANUFACTURER_IDS[0] == 4476
+        assert meta.manufacturer_id == providers.Tradfri.MANUFACTURER_IDS[0] == 4476
 
         obj.pop("fw_type")
         assert not obj
@@ -230,7 +230,7 @@ async def test_trådfri_provider():
     assert img.serialize() == ota_contents
 
 
-async def test_trådfri_provider_invalid_json():
+async def test_tradfri_provider_invalid_json():
     index_json = (FILES_DIR / "ikea_version_info.json").read_text()
     index_obj = json.loads(index_json) + [
         {
@@ -242,7 +242,7 @@ async def test_trådfri_provider_invalid_json():
         }
     ]
 
-    provider = providers.Trådfri()
+    provider = providers.Tradfri()
 
     with aioresponses() as mock_http:
         mock_http.get(
