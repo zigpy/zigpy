@@ -6,6 +6,8 @@ import struct
 import sys
 import typing
 
+from typing_extensions import Self
+
 CALLABLE_T = typing.TypeVar("CALLABLE_T", bound=typing.Callable)
 T = typing.TypeVar("T")
 
@@ -928,7 +930,7 @@ class CharacterString(str):
     _prefix_length = 1
     _invalid_length = (1 << (8 * _prefix_length)) - 1
 
-    def __new__(cls, value: str, *, invalid: bool = False) -> CharacterString:
+    def __new__(cls, value: str, *, invalid: bool = False) -> Self:
         instance = super().__new__(cls, value)
         instance.invalid = invalid
 

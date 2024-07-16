@@ -6,6 +6,8 @@ import functools
 import keyword
 import typing
 
+from typing_extensions import Self
+
 import zigpy.types as t
 
 
@@ -557,12 +559,12 @@ class ZCLHeader(t.Struct):
     command_id: t.uint8_t
 
     def __new__(
-        cls: type[ZCLHeader],
+        cls: type[Self],
         frame_control: FrameControl | None = None,
         manufacturer: t.uint16_t | None = None,
         tsn: int | t.uint8_t | None = None,
         command_id: int | GeneralCommand | None = None,
-    ) -> ZCLHeader:
+    ) -> Self:
         # Allow "auto manufacturer ID" to be disabled in higher layers
         if manufacturer is cls.NO_MANUFACTURER_ID:
             manufacturer = None

@@ -10,6 +10,8 @@ from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import Ota
 
 if TYPE_CHECKING:
+    from typing_extensions import Self
+
     from zigpy.device import Device
     from zigpy.ota.providers import OtaImageWithMetadata
 
@@ -50,7 +52,7 @@ class OTAManager:
 
         self.stack = contextlib.ExitStack()
 
-    def __enter__(self) -> OTAManager:
+    def __enter__(self) -> Self:
         self.stack.enter_context(
             self.device._application.callback_for_response(
                 src=self.device,

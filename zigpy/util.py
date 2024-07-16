@@ -14,6 +14,7 @@ from crccheck.crc import CrcX25
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.modes import ECB
+from typing_extensions import Self
 
 from zigpy.datastructures import DynamicBoundedSemaphore  # noqa: F401
 from zigpy.exceptions import ControllerException, ZigbeeException
@@ -271,7 +272,7 @@ class Request(typing.Generic[T]):
         """Request sequence."""
         return self._sequence
 
-    def __enter__(self) -> Request:
+    def __enter__(self) -> Self:
         """Return context manager."""
         self._pending[self.sequence] = self
         return self
@@ -286,7 +287,7 @@ class Request(typing.Generic[T]):
 
 
 class Requests(dict, typing.Generic[T]):
-    def new(self, sequence: T) -> Request[T]:
+    def new(self, sequence: T) -> Self[T]:
         """Wrap new request into a context manager."""
         if sequence in self:
             LOGGER.debug("Duplicate %s TSN: pending %s", sequence, self)
