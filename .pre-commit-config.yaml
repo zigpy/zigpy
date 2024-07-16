@@ -6,13 +6,13 @@ repos:
         args: ["--fix", "--exit-non-zero-on-fix", "--config", "pyproject.toml"]
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.2.6
+    rev: v2.3.0
     hooks:
       - id: codespell
         additional_dependencies: [tomli]
         args: ["--toml", "pyproject.toml"]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.9.0
+    rev: v1.10.1
     hooks:
       - id: mypy
