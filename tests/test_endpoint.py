@@ -156,7 +156,7 @@ def test_cluster_attr(ep):
     with pytest.raises(AttributeError):
         ep.basic  # noqa: B018
     ep.add_input_cluster(0)
-    
+
     assert ep.basic is not None
 
 

@@ -172,8 +172,8 @@ def test_model_manuf_device_sig(real_device):
 
 def test_custom_devices():
     def _check_range(cluster):
-        for range in zcl.Cluster._registry_range:
-            if range[0] <= cluster <= range[1]:
+        for left, right in zcl.Cluster._registry_range:
+            if left <= cluster <= right:
                 return True
         return False
 

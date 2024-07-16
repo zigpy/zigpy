@@ -611,14 +611,14 @@ async def test_configure_reporting_named(cluster):
 async def test_configure_reporting_wrong_named(cluster):
     with pytest.raises(ValueError):
         await cluster.configure_reporting("wrong_attr_name", 10, 20, 1)
-    
+
     assert cluster._endpoint.request.call_count == 0
 
 
 async def test_configure_reporting_wrong_attrid(cluster):
     with pytest.raises(ValueError):
         await cluster.configure_reporting(0xABCD, 10, 20, 1)
-    
+
     assert cluster._endpoint.request.call_count == 0
 
 

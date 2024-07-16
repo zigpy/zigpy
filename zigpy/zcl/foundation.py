@@ -92,7 +92,7 @@ class TypeValue:
         # "Copy constructor"
         if type is not None and value is None and isinstance(type, self.__class__):
             other = type
-            type = other.type
+            type = other.type  # noqa: A001
             value = other.value
 
         self.type = type
@@ -103,11 +103,11 @@ class TypeValue:
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[TypeValue, bytes]:
-        type, data = t.uint8_t.deserialize(data)
-        python_type = DATA_TYPES[type][1]
+        data_type, data = t.uint8_t.deserialize(data)
+        python_type = DATA_TYPES[data_type][1]
         value, data = python_type.deserialize(data)
 
-        return cls(type=type, value=value), data
+        return cls(type=data_type, value=value), data
 
     def __repr__(self) -> str:
         return (
@@ -120,11 +120,11 @@ class TypeValue:
 class TypedCollection(TypeValue):
     @classmethod
     def deserialize(cls, data):
-        type, data = t.uint8_t.deserialize(data)
-        python_type = DATA_TYPES[type][1]
+        data_type, data = t.uint8_t.deserialize(data)
+        python_type = DATA_TYPES[data_type][1]
         values, data = t.LVList[python_type, t.uint16_t].deserialize(data)
 
-        return cls(type=type, value=values), data
+        return cls(type=data_type, value=values), data
 
 
 class Array(TypedCollection):
