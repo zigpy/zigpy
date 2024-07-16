@@ -135,7 +135,7 @@ def test_group_add_member(group, endpoint):
     group.__repr__()
     assert group.name == FIXTURE_GRP_NAME
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         group.add_member(endpoint.endpoint_id)
 
 

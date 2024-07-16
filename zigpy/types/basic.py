@@ -927,7 +927,7 @@ class FixedList(list, metaclass=KwargTypeMeta):
 
 
 class CharacterString(str):
-    __slots__ = ()
+    __slots__ = ("invalid", "raw")
 
     _prefix_length = 1
     _invalid_length = (1 << (8 * _prefix_length)) - 1
@@ -935,6 +935,7 @@ class CharacterString(str):
     def __new__(cls, value: str, *, invalid: bool = False) -> Self:
         instance = super().__new__(cls, value)
         instance.invalid = invalid
+        instance.raw = value
 
         return instance
 

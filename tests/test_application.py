@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import errno
 import logging
 from unittest import mock
@@ -336,7 +337,7 @@ def test_props(app):
 def test_app_config_setter(app):
     """Test configuration setter."""
 
-    cfg_copy = app.config.copy()
+    cfg_copy = copy.deepcopy(app.config)
     assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
 
     cfg_copy[conf.CONF_OTA][conf.CONF_OTA_IKEA] = "invalid bool"

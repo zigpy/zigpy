@@ -369,11 +369,11 @@ async def test_item_access_attributes(cluster):
         # wrong attr name
         cluster["some_non_existent_attr"]
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         # wrong key type
         cluster[None]
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         # wrong key type
         cluster.get(None)
 
@@ -389,7 +389,7 @@ async def test_item_set_attributes(cluster):
     assert write_mock.await_count == 1
     assert write_mock.call_args[0][0] == {"model": sentinel.model}
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         cluster[None] = sentinel.manufacturer
 
 
