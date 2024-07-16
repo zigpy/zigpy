@@ -1001,7 +1001,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         elif errors == "ignore":
                             pass
                         else:
-                            raise ValueError(f"Invalid value for `errors`: {errors!r}")
+                            raise ValueError(f"Invalid value for `errors`: {errors!r}") from e
 
     async def _migrate_to_v4(self):
         """Schema v4 expanded the node descriptor and neighbor table columns"""

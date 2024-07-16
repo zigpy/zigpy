@@ -348,8 +348,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __getattr__(self, name: str) -> zigpy.zcl.Cluster:
         try:
             return self._cluster_attr[name]
-        except KeyError:
-            raise AttributeError
+        except KeyError as exc:
+            raise AttributeError from exc
 
     def __repr__(self) -> str:
         def cluster_repr(clusters):

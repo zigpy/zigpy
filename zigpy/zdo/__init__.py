@@ -223,8 +223,8 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
     def __getattr__(self, name):
         try:
             command = types.ZDOCmd[name]
-        except KeyError:
-            raise AttributeError(f"No such '{name}' ZDO command")
+        except KeyError as exc:
+            raise AttributeError(f"No such '{name}' ZDO command") from exc
 
         if command & 0x8000:
             return functools.partial(self.reply, command)

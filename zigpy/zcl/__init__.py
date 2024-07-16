@@ -665,8 +665,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     ) -> foundation.AttributeReportingConfig:
         try:
             attr_def = self.find_attribute(attribute)
-        except KeyError:
-            raise ValueError(f"Unknown attribute {attribute!r} of {self} cluster")
+        except KeyError as exc:
+            raise ValueError(f"Unknown attribute {attribute!r} of {self} cluster") from exc
 
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = direction

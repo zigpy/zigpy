@@ -41,8 +41,8 @@ def cv_hex(value: int | str) -> int:
             value = int(value, base=16)
         else:
             value = int(value)
-    except ValueError:
-        raise vol.Invalid(f"Could not convert '{value}' to number")
+    except ValueError as err:
+        raise vol.Invalid(f"Could not convert '{value}' to number") from err
 
     return value
 
