@@ -12,7 +12,7 @@ import zigpy.types as t
 from tests.conftest import make_app
 
 
-async def test_ota_disabled(tmp_path: pathlib.Path) -> None:
+async def test_ota_disabled_legacy(tmp_path: pathlib.Path) -> None:
     (tmp_path / "index.json").write_text("{}")
 
     # Enable all the providers
@@ -45,7 +45,7 @@ async def test_ota_disabled(tmp_path: pathlib.Path) -> None:
     assert not ota._providers
 
 
-async def test_ota_enabled(tmp_path: pathlib.Path) -> None:
+async def test_ota_enabled_legacy(tmp_path: pathlib.Path) -> None:
     (tmp_path / "index.json").write_text("{}")
 
     # Enable all the providers
@@ -77,6 +77,33 @@ async def test_ota_enabled(tmp_path: pathlib.Path) -> None:
 
     # All are enabled
     assert len(ota._providers) == 10
+
+
+async def test_ota_config(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "index.json").write_text("{}")
+
+    # Enable all the providers
+    ota = zigpy.ota.OTA(
+        config=config.SCHEMA_OTA({
+            config.CONF_OTA_ENABLED: True,
+            config.CONF_OTA_BROADCAST_ENABLED: False,
+            config.CONF_OTA_EXTRA_PROVIDERS: [
+                {
+                    config.CONF_OTA_PROVIDER_TYPE: "ikea",
+                    config.CONF_OTA_PROVIDER_OVERRIDE_PREVIOUS: True,
+                }
+            ],
+        }),
+        application=None,
+    )
+
+    assert ota._providers == [
+        zigpy.ota.providers.Ledvance(),
+        zigpy.ota.providers.Sonoff(),
+        zigpy.ota.providers.Inovelli(),
+        zigpy.ota.providers.ThirdReality(),
+        zigpy.ota.providers.Trådfri(),
+    ]
 
 
 async def test_ota_broadcast_loop() -> None:

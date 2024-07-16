@@ -156,7 +156,7 @@ SCHEMA_OTA_PROVIDER_BASE = vol.Schema(
     {
         vol.Required(CONF_OTA_PROVIDER_TYPE): cv_ota_provider_name,
         vol.Optional(CONF_OTA_PROVIDER_OVERRIDE_PREVIOUS, default=False): bool,
-        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=[]): [cv_hex],
+        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=None): vol.Any(None, [cv_hex]),
     }
 )
 
@@ -333,7 +333,9 @@ SCHEMA_OTA_DEPRECATED = {
     ),
 }
 
-SCHEMA_OTA = vol.Schema({**SCHEMA_OTA_BASE, **SCHEMA_OTA_DEPRECATED})
+SCHEMA_OTA = vol.Schema(
+    {**SCHEMA_OTA_BASE, **SCHEMA_OTA_DEPRECATED}, extra=vol.ALLOW_EXTRA
+)
 
 ZIGPY_SCHEMA = vol.Schema(
     {

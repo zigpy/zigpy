@@ -21,8 +21,10 @@ import jsonschema
 
 from zigpy.ota.image import BaseOTAImage, parse_ota_image
 import zigpy.types as t
+import voluptuous as vol
 import zigpy.util
 from zigpy.ota import json_schemas
+import zigpy.config
 
 LOGGER = logging.getLogger(__name__)
 
@@ -187,6 +189,7 @@ class BaseOtaProvider:
     NAME: str
     MANUFACTURER_IDS: list[int] = []
     DEFAULT_URL: str | None = None
+    VOL_SCHEMA: vol.Schema
     JSON_SCHEMA: dict | None = None
     INDEX_EXPIRATION_TIME = datetime.timedelta(hours=24)
 
@@ -197,7 +200,7 @@ class BaseOtaProvider:
         *,
         override_previous: bool = False,
     ) -> None:
-        self._url = self.DEFAULT_URL if url in (True, None) else url
+        self.url = self.DEFAULT_URL if url in (True, None) else url
         self._index_last_updated = datetime.datetime.fromtimestamp(
             0, tz=datetime.timezone.utc
         )
@@ -244,7 +247,7 @@ class BaseOtaProvider:
             return NotImplemented
 
         return (
-            self._url == other._url
+            self.url == other.url
             and self.manufacturer_ids == other.manufacturer_ids
         )
 
@@ -257,6 +260,7 @@ class Trådfri(BaseOtaProvider):
     NAME = "ikea"
     MANUFACTURER_IDS = [4476]
     DEFAULT_URL = "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json"
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
     JSON_SCHEMA = json_schemas.TRADFRI_SCHEMA
 
     # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
@@ -278,8 +282,6 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
 2kVHW/Mz9/xwpy4u
 -----END CERTIFICATE-----"""
     )
-
-    JSON_SCHEMA = json_schemas.TRADFRI_SCHEMA
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -338,6 +340,7 @@ class Ledvance(BaseOtaProvider):
     MANUFACTURER_IDS = [4489, 4364]
     DEFAULT_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
     JSON_SCHEMA = json_schemas.LEDVANCE_SCHEMA
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -381,6 +384,7 @@ class Salus(BaseOtaProvider):
     MANUFACTURER_IDS = [4216, 43981]
 
     JSON_SCHEMA = json_schemas.SALUS_SCHEMA
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -414,6 +418,7 @@ class Sonoff(BaseOtaProvider):
     MANUFACTURER_IDS = [4742]
 
     JSON_SCHEMA = json_schemas.SONOFF_SCHEMA
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -443,6 +448,7 @@ class Inovelli(BaseOtaProvider):
     MANUFACTURER_IDS = [4655]
 
     JSON_SCHEMA = json_schemas.INOVELLI_SCHEMA
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -478,6 +484,7 @@ class ThirdReality(BaseOtaProvider):
     MANUFACTURER_IDS = [4659, 4877, 5127]
 
     JSON_SCHEMA = json_schemas.THIRD_REALITY_SCHEMA
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -533,6 +540,7 @@ class BaseZigpyProvider(BaseOtaProvider):
 @register_provider
 class LocalZigpyProvider(BaseZigpyProvider):
     NAME = "zigpy_local"
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_JSON_INDEX
 
     def __init__(self, index_file: pathlib.Path, manufacturer_ids: list[int] | None = None):
         super().__init__(url=None, manufacturer_ids=manufacturer_ids)
@@ -560,6 +568,7 @@ class LocalZigpyProvider(BaseZigpyProvider):
 @register_provider
 class RemoteZigpyProvider(BaseZigpyProvider):
     NAME = "zigpy_remote"
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL_REQUIRED
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -609,6 +618,7 @@ class BaseZ2MProvider(BaseOtaProvider):
 @register_provider
 class LocalZ2MProvider(BaseZ2MProvider):
     NAME = "z2m_local"
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_JSON_INDEX
 
     def __init__(self, index_file: pathlib.Path):
         super().__init__()
@@ -637,6 +647,7 @@ class RemoteZ2MProvider(BaseZ2MProvider):
     DEFAULT_URL = (
         "https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json"
     )
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
 
     # `openssl s_client -connect otau.meethue.com:443 -showcerts`
     SSL_CTX = ssl.create_default_context()
@@ -673,6 +684,7 @@ clwJRVSsq8EApeFREenCkRM0EIk=
 @register_provider
 class AdvancedFileProvider(BaseOtaProvider):
     NAME = "advanced"
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_FOLDER
 
     def __init__(self, path: pathlib.Path, manufacturer_ids: list[int] | None = None):
         super().__init__(url=None, manufacturer_ids=manufacturer_ids)

@@ -4,7 +4,9 @@ import typing
 import zigpy.types as t
 
 if typing.TYPE_CHECKING:
-    from zigpy.ota.providers import BaseOtaProvider
+    from zigpy.config import CONF_OTA_PROVIDER_TYPE
+
+CONF_OTA_PROVIDER_TYPE = "type"
 
 CONF_DEVICE_BAUDRATE_DEFAULT = 115200
 CONF_DEVICE_FLOW_CONTROL_DEFAULT = None
@@ -27,8 +29,21 @@ CONF_OTA_DISABLE_PROVIDERS_DEFAULT: list[str] = []
 CONF_OTA_BROADCAST_ENABLED_DEFAULT = True
 CONF_OTA_BROADCAST_INITIAL_DELAY_DEFAULT = 3.9 * 60 * 60  # 3.9 hours
 CONF_OTA_BROADCAST_INTERVAL_DEFAULT = 3.9 * 60 * 60  # 3.9 hours
-CONF_OTA_PROVIDERS_DEFAULT: list[BaseOtaProvider] = []
-CONF_OTA_EXTRA_PROVIDERS_DEFAULT: list[BaseOtaProvider] = []
+CONF_OTA_PROVIDERS_DEFAULT = [
+    {
+        CONF_OTA_PROVIDER_TYPE: "ledvance",
+    },
+    {
+        CONF_OTA_PROVIDER_TYPE: "sonoff",
+    },
+    {
+        CONF_OTA_PROVIDER_TYPE: "inovelli",
+    },
+    {
+        CONF_OTA_PROVIDER_TYPE: "thirdreality",
+    },
+]
+CONF_OTA_EXTRA_PROVIDERS_DEFAULT: list[dict[str, typing.Any]] = []
 CONF_SOURCE_ROUTING_DEFAULT = False
 CONF_TOPO_SCAN_PERIOD_DEFAULT = 4 * 60  # 4 hours
 CONF_TOPO_SCAN_ENABLED_DEFAULT = True
