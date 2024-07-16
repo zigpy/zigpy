@@ -180,6 +180,7 @@ ignore = [
     "S608", # We have few SQL queries and they're all safe
     "RET505",
     "RET506",
+    "RET507",
     "C901",
 
     # From Home Assistant
