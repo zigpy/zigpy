@@ -93,15 +93,17 @@ def test_parse_silabs_ebl():
         list(validators.parse_silabs_ebl(image[: image.index(b"test")] + b"\xFF" * 44))
 
     # As are corrupted images of the correct length but with bad tag lengths
+    index = image.index(b"test")
+    bad_image = image[: index - 2] + b"\xFF\xFF" + image[index:]
+
     with pytest.raises(ValidationError):
-        index = image.index(b"test")
-        bad_image = image[: index - 2] + b"\xFF\xFF" + image[index:]
         list(validators.parse_silabs_ebl(bad_image))
 
     # Truncated but at a 64-byte boundary, missing CRC footer
+    bad_image = create_ebl_image([(b"AA", b"test" * 11)])
+    bad_image = bad_image[: bad_image.rindex(b"test") + 4]
+
     with pytest.raises(ValidationError):
-        bad_image = create_ebl_image([(b"AA", b"test" * 11)])
-        bad_image = bad_image[: bad_image.rindex(b"test") + 4]
         list(validators.parse_silabs_ebl(bad_image))
 
     # Corrupted images are detected
@@ -134,17 +136,17 @@ def test_parse_silabs_gbl():
         list(validators.parse_silabs_gbl(image[-10:]))
 
     # Structurally sound but truncated images are detected
-    with pytest.raises(ValidationError):
-        offset = image.index(b"test")
-        bad_image = image[: offset - 8]
+    offset = image.index(b"test")
+    bad_image = image[: offset - 8]
 
+    with pytest.raises(ValidationError):
         list(validators.parse_silabs_gbl(bad_image))
 
     # Corrupted images are detected
-    with pytest.raises(ValidationError):
-        corrupted_image = image.replace(b"foo", b"goo", 1)
-        assert image != corrupted_image
+    corrupted_image = image.replace(b"foo", b"goo", 1)
+    assert image != corrupted_image
 
+    with pytest.raises(ValidationError):
         list(validators.parse_silabs_gbl(corrupted_image))
 
 

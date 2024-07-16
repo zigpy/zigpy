@@ -69,12 +69,9 @@ async def test_dynamic_bounded_semaphore_multiple_locking():
             assert sem.value == 1
             assert not sem.locked()
 
-            with pytest.raises(RuntimeError):
-                async with sem:
-                    assert sem.locked()
-                    assert sem.value == 0
-
-                    raise RuntimeError
+            async with sem:
+                assert sem.locked()
+                assert sem.value == 0
 
             assert not sem.locked()
             assert sem.value == 1
