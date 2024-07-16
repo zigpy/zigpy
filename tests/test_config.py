@@ -210,7 +210,7 @@ def test_cv_json_file(tmp_path: pathlib.Path) -> None:
 
 
 def test_cv_folder(tmp_path: pathlib.Path) -> None:
-    """ "Test `cv_folder` validator."""
+    """Test `cv_folder` validator."""
 
     folder_path = tmp_path / "folder"
     file_path = tmp_path / "not_folder"
