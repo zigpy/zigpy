@@ -3,12 +3,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests.conftest import make_app
 from zigpy.ota import OtaImageWithMetadata
 import zigpy.ota.image
 from zigpy.ota.providers import BaseOtaImageMetadata
 from zigpy.zcl.clusters.general import Ota
-
-from tests.conftest import make_app
 
 
 @pytest.fixture

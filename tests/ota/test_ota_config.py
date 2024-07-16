@@ -4,12 +4,11 @@ import asyncio
 import pathlib
 from unittest.mock import patch
 
+from tests.conftest import make_app
 import zigpy.config as config
 import zigpy.device
 import zigpy.ota
 import zigpy.types as t
-
-from tests.conftest import make_app
 
 
 async def test_ota_disabled(tmp_path: pathlib.Path) -> None:

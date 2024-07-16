@@ -23,8 +23,8 @@ import zigpy.state
 import zigpy.types as t
 import zigpy.typing
 import zigpy.util
-from zigpy.zcl.clusters.general import Basic
 from zigpy.zcl import ClusterType
+from zigpy.zcl.clusters.general import Basic
 from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)

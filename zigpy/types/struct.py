@@ -4,8 +4,9 @@ import dataclasses
 import inspect
 import typing
 
-import zigpy.types as t
 from typing_extensions import Self
+
+import zigpy.types as t
 
 NoneType = type(None)
 

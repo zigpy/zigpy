@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import time
 import asyncio
 import logging
-import typing
 import sys
+import time
+import typing
 
 import pytest
 

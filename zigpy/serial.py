@@ -3,12 +3,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import typing
+from typing import Literal
 import urllib.parse
 
 import async_timeout
 
-from typing import Literal
-from zigpy.typing import UndefinedType, UNDEFINED
+from zigpy.typing import UNDEFINED, UndefinedType
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_SOCKET_PORT = 6638

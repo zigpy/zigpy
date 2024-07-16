@@ -11,6 +11,9 @@ import aiosqlite
 import freezegun
 import pytest
 
+from tests.async_mock import AsyncMock, MagicMock, call, patch
+from tests.conftest import make_app, make_ieee, make_node_desc
+from tests.test_backups import backup_factory  # noqa: F401
 from zigpy import profiles
 import zigpy.appdb
 import zigpy.application
@@ -25,10 +28,6 @@ import zigpy.zcl
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
-
-from tests.async_mock import AsyncMock, MagicMock, call, patch
-from tests.conftest import make_app, make_ieee, make_node_desc
-from tests.test_backups import backup_factory  # noqa: F401
 
 
 @pytest.fixture(autouse=True)

@@ -13,12 +13,11 @@ from aioresponses import aioresponses
 import attrs
 import pytest
 
+from tests.conftest import make_node_desc
+from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 import zigpy.device
 from zigpy.ota import OtaImageWithMetadata, providers
 import zigpy.types as t
-
-from tests.conftest import make_node_desc
-from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 
 FILES_DIR = pathlib.Path(__file__).parent / "files"
 

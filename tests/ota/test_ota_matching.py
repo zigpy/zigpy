@@ -6,14 +6,13 @@ import typing
 import aiohttp
 import attrs
 
+from tests.ota.test_ota_providers import SelfContainedOtaImageMetadata, make_device
 import zigpy.config as config
 import zigpy.device
 import zigpy.ota
 from zigpy.ota.image import FieldControl
 from zigpy.ota.providers import BaseOtaImageMetadata, BaseOtaProvider
 from zigpy.zcl.clusters.general import Ota
-
-from tests.ota.test_ota_providers import SelfContainedOtaImageMetadata, make_device
 
 
 class SelfContainedProvider(BaseOtaProvider):

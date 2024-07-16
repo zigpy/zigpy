@@ -4,11 +4,11 @@ import abc
 import asyncio
 import functools
 import inspect
+import itertools
 import logging
 import traceback
 import typing
 import warnings
-import itertools
 
 from crccheck.crc import CrcX25
 from cryptography.hazmat.primitives.ciphers import Cipher

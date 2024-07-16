@@ -6,6 +6,7 @@ from unittest import mock
 
 import pytest
 
+from tests.conftest import App, make_ieee, make_neighbor, make_route
 import zigpy.config as conf
 import zigpy.device
 import zigpy.endpoint
@@ -13,8 +14,6 @@ import zigpy.profiles
 import zigpy.topology
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
-
-from tests.conftest import App, make_ieee, make_neighbor, make_route
 
 
 @pytest.fixture(autouse=True)
