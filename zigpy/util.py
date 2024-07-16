@@ -407,7 +407,7 @@ def pick_optimal_channel(
 
     # Scan all channels even if we're restricted to picking among a few, since
     # nearby channels will affect our decision
-    assert set(channel_energy.keys()) == set(t.Channels.ALL_CHANNELS)  # type: ignore
+    assert set(channel_energy.keys()) == set(t.Channels.ALL_CHANNELS)  # type: ignore[call-overload]
 
     # We don't know energies above channel 26 or below 11. Assume the scan results
     # just continue indefinitely with the last-seen value.

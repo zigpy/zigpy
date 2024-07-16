@@ -54,12 +54,12 @@ class SerializableBytes:
     """A container object for raw bytes that enforces `serialize()` will be called."""
 
     def __init__(self, value: bytes = b"") -> None:
-        if isinstance(value, type(self)):
-            value = typing.cast(bytes, value.value)
+        if isinstance(value, SerializableBytes):
+            value = value.value
         elif not isinstance(value, (bytes, bytearray)):
             raise ValueError(f"Object is not bytes: {value!r}")  # noqa: TRY004
 
-        self.value = value
+        self.value: bytes | bytearray = value
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, type(self)):
@@ -370,7 +370,7 @@ class uint64_t_be(uint_t_be, bits=64):
 class AlwaysCreateEnumType(enum.EnumMeta):
     """Enum metaclass that skips the functional creation API."""
 
-    def __call__(self, value, names=None, *values) -> type[enum.Enum]:  # type: ignore
+    def __call__(self, value, names=None, *values) -> type[enum.Enum]:  # type: ignore[override]
         """Custom implementation of Enum.__new__.
 
         From https://github.com/python/cpython/blob/v3.11.5/Lib/enum.py#L1091-L1140
@@ -460,7 +460,7 @@ def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
         class _NewEnum(int_type, enum.Flag):
             # Rebind classmethods to our own class
             _missing_ = classmethod(enum.IntFlag._missing_.__func__)
-            _create_pseudo_member_ = classmethod(  # type: ignore
+            _create_pseudo_member_ = classmethod(
                 enum.IntFlag._create_pseudo_member_.__func__
             )
 
