@@ -232,7 +232,8 @@ async def test_tradfri_provider():
 
 async def test_tradfri_provider_invalid_json():
     index_json = (FILES_DIR / "ikea_version_info.json").read_text()
-    index_obj = json.loads(index_json) + [
+    index_obj = [
+        *json.loads(index_json),
         {
             "fw_image_type": 10242,
             "fw_type": 2,
