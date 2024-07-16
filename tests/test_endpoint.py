@@ -154,9 +154,10 @@ def test_handle_request_unknown(ep):
 
 def test_cluster_attr(ep):
     with pytest.raises(AttributeError):
-        ep.basic
+        ep.basic  # noqa: B018
     ep.add_input_cluster(0)
-    ep.basic
+    
+    assert ep.basic is not None
 
 
 async def test_request(ep):

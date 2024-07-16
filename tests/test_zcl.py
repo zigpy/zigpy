@@ -1013,7 +1013,7 @@ def test_zcl_command_duplicate_name_prevention():
 
 def test_zcl_attridx_deprecation(cluster):
     with pytest.deprecated_call():
-        cluster.attridx
+        cluster.attridx  # noqa: B018
 
     with pytest.deprecated_call():
         assert cluster.attridx is cluster.attributes_by_name
