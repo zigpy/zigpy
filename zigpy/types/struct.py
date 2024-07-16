@@ -55,9 +55,6 @@ class StructField:
             ) from e
 
 
-_STRUCT = typing.TypeVar("_STRUCT", bound="Struct")
-
-
 class Struct:
     @classmethod
     def _real_cls(cls) -> type:
@@ -83,7 +80,7 @@ class Struct:
         cls._hash = -1
         cls._frozen = False
 
-    def __new__(cls: type[_STRUCT], *args, **kwargs) -> _STRUCT:
+    def __new__(cls: type[Self], *args, **kwargs) -> Self:
         cls = cls._real_cls()
 
         if len(args) == 1 and isinstance(args[0], cls):
@@ -193,7 +190,7 @@ class Struct:
         return assigned_fields
 
     @classmethod
-    def from_dict(cls: type[_STRUCT], obj: dict[str, typing.Any]) -> _STRUCT:
+    def from_dict(cls: type[Self], obj: dict[str, typing.Any]) -> Self:
         instance = cls()
 
         for key, value in obj.items():
@@ -273,7 +270,7 @@ class Struct:
         return b"".join(chunks)
 
     @classmethod
-    def deserialize(cls: type[_STRUCT], data: bytes) -> tuple[_STRUCT, bytes]:
+    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
         instance = cls()
 
         bit_length = 0
@@ -325,7 +322,6 @@ class Struct:
 
         return instance, data
 
-    # TODO: improve? def replace(self: typing.Type[_STRUCT], **kwargs) -> _STRUCT:
     def replace(self, **kwargs: dict[str, typing.Any]) -> Struct:
         d = self.as_dict().copy()
         d.update(kwargs)
