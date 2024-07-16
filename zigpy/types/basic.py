@@ -53,7 +53,7 @@ class SerializableBytes:
 
     def __init__(self, value: bytes = b"") -> None:
         if isinstance(value, type(self)):
-            value = value.value  # type: ignore
+            value = typing.cast(bytes, value.value)
         elif not isinstance(value, (bytes, bytearray)):
             raise ValueError(f"Object is not bytes: {value!r}")  # noqa: TRY004
 

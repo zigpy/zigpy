@@ -232,7 +232,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         elif isinstance(name_or_id, int):
             return self.attributes[name_or_id]
         else:
-            raise ValueError(
+            raise TypeError(
                 f"Attribute must be either a string or an integer,"
                 f" not {name_or_id!r} ({type(name_or_id)!r}"
             )
@@ -865,7 +865,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def __setitem__(self, key: int | str, value: Any) -> None:
         """Set cached value through attribute write."""
         if not isinstance(key, (int, str)):
-            raise ValueError("attr_name or attr_id are accepted only")
+            raise TypeError("attr_name or attr_id are accepted only")
         self.create_catching_task(self.write_attributes({key: value}))
 
     def general_command(
