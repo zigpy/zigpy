@@ -1036,7 +1036,7 @@ def test_zcl_response_type_tuple_like():
     assert req.off_wait_time == off_wait_time == req[2] == 2
 
     assert req == (0, 1, 2)
-    assert req == req
+    assert req == req  # noqa: PLR0124
     assert req == req.replace()
 
 

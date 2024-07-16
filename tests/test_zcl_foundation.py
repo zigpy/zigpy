@@ -34,7 +34,7 @@ def test_typevalue():
     tv5.type = 0x42
     tv5.value = t.CharacterString("test")
 
-    assert tv5 == tv5
+    assert tv5 == tv5  # noqa: PLR0124
     assert tv5 == tv4
     assert tv5 != tv3
 

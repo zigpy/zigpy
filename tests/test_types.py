@@ -813,7 +813,7 @@ def test_nwk_convert():
 
 def test_serializable_bytes():
     obj = t.SerializableBytes(b"test")
-    assert obj == obj
+    assert obj == obj  # noqa: PLR0124
     assert obj == t.SerializableBytes(b"test")
     assert t.SerializableBytes(obj) == obj
     assert obj != b"test"

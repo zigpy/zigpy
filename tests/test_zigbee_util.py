@@ -477,7 +477,7 @@ def test_singleton():
     singleton = util.Singleton("NAME")
 
     assert str(singleton) == repr(singleton) == "<Singleton 'NAME'>"
-    assert singleton == singleton
+    assert singleton == singleton  # noqa: PLR0124
 
     obj = {}
     obj[singleton] = 5
