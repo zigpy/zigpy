@@ -594,9 +594,5 @@ async def test_async_iterate_in_chunks() -> None:
             time.sleep(0.1)
             yield i
 
-    chunks = []
-
-    async for chunk in util.async_iterate_in_chunks(iterator(10), chunk_size=3):
-        chunks.append(chunk)
-
+    chunks = [c async for c in util.async_iterate_in_chunks(iterator(10), chunk_size=3)]
     assert chunks == [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]
