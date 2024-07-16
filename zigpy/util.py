@@ -7,6 +7,7 @@ import inspect
 import itertools
 import logging
 import traceback
+import types
 import typing
 import warnings
 
@@ -277,7 +278,7 @@ class Request(typing.Generic[T]):
         self._pending[self.sequence] = self
         return self
 
-    def __exit__(self, exc_type: None, exc_value: None, exc_traceback: None) -> bool:
+    def __exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, exc_traceback: types.TracebackType | None) -> bool:
         """Clean up pending on exit."""
         if not self.result.done():
             self.result.cancel()
