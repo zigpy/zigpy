@@ -460,7 +460,7 @@ def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
         class _NewEnum(int_type, enum.Flag):
             # Rebind classmethods to our own class
             _missing_ = classmethod(enum.IntFlag._missing_.__func__)
-            _create_pseudo_member_ = classmethod(
+            _create_pseudo_member_ = classmethod(  # type: ignore[var-annotated]
                 enum.IntFlag._create_pseudo_member_.__func__
             )
 
