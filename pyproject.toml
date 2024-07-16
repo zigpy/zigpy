@@ -64,6 +64,7 @@ select = [
     "D",  # docstrings
     "E",  # pycodestyle
     "F",  # pyflakes/autoflake
+    "I",  # isort
     "ICN001", # import concentions; {name} should be imported as {asname}
     "PGH004",  # Use specific rule codes when using noqa
     "PLC0414", # Useless import alias. Import alias does not rename original package.
@@ -105,6 +106,14 @@ exclude = [
 ]
 
 line-length = 88
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = [
+    "zigpy",
+]
+combine-as-imports = true
+split-on-trailing-comma = false
 
 [tool.ruff.per-file-ignores]
 "tests/*.py" = ["F811"]
