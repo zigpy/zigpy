@@ -677,7 +677,7 @@ clwJRVSsq8EApeFREenCkRM0EIk=
         async with session.get(self.url) as rsp:
             fw_lst = await rsp.json(content_type=None)
 
-        for img in self._load_z2m_index(fw_lst):
+        for img in self._load_z2m_index(fw_lst, ssl_ctx=self.SSL_CTX):
             yield img.replace(source=f"Remote Z2M provider ({self.url})")
 
 
