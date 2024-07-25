@@ -42,7 +42,7 @@ class Group(ListenableMixin, dict):
 
     def add_member(self, ep: Endpoint, suppress_event: bool = False) -> Group:
         if not isinstance(ep, Endpoint):
-            raise TypeError(f"{ep} is not {Endpoint.__class__.__name__} class")
+            raise ValueError(f"{ep} is not {Endpoint.__class__.__name__} class")  # noqa: TRY004
         if ep.unique_id in self:
             return self[ep.unique_id]
         self[ep.unique_id] = ep

@@ -658,7 +658,7 @@ class ZCLCommandDef(t.BaseDataclassMixin):
         """
 
         if isinstance(self.schema, tuple):
-            raise TypeError(
+            raise ValueError(    # noqa: TRY004
                 f"Tuple schemas are deprecated: {self.schema!r}. Use a dictionary or a"
                 f" Struct subclass."
             )

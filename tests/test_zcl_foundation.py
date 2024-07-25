@@ -671,7 +671,7 @@ def test_command_schema_error_on_tuple():
         direction=foundation.Direction.Client_to_Server,
     )
 
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         cmd_def.with_compiled_schema()
 
 
