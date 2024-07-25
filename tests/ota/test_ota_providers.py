@@ -592,7 +592,7 @@ async def test_remote_zigpy_provider():
         assert meta.specificity == obj.pop("specificity")
         assert not obj
 
-    assert provider.manufacturer_ids == [1, 2, 3]
+    assert provider.manufacturer_ids == (1, 2, 3)
 
 
 async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:

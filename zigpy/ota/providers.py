@@ -188,7 +188,7 @@ class SignedIkeaRemoteOtaImageMetadata(IkeaRemoteOtaImageMetadata):
 
 class BaseOtaProvider:
     NAME: str
-    MANUFACTURER_IDS: list[int] = []
+    MANUFACTURER_IDS: tuple[int] = ()
     DEFAULT_URL: str | None = None
     VOL_SCHEMA: vol.Schema
     JSON_SCHEMA: dict | None = None
@@ -207,9 +207,9 @@ class BaseOtaProvider:
         )
 
         if manufacturer_ids is not None:
-            self.manufacturer_ids = manufacturer_ids
+            self.manufacturer_ids = tuple(manufacturer_ids)
         else:
-            self.manufacturer_ids = self.MANUFACTURER_IDS[:]
+            self.manufacturer_ids = tuple(self.MANUFACTURER_IDS)
 
         self.override_previous = override_previous
 
@@ -256,7 +256,7 @@ class BaseOtaProvider:
 @register_provider
 class Tradfri(BaseOtaProvider):
     NAME = "ikea"
-    MANUFACTURER_IDS = [4476]
+    MANUFACTURER_IDS = (4476,)
     DEFAULT_URL = "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json"
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
     JSON_SCHEMA = json_schemas.TRADFRI_SCHEMA
@@ -335,7 +335,7 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
 class Ledvance(BaseOtaProvider):
     NAME = "ledvance"
     # This isn't static but no more than these two have ever existed
-    MANUFACTURER_IDS = [4489, 4364]
+    MANUFACTURER_IDS = (4489, 4364)
     DEFAULT_URL = "https://api.update.ledvance.com/v1/zigbee/firmwares"
     JSON_SCHEMA = json_schemas.LEDVANCE_SCHEMA
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
@@ -379,7 +379,7 @@ class Ledvance(BaseOtaProvider):
 
 class Salus(BaseOtaProvider):
     NAME = "salus"
-    MANUFACTURER_IDS = [4216, 43981]
+    MANUFACTURER_IDS = (4216, 43981)
 
     JSON_SCHEMA = json_schemas.SALUS_SCHEMA
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
@@ -413,7 +413,7 @@ class Salus(BaseOtaProvider):
 @register_provider
 class Sonoff(BaseOtaProvider):
     NAME = "sonoff"
-    MANUFACTURER_IDS = [4742]
+    MANUFACTURER_IDS = (4742,)
 
     JSON_SCHEMA = json_schemas.SONOFF_SCHEMA
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
@@ -443,7 +443,7 @@ class Sonoff(BaseOtaProvider):
 @register_provider
 class Inovelli(BaseOtaProvider):
     NAME = "inovelli"
-    MANUFACTURER_IDS = [4655]
+    MANUFACTURER_IDS = (4655,)
 
     JSON_SCHEMA = json_schemas.INOVELLI_SCHEMA
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
@@ -479,7 +479,7 @@ class Inovelli(BaseOtaProvider):
 @register_provider
 class ThirdReality(BaseOtaProvider):
     NAME = "thirdreality"
-    MANUFACTURER_IDS = [4659, 4877, 5127]
+    MANUFACTURER_IDS = (4659, 4877, 5127)
 
     JSON_SCHEMA = json_schemas.THIRD_REALITY_SCHEMA
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
