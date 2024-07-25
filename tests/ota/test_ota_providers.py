@@ -595,6 +595,33 @@ async def test_remote_zigpy_provider():
     assert provider.manufacturer_ids == (1, 2, 3)
 
 
+async def test_local_zigpy_provider():
+    index_obj = json.loads((FILES_DIR / "local_index.json").read_text())
+    provider = providers.LocalZigpyProvider(FILES_DIR / "local_index.json")
+    index = await provider.load_index()
+
+    assert len(index) == len(index_obj["firmwares"])
+
+    for obj, meta in zip(index_obj["firmwares"], index):
+        assert isinstance(meta, providers.LocalOtaImageMetadata)
+        assert meta.path == pathlib.Path(FILES_DIR / obj.pop("path"))
+        assert meta.file_version == obj.pop("file_version")
+        assert meta.file_size == obj.pop("file_size")
+        assert meta.image_type == obj.pop("image_type")
+        assert meta.manufacturer_names == tuple(obj.pop("manufacturer_names"))
+        assert meta.model_names == tuple(obj.pop("model_names"))
+        assert meta.manufacturer_id == obj.pop("manufacturer_id")
+        assert meta.changelog == obj.pop("changelog")
+        assert meta.release_notes == obj.pop("release_notes")
+        assert meta.checksum == obj.pop("checksum")
+        assert meta.min_hardware_version == obj.pop("min_hardware_version")
+        assert meta.max_hardware_version == obj.pop("max_hardware_version")
+        assert meta.min_current_file_version == obj.pop("min_current_file_version")
+        assert meta.max_current_file_version == obj.pop("max_current_file_version")
+        assert meta.specificity == obj.pop("specificity")
+        assert not obj
+
+
 async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
     files = list((FILES_DIR / "external/dl/local_provider").glob("[!.]*"))
     files.sort(key=lambda f: f.name)
