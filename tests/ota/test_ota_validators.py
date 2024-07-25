@@ -10,7 +10,7 @@ from zigpy.ota.validators import ValidationError, ValidationResult
 
 def create_ebl_image(tags):
     # All images start with a 140-byte "0x0000" header
-    tags = [(b"\x00\x00", b"jklm" * 35)] + tags
+    tags = [(b"\x00\x00", b"jklm" * 35), *tags]
 
     assert all(len(tag) == 2 for tag, value in tags)
     image = b"".join(tag + len(value).to_bytes(2, "big") + value for tag, value in tags)
@@ -30,7 +30,7 @@ def create_ebl_image(tags):
 
 def create_gbl_image(tags):
     # All images start with an 8-byte header
-    tags = [(b"\xEB\x17\xA6\x03", b"\x00\x00\x00\x03\x01\x01\x00\x00")] + tags
+    tags = [(b"\xeb\x17\xa6\x03", b"\x00\x00\x00\x03\x01\x01\x00\x00"), *tags]
 
     assert all(len(tag) == 4 for tag, value in tags)
     image = b"".join(
@@ -39,8 +39,10 @@ def create_gbl_image(tags):
 
     # And end with a checksum
     image += (
-        b"\xFC\x04\x04\xFC"
-        + b"\x04\x00\x00\x00"
+        (
+            b"\xFC\x04\x04\xFC"
+            b"\x04\x00\x00\x00"
+        )
         + zlib.crc32(image + b"\xFC\x04\x04\xFC" + b"\x04\x00\x00\x00").to_bytes(
             4, "little"
         )
@@ -91,15 +93,17 @@ def test_parse_silabs_ebl():
         list(validators.parse_silabs_ebl(image[: image.index(b"test")] + b"\xFF" * 44))
 
     # As are corrupted images of the correct length but with bad tag lengths
+    index = image.index(b"test")
+    bad_image = image[: index - 2] + b"\xFF\xFF" + image[index:]
+
     with pytest.raises(ValidationError):
-        index = image.index(b"test")
-        bad_image = image[: index - 2] + b"\xFF\xFF" + image[index:]
         list(validators.parse_silabs_ebl(bad_image))
 
     # Truncated but at a 64-byte boundary, missing CRC footer
+    bad_image = create_ebl_image([(b"AA", b"test" * 11)])
+    bad_image = bad_image[: bad_image.rindex(b"test") + 4]
+
     with pytest.raises(ValidationError):
-        bad_image = create_ebl_image([(b"AA", b"test" * 11)])
-        bad_image = bad_image[: bad_image.rindex(b"test") + 4]
         list(validators.parse_silabs_ebl(bad_image))
 
     # Corrupted images are detected
@@ -132,17 +136,17 @@ def test_parse_silabs_gbl():
         list(validators.parse_silabs_gbl(image[-10:]))
 
     # Structurally sound but truncated images are detected
-    with pytest.raises(ValidationError):
-        offset = image.index(b"test")
-        bad_image = image[: offset - 8]
+    offset = image.index(b"test")
+    bad_image = image[: offset - 8]
 
+    with pytest.raises(ValidationError):
         list(validators.parse_silabs_gbl(bad_image))
 
     # Corrupted images are detected
-    with pytest.raises(ValidationError):
-        corrupted_image = image.replace(b"foo", b"goo", 1)
-        assert image != corrupted_image
+    corrupted_image = image.replace(b"foo", b"goo", 1)
+    assert image != corrupted_image
 
+    with pytest.raises(ValidationError):
         list(validators.parse_silabs_gbl(corrupted_image))
 
 

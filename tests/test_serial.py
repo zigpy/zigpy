@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import pytest
 import asyncio
 import unittest.mock
 
+import pytest
+
 import zigpy.serial
 from zigpy.typing import UNDEFINED, UndefinedType
+
 
 # fmt: off
 @pytest.mark.parametrize(("url", "flow_control", "xonxoff", "rtscts", "expected_kwargs"), [

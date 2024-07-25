@@ -11,7 +11,7 @@ class FakeDevice:
         self.signature = {}
 
 
-@pytest.fixture
+@pytest.fixture()
 def fake_dev():
     return FakeDevice()
 

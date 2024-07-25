@@ -15,9 +15,10 @@ if typing.TYPE_CHECKING:
 
 
 class BaseDataclassMixin:
-    def replace(self, **kwargs) -> Self:
+    def replace(self, **kwargs: typing.Any) -> Self:
         if dataclasses.is_dataclass(self):
-            return dataclasses.replace(self, **kwargs)  # type: ignore
+            assert not isinstance(self, type)  # `is_dataclass` works on types as well
+            return dataclasses.replace(self, **kwargs)
         else:
             return attrs.evolve(self, **kwargs)
 
@@ -44,9 +45,9 @@ class BroadcastAddress(basic.enum16):
 class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
     # EUI 64-bit ID (an IEEE address).
     def __repr__(self) -> str:
-        return ":".join("%02x" % i for i in self[::-1])
+        return ":".join(f"{i:02x}" for i in self[::-1])
 
-    def __hash__(self) -> int:  # type: ignore
+    def __hash__(self) -> int:  # type: ignore[override]
         return hash(repr(self))
 
     @classmethod

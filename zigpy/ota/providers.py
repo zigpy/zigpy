@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime
 import hashlib
-import dataclasses
 import io
 import json
 import logging
@@ -50,7 +50,7 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     source: str = "Unknown"
 
     async def _fetch(self) -> bytes:
-        raise NotImplementedError()
+        raise NotImplementedError
 
     async def fetch(self) -> BaseOTAImage:
         data = await self._fetch()
@@ -131,7 +131,7 @@ class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
 
 @attrs.define(frozen=True, kw_only=True)
 class IkeaRemoteOtaImageMetadata(RemoteOtaImageMetadata):
-    ssl_ctx = dataclasses.field(default_factory=lambda: Trådfri.SSL_CTX)
+    ssl_ctx = dataclasses.field(default_factory=lambda: Tradfri.SSL_CTX)
 
 class BaseOtaProvider:
     MANUFACTURER_IDS: list[int] = []
@@ -153,7 +153,7 @@ class BaseOtaProvider:
 
         # Don't hammer the OTA indexes too frequently
         if now - self._index_last_updated < self.INDEX_EXPIRATION_TIME:
-            return
+            return None
 
         try:
             async with aiohttp.ClientSession(
@@ -173,7 +173,7 @@ class BaseOtaProvider:
         raise NotImplementedError
 
 
-class Trådfri(BaseOtaProvider):
+class Tradfri(BaseOtaProvider):
     MANUFACTURER_IDS = [4476]
 
     # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
@@ -726,7 +726,7 @@ class AdvancedFileProvider(BaseOtaProvider):
 
                 try:
                     image, _ = parse_ota_image(data)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     LOGGER.debug("Failed to parse image %s: %r", path, exc)
                     continue
 

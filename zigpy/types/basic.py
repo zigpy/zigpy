@@ -6,6 +6,8 @@ import struct
 import sys
 import typing
 
+from typing_extensions import Self
+
 CALLABLE_T = typing.TypeVar("CALLABLE_T", bound=typing.Callable)
 T = typing.TypeVar("T")
 
@@ -52,14 +54,14 @@ class SerializableBytes:
     """A container object for raw bytes that enforces `serialize()` will be called."""
 
     def __init__(self, value: bytes = b"") -> None:
-        if isinstance(value, type(self)):
-            value = value.value  # type: ignore
+        if isinstance(value, SerializableBytes):
+            value = value.value
         elif not isinstance(value, (bytes, bytearray)):
             raise ValueError(f"Object is not bytes: {value!r}")  # noqa: TRY004
 
-        self.value = value
+        self.value: bytes | bytearray = value
 
-    def __eq__(self, other: typing.Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, type(self)):
             return NotImplemented
 
@@ -368,7 +370,7 @@ class uint64_t_be(uint_t_be, bits=64):
 class AlwaysCreateEnumType(enum.EnumMeta):
     """Enum metaclass that skips the functional creation API."""
 
-    def __call__(cls, value, names=None, *values) -> type[enum.Enum]:  # type: ignore
+    def __call__(self, value, names=None, *values) -> type[enum.Enum]:  # type: ignore[override]
         """Custom implementation of Enum.__new__.
 
         From https://github.com/python/cpython/blob/v3.11.5/Lib/enum.py#L1091-L1140
@@ -376,45 +378,43 @@ class AlwaysCreateEnumType(enum.EnumMeta):
         # all enum instances are actually created during class construction
         # without calling this method; this method is called by the metaclass'
         # __call__ (i.e. Color(3) ), and by pickle
-        if type(value) is cls:
+        if type(value) is self:
             # For lookups like Color(Color.RED)
             return value
         # by-value search for a matching enum member
         # see if it's in the reverse mapping (for hashable values)
         try:
-            return cls._value2member_map_[value]
+            return self._value2member_map_[value]
         except KeyError:
             # Not found, no need to do long O(n) search
             pass
         except TypeError:
             # not there, now do long search -- O(n) behavior
-            for member in cls._member_map_.values():
+            for member in self._member_map_.values():
                 if member._value_ == value:
                     return member
         # still not found -- try _missing_ hook
         try:
             exc = None
-            result = cls._missing_(value)
-        except Exception as e:
+            result = self._missing_(value)
+        except Exception as e:  # noqa: BLE001
             exc = e
             result = None
         try:
-            if isinstance(result, cls):
-                return result
-            elif (
+            if isinstance(result, self) or (
                 enum.Flag is not None
-                and issubclass(cls, enum.Flag)
-                and cls._boundary_ is enum.EJECT
+                and issubclass(self, enum.Flag)
+                and self._boundary_ is enum.EJECT
                 and isinstance(result, int)
             ):
                 return result
             else:
-                ve_exc = ValueError(f"{value!r} is not a valid {cls.__qualname__}")
+                ve_exc = ValueError(f"{value!r} is not a valid {self.__qualname__}")
                 if result is None and exc is None:
                     raise ve_exc
                 elif exc is None:
                     exc = TypeError(
-                        f"error in {cls.__name__}._missing_: returned {result!r} instead of None or a valid member"
+                        f"error in {self.__name__}._missing_: returned {result!r} instead of None or a valid member"
                     )
                 if not isinstance(exc, ValueError):
                     exc.__context__ = ve_exc
@@ -426,16 +426,16 @@ class AlwaysCreateEnumType(enum.EnumMeta):
 
 
 class _IntEnumMeta(AlwaysCreateEnumType):
-    def __call__(cls, value, names=None, *args, **kwargs):
+    def __call__(self, value, names=None, *args, **kwargs):
         if isinstance(value, str):
             if value.startswith("0x"):
                 value = int(value, base=16)
             elif value.isnumeric():
                 value = int(value)
-            elif value.startswith(cls.__name__ + "."):
-                value = cls[value[len(cls.__name__) + 1 :]].value
+            elif value.startswith(self.__name__ + "."):
+                value = self[value[len(self.__name__) + 1 :]].value
             else:
-                value = cls[value].value
+                value = self[value].value
         return super().__call__(value, names, *args, **kwargs)
 
 
@@ -460,7 +460,7 @@ def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
         class _NewEnum(int_type, enum.Flag):
             # Rebind classmethods to our own class
             _missing_ = classmethod(enum.IntFlag._missing_.__func__)
-            _create_pseudo_member_ = classmethod(  # type: ignore
+            _create_pseudo_member_ = classmethod(  # type: ignore[var-annotated]
                 enum.IntFlag._create_pseudo_member_.__func__
             )
 
@@ -773,22 +773,22 @@ class KwargTypeMeta(type):
     # So things like `LVList[NWK, t.uint8_t]` are singletons
     _anonymous_classes = {}  # type:ignore[var-annotated]
 
-    def __new__(metaclass, name, bases, namespaces, **kwargs):
+    def __new__(cls, name, bases, namespaces, **kwargs):
         cls_kwarg_attrs = namespaces.get("_getitem_kwargs", {})
 
         def __init_subclass__(cls, **kwargs):
             filtered_kwargs = kwargs.copy()
 
-            for name, _value in kwargs.items():
-                if name in cls_kwarg_attrs:
-                    setattr(cls, f"_{name}", filtered_kwargs.pop(name))
+            for key in kwargs:
+                if key in cls_kwarg_attrs:
+                    setattr(cls, f"_{key}", filtered_kwargs.pop(key))
 
             super().__init_subclass__(**filtered_kwargs)
 
         if "__init_subclass__" not in namespaces:
             namespaces["__init_subclass__"] = __init_subclass__
 
-        return type.__new__(metaclass, name, bases, namespaces, **kwargs)
+        return type.__new__(cls, name, bases, namespaces, **kwargs)
 
     def __getitem__(cls, key):
         # Make sure Foo[a] is the same as Foo[a,]
@@ -849,9 +849,9 @@ class KwargTypeMeta(type):
 
         return True
 
-    def __instancecheck__(self, subclass):
+    def __instancecheck__(cls, subclass):
         # We rely on __subclasscheck__ to do the work
-        if issubclass(type(subclass), self):
+        if issubclass(type(subclass), cls):
             return True
 
         return super().__instancecheck__(subclass)
@@ -927,12 +927,15 @@ class FixedList(list, metaclass=KwargTypeMeta):
 
 
 class CharacterString(str):
+    __slots__ = ("invalid", "raw")
+
     _prefix_length = 1
     _invalid_length = (1 << (8 * _prefix_length)) - 1
 
-    def __new__(cls, value: str, *, invalid: bool = False) -> CharacterString:
+    def __new__(cls, value: str, *, invalid: bool = False) -> Self:
         instance = super().__new__(cls, value)
         instance.invalid = invalid
+        instance.raw = value
 
         return instance
 

@@ -143,7 +143,6 @@ class PriorityDynamicBoundedSemaphore(asyncio.Semaphore):
 
     async def __aenter__(self) -> None:
         await self.acquire()
-        return None
 
     async def __aexit__(
         self,

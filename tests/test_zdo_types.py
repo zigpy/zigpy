@@ -1,7 +1,7 @@
 import pytest
 
 import zigpy.types as t
-import zigpy.zdo.types as types
+from zigpy.zdo import types
 
 
 def test_multi_address_3():
@@ -391,17 +391,17 @@ def test_neighbor():
 def test_neighbor_struct_device_type():
     """Test neighbor packed struct device_type."""
 
-    for dev_type in range(0, 3):
+    for dev_type in range(3):
         struct = types.Neighbor()
         assert struct.device_type is None
         struct.device_type = dev_type
         assert struct.device_type == dev_type
 
-    for i in range(0, 127):
+    for i in range(127):
         struct = types.Neighbor(**types.Neighbor._parse_packed(i))
         orig_rx = struct.rx_on_when_idle
         orig_rel = struct.relationship
-        for dev_type in range(0, 3):
+        for dev_type in range(3):
             struct.device_type = dev_type
             assert struct.rx_on_when_idle == orig_rx
             assert struct.relationship == orig_rel
@@ -411,17 +411,17 @@ def test_neighbor_struct_device_type():
 def test_neighbor_struct_rx_on_when_idle():
     """Test neighbor packed struct rx_on_when_idle."""
 
-    for rx_on_when_idle in range(0, 3):
+    for rx_on_when_idle in range(3):
         struct = types.Neighbor()
         assert struct.rx_on_when_idle is None
         struct.rx_on_when_idle = rx_on_when_idle
         assert struct.rx_on_when_idle == rx_on_when_idle
 
-    for i in range(0, 127):
+    for i in range(127):
         struct = types.Neighbor(**types.Neighbor._parse_packed(i))
         orig_dev_type = struct.device_type
         orig_rel = struct.relationship
-        for rx_on_when_idle in range(0, 3):
+        for rx_on_when_idle in range(3):
             struct.rx_on_when_idle = rx_on_when_idle
             assert struct.device_type == orig_dev_type
             assert struct.relationship == orig_rel
@@ -431,17 +431,17 @@ def test_neighbor_struct_rx_on_when_idle():
 def test_neighbor_struct_relationship():
     """Test neighbor packed struct relationship."""
 
-    for relationship in range(0, 7):
+    for relationship in range(7):
         struct = types.Neighbor()
         assert struct.relationship is None
         struct.relationship = relationship
         assert struct.relationship == relationship
 
-    for i in range(0, 127):
+    for i in range(127):
         struct = types.Neighbor(**types.Neighbor._parse_packed(i))
         orig_dev_type = struct.device_type
         orig_rx = struct.rx_on_when_idle
-        for relationship in range(0, 7):
+        for relationship in range(7):
             struct.relationship = relationship
             assert struct.device_type == orig_dev_type
             assert struct.rx_on_when_idle == orig_rx

@@ -1,7 +1,7 @@
 """Typing helpers for Zigpy."""
 from __future__ import annotations
-import enum
 
+import enum
 from typing import TYPE_CHECKING, Any, Dict, Union
 
 ConfigType = Dict[str, Any]

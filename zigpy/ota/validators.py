@@ -131,11 +131,7 @@ def validate_ota_image(image: BaseOTAImage) -> ValidationResult:
     if not isinstance(image, OTAImage):
         return ValidationResult.UNKNOWN
 
-    results = []
-
-    for subelement in image.subelements:
-        if subelement.tag_id == ElementTagId.UPGRADE_IMAGE:
-            results.append(validate_firmware(subelement.data))
+    results = [validate_firmware(subelement.data) for subelement in image.subelements if subelement.tag_id == ElementTagId.UPGRADE_IMAGE]
 
     if not results or any(r == ValidationResult.UNKNOWN for r in results):
         return ValidationResult.UNKNOWN
@@ -148,7 +144,8 @@ def check_invalid(image: BaseOTAImage) -> bool:
 
     try:
         validate_ota_image(image)
-        return False
     except ValidationError as e:
         LOGGER.warning("Image %s is invalid: %s", image.header, e)
         return True
+    else:
+        return False

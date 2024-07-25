@@ -91,7 +91,7 @@ class DeviceRegistry:
             else:
                 for entry in entries:
                     if entry.matches_device(device):
-                        matches.append(entry)
+                        matches.append(entry)  # noqa: PERF401
             if len(matches) > 1:
                 raise MultipleQuirksMatchException(
                     f"Multiple matches found for device {device}: {matches}"

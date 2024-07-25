@@ -13,12 +13,11 @@ from aioresponses import aioresponses
 import attrs
 import pytest
 
+from tests.conftest import make_node_desc
+from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 import zigpy.device
 from zigpy.ota import OtaImageWithMetadata, providers
 import zigpy.types as t
-
-from tests.conftest import make_node_desc
-from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 
 FILES_DIR = pathlib.Path(__file__).parent / "files"
 
@@ -33,7 +32,7 @@ def download_external_files():
 
         if not path.is_file():
 
-            async def download():
+            async def download(path: pathlib.Path = path, obj: dict = obj) -> None:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(
                         obj["url"],
@@ -128,7 +127,7 @@ async def test_local_z2m_provider():
             assert meta.path == FILES_DIR / obj.pop("path")
             obj.pop("url")
         else:
-            assert False
+            pytest.fail(f"Unexpected metadata type: {meta!r}")
 
         assert not obj
 
@@ -164,11 +163,11 @@ async def test_remote_z2m_provider():
         assert not obj
 
 
-async def test_trådfri_provider():
+async def test_tradfri_provider():
     index_json = (FILES_DIR / "ikea_version_info.json").read_text()
     index_obj = json.loads(index_json)
 
-    provider = providers.Trådfri()
+    provider = providers.Tradfri()
 
     # Compatible only with IKEA devices
     assert provider.compatible_with_device(make_device(manufacturer_id=4476))
@@ -206,7 +205,7 @@ async def test_trådfri_provider():
         assert meta.image_type == obj.pop("fw_image_type")
         assert meta.checksum == "sha3-256:" + obj.pop("fw_sha3_256")
         assert meta.url == obj.pop("fw_binary_url")
-        assert meta.manufacturer_id == providers.Trådfri.MANUFACTURER_IDS[0] == 4476
+        assert meta.manufacturer_id == providers.Tradfri.MANUFACTURER_IDS[0] == 4476
 
         obj.pop("fw_type")
         assert not obj
@@ -231,9 +230,10 @@ async def test_trådfri_provider():
     assert img.serialize() == ota_contents
 
 
-async def test_trådfri_provider_invalid_json():
+async def test_tradfri_provider_invalid_json():
     index_json = (FILES_DIR / "ikea_version_info.json").read_text()
-    index_obj = json.loads(index_json) + [
+    index_obj = [
+        *json.loads(index_json),
         {
             "fw_image_type": 10242,
             "fw_type": 2,
@@ -243,7 +243,7 @@ async def test_trådfri_provider_invalid_json():
         }
     ]
 
-    provider = providers.Trådfri()
+    provider = providers.Tradfri()
 
     with aioresponses() as mock_http:
         mock_http.get(

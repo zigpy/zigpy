@@ -220,7 +220,7 @@ class OTA:
             self._register_providers(self._config)
 
     async def broadcast_loop(
-        self, initial_delay: int | float, interval: int | float
+        self, initial_delay: float, interval: float
     ) -> None:
         """Periodically broadcast an image notification to get devices to check in."""
 
@@ -231,13 +231,13 @@ class OTA:
 
             try:
                 await self.broadcast_notify()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 _LOGGER.debug("OTA broadcast failed", exc_info=True)
 
             await asyncio.sleep(interval)
 
     def start_periodic_broadcasts(
-        self, initial_delay: int | float, interval: int | float
+        self, initial_delay: float, interval: float
     ) -> None:
         """Start the periodic OTA broadcasts."""
         self._broadcast_loop_task = asyncio.create_task(
@@ -260,7 +260,7 @@ class OTA:
             )
 
         if config[CONF_OTA_IKEA]:
-            self.register_provider(zigpy.ota.providers.Trådfri())
+            self.register_provider(zigpy.ota.providers.Tradfri())
 
         if config[CONF_OTA_INOVELLI]:
             self.register_provider(zigpy.ota.providers.Inovelli())
@@ -332,7 +332,7 @@ class OTA:
         for provider in compatible_providers:
             try:
                 index = await self._load_provider_index(provider)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 _LOGGER.debug("Failed to load provider %s", provider, exc_info=exc)
                 continue
 

@@ -649,7 +649,8 @@ async def test_quirks_v2_also_applies_to(device_mock):
 async def test_quirks_v2_with_custom_device_class_raises(device_mock):
     """Test adding a quirk with a custom device class to the registry raises
 
-    if the class is not a subclass of CustomDeviceV2."""
+    if the class is not a subclass of CustomDeviceV2.
+    """
     registry = DeviceRegistry()
 
     class CustomTestDevice(CustomDevice):

@@ -2,18 +2,17 @@ import asyncio
 
 import pytest
 
-from zigpy import endpoint, group
+from zigpy import endpoint, group, zcl
 import zigpy.device
 import zigpy.exceptions
 import zigpy.types as t
-import zigpy.zcl as zcl
 from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCLStatus
 from zigpy.zdo import types
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
 
-@pytest.fixture
+@pytest.fixture()
 def ep():
     dev = MagicMock()
     dev.request = AsyncMock()
@@ -155,9 +154,10 @@ def test_handle_request_unknown(ep):
 
 def test_cluster_attr(ep):
     with pytest.raises(AttributeError):
-        ep.basic
+        ep.basic  # noqa: B018
     ep.add_input_cluster(0)
-    ep.basic
+
+    assert ep.basic is not None
 
 
 async def test_request(ep):
@@ -373,7 +373,7 @@ def _group_add_mock(ep, status=ZCLStatus.SUCCESS, no_groups_cluster=False):
     return ep
 
 
-@pytest.mark.parametrize("status", (ZCLStatus.SUCCESS, ZCLStatus.DUPLICATE_EXISTS))
+@pytest.mark.parametrize("status", [ZCLStatus.SUCCESS, ZCLStatus.DUPLICATE_EXISTS])
 async def test_add_to_group(ep, status):
     ep = _group_add_mock(ep, status=status)
 

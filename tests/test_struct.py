@@ -10,11 +10,9 @@ from zigpy.zcl.foundation import Status
 import zigpy.zdo.types as zdo_t
 
 
-@pytest.fixture
+@pytest.fixture()
 def expose_global():
-    """
-    `typing.get_type_hints` does not work for types defined within functions
-    """
+    """`typing.get_type_hints` does not work for types defined within functions"""
 
     objects = []
 
@@ -394,12 +392,12 @@ def test_struct_subclass_extension(data):
 
     try:
         ts1, remaining1 = TestStructSubclass.deserialize(data)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         error1 = e
 
     try:
         ts2, remaining2 = TestCombinedStruct.deserialize(data)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         error2 = e
 
     assert (error1 and error2) or (not error1 and not error2)
@@ -906,16 +904,16 @@ def test_int_comparison_non_int(expose_global):
     )
 
     with pytest.raises(TypeError):
-        fw_ver < 0
+        fw_ver < 0  # noqa: B015
 
     with pytest.raises(TypeError):
-        fw_ver <= 0
+        fw_ver <= 0  # noqa: B015
 
     with pytest.raises(TypeError):
-        fw_ver > 0
+        fw_ver > 0  # noqa: B015
 
     with pytest.raises(TypeError):
-        fw_ver >= 0
+        fw_ver >= 0  # noqa: B015
 
 
 def test_frozen_struct():

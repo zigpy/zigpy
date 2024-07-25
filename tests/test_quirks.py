@@ -4,6 +4,7 @@ from typing import Final
 
 import pytest
 
+from zigpy import zcl
 from zigpy.const import (
     SIG_ENDPOINTS,
     SIG_EP_INPUT,
@@ -20,7 +21,6 @@ import zigpy.endpoint
 import zigpy.quirks
 from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
-import zigpy.zcl as zcl
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
@@ -44,7 +44,7 @@ def test_registry():
     assert TestDevice not in zigpy.quirks._DEVICE_REGISTRY
 
 
-@pytest.fixture
+@pytest.fixture()
 def real_device(app_mock):
     ieee = sentinel.ieee
     nwk = 0x2233
@@ -60,7 +60,7 @@ def real_device(app_mock):
     return real_device
 
 
-@pytest.fixture
+@pytest.fixture()
 def real_device_2(app_mock):
     ieee = sentinel.ieee_2
     nwk = 0x3344
@@ -172,8 +172,8 @@ def test_model_manuf_device_sig(real_device):
 
 def test_custom_devices():
     def _check_range(cluster):
-        for range in zcl.Cluster._registry_range:
-            if range[0] <= cluster <= range[1]:
+        for left, right in zcl.Cluster._registry_range:
+            if left <= cluster <= right:
                 return True
         return False
 
@@ -532,7 +532,7 @@ class ManufacturerSpecificCluster(zigpy.quirks.CustomCluster):
         )
 
 
-@pytest.fixture
+@pytest.fixture()
 def manuf_cluster():
     """Return a manufacturer specific cluster fixture."""
 
@@ -541,7 +541,7 @@ def manuf_cluster():
     return ManufacturerSpecificCluster.from_id(ep, 0x2222)
 
 
-@pytest.fixture
+@pytest.fixture()
 def manuf_cluster2():
     """Return a manufacturer specific cluster fixture."""
 
@@ -557,11 +557,11 @@ def manuf_cluster2():
 
 
 @pytest.mark.parametrize(
-    "cmd_name, manufacturer",
-    (
+    ("cmd_name", "manufacturer"),
+    [
         ("client_cmd0", None),
         ("client_cmd1", sentinel.manufacturer_id),
-    ),
+    ],
 )
 async def test_client_cmd_vendor_specific_by_name(
     manuf_cluster, manuf_cluster2, cmd_name, manufacturer
@@ -581,11 +581,11 @@ async def test_client_cmd_vendor_specific_by_name(
 
 
 @pytest.mark.parametrize(
-    "cmd_name, manufacturer",
-    (
+    ("cmd_name", "manufacturer"),
+    [
         ("server_cmd0", None),
         ("server_cmd1", sentinel.manufacturer_id),
-    ),
+    ],
 )
 async def test_srv_cmd_vendor_specific_by_name(
     manuf_cluster, manuf_cluster2, cmd_name, manufacturer
@@ -605,11 +605,11 @@ async def test_srv_cmd_vendor_specific_by_name(
 
 
 @pytest.mark.parametrize(
-    "attr_name, manufacturer",
-    (
+    ("attr_name", "manufacturer"),
+    [
         ("attr0", None),
         ("attr1", sentinel.manufacturer_id),
-    ),
+    ],
 )
 async def test_read_attr_manufacture_specific(
     manuf_cluster, manuf_cluster2, attr_name, manufacturer
@@ -639,11 +639,11 @@ async def test_read_attr_manufacture_specific(
 
 
 @pytest.mark.parametrize(
-    "attr_name, manufacturer",
-    (
+    ("attr_name", "manufacturer"),
+    [
         ("attr0", None),
         ("attr1", sentinel.manufacturer_id),
-    ),
+    ],
 )
 async def test_write_attr_manufacture_specific(
     manuf_cluster, manuf_cluster2, attr_name, manufacturer
@@ -673,11 +673,11 @@ async def test_write_attr_manufacture_specific(
 
 
 @pytest.mark.parametrize(
-    "attr_name, manufacturer",
-    (
+    ("attr_name", "manufacturer"),
+    [
         ("attr0", None),
         ("attr1", sentinel.manufacturer_id),
-    ),
+    ],
 )
 async def test_write_attr_undivided_manufacture_specific(
     manuf_cluster, manuf_cluster2, attr_name, manufacturer
@@ -711,11 +711,11 @@ async def test_write_attr_undivided_manufacture_specific(
 
 
 @pytest.mark.parametrize(
-    "attr_name, manufacturer",
-    (
+    ("attr_name", "manufacturer"),
+    [
         ("attr0", None),
         ("attr1", sentinel.manufacturer_id),
-    ),
+    ],
 )
 async def test_configure_reporting_manufacture_specific(
     manuf_cluster, manuf_cluster2, attr_name, manufacturer
