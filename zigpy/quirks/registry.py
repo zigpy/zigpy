@@ -32,9 +32,9 @@ class DeviceRegistry:
         self._registry: TYPE_MANUF_QUIRKS_DICT = collections.defaultdict(
             lambda: collections.defaultdict(list)
         )
-        self._registry_v2: dict[
-            tuple[str, str], list[QuirksV2RegistryEntry]
-        ] = collections.defaultdict(list)
+        self._registry_v2: dict[tuple[str, str], list[QuirksV2RegistryEntry]] = (
+            collections.defaultdict(list)
+        )
 
     def add_to_registry(self, custom_device: CustomDeviceType) -> None:
         """Add a device to the registry"""

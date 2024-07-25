@@ -232,7 +232,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         elif isinstance(name_or_id, int):
             return self.attributes[name_or_id]
         else:
-            raise ValueError(    # noqa: TRY004
+            raise ValueError(  # noqa: TRY004
                 f"Attribute must be either a string or an integer,"
                 f" not {name_or_id!r} ({type(name_or_id)!r}"
             )
@@ -666,7 +666,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         try:
             attr_def = self.find_attribute(attribute)
         except KeyError as exc:
-            raise ValueError(f"Unknown attribute {attribute!r} of {self} cluster") from exc
+            raise ValueError(
+                f"Unknown attribute {attribute!r} of {self} cluster"
+            ) from exc
 
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = direction
@@ -833,7 +835,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
         msg = "[%s:%s:0x%04x] " + msg
-        args = (self._endpoint.device.name, self._endpoint.endpoint_id, self.cluster_id, *args)
+        args = (
+            self._endpoint.device.name,
+            self._endpoint.endpoint_id,
+            self.cluster_id,
+            *args,
+        )
         return LOGGER.log(lvl, msg, *args, **kwargs)
 
     def __getattr__(self, name: str) -> functools.partial:
@@ -865,7 +872,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def __setitem__(self, key: int | str, value: Any) -> None:
         """Set cached value through attribute write."""
         if not isinstance(key, (int, str)):
-            raise ValueError("attr_name or attr_id are accepted only")    # noqa: TRY004
+            raise ValueError("attr_name or attr_id are accepted only")  # noqa: TRY004
         self.create_catching_task(self.write_attributes({key: value}))
 
     def general_command(

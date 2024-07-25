@@ -1,4 +1,5 @@
 """OTA Firmware providers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -132,6 +133,7 @@ class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
 @attrs.define(frozen=True, kw_only=True)
 class IkeaRemoteOtaImageMetadata(RemoteOtaImageMetadata):
     ssl_ctx = dataclasses.field(default_factory=lambda: Tradfri.SSL_CTX)
+
 
 class BaseOtaProvider:
     MANUFACTURER_IDS: list[int] = []
@@ -769,7 +771,9 @@ def _load_z2m_index(
         if "path" in obj and index_root is not None:
             yield LocalOtaImageMetadata(**shared_kwargs, path=index_root / obj["path"])  # type: ignore[call-arg]
         else:
-            yield RemoteOtaImageMetadata(**shared_kwargs, url=obj["url"], ssl_ctx=ssl_ctx)  # type: ignore[call-arg]
+            yield RemoteOtaImageMetadata(
+                **shared_kwargs, url=obj["url"], ssl_ctx=ssl_ctx
+            )  # type: ignore[call-arg]
 
 
 class BaseZ2MProvider(BaseOtaProvider):

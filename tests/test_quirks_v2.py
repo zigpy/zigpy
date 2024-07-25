@@ -88,9 +88,7 @@ async def test_quirks_v2(device_mock):
     class TestCustomCluster(CustomCluster, Basic):
         """Custom cluster for testing quirks v2."""
 
-        class AttributeDefs(
-            BaseAttributeDefs
-        ):  # pylint: disable=too-few-public-methods
+        class AttributeDefs(BaseAttributeDefs):  # pylint: disable=too-few-public-methods
             """Attribute definitions for the custom cluster."""
 
             # pylint: disable=disallowed-name
@@ -122,7 +120,9 @@ async def test_quirks_v2(device_mock):
     assert quirked in registry
     # this would need to be updated if the line number of the call to add_to_registry_v2
     # changes in this test in the future
-    assert quirked.quirk_metadata.quirk_location.endswith("zigpy/tests/test_quirks_v2.py]-line:104")
+    assert quirked.quirk_metadata.quirk_location.endswith(
+        "zigpy/tests/test_quirks_v2.py]-line:104"
+    )
 
     ep = quirked.endpoints[1]
 

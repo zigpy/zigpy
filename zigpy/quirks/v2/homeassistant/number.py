@@ -1,4 +1,5 @@
 """Homeassistant number platform quirks v2 supporting items."""
+
 from enum import Enum
 
 

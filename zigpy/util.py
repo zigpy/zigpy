@@ -278,7 +278,12 @@ class Request(typing.Generic[T]):
         self._pending[self.sequence] = self
         return self
 
-    def __exit__(self, exc_type: type[BaseException] | None, exc_value: BaseException | None, exc_traceback: types.TracebackType | None) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_traceback: types.TracebackType | None,
+    ) -> bool:
         """Clean up pending on exit."""
         if not self.result.done():
             self.result.cancel()
@@ -355,7 +360,7 @@ def deprecated(message: str) -> typing.Callable[[typing.Callable], typing.Callab
 
 
 def deprecated_attrs(
-    mapping: dict[str, typing.Any]
+    mapping: dict[str, typing.Any],
 ) -> typing.Callable[[str], typing.Any]:
     """Create a module-level `__getattr__` function that remaps deprecated objects."""
 
@@ -470,7 +475,9 @@ def filter_relays(relays: list[int]) -> list[int]:
 
 
 def combine_concurrent_calls(
-    function: typing.Callable[..., typing.Coroutine[typing.Any, typing.Any, typing.Any]]
+    function: typing.Callable[
+        ..., typing.Coroutine[typing.Any, typing.Any, typing.Any]
+    ],
 ) -> typing.Callable[..., typing.Coroutine[typing.Any, typing.Any, typing.Any]]:
     """Decorator that allows concurrent calls to expensive coroutines to share a result."""
 
@@ -497,6 +504,7 @@ def combine_concurrent_calls(
             del tasks[key]
 
     return replacement
+
 
 async def async_iterate_in_chunks(
     iterable: typing.Iterable[_T], chunk_size: int

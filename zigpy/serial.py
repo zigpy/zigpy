@@ -39,8 +39,8 @@ async def create_serial_connection(
     """
 
     if flow_control is not UNDEFINED:
-        xonxoff = (flow_control == "software")
-        rtscts = (flow_control == "hardware")
+        xonxoff = flow_control == "software"
+        rtscts = flow_control == "hardware"
 
     if xonxoff is UNDEFINED:
         xonxoff = False

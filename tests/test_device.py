@@ -546,7 +546,6 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
             rssi=-30,
         )
 
-
     async def send_packet(packet: t.ZigbeePacket):
         if dev.update_firmware.mock_calls[-1].kwargs.get("force", False):
             active_fw_image = fw_image_force

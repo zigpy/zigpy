@@ -485,12 +485,12 @@ async def test_last_seen_initial_migration(test_db):
 
     assert dev.last_seen is None
     dev.update_last_seen()
-    assert isinstance(dev.last_seen,float)
+    assert isinstance(dev.last_seen, float)
     await app.shutdown()
 
     # But the device's `last_seen` will still update properly when it's actually set
     app = await make_app_with_db(test_db_v5)
-    assert isinstance(app.get_device(nwk=0xBD4D).last_seen,float)
+    assert isinstance(app.get_device(nwk=0xBD4D).last_seen, float)
     await app.shutdown()
 
 

@@ -240,7 +240,7 @@ async def test_tradfri_provider_invalid_json():
             "fw_sha3_256": "e68e61bd57291e0b6358242e72ee2dfe098cb8b769f572b5b8f8e7a34dbcfaca",
             # We extract the version from the URL. Here, it is invalid.
             "fw_binary_url": "https://fw.ota.homesmart.ikea.com/files/bad.ota",
-        }
+        },
     ]
 
     provider = providers.Tradfri()
