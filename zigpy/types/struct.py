@@ -4,8 +4,9 @@ import dataclasses
 import inspect
 import typing
 
-import zigpy.types as t
 from typing_extensions import Self
+
+import zigpy.types as t
 
 NoneType = type(None)
 
@@ -47,14 +48,11 @@ class StructField:
 
         try:
             return field_type(value)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             raise ValueError(
                 f"Failed to convert {self.name}={value!r} from type"
                 f" {type(value)} to {field_type}"
             ) from e
-
-
-_STRUCT = typing.TypeVar("_STRUCT", bound="Struct")
 
 
 class Struct:
@@ -82,7 +80,7 @@ class Struct:
         cls._hash = -1
         cls._frozen = False
 
-    def __new__(cls: type[_STRUCT], *args, **kwargs) -> _STRUCT:
+    def __new__(cls: type[Self], *args, **kwargs) -> Self:
         cls = cls._real_cls()
 
         if len(args) == 1 and isinstance(args[0], cls):
@@ -183,7 +181,7 @@ class Struct:
                         f"Value for field {field.name!r} is required: {self!r}"
                     )
                 else:
-                    pass  # Python bug, the following `continue` is never covered
+                    # Python bug, the following `continue` is never covered
                     continue  # pragma: no cover
 
             assigned_fields.append((field, value))
@@ -192,7 +190,7 @@ class Struct:
         return assigned_fields
 
     @classmethod
-    def from_dict(cls: type[_STRUCT], obj: dict[str, typing.Any]) -> _STRUCT:
+    def from_dict(cls: type[Self], obj: dict[str, typing.Any]) -> Self:
         instance = cls()
 
         for key, value in obj.items():
@@ -272,16 +270,19 @@ class Struct:
         return b"".join(chunks)
 
     @classmethod
-    def deserialize(cls: type[_STRUCT], data: bytes) -> tuple[_STRUCT, bytes]:
+    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
         instance = cls()
 
         bit_length = 0
         bitfields = []
 
         for field in cls.fields:
-            if field.requires is not None and not field.requires(instance):
-                continue
-            elif not data and field.optional:
+            if (
+                field.requires is not None
+                and not field.requires(instance)
+                or not data
+                and field.optional
+            ):
                 continue
 
             field_type = field.get_type(struct=instance)
@@ -326,7 +327,6 @@ class Struct:
 
         return instance, data
 
-    # TODO: improve? def replace(self: typing.Type[_STRUCT], **kwargs) -> _STRUCT:
     def replace(self, **kwargs: dict[str, typing.Any]) -> Struct:
         d = self.as_dict().copy()
         d.update(kwargs)
@@ -419,9 +419,10 @@ class Struct:
     def is_valid(self) -> bool:
         try:
             self.serialize()
-            return True
         except ValueError:
             return False
+        else:
+            return True
 
     def matches(self, other: Struct) -> bool:
         if not isinstance(self, type(other)) and not isinstance(other, type(self)):

@@ -1,10 +1,11 @@
 """OTA Firmware providers."""
+
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime
 import hashlib
-import dataclasses
 import io
 import json
 import logging
@@ -18,13 +19,13 @@ import urllib.parse
 import aiohttp
 import attrs
 import jsonschema
+import voluptuous as vol
 
+import zigpy.config
+from zigpy.ota import json_schemas
 from zigpy.ota.image import BaseOTAImage, parse_ota_image
 import zigpy.types as t
-import voluptuous as vol
 import zigpy.util
-from zigpy.ota import json_schemas
-import zigpy.config
 
 LOGGER = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     source: str = "Unknown"
 
     async def _fetch(self) -> bytes:
-        raise NotImplementedError()
+        raise NotImplementedError
 
     async def _validate(self, data: bytes) -> None:
         if self.file_size is not None and len(data) != self.file_size:
@@ -144,18 +145,18 @@ class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
 
 @attrs.define(frozen=True, kw_only=True)
 class IkeaRemoteOtaImageMetadata(RemoteOtaImageMetadata):
-    ssl_ctx = dataclasses.field(default_factory=lambda: Trådfri.SSL_CTX)
+    ssl_ctx = dataclasses.field(default_factory=lambda: Tradfri.SSL_CTX)
 
     async def _fetch(self) -> bytes:
         async with aiohttp.ClientSession(raise_for_status=True) as req:
             # Use IKEA's self-signed certificate
-            async with req.get(self.url, ssl=Trådfri.SSL_CTX) as rsp:
+            async with req.get(self.url, ssl=Tradfri.SSL_CTX) as rsp:
                 return await rsp.read()
 
 
 @attrs.define(frozen=True, kw_only=True)
 class SignedIkeaRemoteOtaImageMetadata(IkeaRemoteOtaImageMetadata):
-    ssl_ctx = dataclasses.field(default_factory=lambda: Trådfri.SSL_CTX)
+    ssl_ctx = dataclasses.field(default_factory=lambda: Tradfri.SSL_CTX)
 
     async def _validate(self, data: bytes) -> None:
         ota_offset = int.from_bytes(data[16:20], "little")
@@ -223,7 +224,7 @@ class BaseOtaProvider:
 
         # Don't hammer the OTA indexes too frequently
         if now - self._index_last_updated < self.INDEX_EXPIRATION_TIME:
-            return
+            return None
 
         try:
             async with aiohttp.ClientSession(
@@ -246,17 +247,14 @@ class BaseOtaProvider:
         if not isinstance(other, type(self)):
             return NotImplemented
 
-        return (
-            self.url == other.url
-            and self.manufacturer_ids == other.manufacturer_ids
-        )
+        return self.url == other.url and self.manufacturer_ids == other.manufacturer_ids
 
     # We don't want the above `__eq__` to change object hashing semantics
     __hash__ = object.__hash__
 
 
 @register_provider
-class Trådfri(BaseOtaProvider):
+class Tradfri(BaseOtaProvider):
     NAME = "ikea"
     MANUFACTURER_IDS = [4476]
     DEFAULT_URL = "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json"
@@ -286,7 +284,7 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(self._url, ssl=self.SSL_CTX) as rsp:
+        async with session.get(self.url, ssl=self.SSL_CTX) as rsp:
             # IKEA does not always respond with an appropriate Content-Type but the
             # response is always JSON
             fw_lst = await rsp.json(content_type=None)
@@ -345,7 +343,7 @@ class Ledvance(BaseOtaProvider):
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(self._url) as rsp:
+        async with session.get(self.url) as rsp:
             fw_lst = await rsp.json()
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
@@ -532,7 +530,9 @@ class BaseZigpyProvider(BaseOtaProvider):
             }
 
             if "path" in fw and index_root is not None:
-                yield LocalOtaImageMetadata(**shared_kwargs, path=index_root / fw["path"])  # type: ignore[call-arg]
+                yield LocalOtaImageMetadata(
+                    **shared_kwargs, path=index_root / fw["path"]
+                )  # type: ignore[call-arg]
             else:
                 yield RemoteOtaImageMetadata(**shared_kwargs, url=fw["binary_url"])  # type: ignore[call-arg]
 
@@ -542,7 +542,9 @@ class LocalZigpyProvider(BaseZigpyProvider):
     NAME = "zigpy_local"
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_JSON_INDEX
 
-    def __init__(self, index_file: pathlib.Path, manufacturer_ids: list[int] | None = None):
+    def __init__(
+        self, index_file: pathlib.Path, manufacturer_ids: list[int] | None = None
+    ):
         super().__init__(url=None, manufacturer_ids=manufacturer_ids)
         self.index_file = index_file
 
@@ -558,11 +560,7 @@ class LocalZigpyProvider(BaseZigpyProvider):
             yield img.replace(source=f"Local zigpy provider ({self.index_file})")
 
     def __eq__(self, other: object) -> bool:
-        return (
-            super() == other
-            and self.index_file == other.index_file
-        )
-
+        return super() == other and self.index_file == other.index_file
 
 
 @register_provider
@@ -573,13 +571,13 @@ class RemoteZigpyProvider(BaseZigpyProvider):
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(self._url) as rsp:
+        async with session.get(self.url) as rsp:
             fw_lst = await rsp.json(content_type=None)
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
         for img in self._load_zigpy_index(fw_lst):
-            yield img.replace(source=f"Remote zigpy provider ({self._url})")
+            yield img.replace(source=f"Remote zigpy provider ({self.url})")
 
 
 class BaseZ2MProvider(BaseOtaProvider):
@@ -610,9 +608,13 @@ class BaseZ2MProvider(BaseOtaProvider):
             }
 
             if "path" in fw and index_root is not None:
-                yield LocalOtaImageMetadata(**shared_kwargs, path=index_root / fw["path"])  # type: ignore[call-arg]
+                yield LocalOtaImageMetadata(
+                    **shared_kwargs, path=index_root / fw["path"]
+                )  # type: ignore[call-arg]
             else:
-                yield RemoteOtaImageMetadata(**shared_kwargs, url=fw["url"], ssl_ctx=ssl_ctx)  # type: ignore[call-arg]
+                yield RemoteOtaImageMetadata(
+                    **shared_kwargs, url=fw["url"], ssl_ctx=ssl_ctx
+                )  # type: ignore[call-arg]
 
 
 @register_provider
@@ -636,10 +638,8 @@ class LocalZ2MProvider(BaseZ2MProvider):
             yield img.replace(source=f"Local Z2M provider ({self.index_file})")
 
     def __eq__(self, other: object) -> bool:
-        return (
-            super() == other
-            and self.index_file == other.index_file
-        )
+        return super() == other and self.index_file == other.index_file
+
 
 @register_provider
 class RemoteZ2MProvider(BaseZ2MProvider):
@@ -678,7 +678,7 @@ clwJRVSsq8EApeFREenCkRM0EIk=
             fw_lst = await rsp.json(content_type=None)
 
         for img in self._load_z2m_index(fw_lst):
-            yield img.replace(source=f"Remote Z2M provider ({self._url})")
+            yield img.replace(source=f"Remote Z2M provider ({self.url})")
 
 
 @register_provider
@@ -706,7 +706,7 @@ class AdvancedFileProvider(BaseOtaProvider):
 
                 try:
                     image, _ = parse_ota_image(data)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     LOGGER.debug("Failed to parse image %s: %r", path, exc)
                     continue
 
@@ -726,7 +726,4 @@ class AdvancedFileProvider(BaseOtaProvider):
                 )
 
     def __eq__(self, other: object) -> bool:
-        return (
-            super() == other
-            and self.path == other.path
-        )
+        return super() == other and self.path == other.path

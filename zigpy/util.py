@@ -4,16 +4,18 @@ import abc
 import asyncio
 import functools
 import inspect
+import itertools
 import logging
 import traceback
+import types
 import typing
 import warnings
-import itertools
 
 from crccheck.crc import CrcX25
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.modes import ECB
+from typing_extensions import Self
 
 from zigpy.datastructures import DynamicBoundedSemaphore  # noqa: F401
 from zigpy.exceptions import ControllerException, ZigbeeException
@@ -61,7 +63,7 @@ class ListenableMixin:
                     result.append(method(self, *args))
                 else:
                     result.append(method(*args))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 LOGGER.debug(
                     "Error calling listener %r with args %r", method, args, exc_info=e
                 )
@@ -122,7 +124,7 @@ async def retry(
     func: typing.Callable[[], typing.Awaitable[typing.Any]],
     retry_exceptions: typing.Iterable[BaseException],
     tries: int = 3,
-    delay: int | float = 0.1,
+    delay: float = 0.1,
 ) -> typing.Any:
     """Retry a function in case of exception
 
@@ -271,12 +273,17 @@ class Request(typing.Generic[T]):
         """Request sequence."""
         return self._sequence
 
-    def __enter__(self) -> Request:
+    def __enter__(self) -> Self:
         """Return context manager."""
         self._pending[self.sequence] = self
         return self
 
-    def __exit__(self, exc_type: None, exc_value: None, exc_traceback: None) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_traceback: types.TracebackType | None,
+    ) -> bool:
         """Clean up pending on exit."""
         if not self.result.done():
             self.result.cancel()
@@ -286,7 +293,7 @@ class Request(typing.Generic[T]):
 
 
 class Requests(dict, typing.Generic[T]):
-    def new(self, sequence: T) -> Request[T]:
+    def new(self, sequence: T) -> Self[T]:
         """Wrap new request into a context manager."""
         if sequence in self:
             LOGGER.debug("Duplicate %s TSN: pending %s", sequence, self)
@@ -353,7 +360,7 @@ def deprecated(message: str) -> typing.Callable[[typing.Callable], typing.Callab
 
 
 def deprecated_attrs(
-    mapping: dict[str, typing.Any]
+    mapping: dict[str, typing.Any],
 ) -> typing.Callable[[str], typing.Any]:
     """Create a module-level `__getattr__` function that remaps deprecated objects."""
 
@@ -405,7 +412,7 @@ def pick_optimal_channel(
 
     # Scan all channels even if we're restricted to picking among a few, since
     # nearby channels will affect our decision
-    assert set(channel_energy.keys()) == set(t.Channels.ALL_CHANNELS)  # type: ignore
+    assert set(channel_energy.keys()) == set(t.Channels.ALL_CHANNELS)  # type: ignore[call-overload]
 
     # We don't know energies above channel 26 or below 11. Assume the scan results
     # just continue indefinitely with the last-seen value.
@@ -468,11 +475,11 @@ def filter_relays(relays: list[int]) -> list[int]:
 
 
 def combine_concurrent_calls(
-    function: typing.Callable[..., typing.Coroutine[typing.Any, typing.Any, typing.Any]]
+    function: typing.Callable[
+        ..., typing.Coroutine[typing.Any, typing.Any, typing.Any]
+    ],
 ) -> typing.Callable[..., typing.Coroutine[typing.Any, typing.Any, typing.Any]]:
-    """
-    Decorator that allows concurrent calls to expensive coroutines to share a result.
-    """
+    """Decorator that allows concurrent calls to expensive coroutines to share a result."""
 
     tasks: dict[tuple, asyncio.Task] = {}
     signature = inspect.signature(function)
@@ -497,6 +504,7 @@ def combine_concurrent_calls(
             del tasks[key]
 
     return replacement
+
 
 async def async_iterate_in_chunks(
     iterable: typing.Iterable[_T], chunk_size: int

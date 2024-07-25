@@ -11,6 +11,9 @@ import aiosqlite
 import freezegun
 import pytest
 
+from tests.async_mock import AsyncMock, MagicMock, call, patch
+from tests.conftest import make_app, make_ieee, make_node_desc
+from tests.test_backups import backup_factory  # noqa: F401
 from zigpy import profiles
 import zigpy.appdb
 import zigpy.application
@@ -26,14 +29,10 @@ from zigpy.zcl.clusters.general import Basic
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
-from tests.async_mock import AsyncMock, MagicMock, call, patch
-from tests.conftest import make_app, make_ieee, make_node_desc
-from tests.test_backups import backup_factory  # noqa: F401
-
 
 @pytest.fixture(autouse=True)
 def auto_kill_aiosqlite():
-    """aiosqlite's background thread does not let pytest exit when a failure occurs"""
+    """Aiosqlite's background thread does not let pytest exit when a failure occurs"""
     yield
 
     for thread in threading.enumerate():
@@ -417,7 +416,7 @@ async def test_groups(mock_request, tmp_path):
     await app5.shutdown()
 
 
-@pytest.mark.parametrize("dev_init", (True, False))
+@pytest.mark.parametrize("dev_init", [True, False])
 async def test_attribute_update(tmp_path, dev_init):
     """Test attribute update for initialized and uninitialized devices."""
 
@@ -491,7 +490,7 @@ async def test_attribute_update_short_interval(tmp_path):
     attr_update_time_first = clus._attr_last_updated[0x4000]
 
     # update attribute again 10 seconds later
-    fake_time = datetime.utcnow() + timedelta(seconds=10)
+    fake_time = datetime.now(timezone.utc) + timedelta(seconds=10)
     with freezegun.freeze_time(fake_time):
         clus.update_attribute(0x4000, "2.0")
 
@@ -716,7 +715,7 @@ async def test_stopped_appdb_listener(tmp_path):
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
 async def test_invalid_node_desc(tmp_path):
-    """devices without a valid node descriptor should not save the node descriptor."""
+    """Devices without a valid node descriptor should not save the node descriptor."""
 
     ieee_1 = make_ieee(1)
     nwk_1 = 0x1111
@@ -773,7 +772,7 @@ async def test_appdb_worker_exception(tmp_path):
     assert save_mock.await_count == 3
 
 
-@pytest.mark.parametrize("dev_init", (True, False))
+@pytest.mark.parametrize("dev_init", [True, False])
 async def test_unsupported_attribute(tmp_path, dev_init):
     """Test adding unsupported attributes for initialized and uninitialized devices."""
 
@@ -1011,7 +1010,7 @@ async def test_last_seen(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "stdlib_version,use_sqlite",
+    ("stdlib_version", "use_sqlite"),
     [
         ((1, 0, 0), False),
         ((2, 0, 0), False),
@@ -1037,15 +1036,14 @@ def test_pysqlite_load_success(stdlib_version, use_sqlite):
 
 
 @pytest.mark.parametrize(
-    "stdlib_version,pysqlite3_version",
+    ("stdlib_version", "pysqlite3_version"),
     [
         ((1, 0, 0), None),
         ((1, 0, 0), (1, 0, 1)),
     ],
 )
 def test_pysqlite_load_failure(stdlib_version, pysqlite3_version):
-    """
-    Test that the internal import SQLite helper will throw an error when no compatible
+    """Test that the internal import SQLite helper will throw an error when no compatible
     module can be found.
     """
 
@@ -1091,9 +1089,7 @@ async def test_appdb_network_backups(tmp_path, backup_factory):  # noqa: F811
     await app3.shutdown()
 
 
-async def test_appdb_network_backups_format_change(
-    tmp_path, backup_factory
-):  # noqa: F811
+async def test_appdb_network_backups_format_change(tmp_path, backup_factory):  # noqa: F811
     db = tmp_path / "test.db"
 
     backup = backup_factory()

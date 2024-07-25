@@ -10,18 +10,18 @@ from zigpy.ota.validators import ValidationError, ValidationResult
 
 def create_ebl_image(tags):
     # All images start with a 140-byte "0x0000" header
-    tags = [(b"\x00\x00", b"jklm" * 35)] + tags
+    tags = [(b"\x00\x00", b"jklm" * 35), *tags]
 
     assert all(len(tag) == 2 for tag, value in tags)
     image = b"".join(tag + len(value).to_bytes(2, "big") + value for tag, value in tags)
 
     # And end with a checksum
-    image += b"\xFC\x04\x00\x04" + zlib.crc32(image + b"\xFC\x04\x00\x04").to_bytes(
+    image += b"\xfc\x04\x00\x04" + zlib.crc32(image + b"\xfc\x04\x00\x04").to_bytes(
         4, "little"
     )
 
     if len(image) % 64 != 0:
-        image += b"\xFF" * (64 - len(image) % 64)
+        image += b"\xff" * (64 - len(image) % 64)
 
     assert list(validators.parse_silabs_ebl(image))
 
@@ -30,7 +30,7 @@ def create_ebl_image(tags):
 
 def create_gbl_image(tags):
     # All images start with an 8-byte header
-    tags = [(b"\xEB\x17\xA6\x03", b"\x00\x00\x00\x03\x01\x01\x00\x00")] + tags
+    tags = [(b"\xeb\x17\xa6\x03", b"\x00\x00\x00\x03\x01\x01\x00\x00"), *tags]
 
     assert all(len(tag) == 4 for tag, value in tags)
     image = b"".join(
@@ -38,13 +38,9 @@ def create_gbl_image(tags):
     )
 
     # And end with a checksum
-    image += (
-        b"\xFC\x04\x04\xFC"
-        + b"\x04\x00\x00\x00"
-        + zlib.crc32(image + b"\xFC\x04\x04\xFC" + b"\x04\x00\x00\x00").to_bytes(
-            4, "little"
-        )
-    )
+    image += (b"\xfc\x04\x04\xfc" b"\x04\x00\x00\x00") + zlib.crc32(
+        image + b"\xfc\x04\x04\xfc" + b"\x04\x00\x00\x00"
+    ).to_bytes(4, "little")
 
     assert list(validators.parse_silabs_gbl(image))
 
@@ -71,35 +67,37 @@ def test_parse_silabs_ebl():
     assert header[0] == b"\x00\x00" and len(header[1]) == 140
     assert tag1 == (b"AA", b"test")
     assert tag2 == (b"BB", b"foo" * 20)
-    assert checksum[0] == b"\xFC\x04" and len(checksum[1]) == 4
+    assert checksum[0] == b"\xfc\x04" and len(checksum[1]) == 4
 
     # Padding needs to be a multiple of 64 bytes
     with pytest.raises(ValidationError):
         list(validators.parse_silabs_ebl(image[:-1]))
 
     with pytest.raises(ValidationError):
-        list(validators.parse_silabs_ebl(image + b"\xFF"))
+        list(validators.parse_silabs_ebl(image + b"\xff"))
 
     # Nothing can come after the padding
-    assert list(validators.parse_silabs_ebl(image[:-1] + b"\xFF"))
+    assert list(validators.parse_silabs_ebl(image[:-1] + b"\xff"))
 
     with pytest.raises(ValidationError):
-        list(validators.parse_silabs_ebl(image[:-1] + b"\xAB"))
+        list(validators.parse_silabs_ebl(image[:-1] + b"\xab"))
 
     # Truncated images are detected
     with pytest.raises(ValidationError):
-        list(validators.parse_silabs_ebl(image[: image.index(b"test")] + b"\xFF" * 44))
+        list(validators.parse_silabs_ebl(image[: image.index(b"test")] + b"\xff" * 44))
 
     # As are corrupted images of the correct length but with bad tag lengths
+    index = image.index(b"test")
+    bad_image = image[: index - 2] + b"\xff\xff" + image[index:]
+
     with pytest.raises(ValidationError):
-        index = image.index(b"test")
-        bad_image = image[: index - 2] + b"\xFF\xFF" + image[index:]
         list(validators.parse_silabs_ebl(bad_image))
 
     # Truncated but at a 64-byte boundary, missing CRC footer
+    bad_image = create_ebl_image([(b"AA", b"test" * 11)])
+    bad_image = bad_image[: bad_image.rindex(b"test") + 4]
+
     with pytest.raises(ValidationError):
-        bad_image = create_ebl_image([(b"AA", b"test" * 11)])
-        bad_image = bad_image[: bad_image.rindex(b"test") + 4]
         list(validators.parse_silabs_ebl(bad_image))
 
     # Corrupted images are detected
@@ -117,32 +115,32 @@ def test_parse_silabs_gbl():
 
     header, tag1, tag2, checksum = validators.parse_silabs_gbl(image)
 
-    assert header[0] == b"\xEB\x17\xA6\x03" and len(header[1]) == 8
+    assert header[0] == b"\xeb\x17\xa6\x03" and len(header[1]) == 8
     assert tag1 == (b"AAAA", b"test")
     assert tag2 == (b"BBBB", b"foo" * 20)
-    assert checksum[0] == b"\xFC\x04\x04\xFC" and len(checksum[1]) == 4
+    assert checksum[0] == b"\xfc\x04\x04\xfc" and len(checksum[1]) == 4
 
     # Arbitrary padding is allowed
     parsed_image = [header, tag1, tag2, checksum]
     assert list(validators.parse_silabs_gbl(image + b"\x00")) == parsed_image
-    assert list(validators.parse_silabs_gbl(image + b"\xAB\xCD\xEF")) == parsed_image
+    assert list(validators.parse_silabs_gbl(image + b"\xab\xcd\xef")) == parsed_image
 
     # Normal truncated images are detected
     with pytest.raises(ValidationError):
         list(validators.parse_silabs_gbl(image[-10:]))
 
     # Structurally sound but truncated images are detected
-    with pytest.raises(ValidationError):
-        offset = image.index(b"test")
-        bad_image = image[: offset - 8]
+    offset = image.index(b"test")
+    bad_image = image[: offset - 8]
 
+    with pytest.raises(ValidationError):
         list(validators.parse_silabs_gbl(bad_image))
 
     # Corrupted images are detected
-    with pytest.raises(ValidationError):
-        corrupted_image = image.replace(b"foo", b"goo", 1)
-        assert image != corrupted_image
+    corrupted_image = image.replace(b"foo", b"goo", 1)
+    assert image != corrupted_image
 
+    with pytest.raises(ValidationError):
         list(validators.parse_silabs_gbl(corrupted_image))
 
 
@@ -153,7 +151,7 @@ def test_validate_firmware():
         validators.validate_firmware(VALID_EBL_IMAGE[:-1])
 
     with pytest.raises(ValidationError):
-        validators.validate_firmware(VALID_EBL_IMAGE + b"\xFF")
+        validators.validate_firmware(VALID_EBL_IMAGE + b"\xff")
 
     assert validators.validate_firmware(VALID_GBL_IMAGE) == ValidationResult.VALID
 

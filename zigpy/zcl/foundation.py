@@ -6,6 +6,8 @@ import functools
 import keyword
 import typing
 
+from typing_extensions import Self
+
 import zigpy.types as t
 
 
@@ -92,7 +94,7 @@ class TypeValue:
         # "Copy constructor"
         if type is not None and value is None and isinstance(type, self.__class__):
             other = type
-            type = other.type
+            type = other.type  # noqa: A001
             value = other.value
 
         self.type = type
@@ -103,11 +105,11 @@ class TypeValue:
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[TypeValue, bytes]:
-        type, data = t.uint8_t.deserialize(data)
-        python_type = DATA_TYPES[type][1]
+        data_type, data = t.uint8_t.deserialize(data)
+        python_type = DATA_TYPES[data_type][1]
         value, data = python_type.deserialize(data)
 
-        return cls(type=type, value=value), data
+        return cls(type=data_type, value=value), data
 
     def __repr__(self) -> str:
         return (
@@ -120,11 +122,11 @@ class TypeValue:
 class TypedCollection(TypeValue):
     @classmethod
     def deserialize(cls, data):
-        type, data = t.uint8_t.deserialize(data)
-        python_type = DATA_TYPES[type][1]
+        data_type, data = t.uint8_t.deserialize(data)
+        python_type = DATA_TYPES[data_type][1]
         values, data = t.LVList[python_type, t.uint16_t].deserialize(data)
 
-        return cls(type=type, value=values), data
+        return cls(type=data_type, value=values), data
 
 
 class Array(TypedCollection):
@@ -149,10 +151,7 @@ class DataTypes(dict):
             tuple[
                 str,
                 typing.Any,
-                typing.Literal[Null]
-                | typing.Literal[Discrete]
-                | typing.Literal[Analog]
-                | typing.Literal[None],
+                typing.Literal[Null, Discrete, Analog, None],
             ],
         ],
     ) -> None:
@@ -560,12 +559,12 @@ class ZCLHeader(t.Struct):
     command_id: t.uint8_t
 
     def __new__(
-        cls: type[ZCLHeader],
+        cls: type[Self],
         frame_control: FrameControl | None = None,
         manufacturer: t.uint16_t | None = None,
         tsn: int | t.uint8_t | None = None,
         command_id: int | GeneralCommand | None = None,
-    ) -> ZCLHeader:
+    ) -> Self:
         # Allow "auto manufacturer ID" to be disabled in higher layers
         if manufacturer is cls.NO_MANUFACTURER_ID:
             manufacturer = None
@@ -659,7 +658,7 @@ class ZCLCommandDef(t.BaseDataclassMixin):
         """
 
         if isinstance(self.schema, tuple):
-            raise ValueError(
+            raise ValueError(  # noqa: TRY004
                 f"Tuple schemas are deprecated: {self.schema!r}. Use a dictionary or a"
                 f" Struct subclass."
             )
@@ -707,7 +706,7 @@ class ZCLCommandDef(t.BaseDataclassMixin):
         )
 
 
-class CommandSchema(t.Struct, tuple):
+class CommandSchema(t.Struct, tuple):  # noqa: SLOT001
     """Struct subclass that behaves more like a tuple."""
 
     command: ZCLCommandDef = None
@@ -812,7 +811,7 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
 
 
 class IterableMemberMeta(type):
-    def __iter__(cls) -> typing.Iterable[typing.Any]:
+    def __iter__(cls) -> typing.Iterator[typing.Any]:
         for name in dir(cls):
             if not name.startswith("_"):
                 yield getattr(cls, name)

@@ -134,9 +134,9 @@ def test_ints_signed():
     assert int7s.from_bits([1, 0, 1, 0, 1, 1, 0, 1, 1, 1]) == (0b0110111, [1, 0, 1])
 
     with pytest.raises(TypeError):
-        int7s.deserialize(b"\xFF")
+        int7s.deserialize(b"\xff")
 
-    t.int8s.deserialize(b"\xFF")
+    t.int8s.deserialize(b"\xff")
 
     n = t.int8s(-126)
     bits = [1, 0] + t.Bits.deserialize(n.serialize())[0]
@@ -200,7 +200,7 @@ def test_floats(value):
 
 
 @pytest.mark.parametrize(
-    "value, only_double",
+    ("value", "only_double"),
     [
         (2, False),
         (1.25, False),
@@ -372,12 +372,12 @@ def test_char_string_too_short():
 
 
 def test_char_string_invalid():
-    r, rest = t.CharacterString.deserialize(b"\xFFabcd")
+    r, rest = t.CharacterString.deserialize(b"\xffabcd")
     assert r == ""
     assert r.invalid is True
     assert rest == b"abcd"
 
-    assert r.serialize() == b"\xFF"
+    assert r.serialize() == b"\xff"
 
 
 def test_long_char_string():
@@ -615,7 +615,7 @@ def test_eui64_convert():
 
 
 def test_keydata():
-    data = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F"
+    data = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
     extra = b"extra"
 
     key, rest = t.KeyData.deserialize(data + extra)
@@ -813,7 +813,7 @@ def test_nwk_convert():
 
 def test_serializable_bytes():
     obj = t.SerializableBytes(b"test")
-    assert obj == obj
+    assert obj == obj  # noqa: PLR0124
     assert obj == t.SerializableBytes(b"test")
     assert t.SerializableBytes(obj) == obj
     assert obj != b"test"

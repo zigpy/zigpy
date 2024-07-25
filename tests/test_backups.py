@@ -3,16 +3,15 @@ import json
 
 import pytest
 
+from tests.async_mock import AsyncMock
+from tests.conftest import app  # noqa: F401
 import zigpy.backups
 import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
 
-from tests.async_mock import AsyncMock
-from tests.conftest import app  # noqa: F401
 
-
-@pytest.fixture
+@pytest.fixture()
 def backup_factory():
     def inner():
         return zigpy.backups.NetworkBackup(
@@ -93,12 +92,12 @@ def backup_factory():
     return inner
 
 
-@pytest.fixture
+@pytest.fixture()
 def backup(backup_factory):
     return backup_factory()
 
 
-@pytest.fixture
+@pytest.fixture()
 def z2m_backup_json():
     return {
         "metadata": {
@@ -170,7 +169,7 @@ def z2m_backup_json():
     }
 
 
-@pytest.fixture
+@pytest.fixture()
 def zigate_backup_json():
     return {
         "backup_time": "2022-07-20T17:58:16.694438+00:00",

@@ -49,11 +49,11 @@ def parse_silabs_ebl(data: bytes) -> typing.Iterable[tuple[bytes, bytes]]:
         yield tag, value
 
         # EBL end tag
-        if tag != b"\xFC\x04":
+        if tag != b"\xfc\x04":
             continue
 
         # At this point the EBL should contain nothing but padding
-        if data.strip(b"\xFF"):
+        if data.strip(b"\xff"):
             raise ValidationError("Image padding contains invalid bytes")
 
         unpadded_image = orig_data[: -len(data)] if data else orig_data
@@ -91,7 +91,7 @@ def parse_silabs_gbl(data: bytes) -> typing.Iterable[tuple[bytes, bytes]]:
         yield tag, value
 
         # GBL end tag
-        if tag != b"\xFC\x04\x04\xFC":
+        if tag != b"\xfc\x04\x04\xfc":
             continue
 
         # GBL images aren't expected to contain padding but some are (i.e. Hue)
@@ -112,9 +112,9 @@ def validate_firmware(data: bytes) -> ValidationResult:
 
     parser = None
 
-    if data.startswith(b"\xEB\x17\xA6\x03"):
+    if data.startswith(b"\xeb\x17\xa6\x03"):
         parser = parse_silabs_gbl
-    elif data.startswith(b"\x00\x00\x00\x8C"):
+    elif data.startswith(b"\x00\x00\x00\x8c"):
         parser = parse_silabs_ebl
     else:
         return ValidationResult.UNKNOWN
@@ -131,11 +131,11 @@ def validate_ota_image(image: BaseOTAImage) -> ValidationResult:
     if not isinstance(image, OTAImage):
         return ValidationResult.UNKNOWN
 
-    results = []
-
-    for subelement in image.subelements:
-        if subelement.tag_id == ElementTagId.UPGRADE_IMAGE:
-            results.append(validate_firmware(subelement.data))
+    results = [
+        validate_firmware(subelement.data)
+        for subelement in image.subelements
+        if subelement.tag_id == ElementTagId.UPGRADE_IMAGE
+    ]
 
     if not results or any(r == ValidationResult.UNKNOWN for r in results):
         return ValidationResult.UNKNOWN
@@ -148,7 +148,8 @@ def check_invalid(image: BaseOTAImage) -> bool:
 
     try:
         validate_ota_image(image)
-        return False
     except ValidationError as e:
         LOGGER.warning("Image %s is invalid: %s", image.header, e)
         return True
+    else:
+        return False

@@ -32,9 +32,9 @@ class DeviceRegistry:
         self._registry: TYPE_MANUF_QUIRKS_DICT = collections.defaultdict(
             lambda: collections.defaultdict(list)
         )
-        self._registry_v2: dict[
-            tuple[str, str], list[QuirksV2RegistryEntry]
-        ] = collections.defaultdict(list)
+        self._registry_v2: dict[tuple[str, str], list[QuirksV2RegistryEntry]] = (
+            collections.defaultdict(list)
+        )
 
     def add_to_registry(self, custom_device: CustomDeviceType) -> None:
         """Add a device to the registry"""
@@ -91,7 +91,7 @@ class DeviceRegistry:
             else:
                 for entry in entries:
                     if entry.matches_device(device):
-                        matches.append(entry)
+                        matches.append(entry)  # noqa: PERF401
             if len(matches) > 1:
                 raise MultipleQuirksMatchException(
                     f"Multiple matches found for device {device}: {matches}"

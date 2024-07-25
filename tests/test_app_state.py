@@ -7,7 +7,7 @@ import zigpy.state as app_state
 COUNTER_NAMES = ["counter_1", "counter_2", "some random name"]
 
 
-@pytest.fixture
+@pytest.fixture()
 def counters():
     """Counters fixture."""
     counters = app_state.CounterGroup("ezsp_counters")

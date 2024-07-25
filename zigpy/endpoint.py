@@ -293,7 +293,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:
         msg = "[0x%04x:%s] " + msg
-        args = (self._device.nwk, self._endpoint_id) + args
+        args = (self._device.nwk, self._endpoint_id, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)
 
     @property
@@ -348,8 +348,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __getattr__(self, name: str) -> zigpy.zcl.Cluster:
         try:
             return self._cluster_attr[name]
-        except KeyError:
-            raise AttributeError
+        except KeyError as exc:
+            raise AttributeError from exc
 
     def __repr__(self) -> str:
         def cluster_repr(clusters):

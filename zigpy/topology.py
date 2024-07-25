@@ -54,7 +54,7 @@ class Topology(zigpy.util.ListenableMixin):
         )
         self.routes: dict[t.EUI64, list[zdo_t.Route]] = collections.defaultdict(list)
 
-    def start_periodic_scans(self, period: int | float) -> None:
+    def start_periodic_scans(self, period: float) -> None:
         self.stop_periodic_scans()
         self._scan_loop_task = asyncio.create_task(self._scan_loop(period))
 
@@ -62,7 +62,7 @@ class Topology(zigpy.util.ListenableMixin):
         if self._scan_loop_task is not None:
             self._scan_loop_task.cancel()
 
-    async def _scan_loop(self, period: int | float) -> None:
+    async def _scan_loop(self, period: float) -> None:
         """Delay scan by creating a task."""
 
         while True:
@@ -107,7 +107,7 @@ class Topology(zigpy.util.ListenableMixin):
             status, rsp = await RETRY_SLOW(scan_request)(index)
 
             if status != zdo_t.Status.SUCCESS:
-                raise ScanNotSupported()
+                raise ScanNotSupported
 
             entries = getattr(rsp, entries_attr)
 
@@ -189,7 +189,7 @@ class Topology(zigpy.util.ListenableMixin):
 
             try:
                 self.neighbors[device.ieee] = await self._scan_neighbors(device)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 LOGGER.debug("Failed to scan neighbors of %s", device, exc_info=e)
             else:
                 LOGGER.info(
@@ -208,7 +208,7 @@ class Topology(zigpy.util.ListenableMixin):
                     for route in routes
                     if route.RouteStatus != zdo_t.RouteStatus.Inactive
                 ]
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 LOGGER.debug("Failed to scan routes of %s", device, exc_info=e)
             else:
                 LOGGER.info(

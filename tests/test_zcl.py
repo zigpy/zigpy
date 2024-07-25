@@ -5,18 +5,18 @@ from unittest import mock
 
 import pytest
 
+from zigpy import zcl
 import zigpy.device
 import zigpy.endpoint
 import zigpy.types as t
-import zigpy.zcl as zcl
-import zigpy.zcl.foundation as foundation
+from zigpy.zcl import foundation
 
 from .async_mock import AsyncMock, MagicMock, int_sentinel, patch, sentinel
 
 DEFAULT_TSN = 123
 
 
-@pytest.fixture
+@pytest.fixture()
 def endpoint():
     ep = zigpy.endpoint.Endpoint(MagicMock(), 1)
     ep.add_input_cluster(0)
@@ -88,7 +88,7 @@ def test_manufacturer_specific_cluster():
     assert hasattr(c, "cluster_id")
 
 
-@pytest.fixture
+@pytest.fixture()
 def cluster_by_id():
     def _cluster(cluster_id=0):
         epmock = MagicMock()
@@ -101,12 +101,12 @@ def cluster_by_id():
     return _cluster
 
 
-@pytest.fixture
+@pytest.fixture()
 def cluster(cluster_by_id):
     return cluster_by_id(0)
 
 
-@pytest.fixture
+@pytest.fixture()
 def client_cluster():
     epmock = AsyncMock()
     epmock.device.get_sequence = MagicMock(return_value=DEFAULT_TSN)
@@ -430,14 +430,14 @@ async def test_write_attributes_raw(cluster):
 
 
 @pytest.mark.parametrize(
-    "cluster_id, attr, value, serialized",
-    (
+    ("cluster_id", "attr", "value", "serialized"),
+    [
         (0, "zcl_version", 0xAA, b"\x00\x00\x20\xaa"),
         (0, "model", "model x", b"\x05\x00\x42\x07model x"),
         (0, "device_enabled", True, b"\x12\x00\x10\x01"),
         (0, "alarm_mask", 0x55, b"\x13\x00\x18\x55"),
         (0x0202, "fan_mode", 0xDE, b"\x00\x00\x30\xde"),
-    ),
+    ],
 )
 async def test_write_attribute_types(
     cluster_id, attr, value, serialized, cluster_by_id
@@ -451,7 +451,7 @@ async def test_write_attribute_types(
 
 
 @pytest.mark.parametrize(
-    "status", (foundation.Status.SUCCESS, foundation.Status.UNSUPPORTED_ATTRIBUTE)
+    "status", [foundation.Status.SUCCESS, foundation.Status.UNSUPPORTED_ATTRIBUTE]
 )
 async def test_write_attributes_cache_default_response(cluster, status):
     write_mock = AsyncMock(
@@ -466,14 +466,14 @@ async def test_write_attributes_cache_default_response(cluster, status):
 
 
 @pytest.mark.parametrize(
-    "attributes, result",
-    (
+    ("attributes", "result"),
+    [
         ({4: "manufacturer"}, b"\x00"),
         ({4: "manufacturer", 5: "model"}, b"\x00"),
         ({4: "manufacturer", 5: "model", 3: 12}, b"\x00"),
         ({4: "manufacturer", 5: "model"}, b"\x00\x00"),
         ({4: "manufacturer", 5: "model", 3: 12}, b"\x00\x00\x00"),
-    ),
+    ],
 )
 async def test_write_attributes_cache_success(cluster, attributes, result):
     listener = MagicMock()
@@ -492,8 +492,8 @@ async def test_write_attributes_cache_success(cluster, attributes, result):
 
 
 @pytest.mark.parametrize(
-    "attributes, result, failed",
-    (
+    ("attributes", "result", "failed"),
+    [
         ({4: "manufacturer"}, b"\x86\x04\x00", [4]),
         ({4: "manufacturer", 5: "model"}, b"\x86\x05\x00", [5]),
         ({4: "manufacturer", 5: "model"}, b"\x86\x04\x00\x86\x05\x00", [4, 5]),
@@ -512,7 +512,7 @@ async def test_write_attributes_cache_success(cluster, attributes, result):
             b"\x02\x04\x00\x86\x05\x00\x01\x03\x00",
             [4, 5, 3],
         ),
-    ),
+    ],
 )
 async def test_write_attributes_cache_failure(cluster, attributes, result, failed):
     listener = MagicMock()
@@ -574,14 +574,14 @@ async def test_read_attributes_resp_exc(cluster):
 
 
 @pytest.mark.parametrize(
-    "cluster_id, attr, value, serialized",
-    (
+    ("cluster_id", "attr", "value", "serialized"),
+    [
         (0, "zcl_version", 0xAA, b"\x00\x00\x00\x20\xaa"),
         (0, "model", "model x", b"\x05\x00\x00\x42\x07model x"),
         (0, "device_enabled", True, b"\x12\x00\x00\x10\x01"),
         (0, "alarm_mask", 0x55, b"\x13\x00\x00\x18\x55"),
         (0x0202, "fan_mode", 0xDE, b"\x00\x00\x00\x30\xde"),
-    ),
+    ],
 )
 async def test_read_attribute_resp(cluster_id, attr, value, serialized, cluster_by_id):
     cluster = cluster_by_id(cluster_id)
@@ -611,13 +611,15 @@ async def test_configure_reporting_named(cluster):
 async def test_configure_reporting_wrong_named(cluster):
     with pytest.raises(ValueError):
         await cluster.configure_reporting("wrong_attr_name", 10, 20, 1)
-        assert cluster._endpoint.request.call_count == 0
+
+    assert cluster._endpoint.request.call_count == 0
 
 
 async def test_configure_reporting_wrong_attrid(cluster):
     with pytest.raises(ValueError):
         await cluster.configure_reporting(0xABCD, 10, 20, 1)
-        assert cluster._endpoint.request.call_count == 0
+
+    assert cluster._endpoint.request.call_count == 0
 
 
 async def test_configure_reporting_manuf():
@@ -651,14 +653,14 @@ async def test_configure_reporting_manuf():
 
 
 @pytest.mark.parametrize(
-    "cluster_id, attr, data_type",
-    (
+    ("cluster_id", "attr", "data_type"),
+    [
         (0, "zcl_version", 0x20),
         (0, "model", 0x42),
         (0, "device_enabled", 0x10),
         (0, "alarm_mask", 0x18),
         (0x0202, "fan_mode", 0x30),
-    ),
+    ],
 )
 async def test_configure_reporting_types(cluster_id, attr, data_type, cluster_by_id):
     cluster = cluster_by_id(cluster_id)
@@ -764,9 +766,9 @@ def test_handle_cluster_request_handler(cluster):
 async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
     hdr, values = endpoint.deserialize(
         0,
-        b"\x18\xCD\x0A\x01\xFF\x42\x25\x01\x21\x95\x0B\x04\x21\xA8\x43\x05\x21\x36\x00"
-        b"\x06\x24\x02\x00\x05\x00\x00\x64\x29\xF8\x07\x65\x21\xD9\x0E\x66\x2B\x84\x87"
-        b"\x01\x00\x0A\x21\x00\x00",
+        b"\x18\xcd\x0a\x01\xff\x42\x25\x01\x21\x95\x0b\x04\x21\xa8\x43\x05\x21\x36\x00"
+        b"\x06\x24\x02\x00\x05\x00\x00\x64\x29\xf8\x07\x65\x21\xd9\x0e\x66\x2b\x84\x87"
+        b"\x01\x00\x0a\x21\x00\x00",
     )
     cluster = endpoint.in_clusters[0]
     p1 = patch.object(cluster, "_update_attribute")
@@ -1011,7 +1013,7 @@ def test_zcl_command_duplicate_name_prevention():
 
 def test_zcl_attridx_deprecation(cluster):
     with pytest.deprecated_call():
-        cluster.attridx
+        cluster.attridx  # noqa: B018
 
     with pytest.deprecated_call():
         assert cluster.attridx is cluster.attributes_by_name
@@ -1034,7 +1036,7 @@ def test_zcl_response_type_tuple_like():
     assert req.off_wait_time == off_wait_time == req[2] == 2
 
     assert req == (0, 1, 2)
-    assert req == req
+    assert req == req  # noqa: PLR0124
     assert req == req.replace()
 
 

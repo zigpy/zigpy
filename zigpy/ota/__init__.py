@@ -2,27 +2,27 @@
 
 from __future__ import annotations
 
-import pathlib
 import asyncio
 import dataclasses
 import logging
+import pathlib
 import sys
 import typing
 
 from zigpy.config import (
     CONF_OTA_ADVANCED_DIR,
     CONF_OTA_ALLOW_ADVANCED_DIR,
+    CONF_OTA_DISABLE_PROVIDERS,
     CONF_OTA_ENABLED,
+    CONF_OTA_EXTRA_PROVIDERS,
     CONF_OTA_IKEA,
     CONF_OTA_INOVELLI,
     CONF_OTA_LEDVANCE,
     CONF_OTA_PROVIDER_MANUF_IDS,
     CONF_OTA_PROVIDER_URL,
-    CONF_OTA_DISABLE_PROVIDERS,
+    CONF_OTA_PROVIDERS,
     CONF_OTA_REMOTE_PROVIDERS,
     CONF_OTA_SALUS,
-    CONF_OTA_PROVIDERS,
-    CONF_OTA_EXTRA_PROVIDERS,
     CONF_OTA_SONOFF,
     CONF_OTA_THIRDREALITY,
     CONF_OTA_Z2M_LOCAL_INDEX,
@@ -223,9 +223,7 @@ class OTA:
         if config[CONF_OTA_ENABLED]:
             self._register_providers(self._config)
 
-    async def broadcast_loop(
-        self, initial_delay: int | float, interval: int | float
-    ) -> None:
+    async def broadcast_loop(self, initial_delay: float, interval: float) -> None:
         """Periodically broadcast an image notification to get devices to check in."""
 
         await asyncio.sleep(initial_delay)
@@ -235,14 +233,12 @@ class OTA:
 
             try:
                 await self.broadcast_notify()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 _LOGGER.debug("OTA broadcast failed", exc_info=True)
 
             await asyncio.sleep(interval)
 
-    def start_periodic_broadcasts(
-        self, initial_delay: int | float, interval: int | float
-    ) -> None:
+    def start_periodic_broadcasts(self, initial_delay: float, interval: float) -> None:
         """Start the periodic OTA broadcasts."""
         self._broadcast_loop_task = asyncio.create_task(
             self.broadcast_loop(
@@ -290,7 +286,7 @@ class OTA:
 
         register_deprecated_provider(
             enabled=config.get(CONF_OTA_IKEA),
-            provider=zigpy.ota.providers.Trådfri,
+            provider=zigpy.ota.providers.Tradfri,
         )
         register_deprecated_provider(
             enabled=config.get(CONF_OTA_INOVELLI),
@@ -345,7 +341,7 @@ class OTA:
 
             if provider.override_previous:
                 replaced_providers = [
-                    p for p in replaced_providers if type(p) != type(provider)
+                    p for p in replaced_providers if type(p) is not type(provider)
                 ]
 
             replaced_providers.append(provider)
@@ -390,7 +386,7 @@ class OTA:
         for provider in compatible_providers:
             try:
                 index = await self._load_provider_index(provider)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 _LOGGER.debug("Failed to load provider %s", provider, exc_info=exc)
                 continue
 

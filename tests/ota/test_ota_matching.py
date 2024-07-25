@@ -6,14 +6,13 @@ import typing
 import aiohttp
 import attrs
 
-import zigpy.config as config
+from tests.ota.test_ota_providers import SelfContainedOtaImageMetadata, make_device
+from zigpy import config
 import zigpy.device
 import zigpy.ota
 from zigpy.ota.image import FieldControl
 from zigpy.ota.providers import BaseOtaImageMetadata, BaseOtaProvider
 from zigpy.zcl.clusters.general import Ota
-
-from tests.ota.test_ota_providers import SelfContainedOtaImageMetadata, make_device
 
 
 class SelfContainedProvider(BaseOtaProvider):
@@ -78,7 +77,6 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
         SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
-            #
             test_data=zigpy.ota.image.OTAImage(
                 header=ota_hdr,
                 subelements=ota_subelements,
@@ -88,7 +86,6 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
         SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
             file_version=query_cmd.current_file_version + 1,
             image_type=query_cmd.image_type,
-            #
             test_data=zigpy.ota.image.OTAImage(
                 header=ota_hdr,
                 subelements=ota_subelements,
@@ -98,7 +95,6 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
         SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
             file_version=query_cmd.current_file_version + 1,
             model_names=(device.model,),
-            #
             test_data=zigpy.ota.image.OTAImage(
                 header=ota_hdr,
                 subelements=ota_subelements,
@@ -108,7 +104,6 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
         SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
             file_version=query_cmd.current_file_version + 1,
             model_names=(device.model,),
-            #
             test_data=zigpy.ota.image.OTAImage(
                 header=ota_hdr.replace(
                     minimum_hardware_version=1,
@@ -120,7 +115,6 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
         # Nothing to exclude but we can't be sure
         SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
             file_version=query_cmd.current_file_version + 1,
-            #
             test_data=zigpy.ota.image.OTAImage(
                 header=ota_hdr,
                 subelements=ota_subelements,
@@ -129,7 +123,6 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
         # Irrelevant image
         SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
             file_version=query_cmd.current_file_version - 1,
-            #
             test_data=zigpy.ota.image.OTAImage(
                 header=ota_hdr.replace(file_version=query_cmd.current_file_version - 1),
                 subelements=ota_subelements,
@@ -186,7 +179,6 @@ async def test_ota_matching_ambiguous_error() -> None:
         SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
-            #
             test_data=zigpy.ota.image.OTAImage(
                 header=ota_hdr,
                 subelements=[
@@ -197,7 +189,6 @@ async def test_ota_matching_ambiguous_error() -> None:
         SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
-            #
             test_data=zigpy.ota.image.OTAImage(
                 header=ota_hdr,
                 subelements=[
@@ -243,7 +234,6 @@ async def test_ota_matching_ambiguous_specificity_tie_breaker() -> None:
         SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
-            #
             test_data=zigpy.ota.image.OTAImage(
                 header=ota_hdr,
                 subelements=[
@@ -254,7 +244,6 @@ async def test_ota_matching_ambiguous_specificity_tie_breaker() -> None:
         SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
-            #
             test_data=zigpy.ota.image.OTAImage(
                 header=ota_hdr,
                 subelements=[

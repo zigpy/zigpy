@@ -13,14 +13,14 @@ from zigpy.profiles import zha
 import zigpy.state
 import zigpy.types as t
 import zigpy.util
+from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import Basic, Ota
-import zigpy.zcl.foundation as foundation
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import ANY, AsyncMock, MagicMock, int_sentinel, patch, sentinel
 
 
-@pytest.fixture
+@pytest.fixture()
 def dev(monkeypatch, app_mock):
     monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
@@ -533,7 +533,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
             kwargs=kwargs,
         )
 
-        ota_packet = t.ZigbeePacket(
+        return t.ZigbeePacket(
             src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
             src_ep=1,
             dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
@@ -545,8 +545,6 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
             lqi=255,
             rssi=-30,
         )
-
-        return ota_packet
 
     async def send_packet(packet: t.ZigbeePacket):
         if dev.update_firmware.mock_calls[-1].kwargs.get("force", False):

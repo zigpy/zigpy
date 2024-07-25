@@ -1,4 +1,5 @@
 """Zigpy quirks module."""
+
 from __future__ import annotations
 
 import logging
@@ -22,7 +23,7 @@ from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
 from zigpy.types.basic import uint16_t
 import zigpy.zcl
-import zigpy.zcl.foundation as foundation
+from zigpy.zcl import foundation
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -98,7 +99,7 @@ class CustomDevice(zigpy.device.Device):
         set_device_attr(SIG_MANUFACTURER)
         set_device_attr(SIG_MODEL)
         set_device_attr(SIG_SKIP_CONFIG)
-        for endpoint_id, _endpoint in self.replacement.get(SIG_ENDPOINTS, {}).items():
+        for endpoint_id in self.replacement.get(SIG_ENDPOINTS, {}):
             self.add_endpoint(endpoint_id, replace_device=replaces)
 
     def add_endpoint(
@@ -291,7 +292,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         )
         if not isinstance(results[0], list):
             for attrid in attrs_to_read:
-                succeeded.append(
+                succeeded.append(  # noqa: PERF401
                     foundation.ReadAttributeRecord(
                         attrid,
                         results[0],

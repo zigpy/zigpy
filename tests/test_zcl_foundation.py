@@ -34,7 +34,7 @@ def test_typevalue():
     tv5.type = 0x42
     tv5.value = t.CharacterString("test")
 
-    assert tv5 == tv5
+    assert tv5 == tv5  # noqa: PLR0124
     assert tv5 == tv4
     assert tv5 != tv3
 
@@ -482,13 +482,13 @@ def test_write_attrs_response_deserialize():
 
 
 @pytest.mark.parametrize(
-    "attributes, data",
-    (
+    ("attributes", "data"),
+    [
         ({4: 0, 5: 0, 3: 0}, b"\x00"),
         ({4: 0, 5: 0, 3: 0x86}, b"\x86\x03\x00"),
         ({4: 0x87, 5: 0, 3: 0x86}, b"\x87\x04\x00\x86\x03\x00"),
         ({4: 0x87, 5: 0x86, 3: 0x86}, b"\x87\x04\x00\x86\x05\x00\x86\x03\x00"),
-    ),
+    ],
 )
 def test_write_attrs_response_serialize(attributes, data):
     """Test WriteAttributes Response serialization."""
@@ -545,8 +545,8 @@ def test_configure_reporting_response_serialize_empty():
 
 
 @pytest.mark.parametrize(
-    "attributes, data",
-    (
+    ("attributes", "data"),
+    [
         ({4: 0, 5: 0, 3: 0}, b"\x00"),
         ({4: 0, 5: 0, 3: 0x86}, b"\x86\x01\x03\x00"),
         ({4: 0x87, 5: 0, 3: 0x86}, b"\x87\x01\x04\x00\x86\x01\x03\x00"),
@@ -554,7 +554,7 @@ def test_configure_reporting_response_serialize_empty():
             {4: 0x87, 5: 0x86, 3: 0x86},
             b"\x87\x01\x04\x00\x86\x01\x05\x00\x86\x01\x03\x00",
         ),
-    ),
+    ],
 )
 def test_configure_reporting_response_serialize(attributes, data):
     """Test ConfigureReporting Response serialization."""

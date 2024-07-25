@@ -17,6 +17,7 @@ if sys.version_info[:2] < (3, 11):
 else:
     from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
+from zigpy import zdo
 from zigpy.const import (
     SIG_ENDPOINTS,
     SIG_EP_INPUT,
@@ -34,8 +35,7 @@ import zigpy.listeners
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 import zigpy.util
-import zigpy.zcl.foundation as foundation
-import zigpy.zdo as zdo
+from zigpy.zcl import foundation
 import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
@@ -119,7 +119,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self._last_seen.timestamp() if self._last_seen is not None else None
 
     @last_seen.setter
-    def last_seen(self, value: datetime | int | float):
+    def last_seen(self, value: datetime | float):
         if isinstance(value, (int, float)):
             value = datetime.fromtimestamp(value, timezone.utc)
 
@@ -205,7 +205,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             await self._initialize()
         except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
             self.application.listener_event("device_init_failure", self)
-        except Exception:
+        except Exception:  # noqa: BLE001
             LOGGER.warning(
                 "Device %r failed to initialize due to unexpected error",
                 self,
@@ -289,7 +289,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.endpoints[endpoint_id] = ep
         return ep
 
-    async def add_to_group(self, grp_id: int, name: str = None) -> None:
+    async def add_to_group(self, grp_id: int, name: str | None = None) -> None:
         for ep in self.non_zdo_endpoints:
             await ep.add_to_group(grp_id, name)
 
@@ -447,7 +447,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 # Next, parse the ZCL/ZDO payload
                 # FIXME: ZCL deserialization mutates the header!
                 hdr, args = endpoint.deserialize(packet.cluster_id, data)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             error = zigpy.exceptions.ParsingError()
             error.__cause__ = exc
 
@@ -519,13 +519,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     async def update_firmware(
         self,
         image: OtaImageWithMetadata,
-        progress_callback: callable = None,
+        progress_callback: callable | None = None,
         force: bool = False,
     ) -> foundation.Status:
         """Update device firmware."""
         if self.ota_in_progress:
             self.debug("OTA already in progress")
-            return
+            return None
 
         self.ota_in_progress = True
 
@@ -536,9 +536,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 progress_callback=progress_callback,
                 force=force,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self.debug("OTA failed!", exc_info=exc)
-            raise exc
+            raise
         finally:
             self.ota_in_progress = False
 
@@ -564,7 +564,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def log(self, lvl, msg, *args, **kwargs) -> None:
         msg = "[0x%04x] " + msg
-        args = (self.nwk,) + args
+        args = (self.nwk, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)
 
     @property

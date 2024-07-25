@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 
+from .. import Cluster
 from . import (
     closures,
     general,
@@ -15,7 +16,6 @@ from . import (
     security,
     smartenergy,
 )
-from .. import Cluster
 
 CLUSTERS_BY_ID: dict[int, Cluster] = {}
 CLUSTERS_BY_NAME: dict[str, Cluster] = {}

@@ -4,8 +4,7 @@ from unittest.mock import *  # noqa: F401, F403
 
 
 class _IntSentinelObject(int):
-    """
-    Sentinel-like object that is also an integer subclass. Allows sentinels to be used
+    """Sentinel-like object that is also an integer subclass. Allows sentinels to be used
     in loggers that perform int-specific string formatting.
     """
 
@@ -15,7 +14,7 @@ class _IntSentinelObject(int):
         return instance
 
     def __repr__(self):
-        return "int_sentinel.%s" % self.name
+        return f"int_sentinel.{self.name}"
 
     def __hash__(self):
         return hash((int(self), self.name))

@@ -7,9 +7,9 @@ import warnings
 
 import voluptuous as vol
 
+import zigpy.config
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
-import zigpy.config
 
 if typing.TYPE_CHECKING:
     import zigpy.ota.providers
@@ -45,8 +45,8 @@ def cv_hex(value: int | str) -> int:
             value = int(value, base=16)
         else:
             value = int(value)
-    except ValueError:
-        raise vol.Invalid(f"Could not convert '{value}' to number")
+    except ValueError as err:
+        raise vol.Invalid(f"Could not convert '{value}' to number") from err
 
     return value
 
@@ -135,7 +135,9 @@ def cv_ota_provider_name(name: str | None) -> type[zigpy.ota.providers.BaseOtaPr
     return zigpy.ota.providers.OTA_PROVIDER_TYPES[name]
 
 
-def cv_ota_provider(obj: dict | zigpy.ota.providers.BaseOtaProvider) -> zigpy.ota.providers.BaseOtaProvider:
+def cv_ota_provider(
+    obj: dict | zigpy.ota.providers.BaseOtaProvider,
+) -> zigpy.ota.providers.BaseOtaProvider:
     """Validate OTA provider."""
     import zigpy.ota.providers
 

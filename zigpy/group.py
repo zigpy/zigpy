@@ -42,7 +42,7 @@ class Group(ListenableMixin, dict):
 
     def add_member(self, ep: Endpoint, suppress_event: bool = False) -> Group:
         if not isinstance(ep, Endpoint):
-            raise ValueError(f"{ep} is not {Endpoint.__class__.__name__} class")
+            raise ValueError(f"{ep} is not {Endpoint.__class__.__name__} class")  # noqa: TRY004
         if ep.unique_id in self:
             return self[ep.unique_id]
         self[ep.unique_id] = ep
@@ -246,7 +246,7 @@ class GroupEndpoint(LocalLogMixin):
 
     def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:
         msg = "[0x%04x] " + msg
-        args = (self._group.group_id,) + args
+        args = (self._group.group_id, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)
 
     def __getitem__(self, item: int):

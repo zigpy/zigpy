@@ -6,6 +6,7 @@ import hashlib
 import logging
 
 import attr
+from typing_extensions import Self
 
 import zigpy.types as t
 
@@ -165,10 +166,10 @@ class BaseOTAImage:
 
     @classmethod
     def deserialize(cls, data) -> tuple[BaseOTAImage, bytes]:
-        raise NotImplementedError()  # pragma: no cover
+        raise NotImplementedError  # pragma: no cover
 
     def serialize(self):
-        raise NotImplementedError()  # pragma: no cover
+        raise NotImplementedError  # pragma: no cover
 
 
 class OTAImage(t.Struct, BaseOTAImage):
@@ -221,7 +222,7 @@ class HueSBLOTAImage(BaseOTAImage):
         return self.header.serialize() + self.data
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[HueSBLOTAImage, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         header, remaining_data = OTAImageHeader.deserialize(data)
         firmware = remaining_data[: header.image_size - len(header.serialize())]
 
@@ -240,7 +241,7 @@ class HueSBLOTAImage(BaseOTAImage):
                 f"Only Hue images are expected. Got: {header.manufacturer_id}"
             )
 
-        return cls(header=header, data=firmware), data[header.image_size :]  # type: ignore
+        return cls(header=header, data=firmware), data[header.image_size :]  # type: ignore[call-arg]
 
 
 def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:

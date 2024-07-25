@@ -13,12 +13,11 @@ from aioresponses import aioresponses
 import attrs
 import pytest
 
+from tests.conftest import make_node_desc
+from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 import zigpy.device
 from zigpy.ota import OtaImageWithMetadata, providers
 import zigpy.types as t
-
-from tests.conftest import make_node_desc
-from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 
 FILES_DIR = pathlib.Path(__file__).parent / "files"
 
@@ -33,7 +32,7 @@ def download_external_files():
 
         if not path.is_file():
 
-            async def download():
+            async def download(path: pathlib.Path = path, obj: dict = obj) -> None:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(
                         obj["url"],
@@ -128,7 +127,7 @@ async def test_local_z2m_provider():
             assert meta.path == FILES_DIR / obj.pop("path")
             obj.pop("url")
         else:
-            assert False
+            pytest.fail(f"Unexpected metadata type: {meta!r}")
 
         assert not obj
 
@@ -164,11 +163,11 @@ async def test_remote_z2m_provider():
         assert not obj
 
 
-async def test_trådfri_provider_dirigera():
+async def test_tradfri_provider_dirigera():
     index_json = (FILES_DIR / "ikea_version_info_dirigera.json").read_text()
     index_obj = json.loads(index_json)
 
-    provider = providers.Trådfri()
+    provider = providers.Tradfri()
 
     # Compatible only with IKEA devices
     assert provider.compatible_with_device(make_device(manufacturer_id=4476))
@@ -206,7 +205,7 @@ async def test_trådfri_provider_dirigera():
         assert meta.image_type == obj.pop("fw_image_type")
         assert meta.checksum == "sha3-256:" + obj.pop("fw_sha3_256")
         assert meta.url == obj.pop("fw_binary_url")
-        assert meta.manufacturer_id == providers.Trådfri.MANUFACTURER_IDS[0] == 4476
+        assert meta.manufacturer_id == providers.Tradfri.MANUFACTURER_IDS[0] == 4476
 
         obj.pop("fw_type")
         assert not obj
@@ -244,11 +243,11 @@ async def test_trådfri_provider_dirigera():
         ),
     ],
 )
-async def test_trådfri_provider_old(index_url: str, index_file: str) -> None:
+async def test_tradfri_provider_old(index_url: str, index_file: str) -> None:
     index_json = (FILES_DIR / index_file).read_text()
     index_obj = json.loads(index_json)
 
-    provider = providers.Trådfri(index_url)
+    provider = providers.Tradfri(index_url)
 
     # Compatible only with IKEA devices
     assert provider.compatible_with_device(make_device(manufacturer_id=4476))
@@ -304,12 +303,18 @@ async def test_trådfri_provider_old(index_url: str, index_file: str) -> None:
     assert img.serialize() in ota_contents
 
 
-async def test_trådfri_provider_bad_image() -> None:
+async def test_tradfri_provider_bad_image() -> None:
     index_json = (FILES_DIR / "ikea_version_info_old.json").read_text()
-    provider = providers.Trådfri("http://fw.ota.homesmart.ikea.net/feed/version_info.json")
+    provider = providers.Tradfri(
+        "http://fw.ota.homesmart.ikea.net/feed/version_info.json"
+    )
 
     with aioresponses() as mock_http:
-        mock_http.get("http://fw.ota.homesmart.ikea.net/feed/version_info.json", body=index_json, content_type="application/json")
+        mock_http.get(
+            "http://fw.ota.homesmart.ikea.net/feed/version_info.json",
+            body=index_json,
+            content_type="application/json",
+        )
 
         index = await provider.load_index()
 
@@ -339,7 +344,7 @@ async def test_trådfri_provider_bad_image() -> None:
     # Mess with the header
     with aioresponses() as mock_http:
         bad_contents = bytearray(ota_contents)
-        bad_contents[0:4] = b'<htm'
+        bad_contents[0:4] = b"<htm"
 
         mock_http.get(
             meta.url,
@@ -351,19 +356,20 @@ async def test_trådfri_provider_bad_image() -> None:
             await meta.fetch()
 
 
-async def test_trådfri_provider_invalid_json():
+async def test_tradfri_provider_invalid_json():
     index_json = (FILES_DIR / "ikea_version_info_dirigera.json").read_text()
-    index_obj = json.loads(index_json) + [
+    index_obj = [
+        *json.loads(index_json),
         {
             "fw_image_type": 10242,
             "fw_type": 2,
             "fw_sha3_256": "e68e61bd57291e0b6358242e72ee2dfe098cb8b769f572b5b8f8e7a34dbcfaca",
             # We extract the version from the URL. Here, it is invalid.
             "fw_binary_url": "https://fw.ota.homesmart.ikea.com/files/bad.ota",
-        }
+        },
     ]
 
-    provider = providers.Trådfri()
+    provider = providers.Tradfri()
 
     with aioresponses() as mock_http:
         mock_http.get(
