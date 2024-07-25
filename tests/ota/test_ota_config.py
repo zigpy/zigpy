@@ -83,8 +83,6 @@ async def test_ota_enabled_legacy(tmp_path: pathlib.Path) -> None:
 
 
 async def test_ota_config(tmp_path: pathlib.Path) -> None:
-    (tmp_path / "index.json").write_text("{}")
-
     # Enable all the providers
     ota = zigpy.ota.OTA(
         config=config.SCHEMA_OTA(
@@ -108,6 +106,57 @@ async def test_ota_config(tmp_path: pathlib.Path) -> None:
         zigpy.ota.providers.Inovelli(),
         zigpy.ota.providers.ThirdReality(),
         zigpy.ota.providers.Tradfri(),
+    ]
+
+
+async def test_ota_config_complex(tmp_path: pathlib.Path) -> None:
+    # Enable all the providers
+    ota = zigpy.ota.OTA(
+        config=config.SCHEMA_OTA(
+            {
+                config.CONF_OTA_ENABLED: True,
+                config.CONF_OTA_BROADCAST_ENABLED: False,
+                config.CONF_OTA_DISABLE_DEFAULT_PROVIDERS: [
+                    "ikea",
+                    "sonoff",
+                    "ledvance",
+                ],
+                config.CONF_OTA_EXTRA_PROVIDERS: [
+                    {
+                        config.CONF_OTA_PROVIDER_TYPE: "ikea",
+                        config.CONF_OTA_PROVIDER_URL: "https://ikea1.example.org/",
+                    },
+                    {
+                        config.CONF_OTA_PROVIDER_TYPE: "ikea",
+                        config.CONF_OTA_PROVIDER_URL: "https://ikea2.example.org/",
+                        config.CONF_OTA_PROVIDER_MANUF_IDS: [0x1234, 0x5678],
+                    },
+                    {
+                        config.CONF_OTA_PROVIDER_TYPE: "z2m",
+                        config.CONF_OTA_PROVIDER_URL: "https://z2m.example.org/",
+                    },
+                    {
+                        config.CONF_OTA_PROVIDER_TYPE: "ikea",
+                        config.CONF_OTA_PROVIDER_OVERRIDE_PREVIOUS: True,
+                        config.CONF_OTA_PROVIDER_URL: "https://ikea3.example.org/",
+                        config.CONF_OTA_PROVIDER_MANUF_IDS: [0xABCD, 0xDCBA],
+                    },
+                ],
+            }
+        ),
+        application=None,
+    )
+
+    assert ota._providers == [
+        # zigpy.ota.providers.Ledvance(),
+        # zigpy.ota.providers.Sonoff(),
+        zigpy.ota.providers.Inovelli(),
+        zigpy.ota.providers.ThirdReality(),
+        zigpy.ota.providers.RemoteZ2MProvider(url="https://z2m.example.org/"),
+        zigpy.ota.providers.Tradfri(
+            url="https://ikea3.example.org/",
+            manufacturer_ids=[0xABCD, 0xDCBA],
+        ),
     ]
 
 

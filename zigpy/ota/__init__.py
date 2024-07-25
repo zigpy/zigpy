@@ -12,7 +12,7 @@ import typing
 from zigpy.config import (
     CONF_OTA_ADVANCED_DIR,
     CONF_OTA_ALLOW_ADVANCED_DIR,
-    CONF_OTA_DISABLE_PROVIDERS,
+    CONF_OTA_DISABLE_DEFAULT_PROVIDERS,
     CONF_OTA_ENABLED,
     CONF_OTA_EXTRA_PROVIDERS,
     CONF_OTA_IKEA,
@@ -262,8 +262,8 @@ class OTA:
             *config[CONF_OTA_EXTRA_PROVIDERS],
         ]
         without_providers: set[type[zigpy.ota.providers.BaseOtaProvider]] = set(
-            config[CONF_OTA_DISABLE_PROVIDERS]
-        )
+            config[CONF_OTA_DISABLE_DEFAULT_PROVIDERS]
+        ) - {type(p) for p in config[CONF_OTA_EXTRA_PROVIDERS]}
 
         def register_deprecated_provider(
             enabled: bool | str | None,
@@ -279,6 +279,7 @@ class OTA:
 
             if enabled is True:
                 with_providers.append(provider(**config))
+                without_providers.remove(provider)
             elif enabled is False:
                 without_providers.add(provider)
             else:
