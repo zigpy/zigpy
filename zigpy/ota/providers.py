@@ -196,7 +196,7 @@ class BaseOtaProvider:
 
     def __init__(
         self,
-        url: str | bool | None = None,
+        url: str | typing.Literal[True] | None = None,
         manufacturer_ids: list[int] | None = None,
         *,
         override_previous: bool = False,
@@ -542,10 +542,8 @@ class LocalZigpyProvider(BaseZigpyProvider):
     NAME = "zigpy_local"
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_JSON_INDEX
 
-    def __init__(
-        self, index_file: pathlib.Path, manufacturer_ids: list[int] | None = None
-    ):
-        super().__init__(url=None, manufacturer_ids=manufacturer_ids)
+    def __init__(self, index_file: pathlib.Path, **kwargs):
+        super().__init__(url=None, **kwargs)
         self.index_file = index_file
 
     async def _load_index(
@@ -622,8 +620,8 @@ class LocalZ2MProvider(BaseZ2MProvider):
     NAME = "z2m_local"
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_JSON_INDEX
 
-    def __init__(self, index_file: pathlib.Path):
-        super().__init__()
+    def __init__(self, index_file: pathlib.Path, **kwargs):
+        super().__init__(**kwargs)
         self.index_file = index_file
 
     async def _load_index(
@@ -667,10 +665,6 @@ clwJRVSsq8EApeFREenCkRM0EIk=
 -----END CERTIFICATE-----"""
     )
 
-    def __init__(self, url: str):
-        super().__init__()
-        self.url = url
-
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
@@ -686,8 +680,8 @@ class AdvancedFileProvider(BaseOtaProvider):
     NAME = "advanced"
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_FOLDER
 
-    def __init__(self, path: pathlib.Path, manufacturer_ids: list[int] | None = None):
-        super().__init__(url=None, manufacturer_ids=manufacturer_ids)
+    def __init__(self, path: pathlib.Path, **kwargs):
+        super().__init__(url=None, **kwargs)
         self.path = path
 
     async def _load_index(
