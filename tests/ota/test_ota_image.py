@@ -323,7 +323,7 @@ def test_parse_ota_ikea_truncated(data):
 
 
 def create_hue_ota(data):
-    data = b"\x2A\x00\x01" + data
+    data = b"\x2a\x00\x01" + data
 
     header, _ = firmware.OTAImageHeader.deserialize(
         bytes.fromhex(
@@ -342,7 +342,7 @@ def test_parse_ota_hue():
 
     assert isinstance(img, firmware.HueSBLOTAImage)
     assert rest == b"rest"
-    assert img.data == b"\x2A\x00\x01" + b"test"
+    assert img.data == b"\x2a\x00\x01" + b"test"
     assert img.serialize() + b"rest" == data
 
 
@@ -358,7 +358,7 @@ def test_parse_ota_hue_invalid():
 
     with pytest.raises(ValueError):
         # Three byte sequence must be the first thing after the header
-        firmware.parse_ota_image(header.serialize() + b"\xFF" + rest[1:])
+        firmware.parse_ota_image(header.serialize() + b"\xff" + rest[1:])
 
     with pytest.raises(ValueError):
         # Only Hue is known to use these images
@@ -378,7 +378,7 @@ def test_legrand_container_unwrapping(image):
         firmware.parse_ota_image(data[:-1])
 
     with pytest.raises(ValueError):
-        firmware.parse_ota_image(b"\xFF" + data[1:])
+        firmware.parse_ota_image(b"\xff" + data[1:])
 
     img, rest = firmware.parse_ota_image(data)
     assert not rest
@@ -413,4 +413,4 @@ def test_thirdreality_container(image):
         firmware.parse_ota_image(data[:-1])
 
     with pytest.raises(ValueError):
-        firmware.parse_ota_image(b"\xFF" + data[1:])
+        firmware.parse_ota_image(b"\xff" + data[1:])

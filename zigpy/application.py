@@ -630,9 +630,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             try:
                 await app.connect()
             except Exception:  # noqa: BLE001
-                LOGGER.debug(
-                    "Failed to probe with config %s", config, exc_info=True
-                )
+                LOGGER.debug("Failed to probe with config %s", config, exc_info=True)
             else:
                 return config
             finally:

@@ -622,7 +622,7 @@ def test_bitstruct_nesting(expose_global):
     assert InnerBitStruct.deserialize(inner.serialize() + b"asd") == (inner, b"asd")
 
     s = OuterStruct(foo=b"asd", bar=inner, asd=0xFF)
-    assert s.serialize() == b"\x03asd" + bytes([0b111_0_010_1]) + b"\xFF"
+    assert s.serialize() == b"\x03asd" + bytes([0b111_0_010_1]) + b"\xff"
 
     s2, remaining = OuterStruct.deserialize(s.serialize() + b"test")
     assert remaining == b"test"
@@ -642,7 +642,7 @@ def test_bitstruct_misaligned():
     assert s == s2
 
     with pytest.raises(ValueError):
-        TestStruct.deserialize(b"\xFF")
+        TestStruct.deserialize(b"\xff")
 
 
 def test_non_byte_sized_struct():
@@ -930,8 +930,8 @@ def test_frozen_struct():
     struct = OuterStruct(a=1, inner=OuterStruct.InnerStruct(b=2, c=3), d=4)
     frozen = struct.freeze()
 
-    assert 'frozen' not in repr(struct)
-    assert 'frozen' in repr(frozen)
+    assert "frozen" not in repr(struct)
+    assert "frozen" in repr(frozen)
 
     with pytest.raises(TypeError, match="Unhashable type"):
         hash(struct)
@@ -952,4 +952,7 @@ def test_frozen_struct():
     assert {frozen: 2}[frozen] == 2
     assert {frozen, frozen} == {frozen}
     assert frozen == frozen.replace(a=1)
-    assert {frozen, frozen, frozen.replace(a=1), frozen.replace(a=2)} == {frozen, frozen.replace(a=2)}
+    assert {frozen, frozen, frozen.replace(a=1), frozen.replace(a=2)} == {
+        frozen,
+        frozen.replace(a=2),
+    }

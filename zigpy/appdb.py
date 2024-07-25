@@ -717,9 +717,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     continue
 
                 clusters[cluster_id]._attr_cache[attr_id] = value
-                clusters[cluster_id]._attr_last_updated[
-                    attr_id
-                ] = datetime.fromtimestamp(last_updated, timezone.utc)
+                clusters[cluster_id]._attr_last_updated[attr_id] = (
+                    datetime.fromtimestamp(last_updated, timezone.utc)
+                )
 
                 LOGGER.debug(
                     "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
@@ -731,9 +731,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
 
                 # Populate the device's manufacturer and model attributes
-                if cluster_id == Basic.cluster_id and attr_id == Basic.AttributeDefs.manufacturer.id:
+                if (
+                    cluster_id == Basic.cluster_id
+                    and attr_id == Basic.AttributeDefs.manufacturer.id
+                ):
                     dev.manufacturer = decode_str_attribute(value)
-                elif cluster_id == Basic.cluster_id and attr_id == Basic.AttributeDefs.model.id:
+                elif (
+                    cluster_id == Basic.cluster_id
+                    and attr_id == Basic.AttributeDefs.model.id
+                ):
                     dev.model = decode_str_attribute(value)
 
     async def _load_unsupported_attributes(self) -> None:
@@ -742,7 +748,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(
             f"SELECT * FROM unsupported_attributes{DB_V}"
         ) as cursor:
-            async for (ieee, endpoint_id, cluster_type, cluster_id, attr_id) in cursor:
+            async for ieee, endpoint_id, cluster_type, cluster_id, attr_id in cursor:
                 dev = self._application.get_device(ieee)
 
                 try:
@@ -765,7 +771,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _load_devices(self) -> None:
         async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:
-            async for (ieee, nwk, status, last_seen) in cursor:
+            async for ieee, nwk, status, last_seen in cursor:
                 dev = self._application.add_device(ieee, nwk)
                 dev.status = zigpy.device.Status(status)
 
@@ -774,14 +780,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _load_node_descriptors(self) -> None:
         async with self.execute(f"SELECT * FROM node_descriptors{DB_V}") as cursor:
-            async for (ieee, *fields) in cursor:
+            async for ieee, *fields in cursor:
                 dev = self._application.get_device(ieee)
                 dev.node_desc = zdo_t.NodeDescriptor(*fields)
                 assert dev.node_desc.is_valid
 
     async def _load_endpoints(self) -> None:
         async with self.execute(f"SELECT * FROM endpoints{DB_V}") as cursor:
-            async for (ieee, epid, profile_id, device_type, status) in cursor:
+            async for ieee, epid, profile_id, device_type, status in cursor:
                 dev = self._application.get_device(ieee)
                 ep = dev.add_endpoint(epid)
                 ep.profile_id = profile_id
@@ -796,7 +802,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _load_clusters(self) -> None:
         async with self.execute(f"SELECT * FROM clusters{DB_V}") as cursor:
-            async for (ieee, endpoint_id, cluster_type, cluster_id) in cursor:
+            async for ieee, endpoint_id, cluster_type, cluster_id in cursor:
                 dev = self._application.get_device(ieee)
                 ep = dev.endpoints[endpoint_id]
 
@@ -807,19 +813,19 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _load_groups(self) -> None:
         async with self.execute(f"SELECT * FROM groups{DB_V}") as cursor:
-            async for (group_id, name) in cursor:
+            async for group_id, name in cursor:
                 self._application.groups.add_group(group_id, name, suppress_event=True)
 
     async def _load_group_members(self) -> None:
         async with self.execute(f"SELECT * FROM group_members{DB_V}") as cursor:
-            async for (group_id, ieee, ep_id) in cursor:
+            async for group_id, ieee, ep_id in cursor:
                 dev = self._application.get_device(ieee)
                 group = self._application.groups[group_id]
                 group.add_member(dev.endpoints[ep_id], suppress_event=True)
 
     async def _load_relays(self) -> None:
         async with self.execute(f"SELECT * FROM relays{DB_V}") as cursor:
-            async for (ieee, value) in cursor:
+            async for ieee, value in cursor:
                 dev = self._application.get_device(ieee)
                 relays, _ = t.Relays.deserialize(value)
                 dev.relays = zigpy.util.filter_relays(relays)
@@ -1001,7 +1007,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         elif errors == "ignore":
                             pass
                         else:
-                            raise ValueError(f"Invalid value for `errors`: {errors!r}") from e
+                            raise ValueError(
+                                f"Invalid value for `errors`: {errors!r}"
+                            ) from e
 
     async def _migrate_to_v4(self):
         """Schema v4 expanded the node descriptor and neighbor table columns"""
@@ -1132,7 +1140,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         """Schema v8 added the `devices_v8.last_seen` column."""
 
         async with self.execute("SELECT * FROM devices_v7") as cursor:
-            async for (ieee, nwk, status) in cursor:
+            async for ieee, nwk, status in cursor:
                 # Set the default `last_seen` to the unix epoch
                 await self.execute(
                     "INSERT INTO devices_v8 VALUES (?, ?, ?, ?)",
@@ -1241,7 +1249,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
 
         async with self.execute("SELECT * FROM attributes_cache_v11") as cursor:
-            async for (ieee, endpoint_id, cluster_id, attrid, value) in cursor:
+            async for ieee, endpoint_id, cluster_id, attrid, value in cursor:
                 # Set the default `last_updated` to the unix epoch
                 await self.execute(
                     "INSERT INTO attributes_cache_v12 VALUES (?, ?, ?, ?, ?, ?)",
@@ -1270,21 +1278,21 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
 
         async with self.execute("SELECT * FROM in_clusters_v12") as cursor:
-            async for (ieee, endpoint_id, cluster_id) in cursor:
+            async for ieee, endpoint_id, cluster_id in cursor:
                 await self.execute(
                     "INSERT INTO clusters_v13 VALUES (?, ?, ?, ?)",
                     (ieee, endpoint_id, ClusterType.Server, cluster_id),
                 )
 
         async with self.execute("SELECT * FROM out_clusters_v12") as cursor:
-            async for (ieee, endpoint_id, cluster_id) in cursor:
+            async for ieee, endpoint_id, cluster_id in cursor:
                 await self.execute(
                     "INSERT INTO clusters_v13 VALUES (?, ?, ?, ?)",
                     (ieee, endpoint_id, ClusterType.Client, cluster_id),
                 )
 
         async with self.execute("SELECT * FROM unsupported_attributes_v12") as cursor:
-            async for (ieee, endpoint_id, cluster_id, attrid) in cursor:
+            async for ieee, endpoint_id, cluster_id, attrid in cursor:
                 await self.execute(
                     "INSERT INTO unsupported_attributes_v13 VALUES (?, ?, ?, ?, ?)",
                     (ieee, endpoint_id, ClusterType.Server, cluster_id, attrid),

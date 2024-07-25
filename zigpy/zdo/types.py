@@ -717,7 +717,7 @@ CLUSTERS = {
         ("TotalTransmissions", t.uint16_t),
         ("TransmissionFailures", t.uint16_t),
         ("EnergyValues", t.LVList[t.uint8_t]),
-    )
+    ),
     # ... TODO optional stuff ...
 }
 

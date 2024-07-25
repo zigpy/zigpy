@@ -1,4 +1,5 @@
 """OTA manager for Zigpy. initial implementation from: https://github.com/zigpy/zigpy/pull/1102"""
+
 from __future__ import annotations
 
 import asyncio

@@ -165,7 +165,7 @@ async def test_database(tmp_path):
     ts = time.time()
     dev.last_seen = ts
     dev_last_seen = dev.last_seen
-    assert isinstance(dev.last_seen,float)
+    assert isinstance(dev.last_seen, float)
     assert abs(dev.last_seen - ts) < 0.01
 
     # Test a CustomDevice
@@ -189,7 +189,7 @@ async def test_database(tmp_path):
     assert dev.endpoints[1].in_clusters[0x0008]._attr_cache[0x0011] == 17
     assert dev.endpoints[99].in_clusters[0x0008]._attr_cache[0x0011] == 17
     custom_dev_last_seen = dev.last_seen
-    assert isinstance(custom_dev_last_seen,float)
+    assert isinstance(custom_dev_last_seen, float)
 
     await app.shutdown()
 
@@ -1089,9 +1089,7 @@ async def test_appdb_network_backups(tmp_path, backup_factory):  # noqa: F811
     await app3.shutdown()
 
 
-async def test_appdb_network_backups_format_change(
-    tmp_path, backup_factory
-):  # noqa: F811
+async def test_appdb_network_backups_format_change(tmp_path, backup_factory):  # noqa: F811
     db = tmp_path / "test.db"
 
     backup = backup_factory()

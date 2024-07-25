@@ -277,7 +277,12 @@ class Struct:
         bitfields = []
 
         for field in cls.fields:
-            if field.requires is not None and not field.requires(instance) or not data and field.optional:
+            if (
+                field.requires is not None
+                and not field.requires(instance)
+                or not data
+                and field.optional
+            ):
                 continue
 
             field_type = field.get_type(struct=instance)
