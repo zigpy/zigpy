@@ -377,6 +377,7 @@ class Ledvance(BaseOtaProvider):
             )
 
 
+@register_provider
 class Salus(BaseOtaProvider):
     NAME = "salus"
     MANUFACTURER_IDS = (4216, 43981)
