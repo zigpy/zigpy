@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+
 import zigpy.types as t
 
 if typing.TYPE_CHECKING:

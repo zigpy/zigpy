@@ -20,13 +20,13 @@ from zigpy.config.defaults import (
     CONF_NWK_TC_LINK_KEY_DEFAULT,
     CONF_NWK_UPDATE_ID_DEFAULT,
     CONF_NWK_VALIDATE_SETTINGS_DEFAULT,
-    CONF_OTA_PROVIDERS_DEFAULT,
-    CONF_OTA_DISABLE_PROVIDERS_DEFAULT,
-    CONF_OTA_EXTRA_PROVIDERS_DEFAULT,
     CONF_OTA_BROADCAST_ENABLED_DEFAULT,
-    CONF_OTA_ENABLED_DEFAULT,
     CONF_OTA_BROADCAST_INITIAL_DELAY_DEFAULT,
     CONF_OTA_BROADCAST_INTERVAL_DEFAULT,
+    CONF_OTA_DISABLE_PROVIDERS_DEFAULT,
+    CONF_OTA_ENABLED_DEFAULT,
+    CONF_OTA_EXTRA_PROVIDERS_DEFAULT,
+    CONF_OTA_PROVIDERS_DEFAULT,
     CONF_SOURCE_ROUTING_DEFAULT,
     CONF_STARTUP_ENERGY_SCAN_DEFAULT,
     CONF_TOPO_SCAN_ENABLED_DEFAULT,
@@ -39,12 +39,12 @@ from zigpy.config.validators import (
     cv_deprecated,
     cv_exact_object,
     cv_folder,
-    cv_ota_provider_name,
     cv_hex,
     cv_json_file,
     cv_key,
-    cv_simple_descriptor,
     cv_ota_provider,
+    cv_ota_provider_name,
+    cv_simple_descriptor,
 )
 import zigpy.types as t
 
@@ -156,7 +156,9 @@ SCHEMA_OTA_PROVIDER_BASE = vol.Schema(
     {
         vol.Required(CONF_OTA_PROVIDER_TYPE): cv_ota_provider_name,
         vol.Optional(CONF_OTA_PROVIDER_OVERRIDE_PREVIOUS, default=False): bool,
-        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=None): vol.Any(None, [cv_hex]),
+        vol.Optional(CONF_OTA_PROVIDER_MANUF_IDS, default=None): vol.Any(
+            None, [cv_hex]
+        ),
     }
 )
 
