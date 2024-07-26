@@ -171,13 +171,13 @@ SCHEMA_OTA_PROVIDER_URL_REQUIRED = SCHEMA_OTA_PROVIDER_BASE.extend(
 )
 
 SCHEMA_OTA_PROVIDER_JSON_INDEX = SCHEMA_OTA_PROVIDER_BASE.extend(
-    {vol.Optional(CONF_OTA_PROVIDER_PATH): cv_json_file}
+    {vol.Required(CONF_OTA_PROVIDER_PATH): cv_json_file}
 )
 
 SCHEMA_OTA_PROVIDER_FOLDER = SCHEMA_OTA_PROVIDER_BASE.extend(
     {
-        vol.Optional(CONF_OTA_PROVIDER_PATH): cv_folder,
-        vol.Optional(CONF_OTA_PROVIDER_WARNING): cv_exact_object(
+        vol.Required(CONF_OTA_PROVIDER_PATH): cv_folder,
+        vol.Required(CONF_OTA_PROVIDER_WARNING): cv_exact_object(
             CONF_OTA_ALLOW_ADVANCED_DIR_STRING
         ),
     }

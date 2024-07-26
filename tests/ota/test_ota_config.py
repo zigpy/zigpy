@@ -4,6 +4,9 @@ import asyncio
 import pathlib
 from unittest.mock import patch
 
+import pytest
+import voluptuous as vol
+
 from tests.conftest import make_app
 from zigpy import config
 import zigpy.device
@@ -107,6 +110,26 @@ async def test_ota_config(tmp_path: pathlib.Path) -> None:
         zigpy.ota.providers.ThirdReality(),
         zigpy.ota.providers.Tradfri(),
     ]
+
+
+async def test_ota_config_invalid_message(tmp_path: pathlib.Path) -> None:
+    with pytest.raises(vol.Invalid):
+        zigpy.ota.OTA(
+            config=config.SCHEMA_OTA(
+                {
+                    config.CONF_OTA_ENABLED: True,
+                    config.CONF_OTA_BROADCAST_ENABLED: False,
+                    config.CONF_OTA_PROVIDERS: [
+                        {
+                            config.CONF_OTA_PROVIDER_TYPE: "advanced",
+                            config.CONF_OTA_PROVIDER_WARNING: "oops",
+                            config.CONF_OTA_PROVIDER_PATH: tmp_path,
+                        }
+                    ],
+                }
+            ),
+            application=None,
+        )
 
 
 async def test_ota_config_complex(tmp_path: pathlib.Path) -> None:
