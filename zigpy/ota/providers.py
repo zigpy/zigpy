@@ -334,7 +334,7 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
                 )
 
             # Bricking update: https://github.com/zigpy/zigpy/issues/1428
-            if image.image_type == 8710:
+            if image.image_type in (8704, 8710):
                 continue
 
             yield image

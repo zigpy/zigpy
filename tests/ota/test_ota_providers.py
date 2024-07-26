@@ -200,9 +200,11 @@ async def test_tradfri_provider_dirigera():
 
     # Skip the gateway firmware
     filtered_version_info_obj = [
-        obj for obj in index_obj if obj["fw_type"] == 2 and obj["fw_image_type"] != 8710
+        obj
+        for obj in index_obj
+        if obj["fw_type"] == 2 and obj["fw_image_type"] not in (8710, 8704)
     ]
-    assert len(index) == len(index_obj) - 2 == len(filtered_version_info_obj)
+    assert len(index) == len(index_obj) - 3 == len(filtered_version_info_obj)
 
     for obj, meta in zip(filtered_version_info_obj, index):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
@@ -271,9 +273,13 @@ async def test_tradfri_provider_old(index_url: str, index_file: str) -> None:
         mock_http.assert_not_called()
 
     # Skip the gateway firmware
-    filtered_version_info_obj = [obj for obj in index_obj if obj["fw_type"] == 2]
+    filtered_version_info_obj = [
+        obj
+        for obj in index_obj
+        if obj["fw_type"] == 2 and obj["fw_image_type"] not in (8710, 8704)
+    ]
     assert index
-    assert len(index) == len(index_obj) - 2 == len(filtered_version_info_obj)
+    assert len(index) == len(index_obj) - 4 == len(filtered_version_info_obj)
 
     for obj, meta in zip(filtered_version_info_obj, index):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
@@ -387,7 +393,7 @@ async def test_tradfri_provider_invalid_json():
 
         index = await provider.load_index()
 
-    assert len(index) == len(index_obj) - 3
+    assert len(index) == len(index_obj) - 4
 
 
 async def test_ledvance_provider():
