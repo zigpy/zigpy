@@ -132,6 +132,24 @@ async def test_ota_config_invalid_message(tmp_path: pathlib.Path) -> None:
         )
 
 
+async def test_ota_config_invalid_provider(tmp_path: pathlib.Path) -> None:
+    with pytest.raises(vol.Invalid):
+        zigpy.ota.OTA(
+            config=config.SCHEMA_OTA(
+                {
+                    config.CONF_OTA_ENABLED: True,
+                    config.CONF_OTA_BROADCAST_ENABLED: False,
+                    config.CONF_OTA_PROVIDERS: [
+                        {
+                            config.CONF_OTA_PROVIDER_TYPE: "oops",
+                        }
+                    ],
+                }
+            ),
+            application=None,
+        )
+
+
 async def test_ota_config_complex(tmp_path: pathlib.Path) -> None:
     # Enable all the providers
     ota = zigpy.ota.OTA(
