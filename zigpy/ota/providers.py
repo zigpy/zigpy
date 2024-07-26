@@ -307,7 +307,7 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
                     LOGGER.warning("Could not parse IKEA OTA JSON: %r", fw)
                     continue
 
-                yield IkeaRemoteOtaImageMetadata(  # type: ignore[call-arg]
+                image = IkeaRemoteOtaImageMetadata(  # type: ignore[call-arg]
                     file_version=int(file_version_match.group("v"), 10),
                     manufacturer_id=self.MANUFACTURER_IDS[0],
                     image_type=fw["fw_image_type"],
@@ -320,7 +320,7 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
                 if fw["fw_type"] != 2:
                     continue
 
-                yield SignedIkeaRemoteOtaImageMetadata(  # type: ignore[call-arg]
+                image = SignedIkeaRemoteOtaImageMetadata(  # type: ignore[call-arg]
                     file_version=(
                         (fw["fw_file_version_MSB"] << 16)
                         | (fw["fw_file_version_LSB"] << 0)
@@ -332,6 +332,12 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
                     url=fw["fw_binary_url"].replace("http://", "https://", 1),
                     source="IKEA (TRÅDFRI)",
                 )
+
+            # Bricking update: https://github.com/zigpy/zigpy/issues/1428
+            if image.image_type == 8710:
+                continue
+
+            yield image
 
 
 @register_provider
