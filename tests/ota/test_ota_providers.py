@@ -110,6 +110,11 @@ async def test_local_z2m_provider():
 
     provider = providers.LocalZ2MProvider(FILES_DIR / "z2m_index.json")
 
+    # Test equality
+    assert provider == providers.LocalZ2MProvider(FILES_DIR / "z2m_index.json")
+    assert provider != providers.LocalZ2MProvider(FILES_DIR / "z2m_index2.json")
+    assert provider != providers.LocalZigpyProvider(FILES_DIR / "z2m_index.json")
+
     # Compatible with all devices
     assert provider.compatible_with_device(make_device(manufacturer_id=1234))
     assert provider.compatible_with_device(make_device(manufacturer_id=5678))
@@ -524,6 +529,8 @@ async def test_third_reality_provider():
     index_obj = json.loads(index_json)
 
     provider = providers.ThirdReality()
+    assert provider == provider  # noqa: PLR0124
+    assert provider != object()
 
     with aioresponses() as mock_http:
         mock_http.get(
@@ -598,6 +605,13 @@ async def test_remote_zigpy_provider():
 async def test_local_zigpy_provider():
     index_obj = json.loads((FILES_DIR / "local_index.json").read_text())
     provider = providers.LocalZigpyProvider(FILES_DIR / "local_index.json")
+    assert str(provider)
+
+    # Test equality
+    assert provider == providers.LocalZigpyProvider(FILES_DIR / "local_index.json")
+    assert provider != providers.LocalZigpyProvider(FILES_DIR / "local_index2.json")
+    assert provider != providers.LocalZ2MProvider(FILES_DIR / "local_index.json")
+
     index = await provider.load_index()
 
     assert len(index) == len(index_obj["firmwares"])
@@ -633,6 +647,11 @@ async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
     (tmp_path / "bad.ota").write_bytes(b"This is not an OTA file")
 
     provider = providers.AdvancedFileProvider(tmp_path)
+
+    # Test equality
+    assert provider == providers.AdvancedFileProvider(tmp_path)
+    assert provider != providers.AdvancedFileProvider(tmp_path / "foo")
+    assert provider != providers.LocalZigpyProvider(tmp_path)
 
     # The provider is compatible with all devices
     assert provider.compatible_with_device(make_device(manufacturer_id=4476))

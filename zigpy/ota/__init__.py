@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import logging
 import pathlib
@@ -279,7 +280,9 @@ class OTA:
 
             if enabled is True:
                 with_providers.append(provider(**config))
-                without_providers.remove(provider)
+
+                with contextlib.suppress(KeyError):
+                    without_providers.remove(provider)
             elif enabled is False:
                 without_providers.add(provider)
             else:

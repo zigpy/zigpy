@@ -244,13 +244,16 @@ class BaseOtaProvider:
         raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, type(self)):
+        if not isinstance(other, self.__class__):
             return NotImplemented
 
         return self.url == other.url and self.manufacturer_ids == other.manufacturer_ids
 
     # We don't want the above `__eq__` to change object hashing semantics
     __hash__ = object.__hash__
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(url={self.url!r}, manufacturer_ids={self.manufacturer_ids!r})"
 
 
 @register_provider
@@ -559,7 +562,16 @@ class LocalZigpyProvider(BaseZigpyProvider):
             yield img.replace(source=f"Local zigpy provider ({self.index_file})")
 
     def __eq__(self, other: object) -> bool:
-        return super() == other and self.index_file == other.index_file
+        if (
+            not isinstance(other, self.__class__)
+            or super().__eq__(other) is NotImplemented
+        ):
+            return NotImplemented
+
+        return super().__eq__(other) and self.index_file == other.index_file
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(index_file={self.index_file!r}, manufacturer_ids={self.manufacturer_ids!r})"
 
 
 @register_provider
@@ -637,7 +649,16 @@ class LocalZ2MProvider(BaseZ2MProvider):
             yield img.replace(source=f"Local Z2M provider ({self.index_file})")
 
     def __eq__(self, other: object) -> bool:
-        return super() == other and self.index_file == other.index_file
+        if (
+            not isinstance(other, self.__class__)
+            or super().__eq__(other) is NotImplemented
+        ):
+            return NotImplemented
+
+        return super().__eq__(other) and self.index_file == other.index_file
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(index_file={self.index_file!r}, manufacturer_ids={self.manufacturer_ids!r})"
 
 
 @register_provider
@@ -721,4 +742,13 @@ class AdvancedFileProvider(BaseOtaProvider):
                 )
 
     def __eq__(self, other: object) -> bool:
-        return super() == other and self.path == other.path
+        if (
+            not isinstance(other, self.__class__)
+            or super().__eq__(other) is NotImplemented
+        ):
+            return NotImplemented
+
+        return super().__eq__(other) and self.path == other.path
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(path={self.path!r}, manufacturer_ids={self.manufacturer_ids!r})"
