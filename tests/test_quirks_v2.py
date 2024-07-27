@@ -237,8 +237,8 @@ async def test_quirks_v2_multiple_matches_raises(device_mock):
 async def test_quirks_v2_multiple_matches_not_raises(device_mock):
     """Test that adding multiple quirks v2 entries for the same device doesn't raise.
 
-       When the quirk is EXACTLY the same the semantics of sets prevents us from
-       having multiple quirks in the registry.
+    When the quirk is EXACTLY the same the semantics of sets prevents us from
+    having multiple quirks in the registry.
     """
     registry = DeviceRegistry()
 
@@ -363,7 +363,8 @@ async def test_quirks_v2_removes(device_mock):
     (
         add_to_registry_v2(
             device_mock.manufacturer, device_mock.model, registry=registry
-        ).removes(Identify.cluster_id)
+        )
+        .removes(Identify.cluster_id)
         .build()
     )
 
@@ -658,7 +659,9 @@ async def test_quirks_v2_command_button(device_mock):
         .command_button(
             OnOff.ServerCommandDefs.on_with_timed_off.name,
             OnOff.cluster_id,
-            command_kwargs={"on_off_control_foo": OnOff.OnOffControl.Accept_Only_When_On},
+            command_kwargs={
+                "on_off_control_foo": OnOff.OnOffControl.Accept_Only_When_On
+            },
         )
         .build()
     )
@@ -683,11 +686,11 @@ async def test_quirks_v2_command_button(device_mock):
     assert button.kwargs["on_off_control"] == OnOff.OnOffControl.Accept_Only_When_On
 
     # coverage for overridden eq method
-    assert button != quirked_device.exposes_metadata[
-        (1, OnOff.cluster_id, ClusterType.Server)
-    ][1]
+    assert (
+        button
+        != quirked_device.exposes_metadata[(1, OnOff.cluster_id, ClusterType.Server)][1]
+    )
     assert button != quirked_device
-
 
 
 async def test_quirks_v2_also_applies_to(device_mock):
