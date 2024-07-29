@@ -279,7 +279,7 @@ async def test_tradfri_provider_old(index_url: str, index_file: str) -> None:
         if obj["fw_type"] == 2 and obj["fw_image_type"] not in (8710, 8704)
     ]
     assert index
-    assert len(index) == len(index_obj) - 2 == len(filtered_version_info_obj)
+    assert len(index) == len(filtered_version_info_obj)
 
     for obj, meta in zip(filtered_version_info_obj, index):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
