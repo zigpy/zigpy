@@ -442,7 +442,7 @@ class QuirksV2RegistryEntryBuilder:
         The node descriptor must be a NodeDescriptor instance and it will be used
         to replace the node descriptor of the device when the quirk is applied.
         """
-        self.device_node_descriptor = node_descriptor
+        self.device_node_descriptor = node_descriptor.freeze()
         return self
 
     def skip_configuration(
