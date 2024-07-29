@@ -5,10 +5,12 @@ from __future__ import annotations
 import collections
 from enum import Enum
 import inspect
-from frozendict import frozendict, deepfreeze
 import logging
 import typing
 from typing import TYPE_CHECKING, Any
+
+import attrs
+from frozendict import deepfreeze, frozendict
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -28,7 +30,6 @@ from zigpy.quirks.v2.homeassistant.sensor import SensorDeviceClass, SensorStateC
 import zigpy.types as t
 from zigpy.zcl import ClusterType
 from zigpy.zdo import ZDO
-import attrs
 from zigpy.zdo.types import NodeDescriptor
 
 if TYPE_CHECKING:
@@ -154,7 +155,9 @@ class AddsMetadata:
     cluster: int | type[Cluster | CustomCluster] = attrs.field()
     endpoint_id: int = attrs.field(default=1)
     cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
-    constant_attributes: frozendict[ZCLAttributeDef, typing.Any] = attrs.field(factory=frozendict, converter=deepfreeze)
+    constant_attributes: frozendict[ZCLAttributeDef, typing.Any] = attrs.field(
+        factory=frozendict, converter=deepfreeze
+    )
 
     def __call__(self, device: CustomDeviceV2) -> None:
         """Process the add."""
@@ -350,9 +353,9 @@ class QuirksV2RegistryEntry:
         | WriteAttributeButtonMetadata
         | ZCLCommandButtonMetadata
     ] = attrs.field(factory=tuple)
-    device_automation_triggers_metadata: frozendict[tuple[str, str], frozendict[str, str]] = (
-        attrs.field(factory=frozendict, converter=deepfreeze)
-    )
+    device_automation_triggers_metadata: frozendict[
+        tuple[str, str], frozendict[str, str]
+    ] = attrs.field(factory=frozendict, converter=deepfreeze)
 
     def matches_device(self, device: Device) -> bool:
         """Determine if this quirk should be applied to the passed in device."""
