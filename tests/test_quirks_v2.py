@@ -30,6 +30,7 @@ from zigpy.quirks.v2 import (
     WriteAttributeButtonMetadata,
     ZCLCommandButtonMetadata,
     ZCLSensorMetadata,
+    add_to_registry_v2,
 )
 import zigpy.types as t
 from zigpy.zcl import ClusterType
@@ -124,7 +125,7 @@ async def test_quirks_v2(device_mock):
     # this would need to be updated if the line number of the call to QuirkBuilder
     # changes in this test in the future
     assert quirked.quirk_metadata.quirk_location.endswith(
-        "zigpy/tests/test_quirks_v2.py]-line:102"
+        "zigpy/tests/test_quirks_v2.py]-line:103"
     )
 
     ep = quirked.endpoints[1]
@@ -910,3 +911,23 @@ async def test_quirks_v2_matches_v1(app_mock):
         )
 
     assert quirked.device_automation_triggers == quirked_v2.device_automation_triggers
+
+
+async def test_quirks_v2_add_to_registry_v2_logs_error(caplog):
+    """Test adding a quirk with old API logs."""
+    registry = DeviceRegistry()
+
+    (
+        add_to_registry_v2("foo", "bar", registry=registry)
+        .adds(OnOff.cluster_id)
+        .binary_sensor(
+            OnOff.AttributeDefs.on_off.name,
+            OnOff.cluster_id,
+        )
+        .add_to_registry()
+    )
+
+    assert (
+        "add_to_registry_v2 is deprecated and will be removed in a future release"
+        in caplog.text
+    )

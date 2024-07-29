@@ -407,6 +407,7 @@ class QuirkBuilder:
         )
 
         self.also_applies_to(manufacturer, model)
+        UNBUILT_QUIRK_BUILDERS.append(self)
 
     def also_applies_to(self, manufacturer: str, model: str) -> QuirkBuilder:
         """Register this quirks v2 entry for an additional manufacturer and model."""
@@ -830,6 +831,4 @@ def add_to_registry_v2(
         "add_to_registry_v2 is deprecated and will be removed in a future release. "
         "Please QuirkBuilder() instead"
     )
-    quirk_builder = QuirkBuilder(manufacturer, model, registry=registry)
-    UNBUILT_QUIRK_BUILDERS.append(quirk_builder)
-    return quirk_builder
+    return QuirkBuilder(manufacturer, model, registry=registry)
