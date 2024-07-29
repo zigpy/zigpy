@@ -331,7 +331,7 @@ class ManufacturerModelMetadata:
 class QuirksV2RegistryEntry:
     """Quirks V2 registry entry."""
 
-    quirk_location: str = None
+    quirk_location: str = attrs.field(default=None, eq=False)
     manufacturer_model_metadata: tuple[ManufacturerModelMetadata] = attrs.field(
         factory=tuple
     )
@@ -371,8 +371,8 @@ class QuirksV2RegistryEntry:
 class QuirksV2RegistryEntryBuilder:
     """Quirks V2 registry entry."""
 
-    registry: DeviceRegistry = None
-    quirk_location: str = None
+    registry: DeviceRegistry = attrs.field(default=None)
+    quirk_location: str = attrs.field(default=None, eq=False)
     manufacturer_model_metadata: list[ManufacturerModelMetadata] = attrs.field(
         factory=list
     )
