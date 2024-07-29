@@ -1,0 +1,21 @@
+{
+    "firmwares": [
+        {
+            "path": "external/dl/local_provider/1135-0000-201000A0-FLS-PP3_RGBW.zigbee",
+            "file_version": 604050705,
+            "file_size": 291142,
+            "image_type": 559,
+            "manufacturer_names": ["Test Manuf 1", "Test Manuf 2"],
+            "model_names": ["Test Model 1", "Test Model 2"],
+            "manufacturer_id": 4454,
+            "changelog": "A changelog",
+            "release_notes": "Long release notes",
+            "checksum": "sha3-256:23415a1c54353219bb7de3e72ba6050d9e849be0954eebda9b5783d34d0723d1",
+            "min_hardware_version": 0,
+            "max_hardware_version": 257,
+            "min_current_file_version": 0,
+            "max_current_file_version": 257,
+            "specificity": 999999
+        }
+    ]
+}

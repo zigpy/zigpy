@@ -7,8 +7,12 @@ import warnings
 
 import voluptuous as vol
 
+import zigpy.config
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
+
+if typing.TYPE_CHECKING:
+    import zigpy.ota.providers
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -87,14 +91,16 @@ def cv_deprecated(message: str) -> typing.Callable[[typing.Any], typing.Any]:
     return wrapper
 
 
-def cv_exact_object(expected_value: str) -> typing.Callable[[typing.Any], bool]:
+def cv_exact_object(
+    expected_value: str,
+) -> typing.Callable[[typing.Any], typing.Literal[True]]:
     """Factory function for creating an exact object comparison validator."""
 
-    def wrapper(obj: typing.Any) -> typing.Any:
+    def wrapper(obj: typing.Any) -> typing.Literal[True]:
         if obj != expected_value:
-            return False
+            raise vol.Invalid(f"Expected {expected_value!r}, got {obj!r}")
 
-        return expected_value
+        return True
 
     return wrapper
 
@@ -117,3 +123,31 @@ def cv_folder(value: str) -> pathlib.Path:
         raise vol.Invalid(f"{value} is not a directory")
 
     return path
+
+
+def cv_ota_provider_name(name: str | None) -> type[zigpy.ota.providers.BaseOtaProvider]:
+    """Validate OTA provider name."""
+    import zigpy.ota.providers
+
+    if name not in zigpy.ota.providers.OTA_PROVIDER_TYPES:
+        raise vol.Invalid(f"Unknown OTA provider: {name!r}")
+
+    return zigpy.ota.providers.OTA_PROVIDER_TYPES[name]
+
+
+def cv_ota_provider(
+    obj: dict | zigpy.ota.providers.BaseOtaProvider,
+) -> zigpy.ota.providers.BaseOtaProvider:
+    """Validate OTA provider."""
+    import zigpy.ota.providers
+
+    if isinstance(obj, zigpy.ota.providers.BaseOtaProvider):
+        return obj
+
+    provider_type = obj.get(zigpy.config.CONF_OTA_PROVIDER_TYPE)
+    provider_cls = cv_ota_provider_name(provider_type)
+
+    kwargs = provider_cls.VOL_SCHEMA(obj)
+    kwargs.pop(zigpy.config.CONF_OTA_PROVIDER_TYPE)
+
+    return provider_cls(**kwargs)

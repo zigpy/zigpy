@@ -338,43 +338,42 @@ def test_app_config_setter(app):
     """Test configuration setter."""
 
     cfg_copy = copy.deepcopy(app.config)
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
-
-    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_IKEA] = "invalid bool"
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is False
+    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_ENABLED] = "invalid bool"
 
     with pytest.raises(vol.Invalid):
         app.config = cfg_copy
 
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is False
 
-    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_IKEA] = True
+    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_ENABLED] = True
     app.config = cfg_copy
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is True
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is True
 
-    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_IKEA] = "invalid bool"
+    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_ENABLED] = "invalid bool"
 
     with pytest.raises(vol.Invalid):
         app.config = cfg_copy
 
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is True
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is True
 
 
 def test_app_update_config(app):
     """Test configuration partial update."""
 
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is False
     with pytest.raises(vol.Invalid):
-        app.update_config({conf.CONF_OTA: {conf.CONF_OTA_IKEA: "invalid bool"}})
+        app.update_config({conf.CONF_OTA: {conf.CONF_OTA_ENABLED: "invalid bool"}})
 
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is False
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is False
 
-    app.update_config({conf.CONF_OTA: {conf.CONF_OTA_IKEA: "yes"}})
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is True
+    app.update_config({conf.CONF_OTA: {conf.CONF_OTA_ENABLED: "yes"}})
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is True
 
     with pytest.raises(vol.Invalid):
-        app.update_config({conf.CONF_OTA: {conf.CONF_OTA_IKEA: "invalid bool"}})
+        app.update_config({conf.CONF_OTA: {conf.CONF_OTA_ENABLED: "invalid bool"}})
 
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_IKEA] is True
+    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is True
 
 
 async def test_uninitialized_message_handlers(app, ieee):
