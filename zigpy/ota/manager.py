@@ -212,7 +212,7 @@ class OTAManager:
                     manufacturer_code=self.image.firmware.header.manufacturer_id,
                     image_type=self.image.firmware.header.image_type,
                     file_version=self.image.firmware.header.file_version,
-                    file_offset=offset,
+                    file_offset=offset - block_size,
                     image_data=block,
                 )
 
