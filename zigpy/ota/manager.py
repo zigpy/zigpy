@@ -78,6 +78,16 @@ class OTAManager:
             self.device._application.callback_for_response(
                 src=self.device,
                 filters=[
+                    Ota.ServerCommandDefs.image_page.schema(),
+                ],
+                callback=self._image_page_req,
+            )
+        )
+
+        self.stack.enter_context(
+            self.device._application.callback_for_response(
+                src=self.device,
+                filters=[
                     Ota.ServerCommandDefs.upgrade_end.schema(),
                 ],
                 callback=self._upgrade_end,
@@ -175,6 +185,50 @@ class OTAManager:
         except Exception as ex:  # noqa: BLE001
             self.device.debug("OTA image_block handler exception", exc_info=ex)
             self._finish(foundation.Status.FAILURE)
+
+    async def _image_page_req(
+        self, hdr: foundation.ZCLHeader, command: Ota.ImagePageCommand
+    ) -> None:
+        """Handle image page request."""
+        bytes_remaining = command.page_size
+        offset = command.file_offset
+
+        while bytes_remaining > 0:
+            block_size = min(
+                MAXIMUM_IMAGE_BLOCK_SIZE, command.maximum_data_size, bytes_remaining
+            )
+            block = self._image_data[offset : offset + block_size]
+            offset += block_size
+            bytes_remaining -= block_size
+
+            try:
+                await self.ota_cluster.request(
+                    general=False,
+                    command_id=Ota.ClientCommandDefs.image_block_response.id,
+                    schema=Ota.ClientCommandDefs.image_block_response.schema,
+                    expect_reply=False,
+                    # kwargs
+                    status=foundation.Status.SUCCESS,
+                    manufacturer_code=self.image.firmware.header.manufacturer_id,
+                    image_type=self.image.firmware.header.image_type,
+                    file_version=self.image.firmware.header.file_version,
+                    file_offset=offset,
+                    image_data=block,
+                )
+
+                self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
+
+                if (
+                    self.progress_callback is not None
+                    and not self._upgrade_end_future.done()
+                ):
+                    self.progress_callback(offset + len(block), len(self._image_data))
+            except Exception as ex:  # noqa: BLE001
+                self.device.debug("OTA image_page handler exception", exc_info=ex)
+                self._finish(foundation.Status.FAILURE)
+
+            # Delay according to what the device asks
+            await asyncio.sleep(command.response_spacing / 1000)
 
     async def _upgrade_end(
         self, hdr: foundation.ZCLHeader, command: foundation.CommandSchema
