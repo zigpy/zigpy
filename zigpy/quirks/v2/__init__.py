@@ -829,6 +829,6 @@ def add_to_registry_v2(
     """Add an entry to the registry."""
     _LOGGER.error(
         "add_to_registry_v2 is deprecated and will be removed in a future release. "
-        "Please QuirkBuilder() instead"
+        "Please QuirkBuilder() instead and ensure you call add_to_registry()."
     )
     return QuirkBuilder(manufacturer, model, registry=registry)
