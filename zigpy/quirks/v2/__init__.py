@@ -41,8 +41,6 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-UNBUILT_QUIRK_BUILDERS: list[QuirkBuilder] = []
-
 
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=too-many-arguments
@@ -407,7 +405,6 @@ class QuirkBuilder:
         )
 
         self.also_applies_to(manufacturer, model)
-        UNBUILT_QUIRK_BUILDERS.append(self)
 
     def also_applies_to(self, manufacturer: str, model: str) -> QuirkBuilder:
         """Register this quirks v2 entry for an additional manufacturer and model."""
@@ -816,9 +813,6 @@ class QuirkBuilder:
             self.registry.add_to_registry_v2(
                 manufacturer_model.manufacturer, manufacturer_model.model, quirk
             )
-
-        if self in UNBUILT_QUIRK_BUILDERS:
-            UNBUILT_QUIRK_BUILDERS.remove(self)
 
         return quirk
 
