@@ -32,8 +32,8 @@ class DeviceRegistry:
         self._registry: TYPE_MANUF_QUIRKS_DICT = collections.defaultdict(
             lambda: collections.defaultdict(list)
         )
-        self._registry_v2: dict[tuple[str, str], list[QuirksV2RegistryEntry]] = (
-            collections.defaultdict(list)
+        self._registry_v2: dict[tuple[str, str], set[QuirksV2RegistryEntry]] = (
+            collections.defaultdict(set)
         )
 
     def add_to_registry(self, custom_device: CustomDeviceType) -> None:
@@ -51,13 +51,9 @@ class DeviceRegistry:
 
     def add_to_registry_v2(
         self, manufacturer: str, model: str, entry: QuirksV2RegistryEntry
-    ) -> QuirksV2RegistryEntry:
+    ) -> None:
         """Add an entry to the registry."""
-        key = (manufacturer, model)
-        if not entry.registry:
-            entry.registry = self
-        self._registry_v2[key].append(entry)
-        return entry
+        self._registry_v2[(manufacturer, model)].add(entry)
 
     def remove(self, custom_device: CustomDeviceType) -> None:
         """Remove a device from the registry"""
@@ -86,8 +82,9 @@ class DeviceRegistry:
             matches: list[QuirksV2RegistryEntry] = []
             entries = self._registry_v2[key]
             if len(entries) == 1:
-                if entries[0].matches_device(device):
-                    matches.append(entries[0])
+                entry = next(iter(entries))
+                if entry.matches_device(device):
+                    matches.append(entry)
             else:
                 for entry in entries:
                     if entry.matches_device(device):
