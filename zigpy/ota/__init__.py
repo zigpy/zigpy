@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
 import contextlib
 import dataclasses
 import logging
@@ -479,6 +480,40 @@ class OTA:
                 continue
 
             upgrades[img.metadata] = img
+
+        # As a final pass, identify images with identical versions and specificity but
+        # differing contents
+        upgrade_collisions: defaultdict[defaultdict[list]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+
+        for img in upgrades.values():
+            assert img.firmware is not None
+            upgrade_collisions[img.version, img.specificity][
+                img.firmware.serialize()
+            ].append(img)
+
+        for (version, specificity), buckets in upgrade_collisions.items():
+            if len(buckets) < 2:
+                continue
+
+            bad_images = []
+
+            for bucket in buckets.values():
+                bad_images.extend(bucket)
+
+            _LOGGER.warning(
+                "Multiple unique OTA images for version %08X with specificity %d exist."
+                " It is not possible to tell which image is correct so all %d of the"
+                " colliding images will be ignored.",
+                version,
+                specificity,
+                len(bad_images),
+            )
+            _LOGGER.debug("Colliding images: %s", bad_images)
+
+            for img in bad_images:
+                upgrades.pop(img.metadata)
 
         return OtaImagesResult(
             upgrades=tuple(
