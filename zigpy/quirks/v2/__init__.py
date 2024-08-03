@@ -784,8 +784,8 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 translation_key=translation_key,
                 command_name=command_name,
-                args=command_args,
-                kwargs=command_kwargs,
+                args=command_args if command_args is not None else (),
+                kwargs=command_kwargs if command_kwargs is not None else frozendict(),
             )
         )
         return self

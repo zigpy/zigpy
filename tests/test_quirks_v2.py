@@ -626,6 +626,10 @@ async def test_quirks_v2_command_button(device_mock):
                 "on_off_control_foo": OnOff.OnOffControl.Accept_Only_When_On
             },
         )
+        .command_button(
+            OnOff.ServerCommandDefs.on_with_timed_off.name,
+            OnOff.cluster_id,
+        )
         .add_to_registry()
     )
 
@@ -634,7 +638,6 @@ async def test_quirks_v2_command_button(device_mock):
 
     assert quirked_device.endpoints[1].in_clusters.get(OnOff.cluster_id) is not None
 
-    # pylint: disable=line-too-long
     button: EntityMetadata = quirked_device.exposes_metadata[
         (1, OnOff.cluster_id, ClusterType.Server)
     ][0]
@@ -654,6 +657,13 @@ async def test_quirks_v2_command_button(device_mock):
         != quirked_device.exposes_metadata[(1, OnOff.cluster_id, ClusterType.Server)][1]
     )
     assert button != quirked_device
+
+    button = quirked_device.exposes_metadata[(1, OnOff.cluster_id, ClusterType.Server)][
+        2
+    ]
+
+    assert button.kwargs == {}
+    assert button.args == ()
 
 
 async def test_quirks_v2_also_applies_to(device_mock):
