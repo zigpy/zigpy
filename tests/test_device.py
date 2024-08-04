@@ -520,7 +520,9 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         )
     )
 
-    dev.application.ota.get_ota_images = MagicMock(return_value=OtaImagesResult())
+    dev.application.ota.get_ota_images = MagicMock(
+        return_value=OtaImagesResult(upgrades=(), downgrades=())
+    )
     dev.update_firmware = MagicMock(wraps=dev.update_firmware)
 
     def make_packet(cmd_name: str, **kwargs):
