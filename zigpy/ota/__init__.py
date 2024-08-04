@@ -460,24 +460,14 @@ class OTA:
                 upgrades.pop(img.metadata)
                 continue
 
-            # `img` is the metadata without downloaded firmware: `result` is the same
-            # image with downloaded firmware
+            # `img` is the metadata without downloaded firmware. `result` is the same
+            # image with downloaded firmware.
             img = result
 
             # Cache the image if it isn't already cached
             if self._image_cache[img.metadata].firmware is None:
                 _LOGGER.debug("Caching image %s", img)
                 self._image_cache[img.metadata] = img
-
-            # Remove images that are no longer compatible
-            if not img.check_compatibility(device, query_cmd):
-                upgrades.pop(img.metadata)
-                continue
-
-            # If the image is no longer an upgrade, we demote it to a downgrade
-            if not img.check_version(query_cmd.current_file_version):
-                downgrades[img.metadata] = upgrades.pop(img.metadata)
-                continue
 
             upgrades[img.metadata] = img
 
