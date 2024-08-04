@@ -147,7 +147,7 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
     ota.register_provider(BrokenProvider(index))
 
     images1 = await ota.get_ota_images(device, query_cmd)
-    assert images1.upgrades[-1] == zigpy.ota.OtaImageWithMetadata(
+    assert images1.upgrades[0] == zigpy.ota.OtaImageWithMetadata(
         metadata=index[3],
         firmware=zigpy.ota.image.OTAImage.deserialize(index[3].test_data)[0],
     )
@@ -267,7 +267,7 @@ async def test_ota_matching_ambiguous_specificity_tie_breaker() -> None:
     # the tie
     images = await ota.get_ota_images(device, query_cmd)
     assert len(images.upgrades) == 2
-    assert images.upgrades[-1] == zigpy.ota.OtaImageWithMetadata(
+    assert images.upgrades[0] == zigpy.ota.OtaImageWithMetadata(
         metadata=index[1],
         firmware=zigpy.ota.image.OTAImage.deserialize(index[1].test_data)[0],
     )

@@ -518,12 +518,16 @@ class OTA:
         return OtaImagesResult(
             upgrades=tuple(
                 sorted(
-                    upgrades.values(), key=lambda img: (img.version, img.specificity)
+                    upgrades.values(),
+                    key=lambda img: (img.version, img.specificity),
+                    reverse=True,
                 )
             ),
             downgrades=tuple(
                 sorted(
-                    downgrades.values(), key=lambda img: (img.version, img.specificity)
+                    downgrades.values(),
+                    key=lambda img: (img.version, img.specificity),
+                    reverse=True,
                 )
             ),
         )
