@@ -67,9 +67,7 @@ def cv_key(key: list[int]) -> t.KeyData:
 
 def cv_simple_descriptor(obj: dict[str, typing.Any]) -> zdo_t.SimpleDescriptor:
     """Validates a ZDO simple descriptor."""
-    if isinstance(obj, zdo_t.SimpleDescriptor):
-        return obj
-    elif not isinstance(obj, dict):
+    if not isinstance(obj, dict):
         raise vol.Invalid("Not a dictionary")
 
     descriptor = zdo_t.SimpleDescriptor(**obj)
@@ -135,15 +133,8 @@ def cv_ota_provider_name(name: str | None) -> type[zigpy.ota.providers.BaseOtaPr
     return zigpy.ota.providers.OTA_PROVIDER_TYPES[name]
 
 
-def cv_ota_provider(
-    obj: dict | zigpy.ota.providers.BaseOtaProvider,
-) -> zigpy.ota.providers.BaseOtaProvider:
+def cv_ota_provider(obj: dict) -> zigpy.ota.providers.BaseOtaProvider:
     """Validate OTA provider."""
-    import zigpy.ota.providers
-
-    if isinstance(obj, zigpy.ota.providers.BaseOtaProvider):
-        return obj
-
     provider_type = obj.get(zigpy.config.CONF_OTA_PROVIDER_TYPE)
     provider_cls = cv_ota_provider_name(provider_type)
 
