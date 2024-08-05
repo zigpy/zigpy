@@ -85,22 +85,6 @@ async def test_ota_enabled_legacy(tmp_path: pathlib.Path) -> None:
     assert len(ota._providers) == 10
 
 
-async def test_ota_enabled_legacy_advanced(tmp_path: pathlib.Path) -> None:
-    app = make_app(
-        {
-            config.CONF_OTA: {
-                config.CONF_OTA_ENABLED: True,
-                config.CONF_OTA_ADVANCED_DIR: tmp_path,
-                config.CONF_OTA_ALLOW_ADVANCED_DIR: config.CONF_OTA_ALLOW_ADVANCED_DIR_STRING,
-            }
-        }
-    )
-
-    await app.startup()
-
-    assert zigpy.ota.providers.AdvancedFileProvider(path=tmp_path) in app.ota._providers
-
-
 async def test_ota_config(tmp_path: pathlib.Path) -> None:
     # Enable all the providers
     ota = zigpy.ota.OTA(
