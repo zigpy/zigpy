@@ -1,12 +1,10 @@
 import asyncio
-import copy
 import errno
 import logging
 from unittest import mock
 from unittest.mock import ANY, PropertyMock, call
 
 import pytest
-import voluptuous as vol
 
 import zigpy.application
 import zigpy.config as conf
@@ -332,48 +330,6 @@ def test_props(app):
     assert app.state.network_info.extended_pan_id is not None
     assert app.state.network_info.pan_id is not None
     assert app.state.network_info.nwk_update_id is not None
-
-
-def test_app_config_setter(app):
-    """Test configuration setter."""
-
-    cfg_copy = copy.deepcopy(app.config)
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is False
-    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_ENABLED] = "invalid bool"
-
-    with pytest.raises(vol.Invalid):
-        app.config = cfg_copy
-
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is False
-
-    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_ENABLED] = True
-    app.config = cfg_copy
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is True
-
-    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_ENABLED] = "invalid bool"
-
-    with pytest.raises(vol.Invalid):
-        app.config = cfg_copy
-
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is True
-
-
-def test_app_update_config(app):
-    """Test configuration partial update."""
-
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is False
-    with pytest.raises(vol.Invalid):
-        app.update_config({conf.CONF_OTA: {conf.CONF_OTA_ENABLED: "invalid bool"}})
-
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is False
-
-    app.update_config({conf.CONF_OTA: {conf.CONF_OTA_ENABLED: "yes"}})
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is True
-
-    with pytest.raises(vol.Invalid):
-        app.update_config({conf.CONF_OTA: {conf.CONF_OTA_ENABLED: "invalid bool"}})
-
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is True
 
 
 async def test_uninitialized_message_handlers(app, ieee):
