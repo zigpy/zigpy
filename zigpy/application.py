@@ -625,7 +625,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 device_configs.append(new_config)
 
         for config in device_configs:
-            app = cls(cls.SCHEMA({conf.CONF_DEVICE: config}))
+            app = cls({conf.CONF_DEVICE: config})
 
             try:
                 await app.connect()
