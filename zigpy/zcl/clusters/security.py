@@ -10,6 +10,7 @@ from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    Direction,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -109,16 +110,18 @@ class IasZone(Cluster):
         enroll_response: Final = ZCLCommandDef(
             id=0x00,
             schema={"enroll_response_code": EnrollResponse, "zone_id": t.uint8_t},
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
-        init_normal_op_mode: Final = ZCLCommandDef(id=0x01, schema={}, direction=False)
+        init_normal_op_mode: Final = ZCLCommandDef(
+            id=0x01, schema={}, direction=Direction.Client_to_Server
+        )
         init_test_mode: Final = ZCLCommandDef(
             id=0x02,
             schema={
                 "test_mode_duration": t.uint8_t,
                 "current_zone_sensitivity_level": t.uint8_t,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
 
     class ClientCommandDefs(BaseCommandDefs):
@@ -130,12 +133,12 @@ class IasZone(Cluster):
                 "zone_id": t.uint8_t,
                 "delay": t.uint16_t,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         enroll: Final = ZCLCommandDef(
             id=0x01,
             schema={"zone_type": ZoneType, "manufacturer_code": t.uint16_t},
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
 
     def handle_cluster_request(
@@ -257,7 +260,7 @@ class IasAce(Cluster):
                 "arm_disarm_code": t.CharacterString,
                 "zone_id": t.uint8_t,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         bypass: Final = ZCLCommandDef(
             id=0x01,
@@ -265,18 +268,28 @@ class IasAce(Cluster):
                 "zones_ids": t.LVList[t.uint8_t],
                 "arm_disarm_code": t.CharacterString,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
-        emergency: Final = ZCLCommandDef(id=0x02, schema={}, direction=False)
-        fire: Final = ZCLCommandDef(id=0x03, schema={}, direction=False)
-        panic: Final = ZCLCommandDef(id=0x04, schema={}, direction=False)
-        get_zone_id_map: Final = ZCLCommandDef(id=0x05, schema={}, direction=False)
+        emergency: Final = ZCLCommandDef(
+            id=0x02, schema={}, direction=Direction.Client_to_Server
+        )
+        fire: Final = ZCLCommandDef(
+            id=0x03, schema={}, direction=Direction.Client_to_Server
+        )
+        panic: Final = ZCLCommandDef(
+            id=0x04, schema={}, direction=Direction.Client_to_Server
+        )
+        get_zone_id_map: Final = ZCLCommandDef(
+            id=0x05, schema={}, direction=Direction.Client_to_Server
+        )
         get_zone_info: Final = ZCLCommandDef(
-            id=0x06, schema={"zone_id": t.uint8_t}, direction=False
+            id=0x06, schema={"zone_id": t.uint8_t}, direction=Direction.Client_to_Server
         )
-        get_panel_status: Final = ZCLCommandDef(id=0x07, schema={}, direction=False)
+        get_panel_status: Final = ZCLCommandDef(
+            id=0x07, schema={}, direction=Direction.Client_to_Server
+        )
         get_bypassed_zone_list: Final = ZCLCommandDef(
-            id=0x08, schema={}, direction=False
+            id=0x08, schema={}, direction=Direction.Client_to_Server
         )
         get_zone_status: Final = ZCLCommandDef(
             id=0x09,
@@ -286,17 +299,19 @@ class IasAce(Cluster):
                 "zone_status_mask_flag": t.Bool,
                 "zone_status_mask": ZoneStatus,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
 
     class ClientCommandDefs(BaseCommandDefs):
         arm_response: Final = ZCLCommandDef(
-            id=0x00, schema={"arm_notification": ArmNotification}, direction=True
+            id=0x00,
+            schema={"arm_notification": ArmNotification},
+            direction=Direction.Server_to_Client,
         )
         get_zone_id_map_response: Final = ZCLCommandDef(
             id=0x01,
             schema={"zone_id_map_sections": t.List[t.bitmap16]},
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
         get_zone_info_response: Final = ZCLCommandDef(
             id=0x02,
@@ -306,7 +321,7 @@ class IasAce(Cluster):
                 "ieee": t.EUI64,
                 "zone_label": t.CharacterString,
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
         zone_status_changed: Final = ZCLCommandDef(
             id=0x03,
@@ -316,7 +331,7 @@ class IasAce(Cluster):
                 "audible_notification": AudibleNotification,
                 "zone_label": t.CharacterString,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         panel_status_changed: Final = ZCLCommandDef(
             id=0x04,
@@ -326,7 +341,7 @@ class IasAce(Cluster):
                 "audible_notification": AudibleNotification,
                 "alarm_status": AlarmStatus,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         panel_status_response: Final = ZCLCommandDef(
             id=0x05,
@@ -336,13 +351,17 @@ class IasAce(Cluster):
                 "audible_notification": AudibleNotification,
                 "alarm_status": AlarmStatus,
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
         set_bypassed_zone_list: Final = ZCLCommandDef(
-            id=0x06, schema={"zone_ids": t.LVList[t.uint8_t]}, direction=False
+            id=0x06,
+            schema={"zone_ids": t.LVList[t.uint8_t]},
+            direction=Direction.Client_to_Server,
         )
         bypass_response: Final = ZCLCommandDef(
-            id=0x07, schema={"bypass_results": t.LVList[BypassResponse]}, direction=True
+            id=0x07,
+            schema={"bypass_results": t.LVList[BypassResponse]},
+            direction=Direction.Server_to_Client,
         )
         get_zone_status_response: Final = ZCLCommandDef(
             id=0x08,
@@ -350,7 +369,7 @@ class IasAce(Cluster):
                 "zone_status_complete": t.Bool,
                 "zone_statuses": t.LVList[ZoneStatusRsp],
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
 
 
@@ -504,8 +523,8 @@ class IasWd(Cluster):
                 "strobe_duty_cycle": t.uint8_t,
                 "stobe_level": StrobeLevel,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         squawk: Final = ZCLCommandDef(
-            id=0x01, schema={"squawk": Squawk}, direction=False
+            id=0x01, schema={"squawk": Squawk}, direction=Direction.Client_to_Server
         )

@@ -4,7 +4,7 @@ from typing import Final
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
-from zigpy.zcl.foundation import BaseCommandDefs, ZCLCommandDef
+from zigpy.zcl.foundation import BaseCommandDefs, Direction, ZCLCommandDef
 
 
 class LogicalType(t.enum2):
@@ -89,12 +89,12 @@ class LightLink(Cluster):
                 "zigbee_information": ZigbeeInformation,
                 "touchlink_information": ScanRequestInformation,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         device_info: Final = ZCLCommandDef(
             id=0x02,
             schema={"inter_pan_transaction_id": t.uint32_t, "start_index": t.uint8_t},
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         identify: Final = ZCLCommandDef(
             id=0x06,
@@ -102,12 +102,12 @@ class LightLink(Cluster):
                 "inter_pan_transaction_id": t.uint32_t,
                 "identify_duration": t.uint16_t,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         reset_to_factory_new: Final = ZCLCommandDef(
             id=0x07,
             schema={"inter_pan_transaction_id": t.uint32_t},
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         network_start: Final = ZCLCommandDef(
             id=0x10,
@@ -128,7 +128,7 @@ class LightLink(Cluster):
                 "initiator_ieee": t.EUI64,
                 "initiator_nwk": t.NWK,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         network_join_router: Final = ZCLCommandDef(
             id=0x12,
@@ -148,7 +148,7 @@ class LightLink(Cluster):
                 "free_group_id_range_begin": t.Group,
                 "free_group_id_range_end": t.Group,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         network_join_end_device: Final = ZCLCommandDef(
             id=0x14,
@@ -168,7 +168,7 @@ class LightLink(Cluster):
                 "free_group_id_range_begin": t.Group,
                 "free_group_id_range_end": t.Group,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         network_update: Final = ZCLCommandDef(
             id=0x16,
@@ -180,7 +180,7 @@ class LightLink(Cluster):
                 "pan_id": t.PanId,
                 "nwk_addr": t.NWK,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         # Utility
         get_group_identifiers: Final = ZCLCommandDef(
@@ -188,14 +188,14 @@ class LightLink(Cluster):
             schema={
                 "start_index": t.uint8_t,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         get_endpoint_list: Final = ZCLCommandDef(
             id=0x42,
             schema={
                 "start_index": t.uint8_t,
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
 
     class ClientCommandDefs(BaseCommandDefs):
@@ -221,7 +221,7 @@ class LightLink(Cluster):
                 "version?": t.uint8_t,
                 "group_id_count?": t.uint8_t,
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
         device_info_rsp: Final = ZCLCommandDef(
             id=0x03,
@@ -231,7 +231,7 @@ class LightLink(Cluster):
                 "start_index": t.uint8_t,
                 "device_info_records": t.LVList[DeviceInfoRecord],
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
         network_start_rsp: Final = ZCLCommandDef(
             id=0x11,
@@ -243,7 +243,7 @@ class LightLink(Cluster):
                 "logical_channel": t.uint8_t,
                 "pan_id": t.PanId,
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
         network_join_router_rsp: Final = ZCLCommandDef(
             id=0x13,
@@ -251,7 +251,7 @@ class LightLink(Cluster):
                 "inter_pan_transaction_id": t.uint32_t,
                 "status": Status,
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
         network_join_end_device_rsp: Final = ZCLCommandDef(
             id=0x15,
@@ -259,7 +259,7 @@ class LightLink(Cluster):
                 "inter_pan_transaction_id": t.uint32_t,
                 "status": Status,
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
         # Utility
         endpoint_info: Final = ZCLCommandDef(
@@ -272,7 +272,7 @@ class LightLink(Cluster):
                 "device_id": t.uint16_t,
                 "version": t.uint8_t,
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
         get_group_identifiers_rsp: Final = ZCLCommandDef(
             id=0x41,
@@ -281,7 +281,7 @@ class LightLink(Cluster):
                 "start_index": t.uint8_t,
                 "group_info_records": t.LVList[GroupInfoRecord],
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
         get_endpoint_list_rsp: Final = ZCLCommandDef(
             id=0x42,
@@ -290,5 +290,5 @@ class LightLink(Cluster):
                 "start_index": t.uint8_t,
                 "endpoint_info_records": t.LVList[EndpointInfoRecord],
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
