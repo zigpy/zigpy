@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Sequence
 import warnings
 
 from zigpy import util
-from zigpy.device import APS_REPLY_TIMEOUT
+from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.types as t
 from zigpy.typing import AddressingMode, EndpointType
 from zigpy.zcl import foundation

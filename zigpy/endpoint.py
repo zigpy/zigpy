@@ -5,7 +5,7 @@ import enum
 import logging
 from typing import Any
 
-from zigpy.device import APS_REPLY_TIMEOUT
+from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.exceptions
 import zigpy.profiles
 import zigpy.types as t

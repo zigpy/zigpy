@@ -19,3 +19,6 @@ INTERFERENCE_MESSAGE = (
     " coordinator is away from interference sources such as USB 3.0"
     " devices, SSDs, WiFi routers, etc."
 )
+
+APS_REPLY_TIMEOUT = 5
+APS_REPLY_TIMEOUT_EXTENDED = 28

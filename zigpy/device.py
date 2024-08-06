@@ -19,6 +19,8 @@ else:
 
 from zigpy import zdo
 from zigpy.const import (
+    APS_REPLY_TIMEOUT,
+    APS_REPLY_TIMEOUT_EXTENDED,
     SIG_ENDPOINTS,
     SIG_EP_INPUT,
     SIG_EP_OUTPUT,
@@ -45,8 +47,6 @@ if typing.TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 
-APS_REPLY_TIMEOUT = 5
-APS_REPLY_TIMEOUT_EXTENDED = 28
 PACKET_DEBOUNCE_WINDOW = 10
 
 AFTER_OTA_ATTR_READ_DELAY = 10
