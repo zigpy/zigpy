@@ -251,8 +251,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         cluster: t.ClusterId,
         sequence: t.uint8_t,
         data: bytes,
-        expect_reply: bool = True,
         command_id: GeneralCommand | t.uint8_t = 0x00,
+        expect_reply: bool = True,
+        use_ieee: bool = False,
+        ask_for_ack: bool | None = None,
     ):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -270,6 +272,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             sequence,
             data,
             expect_reply=expect_reply,
+            use_ieee=use_ieee,
+            ask_for_ack=ask_for_ack,
         )
 
     async def reply(

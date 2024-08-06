@@ -351,6 +351,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *args,
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
+        use_ieee: bool = False,
+        ask_for_ack: bool | None = None,
         tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
@@ -380,6 +382,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             data,
             expect_reply=expect_reply,
             command_id=hdr.command_id,
+            use_ieee=use_ieee,
+            ask_for_ack=ask_for_ack,
         )
 
     async def reply(
