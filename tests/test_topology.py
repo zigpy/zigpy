@@ -25,12 +25,10 @@ def remove_request_delay():
 @pytest.fixture()
 def topology(make_initialized_device):
     app = App(
-        conf.ZIGPY_SCHEMA(
-            {
-                conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
-                conf.CONF_TOPO_SKIP_COORDINATOR: True,
-            }
-        )
+        {
+            conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+            conf.CONF_TOPO_SKIP_COORDINATOR: True,
+        }
     )
 
     coordinator = make_initialized_device(app)
