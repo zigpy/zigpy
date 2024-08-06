@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Sequence
 import warnings
 
 from zigpy import util
+from zigpy.device import APS_REPLY_TIMEOUT
 import zigpy.types as t
 from zigpy.typing import AddressingMode, EndpointType
 from zigpy.zcl import foundation
@@ -354,6 +355,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
         tsn: int | t.uint8_t | None = None,
+        timeout=APS_REPLY_TIMEOUT,
         **kwargs,
     ):
         hdr, request = self._create_request(
@@ -377,11 +379,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         data = hdr.serialize() + request.serialize()
 
         return await self._endpoint.request(
-            self.cluster_id,
-            hdr.tsn,
-            data,
-            expect_reply=expect_reply,
+            cluster=self.cluster_id,
+            sequence=hdr.tsn,
+            data=data,
             command_id=hdr.command_id,
+            timeout=timeout,
+            expect_reply=expect_reply,
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
         )
@@ -394,6 +397,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *args,
         manufacturer: int | t.uint16_t | None = None,
         tsn: int | t.uint8_t | None = None,
+        timeout=APS_REPLY_TIMEOUT,
+        expect_reply: bool = False,
+        use_ieee: bool = False,
+        ask_for_ack: bool | None = None,
         **kwargs,
     ) -> None:
         hdr, request = self._create_request(
@@ -417,7 +424,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         data = hdr.serialize() + request.serialize()
 
         return await self._endpoint.reply(
-            self.cluster_id, hdr.tsn, data, command_id=hdr.command_id
+            cluster=self.cluster_id,
+            sequence=hdr.tsn,
+            data=data,
+            command_id=hdr.command_id,
+            timeout=timeout,
+            expect_reply=expect_reply,
+            use_ieee=use_ieee,
+            ask_for_ack=ask_for_ack,
         )
 
     def handle_message(
