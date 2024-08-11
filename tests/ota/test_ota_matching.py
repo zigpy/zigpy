@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import pathlib
 import typing
+from unittest.mock import patch
 
 import aiohttp
 import attrs
@@ -16,9 +18,12 @@ from zigpy.zcl.clusters.general import Ota
 
 
 class SelfContainedProvider(BaseOtaProvider):
-    def __init__(self, index: list[SelfContainedOtaImageMetadata]) -> None:
+    def __init__(
+        self, index: list[SelfContainedOtaImageMetadata], load_index_delay: float = 0
+    ) -> None:
         super().__init__()
         self._index = index
+        self._load_index_delay = load_index_delay
 
     def compatible_with_device(self, device: zigpy.device.Device) -> bool:
         return True
@@ -26,6 +31,8 @@ class SelfContainedProvider(BaseOtaProvider):
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
+        await asyncio.sleep(self._load_index_delay)
+
         for meta in self._index:
             yield meta
 
@@ -265,3 +272,56 @@ async def test_ota_matching_ambiguous_specificity_tie_breaker() -> None:
         metadata=index[1],
         firmware=zigpy.ota.image.OTAImage.deserialize(index[1].test_data)[0],
     )
+
+
+async def test_ota_concurrent_fetching() -> None:
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    query_cmd = Ota.ServerCommandDefs.query_next_image.schema(
+        field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
+        manufacturer_code=0x1234,
+        image_type=0xABCD,
+        current_file_version=1,
+        hardware_version=1,
+    )
+
+    index = [
+        SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+            file_version=query_cmd.current_file_version + 1,
+            manufacturer_id=query_cmd.manufacturer_code,
+            test_data=zigpy.ota.image.OTAImage(
+                header=zigpy.ota.image.OTAImageHeader(
+                    upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
+                    file_version=query_cmd.current_file_version + 1,
+                    image_type=query_cmd.image_type,
+                    manufacturer_id=query_cmd.manufacturer_code,
+                    header_version=256,
+                    header_length=56,
+                    field_control=0,
+                    stack_version=2,
+                    header_string="This is a test header!",
+                    image_size=56 + 2 + 4 + 10,
+                ),
+                subelements=[
+                    zigpy.ota.image.SubElement(tag_id=0x0000, data=b"Firmware 1")
+                ],
+            ).serialize(),
+        )
+    ]
+
+    provider = SelfContainedProvider(index, load_index_delay=0.1)
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.register_provider(provider)
+
+    with patch.object(
+        provider, "_load_index", wraps=provider._load_index
+    ) as load_index:
+        image1, image2 = await asyncio.gather(
+            ota.get_ota_image(device, query_cmd),
+            ota.get_ota_image(device, query_cmd),
+        )
+
+    # Concurrent requests were combined
+    assert len(load_index.mock_calls) == 1
+    assert image1 is image2
