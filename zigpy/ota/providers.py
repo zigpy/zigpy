@@ -709,6 +709,9 @@ class AdvancedFileProvider(BaseOtaProvider):
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_FOLDER
 
     def __init__(self, path: pathlib.Path, **kwargs):
+        # The `vol` schema passes through the `warning` key, which is unused
+        kwargs.pop("warning", None)
+
         super().__init__(url=None, **kwargs)
         self.path = path
 
