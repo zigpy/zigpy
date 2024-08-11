@@ -333,6 +333,8 @@ def test_lvbytes_0_len():
 
 
 def test_character_string():
+    assert t.CharacterString() == ""
+
     d, r = t.CharacterString.deserialize(b"\x0412345")
     assert r == b"5"
     assert d == "1234"
