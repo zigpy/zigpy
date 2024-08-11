@@ -594,9 +594,10 @@ class QuirkBuilder:
         replacement_cluster_class should be a subclass of Cluster or CustomCluster and
         will be used to create a new cluster instance to replace the existing cluster.
 
-        If cluster_id is provided, it will be used as the cluster_id for the cluster to
-        be removed. If cluster_id is not provided, the cluster_id of the replacement
-        cluster will be used.
+        replace_server_instances and replace_client_instances control the cluster types
+        that will be replaced. If replace_server_instances is True, all server instances
+        of the cluster will be replaced. If replace_client_instances is True, all client
+        instances of the cluster will be replaced.
         """
         types = []
         if replace_server_instances:
