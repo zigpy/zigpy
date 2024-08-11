@@ -82,7 +82,7 @@ async def test_ota_enabled_legacy(tmp_path: pathlib.Path) -> None:
     )
 
     # All are enabled
-    assert len(ota._providers) == 10
+    assert len(ota._providers) == 9
 
 
 async def test_ota_config(tmp_path: pathlib.Path) -> None:
@@ -182,6 +182,11 @@ async def test_ota_config_complex(tmp_path: pathlib.Path) -> None:
                         config.CONF_OTA_PROVIDER_URL: "https://ikea3.example.org/",
                         config.CONF_OTA_PROVIDER_MANUF_IDS: [0xABCD, 0xDCBA],
                     },
+                    {
+                        config.CONF_OTA_PROVIDER_TYPE: "advanced",
+                        config.CONF_OTA_PROVIDER_PATH: tmp_path,
+                        config.CONF_OTA_PROVIDER_WARNING: config.CONF_OTA_ALLOW_ADVANCED_DIR_STRING,
+                    },
                 ],
             }
         ),
@@ -198,6 +203,7 @@ async def test_ota_config_complex(tmp_path: pathlib.Path) -> None:
             url="https://ikea3.example.org/",
             manufacturer_ids=[0xABCD, 0xDCBA],
         ),
+        zigpy.ota.providers.AdvancedFileProvider(path=tmp_path),
     ]
 
 
