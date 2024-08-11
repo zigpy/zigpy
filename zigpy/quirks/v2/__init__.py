@@ -224,24 +224,30 @@ class ReplacesMetadata:
 class ReplaceClusterOccurrencesMetadata:
     """Replaces metadata for replacing all occurrences of a cluster on a device."""
 
-    cluster_types: list[ClusterType] = attrs.field()
+    cluster_types: tuple[ClusterType] = attrs.field()
     cluster: type[Cluster | CustomCluster] = attrs.field()
 
     def __call__(self, device: CustomDeviceV2) -> None:
         """Process the replace."""
         for endpoint in device.endpoints.values():
+            if isinstance(endpoint, ZDO):
+                continue
             if (
                 ClusterType.Server in self.cluster_types
                 and self.cluster.cluster_id in endpoint.in_clusters
             ):
                 endpoint.in_clusters.pop(self.cluster.cluster_id)
-                endpoint.add_input_cluster(self.cluster.cluster_id, self.cluster)
+                endpoint.add_input_cluster(
+                    self.cluster.cluster_id, self.cluster(endpoint)
+                )
             if (
                 ClusterType.Client in self.cluster_types
                 and self.cluster.cluster_id in endpoint.out_clusters
             ):
                 endpoint.out_clusters.pop(self.cluster.cluster_id)
-                endpoint.add_output_cluster(self.cluster.cluster_id, self.cluster)
+                endpoint.add_output_cluster(
+                    self.cluster.cluster_id, self.cluster(endpoint, is_server=False)
+                )
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -599,7 +605,7 @@ class QuirkBuilder:
             types.append(ClusterType.Client)
         self.replaces_cluster_occurrences_metadata.append(
             ReplaceClusterOccurrencesMetadata(  # type: ignore[call-arg]
-                cluster_types=types,
+                cluster_types=tuple(types),
                 cluster=replacement_cluster_class,
             )
         )

@@ -322,6 +322,48 @@ async def test_quirks_v2_with_node_descriptor(device_mock):
     assert quirked.node_desc == node_descriptor
 
 
+async def test_quirks_v2_replace_occurrences(device_mock):
+    """Test adding a quirk that replaces all occurrences of a cluster."""
+    registry = DeviceRegistry()
+
+    device_mock[1].add_output_cluster(Identify.cluster_id)
+
+    device_mock.add_endpoint(2)
+    device_mock[2].profile_id = 255
+    device_mock[2].device_type = 255
+    device_mock[2].add_input_cluster(Identify.cluster_id)
+
+    device_mock.add_endpoint(3)
+    device_mock[3].profile_id = 255
+    device_mock[3].device_type = 255
+    device_mock[3].add_output_cluster(Identify.cluster_id)
+
+    class CustomIdentifyCluster(CustomCluster, Identify):
+        """Custom identify cluster for testing quirks v2."""
+
+    (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .replace_cluster_occurrences(CustomIdentifyCluster)
+        .add_to_registry()
+    )
+
+    quirked: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked, CustomDeviceV2)
+
+    assert isinstance(
+        quirked.endpoints[1].in_clusters[Identify.cluster_id], CustomIdentifyCluster
+    )
+    assert isinstance(
+        quirked.endpoints[1].out_clusters[Identify.cluster_id], CustomIdentifyCluster
+    )
+    assert isinstance(
+        quirked.endpoints[2].in_clusters[Identify.cluster_id], CustomIdentifyCluster
+    )
+    assert isinstance(
+        quirked.endpoints[3].out_clusters[Identify.cluster_id], CustomIdentifyCluster
+    )
+
+
 async def test_quirks_v2_skip_configuration(device_mock):
     """Test adding a quirk that skips configuration to the registry."""
     registry = DeviceRegistry()
