@@ -89,20 +89,6 @@ def cv_deprecated(message: str) -> typing.Callable[[typing.Any], typing.Any]:
     return wrapper
 
 
-def cv_exact_object(
-    expected_value: str,
-) -> typing.Callable[[typing.Any], typing.Literal[True]]:
-    """Factory function for creating an exact object comparison validator."""
-
-    def wrapper(obj: typing.Any) -> typing.Literal[True]:
-        if obj != expected_value:
-            raise vol.Invalid(f"Expected {expected_value!r}, got {obj!r}")
-
-        return True
-
-    return wrapper
-
-
 def cv_json_file(value: str) -> pathlib.Path:
     """Validate a JSON file."""
     path = pathlib.Path(value)
