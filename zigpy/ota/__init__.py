@@ -360,12 +360,11 @@ class OTA:
 
     @zigpy.util.combine_concurrent_calls
     async def _load_provider_index(
-        self, provider_index: int
+        self, provider: zigpy.ota.providers.BaseOtaProvider
     ) -> list[zigpy.ota.providers.BaseOtaImageMetadata]:
         """Load the index of a provider."""
-
         async with asyncio_timeout(OTA_FETCH_TIMEOUT):
-            return await self._providers[provider_index].load_index()
+            return await provider.load_index()
 
     @zigpy.util.combine_concurrent_calls
     async def _fetch_image(
@@ -383,18 +382,13 @@ class OTA:
     ) -> OtaImageWithMetadata | None:
         # Only consider providers that are compatible with the device
         compatible_providers = [
-            (index, provider)
-            for index, provider in enumerate(self._providers)
-            if provider.compatible_with_device(device)
+            p for p in self._providers if p.compatible_with_device(device)
         ]
 
         # Load the index of every provider
-        for index, provider in compatible_providers:
+        for provider in compatible_providers:
             try:
-                # We load the provider's index by its index in the list of providers
-                # to avoid making the providers hashable, allowing concurrency to be
-                # combined
-                index = await self._load_provider_index(provider_index=index)
+                index = await self._load_provider_index(provider)
             except Exception as exc:  # noqa: BLE001
                 _LOGGER.debug("Failed to load provider %s", provider, exc_info=exc)
                 continue
