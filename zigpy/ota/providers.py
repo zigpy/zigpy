@@ -249,8 +249,8 @@ class BaseOtaProvider:
 
         return self.url == other.url and self.manufacturer_ids == other.manufacturer_ids
 
-    # We don't want the above `__eq__` to change object hashing semantics
-    __hash__ = object.__hash__
+    def __hash__(self) -> int:
+        return hash((self.url, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(url={self.url!r}, manufacturer_ids={self.manufacturer_ids!r})"
@@ -576,6 +576,9 @@ class LocalZigpyProvider(BaseZigpyProvider):
 
         return super().__eq__(other) and self.index_file == other.index_file
 
+    def __hash__(self) -> int:
+        return hash((self.index_file, self.manufacturer_ids))
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(index_file={self.index_file!r}, manufacturer_ids={self.manufacturer_ids!r})"
 
@@ -662,6 +665,9 @@ class LocalZ2MProvider(BaseZ2MProvider):
             return NotImplemented
 
         return super().__eq__(other) and self.index_file == other.index_file
+
+    def __hash__(self) -> int:
+        return hash((self.index_file, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(index_file={self.index_file!r}, manufacturer_ids={self.manufacturer_ids!r})"
@@ -758,6 +764,9 @@ class AdvancedFileProvider(BaseOtaProvider):
             return NotImplemented
 
         return super().__eq__(other) and self.path == other.path
+
+    def __hash__(self) -> int:
+        return hash((self.path, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(path={self.path!r}, manufacturer_ids={self.manufacturer_ids!r})"
