@@ -363,7 +363,6 @@ class OTA:
         self, provider: zigpy.ota.providers.BaseOtaProvider
     ) -> list[zigpy.ota.providers.BaseOtaImageMetadata]:
         """Load the index of a provider."""
-
         async with asyncio_timeout(OTA_FETCH_TIMEOUT):
             return await provider.load_index()
 
