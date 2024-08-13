@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import dataclasses
 import logging
-import pathlib
 import sys
 import typing
 
@@ -322,7 +321,7 @@ class OTA:
             config={"path": config.get(CONF_OTA_ADVANCED_DIR)},
         )
         register_deprecated_provider(
-            enabled=isinstance(config.get(CONF_OTA_Z2M_LOCAL_INDEX), pathlib.Path),
+            enabled=None if config.get(CONF_OTA_Z2M_LOCAL_INDEX) is None else True,
             provider=zigpy.ota.providers.LocalZ2MProvider,
             config={"index_file": config.get(CONF_OTA_Z2M_LOCAL_INDEX)},
         )
