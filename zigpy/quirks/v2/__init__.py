@@ -6,6 +6,7 @@ import collections
 from enum import Enum
 import inspect
 import logging
+import pathlib
 import typing
 from typing import TYPE_CHECKING, Any
 
@@ -351,7 +352,8 @@ class ManufacturerModelMetadata:
 class QuirksV2RegistryEntry:
     """Quirks V2 registry entry."""
 
-    quirk_location: str = attrs.field(default=None, eq=False)
+    quirk_file: str = attrs.field(default=None, eq=False)
+    quirk_file_line: int = attrs.field(default=None, eq=False)
     manufacturer_model_metadata: tuple[ManufacturerModelMetadata] = attrs.field(
         factory=tuple
     )
@@ -423,9 +425,8 @@ class QuirkBuilder:
 
         stack: list[inspect.FrameInfo] = inspect.stack()
         caller: inspect.FrameInfo = stack[1]
-        self.quirk_location: str | None = (
-            f"file[{caller.filename}]-line:{caller.lineno}"
-        )
+        self.quirk_file = pathlib.Path(caller.filename)
+        self.quirk_file_line = caller.lineno
 
         self.also_applies_to(manufacturer, model)
         UNBUILT_QUIRK_BUILDERS.append(self)
@@ -854,7 +855,8 @@ class QuirkBuilder:
         """Build the quirks v2 registry entry."""
         quirk: QuirksV2RegistryEntry = QuirksV2RegistryEntry(  # type: ignore[call-arg]
             manufacturer_model_metadata=tuple(self.manufacturer_model_metadata),
-            quirk_location=self.quirk_location,
+            quirk_file=self.quirk_file,
+            quirk_file_line=self.quirk_file_line,
             filters=tuple(self.filters),
             custom_device_class=self.custom_device_class,
             device_node_descriptor=self.device_node_descriptor,
