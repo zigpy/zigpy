@@ -9,6 +9,7 @@ from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    Direction,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -813,3 +814,63 @@ class WindowCovering(Cluster):
         go_to_tilt_percentage: Final = ZCLCommandDef(
             id=0x08, schema={"percentage_tilt_value": t.uint8_t}, direction=False
         )
+
+
+class MovingState(t.enum8):
+    Stopped = 0x00
+    Closing = 0x01
+    Opening = 0x02
+
+
+class SafetyStatus(t.bitmap16):
+    Remote_Lockout = 0b00000000_00000001
+    Tamper_Detected = 0b00000000_00000010
+    Failed_Communication = 0b00000000_00000100
+    Position_Failure = 0b00000000_00001000
+
+
+class Capabilities(t.bitmap8):
+    Partial_Barrier = 0b00000001
+
+
+class BarrierControl(Cluster):
+    cluster_id: Final = 0x0103
+    name: Final = "Barrier Control"
+    ep_attribute: Final = "barrier_control"
+
+    class AttributeDefs(BaseAttributeDefs):
+        moving_state: Final = ZCLAttributeDef(
+            id=0x0001, type=MovingState, access="rp", mandatory=True
+        )
+        safety_status: Final = ZCLAttributeDef(
+            id=0x0002, type=SafetyStatus, access="rp", mandatory=True
+        )
+        capabilities: Final = ZCLAttributeDef(
+            id=0x0003, type=Capabilities, access="r", mandatory=True
+        )
+        open_events: Final = ZCLAttributeDef(id=0x0004, type=t.uint16_t, access="rw")
+        close_events: Final = ZCLAttributeDef(id=0x0005, type=t.uint16_t, access="rw")
+        command_open_events: Final = ZCLAttributeDef(
+            id=0x0006, type=t.uint16_t, access="rw"
+        )
+        command_close_events: Final = ZCLAttributeDef(
+            id=0x0007, type=t.uint16_t, access="rw"
+        )
+        open_period: Final = ZCLAttributeDef(id=0x0008, type=t.uint16_t, access="rw")
+        close_period: Final = ZCLAttributeDef(id=0x0009, type=t.uint16_t, access="rw")
+        barrier_position: Final = ZCLAttributeDef(
+            id=0x000A, type=t.uint8_t, access="rps", mandatory=True
+        )
+
+    class ServerCommandDefs(BaseCommandDefs):
+        go_to_percent: Final = ZCLCommandDef(
+            id=0x00,
+            schema={"percent_open": t.uint8_t},
+            direction=Direction.Client_to_Server,
+        )
+        stop: Final = ZCLCommandDef(
+            id=0x01, schema={}, direction=Direction.Client_to_Server
+        )
+
+    class ClientCommandDefs(BaseCommandDefs):
+        pass
