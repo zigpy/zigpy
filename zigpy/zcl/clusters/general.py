@@ -1623,7 +1623,7 @@ class MultistateInput(Cluster):
 
     class AttributeDefs(BaseAttributeDefs):
         state_text: Final = ZCLAttributeDef(
-            id=0x000E, type=t.List[t.CharacterString], access="r*w"
+            id=0x000E, type=t.LVList[t.CharacterString, t.uint16_t], access="r*w"
         )
         description: Final = ZCLAttributeDef(
             id=0x001C, type=t.CharacterString, access="r*w"
@@ -1656,7 +1656,7 @@ class MultistateOutput(Cluster):
 
     class AttributeDefs(BaseAttributeDefs):
         state_text: Final = ZCLAttributeDef(
-            id=0x000E, type=t.List[t.CharacterString], access="r*w"
+            id=0x000E, type=t.LVList[t.CharacterString, t.uint16_t], access="r*w"
         )
         description: Final = ZCLAttributeDef(
             id=0x001C, type=t.CharacterString, access="r*w"
@@ -1692,7 +1692,7 @@ class MultistateValue(Cluster):
 
     class AttributeDefs(BaseAttributeDefs):
         state_text: Final = ZCLAttributeDef(
-            id=0x000E, type=t.List[t.CharacterString], access="r*w"
+            id=0x000E, type=t.LVList[t.CharacterString, t.uint16_t], access="r*w"
         )
         description: Final = ZCLAttributeDef(
             id=0x001C, type=t.CharacterString, access="r*w"
