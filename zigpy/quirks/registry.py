@@ -54,7 +54,7 @@ class DeviceRegistry:
                         to_remove.append(quirk)
 
                 for quirk in to_remove:
-                    _LOGGER.warning("Removing stale custom v1 quirk: %s", quirk)
+                    _LOGGER.debug("Removing stale custom v1 quirk: %s", quirk)
                     quirks.remove(quirk)
 
         for registry in self._registry_v2.values():
@@ -65,7 +65,7 @@ class DeviceRegistry:
                     to_remove.append(entry)
 
             for entry in to_remove:
-                _LOGGER.warning("Removing stale custom v2 quirk: %s", entry)
+                _LOGGER.debug("Removing stale custom v2 quirk: %s", entry)
                 registry.remove(entry)
 
     def add_to_registry(self, custom_device: CustomDeviceType) -> None:
