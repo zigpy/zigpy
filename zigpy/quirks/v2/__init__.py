@@ -21,7 +21,7 @@ from zigpy.const import (
     SIG_NODE_DESC,
     SIG_SKIP_CONFIG,
 )
-from zigpy.quirks import _DEVICE_REGISTRY, CustomCluster, CustomDevice, FilterType
+from zigpy.quirks import _DEVICE_REGISTRY, BaseCustomDevice, CustomCluster, FilterType
 from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2.homeassistant import EntityPlatform, EntityType
 from zigpy.quirks.v2.homeassistant.binary_sensor import BinarySensorDeviceClass
@@ -49,7 +49,7 @@ UNBUILT_QUIRK_BUILDERS: list[QuirkBuilder] = []
 # pylint: disable=too-few-public-methods
 
 
-class CustomDeviceV2(CustomDevice):
+class CustomDeviceV2(BaseCustomDevice):
     """Implementation of a quirks v2 custom device."""
 
     _copy_cluster_attr_cache = True
@@ -128,26 +128,6 @@ class CustomDeviceV2(CustomDevice):
         The value is a list of EntityMetadata instances.
         """
         return self._exposes_metadata
-
-    async def apply_custom_configuration(self, *args, **kwargs):
-        """Hook for applications to instruct instances to apply custom configuration."""
-        for endpoint in self.endpoints.values():
-            if isinstance(endpoint, ZDO):
-                continue
-            for cluster in endpoint.in_clusters.values():
-                if (
-                    isinstance(cluster, CustomCluster)
-                    and cluster.apply_custom_configuration
-                    != CustomCluster.apply_custom_configuration
-                ):
-                    await cluster.apply_custom_configuration(*args, **kwargs)
-            for cluster in endpoint.out_clusters.values():
-                if (
-                    isinstance(cluster, CustomCluster)
-                    and cluster.apply_custom_configuration
-                    != CustomCluster.apply_custom_configuration
-                ):
-                    await cluster.apply_custom_configuration(*args, **kwargs)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
