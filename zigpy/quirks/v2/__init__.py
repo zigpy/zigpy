@@ -261,6 +261,29 @@ class ZCLEnumMetadata(EntityMetadata):
     enum: type[Enum] = attrs.field()
     attribute_name: str = attrs.field()
 
+    def __hash__(self) -> int:
+        """Return the hash of the metadata."""
+        return hash(
+            (
+                self.endpoint_id,
+                self.cluster_id,
+                self.cluster_type,
+                self.enum.__class__.__name__,
+                self.attribute_name,
+                self.entity_platform,
+                self.entity_type,
+                self.initially_disabled,
+                self.attribute_initialized_from_cache,
+                self.translation_key,
+            )
+        )
+
+    def __eq__(self, other: object) -> bool:
+        """Return whether the metadata is equal to another."""
+        if not isinstance(other, ZCLEnumMetadata):
+            return False
+        return self.__hash__() == other.__hash__()
+
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
 class ZCLSensorMetadata(EntityMetadata):
@@ -370,6 +393,31 @@ class QuirksV2RegistryEntry:
                 device.application, device.ieee, device.nwk, device, self
             )
         return CustomDeviceV2(device.application, device.ieee, device.nwk, device, self)
+
+    def __hash__(self) -> int:
+        """Return the hash of the metadata."""
+        return hash(
+            (
+                self.manufacturer_model_metadata,
+                self.filters,
+                self.custom_device_class.__class__.__name__
+                if self.custom_device_class
+                else None,
+                self.device_node_descriptor,
+                self.skip_device_configuration,
+                self.adds_metadata,
+                self.removes_metadata,
+                self.replaces_metadata,
+                self.entity_metadata,
+                self.device_automation_triggers_metadata,
+            )
+        )
+
+    def __eq__(self, other: object) -> bool:
+        """Return whether the metadata is equal to another."""
+        if not isinstance(other, QuirksV2RegistryEntry):
+            return False
+        return self.__hash__() == other.__hash__()
 
 
 class QuirkBuilder:
