@@ -264,6 +264,68 @@ async def test_quirks_v2_multiple_matches_not_raises(device_mock):
     assert isinstance(registry.get_device(device_mock), CustomDeviceV2)
 
 
+async def test_quirks_v2_multiple_matches_not_raises_simulated_reload(device_mock):
+    """Test that adding multiple quirks v2 entries for the same device doesn't raise.
+
+    When the quirk is EXACTLY the same the semantics of sets prevents us from
+    having multiple quirks in the registry. This test simulates a reload of the
+    integration which would reload the classes and quirks.
+    """
+    registry = DeviceRegistry()
+
+    class Foo(CustomDeviceV2):
+        """Test device class."""
+
+    class StartUpOnOff(t.enum8):
+        """Test enum."""
+
+        Off = 0x00
+        On = 0x01
+        Toggle = 0x02
+        PreviousValue = 0xFF
+
+    entry1 = (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .device_class(Foo)
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            StartUpOnOff,
+            OnOff.cluster_id,
+        )
+        .add_to_registry()
+    )
+
+    class Foo(CustomDeviceV2):  # pylint disable=function-redefined
+        """Test device class."""
+
+    class StartUpOnOff(t.enum8):  # pylint disable=function-redefined
+        """Test enum."""
+
+        Off = 0x00
+        On = 0x01
+        Toggle = 0x02
+        PreviousValue = 0xFF
+
+    entry2 = (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .device_class(Foo)
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            StartUpOnOff,
+            OnOff.cluster_id,
+        )
+        .add_to_registry()
+    )
+
+    assert entry1 == entry2
+    assert entry1 != registry
+    assert isinstance(registry.get_device(device_mock), CustomDeviceV2)
+
+
 async def test_quirks_v2_with_custom_device_class(device_mock):
     """Test adding a quirk with a custom device class to the registry."""
     registry = DeviceRegistry()
