@@ -9,6 +9,7 @@ from zigpy.zcl import Cluster
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    Direction,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -498,7 +499,9 @@ class Thermostat(Cluster):
 
     class ServerCommandDefs(BaseCommandDefs):
         setpoint_raise_lower: Final = ZCLCommandDef(
-            id=0x00, schema={"mode": SetpointMode, "amount": t.int8s}, direction=False
+            id=0x00,
+            schema={"mode": SetpointMode, "amount": t.int8s},
+            direction=Direction.Client_to_Server,
         )
         set_weekly_schedule: Final = ZCLCommandDef(
             id=0x01,
@@ -508,17 +511,19 @@ class Thermostat(Cluster):
                 "mode_for_sequence": SeqMode,
                 "values": t.List[t.int16s],
             },
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         get_weekly_schedule: Final = ZCLCommandDef(
             id=0x02,
             schema={"days_to_return": SeqDayOfWeek, "mode_to_return": SeqMode},
-            direction=False,
+            direction=Direction.Client_to_Server,
         )
         clear_weekly_schedule: Final = ZCLCommandDef(
-            id=0x03, schema={}, direction=False
+            id=0x03, schema={}, direction=Direction.Client_to_Server
         )
-        get_relay_status_log: Final = ZCLCommandDef(id=0x04, schema={}, direction=False)
+        get_relay_status_log: Final = ZCLCommandDef(
+            id=0x04, schema={}, direction=Direction.Client_to_Server
+        )
 
     class ClientCommandDefs(BaseCommandDefs):
         get_weekly_schedule_response: Final = ZCLCommandDef(
@@ -529,7 +534,7 @@ class Thermostat(Cluster):
                 "mode_for_sequence": SeqMode,
                 "values": t.List[t.int16s],
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
         get_relay_status_log_response: Final = ZCLCommandDef(
             id=0x01,
@@ -541,7 +546,7 @@ class Thermostat(Cluster):
                 "set_point": t.int16s,
                 "unread_entries": t.uint16_t,
             },
-            direction=True,
+            direction=Direction.Server_to_Client,
         )
 
 
