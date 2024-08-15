@@ -104,6 +104,7 @@ class Color(Cluster):
     ColorLoopDirection: Final = ColorLoopDirection
     DriftCompensation: Final = DriftCompensation
     Options: Final = Options
+    OptionsMask: Final = OptionsMask
 
     cluster_id: Final[t.uint16_t] = 0x0300
     name: Final = "Color Control"
