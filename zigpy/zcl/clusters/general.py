@@ -978,6 +978,11 @@ class StepMode(t.enum8):
     Down = 0x01
 
 
+class OptionsMask(t.bitmap8):
+    Execute_if_off_present = 0b00000001
+    Couple_color_temp_to_level_present = 0b00000010
+
+
 class Options(t.bitmap8):
     Execute_if_off = 0b00000001
     Couple_color_temp_to_level = 0b00000010
@@ -991,6 +996,7 @@ class LevelControl(Cluster):
     MoveMode: Final = MoveMode
     StepMode: Final = StepMode
     Options: Final = Options
+    OptionsMask: Final = OptionsMask
 
     cluster_id: Final[t.uint16_t] = 0x0008
     name: Final = "Level control"
@@ -1034,8 +1040,8 @@ class LevelControl(Cluster):
             schema={
                 "level": t.uint8_t,
                 "transition_time": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
             direction=Direction.Client_to_Server,
         )
@@ -1044,8 +1050,8 @@ class LevelControl(Cluster):
             schema={
                 "move_mode": MoveMode,
                 "rate": t.uint8_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
             direction=Direction.Client_to_Server,
         )
@@ -1055,16 +1061,16 @@ class LevelControl(Cluster):
                 "step_mode": StepMode,
                 "step_size": t.uint8_t,
                 "transition_time": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
             direction=Direction.Client_to_Server,
         )
         stop: Final = ZCLCommandDef(
             id=0x03,
             schema={
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
             direction=Direction.Client_to_Server,
         )
