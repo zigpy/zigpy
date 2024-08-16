@@ -536,7 +536,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 if record.status == foundation.Status.SUCCESS:
                     try:
                         value = self.attributes[record.attrid].type(record.value.value)
-                    except KeyError:
+                    except (KeyError, TypeError):
                         value = record.value.value
                     except ValueError:
                         value = record.value.value
