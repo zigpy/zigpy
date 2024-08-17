@@ -247,8 +247,8 @@ class ReadAttributeRecord:
 
     def __init__(
         self,
-        attrid: t.uint16_t | Self,
-        status: Status = None,
+        attrid: t.uint16_t | Self | None = None,
+        status: Status | None = None,
         value: TypeValue | Array | Bag | Set | None = None,
     ) -> None:
         if isinstance(attrid, self.__class__):
@@ -257,8 +257,8 @@ class ReadAttributeRecord:
             self.status = attrid.status
             self.value = attrid.value
         else:
-            self.attrid = attrid
-            self.status = status
+            self.attrid = t.uint16_t(attrid)
+            self.status = Status(status)
             self.value = value
 
     @classmethod
