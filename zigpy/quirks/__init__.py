@@ -272,13 +272,16 @@ class CustomCluster(zigpy.zcl.Cluster):
 
         succeeded = [
             foundation.ReadAttributeRecord(
-                attr, foundation.Status.SUCCESS, foundation.TypeValue()
+                attrid=attr,
+                status=foundation.Status.SUCCESS,
+                value=foundation.TypeValue(
+                    type=None,
+                    value=self._CONSTANT_ATTRIBUTES[attr],
+                ),
             )
             for attr in attributes
             if attr in self._CONSTANT_ATTRIBUTES
         ]
-        for record in succeeded:
-            record.value.value = self._CONSTANT_ATTRIBUTES[record.attrid]
 
         attrs_to_read = [
             attr for attr in attributes if attr not in self._CONSTANT_ATTRIBUTES
