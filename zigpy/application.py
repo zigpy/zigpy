@@ -13,7 +13,7 @@ import random
 import sys
 import time
 import typing
-from typing import Any, TypeVar
+from typing import Any, AsyncGenerator, Coroutine, TypeVar
 import warnings
 
 if sys.version_info[:2] < (3, 11):
@@ -1230,6 +1230,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Leaves the current network."""
 
         raise NotImplementedError  # pragma: no cover
+
+    # @abc.abstractmethod
+    async def network_scan(
+        self, channels: t.Channels, duration: int
+    ) -> AsyncGenerator[t.NetworkBeacon, None]:
+        """Scans for networks on specified channels for a specified duration."""
+        if False:
+            yield
 
     async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None) -> None:
         """Permit joining on a specific node or all router nodes."""
