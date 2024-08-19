@@ -631,3 +631,20 @@ class ZigbeePacket(BaseDataclassMixin):
                 self.rssi,
             )
         )
+
+
+@dataclasses.dataclass(frozen=True)
+class NetworkBeacon:
+    src: NWK | None
+    pan_id: PanId
+    channel: basic.uint8_t
+    permit_joining: bool
+    router_capacity: basic.uint8_t | None
+    device_capacity: basic.uint8_t | None
+    protocol_version: basic.uint8_t | None
+    stack_profile: basic.uint8_t
+    lqi: basic.uint8_t
+    rssi: basic.int8s | None
+    depth: basic.uint8_t
+    update_id: basic.uint8_t
+    extended_pan_id: EUI64
