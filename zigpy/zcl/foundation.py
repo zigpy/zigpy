@@ -1232,6 +1232,7 @@ ZCLAttributeAccess._names = {
 class ZCLAttributeDef(t.BaseDataclassMixin):
     id: t.uint16_t = None
     type: type = None
+    zcl_type: DataTypeId = None
     access: ZCLAttributeAccess = (
         ZCLAttributeAccess.Read | ZCLAttributeAccess.Write | ZCLAttributeAccess.Report
     )
@@ -1253,6 +1254,11 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
         if isinstance(self.access, str):
             object.__setattr__(self, "access", ZCLAttributeAccess.from_str(self.access))
 
+        if self.zcl_type is None:
+            object.__setattr__(
+                self, "zcl_type", DataType.from_python_type(self.type).type_id
+            )
+
         ensure_valid_name(self.name)
 
     def __repr__(self) -> str:
@@ -1261,6 +1267,7 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
             f"id=0x{self.id:04X}, "
             f"name={self.name!r}, "
             f"type={self.type}, "
+            f"zcl_type={self.zcl_type}, "
             f"access={self.access!r}, "
             f"mandatory={self.mandatory!r}, "
             f"is_manufacturer_specific={self.is_manufacturer_specific}"

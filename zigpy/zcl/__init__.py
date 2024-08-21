@@ -574,9 +574,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 continue
 
             attr = foundation.Attribute(attr_def.id, foundation.TypeValue())
-            attr.value.type = foundation.DataType.from_python_type(
-                attr_def.type
-            ).type_id
+            attr.value.type = attr_def.zcl_type
 
             try:
                 attr.value.value = attr_def.type(value)
