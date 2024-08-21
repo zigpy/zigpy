@@ -1198,25 +1198,46 @@ class Time(Cluster):
         dst_addressing: AddressingMode | None = None,
     ):
         if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
-            data = {}
-            for attr in args[0][0]:
-                if attr == 0:
+            records = []
+
+            for attr in args[0].attribute_ids:
+                record = foundation.ReadAttributeRecord(attrid=attr)
+
+                if attr == self.AttributeDefs.time.id:
                     epoch = datetime(2000, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
                     diff = datetime.now(timezone.utc) - epoch
-                    data[attr] = diff.total_seconds()
-                elif attr == 1:
-                    data[attr] = 7
-                elif attr == 2:
+                    record.status = foundation.Status.SUCCESS
+                    record.value = foundation.TypeValue(
+                        type=self.AttributeDefs.time.zcl_type,
+                        value=t.UTCTime(diff.total_seconds()),
+                    )
+                elif attr == self.AttributeDefs.time_status.id:
+                    record.status = foundation.Status.SUCCESS
+                    record.value = foundation.TypeValue(
+                        type=self.AttributeDefs.time_status.zcl_type,
+                        value=t.bitmap8(7),  # TODO: implement this type
+                    )
+                elif attr == self.AttributeDefs.time_zone.id:
                     local_time = datetime.fromtimestamp(86400).astimezone()
                     utc_time = datetime.fromtimestamp(86400, timezone.utc)
-                    data[attr] = (local_time - utc_time).total_seconds()
-                elif attr == 7:
-                    epoch = datetime(2000, 1, 1, 0, 0, 0, 0)
-                    diff = datetime.now() - epoch
-                    data[attr] = diff.total_seconds()
+
+                    record.status = foundation.Status.SUCCESS
+                    record.value = foundation.TypeValue(
+                        type=self.AttributeDefs.time_zone.zcl_type,
+                        value=t.int32s((local_time - utc_time).total_seconds()),
+                    )
+                elif attr == self.AttributeDefs.local_time.id:
+                    record.status = foundation.Status.SUCCESS
+                    record.value = foundation.TypeValue(
+                        type=self.AttributeDefs.local_time.zcl_type,
+                        value=t.LocalTime(diff.total_seconds()),
+                    )
                 else:
-                    data[attr] = None
-            self.create_catching_task(self.read_attributes_rsp(data, tsn=hdr.tsn))
+                    record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+
+                records.append(record)
+
+            self.create_catching_task(self.read_attributes_rsp(records, tsn=hdr.tsn))
 
 
 class LocationMethod(t.enum8):

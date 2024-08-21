@@ -372,14 +372,6 @@ def test_frame_header_disable_manufacturer_id():
     assert hdr2.manufacturer is None
 
 
-def test_data_types():
-    """Test data types mappings."""
-    assert len(foundation.DATA_TYPES) == len(foundation.DATA_TYPES._idx_by_class)
-    data_types_set = {d[1] for d in foundation.DATA_TYPES.values()}
-    dt_2_id_set = set(foundation.DATA_TYPES._idx_by_class.keys())
-    assert data_types_set == dt_2_id_set
-
-
 def test_attribute_report():
     a = foundation.AttributeReportingConfig()
     a.direction = 0x01
@@ -403,14 +395,14 @@ def test_pytype_to_datatype_derived_enums():
     class e_3(t.enum16):
         pass
 
-    enum8_id = foundation.DATA_TYPES.pytype_to_datatype_id(t.enum8)
-    enum16_id = foundation.DATA_TYPES.pytype_to_datatype_id(t.enum16)
+    enum8_id = foundation.DataType.from_python_type(t.enum8)
+    enum16_id = foundation.DataType.from_python_type(t.enum16)
 
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(e_1) == enum8_id
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(e_2) == enum8_id
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(e_3) == enum16_id
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(e_2) == enum8_id
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(e_3) == enum16_id
+    assert foundation.DataType.from_python_type(e_1) == enum8_id
+    assert foundation.DataType.from_python_type(e_2) == enum8_id
+    assert foundation.DataType.from_python_type(e_3) == enum16_id
+    assert foundation.DataType.from_python_type(e_2) == enum8_id
+    assert foundation.DataType.from_python_type(e_3) == enum16_id
 
 
 def test_pytype_to_datatype_derived_bitmaps():
@@ -425,14 +417,14 @@ def test_pytype_to_datatype_derived_bitmaps():
     class b_3(t.bitmap16):
         pass
 
-    bitmap8_id = foundation.DATA_TYPES.pytype_to_datatype_id(t.bitmap8)
-    bitmap16_id = foundation.DATA_TYPES.pytype_to_datatype_id(t.bitmap16)
+    bitmap8_id = foundation.DataType.from_python_type(t.bitmap8)
+    bitmap16_id = foundation.DataType.from_python_type(t.bitmap16)
 
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(b_1) == bitmap8_id
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(b_2) == bitmap8_id
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(b_3) == bitmap16_id
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(b_2) == bitmap8_id
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(b_3) == bitmap16_id
+    assert foundation.DataType.from_python_type(b_1) == bitmap8_id
+    assert foundation.DataType.from_python_type(b_2) == bitmap8_id
+    assert foundation.DataType.from_python_type(b_3) == bitmap16_id
+    assert foundation.DataType.from_python_type(b_2) == bitmap8_id
+    assert foundation.DataType.from_python_type(b_3) == bitmap16_id
 
 
 def test_ptype_to_datatype_lvlist():
@@ -443,13 +435,19 @@ def test_ptype_to_datatype_lvlist():
 
     result, rest = foundation.TypeValue.deserialize(data + extra)
     assert rest == extra
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(result.value.__class__) == 0x4C
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(foundation.ZCLStructure) == 0x4C
+    assert (
+        foundation.DataType.from_python_type(result.value.__class__)
+        == foundation.DataType.struct
+    )
+    assert (
+        foundation.DataType.from_python_type(foundation.ZCLStructure)
+        == foundation.DataType.struct
+    )
 
     class _Similar(t.LVList, item_type=foundation.TypeValue, length_type=t.uint16_t):
         pass
 
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(_Similar) == 0xFF
+    assert foundation.DataType.from_python_type(_Similar) == foundation.DataType.unk
 
 
 def test_ptype_to_datatype_notype():
@@ -458,7 +456,7 @@ def test_ptype_to_datatype_notype():
     class ZigpyUnknown:
         pass
 
-    assert foundation.DATA_TYPES.pytype_to_datatype_id(ZigpyUnknown) == 0xFF
+    assert foundation.DataType.from_python_type(ZigpyUnknown) == foundation.DataType.unk
 
 
 def test_write_attrs_response_deserialize():
@@ -805,7 +803,7 @@ def test_array():
             attrid=0x0001,
             status=foundation.Status.SUCCESS,
             value=foundation.Array(
-                type=foundation.DATA_TYPES.pytype_to_datatype_id(t.LVBytes),
+                type=foundation.DataTypeId.octstr,
                 value=t.LVList[t.LVBytes, t.uint16_t](
                     [
                         b"\x00\r\x01\x06\x00\x02",

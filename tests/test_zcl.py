@@ -197,17 +197,6 @@ def test_attribute_report(cluster):
     cluster.handle_message(hdr, cmd)
     assert cluster._attr_cache[attr.attrid] == "manufacturer"
 
-    def mock_type(*args, **kwargs):
-        raise ValueError
-
-    with patch.dict(
-        cluster.attributes,
-        {0xAAAA: foundation.ZCLAttributeDef(id=0xAAAA, name="Name", type=mock_type)},
-    ):
-        attr.attrid = 0xAAAA
-        cluster.handle_message(hdr, cmd)
-        assert cluster._attr_cache[attr.attrid] == "manufacturer"
-
 
 def test_handle_request_unknown(cluster):
     hdr = MagicMock(auto_spec=foundation.ZCLHeader)
@@ -322,28 +311,6 @@ async def test_read_attributes_default_response(cluster):
     success, failure = await cluster.read_attributes([0, 5, 23], allow_cache=False)
     assert success == {}
     assert failure == {0: 0xC1, 5: 0xC1, 23: 0xC1}
-
-
-async def test_read_attributes_value_normalization_error(cluster):
-    async def mockrequest(
-        foundation, command, schema, args, manufacturer=None, **kwargs
-    ):
-        assert foundation is True
-        assert command == 0
-        rar5 = _mk_rar(5, "Model")
-        return [[rar5]]
-
-    def mock_type(*args, **kwargs):
-        raise ValueError
-
-    cluster.request = mockrequest
-    with patch.dict(
-        cluster.attributes,
-        {5: foundation.ZCLAttributeDef(id=5, name="Name", type=mock_type)},
-    ):
-        success, failure = await cluster.read_attributes(["model"], allow_cache=True)
-    assert failure == {}
-    assert success["model"] == "Model"
 
 
 async def test_item_access_attributes(cluster):
@@ -562,15 +529,6 @@ async def test_read_attributes_resp_str(cluster):
     await cluster.read_attributes_rsp({"hw_version": 32})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
-
-
-async def test_read_attributes_resp_exc(cluster):
-    with patch.object(foundation.DATA_TYPES, "pytype_to_datatype_id") as mck:
-        mck.side_effect = ValueError
-        await cluster.read_attributes_rsp({"hw_version": 32})
-    assert cluster._endpoint.reply.call_count == 1
-    assert cluster._endpoint.request.call_count == 0
-    assert cluster.endpoint.reply.call_args[0][2][-3:] == b"\x03\x00\x86"
 
 
 @pytest.mark.parametrize(
