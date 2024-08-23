@@ -16,6 +16,8 @@ from zigpy.zcl.foundation import (
     ZCLCommandDef,
 )
 
+ZIGBEE_EPOCH = datetime(2000, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
+
 
 class PowerSource(t.enum8):
     """Power source enum."""
@@ -1174,7 +1176,7 @@ class Time(Cluster):
             id=0x0000, type=t.UTCTime, access="r*w", mandatory=True
         )
         time_status: Final = ZCLAttributeDef(
-            id=0x0001, type=t.bitmap8, access="r*w", mandatory=True
+            id=0x0001, type=TimeStatus, access="r*w", mandatory=True
         )
         time_zone: Final = ZCLAttributeDef(id=0x0002, type=t.int32s, access="rw")
         dst_start: Final = ZCLAttributeDef(id=0x0003, type=t.uint32_t, access="rw")
@@ -1196,41 +1198,48 @@ class Time(Cluster):
         hdr: foundation.ZCLHeader,
         *args: list[Any],
         dst_addressing: AddressingMode | None = None,
-    ):
+    ) -> None:
+        super().handle_cluster_general_request(hdr, args, dst_addressing=dst_addressing)
+
         if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
+            now = datetime.now(timezone.utc)
+            tz_offset = datetime.now().astimezone().utcoffset()
+            assert tz_offset is not None
+
             records = []
 
             for attr in args[0].attribute_ids:
                 record = foundation.ReadAttributeRecord(attrid=attr)
 
                 if attr == self.AttributeDefs.time.id:
-                    epoch = datetime(2000, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
-                    diff = datetime.now(timezone.utc) - epoch
                     record.status = foundation.Status.SUCCESS
                     record.value = foundation.TypeValue(
                         type=self.AttributeDefs.time.zcl_type,
-                        value=t.UTCTime(diff.total_seconds()),
+                        value=t.UTCTime((now - ZIGBEE_EPOCH).total_seconds()),
                     )
                 elif attr == self.AttributeDefs.time_status.id:
                     record.status = foundation.Status.SUCCESS
                     record.value = foundation.TypeValue(
                         type=self.AttributeDefs.time_status.zcl_type,
-                        value=t.bitmap8(7),  # TODO: implement this type
+                        value=(
+                            TimeStatus.Master
+                            | TimeStatus.Synchronized
+                            | TimeStatus.Master_for_Zone_and_DST
+                        ),
                     )
                 elif attr == self.AttributeDefs.time_zone.id:
-                    local_time = datetime.fromtimestamp(86400).astimezone()
-                    utc_time = datetime.fromtimestamp(86400, timezone.utc)
-
                     record.status = foundation.Status.SUCCESS
                     record.value = foundation.TypeValue(
                         type=self.AttributeDefs.time_zone.zcl_type,
-                        value=t.int32s((local_time - utc_time).total_seconds()),
+                        value=t.int32s(tz_offset.total_seconds()),
                     )
                 elif attr == self.AttributeDefs.local_time.id:
                     record.status = foundation.Status.SUCCESS
                     record.value = foundation.TypeValue(
                         type=self.AttributeDefs.local_time.zcl_type,
-                        value=t.LocalTime(diff.total_seconds()),
+                        value=t.LocalTime(
+                            (now + tz_offset - ZIGBEE_EPOCH).total_seconds()
+                        ),
                     )
                 else:
                     record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE

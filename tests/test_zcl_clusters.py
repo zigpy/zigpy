@@ -1,11 +1,15 @@
 import asyncio
+from datetime import datetime, timezone
 import re
+from typing import Any
 
 import pytest
+from zoneinfo import ZoneInfo
 
 from zigpy import device, types, zcl
 import zigpy.endpoint
-from zigpy.zcl.clusters.general import Ota
+from zigpy.zcl import foundation
+from zigpy.zcl.clusters.general import Ota, Time
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
 
@@ -71,55 +75,136 @@ def test_ep_attributes():
 async def test_time_cluster():
     ep = MagicMock()
     ep.reply = AsyncMock()
-    t = zcl.Cluster._registry[0x000A](ep)
 
-    hdr_general = zcl.foundation.ZCLHeader.general
-    tsn = 123
+    cluster = Time(ep)
 
-    t.handle_message(hdr_general(tsn, 1), [[0]])
-    await asyncio.sleep(0.01)
-    assert ep.reply.call_count == 0
+    async def read_attributes(attribute_ids: list[int]) -> dict[int, Any]:
+        schema = foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Read_Attributes
+        ].schema
+        hdr, _ = cluster._create_request(
+            general=True,
+            command_id=foundation.GeneralCommand.Read_Attributes,
+            schema=schema,
+            disable_default_response=False,
+            direction=foundation.Direction.Client_to_Server,
+            args=(),
+            kwargs={"attribute_ids": attribute_ids},
+        )
 
-    t.handle_message(hdr_general(tsn, 0), [[0]])
-    await asyncio.sleep(0.01)
-    assert ep.reply.call_count == 1
-    assert ep.reply.call_args[0][2][3] == 0
+        command = schema(attribute_ids=attribute_ids)
 
-    t.handle_message(hdr_general(tsn, 0), [[1]])
-    await asyncio.sleep(0.01)
-    assert ep.reply.call_count == 2
-    assert ep.reply.call_args[0][2][3] == 1
+        with patch.object(cluster, "reply") as reply_mock:
+            cluster.handle_message(hdr, command)
+            call = reply_mock.mock_calls[0]
 
-    t.handle_message(hdr_general(tsn, 0), [[2]])
-    await asyncio.sleep(0.01)
-    assert ep.reply.call_count == 3
-    assert ep.reply.call_args[0][2][3] == 2
+        return call.args[2](call.args[3])
 
-    t.handle_message(hdr_general(tsn, 0), [[0, 1, 2]])
-    await asyncio.sleep(0.01)
-    assert ep.reply.call_count == 4
-    assert ep.reply.call_args[0][2][3] == 0
+    Read_Attributes_rsp = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Read_Attributes_rsp
+    ].schema
 
-    t.handle_message(hdr_general(tsn, 0), [[7]])
-    await asyncio.sleep(0.01)
-    assert ep.reply.call_count == 5
-    assert ep.reply.call_args[0][2][3] == 7
+    # Datetime objects need to be subclassed to be patched so we may as well implement
+    # the patches directly
 
+    class PatchedDatetime(datetime):
+        _fake_now = datetime(
+            2000, 1, 2, 0, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")
+        )
 
-async def test_time_cluster_unsupported():
-    ep = MagicMock()
-    ep.reply = AsyncMock()
-    t = zcl.Cluster._registry[0x000A](ep)
+        def astimezone(self):
+            return self.replace(tzinfo=self._fake_now.tzinfo)
 
-    hdr_general = zcl.foundation.ZCLHeader.general
-    tsn = 123
+        @classmethod
+        def now(cls, tzinfo=None):
+            if tzinfo is None:
+                return cls(
+                    cls._fake_now.year,
+                    cls._fake_now.month,
+                    cls._fake_now.day,
+                    cls._fake_now.hour,
+                    cls._fake_now.minute,
+                    cls._fake_now.second,
+                )
+            else:
+                assert tzinfo is timezone.utc
+                return (
+                    cls(
+                        cls._fake_now.year,
+                        cls._fake_now.month,
+                        cls._fake_now.day,
+                        cls._fake_now.hour,
+                        cls._fake_now.minute,
+                        cls._fake_now.second,
+                        tzinfo=tzinfo,
+                    )
+                    - cls._fake_now.utcoffset()
+                )
 
-    t.handle_cluster_general_request(hdr_general(tsn, 0), [[199, 128]])
+    with patch("zigpy.zcl.clusters.general.datetime", PatchedDatetime):
+        # Supported attributes
+        rsp1 = await read_attributes(
+            [
+                Time.AttributeDefs.time.id,
+                Time.AttributeDefs.time_status.id,
+                Time.AttributeDefs.time_zone.id,
+                Time.AttributeDefs.local_time.id,
+            ]
+        )
 
-    await asyncio.sleep(0.01)
+    assert rsp1.status_records[0] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.time.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.UTC,
+            # One day from the epoch, plus time zone offset
+            value=24 * 60 * 60 + 8 * 60 * 60,
+        ),
+    )
 
-    assert ep.reply.call_count == 1
-    assert ep.reply.call_args[0][2][-6:] == b"\xc7\x00\x86\x80\x00\x86"
+    assert rsp1.status_records[1] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.time_status.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.map8,
+            value=(
+                Time.TimeStatus.Master
+                | Time.TimeStatus.Synchronized
+                | Time.TimeStatus.Master_for_Zone_and_DST
+            ),
+        ),
+    )
+
+    assert rsp1.status_records[2] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.time_zone.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.int32,
+            # Time zone offset
+            value=-(8 * 60 * 60),
+        ),
+    )
+
+    assert rsp1.status_records[3] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.local_time.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.uint32,
+            # One day from the epoch, as on the clock
+            value=24 * 60 * 60,
+        ),
+    )
+
+    # Unsupported
+    rsp2 = await read_attributes([0xABCD])
+    assert rsp2 == Read_Attributes_rsp(
+        status_records=[
+            foundation.ReadAttributeRecord(
+                attrid=0xABCD,
+                status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+            )
+        ]
+    )
 
 
 @pytest.fixture

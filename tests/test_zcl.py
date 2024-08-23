@@ -507,48 +507,6 @@ async def test_write_attributes_cache_failure(cluster, attributes, result, faile
                 )
 
 
-async def test_read_attributes_response(cluster):
-    await cluster.read_attributes_rsp({0: 5})
-    assert cluster._endpoint.reply.call_count == 1
-    assert cluster._endpoint.request.call_count == 0
-
-
-async def test_read_attributes_resp_unsupported(cluster):
-    await cluster.read_attributes_rsp({0: 5})
-    assert cluster._endpoint.reply.call_count == 1
-    assert cluster._endpoint.request.call_count == 0
-    orig_len = len(cluster._endpoint.reply.call_args[0][2])
-
-    await cluster.read_attributes_rsp({0: 5, 2: None})
-    assert cluster._endpoint.reply.call_count == 2
-    assert cluster._endpoint.request.call_count == 0
-    assert len(cluster._endpoint.reply.call_args[0][2]) == orig_len + 3
-
-
-async def test_read_attributes_resp_str(cluster):
-    await cluster.read_attributes_rsp({"hw_version": 32})
-    assert cluster._endpoint.reply.call_count == 1
-    assert cluster._endpoint.request.call_count == 0
-
-
-@pytest.mark.parametrize(
-    ("cluster_id", "attr", "value", "serialized"),
-    [
-        (0, "zcl_version", 0xAA, b"\x00\x00\x00\x20\xaa"),
-        (0, "model", "model x", b"\x05\x00\x00\x42\x07model x"),
-        (0, "device_enabled", True, b"\x12\x00\x00\x10\x01"),
-        (0, "alarm_mask", 0x55, b"\x13\x00\x00\x18\x55"),
-        (0x0202, "fan_mode", 0xDE, b"\x00\x00\x00\x30\xde"),
-    ],
-)
-async def test_read_attribute_resp(cluster_id, attr, value, serialized, cluster_by_id):
-    cluster = cluster_by_id(cluster_id)
-    await cluster.read_attributes_rsp({attr: value})
-    assert cluster._endpoint.reply.call_count == 1
-    assert cluster._endpoint.request.call_count == 0
-    assert cluster.endpoint.reply.call_args[0][2][3:] == serialized
-
-
 def test_bind(cluster):
     cluster.bind()
 
