@@ -4,7 +4,11 @@ import re
 from typing import Any
 
 import pytest
-from zoneinfo import ZoneInfo
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
 
 from zigpy import device, types, zcl
 import zigpy.endpoint

@@ -10,5 +10,6 @@ pytest-timeout
 freezegun
 tomli
 aioresponses
+backports.zoneinfo; python_version<"3.9"
 
 pysqlite3-binary; platform_system=="Linux" and python_version<"3.12"
