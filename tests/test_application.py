@@ -464,9 +464,10 @@ async def test_get_device(app):
 async def test_probe_success():
     config = {"path": "/dev/test"}
 
-    with patch.object(App, "connect") as connect, patch.object(
-        App, "disconnect"
-    ) as disconnect:
+    with (
+        patch.object(App, "connect") as connect,
+        patch.object(App, "disconnect") as disconnect,
+    ):
         result = await App.probe(config)
 
     assert set(config.items()) <= set(result.items())
@@ -478,9 +479,10 @@ async def test_probe_success():
 async def test_probe_failure():
     config = {"path": "/dev/test"}
 
-    with patch.object(
-        App, "connect", side_effect=asyncio.TimeoutError
-    ) as connect, patch.object(App, "disconnect") as disconnect:
+    with (
+        patch.object(App, "connect", side_effect=asyncio.TimeoutError) as connect,
+        patch.object(App, "disconnect") as disconnect,
+    ):
         result = await App.probe(config)
 
     assert result is False

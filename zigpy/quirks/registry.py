@@ -18,9 +18,9 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-TYPE_MANUF_QUIRKS_DICT = typing.Dict[
+TYPE_MANUF_QUIRKS_DICT = dict[
     typing.Optional[str],
-    typing.Dict[typing.Optional[str], typing.List["zigpy.quirks.CustomDevice"]],
+    dict[typing.Optional[str], list["zigpy.quirks.CustomDevice"]],
 ]
 
 

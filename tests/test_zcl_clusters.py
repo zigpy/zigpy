@@ -141,8 +141,9 @@ def ota_cluster(dev):
 
     cluster = zcl.Cluster._registry[0x0019](ep)
 
-    with patch.object(cluster, "reply", AsyncMock()), patch.object(
-        cluster, "request", AsyncMock()
+    with (
+        patch.object(cluster, "reply", AsyncMock()),
+        patch.object(cluster, "request", AsyncMock()),
     ):
         yield cluster
 

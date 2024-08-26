@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import collections
+from collections.abc import Iterable, Sequence
 from datetime import datetime, timezone
 import enum
 import functools
 import itertools
 import logging
 import types
-from typing import TYPE_CHECKING, Any, Iterable, Sequence
+from typing import TYPE_CHECKING, Any
 import warnings
 
 from zigpy import util
