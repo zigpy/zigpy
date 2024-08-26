@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 import time
 import typing
 
@@ -90,9 +89,6 @@ def test_log():
     log.error("Test error")
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8), reason="logging stacklevel kwarg was introduced in 3.8"
-)
 def test_log_stacklevel():
     class MockHandler(logging.Handler):
         emit = MagicMock()

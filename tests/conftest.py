@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
-import sys
 import threading
 import typing
 from unittest.mock import Mock
@@ -274,10 +273,6 @@ def verify_cleanup(
     event_loop: asyncio.AbstractEventLoop,
 ) -> typing.Generator[None, None, None]:
     """Verify that the test has cleaned up resources correctly."""
-    # Skip with Python 3.8 and below
-    if sys.version_info < (3, 9):
-        yield
-        return
 
     threads_before = frozenset(threading.enumerate())
     tasks_before = asyncio.all_tasks(event_loop)
