@@ -122,7 +122,7 @@ async def test_time_cluster_unsupported():
     assert ep.reply.call_args[0][2][-6:] == b"\xc7\x00\x86\x80\x00\x86"
 
 
-@pytest.fixture()
+@pytest.fixture
 def dev(monkeypatch, app_mock):
     monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
     ieee = types.EUI64(map(types.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
@@ -135,7 +135,7 @@ def dev(monkeypatch, app_mock):
         yield dev
 
 
-@pytest.fixture()
+@pytest.fixture
 def ota_cluster(dev):
     ep = dev.add_endpoint(1)
 

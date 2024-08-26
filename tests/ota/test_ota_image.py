@@ -10,7 +10,7 @@ MANUFACTURER_ID = mock.sentinel.manufacturer_id
 IMAGE_TYPE = mock.sentinel.image_type
 
 
-@pytest.fixture()
+@pytest.fixture
 def image():
     img = firmware.OTAImage()
     img.header = firmware.OTAImageHeader(
@@ -233,7 +233,7 @@ def test_subelement_repr():
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def raw_header():
     def data(elements_size=0):
         d = b"\x1e\xf1\xee\x0b\x00\x018\x00\x00\x00"
@@ -245,7 +245,7 @@ def raw_header():
     return data
 
 
-@pytest.fixture()
+@pytest.fixture
 def raw_sub_element():
     def data(tag_id, payload=b""):
         r = t.uint16_t(tag_id).serialize()

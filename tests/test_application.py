@@ -32,7 +32,7 @@ from .conftest import (
 )
 
 
-@pytest.fixture()
+@pytest.fixture
 def ieee():
     return make_ieee()
 
@@ -736,7 +736,7 @@ async def test_request_concurrency():
     assert peak_concurrency == 16
 
 
-@pytest.fixture()
+@pytest.fixture
 def device():
     device = MagicMock()
     device.nwk = 0xABCD
@@ -745,7 +745,7 @@ def device():
     return device
 
 
-@pytest.fixture()
+@pytest.fixture
 def packet(app, device):
     return t.ZigbeePacket(
         src=t.AddrModeAddress(
@@ -891,7 +891,7 @@ async def test_send_broadcast(app, packet):
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def zdo_packet(app, device):
     return t.ZigbeePacket(
         src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk),

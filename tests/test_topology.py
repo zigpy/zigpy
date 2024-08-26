@@ -22,7 +22,7 @@ def remove_request_delay():
         yield
 
 
-@pytest.fixture()
+@pytest.fixture
 def topology(make_initialized_device):
     app = App(
         {

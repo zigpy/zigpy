@@ -149,13 +149,13 @@ def make_app(
     return app
 
 
-@pytest.fixture()
+@pytest.fixture
 def app():
     """ControllerApplication Mock."""
     return make_app({})
 
 
-@pytest.fixture()
+@pytest.fixture
 def app_mock():
     """ControllerApplication Mock."""
     return make_app({})
@@ -197,7 +197,7 @@ def add_initialized_device(app, nwk, ieee):
     return dev
 
 
-@pytest.fixture()
+@pytest.fixture
 def make_initialized_device():
     count = 1
 

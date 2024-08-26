@@ -44,7 +44,7 @@ def test_registry():
     assert TestDevice not in zigpy.quirks._DEVICE_REGISTRY
 
 
-@pytest.fixture()
+@pytest.fixture
 def real_device(app_mock):
     ieee = sentinel.ieee
     nwk = 0x2233
@@ -60,7 +60,7 @@ def real_device(app_mock):
     return real_device
 
 
-@pytest.fixture()
+@pytest.fixture
 def real_device_2(app_mock):
     ieee = sentinel.ieee_2
     nwk = 0x3344
@@ -532,7 +532,7 @@ class ManufacturerSpecificCluster(zigpy.quirks.CustomCluster):
         )
 
 
-@pytest.fixture()
+@pytest.fixture
 def manuf_cluster():
     """Return a manufacturer specific cluster fixture."""
 
@@ -541,7 +541,7 @@ def manuf_cluster():
     return ManufacturerSpecificCluster.from_id(ep, 0x2222)
 
 
-@pytest.fixture()
+@pytest.fixture
 def manuf_cluster2():
     """Return a manufacturer specific cluster fixture."""
 

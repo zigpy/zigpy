@@ -69,7 +69,7 @@ class NetworkBackup(t.BaseDataclassMixin):
         """Checks if this backup captures enough network state to recreate the network."""
 
         return (
-            self.node_info.ieee != t.EUI64.UNKNOWN
+            self.node_info.ieee != t.EUI64.UNKNOWN  # noqa: PLR1714
             and self.network_info.extended_pan_id != t.EUI64.UNKNOWN
             and self.network_info.pan_id not in (0x0000, 0xFFFF)
             and self.network_info.channel in range(11, 26 + 1)

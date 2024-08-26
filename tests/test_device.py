@@ -20,7 +20,7 @@ from zigpy.zdo import types as zdo_t
 from .async_mock import ANY, AsyncMock, MagicMock, int_sentinel, patch, sentinel
 
 
-@pytest.fixture()
+@pytest.fixture
 def dev(monkeypatch, app_mock):
     monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))

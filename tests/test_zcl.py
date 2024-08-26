@@ -16,7 +16,7 @@ from .async_mock import AsyncMock, MagicMock, int_sentinel, patch, sentinel
 DEFAULT_TSN = 123
 
 
-@pytest.fixture()
+@pytest.fixture
 def endpoint():
     ep = zigpy.endpoint.Endpoint(MagicMock(), 1)
     ep.add_input_cluster(0)
@@ -88,7 +88,7 @@ def test_manufacturer_specific_cluster():
     assert hasattr(c, "cluster_id")
 
 
-@pytest.fixture()
+@pytest.fixture
 def cluster_by_id():
     def _cluster(cluster_id=0):
         epmock = MagicMock()
@@ -101,12 +101,12 @@ def cluster_by_id():
     return _cluster
 
 
-@pytest.fixture()
+@pytest.fixture
 def cluster(cluster_by_id):
     return cluster_by_id(0)
 
 
-@pytest.fixture()
+@pytest.fixture
 def client_cluster():
     epmock = AsyncMock()
     epmock.device.get_sequence = MagicMock(return_value=DEFAULT_TSN)
