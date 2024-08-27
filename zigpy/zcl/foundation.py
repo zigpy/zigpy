@@ -157,10 +157,10 @@ class DataTypes(dict):
     ) -> None:
         super().__init__(data_types)
         self._idx_by_class = {
-            _type: type_id for type_id, (name, _type, ad) in self.items()
+            _type: t.uint8_t(type_id) for type_id, (name, _type, ad) in self.items()
         }
 
-    def pytype_to_datatype_id(self, python_type: typing.Any) -> int:
+    def pytype_to_datatype_id(self, python_type: typing.Any) -> t.uint8_t:
         """Return Zigbee Datatype ID for a give python type."""
 
         # We return the most specific parent class
@@ -168,7 +168,7 @@ class DataTypes(dict):
             if cls in self._idx_by_class:
                 return self._idx_by_class[cls]
 
-        return 0xFF
+        return t.uint8_t(0xFF)
 
 
 class ZCLStructure(t.LVList, item_type=TypeValue, length_type=t.uint16_t):
@@ -237,12 +237,65 @@ DATA_TYPES = DataTypes(
 )
 
 
-class ReadAttributeRecord(t.Struct):
+@dataclasses.dataclass()
+class ReadAttributeRecord:
     """Read Attribute Record."""
 
-    attrid: t.uint16_t = t.StructField(repr=_hex_uint16_repr)
+    attrid: t.uint16_t
     status: Status
-    value: TypeValue = t.StructField(requires=lambda s: s.status == Status.SUCCESS)
+    value: TypeValue | Array | Bag | Set | None
+
+    def __init__(
+        self,
+        attrid: t.uint16_t | Self = t.uint16_t(0x0000),
+        status: Status = Status.SUCCESS,
+        value: TypeValue | Array | Bag | Set | None = None,
+    ) -> None:
+        if isinstance(attrid, self.__class__):
+            # "Copy constructor"
+            self.attrid = attrid.attrid
+            self.status = attrid.status
+            self.value = attrid.value
+            return
+
+        self.attrid = t.uint16_t(attrid)
+        self.status = Status(status)
+        self.value = value
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        attrid, data = t.uint16_t.deserialize(data)
+        status, data = Status.deserialize(data)
+        value = None
+
+        if status == Status.SUCCESS:
+            data_type, data = t.uint8_t.deserialize(data)
+            py_data_type = DATA_TYPES[data_type][1]
+
+            # Arrays, Sets, and Bags are treated differently
+            if py_data_type in (Array, Set, Bag):
+                value, data = py_data_type.deserialize(data)
+            else:
+                value, data = TypeValue.deserialize(data_type.serialize() + data)
+
+        return cls(attrid=attrid, status=status, value=value), data
+
+    def serialize(self) -> bytes:
+        data = self.attrid.serialize()
+        data += self.status.serialize()
+
+        if self.status == Status.SUCCESS:
+            assert self.value is not None
+
+            if isinstance(self.value, (Array, Set, Bag)):
+                data += (
+                    DATA_TYPES.pytype_to_datatype_id(type(self.value)).serialize()
+                    + self.value.serialize()
+                )
+            else:
+                data += self.value.serialize()
+
+        return data
 
 
 class Attribute(t.Struct):
