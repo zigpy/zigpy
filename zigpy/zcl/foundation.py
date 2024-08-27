@@ -666,14 +666,15 @@ class ReadAttributeRecord:
         value = None
 
         if status == Status.SUCCESS:
-            data_type, data = t.uint8_t.deserialize(data)
-            py_data_type = DATA_TYPES[data_type][1]
+            type_id, data = DataTypeId.deserialize(data)
 
             # Arrays, Sets, and Bags are treated differently
-            if py_data_type in (Array, Set, Bag):
-                value, data = py_data_type.deserialize(data)
+            if type_id in (DataTypeId.array, DataTypeId.set, DataTypeId.bag):
+                value, data = DataType.from_type_id(type_id).python_type.deserialize(
+                    data
+                )
             else:
-                value, data = TypeValue.deserialize(data_type.serialize() + data)
+                value, data = TypeValue.deserialize(type_id.serialize() + data)
 
         return cls(attrid=attrid, status=status, value=value), data
 
@@ -686,7 +687,7 @@ class ReadAttributeRecord:
 
             if isinstance(self.value, (Array, Set, Bag)):
                 data += (
-                    DATA_TYPES.pytype_to_datatype_id(type(self.value)).serialize()
+                    DataType.from_python_type(type(self.value)).type_id.serialize()
                     + self.value.serialize()
                 )
             else:
