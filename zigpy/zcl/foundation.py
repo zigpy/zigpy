@@ -9,7 +9,6 @@ import typing
 from typing_extensions import Self
 
 import zigpy.types as t
-from zigpy.util import cached_class_property
 
 
 def _hex_uint16_repr(v: int) -> str:
@@ -610,28 +609,31 @@ class DataType(DataTypeInfo, enum.Enum):
         t.KeyData.convert("FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF"),
     )
 
-    @cached_class_property
+    @classmethod
+    @functools.cache
     def _python_type_index(cls: type[Self]) -> dict[type, Self]:  # noqa: N805
         return {d.python_type: d for d in cls}
 
     @classmethod
     def from_python_type(cls: type[Self], python_type: type) -> Self:
         """Return Zigbee Datatype ID for a give python type."""
+        python_type_index = cls._python_type_index()
 
         # We return the most specific parent class
         for parent_cls in python_type.__mro__:
-            if parent_cls in cls._python_type_index:
-                return cls._python_type_index[parent_cls]
+            if parent_cls in python_type_index:
+                return python_type_index[parent_cls]
 
         return cls.unk
 
-    @cached_class_property
+    @classmethod
+    @functools.cache
     def _data_type_index(cls: type[Self]) -> dict[type, Self]:  # noqa: N805
         return {d.type_id: d for d in cls}
 
     @classmethod
     def from_type_id(cls: type[Self], type_id: DataTypeId) -> Self:
-        return cls._data_type_index[type_id]
+        return cls._data_type_index()[type_id]
 
 
 @dataclasses.dataclass()

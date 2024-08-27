@@ -522,21 +522,3 @@ async def async_iterate_in_chunks(
             break
 
         yield chunk
-
-
-class cached_class_property:
-    def __init__(self, func: typing.Callable[[type], typing.Any]) -> None:
-        self.__func__ = func
-
-    def __get__(self, instance: Self, cls: type[Self] | None = None) -> typing.Any:
-        if cls is None:
-            cls = type(instance)
-
-        attr = f"__cached_class_property_{self.__func__.__name__}"
-
-        try:
-            return vars(cls)[attr]
-        except KeyError:
-            result = self.__func__(cls)
-            setattr(cls, attr, result)
-            return result
