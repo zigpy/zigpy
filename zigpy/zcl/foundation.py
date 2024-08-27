@@ -4,11 +4,14 @@ import dataclasses
 import enum
 import functools
 import keyword
+import logging
 import typing
 
 from typing_extensions import Self
 
 import zigpy.types as t
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _hex_uint16_repr(v: int) -> str:
@@ -779,7 +782,9 @@ class AttributeReportingConfig:
             try:
                 data_type = DataType.from_type_id(self.datatype)
             except KeyError:
-                pass
+                _LOGGER.warning(
+                    "Unknown ZCL type %d, not setting reportable change", self.datatype
+                )
             else:
                 if data_type.type_class is Analog:
                     r += data_type.python_type(self.reportable_change).serialize()
@@ -810,7 +815,9 @@ class AttributeReportingConfig:
             try:
                 data_type = DataType.from_type_id(self.datatype)
             except KeyError:
-                pass
+                _LOGGER.warning(
+                    "Unknown ZCL type %d, cannot read reportable change", self.datatype
+                )
             else:
                 if data_type.type_class is Analog:
                     self.reportable_change, data = data_type.python_type.deserialize(

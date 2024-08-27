@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 import zigpy.types as t
@@ -108,6 +110,40 @@ def test_attribute_reporting_config_only_dir_and_attrid():
 
     assert repr(arc)
     assert repr(arc) == repr(arc2)
+
+
+def test_attribute_reporting_config_bad_datatype(caplog):
+    arc = foundation.AttributeReportingConfig()
+    arc.direction = foundation.ReportingDirection.SendReports
+    arc.attrid = 99
+    arc.datatype = 0xFE  # unknown
+    arc.min_interval = 10
+    arc.max_interval = 20
+    arc.reportable_change = 30
+
+    with caplog.at_level(logging.WARNING):
+        arc.serialize()
+
+    assert "Unknown ZCL type" in caplog.text
+
+    arc2 = foundation.AttributeReportingConfig()
+    arc2.direction = foundation.ReportingDirection.SendReports
+    arc2.attrid = 99
+    arc2.datatype = 0xFE  # unknown
+    arc2.min_interval = 10
+    arc2.max_interval = 20
+    # Missing the reportable change, since it can't be set
+
+    assert arc.serialize() == arc2.serialize()
+
+    caplog.clear()
+
+    with caplog.at_level(logging.WARNING):
+        arc3, data = foundation.AttributeReportingConfig.deserialize(arc.serialize())
+
+    assert "Unknown ZCL type" in caplog.text
+
+    assert arc3.serialize() == arc.serialize()
 
 
 def test_write_attribute_status_record():
