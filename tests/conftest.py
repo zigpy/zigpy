@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
-import sys
 import threading
 import typing
 from unittest.mock import Mock
@@ -150,13 +149,13 @@ def make_app(
     return app
 
 
-@pytest.fixture()
+@pytest.fixture
 def app():
     """ControllerApplication Mock."""
     return make_app({})
 
 
-@pytest.fixture()
+@pytest.fixture
 def app_mock():
     """ControllerApplication Mock."""
     return make_app({})
@@ -198,7 +197,7 @@ def add_initialized_device(app, nwk, ieee):
     return dev
 
 
-@pytest.fixture()
+@pytest.fixture
 def make_initialized_device():
     count = 1
 
@@ -274,10 +273,6 @@ def verify_cleanup(
     event_loop: asyncio.AbstractEventLoop,
 ) -> typing.Generator[None, None, None]:
     """Verify that the test has cleaned up resources correctly."""
-    # Skip with Python 3.8 and below
-    if sys.version_info < (3, 9):
-        yield
-        return
 
     threads_before = frozenset(threading.enumerate())
     tasks_before = asyncio.all_tasks(event_loop)

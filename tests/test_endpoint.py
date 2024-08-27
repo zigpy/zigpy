@@ -12,7 +12,7 @@ from zigpy.zdo import types
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
 
-@pytest.fixture()
+@pytest.fixture
 def ep():
     dev = MagicMock()
     dev.request = AsyncMock()

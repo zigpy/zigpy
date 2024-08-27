@@ -15,7 +15,7 @@ import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
 
-@pytest.fixture()
+@pytest.fixture
 def test_db(tmp_path):
     def inner(filename):
         databases = pathlib.Path(__file__).parent / "databases"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import collections
+from collections.abc import Coroutine
 import contextlib
 import errno
 import logging
@@ -11,7 +12,7 @@ import random
 import sys
 import time
 import typing
-from typing import Any, Coroutine, TypeVar
+from typing import Any, TypeVar
 import warnings
 
 if sys.version_info[:2] < (3, 11):
