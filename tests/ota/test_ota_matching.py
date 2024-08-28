@@ -147,6 +147,9 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
     ota.register_provider(BrokenProvider(index))
 
     images1 = await ota.get_ota_images(device, query_cmd)
+
+    # The image that will be chosen is the correct one, others with less specificity
+    # will still be present but they will be deprioritized
     assert images1.upgrades[0] == zigpy.ota.OtaImageWithMetadata(
         metadata=index[3],
         firmware=zigpy.ota.image.OTAImage.deserialize(index[3].test_data)[0],
