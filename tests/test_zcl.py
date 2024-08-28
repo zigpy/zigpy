@@ -197,17 +197,6 @@ def test_attribute_report(cluster):
     cluster.handle_message(hdr, cmd)
     assert cluster._attr_cache[attr.attrid] == "manufacturer"
 
-    def mock_type(*args, **kwargs):
-        raise ValueError
-
-    with patch.dict(
-        cluster.attributes,
-        {0xAAAA: foundation.ZCLAttributeDef(id=0xAAAA, name="Name", type=mock_type)},
-    ):
-        attr.attrid = 0xAAAA
-        cluster.handle_message(hdr, cmd)
-        assert cluster._attr_cache[attr.attrid] == "manufacturer"
-
 
 def test_handle_request_unknown(cluster):
     hdr = MagicMock(auto_spec=foundation.ZCLHeader)
@@ -322,28 +311,6 @@ async def test_read_attributes_default_response(cluster):
     success, failure = await cluster.read_attributes([0, 5, 23], allow_cache=False)
     assert success == {}
     assert failure == {0: 0xC1, 5: 0xC1, 23: 0xC1}
-
-
-async def test_read_attributes_value_normalization_error(cluster):
-    async def mockrequest(
-        foundation, command, schema, args, manufacturer=None, **kwargs
-    ):
-        assert foundation is True
-        assert command == 0
-        rar5 = _mk_rar(5, "Model")
-        return [[rar5]]
-
-    def mock_type(*args, **kwargs):
-        raise ValueError
-
-    cluster.request = mockrequest
-    with patch.dict(
-        cluster.attributes,
-        {5: foundation.ZCLAttributeDef(id=5, name="Name", type=mock_type)},
-    ):
-        success, failure = await cluster.read_attributes(["model"], allow_cache=True)
-    assert failure == {}
-    assert success["model"] == "Model"
 
 
 async def test_item_access_attributes(cluster):
@@ -538,57 +505,6 @@ async def test_write_attributes_cache_failure(cluster, attributes, result, faile
                 listener.attribute_updated.assert_any_call(
                     attr_id, attributes[attr_id], mock.ANY
                 )
-
-
-async def test_read_attributes_response(cluster):
-    await cluster.read_attributes_rsp({0: 5})
-    assert cluster._endpoint.reply.call_count == 1
-    assert cluster._endpoint.request.call_count == 0
-
-
-async def test_read_attributes_resp_unsupported(cluster):
-    await cluster.read_attributes_rsp({0: 5})
-    assert cluster._endpoint.reply.call_count == 1
-    assert cluster._endpoint.request.call_count == 0
-    orig_len = len(cluster._endpoint.reply.call_args[0][2])
-
-    await cluster.read_attributes_rsp({0: 5, 2: None})
-    assert cluster._endpoint.reply.call_count == 2
-    assert cluster._endpoint.request.call_count == 0
-    assert len(cluster._endpoint.reply.call_args[0][2]) == orig_len + 3
-
-
-async def test_read_attributes_resp_str(cluster):
-    await cluster.read_attributes_rsp({"hw_version": 32})
-    assert cluster._endpoint.reply.call_count == 1
-    assert cluster._endpoint.request.call_count == 0
-
-
-async def test_read_attributes_resp_exc(cluster):
-    with patch.object(foundation.DATA_TYPES, "pytype_to_datatype_id") as mck:
-        mck.side_effect = ValueError
-        await cluster.read_attributes_rsp({"hw_version": 32})
-    assert cluster._endpoint.reply.call_count == 1
-    assert cluster._endpoint.request.call_count == 0
-    assert cluster.endpoint.reply.call_args[0][2][-3:] == b"\x03\x00\x86"
-
-
-@pytest.mark.parametrize(
-    ("cluster_id", "attr", "value", "serialized"),
-    [
-        (0, "zcl_version", 0xAA, b"\x00\x00\x00\x20\xaa"),
-        (0, "model", "model x", b"\x05\x00\x00\x42\x07model x"),
-        (0, "device_enabled", True, b"\x12\x00\x00\x10\x01"),
-        (0, "alarm_mask", 0x55, b"\x13\x00\x00\x18\x55"),
-        (0x0202, "fan_mode", 0xDE, b"\x00\x00\x00\x30\xde"),
-    ],
-)
-async def test_read_attribute_resp(cluster_id, attr, value, serialized, cluster_by_id):
-    cluster = cluster_by_id(cluster_id)
-    await cluster.read_attributes_rsp({attr: value})
-    assert cluster._endpoint.reply.call_count == 1
-    assert cluster._endpoint.request.call_count == 0
-    assert cluster.endpoint.reply.call_args[0][2][3:] == serialized
 
 
 def test_bind(cluster):

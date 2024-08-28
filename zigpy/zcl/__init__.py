@@ -557,31 +557,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         return success, failure
 
-    def read_attributes_rsp(self, attributes, manufacturer=None, *, tsn=None):
-        args = []
-        for attrid, value in attributes.items():
-            if isinstance(attrid, str):
-                attrid = self.attributes_by_name[attrid].id
-
-            a = foundation.ReadAttributeRecord(
-                attrid, foundation.Status.UNSUPPORTED_ATTRIBUTE, foundation.TypeValue()
-            )
-            args.append(a)
-
-            if value is None:
-                continue
-
-            try:
-                a.status = foundation.Status.SUCCESS
-                python_type = self.attributes[attrid].type
-                a.value.type = foundation.DATA_TYPES.pytype_to_datatype_id(python_type)
-                a.value.value = python_type(value)
-            except ValueError as e:
-                a.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
-                self.error(str(e))
-
-        return self._read_attributes_rsp(args, manufacturer=manufacturer, tsn=tsn)
-
     def _write_attr_records(
         self, attributes: dict[str | int, Any]
     ) -> list[foundation.Attribute]:
@@ -599,7 +574,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 continue
 
             attr = foundation.Attribute(attr_def.id, foundation.TypeValue())
-            attr.value.type = foundation.DATA_TYPES.pytype_to_datatype_id(attr_def.type)
+            attr.value.type = attr_def.zcl_type
 
             try:
                 attr.value.value = attr_def.type(value)
@@ -674,7 +649,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = direction
         cfg.attrid = attr_def.id
-        cfg.datatype = foundation.DATA_TYPES.pytype_to_datatype_id(attr_def.type)
+        cfg.datatype = foundation.DataType.from_python_type(attr_def.type).type_id
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change
@@ -916,7 +891,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     _read_attributes = functools.partialmethod(
         general_command, foundation.GeneralCommand.Read_Attributes
     )
-    _read_attributes_rsp = functools.partialmethod(
+    read_attributes_rsp = functools.partialmethod(
         general_command, foundation.GeneralCommand.Read_Attributes_rsp
     )
     _write_attributes = functools.partialmethod(
