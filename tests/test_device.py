@@ -8,6 +8,7 @@ import pytest
 from zigpy import device, endpoint
 import zigpy.application
 import zigpy.exceptions
+from zigpy.ota import OtaImagesResult
 import zigpy.ota.image
 from zigpy.profiles import zha
 import zigpy.state
@@ -519,7 +520,9 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         )
     )
 
-    dev.application.ota.get_ota_image = MagicMock(side_effect=ValueError("No image"))
+    dev.application.ota.get_ota_images = MagicMock(
+        return_value=OtaImagesResult(upgrades=(), downgrades=())
+    )
     dev.update_firmware = MagicMock(wraps=dev.update_firmware)
 
     def make_packet(cmd_name: str, **kwargs):

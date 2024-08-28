@@ -4,16 +4,13 @@ import asyncio
 from datetime import datetime, timezone
 import re
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:
-    from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
-
 from zigpy import device, types, zcl
 import zigpy.endpoint
+from zigpy.ota import OtaImagesResult
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import Ota, Time
 import zigpy.zcl.clusters.security as sec
@@ -273,28 +270,35 @@ async def test_ota_handle_query_next_image(ota_cluster):
     cmd = MagicMock()
 
     # No image is available
-    dev.application.ota.get_ota_image = AsyncMock(return_value=None)
+    dev.application.ota.get_ota_images = AsyncMock(
+        return_value=OtaImagesResult(upgrades=(), downgrades=())
+    )
     ota_cluster.handle_cluster_request(hdr, cmd)
     await asyncio.sleep(0)
 
     assert ota_cluster.query_next_image_response.mock_calls == [
         call(zcl.foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn)
     ]
-    assert listener.device_ota_update_available.mock_calls == []
+    assert listener.device_ota_image_query_result.mock_calls == [
+        call(OtaImagesResult(upgrades=(), downgrades=()), cmd)
+    ]
 
     ota_cluster.query_next_image_response.reset_mock()
+    listener.device_ota_image_query_result.reset_mock()
 
     # Now one is available
     img = MagicMock()
-    dev.application.ota.get_ota_image = AsyncMock(return_value=img)
+    dev.application.ota.get_ota_images = AsyncMock(
+        return_value=OtaImagesResult(upgrades=(img,), downgrades=())
+    )
     ota_cluster.handle_cluster_request(hdr, cmd)
     await asyncio.sleep(0)
 
     assert ota_cluster.query_next_image_response.mock_calls == [
         call(zcl.foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn)
     ]
-    assert listener.device_ota_update_available.mock_calls == [
-        call(img, cmd.current_file_version)
+    assert listener.device_ota_image_query_result.mock_calls == [
+        call(OtaImagesResult(upgrades=(img,), downgrades=()), cmd)
     ]
 
 

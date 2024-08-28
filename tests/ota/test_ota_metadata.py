@@ -131,10 +131,17 @@ async def test_metadata_compatibility(
 
     assert image_with_metadata.check_compatibility(dev, query_cmd)
 
-    # If the file version is identical, we can't upgrade
-    assert not image_with_metadata.check_compatibility(
+    # The file version is ignored when checking compatibility
+    assert image_with_metadata.check_compatibility(
         dev, query_cmd.replace(current_file_version=0x12345678)
     )
+
+    # The min and max current file versions are respected
+    assert image_with_metadata.check_version(0x12345678 - 10)
+    assert image_with_metadata.check_version(0x12345678 - 2)
+    assert not image_with_metadata.check_version(0x12345678 - 11)
+    assert not image_with_metadata.check_version(0x12345678 - 1)
+    assert not image_with_metadata.check_version(0x12345678)
 
     assert not image_with_metadata.check_compatibility(
         dev, query_cmd.replace(image_type=0xAAAA)
@@ -149,14 +156,6 @@ async def test_metadata_compatibility(
 
     with patch.object(dev, attribute="_manufacturer", new="manufacturer3"):
         assert not image_with_metadata.check_compatibility(dev, query_cmd)
-
-    assert not image_with_metadata.check_compatibility(
-        dev, query_cmd.replace(current_file_version=0x12345678 - 100)
-    )
-
-    assert not image_with_metadata.check_compatibility(
-        dev, query_cmd.replace(current_file_version=0x12345678 - 1)
-    )
 
     assert not image_with_metadata.check_compatibility(
         dev, query_cmd.replace(hardware_version=0)

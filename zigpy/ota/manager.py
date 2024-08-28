@@ -38,6 +38,7 @@ class OTAManager:
         device: Device,
         image: OtaImageWithMetadata,
         progress_callback=None,
+        force: bool = False,
     ) -> None:
         self.device = device
         self.ota_cluster = find_ota_cluster(device)
@@ -45,6 +46,7 @@ class OTAManager:
         self.image = image
         self._image_data = image.firmware.serialize()
         self.progress_callback = progress_callback
+        self.force = force
 
         self._upgrade_end_future = asyncio.get_running_loop().create_future()
         self._stall_timer = zigpy.datastructures.ReschedulableTimeout(
@@ -106,7 +108,10 @@ class OTAManager:
         """Handle image query request."""
 
         # If we try to send a device an old image (e.g. cache issue), don't bother
-        if not self.image.check_compatibility(self.device, command):
+        if not self.force and (
+            not self.image.check_compatibility(self.device, command)
+            or not self.image.check_version(command.current_file_version)
+        ):
             status = foundation.Status.NO_IMAGE_AVAILABLE
         else:
             status = foundation.Status.SUCCESS
@@ -242,6 +247,6 @@ async def update_firmware(
         if progress_callback is not None:
             progress_callback(current, total, progress)
 
-    with OTAManager(device, image, progress_callback=progress) as ota:
+    with OTAManager(device, image, progress_callback=progress, force=force) as ota:
         await ota.notify()
         return await ota.wait()

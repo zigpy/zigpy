@@ -146,16 +146,17 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
     ota.register_provider(SelfContainedProvider(index))
     ota.register_provider(BrokenProvider(index))
 
-    image1 = await ota.get_ota_image(device, query_cmd)
-    assert image1 is not None
-    assert image1 == zigpy.ota.OtaImageWithMetadata(
+    images1 = await ota.get_ota_images(device, query_cmd)
+
+    # The image that will be chosen is the correct one, others with less specificity
+    # will still be present but they will be deprioritized
+    assert images1.upgrades[0] == zigpy.ota.OtaImageWithMetadata(
         metadata=index[3],
         firmware=zigpy.ota.image.OTAImage.deserialize(index[3].test_data)[0],
     )
 
-    image2 = await ota.get_ota_image(device, query_cmd)
-    assert image2 is not None
-    assert image2 is image1
+    images2 = await ota.get_ota_images(device, query_cmd)
+    assert images2 == images1
 
 
 async def test_ota_matching_ambiguous_error() -> None:
@@ -209,8 +210,8 @@ async def test_ota_matching_ambiguous_error() -> None:
     ota.register_provider(SelfContainedProvider(index))
 
     # No image will be provided if there is ambiguity
-    image = await ota.get_ota_image(device, query_cmd)
-    assert image is None
+    images = await ota.get_ota_images(device, query_cmd)
+    assert not images.upgrades
 
 
 async def test_ota_matching_ambiguous_specificity_tie_breaker() -> None:
@@ -265,10 +266,11 @@ async def test_ota_matching_ambiguous_specificity_tie_breaker() -> None:
     ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
     ota.register_provider(SelfContainedProvider(index))
 
-    # No image will be provided if there is ambiguity
-    image = await ota.get_ota_image(device, query_cmd)
-    assert image is not None
-    assert image == zigpy.ota.OtaImageWithMetadata(
+    # No image will be provided if there is ambiguity but specificity is enough to break
+    # the tie
+    images = await ota.get_ota_images(device, query_cmd)
+    assert len(images.upgrades) == 2
+    assert images.upgrades[0] == zigpy.ota.OtaImageWithMetadata(
         metadata=index[1],
         firmware=zigpy.ota.image.OTAImage.deserialize(index[1].test_data)[0],
     )
@@ -317,11 +319,11 @@ async def test_ota_concurrent_fetching() -> None:
     with patch.object(
         provider, "_load_index", wraps=provider._load_index
     ) as load_index:
-        image1, image2 = await asyncio.gather(
-            ota.get_ota_image(device, query_cmd),
-            ota.get_ota_image(device, query_cmd),
+        images1, images2 = await asyncio.gather(
+            ota.get_ota_images(device, query_cmd),
+            ota.get_ota_images(device, query_cmd),
         )
 
     # Concurrent requests were combined
     assert len(load_index.mock_calls) == 1
-    assert image1 is image2
+    assert images1 == images2
