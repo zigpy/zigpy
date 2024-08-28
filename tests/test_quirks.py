@@ -1039,7 +1039,7 @@ async def test_request_with_kwargs(real_device):
 
 def test_purge_custom_quirks(tmp_path: pathlib.Path, app_mock) -> None:
     def load_quirks():
-        for importer, modname, _ in pkgutil.walk_packages(path=[tmp_path]):
+        for importer, modname, _ in pkgutil.walk_packages(path=[str(tmp_path)]):
             spec = importer.find_spec(modname)
             module = importlib.util.module_from_spec(spec)
             sys.modules[modname] = module
