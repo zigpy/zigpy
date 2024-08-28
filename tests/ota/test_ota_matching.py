@@ -316,11 +316,11 @@ async def test_ota_concurrent_fetching() -> None:
     with patch.object(
         provider, "_load_index", wraps=provider._load_index
     ) as load_index:
-        image1, image2 = await asyncio.gather(
-            ota.get_ota_image(device, query_cmd),
-            ota.get_ota_image(device, query_cmd),
+        images1, images2 = await asyncio.gather(
+            ota.get_ota_images(device, query_cmd),
+            ota.get_ota_images(device, query_cmd),
         )
 
     # Concurrent requests were combined
     assert len(load_index.mock_calls) == 1
-    assert image1 is image2
+    assert images1 == images2
