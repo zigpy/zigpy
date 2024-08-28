@@ -31,7 +31,7 @@ if typing.TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-_DEVICE_REGISTRY = DeviceRegistry()
+DEVICE_REGISTRY = _DEVICE_REGISTRY = DeviceRegistry()
 _uninitialized_device_message_handlers = []
 
 
