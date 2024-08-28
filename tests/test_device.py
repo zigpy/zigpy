@@ -672,9 +672,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                                 attrid=Ota.AttributeDefs.current_file_version.id,
                                 status=foundation.Status.SUCCESS,
                                 value=foundation.TypeValue(
-                                    type=foundation.DATA_TYPES.pytype_to_datatype_id(
-                                        t.uint32_t
-                                    ),
+                                    type=foundation.DataTypeId.uint32,
                                     value=active_fw_image.firmware.header.file_version,
                                 ),
                             )
