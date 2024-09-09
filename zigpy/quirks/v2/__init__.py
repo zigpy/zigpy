@@ -256,18 +256,18 @@ class EntityMetadata:
 
     def _validate(self) -> None:
         """Validate the entity metadata."""
-        has_unit: bool = hasattr(self, "unit") and getattr(self, "unit") is not None
-        has_device_class: bool = hasattr(self, "device_class") and (
-            getattr(self, "device_class") is not None
-        )
-        if has_device_class and has_unit:
-            raise ValueError(
-                f"EntityMetadata cannot have both unit and device_class: {self}"
-            )
-        if has_device_class and self.translation_key is not None:
-            raise ValueError(
-                f"EntityMetadata cannot have both a translation_key and a device_class: {self}"
-            )
+ #       has_unit: bool = hasattr(self, "unit") and getattr(self, "unit") is not None
+ #       has_device_class: bool = hasattr(self, "device_class") and (
+ #           getattr(self, "device_class") is not None
+ #       )
+ #       if has_device_class and has_unit:
+ #           raise ValueError(
+ #               f"EntityMetadata cannot have both unit and device_class: {self}"
+ #           )
+ #       if has_device_class and self.translation_key is not None:
+ #           raise ValueError(
+ #               f"EntityMetadata cannot have both a translation_key and a device_class: {self}"
+ #           )
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
