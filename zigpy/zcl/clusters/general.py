@@ -283,6 +283,12 @@ class Basic(Cluster):
             id=0x00, schema={}, direction=Direction.Client_to_Server
         )
 
+    def handle_read_attribute_zcl_version(self) -> t.uint8_t:
+        return t.uint8_t(8)
+
+    def handle_read_attribute_power_source(self) -> PowerSource:
+        return PowerSource.DC_Source
+
 
 class MainsAlarmMask(t.bitmap8):
     Voltage_Too_Low = 0b00000001
