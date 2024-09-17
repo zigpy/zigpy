@@ -6,6 +6,7 @@ from .. import Cluster
 from . import (
     closures,
     general,
+    general_const as general_const,  # noqa: PLC0414
     homeautomation,
     hvac,
     lighting,
