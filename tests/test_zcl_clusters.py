@@ -609,3 +609,20 @@ def test_ota_image_block_field_control():
     )
 
     assert response.request_node_addr is None
+
+
+def test_general_analog_in_application_type():
+    """Test AnalogInput General Cluster, Application Type Attribute."""
+    app_type = zcl.clusters.general_const.ApplicationType(
+        0x00070100
+    )  # Group 0x00, Type 0x01, Application 0x0007
+
+    assert app_type.group == 0x00
+    assert (
+        app_type.type
+        == zcl.clusters.general_const.AnalogInputType.Relative_Humidity_Percent
+    )
+    assert (
+        app_type.index
+        == zcl.clusters.general_const.RelativeHumidityPercent.Space_Humidity
+    )
