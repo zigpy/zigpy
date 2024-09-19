@@ -109,6 +109,7 @@ async def test_basic_cluster():
         [
             Basic.AttributeDefs.zcl_version.id,
             Basic.AttributeDefs.power_source.id,
+            Basic.AttributeDefs.serial_number.id,
         ],
     )
 
@@ -128,6 +129,11 @@ async def test_basic_cluster():
             type=foundation.DataTypeId.enum8,
             value=Basic.PowerSource.DC_Source,
         ),
+    )
+
+    assert rsp.status_records[2] == foundation.ReadAttributeRecord(
+        attrid=Basic.AttributeDefs.serial_number.id,
+        status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
     )
 
 
