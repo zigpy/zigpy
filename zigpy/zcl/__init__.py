@@ -489,7 +489,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
             records = []
 
-            for attrid in args[0].attribute_ids:
+            for attrid in args.attribute_ids:
                 record = foundation.ReadAttributeRecord(attrid=attrid)
                 records.append(record)
 
