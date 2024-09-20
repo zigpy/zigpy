@@ -242,42 +242,14 @@ class EntityMetadata:
     cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
     initially_disabled: bool = attrs.field(default=False)
     attribute_initialized_from_cache: bool = attrs.field(default=True)
-    translation_key: str | None = attrs.field(default=None)
-    fallback_name: str | None = attrs.field(default=None)
-
-    def __attrs_post_init__(self) -> None:
-        self._validate()
+    translation_key: str = attrs.field()
+    fallback_name: str = attrs.field()
 
     def __call__(self, device: CustomDeviceV2) -> None:
         """Add the entity metadata to the quirks v2 device."""
-        self._validate()
         device.exposes_metadata[
             (self.endpoint_id, self.cluster_id, self.cluster_type)
         ].append(self)
-
-    def _validate(self) -> None:
-        """Validate the entity metadata."""
-        has_unit: bool = hasattr(self, "unit") and getattr(self, "unit") is not None
-        has_device_class: bool = hasattr(self, "device_class") and (
-            getattr(self, "device_class") is not None
-        )
-        if has_device_class and has_unit:
-            raise ValueError(
-                f"EntityMetadata cannot have both unit and device_class: {self}"
-            )
-        if has_device_class and self.translation_key is not None:
-            raise ValueError(
-                f"EntityMetadata cannot have both a translation_key and a device_class: {self}"
-            )
-        if (
-            not has_device_class
-            and self.translation_key is None
-            and self.fallback_name is None
-        ):
-            _LOGGER.warning(
-                "Entity %s must have a `translation_key` (preferable) or `fallback_name`",
-                self,
-            )
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
