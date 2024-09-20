@@ -274,9 +274,8 @@ class EntityMetadata:
             and self.translation_key is None
             and self.fallback_name is None
         ):
-            _LOGGER.warning(
-                "Entity %s must have a `translation_key` (preferable) or `fallback_name`",
-                self,
+            raise ValueError(
+                f"Entity {self} must have a `translation_key` (preferable) or `fallback_name`"
             )
 
 
