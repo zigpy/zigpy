@@ -283,6 +283,12 @@ class Basic(Cluster):
             id=0x00, schema={}, direction=Direction.Client_to_Server
         )
 
+    def handle_read_attribute_zcl_version(self) -> t.uint8_t:
+        return t.uint8_t(8)
+
+    def handle_read_attribute_power_source(self) -> PowerSource:
+        return PowerSource.DC_Source
+
 
 class MainsAlarmMask(t.bitmap8):
     Voltage_Too_Low = 0b00000001
@@ -1193,60 +1199,29 @@ class Time(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    def handle_cluster_general_request(
-        self,
-        hdr: foundation.ZCLHeader,
-        *args: list[Any],
-        dst_addressing: AddressingMode | None = None,
-    ) -> None:
-        super().handle_cluster_general_request(hdr, args, dst_addressing=dst_addressing)
+    def handle_read_attribute_time(self) -> t.UTCTime:
+        now = datetime.now(timezone.utc)
+        return t.UTCTime((now - ZIGBEE_EPOCH).total_seconds())
 
-        if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
-            now = datetime.now(timezone.utc)
-            tz_offset = datetime.now().astimezone().utcoffset()
-            assert tz_offset is not None
+    def handle_read_attribute_time_status(self) -> TimeStatus:
+        return (
+            TimeStatus.Master
+            | TimeStatus.Synchronized
+            | TimeStatus.Master_for_Zone_and_DST
+        )
 
-            records = []
+    def handle_read_attribute_time_zone(self) -> t.int32s:
+        tz_offset = datetime.now().astimezone().utcoffset()
+        assert tz_offset is not None
 
-            for attr in args[0].attribute_ids:
-                record = foundation.ReadAttributeRecord(attrid=attr)
+        return t.int32s(tz_offset.total_seconds())
 
-                if attr == self.AttributeDefs.time.id:
-                    record.status = foundation.Status.SUCCESS
-                    record.value = foundation.TypeValue(
-                        type=self.AttributeDefs.time.zcl_type,
-                        value=t.UTCTime((now - ZIGBEE_EPOCH).total_seconds()),
-                    )
-                elif attr == self.AttributeDefs.time_status.id:
-                    record.status = foundation.Status.SUCCESS
-                    record.value = foundation.TypeValue(
-                        type=self.AttributeDefs.time_status.zcl_type,
-                        value=(
-                            TimeStatus.Master
-                            | TimeStatus.Synchronized
-                            | TimeStatus.Master_for_Zone_and_DST
-                        ),
-                    )
-                elif attr == self.AttributeDefs.time_zone.id:
-                    record.status = foundation.Status.SUCCESS
-                    record.value = foundation.TypeValue(
-                        type=self.AttributeDefs.time_zone.zcl_type,
-                        value=t.int32s(tz_offset.total_seconds()),
-                    )
-                elif attr == self.AttributeDefs.local_time.id:
-                    record.status = foundation.Status.SUCCESS
-                    record.value = foundation.TypeValue(
-                        type=self.AttributeDefs.local_time.zcl_type,
-                        value=t.LocalTime(
-                            (now + tz_offset - ZIGBEE_EPOCH).total_seconds()
-                        ),
-                    )
-                else:
-                    record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+    def handle_read_attribute_local_time(self) -> t.LocalTime:
+        now = datetime.now(timezone.utc)
+        tz_offset = datetime.now().astimezone().utcoffset()
+        assert tz_offset is not None
 
-                records.append(record)
-
-            self.create_catching_task(self.read_attributes_rsp(records, tsn=hdr.tsn))
+        return t.LocalTime((now + tz_offset - ZIGBEE_EPOCH).total_seconds())
 
 
 class LocationMethod(t.enum8):

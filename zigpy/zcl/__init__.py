@@ -486,6 +486,35 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                     foundation.Status.SUCCESS,
                 )
 
+        if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
+            records = []
+
+            for attrid in args.attribute_ids:
+                record = foundation.ReadAttributeRecord(attrid=attrid)
+                records.append(record)
+
+                try:
+                    attr_def = self.find_attribute(attrid)
+                except KeyError:
+                    record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+                    continue
+
+                attr_read_func = getattr(
+                    self, f"handle_read_attribute_{attr_def.name}", None
+                )
+
+                if attr_read_func is None:
+                    record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+                    continue
+
+                record.status = foundation.Status.SUCCESS
+                record.value = foundation.TypeValue(
+                    type=attr_def.zcl_type,
+                    value=attr_read_func(),
+                )
+
+            self.create_catching_task(self.read_attributes_rsp(records, tsn=hdr.tsn))
+
     def read_attributes_raw(self, attributes, manufacturer=None):
         attributes = [t.uint16_t(a) for a in attributes]
         return self._read_attributes(attributes, manufacturer=manufacturer)
