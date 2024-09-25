@@ -242,32 +242,14 @@ class EntityMetadata:
     cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
     initially_disabled: bool = attrs.field(default=False)
     attribute_initialized_from_cache: bool = attrs.field(default=True)
-    translation_key: str | None = attrs.field(default=None)
-
-    def __attrs_post_init__(self) -> None:
-        self._validate()
+    translation_key: str = attrs.field()
+    fallback_name: str = attrs.field()
 
     def __call__(self, device: CustomDeviceV2) -> None:
         """Add the entity metadata to the quirks v2 device."""
-        self._validate()
         device.exposes_metadata[
             (self.endpoint_id, self.cluster_id, self.cluster_type)
         ].append(self)
-
-    def _validate(self) -> None:
-        """Validate the entity metadata."""
-        has_unit: bool = hasattr(self, "unit") and getattr(self, "unit") is not None
-        has_device_class: bool = hasattr(self, "device_class") and (
-            getattr(self, "device_class") is not None
-        )
-        if has_device_class and has_unit:
-            raise ValueError(
-                f"EntityMetadata cannot have both unit and device_class: {self}"
-            )
-        if has_device_class and self.translation_key is not None:
-            raise ValueError(
-                f"EntityMetadata cannot have both a translation_key and a device_class: {self}"
-            )
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -605,6 +587,7 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing ZCLEnumMetadata and return self.
 
@@ -620,6 +603,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 enum=enum_class,
                 attribute_name=attribute_name,
             )
@@ -641,6 +625,7 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing ZCLSensorMetadata and return self.
 
@@ -656,6 +641,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 divisor=divisor,
                 multiplier=multiplier,
@@ -680,6 +666,7 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing SwitchMetadata and return self.
 
@@ -695,6 +682,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 force_inverted=force_inverted,
                 invert_attribute_name=invert_attribute_name,
@@ -720,6 +708,7 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing NumberMetadata and return self.
 
@@ -735,6 +724,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 min=min_value,
                 max=max_value,
@@ -757,6 +747,7 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing BinarySensorMetadata and return self.
 
@@ -772,6 +763,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 device_class=device_class,
             )
@@ -789,6 +781,7 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing WriteAttributeButtonMetadata and return self.
 
@@ -805,6 +798,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 attribute_value=attribute_value,
             )
@@ -822,6 +816,7 @@ class QuirkBuilder:
         entity_type: EntityType = EntityType.CONFIG,
         initially_disabled: bool = False,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing ZCLCommandButtonMetadata and return self.
 
@@ -837,6 +832,7 @@ class QuirkBuilder:
                 entity_type=entity_type,
                 initially_disabled=initially_disabled,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 command_name=command_name,
                 args=command_args if command_args is not None else (),
                 kwargs=command_kwargs if command_kwargs is not None else frozendict(),
