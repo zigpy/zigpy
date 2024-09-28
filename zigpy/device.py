@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import datetime, timezone
 import enum
 import itertools
 import logging
 import sys
+import time
 import typing
 import warnings
 
@@ -93,9 +95,33 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._send_sequence: int = 0
 
         self._packet_debouncer = zigpy.datastructures.Debouncer()
+        self._concurrent_requests_semaphore = zigpy.util.DynamicBoundedSemaphore(1)
 
         # Retained for backwards compatibility, will be removed in a future release
         self.status = Status.NEW
+
+    @contextlib.asynccontextmanager
+    async def _limit_concurrency(self):
+        """Async context manager to limit device request concurrency."""
+
+        start_time = time.monotonic()
+        was_locked = self._concurrent_requests_semaphore.locked()
+
+        if was_locked:
+            LOGGER.debug(
+                "Device concurrency (%s) reached, delaying request (%s enqueued)",
+                self._concurrent_requests_semaphore.max_value,
+                self._concurrent_requests_semaphore.num_waiting,
+            )
+
+        async with self._concurrent_requests_semaphore:
+            if was_locked:
+                LOGGER.debug(
+                    "Previously delayed request is now running, delayed by %0.2fs",
+                    time.monotonic() - start_time,
+                )
+
+            yield
 
     def get_sequence(self) -> t.uint8_t:
         self._send_sequence = (self._send_sequence + 1) % 256
@@ -330,16 +356,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             extended_timeout=extended_timeout,
         )
 
-        if not expect_reply:
-            await send_request()
-            return None
+        async with self._limit_concurrency():
+            if not expect_reply:
+                await send_request()
+                return None
 
-        # Only create a pending request if we are expecting a reply
-        with self._pending.new(sequence) as req:
-            await send_request()
+            # Only create a pending request if we are expecting a reply
+            with self._pending.new(sequence) as req:
+                await send_request()
 
-            async with asyncio_timeout(timeout):
-                return await req.result
+                async with asyncio_timeout(timeout):
+                    return await req.result
 
     def handle_message(
         self,
