@@ -109,7 +109,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         if was_locked:
             LOGGER.debug(
-                "Device concurrency (%s) reached, delaying request (%s enqueued)",
+                "Device concurrency (%s) reached, delaying device request (%s enqueued)",
                 self._concurrent_requests_semaphore.max_value,
                 self._concurrent_requests_semaphore.num_waiting,
             )
@@ -117,7 +117,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         async with self._concurrent_requests_semaphore:
             if was_locked:
                 LOGGER.debug(
-                    "Previously delayed request is now running, delayed by %0.2fs",
+                    "Previously delayed device request is now running, delayed by %0.2fs",
                     time.monotonic() - start_time,
                 )
 
