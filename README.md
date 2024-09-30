@@ -13,6 +13,8 @@ zigpy contains common code implementing ZCL (Zigbee Cluster Library) and ZDO (Zi
 
 The **[ZHA integration component for Home Assistant](https://www.home-assistant.io/integrations/zha/)**, the [Zigbee Plugin for Domoticz](https://www.domoticz.com/wiki/ZigbeeForDomoticz), and the [Zigbee Plugin for Jeedom](https://doc.jeedom.com/en_US/plugins/automation%20protocol/zigbee/) (competing open-source home automation software) are all using [zigpy libraries](https://github.com/zigpy/) as dependencies, as such they could be used as references of different implementations if looking to integrate a Zigbee solution into your application.
 
+[![Zigpy - A library from the Open Home Foundation](https://www.openhomefoundation.org/badges/zigpy.png)](https://www.openhomefoundation.org/)
+
 ### Zigbee device OTA updates
 
 zigpy have ability to download and perform Zigbee OTAU (Over-The-Air Updates) of Zigbee devices firmware. The Zigbee OTA update firmware image files should conform to standard Zigbee OTA format and OTA provider source URLs need to be published for public availability. Updates from a local OTA update directory also is also supported and can be used as an option for offline firmware updates if user provide correct Zigbee OTA formatted firmware files themselves.
