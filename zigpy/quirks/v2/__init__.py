@@ -416,9 +416,7 @@ class QuirkBuilder:
     def also_applies_to(self, manufacturer: str, model: str) -> QuirkBuilder:
         """Register this quirks v2 entry for an additional manufacturer and model."""
         self.manufacturer_model_metadata.append(
-            ManufacturerModelMetadata(  # type: ignore[call-arg]
-                manufacturer=manufacturer, model=model
-            )
+            ManufacturerModelMetadata(manufacturer=manufacturer, model=model)
         )
         return self
 
@@ -482,7 +480,7 @@ class QuirkBuilder:
         instances and their values. These attributes will be added to the cluster when
         the quirk is applied and the values will be constant.
         """
-        add = AddsMetadata(  # type: ignore[call-arg]
+        add = AddsMetadata(
             endpoint_id=endpoint_id,
             cluster=cluster,
             cluster_type=cluster_type,
@@ -501,7 +499,7 @@ class QuirkBuilder:
 
         This method allows removing a cluster from a device when the quirk is applied.
         """
-        remove = RemovesMetadata(  # type: ignore[call-arg]
+        remove = RemovesMetadata(
             endpoint_id=endpoint_id,
             cluster_id=cluster_id,
             cluster_type=cluster_type,
@@ -527,19 +525,19 @@ class QuirkBuilder:
         be removed. If cluster_id is not provided, the cluster_id of the replacement
         cluster will be used.
         """
-        remove = RemovesMetadata(  # type: ignore[call-arg]
+        remove = RemovesMetadata(
             endpoint_id=endpoint_id,
             cluster_id=cluster_id
             if cluster_id is not None
             else replacement_cluster_class.cluster_id,
             cluster_type=cluster_type,
         )
-        add = AddsMetadata(  # type: ignore[call-arg]
+        add = AddsMetadata(
             endpoint_id=endpoint_id,
             cluster=replacement_cluster_class,
             cluster_type=cluster_type,
         )
-        replace = ReplacesMetadata(remove=remove, add=add)  # type: ignore[call-arg]
+        replace = ReplacesMetadata(remove=remove, add=add)
         self.replaces_metadata.append(replace)
         return self
 
@@ -568,7 +566,7 @@ class QuirkBuilder:
         if replace_client_instances:
             types.append(ClusterType.Client)
         self.replaces_cluster_occurrences_metadata.append(
-            ReplaceClusterOccurrencesMetadata(  # type: ignore[call-arg]
+            ReplaceClusterOccurrencesMetadata(
                 cluster_types=tuple(types),
                 cluster=replacement_cluster_class,
             )
@@ -594,7 +592,7 @@ class QuirkBuilder:
         This method allows exposing an enum based entity in Home Assistant.
         """
         self.entity_metadata.append(
-            ZCLEnumMetadata(  # type: ignore[call-arg]
+            ZCLEnumMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -632,7 +630,7 @@ class QuirkBuilder:
         This method allows exposing a sensor entity in Home Assistant.
         """
         self.entity_metadata.append(
-            ZCLSensorMetadata(  # type: ignore[call-arg]
+            ZCLSensorMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -673,7 +671,7 @@ class QuirkBuilder:
         This method allows exposing a switch entity in Home Assistant.
         """
         self.entity_metadata.append(
-            SwitchMetadata(  # type: ignore[call-arg]
+            SwitchMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -715,7 +713,7 @@ class QuirkBuilder:
         This method allows exposing a number entity in Home Assistant.
         """
         self.entity_metadata.append(
-            NumberMetadata(  # type: ignore[call-arg]
+            NumberMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -754,7 +752,7 @@ class QuirkBuilder:
         This method allows exposing a binary sensor entity in Home Assistant.
         """
         self.entity_metadata.append(
-            BinarySensorMetadata(  # type: ignore[call-arg]
+            BinarySensorMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -789,7 +787,7 @@ class QuirkBuilder:
         a value to an attribute when pressed.
         """
         self.entity_metadata.append(
-            WriteAttributeButtonMetadata(  # type: ignore[call-arg]
+            WriteAttributeButtonMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -824,7 +822,7 @@ class QuirkBuilder:
         a ZCL command when pressed.
         """
         self.entity_metadata.append(
-            ZCLCommandButtonMetadata(  # type: ignore[call-arg]
+            ZCLCommandButtonMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -849,7 +847,7 @@ class QuirkBuilder:
 
     def add_to_registry(self) -> QuirksV2RegistryEntry:
         """Build the quirks v2 registry entry."""
-        quirk: QuirksV2RegistryEntry = QuirksV2RegistryEntry(  # type: ignore[call-arg]
+        quirk: QuirksV2RegistryEntry = QuirksV2RegistryEntry(
             manufacturer_model_metadata=tuple(self.manufacturer_model_metadata),
             quirk_file=self.quirk_file,
             quirk_file_line=self.quirk_file_line,
