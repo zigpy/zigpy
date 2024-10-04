@@ -909,4 +909,4 @@ def add_to_registry_v2(
         "add_to_registry_v2 is deprecated and will be removed in a future release. "
         "Please QuirkBuilder() instead and ensure you call add_to_registry()."
     )
-    return QuirkBuilder(registry=registry).applies_to(manufacturer, model)
+    return QuirkBuilder(manufacturer, model, registry=registry)
