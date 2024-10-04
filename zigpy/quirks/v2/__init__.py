@@ -892,11 +892,12 @@ class QuirkBuilder:
 
         return quirk
 
-    def clone(self) -> QuirkBuilder:
-        """Clone this QuirkBuilder omitting manufacturer and model data."""
+    def clone(self, omit_man_model_data=True) -> QuirkBuilder:
+        """Clone this QuirkBuilder potentially omitting manufacturer and model data."""
         new_builder = deepcopy(self)
         new_builder.registry = self.registry
-        new_builder.manufacturer_model_metadata = []
+        if omit_man_model_data:
+            new_builder.manufacturer_model_metadata = []
         return new_builder
 
 
