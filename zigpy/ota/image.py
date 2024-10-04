@@ -241,7 +241,7 @@ class HueSBLOTAImage(BaseOTAImage):
                 f"Only Hue images are expected. Got: {header.manufacturer_id}"
             )
 
-        return cls(header=header, data=firmware), data[header.image_size :]  # type: ignore[call-arg]
+        return cls(header=header, data=firmware), data[header.image_size :]
 
 
 def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:

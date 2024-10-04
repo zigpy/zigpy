@@ -752,7 +752,7 @@ async def test_ota_fetch_size_and_checksum_validation(
 ) -> None:
     assert image_with_metadata.firmware is not None
 
-    meta = SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+    meta = SelfContainedOtaImageMetadata(
         file_version=image_with_metadata.metadata.file_version,
         checksum=image_with_metadata.metadata.checksum,
         file_size=image_with_metadata.metadata.file_size,

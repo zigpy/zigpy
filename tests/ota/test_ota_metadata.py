@@ -30,7 +30,7 @@ def image_with_metadata() -> OtaImageWithMetadata:
         subelements=[zigpy.ota.image.SubElement(tag_id=0x0000, data=b"fw_image")],
     )
 
-    metadata = BaseOtaImageMetadata(  # type: ignore[call-arg]
+    metadata = BaseOtaImageMetadata(
         file_version=0x12345678,
         manufacturer_id=0x1234,
         image_type=0x5678,

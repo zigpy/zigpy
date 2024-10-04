@@ -81,7 +81,7 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
 
     index = [
         # Manufacturer ID
-        SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+        SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
             test_data=zigpy.ota.image.OTAImage(
@@ -90,7 +90,7 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
             ).serialize(),
         ),
         # Image type
-        SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+        SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
             image_type=query_cmd.image_type,
             test_data=zigpy.ota.image.OTAImage(
@@ -99,7 +99,7 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
             ).serialize(),
         ),
         # Model string
-        SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+        SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
             model_names=(device.model,),
             test_data=zigpy.ota.image.OTAImage(
@@ -108,7 +108,7 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
             ).serialize(),
         ),
         # Model string *and* more specific HW version: this is the right image to pick
-        SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+        SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
             model_names=(device.model,),
             test_data=zigpy.ota.image.OTAImage(
@@ -120,7 +120,7 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
             ).serialize(),
         ),
         # Nothing to exclude but we can't be sure
-        SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+        SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
             test_data=zigpy.ota.image.OTAImage(
                 header=ota_hdr,
@@ -128,7 +128,7 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
             ).serialize(),
         ),
         # Irrelevant image
-        SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+        SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version - 1,
             test_data=zigpy.ota.image.OTAImage(
                 header=ota_hdr.replace(file_version=query_cmd.current_file_version - 1),
@@ -136,7 +136,7 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
             ).serialize(),
         ),
         # Broken image that won't download
-        BrokenOtaImageMetadata(  # type: ignore[call-arg]
+        BrokenOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
         ),
     ]
@@ -184,7 +184,7 @@ async def test_ota_matching_ambiguous_error() -> None:
     )
 
     index = [
-        SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+        SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
             test_data=zigpy.ota.image.OTAImage(
@@ -194,7 +194,7 @@ async def test_ota_matching_ambiguous_error() -> None:
                 ],
             ).serialize(),
         ),
-        SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+        SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
             test_data=zigpy.ota.image.OTAImage(
@@ -239,7 +239,7 @@ async def test_ota_matching_ambiguous_specificity_tie_breaker() -> None:
     )
 
     index = [
-        SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+        SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
             test_data=zigpy.ota.image.OTAImage(
@@ -249,7 +249,7 @@ async def test_ota_matching_ambiguous_specificity_tie_breaker() -> None:
                 ],
             ).serialize(),
         ),
-        SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+        SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
             test_data=zigpy.ota.image.OTAImage(
@@ -288,7 +288,7 @@ async def test_ota_concurrent_fetching() -> None:
     )
 
     index = [
-        SelfContainedOtaImageMetadata(  # type: ignore[call-arg]
+        SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
             test_data=zigpy.ota.image.OTAImage(
