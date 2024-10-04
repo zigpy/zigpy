@@ -230,10 +230,17 @@ async def test_quirks_v2_quirk_builder_cloning(device_mock):
     cloned = base.clone()
     base.add_to_registry()
 
-    cloned.applies_to(device_mock.manufacturer, device_mock.model).add_to_registry()
+    (
+        cloned.adds(PowerConfiguration.cluster_id)
+        .applies_to(device_mock.manufacturer, device_mock.model)
+        .add_to_registry()
+    )
 
     quirked = registry.get_device(device_mock)
     assert isinstance(quirked, CustomDeviceV2)
+    assert (
+        quirked.endpoints[1].in_clusters.get(PowerConfiguration.cluster_id) is not None
+    )
 
 
 async def test_quirks_v2_signature_match(device_mock):
