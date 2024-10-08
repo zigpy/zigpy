@@ -24,6 +24,7 @@ from zigpy import const
 import zigpy.appdb
 import zigpy.backups
 import zigpy.config as conf
+from zigpy.datastructures import PriorityDynamicBoundedSemaphore
 import zigpy.device
 import zigpy.endpoint
 import zigpy.exceptions
@@ -74,7 +75,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         self._watchdog_task: asyncio.Task | None = None
 
-        self._concurrent_requests_semaphore = zigpy.util.DynamicBoundedSemaphore(
+        self._concurrent_requests_semaphore = PriorityDynamicBoundedSemaphore(
             self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
         )
 
@@ -746,7 +747,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             await self.add_endpoint(endpoint)
 
     @contextlib.asynccontextmanager
-    async def _limit_concurrency(self):
+    async def _limit_concurrency(self, *, priority: int = 0):
         """Async context manager to limit global coordinator request concurrency."""
 
         start_time = time.monotonic()
@@ -759,7 +760,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 self._concurrent_requests_semaphore.num_waiting,
             )
 
-        async with self._concurrent_requests_semaphore:
+        async with self._concurrent_requests_semaphore(priority=priority):
             if was_locked:
                 LOGGER.debug(
                     "Previously delayed request is now running, delayed by %0.2fs",

@@ -580,6 +580,9 @@ class ZigbeePacket(BaseDataclassMixin):
         compare=False, default_factory=lambda: datetime.now(timezone.utc)
     )
 
+    # Higher priority will try to be sent before lower
+    priority: int = dataclasses.field(default=0)
+
     # Set to `None` when the packet is outgoing
     src: AddrModeAddress | None = dataclasses.field(default=None)
     src_ep: basic.uint8_t | None = dataclasses.field(default=None)
@@ -629,5 +632,6 @@ class ZigbeePacket(BaseDataclassMixin):
                 self.non_member_radius,
                 self.lqi,
                 self.rssi,
+                self.priority,
             )
         )
