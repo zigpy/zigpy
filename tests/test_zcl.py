@@ -1146,3 +1146,40 @@ async def test_zcl_reply_direction(app_mock):
     # The direction is correct
     packet_hdr, _ = foundation.ZCLHeader.deserialize(packet.data.serialize())
     assert packet_hdr.direction == foundation.Direction.Client_to_Server
+
+
+async def test_zcl_cluster_definition_backwards_compatibility():
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+
+        attributes = {
+            0x1234: ("attribute", t.uint8_t),
+        }
+
+        server_commands = {
+            0x00: ("server_command", (t.uint8_t,), True),
+        }
+
+        client_commands = {
+            0x01: ("client_command", (t.uint8_t, t.uint16_t), False),
+        }
+
+    assert TestCluster.cluster_id == 0xABCD
+    assert TestCluster.ServerCommandDefs.server_command.id == 0x00
+    assert len(TestCluster.ServerCommandDefs.server_command.schema.fields) == 1
+    assert (
+        TestCluster.ServerCommandDefs.server_command.schema.fields.param1.type
+        == t.uint8_t
+    )
+
+    assert TestCluster.ClientCommandDefs.client_command.id == 0x01
+    assert len(TestCluster.ClientCommandDefs.client_command.schema.fields) == 2
+    assert (
+        TestCluster.ClientCommandDefs.client_command.schema.fields.param1.type
+        == t.uint8_t
+    )
+    assert (
+        TestCluster.ClientCommandDefs.client_command.schema.fields.param2.type
+        == t.uint16_t
+    )
