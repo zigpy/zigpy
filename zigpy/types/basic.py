@@ -370,7 +370,7 @@ class uint64_t_be(uint_t_be, bits=64):
 class AlwaysCreateEnumType(enum.EnumMeta):
     """Enum metaclass that skips the functional creation API."""
 
-    def __call__(self, value, names=None, *values) -> type[enum.Enum]:  # type: ignore[override]
+    def __call__(self, value, names=None, *values) -> type[enum.Enum]:  # type: ignore[override]  # noqa: N804
         """Custom implementation of Enum.__new__.
 
         From https://github.com/python/cpython/blob/v3.11.5/Lib/enum.py#L1091-L1140
@@ -426,7 +426,7 @@ class AlwaysCreateEnumType(enum.EnumMeta):
 
 
 class _IntEnumMeta(AlwaysCreateEnumType):
-    def __call__(self, value, names=None, *args, **kwargs):
+    def __call__(self, value, names=None, *args, **kwargs):  # noqa: N804
         if isinstance(value, str):
             if value.startswith("0x"):
                 value = int(value, base=16)
@@ -932,7 +932,7 @@ class CharacterString(str):
     _prefix_length = 1
     _invalid_length = (1 << (8 * _prefix_length)) - 1
 
-    def __new__(cls, value: str, *, invalid: bool = False) -> Self:
+    def __new__(cls, value: str = "", *, invalid: bool = False) -> Self:
         instance = super().__new__(cls, value)
         instance.invalid = invalid
         instance.raw = value

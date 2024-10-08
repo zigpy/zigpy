@@ -6,6 +6,7 @@ import collections
 from enum import Enum
 import inspect
 import logging
+import pathlib
 import typing
 from typing import TYPE_CHECKING, Any
 
@@ -21,7 +22,7 @@ from zigpy.const import (
     SIG_NODE_DESC,
     SIG_SKIP_CONFIG,
 )
-from zigpy.quirks import _DEVICE_REGISTRY, CustomCluster, CustomDevice, FilterType
+from zigpy.quirks import _DEVICE_REGISTRY, BaseCustomDevice, CustomCluster, FilterType
 from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2.homeassistant import EntityPlatform, EntityType
 from zigpy.quirks.v2.homeassistant.binary_sensor import BinarySensorDeviceClass
@@ -49,7 +50,7 @@ UNBUILT_QUIRK_BUILDERS: list[QuirkBuilder] = []
 # pylint: disable=too-few-public-methods
 
 
-class CustomDeviceV2(CustomDevice):
+class CustomDeviceV2(BaseCustomDevice):
     """Implementation of a quirks v2 custom device."""
 
     _copy_cluster_attr_cache = True
@@ -82,6 +83,11 @@ class CustomDeviceV2(CustomDevice):
 
         for replace_meta in quirk_metadata.replaces_metadata:
             replace_meta(self)
+
+        for (
+            replace_occurrences_meta
+        ) in quirk_metadata.replaces_cluster_occurrences_metadata:
+            replace_occurrences_meta(self)
 
         for entity_meta in quirk_metadata.entity_metadata:
             entity_meta(self)
@@ -128,26 +134,6 @@ class CustomDeviceV2(CustomDevice):
         The value is a list of EntityMetadata instances.
         """
         return self._exposes_metadata
-
-    async def apply_custom_configuration(self, *args, **kwargs):
-        """Hook for applications to instruct instances to apply custom configuration."""
-        for endpoint in self.endpoints.values():
-            if isinstance(endpoint, ZDO):
-                continue
-            for cluster in endpoint.in_clusters.values():
-                if (
-                    isinstance(cluster, CustomCluster)
-                    and cluster.apply_custom_configuration
-                    != CustomCluster.apply_custom_configuration
-                ):
-                    await cluster.apply_custom_configuration(*args, **kwargs)
-            for cluster in endpoint.out_clusters.values():
-                if (
-                    isinstance(cluster, CustomCluster)
-                    and cluster.apply_custom_configuration
-                    != CustomCluster.apply_custom_configuration
-                ):
-                    await cluster.apply_custom_configuration(*args, **kwargs)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -216,6 +202,36 @@ class ReplacesMetadata:
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
+class ReplaceClusterOccurrencesMetadata:
+    """Replaces metadata for replacing all occurrences of a cluster on a device."""
+
+    cluster_types: tuple[ClusterType] = attrs.field()
+    cluster: type[Cluster | CustomCluster] = attrs.field()
+
+    def __call__(self, device: CustomDeviceV2) -> None:
+        """Process the replace."""
+        for endpoint in device.endpoints.values():
+            if isinstance(endpoint, ZDO):
+                continue
+            if (
+                ClusterType.Server in self.cluster_types
+                and self.cluster.cluster_id in endpoint.in_clusters
+            ):
+                endpoint.in_clusters.pop(self.cluster.cluster_id)
+                endpoint.add_input_cluster(
+                    self.cluster.cluster_id, self.cluster(endpoint)
+                )
+            if (
+                ClusterType.Client in self.cluster_types
+                and self.cluster.cluster_id in endpoint.out_clusters
+            ):
+                endpoint.out_clusters.pop(self.cluster.cluster_id)
+                endpoint.add_output_cluster(
+                    self.cluster.cluster_id, self.cluster(endpoint, is_server=False)
+                )
+
+
+@attrs.define(frozen=True, kw_only=True, repr=True)
 class EntityMetadata:
     """Metadata for an exposed entity."""
 
@@ -226,32 +242,14 @@ class EntityMetadata:
     cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
     initially_disabled: bool = attrs.field(default=False)
     attribute_initialized_from_cache: bool = attrs.field(default=True)
-    translation_key: str | None = attrs.field(default=None)
-
-    def __attrs_post_init__(self) -> None:
-        self._validate()
+    translation_key: str = attrs.field()
+    fallback_name: str = attrs.field()
 
     def __call__(self, device: CustomDeviceV2) -> None:
         """Add the entity metadata to the quirks v2 device."""
-        self._validate()
         device.exposes_metadata[
             (self.endpoint_id, self.cluster_id, self.cluster_type)
         ].append(self)
-
-    def _validate(self) -> None:
-        """Validate the entity metadata."""
-        has_unit: bool = hasattr(self, "unit") and getattr(self, "unit") is not None
-        has_device_class: bool = hasattr(self, "device_class") and (
-            getattr(self, "device_class") is not None
-        )
-        if has_device_class and has_unit:
-            raise ValueError(
-                f"EntityMetadata cannot have both unit and device_class: {self}"
-            )
-        if has_device_class and self.translation_key is not None:
-            raise ValueError(
-                f"EntityMetadata cannot have both a translation_key and a device_class: {self}"
-            )
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -336,7 +334,8 @@ class ManufacturerModelMetadata:
 class QuirksV2RegistryEntry:
     """Quirks V2 registry entry."""
 
-    quirk_location: str = attrs.field(default=None, eq=False)
+    quirk_file: str = attrs.field(default=None, eq=False)
+    quirk_file_line: int = attrs.field(default=None, eq=False)
     manufacturer_model_metadata: tuple[ManufacturerModelMetadata] = attrs.field(
         factory=tuple
     )
@@ -347,6 +346,9 @@ class QuirksV2RegistryEntry:
     adds_metadata: tuple[AddsMetadata] = attrs.field(factory=tuple)
     removes_metadata: tuple[RemovesMetadata] = attrs.field(factory=tuple)
     replaces_metadata: tuple[ReplacesMetadata] = attrs.field(factory=tuple)
+    replaces_cluster_occurrences_metadata: tuple[ReplaceClusterOccurrencesMetadata] = (
+        attrs.field(factory=tuple)
+    )
     entity_metadata: tuple[
         ZCLEnumMetadata
         | SwitchMetadata
@@ -388,6 +390,9 @@ class QuirkBuilder:
         self.adds_metadata: list[AddsMetadata] = []
         self.removes_metadata: list[RemovesMetadata] = []
         self.replaces_metadata: list[ReplacesMetadata] = []
+        self.replaces_cluster_occurrences_metadata: list[
+            ReplaceClusterOccurrencesMetadata
+        ] = []
         self.entity_metadata: list[
             ZCLEnumMetadata
             | SwitchMetadata
@@ -402,9 +407,8 @@ class QuirkBuilder:
 
         stack: list[inspect.FrameInfo] = inspect.stack()
         caller: inspect.FrameInfo = stack[1]
-        self.quirk_location: str | None = (
-            f"file[{caller.filename}]-line:{caller.lineno}"
-        )
+        self.quirk_file = pathlib.Path(caller.filename)
+        self.quirk_file_line = caller.lineno
 
         self.also_applies_to(manufacturer, model)
         UNBUILT_QUIRK_BUILDERS.append(self)
@@ -412,9 +416,7 @@ class QuirkBuilder:
     def also_applies_to(self, manufacturer: str, model: str) -> QuirkBuilder:
         """Register this quirks v2 entry for an additional manufacturer and model."""
         self.manufacturer_model_metadata.append(
-            ManufacturerModelMetadata(  # type: ignore[call-arg]
-                manufacturer=manufacturer, model=model
-            )
+            ManufacturerModelMetadata(manufacturer=manufacturer, model=model)
         )
         return self
 
@@ -478,7 +480,7 @@ class QuirkBuilder:
         instances and their values. These attributes will be added to the cluster when
         the quirk is applied and the values will be constant.
         """
-        add = AddsMetadata(  # type: ignore[call-arg]
+        add = AddsMetadata(
             endpoint_id=endpoint_id,
             cluster=cluster,
             cluster_type=cluster_type,
@@ -497,7 +499,7 @@ class QuirkBuilder:
 
         This method allows removing a cluster from a device when the quirk is applied.
         """
-        remove = RemovesMetadata(  # type: ignore[call-arg]
+        remove = RemovesMetadata(
             endpoint_id=endpoint_id,
             cluster_id=cluster_id,
             cluster_type=cluster_type,
@@ -523,20 +525,52 @@ class QuirkBuilder:
         be removed. If cluster_id is not provided, the cluster_id of the replacement
         cluster will be used.
         """
-        remove = RemovesMetadata(  # type: ignore[call-arg]
+        remove = RemovesMetadata(
             endpoint_id=endpoint_id,
             cluster_id=cluster_id
             if cluster_id is not None
             else replacement_cluster_class.cluster_id,
             cluster_type=cluster_type,
         )
-        add = AddsMetadata(  # type: ignore[call-arg]
+        add = AddsMetadata(
             endpoint_id=endpoint_id,
             cluster=replacement_cluster_class,
             cluster_type=cluster_type,
         )
-        replace = ReplacesMetadata(remove=remove, add=add)  # type: ignore[call-arg]
+        replace = ReplacesMetadata(remove=remove, add=add)
         self.replaces_metadata.append(replace)
+        return self
+
+    def replace_cluster_occurrences(
+        self,
+        replacement_cluster_class: type[Cluster | CustomCluster],
+        replace_server_instances: bool = True,
+        replace_client_instances: bool = True,
+    ) -> QuirkBuilder:
+        """Add a ReplaceClusterOccurrencesMetadata entry and returns self.
+
+        This method allows replacing a cluster on a device across all endpoints
+        for the specified cluster types when the quirk is applied.
+
+        replacement_cluster_class should be a subclass of Cluster or CustomCluster and
+        will be used to create a new cluster instance to replace the existing cluster.
+
+        replace_server_instances and replace_client_instances control the cluster types
+        that will be replaced. If replace_server_instances is True, all server instances
+        of the cluster will be replaced. If replace_client_instances is True, all client
+        instances of the cluster will be replaced.
+        """
+        types = []
+        if replace_server_instances:
+            types.append(ClusterType.Server)
+        if replace_client_instances:
+            types.append(ClusterType.Client)
+        self.replaces_cluster_occurrences_metadata.append(
+            ReplaceClusterOccurrencesMetadata(
+                cluster_types=tuple(types),
+                cluster=replacement_cluster_class,
+            )
+        )
         return self
 
     def enum(
@@ -551,13 +585,14 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing ZCLEnumMetadata and return self.
 
         This method allows exposing an enum based entity in Home Assistant.
         """
         self.entity_metadata.append(
-            ZCLEnumMetadata(  # type: ignore[call-arg]
+            ZCLEnumMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -566,6 +601,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 enum=enum_class,
                 attribute_name=attribute_name,
             )
@@ -587,13 +623,14 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing ZCLSensorMetadata and return self.
 
         This method allows exposing a sensor entity in Home Assistant.
         """
         self.entity_metadata.append(
-            ZCLSensorMetadata(  # type: ignore[call-arg]
+            ZCLSensorMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -602,6 +639,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 divisor=divisor,
                 multiplier=multiplier,
@@ -626,13 +664,14 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing SwitchMetadata and return self.
 
         This method allows exposing a switch entity in Home Assistant.
         """
         self.entity_metadata.append(
-            SwitchMetadata(  # type: ignore[call-arg]
+            SwitchMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -641,6 +680,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 force_inverted=force_inverted,
                 invert_attribute_name=invert_attribute_name,
@@ -666,13 +706,14 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing NumberMetadata and return self.
 
         This method allows exposing a number entity in Home Assistant.
         """
         self.entity_metadata.append(
-            NumberMetadata(  # type: ignore[call-arg]
+            NumberMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -681,6 +722,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 min=min_value,
                 max=max_value,
@@ -703,13 +745,14 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing BinarySensorMetadata and return self.
 
         This method allows exposing a binary sensor entity in Home Assistant.
         """
         self.entity_metadata.append(
-            BinarySensorMetadata(  # type: ignore[call-arg]
+            BinarySensorMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -718,6 +761,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 device_class=device_class,
             )
@@ -735,6 +779,7 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing WriteAttributeButtonMetadata and return self.
 
@@ -742,7 +787,7 @@ class QuirkBuilder:
         a value to an attribute when pressed.
         """
         self.entity_metadata.append(
-            WriteAttributeButtonMetadata(  # type: ignore[call-arg]
+            WriteAttributeButtonMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -751,6 +796,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 attribute_value=attribute_value,
             )
@@ -768,6 +814,7 @@ class QuirkBuilder:
         entity_type: EntityType = EntityType.CONFIG,
         initially_disabled: bool = False,
         translation_key: str | None = None,
+        fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing ZCLCommandButtonMetadata and return self.
 
@@ -775,7 +822,7 @@ class QuirkBuilder:
         a ZCL command when pressed.
         """
         self.entity_metadata.append(
-            ZCLCommandButtonMetadata(  # type: ignore[call-arg]
+            ZCLCommandButtonMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
                 cluster_type=cluster_type,
@@ -783,6 +830,7 @@ class QuirkBuilder:
                 entity_type=entity_type,
                 initially_disabled=initially_disabled,
                 translation_key=translation_key,
+                fallback_name=fallback_name,
                 command_name=command_name,
                 args=command_args if command_args is not None else (),
                 kwargs=command_kwargs if command_kwargs is not None else frozendict(),
@@ -799,9 +847,10 @@ class QuirkBuilder:
 
     def add_to_registry(self) -> QuirksV2RegistryEntry:
         """Build the quirks v2 registry entry."""
-        quirk: QuirksV2RegistryEntry = QuirksV2RegistryEntry(  # type: ignore[call-arg]
+        quirk: QuirksV2RegistryEntry = QuirksV2RegistryEntry(
             manufacturer_model_metadata=tuple(self.manufacturer_model_metadata),
-            quirk_location=self.quirk_location,
+            quirk_file=self.quirk_file,
+            quirk_file_line=self.quirk_file_line,
             filters=tuple(self.filters),
             custom_device_class=self.custom_device_class,
             device_node_descriptor=self.device_node_descriptor,
@@ -809,6 +858,9 @@ class QuirkBuilder:
             adds_metadata=tuple(self.adds_metadata),
             removes_metadata=tuple(self.removes_metadata),
             replaces_metadata=tuple(self.replaces_metadata),
+            replaces_cluster_occurrences_metadata=tuple(
+                self.replaces_cluster_occurrences_metadata
+            ),
             entity_metadata=tuple(self.entity_metadata),
             device_automation_triggers_metadata=self.device_automation_triggers_metadata,
         )

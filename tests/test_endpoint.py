@@ -11,7 +11,7 @@ from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCL
 from zigpy.zdo import types
 
 
-@pytest.fixture()
+@pytest.fixture
 def ep():
     dev = MagicMock()
     dev.request = AsyncMock()

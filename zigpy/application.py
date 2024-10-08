@@ -3,6 +3,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import collections
+from collections.abc import Coroutine
 import contextlib
 import errno
 import logging
@@ -11,7 +12,7 @@ import random
 import sys
 import time
 import typing
-from typing import Any, Coroutine, TypeVar
+from typing import Any, TypeVar
 import warnings
 
 if sys.version_info[:2] < (3, 11):
@@ -77,7 +78,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
         )
 
-        self.ota = zigpy.ota.OTA(config[conf.CONF_OTA], self)
+        self.ota = zigpy.ota.OTA(self._config[conf.CONF_OTA], self)
         self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
         self.topology: zigpy.topology.Topology = zigpy.topology.Topology(self)
 
@@ -625,7 +626,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 device_configs.append(new_config)
 
         for config in device_configs:
-            app = cls(cls.SCHEMA({conf.CONF_DEVICE: config}))
+            app = cls({conf.CONF_DEVICE: config})
 
             try:
                 await app.connect()
@@ -1304,19 +1305,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dstaddr.endpoint = self.get_endpoint_id(cluster.cluster_id, cluster.is_server)
         return dstaddr
 
-    def update_config(self, partial_config: dict[str, Any]) -> None:
-        """Update existing config."""
-        self.config = {**self.config, **partial_config}
-
     @property
     def config(self) -> dict:
         """Return current configuration."""
         return self._config
-
-    @config.setter
-    def config(self, new_config) -> None:
-        """Configuration setter."""
-        self._config = self.SCHEMA(new_config)
 
     @property
     def groups(self) -> zigpy.group.Groups:

@@ -10,7 +10,7 @@ from zigpy.zcl.foundation import Status
 import zigpy.zdo.types as zdo_t
 
 
-@pytest.fixture()
+@pytest.fixture
 def expose_global():
     """`typing.get_type_hints` does not work for types defined within functions"""
 

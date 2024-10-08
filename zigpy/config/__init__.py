@@ -37,7 +37,6 @@ from zigpy.config.defaults import (
 from zigpy.config.validators import (
     cv_boolean,
     cv_deprecated,
-    cv_exact_object,
     cv_folder,
     cv_hex,
     cv_json_file,
@@ -76,6 +75,7 @@ CONF_OTA_DISABLE_DEFAULT_PROVIDERS = "disable_default_providers"
 CONF_OTA_PROVIDER_TYPE = "type"
 CONF_OTA_PROVIDER_URL = "url"
 CONF_OTA_PROVIDER_PATH = "path"
+CONF_OTA_PROVIDER_INDEX_FILE = "index_file"
 CONF_OTA_PROVIDER_OVERRIDE_PREVIOUS = "override_previous"
 CONF_OTA_PROVIDER_WARNING = "warning"
 CONF_OTA_BROADCAST_ENABLED = "broadcast_enabled"
@@ -171,13 +171,13 @@ SCHEMA_OTA_PROVIDER_URL_REQUIRED = SCHEMA_OTA_PROVIDER_BASE.extend(
 )
 
 SCHEMA_OTA_PROVIDER_JSON_INDEX = SCHEMA_OTA_PROVIDER_BASE.extend(
-    {vol.Required(CONF_OTA_PROVIDER_PATH): cv_json_file}
+    {vol.Required(CONF_OTA_PROVIDER_INDEX_FILE): cv_json_file}
 )
 
 SCHEMA_OTA_PROVIDER_FOLDER = SCHEMA_OTA_PROVIDER_BASE.extend(
     {
         vol.Required(CONF_OTA_PROVIDER_PATH): cv_folder,
-        vol.Required(CONF_OTA_PROVIDER_WARNING): cv_exact_object(
+        vol.Required(CONF_OTA_PROVIDER_WARNING): vol.Equal(
             CONF_OTA_ALLOW_ADVANCED_DIR_STRING
         ),
     }
@@ -282,7 +282,7 @@ SCHEMA_OTA_DEPRECATED = {
         cv_deprecated(
             "The `z2m_local_index` key is deprecated, migrate your configuration"
             " to the `extra_providers` list instead: `extra_providers: [{'type': 'z2m_local',"
-            " 'path': '/path/to/index.json'}]`"
+            " 'index_file': '/path/to/index.json'}]`"
         ),
         cv_json_file,
     ),
@@ -313,7 +313,7 @@ SCHEMA_OTA_DEPRECATED = {
             " to the `extra_providers` list instead: `extra_providers: [{'type': 'advanced',"
             " 'warning': 'I understand ...'}]"
         ),
-        cv_exact_object(CONF_OTA_ALLOW_ADVANCED_DIR_STRING),
+        vol.Equal(CONF_OTA_ALLOW_ADVANCED_DIR_STRING),
     ),
     vol.Optional(CONF_OTA_REMOTE_PROVIDERS): vol.All(
         cv_deprecated(

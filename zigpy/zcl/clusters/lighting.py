@@ -9,6 +9,7 @@ from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    Direction as CommandDirection,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -79,6 +80,10 @@ class DriftCompensation(t.enum8):
     Color_monitoring = 0x03
 
 
+class OptionsMask(t.bitmap8):
+    Execute_if_off_present = 0b00000001
+
+
 class Options(t.bitmap8):
     Execute_if_off = 0b00000001
 
@@ -99,6 +104,7 @@ class Color(Cluster):
     ColorLoopDirection: Final = ColorLoopDirection
     DriftCompensation: Final = DriftCompensation
     Options: Final = Options
+    OptionsMask: Final = OptionsMask
 
     cluster_id: Final[t.uint16_t] = 0x0300
     name: Final = "Color Control"
@@ -225,20 +231,20 @@ class Color(Cluster):
                 "hue": t.uint8_t,
                 "direction": Direction,
                 "transition_time": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         move_hue: Final = ZCLCommandDef(
             id=0x01,
             schema={
                 "move_mode": MoveMode,
                 "rate": t.uint8_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         step_hue: Final = ZCLCommandDef(
             id=0x02,
@@ -246,30 +252,30 @@ class Color(Cluster):
                 "step_mode": StepMode,
                 "step_size": t.uint8_t,
                 "transition_time": t.uint8_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         move_to_saturation: Final = ZCLCommandDef(
             id=0x03,
             schema={
                 "saturation": t.uint8_t,
                 "transition_time": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         move_saturation: Final = ZCLCommandDef(
             id=0x04,
             schema={
                 "move_mode": MoveMode,
                 "rate": t.uint8_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         step_saturation: Final = ZCLCommandDef(
             id=0x05,
@@ -277,10 +283,10 @@ class Color(Cluster):
                 "step_mode": StepMode,
                 "step_size": t.uint8_t,
                 "transition_time": t.uint8_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         move_to_hue_and_saturation: Final = ZCLCommandDef(
             id=0x06,
@@ -288,10 +294,10 @@ class Color(Cluster):
                 "hue": t.uint8_t,
                 "saturation": t.uint8_t,
                 "transition_time": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         move_to_color: Final = ZCLCommandDef(
             id=0x07,
@@ -299,20 +305,20 @@ class Color(Cluster):
                 "color_x": t.uint16_t,
                 "color_y": t.uint16_t,
                 "transition_time": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         move_color: Final = ZCLCommandDef(
             id=0x08,
             schema={
                 "rate_x": t.uint16_t,
                 "rate_y": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         step_color: Final = ZCLCommandDef(
             id=0x09,
@@ -320,20 +326,20 @@ class Color(Cluster):
                 "step_x": t.uint16_t,
                 "step_y": t.uint16_t,
                 "duration": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         move_to_color_temp: Final = ZCLCommandDef(
             id=0x0A,
             schema={
                 "color_temp_mireds": t.uint16_t,
                 "transition_time": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         enhanced_move_to_hue: Final = ZCLCommandDef(
             id=0x40,
@@ -341,20 +347,20 @@ class Color(Cluster):
                 "enhanced_hue": t.uint16_t,
                 "direction": Direction,
                 "transition_time": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         enhanced_move_hue: Final = ZCLCommandDef(
             id=0x41,
             schema={
                 "move_mode": MoveMode,
                 "rate": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         enhanced_step_hue: Final = ZCLCommandDef(
             id=0x42,
@@ -362,10 +368,10 @@ class Color(Cluster):
                 "step_mode": StepMode,
                 "step_size": t.uint16_t,
                 "transition_time": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         enhanced_move_to_hue_and_saturation: Final = ZCLCommandDef(
             id=0x43,
@@ -373,10 +379,10 @@ class Color(Cluster):
                 "enhanced_hue": t.uint16_t,
                 "saturation": t.uint8_t,
                 "transition_time": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         color_loop_set: Final = ZCLCommandDef(
             id=0x44,
@@ -386,18 +392,18 @@ class Color(Cluster):
                 "direction": ColorLoopDirection,
                 "time": t.uint16_t,
                 "start_hue": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         stop_move_step: Final = ZCLCommandDef(
             id=0x47,
             schema={
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         move_color_temp: Final = ZCLCommandDef(
             id=0x4B,
@@ -406,10 +412,10 @@ class Color(Cluster):
                 "rate": t.uint16_t,
                 "color_temp_min_mireds": t.uint16_t,
                 "color_temp_max_mireds": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
         step_color_temp: Final = ZCLCommandDef(
             id=0x4C,
@@ -419,10 +425,10 @@ class Color(Cluster):
                 "transition_time": t.uint16_t,
                 "color_temp_min_mireds": t.uint16_t,
                 "color_temp_max_mireds": t.uint16_t,
-                "options_mask?": t.bitmap8,
-                "options_override?": t.bitmap8,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
-            direction=False,
+            direction=CommandDirection.Client_to_Server,
         )
 
 

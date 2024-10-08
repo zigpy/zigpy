@@ -81,7 +81,7 @@ class Struct:
         cls._frozen = False
 
     def __new__(cls: type[Self], *args, **kwargs) -> Self:
-        cls = cls._real_cls()
+        cls = cls._real_cls()  # noqa: PLW0642
 
         if len(args) == 1 and isinstance(args[0], cls):
             # Like a copy constructor

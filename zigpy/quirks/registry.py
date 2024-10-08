@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import collections
+import inspect
 import itertools
 import logging
+import pathlib
 import typing
 from typing import TYPE_CHECKING
 
@@ -18,9 +20,9 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-TYPE_MANUF_QUIRKS_DICT = typing.Dict[
+TYPE_MANUF_QUIRKS_DICT = dict[
     typing.Optional[str],
-    typing.Dict[typing.Optional[str], typing.List["zigpy.quirks.CustomDevice"]],
+    dict[typing.Optional[str], list["zigpy.quirks.CustomDevice"]],
 ]
 
 
@@ -35,6 +37,36 @@ class DeviceRegistry:
         self._registry_v2: dict[tuple[str, str], set[QuirksV2RegistryEntry]] = (
             collections.defaultdict(set)
         )
+
+    def purge_custom_quirks(self, custom_quirks_root: pathlib.Path) -> None:
+        # If zhaquirks aren't being used, we can't tell if a quirk is custom or not
+        for model_registry in self._registry.values():
+            for quirks in model_registry.values():
+                to_remove = []
+
+                for quirk in quirks:
+                    module = inspect.getmodule(quirk)
+                    assert module is not None  # All quirks should have modules
+
+                    quirk_module = pathlib.Path(module.__file__)
+
+                    if quirk_module.is_relative_to(custom_quirks_root):
+                        to_remove.append(quirk)
+
+                for quirk in to_remove:
+                    _LOGGER.debug("Removing stale custom v1 quirk: %s", quirk)
+                    quirks.remove(quirk)
+
+        for registry in self._registry_v2.values():
+            to_remove = []
+
+            for entry in registry:
+                if entry.quirk_file.is_relative_to(custom_quirks_root):
+                    to_remove.append(entry)
+
+            for entry in to_remove:
+                _LOGGER.debug("Removing stale custom v2 quirk: %s", entry)
+                registry.remove(entry)
 
     def add_to_registry(self, custom_device: CustomDeviceType) -> None:
         """Add a device to the registry"""

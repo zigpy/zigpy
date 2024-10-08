@@ -20,7 +20,7 @@ def test_commands():
             assert hasattr(paramtype, "deserialize")
 
 
-@pytest.fixture()
+@pytest.fixture
 def zdo_f(app):
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     dev = zigpy.device.Device(app, ieee, 65535)

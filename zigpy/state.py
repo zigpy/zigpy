@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 import dataclasses
 from dataclasses import InitVar
 import functools
-from typing import Any, Iterator
+from typing import Any
 
 import zigpy.config as conf
 import zigpy.types as t

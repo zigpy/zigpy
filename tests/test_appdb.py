@@ -1024,8 +1024,9 @@ def test_pysqlite_load_success(stdlib_version, use_sqlite):
     pysqlite3 = MagicMock()
     pysqlite3.sqlite_version_info = (3, 30, 0)
 
-    with patch.dict(sys.modules, {"pysqlite3": pysqlite3}), patch.object(
-        sys.modules["sqlite3"], "sqlite_version_info", new=stdlib_version
+    with (
+        patch.dict(sys.modules, {"pysqlite3": pysqlite3}),
+        patch.object(sys.modules["sqlite3"], "sqlite_version_info", new=stdlib_version),
     ):
         module = zigpy.appdb._import_compatible_sqlite3(zigpy.appdb.MIN_SQLITE_VERSION)
 
@@ -1054,8 +1055,9 @@ def test_pysqlite_load_failure(stdlib_version, pysqlite3_version):
     else:
         pysqlite3_patch = patch.dict(sys.modules, {"pysqlite3": None})
 
-    with pysqlite3_patch, patch.object(
-        sys.modules["sqlite3"], "sqlite_version_info", new=stdlib_version
+    with (
+        pysqlite3_patch,
+        patch.object(sys.modules["sqlite3"], "sqlite_version_info", new=stdlib_version),
     ):
         with pytest.raises(RuntimeError):
             zigpy.appdb._import_compatible_sqlite3(zigpy.appdb.MIN_SQLITE_VERSION)

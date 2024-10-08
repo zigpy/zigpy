@@ -249,8 +249,8 @@ class BaseOtaProvider:
 
         return self.url == other.url and self.manufacturer_ids == other.manufacturer_ids
 
-    # We don't want the above `__eq__` to change object hashing semantics
-    __hash__ = object.__hash__
+    def __hash__(self) -> int:
+        return hash((self.url, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(url={self.url!r}, manufacturer_ids={self.manufacturer_ids!r})"
@@ -307,7 +307,7 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
                     LOGGER.warning("Could not parse IKEA OTA JSON: %r", fw)
                     continue
 
-                image = IkeaRemoteOtaImageMetadata(  # type: ignore[call-arg]
+                image = IkeaRemoteOtaImageMetadata(
                     file_version=int(file_version_match.group("v"), 10),
                     manufacturer_id=self.MANUFACTURER_IDS[0],
                     image_type=fw["fw_image_type"],
@@ -320,7 +320,7 @@ ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
                 if fw["fw_type"] != 2:
                     continue
 
-                image = SignedIkeaRemoteOtaImageMetadata(  # type: ignore[call-arg]
+                image = SignedIkeaRemoteOtaImageMetadata(
                     file_version=(
                         (fw["fw_file_version_MSB"] << 16)
                         | (fw["fw_file_version_LSB"] << 0)
@@ -361,7 +361,7 @@ class Ledvance(BaseOtaProvider):
             identity = fw["identity"]
             version = identity["version"]
 
-            yield RemoteOtaImageMetadata(  # type: ignore[call-arg]
+            yield RemoteOtaImageMetadata(
                 file_version=int(fw["fullName"].split("/")[1], 16),
                 manufacturer_id=identity["company"],
                 image_type=identity["product"],
@@ -411,7 +411,7 @@ class Salus(BaseOtaProvider):
 
             # Not every firmware is actually Zigbee but since they filter by model name
             # there is little chance an invalid one will ever be matched
-            yield SalusRemoteOtaImageMetadata(  # type: ignore[call-arg]
+            yield SalusRemoteOtaImageMetadata(
                 file_version=int(fw["version"], 16),
                 model_names=(fw["model"],),
                 # Upgrade HTTP to HTTPS, the server supports it
@@ -439,7 +439,7 @@ class Sonoff(BaseOtaProvider):
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
         for fw in fw_lst:
-            yield RemoteOtaImageMetadata(  # type: ignore[call-arg]
+            yield RemoteOtaImageMetadata(
                 file_version=fw["fw_file_version"],
                 manufacturer_id=fw["fw_manufacturer_id"],
                 image_type=fw["fw_image_type"],
@@ -476,7 +476,7 @@ class Inovelli(BaseOtaProvider):
                     # Only the first firmware was in hex, all others are decimal
                     version = int(fw["version"])
 
-                yield RemoteOtaImageMetadata(  # type: ignore[call-arg]
+                yield RemoteOtaImageMetadata(
                     file_version=version,
                     manufacturer_id=fw["manufacturer_id"],
                     image_type=fw["image_type"],
@@ -503,7 +503,7 @@ class ThirdReality(BaseOtaProvider):
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
         for fw in fw_lst["versions"]:
-            yield RemoteOtaImageMetadata(  # type: ignore[call-arg]
+            yield RemoteOtaImageMetadata(
                 file_version=fw["fileVersion"],
                 manufacturer_id=fw["manufacturerId"],
                 model_names=(fw["modelId"],),
@@ -542,9 +542,9 @@ class BaseZigpyProvider(BaseOtaProvider):
             if "path" in fw and index_root is not None:
                 yield LocalOtaImageMetadata(
                     **shared_kwargs, path=index_root / fw["path"]
-                )  # type: ignore[call-arg]
+                )
             else:
-                yield RemoteOtaImageMetadata(**shared_kwargs, url=fw["binary_url"])  # type: ignore[call-arg]
+                yield RemoteOtaImageMetadata(**shared_kwargs, url=fw["binary_url"])
 
 
 @register_provider
@@ -575,6 +575,9 @@ class LocalZigpyProvider(BaseZigpyProvider):
             return NotImplemented
 
         return super().__eq__(other) and self.index_file == other.index_file
+
+    def __hash__(self) -> int:
+        return hash((self.index_file, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(index_file={self.index_file!r}, manufacturer_ids={self.manufacturer_ids!r})"
@@ -627,11 +630,11 @@ class BaseZ2MProvider(BaseOtaProvider):
             if "path" in fw and index_root is not None:
                 yield LocalOtaImageMetadata(
                     **shared_kwargs, path=index_root / fw["path"]
-                )  # type: ignore[call-arg]
+                )
             else:
                 yield RemoteOtaImageMetadata(
                     **shared_kwargs, url=fw["url"], ssl_ctx=ssl_ctx
-                )  # type: ignore[call-arg]
+                )
 
 
 @register_provider
@@ -662,6 +665,9 @@ class LocalZ2MProvider(BaseZ2MProvider):
             return NotImplemented
 
         return super().__eq__(other) and self.index_file == other.index_file
+
+    def __hash__(self) -> int:
+        return hash((self.index_file, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(index_file={self.index_file!r}, manufacturer_ids={self.manufacturer_ids!r})"
@@ -709,6 +715,9 @@ class AdvancedFileProvider(BaseOtaProvider):
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_FOLDER
 
     def __init__(self, path: pathlib.Path, **kwargs):
+        # The `vol` schema passes through the `warning` key, which is unused
+        kwargs.pop("warning", None)
+
         super().__init__(url=None, **kwargs)
         self.path = path
 
@@ -735,7 +744,7 @@ class AdvancedFileProvider(BaseOtaProvider):
                 # This protects against images being swapped out in the local filesystem
                 hasher = await loop.run_in_executor(None, hashlib.sha1, data)
 
-                yield LocalOtaImageMetadata(  # type: ignore[call-arg]
+                yield LocalOtaImageMetadata(
                     path=path,
                     file_version=image.header.file_version,
                     manufacturer_id=image.header.manufacturer_id,
@@ -755,6 +764,9 @@ class AdvancedFileProvider(BaseOtaProvider):
             return NotImplemented
 
         return super().__eq__(other) and self.path == other.path
+
+    def __hash__(self) -> int:
+        return hash((self.path, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(path={self.path!r}, manufacturer_ids={self.manufacturer_ids!r})"

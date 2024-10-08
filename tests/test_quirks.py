@@ -1,5 +1,9 @@
 import asyncio
+import importlib.util
 import itertools
+import pathlib
+import pkgutil
+import sys
 from typing import Final
 
 import pytest
@@ -44,7 +48,7 @@ def test_registry():
     assert TestDevice not in zigpy.quirks._DEVICE_REGISTRY
 
 
-@pytest.fixture()
+@pytest.fixture
 def real_device(app_mock):
     ieee = sentinel.ieee
     nwk = 0x2233
@@ -60,7 +64,7 @@ def real_device(app_mock):
     return real_device
 
 
-@pytest.fixture()
+@pytest.fixture
 def real_device_2(app_mock):
     ieee = sentinel.ieee_2
     nwk = 0x3344
@@ -532,7 +536,7 @@ class ManufacturerSpecificCluster(zigpy.quirks.CustomCluster):
         )
 
 
-@pytest.fixture()
+@pytest.fixture
 def manuf_cluster():
     """Return a manufacturer specific cluster fixture."""
 
@@ -541,7 +545,7 @@ def manuf_cluster():
     return ManufacturerSpecificCluster.from_id(ep, 0x2222)
 
 
-@pytest.fixture()
+@pytest.fixture
 def manuf_cluster2():
     """Return a manufacturer specific cluster fixture."""
 
@@ -1031,3 +1035,116 @@ async def test_request_with_kwargs(real_device):
 
         assert len(request_mock.mock_calls) == 3
         assert all(c == request_mock.mock_calls[0] for c in request_mock.mock_calls)
+
+
+def test_purge_custom_quirks(tmp_path: pathlib.Path, app_mock) -> None:
+    def load_quirks():
+        for importer, modname, _ in pkgutil.walk_packages(path=[str(tmp_path)]):
+            spec = importer.find_spec(modname)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[modname] = module
+            spec.loader.exec_module(module)
+
+    (tmp_path / "quirk1.py").write_text("""
+import zigpy.quirks
+from zigpy.zcl.clusters.general import LevelControl
+from zigpy.const import (
+    SIG_ENDPOINTS,
+    SIG_EP_INPUT,
+    SIG_EP_OUTPUT,
+    SIG_EP_PROFILE,
+    SIG_EP_TYPE,
+    SIG_MODELS_INFO,
+)
+
+class CustomLevel1(zigpy.quirks.CustomCluster, LevelControl):
+    pass
+
+class TestQuirk1(zigpy.quirks.CustomDevice):
+    signature = {
+        SIG_MODELS_INFO: (("manufacturer1", "model1"),),
+        SIG_ENDPOINTS: {
+            1: {
+                SIG_EP_PROFILE: 255,
+                SIG_EP_TYPE: 255,
+                SIG_EP_INPUT: [3],
+                SIG_EP_OUTPUT: [6],
+            }
+        },
+    }
+
+    replacement = {
+        SIG_ENDPOINTS: {
+            1: {
+                SIG_EP_PROFILE: 255,
+                SIG_EP_TYPE: 255,
+                SIG_EP_INPUT: [3, CustomLevel1],
+                SIG_EP_OUTPUT: [6],
+            }
+        },
+    }""")
+
+    (tmp_path / "quirk2.py").write_text("""
+import zigpy.quirks
+
+from zigpy.quirks.v2 import QuirkBuilder
+from zigpy.zcl import ClusterType
+from zigpy.zcl.clusters.general import LevelControl
+
+class CustomLevel2(zigpy.quirks.CustomCluster, LevelControl):
+    pass
+
+QuirkBuilder("manufacturer2", "model2").adds(
+    cluster=CustomLevel2,
+    cluster_type=ClusterType.Server,
+    endpoint_id=1,
+).add_to_registry()
+""")
+
+    dev1 = zigpy.device.Device(
+        app_mock, t.EUI64.convert("11:11:11:11:11:11:11:11"), 0x1234
+    )
+    dev1.add_endpoint(1)
+    dev1[1].profile_id = 255
+    dev1[1].device_type = 255
+    dev1.model = "model1"
+    dev1.manufacturer = "manufacturer1"
+    dev1[1].add_input_cluster(3)
+    dev1[1].add_output_cluster(6)
+
+    dev2 = zigpy.device.Device(
+        app_mock, t.EUI64.convert("22:22:22:22:22:22:22:22"), 0x5678
+    )
+    dev2.add_endpoint(1)
+    dev2[1].profile_id = 255
+    dev2[1].device_type = 255
+    dev2.model = "model2"
+    dev2.manufacturer = "manufacturer2"
+    dev2[1].add_input_cluster(3)
+    dev2[1].add_output_cluster(6)
+
+    registry = zigpy.quirks.DEVICE_REGISTRY
+
+    assert not registry._registry.get("manufacturer1", {}).get("model1", [])
+    assert not registry._registry_v2.get(("manufacturer2", "model2"), set())
+
+    load_quirks()
+
+    assert registry._registry.get("manufacturer1", {}).get("model1", [])
+    assert registry._registry_v2.get(("manufacturer2", "model2"), set())
+
+    assert type(registry.get_device(dev1)).__name__ == "TestQuirk1"
+    assert registry.get_device(dev2).quirk_metadata.quirk_file.name == "quirk2.py"
+
+    # Only quirks from the passed directory are purged so this is a no-op
+    registry.purge_custom_quirks(tmp_path / "some_other_dir")
+    assert registry._registry.get("manufacturer1", {}).get("model1", [])
+    assert registry._registry_v2.get(("manufacturer2", "model2"), set())
+
+    # Now we really remove them
+    registry.purge_custom_quirks(tmp_path)
+    assert not registry._registry.get("manufacturer1", {}).get("model1", [])
+    assert not registry._registry_v2.get(("manufacturer2", "model2"), set())
+
+    assert registry.get_device(dev1) is dev1
+    assert registry.get_device(dev2) is dev2

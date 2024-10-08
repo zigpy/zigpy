@@ -8,6 +8,7 @@ import pytest
 from zigpy import device, endpoint
 import zigpy.application
 import zigpy.exceptions
+from zigpy.ota import OtaImagesResult
 import zigpy.ota.image
 from zigpy.profiles import zha
 import zigpy.state
@@ -20,7 +21,7 @@ from zigpy.zdo import types as zdo_t
 from .async_mock import ANY, AsyncMock, MagicMock, int_sentinel, patch, sentinel
 
 
-@pytest.fixture()
+@pytest.fixture
 def dev(monkeypatch, app_mock):
     monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
@@ -519,7 +520,9 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         )
     )
 
-    dev.application.ota.get_ota_image = MagicMock(side_effect=ValueError("No image"))
+    dev.application.ota.get_ota_images = MagicMock(
+        return_value=OtaImagesResult(upgrades=(), downgrades=())
+    )
     dev.update_firmware = MagicMock(wraps=dev.update_firmware)
 
     def make_packet(cmd_name: str, **kwargs):
@@ -669,9 +672,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                                 attrid=Ota.AttributeDefs.current_file_version.id,
                                 status=foundation.Status.SUCCESS,
                                 value=foundation.TypeValue(
-                                    type=foundation.DATA_TYPES.pytype_to_datatype_id(
-                                        t.uint32_t
-                                    ),
+                                    type=foundation.DataTypeId.uint32,
                                     value=active_fw_image.firmware.header.file_version,
                                 ),
                             )

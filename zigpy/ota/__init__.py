@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
 import contextlib
 import dataclasses
 import logging
-import pathlib
 import sys
 import typing
 
@@ -50,6 +50,12 @@ _LOGGER = logging.getLogger(__name__)
 
 OTA_FETCH_TIMEOUT = 20
 MAX_DEVICES_CHECKING_IN_PER_BROADCAST = 15
+
+
+@dataclasses.dataclass(frozen=True)
+class OtaImagesResult(t.BaseDataclassMixin):
+    upgrades: tuple[zigpy.ota.providers.BaseOtaImageMetadata]
+    downgrades: tuple[zigpy.ota.providers.BaseOtaImageMetadata]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -147,9 +153,6 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         query_cmd: query_next_image,
     ) -> bool:
         """Check if an OTA image and its metadata is compatible with a device."""
-        if self.metadata.file_version <= query_cmd.current_file_version:
-            return False
-
         if (
             self._manufacturer_id is not None
             and self._manufacturer_id != query_cmd.manufacturer_code
@@ -168,18 +171,6 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         ):
             return False
 
-        if (
-            self.metadata.min_current_file_version is not None
-            and query_cmd.current_file_version < self.metadata.min_current_file_version
-        ):
-            return False
-
-        if (
-            self.metadata.max_current_file_version is not None
-            and query_cmd.current_file_version > self.metadata.max_current_file_version
-        ):
-            return False
-
         if self._min_hardware_version is not None and (
             query_cmd.hardware_version is None
             or query_cmd.hardware_version < self._min_hardware_version
@@ -189,6 +180,25 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         if self._max_hardware_version is not None and (
             query_cmd.hardware_version is None
             or query_cmd.hardware_version > self._max_hardware_version
+        ):
+            return False
+
+        return True
+
+    def check_version(self, current_file_version: int) -> bool:
+        """Check if the image is a newer version than the device's current version."""
+        if self.version <= current_file_version:
+            return False
+
+        if (
+            self.metadata.min_current_file_version is not None
+            and current_file_version < self.metadata.min_current_file_version
+        ):
+            return False
+
+        if (
+            self.metadata.max_current_file_version is not None
+            and current_file_version > self.metadata.max_current_file_version
         ):
             return False
 
@@ -322,7 +332,7 @@ class OTA:
             config={"path": config.get(CONF_OTA_ADVANCED_DIR)},
         )
         register_deprecated_provider(
-            enabled=isinstance(config.get(CONF_OTA_Z2M_LOCAL_INDEX), pathlib.Path),
+            enabled=None if config.get(CONF_OTA_Z2M_LOCAL_INDEX) is None else True,
             provider=zigpy.ota.providers.LocalZ2MProvider,
             config={"index_file": config.get(CONF_OTA_Z2M_LOCAL_INDEX)},
         )
@@ -363,7 +373,6 @@ class OTA:
         self, provider: zigpy.ota.providers.BaseOtaProvider
     ) -> list[zigpy.ota.providers.BaseOtaImageMetadata]:
         """Load the index of a provider."""
-
         async with asyncio_timeout(OTA_FETCH_TIMEOUT):
             return await provider.load_index()
 
@@ -376,11 +385,12 @@ class OTA:
         async with asyncio_timeout(OTA_FETCH_TIMEOUT):
             return await image.fetch()
 
-    async def get_ota_image(
+    async def get_ota_images(
         self,
         device: zigpy.device.Device,
         query_cmd: query_next_image,
-    ) -> OtaImageWithMetadata | None:
+    ) -> OtaImagesResult:
+        """Get OTA images compatible with the device."""
         # Only consider providers that are compatible with the device
         compatible_providers = [
             p for p in self._providers if p.compatible_with_device(device)
@@ -414,15 +424,27 @@ class OTA:
         # Find all superficially compatible images. Note that if an image's contents
         # are unknown and its metadata does not describe hardware compatibility, we will
         # still download in the next step to double check, in case the file itself does.
-        pre_candidates = {
+        candidates = sorted(
+            [
+                img
+                for img in self._image_cache.values()
+                if img.check_compatibility(device, query_cmd)
+            ],
+            key=lambda img: img.version,
+        )
+
+        upgrades = {
             img.metadata: img
-            for img in self._image_cache.values()
-            if img.check_compatibility(device, query_cmd)
+            for img in candidates
+            if img.check_version(query_cmd.current_file_version)
+        }
+        downgrades = {
+            img.metadata: img for img in candidates if img.metadata not in upgrades
         }
 
-        undownloaded_images = [
-            img for img in pre_candidates.values() if img.firmware is None
-        ]
+        # Only download upgrade images, downgrades are used just to indicate the latest
+        # version
+        undownloaded_images = [img for img in upgrades.values() if img.firmware is None]
 
         # Fetch all the candidates that are missing from the cache
         results = await asyncio.gather(
@@ -435,11 +457,11 @@ class OTA:
                 _LOGGER.debug(
                     "Failed to download image, ignoring: %s", img, exc_info=result
                 )
-                pre_candidates.pop(img.metadata, None)
+                upgrades.pop(img.metadata)
                 continue
 
-            # `img` is the metadata without downloaded firmware: `result` is the same
-            # image with downloaded firmware
+            # `img` is the metadata without downloaded firmware. `result` is the same
+            # image with downloaded firmware.
             img = result
 
             # Cache the image if it isn't already cached
@@ -447,49 +469,58 @@ class OTA:
                 _LOGGER.debug("Caching image %s", img)
                 self._image_cache[img.metadata] = img
 
-            pre_candidates[img.metadata] = img
+            upgrades[img.metadata] = img
 
-        # Now we have all of the necessary metadata to fully vet the candidates and
-        # pick the best image
-        highest_version = (-1, -1)
-        highest_version_images: list[OtaImageWithMetadata] = []
+        # As a final pass, identify images with identical versions and specificity but
+        # differing contents
+        upgrade_collisions: defaultdict[defaultdict[list]] = defaultdict(
+            lambda: defaultdict(list)
+        )
 
-        for img in pre_candidates.values():
-            if img.check_compatibility(device, query_cmd):
-                assert img.firmware is not None
-                key = (img.firmware.header.file_version, img.specificity)
+        for img in upgrades.values():
+            assert img.firmware is not None
+            upgrade_collisions[img.version, img.specificity][
+                img.firmware.serialize()
+            ].append(img)
 
-                if key < highest_version:
-                    continue
-                elif key > highest_version:
-                    highest_version_images = []
-                    highest_version = key
+        for (version, specificity), buckets in upgrade_collisions.items():
+            if len(buckets) < 2:
+                continue
 
-                highest_version_images.append(img)
+            bad_images = []
 
-        if not highest_version_images:
-            # If no image is actually compatible with the device (i.e. the metadata is
-            # incomplete and after an image download we exclude the file), we are done
-            _LOGGER.debug(
-                "No new firmware is compatible with the device or the device is already"
-                " fully up-to-date"
-            )
-            return None
+            for bucket in buckets.values():
+                bad_images.extend(bucket)
 
-        # If there are multiple candidates with the same specificity and version but
-        # having different contents, bail out
-        first_fw = highest_version_images[0].firmware
-
-        if any(img.firmware != first_fw for img in highest_version_images[1:]):
             _LOGGER.warning(
-                "Multiple compatible OTA images for device %s exist, not picking",
-                device,
+                "Multiple unique OTA images for version %08X with specificity %d exist."
+                " It is not possible to tell which image is correct so all %d of the"
+                " colliding images will be ignored.",
+                version,
+                specificity,
+                len(bad_images),
             )
-            return None
+            _LOGGER.debug("Colliding images: %s", bad_images)
 
-        _LOGGER.debug("Picking firmware %s", highest_version_images[0])
+            for img in bad_images:
+                upgrades.pop(img.metadata)
 
-        return highest_version_images[0]
+        return OtaImagesResult(
+            upgrades=tuple(
+                sorted(
+                    upgrades.values(),
+                    key=lambda img: (img.version, img.specificity),
+                    reverse=True,
+                )
+            ),
+            downgrades=tuple(
+                sorted(
+                    downgrades.values(),
+                    key=lambda img: (img.version, img.specificity),
+                    reverse=True,
+                )
+            ),
+        )
 
     async def broadcast_notify(
         self,

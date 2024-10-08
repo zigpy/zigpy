@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import enum
-from typing import TYPE_CHECKING, Any, Dict, Union
+from typing import TYPE_CHECKING, Any, Union
 
-ConfigType = Dict[str, Any]
+ConfigType = dict[str, Any]
 
 # pylint: disable=invalid-name
 ClusterType = "Cluster"

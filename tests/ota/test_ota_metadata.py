@@ -10,7 +10,7 @@ from zigpy.ota.providers import BaseOtaImageMetadata
 from zigpy.zcl.clusters.general import Ota
 
 
-@pytest.fixture()
+@pytest.fixture
 def image_with_metadata() -> OtaImageWithMetadata:
     firmware = zigpy.ota.image.OTAImage(
         header=zigpy.ota.image.OTAImageHeader(
@@ -30,7 +30,7 @@ def image_with_metadata() -> OtaImageWithMetadata:
         subelements=[zigpy.ota.image.SubElement(tag_id=0x0000, data=b"fw_image")],
     )
 
-    metadata = BaseOtaImageMetadata(  # type: ignore[call-arg]
+    metadata = BaseOtaImageMetadata(
         file_version=0x12345678,
         manufacturer_id=0x1234,
         image_type=0x5678,
@@ -131,10 +131,17 @@ async def test_metadata_compatibility(
 
     assert image_with_metadata.check_compatibility(dev, query_cmd)
 
-    # If the file version is identical, we can't upgrade
-    assert not image_with_metadata.check_compatibility(
+    # The file version is ignored when checking compatibility
+    assert image_with_metadata.check_compatibility(
         dev, query_cmd.replace(current_file_version=0x12345678)
     )
+
+    # The min and max current file versions are respected
+    assert image_with_metadata.check_version(0x12345678 - 10)
+    assert image_with_metadata.check_version(0x12345678 - 2)
+    assert not image_with_metadata.check_version(0x12345678 - 11)
+    assert not image_with_metadata.check_version(0x12345678 - 1)
+    assert not image_with_metadata.check_version(0x12345678)
 
     assert not image_with_metadata.check_compatibility(
         dev, query_cmd.replace(image_type=0xAAAA)
@@ -149,14 +156,6 @@ async def test_metadata_compatibility(
 
     with patch.object(dev, attribute="_manufacturer", new="manufacturer3"):
         assert not image_with_metadata.check_compatibility(dev, query_cmd)
-
-    assert not image_with_metadata.check_compatibility(
-        dev, query_cmd.replace(current_file_version=0x12345678 - 100)
-    )
-
-    assert not image_with_metadata.check_compatibility(
-        dev, query_cmd.replace(current_file_version=0x12345678 - 1)
-    )
 
     assert not image_with_metadata.check_compatibility(
         dev, query_cmd.replace(hardware_version=0)

@@ -1,12 +1,10 @@
 import asyncio
-import copy
 import errno
 import logging
 from unittest import mock
 from unittest.mock import ANY, PropertyMock, call
 
 import pytest
-import voluptuous as vol
 
 import zigpy.application
 import zigpy.config as conf
@@ -34,7 +32,7 @@ from .conftest import (
 )
 
 
-@pytest.fixture()
+@pytest.fixture
 def ieee():
     return make_ieee()
 
@@ -334,48 +332,6 @@ def test_props(app):
     assert app.state.network_info.nwk_update_id is not None
 
 
-def test_app_config_setter(app):
-    """Test configuration setter."""
-
-    cfg_copy = copy.deepcopy(app.config)
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is False
-    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_ENABLED] = "invalid bool"
-
-    with pytest.raises(vol.Invalid):
-        app.config = cfg_copy
-
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is False
-
-    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_ENABLED] = True
-    app.config = cfg_copy
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is True
-
-    cfg_copy[conf.CONF_OTA][conf.CONF_OTA_ENABLED] = "invalid bool"
-
-    with pytest.raises(vol.Invalid):
-        app.config = cfg_copy
-
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is True
-
-
-def test_app_update_config(app):
-    """Test configuration partial update."""
-
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is False
-    with pytest.raises(vol.Invalid):
-        app.update_config({conf.CONF_OTA: {conf.CONF_OTA_ENABLED: "invalid bool"}})
-
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is False
-
-    app.update_config({conf.CONF_OTA: {conf.CONF_OTA_ENABLED: "yes"}})
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is True
-
-    with pytest.raises(vol.Invalid):
-        app.update_config({conf.CONF_OTA: {conf.CONF_OTA_ENABLED: "invalid bool"}})
-
-    assert app.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED] is True
-
-
 async def test_uninitialized_message_handlers(app, ieee):
     """Test uninitialized message handlers."""
     handler_1 = MagicMock(return_value=None)
@@ -508,9 +464,10 @@ async def test_get_device(app):
 async def test_probe_success():
     config = {"path": "/dev/test"}
 
-    with patch.object(App, "connect") as connect, patch.object(
-        App, "disconnect"
-    ) as disconnect:
+    with (
+        patch.object(App, "connect") as connect,
+        patch.object(App, "disconnect") as disconnect,
+    ):
         result = await App.probe(config)
 
     assert set(config.items()) <= set(result.items())
@@ -522,9 +479,10 @@ async def test_probe_success():
 async def test_probe_failure():
     config = {"path": "/dev/test"}
 
-    with patch.object(
-        App, "connect", side_effect=asyncio.TimeoutError
-    ) as connect, patch.object(App, "disconnect") as disconnect:
+    with (
+        patch.object(App, "connect", side_effect=asyncio.TimeoutError) as connect,
+        patch.object(App, "disconnect") as disconnect,
+    ):
         result = await App.probe(config)
 
     assert result is False
@@ -778,7 +736,7 @@ async def test_request_concurrency():
     assert peak_concurrency == 16
 
 
-@pytest.fixture()
+@pytest.fixture
 def device():
     device = MagicMock()
     device.nwk = 0xABCD
@@ -787,7 +745,7 @@ def device():
     return device
 
 
-@pytest.fixture()
+@pytest.fixture
 def packet(app, device):
     return t.ZigbeePacket(
         src=t.AddrModeAddress(
@@ -937,7 +895,7 @@ async def test_send_broadcast(app, packet):
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def zdo_packet(app, device):
     return t.ZigbeePacket(
         src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk),

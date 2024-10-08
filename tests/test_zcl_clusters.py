@@ -1,11 +1,18 @@
+from __future__ import annotations
+
 import asyncio
+from datetime import datetime, timezone
 import re
+from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from zigpy import device, types, zcl
 import zigpy.endpoint
-from zigpy.zcl.clusters.general import Ota
+from zigpy.ota import OtaImagesResult
+from zigpy.zcl import foundation
+from zigpy.zcl.clusters.general import Basic, Ota, Time
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
 
@@ -68,61 +75,183 @@ def test_ep_attributes():
         assert not hasattr(ep, cluster.ep_attribute)
 
 
+async def read_attributes(cluster, attribute_ids: list[int]) -> dict[int, Any]:
+    schema = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Read_Attributes
+    ].schema
+    hdr, _ = cluster._create_request(
+        general=True,
+        command_id=foundation.GeneralCommand.Read_Attributes,
+        schema=schema,
+        disable_default_response=False,
+        direction=foundation.Direction.Client_to_Server,
+        args=(),
+        kwargs={"attribute_ids": attribute_ids},
+    )
+
+    command = schema(attribute_ids=attribute_ids)
+
+    with patch.object(cluster, "reply") as reply_mock:
+        cluster.handle_message(hdr, command)
+        call = reply_mock.mock_calls[0]
+
+    return call.args[2](call.args[3])
+
+
+async def test_basic_cluster():
+    ep = MagicMock()
+    ep.reply = AsyncMock()
+
+    cluster = Basic(ep)
+
+    rsp = await read_attributes(
+        cluster,
+        [
+            Basic.AttributeDefs.zcl_version.id,
+            Basic.AttributeDefs.power_source.id,
+            Basic.AttributeDefs.serial_number.id,
+        ],
+    )
+
+    assert rsp.status_records[0] == foundation.ReadAttributeRecord(
+        attrid=Basic.AttributeDefs.zcl_version.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.uint8,
+            value=8,
+        ),
+    )
+
+    assert rsp.status_records[1] == foundation.ReadAttributeRecord(
+        attrid=Basic.AttributeDefs.power_source.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.enum8,
+            value=Basic.PowerSource.DC_Source,
+        ),
+    )
+
+    assert rsp.status_records[2] == foundation.ReadAttributeRecord(
+        attrid=Basic.AttributeDefs.serial_number.id,
+        status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+    )
+
+
 async def test_time_cluster():
     ep = MagicMock()
     ep.reply = AsyncMock()
-    t = zcl.Cluster._registry[0x000A](ep)
 
-    hdr_general = zcl.foundation.ZCLHeader.general
-    tsn = 123
+    cluster = Time(ep)
 
-    t.handle_message(hdr_general(tsn, 1), [[0]])
-    await asyncio.sleep(0.01)
-    assert ep.reply.call_count == 0
+    Read_Attributes_rsp = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Read_Attributes_rsp
+    ].schema
 
-    t.handle_message(hdr_general(tsn, 0), [[0]])
-    await asyncio.sleep(0.01)
-    assert ep.reply.call_count == 1
-    assert ep.reply.mock_calls[0].kwargs["data"][3] == 0
+    # Datetime objects need to be subclassed to be patched so we may as well implement
+    # the patches directly
 
-    t.handle_message(hdr_general(tsn, 0), [[1]])
-    await asyncio.sleep(0.01)
-    assert ep.reply.call_count == 2
-    assert ep.reply.mock_calls[1].kwargs["data"][3] == 1
+    class PatchedDatetime(datetime):
+        _fake_now = datetime(
+            2000, 1, 2, 0, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")
+        )
 
-    t.handle_message(hdr_general(tsn, 0), [[2]])
-    await asyncio.sleep(0.01)
-    assert ep.reply.call_count == 3
-    assert ep.reply.mock_calls[2].kwargs["data"][3] == 2
+        def astimezone(self):
+            return self.replace(tzinfo=self._fake_now.tzinfo)
 
-    t.handle_message(hdr_general(tsn, 0), [[0, 1, 2]])
-    await asyncio.sleep(0.01)
-    assert ep.reply.call_count == 4
-    assert ep.reply.mock_calls[3].kwargs["data"][3] == 0
+        @classmethod
+        def now(cls, tzinfo=None):
+            if tzinfo is None:
+                return cls(
+                    cls._fake_now.year,
+                    cls._fake_now.month,
+                    cls._fake_now.day,
+                    cls._fake_now.hour,
+                    cls._fake_now.minute,
+                    cls._fake_now.second,
+                )
+            else:
+                assert tzinfo is timezone.utc
+                return (
+                    cls(
+                        cls._fake_now.year,
+                        cls._fake_now.month,
+                        cls._fake_now.day,
+                        cls._fake_now.hour,
+                        cls._fake_now.minute,
+                        cls._fake_now.second,
+                        tzinfo=tzinfo,
+                    )
+                    - cls._fake_now.utcoffset()
+                )
 
-    t.handle_message(hdr_general(tsn, 0), [[7]])
-    await asyncio.sleep(0.01)
-    assert ep.reply.call_count == 5
-    assert ep.reply.mock_calls[4].kwargs["data"][3] == 7
+    with patch("zigpy.zcl.clusters.general.datetime", PatchedDatetime):
+        # Supported attributes
+        rsp1 = await read_attributes(
+            cluster,
+            [
+                Time.AttributeDefs.time.id,
+                Time.AttributeDefs.time_status.id,
+                Time.AttributeDefs.time_zone.id,
+                Time.AttributeDefs.local_time.id,
+            ],
+        )
+
+    assert rsp1.status_records[0] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.time.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.UTC,
+            # One day from the epoch, plus time zone offset
+            value=24 * 60 * 60 + 8 * 60 * 60,
+        ),
+    )
+
+    assert rsp1.status_records[1] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.time_status.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.map8,
+            value=(
+                Time.TimeStatus.Master
+                | Time.TimeStatus.Synchronized
+                | Time.TimeStatus.Master_for_Zone_and_DST
+            ),
+        ),
+    )
+
+    assert rsp1.status_records[2] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.time_zone.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.int32,
+            # Time zone offset
+            value=-(8 * 60 * 60),
+        ),
+    )
+
+    assert rsp1.status_records[3] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.local_time.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.uint32,
+            # One day from the epoch, as on the clock
+            value=24 * 60 * 60,
+        ),
+    )
+
+    # Unsupported
+    rsp2 = await read_attributes(cluster, [0xABCD])
+    assert rsp2 == Read_Attributes_rsp(
+        status_records=[
+            foundation.ReadAttributeRecord(
+                attrid=0xABCD,
+                status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+            )
+        ]
+    )
 
 
-async def test_time_cluster_unsupported():
-    ep = MagicMock()
-    ep.reply = AsyncMock()
-    t = zcl.Cluster._registry[0x000A](ep)
-
-    hdr_general = zcl.foundation.ZCLHeader.general
-    tsn = 123
-
-    t.handle_cluster_general_request(hdr_general(tsn, 0), [[199, 128]])
-
-    await asyncio.sleep(0.01)
-
-    assert ep.reply.call_count == 1
-    assert ep.reply.mock_calls[0].kwargs["data"][-6:] == b"\xc7\x00\x86\x80\x00\x86"
-
-
-@pytest.fixture()
+@pytest.fixture
 def dev(monkeypatch, app_mock):
     monkeypatch.setattr(device, "APS_REPLY_TIMEOUT_EXTENDED", 0.1)
     ieee = types.EUI64(map(types.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
@@ -135,14 +264,15 @@ def dev(monkeypatch, app_mock):
         yield dev
 
 
-@pytest.fixture()
+@pytest.fixture
 def ota_cluster(dev):
     ep = dev.add_endpoint(1)
 
     cluster = zcl.Cluster._registry[0x0019](ep)
 
-    with patch.object(cluster, "reply", AsyncMock()), patch.object(
-        cluster, "request", AsyncMock()
+    with (
+        patch.object(cluster, "reply", AsyncMock()),
+        patch.object(cluster, "request", AsyncMock()),
     ):
         yield cluster
 
@@ -181,28 +311,35 @@ async def test_ota_handle_query_next_image(ota_cluster):
     cmd = MagicMock()
 
     # No image is available
-    dev.application.ota.get_ota_image = AsyncMock(return_value=None)
+    dev.application.ota.get_ota_images = AsyncMock(
+        return_value=OtaImagesResult(upgrades=(), downgrades=())
+    )
     ota_cluster.handle_cluster_request(hdr, cmd)
     await asyncio.sleep(0)
 
     assert ota_cluster.query_next_image_response.mock_calls == [
         call(zcl.foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn)
     ]
-    assert listener.device_ota_update_available.mock_calls == []
+    assert listener.device_ota_image_query_result.mock_calls == [
+        call(OtaImagesResult(upgrades=(), downgrades=()), cmd)
+    ]
 
     ota_cluster.query_next_image_response.reset_mock()
+    listener.device_ota_image_query_result.reset_mock()
 
     # Now one is available
     img = MagicMock()
-    dev.application.ota.get_ota_image = AsyncMock(return_value=img)
+    dev.application.ota.get_ota_images = AsyncMock(
+        return_value=OtaImagesResult(upgrades=(img,), downgrades=())
+    )
     ota_cluster.handle_cluster_request(hdr, cmd)
     await asyncio.sleep(0)
 
     assert ota_cluster.query_next_image_response.mock_calls == [
         call(zcl.foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn)
     ]
-    assert listener.device_ota_update_available.mock_calls == [
-        call(img, cmd.current_file_version)
+    assert listener.device_ota_image_query_result.mock_calls == [
+        call(OtaImagesResult(upgrades=(img,), downgrades=()), cmd)
     ]
 
 
@@ -513,3 +650,20 @@ def test_ota_image_block_field_control():
     )
 
     assert response.request_node_addr is None
+
+
+def test_general_analog_in_application_type():
+    """Test AnalogInput General Cluster, Application Type Attribute."""
+    app_type = zcl.clusters.general_const.ApplicationType(
+        0x00070100
+    )  # Group 0x00, Type 0x01, Application 0x0007
+
+    assert app_type.group == 0x00
+    assert (
+        app_type.type
+        == zcl.clusters.general_const.AnalogInputType.Relative_Humidity_Percent
+    )
+    assert (
+        app_type.index
+        == zcl.clusters.general_const.RelativeHumidityPercent.Space_Humidity
+    )

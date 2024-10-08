@@ -44,7 +44,7 @@ class PriorityDynamicBoundedSemaphore(asyncio.Semaphore):
         self._wakeup_scheduled: bool = False
 
     @property
-    @functools.lru_cache(maxsize=None)
+    @functools.cache
     def _loop(self) -> asyncio.BaseEventLoop:
         return asyncio.get_running_loop()
 

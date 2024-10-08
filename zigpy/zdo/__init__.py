@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Coroutine
 import functools
 import logging
-from typing import Coroutine
 
 import zigpy.profiles
 import zigpy.types as t
