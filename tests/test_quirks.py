@@ -960,7 +960,7 @@ async def test_manuf_id_disable(real_device):
     assert len(request_mock.mock_calls) == 3
 
     for mock_call in request_mock.mock_calls:
-        data = mock_call.args[2]
+        data = mock_call.kwargs["data"]
         hdr, _ = zcl.foundation.ZCLHeader.deserialize(data)
         assert hdr.manufacturer == 0x1234
 
@@ -981,7 +981,7 @@ async def test_manuf_id_disable(real_device):
     assert len(request_mock.mock_calls) == 3
 
     for mock_call in request_mock.mock_calls:
-        data = mock_call.args[2]
+        data = mock_call.kwargs["data"]
         hdr, _ = zcl.foundation.ZCLHeader.deserialize(data)
         assert hdr.manufacturer is None
 

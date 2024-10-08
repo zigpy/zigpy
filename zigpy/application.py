@@ -832,7 +832,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             # Prefer `ask_for_ack` to `expect_reply`
             if ask_for_ack:
                 tx_options |= t.TransmitOptions.ACK
-        elif expect_reply:
+        elif not expect_reply:
             tx_options |= t.TransmitOptions.ACK
 
         await self.send_packet(

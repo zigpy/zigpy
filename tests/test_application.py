@@ -839,9 +839,13 @@ async def test_request(app, device, packet):
     app.send_packet.assert_called_once_with(
         packet.replace(
             src=t.AddrModeAddress(
-                addr_mode=t.AddrMode.IEEE, address=app.state.node_info.ieee
+                addr_mode=t.AddrMode.IEEE,
+                address=app.state.node_info.ieee,
             ),
-            dst=t.AddrModeAddress(addr_mode=t.AddrMode.IEEE, address=device.ieee),
+            dst=t.AddrModeAddress(
+                addr_mode=t.AddrMode.IEEE,
+                address=device.ieee,
+            ),
         )
     )
     app.send_packet.reset_mock()

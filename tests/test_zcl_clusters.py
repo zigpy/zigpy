@@ -83,27 +83,27 @@ async def test_time_cluster():
     t.handle_message(hdr_general(tsn, 0), [[0]])
     await asyncio.sleep(0.01)
     assert ep.reply.call_count == 1
-    assert ep.reply.call_args[0][2][3] == 0
+    assert ep.reply.mock_calls[0].kwargs["data"][3] == 0
 
     t.handle_message(hdr_general(tsn, 0), [[1]])
     await asyncio.sleep(0.01)
     assert ep.reply.call_count == 2
-    assert ep.reply.call_args[0][2][3] == 1
+    assert ep.reply.mock_calls[1].kwargs["data"][3] == 1
 
     t.handle_message(hdr_general(tsn, 0), [[2]])
     await asyncio.sleep(0.01)
     assert ep.reply.call_count == 3
-    assert ep.reply.call_args[0][2][3] == 2
+    assert ep.reply.mock_calls[2].kwargs["data"][3] == 2
 
     t.handle_message(hdr_general(tsn, 0), [[0, 1, 2]])
     await asyncio.sleep(0.01)
     assert ep.reply.call_count == 4
-    assert ep.reply.call_args[0][2][3] == 0
+    assert ep.reply.mock_calls[3].kwargs["data"][3] == 0
 
     t.handle_message(hdr_general(tsn, 0), [[7]])
     await asyncio.sleep(0.01)
     assert ep.reply.call_count == 5
-    assert ep.reply.call_args[0][2][3] == 7
+    assert ep.reply.mock_calls[4].kwargs["data"][3] == 7
 
 
 async def test_time_cluster_unsupported():
@@ -119,7 +119,7 @@ async def test_time_cluster_unsupported():
     await asyncio.sleep(0.01)
 
     assert ep.reply.call_count == 1
-    assert ep.reply.call_args[0][2][-6:] == b"\xc7\x00\x86\x80\x00\x86"
+    assert ep.reply.mock_calls[0].kwargs["data"][-6:] == b"\xc7\x00\x86\x80\x00\x86"
 
 
 @pytest.fixture()

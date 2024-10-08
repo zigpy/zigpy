@@ -217,8 +217,8 @@ async def test_reply_tsn_override(zdo_f, monkeypatch):
     mock_ser.return_value = b"\xaa\x55"
     monkeypatch.setattr(t, "serialize", mock_ser)
     await zdo_f.reply(sentinel.cmd, sentinel.arg1, sentinel.arg2)
-    seq = zdo_f.device.request.call_args[0][4]
-    data = zdo_f.device.request.call_args[0][5]
+    seq = zdo_f.device.request.mock_calls[0].kwargs["sequence"]
+    data = zdo_f.device.request.mock_calls[0].kwargs["data"]
     assert seq == 1
     assert data[0] == 1
     assert data[1:3] == b"\xaa\x55"
@@ -226,8 +226,8 @@ async def test_reply_tsn_override(zdo_f, monkeypatch):
     # override tsn
     tsn = 0x23
     await zdo_f.reply(sentinel.cmd, sentinel.arg1, sentinel.arg2, tsn=tsn)
-    seq = zdo_f.device.request.call_args[0][4]
-    data = zdo_f.device.request.call_args[0][5]
+    seq = zdo_f.device.request.mock_calls[1].kwargs["sequence"]
+    data = zdo_f.device.request.mock_calls[1].kwargs["data"]
     assert seq == tsn
     assert data[0] == tsn
     assert data[1:3] == b"\xaa\x55"

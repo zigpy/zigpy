@@ -300,7 +300,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *,
         general: bool,
         command_id: foundation.GeneralCommand | int,
-        schema: dict | t.Struct,
+        schema: tuple | list | t.Struct,
         manufacturer: int | None = None,
         tsn: int | None = None,
         disable_default_response: bool,

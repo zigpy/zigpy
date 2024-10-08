@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 from unittest import mock
+from unittest.mock import AsyncMock, MagicMock, patch, sentinel
 
 import pytest
 
@@ -10,8 +12,7 @@ import zigpy.device
 import zigpy.endpoint
 import zigpy.types as t
 from zigpy.zcl import foundation
-
-from .async_mock import AsyncMock, MagicMock, int_sentinel, patch, sentinel
+from zigpy.zcl.clusters.general import Ota
 
 DEFAULT_TSN = 123
 
@@ -110,70 +111,155 @@ def cluster(cluster_by_id):
 def client_cluster():
     epmock = AsyncMock()
     epmock.device.get_sequence = MagicMock(return_value=DEFAULT_TSN)
-    return zcl.Cluster.from_id(epmock, 3)
+    return Ota(epmock)
 
 
 async def test_request_general(cluster):
-    await cluster.request(True, 0, [])
+    await cluster.request(general=True, command_id=0, schema=[])
     assert cluster._endpoint.request.call_count == 1
 
 
 async def test_request_manufacturer(cluster):
-    await cluster.request(True, 0, [t.uint8_t], 1)
+    command = foundation.ZCLCommandDef(
+        name="test_command", id=0x00, schema={"param1": t.uint8_t}
+    ).with_compiled_schema()
+
+    await cluster.request(
+        general=True,
+        command_id=command.id,
+        schema=command.schema,
+        param1=1,
+    )
     assert cluster._endpoint.request.call_count == 1
-    org_size = len(cluster._endpoint.request.call_args[0][2])
-    await cluster.request(True, 0, [t.uint8_t], 1, manufacturer=1)
+
+    org_size = len(cluster._endpoint.request.mock_calls[0].kwargs["data"])
+    await cluster.request(
+        general=True,
+        command_id=command.id,
+        schema=command.schema,
+        param1=1,
+        manufacturer=1,
+    )
     assert cluster._endpoint.request.call_count == 2
-    assert org_size + 2 == len(cluster._endpoint.request.call_args[0][2])
+    assert org_size + 2 == len(cluster._endpoint.request.mock_calls[1].kwargs["data"])
 
 
 async def test_request_optional(cluster):
-    schema = [t.uint8_t, t.uint16_t, t.Optional(t.uint16_t), t.Optional(t.uint8_t)]
+    command = foundation.ZCLCommandDef(
+        name="test_command",
+        id=0x00,
+        schema={
+            "param1": t.uint8_t,
+            "param2": t.uint16_t,
+            "param3?": t.uint16_t,
+            "param4?": t.uint8_t,
+        },
+    ).with_compiled_schema()
+
     cluster.endpoint.request = AsyncMock()
 
     with pytest.raises(ValueError):
-        await cluster.request(True, 0, schema)
+        await cluster.request(
+            general=True,
+            command_id=command.id,
+            schema=command.schema,
+        )
 
     assert cluster._endpoint.request.call_count == 0
     cluster._endpoint.request.reset_mock()
 
     with pytest.raises(ValueError):
-        await cluster.request(True, 0, schema, 1)
+        await cluster.request(
+            general=True,
+            command_id=command.id,
+            schema=command.schema,
+            param1=1,
+        )
 
     assert cluster._endpoint.request.call_count == 0
     cluster._endpoint.request.reset_mock()
 
-    await cluster.request(True, 0, schema, 1, 2)
+    await cluster.request(
+        general=True,
+        command_id=command.id,
+        schema=command.schema,
+        param1=1,
+        param2=2,
+    )
     assert cluster._endpoint.request.call_count == 1
     cluster._endpoint.request.reset_mock()
 
-    await cluster.request(True, 0, schema, 1, 2, 3)
+    await cluster.request(
+        general=True,
+        command_id=command.id,
+        schema=command.schema,
+        param1=1,
+        param2=2,
+        param3=3,
+    )
     assert cluster._endpoint.request.call_count == 1
     cluster._endpoint.request.reset_mock()
 
-    await cluster.request(True, 0, schema, 1, 2, 3, 4)
+    await cluster.request(
+        general=True,
+        command_id=command.id,
+        schema=command.schema,
+        param1=1,
+        param2=2,
+        param3=3,
+        param4=4,
+    )
     assert cluster._endpoint.request.call_count == 1
     cluster._endpoint.request.reset_mock()
 
     with pytest.raises(TypeError):
-        await cluster.request(True, 0, schema, 1, 2, 3, 4, 5)
+        await cluster.request(
+            general=True,
+            command_id=command.id,
+            schema=command.schema,
+            param1=1,
+            param2=2,
+            param3=3,
+            param4=4,
+            param5=5,
+        )
 
     assert cluster._endpoint.request.call_count == 0
     cluster._endpoint.request.reset_mock()
 
 
 async def test_reply_general(cluster):
-    await cluster.reply(False, 0, [])
+    command = foundation.ZCLCommandDef(
+        name="test_command", id=0x00, schema={}
+    ).with_compiled_schema()
+
+    await cluster.reply(general=False, command_id=command.id, schema=command.schema)
     assert cluster._endpoint.reply.call_count == 1
 
 
 async def test_reply_manufacturer(cluster):
-    await cluster.reply(False, 0, [t.uint8_t], 1)
+    command = foundation.ZCLCommandDef(
+        name="test_command",
+        id=0x00,
+        schema={
+            "param1": t.uint8_t,
+        },
+    ).with_compiled_schema()
+
+    await cluster.reply(
+        general=False, command_id=command.id, schema=command.schema, param1=1
+    )
     assert cluster._endpoint.reply.call_count == 1
-    org_size = len(cluster._endpoint.reply.call_args[0][2])
-    await cluster.reply(False, 0, [t.uint8_t], 1, manufacturer=1)
+    org_size = len(cluster._endpoint.reply.mock_calls[0].kwargs["data"])
+    await cluster.reply(
+        general=False,
+        command_id=command.id,
+        schema=command.schema,
+        param1=1,
+        manufacturer=1,
+    )
     assert cluster._endpoint.reply.call_count == 2
-    assert org_size + 2 == len(cluster._endpoint.reply.call_args[0][2])
+    assert org_size + 2 == len(cluster._endpoint.reply.mock_calls[1].kwargs["data"])
 
 
 def test_attribute_report(cluster):
@@ -211,7 +297,7 @@ def test_attribute_report(cluster):
 
 def test_handle_request_unknown(cluster):
     hdr = MagicMock(auto_spec=foundation.ZCLHeader)
-    hdr.command_id = int_sentinel.command_id
+    hdr.command_id = 0x42
     hdr.frame_control.is_general = True
     hdr.frame_control.is_cluster = False
     cluster.listener_event = MagicMock()
@@ -229,10 +315,10 @@ def test_handle_request_unknown(cluster):
 
 def test_handle_cluster_request(cluster):
     hdr = MagicMock(auto_spec=foundation.ZCLHeader)
-    hdr.command_id = int_sentinel.command_id
+    hdr.command_id = 0x42
     hdr.frame_control.is_general = False
     hdr.frame_control.is_cluster = True
-    hdr.command_id.is_general = False
+
     cluster.listener_event = MagicMock()
     cluster._update_attribute = MagicMock()
     cluster.handle_cluster_general_request = MagicMock()
@@ -440,14 +526,14 @@ async def test_write_attributes_raw(cluster):
     ],
 )
 async def test_write_attribute_types(
-    cluster_id, attr, value, serialized, cluster_by_id
+    cluster_id: int, attr: str, value: Any, serialized: bytes, cluster_by_id
 ):
     cluster = cluster_by_id(cluster_id)
     with patch.object(cluster.endpoint, "request", new=AsyncMock()):
         await cluster.write_attributes({attr: value})
         assert cluster._endpoint.reply.call_count == 0
         assert cluster._endpoint.request.call_count == 1
-        assert cluster.endpoint.request.call_args[0][2][3:] == serialized
+        assert cluster.endpoint.request.mock_calls[0].kwargs["data"][3:] == serialized
 
 
 @pytest.mark.parametrize(
@@ -550,12 +636,12 @@ async def test_read_attributes_resp_unsupported(cluster):
     await cluster.read_attributes_rsp({0: 5})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
-    orig_len = len(cluster._endpoint.reply.call_args[0][2])
+    orig_len = len(cluster._endpoint.reply.mock_calls[0].kwargs["data"])
 
     await cluster.read_attributes_rsp({0: 5, 2: None})
     assert cluster._endpoint.reply.call_count == 2
     assert cluster._endpoint.request.call_count == 0
-    assert len(cluster._endpoint.reply.call_args[0][2]) == orig_len + 3
+    assert len(cluster._endpoint.reply.mock_calls[1].kwargs["data"]) == orig_len + 3
 
 
 async def test_read_attributes_resp_str(cluster):
@@ -570,7 +656,7 @@ async def test_read_attributes_resp_exc(cluster):
         await cluster.read_attributes_rsp({"hw_version": 32})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
-    assert cluster.endpoint.reply.call_args[0][2][-3:] == b"\x03\x00\x86"
+    assert cluster.endpoint.reply.mock_calls[0].kwargs["data"][-3:] == b"\x03\x00\x86"
 
 
 @pytest.mark.parametrize(
@@ -588,7 +674,7 @@ async def test_read_attribute_resp(cluster_id, attr, value, serialized, cluster_
     await cluster.read_attributes_rsp({attr: value})
     assert cluster._endpoint.reply.call_count == 1
     assert cluster._endpoint.request.call_count == 0
-    assert cluster.endpoint.reply.call_args[0][2][3:] == serialized
+    assert cluster.endpoint.reply.mock_calls[0].kwargs["data"][3:] == serialized
 
 
 def test_bind(cluster):
@@ -667,19 +753,19 @@ async def test_configure_reporting_types(cluster_id, attr, data_type, cluster_by
     await cluster.configure_reporting(attr, 0x1234, 0x2345, 0xAA)
     assert cluster._endpoint.reply.call_count == 0
     assert cluster._endpoint.request.call_count == 1
-    assert cluster.endpoint.request.call_args[0][2][6] == data_type
+    assert cluster.endpoint.request.mock_calls[0].kwargs["data"][6] == data_type
 
 
 async def test_command(cluster):
     await cluster.command(0x00)
     assert cluster._endpoint.request.call_count == 1
-    assert cluster._endpoint.request.call_args[0][1] == DEFAULT_TSN
+    assert cluster._endpoint.request.mock_calls[0].kwargs["sequence"] == DEFAULT_TSN
 
 
 async def test_command_override_tsn(cluster):
     await cluster.command(0x00, tsn=22)
     assert cluster._endpoint.request.call_count == 1
-    assert cluster._endpoint.request.call_args[0][1] == 22
+    assert cluster._endpoint.request.mock_calls[0].kwargs["sequence"] == 22
 
 
 async def test_command_attr(cluster):
@@ -688,7 +774,7 @@ async def test_command_attr(cluster):
 
 
 async def test_client_command_attr(client_cluster):
-    await client_cluster.identify_query_response(timeout=0)
+    await client_cluster.query_specific_file_response(status=foundation.Status.SUCCESS)
     assert client_cluster._endpoint.reply.call_count == 1
 
 
@@ -703,8 +789,13 @@ async def test_invalid_arguments_cluster_command(cluster):
 
 
 async def test_invalid_arguments_cluster_client_command(client_cluster):
-    with pytest.raises(TypeError):
-        await client_cluster.client_command(0, 0, 0)
+    with pytest.raises(ValueError):
+        await client_cluster.client_command(
+            command_id=Ota.ClientCommandDefs.upgrade_end_response.id,
+            manufacturer_code=0,
+            image_type=0,
+            # Missing: file_version, current_time, upgrade_time
+        )
 
 
 def test_name(cluster):
@@ -807,12 +898,20 @@ async def test_write_attributes_undivided(cluster):
 
 
 async def test_configure_reporting_multiple(cluster):
-    await cluster.configure_reporting(3, 5, 15, 20, manufacturer=0x2345)
-    await cluster.configure_reporting_multiple({3: (5, 15, 20)}, manufacturer=0x2345)
+    await cluster.configure_reporting(
+        attribute=3,
+        min_interval=5,
+        max_interval=15,
+        reportable_change=20,
+        manufacturer=0x2345,
+    )
+    await cluster.configure_reporting_multiple(
+        attributes={3: (5, 15, 20)}, manufacturer=0x2345
+    )
     assert cluster.endpoint.request.call_count == 2
     assert (
-        cluster.endpoint.request.call_args_list[0][0][2]
-        == cluster.endpoint.request.call_args_list[1][0][2]
+        cluster.endpoint.request.mock_calls[0].kwargs["data"]
+        == cluster.endpoint.request.mock_calls[2].kwargs["data"]
     )
 
 
@@ -1055,14 +1154,14 @@ async def test_zcl_request_direction():
 
     # Input cluster
     await ep.in_clusters[zcl.clusters.general.OnOff.cluster_id].on()
-    hdr1, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
+    hdr1, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].kwargs["data"])
     assert hdr1.direction == foundation.Direction.Client_to_Server
 
     ep.request.reset_mock()
 
     # Output cluster
     await ep.out_clusters[zcl.clusters.general.OnOff.cluster_id].on()
-    hdr2, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].args[2])
+    hdr2, _ = foundation.ZCLHeader.deserialize(ep.request.mock_calls[0].kwargs["data"])
     assert hdr2.direction == foundation.Direction.Server_to_Client
 
     # Color cluster that also uses `direction` as a kwarg
