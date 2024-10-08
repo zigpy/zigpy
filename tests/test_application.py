@@ -828,6 +828,22 @@ async def test_request(app, device, packet):
     )
     app.send_packet.reset_mock()
 
+    # Test explicit ACK control (enabled)
+    status, msg = await send_request(app, ask_for_ack=True)
+
+    app.send_packet.assert_called_once_with(
+        packet.replace(tx_options=t.TransmitOptions.ACK)
+    )
+    app.send_packet.reset_mock()
+
+    # Test explicit ACK control (disabled)
+    status, msg = await send_request(app, ask_for_ack=False)
+
+    app.send_packet.assert_called_once_with(
+        packet.replace(tx_options=t.TransmitOptions(0))
+    )
+    app.send_packet.reset_mock()
+
 
 def test_build_source_route_has_relays(app):
     device = MagicMock()
