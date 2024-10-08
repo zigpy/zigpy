@@ -301,7 +301,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *,
         general: bool,
         command_id: foundation.GeneralCommand | int,
-        schema: tuple | list | t.Struct,
+        schema: type[t.Struct],
         manufacturer: int | None = None,
         tsn: int | None = None,
         disable_default_response: bool,
@@ -310,14 +310,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         args: tuple[Any, ...],
         kwargs: Any,
     ) -> tuple[foundation.ZCLHeader, bytes]:
-        # Convert out-of-band dict schemas to struct schemas
-        if isinstance(schema, (tuple, list)):
-            schema = convert_list_schema(
-                command_id=command_id,
-                schema=schema,
-                direction=foundation.Direction.Client_to_Server,
-            )
-
         request = schema(*args, **kwargs)  # type:ignore[operator]
         request.serialize()  # Throw an error before generating a new TSN
 
@@ -349,7 +341,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self,
         general: bool,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
-        schema: dict | t.Struct,
+        schema: type[t.Struct],
         *args,
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
@@ -394,7 +386,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self,
         general: bool,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
-        schema: dict | t.Struct,
+        schema: type[t.Struct],
         *args,
         manufacturer: int | t.uint16_t | None = None,
         tsn: int | t.uint8_t | None = None,

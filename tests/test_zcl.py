@@ -115,7 +115,16 @@ def client_cluster():
 
 
 async def test_request_general(cluster):
-    await cluster.request(general=True, command_id=0, schema=[])
+    await cluster.request(
+        general=True,
+        command_id=foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Read_Attributes
+        ].id,
+        schema=foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Read_Attributes
+        ].schema,
+        attribute_ids=[],
+    )
     assert cluster._endpoint.request.call_count == 1
 
 
