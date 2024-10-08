@@ -1155,6 +1155,7 @@ async def test_zcl_cluster_definition_backwards_compatibility():
 
         attributes = {
             0x1234: ("attribute", t.uint8_t),
+            0x1235: ("attribute2", t.uint32_t, True),
         }
 
         server_commands = {
@@ -1166,6 +1167,15 @@ async def test_zcl_cluster_definition_backwards_compatibility():
         }
 
     assert TestCluster.cluster_id == 0xABCD
+
+    assert TestCluster.AttributeDefs.attribute.id == 0x1234
+    assert TestCluster.AttributeDefs.attribute.type == t.uint8_t
+    assert TestCluster.AttributeDefs.attribute.is_manufacturer_specific is False
+
+    assert TestCluster.AttributeDefs.attribute2.id == 0x1235
+    assert TestCluster.AttributeDefs.attribute2.type == t.uint32_t
+    assert TestCluster.AttributeDefs.attribute2.is_manufacturer_specific is True
+
     assert TestCluster.ServerCommandDefs.server_command.id == 0x00
     assert len(TestCluster.ServerCommandDefs.server_command.schema.fields) == 1
     assert (
