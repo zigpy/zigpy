@@ -19,6 +19,8 @@ else:
 
 from zigpy import zdo
 from zigpy.const import (
+    APS_REPLY_TIMEOUT,
+    APS_REPLY_TIMEOUT_EXTENDED,
     SIG_ENDPOINTS,
     SIG_EP_INPUT,
     SIG_EP_OUTPUT,
@@ -45,8 +47,6 @@ if typing.TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 
-APS_REPLY_TIMEOUT = 5
-APS_REPLY_TIMEOUT_EXTENDED = 28
 PACKET_DEBOUNCE_WINDOW = 10
 
 AFTER_OTA_ATTR_READ_DELAY = 10
@@ -308,6 +308,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         expect_reply=True,
         timeout=APS_REPLY_TIMEOUT,
         use_ieee=False,
+        ask_for_ack: bool | None = None,
     ):
         extended_timeout = False
 
@@ -318,16 +319,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         # Use a lambda so we don't leave the coroutine unawaited in case of an exception
         send_request = lambda: self._application.request(  # noqa: E731
-            self,
-            profile,
-            cluster,
-            src_ep,
-            dst_ep,
-            sequence,
-            data,
+            device=self,
+            profile=profile,
+            cluster=cluster,
+            src_ep=src_ep,
+            dst_ep=dst_ep,
+            sequence=sequence,
+            data=data,
             expect_reply=expect_reply,
             use_ieee=use_ieee,
             extended_timeout=extended_timeout,
+            ask_for_ack=ask_for_ack,
         )
 
         if not expect_reply:
@@ -503,17 +505,29 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         )
 
     async def reply(
-        self, profile, cluster, src_ep, dst_ep, sequence, data, use_ieee=False
+        self,
+        profile,
+        cluster,
+        src_ep,
+        dst_ep,
+        sequence,
+        data,
+        timeout=APS_REPLY_TIMEOUT,
+        expect_reply: bool = False,
+        use_ieee: bool = False,
+        ask_for_ack: bool | None = None,
     ):
         return await self.request(
-            profile,
-            cluster,
-            src_ep,
-            dst_ep,
-            sequence,
-            data,
-            expect_reply=False,
+            profile=profile,
+            cluster=cluster,
+            src_ep=src_ep,
+            dst_ep=dst_ep,
+            sequence=sequence,
+            data=data,
+            expect_reply=expect_reply,
+            timeout=timeout,
             use_ieee=use_ieee,
+            ask_for_ack=ask_for_ack,
         )
 
     async def update_firmware(

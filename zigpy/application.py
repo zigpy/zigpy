@@ -796,6 +796,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         expect_reply: bool = True,
         use_ieee: bool = False,
         extended_timeout: bool = False,
+        ask_for_ack: bool | None = None,
     ) -> tuple[zigpy.zcl.foundation.Status, str]:
         """Submit and send data out as an unicast transmission.
         :param device: destination device
@@ -828,7 +829,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         tx_options = t.TransmitOptions.NONE
 
-        if not expect_reply:
+        if ask_for_ack is not None:
+            # Prefer `ask_for_ack` to `expect_reply`
+            if ask_for_ack:
+                tx_options |= t.TransmitOptions.ACK
+        elif not expect_reply:
             tx_options |= t.TransmitOptions.ACK
 
         await self.send_packet(

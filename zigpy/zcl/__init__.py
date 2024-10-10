@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 import warnings
 
 from zigpy import util
+from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.types as t
 from zigpy.typing import AddressingMode, EndpointType
 from zigpy.zcl import foundation
@@ -300,7 +301,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *,
         general: bool,
         command_id: foundation.GeneralCommand | int,
-        schema: dict | t.Struct,
+        schema: type[t.Struct],
         manufacturer: int | None = None,
         tsn: int | None = None,
         disable_default_response: bool,
@@ -309,14 +310,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         args: tuple[Any, ...],
         kwargs: Any,
     ) -> tuple[foundation.ZCLHeader, bytes]:
-        # Convert out-of-band dict schemas to struct schemas
-        if isinstance(schema, (tuple, list)):
-            schema = convert_list_schema(
-                command_id=command_id,
-                schema=schema,
-                direction=foundation.Direction.Client_to_Server,
-            )
-
         request = schema(*args, **kwargs)  # type:ignore[operator]
         request.serialize()  # Throw an error before generating a new TSN
 
@@ -348,11 +341,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self,
         general: bool,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
-        schema: dict | t.Struct,
+        schema: type[t.Struct],
         *args,
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
+        use_ieee: bool = False,
+        ask_for_ack: bool | None = None,
         tsn: int | t.uint8_t | None = None,
+        timeout=APS_REPLY_TIMEOUT,
         **kwargs,
     ):
         hdr, request = self._create_request(
@@ -376,21 +372,28 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         data = hdr.serialize() + request.serialize()
 
         return await self._endpoint.request(
-            self.cluster_id,
-            hdr.tsn,
-            data,
-            expect_reply=expect_reply,
+            cluster=self.cluster_id,
+            sequence=hdr.tsn,
+            data=data,
             command_id=hdr.command_id,
+            timeout=timeout,
+            expect_reply=expect_reply,
+            use_ieee=use_ieee,
+            ask_for_ack=ask_for_ack,
         )
 
     async def reply(
         self,
         general: bool,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
-        schema: dict | t.Struct,
+        schema: type[t.Struct],
         *args,
         manufacturer: int | t.uint16_t | None = None,
         tsn: int | t.uint8_t | None = None,
+        timeout=APS_REPLY_TIMEOUT,
+        expect_reply: bool = False,
+        use_ieee: bool = False,
+        ask_for_ack: bool | None = None,
         **kwargs,
     ) -> None:
         hdr, request = self._create_request(
@@ -414,7 +417,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         data = hdr.serialize() + request.serialize()
 
         return await self._endpoint.reply(
-            self.cluster_id, hdr.tsn, data, command_id=hdr.command_id
+            cluster=self.cluster_id,
+            sequence=hdr.tsn,
+            data=data,
+            command_id=hdr.command_id,
+            timeout=timeout,
+            expect_reply=expect_reply,
+            use_ieee=use_ieee,
+            ask_for_ack=ask_for_ack,
         )
 
     def handle_message(

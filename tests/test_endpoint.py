@@ -1,4 +1,5 @@
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, call, patch, sentinel
 
 import pytest
 
@@ -8,8 +9,6 @@ import zigpy.exceptions
 import zigpy.types as t
 from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCLStatus
 from zigpy.zdo import types
-
-from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
 
 @pytest.fixture
@@ -186,18 +185,56 @@ async def test_reply(ep):
 
 async def test_reply_change_profile_id(ep):
     ep.profile_id = 49246
-    await ep.reply(0x1000, 8, b"", 0x3F)
-    assert ep._device.reply.call_count == 1
-    assert ep._device.reply.call_args[0][0] == ep.profile_id
+    await ep.reply(cluster=0x1000, sequence=8, data=b"", command_id=0x3F)
+    assert ep._device.reply.mock_calls == [
+        call(
+            profile=49246,
+            cluster=0x1000,
+            src_ep=1,
+            dst_ep=1,
+            sequence=8,
+            data=b"",
+            timeout=5,
+            expect_reply=False,
+            use_ieee=False,
+            ask_for_ack=None,
+        )
+    ]
 
-    await ep.reply(0x1000, 8, b"", 0x40)
-    assert ep._device.reply.call_count == 2
-    assert ep._device.reply.call_args[0][0] == 0x0104
+    ep._device.reply.reset_mock()
+    await ep.reply(cluster=0x1000, sequence=8, data=b"", command_id=0x40)
+    assert ep._device.reply.mock_calls == [
+        call(
+            profile=0x0104,
+            cluster=0x1000,
+            src_ep=1,
+            dst_ep=1,
+            sequence=8,
+            data=b"",
+            timeout=5,
+            expect_reply=False,
+            use_ieee=False,
+            ask_for_ack=None,
+        )
+    ]
 
+    ep._device.reply.reset_mock()
     ep.profile_id = 0xBEEF
-    await ep.reply(0x1000, 8, b"", 0x40)
-    assert ep._device.reply.call_count == 3
-    assert ep._device.reply.call_args[0][0] == ep.profile_id
+    await ep.reply(cluster=0x1000, sequence=8, data=b"", command_id=0x40)
+    assert ep._device.reply.mock_calls == [
+        call(
+            profile=0xBEEF,
+            cluster=0x1000,
+            src_ep=1,
+            dst_ep=1,
+            sequence=8,
+            data=b"",
+            timeout=5,
+            expect_reply=False,
+            use_ieee=False,
+            ask_for_ack=None,
+        )
+    ]
 
 
 def _mk_rar(attrid, value, status=0):
