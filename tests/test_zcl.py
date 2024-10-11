@@ -1140,7 +1140,7 @@ async def test_zcl_reply_direction(app_mock):
 
     await asyncio.sleep(0.1)
 
-    packet = app_mock.send_packet.mock_calls[0].kwargs["packet"]
+    packet = app_mock.send_packet.mock_calls[0].args[0]
     assert packet.cluster_id == zcl.clusters.general.OnOff.cluster_id
 
     # The direction is correct

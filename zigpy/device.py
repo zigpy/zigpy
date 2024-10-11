@@ -309,6 +309,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         timeout=APS_REPLY_TIMEOUT,
         use_ieee=False,
         ask_for_ack: bool | None = None,
+        priority: int = t.PacketPriority.NORMAL,
     ):
         extended_timeout = False
 
@@ -330,6 +331,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             use_ieee=use_ieee,
             extended_timeout=extended_timeout,
             ask_for_ack=ask_for_ack,
+            priority=priority,
         )
 
         if not expect_reply:
@@ -516,6 +518,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         expect_reply: bool = False,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
+        priority: int = t.PacketPriority.NORMAL,
     ):
         return await self.request(
             profile=profile,
@@ -528,6 +531,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             timeout=timeout,
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
+            priority=priority,
         )
 
     async def update_firmware(

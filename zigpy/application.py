@@ -798,6 +798,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         use_ieee: bool = False,
         extended_timeout: bool = False,
         ask_for_ack: bool | None = None,
+        priority: int = t.PacketPriority.NORMAL,
     ) -> tuple[zigpy.zcl.foundation.Status, str]:
         """Submit and send data out as an unicast transmission.
         :param device: destination device
@@ -850,6 +851,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 extended_timeout=extended_timeout,
                 source_route=source_route,
                 tx_options=tx_options,
+                priority=priority,
             )
         )
 
@@ -866,6 +868,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         *,
         hops: int = 0,
         non_member_radius: int = 3,
+        priority: int = t.PacketPriority.NORMAL,
     ):
         """Submit and send data out as a multicast transmission.
         :param group_id: destination multicast address
@@ -895,6 +898,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 tx_options=t.TransmitOptions.NONE,
                 radius=hops,
                 non_member_radius=non_member_radius,
+                priority=priority,
             )
         )
 
@@ -911,6 +915,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         sequence: t.uint8_t,
         data: bytes,
         broadcast_address: t.BroadcastAddress = t.BroadcastAddress.RX_ON_WHEN_IDLE,
+        priority: int = t.PacketPriority.NORMAL,
     ) -> tuple[zigpy.zcl.foundation.Status, str]:
         """Submit and send data out as an unicast transmission.
         :param profile: Zigbee Profile ID to use for outgoing message
@@ -941,6 +946,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 data=t.SerializableBytes(data),
                 tx_options=t.TransmitOptions.NONE,
                 radius=radius,
+                priority=priority,
             )
         )
 

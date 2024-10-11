@@ -347,6 +347,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         expect_reply: bool = True,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
+        priority: int = t.PacketPriority.NORMAL,
         tsn: int | t.uint8_t | None = None,
         timeout=APS_REPLY_TIMEOUT,
         **kwargs,
@@ -380,6 +381,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             expect_reply=expect_reply,
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
+            priority=priority,
         )
 
     async def reply(
@@ -394,6 +396,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         expect_reply: bool = False,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
+        priority: int = t.PacketPriority.NORMAL,
         **kwargs,
     ) -> None:
         hdr, request = self._create_request(
@@ -425,6 +428,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             expect_reply=expect_reply,
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
+            priority=priority,
         )
 
     def handle_message(
