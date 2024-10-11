@@ -122,7 +122,17 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             status = "\n".join(row[0] for row in rows)
 
             if status != "ok":
-                LOGGER.error("SQLite database file is corrupted!\n%s", status)
+                LOGGER.error(
+                    "Zigbee database is corrupted, integrity check failed!\n%s", status
+                )
+
+        async with self.execute("PRAGMA foreign_key_check") as cursor:
+            rows = await cursor.fetchall()
+
+            if rows:
+                LOGGER.error(
+                    "Zigbee database is corrupted, foreign key check failed!\n%s", rows
+                )
 
         # Truncate the SQLite journal file instead of deleting it after transactions
         await self._set_isolation_level(None)
