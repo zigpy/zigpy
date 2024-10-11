@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Zigpy Constants."""
+
+from __future__ import annotations
 
 SIG_ENDPOINTS = "endpoints"
 SIG_EP_INPUT = "input_clusters"

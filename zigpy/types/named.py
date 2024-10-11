@@ -568,6 +568,15 @@ class TransmitOptions(enum.Flag):
     APS_Encryption = 2
 
 
+class PacketPriority(enum.IntEnum):
+    """Packet priority"""
+
+    CRITICAL = 2
+    INTERACTIVE = 1
+    NORMAL = 0
+    BACKGROUND = -1
+
+
 @dataclasses.dataclass
 class ZigbeePacket(BaseDataclassMixin):
     """Container for the information in an incoming or outgoing ZDO or ZCL packet.

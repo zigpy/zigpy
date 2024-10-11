@@ -20,10 +20,10 @@ if sys.version_info[:2] < (3, 11):
 else:
     from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
-from zigpy import const
 import zigpy.appdb
 import zigpy.backups
 import zigpy.config as conf
+from zigpy.const import INTERFERENCE_MESSAGE
 from zigpy.datastructures import PriorityDynamicBoundedSemaphore
 import zigpy.device
 import zigpy.endpoint
@@ -187,7 +187,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             # Some radios (like the Conbee) can fail to deliver the startup broadcast
             # due to interference
             LOGGER.warning("Failed to send startup broadcast: %s", e)
-            LOGGER.warning(const.INTERFERENCE_MESSAGE)
+            LOGGER.warning(INTERFERENCE_MESSAGE)
 
         if self.config[conf.CONF_STARTUP_ENERGY_SCAN]:
             # Each scan period is 15.36ms. Scan for at least 200ms (2^4 + 1 periods) to
@@ -203,7 +203,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     self.state.network_info.channel,
                     100 * results[self.state.network_info.channel] / 255,
                 )
-                LOGGER.warning(const.INTERFERENCE_MESSAGE)
+                LOGGER.warning(INTERFERENCE_MESSAGE)
 
         if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
             self.backups.start_periodic_backups(
@@ -747,7 +747,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             await self.add_endpoint(endpoint)
 
     @contextlib.asynccontextmanager
-    async def _limit_concurrency(self, *, priority: int = 0):
+    async def _limit_concurrency(self, *, priority: int = t.PacketPriority.NORMAL):
         """Async context manager to limit global coordinator request concurrency."""
 
         start_time = time.monotonic()
