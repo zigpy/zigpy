@@ -964,6 +964,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 hdr.command_id,
                 status,
                 tsn=hdr.tsn,
+                priority=t.PacketPriority.BACKGROUND,
             )
         )
 
