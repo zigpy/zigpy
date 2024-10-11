@@ -107,6 +107,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                     0,
                     [],
                     tsn=hdr.tsn,
+                    priority=t.PacketPriority.LOW,
                 )
             )
 
@@ -136,6 +137,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                     0,
                     [],
                     tsn=hdr.tsn,
+                    priority=t.PacketPriority.LOW,
                 )
             )
 
@@ -175,12 +177,24 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         local_addr = self._device.application.state.node_info.nwk
         if profile != zigpy.profiles.zha.PROFILE_ID:
             self.create_catching_task(
-                self.Match_Desc_rsp(0, local_addr, [], tsn=hdr.tsn)
+                self.Match_Desc_rsp(
+                    0,
+                    local_addr,
+                    [],
+                    tsn=hdr.tsn,
+                    priority=t.PacketPriority.HIGH,
+                )
             )
             return
 
         self.create_catching_task(
-            self.Match_Desc_rsp(0, local_addr, [t.uint8_t(1)], tsn=hdr.tsn)
+            self.Match_Desc_rsp(
+                0,
+                local_addr,
+                [t.uint8_t(1)],
+                tsn=hdr.tsn,
+                priority=t.PacketPriority.HIGH,
+            )
         )
 
     def bind(self, cluster):

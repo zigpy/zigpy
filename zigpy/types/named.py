@@ -572,9 +572,9 @@ class PacketPriority(enum.IntEnum):
     """Packet priority"""
 
     CRITICAL = 2
-    INTERACTIVE = 1
+    HIGH = 1
     NORMAL = 0
-    BACKGROUND = -1
+    LOW = -1
 
 
 @dataclasses.dataclass
