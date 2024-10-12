@@ -4,6 +4,7 @@ from collections.abc import Coroutine
 import functools
 import logging
 
+from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.profiles
 import zigpy.types as t
 from zigpy.typing import AddressingMode
@@ -30,8 +31,10 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         self._device = device
         self._listeners = {}
 
-    def _serialize(self, command, *args):
-        schema = types.CLUSTERS[command][1]
+    def _serialize(self, command, *args, **kwargs):
+        keys, schema = types.CLUSTERS[command]
+        # TODO: expose this in a future PR
+        assert not kwargs
         return t.serialize(args, schema)
 
     def deserialize(self, cluster_id, data):
@@ -48,18 +51,61 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
 
         return hdr, args
 
-    def request(self, command, *args, use_ieee=False):
-        data = self._serialize(command, *args)
+    def request(
+        self,
+        command,
+        *args,
+        timeout=APS_REPLY_TIMEOUT,
+        expect_reply: bool = False,
+        use_ieee: bool = False,
+        ask_for_ack: bool | None = None,
+        priority: int = t.PacketPriority.NORMAL,
+        **kwargs,
+    ):
+        data = self._serialize(command, *args, **kwargs)
         tsn = self.device.get_sequence()
-        data = t.uint8_t(tsn).serialize() + data
-        return self._device.request(0, command, 0, 0, tsn, data, use_ieee=use_ieee)
+        return self._device.request(
+            profile=0x0000,
+            cluster=command,
+            src_ep=ZDO_ENDPOINT,
+            dst_ep=ZDO_ENDPOINT,
+            sequence=tsn,
+            data=t.uint8_t(tsn).serialize() + data,
+            timeout=timeout,
+            expect_reply=expect_reply,
+            use_ieee=use_ieee,
+            ask_for_ack=ask_for_ack,
+            priority=priority,
+        )
 
-    def reply(self, command, *args, tsn=None, use_ieee=False):
-        data = self._serialize(command, *args)
+    def reply(
+        self,
+        command,
+        *args,
+        tsn: int | t.uint8_t | None = None,
+        timeout=APS_REPLY_TIMEOUT,
+        expect_reply: bool = False,
+        use_ieee: bool = False,
+        ask_for_ack: bool | None = None,
+        priority: int = t.PacketPriority.NORMAL,
+        **kwargs,
+    ):
+        data = self._serialize(command, *args, **kwargs)
         if tsn is None:
             tsn = self.device.get_sequence()
-        data = t.uint8_t(tsn).serialize() + data
-        return self._device.reply(0, command, 0, 0, tsn, data, use_ieee=use_ieee)
+        return self._device.reply(
+            profile=0x0000,
+            cluster=command,
+            src_ep=ZDO_ENDPOINT,
+            dst_ep=ZDO_ENDPOINT,
+            sequence=tsn,
+            data=t.uint8_t(tsn).serialize() + data,
+            timeout=timeout,
+            expect_reply=expect_reply,
+            use_ieee=use_ieee,
+            ask_for_ack=ask_for_ack,
+            priority=priority,
+        )
 
     def handle_message(
         self,

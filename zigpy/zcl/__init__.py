@@ -529,9 +529,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
             self.create_catching_task(self.read_attributes_rsp(records, tsn=hdr.tsn))
 
-    def read_attributes_raw(self, attributes, manufacturer=None):
+    def read_attributes_raw(self, attributes, manufacturer=None, **kwargs):
         attributes = [t.uint16_t(a) for a in attributes]
-        return self._read_attributes(attributes, manufacturer=manufacturer)
+        return self._read_attributes(attributes, manufacturer=manufacturer, **kwargs)
 
     async def read_attributes(
         self,
@@ -539,6 +539,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         allow_cache: bool = False,
         only_cache: bool = False,
         manufacturer: int | t.uint16_t | None = None,
+        **kwargs,
     ) -> Any:
         success, failure = {}, {}
         attribute_ids: list[int] = []
@@ -569,7 +570,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         if not to_read or only_cache:
             return success, failure
 
-        result = await self.read_attributes_raw(to_read, manufacturer=manufacturer)
+        result = await self.read_attributes_raw(
+            to_read, manufacturer=manufacturer, **kwargs
+        )
         if not isinstance(result[0], list):
             for attrid in to_read:
                 orig_attribute = orig_attributes[attrid]

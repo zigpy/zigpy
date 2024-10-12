@@ -188,7 +188,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     async def get_node_descriptor(self) -> zdo_t.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
 
-        status, _, node_desc = await self.zdo.Node_Desc_req(self.nwk)
+        status, _, node_desc = await self.zdo.Node_Desc_req(
+            self.nwk,
+            priority=t.PacketPriority.HIGH,
+        )
 
         if status != zdo_t.Status.SUCCESS:
             raise zigpy.exceptions.InvalidResponse(
@@ -231,7 +234,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         else:
             self.info("Discovering endpoints")
 
-            status, _, endpoints = await self.zdo.Active_EP_req(self.nwk)
+            status, _, endpoints = await self.zdo.Active_EP_req(
+                self.nwk, priority=t.PacketPriority.HIGH
+            )
 
             if status != zdo_t.Status.SUCCESS:
                 raise zigpy.exceptions.InvalidResponse(

@@ -62,7 +62,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.info("Endpoint descriptor already queried")
         else:
             status, _, sd = await self._device.zdo.Simple_Desc_req(
-                self._device.nwk, self._endpoint_id
+                self._device.nwk, self._endpoint_id, priority=t.PacketPriority.HIGH
             )
 
             if status == ZDOStatus.NOT_ACTIVE:
@@ -200,7 +200,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         for names in (["manufacturer", "model"], ["manufacturer"], ["model"]):
             try:
                 success, failure = await self.basic.read_attributes(
-                    names, allow_cache=True
+                    names, allow_cache=True, priority=t.PacketPriority.HIGH
                 )
             except asyncio.TimeoutError:
                 # Only swallow the `TimeoutError` on the double attribute read
