@@ -638,17 +638,25 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         return args
 
     async def write_attributes(
-        self, attributes: dict[str | int, Any], manufacturer: int | None = None
+        self,
+        attributes: dict[str | int, Any],
+        manufacturer: int | None = None,
+        **kwargs,
     ) -> list:
         """Write attributes to device with internal 'attributes' validation"""
         attrs = self._write_attr_records(attributes)
-        return await self.write_attributes_raw(attrs, manufacturer)
+        return await self.write_attributes_raw(attrs, manufacturer, **kwargs)
 
     async def write_attributes_raw(
-        self, attrs: list[foundation.Attribute], manufacturer: int | None = None
+        self,
+        attrs: list[foundation.Attribute],
+        manufacturer: int | None = None,
+        **kwargs,
     ) -> list:
         """Write attributes to device without internal 'attributes' validation"""
-        result = await self._write_attributes(attrs, manufacturer=manufacturer)
+        result = await self._write_attributes(
+            attrs, manufacturer=manufacturer, **kwargs
+        )
         if not isinstance(result[0], list):
             return result
 
