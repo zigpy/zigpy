@@ -49,6 +49,7 @@ async def test_request(zdo_f):
     ) as get_sequence:
         await zdo_f.request(2, 65535)
         assert zdo_f.device.request.call_count == 1
+        assert zdo_f.device.request.mock_calls[0].kwargs["expect_reply"] is True
         assert get_sequence.call_count == 1
 
 
