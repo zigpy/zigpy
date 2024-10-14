@@ -50,6 +50,7 @@ if typing.TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 
 PACKET_DEBOUNCE_WINDOW = 10
+MAX_DEVICE_CONCURRENCY = 1
 
 AFTER_OTA_ATTR_READ_DELAY = 10
 OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
@@ -95,7 +96,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._send_sequence: int = 0
 
         self._packet_debouncer = zigpy.datastructures.Debouncer()
-        self._concurrent_requests_semaphore = zigpy.util.DynamicBoundedSemaphore(1)
+        self._concurrent_requests_semaphore = (
+            zigpy.datastructures.PriorityDynamicBoundedSemaphore(MAX_DEVICE_CONCURRENCY)
+        )
 
         # Retained for backwards compatibility, will be removed in a future release
         self.status = Status.NEW
