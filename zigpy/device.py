@@ -101,7 +101,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status = Status.NEW
 
     @contextlib.asynccontextmanager
-    async def _limit_concurrency(self):
+    async def _limit_concurrency(self, *, priority: int = 0):
         """Async context manager to limit device request concurrency."""
 
         start_time = time.monotonic()
@@ -114,7 +114,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 self._concurrent_requests_semaphore.num_waiting,
             )
 
-        async with self._concurrent_requests_semaphore:
+        async with self._concurrent_requests_semaphore(priority=priority):
             if was_locked:
                 LOGGER.debug(
                     "Previously delayed device request is now running, delayed by %0.2fs",
@@ -365,7 +365,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             priority=priority,
         )
 
-        async with self._limit_concurrency():
+        async with self._limit_concurrency(priority=priority):
             if not expect_reply:
                 await send_request()
                 return None
