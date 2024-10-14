@@ -152,7 +152,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
 
     def __init__(
         self,
-        device: CustomDevice,
+        device: BaseCustomDevice,
         endpoint_id: int,
         replacement_data: dict[str, typing.Any],
         replace_device: zigpy.device.Device,

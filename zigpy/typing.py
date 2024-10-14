@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     ClusterType = zigpy.zcl.Cluster
     ControllerApplicationType = zigpy.application.ControllerApplication
     CustomClusterType = zigpy.quirks.CustomCluster
-    CustomDeviceType = zigpy.quirks.CustomDevice
+    CustomDeviceType = zigpy.quirks.BaseCustomDevice
     CustomEndpointType = zigpy.quirks.CustomEndpoint
     DeviceType = zigpy.device.Device
     EndpointType = zigpy.endpoint.Endpoint

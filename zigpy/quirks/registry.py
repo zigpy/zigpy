@@ -106,7 +106,7 @@ class DeviceRegistry:
 
     def get_device(self, device: DeviceType) -> CustomDeviceType | DeviceType:
         """Get a CustomDevice object, if one is available"""
-        if isinstance(device, zigpy.quirks.CustomDevice):
+        if isinstance(device, zigpy.quirks.BaseCustomDevice):
             return device
 
         key = (device.manufacturer, device.model)
