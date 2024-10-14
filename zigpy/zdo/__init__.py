@@ -56,7 +56,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         command,
         *args,
         timeout=APS_REPLY_TIMEOUT,
-        expect_reply: bool = False,
+        expect_reply: bool = True,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
         priority: int = t.PacketPriority.NORMAL,
