@@ -58,7 +58,7 @@ async def test_bind(zdo_f):
     cluster.cluster_id = 1026
     await zdo_f.bind(cluster)
     assert zdo_f.device.request.call_count == 1
-    assert zdo_f.device.request.call_args[0][1] == 0x0021
+    assert zdo_f.device.request.mock_calls[0].kwargs["cluster"] == 0x0021
 
 
 async def test_unbind(zdo_f):
@@ -67,7 +67,7 @@ async def test_unbind(zdo_f):
     cluster.cluster_id = 1026
     await zdo_f.unbind(cluster)
     assert zdo_f.device.request.call_count == 1
-    assert zdo_f.device.request.call_args[0][1] == 0x0022
+    assert zdo_f.device.request.mock_calls[0].kwargs["cluster"] == 0x0022
 
 
 @pytest.mark.parametrize(
@@ -92,7 +92,7 @@ async def test_leave(zdo_f, remove_children, rejoin, flags):
 async def test_permit(zdo_f):
     await zdo_f.permit()
     assert zdo_f.device.request.call_count == 1
-    assert zdo_f.device.request.call_args[0][1] == 0x0036
+    assert zdo_f.device.request.mock_calls[0].kwargs["cluster"] == 0x0036
 
 
 async def test_broadcast(app):

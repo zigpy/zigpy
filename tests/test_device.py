@@ -35,7 +35,7 @@ def dev(monkeypatch, app_mock):
 
 
 async def test_initialize(monkeypatch, dev):
-    async def mockrequest(nwk, tries=None, delay=None):
+    async def mockrequest(*args, **kwargs):
         return [0, None, [0, 1, 2, 3, 4]]
 
     async def mockepinit(self, *args, **kwargs):
@@ -285,7 +285,7 @@ async def test_broadcast(app_mock):
 
 
 async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
-    async def mockrequest(nwk, tries=None, delay=None):
+    async def mockrequest(nwk, tries=None, delay=None, **kwargs):
         if not request_success:
             raise asyncio.TimeoutError
 

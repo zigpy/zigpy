@@ -20,7 +20,7 @@ def ep():
 
 
 async def _test_initialize(ep, profile):
-    async def mockrequest(nwk, epid, tries=None, delay=None):
+    async def mockrequest(*args, **kwargs):
         sd = types.SimpleDescriptor()
         sd.endpoint = 1
         sd.profile = profile
@@ -38,7 +38,7 @@ async def _test_initialize(ep, profile):
 
 
 async def test_inactive_initialize(ep):
-    async def mockrequest(nwk, epid, tries=None, delay=None):
+    async def mockrequest(*args, **kwargs):
         sd = types.SimpleDescriptor()
         sd.endpoint = 2
         return [131, None, sd]
@@ -61,7 +61,7 @@ async def test_initialize_other(ep):
 
 
 async def test_initialize_fail(ep):
-    async def mockrequest(nwk, epid, tries=None, delay=None):
+    async def mockrequest(*args, **kwargs):
         return [1, None, None]
 
     ep._device.zdo.Simple_Desc_req = mockrequest
@@ -198,6 +198,7 @@ async def test_reply_change_profile_id(ep):
             expect_reply=False,
             use_ieee=False,
             ask_for_ack=None,
+            priority=t.PacketPriority.NORMAL,
         )
     ]
 
@@ -215,6 +216,7 @@ async def test_reply_change_profile_id(ep):
             expect_reply=False,
             use_ieee=False,
             ask_for_ack=None,
+            priority=t.PacketPriority.NORMAL,
         )
     ]
 
@@ -233,6 +235,7 @@ async def test_reply_change_profile_id(ep):
             expect_reply=False,
             use_ieee=False,
             ask_for_ack=None,
+            priority=t.PacketPriority.NORMAL,
         )
     ]
 

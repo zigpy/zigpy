@@ -62,7 +62,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.info("Endpoint descriptor already queried")
         else:
             status, _, sd = await self._device.zdo.Simple_Desc_req(
-                self._device.nwk, self._endpoint_id
+                self._device.nwk, self._endpoint_id, priority=t.PacketPriority.HIGH
             )
 
             if status == ZDOStatus.NOT_ACTIVE:
@@ -200,7 +200,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         for names in (["manufacturer", "model"], ["manufacturer"], ["model"]):
             try:
                 success, failure = await self.basic.read_attributes(
-                    names, allow_cache=True
+                    names, allow_cache=True, priority=t.PacketPriority.HIGH
                 )
             except asyncio.TimeoutError:
                 # Only swallow the `TimeoutError` on the double attribute read
@@ -257,6 +257,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         expect_reply: bool = True,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
+        priority: int = t.PacketPriority.NORMAL,
     ):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -277,6 +278,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             expect_reply=expect_reply,
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
+            priority=priority,
         )
 
     async def reply(
@@ -289,6 +291,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         expect_reply: bool = False,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
+        priority: int = t.PacketPriority.NORMAL,
     ) -> None:
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -309,6 +312,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             expect_reply=expect_reply,
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
+            priority=priority,
         )
 
     def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:

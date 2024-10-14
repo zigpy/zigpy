@@ -347,6 +347,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         expect_reply: bool = True,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
+        priority: int = t.PacketPriority.NORMAL,
         tsn: int | t.uint8_t | None = None,
         timeout=APS_REPLY_TIMEOUT,
         **kwargs,
@@ -380,6 +381,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             expect_reply=expect_reply,
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
+            priority=priority,
         )
 
     async def reply(
@@ -394,6 +396,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         expect_reply: bool = False,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
+        priority: int = t.PacketPriority.NORMAL,
         **kwargs,
     ) -> None:
         hdr, request = self._create_request(
@@ -425,6 +428,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             expect_reply=expect_reply,
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
+            priority=priority,
         )
 
     def handle_message(
@@ -525,9 +529,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
             self.create_catching_task(self.read_attributes_rsp(records, tsn=hdr.tsn))
 
-    def read_attributes_raw(self, attributes, manufacturer=None):
+    def read_attributes_raw(self, attributes, manufacturer=None, **kwargs):
         attributes = [t.uint16_t(a) for a in attributes]
-        return self._read_attributes(attributes, manufacturer=manufacturer)
+        return self._read_attributes(attributes, manufacturer=manufacturer, **kwargs)
 
     async def read_attributes(
         self,
@@ -535,6 +539,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         allow_cache: bool = False,
         only_cache: bool = False,
         manufacturer: int | t.uint16_t | None = None,
+        **kwargs,
     ) -> Any:
         success, failure = {}, {}
         attribute_ids: list[int] = []
@@ -565,7 +570,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         if not to_read or only_cache:
             return success, failure
 
-        result = await self.read_attributes_raw(to_read, manufacturer=manufacturer)
+        result = await self.read_attributes_raw(
+            to_read, manufacturer=manufacturer, **kwargs
+        )
         if not isinstance(result[0], list):
             for attrid in to_read:
                 orig_attribute = orig_attributes[attrid]
@@ -631,17 +638,25 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         return args
 
     async def write_attributes(
-        self, attributes: dict[str | int, Any], manufacturer: int | None = None
+        self,
+        attributes: dict[str | int, Any],
+        manufacturer: int | None = None,
+        **kwargs,
     ) -> list:
         """Write attributes to device with internal 'attributes' validation"""
         attrs = self._write_attr_records(attributes)
-        return await self.write_attributes_raw(attrs, manufacturer)
+        return await self.write_attributes_raw(attrs, manufacturer, **kwargs)
 
     async def write_attributes_raw(
-        self, attrs: list[foundation.Attribute], manufacturer: int | None = None
+        self,
+        attrs: list[foundation.Attribute],
+        manufacturer: int | None = None,
+        **kwargs,
     ) -> list:
         """Write attributes to device without internal 'attributes' validation"""
-        result = await self._write_attributes(attrs, manufacturer=manufacturer)
+        result = await self._write_attributes(
+            attrs, manufacturer=manufacturer, **kwargs
+        )
         if not isinstance(result[0], list):
             return result
 
@@ -964,6 +979,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 hdr.command_id,
                 status,
                 tsn=hdr.tsn,
+                priority=t.PacketPriority.LOW,
             )
         )
 

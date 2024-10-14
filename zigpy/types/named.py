@@ -568,6 +568,15 @@ class TransmitOptions(enum.Flag):
     APS_Encryption = 2
 
 
+class PacketPriority(enum.IntEnum):
+    """Packet priority"""
+
+    CRITICAL = 2
+    HIGH = 1
+    NORMAL = 0
+    LOW = -1
+
+
 @dataclasses.dataclass
 class ZigbeePacket(BaseDataclassMixin):
     """Container for the information in an incoming or outgoing ZDO or ZCL packet.
@@ -579,6 +588,9 @@ class ZigbeePacket(BaseDataclassMixin):
     timestamp: datetime = dataclasses.field(
         compare=False, default_factory=lambda: datetime.now(timezone.utc)
     )
+
+    # Higher priority will try to be sent before lower
+    priority: int = dataclasses.field(default=0)
 
     # Set to `None` when the packet is outgoing
     src: AddrModeAddress | None = dataclasses.field(default=None)
@@ -629,5 +641,6 @@ class ZigbeePacket(BaseDataclassMixin):
                 self.non_member_radius,
                 self.lqi,
                 self.rssi,
+                self.priority,
             )
         )
