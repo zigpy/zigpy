@@ -974,3 +974,77 @@ async def test_debouncing(dev):
             dev.packet_received(new_packet)
 
     assert len(packet_received.mock_calls) == 1
+
+
+async def test_device_concurrency(dev: device.Device) -> None:
+    """Test that the device can handle multiple requests concurrently."""
+    ep = dev.add_endpoint(1)
+    ep.add_input_cluster(Basic.cluster_id)
+
+    async def delayed_receive(*args, **kwargs) -> None:
+        await asyncio.sleep(0.1)
+
+    dev._application.request = AsyncMock(side_effect=delayed_receive)
+
+    await asyncio.gather(
+        # First low priority request makes it through, since the slot is free
+        dev.request(
+            profile=0x0401,
+            cluster=Basic.cluster_id,
+            src_ep=1,
+            dst_ep=1,
+            sequence=dev.get_sequence(),
+            data=b"test low 1!",
+            priority=t.PacketPriority.LOW,
+            expect_reply=False,
+        ),
+        # Second one (and all subsequent requests) are enqueued
+        dev.request(
+            profile=0x0401,
+            cluster=Basic.cluster_id,
+            src_ep=1,
+            dst_ep=1,
+            sequence=dev.get_sequence(),
+            data=b"test low 2!",
+            priority=t.PacketPriority.LOW,
+            expect_reply=False,
+        ),
+        dev.request(
+            profile=0x0401,
+            cluster=Basic.cluster_id,
+            src_ep=1,
+            dst_ep=1,
+            sequence=dev.get_sequence(),
+            data=b"test normal!",
+            expect_reply=False,
+        ),
+        dev.request(
+            profile=0x0401,
+            cluster=Basic.cluster_id,
+            src_ep=1,
+            dst_ep=1,
+            sequence=dev.get_sequence(),
+            data=b"test high!",
+            priority=999,
+            expect_reply=False,
+        ),
+        dev.request(
+            profile=0x0401,
+            cluster=Basic.cluster_id,
+            src_ep=1,
+            dst_ep=1,
+            sequence=dev.get_sequence(),
+            data=b"test high!",
+            priority=t.PacketPriority.HIGH,
+            expect_reply=False,
+        ),
+    )
+
+    assert len(dev._application.request.mock_calls) == 5
+    assert [c.kwargs["priority"] for c in dev._application.request.mock_calls] == [
+        t.PacketPriority.LOW,  # First one that made it through
+        999,  # Super high
+        t.PacketPriority.HIGH,
+        t.PacketPriority.NORMAL,
+        t.PacketPriority.LOW,
+    ]
