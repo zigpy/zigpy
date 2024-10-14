@@ -797,9 +797,13 @@ async def test_request(app, device, packet):
     app.send_packet.assert_called_once_with(
         packet.replace(
             src=t.AddrModeAddress(
-                addr_mode=t.AddrMode.IEEE, address=app.state.node_info.ieee
+                addr_mode=t.AddrMode.IEEE,
+                address=app.state.node_info.ieee,
             ),
-            dst=t.AddrModeAddress(addr_mode=t.AddrMode.IEEE, address=device.ieee),
+            dst=t.AddrModeAddress(
+                addr_mode=t.AddrMode.IEEE,
+                address=device.ieee,
+            ),
         )
     )
     app.send_packet.reset_mock()
@@ -821,6 +825,22 @@ async def test_request(app, device, packet):
 
     app.send_packet.assert_called_once_with(
         packet.replace(tx_options=t.TransmitOptions.ACK)
+    )
+    app.send_packet.reset_mock()
+
+    # Test explicit ACK control (enabled)
+    status, msg = await send_request(app, ask_for_ack=True)
+
+    app.send_packet.assert_called_once_with(
+        packet.replace(tx_options=t.TransmitOptions.ACK)
+    )
+    app.send_packet.reset_mock()
+
+    # Test explicit ACK control (disabled)
+    status, msg = await send_request(app, ask_for_ack=False)
+
+    app.send_packet.assert_called_once_with(
+        packet.replace(tx_options=t.TransmitOptions(0))
     )
     app.send_packet.reset_mock()
 

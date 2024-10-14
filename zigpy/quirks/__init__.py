@@ -152,7 +152,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
 
     def __init__(
         self,
-        device: CustomDevice,
+        device: BaseCustomDevice,
         endpoint_id: int,
         replacement_data: dict[str, typing.Any],
         replace_device: zigpy.device.Device,
@@ -288,11 +288,11 @@ class CustomCluster(zigpy.zcl.Cluster):
         )
 
     async def read_attributes_raw(
-        self, attributes: list[uint16_t], manufacturer: uint16_t | None = None
+        self, attributes: list[uint16_t], manufacturer: uint16_t | None = None, **kwargs
     ):
         if not self._CONSTANT_ATTRIBUTES:
             return await super().read_attributes_raw(
-                attributes, manufacturer=manufacturer
+                attributes, manufacturer=manufacturer, **kwargs
             )
 
         succeeded = [
@@ -316,7 +316,7 @@ class CustomCluster(zigpy.zcl.Cluster):
             return [succeeded]
 
         results = await super().read_attributes_raw(
-            attrs_to_read, manufacturer=manufacturer
+            attrs_to_read, manufacturer=manufacturer, **kwargs
         )
         if not isinstance(results[0], list):
             for attrid in attrs_to_read:

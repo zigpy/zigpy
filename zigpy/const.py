@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Zigpy Constants."""
+
+from __future__ import annotations
 
 SIG_ENDPOINTS = "endpoints"
 SIG_EP_INPUT = "input_clusters"
@@ -19,3 +19,6 @@ INTERFERENCE_MESSAGE = (
     " coordinator is away from interference sources such as USB 3.0"
     " devices, SSDs, WiFi routers, etc."
 )
+
+APS_REPLY_TIMEOUT = 5
+APS_REPLY_TIMEOUT_EXTENDED = 28
