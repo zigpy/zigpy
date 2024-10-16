@@ -158,6 +158,91 @@ async def test_quirks_v2(device_mock):
     assert quirked not in registry
 
 
+async def test_quirks_v2_model_manufacturer(device_mock):
+    """Test the potential exceptions when model and manufacturer are set up incorrectly."""
+    registry = DeviceRegistry()
+
+    with pytest.raises(
+        ValueError,
+        match="manufacturer and model must be provided together or completely omitted.",
+    ):
+        (
+            QuirkBuilder(device_mock.manufacturer, model=None, registry=registry)
+            .adds(Basic.cluster_id)
+            .adds(OnOff.cluster_id)
+            .enum(
+                OnOff.AttributeDefs.start_up_on_off.name,
+                OnOff.StartUpOnOff,
+                OnOff.cluster_id,
+            )
+            .add_to_registry()
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="manufacturer and model must be provided together or completely omitted.",
+    ):
+        (
+            QuirkBuilder(manufacturer=None, model=device_mock.model, registry=registry)
+            .adds(Basic.cluster_id)
+            .adds(OnOff.cluster_id)
+            .enum(
+                OnOff.AttributeDefs.start_up_on_off.name,
+                OnOff.StartUpOnOff,
+                OnOff.cluster_id,
+            )
+            .add_to_registry()
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="At least one manufacturer and model must be specified for a v2 quirk.",
+    ):
+        (
+            QuirkBuilder(registry=registry)
+            .adds(Basic.cluster_id)
+            .adds(OnOff.cluster_id)
+            .enum(
+                OnOff.AttributeDefs.start_up_on_off.name,
+                OnOff.StartUpOnOff,
+                OnOff.cluster_id,
+            )
+            .add_to_registry()
+        )
+
+
+async def test_quirks_v2_quirk_builder_cloning(device_mock):
+    """Test the quirk builder clone functionality."""
+    registry = DeviceRegistry()
+
+    base = (
+        QuirkBuilder(registry=registry)
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            OnOff.StartUpOnOff,
+            OnOff.cluster_id,
+        )
+        .applies_to("foo", "bar")
+    )
+
+    cloned = base.clone()
+    base.add_to_registry()
+
+    (
+        cloned.adds(PowerConfiguration.cluster_id)
+        .applies_to(device_mock.manufacturer, device_mock.model)
+        .add_to_registry()
+    )
+
+    quirked = registry.get_device(device_mock)
+    assert isinstance(quirked, CustomDeviceV2)
+    assert (
+        quirked.endpoints[1].in_clusters.get(PowerConfiguration.cluster_id) is not None
+    )
+
+
 async def test_quirks_v2_signature_match(device_mock):
     """Test the signature_matches filter."""
     registry = DeviceRegistry()

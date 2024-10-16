@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+from copy import deepcopy
 from enum import Enum
 import inspect
 import logging
@@ -378,9 +379,17 @@ class QuirkBuilder:
     """Quirks V2 registry entry."""
 
     def __init__(
-        self, manufacturer: str, model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
+        self,
+        manufacturer: str | None = None,
+        model: str | None = None,
+        registry: DeviceRegistry = _DEVICE_REGISTRY,
     ) -> None:
         """Initialize the quirk builder."""
+        if manufacturer and not model or model and not manufacturer:
+            raise ValueError(
+                "manufacturer and model must be provided together or completely omitted."
+            )
+
         self.registry: DeviceRegistry = registry
         self.manufacturer_model_metadata: list[ManufacturerModelMetadata] = []
         self.filters: list[FilterType] = []
@@ -410,15 +419,20 @@ class QuirkBuilder:
         self.quirk_file = pathlib.Path(caller.filename)
         self.quirk_file_line = caller.lineno
 
-        self.also_applies_to(manufacturer, model)
+        if manufacturer and model:
+            self.applies_to(manufacturer, model)
+
         UNBUILT_QUIRK_BUILDERS.append(self)
 
-    def also_applies_to(self, manufacturer: str, model: str) -> QuirkBuilder:
-        """Register this quirks v2 entry for an additional manufacturer and model."""
+    def applies_to(self, manufacturer: str, model: str) -> QuirkBuilder:
+        """Register this quirks v2 entry for the specified manufacturer and model."""
         self.manufacturer_model_metadata.append(
             ManufacturerModelMetadata(manufacturer=manufacturer, model=model)
         )
         return self
+
+    # backward compatibility
+    also_applies_to = applies_to
 
     def filter(self, filter_function: FilterType) -> QuirkBuilder:
         """Add a filter and returns self.
@@ -850,6 +864,10 @@ class QuirkBuilder:
 
     def add_to_registry(self) -> QuirksV2RegistryEntry:
         """Build the quirks v2 registry entry."""
+        if not self.manufacturer_model_metadata:
+            raise ValueError(
+                "At least one manufacturer and model must be specified for a v2 quirk."
+            )
         quirk: QuirksV2RegistryEntry = QuirksV2RegistryEntry(
             manufacturer_model_metadata=tuple(self.manufacturer_model_metadata),
             quirk_file=self.quirk_file,
@@ -876,6 +894,14 @@ class QuirkBuilder:
             UNBUILT_QUIRK_BUILDERS.remove(self)
 
         return quirk
+
+    def clone(self, omit_man_model_data=True) -> QuirkBuilder:
+        """Clone this QuirkBuilder potentially omitting manufacturer and model data."""
+        new_builder = deepcopy(self)
+        new_builder.registry = self.registry
+        if omit_man_model_data:
+            new_builder.manufacturer_model_metadata = []
+        return new_builder
 
 
 def add_to_registry_v2(
