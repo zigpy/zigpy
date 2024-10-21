@@ -95,12 +95,34 @@ async def test_serial_socket() -> None:
         assert loop.create_connection.mock_calls[1].kwargs["port"] == 6638
 
 
-async def test_pyserial_error_remapping() -> None:
+async def test_pyserial_error_remapping(tmp_path: pathlib.Path) -> None:
     loop = asyncio.get_running_loop()
-    port = pathlib.Path("/dev/ttySERIALPORTHATDOESNOTEXIST")
     protocol_factory = unittest.mock.Mock()
 
-    assert not port.exists()
+    # FileNotFoundError
+    missing_port = tmp_path / "missing"
+    assert not missing_port.exists()
 
     with pytest.raises(FileNotFoundError):
-        await zigpy.serial.create_serial_connection(loop, protocol_factory, url=port)
+        await zigpy.serial.create_serial_connection(
+            loop, protocol_factory, url=missing_port
+        )
+
+    # PermissionError
+    denied_port = tmp_path / "denied"
+    denied_port.touch()
+    denied_port.chmod(0o000)
+
+    with pytest.raises(PermissionError):
+        await zigpy.serial.create_serial_connection(
+            loop, protocol_factory, url=denied_port
+        )
+
+    # IsADirectoryError
+    a_folder = tmp_path / "a_folder"
+    a_folder.mkdir()
+
+    with pytest.raises(IsADirectoryError):
+        await zigpy.serial.create_serial_connection(
+            loop, protocol_factory, url=a_folder
+        )
