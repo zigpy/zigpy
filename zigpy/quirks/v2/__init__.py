@@ -246,11 +246,24 @@ class EntityMetadata:
     translation_key: str | None = attrs.field(default=None)
     fallback_name: str = attrs.field(validator=attrs.validators.instance_of(str))
 
+    def __attrs_post_init__(self) -> None:
+        """Validate the entity metadata."""
+        self._validate()
+
     def __call__(self, device: CustomDeviceV2) -> None:
         """Add the entity metadata to the quirks v2 device."""
+        self._validate()
         device.exposes_metadata[
             (self.endpoint_id, self.cluster_id, self.cluster_type)
         ].append(self)
+
+    def _validate(self) -> None:
+        """Validate the entity metadata."""
+        has_device_class: bool = getattr(self, "device_class", None) is not None
+        if self.translation_key is None and not has_device_class:
+            raise ValueError(
+                f"EntityMetadata must have a translation_key or device_class: {self}"
+            )
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
