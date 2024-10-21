@@ -575,6 +575,23 @@ async def test_quirks_v2_sensor(device_mock):
     assert sensor_metadata.multiplier == 1
 
 
+async def test_quirks_v2_sensor_validation_failure_no_translation_key(device_mock):
+    """Test translation key and device class both not set causes exception."""
+    registry = DeviceRegistry()
+
+    with pytest.raises(ValueError, match="must have a translation_key or device_class"):
+        (
+            QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+            .adds(OnOff.cluster_id)
+            .sensor(
+                OnOff.AttributeDefs.on_time.name,
+                OnOff.cluster_id,
+                fallback_name="On Time",
+            )
+            .add_to_registry()
+        )
+
+
 async def test_quirks_v2_switch(device_mock):
     """Test adding a quirk that defines a switch to the registry."""
     registry = DeviceRegistry()
