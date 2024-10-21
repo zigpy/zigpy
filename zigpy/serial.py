@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import errno
 import logging
-import os
 import pathlib
 import typing
 from typing import Literal
@@ -17,35 +15,6 @@ from zigpy.typing import UNDEFINED, UndefinedType
 LOGGER = logging.getLogger(__name__)
 DEFAULT_SOCKET_PORT = 6638
 SOCKET_CONNECT_TIMEOUT = 5
-ERRNO_TO_EXCEPTION = {
-    getattr(errno, name): exc
-    # This mapping is taken from CPython. These constants are platform-dependent.
-    #   https://github.com/python/cpython/blob/d48cc82e/Objects/exceptions.c#L3791-L3819
-    for name, exc in {
-        "EAGAIN": BlockingIOError,
-        "EALREADY": BlockingIOError,
-        "EINPROGRESS": BlockingIOError,
-        "EWOULDBLOCK": BlockingIOError,
-        "EPIPE": BrokenPipeError,
-        "ECHILD": ChildProcessError,
-        "ECONNABORTED": ConnectionAbortedError,
-        "ECONNREFUSED": ConnectionRefusedError,
-        "ECONNRESET": ConnectionResetError,
-        "EEXIST": FileExistsError,
-        "ENOENT": FileNotFoundError,
-        "EISDIR": IsADirectoryError,
-        "ENOTDIR": NotADirectoryError,
-        "EINTR": InterruptedError,
-        "EACCES": PermissionError,
-        "EPERM": PermissionError,
-        "ESRCH": ProcessLookupError,
-        "ETIMEDOUT": TimeoutError,
-        "ESHUTDOWN": BrokenPipeError,
-        "ENOTCAPABLE": PermissionError,
-        "WSAETIMEDOUT": TimeoutError,
-    }.items()
-    if getattr(errno, name, None) is not None
-}
 
 try:
     import serial_asyncio_fast as pyserial_asyncio
@@ -113,9 +82,8 @@ async def create_serial_connection(
             )
         except pyserial.SerialException as exc:
             # Unwrap unnecessarily wrapped PySerial exceptions
-            if "could not open port" in str(exc) and exc.errno is not None:
-                exc_class = ERRNO_TO_EXCEPTION.get(exc.errno, OSError)
-                raise exc_class(exc.errno, os.strerror(exc.errno), url) from exc
+            if exc.__context__ is not None:
+                raise exc.__context__ from None
 
             raise
 
