@@ -112,7 +112,7 @@ async def test_quirks_v2(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
             translation_key="start_up_on_off",
-            fallback_name="Start Up On/Off",
+            fallback_name="Start up on/off",
         )
         .add_to_registry()
     )
@@ -209,7 +209,7 @@ async def test_quirks_v2_model_manufacturer(device_mock):
                 OnOff.StartUpOnOff,
                 OnOff.cluster_id,
                 translation_key="start_up_on_off",
-                fallback_name="Start Up On/Off",
+                fallback_name="Start up on/off",
             )
             .add_to_registry()
         )
@@ -228,7 +228,7 @@ async def test_quirks_v2_quirk_builder_cloning(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
             translation_key="start_up_on_off",
-            fallback_name="Start Up On/Off",
+            fallback_name="Start up on/off",
         )
         .applies_to("foo", "bar")
     )
@@ -274,7 +274,7 @@ async def test_quirks_v2_signature_match(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
             translation_key="start_up_on_off",
-            fallback_name="Start Up On/Off",
+            fallback_name="Start up on/off",
         )
         .add_to_registry()
     )
@@ -296,7 +296,7 @@ async def test_quirks_v2_multiple_matches_raises(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
             translation_key="start_up_on_off",
-            fallback_name="Start Up On/Off",
+            fallback_name="Start up on/off",
         )
         .add_to_registry()
     )
@@ -311,7 +311,7 @@ async def test_quirks_v2_multiple_matches_raises(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
             translation_key="start_up_on_off",
-            fallback_name="Start Up On/Off",
+            fallback_name="Start up on/off",
         )
         .add_to_registry()
     )
@@ -342,7 +342,7 @@ async def test_quirks_v2_multiple_matches_not_raises(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
             translation_key="start_up_on_off",
-            fallback_name="Start Up On/Off",
+            fallback_name="Start up on/off",
         )
         .add_to_registry()
     )
@@ -356,7 +356,7 @@ async def test_quirks_v2_multiple_matches_not_raises(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
             translation_key="start_up_on_off",
-            fallback_name="Start Up On/Off",
+            fallback_name="Start up on/off",
         )
         .add_to_registry()
     )
@@ -383,7 +383,7 @@ async def test_quirks_v2_with_custom_device_class(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
             translation_key="start_up_on_off",
-            fallback_name="Start Up On/Off",
+            fallback_name="Start up on/off",
         )
         .add_to_registry()
     )
@@ -550,7 +550,7 @@ async def test_quirks_v2_sensor(device_mock):
             OnOff.AttributeDefs.on_time.name,
             OnOff.cluster_id,
             translation_key="on_time",
-            fallback_name="On Time",
+            fallback_name="On time",
         )
         .add_to_registry()
     )
@@ -586,7 +586,7 @@ async def test_quirks_v2_sensor_validation_failure_no_translation_key(device_moc
             .sensor(
                 OnOff.AttributeDefs.on_time.name,
                 OnOff.cluster_id,
-                fallback_name="On Time",
+                fallback_name="On time",
             )
             .add_to_registry()
         )
@@ -605,7 +605,7 @@ async def test_quirks_v2_switch(device_mock):
             force_inverted=True,
             invert_attribute_name=OnOff.AttributeDefs.off_wait_time.name,
             translation_key="on_time",
-            fallback_name="On Time",
+            fallback_name="On time",
         )
         .add_to_registry()
     )
@@ -646,7 +646,7 @@ async def test_quirks_v2_number(device_mock):
             step=1,
             unit="s",
             translation_key="on_time",
-            fallback_name="On Time",
+            fallback_name="On time",
         )
         .add_to_registry()
     )
@@ -686,7 +686,7 @@ async def test_quirks_v2_binary_sensor(device_mock):
             OnOff.AttributeDefs.on_off.name,
             OnOff.cluster_id,
             translation_key="on_off",
-            fallback_name="On/Off",
+            fallback_name="On/off",
         )
         .add_to_registry()
     )
@@ -721,7 +721,7 @@ async def test_quirks_v2_write_attribute_button(device_mock):
             20,
             OnOff.cluster_id,
             translation_key="on_time",
-            fallback_name="On Time",
+            fallback_name="On time",
         )
         .add_to_registry()
     )
@@ -757,7 +757,7 @@ async def test_quirks_v2_command_button(device_mock):
             OnOff.cluster_id,
             command_kwargs={"on_off_control": OnOff.OnOffControl.Accept_Only_When_On},
             translation_key="on_with_timed_off",
-            fallback_name="On With Timed Off",
+            fallback_name="On with timed off",
         )
         .command_button(
             OnOff.ServerCommandDefs.on_with_timed_off.name,
@@ -766,13 +766,13 @@ async def test_quirks_v2_command_button(device_mock):
                 "on_off_control_foo": OnOff.OnOffControl.Accept_Only_When_On
             },
             translation_key="on_with_timed_off",
-            fallback_name="On With Timed Off",
+            fallback_name="On with timed off",
         )
         .command_button(
             OnOff.ServerCommandDefs.on_with_timed_off.name,
             OnOff.cluster_id,
             translation_key="on_with_timed_off",
-            fallback_name="On With Timed Off",
+            fallback_name="On with timed off",
         )
         .add_to_registry()
     )
@@ -829,7 +829,7 @@ async def test_quirks_v2_also_applies_to(device_mock):
             OnOff.StartUpOnOff,
             OnOff.cluster_id,
             translation_key="start_up_on_off",
-            fallback_name="Start Up On/Off",
+            fallback_name="Start up on/off",
         )
         .add_to_registry()
     )
@@ -1080,7 +1080,7 @@ async def test_quirks_v2_add_to_registry_v2_logs_error(caplog):
             OnOff.AttributeDefs.on_off.name,
             OnOff.cluster_id,
             translation_key="on_off",
-            fallback_name="On/Off",
+            fallback_name="On/off",
         )
         .add_to_registry()
     )
