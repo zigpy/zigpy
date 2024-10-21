@@ -114,7 +114,7 @@ async def create_serial_connection(
             )
         except pyserial.SerialException as exc:
             # Unwrap unnecessarily wrapped PySerial exceptions
-            if "could not open port" in str(exc):
+            if "could not open port" in str(exc) and exc.errno is not None:
                 exc_class = ERRNO_TO_EXCEPTION.get(exc.errno, OSError)
                 raise exc_class(exc.errno, os.strerror(exc.errno), url) from exc
 
