@@ -4,6 +4,7 @@ import asyncio
 import errno
 import logging
 import os
+import pathlib
 import typing
 from typing import Literal
 import urllib.parse
@@ -57,7 +58,7 @@ except ImportError:
 async def create_serial_connection(
     loop: asyncio.BaseEventLoop,
     protocol_factory: typing.Callable[[], asyncio.Protocol],
-    url: str,
+    url: pathlib.Path | str,
     *,
     baudrate: int = 115200,  # We default to 115200 instead of 9600
     exclusive: bool | None = None,
@@ -88,6 +89,7 @@ async def create_serial_connection(
         rtscts,
     )
 
+    url = str(url)
     parsed_url = urllib.parse.urlparse(url)
 
     if parsed_url.scheme in ("socket", "tcp"):
