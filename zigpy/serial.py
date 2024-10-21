@@ -16,16 +16,6 @@ from zigpy.typing import UNDEFINED, UndefinedType
 LOGGER = logging.getLogger(__name__)
 DEFAULT_SOCKET_PORT = 6638
 SOCKET_CONNECT_TIMEOUT = 5
-
-
-try:
-    import serial_asyncio_fast as pyserial_asyncio
-
-    LOGGER.info("Using pyserial-asyncio-fast in place of pyserial-asyncio")
-except ImportError:
-    import serial_asyncio as pyserial_asyncio
-
-
 ERRNO_TO_EXCEPTION = {
     getattr(errno, name): exc
     # This mapping is taken from CPython. These constants are platform-dependent.
@@ -55,6 +45,13 @@ ERRNO_TO_EXCEPTION = {
     }.items()
     if getattr(errno, name, None) is not None
 }
+
+try:
+    import serial_asyncio_fast as pyserial_asyncio
+
+    LOGGER.info("Using pyserial-asyncio-fast in place of pyserial-asyncio")
+except ImportError:
+    import serial_asyncio as pyserial_asyncio
 
 
 async def create_serial_connection(
