@@ -1285,6 +1285,13 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
         )
 
 
+@dataclasses.dataclass(frozen=True)
+class ReportingConfig:
+    min_interval: int
+    max_interval: int
+    reportable_change: int
+
+
 class IterableMemberMeta(type):
     def __iter__(cls) -> typing.Iterator[typing.Any]:
         for name in dir(cls):

@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from zigpy.device import Device
     from zigpy.endpoint import Endpoint
     from zigpy.zcl import Cluster
-    from zigpy.zcl.foundation import ZCLAttributeDef
+    from zigpy.zcl.foundation import ReportingConfig, ZCLAttributeDef
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -259,7 +259,7 @@ class ZCLEnumMetadata(EntityMetadata):
 
     enum: type[Enum] = attrs.field()
     attribute_name: str = attrs.field()
-    report_config: tuple[int, int, int] | None = attrs.field(default=None)
+    reporting_config: ReportingConfig | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -267,7 +267,7 @@ class ZCLSensorMetadata(EntityMetadata):
     """Metadata for exposed ZCL attribute based sensor entity."""
 
     attribute_name: str | None = attrs.field(default=None)
-    report_config: tuple[int, int, int] | None = attrs.field(default=None)
+    reporting_config: ReportingConfig | None = attrs.field(default=None)
     divisor: int | None = attrs.field(default=None)
     multiplier: int | None = attrs.field(default=None)
     unit: str | None = attrs.field(default=None)
@@ -280,7 +280,7 @@ class SwitchMetadata(EntityMetadata):
     """Metadata for exposed switch entity."""
 
     attribute_name: str = attrs.field()
-    report_config: tuple[int, int, int] | None = attrs.field(default=None)
+    reporting_config: ReportingConfig | None = attrs.field(default=None)
     force_inverted: bool = attrs.field(default=False)
     invert_attribute_name: str | None = attrs.field(default=None)
     off_value: int = attrs.field(default=0)
@@ -292,7 +292,7 @@ class NumberMetadata(EntityMetadata):
     """Metadata for exposed number entity."""
 
     attribute_name: str = attrs.field()
-    report_config: tuple[int, int, int] | None = attrs.field(default=None)
+    reporting_config: ReportingConfig | None = attrs.field(default=None)
     min: float | None = attrs.field(default=None)
     max: float | None = attrs.field(default=None)
     step: float | None = attrs.field(default=None)
@@ -307,7 +307,7 @@ class BinarySensorMetadata(EntityMetadata):
     """Metadata for exposed binary sensor entity."""
 
     attribute_name: str = attrs.field()
-    report_config: tuple[int, int, int] | None = attrs.field(default=None)
+    reporting_config: ReportingConfig | None = attrs.field(default=None)
     device_class: BinarySensorDeviceClass | None = attrs.field(default=None)
 
 
@@ -603,7 +603,7 @@ class QuirkBuilder:
         entity_type: EntityType = EntityType.CONFIG,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
-        report_config: tuple[int, int, int] | None = None,
+        reporting_config: ReportingConfig | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
     ) -> QuirkBuilder:
@@ -620,7 +620,7 @@ class QuirkBuilder:
                 entity_type=entity_type,
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
-                report_config=report_config,
+                reporting_config=reporting_config,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 enum=enum_class,
@@ -643,7 +643,7 @@ class QuirkBuilder:
         unit: str | None = None,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
-        report_config: tuple[int, int, int] | None = None,
+        reporting_config: ReportingConfig | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
     ) -> QuirkBuilder:
@@ -660,7 +660,7 @@ class QuirkBuilder:
                 entity_type=entity_type,
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
-                report_config=report_config,
+                reporting_config=reporting_config,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
@@ -687,7 +687,7 @@ class QuirkBuilder:
         entity_type: EntityType = EntityType.CONFIG,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
-        report_config: tuple[int, int, int] | None = None,
+        reporting_config: ReportingConfig | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
     ) -> QuirkBuilder:
@@ -704,7 +704,7 @@ class QuirkBuilder:
                 entity_type=entity_type,
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
-                report_config=report_config,
+                reporting_config=reporting_config,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
@@ -732,7 +732,7 @@ class QuirkBuilder:
         device_class: NumberDeviceClass | None = None,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
-        report_config: tuple[int, int, int] | None = None,
+        reporting_config: ReportingConfig | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
     ) -> QuirkBuilder:
@@ -749,7 +749,7 @@ class QuirkBuilder:
                 entity_type=entity_type,
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
-                report_config=report_config,
+                reporting_config=reporting_config,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
@@ -774,7 +774,7 @@ class QuirkBuilder:
         device_class: BinarySensorDeviceClass | None = None,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
-        report_config: tuple[int, int, int] | None = None,
+        reporting_config: ReportingConfig | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
     ) -> QuirkBuilder:
@@ -791,7 +791,7 @@ class QuirkBuilder:
                 entity_type=entity_type,
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
-                report_config=report_config,
+                reporting_config=reporting_config,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
