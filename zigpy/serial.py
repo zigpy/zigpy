@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import logging
+import os
 import typing
 from typing import Literal
 import urllib.parse
 
 import async_timeout
+import serial as pyserial
 
 from zigpy.typing import UNDEFINED, UndefinedType
 
@@ -14,12 +17,44 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_SOCKET_PORT = 6638
 SOCKET_CONNECT_TIMEOUT = 5
 
+
 try:
     import serial_asyncio_fast as pyserial_asyncio
 
     LOGGER.info("Using pyserial-asyncio-fast in place of pyserial-asyncio")
 except ImportError:
     import serial_asyncio as pyserial_asyncio
+
+
+ERRNO_TO_EXCEPTION = {
+    getattr(errno, name): exc
+    # This mapping is taken from CPython. These constants are platform-dependent.
+    #   https://github.com/python/cpython/blob/d48cc82e/Objects/exceptions.c#L3791-L3819
+    for name, exc in {
+        "EAGAIN": BlockingIOError,
+        "EALREADY": BlockingIOError,
+        "EINPROGRESS": BlockingIOError,
+        "EWOULDBLOCK": BlockingIOError,
+        "EPIPE": BrokenPipeError,
+        "ECHILD": ChildProcessError,
+        "ECONNABORTED": ConnectionAbortedError,
+        "ECONNREFUSED": ConnectionRefusedError,
+        "ECONNRESET": ConnectionResetError,
+        "EEXIST": FileExistsError,
+        "ENOENT": FileNotFoundError,
+        "EISDIR": IsADirectoryError,
+        "ENOTDIR": NotADirectoryError,
+        "EINTR": InterruptedError,
+        "EACCES": PermissionError,
+        "EPERM": PermissionError,
+        "ESRCH": ProcessLookupError,
+        "ETIMEDOUT": TimeoutError,
+        "ESHUTDOWN": BrokenPipeError,
+        "ENOTCAPABLE": PermissionError,
+        "WSAETIMEDOUT": TimeoutError,
+    }.items()
+    if getattr(errno, name, None) is not None
+}
 
 
 async def create_serial_connection(
@@ -66,15 +101,23 @@ async def create_serial_connection(
                 port=parsed_url.port or DEFAULT_SOCKET_PORT,
             )
     else:
-        transport, protocol = await pyserial_asyncio.create_serial_connection(
-            loop,
-            protocol_factory,
-            url=url,
-            baudrate=baudrate,
-            exclusive=exclusive,
-            xonxoff=xonxoff,
-            rtscts=rtscts,
-            **kwargs,
-        )
+        try:
+            transport, protocol = await pyserial_asyncio.create_serial_connection(
+                loop,
+                protocol_factory,
+                url=url,
+                baudrate=baudrate,
+                exclusive=exclusive,
+                xonxoff=xonxoff,
+                rtscts=rtscts,
+                **kwargs,
+            )
+        except pyserial.SerialException as exc:
+            # Unwrap unnecessarily wrapped PySerial exceptions
+            if "could not open port" in str(exc):
+                exc_class = ERRNO_TO_EXCEPTION.get(exc.errno, OSError)
+                raise exc_class(exc.errno, os.strerror(exc.errno), url) from exc
+
+            raise
 
     return transport, protocol
