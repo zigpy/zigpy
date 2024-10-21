@@ -414,6 +414,7 @@ class QuirkBuilder:
 
         self.registry: DeviceRegistry = registry
         self.manufacturer_model_metadata: list[ManufacturerModelMetadata] = []
+        self.friendly_name_metadata: FriendlyNameMetadata | None = None
         self.filters: list[FilterType] = []
         self.custom_device_class: type[CustomDeviceV2] | None = None
         self.device_node_descriptor: NodeDescriptor | None = None
@@ -886,7 +887,7 @@ class QuirkBuilder:
 
     def friendly_name(self, model: str, manufacturer: str) -> QuirkBuilder:
         """Renames the device."""
-        self.friendly_name = FriendlyNameMetadata(
+        self.friendly_name_metadata = FriendlyNameMetadata(
             model=model, manufacturer=manufacturer
         )
         return self
@@ -899,6 +900,7 @@ class QuirkBuilder:
             )
         quirk: QuirksV2RegistryEntry = QuirksV2RegistryEntry(
             manufacturer_model_metadata=tuple(self.manufacturer_model_metadata),
+            friendly_name=self.friendly_name_metadata,
             quirk_file=self.quirk_file,
             quirk_file_line=self.quirk_file_line,
             filters=tuple(self.filters),
