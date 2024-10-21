@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import pathlib
 import unittest.mock
 
 import pytest
@@ -92,3 +93,14 @@ async def test_serial_socket() -> None:
         assert loop.create_connection.mock_calls[0].kwargs["port"] == 5678
         assert loop.create_connection.mock_calls[1].kwargs["host"] == "1.2.3.4"
         assert loop.create_connection.mock_calls[1].kwargs["port"] == 6638
+
+
+async def test_pyserial_error_remapping() -> None:
+    loop = asyncio.get_running_loop()
+    port = pathlib.Path("/dev/ttySERIALPORTHATDOESNOTEXIST")
+    protocol_factory = unittest.mock.Mock()
+
+    assert not port.exists()
+
+    with pytest.raises(FileNotFoundError):
+        await zigpy.serial.create_serial_connection(loop, protocol_factory, url=port)
