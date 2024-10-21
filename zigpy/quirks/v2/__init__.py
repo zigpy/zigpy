@@ -244,7 +244,7 @@ class EntityMetadata:
     initially_disabled: bool = attrs.field(default=False)
     attribute_initialized_from_cache: bool = attrs.field(default=True)
     translation_key: str = attrs.field()
-    fallback_name: str = attrs.field()
+    fallback_name: str = attrs.field(validator=attrs.validators.instance_of(str))
 
     def __call__(self, device: CustomDeviceV2) -> None:
         """Add the entity metadata to the quirks v2 device."""
