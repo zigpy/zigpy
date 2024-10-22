@@ -54,7 +54,7 @@ from .async_mock import sentinel
 
 
 @pytest.fixture(name="device_mock")
-def real_device(app_mock):
+def real_device(app_mock) -> Device:
     """Device fixture with a single endpoint."""
     ieee = sentinel.ieee
     nwk = 0x2233
@@ -1089,3 +1089,46 @@ async def test_quirks_v2_add_to_registry_v2_logs_error(caplog):
         "add_to_registry_v2 is deprecated and will be removed in a future release"
         in caplog.text
     )
+
+
+async def test_quirks_v2_friendly_name(device_mock: Device) -> None:
+    registry = DeviceRegistry()
+
+    entry = (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .friendly_name(model="Real Model Name", manufacturer="Real Manufacturer")
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            OnOff.StartUpOnOff,
+            OnOff.cluster_id,
+            translation_key="start_up_on_off",
+            fallback_name="Start up on/off",
+        )
+        .add_to_registry()
+    )
+
+    assert entry.friendly_name is not None
+    assert entry.friendly_name.model == "Real Model Name"
+    assert entry.friendly_name.manufacturer == "Real Manufacturer"
+
+
+async def test_quirks_v2_no_friendly_name(device_mock: Device) -> None:
+    registry = DeviceRegistry()
+
+    entry = (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .enum(
+            OnOff.AttributeDefs.start_up_on_off.name,
+            OnOff.StartUpOnOff,
+            OnOff.cluster_id,
+            translation_key="start_up_on_off",
+            fallback_name="Start up on/off",
+        )
+        .add_to_registry()
+    )
+
+    assert entry.friendly_name is None

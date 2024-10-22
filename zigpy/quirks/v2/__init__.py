@@ -345,6 +345,14 @@ class ManufacturerModelMetadata:
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
+class FriendlyNameMetadata:
+    """Metadata to rename a device."""
+
+    model: str = attrs.field()
+    manufacturer: str = attrs.field()
+
+
+@attrs.define(frozen=True, kw_only=True, repr=True)
 class QuirksV2RegistryEntry:
     """Quirks V2 registry entry."""
 
@@ -353,6 +361,7 @@ class QuirksV2RegistryEntry:
     manufacturer_model_metadata: tuple[ManufacturerModelMetadata] = attrs.field(
         factory=tuple
     )
+    friendly_name: FriendlyNameMetadata | None = attrs.field(default=None)
     filters: tuple[FilterType] = attrs.field(factory=tuple)
     custom_device_class: type[CustomDeviceV2] | None = attrs.field(default=None)
     device_node_descriptor: NodeDescriptor | None = attrs.field(default=None)
@@ -405,6 +414,7 @@ class QuirkBuilder:
 
         self.registry: DeviceRegistry = registry
         self.manufacturer_model_metadata: list[ManufacturerModelMetadata] = []
+        self.friendly_name_metadata: FriendlyNameMetadata | None = None
         self.filters: list[FilterType] = []
         self.custom_device_class: type[CustomDeviceV2] | None = None
         self.device_node_descriptor: NodeDescriptor | None = None
@@ -875,6 +885,13 @@ class QuirkBuilder:
         self.device_automation_triggers_metadata.update(device_automation_triggers)
         return self
 
+    def friendly_name(self, *, model: str, manufacturer: str) -> QuirkBuilder:
+        """Renames the device."""
+        self.friendly_name_metadata = FriendlyNameMetadata(
+            model=model, manufacturer=manufacturer
+        )
+        return self
+
     def add_to_registry(self) -> QuirksV2RegistryEntry:
         """Build the quirks v2 registry entry."""
         if not self.manufacturer_model_metadata:
@@ -883,6 +900,7 @@ class QuirkBuilder:
             )
         quirk: QuirksV2RegistryEntry = QuirksV2RegistryEntry(
             manufacturer_model_metadata=tuple(self.manufacturer_model_metadata),
+            friendly_name=self.friendly_name_metadata,
             quirk_file=self.quirk_file,
             quirk_file_line=self.quirk_file_line,
             filters=tuple(self.filters),
