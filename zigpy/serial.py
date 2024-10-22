@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import pathlib
 import typing
 from typing import Literal
 import urllib.parse
 
 import async_timeout
+import serial as pyserial
 
 from zigpy.typing import UNDEFINED, UndefinedType
 
@@ -25,7 +27,7 @@ except ImportError:
 async def create_serial_connection(
     loop: asyncio.BaseEventLoop,
     protocol_factory: typing.Callable[[], asyncio.Protocol],
-    url: str,
+    url: pathlib.Path | str,
     *,
     baudrate: int = 115200,  # We default to 115200 instead of 9600
     exclusive: bool | None = None,
@@ -56,6 +58,7 @@ async def create_serial_connection(
         rtscts,
     )
 
+    url = str(url)
     parsed_url = urllib.parse.urlparse(url)
 
     if parsed_url.scheme in ("socket", "tcp"):
@@ -66,15 +69,22 @@ async def create_serial_connection(
                 port=parsed_url.port or DEFAULT_SOCKET_PORT,
             )
     else:
-        transport, protocol = await pyserial_asyncio.create_serial_connection(
-            loop,
-            protocol_factory,
-            url=url,
-            baudrate=baudrate,
-            exclusive=exclusive,
-            xonxoff=xonxoff,
-            rtscts=rtscts,
-            **kwargs,
-        )
+        try:
+            transport, protocol = await pyserial_asyncio.create_serial_connection(
+                loop,
+                protocol_factory,
+                url=url,
+                baudrate=baudrate,
+                exclusive=exclusive,
+                xonxoff=xonxoff,
+                rtscts=rtscts,
+                **kwargs,
+            )
+        except pyserial.SerialException as exc:
+            # Unwrap unnecessarily wrapped PySerial exceptions
+            if exc.__context__ is not None:
+                raise exc.__context__ from None
+
+            raise
 
     return transport, protocol
