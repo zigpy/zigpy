@@ -885,7 +885,7 @@ class QuirkBuilder:
         self.device_automation_triggers_metadata.update(device_automation_triggers)
         return self
 
-    def friendly_name(self, model: str, manufacturer: str) -> QuirkBuilder:
+    def friendly_name(self, *, model: str, manufacturer: str) -> QuirkBuilder:
         """Renames the device."""
         self.friendly_name_metadata = FriendlyNameMetadata(
             model=model, manufacturer=manufacturer
