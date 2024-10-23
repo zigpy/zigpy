@@ -50,6 +50,7 @@ class SerialProtocol(asyncio.Protocol):
         LOGGER.debug("Connection lost: %r", exc)
         self._connected_event.clear()
         self._disconnected_event.set()
+        self._transport = None
 
     def send_data(self, data: bytes) -> None:
         """Sends data over the connected transport."""
@@ -64,29 +65,19 @@ class SerialProtocol(asyncio.Protocol):
         self._buffer += data
 
     def close(self) -> None:
-        pass
+        self._buffer.clear()
+
+        if self._transport is not None:
+            self._transport.close()
+
+    async def wait_until_closed(self) -> None:
+        LOGGER.debug("Waiting for serial port to close")
+        await self._disconnected_event.wait()
 
     async def disconnect(self) -> None:
         LOGGER.debug("Disconnecting from serial port")
-
-        if self._transport is None:
-            return
-
-        self._transport.close()
-        self._buffer.clear()
-
-        LOGGER.debug("Waiting for serial port to close")
-        await self._disconnected_event.wait()
-        await self._wait_for_pyserial_to_actually_close()
-        LOGGER.debug("Disconnected from serial port")
-
-        self._transport = None
         self.close()
-
-    async def _wait_for_pyserial_to_actually_close(self) -> None:
-        # pyserial-asyncio calls `connection_lost` *before* the serial port is closed
-        while getattr(self._transport, "_serial", None) is not None:
-            await asyncio.sleep(0.1)
+        await self.wait_until_closed()
 
 
 async def create_serial_connection(
