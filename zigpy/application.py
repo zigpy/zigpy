@@ -74,6 +74,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._tasks: set[asyncio.Future[Any]] = set()
 
         self._watchdog_task: asyncio.Task | None = None
+        self._connection_lost_event = asyncio.Event()
 
         self._concurrent_requests_semaphore = PriorityDynamicBoundedSemaphore(
             self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
@@ -449,6 +450,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             except Exception:  # noqa: BLE001
                 LOGGER.warning("Failed to disconnect from database", exc_info=True)
 
+        LOGGER.debug("Waiting for radio disconnection event")
+        await self._connection_lost_event.wait()
+        self._connection_lost_event.clear()
+
     def add_device(self, ieee: t.EUI64, nwk: t.NWK) -> zigpy.device.Device:
         """Creates a zigpy `Device` object with the provided IEEE and NWK addresses."""
 
@@ -641,7 +646,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         return False
 
     @abc.abstractmethod
-    async def connect(self):
+    async def connect(self) -> None:
         """Connect to the radio hardware and verify that it is compatible with the library.
         This method should be stateless if the connection attempt fails.
         """
@@ -680,6 +685,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         LOGGER.debug("Connection to the radio has been lost: %r", exc)
         self.listener_event("connection_lost", exc)
+        self._connection_lost_event.set()
 
     @abc.abstractmethod
     async def disconnect(self):
