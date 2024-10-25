@@ -52,15 +52,6 @@ class SerialProtocol(asyncio.Protocol):
         self._disconnected_event.set()
         self._transport = None
 
-    def send_data(self, data: bytes) -> None:
-        """Sends data over the connected transport."""
-        assert self._transport is not None
-
-        if not isinstance(data, (bytes, bytearray)):
-            data = bytes(data)
-
-        self._transport.write(data)
-
     def data_received(self, data: bytes) -> None:
         self._buffer += data
 
@@ -75,7 +66,6 @@ class SerialProtocol(asyncio.Protocol):
         await self._disconnected_event.wait()
 
     async def disconnect(self) -> None:
-        LOGGER.debug("Disconnecting from serial port")
         self.close()
         await self.wait_until_closed()
 
