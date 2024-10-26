@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import collections
 from copy import deepcopy
+import dataclasses
 from enum import Enum
 import inspect
 import logging
@@ -39,7 +40,7 @@ if TYPE_CHECKING:
     from zigpy.device import Device
     from zigpy.endpoint import Endpoint
     from zigpy.zcl import Cluster
-    from zigpy.zcl.foundation import ReportingConfig, ZCLAttributeDef
+    from zigpy.zcl.foundation import ZCLAttributeDef
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +50,15 @@ UNBUILT_QUIRK_BUILDERS: list[QuirkBuilder] = []
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=too-many-arguments
 # pylint: disable=too-few-public-methods
+
+
+@dataclasses.dataclass(frozen=True)
+class ReportingConfig:
+    """Reporting config for an entity attribute."""
+
+    min_interval: int
+    max_interval: int
+    reportable_change: int
 
 
 class CustomDeviceV2(BaseCustomDevice):
