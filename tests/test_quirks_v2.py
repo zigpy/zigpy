@@ -131,7 +131,7 @@ async def test_quirks_v2(device_mock):
     assert str(quirked.quirk_metadata.quirk_file).endswith(
         "zigpy/tests/test_quirks_v2.py"
     )
-    assert quirked.quirk_metadata.quirk_file_line == 107
+    assert quirked.quirk_metadata.quirk_file_line == 105
 
     ep = quirked.endpoints[1]
 
