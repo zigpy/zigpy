@@ -5,7 +5,7 @@ from __future__ import annotations
 import collections
 from copy import deepcopy
 import dataclasses
-from enum import Enum, StrEnum
+from enum import Enum
 import inspect
 import logging
 import pathlib
@@ -367,7 +367,7 @@ class FriendlyNameMetadata:
     manufacturer: str = attrs.field()
 
 
-class DeviceAlertLevel(StrEnum):
+class DeviceAlertLevel(Enum):
     """Device alert level."""
 
     INFO = "info"
