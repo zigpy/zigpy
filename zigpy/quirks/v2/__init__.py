@@ -5,7 +5,7 @@ from __future__ import annotations
 import collections
 from copy import deepcopy
 import dataclasses
-from enum import Enum
+from enum import Enum, StrEnum
 import inspect
 import logging
 import pathlib
@@ -367,6 +367,22 @@ class FriendlyNameMetadata:
     manufacturer: str = attrs.field()
 
 
+class DeviceAlertLevel(StrEnum):
+    """Device alert level."""
+
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+
+
+@attrs.define(frozen=True, kw_only=True, repr=True)
+class DeviceAlertMetadata:
+    """Metadata for device-specific alerts."""
+
+    level: DeviceAlertLevel = attrs.field()
+    text: str = attrs.field()
+
+
 @attrs.define(frozen=True, kw_only=True, repr=True)
 class QuirksV2RegistryEntry:
     """Quirks V2 registry entry."""
@@ -377,6 +393,7 @@ class QuirksV2RegistryEntry:
         factory=tuple
     )
     friendly_name: FriendlyNameMetadata | None = attrs.field(default=None)
+    device_alerts: tuple[DeviceAlertMetadata] = attrs.field(factory=tuple)
     filters: tuple[FilterType] = attrs.field(factory=tuple)
     custom_device_class: type[CustomDeviceV2] | None = attrs.field(default=None)
     device_node_descriptor: NodeDescriptor | None = attrs.field(default=None)
@@ -430,6 +447,7 @@ class QuirkBuilder:
         self.registry: DeviceRegistry = registry
         self.manufacturer_model_metadata: list[ManufacturerModelMetadata] = []
         self.friendly_name_metadata: FriendlyNameMetadata | None = None
+        self.device_alerts: list[DeviceAlertMetadata] = []
         self.filters: list[FilterType] = []
         self.custom_device_class: type[CustomDeviceV2] | None = None
         self.device_node_descriptor: NodeDescriptor | None = None
@@ -915,6 +933,11 @@ class QuirkBuilder:
         self.friendly_name_metadata = FriendlyNameMetadata(
             model=model, manufacturer=manufacturer
         )
+        return self
+
+    def device_alert(self, *, level: DeviceAlertLevel, text: str) -> QuirkBuilder:
+        """Adds a device alert."""
+        self.device_alerts.append(DeviceAlertMetadata(level=level, text=text))
         return self
 
     def add_to_registry(self) -> QuirksV2RegistryEntry:
