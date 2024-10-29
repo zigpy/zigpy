@@ -21,6 +21,8 @@ from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2 import (
     BinarySensorMetadata,
     CustomDeviceV2,
+    DeviceAlertLevel,
+    DeviceAlertMetadata,
     EntityMetadata,
     EntityPlatform,
     EntityType,
@@ -129,7 +131,7 @@ async def test_quirks_v2(device_mock):
     assert str(quirked.quirk_metadata.quirk_file).endswith(
         "zigpy/tests/test_quirks_v2.py"
     )
-    assert quirked.quirk_metadata.quirk_file_line == 103
+    assert quirked.quirk_metadata.quirk_file_line == 107
 
     ep = quirked.endpoints[1]
 
@@ -1132,3 +1134,27 @@ async def test_quirks_v2_no_friendly_name(device_mock: Device) -> None:
     )
 
     assert entry.friendly_name is None
+
+
+async def test_quirks_v2_device_alerts(device_mock: Device) -> None:
+    registry = DeviceRegistry()
+
+    entry = (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .device_alert(level="warning", message="This device has routing problems.")
+        .device_alert(
+            level="error", message="This device irreparably crashes the mesh."
+        )
+        .add_to_registry()
+    )
+
+    assert entry.device_alerts == (
+        DeviceAlertMetadata(
+            level=DeviceAlertLevel.WARNING,
+            message="This device has routing problems.",
+        ),
+        DeviceAlertMetadata(
+            level=DeviceAlertLevel.ERROR,
+            message="This device irreparably crashes the mesh.",
+        ),
+    )

@@ -379,8 +379,8 @@ class DeviceAlertLevel(Enum):
 class DeviceAlertMetadata:
     """Metadata for device-specific alerts."""
 
-    level: DeviceAlertLevel = attrs.field()
-    text: str = attrs.field()
+    level: DeviceAlertLevel = attrs.field(converter=DeviceAlertLevel)
+    message: str = attrs.field()
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -935,9 +935,9 @@ class QuirkBuilder:
         )
         return self
 
-    def device_alert(self, *, level: DeviceAlertLevel, text: str) -> QuirkBuilder:
+    def device_alert(self, *, level: DeviceAlertLevel, message: str) -> QuirkBuilder:
         """Adds a device alert."""
-        self.device_alerts.append(DeviceAlertMetadata(level=level, text=text))
+        self.device_alerts.append(DeviceAlertMetadata(level=level, message=message))
         return self
 
     def add_to_registry(self) -> QuirksV2RegistryEntry:
@@ -949,6 +949,7 @@ class QuirkBuilder:
         quirk: QuirksV2RegistryEntry = QuirksV2RegistryEntry(
             manufacturer_model_metadata=tuple(self.manufacturer_model_metadata),
             friendly_name=self.friendly_name_metadata,
+            device_alerts=tuple(self.device_alerts),
             quirk_file=self.quirk_file,
             quirk_file_line=self.quirk_file_line,
             filters=tuple(self.filters),
