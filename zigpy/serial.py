@@ -3,11 +3,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import pathlib
+import sys
 import typing
 from typing import Literal
 import urllib.parse
 
-import async_timeout
+if sys.version_info[:2] < (3, 11):
+    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
+else:
+    from asyncio import timeout as asyncio_timeout  # pragma: no cover
+
 import serial as pyserial
 
 from zigpy.typing import UNDEFINED, UndefinedType
@@ -108,7 +113,7 @@ async def create_serial_connection(
     parsed_url = urllib.parse.urlparse(url)
 
     if parsed_url.scheme in ("socket", "tcp"):
-        async with async_timeout.timeout(SOCKET_CONNECT_TIMEOUT):
+        async with asyncio_timeout(SOCKET_CONNECT_TIMEOUT):
             transport, protocol = await loop.create_connection(
                 protocol_factory=protocol_factory,
                 host=parsed_url.hostname,
