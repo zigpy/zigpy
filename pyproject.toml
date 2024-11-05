@@ -17,7 +17,6 @@ dependencies = [
     "attrs",
     "aiohttp",
     "aiosqlite>=0.20.0",
-    "async_timeout",
     "crccheck",
     "cryptography",
     'async-timeout; python_version<"3.11"',
