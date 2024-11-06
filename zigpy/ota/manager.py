@@ -136,9 +136,14 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: Ota.ImageBlockCommand
     ) -> None:
         """Handle image block request."""
+        if command.manufacturer_code == 4129:
+            # Legrand devices (manufacturer_code == 4129) require up to 64 bytes.
+            default_image_block_size = 255
+        else:
+            default_image_block_size = MAXIMUM_IMAGE_BLOCK_SIZE
         block = self._image_data[
             command.file_offset : command.file_offset
-            + min(MAXIMUM_IMAGE_BLOCK_SIZE, command.maximum_data_size)
+            + min(default_image_block_size, command.maximum_data_size)
         ]
 
         if not block:
