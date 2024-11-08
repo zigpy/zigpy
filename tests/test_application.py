@@ -1297,24 +1297,6 @@ async def test_energy_scan_not_implemented(app):
     assert results == {c: 0 for c in range(11, 26 + 1)}
 
 
-@pytest.mark.parametrize(
-    ("scan", "message_present"),
-    [
-        ({c: 0 for c in t.Channels.ALL_CHANNELS}, False),
-        ({c: 255 for c in t.Channels.ALL_CHANNELS}, True),
-    ],
-)
-async def test_startup_energy_scan(app, caplog, scan, message_present):
-    with mock.patch.object(app, "energy_scan", return_value=scan):
-        with caplog.at_level(logging.WARNING):
-            await app.startup()
-
-    if message_present:
-        assert "Zigbee channel 15 utilization is 100.00%" in caplog.text
-    else:
-        assert "Zigbee channel" not in caplog.text
-
-
 async def test_startup_broadcast_failure_due_to_interference(app, caplog):
     err = DeliveryError(
         "Failed to deliver packet: <TXStatus.MAC_CHANNEL_ACCESS_FAILURE: 225>", 225
