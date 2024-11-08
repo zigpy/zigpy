@@ -557,7 +557,7 @@ async def test_form_network_find_best_channel(app):
 
 
 async def test_startup_formed():
-    app = make_app({conf.CONF_STARTUP_ENERGY_SCAN: False})
+    app = make_app({})
     app.start_network = AsyncMock(wraps=app.start_network)
     app.form_network = AsyncMock()
     app.permit = AsyncMock()
@@ -570,7 +570,7 @@ async def test_startup_formed():
 
 
 async def test_startup_not_formed():
-    app = make_app({conf.CONF_STARTUP_ENERGY_SCAN: False})
+    app = make_app({})
     app.start_network = AsyncMock(wraps=app.start_network)
     app.form_network = AsyncMock()
     app.load_network_info = AsyncMock(
@@ -597,7 +597,7 @@ async def test_startup_not_formed():
 
 
 async def test_startup_not_formed_with_backup():
-    app = make_app({conf.CONF_STARTUP_ENERGY_SCAN: False})
+    app = make_app({})
     app.start_network = AsyncMock(wraps=app.start_network)
     app.load_network_info = AsyncMock(side_effect=[NetworkNotFormed(), None])
     app.permit = AsyncMock()

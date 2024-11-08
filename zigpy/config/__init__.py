@@ -28,7 +28,6 @@ from zigpy.config.defaults import (
     CONF_OTA_EXTRA_PROVIDERS_DEFAULT,
     CONF_OTA_PROVIDERS_DEFAULT,
     CONF_SOURCE_ROUTING_DEFAULT,
-    CONF_STARTUP_ENERGY_SCAN_DEFAULT,
     CONF_TOPO_SCAN_ENABLED_DEFAULT,
     CONF_TOPO_SCAN_PERIOD_DEFAULT,
     CONF_TOPO_SKIP_COORDINATOR_DEFAULT,
@@ -83,7 +82,6 @@ CONF_OTA_BROADCAST_INITIAL_DELAY = "broadcast_initial_delay"
 CONF_OTA_BROADCAST_INTERVAL = "broadcast_interval"
 CONF_OTA_PROVIDER_MANUF_IDS = "manufacturer_ids"
 CONF_SOURCE_ROUTING = "source_routing"
-CONF_STARTUP_ENERGY_SCAN = "startup_energy_scan"
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
 CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
@@ -370,9 +368,6 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(CONF_SOURCE_ROUTING, default=CONF_SOURCE_ROUTING_DEFAULT): (
             cv_boolean
         ),
-        vol.Optional(
-            CONF_STARTUP_ENERGY_SCAN, default=CONF_STARTUP_ENERGY_SCAN_DEFAULT
-        ): cv_boolean,
         vol.Optional(
             CONF_WATCHDOG_ENABLED, default=CONF_WATCHDOG_ENABLED_DEFAULT
         ): cv_boolean,

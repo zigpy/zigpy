@@ -189,22 +189,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.warning("Failed to send startup broadcast: %s", e)
             LOGGER.warning(INTERFERENCE_MESSAGE)
 
-        if self.config[conf.CONF_STARTUP_ENERGY_SCAN]:
-            # Each scan period is 15.36ms. Scan for at least 200ms (2^4 + 1 periods) to
-            # pick up WiFi beacon frames.
-            results = await self.energy_scan(
-                channels=t.Channels.ALL_CHANNELS, duration_exp=4, count=1
-            )
-            LOGGER.debug("Startup energy scan: %s", results)
-
-            if results[self.state.network_info.channel] > ENERGY_SCAN_WARN_THRESHOLD:
-                LOGGER.warning(
-                    "Zigbee channel %s utilization is %0.2f%%!",
-                    self.state.network_info.channel,
-                    100 * results[self.state.network_info.channel] / 255,
-                )
-                LOGGER.warning(INTERFERENCE_MESSAGE)
-
         if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
             self.backups.start_periodic_backups(
                 # Config specifies the period in minutes, not seconds
