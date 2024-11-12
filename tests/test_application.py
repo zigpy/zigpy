@@ -1407,6 +1407,7 @@ async def test_watchdog(app):
     assert app._watchdog_task.done()
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 async def test_permit_with_key(app):
     app = make_app({})
 

@@ -569,6 +569,7 @@ async def test_combine_concurrent_calls():
     assert f.slow_error_calls == 2
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_deprecated():
     @util.deprecated("This function is deprecated")
     def foo():

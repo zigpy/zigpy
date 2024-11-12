@@ -1245,6 +1245,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     cluster.image_block_response = image_block_response
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 async def test_deserialize_backwards_compat(dev):
     """Test that deserialization uses the method if it is overloaded."""
     dev._packet_debouncer.filter = MagicMock(return_value=False)
