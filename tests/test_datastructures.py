@@ -136,7 +136,7 @@ def test_dynamic_bounded_semaphore_multiple_event_loops():
         loop2.run_until_complete(inner())
 
 
-async def test_dynamic_bounded_semaphore_runtime_limit_increase(event_loop):
+async def test_dynamic_bounded_semaphore_runtime_limit_increase():
     """Test changing the max_value at runtime."""
 
     sem = datastructures.PriorityDynamicBoundedSemaphore(2)
@@ -144,7 +144,7 @@ async def test_dynamic_bounded_semaphore_runtime_limit_increase(event_loop):
     def set_limit(n):
         sem.max_value = n
 
-    event_loop.call_later(0.1, set_limit, 3)
+    asyncio.get_running_loop().call_later(0.1, set_limit, 3)
 
     async with sem:
         # Play with the value, testing edge cases
@@ -189,7 +189,7 @@ async def test_dynamic_bounded_semaphore_runtime_limit_increase(event_loop):
     assert sem.max_value == 3
 
 
-async def test_dynamic_bounded_semaphore_errors(event_loop):
+async def test_dynamic_bounded_semaphore_errors():
     """Test semaphore handling errors and cancellation."""
 
     sem = datastructures.PriorityDynamicBoundedSemaphore(1)
@@ -273,7 +273,7 @@ async def test_dynamic_bounded_semaphore_cancellation():
     assert not sem.locked()
 
 
-async def test_priority_lock(event_loop):
+async def test_priority_lock():
     """Test priority lock."""
 
     lock = datastructures.PriorityLock()

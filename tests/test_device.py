@@ -1254,7 +1254,7 @@ async def test_deserialize_backwards_compat(dev):
     assert dev.deserialize.call_count == 1
 
 
-async def test_request_exception_propagation(dev, event_loop):
+async def test_request_exception_propagation(dev):
     """Test that exceptions are propagated to the caller."""
     tsn = 0x12
 
@@ -1264,7 +1264,7 @@ async def test_request_exception_propagation(dev, event_loop):
 
     dev.get_sequence = MagicMock(return_value=tsn)
 
-    event_loop.call_soon(
+    asyncio.get_running_loop().call_soon(
         dev.packet_received,
         t.ZigbeePacket(
             profile_id=260,
