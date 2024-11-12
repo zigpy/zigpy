@@ -18,7 +18,7 @@ from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import Basic, Ota
 from zigpy.zdo import types as zdo_t
 
-from .async_mock import ANY, AsyncMock, MagicMock, int_sentinel, patch, sentinel
+from .async_mock import AsyncMock, MagicMock, int_sentinel, patch, sentinel
 
 
 @pytest.fixture
@@ -412,10 +412,9 @@ def test_device_last_seen(dev, monkeypatch):
     dev.listener_event.assert_called_once_with("device_last_seen_updated", epoch)
     dev.listener_event.reset_mock()
 
-    dev.update_last_seen()
-    dev.listener_event.assert_called_once_with("device_last_seen_updated", ANY)
-    event_time = dev.listener_event.mock_calls[0].args[1]
-    assert (event_time - datetime.now(timezone.utc)).total_seconds() < 0.1
+    now = datetime.now(timezone.utc)
+    dev.last_seen = now
+    dev.listener_event.assert_called_once_with("device_last_seen_updated", now)
 
 
 async def test_ignore_unknown_endpoint(dev, caplog):

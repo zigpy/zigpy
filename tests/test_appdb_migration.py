@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import logging
 import pathlib
 from sqlite3.dump import _iterdump as iterdump
@@ -484,7 +485,7 @@ async def test_last_seen_initial_migration(test_db):
     dev = app.get_device(nwk=0xBD4D)
 
     assert dev.last_seen is None
-    dev.update_last_seen()
+    dev.last_seen = datetime.now(timezone.utc)
     assert isinstance(dev.last_seen, float)
     await app.shutdown()
 

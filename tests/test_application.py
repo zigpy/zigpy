@@ -223,6 +223,7 @@ def test_deserialize(app, ieee):
     assert dev.deserialize.call_count == 1
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 async def test_handle_message_shim(app):
     dev = MagicMock()
     dev.nwk = 0x1234
@@ -332,6 +333,9 @@ def test_props(app):
     assert app.state.network_info.nwk_update_id is not None
 
 
+@pytest.mark.filterwarnings(
+    "ignore::DeprecationWarning"
+)  # TODO: migrate `handle_message_from_uninitialized_sender` away from `handle_message`
 async def test_uninitialized_message_handlers(app, ieee):
     """Test uninitialized message handlers."""
     handler_1 = MagicMock(return_value=None)

@@ -983,7 +983,7 @@ async def test_last_seen(tmp_path):
     # Last-seen is only written to the db every 30s (no write case)
     now = datetime.fromtimestamp(dev.last_seen + 5, timezone.utc)
     with freezegun.freeze_time(now):
-        dev.update_last_seen()
+        dev.last_seen = datetime.now(timezone.utc)
 
     await app.shutdown()
 
@@ -998,7 +998,7 @@ async def test_last_seen(tmp_path):
     # Last-seen is only written to the db every 30s (write case)
     now = datetime.fromtimestamp(dev.last_seen + 35, timezone.utc)
     with freezegun.freeze_time(now):
-        dev.update_last_seen()
+        dev.last_seen = datetime.now(timezone.utc)
 
     await app.shutdown()
 

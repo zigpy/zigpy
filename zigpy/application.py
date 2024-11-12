@@ -5,6 +5,7 @@ import asyncio
 import collections
 from collections.abc import Coroutine
 import contextlib
+from datetime import datetime, timezone
 import errno
 import logging
 import os
@@ -559,7 +560,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         # Not all stacks send a ZDO command when a device joins so the last_seen should
         # be updated
-        dev.update_last_seen()
+        dev.last_seen = datetime.now(timezone.utc)
 
         # Cancel all pending requests for the device
         dev._concurrent_requests_semaphore.cancel_waiting(
