@@ -32,7 +32,7 @@ class WrappedContextManager:
         await self.context_manager.__aexit__(exc_type, exc, traceback)
 
 
-class PriorityDynamicBoundedSemaphore(asyncio.Semaphore):
+class PriorityDynamicBoundedSemaphore:
     """`asyncio.BoundedSemaphore` with public interface to change the max value."""
 
     def __init__(self, value: int = 0) -> None:
@@ -42,7 +42,7 @@ class PriorityDynamicBoundedSemaphore(asyncio.Semaphore):
         self._waiters: list[tuple[int, int, asyncio.Future]] = []
         self._loop: asyncio.BaseEventLoop | None = None
 
-    def _get_loop(self):
+    def _get_loop(self) -> asyncio.BaseEventLoop:
         loop = asyncio.get_running_loop()
 
         if self._loop is None:
@@ -53,7 +53,7 @@ class PriorityDynamicBoundedSemaphore(asyncio.Semaphore):
 
         return loop
 
-    def _wake_up_next(self):
+    def _wake_up_next(self) -> bool:
         """Wake up the first waiter that isn't done."""
         if not self._waiters:
             return False
@@ -144,7 +144,7 @@ class PriorityDynamicBoundedSemaphore(asyncio.Semaphore):
                     break  # There was no-one to wake up.
         return True
 
-    def release(self):
+    def release(self) -> None:
         """Release a semaphore, incrementing the internal counter by one.
 
         When it was zero on entry and another task is waiting for it to
@@ -156,7 +156,7 @@ class PriorityDynamicBoundedSemaphore(asyncio.Semaphore):
         self._value += 1
         self._wake_up_next()
 
-    def __call__(self, priority: int = 0):
+    def __call__(self, priority: int = 0) -> WrappedContextManager:
         """Allows specifying the priority by calling the context manager.
 
         This allows both `async with sem:` and `async with sem(priority=5):`.
