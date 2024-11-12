@@ -109,6 +109,33 @@ async def test_dynamic_bounded_semaphore_hanging_bug():
         assert True
 
 
+def test_dynamic_bounded_semaphore_multiple_event_loops():
+    """Test semaphore detecting multiple loops."""
+
+    async def test_semaphore(sem):
+        async with sem:
+            await asyncio.sleep(0.1)
+
+    async def make_semaphore():
+        sem = datastructures.PriorityDynamicBoundedSemaphore(1)
+
+        # The loop reference is lazily created so we need to actually lock the semaphore
+        await asyncio.gather(test_semaphore(sem), test_semaphore(sem))
+
+        return sem
+
+    loop1 = asyncio.new_event_loop()
+    sem = loop1.run_until_complete(make_semaphore())
+
+    async def inner():
+        await asyncio.gather(test_semaphore(sem), test_semaphore(sem))
+
+    loop2 = asyncio.new_event_loop()
+
+    with pytest.raises(RuntimeError):
+        loop2.run_until_complete(inner())
+
+
 async def test_dynamic_bounded_semaphore_runtime_limit_increase(event_loop):
     """Test changing the max_value at runtime."""
 
