@@ -14,6 +14,7 @@ import zigpy.ota
 import zigpy.types as t
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 async def test_ota_disabled_legacy(tmp_path: pathlib.Path) -> None:
     (tmp_path / "index.json").write_text("{}")
 
@@ -49,6 +50,7 @@ async def test_ota_disabled_legacy(tmp_path: pathlib.Path) -> None:
     assert not ota._providers
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 async def test_ota_enabled_legacy(tmp_path: pathlib.Path) -> None:
     (tmp_path / "index.json").write_text("{}")
 
