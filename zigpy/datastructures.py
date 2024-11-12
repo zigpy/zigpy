@@ -6,7 +6,6 @@ import asyncio
 import bisect
 import contextlib
 import functools
-import heapq
 import types
 import typing
 
@@ -297,7 +296,7 @@ class Debouncer:
 
         # Otherwise, queue it
         self._times[obj] = now + expire_in
-        heapq.heappush(self._queue, (-(now + expire_in), self._dedup_counter, obj))
+        bisect.insort_right(self._queue, (-(now + expire_in), self._dedup_counter, obj))
 
         return False
 

@@ -345,3 +345,57 @@ async def test_debouncer_low_resolution_clock():
         # The two objects cannot be compared
         with pytest.raises(TypeError):
             obj1 < obj2  # noqa: B015
+
+
+async def test_debouncer_cleaning_bug():
+    """Test debouncer bug when using heapq improperly."""
+    debouncer = datastructures.Debouncer()
+
+    obj1 = object()
+    obj2 = object()
+    obj3 = object()
+
+    # Filter obj1 with an expiration of 0.3 seconds
+    debouncer.filter(obj1, expire_in=0.3)
+
+    # Slight delay to ensure different expiration times
+    await asyncio.sleep(0.05)
+
+    # Filter obj2 with an expiration of 0.1 seconds
+    debouncer.filter(obj2, expire_in=0.1)
+
+    # Another slight delay
+    await asyncio.sleep(0.05)
+
+    # Filter obj3 with an expiration of 0.2 seconds
+    debouncer.filter(obj3, expire_in=0.2)
+
+    assert debouncer.is_filtered(obj1)
+    assert debouncer.is_filtered(obj2)
+    assert debouncer.is_filtered(obj3)
+
+    # Wait until after obj2 should have expired
+    await asyncio.sleep(0.11)  # Total elapsed time ~0.21 seconds from start
+
+    # Clean up expired items
+    debouncer.clean()
+
+    # obj2 should have expired, but due to the bug, it might still be filtered
+    assert not debouncer.is_filtered(obj2)
+
+    # obj1 and obj3 should still be filtered
+    assert debouncer.is_filtered(obj1)
+    assert debouncer.is_filtered(obj3)
+
+    # Wait until after obj1 and obj3 should have expired
+    await asyncio.sleep(0.1)  # Total elapsed time ~0.31 seconds from start
+
+    # Clean up expired items
+    debouncer.clean()
+
+    # Now all objects should have expired
+    assert not debouncer.is_filtered(obj1)
+    assert not debouncer.is_filtered(obj3)
+
+    # The queue should be empty
+    assert len(debouncer._queue) == 0
