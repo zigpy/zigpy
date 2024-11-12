@@ -82,7 +82,9 @@ CONF_OTA_BROADCAST_INITIAL_DELAY = "broadcast_initial_delay"
 CONF_OTA_BROADCAST_INTERVAL = "broadcast_interval"
 CONF_OTA_PROVIDER_MANUF_IDS = "manufacturer_ids"
 CONF_SOURCE_ROUTING = "source_routing"
-CONF_STARTUP_ENERGY_SCAN = "startup_energy_scan"
+CONF_STARTUP_ENERGY_SCAN = (
+    "startup_energy_scan"  # Unused, kept to avoid breaking imports in dependencies
+)
 CONF_TOPO_SCAN_PERIOD = "topology_scan_period"
 CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
 CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
