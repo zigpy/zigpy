@@ -83,6 +83,32 @@ async def test_dynamic_bounded_semaphore_multiple_locking():
     assert not sem.locked()
 
 
+async def test_dynamic_bounded_semaphore_hanging_bug():
+    """Test semaphore hanging bug."""
+    sem = datastructures.PriorityDynamicBoundedSemaphore(1)
+
+    async def c1():
+        async with sem:
+            await asyncio.sleep(0)
+        t2.cancel()
+
+    async def c2():
+        async with sem:
+            pytest.fail("Should never get here")
+
+    t1 = asyncio.create_task(c1())
+    t2 = asyncio.create_task(c2())
+
+    r1, r2 = await asyncio.gather(t1, t2, return_exceptions=True)
+    assert r1 is None
+    assert isinstance(r2, asyncio.CancelledError)
+
+    assert not sem.locked()
+
+    async with sem:
+        assert True
+
+
 async def test_dynamic_bounded_semaphore_runtime_limit_increase(event_loop):
     """Test changing the max_value at runtime."""
 
