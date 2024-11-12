@@ -182,12 +182,17 @@ async def test_handle_message_read_report_conf(dev):
     dev._pending[tsn] = req_mock
 
     # Read Report Configuration Success
-    rsp = dev.handle_message(
-        0x104,  # profile
-        0x702,  # cluster
-        3,  # source EP
-        3,  # dest EP
-        b"\x18\x56\x09\x00\x00\x00\x00\x25\x1e\x00\x84\x03\x01\x02\x03\x04\x05\x06",  # message
+    rsp = dev.packet_received(
+        t.ZigbeePacket(
+            profile_id=0x104,
+            cluster_id=0x702,
+            src_ep=3,
+            dst_ep=3,
+            data=t.SerializableBytes(
+                b"\x18\x56\x09\x00\x00\x00\x00\x25\x1e\x00\x84\x03\x01\x02\x03\x04\x05\x06"
+            ),  # message
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        )
     )
     # Returns decoded msg when response is not pending, None otherwise
     assert rsp is None
@@ -206,12 +211,17 @@ async def test_handle_message_read_report_conf(dev):
     tsn2 = 0x5B
     req_mock2 = MagicMock()
     dev._pending[tsn2] = req_mock2
-    rsp2 = dev.handle_message(
-        0x104,  # profile
-        0x702,  # cluster
-        3,  # source EP
-        3,  # dest EP
-        b"\x18\x5b\x09\x86\x00\x00\x00\x86\x00\x12\x00\x86\x00\x00\x04",  # message 3x("Unsupported attribute" response)
+    rsp2 = dev.packet_received(
+        t.ZigbeePacket(
+            profile_id=0x104,
+            cluster_id=0x702,
+            src_ep=3,
+            dst_ep=3,
+            data=t.SerializableBytes(
+                b"\x18\x5b\x09\x86\x00\x00\x00\x86\x00\x12\x00\x86\x00\x00\x04"
+            ),  # message 3x("Unsupported attribute" response)
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        )
     )
     # Returns decoded msg when response is not pending, None otherwise
     assert rsp2 is None
@@ -232,12 +242,17 @@ async def test_handle_message_read_report_conf(dev):
     tsn3 = 0x5C
     req_mock3 = MagicMock()
     dev._pending[tsn3] = req_mock3
-    rsp3 = dev.handle_message(
-        0x104,  # profile
-        0x702,  # cluster
-        3,  # source EP
-        3,  # dest EP
-        b"\x18\x5c\x09\x86\x00\x00\x00\x00\x00\x00\x00\x25\x1e\x00\x84\x03\x01\x02\x03\x04\x05\x06",
+    rsp3 = dev.packet_received(
+        t.ZigbeePacket(
+            profile_id=0x104,
+            cluster_id=0x702,
+            src_ep=3,
+            dst_ep=3,
+            data=t.SerializableBytes(
+                b"\x18\x5c\x09\x86\x00\x00\x00\x00\x00\x00\x00\x25\x1e\x00\x84\x03\x01\x02\x03\x04\x05\x06"
+            ),
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        )
     )
     assert rsp3 is None
     cfg_unsup4, cfg_sup2 = req_mock3.result.set_result.call_args[0][0].attribute_configs
@@ -248,9 +263,20 @@ async def test_handle_message_read_report_conf(dev):
 
 async def test_handle_message_deserialize_error(dev):
     ep = dev.add_endpoint(3)
-    dev.deserialize = MagicMock(side_effect=ValueError)
+    ep.deserialize = MagicMock(side_effect=ValueError)
     ep.handle_message = MagicMock()
-    dev.handle_message(99, 98, 3, 3, b"abcd")
+
+    dev.packet_received(
+        t.ZigbeePacket(
+            profile_id=99,
+            cluster_id=98,
+            src_ep=3,
+            dst_ep=3,
+            data=t.SerializableBytes(b"abcd"),
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        )
+    )
+
     assert ep.handle_message.call_count == 0
 
 
