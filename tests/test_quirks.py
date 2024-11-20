@@ -990,6 +990,28 @@ async def test_manuf_id_disable(real_device):
         assert hdr.manufacturer is None
 
 
+async def test_cluster_manufacturer_id_override(real_device):
+    class TestCluster(ManufacturerSpecificCluster):
+        cluster_id = 0xFF00
+        manufacturer_id_override = 0xABCD
+
+    real_device.manufacturer_id_override = 0x1234
+
+    ep = real_device.endpoints[1]
+    ep.add_input_cluster(TestCluster.cluster_id, TestCluster(ep))
+    assert isinstance(ep.just_a_cluster, TestCluster)
+
+    assert ep.manufacturer_id == 0x1234
+
+    with patch.object(ep, "request", AsyncMock()) as request_mock:
+        await ep.just_a_cluster.read_attributes(["attr0"])
+
+    # We prefer the cluster-level override
+    data = request_mock.mock_calls[0].kwargs["data"]
+    hdr, _ = zcl.foundation.ZCLHeader.deserialize(data)
+    assert hdr.manufacturer == 0xABCD
+
+
 async def test_request_with_kwargs(real_device):
     class CustomLevel(zigpy.quirks.CustomCluster, zcl.clusters.general.LevelControl):
         pass
