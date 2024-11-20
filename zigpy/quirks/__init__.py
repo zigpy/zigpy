@@ -235,6 +235,15 @@ class CustomCluster(zigpy.zcl.Cluster):
 
         return False
 
+    @property
+    def _manufacturer_id(self) -> int | None:
+        """Return manufacturer id, accounting for local overrides."""
+        return (
+            self.manufacturer_id_override
+            if self.manufacturer_id_override is not None
+            else self.endpoint.manufacturer_id
+        )
+
     async def command(
         self,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
@@ -249,7 +258,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         if manufacturer is None and (
             self._is_manuf_specific or command.is_manufacturer_specific
         ):
-            manufacturer = self.endpoint.manufacturer_id
+            manufacturer = self._manufacturer_id
 
         return await self.request(
             False,
@@ -275,7 +284,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         if manufacturer is None and (
             self._is_manuf_specific or command.is_manufacturer_specific
         ):
-            manufacturer = self.endpoint.manufacturer_id
+            manufacturer = self._manufacturer_id
 
         return await self.reply(
             False,
@@ -342,7 +351,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         if manufacturer is None and self._has_manuf_attr(
             [a.attrid for a in config_records]
         ):
-            manufacturer = self.endpoint.manufacturer_id
+            manufacturer = self._manufacturer_id
         return await super()._configure_reporting(
             config_records,
             *args,
@@ -359,7 +368,7 @@ class CustomCluster(zigpy.zcl.Cluster):
     ):
         """Read attributes ZCL foundation command."""
         if manufacturer is None and self._has_manuf_attr(attribute_ids):
-            manufacturer = self.endpoint.manufacturer_id
+            manufacturer = self._manufacturer_id
         return await super()._read_attributes(
             attribute_ids, *args, manufacturer=manufacturer, **kwargs
         )
@@ -375,7 +384,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         if manufacturer is None and self._has_manuf_attr(
             [a.attrid for a in attributes]
         ):
-            manufacturer = self.endpoint.manufacturer_id
+            manufacturer = self._manufacturer_id
         return await super()._write_attributes(
             attributes, *args, manufacturer=manufacturer, **kwargs
         )
@@ -391,7 +400,7 @@ class CustomCluster(zigpy.zcl.Cluster):
         if manufacturer is None and self._has_manuf_attr(
             [a.attrid for a in attributes]
         ):
-            manufacturer = self.endpoint.manufacturer_id
+            manufacturer = self._manufacturer_id
         return await super()._write_attributes_undivided(
             attributes, *args, manufacturer=manufacturer, **kwargs
         )
