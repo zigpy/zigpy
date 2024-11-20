@@ -841,6 +841,385 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     cluster.image_block_response = image_block_response
 
 
+@patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
+@patch(
+    "zigpy.device.OTA_RETRY_DECORATOR",
+    zigpy.util.retryable_request(tries=1, delay=0.01),
+)
+async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
+    """Legrand device (manufacturer_code == 4129) firmware update expects the "image_block" command "maximum_data_size" to be complied with."""
+    ep = dev.add_endpoint(1)
+    cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
+    ep.add_output_cluster(Ota.cluster_id, cluster)
+
+    async def mockrequest(nwk, tries=None, delay=None):
+        return [0, None, [0, 1, 2, 3, 4]]
+
+    async def mockepinit(self, *args, **kwargs):
+        self.status = endpoint.Status.ZDO_INIT
+        self.add_input_cluster(Basic.cluster_id)
+
+    async def mock_ep_get_model_info(self):
+        if self.endpoint_id == 1:
+            return "SomeModel", "Legrand"
+
+    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
+    dev.zdo.Active_EP_req = mockrequest
+    await dev.initialize()
+
+    fw_image = zigpy.ota.OtaImageWithMetadata(
+        metadata=zigpy.ota.providers.BaseOtaImageMetadata(
+            file_version=0x12345678,
+            manufacturer_id=4129,
+            image_type=0x90,
+        ),
+        firmware=zigpy.ota.image.OTAImage(
+            header=zigpy.ota.image.OTAImageHeader(
+                upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
+                file_version=0x12345678,
+                image_type=0x90,
+                manufacturer_id=4129,
+                header_version=256,
+                header_length=56,
+                field_control=0,
+                stack_version=2,
+                header_string="This is a test header!",
+                image_size=56 + 2 + 4 + 8,
+            ),
+            subelements=[zigpy.ota.image.SubElement(tag_id=0x0000, data=b"fw_image")],
+        ),
+    )
+
+    fw_image_force = fw_image.replace(
+        firmware=fw_image.firmware.replace(
+            header=fw_image.firmware.header.replace(
+                file_version=0xFFFFFFFF - 1,
+            )
+        )
+    )
+
+    dev.application.ota.get_ota_images = MagicMock(
+        return_value=OtaImagesResult(upgrades=(), downgrades=())
+    )
+    dev.update_firmware = MagicMock(wraps=dev.update_firmware)
+
+    def make_packet(cmd_name: str, **kwargs):
+        req_hdr, req_cmd = cluster._create_request(
+            general=False,
+            command_id=cluster.commands_by_name[cmd_name].id,
+            schema=cluster.commands_by_name[cmd_name].schema,
+            disable_default_response=False,
+            direction=foundation.Direction.Client_to_Server,
+            args=(),
+            kwargs=kwargs,
+        )
+
+        return t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=1,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=1,
+            tsn=req_hdr.tsn,
+            profile_id=260,
+            cluster_id=cluster.cluster_id,
+            data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
+            lqi=255,
+            rssi=-30,
+        )
+
+    async def send_packet(packet: t.ZigbeePacket):
+        if dev.update_firmware.mock_calls[-1].kwargs.get("force", False):
+            active_fw_image = fw_image_force
+        else:
+            active_fw_image = fw_image
+
+        if packet.cluster_id == Ota.cluster_id:
+            hdr, cmd = cluster.deserialize(packet.data.serialize())
+            if isinstance(cmd, Ota.ImageNotifyCommand):
+                dev.application.packet_received(
+                    make_packet(
+                        "query_next_image",
+                        field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+                        manufacturer_code=active_fw_image.firmware.header.manufacturer_id,
+                        image_type=active_fw_image.firmware.header.image_type,
+                        current_file_version=active_fw_image.firmware.header.file_version
+                        - 10,
+                        hardware_version=1,
+                    )
+                )
+            elif isinstance(
+                cmd, Ota.ClientCommandDefs.query_next_image_response.schema
+            ):
+                assert cmd.status == foundation.Status.SUCCESS
+                assert (
+                    cmd.manufacturer_code
+                    == active_fw_image.firmware.header.manufacturer_id
+                )
+                assert cmd.image_type == active_fw_image.firmware.header.image_type
+                assert cmd.file_version == active_fw_image.firmware.header.file_version
+                assert cmd.image_size == active_fw_image.firmware.header.image_size
+                dev.application.packet_received(
+                    make_packet(
+                        "image_block",
+                        field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+                        manufacturer_code=active_fw_image.firmware.header.manufacturer_id,
+                        image_type=active_fw_image.firmware.header.image_type,
+                        file_version=active_fw_image.firmware.header.file_version,
+                        file_offset=0,
+                        maximum_data_size=64,
+                        request_node_addr=dev.ieee,
+                    )
+                )
+            elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
+                if cmd.file_offset == 0:
+                    assert cmd.status == foundation.Status.SUCCESS
+                    assert (
+                        cmd.manufacturer_code
+                        == active_fw_image.firmware.header.manufacturer_id
+                    )
+                    assert cmd.image_type == active_fw_image.firmware.header.image_type
+                    assert (
+                        cmd.file_version == active_fw_image.firmware.header.file_version
+                    )
+                    assert cmd.file_offset == 0
+                    assert cmd.image_data == active_fw_image.firmware.serialize()[0:64]
+                    dev.application.packet_received(
+                        make_packet(
+                            "image_block",
+                            field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+                            manufacturer_code=active_fw_image.firmware.header.manufacturer_id,
+                            image_type=active_fw_image.firmware.header.image_type,
+                            file_version=active_fw_image.firmware.header.file_version,
+                            file_offset=64,
+                            maximum_data_size=64,
+                            request_node_addr=dev.ieee,
+                        )
+                    )
+                elif cmd.file_offset == 64:
+                    assert cmd.status == foundation.Status.SUCCESS
+                    assert (
+                        cmd.manufacturer_code
+                        == active_fw_image.firmware.header.manufacturer_id
+                    )
+                    assert cmd.image_type == active_fw_image.firmware.header.image_type
+                    assert (
+                        cmd.file_version == active_fw_image.firmware.header.file_version
+                    )
+                    assert cmd.file_offset == 64
+                    assert cmd.image_data == active_fw_image.firmware.serialize()[64:70]
+                    dev.application.packet_received(
+                        make_packet(
+                            "upgrade_end",
+                            status=foundation.Status.SUCCESS,
+                            manufacturer_code=active_fw_image.firmware.header.manufacturer_id,
+                            image_type=active_fw_image.firmware.header.image_type,
+                            file_version=active_fw_image.firmware.header.file_version,
+                        )
+                    )
+
+            elif isinstance(cmd, Ota.ClientCommandDefs.upgrade_end_response.schema):
+                assert (
+                    cmd.manufacturer_code
+                    == active_fw_image.firmware.header.manufacturer_id
+                )
+                assert cmd.image_type == active_fw_image.firmware.header.image_type
+                assert cmd.file_version == active_fw_image.firmware.header.file_version
+                assert cmd.current_time == 0
+                assert cmd.upgrade_time == 0
+            elif isinstance(
+                cmd,
+                foundation.GENERAL_COMMANDS[
+                    foundation.GeneralCommand.Read_Attributes
+                ].schema,
+            ):
+                assert cmd.attribute_ids == [Ota.AttributeDefs.current_file_version.id]
+
+                req_hdr, req_cmd = cluster._create_request(
+                    general=True,
+                    command_id=foundation.GeneralCommand.Read_Attributes_rsp,
+                    schema=foundation.GENERAL_COMMANDS[
+                        foundation.GeneralCommand.Read_Attributes_rsp
+                    ].schema,
+                    tsn=hdr.tsn,
+                    disable_default_response=True,
+                    direction=foundation.Direction.Server_to_Client,
+                    args=(),
+                    kwargs={
+                        "status_records": [
+                            foundation.ReadAttributeRecord(
+                                attrid=Ota.AttributeDefs.current_file_version.id,
+                                status=foundation.Status.SUCCESS,
+                                value=foundation.TypeValue(
+                                    type=foundation.DataTypeId.uint32,
+                                    value=active_fw_image.firmware.header.file_version,
+                                ),
+                            )
+                        ]
+                    },
+                )
+
+                dev.application.packet_received(
+                    t.ZigbeePacket(
+                        src=t.AddrModeAddress(
+                            addr_mode=t.AddrMode.NWK, address=dev.nwk
+                        ),
+                        src_ep=1,
+                        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+                        dst_ep=1,
+                        tsn=hdr.tsn,
+                        profile_id=260,
+                        cluster_id=cluster.cluster_id,
+                        data=t.SerializableBytes(
+                            req_hdr.serialize() + req_cmd.serialize()
+                        ),
+                        lqi=255,
+                        rssi=-30,
+                    )
+                )
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    progress_callback = MagicMock()
+    result = await dev.update_firmware(fw_image, progress_callback)
+    assert (
+        dev.endpoints[1]
+        .out_clusters[Ota.cluster_id]
+        ._attr_cache[Ota.AttributeDefs.current_file_version.id]
+        == 0x12345678
+    )
+
+    assert dev.application.send_packet.await_count == 6
+    assert progress_callback.call_count == 2
+    assert progress_callback.call_args_list[0] == call(64, 70, 91.42857142857143)
+    assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
+    assert result == foundation.Status.SUCCESS
+
+    progress_callback.reset_mock()
+    dev.application.send_packet.reset_mock()
+    result = await dev.update_firmware(
+        fw_image, progress_callback=progress_callback, force=True
+    )
+
+    assert dev.application.send_packet.await_count == 6
+    assert progress_callback.call_count == 2
+    assert progress_callback.call_args_list[0] == call(64, 70, 91.42857142857143)
+    assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
+    assert result == foundation.Status.SUCCESS
+
+    # _image_query_req exception test
+    dev.application.send_packet.reset_mock()
+    progress_callback.reset_mock()
+    image_notify = cluster.image_notify
+    cluster.image_notify = AsyncMock(side_effect=zigpy.exceptions.DeliveryError("Foo"))
+    result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
+    assert dev.application.send_packet.await_count == 0
+    assert progress_callback.call_count == 0
+    assert "OTA image_notify handler exception" in caplog.text
+    assert result == foundation.Status.FAILURE
+    cluster.image_notify = image_notify
+    caplog.clear()
+
+    # _image_query_req exception test
+    dev.application.send_packet.reset_mock()
+    progress_callback.reset_mock()
+    query_next_image_response = cluster.query_next_image_response
+    cluster.query_next_image_response = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("Foo")
+    )
+    result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
+    assert dev.application.send_packet.await_count == 1  # just image notify
+    assert progress_callback.call_count == 0
+    assert "OTA query_next_image handler exception" in caplog.text
+    assert result == foundation.Status.FAILURE
+    cluster.query_next_image_response = query_next_image_response
+    caplog.clear()
+
+    # _image_block_req exception test
+    dev.application.send_packet.reset_mock()
+    progress_callback.reset_mock()
+    image_block_response = cluster.image_block_response
+    cluster.image_block_response = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("Foo")
+    )
+    result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
+    assert (
+        dev.application.send_packet.await_count == 2
+    )  # just image notify + query next image
+    assert progress_callback.call_count == 0
+    assert "OTA image_block handler exception" in caplog.text
+    assert result == foundation.Status.FAILURE
+    cluster.image_block_response = image_block_response
+    caplog.clear()
+
+    # _upgrade_end exception test
+    dev.application.send_packet.reset_mock()
+    progress_callback.reset_mock()
+    upgrade_end_response = cluster.upgrade_end_response
+    cluster.upgrade_end_response = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("Foo")
+    )
+    result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
+    assert (
+        dev.application.send_packet.await_count == 4
+    )  # just image notify, qne, and 2 img blocks
+    assert progress_callback.call_count == 2
+    assert "OTA upgrade_end handler exception" in caplog.text
+    assert result == foundation.Status.FAILURE
+    cluster.upgrade_end_response = upgrade_end_response
+    caplog.clear()
+
+    async def send_packet(packet: t.ZigbeePacket):
+        if packet.cluster_id == Ota.cluster_id:
+            hdr, cmd = cluster.deserialize(packet.data.serialize())
+            if isinstance(cmd, Ota.ImageNotifyCommand):
+                dev.application.packet_received(
+                    make_packet(
+                        "query_next_image",
+                        field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+                        manufacturer_code=fw_image.firmware.header.manufacturer_id,
+                        image_type=fw_image.firmware.header.image_type,
+                        current_file_version=fw_image.firmware.header.file_version - 10,
+                        hardware_version=1,
+                    )
+                )
+            elif isinstance(
+                cmd, Ota.ClientCommandDefs.query_next_image_response.schema
+            ):
+                assert cmd.status == foundation.Status.SUCCESS
+                assert cmd.manufacturer_code == fw_image.firmware.header.manufacturer_id
+                assert cmd.image_type == fw_image.firmware.header.image_type
+                assert cmd.file_version == fw_image.firmware.header.file_version
+                assert cmd.image_size == fw_image.firmware.header.image_size
+                dev.application.packet_received(
+                    make_packet(
+                        "image_block",
+                        field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+                        manufacturer_code=fw_image.firmware.header.manufacturer_id,
+                        image_type=fw_image.firmware.header.image_type,
+                        file_version=fw_image.firmware.header.file_version,
+                        file_offset=300,
+                        maximum_data_size=64,
+                        request_node_addr=dev.ieee,
+                    )
+                )
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+
+    progress_callback.reset_mock()
+    image_block_response = cluster.image_block_response
+    cluster.image_block_response = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("Foo")
+    )
+    result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
+    assert (
+        dev.application.send_packet.await_count == 2
+    )  # just image notify, qne, img block response fails
+    assert progress_callback.call_count == 0
+    assert "OTA image_block handler[MALFORMED_COMMAND] exception" in caplog.text
+    assert result == foundation.Status.MALFORMED_COMMAND
+    cluster.image_block_response = image_block_response
+
+
 async def test_deserialize_backwards_compat(dev):
     """Test that deserialization uses the method if it is overloaded."""
     dev._packet_debouncer.filter = MagicMock(return_value=False)
