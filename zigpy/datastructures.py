@@ -66,6 +66,12 @@ class PriorityDynamicBoundedSemaphore:
                 return True
         return False
 
+    def cancel_waiting(self, exc: BaseException) -> None:
+        """Cancel all waiters with the given exception."""
+        for _, _, fut in self._waiters:
+            if not fut.done():
+                fut.set_exception(exc)
+
     @property
     def value(self) -> int:
         return self._value

@@ -561,6 +561,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # be updated
         dev.update_last_seen()
 
+        # Cancel all pending requests for the device
+        dev._concurrent_requests_semaphore.cancel_waiting(
+            zigpy.exceptions.DeliveryError("Device has re-joined the network")
+        )
+
         if new_join:
             self.listener_event("device_joined", dev)
             dev.schedule_initialize()
@@ -579,8 +584,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             dev = self.get_device(ieee=ieee)
         except KeyError:
             return
-        else:
-            self.listener_event("device_left", dev)
+
+        dev._concurrent_requests_semaphore.cancel_waiting(
+            zigpy.exceptions.DeliveryError("Device has left the network")
+        )
+
+        self.listener_event("device_left", dev)
 
     def handle_relays(self, nwk: t.NWK, relays: list[t.NWK]) -> None:
         """Called when a list of relaying devices is received."""

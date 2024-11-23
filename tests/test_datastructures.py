@@ -236,6 +236,43 @@ async def test_dynamic_bounded_semaphore_errors(event_loop):
     assert sem.max_value == 1
 
 
+async def test_dynamic_bounded_semaphore_cancellation():
+    """Test semaphore handling errors and cancellation."""
+
+    sem = datastructures.PriorityDynamicBoundedSemaphore(2)
+
+    async def acquire():
+        async with sem:
+            await asyncio.sleep(0.2)
+
+    tasks = []
+
+    # First two lock up the semaphore but succeed
+    tasks.append(asyncio.create_task(acquire()))
+    tasks.append(asyncio.create_task(acquire()))
+
+    # Next two get in line, will be cancelled
+    tasks.append(asyncio.create_task(acquire()))
+    tasks.append(asyncio.create_task(acquire()))
+
+    await asyncio.sleep(0)
+    exc = RuntimeError("Uh oh :(")
+    sem.cancel_waiting(exc)
+
+    # Last one makes it through
+    tasks.append(asyncio.create_task(acquire()))
+
+    assert (await asyncio.gather(*tasks, return_exceptions=True)) == [
+        None,
+        None,
+        exc,
+        exc,
+        None,
+    ]
+
+    assert not sem.locked()
+
+
 async def test_priority_lock(event_loop):
     """Test priority lock."""
 
