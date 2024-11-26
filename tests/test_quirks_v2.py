@@ -139,7 +139,7 @@ async def test_quirks_v2(device_mock):
     assert isinstance(ep.basic, Basic)
     assert isinstance(ep.basic, TestCustomCluster)
     # pylint: disable=protected-access
-    assert ep.basic._CONSTANT_ATTRIBUTES[TestCustomCluster.AttributeDefs.foo.name] == 3
+    assert ep.basic._CONSTANT_ATTRIBUTES[TestCustomCluster.AttributeDefs.foo.id] == 3
 
     assert ep.on_off is not None
     assert isinstance(ep.on_off, OnOff)
