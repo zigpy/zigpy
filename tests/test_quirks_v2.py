@@ -525,6 +525,8 @@ async def test_quirks_v2_apply_custom_configuration(device_mock):
         CustomOnOffCluster.cluster_id
     ]
     assert isinstance(quirked_cluster, CustomOnOffCluster)
+    # verify server cluster type was set when adding
+    assert quirked_cluster.cluster_type == ClusterType.Server
 
     quirked_cluster.apply_custom_configuration = AsyncMock()
 
@@ -532,6 +534,8 @@ async def test_quirks_v2_apply_custom_configuration(device_mock):
         1
     ].out_clusters[CustomOnOffCluster.cluster_id]
     assert isinstance(quirked_client_cluster, CustomOnOffCluster)
+    # verify client cluster type was set when adding
+    assert quirked_client_cluster.cluster_type == ClusterType.Client
 
     quirked_client_cluster.apply_custom_configuration = AsyncMock()
 
