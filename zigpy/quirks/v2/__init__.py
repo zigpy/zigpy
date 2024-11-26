@@ -177,7 +177,7 @@ class AddsMetadata:
 
         if self.constant_attributes:
             cluster._CONSTANT_ATTRIBUTES = {
-                attribute.name: value
+                attribute.id: value
                 for attribute, value in self.constant_attributes.items()
             }
 
