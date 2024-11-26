@@ -161,7 +161,7 @@ class AddsMetadata:
     def __call__(self, device: CustomDeviceV2) -> None:
         """Process the add."""
         endpoint: Endpoint = device.endpoints[self.endpoint_id]
-        if self.cluster_type == ClusterType.Server:
+        if is_server_cluster := self.cluster_type == ClusterType.Server:
             add_cluster = endpoint.add_input_cluster
         else:
             add_cluster = endpoint.add_output_cluster
@@ -170,7 +170,7 @@ class AddsMetadata:
             cluster = None
             cluster_id = self.cluster
         else:
-            cluster = self.cluster(endpoint, is_server=True)
+            cluster = self.cluster(endpoint, is_server=is_server_cluster)
             cluster_id = cluster.cluster_id
 
         cluster = add_cluster(cluster_id, cluster)
