@@ -460,6 +460,7 @@ class QuirkBuilder:
         ] = []
         self.entity_metadata: list[
             ZCLEnumMetadata
+            | ZCLSensorMetadata
             | SwitchMetadata
             | NumberMetadata
             | BinarySensorMetadata
