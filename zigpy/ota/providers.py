@@ -364,7 +364,7 @@ class Salus(BaseOtaProvider):
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         if False:
-            yield
+            yield  # pragma: no cover
 
 
 @register_provider
