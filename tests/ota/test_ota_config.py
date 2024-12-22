@@ -167,6 +167,11 @@ async def test_ota_config_complex(tmp_path: pathlib.Path) -> None:
                     "ledvance",
                 ],
                 config.CONF_OTA_EXTRA_PROVIDERS: [
+                    # test salus provider stub
+                    {
+                        config.CONF_OTA_PROVIDER_TYPE: "salus",
+                        config.CONF_OTA_PROVIDER_URL: "https://salus.example.org/",
+                    },
                     {
                         config.CONF_OTA_PROVIDER_TYPE: "ikea",
                         config.CONF_OTA_PROVIDER_URL: "https://ikea1.example.org/",
@@ -210,6 +215,7 @@ async def test_ota_config_complex(tmp_path: pathlib.Path) -> None:
         # zigpy.ota.providers.Sonoff(),
         zigpy.ota.providers.Inovelli(),
         zigpy.ota.providers.ThirdReality(),
+        zigpy.ota.providers.Salus(url="https://salus.example.org/"),
         zigpy.ota.providers.RemoteZ2MProvider(url="https://z2m.example.org/"),
         zigpy.ota.providers.Tradfri(
             url="https://ikea3.example.org/",

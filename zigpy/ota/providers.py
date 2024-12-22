@@ -353,6 +353,20 @@ class Ledvance(BaseOtaProvider):
             )
 
 
+# stub provider to keep existing configurations working
+@register_provider
+class Salus(BaseOtaProvider):
+    NAME = "salus"
+
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
+
+    async def _load_index(
+        self, session: aiohttp.ClientSession
+    ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
+        if False:
+            yield
+
+
 @register_provider
 class Sonoff(BaseOtaProvider):
     NAME = "sonoff"
