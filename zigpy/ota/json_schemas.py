@@ -187,28 +187,6 @@ LEDVANCE_SCHEMA = {
     "required": ["firmwares"],
 }
 
-SALUS_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "versions": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "model": {"type": "string"},
-                    "version": {
-                        "type": "string",
-                        "pattern": "^(|[0-9A-F]{8}|[0-9A-F]{12})$",
-                    },
-                    "url": {"type": "string", "format": "uri"},
-                },
-                "required": ["model", "version", "url"],
-            },
-        }
-    },
-    "required": ["versions"],
-}
-
 SONOFF_SCHEMA = {
     "type": "array",
     "items": {

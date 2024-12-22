@@ -90,14 +90,6 @@ LiXee Zigbee OTA firmware images are made publicly available by Fairecasoimeme /
 
 https://github.com/fairecasoimeme/Zlinky_TIC/releases
 
-### SALUS/Computime
-
-Manufacturer ID = 4216
-
-SALUS/Computime Zigbee OTA firmware images are made publicly available by SALUS (first-party) at the following URL:
-
-https://eu.salusconnect.io/demo/default/status/firmware
-
 ### Sengled
 
 Manufacturer ID = 4448

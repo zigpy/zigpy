@@ -84,7 +84,7 @@ async def test_ota_enabled_legacy(tmp_path: pathlib.Path) -> None:
     )
 
     # All are enabled
-    assert len(ota._providers) == 9
+    assert len(ota._providers) == 8
 
 
 async def test_ota_config(tmp_path: pathlib.Path) -> None:

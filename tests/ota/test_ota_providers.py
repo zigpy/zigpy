@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import io
 import json
 import pathlib
-import tarfile
 from unittest.mock import Mock
 
 import aiohttp
@@ -444,31 +442,6 @@ async def test_ledvance_provider():
         assert not obj
 
 
-async def test_salus_provider():
-    index_json = (FILES_DIR / "salus_firmware.json").read_text()
-    index_obj = json.loads(index_json)
-
-    provider = providers.Salus()
-
-    with aioresponses() as mock_http:
-        mock_http.get(
-            "https://eu.salusconnect.io/demo/default/status/firmware",
-            body=index_json,
-        )
-
-        index = await provider.load_index()
-
-    filtered_firmware_obj = [o for o in index_obj["versions"] if o["version"] != ""]
-    assert len(index) == len(index_obj["versions"]) - 1 == len(filtered_firmware_obj)
-
-    for obj, meta in zip(filtered_firmware_obj, index):
-        assert isinstance(meta, providers.SalusRemoteOtaImageMetadata)
-        assert meta.url == obj.pop("url").replace("http://", "https://")
-        assert meta.file_version == int(obj.pop("version"), 16)
-        assert meta.model_names == (obj.pop("model"),)
-        assert not obj
-
-
 async def test_sonoff_provider():
     index_json = (FILES_DIR / "sonoff_upgrade.json").read_text()
     index_obj = json.loads(index_json)
@@ -682,69 +655,6 @@ async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
 
         fw = await meta.fetch()
         assert fw.serialize() == data
-
-
-async def test_salus_unzipping_valid():
-    valid_tarball = (
-        FILES_DIR / "external/dl/salus/Arjonstop_00000013.tar.gz"
-    ).read_bytes()
-
-    meta = providers.SalusRemoteOtaImageMetadata(
-        file_version=0x00000013,
-        model_names=("Arjonstop",),
-        url="https://eu.salusconnect.io/download/firmware/e18c41d0-c3e7-48cc-bba5-aacc3f289640/Arjonstop_00000013.tar.gz",
-    )
-
-    with aioresponses() as mock_http:
-        mock_http.get(meta.url, body=valid_tarball, content_type="application/gzip")
-        ota_image = await meta.fetch()
-
-    assert ota_image.header.file_version == meta.file_version == 19
-
-    # This exists only in the OTA image
-    assert ota_image.header.manufacturer_id == 43981
-
-
-async def test_salus_unzipping_invalid():
-    def _add_file_to_tar(tar: tarfile.TarFile, path: str, contents: bytes) -> None:
-        info = tarfile.TarInfo(name=path)
-        info.size = len(contents)
-        tar.addfile(tarinfo=info, fileobj=io.BytesIO(contents))
-
-    f = io.BytesIO()
-
-    with tarfile.open(mode="w:gz", fileobj=f) as tar:
-        _add_file_to_tar(tar, path="Jasco_5_0_1_OnOff_45856_v6.ota", contents=b"bad")
-        _add_file_to_tar(
-            tar,
-            path="networkinfo.json",
-            contents=json.dumps(
-                {
-                    "upgrade": [
-                        {
-                            "filename": "Jasco_5_0_1_OnOff_45856_v6.ota",
-                            "version": "00000006",
-                            "checksum": "AAAAAA03B382B7DD79B81FC50E13BEB7",
-                            "type": 4,
-                        }
-                    ]
-                }
-            ).encode("utf-8"),
-        )
-
-    meta = providers.SalusRemoteOtaImageMetadata(
-        file_version=0x00000006,
-        model_names=("45856",),
-        url="http://eu.salusconnect.io/download/firmware/a65779cd-13cd-41e5-a7e0-5346f24a0f62/45856_00000006.tar.gz",
-    )
-
-    with aioresponses() as mock_http:
-        mock_http.get(meta.url, body=f.getvalue(), content_type="application/gzip")
-
-        with pytest.raises(
-            ValueError, match="Embedded OTA file has invalid MD5 checksum"
-        ):
-            await meta.fetch()
 
 
 async def test_ota_fetch_size_and_checksum_validation(

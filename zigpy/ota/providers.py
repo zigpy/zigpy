@@ -6,13 +6,11 @@ import asyncio
 import dataclasses
 import datetime
 import hashlib
-import io
 import json
 import logging
 import pathlib
 import re
 import ssl
-import tarfile
 import typing
 import urllib.parse
 
@@ -110,37 +108,6 @@ class LocalOtaImageMetadata(BaseOtaImageMetadata):
     async def _fetch(self) -> bytes:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.path.read_bytes)
-
-
-@attrs.define(frozen=True, kw_only=True)
-class SalusRemoteOtaImageMetadata(RemoteOtaImageMetadata):
-    async def _fetch(self) -> bytes:
-        data = await super()._fetch()
-
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._extract_ota_from_tar, data)
-
-    def _extract_ota_from_tar(self, data: bytes) -> bytes:
-        files = {}
-
-        with tarfile.open(fileobj=io.BytesIO(data)) as tar:
-            for tarinfo in tar:
-                if tarinfo.isfile():
-                    f = tar.extractfile(tarinfo)
-                    assert f is not None
-
-                    files[tarinfo.name] = f.read()
-
-        # Each archive contains a `networkinfo.json` file and an OTA file
-        networkinfo_json = json.loads(files["networkinfo.json"])
-        upgrade = networkinfo_json["upgrade"][0]
-        ota_contents = files[upgrade["filename"]]
-
-        # Pick the first file, there will only be one for Zigbee devices
-        if hashlib.md5(ota_contents).hexdigest().upper() != upgrade["checksum"]:
-            raise ValueError("Embedded OTA file has invalid MD5 checksum")
-
-        return ota_contents
 
 
 @attrs.define(frozen=True, kw_only=True)
@@ -383,40 +350,6 @@ class Ledvance(BaseOtaProvider):
                 ),
                 release_notes=fw["releaseNotes"],
                 source="Ledvance",
-            )
-
-
-@register_provider
-class Salus(BaseOtaProvider):
-    NAME = "salus"
-    MANUFACTURER_IDS = (4216, 43981)
-
-    JSON_SCHEMA = json_schemas.SALUS_SCHEMA
-    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
-
-    async def _load_index(
-        self, session: aiohttp.ClientSession
-    ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(
-            "https://eu.salusconnect.io/demo/default/status/firmware"
-        ) as rsp:
-            fw_lst = await rsp.json()
-
-        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
-
-        for fw in fw_lst["versions"]:
-            # A plain text file is present in the firmware list, ignore it
-            if fw["version"] == "":
-                continue
-
-            # Not every firmware is actually Zigbee but since they filter by model name
-            # there is little chance an invalid one will ever be matched
-            yield SalusRemoteOtaImageMetadata(
-                file_version=int(fw["version"], 16),
-                model_names=(fw["model"],),
-                # Upgrade HTTP to HTTPS, the server supports it
-                url=fw["url"].replace("http://", "https://", 1),
-                source="SALUS",
             )
 
 
