@@ -357,6 +357,7 @@ class Ledvance(BaseOtaProvider):
 @register_provider
 class Salus(BaseOtaProvider):
     NAME = "salus"
+    MANUFACTURER_IDS = (4216, 43981)
 
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
 
