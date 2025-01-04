@@ -263,9 +263,9 @@ class AddsEndpointMetadata:
     def __call__(self, device: CustomDeviceV2) -> None:
         """Process the add."""
         if self.endpoint_id not in device.endpoints:
-            device.add_endpoint(self.endpoint_id)
-            setattr(device.endpoints[self.endpoint_id], SIG_EP_PROFILE, self.profile_id)
-            setattr(device.endpoints[self.endpoint_id], SIG_EP_TYPE, self.device_type)
+            ep = device.add_endpoint(self.endpoint_id)
+            ep.profile_id = self.profile_id
+            ep.device_type = self.device_type
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
