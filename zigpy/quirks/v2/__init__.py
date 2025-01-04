@@ -88,6 +88,16 @@ class CustomDeviceV2(BaseCustomDevice):
             list[EntityMetadata],
         ] = collections.defaultdict(list)
 
+        # endpoints need to be modified before clusters
+        for add_endpoint_meta in quirk_metadata.adds_endpoint_metadata:
+            add_endpoint_meta(self)
+
+        for remove_endpoint_meta in quirk_metadata.removes_endpoint_metadata:
+            remove_endpoint_meta(self)
+
+        for replace_endpoint_meta in quirk_metadata.replaces_endpoint_metadata:
+            replace_endpoint_meta(self)
+
         for add_meta in quirk_metadata.adds_metadata:
             add_meta(self)
 
@@ -101,15 +111,6 @@ class CustomDeviceV2(BaseCustomDevice):
             replace_occurrences_meta
         ) in quirk_metadata.replaces_cluster_occurrences_metadata:
             replace_occurrences_meta(self)
-
-        for add_endpoint_meta in quirk_metadata.adds_endpoint_metadata:
-            add_endpoint_meta(self)
-
-        for remove_endpoint_meta in quirk_metadata.removes_endpoint_metadata:
-            remove_endpoint_meta(self)
-
-        for replace_endpoint_meta in quirk_metadata.replaces_endpoint_metadata:
-            replace_endpoint_meta(self)
 
         for entity_meta in quirk_metadata.entity_metadata:
             entity_meta(self)
