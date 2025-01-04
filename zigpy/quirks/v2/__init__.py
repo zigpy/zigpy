@@ -101,6 +101,15 @@ class CustomDeviceV2(BaseCustomDevice):
         ) in quirk_metadata.replaces_cluster_occurrences_metadata:
             replace_occurrences_meta(self)
 
+        for add_endpoint_meta in quirk_metadata.adds_endpoint_metadata:
+            add_endpoint_meta(self)
+
+        for remove_endpoint_meta in quirk_metadata.removes_endpoint_metadata:
+            remove_endpoint_meta(self)
+
+        for replace_endpoint_meta in quirk_metadata.replaces_endpoint_metadata:
+            replace_endpoint_meta(self)
+
         for entity_meta in quirk_metadata.entity_metadata:
             entity_meta(self)
 
@@ -241,6 +250,46 @@ class ReplaceClusterOccurrencesMetadata:
                 endpoint.add_output_cluster(
                     self.cluster.cluster_id, self.cluster(endpoint, is_server=False)
                 )
+
+
+@attrs.define(frozen=True, kw_only=True, repr=True)
+class AddsEndpointMetadata:
+    """Adds metadata for adding an endpoint to a device."""
+
+    endpoint_id: int = attrs.field()
+    profile_id: int = attrs.field()
+    device_type: int = attrs.field()
+
+    def __call__(self, device: CustomDeviceV2) -> None:
+        """Process the add."""
+        if self.endpoint_id not in device.endpoints:
+            device.add_endpoint(self.endpoint_id)
+            setattr(device.endpoints[self.endpoint_id], SIG_EP_PROFILE, self.profile_id)
+            setattr(device.endpoints[self.endpoint_id], SIG_EP_TYPE, self.device_type)
+
+
+@attrs.define(frozen=True, kw_only=True, repr=True)
+class RemovesEndpointMetadata:
+    """Removes metadata for removing an endpoint from a device."""
+
+    endpoint_id: int = attrs.field()
+
+    def __call__(self, device: CustomDeviceV2) -> None:
+        """Process the remove."""
+        device.endpoints.pop(self.endpoint_id, None)
+
+
+@attrs.define(frozen=True, kw_only=True, repr=True)
+class ReplacesEndpointMetadata:
+    """Replaces metadata for replacing an endpoint on a device."""
+
+    remove: RemovesEndpointMetadata = attrs.field()
+    add: AddsEndpointMetadata = attrs.field()
+
+    def __call__(self, device: CustomDeviceV2) -> None:
+        """Process the replace."""
+        self.remove(device)
+        self.add(device)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -405,6 +454,13 @@ class QuirksV2RegistryEntry:
     replaces_cluster_occurrences_metadata: tuple[ReplaceClusterOccurrencesMetadata] = (
         attrs.field(factory=tuple)
     )
+    adds_endpoint_metadata: tuple[AddsEndpointMetadata] = attrs.field(factory=tuple)
+    removes_endpoint_metadata: tuple[RemovesEndpointMetadata] = attrs.field(
+        factory=tuple
+    )
+    replaces_endpoint_metadata: tuple[ReplacesEndpointMetadata] = attrs.field(
+        factory=tuple
+    )
     entity_metadata: tuple[
         ZCLEnumMetadata
         | SwitchMetadata
@@ -459,6 +515,9 @@ class QuirkBuilder:
         self.replaces_cluster_occurrences_metadata: list[
             ReplaceClusterOccurrencesMetadata
         ] = []
+        self.adds_endpoint_metadata: list[AddsEndpointMetadata] = []
+        self.removes_endpoint_metadata: list[RemovesEndpointMetadata] = []
+        self.replaces_endpoint_metadata: list[ReplacesEndpointMetadata] = []
         self.entity_metadata: list[
             ZCLEnumMetadata
             | ZCLSensorMetadata
@@ -643,6 +702,37 @@ class QuirkBuilder:
                 cluster=replacement_cluster_class,
             )
         )
+        return self
+
+    def adds_endpoint(
+        self, endpoint_id: int, profile_id: int, device_type: int
+    ) -> QuirkBuilder:
+        """Add an AddsEndpointMetadata entry and return self."""
+        add = AddsEndpointMetadata(
+            endpoint_id=endpoint_id, profile_id=profile_id, device_type=device_type
+        )
+        self.adds_endpoint_metadata.append(add)
+        return self
+
+    def removes_endpoint(self, endpoint_id: int) -> QuirkBuilder:
+        """Add a RemovesEndpointMetadata entry and return self."""
+        remove = RemovesEndpointMetadata(endpoint_id=endpoint_id)
+        self.removes_endpoint_metadata.append(remove)
+        return self
+
+    def replaces_endpoint(
+        self,
+        endpoint_id: int,
+        profile_id: int,
+        device_type: int,
+    ) -> QuirkBuilder:
+        """Add a ReplacesEndpointMetadata entry and return self."""
+        remove = RemovesEndpointMetadata(endpoint_id=endpoint_id)
+        add = AddsEndpointMetadata(
+            endpoint_id=endpoint_id, profile_id=profile_id, device_type=device_type
+        )
+        replace = ReplacesEndpointMetadata(remove=remove, add=add)
+        self.replaces_endpoint_metadata.append(replace)
         return self
 
     def enum(
@@ -964,6 +1054,9 @@ class QuirkBuilder:
             replaces_cluster_occurrences_metadata=tuple(
                 self.replaces_cluster_occurrences_metadata
             ),
+            adds_endpoint_metadata=tuple(self.adds_endpoint_metadata),
+            removes_endpoint_metadata=tuple(self.removes_endpoint_metadata),
+            replaces_endpoint_metadata=tuple(self.replaces_endpoint_metadata),
             entity_metadata=tuple(self.entity_metadata),
             device_automation_triggers_metadata=self.device_automation_triggers_metadata,
         )
