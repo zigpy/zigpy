@@ -25,6 +25,7 @@ from zigpy.const import (
     SIG_NODE_DESC,
     SIG_SKIP_CONFIG,
 )
+import zigpy.profiles.zha
 from zigpy.quirks import _DEVICE_REGISTRY, BaseCustomDevice, CustomCluster, FilterType
 from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2.homeassistant import EntityPlatform, EntityType
@@ -705,7 +706,10 @@ class QuirkBuilder:
         return self
 
     def adds_endpoint(
-        self, endpoint_id: int, profile_id: int, device_type: int
+        self,
+        endpoint_id: int,
+        profile_id: int = zigpy.profiles.zha.PROFILE_ID,
+        device_type: int = 0xFF,
     ) -> QuirkBuilder:
         """Add an AddsEndpointMetadata entry and return self."""
         add = AddsEndpointMetadata(
@@ -723,8 +727,8 @@ class QuirkBuilder:
     def replaces_endpoint(
         self,
         endpoint_id: int,
-        profile_id: int,
-        device_type: int,
+        profile_id: int = zigpy.profiles.zha.PROFILE_ID,
+        device_type: int = 0xFF,
     ) -> QuirkBuilder:
         """Add a ReplacesEndpointMetadata entry and return self."""
         remove = RemovesEndpointMetadata(endpoint_id=endpoint_id)

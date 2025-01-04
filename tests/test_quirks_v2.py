@@ -526,7 +526,7 @@ async def test_quirks_v2_endpoints(device_mock):
         .adds_endpoint(1, profile_id=260, device_type=260)  # 1 not modified
         .removes_endpoint(2)
         .replaces_endpoint(3, profile_id=260, device_type=260)
-        .adds_endpoint(4, profile_id=260, device_type=260)
+        .adds_endpoint(4)
         .add_to_registry()
     )
 
@@ -546,10 +546,10 @@ async def test_quirks_v2_endpoints(device_mock):
     assert quirked.endpoints[3].profile_id == 260
     assert quirked.endpoints[3].device_type == 260
 
-    # verify endpoint 4 was added
+    # verify endpoint 4 was added with default profile id and device type
     assert 4 in quirked.endpoints
     assert quirked.endpoints[4].profile_id == 260
-    assert quirked.endpoints[4].device_type == 260
+    assert quirked.endpoints[4].device_type == 255
 
 
 async def test_quirks_v2_apply_custom_configuration(device_mock):
