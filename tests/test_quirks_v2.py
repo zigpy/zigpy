@@ -503,6 +503,55 @@ async def test_quirks_v2_removes(device_mock):
     assert quirked_device.endpoints[1].in_clusters.get(Identify.cluster_id) is None
 
 
+async def test_quirks_v2_endpoints(device_mock):
+    """Test adding a quirk that modifies endpoints to the registry."""
+    registry = DeviceRegistry()
+
+    device_mock[1].add_output_cluster(Identify.cluster_id)
+
+    device_mock.add_endpoint(2)
+    device_mock[2].profile_id = 255
+    device_mock[2].device_type = 255
+    device_mock[2].add_input_cluster(Identify.cluster_id)
+    device_mock[2].add_output_cluster(OnOff.cluster_id)
+
+    device_mock.add_endpoint(3)
+    device_mock[3].profile_id = 255
+    device_mock[3].device_type = 255
+    device_mock[3].add_input_cluster(Identify.cluster_id)
+    device_mock[3].add_output_cluster(OnOff.cluster_id)
+
+    (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .adds_endpoint(1, profile_id=260, device_type=260)  # 1 not modified
+        .removes_endpoint(2)
+        .replaces_endpoint(3, profile_id=260, device_type=260)
+        .adds_endpoint(4, profile_id=260, device_type=260)
+        .add_to_registry()
+    )
+
+    quirked: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked, CustomDeviceV2)
+
+    # verify endpoint 1 was not modified, as it already existed before
+    assert 1 in quirked.endpoints
+    assert quirked.endpoints[1].profile_id == 255
+    assert quirked.endpoints[1].device_type == 255
+
+    # verify endpoint 2 was removed
+    assert 2 not in quirked.endpoints
+
+    # verify endpoint 3 profile id and device type were replaced
+    assert 3 in quirked.endpoints
+    assert quirked.endpoints[3].profile_id == 260
+    assert quirked.endpoints[3].device_type == 260
+
+    # verify endpoint 4 was added
+    assert 4 in quirked.endpoints
+    assert quirked.endpoints[4].profile_id == 260
+    assert quirked.endpoints[4].device_type == 260
+
+
 async def test_quirks_v2_apply_custom_configuration(device_mock):
     """Test adding a quirk custom configuration to the registry."""
     registry = DeviceRegistry()
