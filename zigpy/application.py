@@ -1246,7 +1246,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> AsyncGenerator[t.NetworkBeacon, None]:
         """Scans for 802.15.4 networks with a specified duration exponent."""
         if False:
-            yield
+            yield  # pragma: no cover
 
     async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None) -> None:
         """Permit joining on a specific node or all router nodes."""
