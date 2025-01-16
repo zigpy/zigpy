@@ -660,6 +660,6 @@ class NetworkBeacon(BaseDataclassMixin):
     src: NWK | None = None
     rssi: basic.int8s | None = None
     depth: basic.uint8_t | None = None
-    router_capacity: basic.uint8_t | None = None
-    device_capacity: basic.uint8_t | None = None
+    router_capacity: bool | None = None
+    device_capacity: bool | None = None
     protocol_version: basic.uint8_t | None = None
