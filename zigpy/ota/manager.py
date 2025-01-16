@@ -142,6 +142,19 @@ class OTAManager:
         if status != foundation.Status.SUCCESS:
             self._finish(status)
 
+    async def _finish_malformed_image_block_response(self, handler: str, tsn: int):
+        """Create an image block response failure."""
+        try:
+            await self.ota_cluster.image_block_response(
+                status=foundation.Status.MALFORMED_COMMAND, tsn=tsn
+            )
+        except Exception as ex:  # noqa: BLE001
+            self.device.debug(
+                "OTA %s handler[MALFORMED_COMMAND] exception", handler, exc_info=ex
+            )
+
+        self._finish(foundation.Status.MALFORMED_COMMAND)
+
     async def _image_block_req(
         self, hdr: foundation.ZCLHeader, command: Ota.ImageBlockCommand
     ) -> None:
@@ -157,17 +170,9 @@ class OTAManager:
         ]
 
         if not block:
-            try:
-                await self.ota_cluster.image_block_response(
-                    status=foundation.Status.MALFORMED_COMMAND,
-                    tsn=hdr.tsn,
-                )
-            except Exception as ex:  # noqa: BLE001
-                self.device.debug(
-                    "OTA image_block handler[MALFORMED_COMMAND] exception", exc_info=ex
-                )
-
-            self._finish(foundation.Status.MALFORMED_COMMAND)
+            await self._finish_malformed_image_block_response(
+                "image_block", tsn=hdr.tsn
+            )
             return
 
         try:
@@ -206,18 +211,10 @@ class OTAManager:
         )
 
         if bytes_remaining <= 0:
-            try:
-                await self.ota_cluster.image_block_response(
-                    status=foundation.Status.MALFORMED_COMMAND,
-                    tsn=hdr.tsn,
-                )
-            except Exception as ex:  # noqa: BLE001
-                self.device.debug(
-                    "OTA image_page_req handler[MALFORMED_COMMAND] exception",
-                    exc_info=ex,
-                )
-
-            self._finish(foundation.Status.MALFORMED_COMMAND)
+            await self._finish_malformed_image_block_response(
+                "image_page_req",
+                tsn=hdr.tsn,
+            )
             return
 
         while bytes_remaining > 0:
