@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import collections
-from collections.abc import Coroutine
+from collections.abc import AsyncGenerator, Coroutine
 import contextlib
 from datetime import datetime, timezone
 import errno
@@ -13,7 +13,7 @@ import random
 import sys
 import time
 import typing
-from typing import Any, AsyncGenerator, Coroutine, TypeVar
+from typing import Any, TypeVar
 import warnings
 
 if sys.version_info[:2] < (3, 11):
@@ -1231,8 +1231,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         raise NotImplementedError  # pragma: no cover
 
-    # @abc.abstractmethod
     async def network_scan(
+        self, channels: t.Channels, duration_exp: int
+    ) -> AsyncGenerator[t.NetworkBeacon, None]:
+        """Scans for 802.15.4 networks with a specified duration exponent."""
+        async for network in self._network_scan(channels, duration_exp):
+            yield network
+
+    # @abc.abstractmethod
+    async def _network_scan(
         self, channels: t.Channels, duration_exp: int
     ) -> AsyncGenerator[t.NetworkBeacon, None]:
         """Scans for 802.15.4 networks with a specified duration exponent."""
