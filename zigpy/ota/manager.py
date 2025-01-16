@@ -200,18 +200,39 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: Ota.ImagePageCommand
     ) -> None:
         """Handle image page request."""
-        bytes_remaining = command.page_size
         offset = command.file_offset
+        bytes_remaining = min(
+            command.page_size, len(self._image_data) - command.file_offset
+        )
+
+        if bytes_remaining <= 0:
+            try:
+                await self.ota_cluster.image_block_response(
+                    status=foundation.Status.MALFORMED_COMMAND,
+                    tsn=hdr.tsn,
+                )
+            except Exception as ex:  # noqa: BLE001
+                self.device.debug(
+                    "OTA image_page_req handler[MALFORMED_COMMAND] exception",
+                    exc_info=ex,
+                )
+
+            self._finish(foundation.Status.MALFORMED_COMMAND)
+            return
 
         while bytes_remaining > 0:
             block_size = min(
-                MAXIMUM_IMAGE_BLOCK_SIZE, command.maximum_data_size, bytes_remaining
+                MAXIMUM_IMAGE_BLOCK_SIZE,
+                command.maximum_data_size,
+                bytes_remaining,
             )
             block = self._image_data[offset : offset + block_size]
             offset += block_size
             bytes_remaining -= block_size
 
             try:
+                # Once we have a way to send requests without waiting for replies,
+                # this can be converted to just `self.ota_cluster.image_block_response`
                 await self.ota_cluster.request(
                     general=False,
                     command_id=Ota.ClientCommandDefs.image_block_response.id,
@@ -232,7 +253,9 @@ class OTAManager:
                     self.progress_callback is not None
                     and not self._upgrade_end_future.done()
                 ):
-                    self.progress_callback(offset + len(block), len(self._image_data))
+                    self.progress_callback(
+                        offset - block_size + len(block), len(self._image_data)
+                    )
             except Exception as ex:  # noqa: BLE001
                 self.device.debug("OTA image_page handler exception", exc_info=ex)
                 self._finish(foundation.Status.FAILURE)
