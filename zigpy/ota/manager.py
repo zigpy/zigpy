@@ -256,6 +256,7 @@ class OTAManager:
             except Exception as ex:  # noqa: BLE001
                 self.device.debug("OTA image_page handler exception", exc_info=ex)
                 self._finish(foundation.Status.FAILURE)
+                return
 
             # Delay according to what the device asks
             await asyncio.sleep(command.response_spacing / 1000)
