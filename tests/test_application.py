@@ -1461,3 +1461,48 @@ async def test_probe(app):
 
     # No settings will work
     assert (await NeverConnectsApp.probe({conf.CONF_DEVICE_PATH: "/dev/null"})) is False
+
+
+async def test_network_scan(app) -> None:
+    beacons = [
+        t.NetworkBeacon(
+            pan_id=t.NWK(0x1234),
+            extended_pan_id=t.EUI64.convert("11:22:33:44:55:66:77:88"),
+            channel=11,
+            nwk_update_id=1,
+            permit_joining=True,
+            stack_profile=2,
+            lqi=255,
+            rssi=-80,
+        ),
+        t.NetworkBeacon(
+            pan_id=t.NWK(0xABCD),
+            extended_pan_id=t.EUI64.convert("11:22:33:44:55:66:77:88"),
+            channel=15,
+            nwk_update_id=2,
+            permit_joining=False,
+            stack_profile=2,
+            lqi=255,
+            rssi=-40,
+        ),
+    ]
+
+    with patch.object(app, "_network_scan") as mock_scan:
+        mock_scan.return_value.__aiter__.return_value = beacons
+
+        results = [
+            b
+            async for b in app.network_scan(
+                channels=t.Channels.from_channel_list([11, 15]),
+                duration_exp=1,
+            )
+        ]
+
+    assert results == beacons
+    assert mock_scan.mock_calls == [
+        call(
+            channels=t.Channels.from_channel_list([11, 15]),
+            duration_exp=1,
+        ),
+        call().__aiter__(),
+    ]

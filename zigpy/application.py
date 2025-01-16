@@ -1235,7 +1235,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self, channels: t.Channels, duration_exp: int
     ) -> AsyncGenerator[t.NetworkBeacon, None]:
         """Scans for 802.15.4 networks with a specified duration exponent."""
-        async for network in self._network_scan(channels, duration_exp):
+        async for network in self._network_scan(
+            channels=channels, duration_exp=duration_exp
+        ):
             yield network
 
     # @abc.abstractmethod
