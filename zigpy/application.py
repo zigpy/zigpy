@@ -747,6 +747,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         start_time = time.monotonic()
         was_locked = self._concurrent_requests_semaphore.locked()
 
+        if priority == t.PacketPriority.CRITICAL:
+            LOGGER.debug("Critical packet is being sent, ignoring concurrency")
+            yield
+            return
+
         if was_locked:
             LOGGER.debug(
                 "Max concurrency (%s) reached, delaying request (%s enqueued)",
