@@ -173,14 +173,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             for name in dir(defs):
                 definition = getattr(defs, name)
 
-                if (
-                    isinstance(
-                        definition,
-                        (foundation.ZCLCommandDef, foundation.ZCLAttributeDef),
-                    )
-                    and definition.name is None
+                if isinstance(
+                    definition,
+                    (foundation.ZCLCommandDef, foundation.ZCLAttributeDef),
                 ):
-                    object.__setattr__(definition, "name", name)
+                    if definition.name is None:
+                        object.__setattr__(definition, "name", name)
+                    elif definition.name != name:
+                        raise TypeError(
+                            f"Definition name {definition.name!r} does not match"
+                            f" attribute name {name!r}"
+                        )
 
         # Compile the schemas
         for defs in (cls.ServerCommandDefs, cls.ClientCommandDefs):

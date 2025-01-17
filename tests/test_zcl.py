@@ -1193,3 +1193,68 @@ async def test_zcl_cluster_definition_backwards_compatibility():
         TestCluster.ClientCommandDefs.client_command.schema.fields.param2.type
         == t.uint16_t
     )
+
+
+async def test_zcl_cluster_definition_invalid_name():
+    # This is fine
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            upgrade_server_id = foundation.ZCLAttributeDef(
+                name="upgrade_server_id",
+                id=0x0000,
+                type=t.EUI64,
+                access="r",
+                mandatory=True,
+            )
+
+        class ServerCommandDefs(zcl.BaseCommandDefs):
+            upgrade_end = foundation.ZCLCommandDef(
+                name="upgrade_end",
+                id=0x06,
+                schema={
+                    "status": foundation.Status,
+                    "manufacturer_code": t.uint16_t,
+                    "image_type": t.uint16_t,
+                    "file_version": t.uint32_t,
+                },
+                direction=foundation.Direction.Client_to_Server,
+            )
+
+    # This is not
+    with pytest.raises(TypeError):
+
+        class TestCluster(zcl.Cluster):
+            cluster_id = 0xABCD
+            ep_attribute = "test_cluster"
+
+            class AttributeDefs(zcl.BaseAttributeDefs):
+                upgrade_server_id = foundation.ZCLAttributeDef(
+                    name="some_other_name",
+                    id=0x0000,
+                    type=t.EUI64,
+                    access="r",
+                    mandatory=True,
+                )
+
+    # Nor is this
+    with pytest.raises(TypeError):
+
+        class TestCluster(zcl.Cluster):
+            cluster_id = 0xABCD
+            ep_attribute = "test_cluster"
+
+            class ServerCommandDefs(zcl.BaseCommandDefs):
+                upgrade_end = foundation.ZCLCommandDef(
+                    name="some_other_name",
+                    id=0x06,
+                    schema={
+                        "status": foundation.Status,
+                        "manufacturer_code": t.uint16_t,
+                        "image_type": t.uint16_t,
+                        "file_version": t.uint32_t,
+                    },
+                    direction=foundation.Direction.Client_to_Server,
+                )
