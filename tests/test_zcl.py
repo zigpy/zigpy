@@ -95,6 +95,8 @@ def cluster_by_id():
         epmock = MagicMock()
         epmock._device.get_sequence.return_value = DEFAULT_TSN
         epmock.device.get_sequence.return_value = DEFAULT_TSN
+        epmock.device.zdo.bind = AsyncMock()
+        epmock.device.zdo.unbind = AsyncMock()
         epmock.request = AsyncMock()
         epmock.reply = AsyncMock()
         return zcl.Cluster.from_id(epmock, cluster_id)
@@ -602,12 +604,20 @@ async def test_write_attributes_cache_failure(cluster, attributes, result, faile
                 )
 
 
-def test_bind(cluster):
-    cluster.bind()
+async def test_bind(cluster):
+    result = await cluster.bind()
+
+    cluster._endpoint.device.zdo.bind.assert_called_with(cluster=cluster)
+    assert cluster._endpoint.device.zdo.bind.call_count == 1
+    assert result is cluster._endpoint.device.zdo.bind.return_value
 
 
-def test_unbind(cluster):
-    cluster.unbind()
+async def test_unbind(cluster):
+    result = await cluster.unbind()
+
+    cluster._endpoint.device.zdo.unbind.assert_called_with(cluster=cluster)
+    assert cluster._endpoint.device.zdo.unbind.call_count == 1
+    assert result is cluster._endpoint.device.zdo.unbind.return_value
 
 
 async def test_configure_reporting(cluster):

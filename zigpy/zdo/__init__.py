@@ -243,16 +243,16 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             )
         )
 
-    def bind(self, cluster):
-        return self.Bind_req(
+    async def bind(self, cluster):
+        return await self.Bind_req(
             self._device.ieee,
             cluster.endpoint.endpoint_id,
             cluster.cluster_id,
             self.device.application.get_dst_address(cluster),
         )
 
-    def unbind(self, cluster):
-        return self.Unbind_req(
+    async def unbind(self, cluster):
+        return await self.Unbind_req(
             self._device.ieee,
             cluster.endpoint.endpoint_id,
             cluster.cluster_id,
