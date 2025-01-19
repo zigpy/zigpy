@@ -51,7 +51,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
 
         return hdr, args
 
-    def request(
+    async def request(
         self,
         command,
         *args,
@@ -64,7 +64,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
     ):
         data = self._serialize(command, *args, **kwargs)
         tsn = self.device.get_sequence()
-        return self._device.request(
+        return await self._device.request(
             profile=0x0000,
             cluster=command,
             src_ep=ZDO_ENDPOINT,
@@ -78,7 +78,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             priority=priority,
         )
 
-    def reply(
+    async def reply(
         self,
         command,
         *args,
@@ -93,7 +93,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         data = self._serialize(command, *args, **kwargs)
         if tsn is None:
             tsn = self.device.get_sequence()
-        return self._device.reply(
+        return await self._device.reply(
             profile=0x0000,
             cluster=command,
             src_ep=ZDO_ENDPOINT,
