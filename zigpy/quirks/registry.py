@@ -140,9 +140,14 @@ class DeviceRegistry:
         return device
 
     @property
-    def registry(self) -> dict[str | None, dict[str | None, list[CustomDevice]]]:
-        """Return the registry."""
+    def registry(self) -> dict[str | None, dict[str | None, deque[CustomDevice]]]:
+        """Return the v1 registry."""
         return self._registry_v1
+
+    @property
+    def registry_v2(self) -> dict[tuple[str, str], deque[QuirksV2RegistryEntry]]:
+        """Return the v2 registry."""
+        return self._registry_v2
 
     def __contains__(self, device: CustomDeviceType) -> bool:
         """Check if a device is in the registry."""
