@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from zigpy.const import SIG_MANUFACTURER, SIG_MODEL, SIG_MODELS_INFO
 import zigpy.quirks
 from zigpy.typing import CustomDeviceType, DeviceType
+from zigpy.util import deprecated
 
 if TYPE_CHECKING:
     from zigpy.quirks import CustomDevice
@@ -140,7 +141,13 @@ class DeviceRegistry:
         return device
 
     @property
+    @deprecated("The `registry` property is deprecated, use `registry_v1` instead.")
     def registry(self) -> dict[str | None, dict[str | None, deque[CustomDevice]]]:
+        """Return the v1 registry."""
+        return self._registry_v1
+
+    @property
+    def registry_v1(self) -> dict[str | None, dict[str | None, deque[CustomDevice]]]:
         """Return the v1 registry."""
         return self._registry_v1
 

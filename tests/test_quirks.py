@@ -1147,26 +1147,26 @@ QuirkBuilder("manufacturer2", "model2").adds(
 
     registry = zigpy.quirks.DEVICE_REGISTRY
 
-    assert not registry._registry.get("manufacturer1", {}).get("model1", [])
-    assert not registry._registry_v2.get(("manufacturer2", "model2"), set())
+    assert not registry.registry_v1.get("manufacturer1", {}).get("model1", [])
+    assert not registry.registry_v2.get(("manufacturer2", "model2"), set())
 
     load_quirks()
 
-    assert registry._registry.get("manufacturer1", {}).get("model1", [])
-    assert registry._registry_v2.get(("manufacturer2", "model2"), set())
+    assert registry.registry_v1.get("manufacturer1", {}).get("model1", [])
+    assert registry.registry_v2.get(("manufacturer2", "model2"), set())
 
     assert type(registry.get_device(dev1)).__name__ == "TestQuirk1"
     assert registry.get_device(dev2).quirk_metadata.quirk_file.name == "quirk2.py"
 
     # Only quirks from the passed directory are purged so this is a no-op
     registry.purge_custom_quirks(tmp_path / "some_other_dir")
-    assert registry._registry.get("manufacturer1", {}).get("model1", [])
-    assert registry._registry_v2.get(("manufacturer2", "model2"), set())
+    assert registry.registry_v1.get("manufacturer1", {}).get("model1", [])
+    assert registry.registry_v2.get(("manufacturer2", "model2"), set())
 
     # Now we really remove them
     registry.purge_custom_quirks(tmp_path)
-    assert not registry._registry.get("manufacturer1", {}).get("model1", [])
-    assert not registry._registry_v2.get(("manufacturer2", "model2"), set())
+    assert not registry.registry_v1.get("manufacturer1", {}).get("model1", [])
+    assert not registry.registry_v2.get(("manufacturer2", "model2"), set())
 
     assert registry.get_device(dev1) is dev1
     assert registry.get_device(dev2) is dev2
