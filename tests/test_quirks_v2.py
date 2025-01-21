@@ -132,7 +132,7 @@ async def test_quirks_v2(device_mock):
     assert str(quirked.quirk_metadata.quirk_file).endswith(
         "zigpy/tests/test_quirks_v2.py"
     )
-    assert quirked.quirk_metadata.quirk_file_line == 105
+    assert quirked.quirk_metadata.quirk_file_line == 106
 
     ep = quirked.endpoints[1]
 
@@ -1228,11 +1228,11 @@ async def test_quirks_v2_disable_entity_creation(device_mock: Device) -> None:
         .add_to_registry()
     )
 
-    assert entry.prevent_default_entity_creation == {
+    assert entry.disabled_default_entities == (
         PreventDefaultEntityCreationMetadata(
             endpoint_id=1, cluster_id=None, unique_id_suffix="something"
         ),
         PreventDefaultEntityCreationMetadata(
             endpoint_id=1, cluster_id=OnOff.cluster_id, unique_id_suffix=None
         ),
-    }
+    )

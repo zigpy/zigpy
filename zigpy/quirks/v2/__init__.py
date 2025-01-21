@@ -455,7 +455,7 @@ class QuirksV2RegistryEntry:
     )
     friendly_name: FriendlyNameMetadata | None = attrs.field(default=None)
     device_alerts: tuple[DeviceAlertMetadata] = attrs.field(factory=tuple)
-    prevent_default_entity_creation: tuple[PreventDefaultEntityCreationMetadata] = (
+    disabled_default_entities: tuple[PreventDefaultEntityCreationMetadata] = (
         attrs.field(factory=tuple)
     )
     filters: tuple[FilterType] = attrs.field(factory=tuple)
@@ -519,9 +519,7 @@ class QuirkBuilder:
         self.manufacturer_model_metadata: list[ManufacturerModelMetadata] = []
         self.friendly_name_metadata: FriendlyNameMetadata | None = None
         self.device_alerts: list[DeviceAlertMetadata] = []
-        self.prevent_default_entity_creation: list[
-            PreventDefaultEntityCreationMetadata
-        ] = []
+        self.disabled_default_entities: list[PreventDefaultEntityCreationMetadata] = []
         self.filters: list[FilterType] = []
         self.custom_device_class: type[CustomDeviceV2] | None = None
         self.device_node_descriptor: NodeDescriptor | None = None
@@ -1060,7 +1058,7 @@ class QuirkBuilder:
         unique_id_suffix: str | None = None,
     ) -> QuirkBuilder:
         """Do not create default entities."""
-        self.prevent_default_entity_creation.append(
+        self.disabled_default_entities.append(
             PreventDefaultEntityCreationMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
@@ -1079,7 +1077,7 @@ class QuirkBuilder:
             manufacturer_model_metadata=tuple(self.manufacturer_model_metadata),
             friendly_name=self.friendly_name_metadata,
             device_alerts=tuple(self.device_alerts),
-            prevent_default_entity_creation=tuple(self.prevent_default_entity_creation),
+            disabled_default_entities=tuple(self.disabled_default_entities),
             quirk_file=self.quirk_file,
             quirk_file_line=self.quirk_file_line,
             filters=tuple(self.filters),
