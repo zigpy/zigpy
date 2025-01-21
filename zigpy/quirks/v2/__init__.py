@@ -436,6 +436,15 @@ class DeviceAlertMetadata:
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
+class PreventDefaultEntityCreationMetadata:
+    """Metadata to prevent the default creation of an entity."""
+
+    endpoint_id: int | None = attrs.field()
+    cluster_id: int | None = attrs.field()
+    unique_id_suffix: str | None = attrs.field()
+
+
+@attrs.define(frozen=True, kw_only=True, repr=True)
 class QuirksV2RegistryEntry:
     """Quirks V2 registry entry."""
 
@@ -446,6 +455,9 @@ class QuirksV2RegistryEntry:
     )
     friendly_name: FriendlyNameMetadata | None = attrs.field(default=None)
     device_alerts: tuple[DeviceAlertMetadata] = attrs.field(factory=tuple)
+    prevent_default_entity_creation: tuple[PreventDefaultEntityCreationMetadata] = (
+        attrs.field(factory=tuple)
+    )
     filters: tuple[FilterType] = attrs.field(factory=tuple)
     custom_device_class: type[CustomDeviceV2] | None = attrs.field(default=None)
     device_node_descriptor: NodeDescriptor | None = attrs.field(default=None)
@@ -507,6 +519,9 @@ class QuirkBuilder:
         self.manufacturer_model_metadata: list[ManufacturerModelMetadata] = []
         self.friendly_name_metadata: FriendlyNameMetadata | None = None
         self.device_alerts: list[DeviceAlertMetadata] = []
+        self.prevent_default_entity_creation: list[
+            PreventDefaultEntityCreationMetadata
+        ] = []
         self.filters: list[FilterType] = []
         self.custom_device_class: type[CustomDeviceV2] | None = None
         self.device_node_descriptor: NodeDescriptor | None = None
@@ -1037,6 +1052,23 @@ class QuirkBuilder:
         self.device_alerts.append(DeviceAlertMetadata(level=level, message=message))
         return self
 
+    def prevent_default_entity_creation(
+        self,
+        *,
+        endpoint_id: int | None = None,
+        cluster_id: int | None = None,
+        unique_id_suffix: str | None = None,
+    ) -> QuirkBuilder:
+        """Do not create default entities."""
+        self.prevent_default_entity_creation.append(
+            PreventDefaultEntityCreationMetadata(
+                endpoint_id=endpoint_id,
+                cluster_id=cluster_id,
+                unique_id_suffix=unique_id_suffix,
+            ),
+        )
+        return self
+
     def add_to_registry(self) -> QuirksV2RegistryEntry:
         """Build the quirks v2 registry entry."""
         if not self.manufacturer_model_metadata:
@@ -1047,6 +1079,7 @@ class QuirkBuilder:
             manufacturer_model_metadata=tuple(self.manufacturer_model_metadata),
             friendly_name=self.friendly_name_metadata,
             device_alerts=tuple(self.device_alerts),
+            prevent_default_entity_creation=tuple(self.prevent_default_entity_creation),
             quirk_file=self.quirk_file,
             quirk_file_line=self.quirk_file_line,
             filters=tuple(self.filters),
