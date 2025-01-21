@@ -27,6 +27,7 @@ from zigpy.quirks.v2 import (
     EntityPlatform,
     EntityType,
     NumberMetadata,
+    PreventDefaultEntityCreationMetadata,
     QuirkBuilder,
     SwitchMetadata,
     WriteAttributeButtonMetadata,
@@ -1215,3 +1216,23 @@ async def test_quirks_v2_device_alerts(device_mock: Device) -> None:
             message="This device irreparably crashes the mesh.",
         ),
     )
+
+
+async def test_quirks_v2_disable_entity_creation(device_mock: Device) -> None:
+    registry = DeviceRegistry()
+
+    entry = (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .prevent_default_entity_creation(endpoint_id=1, unique_id_suffix="something")
+        .prevent_default_entity_creation(endpoint_id=1, cluster_id=OnOff.cluster_id)
+        .add_to_registry()
+    )
+
+    assert entry.prevent_default_entity_creation == {
+        PreventDefaultEntityCreationMetadata(
+            endpoint_id=1, cluster_id=None, unique_id_suffix="something"
+        ),
+        PreventDefaultEntityCreationMetadata(
+            endpoint_id=1, cluster_id=OnOff.cluster_id, unique_id_suffix=None
+        ),
+    }
