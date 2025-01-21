@@ -2,28 +2,22 @@
 
 from __future__ import annotations
 
-import collections
+from collections import defaultdict, deque
 import inspect
 import itertools
 import logging
 import pathlib
-import typing
 from typing import TYPE_CHECKING
 
 from zigpy.const import SIG_MANUFACTURER, SIG_MODEL, SIG_MODELS_INFO
-from zigpy.exceptions import MultipleQuirksMatchException
 import zigpy.quirks
 from zigpy.typing import CustomDeviceType, DeviceType
 
 if TYPE_CHECKING:
+    from zigpy.quirks import CustomDevice
     from zigpy.quirks.v2 import QuirksV2RegistryEntry
 
 _LOGGER = logging.getLogger(__name__)
-
-TYPE_MANUF_QUIRKS_DICT = dict[
-    typing.Optional[str],
-    dict[typing.Optional[str], list["zigpy.quirks.CustomDevice"]],
-]
 
 
 class DeviceRegistry:
@@ -31,16 +25,17 @@ class DeviceRegistry:
 
     def __init__(self, *args, **kwargs) -> None:
         """Initialize the registry."""
-        self._registry: TYPE_MANUF_QUIRKS_DICT = collections.defaultdict(
-            lambda: collections.defaultdict(list)
+        self._registry_v1: dict[str | None, dict[str | None, deque[CustomDevice]]] = (
+            defaultdict(lambda: defaultdict(deque))
         )
-        self._registry_v2: dict[tuple[str, str], set[QuirksV2RegistryEntry]] = (
-            collections.defaultdict(set)
+
+        self._registry_v2: dict[tuple[str, str], deque[QuirksV2RegistryEntry]] = (
+            defaultdict(deque)
         )
 
     def purge_custom_quirks(self, custom_quirks_root: pathlib.Path) -> None:
         # If zhaquirks aren't being used, we can't tell if a quirk is custom or not
-        for model_registry in self._registry.values():
+        for model_registry in self._registry_v1.values():
             for quirks in model_registry.values():
                 to_remove = []
 
@@ -74,18 +69,18 @@ class DeviceRegistry:
         if models_info:
             for manuf, model in models_info:
                 if custom_device not in self.registry[manuf][model]:
-                    self.registry[manuf][model].insert(0, custom_device)
+                    self.registry[manuf][model].appendleft(custom_device)
         else:
             manufacturer = custom_device.signature.get(SIG_MANUFACTURER)
             model = custom_device.signature.get(SIG_MODEL)
             if custom_device not in self.registry[manufacturer][model]:
-                self.registry[manufacturer][model].insert(0, custom_device)
+                self.registry[manufacturer][model].appendleft(custom_device)
 
     def add_to_registry_v2(
         self, manufacturer: str, model: str, entry: QuirksV2RegistryEntry
     ) -> None:
         """Add an entry to the registry."""
-        self._registry_v2[(manufacturer, model)].add(entry)
+        self._registry_v2[(manufacturer, model)].appendleft(entry)
 
     def remove(self, custom_device: CustomDeviceType) -> None:
         """Remove a device from the registry"""
@@ -109,32 +104,21 @@ class DeviceRegistry:
         if isinstance(device, zigpy.quirks.BaseCustomDevice):
             return device
 
-        key = (device.manufacturer, device.model)
-        if key in self._registry_v2:
-            matches: list[QuirksV2RegistryEntry] = []
-            entries = self._registry_v2[key]
-            if len(entries) == 1:
-                entry = next(iter(entries))
-                if entry.matches_device(device):
-                    matches.append(entry)
-            else:
-                for entry in entries:
-                    if entry.matches_device(device):
-                        matches.append(entry)  # noqa: PERF401
-            if len(matches) > 1:
-                raise MultipleQuirksMatchException(
-                    f"Multiple matches found for device {device}: {matches}"
-                )
-            if len(matches) == 1:
-                quirk_entry: QuirksV2RegistryEntry = matches[0]
-                return quirk_entry.create_device(device)
-
         _LOGGER.debug(
             "Checking quirks for %s %s (%s)",
             device.manufacturer,
             device.model,
             device.ieee,
         )
+
+        # Try v2 quirks first
+        key = (device.manufacturer, device.model)
+        if key in self._registry_v2:
+            for entry in self._registry_v2[key]:
+                if entry.matches_device(device):
+                    return entry.create_device(device)
+
+        # Then, fall back to v1 quirks
         for candidate in itertools.chain(
             self.registry[device.manufacturer][device.model],
             self.registry[device.manufacturer][None],
@@ -150,15 +134,15 @@ class DeviceRegistry:
             _LOGGER.debug(
                 "Found custom device replacement for %s: %s", device.ieee, candidate
             )
-            device = candidate(device._application, device.ieee, device.nwk, device)
-            break
+            return candidate(device._application, device.ieee, device.nwk, device)
 
+        # If none match, return the original device
         return device
 
     @property
-    def registry(self) -> TYPE_MANUF_QUIRKS_DICT:
+    def registry(self) -> dict[str | None, dict[str | None, list[CustomDevice]]]:
         """Return the registry."""
-        return self._registry
+        return self._registry_v1
 
     def __contains__(self, device: CustomDeviceType) -> bool:
         """Check if a device is in the registry."""

@@ -14,7 +14,6 @@ from zigpy.const import (
     SIG_MODELS_INFO,
 )
 from zigpy.device import Device
-from zigpy.exceptions import MultipleQuirksMatchException
 from zigpy.profiles import zha
 from zigpy.quirks import CustomCluster, CustomDevice, signature_matches
 from zigpy.quirks.registry import DeviceRegistry
@@ -284,48 +283,6 @@ async def test_quirks_v2_signature_match(device_mock):
 
     quirked = registry.get_device(device_mock)
     assert not isinstance(quirked, CustomDeviceV2)
-
-
-async def test_quirks_v2_multiple_matches_raises(device_mock):
-    """Test that adding multiple quirks v2 entries for the same device raises."""
-    registry = DeviceRegistry()
-
-    entry1 = (
-        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
-        .adds(Basic.cluster_id)
-        .adds(OnOff.cluster_id)
-        .enum(
-            OnOff.AttributeDefs.start_up_on_off.name,
-            OnOff.StartUpOnOff,
-            OnOff.cluster_id,
-            translation_key="start_up_on_off",
-            fallback_name="Start up on/off",
-        )
-        .add_to_registry()
-    )
-
-    entry2 = (
-        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
-        .adds(Basic.cluster_id)
-        .adds(OnOff.cluster_id)
-        .adds(Identify.cluster_id)
-        .enum(
-            OnOff.AttributeDefs.start_up_on_off.name,
-            OnOff.StartUpOnOff,
-            OnOff.cluster_id,
-            translation_key="start_up_on_off",
-            fallback_name="Start up on/off",
-        )
-        .add_to_registry()
-    )
-
-    assert entry1 != entry2
-    assert entry1 != registry
-
-    with pytest.raises(
-        MultipleQuirksMatchException, match="Multiple matches found for device"
-    ):
-        registry.get_device(device_mock)
 
 
 async def test_quirks_v2_multiple_matches_not_raises(device_mock):

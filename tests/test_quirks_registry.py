@@ -1,3 +1,4 @@
+from collections import deque
 from unittest import mock
 
 import pytest
@@ -35,24 +36,11 @@ def test_add_to_registry_new_sig(fake_dev):
     }
 
     reg = DeviceRegistry()
-
-    quirk_list = mock.MagicMock()
-    model_dict = mock.MagicMock(spec_set=dict)
-    model_dict.__getitem__.return_value = quirk_list
-    manuf_dict = mock.MagicMock()
-    manuf_dict.__getitem__.return_value = model_dict
-    reg._registry = manuf_dict
-
     reg.add_to_registry(fake_dev)
-    assert manuf_dict.__getitem__.call_count == 2
-    assert manuf_dict.__getitem__.call_args[0][0] is mock.sentinel.dev_manufacturer
-    assert model_dict.__getitem__.call_count == 2
-    assert model_dict.__getitem__.call_args[0][0] is mock.sentinel.dev_model
-    assert quirk_list.insert.call_count == 1
-    assert quirk_list.insert.call_args[0][1] is fake_dev
-    quirk_list.reset_mock()
-    model_dict.reset_mock()
-    manuf_dict.reset_mock()
+
+    assert reg._registry_v1[mock.sentinel.dev_manufacturer][
+        mock.sentinel.dev_model
+    ] == deque([fake_dev])
 
 
 def test_add_to_registry_models_info(fake_dev):
@@ -76,27 +64,14 @@ def test_add_to_registry_models_info(fake_dev):
     }
 
     reg = DeviceRegistry()
-
-    quirk_list = mock.MagicMock()
-    model_dict = mock.MagicMock(spec_set=dict)
-    model_dict.__getitem__.return_value = quirk_list
-    manuf_dict = mock.MagicMock()
-    manuf_dict.__getitem__.return_value = model_dict
-    reg._registry = manuf_dict
-
     reg.add_to_registry(fake_dev)
-    assert manuf_dict.__getitem__.call_count == 4
-    assert manuf_dict.__getitem__.call_args_list[0][0][0] is mock.sentinel.manuf_1
-    assert manuf_dict.__getitem__.call_args_list[2][0][0] is mock.sentinel.manuf_2
-    assert model_dict.__getitem__.call_count == 4
-    assert model_dict.__getitem__.call_args_list[0][0][0] is mock.sentinel.model_1
-    assert model_dict.__getitem__.call_args_list[2][0][0] is mock.sentinel.model_2
-    assert quirk_list.insert.call_count == 2
-    assert quirk_list.insert.call_args_list[0][0][1] is fake_dev
-    assert quirk_list.insert.call_args_list[1][0][1] is fake_dev
-    quirk_list.reset_mock()
-    model_dict.reset_mock()
-    manuf_dict.reset_mock()
+
+    assert reg._registry_v1[mock.sentinel.manuf_1][mock.sentinel.model_1] == deque(
+        [fake_dev]
+    )
+    assert reg._registry_v1[mock.sentinel.manuf_2][mock.sentinel.model_2] == deque(
+        [fake_dev]
+    )
 
 
 def test_remove_new_sig(fake_dev):
@@ -124,7 +99,7 @@ def test_remove_new_sig(fake_dev):
     model_dict.__getitem__.return_value = quirk_list
     manuf_dict = mock.MagicMock()
     manuf_dict.__getitem__.return_value = model_dict
-    reg._registry = manuf_dict
+    reg._registry_v1 = manuf_dict
 
     reg.remove(fake_dev)
     assert manuf_dict.__getitem__.call_count == 1
@@ -163,7 +138,7 @@ def test_remove_models_info(fake_dev):
     model_dict.__getitem__.return_value = quirk_list
     manuf_dict = mock.MagicMock()
     manuf_dict.__getitem__.return_value = model_dict
-    reg._registry = manuf_dict
+    reg._registry_v1 = manuf_dict
 
     reg.remove(fake_dev)
     assert manuf_dict.__getitem__.call_count == 2
