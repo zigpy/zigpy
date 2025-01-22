@@ -663,3 +663,24 @@ class NetworkBeacon(BaseDataclassMixin):
     router_capacity: bool | None = None
     device_capacity: bool | None = None
     protocol_version: basic.uint8_t | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class CapturedPacket(BaseDataclassMixin):
+    timestamp: datetime
+    rssi: float
+    lqi: basic.uint8_t
+    channel: basic.uint8_t
+    data: bytes
+
+    def compute_fcs(self) -> bytes:
+        crc = 0x0000
+
+        for c in self.data:
+            q = (crc ^ c) & 15  # Do low-order 4 bits
+            crc = (crc // 16) ^ (q * 0x1081)
+
+            q = (crc ^ (c // 16)) & 15  # And high 4 bits
+            crc = (crc // 16) ^ (q * 0x1081)
+
+        return crc.to_bytes(2, "little")
