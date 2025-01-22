@@ -16,8 +16,6 @@ import typing
 from typing import Any, TypeVar
 import warnings
 
-from zigpy.helpers import PacketCaptureManager
-
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
 else:
@@ -1250,19 +1248,28 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if False:
             yield  # pragma: no cover
 
-    def packet_capture(self, channel: int) -> PacketCaptureManager:
-        """Start a packet capture on the specified channel and return a manager."""
-        return PacketCaptureManager(app=self, channel=channel)
+    async def packet_capture(
+        self, channel: int
+    ) -> AsyncGenerator[t.CapturedPacket, None]:
+        """Packet capture on the specified channel."""
+        async for packet in self._packet_capture(channel=channel):
+            yield packet
 
+    # @abc.abstractmethod
     async def _packet_capture(
         self, channel: int
     ) -> AsyncGenerator[t.CapturedPacket, None]:
-        """Start a packet capture on the specified channel, yielding packets."""
+        """Packet capture on the specified channel, internal."""
         if False:
             yield  # pragma: no cover
 
-    async def _packet_capture_change_channel(self, channel: int) -> None:
+    async def packet_capture_change_channel(self, channel: int) -> None:
         """Change the channel of an active packet capture."""
+        await self._packet_capture_change_channel(channel=channel)
+
+    # @abc.abstractmethod
+    async def _packet_capture_change_channel(self, channel: int) -> None:
+        """Change the channel of an active packet capture, internal."""
 
     async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None) -> None:
         """Permit joining on a specific node or all router nodes."""
