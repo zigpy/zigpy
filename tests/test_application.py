@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import errno
 import logging
 from unittest import mock
@@ -1506,3 +1507,39 @@ async def test_network_scan(app) -> None:
         ),
         call().__aiter__(),
     ]
+
+
+async def test_packet_capture(app) -> None:
+    packets = [
+        t.CapturedPacket(
+            timestamp=datetime(2021, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            rssi=-60,
+            lqi=250,
+            channel=15,
+            data=bytes.fromhex("02007f"),
+        ),
+        t.CapturedPacket(
+            timestamp=datetime(2021, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
+            rssi=-70,
+            lqi=240,
+            channel=15,
+            data=bytes.fromhex(
+                "61886fefbe445600004802653c00001e1228eea3dd0046b8a11c004b120000631ea30c"
+                "f9079829433d9b6165c3b56171df2557407024"
+            ),
+        ),
+    ]
+
+    with patch.object(app, "_packet_capture") as mock_capture:
+        mock_capture.return_value.__aiter__.return_value = packets
+
+        results = [p async for p in app.packet_capture(channel=15)]
+
+    assert results == packets
+
+    assert packets[0].compute_fcs() == b"\xc8\x3e"
+    assert packets[1].compute_fcs() == b"\x63\x7d"
+
+    with patch.object(app, "_packet_capture_change_channel"):
+        await app.packet_capture_change_channel(channel=25)
+        assert app._packet_capture_change_channel.mock_calls == [call(channel=25)]

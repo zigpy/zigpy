@@ -109,6 +109,13 @@ class App(zigpy.application.ControllerApplication):
         if False:
             yield
 
+    async def _packet_capture(self, channel):
+        if False:
+            yield
+
+    async def _packet_capture_change_channel(self, channel):
+        pass
+
 
 def recursive_dict_merge(
     obj: dict[str, typing.Any], updates: dict[str, typing.Any]
