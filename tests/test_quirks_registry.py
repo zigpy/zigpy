@@ -153,6 +153,7 @@ def test_remove_models_info(fake_dev):
     assert quirk_list.remove.call_args_list[1][0][0] is fake_dev
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_property_accessors():
     reg = DeviceRegistry()
     assert reg.registry is reg._registry_v1
