@@ -69,13 +69,13 @@ class DeviceRegistry:
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
         if models_info:
             for manuf, model in models_info:
-                if custom_device not in self.registry[manuf][model]:
-                    self.registry[manuf][model].appendleft(custom_device)
+                if custom_device not in self.registry_v1[manuf][model]:
+                    self.registry_v1[manuf][model].appendleft(custom_device)
         else:
             manufacturer = custom_device.signature.get(SIG_MANUFACTURER)
             model = custom_device.signature.get(SIG_MODEL)
-            if custom_device not in self.registry[manufacturer][model]:
-                self.registry[manufacturer][model].appendleft(custom_device)
+            if custom_device not in self.registry_v1[manufacturer][model]:
+                self.registry_v1[manufacturer][model].appendleft(custom_device)
 
     def add_to_registry_v2(
         self, manufacturer: str, model: str, entry: QuirksV2RegistryEntry
@@ -94,11 +94,11 @@ class DeviceRegistry:
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
         if models_info:
             for manuf, model in models_info:
-                self.registry[manuf][model].remove(custom_device)
+                self.registry_v1[manuf][model].remove(custom_device)
         else:
             manufacturer = custom_device.signature.get(SIG_MANUFACTURER)
             model = custom_device.signature.get(SIG_MODEL)
-            self.registry[manufacturer][model].remove(custom_device)
+            self.registry_v1[manufacturer][model].remove(custom_device)
 
     def get_device(self, device: DeviceType) -> CustomDeviceType | DeviceType:
         """Get a CustomDevice object, if one is available"""
@@ -121,10 +121,10 @@ class DeviceRegistry:
 
         # Then, fall back to v1 quirks
         for candidate in itertools.chain(
-            self.registry[device.manufacturer][device.model],
-            self.registry[device.manufacturer][None],
-            self.registry[None][device.model],
-            self.registry[None][None],
+            self.registry_v1[device.manufacturer][device.model],
+            self.registry_v1[device.manufacturer][None],
+            self.registry_v1[None][device.model],
+            self.registry_v1[None][None],
         ):
             matcher = zigpy.quirks.signature_matches(candidate.signature)
             _LOGGER.debug("Considering %s", candidate)
@@ -173,7 +173,7 @@ class DeviceRegistry:
             ],
         )[0]
         return device in itertools.chain(
-            self.registry[manufacturer][model],
-            self.registry[manufacturer][None],
-            self.registry[None][None],
+            self.registry_v1[manufacturer][model],
+            self.registry_v1[manufacturer][None],
+            self.registry_v1[None][None],
         )

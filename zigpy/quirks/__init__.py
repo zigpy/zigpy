@@ -50,9 +50,9 @@ def get_quirk_list(
 ):
     """Get the Quirk list for a given manufacturer and model."""
     if registry is None:
-        return _DEVICE_REGISTRY.registry[manufacturer][model]
+        return _DEVICE_REGISTRY.registry_v1[manufacturer][model]
 
-    return registry.registry[manufacturer][model]
+    return registry.registry_v1[manufacturer][model]
 
 
 def register_uninitialized_device_message_handler(handler: typing.Callable) -> None:
