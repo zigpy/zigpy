@@ -335,7 +335,6 @@ class ZCLEnumMetadata(EntityMetadata):
     enum: type[Enum] = attrs.field()
     attribute_name: str = attrs.field()
     reporting_config: ReportingConfig | None = attrs.field(default=None)
-    attribute_converter: typing.Callable[[Any], Any] | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -370,7 +369,6 @@ class NumberMetadata(EntityMetadata):
     """Metadata for exposed number entity."""
 
     attribute_name: str = attrs.field()
-    attribute_converter: typing.Callable[[Any], Any] | None = attrs.field(default=None)
     reporting_config: ReportingConfig | None = attrs.field(default=None)
     min: float | None = attrs.field(default=None)
     max: float | None = attrs.field(default=None)
@@ -769,7 +767,6 @@ class QuirkBuilder:
         entity_type: EntityType = EntityType.CONFIG,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
-        attribute_converter: typing.Callable[[Any], Any] | None = None,
         reporting_config: ReportingConfig | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
@@ -788,7 +785,6 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 reporting_config=reporting_config,
-                attribute_converter=attribute_converter,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 enum=enum_class,
@@ -904,7 +900,6 @@ class QuirkBuilder:
         device_class: NumberDeviceClass | None = None,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
-        attribute_converter: typing.Callable[[Any], Any] | None = None,
         reporting_config: ReportingConfig | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
@@ -926,7 +921,6 @@ class QuirkBuilder:
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
-                attribute_converter=attribute_converter,
                 min=min_value,
                 max=max_value,
                 step=step,
