@@ -198,7 +198,7 @@ class UnitOfMass(Enum):
 # Conductivity units
 class UnitOfConductivity(Enum):
     """Conductivity units."""
-    
+
     SIEMENS_PER_CM = "S/cm"
     MICROSIEMENS_PER_CM = "µS/cm"
     MILLISIEMENS_PER_CM = "mS/cm"
