@@ -67,6 +67,12 @@ class SensorDeviceClass(Enum):
 
     Unit of measurement: `ppm` (parts per million)
     """
+    
+    CONDUCTIVITY = "conductivity"
+    """Conductivity.
+
+    Unit of measurement: 'S/cm', 'µS/cm', 'mS/cm'
+    """
 
     CURRENT = "current"
     """Current.
