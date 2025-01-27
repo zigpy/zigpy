@@ -305,6 +305,7 @@ class EntityMetadata:
     cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
     initially_disabled: bool = attrs.field(default=False)
     attribute_initialized_from_cache: bool = attrs.field(default=True)
+    unique_id_suffix: str | None = attrs.field(default=None)
     translation_key: str | None = attrs.field(default=None)
     fallback_name: str = attrs.field(validator=attrs.validators.instance_of(str))
 
@@ -767,6 +768,7 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         reporting_config: ReportingConfig | None = None,
+        unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
     ) -> QuirkBuilder:
@@ -784,6 +786,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 reporting_config=reporting_config,
+                unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 enum=enum_class,
@@ -808,6 +811,7 @@ class QuirkBuilder:
         attribute_initialized_from_cache: bool = True,
         attribute_converter: typing.Callable[[Any], Any] | None = None,
         reporting_config: ReportingConfig | None = None,
+        unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
     ) -> QuirkBuilder:
@@ -825,6 +829,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 reporting_config=reporting_config,
+                unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
@@ -853,6 +858,7 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         reporting_config: ReportingConfig | None = None,
+        unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
     ) -> QuirkBuilder:
@@ -870,6 +876,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 reporting_config=reporting_config,
+                unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
@@ -898,6 +905,7 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
         reporting_config: ReportingConfig | None = None,
+        unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
     ) -> QuirkBuilder:
@@ -915,6 +923,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 reporting_config=reporting_config,
+                unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
@@ -941,6 +950,7 @@ class QuirkBuilder:
         attribute_initialized_from_cache: bool = True,
         attribute_converter: typing.Callable[[Any], Any] | None = None,
         reporting_config: ReportingConfig | None = None,
+        unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
     ) -> QuirkBuilder:
@@ -958,6 +968,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 reporting_config=reporting_config,
+                unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
@@ -977,6 +988,7 @@ class QuirkBuilder:
         entity_type: EntityType = EntityType.CONFIG,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
+        unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
     ) -> QuirkBuilder:
@@ -994,6 +1006,7 @@ class QuirkBuilder:
                 entity_type=entity_type,
                 initially_disabled=initially_disabled,
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
+                unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
@@ -1012,6 +1025,7 @@ class QuirkBuilder:
         endpoint_id: int = 1,
         entity_type: EntityType = EntityType.CONFIG,
         initially_disabled: bool = False,
+        unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
     ) -> QuirkBuilder:
@@ -1028,6 +1042,7 @@ class QuirkBuilder:
                 entity_platform=EntityPlatform.BUTTON,
                 entity_type=entity_type,
                 initially_disabled=initially_disabled,
+                unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 command_name=command_name,
