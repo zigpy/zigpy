@@ -196,7 +196,12 @@ class UnitOfMass(Enum):
 
 
 # Conductivity units
-CONDUCTIVITY: Final = "µS/cm"
+class UnitOfConductivity(Enum):
+    """Conductivity units."""
+    
+    SIEMENS_PER_CM = "S/cm"
+    MICROSIEMENS_PER_CM = "µS/cm"
+    MILLISIEMENS_PER_CM = "mS/cm"
 
 # Light units
 LIGHT_LUX: Final = "lx"
