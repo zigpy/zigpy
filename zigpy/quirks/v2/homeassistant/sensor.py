@@ -67,7 +67,7 @@ class SensorDeviceClass(Enum):
 
     Unit of measurement: `ppm` (parts per million)
     """
-    
+
     CONDUCTIVITY = "conductivity"
     """Conductivity.
 
