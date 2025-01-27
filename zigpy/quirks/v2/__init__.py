@@ -356,7 +356,6 @@ class SwitchMetadata(EntityMetadata):
     """Metadata for exposed switch entity."""
 
     attribute_name: str = attrs.field()
-    attribute_converter: typing.Callable[[Any], Any] | None = attrs.field(default=None)
     reporting_config: ReportingConfig | None = attrs.field(default=None)
     force_inverted: bool = attrs.field(default=False)
     invert_attribute_name: str | None = attrs.field(default=None)
@@ -853,7 +852,6 @@ class QuirkBuilder:
         entity_type: EntityType = EntityType.CONFIG,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
-        attribute_converter: typing.Callable[[Any], Any] | None = None,
         reporting_config: ReportingConfig | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
@@ -875,7 +873,6 @@ class QuirkBuilder:
                 translation_key=translation_key,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
-                attribute_converter=attribute_converter,
                 force_inverted=force_inverted,
                 invert_attribute_name=invert_attribute_name,
                 off_value=off_value,
