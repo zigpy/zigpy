@@ -203,6 +203,7 @@ class UnitOfConductivity(Enum):
     MICROSIEMENS_PER_CM = "µS/cm"
     MILLISIEMENS_PER_CM = "mS/cm"
 
+
 # Light units
 LIGHT_LUX: Final = "lx"
 
