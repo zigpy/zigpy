@@ -1,10 +1,11 @@
 """Homeassistant specific quirks v2 things."""
 
-from enum import Enum
 from typing import Final
 
+from zigpy.backports.enum import StrEnum
 
-class EntityType(str, Enum):
+
+class EntityType(StrEnum):
     """Entity type."""
 
     CONFIG = "config"
@@ -12,7 +13,7 @@ class EntityType(str, Enum):
     STANDARD = "standard"
 
 
-class EntityPlatform(str, Enum):
+class EntityPlatform(StrEnum):
     """Entity platform."""
 
     BINARY_SENSOR = "binary_sensor"
@@ -23,14 +24,14 @@ class EntityPlatform(str, Enum):
     SWITCH = "switch"
 
 
-class UnitOfApparentPower(str, Enum):
+class UnitOfApparentPower(StrEnum):
     """Apparent power units."""
 
     VOLT_AMPERE = "VA"
 
 
 # Power units
-class UnitOfPower(str, Enum):
+class UnitOfPower(StrEnum):
     """Power units."""
 
     WATT = "W"
@@ -43,7 +44,7 @@ POWER_VOLT_AMPERE_REACTIVE: Final = "var"
 
 
 # Energy units
-class UnitOfEnergy(str, Enum):
+class UnitOfEnergy(StrEnum):
     """Energy units."""
 
     GIGA_JOULE = "GJ"
@@ -54,7 +55,7 @@ class UnitOfEnergy(str, Enum):
 
 
 # Electric_current units
-class UnitOfElectricCurrent(str, Enum):
+class UnitOfElectricCurrent(StrEnum):
     """Electric current units."""
 
     MILLIAMPERE = "mA"
@@ -62,7 +63,7 @@ class UnitOfElectricCurrent(str, Enum):
 
 
 # Electric_potential units
-class UnitOfElectricPotential(str, Enum):
+class UnitOfElectricPotential(StrEnum):
     """Electric potential units."""
 
     MILLIVOLT = "mV"
@@ -79,7 +80,7 @@ CURRENCY_CENT: Final = "¢"
 
 
 # Temperature units
-class UnitOfTemperature(str, Enum):
+class UnitOfTemperature(StrEnum):
     """Temperature units."""
 
     CELSIUS = "°C"
@@ -88,7 +89,7 @@ class UnitOfTemperature(str, Enum):
 
 
 # Time units
-class UnitOfTime(str, Enum):
+class UnitOfTime(StrEnum):
     """Time units."""
 
     MICROSECONDS = "μs"
@@ -103,7 +104,7 @@ class UnitOfTime(str, Enum):
 
 
 # Length units
-class UnitOfLength(str, Enum):
+class UnitOfLength(StrEnum):
     """Length units."""
 
     MILLIMETERS = "mm"
@@ -117,7 +118,7 @@ class UnitOfLength(str, Enum):
 
 
 # Frequency units
-class UnitOfFrequency(str, Enum):
+class UnitOfFrequency(StrEnum):
     """Frequency units."""
 
     HERTZ = "Hz"
@@ -127,7 +128,7 @@ class UnitOfFrequency(str, Enum):
 
 
 # Pressure units
-class UnitOfPressure(str, Enum):
+class UnitOfPressure(StrEnum):
     """Pressure units."""
 
     PA = "Pa"
@@ -142,7 +143,7 @@ class UnitOfPressure(str, Enum):
 
 
 # Sound pressure units
-class UnitOfSoundPressure(str, Enum):
+class UnitOfSoundPressure(StrEnum):
     """Sound pressure units."""
 
     DECIBEL = "dB"
@@ -150,7 +151,7 @@ class UnitOfSoundPressure(str, Enum):
 
 
 # Volume units
-class UnitOfVolume(str, Enum):
+class UnitOfVolume(StrEnum):
     """Volume units."""
 
     CUBIC_FEET = "ft³"
@@ -169,7 +170,7 @@ class UnitOfVolume(str, Enum):
 
 
 # Volume Flow Rate units
-class UnitOfVolumeFlowRate(str, Enum):
+class UnitOfVolumeFlowRate(StrEnum):
     """Volume flow rate units."""
 
     CUBIC_METERS_PER_HOUR = "m³/h"
@@ -183,7 +184,7 @@ AREA_SQUARE_METERS: Final = "m²"
 
 
 # Mass units
-class UnitOfMass(str, Enum):
+class UnitOfMass(StrEnum):
     """Mass units."""
 
     GRAMS = "g"
@@ -212,14 +213,14 @@ REVOLUTIONS_PER_MINUTE: Final = "rpm"
 
 
 # Irradiance units
-class UnitOfIrradiance(str, Enum):
+class UnitOfIrradiance(StrEnum):
     """Irradiance units."""
 
     WATTS_PER_SQUARE_METER = "W/m²"
     BTUS_PER_HOUR_SQUARE_FOOT = "BTU/(h⋅ft²)"
 
 
-class UnitOfVolumetricFlux(str, Enum):
+class UnitOfVolumetricFlux(StrEnum):
     """Volumetric flux, commonly used for precipitation intensity.
 
     The derivation of these units is a volume of rain amassing in a container
@@ -239,7 +240,7 @@ class UnitOfVolumetricFlux(str, Enum):
     """Derived from mm³/(mm²⋅h)"""
 
 
-class UnitOfPrecipitationDepth(str, Enum):
+class UnitOfPrecipitationDepth(StrEnum):
     """Precipitation depth.
 
     The derivation of these units is a volume of rain amassing in a container
@@ -266,7 +267,7 @@ CONCENTRATION_PARTS_PER_BILLION: Final = "ppb"
 
 
 # Speed units
-class UnitOfSpeed(str, Enum):
+class UnitOfSpeed(StrEnum):
     """Speed units."""
 
     FEET_PER_SECOND = "ft/s"
@@ -282,7 +283,7 @@ SIGNAL_STRENGTH_DECIBELS_MILLIWATT: Final = "dBm"
 
 
 # Data units
-class UnitOfInformation(str, Enum):
+class UnitOfInformation(StrEnum):
     """Information units."""
 
     BITS = "bit"
@@ -309,7 +310,7 @@ class UnitOfInformation(str, Enum):
 
 
 # Data_rate units
-class UnitOfDataRate(str, Enum):
+class UnitOfDataRate(StrEnum):
     """Data rate units."""
 
     BITS_PER_SECOND = "bit/s"
