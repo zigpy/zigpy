@@ -34,6 +34,7 @@ from zigpy.quirks.v2 import (
     ZCLSensorMetadata,
     add_to_registry_v2,
 )
+from zigpy.quirks.v2.homeassistant import UnitOfTime
 import zigpy.types as t
 from zigpy.zcl import ClusterType
 from zigpy.zcl.clusters.general import (
@@ -131,7 +132,7 @@ async def test_quirks_v2(device_mock):
     assert str(quirked.quirk_metadata.quirk_file).endswith(
         "zigpy/tests/test_quirks_v2.py"
     )
-    assert quirked.quirk_metadata.quirk_file_line == 105
+    assert quirked.quirk_metadata.quirk_file_line == 106
 
     ep = quirked.endpoints[1]
 
@@ -661,7 +662,7 @@ async def test_quirks_v2_number(device_mock):
             min_value=0,
             max_value=100,
             step=1,
-            unit="s",
+            unit=UnitOfTime.SECONDS,
             translation_key="on_time",
             fallback_name="On time",
         )
