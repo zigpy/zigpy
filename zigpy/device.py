@@ -311,6 +311,16 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     if manufacturer is not None:
                         self.manufacturer = manufacturer
 
+        # Query firmware version
+        if self.firmware_version is not None:
+            self.info("Already have firmware version")
+        else:
+            ota = find_ota_cluster(self)
+            if ota is not None:
+                await OTA_RETRY_DECORATOR(ota.read_attributes)(
+                    [Ota.AttributeDefs.current_file_version.name]
+                )
+
         self.status = Status.ENDPOINTS_INIT
 
         self.info("Discovered basic device information for %s", self)
@@ -655,6 +665,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def model(self, value) -> None:
         if isinstance(value, str):
             self._model = value
+
+    @property
+    def firmware_version(self) -> int | None:
+        try:
+            ota = find_ota_cluster(self)
+        except KeyError:
+            return None
+        else:
+            return ota.get(Ota.AttributeDefs.current_file_version.id)
 
     @property
     def skip_configuration(self) -> bool:
