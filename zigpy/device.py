@@ -753,6 +753,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             f" manuf={self.manufacturer!r}"
             f" nwk={t.NWK(self.nwk)}"
             f" ieee={self.ieee}"
+            f" firmware_version={f'{self.firmware_version:#08x}' if self.firmware_version is not None else None}"
             f" is_initialized={self.is_initialized}"
             f">"
         )
