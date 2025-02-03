@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 import logging
-from unittest.mock import call
+from unittest.mock import call, patch
 
 import pytest
 
@@ -52,10 +52,12 @@ async def test_initialize(monkeypatch, dev):
         else:
             return "Model2", "Manufacturer2"
 
-    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
-    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
-    dev.zdo.Active_EP_req = mockrequest
-    await dev.initialize()
+    with (
+        patch.object(endpoint.Endpoint, "initialize", new=mockepinit),
+        patch.object(endpoint.Endpoint, "get_model_info", new=mock_ep_get_model_info),
+        patch.object(dev.zdo, "Active_EP_req", new=mockrequest),
+    ):
+        await dev.initialize()
 
     assert dev.endpoints[0] is dev.zdo
     assert 1 in dev.endpoints
@@ -492,11 +494,10 @@ async def test_update_device_firmware_already_in_progress(dev, caplog):
     "zigpy.device.OTA_RETRY_DECORATOR",
     zigpy.util.retryable_request(tries=1, delay=0.01),
 )
-async def test_update_device_firmware(monkeypatch, dev, caplog):
+async def test_update_device_firmware(dev, caplog):
     """Test that device firmware updates execute the expected calls."""
     ep = dev.add_endpoint(1)
-    cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
-    ep.add_output_cluster(Ota.cluster_id, cluster)
+    cluster = ep.add_output_cluster(Ota.cluster_id)
 
     async def mockrequest(nwk, tries=None, delay=None):
         return [0, None, [0, 1, 2, 3, 4]]
@@ -509,10 +510,13 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         if self.endpoint_id == 1:
             return "Model2", "Manufacturer2"
 
-    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
-    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
-    dev.zdo.Active_EP_req = mockrequest
-    await dev.initialize()
+    with (
+        patch.object(endpoint.Endpoint, "initialize", new=mockepinit),
+        patch.object(endpoint.Endpoint, "get_model_info", new=mock_ep_get_model_info),
+        patch.object(dev.zdo, "Active_EP_req", new=mockrequest),
+        patch.object(dev, "get_firmware_version", return_value=0x12345678 - 100),
+    ):
+        await dev.initialize()
 
     fw_image = zigpy.ota.OtaImageWithMetadata(
         metadata=zigpy.ota.providers.BaseOtaImageMetadata(
@@ -871,11 +875,10 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     "zigpy.device.OTA_RETRY_DECORATOR",
     zigpy.util.retryable_request(tries=1, delay=0.01),
 )
-async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
+async def test_update_legrand_device_firmware(dev, caplog):
     """Legrand device (manufacturer_code == 4129) firmware update expects the "image_block" command "maximum_data_size" to be complied with."""
     ep = dev.add_endpoint(1)
-    cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
-    ep.add_output_cluster(Ota.cluster_id, cluster)
+    cluster = ep.add_output_cluster(Ota.cluster_id)
 
     async def mockrequest(nwk, tries=None, delay=None):
         return [0, None, [0, 1, 2, 3, 4]]
@@ -888,10 +891,13 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
         if self.endpoint_id == 1:
             return "SomeModel", "Legrand"
 
-    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
-    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
-    dev.zdo.Active_EP_req = mockrequest
-    await dev.initialize()
+    with (
+        patch.object(endpoint.Endpoint, "initialize", new=mockepinit),
+        patch.object(endpoint.Endpoint, "get_model_info", new=mock_ep_get_model_info),
+        patch.object(dev.zdo, "Active_EP_req", new=mockrequest),
+        patch.object(dev, "get_firmware_version", return_value=0x12345678 - 100),
+    ):
+        await dev.initialize()
 
     fw_image = zigpy.ota.OtaImageWithMetadata(
         metadata=zigpy.ota.providers.BaseOtaImageMetadata(

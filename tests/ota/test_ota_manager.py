@@ -191,7 +191,10 @@ async def test_ota_manager():
     )
     cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
 
-    await dev.initialize()
+    with patch.object(
+        dev, "get_firmware_version", FW_IMAGE.firmware.header.file_version - 10
+    ):
+        await dev.initialize()
 
     # Stop the general cluster handler from interfering
     dev.ota_in_progress = True
@@ -364,7 +367,10 @@ async def test_ota_manager_image_page():
     )
     cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
 
-    await dev.initialize()
+    with patch.object(
+        dev, "get_firmware_version", FW_IMAGE.firmware.header.file_version - 10
+    ):
+        await dev.initialize()
 
     # Stop the general cluster handler from interfering
     dev.ota_in_progress = True
@@ -561,7 +567,10 @@ async def test_ota_manager_image_page_invalid_size():
     )
     cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
 
-    await dev.initialize()
+    with patch.object(
+        dev, "get_firmware_version", FW_IMAGE.firmware.header.file_version - 10
+    ):
+        await dev.initialize()
 
     # Stop the general cluster handler from interfering
     dev.ota_in_progress = True
@@ -630,7 +639,10 @@ async def test_ota_manager_image_page_failure():
     )
     cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
 
-    await dev.initialize()
+    with patch.object(
+        dev, "get_firmware_version", FW_IMAGE.firmware.header.file_version - 10
+    ):
+        await dev.initialize()
 
     # Stop the general cluster handler from interfering
     dev.ota_in_progress = True

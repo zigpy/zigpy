@@ -7,7 +7,7 @@ import copy
 import logging
 import threading
 import typing
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
@@ -22,8 +22,6 @@ from zigpy.config import (
 import zigpy.state as app_state
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
-
-from .async_mock import AsyncMock, MagicMock
 
 if typing.TYPE_CHECKING:
     import zigpy.device

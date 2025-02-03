@@ -232,6 +232,21 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return node_desc
 
+    async def get_firmware_version(self) -> int | None:
+        try:
+            ota = find_ota_cluster(self)
+        except ValueError:
+            return None
+        else:
+            success, _failure = await OTA_RETRY_DECORATOR(ota.read_attributes)(
+                [Ota.AttributeDefs.current_file_version.name]
+            )
+
+        if Ota.AttributeDefs.current_file_version.name in success:
+            return success[Ota.AttributeDefs.current_file_version.name]
+
+        return None
+
     async def initialize(self) -> None:
         try:
             await self._initialize()
@@ -315,11 +330,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if self.firmware_version is not None:
             self.info("Already have firmware version")
         else:
-            ota = find_ota_cluster(self)
-            if ota is not None:
-                await OTA_RETRY_DECORATOR(ota.read_attributes)(
-                    [Ota.AttributeDefs.current_file_version.name]
-                )
+            # The `firmware_version` property uses the attribute cache so this doesn't
+            # need to be stored explicitly
+            await self.get_firmware_version()
 
         self.status = Status.ENDPOINTS_INIT
 
@@ -670,7 +683,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def firmware_version(self) -> int | None:
         try:
             ota = find_ota_cluster(self)
-        except KeyError:
+        except ValueError:
             return None
         else:
             return ota.get(Ota.AttributeDefs.current_file_version.id)
