@@ -622,6 +622,8 @@ class ZigbeePacket(BaseDataclassMixin):
     lqi: basic.uint8_t | None = dataclasses.field(default=None)
     rssi: basic.int8s | None = dataclasses.field(default=None)
 
+    retry_attempt: int = dataclasses.field(default=0)
+
     def __hash__(self) -> int:
         return hash(
             (
@@ -642,6 +644,7 @@ class ZigbeePacket(BaseDataclassMixin):
                 self.lqi,
                 self.rssi,
                 self.priority,
+                self.retry_attempt,
             )
         )
 

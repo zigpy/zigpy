@@ -56,6 +56,8 @@ _R = TypeVar("_R")
 CHANNEL_CHANGE_BROADCAST_DELAY_S = 1.0
 CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S = 1.0
 
+MAX_RETRIES = 3
+
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     SCHEMA = conf.CONFIG_SCHEMA
@@ -832,7 +834,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         elif not expect_reply:
             tx_options |= t.TransmitOptions.ACK
 
-        for attempt in range(3):
+        for retry_attempt in range(MAX_RETRIES):
             try:
                 await self.send_packet(
                     t.ZigbeePacket(
@@ -848,18 +850,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                         source_route=source_route,
                         tx_options=tx_options,
                         priority=priority,
+                        retry_attempt=retry_attempt,
                     )
                 )
                 break
             except Exception:
                 LOGGER.debug(
                     "Failed to send packet, attempt %d of %d",
-                    attempt + 1,
-                    3,
+                    retry_attempt + 1,
+                    MAX_RETRIES,
                     exc_info=True,
                 )
 
-                if attempt == 3 - 1:
+                if retry_attempt == MAX_RETRIES - 1:
                     raise
 
                 continue
