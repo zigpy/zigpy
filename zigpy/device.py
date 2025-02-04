@@ -345,6 +345,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         ask_for_ack: bool | None = None,
         priority: int = t.PacketPriority.NORMAL,
     ):
+        extended_timeout = False
+
         if self.node_desc is None or self.node_desc.is_end_device:
             self.debug("Extending timeout for 0x%02x request", sequence)
             timeout = APS_REPLY_TIMEOUT_EXTENDED
