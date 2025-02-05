@@ -1081,16 +1081,6 @@ class QuirkBuilder:
         function: Callable[[Any, Any], bool] | None = None,
     ) -> QuirkBuilder:
         """Do not create default entities."""
-
-        if (function is not None) ^ (
-            endpoint_id is not None
-            or cluster_id is not None
-            or unique_id_suffix is not None
-        ):
-            raise ValueError(
-                "function is mutually exclusive with the other filter kwargs"
-            )
-
         self.disabled_default_entities.append(
             PreventDefaultEntityCreationMetadata(
                 endpoint_id=endpoint_id,

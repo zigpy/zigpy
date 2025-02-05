@@ -1189,18 +1189,34 @@ async def test_quirks_v2_device_alerts(device_mock: Device) -> None:
 async def test_quirks_v2_disable_entity_creation(device_mock: Device) -> None:
     registry = DeviceRegistry()
 
+    def filter_func(device, entity) -> bool:
+        return True
+
     entry = (
         QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
         .prevent_default_entity_creation(endpoint_id=1, unique_id_suffix="something")
         .prevent_default_entity_creation(endpoint_id=1, cluster_id=OnOff.cluster_id)
+        .prevent_default_entity_creation(function=filter_func)
         .add_to_registry()
     )
 
     assert entry.disabled_default_entities == (
         PreventDefaultEntityCreationMetadata(
-            endpoint_id=1, cluster_id=None, unique_id_suffix="something"
+            endpoint_id=1,
+            cluster_id=None,
+            unique_id_suffix="something",
+            function=None,
         ),
         PreventDefaultEntityCreationMetadata(
-            endpoint_id=1, cluster_id=OnOff.cluster_id, unique_id_suffix=None
+            endpoint_id=1,
+            cluster_id=OnOff.cluster_id,
+            unique_id_suffix=None,
+            function=None,
+        ),
+        PreventDefaultEntityCreationMetadata(
+            endpoint_id=None,
+            cluster_id=None,
+            unique_id_suffix=None,
+            function=filter_func,
         ),
     )
