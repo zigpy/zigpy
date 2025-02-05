@@ -1189,7 +1189,7 @@ async def test_quirks_v2_device_alerts(device_mock: Device) -> None:
 async def test_quirks_v2_disable_entity_creation(device_mock: Device) -> None:
     registry = DeviceRegistry()
 
-    def filter_func(device, entity) -> bool:
+    def filter_func(entity) -> bool:
         return True
 
     entry = (

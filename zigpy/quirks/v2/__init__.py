@@ -445,7 +445,7 @@ class PreventDefaultEntityCreationMetadata:
     endpoint_id: int | None = attrs.field()
     cluster_id: int | None = attrs.field()
     unique_id_suffix: str | None = attrs.field()
-    function: Callable[[Any, Any], bool] | None = attrs.field()
+    function: Callable[Any, bool] | None = attrs.field()
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -1078,7 +1078,7 @@ class QuirkBuilder:
         endpoint_id: int | None = None,
         cluster_id: int | None = None,
         unique_id_suffix: str | None = None,
-        function: Callable[[Any, Any], bool] | None = None,
+        function: Callable[Any, bool] | None = None,
     ) -> QuirkBuilder:
         """Do not create default entities."""
         self.disabled_default_entities.append(
