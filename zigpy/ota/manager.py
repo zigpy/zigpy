@@ -19,7 +19,10 @@ if TYPE_CHECKING:
 
 # Devices often ask for bigger blocks than radios can send
 MAXIMUM_IMAGE_BLOCK_SIZE = 40
-MAX_TIME_WITHOUT_PROGRESS = 30
+# Wait up to a day to timeout an upgrade process. This will
+# allow battery powered devices to start fetching the image when 
+# they check in.
+MAX_TIME_WITHOUT_PROGRESS = 86400
 
 
 def find_ota_cluster(device: Device) -> Ota:
@@ -140,6 +143,7 @@ class OTAManager:
             status = foundation.Status.FAILURE
 
         if status != foundation.Status.SUCCESS:
+            # When querying an image fails, stop the upgrade process.
             self._finish(status)
 
     async def _finish_malformed_image_block_response(self, handler: str, tsn: int):
@@ -198,8 +202,9 @@ class OTAManager:
                     command.file_offset + len(block), len(self._image_data)
                 )
         except Exception as ex:  # noqa: BLE001
+            # Do NOT finish the OTA process upon exceptions. The radio may be 
+            # congested and devices may (will?) retry fetching the block.
             self.device.debug("OTA image_block handler exception", exc_info=ex)
-            self._finish(foundation.Status.FAILURE)
 
     async def _image_page_req(
         self, hdr: foundation.ZCLHeader, command: Ota.ImagePageCommand
@@ -254,8 +259,9 @@ class OTAManager:
                         offset - block_size + len(block), len(self._image_data)
                     )
             except Exception as ex:  # noqa: BLE001
+                # Do NOT finish the OTA process upon exceptions. The radio may be 
+                # congested and devices may (will?) retry fetching the page.
                 self.device.debug("OTA image_page handler exception", exc_info=ex)
-                self._finish(foundation.Status.FAILURE)
                 return
 
             # Delay according to what the device asks
@@ -290,8 +296,13 @@ class OTAManager:
                 query_jitter=100,
             )
         except Exception as ex:  # noqa: BLE001
+            # While mains powered devices will respond to this,
+            # battery powered ones will not (unless interacted with or not 
+            # at all, for example RWL021). By not failing, we give battery
+            # powered devices an opportunity to check for new images when
+            # they checkin.
             self.device.debug("OTA image_notify handler exception", exc_info=ex)
-            self._finish(foundation.Status.FAILURE)
+            
         else:
             self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
 
