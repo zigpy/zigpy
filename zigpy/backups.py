@@ -398,7 +398,10 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
 
     for device in obj["devices"]:
         if device["nwk_address"] is not None:
-            nwk, _ = t.NWK.deserialize(bytes.fromhex(device["nwk_address"])[::-1])
+            # zfill(4) is used because Z2M backups include 0x0ABC as `abc`, not `0abc`
+            nwk, _ = t.NWK.deserialize(
+                bytes.fromhex(device["nwk_address"].zfill(4))[::-1]
+            )
         else:
             nwk = None
 

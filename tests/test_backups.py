@@ -81,6 +81,7 @@ def backup_factory():
                     t.EUI64.convert("7A:BF:38:A9:59:21:A0:7A"): t.NWK(0x16B5),
                     t.EUI64.convert("10:55:FE:67:24:EA:96:D3"): t.NWK(0xBFB9),
                     t.EUI64.convert("9A:0E:10:50:00:1B:1A:5F"): t.NWK(0x1AF6),
+                    t.EUI64.convert("AA:BB:CC:DD:11:22:33:44"): t.NWK(0x0ABC),
                 },
                 stack_specific={
                     "zstack": {"tclk_seed": "71e31105bb92a2d15747a0d0a042dbfd"}
@@ -163,6 +164,11 @@ def z2m_backup_json():
             {
                 "nwk_address": "1af6",
                 "ieee_address": "9a0e1050001b1a5f",
+                "is_child": False,
+            },
+            {
+                "nwk_address": "abc",  # missing `0` prefix
+                "ieee_address": "aabbccdd11223344",
                 "is_child": False,
             },
         ],
