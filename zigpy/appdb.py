@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 import contextlib
 from datetime import datetime, timedelta, timezone
 import json
@@ -226,6 +227,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         # XXX: This will break if you use a semicolon anywhere but at the end of a line
         for statement in sql.split(";"):
             await self.execute(statement)
+
+    @contextlib.asynccontextmanager
+    async def write_lock_db_sqlite(self) -> AsyncIterator[None]:
+        """Lock database for writes."""
+
+        LOGGER.debug("Locking the database for writes")
+        await self.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        await self.execute("BEGIN TRANSACTION")
+
+        try:
+            yield
+        finally:
+            LOGGER.debug("Unlocking the database for writes")
+            await self.execute("END")
 
     def device_joined(self, device: zigpy.typing.DeviceType) -> None:
         self.enqueue("_update_device_nwk", device.ieee, device.nwk)
