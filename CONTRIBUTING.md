@@ -166,7 +166,7 @@ This section is meant to describe the zigpy API (Application Programming Interfa
 Reference collections for different hardware specific Zigbee Stack and related manufacturer documentation.
 - https://github.com/zigpy/zigpy/discussions/595
 
-Silicon Labs video playlist of ZigBee Concepts: Architecture basics, MAC/PHY, node types, and application profiles
+Silicon Labs video playlist of Zigbee Concepts: Architecture basics, MAC/PHY, node types, and application profiles
 - https://www.youtube.com/playlist?list=PL-awFRrdECXvAs1mN2t2xaI0_bQRh2AqD
 
 ### zigpy wiki and communication channels
@@ -249,4 +249,4 @@ ZHA deviation handling in Home Assistant relies on the third-party [ZHA Device H
 [Zigbee plugin for Jeedom](https://doc.jeedom.com/en_US/plugins/automation%20protocol/zigbee/) is and official addon for [Jeedom home automation software]([https://www.domoticz.com/](https://jeedom.com/en/)) which depends on [zigpy] for hardware independent Zigbee Coordinator support. While free and open source licensed the source code for this Zigbee plugin is currently not available for direct download on a public website, as instead independent developers and users of Jeedom can only download the code by installing Jeedom and [purchasing the plugin from their Jeedom online marketplace for around €6](https://market.jeedom.com/index.php?v=d&p=market_display&id=4050) (at least as it stands in May in 2022).
 
 ### ZigCoHTTP
-[ZigCoHTTP](https://github.com/daniel17903/ZigCoHTTP) (unmaintained and now abandoned) was a stand-alone python application project that creates a ZigBee network using zigpy and bellows. ZigBee devices joining this network can be controlled via a HTTP API. It was developed for a Raspberry Pi using a [Matrix Creator Board](https://www.matrix.one/products/creator) but should also work with other computers with Silicon Labs Zigbee hardware, or with other Zigbee hardware if replace bellows with other radio library for zigpy.
+[ZigCoHTTP](https://github.com/daniel17903/ZigCoHTTP) (unmaintained and now abandoned) was a stand-alone python application project that creates a Zigbee network using zigpy and bellows. Zigbee devices joining this network can be controlled via a HTTP API. It was developed for a Raspberry Pi using a [Matrix Creator Board](https://www.matrix.one/products/creator) but should also work with other computers with Silicon Labs Zigbee hardware, or with other Zigbee hardware if replace bellows with other radio library for zigpy.

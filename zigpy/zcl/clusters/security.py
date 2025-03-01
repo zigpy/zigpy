@@ -494,8 +494,8 @@ class Squawk(_SquawkOrWarningCommand):
 
 class IasWd(Cluster):
     """The IAS WD cluster provides an interface to the functionality of any Warning
-    Device equipment of the IAS system. Using this cluster, a ZigBee enabled CIE device
-    can access a ZigBee enabled IAS WD device and issue alarm warning indications
+    Device equipment of the IAS system. Using this cluster, a Zigbee enabled CIE device
+    can access a Zigbee enabled IAS WD device and issue alarm warning indications
     (siren, strobe lighting, etc.) when a system alarm condition is detected
     """
 

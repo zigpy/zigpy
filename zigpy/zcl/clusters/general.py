@@ -1783,7 +1783,7 @@ class NetworkKeyType(t.enum8):
 
 class Commissioning(Cluster):
     """Attributes and commands for commissioning and
-    managing a ZigBee device.
+    managing a Zigbee device.
     """
 
     StartupControl: Final = StartupControl

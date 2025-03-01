@@ -35,7 +35,7 @@ class ScanRequestInformation(t.Struct):
     reserved2: t.uint1_t
 
     # If the ZLL profile is implemented, this bit shall be set to 0. In all other case
-    # (Profile Interop / ZigBee 3.0), this bit shall be set to 1
+    # (Profile Interop / Zigbee 3.0), this bit shall be set to 1
     profile_interop: t.uint1_t
 
 
