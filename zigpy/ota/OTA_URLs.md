@@ -98,7 +98,7 @@ Sengled Zigbee OTA firmware images are made publicly available by Sengled  (firs
 
 http://us-fm.cloud.sengled.com:8000/sengled/zigbee/firmware/
 
-Note that Sengled do not seem to provide their firmware for use with other ZigBee gateways than the Sengled Smart Hub. The communication between their hub/gateway/bridge appliance and the server hosting the firmware files is encrypted, so we cannot directly get listing of all the files available. To find the URL for firmware files, you need to sniff the traffic from the Hue bridge to the Internet, as it downloads the files, (since the bridge will only download firmware files for connected devices with outdated firmware sniffing traffic is not repeatable once the device has been updated).
+Note that Sengled do not seem to provide their firmware for use with other Zigbee gateways than the Sengled Smart Hub. The communication between their hub/gateway/bridge appliance and the server hosting the firmware files is encrypted, so we cannot directly get listing of all the files available. To find the URL for firmware files, you need to sniff the traffic from the Hue bridge to the Internet, as it downloads the files, (since the bridge will only download firmware files for connected devices with outdated firmware sniffing traffic is not repeatable once the device has been updated).
 
 The official URLs for Philips Hue (Signify) Zigbee OTA firmware images are therefore documented by community and third-parties such as Koenkk and Dresden Elektronik:
 
@@ -122,7 +122,7 @@ Philips Hue (Signify) Zigbee OTA firmware images direct URLs are available by Ko
 
 https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json
 
-Note that Philips/Signify do not provide their firmware for use with other ZigBee gateways than the Philips Hue bridge. The communication between their hub/gateway/bridge appliance and the server hosting the firmware files is encrypted, so we cannot directly get listing of all the files available. To find the URL for firmware files, you need to sniff the traffic from the Hue bridge to the Internet, as it downloads the files, (since the bridge will only download firmware files for connected devices with outdated firmware sniffing traffic is not repeatable once the device has been updated).
+Note that Philips/Signify do not provide their firmware for use with other Zigbee gateways than the Philips Hue bridge. The communication between their hub/gateway/bridge appliance and the server hosting the firmware files is encrypted, so we cannot directly get listing of all the files available. To find the URL for firmware files, you need to sniff the traffic from the Hue bridge to the Internet, as it downloads the files, (since the bridge will only download firmware files for connected devices with outdated firmware sniffing traffic is not repeatable once the device has been updated).
 
 The official URLs for Philips Hue (Signify) Zigbee OTA firmware images are therefore documented by community and third-parties such as Koenkk and Dresden Elektronik:
 
