@@ -197,7 +197,7 @@ class UnitOfMass(StrEnum):
 
 
 # Conductivity units
-class UnitOfConductivity(Enum):
+class UnitOfConductivity(StrEnum):
     """Conductivity units."""
 
     SIEMENS_PER_CM = "S/cm"
