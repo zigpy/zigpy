@@ -1,5 +1,6 @@
 """Tests for the quirks v2 module."""
 
+import pathlib
 from typing import Final
 from unittest.mock import AsyncMock
 
@@ -103,6 +104,7 @@ async def test_quirks_v2(device_mock):
             report: Final = ZCLAttributeDef(id=0x0000, type=t.uint8_t)
 
     entry = (
+        # Quirk builder creation line, this comment is read by this unit test
         QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
         .filter(signature_matches(signature))
         .adds(
@@ -132,7 +134,15 @@ async def test_quirks_v2(device_mock):
     assert str(quirked.quirk_metadata.quirk_file).endswith(
         "zigpy/tests/test_quirks_v2.py"
     )
-    assert quirked.quirk_metadata.quirk_file_line == 106
+
+    # To avoid having to rewrite this test every time quirks change, we read the current
+    # file to find the line number
+    quirk_builder_line = next(
+        index
+        for index, line in enumerate(pathlib.Path(__file__).read_text().splitlines())
+        if "# Quirk builder creation line" in line
+    )
+    assert quirked.quirk_metadata.quirk_file_line == quirk_builder_line + 2
 
     ep = quirked.endpoints[1]
 
@@ -1179,18 +1189,34 @@ async def test_quirks_v2_device_alerts(device_mock: Device) -> None:
 async def test_quirks_v2_disable_entity_creation(device_mock: Device) -> None:
     registry = DeviceRegistry()
 
+    def filter_func(entity) -> bool:
+        return True
+
     entry = (
         QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
         .prevent_default_entity_creation(endpoint_id=1, unique_id_suffix="something")
         .prevent_default_entity_creation(endpoint_id=1, cluster_id=OnOff.cluster_id)
+        .prevent_default_entity_creation(function=filter_func)
         .add_to_registry()
     )
 
     assert entry.disabled_default_entities == (
         PreventDefaultEntityCreationMetadata(
-            endpoint_id=1, cluster_id=None, unique_id_suffix="something"
+            endpoint_id=1,
+            cluster_id=None,
+            unique_id_suffix="something",
+            function=None,
         ),
         PreventDefaultEntityCreationMetadata(
-            endpoint_id=1, cluster_id=OnOff.cluster_id, unique_id_suffix=None
+            endpoint_id=1,
+            cluster_id=OnOff.cluster_id,
+            unique_id_suffix=None,
+            function=None,
+        ),
+        PreventDefaultEntityCreationMetadata(
+            endpoint_id=None,
+            cluster_id=None,
+            unique_id_suffix=None,
+            function=filter_func,
         ),
     )
