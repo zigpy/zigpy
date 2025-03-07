@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -371,3 +371,135 @@ async def test_reschedulable_timeout_cancel():
     timeout.cancel()
     await asyncio.sleep(0.02)
     assert len(callback.mock_calls) == 0
+
+
+def test_limited_size_dict_insert_retrieve() -> None:
+    d = datastructures.LimitedSizeDict(maxlen=2)
+    d["a"] = 1
+    d["b"] = 2
+    assert len(d) == 2
+    assert d["a"] == 1
+    assert d["b"] == 2
+
+
+def test_limited_size_dict_overflow() -> None:
+    d = datastructures.LimitedSizeDict(maxlen=2)
+    d["a"] = 1
+    d["b"] = 2
+    d["c"] = 3  # should pop "a"
+    assert len(d) == 2
+    assert "a" not in d
+    assert d["b"] == 2
+    assert d["c"] == 3
+
+
+def test_limited_size_dict_update_moves_key_to_end() -> None:
+    d = datastructures.LimitedSizeDict(maxlen=2)
+    d["x"] = 10
+    d["y"] = 20
+    d["x"] = 100  # "x" now most recently updated
+    d["z"] = 300  # should pop "y"
+    assert len(d) == 2
+    assert "y" not in d
+    assert d["x"] == 100
+    assert d["z"] == 300
+
+
+def test_limited_size_dict_delete() -> None:
+    d = datastructures.LimitedSizeDict(maxlen=2)
+    d["a"] = 1
+    d["b"] = 2
+    del d["a"]
+    assert len(d) == 1
+    assert "a" not in d
+    assert d["b"] == 2
+
+
+def test_packet_reorder_in_order() -> None:
+    callback = Mock()
+    reorder = datastructures.PacketReorder(
+        window=3,
+        reordering_timeout=1.0,
+        packet_callback=callback,
+        packet_comparison_func=lambda old, new: old == new,
+    )
+
+    reorder.handle_packet(0, "packet 0")
+    reorder.handle_packet(1, "packet 1")
+    assert callback.mock_calls == [call("packet 0"), call("packet 1")]
+    assert reorder.expected_tsn == 2
+
+
+def test_packet_reorder_huge_skip() -> None:
+    callback = Mock()
+    reorder = datastructures.PacketReorder(
+        window=20,
+        reordering_timeout=1.0,
+        packet_callback=callback,
+        packet_comparison_func=lambda old, new: old == new,
+    )
+
+    reorder.handle_packet(200, "packet 200")
+    assert callback.mock_calls == [call("packet 200")]
+    assert reorder.expected_tsn == 201
+
+    # We skip so far ahead that it exceeds the reordering window
+    reorder.handle_packet(10, "packet 10")
+    assert callback.mock_calls == [call("packet 200"), call("packet 10")]
+    assert reorder.expected_tsn == 11
+
+
+async def test_packet_reorder_out_of_order() -> None:
+    callback = Mock()
+    reorder = datastructures.PacketReorder(
+        window=10,
+        reordering_timeout=0.1,
+        packet_callback=callback,
+        packet_comparison_func=lambda old, new: old == new,
+    )
+    reorder.expected_tsn = 0
+
+    # Send over packets 5, 4, 3, 2, 1, skipping 0
+    for i in range(5, 0, -1):
+        reorder.handle_packet(i, f"packet {i}")
+        assert callback.mock_calls == []
+        assert reorder.expected_tsn == 0
+
+    # Now TSN=0 arrives and we emit both packets
+    reorder.handle_packet(0, "packet 0")
+    assert callback.mock_calls == [
+        call("packet 0"),
+        call("packet 1"),
+        call("packet 2"),
+        call("packet 3"),
+        call("packet 4"),
+        call("packet 5"),
+    ]
+    assert reorder.expected_tsn == 6
+
+
+async def test_packet_reorder_timeout() -> None:
+    callback = Mock()
+    reorder = datastructures.PacketReorder(
+        window=10,
+        reordering_timeout=0.1,
+        packet_callback=callback,
+        packet_comparison_func=lambda old, new: old == new,
+    )
+
+    # Start: TSN=0 arrives -> immediate emit
+    reorder.handle_packet(0, "packet 0")
+    assert callback.mock_calls == [call("packet 0")]
+    assert reorder.expected_tsn == 1
+
+    # Next we skip packet 1 and receive TSN=2
+    reorder.handle_packet(2, "packet 2")
+    assert callback.mock_calls == [call("packet 0")]
+    assert reorder.expected_tsn == 1
+
+    # Do nothing for a bit
+    await asyncio.sleep(0.2)
+
+    # The buffered packet will be emitted
+    assert callback.mock_calls == [call("packet 0"), call("packet 2")]
+    assert reorder.expected_tsn == 3

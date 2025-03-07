@@ -344,7 +344,7 @@ class PacketReorder:
         start = self.missing_tsns[0]
         end = self.missing_tsns[-1]
 
-        for tsn in self._range_mod(start, end):
+        for tsn in self._range_mod(start, (end + 1) % 256):
             if tsn not in self.packets:
                 continue
 
