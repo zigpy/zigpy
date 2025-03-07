@@ -421,6 +421,17 @@ def test_limited_size_dict_delete() -> None:
     assert d["b"] == 2
 
 
+def test_limited_size_dict_formatting() -> None:
+    d: LimitedSizeDict[str, int] = LimitedSizeDict({"a": 1, "b": 2}, maxlen=2)
+    assert str(d) == "LimitedSizeDict(OrderedDict({'a': 1, 'b': 2}), maxlen=2)"
+
+
+def test_limited_size_dict_iteration() -> None:
+    d: LimitedSizeDict[str, int] = LimitedSizeDict({"a": 1, "b": 2}, maxlen=2)
+
+    assert list(d) == ["a", "b"]
+
+
 def test_packet_reorder_in_order() -> None:
     callback = Mock()
     reorder = PacketReorder(
@@ -463,17 +474,33 @@ async def test_packet_reorder_out_of_order() -> None:
         packet_callback=callback,
         packet_comparison_func=lambda old, new: old == new,
     )
-    reorder.expected_tsn = 0
+    reorder.expected_tsn = 253
 
-    # Send over packets 5, 4, 3, 2, 1, skipping 0
-    for i in range(5, 0, -1):
+    # 2 and 253 are missing
+    for i in [5, 4, 3, 1, 0, 255, 254]:
         reorder.handle_packet(i, f"packet {i}")
         assert callback.mock_calls == []
-        assert reorder.expected_tsn == 0
+        assert reorder.expected_tsn == 253
+        assert reorder.reordering_timer is not None
 
-    # Now TSN=0 arrives and we emit both packets
-    reorder.handle_packet(0, "packet 0")
+    # One missing packet arrives and we emit everything up to the next missing packet
+    reorder.handle_packet(253, "packet 253")
     assert callback.mock_calls == [
+        call("packet 253"),
+        call("packet 254"),
+        call("packet 255"),
+        call("packet 0"),
+        call("packet 1"),
+    ]
+    assert reorder.expected_tsn == 2
+    assert reorder.reordering_timer is not None
+
+    # Final one arrives
+    reorder.handle_packet(2, "packet 2")
+    assert callback.mock_calls == [
+        call("packet 253"),
+        call("packet 254"),
+        call("packet 255"),
         call("packet 0"),
         call("packet 1"),
         call("packet 2"),
@@ -481,7 +508,7 @@ async def test_packet_reorder_out_of_order() -> None:
         call("packet 4"),
         call("packet 5"),
     ]
-    assert reorder.expected_tsn == 6
+    assert reorder.reordering_timer is None
 
 
 async def test_packet_reorder_timeout() -> None:

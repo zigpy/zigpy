@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import bisect
 from collections import OrderedDict
-from collections.abc import Awaitable, Iterable, Iterator, MutableMapping
+from collections.abc import Awaitable, Iterable, Iterator, Mapping, MutableMapping
 import contextlib
 import functools
 import logging
@@ -259,7 +259,12 @@ V = TypeVar("V")
 
 
 class LimitedSizeDict(MutableMapping[K, V]):
-    def __init__(self, other: Iterable[tuple[K, V]] = (), *, maxlen: int) -> None:
+    def __init__(
+        self,
+        other: Iterable[tuple[K, V]] | Mapping[K, V] = (),
+        *,
+        maxlen: int,
+    ) -> None:
         assert maxlen >= 0
 
         self._dict: OrderedDict[K, V] = OrderedDict(other)
@@ -287,7 +292,7 @@ class LimitedSizeDict(MutableMapping[K, V]):
         return len(self._dict)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self._dict})"
+        return f"{self.__class__.__name__}({self._dict}, maxlen={self.maxlen})"
 
 
 P = TypeVar("P")
