@@ -1372,7 +1372,7 @@ async def test_debouncing(dev):
         for i in range(10):
             new_packet = packet.replace(
                 timestamp=None,
-                tsn=packet.tsn + i,
+                # tsn=packet.tsn + i,
                 lqi=packet.lqi + i,
                 rssi=packet.rssi + i,
             )

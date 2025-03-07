@@ -65,7 +65,13 @@ FW_IMAGE = zigpy.ota.OtaImageWithMetadata(
 )
 
 
+GLOBAL_TSN = 0
+
+
 def make_packet(dev: zigpy.device.Device, cluster: Cluster, cmd_name: str, **kwargs):
+    global GLOBAL_TSN  # noqa: PLW0603
+    GLOBAL_TSN += 1
+
     req_hdr, req_cmd = cluster._create_request(
         general=False,
         command_id=cluster.commands_by_name[cmd_name].id,
@@ -81,7 +87,7 @@ def make_packet(dev: zigpy.device.Device, cluster: Cluster, cmd_name: str, **kwa
         src_ep=1,
         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
         dst_ep=1,
-        tsn=req_hdr.tsn,
+        tsn=GLOBAL_TSN,
         profile_id=260,
         cluster_id=cluster.cluster_id,
         data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),

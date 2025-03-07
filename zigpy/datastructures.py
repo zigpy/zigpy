@@ -310,7 +310,7 @@ class PacketReorder:
         return asyncio.get_running_loop()
 
     @staticmethod
-    def _range_mod(start: int, end: int, *, inclusive=False):
+    def _range_mod(start: int, end: int):
         if start <= end:
             yield from range(start, end)
         else:
@@ -320,7 +320,6 @@ class PacketReorder:
     def maybe_emit_packets(self) -> None:
         while self.expected_tsn in self.packets:
             sent, packet = self.packets[self.expected_tsn]
-            self.expected_tsn = (self.expected_tsn + 1) % 256
 
             if sent:
                 continue
@@ -331,6 +330,8 @@ class PacketReorder:
             if self.reordering_timer is not None:
                 with contextlib.suppress(ValueError):
                     self.missing_tsns.remove(self.expected_tsn)
+
+            self.expected_tsn = (self.expected_tsn + 1) % 256
 
         # Cancel the unnecessary reordering timer if we've emitted everything
         if self.reordering_timer is not None and not self.missing_tsns:
@@ -362,7 +363,7 @@ class PacketReorder:
 
         # Ignore duplicates
         if tsn in self.packets:
-            if self.packet_comparison_func(self.packets[tsn], packet):
+            if self.packet_comparison_func(self.packets[tsn][1], packet):
                 return
 
             # For colliding TSNs with different contents, we should accept the packet
@@ -382,7 +383,7 @@ class PacketReorder:
         if tsn == self.expected_tsn:
             # If everything is good, accept the packet
             pass
-        elif 0 < (tsn - self.expected_tsn) % 256 < self.context_window:
+        elif 0 < (tsn - self.expected_tsn) % 256 < self.window:
             # The TSN has rolled forward: we seemingly have missed a packet
             if self.reordering_timer is None:
                 self.reordering_timer = self._loop.call_later(
