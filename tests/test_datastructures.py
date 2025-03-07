@@ -423,7 +423,10 @@ def test_limited_size_dict_delete() -> None:
 
 def test_limited_size_dict_formatting() -> None:
     d: LimitedSizeDict[str, int] = LimitedSizeDict({"a": 1, "b": 2}, maxlen=2)
-    assert str(d) == "LimitedSizeDict(OrderedDict({'a': 1, 'b': 2}), maxlen=2)"
+    assert str(d) in (
+        "LimitedSizeDict(OrderedDict({'a': 1, 'b': 2}), maxlen=2)",
+        "LimitedSizeDict(OrderedDict([('a', 1), ('b', 2)]), maxlen=2)",
+    )
 
 
 def test_limited_size_dict_iteration() -> None:
