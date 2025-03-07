@@ -374,7 +374,9 @@ async def test_reschedulable_timeout_cancel():
 
 
 def test_limited_size_dict_insert_retrieve() -> None:
-    d = datastructures.LimitedSizeDict(maxlen=2)
+    d: datastructures.LimitedSizeDict[str, int] = datastructures.LimitedSizeDict(
+        maxlen=2
+    )
     d["a"] = 1
     d["b"] = 2
     assert len(d) == 2
@@ -383,7 +385,9 @@ def test_limited_size_dict_insert_retrieve() -> None:
 
 
 def test_limited_size_dict_overflow() -> None:
-    d = datastructures.LimitedSizeDict(maxlen=2)
+    d: datastructures.LimitedSizeDict[str, int] = datastructures.LimitedSizeDict(
+        maxlen=2
+    )
     d["a"] = 1
     d["b"] = 2
     d["c"] = 3  # should pop "a"
@@ -394,7 +398,9 @@ def test_limited_size_dict_overflow() -> None:
 
 
 def test_limited_size_dict_update_moves_key_to_end() -> None:
-    d = datastructures.LimitedSizeDict(maxlen=2)
+    d: datastructures.LimitedSizeDict[str, int] = datastructures.LimitedSizeDict(
+        maxlen=2
+    )
     d["x"] = 10
     d["y"] = 20
     d["x"] = 100  # "x" now most recently updated
@@ -406,7 +412,9 @@ def test_limited_size_dict_update_moves_key_to_end() -> None:
 
 
 def test_limited_size_dict_delete() -> None:
-    d = datastructures.LimitedSizeDict(maxlen=2)
+    d: datastructures.LimitedSizeDict[str, int] = datastructures.LimitedSizeDict(
+        maxlen=2
+    )
     d["a"] = 1
     d["b"] = 2
     del d["a"]

@@ -5,12 +5,12 @@ from __future__ import annotations
 import asyncio
 import bisect
 from collections import OrderedDict
-from collections.abc import MutableMapping
+from collections.abc import Awaitable, Iterable, Iterator, MutableMapping
 import contextlib
 import functools
 import logging
-import types
-import typing
+from types import TracebackType
+from typing import Callable, Literal, TypeVar
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class WrappedContextManager:
     def __init__(
         self,
         context_manager: contextlib.AbstractAsyncContextManager,
-        on_enter: typing.Callable[[], typing.Awaitable[None]],
+        on_enter: Callable[[], Awaitable[None]],
     ) -> None:
         self.on_enter = on_enter
         self.context_manager = context_manager
@@ -32,7 +32,7 @@ class WrappedContextManager:
         self,
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
-        traceback: types.TracebackType | None,
+        traceback: TracebackType | None,
     ) -> None:
         await self.context_manager.__aexit__(exc_type, exc, traceback)
 
@@ -109,7 +109,7 @@ class PriorityDynamicBoundedSemaphore:
         # Due to state, or FIFO rules (must allow others to run first).
         return self._value <= 0 or (any(not w.cancelled() for _, _, w in self._waiters))
 
-    async def acquire(self, priority: int = 0) -> typing.Literal[True]:
+    async def acquire(self, priority: int = 0) -> Literal[True]:
         """Acquire a semaphore.
 
         If the internal counter is larger than zero on entry,
@@ -184,7 +184,7 @@ class PriorityDynamicBoundedSemaphore:
         self,
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
-        traceback: types.TracebackType | None,
+        traceback: TracebackType | None,
     ) -> None:
         self.release()
 
@@ -214,7 +214,7 @@ DynamicBoundedSemaphore = PriorityDynamicBoundedSemaphore
 class ReschedulableTimeout:
     """Timeout object made to be efficiently rescheduled continuously."""
 
-    def __init__(self, callback: typing.Callable[[], None]) -> None:
+    def __init__(self, callback: Callable[[], None]) -> None:
         self._timer: asyncio.TimerHandle | None = None
         self._callback = callback
 
@@ -254,17 +254,22 @@ class ReschedulableTimeout:
             self._timer = None
 
 
-class LimitedSizeDict(MutableMapping):
-    def __init__(self, other=(), *, maxlen: int) -> None:
-        self._dict = OrderedDict(other)
-        self.maxlen = maxlen
+K = TypeVar("K")
+V = TypeVar("V")
 
+
+class LimitedSizeDict(MutableMapping[K, V]):
+    def __init__(self, other: Iterable[tuple[K, V]] = (), *, maxlen: int) -> None:
+        assert maxlen >= 0
+
+        self._dict: OrderedDict[K, V] = OrderedDict(other)
+        self.maxlen: int = maxlen
         self.update(other)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: K) -> V:
         return self._dict[key]
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: K, value: V) -> None:
         if key in self._dict:
             self._dict.move_to_end(key)
         elif len(self._dict) == self.maxlen:
@@ -272,14 +277,20 @@ class LimitedSizeDict(MutableMapping):
 
         self._dict[key] = value
 
-    def __delitem__(self, key) -> None:
+    def __delitem__(self, key: K) -> None:
         del self._dict[key]
 
-    def __iter__(self):
-        return self._dict.__iter__()
+    def __iter__(self) -> Iterator[K]:
+        return iter(self._dict)
 
     def __len__(self) -> int:
         return len(self._dict)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self._dict})"
+
+
+P = TypeVar("P")
 
 
 class PacketReorder:
@@ -289,20 +300,20 @@ class PacketReorder:
         self,
         window: int,
         reordering_timeout: float,
-        packet_callback,
-        packet_comparison_func,
+        packet_callback: Callable[[P], None],
+        packet_comparison_func: Callable[[P, P], bool],
     ) -> None:
         assert 0 <= window < 256
 
-        self.reordering_timeout = reordering_timeout
-        self.reordering_timer = None
+        self.reordering_timeout: float = reordering_timeout
+        self.reordering_timer: asyncio.TimerHandle | None = None
 
-        self.window = window
-        self.packet_callback = packet_callback
-        self.packet_comparison_func = packet_comparison_func
+        self.window: int = window
+        self.packet_callback: Callable[[P], None] = packet_callback
+        self.packet_comparison_func: Callable[[P, P], bool] = packet_comparison_func
 
         self.expected_tsn: int | None = None
-        self.packets = LimitedSizeDict(maxlen=window)
+        self.packets = LimitedSizeDict[int, tuple[bool, P]](maxlen=window)
         self.missing_tsns: list[int] = []
 
     @functools.cached_property
@@ -310,7 +321,7 @@ class PacketReorder:
         return asyncio.get_running_loop()
 
     @staticmethod
-    def _range_mod(start: int, end: int):
+    def _range_mod(start: int, end: int) -> Iterator[int]:
         if start <= end:
             yield from range(start, end)
         else:
@@ -318,6 +329,8 @@ class PacketReorder:
             yield from range(end)
 
     def maybe_emit_packets(self) -> None:
+        assert self.expected_tsn is not None
+
         while self.expected_tsn in self.packets:
             sent, packet = self.packets[self.expected_tsn]
 
@@ -354,8 +367,9 @@ class PacketReorder:
                 self.packets[tsn] = (True, packet)
 
         self.expected_tsn = (end + 1) % 256
+        self.reordering_timer = None
 
-    def handle_packet(self, tsn: int, packet: typing.Any) -> None:
+    def handle_packet(self, tsn: int, packet: P) -> None:
         # If we haven't seen a packet yet, we have no context and must accept the first
         # one as-is
         if self.expected_tsn is None:
