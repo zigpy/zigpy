@@ -49,7 +49,7 @@ if typing.TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 
-PACKET_DEBOUNCE_WINDOW = 10
+PACKET_REORDER_WINDOW = 10
 MAX_DEVICE_CONCURRENCY = 1
 
 AFTER_OTA_ATTR_READ_DELAY = 10
@@ -95,7 +95,23 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._skip_configuration: bool = False
         self._send_sequence: int = 0
 
-        self._packet_debouncer = zigpy.datastructures.Debouncer()
+        self._packet_reorderer = zigpy.datastructures.PacketReorder(
+            window=PACKET_REORDER_WINDOW,
+            reordering_timeout=5.0,
+            packet_callback=self._packet_received,
+            packet_comparison_func=(
+                lambda p1, p2: (
+                    p1.src == p2.src
+                    and p1.src_ep == p2.src_ep
+                    and p1.dst == p2.dst
+                    and p1.dst_ep == p2.dst_ep
+                    and p1.tsn == p2.tsn
+                    and p1.profile_id == p2.profile_id
+                    and p1.cluster_id == p2.cluster_id
+                    and p1.data == p2.data
+                )
+            ),
+        )
         self._concurrent_requests_semaphore = (
             zigpy.datastructures.PriorityDynamicBoundedSemaphore(MAX_DEVICE_CONCURRENCY)
         )
@@ -434,14 +450,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if packet.rssi is not None:
             self.rssi = packet.rssi
 
-        if self._packet_debouncer.filter(
-            # Be conservative with deduplication
-            obj=packet.replace(timestamp=None, tsn=None, lqi=None, rssi=None),
-            expire_in=PACKET_DEBOUNCE_WINDOW,
-        ):
-            self.debug("Filtering duplicate packet")
-            return
+        self._packet_reorderer.handle_packet(packet.tsn, packet)
 
+    def _packet_received(self, packet: t.ZigbeePacket) -> None:
         # Filter out packets that refer to unknown endpoints or clusters
         if packet.src_ep not in self.endpoints:
             self.debug(

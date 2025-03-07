@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import bisect
+from collections import OrderedDict
+from collections.abc import MutableMapping
 import contextlib
 import functools
+import logging
 import types
 import typing
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class WrappedContextManager:
@@ -249,63 +254,148 @@ class ReschedulableTimeout:
             self._timer = None
 
 
-class Debouncer:
-    """Generic debouncer supporting per-invocation expiration."""
+class LimitedSizeDict(MutableMapping):
+    def __init__(self, other=(), *, maxlen: int) -> None:
+        self._dict = OrderedDict(other)
+        self.maxlen = maxlen
 
-    def __init__(self):
-        self._times: dict[typing.Any, float] = {}
-        self._queue: list[tuple[float, int, typing.Any]] = []
+        self.update(other)
 
-        self._last_time: int = 0
-        self._dedup_counter: int = 0
+    def __getitem__(self, key):
+        return self._dict[key]
+
+    def __setitem__(self, key, value):
+        if key in self._dict:
+            self._dict.move_to_end(key)
+        elif len(self._dict) == self.maxlen:
+            self._dict.popitem(last=False)
+
+        self._dict[key] = value
+
+    def __delitem__(self, key) -> None:
+        del self._dict[key]
+
+    def __iter__(self):
+        return self._dict.__iter__()
+
+    def __len__(self) -> int:
+        return len(self._dict)
+
+
+class PacketReorder:
+    """Packet reorderer."""
+
+    def __init__(
+        self,
+        window: int,
+        reordering_timeout: float,
+        packet_callback,
+        packet_comparison_func,
+    ) -> None:
+        assert 0 <= window < 256
+
+        self.reordering_timeout = reordering_timeout
+        self.reordering_timer = None
+
+        self.window = window
+        self.packet_callback = packet_callback
+        self.packet_comparison_func = packet_comparison_func
+
+        self.expected_tsn: int | None = None
+        self.packets = LimitedSizeDict(maxlen=window)
+        self.missing_tsns: list[int] = []
 
     @functools.cached_property
     def _loop(self) -> asyncio.BaseEventLoop:
         return asyncio.get_running_loop()
 
-    def clean(self, now: float | None = None) -> None:
-        """Clean up stale timers."""
-        if now is None:
-            now = self._loop.time()
+    @staticmethod
+    def _range_mod(start: int, end: int, *, inclusive=False):
+        if start <= end:
+            yield from range(start, end)
+        else:
+            yield from range(start, 256)
+            yield from range(end)
 
-        # We store the negative expiration time to ensure we can pop expiring objects
-        while self._queue and -self._queue[-1][0] < now:
-            _, _, obj = self._queue.pop()
-            self._times.pop(obj)
+    def maybe_emit_packets(self) -> None:
+        while self.expected_tsn in self.packets:
+            sent, packet = self.packets[self.expected_tsn]
+            self.expected_tsn = (self.expected_tsn + 1) % 256
 
-    def is_filtered(self, obj: typing.Any, now: float | None = None) -> bool:
-        """Check if an object will be filtered."""
-        if now is None:
-            now = self._loop.time()
+            if sent:
+                continue
 
-        # Clean up stale timers
-        self.clean(now)
+            self.packet_callback(packet)
+            self.packets[self.expected_tsn] = (True, packet)
 
-        # If an object still exists after cleaning, it won't be expired
-        return obj in self._times
+            if self.reordering_timer is not None:
+                with contextlib.suppress(ValueError):
+                    self.missing_tsns.remove(self.expected_tsn)
 
-    def filter(self, obj: typing.Any, expire_in: float) -> bool:
-        """Check if an object should be filtered. If not, store it."""
-        now = self._loop.time()
+        # Cancel the unnecessary reordering timer if we've emitted everything
+        if self.reordering_timer is not None and not self.missing_tsns:
+            self.reordering_timer.cancel()
+            self.reordering_timer = None
 
-        # For platforms with low-resolution clocks, we need to make sure that `obj` will
-        # never be compared by `heapq`!
-        if now > self._last_time:
-            self._last_time = now
-            self._dedup_counter = 0
+    def on_reordering_timeout(self) -> None:
+        assert self.missing_tsns
 
-        self._dedup_counter += 1
+        start = self.missing_tsns[0]
+        end = self.missing_tsns[-1]
 
-        # If the object is filtered, do nothing
-        if self.is_filtered(obj, now=now):
-            return True
+        for tsn in self._range_mod(start, end):
+            if tsn not in self.packets:
+                continue
 
-        # Otherwise, queue it
-        self._times[obj] = now + expire_in
-        bisect.insort_right(self._queue, (-(now + expire_in), self._dedup_counter, obj))
+            sent, packet = self.packets[tsn]
+            if not sent:
+                self.packet_callback(packet)
+                self.packets[tsn] = (True, packet)
 
-        return False
+        self.expected_tsn = (end + 1) % 256
 
-    def __repr__(self) -> str:
-        """String representation of the debouncer."""
-        return f"<{self.__class__.__name__} [tracked:{len(self._queue)}]>"
+    def handle_packet(self, tsn: int, packet: typing.Any) -> None:
+        # If we haven't seen a packet yet, we have no context and must accept the first
+        # one as-is
+        if self.expected_tsn is None:
+            self.expected_tsn = tsn
+
+        # Ignore duplicates
+        if tsn in self.packets:
+            if self.packet_comparison_func(self.packets[tsn], packet):
+                return
+
+            # For colliding TSNs with different contents, we should accept the packet
+            _LOGGER.warning(
+                "Device sent two packets with the same TSN=%d but different contents: %r != %r",
+                tsn,
+                packet,
+                self.packets[tsn],
+            )
+            self.packets[tsn] = (True, packet)
+            self.packet_callback(packet)
+            return
+
+        # Track our packet
+        self.packets[tsn] = (False, packet)
+
+        if tsn == self.expected_tsn:
+            # If everything is good, accept the packet
+            pass
+        elif 0 < (tsn - self.expected_tsn) % 256 < self.context_window:
+            # The TSN has rolled forward: we seemingly have missed a packet
+            if self.reordering_timer is None:
+                self.reordering_timer = self._loop.call_later(
+                    self.reordering_timeout,
+                    self.on_reordering_timeout,
+                )
+
+                # Keep track of the TSNs we are missing
+                self.missing_tsns.clear()
+                self.missing_tsns.extend(self._range_mod(self.expected_tsn, tsn + 1))
+        else:
+            # The TSN has rolled "back" BUT this isn't a duplicate packet (or is so old
+            # that we cannot identify it as a duplicate): we must accept it
+            self.expected_tsn = tsn
+
+        self.maybe_emit_packets()
