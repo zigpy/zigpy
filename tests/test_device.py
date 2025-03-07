@@ -550,7 +550,12 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     )
     dev.update_firmware = MagicMock(wraps=dev.update_firmware)
 
+    TSN = 0
+
     def make_packet(cmd_name: str, **kwargs):
+        nonlocal TSN
+        TSN = (TSN + 1) % 256
+
         req_hdr, req_cmd = cluster._create_request(
             general=False,
             command_id=cluster.commands_by_name[cmd_name].id,
@@ -566,7 +571,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
             src_ep=1,
             dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
             dst_ep=1,
-            tsn=req_hdr.tsn,
+            tsn=TSN,
             profile_id=260,
             cluster_id=cluster.cluster_id,
             data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
@@ -705,6 +710,9 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                     },
                 )
 
+                nonlocal TSN
+                TSN = (TSN + 1) % 256
+
                 dev.application.packet_received(
                     t.ZigbeePacket(
                         src=t.AddrModeAddress(
@@ -713,7 +721,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                         src_ep=1,
                         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
                         dst_ep=1,
-                        tsn=hdr.tsn,
+                        tsn=TSN,
                         profile_id=260,
                         cluster_id=cluster.cluster_id,
                         data=t.SerializableBytes(
@@ -929,7 +937,12 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     )
     dev.update_firmware = MagicMock(wraps=dev.update_firmware)
 
+    TSN = 0
+
     def make_packet(cmd_name: str, **kwargs):
+        nonlocal TSN
+        TSN = (TSN + 1) % 256
+
         req_hdr, req_cmd = cluster._create_request(
             general=False,
             command_id=cluster.commands_by_name[cmd_name].id,
@@ -945,7 +958,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
             src_ep=1,
             dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
             dst_ep=1,
-            tsn=req_hdr.tsn,
+            tsn=TSN,
             profile_id=260,
             cluster_id=cluster.cluster_id,
             data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
@@ -1084,6 +1097,9 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
                     },
                 )
 
+                nonlocal TSN
+                TSN = (TSN + 1) % 256
+
                 dev.application.packet_received(
                     t.ZigbeePacket(
                         src=t.AddrModeAddress(
@@ -1092,7 +1108,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
                         src_ep=1,
                         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
                         dst_ep=1,
-                        tsn=hdr.tsn,
+                        tsn=TSN,
                         profile_id=260,
                         cluster_id=cluster.cluster_id,
                         data=t.SerializableBytes(
@@ -1248,8 +1264,6 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 async def test_deserialize_backwards_compat(dev):
     """Test that deserialization uses the method if it is overloaded."""
-    dev._packet_debouncer.filter = MagicMock(return_value=False)
-
     packet = t.ZigbeePacket(
         profile_id=260,
         cluster_id=Basic.cluster_id,
@@ -1271,11 +1285,11 @@ async def test_deserialize_backwards_compat(dev):
     ep = dev.add_endpoint(1)
     ep.add_input_cluster(Basic.cluster_id)
 
-    dev.packet_received(packet)
+    dev.packet_received(packet.replace(tsn=1))
 
     # Replace the method
     dev.deserialize = MagicMock(side_effect=dev.deserialize)
-    dev.packet_received(packet)
+    dev.packet_received(packet.replace(tsn=2))
 
     assert dev.deserialize.call_count == 1
 

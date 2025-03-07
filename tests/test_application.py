@@ -1134,8 +1134,6 @@ def test_get_device_with_address_nwk(app, device):
 
 async def test_request_future_matching(app, make_initialized_device):
     device = make_initialized_device(app)
-    device._packet_debouncer.filter = MagicMock(return_value=False)
-
     ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
 
     req_hdr, req_cmd = ota._create_request(
@@ -1158,7 +1156,7 @@ async def test_request_future_matching(app, make_initialized_device):
         src_ep=1,
         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
         dst_ep=1,
-        tsn=req_hdr.tsn,
+        tsn=1,
         profile_id=260,
         cluster_id=ota.cluster_id,
         data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
@@ -1178,16 +1176,16 @@ async def test_request_future_matching(app, make_initialized_device):
             assert app._req_listeners[device]
 
             # Listeners are resolved FIFO
-            app.packet_received(packet)
+            app.packet_received(packet.replace(tsn=1))
             assert rsp_fut.done()
             assert not rsp_fut2.done()
 
-            app.packet_received(packet)
+            app.packet_received(packet.replace(tsn=2))
             assert rsp_fut.done()
             assert rsp_fut2.done()
 
             # Unhandled packets are ignored
-            app.packet_received(packet)
+            app.packet_received(packet.replace(tsn=3))
 
             rsp_hdr, rsp_cmd = await rsp_fut
             assert rsp_hdr == req_hdr
@@ -1199,7 +1197,6 @@ async def test_request_future_matching(app, make_initialized_device):
 
 async def test_request_callback_matching(app, make_initialized_device):
     device = make_initialized_device(app)
-    device._packet_debouncer.filter = MagicMock(return_value=False)
     ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
 
     req_hdr, req_cmd = ota._create_request(
@@ -1222,7 +1219,7 @@ async def test_request_callback_matching(app, make_initialized_device):
         src_ep=1,
         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
         dst_ep=1,
-        tsn=req_hdr.tsn,
+        tsn=1,
         profile_id=260,
         cluster_id=ota.cluster_id,
         data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
@@ -1239,9 +1236,9 @@ async def test_request_callback_matching(app, make_initialized_device):
     ):
         assert app._req_listeners[device]
 
-        asyncio.get_running_loop().call_soon(app.packet_received, packet)
-        asyncio.get_running_loop().call_soon(app.packet_received, packet)
-        asyncio.get_running_loop().call_soon(app.packet_received, packet)
+        asyncio.get_running_loop().call_soon(app.packet_received, packet.replace(tsn=1))
+        asyncio.get_running_loop().call_soon(app.packet_received, packet.replace(tsn=2))
+        asyncio.get_running_loop().call_soon(app.packet_received, packet.replace(tsn=3))
 
         await asyncio.sleep(0.1)
 
