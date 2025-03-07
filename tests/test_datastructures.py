@@ -3,12 +3,18 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from zigpy import datastructures
+from zigpy.datastructures import (
+    LimitedSizeDict,
+    PacketReorder,
+    PriorityDynamicBoundedSemaphore,
+    PriorityLock,
+    ReschedulableTimeout,
+)
 
 
 async def test_dynamic_bounded_semaphore_simple_locking():
     """Test simple, serial locking/unlocking."""
-    sem = datastructures.PriorityDynamicBoundedSemaphore()
+    sem = PriorityDynamicBoundedSemaphore()
 
     assert "unlocked" not in repr(sem) and "locked" in repr(sem)
 
@@ -56,7 +62,7 @@ async def test_dynamic_bounded_semaphore_simple_locking():
 
 async def test_dynamic_bounded_semaphore_multiple_locking():
     """Test multiple locking/unlocking."""
-    sem = datastructures.PriorityDynamicBoundedSemaphore(5)
+    sem = PriorityDynamicBoundedSemaphore(5)
 
     assert sem.value == 5
     assert not sem.locked()
@@ -85,7 +91,7 @@ async def test_dynamic_bounded_semaphore_multiple_locking():
 
 async def test_dynamic_bounded_semaphore_hanging_bug():
     """Test semaphore hanging bug."""
-    sem = datastructures.PriorityDynamicBoundedSemaphore(1)
+    sem = PriorityDynamicBoundedSemaphore(1)
 
     async def c1():
         async with sem:
@@ -117,7 +123,7 @@ def test_dynamic_bounded_semaphore_multiple_event_loops():
             await asyncio.sleep(0.1)
 
     async def make_semaphore():
-        sem = datastructures.PriorityDynamicBoundedSemaphore(1)
+        sem = PriorityDynamicBoundedSemaphore(1)
 
         # The loop reference is lazily created so we need to actually lock the semaphore
         await asyncio.gather(test_semaphore(sem), test_semaphore(sem))
@@ -139,7 +145,7 @@ def test_dynamic_bounded_semaphore_multiple_event_loops():
 async def test_dynamic_bounded_semaphore_runtime_limit_increase():
     """Test changing the max_value at runtime."""
 
-    sem = datastructures.PriorityDynamicBoundedSemaphore(2)
+    sem = PriorityDynamicBoundedSemaphore(2)
 
     def set_limit(n):
         sem.max_value = n
@@ -192,7 +198,7 @@ async def test_dynamic_bounded_semaphore_runtime_limit_increase():
 async def test_dynamic_bounded_semaphore_errors():
     """Test semaphore handling errors and cancellation."""
 
-    sem = datastructures.PriorityDynamicBoundedSemaphore(1)
+    sem = PriorityDynamicBoundedSemaphore(1)
 
     def set_limit(n):
         sem.max_value = n
@@ -239,7 +245,7 @@ async def test_dynamic_bounded_semaphore_errors():
 async def test_dynamic_bounded_semaphore_cancellation():
     """Test semaphore handling errors and cancellation."""
 
-    sem = datastructures.PriorityDynamicBoundedSemaphore(2)
+    sem = PriorityDynamicBoundedSemaphore(2)
 
     async def acquire():
         async with sem:
@@ -276,7 +282,7 @@ async def test_dynamic_bounded_semaphore_cancellation():
 async def test_priority_lock():
     """Test priority lock."""
 
-    lock = datastructures.PriorityLock()
+    lock = PriorityLock()
 
     with pytest.raises(ValueError):
         lock.max_value = 2
@@ -339,7 +345,7 @@ async def test_priority_lock():
 
 async def test_reschedulable_timeout():
     callback = Mock()
-    timeout = datastructures.ReschedulableTimeout(callback)
+    timeout = ReschedulableTimeout(callback)
 
     timeout.reschedule(0.1)
     assert len(callback.mock_calls) == 0
@@ -351,7 +357,7 @@ async def test_reschedulable_timeout():
 
 async def test_reschedulable_timeout_reschedule():
     callback = Mock()
-    timeout = datastructures.ReschedulableTimeout(callback)
+    timeout = ReschedulableTimeout(callback)
 
     timeout.reschedule(0.1)
     timeout.reschedule(0.2)
@@ -363,7 +369,7 @@ async def test_reschedulable_timeout_reschedule():
 
 async def test_reschedulable_timeout_cancel():
     callback = Mock()
-    timeout = datastructures.ReschedulableTimeout(callback)
+    timeout = ReschedulableTimeout(callback)
 
     timeout.reschedule(0.1)
     assert len(callback.mock_calls) == 0
@@ -374,9 +380,7 @@ async def test_reschedulable_timeout_cancel():
 
 
 def test_limited_size_dict_insert_retrieve() -> None:
-    d: datastructures.LimitedSizeDict[str, int] = datastructures.LimitedSizeDict(
-        maxlen=2
-    )
+    d: LimitedSizeDict[str, int] = LimitedSizeDict(maxlen=2)
     d["a"] = 1
     d["b"] = 2
     assert len(d) == 2
@@ -385,9 +389,7 @@ def test_limited_size_dict_insert_retrieve() -> None:
 
 
 def test_limited_size_dict_overflow() -> None:
-    d: datastructures.LimitedSizeDict[str, int] = datastructures.LimitedSizeDict(
-        maxlen=2
-    )
+    d: LimitedSizeDict[str, int] = LimitedSizeDict(maxlen=2)
     d["a"] = 1
     d["b"] = 2
     d["c"] = 3  # should pop "a"
@@ -398,9 +400,7 @@ def test_limited_size_dict_overflow() -> None:
 
 
 def test_limited_size_dict_update_moves_key_to_end() -> None:
-    d: datastructures.LimitedSizeDict[str, int] = datastructures.LimitedSizeDict(
-        maxlen=2
-    )
+    d: LimitedSizeDict[str, int] = LimitedSizeDict(maxlen=2)
     d["x"] = 10
     d["y"] = 20
     d["x"] = 100  # "x" now most recently updated
@@ -412,9 +412,7 @@ def test_limited_size_dict_update_moves_key_to_end() -> None:
 
 
 def test_limited_size_dict_delete() -> None:
-    d: datastructures.LimitedSizeDict[str, int] = datastructures.LimitedSizeDict(
-        maxlen=2
-    )
+    d: LimitedSizeDict[str, int] = LimitedSizeDict(maxlen=2)
     d["a"] = 1
     d["b"] = 2
     del d["a"]
@@ -425,7 +423,7 @@ def test_limited_size_dict_delete() -> None:
 
 def test_packet_reorder_in_order() -> None:
     callback = Mock()
-    reorder = datastructures.PacketReorder(
+    reorder = PacketReorder(
         window=3,
         reordering_timeout=1.0,
         packet_callback=callback,
@@ -440,7 +438,7 @@ def test_packet_reorder_in_order() -> None:
 
 def test_packet_reorder_huge_skip() -> None:
     callback = Mock()
-    reorder = datastructures.PacketReorder(
+    reorder = PacketReorder(
         window=20,
         reordering_timeout=1.0,
         packet_callback=callback,
@@ -459,7 +457,7 @@ def test_packet_reorder_huge_skip() -> None:
 
 async def test_packet_reorder_out_of_order() -> None:
     callback = Mock()
-    reorder = datastructures.PacketReorder(
+    reorder = PacketReorder(
         window=10,
         reordering_timeout=0.1,
         packet_callback=callback,
@@ -488,7 +486,7 @@ async def test_packet_reorder_out_of_order() -> None:
 
 async def test_packet_reorder_timeout() -> None:
     callback = Mock()
-    reorder = datastructures.PacketReorder(
+    reorder = PacketReorder(
         window=10,
         reordering_timeout=0.1,
         packet_callback=callback,
