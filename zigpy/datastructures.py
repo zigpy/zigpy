@@ -363,6 +363,11 @@ class PacketReorder:
 
             sent, packet = self.packets[tsn]
             if not sent:
+                _LOGGER.warning(
+                    "After missing TSNs %s, emitting packet out-of-order %r",
+                    self.missing_tsns,
+                    packet,
+                )
                 self.packet_callback(packet)
                 self.packets[tsn] = (True, packet)
 
@@ -399,6 +404,12 @@ class PacketReorder:
             pass
         elif 0 < (tsn - self.expected_tsn) % 256 < self.window:
             # The TSN has rolled forward: we seemingly have missed a packet
+            _LOGGER.warning(
+                "Expected TSN=%s, got TSN=%s, starting reordering timer for %0.2f",
+                self.expected_tsn,
+                tsn,
+                self.reordering_timeout,
+            )
             if self.reordering_timer is None:
                 self.reordering_timer = self._loop.call_later(
                     self.reordering_timeout,
@@ -411,6 +422,12 @@ class PacketReorder:
         else:
             # The TSN has rolled "back" BUT this isn't a duplicate packet (or is so old
             # that we cannot identify it as a duplicate): we must accept it
+            _LOGGER.warning(
+                "TSN has changed too much (%d -> %d), accepting new packet: %r",
+                self.expected_tsn,
+                tsn,
+                packet,
+            )
             self.expected_tsn = tsn
 
         self.maybe_emit_packets()
