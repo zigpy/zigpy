@@ -199,7 +199,6 @@ class OTAManager:
                 )
         except Exception as ex:  # noqa: BLE001
             self.device.debug("OTA image_block handler exception", exc_info=ex)
-            self._finish(foundation.Status.FAILURE)
 
     async def _image_page_req(
         self, hdr: foundation.ZCLHeader, command: Ota.ImagePageCommand
@@ -255,7 +254,6 @@ class OTAManager:
                     )
             except Exception as ex:  # noqa: BLE001
                 self.device.debug("OTA image_page handler exception", exc_info=ex)
-                self._finish(foundation.Status.FAILURE)
                 return
 
             # Delay according to what the device asks
