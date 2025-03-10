@@ -184,7 +184,10 @@ class OTAImage(t.Struct, BaseOTAImage):
         elements_len = hdr.image_size - hdr.header_length
 
         if elements_len > len(data):
-            raise ValueError(f"Data is too short for {cls}")
+            raise ValueError(
+                f"Data is too short for {cls}: expected at least {hdr.image_size} -"
+                f" {hdr.header_length} = {elements_len} bytes, got {len(data)}"
+            )
 
         image = cls(header=hdr, subelements=[])
         element_data, data = data[:elements_len], data[elements_len:]

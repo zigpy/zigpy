@@ -327,3 +327,80 @@ async def test_ota_concurrent_fetching() -> None:
     # Concurrent requests were combined
     assert len(load_index.mock_calls) == 1
     assert images1 == images2
+
+
+async def test_ota_matching_hardware_version_changes_after_download() -> None:
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    query_cmd = Ota.ServerCommandDefs.query_next_image.schema(
+        field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
+        manufacturer_code=0x1234,
+        image_type=0xABCD,
+        current_file_version=1,
+        hardware_version=1,
+    )
+
+    ota_hdr_01 = zigpy.ota.image.OTAImageHeader(
+        upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
+        file_version=query_cmd.current_file_version + 1,
+        image_type=query_cmd.image_type,
+        manufacturer_id=query_cmd.manufacturer_code,
+        header_version=256,
+        header_length=60,
+        field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
+        minimum_hardware_version=0,
+        maximum_hardware_version=1,
+        stack_version=2,
+        header_string="This is a test header!",
+        image_size=56 + 2 + 4 + 4 + 10,
+    )
+
+    ota_hdr_27 = zigpy.ota.image.OTAImageHeader(
+        upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
+        file_version=query_cmd.current_file_version + 1,
+        image_type=query_cmd.image_type,
+        manufacturer_id=query_cmd.manufacturer_code,
+        header_version=256,
+        header_length=60,
+        field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
+        minimum_hardware_version=2,
+        maximum_hardware_version=7,
+        stack_version=2,
+        header_string="This is a test header!",
+        image_size=56 + 2 + 4 + 4 + 10,
+    )
+
+    index = [
+        SelfContainedOtaImageMetadata(
+            file_version=query_cmd.current_file_version + 1,
+            manufacturer_id=query_cmd.manufacturer_code,
+            test_data=zigpy.ota.image.OTAImage(
+                header=ota_hdr_01,
+                subelements=[
+                    zigpy.ota.image.SubElement(tag_id=0x0000, data=b"Firmware 1")
+                ],
+            ).serialize(),
+        ),
+        SelfContainedOtaImageMetadata(
+            file_version=query_cmd.current_file_version + 1,
+            manufacturer_id=query_cmd.manufacturer_code,
+            test_data=zigpy.ota.image.OTAImage(
+                header=ota_hdr_27,
+                subelements=[
+                    zigpy.ota.image.SubElement(tag_id=0x0000, data=b"Firmware 2")
+                ],
+            ).serialize(),
+        ),
+    ]
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.register_provider(SelfContainedProvider(index))
+
+    # Only the first image is considered
+    images = await ota.get_ota_images(device, query_cmd)
+    assert images.upgrades == (
+        zigpy.ota.OtaImageWithMetadata(
+            metadata=index[0],
+            firmware=zigpy.ota.image.OTAImage.deserialize(index[0].test_data)[0],
+        ),
+    )
