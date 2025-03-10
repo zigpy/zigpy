@@ -469,7 +469,11 @@ class OTA:
                 _LOGGER.debug("Caching image %s", img)
                 self._image_cache[img.metadata] = img
 
-            upgrades[img.metadata] = img
+            if not img.check_compatibility(device, query_cmd):
+                # Ignore images that become incompatible once downloaded
+                del upgrades[img.metadata]
+            else:
+                upgrades[img.metadata] = img
 
         # As a final pass, identify images with identical versions and specificity but
         # differing contents
