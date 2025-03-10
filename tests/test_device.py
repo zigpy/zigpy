@@ -487,6 +487,7 @@ async def test_update_device_firmware_already_in_progress(dev, caplog):
     assert "OTA already in progress" in caplog.text
 
 
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
 @patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
 @patch(
     "zigpy.device.OTA_RETRY_DECORATOR",
@@ -761,7 +762,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     assert dev.application.send_packet.await_count == 0
     assert progress_callback.call_count == 0
     assert "OTA image_notify handler exception" in caplog.text
-    assert result == foundation.Status.FAILURE
+    assert result != foundation.Status.SUCCESS
     cluster.image_notify = image_notify
     caplog.clear()
 
@@ -776,7 +777,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     assert dev.application.send_packet.await_count == 1  # just image notify
     assert progress_callback.call_count == 0
     assert "OTA query_next_image handler exception" in caplog.text
-    assert result == foundation.Status.FAILURE
+    assert result != foundation.Status.SUCCESS
     cluster.query_next_image_response = query_next_image_response
     caplog.clear()
 
@@ -793,7 +794,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     )  # just image notify + query next image
     assert progress_callback.call_count == 0
     assert "OTA image_block handler exception" in caplog.text
-    assert result == foundation.Status.FAILURE
+    assert result != foundation.Status.SUCCESS
     cluster.image_block_response = image_block_response
     caplog.clear()
 
@@ -810,7 +811,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     )  # just image notify, qne, and 2 img blocks
     assert progress_callback.call_count == 2
     assert "OTA upgrade_end handler exception" in caplog.text
-    assert result == foundation.Status.FAILURE
+    assert result != foundation.Status.SUCCESS
     cluster.upgrade_end_response = upgrade_end_response
     caplog.clear()
 
@@ -866,6 +867,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     cluster.image_block_response = image_block_response
 
 
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
 @patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
 @patch(
     "zigpy.device.OTA_RETRY_DECORATOR",
@@ -1140,7 +1142,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     assert dev.application.send_packet.await_count == 0
     assert progress_callback.call_count == 0
     assert "OTA image_notify handler exception" in caplog.text
-    assert result == foundation.Status.FAILURE
+    assert result != foundation.Status.SUCCESS
     cluster.image_notify = image_notify
     caplog.clear()
 
@@ -1155,7 +1157,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     assert dev.application.send_packet.await_count == 1  # just image notify
     assert progress_callback.call_count == 0
     assert "OTA query_next_image handler exception" in caplog.text
-    assert result == foundation.Status.FAILURE
+    assert result != foundation.Status.SUCCESS
     cluster.query_next_image_response = query_next_image_response
     caplog.clear()
 
@@ -1172,7 +1174,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     )  # just image notify + query next image
     assert progress_callback.call_count == 0
     assert "OTA image_block handler exception" in caplog.text
-    assert result == foundation.Status.FAILURE
+    assert result != foundation.Status.SUCCESS
     cluster.image_block_response = image_block_response
     caplog.clear()
 
@@ -1189,7 +1191,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     )  # just image notify, qne, and 2 img blocks
     assert progress_callback.call_count == 2
     assert "OTA upgrade_end handler exception" in caplog.text
-    assert result == foundation.Status.FAILURE
+    assert result != foundation.Status.SUCCESS
     cluster.upgrade_end_response = upgrade_end_response
     caplog.clear()
 

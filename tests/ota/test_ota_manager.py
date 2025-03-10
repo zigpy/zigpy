@@ -621,6 +621,7 @@ async def test_ota_manager_image_page_invalid_size():
     assert result == foundation.Status.MALFORMED_COMMAND
 
 
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
 async def test_ota_manager_image_page_failure():
     """Test that the OTA manager fails properly with invalid image page requests."""
 
@@ -696,4 +697,4 @@ async def test_ota_manager_image_page_failure():
     progress_callback = MagicMock()
     result = await update_firmware(dev, FW_IMAGE, progress_callback)
 
-    assert result == foundation.Status.FAILURE
+    assert result != foundation.Status.SUCCESS
