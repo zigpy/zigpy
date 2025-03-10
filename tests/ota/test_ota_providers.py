@@ -88,6 +88,9 @@ def _test_z2m_index_entry(obj: dict, meta: providers.BaseOtaImageMetadata) -> bo
     assert meta.manufacturer_id == obj.pop("manufacturerCode")
     assert meta.min_current_file_version == obj.pop("minFileVersion", None)
     assert meta.max_current_file_version == obj.pop("maxFileVersion", None)
+    assert meta.min_hardware_version == obj.pop("hardwareVersionMin", None)
+    assert meta.max_hardware_version == obj.pop("hardwareVersionMax", None)
+    assert meta.changelog == obj.pop("releaseNotes", None)
 
     if "modelId" in obj:
         assert meta.model_names == (obj.pop("modelId"),)
@@ -132,6 +135,10 @@ async def test_local_z2m_provider():
         else:
             pytest.fail(f"Unexpected metadata type: {meta!r}")
 
+        obj.pop("fileName", None)
+        obj.pop("otaHeaderString", None)
+        obj.pop("originalUrl", None)
+
         assert not obj
 
 
@@ -162,6 +169,9 @@ async def test_remote_z2m_provider():
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.url == obj.pop("url")
         obj.pop("path", None)
+        obj.pop("fileName", None)
+        obj.pop("otaHeaderString", None)
+        obj.pop("originalUrl", None)
 
         assert not obj
 
