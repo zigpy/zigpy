@@ -572,6 +572,8 @@ class BaseZ2MProvider(BaseOtaProvider):
                 "model_names": tuple([fw["modelId"]] if "modelId" in fw else []),
                 "min_current_file_version": fw.get("minFileVersion"),
                 "max_current_file_version": fw.get("maxFileVersion"),
+                "min_hardware_version": fw.get("hardwareVersionMin"),
+                "max_hardware_version": fw.get("hardwareVersionMax"),
                 "source": "",  # Set in a subclass
             }
 
