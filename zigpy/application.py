@@ -834,6 +834,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         elif not expect_reply:
             tx_options |= t.TransmitOptions.ACK
 
+        # Performing retries within zigpy allows us to reprioritize requests quickly
+        # without locking up for ~30s when communicating with end devices
         for retry_attempt in range(MAX_RETRIES):
             try:
                 await self.send_packet(
