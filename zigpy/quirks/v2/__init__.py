@@ -336,6 +336,7 @@ class ZCLEnumMetadata(EntityMetadata):
     enum: type[Enum] = attrs.field()
     attribute_name: str = attrs.field()
     reporting_config: ReportingConfig | None = attrs.field(default=None)
+    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -350,6 +351,7 @@ class ZCLSensorMetadata(EntityMetadata):
     unit: str | None = attrs.field(default=None)
     device_class: SensorDeviceClass | None = attrs.field(default=None)
     state_class: SensorStateClass | None = attrs.field(default=None)
+    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -362,6 +364,7 @@ class SwitchMetadata(EntityMetadata):
     invert_attribute_name: str | None = attrs.field(default=None)
     off_value: int = attrs.field(default=0)
     on_value: int = attrs.field(default=1)
+    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -377,6 +380,7 @@ class NumberMetadata(EntityMetadata):
     mode: str | None = attrs.field(default=None)
     multiplier: float | None = attrs.field(default=None)
     device_class: NumberDeviceClass | None = attrs.field(default=None)
+    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -387,6 +391,7 @@ class BinarySensorMetadata(EntityMetadata):
     attribute_converter: typing.Callable[[Any], Any] | None = attrs.field(default=None)
     reporting_config: ReportingConfig | None = attrs.field(default=None)
     device_class: BinarySensorDeviceClass | None = attrs.field(default=None)
+    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -395,6 +400,7 @@ class WriteAttributeButtonMetadata(EntityMetadata):
 
     attribute_name: str = attrs.field()
     attribute_value: int = attrs.field()
+    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -404,6 +410,7 @@ class ZCLCommandButtonMetadata(EntityMetadata):
     command_name: str = attrs.field()
     args: tuple = attrs.field(default=tuple)
     kwargs: frozendict[str, Any] = attrs.field(default=frozendict, converter=frozendict)
+    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -559,6 +566,16 @@ class QuirkBuilder:
             self.applies_to(manufacturer, model)
 
         UNBUILT_QUIRK_BUILDERS.append(self)
+
+    def _add_entity_metadata(self, entity_metadata: EntityMetadata) -> QuirkBuilder:
+        """Register new entity metadata and validate config."""
+        if entity_metadata.primary and any(
+            entity.primary for entity in self.entity_metadata
+        ):
+            raise ValueError("Only one primary entity can be defined per device")
+
+        self.entity_metadata.append(entity_metadata)
+        return self
 
     def applies_to(self, manufacturer: str, model: str) -> QuirkBuilder:
         """Register this quirks v2 entry for the specified manufacturer and model."""
@@ -772,12 +789,13 @@ class QuirkBuilder:
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
+        primary: bool | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing ZCLEnumMetadata and return self.
 
         This method allows exposing an enum based entity in Home Assistant.
         """
-        self.entity_metadata.append(
+        self._add_entity_metadata(
             ZCLEnumMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
@@ -792,6 +810,7 @@ class QuirkBuilder:
                 fallback_name=fallback_name,
                 enum=enum_class,
                 attribute_name=attribute_name,
+                primary=primary,
             )
         )
         return self
@@ -815,12 +834,13 @@ class QuirkBuilder:
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
+        primary: bool | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing ZCLSensorMetadata and return self.
 
         This method allows exposing a sensor entity in Home Assistant.
         """
-        self.entity_metadata.append(
+        self._add_entity_metadata(
             ZCLSensorMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
@@ -840,6 +860,7 @@ class QuirkBuilder:
                 unit=unit,
                 device_class=device_class,
                 state_class=state_class,
+                primary=primary,
             )
         )
         return self
@@ -862,12 +883,13 @@ class QuirkBuilder:
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
+        primary: bool | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing SwitchMetadata and return self.
 
         This method allows exposing a switch entity in Home Assistant.
         """
-        self.entity_metadata.append(
+        self._add_entity_metadata(
             SwitchMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
@@ -885,6 +907,7 @@ class QuirkBuilder:
                 invert_attribute_name=invert_attribute_name,
                 off_value=off_value,
                 on_value=on_value,
+                primary=primary,
             )
         )
         return self
@@ -909,12 +932,13 @@ class QuirkBuilder:
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
+        primary: bool | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing NumberMetadata and return self.
 
         This method allows exposing a number entity in Home Assistant.
         """
-        self.entity_metadata.append(
+        self._add_entity_metadata(
             NumberMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
@@ -935,6 +959,7 @@ class QuirkBuilder:
                 mode=mode,
                 multiplier=multiplier,
                 device_class=device_class,
+                primary=primary,
             )
         )
         return self
@@ -954,12 +979,13 @@ class QuirkBuilder:
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
+        primary: bool | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing BinarySensorMetadata and return self.
 
         This method allows exposing a binary sensor entity in Home Assistant.
         """
-        self.entity_metadata.append(
+        self._add_entity_metadata(
             BinarySensorMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
@@ -975,6 +1001,7 @@ class QuirkBuilder:
                 attribute_name=attribute_name,
                 attribute_converter=attribute_converter,
                 device_class=device_class,
+                primary=primary,
             )
         )
         return self
@@ -992,13 +1019,14 @@ class QuirkBuilder:
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
+        primary: bool | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing WriteAttributeButtonMetadata and return self.
 
         This method allows exposing a button entity in Home Assistant that writes
         a value to an attribute when pressed.
         """
-        self.entity_metadata.append(
+        self._add_entity_metadata(
             WriteAttributeButtonMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
@@ -1012,6 +1040,7 @@ class QuirkBuilder:
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 attribute_value=attribute_value,
+                primary=primary,
             )
         )
         return self
@@ -1029,13 +1058,14 @@ class QuirkBuilder:
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
         fallback_name: str | None = None,
+        primary: bool | None = None,
     ) -> QuirkBuilder:
         """Add an EntityMetadata containing ZCLCommandButtonMetadata and return self.
 
         This method allows exposing a button entity in Home Assistant that executes
         a ZCL command when pressed.
         """
-        self.entity_metadata.append(
+        self._add_entity_metadata(
             ZCLCommandButtonMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
@@ -1049,6 +1079,7 @@ class QuirkBuilder:
                 command_name=command_name,
                 args=command_args if command_args is not None else (),
                 kwargs=command_kwargs if command_kwargs is not None else frozendict(),
+                primary=primary,
             )
         )
         return self
