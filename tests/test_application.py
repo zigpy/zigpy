@@ -726,7 +726,7 @@ async def test_request_concurrency():
 
                 if packet % 10 == 7:
                     # Fail randomly
-                    raise asyncio.DeliveryError
+                    raise DeliveryError("Failure")
 
     app = make_app({conf.CONF_MAX_CONCURRENT_REQUESTS: 16}, app_base=SlowApp)
 
@@ -848,6 +848,53 @@ async def test_request(app, device, packet):
         packet.replace(tx_options=t.TransmitOptions(0))
     )
     app.send_packet.reset_mock()
+
+
+async def test_request_retrying_success(app, device, packet) -> None:
+    app.send_packet.side_effect = [
+        DeliveryError("Failure"),
+        DeliveryError("Failure"),
+        None,
+    ]
+
+    await app.request(
+        device=device,
+        profile=0x1234,
+        cluster=0x0006,
+        src_ep=0x9A,
+        dst_ep=0xBC,
+        sequence=0xDE,
+        data=b"test data",
+        expect_reply=True,
+        use_ieee=False,
+        extended_timeout=False,
+    )
+
+    assert app.send_packet.mock_calls == [call(packet), call(packet), call(packet)]
+
+
+async def test_request_retrying_failure(app, device, packet) -> None:
+    app.send_packet.side_effect = [
+        DeliveryError("Failure"),
+        DeliveryError("Failure"),
+        DeliveryError("Failure"),
+    ]
+
+    with pytest.raises(DeliveryError):
+        await app.request(
+            device=device,
+            profile=0x1234,
+            cluster=0x0006,
+            src_ep=0x9A,
+            dst_ep=0xBC,
+            sequence=0xDE,
+            data=b"test data",
+            expect_reply=True,
+            use_ieee=False,
+            extended_timeout=False,
+        )
+
+    assert app.send_packet.mock_calls == [call(packet), call(packet), call(packet)]
 
 
 def test_build_source_route_has_relays(app):
