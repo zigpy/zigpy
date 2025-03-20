@@ -308,6 +308,7 @@ class EntityMetadata:
     unique_id_suffix: str | None = attrs.field(default=None)
     translation_key: str | None = attrs.field(default=None)
     fallback_name: str = attrs.field(validator=attrs.validators.instance_of(str))
+    primary: bool | None = attrs.field(default=None)
 
     def __attrs_post_init__(self) -> None:
         """Validate the entity metadata."""
@@ -336,7 +337,6 @@ class ZCLEnumMetadata(EntityMetadata):
     enum: type[Enum] = attrs.field()
     attribute_name: str = attrs.field()
     reporting_config: ReportingConfig | None = attrs.field(default=None)
-    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -351,7 +351,6 @@ class ZCLSensorMetadata(EntityMetadata):
     unit: str | None = attrs.field(default=None)
     device_class: SensorDeviceClass | None = attrs.field(default=None)
     state_class: SensorStateClass | None = attrs.field(default=None)
-    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -364,7 +363,6 @@ class SwitchMetadata(EntityMetadata):
     invert_attribute_name: str | None = attrs.field(default=None)
     off_value: int = attrs.field(default=0)
     on_value: int = attrs.field(default=1)
-    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -380,7 +378,6 @@ class NumberMetadata(EntityMetadata):
     mode: str | None = attrs.field(default=None)
     multiplier: float | None = attrs.field(default=None)
     device_class: NumberDeviceClass | None = attrs.field(default=None)
-    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -391,7 +388,6 @@ class BinarySensorMetadata(EntityMetadata):
     attribute_converter: typing.Callable[[Any], Any] | None = attrs.field(default=None)
     reporting_config: ReportingConfig | None = attrs.field(default=None)
     device_class: BinarySensorDeviceClass | None = attrs.field(default=None)
-    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -400,7 +396,6 @@ class WriteAttributeButtonMetadata(EntityMetadata):
 
     attribute_name: str = attrs.field()
     attribute_value: int = attrs.field()
-    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -410,7 +405,6 @@ class ZCLCommandButtonMetadata(EntityMetadata):
     command_name: str = attrs.field()
     args: tuple = attrs.field(default=tuple)
     kwargs: frozendict[str, Any] = attrs.field(default=frozendict, converter=frozendict)
-    primary: bool | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
