@@ -1220,3 +1220,36 @@ async def test_quirks_v2_disable_entity_creation(device_mock: Device) -> None:
             function=filter_func,
         ),
     )
+
+
+async def test_quirks_v2_primary_entity(device_mock: Device) -> None:
+    registry = DeviceRegistry()
+
+    builder = (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .adds(OnOff.cluster_id)
+        .switch(
+            OnOff.AttributeDefs.on_time.name,
+            OnOff.cluster_id,
+            force_inverted=True,
+            invert_attribute_name=OnOff.AttributeDefs.off_wait_time.name,
+            translation_key="on_time",
+            fallback_name="On time",
+            primary=True,
+        )
+    )
+
+    with pytest.raises(ValueError):
+        # Having a second primary entity is not allowed
+        builder.sensor(
+            OnOff.AttributeDefs.on_time.name,
+            OnOff.cluster_id,
+            translation_key="on_time",
+            fallback_name="On time",
+            primary=True,
+        )
+
+    entry = builder.add_to_registry()
+
+    assert len(entry.entity_metadata) == 1
+    assert entry.entity_metadata[0].primary is True
