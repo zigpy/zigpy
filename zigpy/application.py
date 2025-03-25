@@ -832,22 +832,41 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         elif not expect_reply:
             tx_options |= t.TransmitOptions.ACK
 
-        await self.send_packet(
-            t.ZigbeePacket(
-                src=src,
-                src_ep=src_ep,
-                dst=dst,
-                dst_ep=dst_ep,
-                tsn=sequence,
-                profile_id=profile,
-                cluster_id=cluster,
-                data=t.SerializableBytes(data),
-                extended_timeout=extended_timeout,
-                source_route=source_route,
-                tx_options=tx_options,
-                priority=priority,
-            )
-        )
+        # Performing retries within zigpy allows us to reprioritize requests quickly
+        # without locking up for ~30s when communicating with end devices
+        max_attempts = self._config[conf.CONF_NWK_MAX_RETRIES] + 1
+
+        for attempt in range(max_attempts):
+            try:
+                await self.send_packet(
+                    t.ZigbeePacket(
+                        src=src,
+                        src_ep=src_ep,
+                        dst=dst,
+                        dst_ep=dst_ep,
+                        tsn=sequence,
+                        profile_id=profile,
+                        cluster_id=cluster,
+                        data=t.SerializableBytes(data),
+                        extended_timeout=extended_timeout,
+                        source_route=source_route,
+                        tx_options=tx_options,
+                        priority=priority,
+                    )
+                )
+                break
+            except Exception:
+                LOGGER.debug(
+                    "Failed to send packet, attempt %d of %d",
+                    attempt + 1,
+                    max_attempts,
+                    exc_info=True,
+                )
+
+                if attempt >= max_attempts - 1:
+                    raise
+
+                continue
 
         return (zigpy.zcl.foundation.Status.SUCCESS, "")
 

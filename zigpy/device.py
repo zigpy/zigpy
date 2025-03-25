@@ -347,7 +347,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     ):
         extended_timeout = False
 
-        if expect_reply and (self.node_desc is None or self.node_desc.is_end_device):
+        if self.node_desc is None or self.node_desc.is_end_device:
             self.debug("Extending timeout for 0x%02x request", sequence)
             timeout = APS_REPLY_TIMEOUT_EXTENDED
             extended_timeout = True
