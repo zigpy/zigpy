@@ -76,8 +76,8 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
 
             if hasher.hexdigest() != checksum:
                 raise ValueError(
-                    f"Image checksum is invalid: expected {checksum},"
-                    f" got {hasher.hexdigest()}"
+                    f"Image checksum is invalid: expected {hasher.hexdigest()},"
+                    f" got {checksum}"
                 )
 
     async def fetch(self) -> BaseOTAImage:
