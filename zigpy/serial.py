@@ -121,21 +121,27 @@ async def create_serial_connection(
             )
     else:
         try:
-            transport, protocol = await pyserial_asyncio.create_serial_connection(
-                loop,
-                protocol_factory,
-                url=url,
-                baudrate=baudrate,
-                exclusive=exclusive,
-                xonxoff=xonxoff,
-                rtscts=rtscts,
-                **kwargs,
-            )
-        except pyserial.SerialException as exc:
-            # Unwrap unnecessarily wrapped PySerial exceptions
-            if exc.__context__ is not None:
-                raise exc.__context__ from None
+            try:
+                transport, protocol = await pyserial_asyncio.create_serial_connection(
+                    loop,
+                    protocol_factory,
+                    url=url,
+                    baudrate=baudrate,
+                    exclusive=exclusive,
+                    xonxoff=xonxoff,
+                    rtscts=rtscts,
+                    **kwargs,
+                )
+            except pyserial.SerialException as exc:
+                # Unwrap unnecessarily wrapped PySerial exceptions
+                if exc.__context__ is not None:
+                    raise exc.__context__ from None
 
-            raise
+                raise
+        except BlockingIOError as exc:
+            # Re-raise a more useful exception
+            raise PermissionError(
+                "The serial port is locked by another application"
+            ) from exc
 
     return transport, protocol
