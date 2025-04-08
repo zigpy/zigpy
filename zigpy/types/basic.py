@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import enum
 import inspect
+import math
 import struct
 import sys
 import typing
@@ -202,13 +203,18 @@ class FixedIntType(int):
         data = data[byte_size:]
         return r, data
 
+    def is_undefined(self) -> bool:
+        raise NotImplementedError
+
 
 class uint_t(FixedIntType, signed=False):
-    pass
+    def is_undefined(self) -> bool:
+        return self == (1 << self._bits) - 1
 
 
 class int_t(FixedIntType, signed=True):
-    pass
+    def is_undefined(self) -> bool:
+        return self == -(1 << (self._bits - 1))
 
 
 class int8s(int_t, bits=8):
@@ -701,6 +707,9 @@ class BaseFloat(float):
         ).to_bytes(Double._size, "little")
 
         return cls(struct.unpack("<d", double_bytes)[0]), data[cls._size :]
+
+    def is_undefined(self) -> bool:
+        return math.isnan(self)
 
 
 class Half(BaseFloat, exponent_bits=5, fraction_bits=10):

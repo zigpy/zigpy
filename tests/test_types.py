@@ -830,3 +830,29 @@ def test_serializable_bytes():
 
     with pytest.raises(ValueError):
         t.SerializableBytes([1, 2, 3])
+
+
+def test_is_undefined():
+    # uint8
+    assert t.uint8_t(0xFF).is_undefined() is True
+    assert t.uint8_t(0xFF - 1).is_undefined() is False
+
+    # uint16
+    assert t.uint16_t(0xFFFF).is_undefined() is True
+    assert t.uint16_t(0xFFFF - 1).is_undefined() is False
+
+    # int8
+    assert t.int8s(-128).is_undefined() is True
+    assert t.int8s(-128 + 1).is_undefined() is False
+
+    # int16
+    assert t.int16s(-32768).is_undefined() is True
+    assert t.int16s(-32768 + 1).is_undefined() is False
+
+    # float
+    assert t.Half(float("nan")).is_undefined() is True
+    assert t.Half(0).is_undefined() is False
+    assert t.Single(float("nan")).is_undefined() is True
+    assert t.Single(0).is_undefined() is False
+    assert t.Double(float("nan")).is_undefined() is True
+    assert t.Double(0).is_undefined() is False
