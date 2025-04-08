@@ -483,21 +483,21 @@ class DataType(DataTypeInfo, enum.Enum):
         t.Half,
         DataClass.Analog,
         "Semi-precision",
-        None,
+        t.Half(float("nan")),
     )
     single = (
         DataTypeId.single,
         t.Single,
         DataClass.Analog,
         "Single precision",
-        None,
+        t.Single(float("nan")),
     )
     double = (
         DataTypeId.double,
         t.Double,
         DataClass.Analog,
         "Double precision",
-        None,
+        t.Double(float("nan")),
     )
     octstr = (
         DataTypeId.octstr,
