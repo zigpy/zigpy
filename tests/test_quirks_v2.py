@@ -1196,6 +1196,9 @@ async def test_quirks_v2_disable_entity_creation(device_mock: Device) -> None:
         QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
         .prevent_default_entity_creation(endpoint_id=1, unique_id_suffix="something")
         .prevent_default_entity_creation(endpoint_id=1, cluster_id=OnOff.cluster_id)
+        .prevent_default_entity_creation(
+            endpoint_id=1, cluster_id=OnOff.cluster_id, cluster_type=ClusterType.Client
+        )
         .prevent_default_entity_creation(function=filter_func)
         .add_to_registry()
     )
@@ -1204,18 +1207,28 @@ async def test_quirks_v2_disable_entity_creation(device_mock: Device) -> None:
         PreventDefaultEntityCreationMetadata(
             endpoint_id=1,
             cluster_id=None,
+            cluster_type=None,
             unique_id_suffix="something",
             function=None,
         ),
         PreventDefaultEntityCreationMetadata(
             endpoint_id=1,
             cluster_id=OnOff.cluster_id,
+            cluster_type=ClusterType.Server,  # by default
+            unique_id_suffix=None,
+            function=None,
+        ),
+        PreventDefaultEntityCreationMetadata(
+            endpoint_id=1,
+            cluster_id=OnOff.cluster_id,
+            cluster_type=ClusterType.Client,
             unique_id_suffix=None,
             function=None,
         ),
         PreventDefaultEntityCreationMetadata(
             endpoint_id=None,
             cluster_id=None,
+            cluster_type=None,
             unique_id_suffix=None,
             function=filter_func,
         ),

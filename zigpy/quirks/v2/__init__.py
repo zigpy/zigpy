@@ -445,6 +445,7 @@ class PreventDefaultEntityCreationMetadata:
 
     endpoint_id: int | None = attrs.field()
     cluster_id: int | None = attrs.field()
+    cluster_type: ClusterType | None = attrs.field()
     unique_id_suffix: str | None = attrs.field()
     function: Callable[Any, bool] | None = attrs.field()
 
@@ -1102,14 +1103,19 @@ class QuirkBuilder:
         *,
         endpoint_id: int | None = None,
         cluster_id: int | None = None,
+        cluster_type: ClusterType | None = None,
         unique_id_suffix: str | None = None,
         function: Callable[Any, bool] | None = None,
     ) -> QuirkBuilder:
         """Do not create default entities."""
+        if cluster_id is not None and cluster_type is None:
+            cluster_type = ClusterType.Server
+
         self.disabled_default_entities.append(
             PreventDefaultEntityCreationMetadata(
                 endpoint_id=endpoint_id,
                 cluster_id=cluster_id,
+                cluster_type=cluster_type,
                 unique_id_suffix=unique_id_suffix,
                 function=function,
             ),
