@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import pathlib
 from unittest.mock import AsyncMock, Mock, call, patch
 
@@ -126,6 +127,19 @@ async def test_pyserial_error_remapping(tmp_path: pathlib.Path) -> None:
         await zigpy.serial.create_serial_connection(
             loop, protocol_factory, url=a_folder
         )
+
+    # Locked
+    locked_port = tmp_path / "locked"
+    with locked_port.open("w") as f:
+        # Lock the file
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        with pytest.raises(
+            PermissionError, match="The serial port is locked by another application"
+        ):
+            await zigpy.serial.create_serial_connection(
+                loop, protocol_factory, url=locked_port
+            )
 
 
 async def test_serial_protocol() -> None:
