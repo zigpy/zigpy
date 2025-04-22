@@ -7,6 +7,12 @@ class NumberDeviceClass(Enum):
     """Device class for numbers."""
 
     # NumberDeviceClass should be aligned with SensorDeviceClass
+    
+    ACCELERATION= "acceleration"
+    """Acceleration.
+
+    Unit of measurement: `G`, `m/s³`
+    """
 
     APPARENT_POWER = "apparent_power"
     """Apparent power.
