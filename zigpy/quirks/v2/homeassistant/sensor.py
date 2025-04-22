@@ -36,7 +36,8 @@ class SensorDeviceClass(Enum):
     ACCELERATION= "acceleration"
     """Acceleration.
 
-    Unit of measurement: `G`, `m/s³`
+    Unit of measurement: `G`, `m/s²)`
+³`
     """
 
     APPARENT_POWER = "apparent_power"

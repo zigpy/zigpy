@@ -11,7 +11,7 @@ class NumberDeviceClass(Enum):
     ACCELERATION= "acceleration"
     """Acceleration.
 
-    Unit of measurement: `G`, `m/s³`
+    Unit of measurement: `G`, `m/s²`
     """
 
     APPARENT_POWER = "apparent_power"
