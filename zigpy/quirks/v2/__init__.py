@@ -348,7 +348,7 @@ class ZCLSensorMetadata(EntityMetadata):
     reporting_config: ReportingConfig | None = attrs.field(default=None)
     divisor: int | None = attrs.field(default=None)
     multiplier: int | None = attrs.field(default=None)
-    suggested_display_precision: int = attrs.field(default=1)
+    suggested_display_precision: int | None = attrs.field(default=None)
     unit: str | None = attrs.field(default=None)
     device_class: SensorDeviceClass | None = attrs.field(default=None)
     state_class: SensorStateClass | None = attrs.field(default=None)
