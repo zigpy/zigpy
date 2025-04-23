@@ -348,7 +348,7 @@ class ZCLSensorMetadata(EntityMetadata):
     reporting_config: ReportingConfig | None = attrs.field(default=None)
     divisor: int | None = attrs.field(default=None)
     multiplier: int | None = attrs.field(default=None)
-    suggested_display_precision: int | None = attrs.field(default=None)
+    suggested_display_precision: int = attrs.field(default=1)
     unit: str | None = attrs.field(default=None)
     device_class: SensorDeviceClass | None = attrs.field(default=None)
     state_class: SensorStateClass | None = attrs.field(default=None)
@@ -819,7 +819,7 @@ class QuirkBuilder:
         endpoint_id: int = 1,
         divisor: int = 1,
         multiplier: int = 1,
-        suggested_display_precision: int | None = None,
+        suggested_display_precision: int = 1,
         entity_type: EntityType = EntityType.STANDARD,
         device_class: SensorDeviceClass | None = None,
         state_class: SensorStateClass | None = None,
