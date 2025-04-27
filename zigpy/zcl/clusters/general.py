@@ -1607,15 +1607,9 @@ class BinaryOutput(Cluster):
         relinquish_default: Final = ZCLAttributeDef(
             id=0x0068, type=t.Bool, access="r*w"
         )
-        resolution: Final = ZCLAttributeDef(
-            id=0x006A, type=t.Single, access="r"
-        )  # Does not seem to be in binary_output
         status_flags: Final = ZCLAttributeDef(
             id=0x006F, type=t.bitmap8, access="r", mandatory=True
         )
-        engineering_units: Final = ZCLAttributeDef(
-            id=0x0075, type=t.enum16, access="r"
-        )  # Does not seem to be in binary_output
         application_type: Final = ZCLAttributeDef(
             id=0x0100, type=t.uint32_t, access="r"
         )
@@ -1683,7 +1677,7 @@ class MultistateInput(Cluster):
             id=0x0051, type=t.Bool, access="r*w", mandatory=True
         )
         present_value: Final = ZCLAttributeDef(
-            id=0x0055, type=t.Single, access="r*w", mandatory=True
+            id=0x0055, type=t.uint16_t, access="r*w", mandatory=True
         )
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
@@ -1716,13 +1710,13 @@ class MultistateOutput(Cluster):
             id=0x0051, type=t.Bool, access="r*w", mandatory=True
         )
         present_value: Final = ZCLAttributeDef(
-            id=0x0055, type=t.Single, access="r*w", mandatory=True
+            id=0x0055, type=t.uint16_t, access="r*w", mandatory=True
         )
         # 0x0057: ZCLAttributeDef('priority_array', type=TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
         reliability: Final = ZCLAttributeDef(id=0x0067, type=t.enum8, access="r*w")
         relinquish_default: Final = ZCLAttributeDef(
-            id=0x0068, type=t.Single, access="r*w"
+            id=0x0068, type=t.uint16_t, access="r*w"
         )
         status_flags: Final = ZCLAttributeDef(
             id=0x006F, type=t.bitmap8, access="r", mandatory=True
@@ -1752,13 +1746,13 @@ class MultistateValue(Cluster):
             id=0x0051, type=t.Bool, access="r*w", mandatory=True
         )
         present_value: Final = ZCLAttributeDef(
-            id=0x0055, type=t.Single, access="r*w", mandatory=True
+            id=0x0055, type=t.uint16_t, access="r*w", mandatory=True
         )
         # 0x0057: ZCLAttributeDef('priority_array', type=TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
         reliability: Final = ZCLAttributeDef(id=0x0067, type=t.enum8, access="r*w")
         relinquish_default: Final = ZCLAttributeDef(
-            id=0x0068, type=t.Single, access="r*w"
+            id=0x0068, type=t.uint16_t, access="r*w"
         )
         status_flags: Final = ZCLAttributeDef(
             id=0x006F, type=t.bitmap8, access="r", mandatory=True
