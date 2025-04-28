@@ -579,6 +579,7 @@ async def test_quirks_v2_sensor(device_mock):
             OnOff.cluster_id,
             translation_key="on_time",
             fallback_name="On time",
+            suggested_display_precision=0,
         )
         .add_to_registry()
     )
@@ -601,6 +602,7 @@ async def test_quirks_v2_sensor(device_mock):
     assert sensor_metadata.attribute_name == OnOff.AttributeDefs.on_time.name
     assert sensor_metadata.divisor == 1
     assert sensor_metadata.multiplier == 1
+    assert sensor_metadata.suggested_display_precision == 0
 
 
 async def test_quirks_v2_sensor_validation_failure_no_translation_key(device_mock):
