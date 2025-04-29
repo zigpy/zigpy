@@ -20,29 +20,11 @@ TRADFRI_SCHEMA = {
             {
                 "type": "object",
                 "properties": {
-                    "fw_update_prio": {"type": "integer"},
-                    "fw_filesize": {"type": "integer"},
-                    "fw_type": {"type": "integer"},
-                    "fw_hotfix_version": {"type": "integer"},
-                    "fw_major_version": {"type": "integer"},
-                    "fw_binary_checksum": {
-                        "type": "string",
-                        "pattern": "^[a-f0-9]{128}$",
-                    },
-                    "fw_minor_version": {"type": "integer"},
-                    "fw_sha3_256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-                    "fw_binary_url": {"type": "string", "format": "uri"},
+                    # For the gateway firmware, ignore the rest of the fields
+                    "fw_type": {"type": "integer", "const": 3},
                 },
                 "required": [
-                    "fw_update_prio",
-                    "fw_filesize",
                     "fw_type",
-                    "fw_hotfix_version",
-                    "fw_major_version",
-                    "fw_binary_checksum",
-                    "fw_minor_version",
-                    "fw_sha3_256",
-                    "fw_binary_url",
                 ],
             },
             # Old IKEA format (new gateway)
