@@ -655,7 +655,7 @@ def test_ota_image_block_field_control():
 def test_general_analog_in_application_type():
     """Test AnalogInput General Cluster, Application Type Attribute."""
     app_type = zcl.clusters.general_const.ApplicationType(
-        0x00070100
+        0x00_01_0007
     )  # Group 0x00, Type 0x01, Application 0x0007
 
     assert app_type.group == 0x00
