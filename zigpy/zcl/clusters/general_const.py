@@ -263,6 +263,9 @@ ANALOG_INPUT_TYPES = {
 
 
 class ApplicationType(t.Struct, t.uint32_t):
-    group: t.uint8_t
-    type: AnalogInputType
+    # Index = Bits 0 to 15
     index: t.uint16_t
+    # Type = Bits 16 to 23
+    type: AnalogInputType
+    # Group = Bits 24 to 31
+    group: t.uint8_t
