@@ -33,7 +33,7 @@ class SensorDeviceClass(Enum):
 
     # Numerical device classes, these should be aligned with NumberDeviceClass
     
-    ACCELERATION= "acceleration"
+    ACCELERATION = "acceleration"
     """Acceleration.
 
     Unit of measurement: `G`, `m/s²`
