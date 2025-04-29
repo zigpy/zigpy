@@ -7,7 +7,7 @@ class NumberDeviceClass(Enum):
     """Device class for numbers."""
 
     # NumberDeviceClass should be aligned with SensorDeviceClass
-    
+
     ACCELERATION = "acceleration"
     """Acceleration.
 

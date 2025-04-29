@@ -32,7 +32,7 @@ class SensorDeviceClass(Enum):
     """
 
     # Numerical device classes, these should be aligned with NumberDeviceClass
-    
+
     ACCELERATION = "acceleration"
     """Acceleration.
 
