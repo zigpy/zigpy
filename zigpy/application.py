@@ -837,6 +837,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         max_attempts = self._config[conf.CONF_NWK_MAX_RETRIES] + 1
 
         for attempt in range(max_attempts):
+            if attempt > 0:
+                tx_options |= t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+
             try:
                 await self.send_packet(
                     t.ZigbeePacket(

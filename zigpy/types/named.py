@@ -566,6 +566,7 @@ class TransmitOptions(enum.Flag):
 
     ACK = 1
     APS_Encryption = 2
+    FORCE_ROUTE_DISCOVERY = 3
 
 
 class PacketPriority(enum.IntEnum):

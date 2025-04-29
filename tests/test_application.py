@@ -870,7 +870,19 @@ async def test_request_retrying_success(app, device, packet) -> None:
         extended_timeout=False,
     )
 
-    assert app.send_packet.mock_calls == [call(packet), call(packet), call(packet)]
+    assert app.send_packet.mock_calls == [
+        call(packet),
+        call(
+            packet.replace(
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+            )
+        ),
+        call(
+            packet.replace(
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+            )
+        ),
+    ]
 
 
 async def test_request_retrying_failure(app, device, packet) -> None:
@@ -894,7 +906,19 @@ async def test_request_retrying_failure(app, device, packet) -> None:
             extended_timeout=False,
         )
 
-    assert app.send_packet.mock_calls == [call(packet), call(packet), call(packet)]
+    assert app.send_packet.mock_calls == [
+        call(packet),
+        call(
+            packet.replace(
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+            )
+        ),
+        call(
+            packet.replace(
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+            )
+        ),
+    ]
 
 
 def test_build_source_route_has_relays(app):
