@@ -300,7 +300,7 @@ class Metering(Cluster):
         meter_serial_number: Final = ZCLAttributeDef(
             id=0x0308, type=t.LimitedLVBytes(24), access="r"
         )
-        energy_carrier_unit_of_meas: Final = ZCLAttributeDef(
+        energy_carrier_unit_of_measure: Final = ZCLAttributeDef(
             id=0x0309, type=MeteringUnitofMeasure, access="r"
         )
         energy_carrier_summ_formatting: Final = ZCLAttributeDef(
