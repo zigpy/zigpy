@@ -42,6 +42,39 @@ class RegisteredTier(t.enum8):
     Extended_Tier = 0x0F
 
 
+class MeteringUnitofMeasure(t.enum8):
+    """Metering unit of measure."""
+
+    Kwh_and_Kwh_binary = 0x00
+    Cubic_Meter_and_Cubic_Meter_per_Hour_binary = 0x01
+    Cubic_Feet_and_Cubic_Feet_per_Hour_binary = 0x02
+    Ccf_and_Ccf_per_Hour_binary = 0x03
+    US_Gallons_and_US_Gallons_per_Hour_binary = 0x04
+    Imperial_Gallons_and_Imperial_Gallons_per_Hour_binary = 0x05
+    BTU_and_BTU_per_Hour_binary = 0x06
+    Liters_and_Liters_per_Hour_binary = 0x07
+    KPA_gauge_binary = 0x08
+    KPA_absolute_binary = 0x09
+    MCF_and_MCF_per_Hour_binary = 0x0A
+    Unitless_binary = 0x0B
+    Mega_Joule_and_Mega_Joule_per_second_binary = 0x0C
+    Kvar_and_Kvarh_binary = 0x0D
+    Kwh_and_Kwh_bcd = 0x80
+    Cubic_Meter_and_Cubic_Meter_per_Hour_bcd = 0x81
+    Cubic_Feet_and_Cubic_Feet_per_Hour_bcd = 0x82
+    Ccf_and_Ccf_per_Hour_bcd = 0x83
+    US_Gallons_and_US_Gallons_per_Hour_bcd = 0x84
+    Imperial_Gallons_and_Imperial_Gallons_per_Hour_bcd = 0x85
+    BTU_and_BTU_per_Hour_bcd = 0x86
+    Liters_and_Liters_per_Hour_bcd = 0x87
+    KPA_gauge_bcd = 0x88
+    KPA_absolute_bcd = 0x89
+    MCF_and_MCF_per_Hour_bcd = 0x8A
+    Unitless_bcd = 0x8B
+    Mega_Joule_and_Mega_Joule_per_second_bcd = 0x8C
+    Kvar_and_Kvarh_bcd = 0x8D
+
+
 class Metering(Cluster):
     RegisteredTier: Final = RegisteredTier
 
@@ -244,7 +277,9 @@ class Metering(Cluster):
         iambient_consumption_indicator: Final = ZCLAttributeDef(
             id=0x0207, type=t.enum8, access="r"
         )
-        unit_of_measure: Final = ZCLAttributeDef(id=0x0300, type=t.enum8, access="r")
+        unit_of_measure: Final = ZCLAttributeDef(
+            id=0x0300, type=MeteringUnitofMeasure, access="r"
+        )
         multiplier: Final = ZCLAttributeDef(id=0x0301, type=t.uint24_t, access="r")
         divisor: Final = ZCLAttributeDef(id=0x0302, type=t.uint24_t, access="r")
         summation_formatting: Final = ZCLAttributeDef(
@@ -266,7 +301,7 @@ class Metering(Cluster):
             id=0x0308, type=t.LimitedLVBytes(24), access="r"
         )
         energy_carrier_unit_of_meas: Final = ZCLAttributeDef(
-            id=0x0309, type=t.enum8, access="r"
+            id=0x0309, type=MeteringUnitofMeasure, access="r"
         )
         energy_carrier_summ_formatting: Final = ZCLAttributeDef(
             id=0x030A, type=t.bitmap8, access="r"
@@ -275,7 +310,7 @@ class Metering(Cluster):
             id=0x030B, type=t.bitmap8, access="r"
         )
         temperature_unit_of_measure: Final = ZCLAttributeDef(
-            id=0x030C, type=t.enum8, access="r"
+            id=0x030C, type=MeteringUnitofMeasure, access="r"
         )
         temperature_formatting: Final = ZCLAttributeDef(
             id=0x030D, type=t.bitmap8, access="r"
@@ -293,7 +328,7 @@ class Metering(Cluster):
             id=0x0311, type=t.LimitedLVBytes(24), access="r"
         )
         alternative_unit_of_measure: Final = ZCLAttributeDef(
-            id=0x0312, type=t.enum8, access="r"
+            id=0x0312, type=MeteringUnitofMeasure, access="r"
         )
         alternative_demand_formatting: Final = ZCLAttributeDef(
             id=0x0313, type=t.bitmap8, access="r"
