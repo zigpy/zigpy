@@ -884,6 +884,11 @@ def test_int_comparison(expose_global):
     assert int(fw_ver) + 1 > fw_ver
     assert fw_ver > int(fw_ver) - 1
 
+    assert (fw_ver & 0b0010101) == (int(fw_ver) & 0b0010101)
+    assert (fw_ver | 0b0010101) == (int(fw_ver) | 0b0010101)
+    assert (fw_ver >> 3) == (int(fw_ver) >> 3)
+    assert (fw_ver << 3) == (int(fw_ver) << 3)
+
 
 def test_int_comparison_non_int(expose_global):
     @expose_global
