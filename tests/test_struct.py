@@ -746,8 +746,8 @@ def test_int_struct():
     assert issubclass(IntegralStruct, t.uint32_t)
     assert issubclass(IntegralStruct, int)
 
-    assert isinstance(IntegralStruct(), t.uint32_t)
-    assert isinstance(IntegralStruct(), int)
+    assert isinstance(IntegralStruct(1909247146), t.uint32_t)
+    assert isinstance(IntegralStruct(1909247146), int)
 
 
 def test_struct_optional():

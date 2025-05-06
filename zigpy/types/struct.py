@@ -81,6 +81,7 @@ class Struct:
         cls._frozen = False
 
     def __new__(cls: type[Self], *args, **kwargs) -> Self:
+        orig_cls = cls
         cls = cls._real_cls()  # noqa: PLW0642
 
         if len(args) == 1 and isinstance(args[0], cls):
@@ -90,9 +91,17 @@ class Struct:
 
             kwargs = args[0].as_dict()
             args = ()
+
+            instance = super().__new__(cls)
         elif len(args) == 1 and cls._int_type is not None and isinstance(args[0], int):
-            # Integer constructor
-            return cls.deserialize(cls._int_type(args[0]).serialize())[0]
+            # The Python `int` constructor needs to be passed the real integer
+            instance = super().__new__(cls, args[0])  # type:ignore[call-arg]
+            data = cls._int_type(args[0]).serialize()
+            cls._deserialize_internal(instance, data)
+
+            return instance
+        else:
+            instance = super().__new__(cls)
 
         # Pretend our signature is `__new__(cls, p1: t1, p2: t2, ...)`
         signature = inspect.Signature(
@@ -110,12 +119,17 @@ class Struct:
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
 
-        instance = super().__new__(cls)
-
         # Set each attributes on the instance
         for name, value in bound.arguments.items():
             field = getattr(cls.fields, name)
             setattr(instance, name, field._convert_type(value, struct=instance))
+
+        if cls._int_type is not None:
+            # For integral types, we really need a reference to the underlying integer!
+            # Jump back to the "single integer" constructor to finish things off.
+            # This is not very efficient.
+            value = cls._int_type.deserialize(instance.serialize())[0]
+            return orig_cls(value)
 
         return instance
 
@@ -269,14 +283,12 @@ class Struct:
 
         return b"".join(chunks)
 
-    @classmethod
-    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
-        instance = cls()
-
+    @staticmethod
+    def _deserialize_internal(instance: Self, data: bytes) -> tuple[Self, bytes]:
         bit_length = 0
         bitfields = []
 
-        for field in cls.fields:
+        for field in instance.fields:
             if (
                 field.requires is not None
                 and not field.requires(instance)
@@ -327,6 +339,13 @@ class Struct:
 
         return instance, data
 
+    @classmethod
+    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
+        instance = cls()
+        instance, data = cls._deserialize_internal(instance, data)
+
+        return instance, data
+
     def replace(self, **kwargs: dict[str, typing.Any]) -> Struct:
         d = self.as_dict().copy()
         d.update(kwargs)
@@ -340,44 +359,11 @@ class Struct:
 
     def __eq__(self, other: object) -> bool:
         if self._int_type is not None and isinstance(other, int):
-            return int(self) == other
+            return int(self) == other  # type:ignore[call-overload]
         elif not isinstance(self, type(other)) and not isinstance(other, type(self)):
             return NotImplemented
 
         return self.as_dict() == other.as_dict()
-
-    def __int__(self) -> int:
-        if self._int_type is None:
-            return NotImplemented
-
-        n, remaining = self._int_type.deserialize(self.serialize())
-        assert not remaining
-
-        return int(n)
-
-    def __lt__(self, other: object) -> bool:
-        if self._int_type is None or not isinstance(other, int):
-            return NotImplemented
-
-        return int(self) < int(other)
-
-    def __le__(self, other: object) -> bool:
-        if self._int_type is None or not isinstance(other, int):
-            return NotImplemented
-
-        return int(self) <= int(other)
-
-    def __gt__(self, other: object) -> bool:
-        if self._int_type is None or not isinstance(other, int):
-            return NotImplemented
-
-        return int(self) > int(other)
-
-    def __ge__(self, other: object) -> bool:
-        if self._int_type is None or not isinstance(other, int):
-            return NotImplemented
-
-        return int(self) >= int(other)
 
     def __repr__(self) -> str:
         fields = []
@@ -403,7 +389,7 @@ class Struct:
         extra_parts = []
 
         if self._int_type is not None:
-            extra_parts.append(f"{self._int_type(int(self))._hex_repr()}")
+            extra_parts.append(f"{self._int_type(int(self))._hex_repr()}")  # type:ignore[call-overload]
 
         if self._frozen:
             extra_parts.append("frozen")
