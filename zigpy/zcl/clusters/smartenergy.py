@@ -7,6 +7,7 @@ from zigpy.zcl import Cluster
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    DataType,
     Direction,
     ZCLAttributeDef,
     ZCLCommandDef,
@@ -42,8 +43,104 @@ class RegisteredTier(t.enum8):
     Extended_Tier = 0x0F
 
 
+class MeteringDeviceType(t.enum8):
+    """Metering device type."""
+
+    Electric_Metering = 0
+    Gas_Metering = 1
+    Water_Metering = 2
+    Thermal_Metering = 3  # Deprecated
+    Pressure_Metering = 4
+    Heat_Metering = 5
+    Cooling_Metering = 6
+    EUMD_for_metering_electric_vehicle_charging = 7
+    PV_Generation_Metering = 8
+    Wind_Turbine_Generation_Metering = 9
+    Water_Turbine_Generation_Metering = 10
+    Micro_Generation_Metering = 11
+    Solar_Hot_Water_Generation_Metering = 12
+    Electric_Metering_Element_Phase_1 = 13
+    Electric_Metering_Element_Phase_2 = 14
+    Electric_Metering_Element_Phase_3 = 15
+
+    # 127 + above enum values
+    Mirrored_Electric_Metering = 127
+    Mirrored_Gas_Metering = 128
+    Mirrored_Water_Metering = 129
+    Mirrored_Thermal_Metering = 130  # Deprecated
+    Mirrored_Pressure_Metering = 131
+    Mirrored_Heat_Metering = 132
+    Mirrored_Cooling_Metering = 133
+    Mirrored_EUMD_for_metering_electric_vehicle_charging = 134
+    Mirrored_PV_Generation_Metering = 135
+    Mirrored_Wind_Turbine_Generation_Metering = 136
+    Mirrored_Water_Turbine_Generation_Metering = 137
+    Mirrored_Micro_Generation_Metering = 138
+    Mirrored_Solar_Hot_Water_Generation_Metering = 139
+    Mirrored_Electric_Metering_Element_Phase_1 = 140
+    Mirrored_Electric_Metering_Element_Phase_2 = 141
+    Mirrored_Electric_Metering_Element_Phase_3 = 142
+
+
+class MeteringUnitofMeasure(t.enum8):
+    """Metering unit of measure."""
+
+    Kwh_and_Kwh_binary = 0x00
+    Cubic_Meter_and_Cubic_Meter_per_Hour_binary = 0x01
+    Cubic_Feet_and_Cubic_Feet_per_Hour_binary = 0x02
+    Ccf_and_Ccf_per_Hour_binary = 0x03
+    US_Gallons_and_US_Gallons_per_Hour_binary = 0x04
+    Imperial_Gallons_and_Imperial_Gallons_per_Hour_binary = 0x05
+    BTU_and_BTU_per_Hour_binary = 0x06
+    Liters_and_Liters_per_Hour_binary = 0x07
+    KPA_gauge_binary = 0x08
+    KPA_absolute_binary = 0x09
+    MCF_and_MCF_per_Hour_binary = 0x0A
+    Unitless_binary = 0x0B
+    Mega_Joule_and_Mega_Joule_per_second_binary = 0x0C
+    Kvar_and_Kvarh_binary = 0x0D
+    Kwh_and_Kwh_bcd = 0x80
+    Cubic_Meter_and_Cubic_Meter_per_Hour_bcd = 0x81
+    Cubic_Feet_and_Cubic_Feet_per_Hour_bcd = 0x82
+    Ccf_and_Ccf_per_Hour_bcd = 0x83
+    US_Gallons_and_US_Gallons_per_Hour_bcd = 0x84
+    Imperial_Gallons_and_Imperial_Gallons_per_Hour_bcd = 0x85
+    BTU_and_BTU_per_Hour_bcd = 0x86
+    Liters_and_Liters_per_Hour_bcd = 0x87
+    KPA_gauge_bcd = 0x88
+    KPA_absolute_bcd = 0x89
+    MCF_and_MCF_per_Hour_bcd = 0x8A
+    Unitless_bcd = 0x8B
+    Mega_Joule_and_Mega_Joule_per_second_bcd = 0x8C
+    Kvar_and_Kvarh_bcd = 0x8D
+
+
+class NumberFormatting(t.Struct, t.uint8_t):
+    """Number formatting."""
+
+    num_digits_right_of_decimal: t.uint3_t
+    num_digits_left_of_decimal: t.uint4_t
+    suppress_leading_zeros: t.uint1_t
+
+
+class MeteringStatus(t.bitmap8):
+    """Metering status."""
+
+    Check_Meter = 0b00000001
+    Low_Battery = 0b00000010
+    Tamper_Detect = 0b00000100
+    Power_Failure = 0b00001000
+    Power_Quality = 0b00010000
+    Leak_Detect = 0b00100000
+    Service_Disconnect_Open = 0b01000000
+    Reserved = 0b10000000
+
+
 class Metering(Cluster):
     RegisteredTier: Final = RegisteredTier
+    MeteringDeviceType: Final = MeteringDeviceType
+    MeteringUnitofMeasure: Final = MeteringUnitofMeasure
+    NumberFormatting: Final = NumberFormatting
 
     cluster_id: Final[t.uint16_t] = 0x0702
     ep_attribute: Final = "smartenergy_metering"
@@ -81,10 +178,10 @@ class Metering(Cluster):
         fast_poll_update_period: Final = ZCLAttributeDef(
             id=0x000B, type=t.uint8_t, access="r"
         )
-        current_block_period_consump_delivered: Final = ZCLAttributeDef(
+        current_block_period_consumption_delivered: Final = ZCLAttributeDef(
             id=0x000C, type=t.uint48_t, access="r"
         )
-        daily_consump_target: Final = ZCLAttributeDef(
+        daily_consumption_target: Final = ZCLAttributeDef(
             id=0x000D, type=t.uint24_t, access="r"
         )
         current_block: Final = ZCLAttributeDef(id=0x000E, type=t.enum8, access="r")
@@ -119,7 +216,7 @@ class Metering(Cluster):
         current_out_energy_carrier_demand: Final = ZCLAttributeDef(
             id=0x001B, type=t.int24s, access="r"
         )
-        current_block_period_consump_received: Final = ZCLAttributeDef(
+        current_block_period_consumption_received: Final = ZCLAttributeDef(
             id=0x001D, type=t.uint48_t, access="r"
         )
         current_block_received: Final = ZCLAttributeDef(
@@ -228,7 +325,7 @@ class Metering(Cluster):
         current_tier15_summ_received: Final = ZCLAttributeDef(
             id=0x011D, type=t.uint48_t, access="r"
         )
-        status: Final = ZCLAttributeDef(id=0x0200, type=t.bitmap8, access="r")
+        status: Final = ZCLAttributeDef(id=0x0200, type=MeteringStatus, access="r")
         remaining_battery_life: Final = ZCLAttributeDef(
             id=0x0201, type=t.uint8_t, access="r"
         )
@@ -244,20 +341,63 @@ class Metering(Cluster):
         iambient_consumption_indicator: Final = ZCLAttributeDef(
             id=0x0207, type=t.enum8, access="r"
         )
-        unit_of_measure: Final = ZCLAttributeDef(id=0x0300, type=t.enum8, access="r")
+        unit_of_measure: Final = ZCLAttributeDef(
+            id=0x0300, type=MeteringUnitofMeasure, access="r"
+        )
         multiplier: Final = ZCLAttributeDef(id=0x0301, type=t.uint24_t, access="r")
         divisor: Final = ZCLAttributeDef(id=0x0302, type=t.uint24_t, access="r")
+
+        # This attribute shall be used against the following attributes:
+        # • CurrentSummationDelivered
+        # • CurrentSummationReceived
+        # • SummationDeliveredPerReport
+        # • TOU Information attributes
+        # • DFTSummation
+        # • Block Information attributes
         summation_formatting: Final = ZCLAttributeDef(
-            id=0x0303, type=t.bitmap8, access="r"
+            id=0x0303, type=NumberFormatting, access="r"
         )
+
+        # This attribute shall be used against the following attributes:
+        # • CurrentMaxDemandDelivered
+        # • CurrentMaxDemandReceived
+        # • InstantaneousDemand
         demand_formatting: Final = ZCLAttributeDef(
-            id=0x0304, type=t.bitmap8, access="r"
+            id=0x0304, type=NumberFormatting, access="r"
         )
-        historical_consump_formatting: Final = ZCLAttributeDef(
-            id=0x0305, type=t.bitmap8, access="r"
+
+        # This attribute shall be used against the following attributes:
+        # • CurrentDayConsumptionDelivered
+        # • CurrentDayConsumptionReceived
+        # • PreviousDayConsumptionDelivered
+        # • PreviousDayConsumptionReceived
+        # • CurrentPartialProfileIntervalValue
+        # • Intervals
+        # • DailyConsumptionTarget
+        # • CurrentDayConsumptionDelivered
+        # • CurrentDayConsumptionReceived
+        # • PreviousDayNConsumptionDelivered
+        # • PreviousDayNConsumptionReceived
+        # • CurrentWeekConsumptionDelivered
+        # • CurrentWeekConsumptionReceived
+        # • PreviousWeekNConsumptionDelivered
+        # • PreviousWeekNConsumptionReceived
+        # • CurrentMonthConsumptionDelivered
+        # • CurrentMonthConsumptionReceived
+        # • PreviousMonthNConsumptionDelivered
+        # • PreviousMonthNConsumptionReceived
+        historical_consumption_formatting: Final = ZCLAttributeDef(
+            id=0x0305, type=NumberFormatting, access="r"
         )
         metering_device_type: Final = ZCLAttributeDef(
-            id=0x0306, type=t.bitmap8, access="r"
+            id=0x0306,
+            type=MeteringDeviceType,
+            # Note that these values represent an Enumeration, and not an 8-bit bitmap
+            # as indicated in the attribute description. For backwards compatibility
+            # reasons, the data type has not been changed, though the data itself should
+            # be treated like an enum
+            zcl_type=DataType.map8,
+            access="r",
         )
         site_id: Final = ZCLAttributeDef(
             id=0x0307, type=t.LimitedLVBytes(32), access="r"
@@ -265,20 +405,25 @@ class Metering(Cluster):
         meter_serial_number: Final = ZCLAttributeDef(
             id=0x0308, type=t.LimitedLVBytes(24), access="r"
         )
-        energy_carrier_unit_of_meas: Final = ZCLAttributeDef(
-            id=0x0309, type=t.enum8, access="r"
+        energy_carrier_unit_of_measure: Final = ZCLAttributeDef(
+            id=0x0309, type=MeteringUnitofMeasure, access="r"
         )
-        energy_carrier_summ_formatting: Final = ZCLAttributeDef(
-            id=0x030A, type=t.bitmap8, access="r"
+        energy_carrier_summation_formatting: Final = ZCLAttributeDef(
+            id=0x030A, type=NumberFormatting, access="r"
         )
         energy_carrier_demand_formatting: Final = ZCLAttributeDef(
-            id=0x030B, type=t.bitmap8, access="r"
+            id=0x030B, type=NumberFormatting, access="r"
         )
         temperature_unit_of_measure: Final = ZCLAttributeDef(
-            id=0x030C, type=t.enum8, access="r"
+            id=0x030C, type=MeteringUnitofMeasure, access="r"
         )
+
+        # This attribute shall be used in relation with the following attributes:
+        # • InletTemperature
+        # • OutletTemperature
+        # • ControlTemperature
         temperature_formatting: Final = ZCLAttributeDef(
-            id=0x030D, type=t.bitmap8, access="r"
+            id=0x030D, type=NumberFormatting, access="r"
         )
         module_serial_number: Final = ZCLAttributeDef(
             id=0x030E, type=t.LimitedLVBytes(24), access="r"
@@ -293,27 +438,46 @@ class Metering(Cluster):
             id=0x0311, type=t.LimitedLVBytes(24), access="r"
         )
         alternative_unit_of_measure: Final = ZCLAttributeDef(
-            id=0x0312, type=t.enum8, access="r"
+            id=0x0312, type=MeteringUnitofMeasure, access="r"
         )
+
+        # This attribute shall be used against the following attribute:
+        # • AlternativeInstantaneousDemand
         alternative_demand_formatting: Final = ZCLAttributeDef(
-            id=0x0313, type=t.bitmap8, access="r"
+            id=0x0313, type=NumberFormatting, access="r"
         )
+        # This attribute shall be used against the following attributes:
+        # • CurrentDayAlternativeConsumptionDelivered
+        # • CurrentDayAlternativeConsumptionReceived
+        # • PreviousDayAlternativeConsumptionDelivered
+        # • PreviousDayAlternativeConsumptionReceived
+        # • CurrentAlternativePartialProfileIntervalValue
+        # • PreviousDayNAlternativeConsumptionDelivered
+        # • PreviousDayNAlternativeConsumptionReceived
+        # • CurrentWeekAlternativeConsumptionDelivered
+        # • CurrentWeekAlternativeConsumptionReceived
+        # • PreviousWeekNAlternativeConsumptionDelivered
+        # • PreviousWeekNAlternativeConsumptionReceived
+        # • CurrentMonthAlternativeConsumptionDelivered
+        # • CurrentMonthAlternativeConsumptionReceived
+        # • PreviousMonthNAlternativeConsumptionDelivered
+        # • PreviousMonthNAlternativeConsumptionReceived
         alternative_consumption_formatting: Final = ZCLAttributeDef(
-            id=0x0314, type=t.bitmap8, access="r"
+            id=0x0314, type=NumberFormatting, access="r"
         )
         instantaneous_demand: Final = ZCLAttributeDef(
             id=0x0400, type=t.int24s, access="r"
         )
-        currentday_consump_delivered: Final = ZCLAttributeDef(
+        currentday_consumption_delivered: Final = ZCLAttributeDef(
             id=0x0401, type=t.uint24_t, access="r"
         )
-        currentday_consump_received: Final = ZCLAttributeDef(
+        currentday_consumption_received: Final = ZCLAttributeDef(
             id=0x0402, type=t.uint24_t, access="r"
         )
-        previousday_consump_delivered: Final = ZCLAttributeDef(
+        previousday_consumption_delivered: Final = ZCLAttributeDef(
             id=0x0403, type=t.uint24_t, access="r"
         )
-        previousday_consump_received: Final = ZCLAttributeDef(
+        previousday_consumption_received: Final = ZCLAttributeDef(
             id=0x0404, type=t.uint24_t, access="r"
         )
         cur_part_profile_int_start_time_delivered: Final = ZCLAttributeDef(
