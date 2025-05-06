@@ -888,6 +888,8 @@ def test_int_comparison(expose_global):
     assert (fw_ver | 0b0010101) == (int(fw_ver) | 0b0010101)
     assert (fw_ver >> 3) == (int(fw_ver) >> 3)
     assert (fw_ver << 3) == (int(fw_ver) << 3)
+    assert bool(fw_ver & 0) is False
+    assert bool(fw_ver & 0xFFFF) is True
 
 
 def test_int_comparison_non_int(expose_global):
