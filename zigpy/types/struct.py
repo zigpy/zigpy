@@ -63,6 +63,17 @@ class Struct:
 
         # We generate fields up here to fail early and cache it
         cls.fields = cls._real_cls()._get_fields()
+        cls._signature = inspect.Signature(
+            parameters=[
+                inspect.Parameter(
+                    name=f.name,
+                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    default=None,
+                    annotation=f.type,
+                )
+                for f in cls.fields
+            ]
+        )
 
         # Check to see if the Struct is also an integer
         if next(
@@ -90,19 +101,7 @@ class Struct:
             args = ()
 
         # Pretend our signature is `__new__(cls, p1: t1, p2: t2, ...)`
-        signature = inspect.Signature(
-            parameters=[
-                inspect.Parameter(
-                    name=f.name,
-                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                    default=None,
-                    annotation=f.type,
-                )
-                for f in cls.fields
-            ]
-        )
-
-        bound = signature.bind(*args, **kwargs)
+        bound = cls._signature.bind(*args, **kwargs)
         bound.apply_defaults()
 
         instance = super().__new__(cls)
@@ -347,6 +346,14 @@ class Struct:
 
         return self.as_dict() == other.as_dict()
 
+    def _repr_extra_parts(self) -> list[str]:
+        extra_parts = []
+
+        if self._frozen:
+            extra_parts.append("frozen")
+
+        return extra_parts
+
     def __repr__(self) -> str:
         fields = []
 
@@ -368,11 +375,7 @@ class Struct:
             if value is not None:
                 fields.append(f"*{attr}={value!r}")
 
-        extra_parts = []
-
-        if self._frozen:
-            extra_parts.append("frozen")
-
+        extra_parts = self._repr_extra_parts()
         if extra_parts:
             extra = f"<{', '.join(extra_parts)}>"
         else:
@@ -445,7 +448,7 @@ class Struct:
         return instance
 
 
-class IntStruct(Struct):
+class IntStruct(Struct, int):
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
 
@@ -458,62 +461,71 @@ class IntStruct(Struct):
         except StopIteration:
             raise TypeError("Integer structs must be an integer subclasses") from None
 
-    def __new__(
-        cls: type[Self], *args, _underlying_int: int | None = None, **kwargs
-    ) -> Self:
-        orig_cls = cls
+    def __new__(cls: type[Self], *args, **kwargs) -> Self:
+        # Integers are immutable in Python so we need to know, at creation time, what
+        # the integer value of this object will be. This means that these structs *must*
+        # also be immutable.
+        underlying_int = None
         cls = cls._real_cls()  # noqa: PLW0642
 
+        # Like a copy constructor
         if len(args) == 1 and isinstance(args[0], int):
-            # Like a copy constructor
             if kwargs:
                 raise ValueError(f"Cannot use copy constructor with kwargs: {kwargs!r}")
 
-            _underlying_int = args[0]
-            kwargs = {}
+            if isinstance(args[0], cls):
+                kwargs = args[0].as_dict()
+                args = ()
+            else:
+                underlying_int = args[0]
+
+                data = cls._int_type(underlying_int).serialize()
+                args = ()
+                kwargs, _ = cls._deserialize_internal(cls.fields, data)
+
+        if underlying_int is None:
+            # To compute the underlying integer, we create a temp instance and serialize
+            temp_instance = super(Struct, cls).__new__(cls, 0)
+
+            # Set the correct attributes on the instance so we can serialize
+            bound = cls._signature.bind(*args, **kwargs)
+            bound.apply_defaults()
+
+            for name, value in bound.arguments.items():
+                field = getattr(cls.fields, name)
+                setattr(temp_instance, name, value)
+
+            # Finally, serialize
+            underlying_int, rest = cls._int_type.deserialize(temp_instance.serialize())
+            assert not rest
+
+            # Pretend we were called with the correct kwargs
             args = ()
+            kwargs = temp_instance.as_dict()
 
-        # Pretend our signature is `__new__(cls, p1: t1, p2: t2, ...)`
-        signature = inspect.Signature(
-            parameters=[
-                inspect.Parameter(
-                    name=f.name,
-                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                    default=None,
-                    annotation=f.type,
-                )
-                for f in cls.fields
-            ]
-        )
-
-        bound = signature.bind(*args, **kwargs)
+        bound = cls._signature.bind(*args, **kwargs)
         bound.apply_defaults()
 
-        if _underlying_int is None:
-            temp_instance = super(Struct, cls).__new__(cls, 0)  # type:ignore[call-arg]
-        else:
-            temp_instance = super(Struct, cls).__new__(cls, _underlying_int)  # type:ignore[call-arg]
+        instance = super(Struct, cls).__new__(cls, underlying_int)
 
-        # Set attributes on the instance so we can serialize
+        # Set attributes on the final instance
         for name, value in bound.arguments.items():
             field = getattr(cls.fields, name)
-            setattr(temp_instance, name, field._convert_type(value))
+            setattr(instance, name, field._convert_type(value))
 
-        # If we have computed the underlying integer, we can finish up
-        if _underlying_int is not None:
-            temp_instance._frozen = True
-            return temp_instance
+        # Freeze it
+        instance._frozen = True
 
-        # Otherwise, we need to re-initialize with the correct underlying integer
-        underlying_int, _ = cls._int_type.deserialize(temp_instance.serialize())
-        return orig_cls.__new__(
-            orig_cls, *args, _underlying_int=underlying_int, **kwargs
-        )
+        return instance
 
     __hash__ = int.__hash__
+
+    def _repr_extra_parts(self) -> list[str]:
+        # We override this method to omit the unnecessary `<frozen>`
+        return [f"{self._int_type(int(self))._hex_repr()}"]
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, int):
             raise NotImplementedError
 
-        return int(self) == int(other)  # type:ignore[call-overload]
+        return int(self) == int(other)
