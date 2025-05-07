@@ -262,7 +262,7 @@ ANALOG_INPUT_TYPES = {
 }
 
 
-class ApplicationType(t.Struct, t.uint32_t):
+class ApplicationType(t.IntStruct, t.uint32_t):
     # Index = Bits 0 to 15
     index: t.uint16_t
     # Type = Bits 16 to 23

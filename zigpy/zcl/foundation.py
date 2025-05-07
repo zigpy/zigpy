@@ -970,7 +970,7 @@ class Direction(t.enum1):
         return cls.Server_to_Client if is_reply else cls.Client_to_Server
 
 
-class FrameControl(t.Struct, t.uint8_t):
+class FrameControl(t.IntStruct, t.uint8_t):
     """The frame control field contains information defining the command type
     and other control flags.
     """
@@ -1042,7 +1042,7 @@ class ZCLHeader(t.Struct):
             manufacturer = None
 
         if frame_control is not None and manufacturer is not None:
-            frame_control.is_manufacturer_specific = True
+            frame_control = frame_control.replace(is_manufacturer_specific=True)
 
         return super().__new__(cls, frame_control, manufacturer, tsn, command_id)
 
@@ -1062,7 +1062,9 @@ class ZCLHeader(t.Struct):
         super().__setattr__(name, value)
 
         if name == "manufacturer" and self.frame_control is not None:
-            self.frame_control.is_manufacturer_specific = value is not None
+            self.frame_control = self.frame_control.replace(
+                is_manufacturer_specific=value is not None
+            )
 
     @classmethod
     def general(

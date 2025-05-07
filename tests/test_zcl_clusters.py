@@ -604,12 +604,12 @@ async def test_ias_zone(send_rsp_mock):
 
     # suppress default response
     hdr, args = t.deserialize(b"\tK\x00&\x00\x00\x00\x00\x00")
-    hdr.frame_control.disable_default_response = True
+    hdr.frame_control = hdr.frame_control.replace(disable_default_response=True)
     t.handle_message(hdr, args)
     assert send_rsp_mock.call_count == 0
 
     # this should generate a default response
-    hdr.frame_control.disable_default_response = False
+    hdr.frame_control = hdr.frame_control.replace(disable_default_response=False)
     t.handle_message(hdr, args)
     assert send_rsp_mock.call_count == 0
 
@@ -617,12 +617,12 @@ async def test_ias_zone(send_rsp_mock):
 
     # suppress default response
     hdr, args = t.deserialize(b"\tK\x00&\x00\x00\x00\x00\x00")
-    hdr.frame_control.disable_default_response = True
+    hdr.frame_control = hdr.frame_control.replace(disable_default_response=True)
     t.handle_message(hdr, args)
     assert send_rsp_mock.call_count == 0
 
     # this should generate a default response
-    hdr.frame_control.disable_default_response = False
+    hdr.frame_control = hdr.frame_control.replace(disable_default_response=False)
     t.handle_message(hdr, args)
     assert send_rsp_mock.call_count == 1
 

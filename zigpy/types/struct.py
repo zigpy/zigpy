@@ -69,19 +69,20 @@ class Struct:
         cls.fields = cls._real_cls()._get_fields()
 
         # Check to see if the Struct is also an integer
-        cls._int_type = next(
+        if next(
             (
                 c
                 for c in cls.__mro__[1:]
                 if issubclass(c, t.FixedIntType) and not issubclass(c, Struct)
             ),
             None,
-        )
+        ) is not None and not issubclass(cls, IntStruct):
+            raise TypeError("Integer structs must be subclasses of `IntStruct`")
+
         cls._hash = -1
         cls._frozen = False
 
     def __new__(cls: type[Self], *args, **kwargs) -> Self:
-        orig_cls = cls
         cls = cls._real_cls()  # noqa: PLW0642
 
         if len(args) == 1 and isinstance(args[0], cls):
@@ -91,17 +92,6 @@ class Struct:
 
             kwargs = args[0].as_dict()
             args = ()
-
-            instance = super().__new__(cls)
-        elif len(args) == 1 and cls._int_type is not None and isinstance(args[0], int):
-            # The Python `int` constructor needs to be passed the real integer
-            instance = super().__new__(cls, args[0])  # type:ignore[call-arg]
-            data = cls._int_type(args[0]).serialize()
-            cls._deserialize_internal(instance, data)
-
-            return instance
-        else:
-            instance = super().__new__(cls)
 
         # Pretend our signature is `__new__(cls, p1: t1, p2: t2, ...)`
         signature = inspect.Signature(
@@ -119,17 +109,12 @@ class Struct:
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
 
+        instance = super().__new__(cls)
+
         # Set each attributes on the instance
         for name, value in bound.arguments.items():
             field = getattr(cls.fields, name)
             setattr(instance, name, field._convert_type(value, struct=instance))
-
-        if cls._int_type is not None:
-            # For integral types, we really need a reference to the underlying integer!
-            # Jump back to the "single integer" constructor to finish things off.
-            # This is not very efficient.
-            value = cls._int_type.deserialize(instance.serialize())[0]
-            return orig_cls(value)
 
         return instance
 
@@ -358,9 +343,7 @@ class Struct:
         return instance
 
     def __eq__(self, other: object) -> bool:
-        if self._int_type is not None and isinstance(other, int):
-            return int(self) == other  # type:ignore[call-overload]
-        elif not isinstance(self, type(other)) and not isinstance(other, type(self)):
+        if not isinstance(self, type(other)) and not isinstance(other, type(self)):
             return NotImplemented
 
         return self.as_dict() == other.as_dict()
@@ -387,9 +370,6 @@ class Struct:
                 fields.append(f"*{attr}={value!r}")
 
         extra_parts = []
-
-        if self._int_type is not None:
-            extra_parts.append(f"{self._int_type(int(self))._hex_repr()}")  # type:ignore[call-overload]
 
         if self._frozen:
             extra_parts.append("frozen")
@@ -464,3 +444,89 @@ class Struct:
         instance._frozen = True
 
         return instance
+
+
+class IntStruct(Struct):
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+
+        try:
+            cls._int_type: type[t.FixedIntType] = next(
+                c
+                for c in cls.__mro__[1:]
+                if issubclass(c, t.FixedIntType) and not issubclass(c, Struct)
+            )
+        except StopIteration:
+            raise TypeError("Integer structs must be an integer subclasses") from None
+
+    def __new__(
+        cls: type[Self], *args, _underlying_int: int | None = None, **kwargs
+    ) -> Self:
+        orig_cls = cls
+        cls = cls._real_cls()  # noqa: PLW0642
+
+        if len(args) == 1 and isinstance(args[0], int):
+            # Like a copy constructor
+            if kwargs:
+                raise ValueError(f"Cannot use copy constructor with kwargs: {kwargs!r}")
+
+            _underlying_int = args[0]
+            kwargs = {}
+            args = ()
+
+        # Pretend our signature is `__new__(cls, p1: t1, p2: t2, ...)`
+        signature = inspect.Signature(
+            parameters=[
+                inspect.Parameter(
+                    name=f.name,
+                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    default=None,
+                    annotation=f.type,
+                )
+                for f in cls.fields
+            ]
+        )
+
+        bound = signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+
+        if _underlying_int is None:
+            temp_instance = super(Struct, cls).__new__(cls, 0)  # type:ignore[call-arg]
+        else:
+            temp_instance = super(Struct, cls).__new__(cls, _underlying_int)  # type:ignore[call-arg]
+
+        # Set each attributes on the instance
+        for name, value in bound.arguments.items():
+            field = getattr(cls.fields, name)
+            setattr(
+                temp_instance, name, field._convert_type(value, struct=temp_instance)
+            )
+
+        # If we have computed the underlying integer, we can finish
+        if _underlying_int is not None:
+            temp_instance._frozen = True
+            return temp_instance
+
+        # Otherwise, we need to re-initialize with the correct underlying integer
+        underlying_int, _ = cls._int_type.deserialize(temp_instance.serialize())
+        return orig_cls.__new__(
+            orig_cls, *args, _underlying_int=underlying_int, **kwargs
+        )
+
+    __hash__ = int.__hash__
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, int):
+            raise NotImplementedError
+
+        return int(self) == int(other)  # type:ignore[call-overload]
+
+    @classmethod
+    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
+        temp_instance = cls(0)
+        object.__setattr__(temp_instance, "_frozen", False)
+        _, data = cls._deserialize_internal(temp_instance, data)
+        object.__setattr__(temp_instance, "_frozen", True)
+
+        real_instance = cls(**temp_instance.as_dict())
+        return real_instance, data

@@ -806,7 +806,7 @@ async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
         assert general_cmd_mock.call_count == 0
 
     with p1 as attr_lst_mock, p2 as general_cmd_mock:
-        hdr.frame_control.disable_default_response = False
+        hdr.frame_control = hdr.frame_control.replace(disable_default_response=False)
         cluster.handle_cluster_general_request(hdr, values)
         await asyncio.sleep(0)
         assert attr_lst_mock.call_count > 0

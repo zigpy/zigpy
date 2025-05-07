@@ -263,9 +263,9 @@ def test_frame_control_general():
 
     assert data == b"\x00"
     assert not frc.is_manufacturer_specific
-    frc.is_manufacturer_specific = False
+    frc = frc.replace(is_manufacturer_specific=False)
     assert frc.serialize() == b"\x00"
-    frc.is_manufacturer_specific = True
+    frc = frc.replace(is_manufacturer_specific=True)
     assert frc.serialize() == b"\x04"
 
     frc = foundation.FrameControl.general(
@@ -273,7 +273,7 @@ def test_frame_control_general():
     )
     assert frc.direction == foundation.Direction.Client_to_Server
     assert frc.serialize() == b"\x00"
-    frc.direction = foundation.Direction.Server_to_Client
+    frc = frc.replace(direction=foundation.Direction.Server_to_Client)
     assert frc.serialize() == b"\x08"
     assert (
         foundation.FrameControl.general(
@@ -287,9 +287,9 @@ def test_frame_control_general():
     )
     assert not frc.disable_default_response
     assert frc.serialize() == b"\x00"
-    frc.disable_default_response = False
+    frc = frc.replace(disable_default_response=False)
     assert frc.serialize() == b"\x00"
-    frc.disable_default_response = True
+    frc = frc.replace(disable_default_response=True)
     assert frc.serialize() == b"\x10"
 
 
@@ -303,9 +303,9 @@ def test_frame_control_cluster():
 
     assert data == b"\x01"
     assert not frc.is_manufacturer_specific
-    frc.is_manufacturer_specific = False
+    frc = frc.replace(is_manufacturer_specific=False)
     assert frc.serialize() == b"\x01"
-    frc.is_manufacturer_specific = True
+    frc = frc.replace(is_manufacturer_specific=True)
     assert frc.serialize() == b"\x05"
 
     frc = foundation.FrameControl.cluster(
@@ -313,9 +313,9 @@ def test_frame_control_cluster():
     )
     assert frc.direction == foundation.Direction.Client_to_Server
     assert frc.serialize() == b"\x01"
-    frc.direction = foundation.Direction.Client_to_Server
+    frc = frc.replace(direction=foundation.Direction.Client_to_Server)
     assert frc.serialize() == b"\x01"
-    frc.direction = foundation.Direction.Server_to_Client
+    frc = frc.replace(direction=foundation.Direction.Server_to_Client)
     assert frc.serialize() == b"\x09"
     assert (
         foundation.FrameControl.cluster(
@@ -329,9 +329,9 @@ def test_frame_control_cluster():
     )
     assert not frc.disable_default_response
     assert frc.serialize() == b"\x01"
-    frc.disable_default_response = False
+    frc = frc.replace(disable_default_response=False)
     assert frc.serialize() == b"\x01"
-    frc.disable_default_response = True
+    frc = frc.replace(disable_default_response=True)
     assert frc.serialize() == b"\x11"
 
 
@@ -350,7 +350,7 @@ def test_frame_header():
     assert hdr.serialize() == data
 
     # check no manufacturer
-    hdr.frame_control.is_manufacturer_specific = False
+    hdr.frame_control = hdr.frame_control.replace(is_manufacturer_specific=False)
     assert hdr.serialize() == b"\x18\xc0\n"
 
     r = repr(hdr)
@@ -366,11 +366,11 @@ def test_frame_header_general():
     assert hdr.command_id == cmd_id
     assert hdr.tsn == tsn
     assert hdr.manufacturer == manufacturer
-    assert hdr.frame_control.is_manufacturer_specific is True
+    assert hdr.frame_control.is_manufacturer_specific
 
     hdr.manufacturer = None
     assert hdr.manufacturer is None
-    assert hdr.frame_control.is_manufacturer_specific is False
+    assert not hdr.frame_control.is_manufacturer_specific
 
 
 def test_frame_header_cluster():
@@ -384,11 +384,11 @@ def test_frame_header_cluster():
     assert hdr.command_id == cmd_id
     assert hdr.tsn == tsn
     assert hdr.manufacturer == manufacturer
-    assert hdr.frame_control.is_manufacturer_specific is True
+    assert hdr.frame_control.is_manufacturer_specific
 
     hdr.manufacturer = None
     assert hdr.manufacturer is None
-    assert hdr.frame_control.is_manufacturer_specific is False
+    assert not hdr.frame_control.is_manufacturer_specific
 
 
 def test_frame_header_disable_manufacturer_id():

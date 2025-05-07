@@ -708,7 +708,7 @@ def test_int_struct():
     with pytest.raises(TypeError):
         int(NonIntegralStruct(123))
 
-    class IntegralStruct(t.Struct, t.uint32_t):
+    class IntegralStruct(t.IntStruct, t.uint32_t):
         foo: t.uint8_t
         bar: t.uint16_t
         baz: t.uint7_t
@@ -858,7 +858,7 @@ def test_int_comparison(expose_global):
         Conbee_II = 0x07
         Conbee_III = 0x09
 
-    class FirmwareVersion(t.Struct, t.uint32_t):
+    class FirmwareVersion(t.IntStruct, t.uint32_t):
         reserved: t.uint8_t
         platform: FirmwarePlatform
         minor: t.uint8_t
@@ -890,6 +890,7 @@ def test_int_comparison(expose_global):
     assert (fw_ver << 3) == (int(fw_ver) << 3)
     assert bool(fw_ver & 0) is False
     assert bool(fw_ver & 0xFFFF) is True
+    assert hash(fw_ver) == hash(int(fw_ver))
 
 
 def test_int_comparison_non_int(expose_global):
