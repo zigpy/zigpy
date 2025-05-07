@@ -11,6 +11,14 @@ import zigpy.types as t
 NoneType = type(None)
 
 
+# To make sure mypy is aware that `IntStruct` is technically a mixin, we need to
+# convince it that it really is an integer at runtime
+if typing.TYPE_CHECKING:
+    IntMixin = int
+else:
+    IntMixin = object
+
+
 class ListSubclass(list):
     # So we can call `setattr()` on it
     pass
@@ -448,7 +456,7 @@ class Struct:
         return instance
 
 
-class IntStruct(Struct, int):
+class IntStruct(Struct, IntMixin):
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
 
