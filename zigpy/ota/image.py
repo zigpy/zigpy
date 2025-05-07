@@ -83,16 +83,20 @@ class OTAImageHeader(t.Struct):
     image_size: t.uint32_t
 
     security_credential_version: t.uint8_t = t.StructField(
-        requires=lambda s: s.security_credential_version_present
+        requires=lambda s: s.field_control is not None
+        and FieldControl.SECURITY_CREDENTIAL_VERSION_PRESENT in s.field_control
     )
     upgrade_file_destination: t.EUI64 = t.StructField(
-        requires=lambda s: s.device_specific_file
+        requires=lambda s: s.field_control is not None
+        and FieldControl.DEVICE_SPECIFIC_FILE_PRESENT in s.field_control
     )
     minimum_hardware_version: HWVersion = t.StructField(
-        requires=lambda s: s.hardware_versions_present
+        requires=lambda s: s.field_control is not None
+        and FieldControl.HARDWARE_VERSIONS_PRESENT in s.field_control
     )
     maximum_hardware_version: HWVersion = t.StructField(
-        requires=lambda s: s.hardware_versions_present
+        requires=lambda s: s.field_control is not None
+        and FieldControl.HARDWARE_VERSIONS_PRESENT in s.field_control
     )
 
     @property
