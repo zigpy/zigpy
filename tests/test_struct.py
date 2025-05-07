@@ -750,6 +750,10 @@ def test_int_struct():
     with pytest.raises(TypeError):
         assert IntegralStruct(1909247146, bar=0, baz=0, asd=0)
 
+    # Or multiple positional arguments
+    with pytest.raises(TypeError):
+        assert IntegralStruct(1909247146, 0)
+
 
 def test_struct_optional():
     class TestStruct(t.Struct):
