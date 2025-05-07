@@ -746,6 +746,10 @@ def test_int_struct():
     assert isinstance(IntegralStruct(1909247146), int)
     assert IntegralStruct(1909247146) == IntegralStruct(IntegralStruct(1909247146))
 
+    # We do not accept anything but kwargs
+    with pytest.raises(ValueError):
+        assert IntegralStruct(1909247146, bar=0, baz=0, asd=0)
+
 
 def test_struct_optional():
     class TestStruct(t.Struct):

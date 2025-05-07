@@ -478,20 +478,21 @@ class IntStruct(Struct, IntMixin):
         cls = cls._real_cls()  # noqa: PLW0642
         underlying_int = _underlying_int
 
+        if len(args) > 1:
+            raise TypeError(f"{cls} takes no positional arguments")
+
         # Like a copy constructor
-        if len(args) == 1 and isinstance(args[0], int):
-            if kwargs:
-                raise ValueError(f"Cannot use copy constructor with kwargs: {kwargs!r}")
+        if len(args) == 1:
+            if not isinstance(args[0], int):
+                raise TypeError(
+                    f"{cls} can only be constructed from an integer or with keyword arguments"
+                )
 
-            if isinstance(args[0], cls):
-                kwargs = args[0].as_dict()
-                args = ()
-            else:
-                underlying_int = args[0]
+            underlying_int = args[0]
 
-                data = cls._int_type(underlying_int).serialize()
-                args = ()
-                kwargs, _ = cls._deserialize_internal(cls.fields, data)
+            data = cls._int_type(underlying_int).serialize()
+            kwargs, _ = cls._deserialize_internal(cls.fields, data)
+            args = ()
 
         if underlying_int is None:
             # To compute the underlying integer, we create a temp instance and serialize
