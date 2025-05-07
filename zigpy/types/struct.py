@@ -483,9 +483,10 @@ class IntStruct(Struct, IntMixin):
 
         # Like a copy constructor
         if len(args) == 1:
-            if not isinstance(args[0], int):
+            if not isinstance(args[0], int) or kwargs:
                 raise TypeError(
-                    f"{cls} can only be constructed from an integer or with keyword arguments"
+                    f"{cls} can only be constructed from an integer"
+                    f" or with just keyword arguments"
                 )
 
             underlying_int = args[0]

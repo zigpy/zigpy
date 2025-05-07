@@ -747,7 +747,7 @@ def test_int_struct():
     assert IntegralStruct(1909247146) == IntegralStruct(IntegralStruct(1909247146))
 
     # We do not accept anything but kwargs
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         assert IntegralStruct(1909247146, bar=0, baz=0, asd=0)
 
 
