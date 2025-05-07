@@ -692,6 +692,18 @@ def test_int_struct():
     with pytest.raises(TypeError):
         int(NonIntegralStruct(123))
 
+    # Integer structs must inherit from IntStruct
+    with pytest.raises(TypeError):
+
+        class BadIntegralStruct(t.Struct, t.uint8_t):
+            foo: t.uint8_t
+
+    # Integer structs must inherit from an integer type
+    with pytest.raises(TypeError):
+
+        class BadIntegralStruct2(t.IntStruct):
+            foo: t.uint8_t
+
     class IntegralStruct(t.IntStruct, t.uint32_t):
         foo: t.uint8_t
         bar: t.uint16_t
@@ -732,6 +744,7 @@ def test_int_struct():
 
     assert isinstance(IntegralStruct(1909247146), t.uint32_t)
     assert isinstance(IntegralStruct(1909247146), int)
+    assert IntegralStruct(1909247146) == IntegralStruct(IntegralStruct(1909247146))
 
 
 def test_struct_optional():
