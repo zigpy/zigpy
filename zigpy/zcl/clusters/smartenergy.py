@@ -355,7 +355,7 @@ class Metering(Cluster):
         # • DFTSummation
         # • Block Information attributes
         summation_formatting: Final = ZCLAttributeDef(
-            id=0x0303, type=NumberFormatting, access="r"
+            id=0x0303, zcl_type=DataType.map8, type=NumberFormatting, access="r"
         )
 
         # This attribute shall be used against the following attributes:
@@ -363,7 +363,7 @@ class Metering(Cluster):
         # • CurrentMaxDemandReceived
         # • InstantaneousDemand
         demand_formatting: Final = ZCLAttributeDef(
-            id=0x0304, type=NumberFormatting, access="r"
+            id=0x0304, zcl_type=DataType.map8, type=NumberFormatting, access="r"
         )
 
         # This attribute shall be used against the following attributes:
@@ -387,7 +387,7 @@ class Metering(Cluster):
         # • PreviousMonthNConsumptionDelivered
         # • PreviousMonthNConsumptionReceived
         historical_consumption_formatting: Final = ZCLAttributeDef(
-            id=0x0305, type=NumberFormatting, access="r"
+            id=0x0305, zcl_type=DataType.map8, type=NumberFormatting, access="r"
         )
         metering_device_type: Final = ZCLAttributeDef(
             id=0x0306,
@@ -409,10 +409,10 @@ class Metering(Cluster):
             id=0x0309, type=MeteringUnitofMeasure, access="r"
         )
         energy_carrier_summation_formatting: Final = ZCLAttributeDef(
-            id=0x030A, type=NumberFormatting, access="r"
+            id=0x030A, zcl_type=DataType.map8, type=NumberFormatting, access="r"
         )
         energy_carrier_demand_formatting: Final = ZCLAttributeDef(
-            id=0x030B, type=NumberFormatting, access="r"
+            id=0x030B, zcl_type=DataType.map8, type=NumberFormatting, access="r"
         )
         temperature_unit_of_measure: Final = ZCLAttributeDef(
             id=0x030C, type=MeteringUnitofMeasure, access="r"
@@ -423,7 +423,7 @@ class Metering(Cluster):
         # • OutletTemperature
         # • ControlTemperature
         temperature_formatting: Final = ZCLAttributeDef(
-            id=0x030D, type=NumberFormatting, access="r"
+            id=0x030D, zcl_type=DataType.map8, type=NumberFormatting, access="r"
         )
         module_serial_number: Final = ZCLAttributeDef(
             id=0x030E, type=t.LimitedLVBytes(24), access="r"
@@ -444,7 +444,7 @@ class Metering(Cluster):
         # This attribute shall be used against the following attribute:
         # • AlternativeInstantaneousDemand
         alternative_demand_formatting: Final = ZCLAttributeDef(
-            id=0x0313, type=NumberFormatting, access="r"
+            id=0x0313, zcl_type=DataType.map8, type=NumberFormatting, access="r"
         )
         # This attribute shall be used against the following attributes:
         # • CurrentDayAlternativeConsumptionDelivered
@@ -463,7 +463,7 @@ class Metering(Cluster):
         # • PreviousMonthNAlternativeConsumptionDelivered
         # • PreviousMonthNAlternativeConsumptionReceived
         alternative_consumption_formatting: Final = ZCLAttributeDef(
-            id=0x0314, type=NumberFormatting, access="r"
+            id=0x0314, zcl_type=DataType.map8, type=NumberFormatting, access="r"
         )
         instantaneous_demand: Final = ZCLAttributeDef(
             id=0x0400, type=t.int24s, access="r"
