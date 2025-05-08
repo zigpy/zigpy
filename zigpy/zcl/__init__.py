@@ -289,7 +289,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
             command = foundation.GENERAL_COMMANDS[hdr.command_id]
 
-        hdr.frame_control.direction = command.direction
+        hdr.frame_control = hdr.frame_control.replace(direction=command.direction)
         response, data = command.schema.deserialize(data)
 
         self.debug("Decoded ZCL frame: %s:%r", type(self).__name__, response)

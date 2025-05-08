@@ -11,7 +11,20 @@ import zigpy.types as t
 NoneType = type(None)
 
 
+# To make sure mypy is aware that `IntStruct` is technically a mixin, we need to
+# convince it that it really is an integer at runtime
+if typing.TYPE_CHECKING:
+    IntMixin = int
+else:
+    IntMixin = object
+
+
 class ListSubclass(list):
+    # So we can call `setattr()` on it
+    pass
+
+
+class EmptyObject:
     # So we can call `setattr()` on it
     pass
 
@@ -19,8 +32,7 @@ class ListSubclass(list):
 @dataclasses.dataclass(frozen=True)
 class StructField:
     name: str | None = None
-    type: type | None = None
-    dynamic_type: typing.Callable[[Struct], type] | None = None
+    type: type = None
 
     requires: typing.Callable[[Struct], bool] | None = dataclasses.field(
         default=None, repr=False
@@ -34,24 +46,16 @@ class StructField:
     def replace(self, **kwargs) -> StructField:
         return dataclasses.replace(self, **kwargs)
 
-    def get_type(self, struct: Struct) -> type:
-        if self.dynamic_type is not None:
-            return self.dynamic_type(struct)
-
-        return self.type
-
-    def _convert_type(self, value, struct: Struct):
-        field_type = self.get_type(struct)
-
-        if value is None or isinstance(value, field_type):
+    def _convert_type(self, value):
+        if value is None or isinstance(value, self.type):
             return value
 
         try:
-            return field_type(value)
+            return self.type(value)
         except Exception as e:  # noqa: BLE001
             raise ValueError(
                 f"Failed to convert {self.name}={value!r} from type"
-                f" {type(value)} to {field_type}"
+                f" {type(value)} to {self.type}"
             ) from e
 
 
@@ -67,16 +71,29 @@ class Struct:
 
         # We generate fields up here to fail early and cache it
         cls.fields = cls._real_cls()._get_fields()
+        cls._signature = inspect.Signature(
+            parameters=[
+                inspect.Parameter(
+                    name=f.name,
+                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    default=None,
+                    annotation=f.type,
+                )
+                for f in cls.fields
+            ]
+        )
 
         # Check to see if the Struct is also an integer
-        cls._int_type = next(
+        if next(
             (
                 c
                 for c in cls.__mro__[1:]
                 if issubclass(c, t.FixedIntType) and not issubclass(c, Struct)
             ),
             None,
-        )
+        ) is not None and not issubclass(cls, IntStruct):
+            raise TypeError("Integer structs must be subclasses of `IntStruct`")
+
         cls._hash = -1
         cls._frozen = False
 
@@ -90,24 +107,9 @@ class Struct:
 
             kwargs = args[0].as_dict()
             args = ()
-        elif len(args) == 1 and cls._int_type is not None and isinstance(args[0], int):
-            # Integer constructor
-            return cls.deserialize(cls._int_type(args[0]).serialize())[0]
 
         # Pretend our signature is `__new__(cls, p1: t1, p2: t2, ...)`
-        signature = inspect.Signature(
-            parameters=[
-                inspect.Parameter(
-                    name=f.name,
-                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                    default=None,
-                    annotation=f.type,
-                )
-                for f in cls.fields
-            ]
-        )
-
-        bound = signature.bind(*args, **kwargs)
+        bound = cls._signature.bind(*args, **kwargs)
         bound.apply_defaults()
 
         instance = super().__new__(cls)
@@ -115,7 +117,7 @@ class Struct:
         # Set each attributes on the instance
         for name, value in bound.arguments.items():
             field = getattr(cls.fields, name)
-            setattr(instance, name, field._convert_type(value, struct=instance))
+            setattr(instance, name, field._convert_type(value))
 
         return instance
 
@@ -156,7 +158,7 @@ class Struct:
                     )
 
                 field = field.replace(type=annotation)
-            elif field.type is None and field.dynamic_type is None:
+            elif field.type is None:
                 raise TypeError(f"Field {name!r} has no type")
 
             fields.append(field)
@@ -195,10 +197,9 @@ class Struct:
 
         for key, value in obj.items():
             field = getattr(cls.fields, key)
-            field_type = field.get_type(instance)
 
-            if issubclass(field_type, Struct):
-                setattr(instance, field.name, field_type.from_dict(value))
+            if issubclass(field.type, Struct):
+                setattr(instance, field.name, field.type.from_dict(value))
             else:
                 setattr(instance, field.name, value)
 
@@ -236,12 +237,11 @@ class Struct:
             if value is None and field.optional:
                 continue
 
-            value = field._convert_type(value, struct=self)
-            field_type = field.get_type(struct=self)
+            value = field._convert_type(value)
 
             # All integral types are compacted into one chunk, unless they start and end
             # on a byte boundary.
-            if issubclass(field_type, t.FixedIntType) and not (
+            if issubclass(field.type, t.FixedIntType) and not (
                 value._bits % 8 == 0 and bit_offset % 8 == 0
             ):
                 bit_offset += value._bits
@@ -269,28 +269,31 @@ class Struct:
 
         return b"".join(chunks)
 
-    @classmethod
-    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
-        instance = cls()
-
+    @staticmethod
+    def _deserialize_internal(
+        fields: list[StructField], data: bytes
+    ) -> tuple[dict[str, typing.Any], bytes]:
         bit_length = 0
         bitfields = []
+        result = {}
 
-        for field in cls.fields:
-            if (
-                field.requires is not None
-                and not field.requires(instance)
-                or not data
-                and field.optional
+        # We need to create a temporary instance to call the field's `requires` method,
+        # which expects a struct-like object
+        temp_instance = EmptyObject()
+
+        for field in fields:
+            setattr(temp_instance, field.name, None)
+
+        for field in fields:
+            if (field.requires is not None and not field.requires(temp_instance)) or (
+                not data and field.optional
             ):
                 continue
 
-            field_type = field.get_type(struct=instance)
-
-            if issubclass(field_type, t.FixedIntType) and not (
-                field_type._bits % 8 == 0 and bit_length % 8 == 0
+            if issubclass(field.type, t.FixedIntType) and not (
+                field.type._bits % 8 == 0 and bit_length % 8 == 0
             ):
-                bit_length += field_type._bits
+                bit_length += field.type._bits
                 bitfields.append(field)
 
                 if bit_length % 8 == 0:
@@ -302,7 +305,8 @@ class Struct:
 
                     for f in bitfields:
                         value, bits = f.type.from_bits(bits)
-                        setattr(instance, f.name, value)
+                        result[f.name] = value
+                        setattr(temp_instance, f.name, value)
 
                     assert not bits
 
@@ -316,8 +320,9 @@ class Struct:
                     f" {bitfields}"
                 )
 
-            value, data = field_type.deserialize(data)
-            setattr(instance, field.name, value)
+            value, data = field.type.deserialize(data)
+            result[field.name] = value
+            setattr(temp_instance, field.name, value)
 
         if bitfields:
             raise ValueError(
@@ -325,7 +330,12 @@ class Struct:
                 f" {bitfields}"
             )
 
-        return instance, data
+        return result, data
+
+    @classmethod
+    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
+        fields, data = cls._deserialize_internal(cls.fields, data)
+        return cls(**fields), data
 
     def replace(self, **kwargs: dict[str, typing.Any]) -> Struct:
         d = self.as_dict().copy()
@@ -339,45 +349,18 @@ class Struct:
         return instance
 
     def __eq__(self, other: object) -> bool:
-        if self._int_type is not None and isinstance(other, int):
-            return int(self) == other
-        elif not isinstance(self, type(other)) and not isinstance(other, type(self)):
+        if not isinstance(self, type(other)) and not isinstance(other, type(self)):
             return NotImplemented
 
         return self.as_dict() == other.as_dict()
 
-    def __int__(self) -> int:
-        if self._int_type is None:
-            return NotImplemented
+    def _repr_extra_parts(self) -> list[str]:
+        extra_parts = []
 
-        n, remaining = self._int_type.deserialize(self.serialize())
-        assert not remaining
+        if self._frozen:
+            extra_parts.append("frozen")
 
-        return int(n)
-
-    def __lt__(self, other: object) -> bool:
-        if self._int_type is None or not isinstance(other, int):
-            return NotImplemented
-
-        return int(self) < int(other)
-
-    def __le__(self, other: object) -> bool:
-        if self._int_type is None or not isinstance(other, int):
-            return NotImplemented
-
-        return int(self) <= int(other)
-
-    def __gt__(self, other: object) -> bool:
-        if self._int_type is None or not isinstance(other, int):
-            return NotImplemented
-
-        return int(self) > int(other)
-
-    def __ge__(self, other: object) -> bool:
-        if self._int_type is None or not isinstance(other, int):
-            return NotImplemented
-
-        return int(self) >= int(other)
+        return extra_parts
 
     def __repr__(self) -> str:
         fields = []
@@ -400,14 +383,7 @@ class Struct:
             if value is not None:
                 fields.append(f"*{attr}={value!r}")
 
-        extra_parts = []
-
-        if self._int_type is not None:
-            extra_parts.append(f"{self._int_type(int(self))._hex_repr()}")
-
-        if self._frozen:
-            extra_parts.append("frozen")
-
+        extra_parts = self._repr_extra_parts()
         if extra_parts:
             extra = f"<{', '.join(extra_parts)}>"
         else:
@@ -478,3 +454,102 @@ class Struct:
         instance._frozen = True
 
         return instance
+
+
+class IntStruct(Struct, IntMixin):
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+
+        try:
+            cls._int_type: type[t.FixedIntType] = next(
+                c
+                for c in cls.__mro__[1:]
+                if issubclass(c, t.FixedIntType) and not issubclass(c, Struct)
+            )
+        except StopIteration:
+            raise TypeError("Integer structs must be an integer subclasses") from None
+
+    def __new__(
+        cls: type[Self], *args, _underlying_int: int | None = None, **kwargs
+    ) -> Self:
+        # Integers are immutable in Python so we need to know, at creation time, what
+        # the integer value of this object will be. This means that these structs *must*
+        # also be immutable.
+        cls = cls._real_cls()  # noqa: PLW0642
+        underlying_int = _underlying_int
+
+        if len(args) > 1:
+            raise TypeError(f"{cls} takes no positional arguments")
+
+        # Like a copy constructor
+        if len(args) == 1:
+            if not isinstance(args[0], int) or kwargs:
+                raise TypeError(
+                    f"{cls} can only be constructed from an integer"
+                    f" or with just keyword arguments"
+                )
+
+            underlying_int = args[0]
+
+            data = cls._int_type(underlying_int).serialize()
+            kwargs, _ = cls._deserialize_internal(cls.fields, data)
+            args = ()
+
+        if underlying_int is None:
+            # To compute the underlying integer, we create a temp instance and serialize
+            temp_instance = super(Struct, cls).__new__(cls, 0)
+
+            # Set the correct attributes on the instance so we can serialize
+            bound = cls._signature.bind(*args, **kwargs)
+            bound.apply_defaults()
+
+            for name, value in bound.arguments.items():
+                field = getattr(cls.fields, name)
+                setattr(temp_instance, name, value)
+
+            # Finally, serialize
+            underlying_int, rest = cls._int_type.deserialize(temp_instance.serialize())
+            assert not rest
+
+            # Pretend we were called with the correct kwargs
+            args = ()
+            kwargs = temp_instance.as_dict()
+
+        bound = cls._signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+
+        instance = super(Struct, cls).__new__(cls, underlying_int)
+
+        # Set attributes on the final instance
+        for name, value in bound.arguments.items():
+            field = getattr(cls.fields, name)
+            setattr(instance, name, field._convert_type(value))
+
+        # Freeze it
+        instance._frozen = True
+
+        return instance
+
+    __hash__ = int.__hash__
+
+    def _repr_extra_parts(self) -> list[str]:
+        # We override this method to omit the unnecessary `<frozen>`
+        return [f"{self._int_type(int(self))._hex_repr()}"]
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, int):
+            raise NotImplementedError
+
+        return int(self) == int(other)
+
+    @classmethod
+    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
+        fields, remaining = cls._deserialize_internal(cls.fields, data)
+        underlying_int, _ = cls._int_type.deserialize(
+            data[: len(data) - len(remaining)]
+        )
+
+        # We overload deserialization to avoid an unnecessary serialize-deserialize
+        # during `cls.__new__` to compute the underlying integer, since we have all the
+        # data here already
+        return cls(_underlying_int=underlying_int, **fields), remaining

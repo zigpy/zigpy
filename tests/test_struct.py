@@ -432,22 +432,6 @@ def test_conflicting_types():
             foo: t.uint8_t = t.StructField(type=t.uint16_t)
 
 
-def test_requires_uses_instance_of_struct():
-    class TestStruct(t.Struct):
-        foo: t.uint8_t
-
-        # the first parameter is really an instance of TestStruct
-        bar: t.uint8_t = t.StructField(requires=lambda s: s.test)
-
-        @property
-        def test(self):
-            assert isinstance(self, TestStruct)
-            return self.foo == 0x01
-
-    assert TestStruct.deserialize(b"\x00\x00") == (TestStruct(foo=0x00), b"\x00")
-    assert TestStruct.deserialize(b"\x01\x00") == (TestStruct(foo=0x01, bar=0x00), b"")
-
-
 def test_uppercase_field():
     class Neighbor(t.Struct):
         """Neighbor Descriptor"""
@@ -708,7 +692,19 @@ def test_int_struct():
     with pytest.raises(TypeError):
         int(NonIntegralStruct(123))
 
-    class IntegralStruct(t.Struct, t.uint32_t):
+    # Integer structs must inherit from IntStruct
+    with pytest.raises(TypeError):
+
+        class BadIntegralStruct(t.Struct, t.uint8_t):
+            foo: t.uint8_t
+
+    # Integer structs must inherit from an integer type
+    with pytest.raises(TypeError):
+
+        class BadIntegralStruct2(t.IntStruct):
+            foo: t.uint8_t
+
+    class IntegralStruct(t.IntStruct, t.uint32_t):
         foo: t.uint8_t
         bar: t.uint16_t
         baz: t.uint7_t
@@ -746,8 +742,17 @@ def test_int_struct():
     assert issubclass(IntegralStruct, t.uint32_t)
     assert issubclass(IntegralStruct, int)
 
-    assert isinstance(IntegralStruct(), t.uint32_t)
-    assert isinstance(IntegralStruct(), int)
+    assert isinstance(IntegralStruct(1909247146), t.uint32_t)
+    assert isinstance(IntegralStruct(1909247146), int)
+    assert IntegralStruct(1909247146) == IntegralStruct(IntegralStruct(1909247146))
+
+    # We do not accept anything but kwargs
+    with pytest.raises(TypeError):
+        assert IntegralStruct(1909247146, bar=0, baz=0, asd=0)
+
+    # Or multiple positional arguments
+    with pytest.raises(TypeError):
+        assert IntegralStruct(1909247146, 0)
 
 
 def test_struct_optional():
@@ -831,26 +836,6 @@ def test_matching(expose_global):
     assert not s.matches(TestStruct(bar=InnerStruct(field1=3)))
 
 
-def test_dynamic_type():
-    class TestStruct(t.Struct):
-        foo: t.uint8_t
-        baz: None = t.StructField(
-            dynamic_type=lambda s: t.LVBytes if s.foo == 0x00 else t.uint8_t
-        )
-
-    assert TestStruct.deserialize(b"\x00\x04test") == (
-        TestStruct(foo=0x00, baz=b"test"),
-        b"",
-    )
-    assert TestStruct.deserialize(b"\x01\x04test") == (
-        TestStruct(foo=0x01, baz=0x04),
-        b"test",
-    )
-
-    assert TestStruct(foo=0x00, baz=b"test").serialize() == b"\x00\x04test"
-    assert TestStruct(foo=0x01, baz=0x04).serialize() == b"\x01\x04"
-
-
 def test_int_comparison(expose_global):
     @expose_global
     class FirmwarePlatform(t.enum8):
@@ -858,7 +843,7 @@ def test_int_comparison(expose_global):
         Conbee_II = 0x07
         Conbee_III = 0x09
 
-    class FirmwareVersion(t.Struct, t.uint32_t):
+    class FirmwareVersion(t.IntStruct, t.uint32_t):
         reserved: t.uint8_t
         platform: FirmwarePlatform
         minor: t.uint8_t
@@ -883,6 +868,14 @@ def test_int_comparison(expose_global):
 
     assert int(fw_ver) + 1 > fw_ver
     assert fw_ver > int(fw_ver) - 1
+
+    assert (fw_ver & 0b0010101) == (int(fw_ver) & 0b0010101)
+    assert (fw_ver | 0b0010101) == (int(fw_ver) | 0b0010101)
+    assert (fw_ver >> 3) == (int(fw_ver) >> 3)
+    assert (fw_ver << 3) == (int(fw_ver) << 3)
+    assert bool(fw_ver & 0) is False
+    assert bool(fw_ver & 0xFFFF) is True
+    assert hash(fw_ver) == hash(int(fw_ver))
 
 
 def test_int_comparison_non_int(expose_global):

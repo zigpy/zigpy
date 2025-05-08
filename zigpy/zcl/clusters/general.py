@@ -1972,71 +1972,89 @@ class UpgradeTimeoutPolicy(t.enum8):
     Do_not_apply_after_timeout = 0x01
 
 
-class ImageNotifyCommand(foundation.CommandSchema):
-    class PayloadType(t.enum8):
-        QueryJitter = 0x00
-        QueryJitter_ManufacturerCode = 0x01
-        QueryJitter_ManufacturerCode_ImageType = 0x02
-        QueryJitter_ManufacturerCode_ImageType_NewFileVersion = 0x03
+class ImageNotifyPayloadType(t.enum8):
+    QueryJitter = 0x00
+    QueryJitter_ManufacturerCode = 0x01
+    QueryJitter_ManufacturerCode_ImageType = 0x02
+    QueryJitter_ManufacturerCode_ImageType_NewFileVersion = 0x03
 
-    payload_type: None = t.StructField(type=PayloadType)
+
+class ImageNotifyCommand(foundation.CommandSchema):
+    PayloadType = ImageNotifyPayloadType
+
+    payload_type: ImageNotifyPayloadType
     query_jitter: t.uint8_t
     manufacturer_code: t.uint16_t = t.StructField(
         requires=(
-            lambda s: s.payload_type >= s.PayloadType.QueryJitter_ManufacturerCode
+            lambda s: s.payload_type
+            >= ImageNotifyPayloadType.QueryJitter_ManufacturerCode
         )
     )
     image_type: t.uint16_t = t.StructField(
         requires=(
             lambda s: s.payload_type
-            >= s.PayloadType.QueryJitter_ManufacturerCode_ImageType
+            >= ImageNotifyPayloadType.QueryJitter_ManufacturerCode_ImageType
         )
     )
     new_file_version: t.uint32_t = t.StructField(
         requires=(
             lambda s: s.payload_type
-            >= s.PayloadType.QueryJitter_ManufacturerCode_ImageType_NewFileVersion
+            >= ImageNotifyPayloadType.QueryJitter_ManufacturerCode_ImageType_NewFileVersion
         )
     )
 
 
-class QueryNextImageCommand(foundation.CommandSchema):
-    class FieldControl(t.bitmap8):
-        HardwareVersion = 0b00000001
+class QueryNextImageCommandFieldControl(t.bitmap8):
+    HardwareVersion = 0b00000001
 
-    field_control: None = t.StructField(type=FieldControl)
+
+class QueryNextImageCommand(foundation.CommandSchema):
+    FieldControl = QueryNextImageCommandFieldControl
+
+    field_control: QueryNextImageCommandFieldControl
     manufacturer_code: t.uint16_t
     image_type: t.uint16_t
     current_file_version: t.uint32_t
     hardware_version: t.uint16_t = t.StructField(
-        requires=(lambda s: s.field_control & s.FieldControl.HardwareVersion)
+        requires=(
+            lambda s: s.field_control
+            & QueryNextImageCommandFieldControl.HardwareVersion
+        )
     )
 
 
-class ImageBlockCommand(foundation.CommandSchema):
-    class FieldControl(t.bitmap8):
-        RequestNodeAddr = 0b00000001
-        MinimumBlockPeriod = 0b00000010
+class ImageBlockCommandFieldControl(t.bitmap8):
+    RequestNodeAddr = 0b00000001
+    MinimumBlockPeriod = 0b00000010
 
-    field_control: None = t.StructField(type=FieldControl)
+
+class ImageBlockCommand(foundation.CommandSchema):
+    FieldControl = ImageBlockCommandFieldControl
+
+    field_control: ImageBlockCommandFieldControl
     manufacturer_code: t.uint16_t
     image_type: t.uint16_t
     file_version: t.uint32_t
     file_offset: t.uint32_t
     maximum_data_size: t.uint8_t
     request_node_addr: t.EUI64 = t.StructField(
-        requires=(lambda s: s.field_control & s.FieldControl.RequestNodeAddr)
+        requires=(
+            lambda s: s.field_control & ImageBlockCommandFieldControl.RequestNodeAddr
+        )
     )
     minimum_block_period: t.uint16_t = t.StructField(
-        requires=(lambda s: s.field_control & s.FieldControl.MinimumBlockPeriod)
+        requires=(
+            lambda s: s.field_control & ImageBlockCommandFieldControl.MinimumBlockPeriod
+        )
     )
+
+
+class ImagePageCommandFieldControl(t.bitmap8):
+    RequestNodeAddr = 0b00000001
 
 
 class ImagePageCommand(foundation.CommandSchema):
-    class FieldControl(t.bitmap8):
-        RequestNodeAddr = 0b00000001
-
-    field_control: None = t.StructField(type=FieldControl)
+    field_control: ImagePageCommandFieldControl
     manufacturer_code: t.uint16_t
     image_type: t.uint16_t
     file_version: t.uint32_t
@@ -2045,7 +2063,9 @@ class ImagePageCommand(foundation.CommandSchema):
     page_size: t.uint16_t
     response_spacing: t.uint16_t
     request_node_addr: t.EUI64 = t.StructField(
-        requires=lambda s: s.field_control & s.FieldControl.RequestNodeAddr
+        requires=lambda s: (
+            s.field_control & ImagePageCommandFieldControl.RequestNodeAddr
+        )
     )
 
 

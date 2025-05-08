@@ -115,7 +115,7 @@ class MeteringUnitofMeasure(t.enum8):
     Kvar_and_Kvarh_bcd = 0x8D
 
 
-class NumberFormatting(t.Struct, t.uint8_t):
+class NumberFormatting(t.IntStruct, t.uint8_t):
     """Number formatting."""
 
     num_digits_right_of_decimal: t.uint3_t

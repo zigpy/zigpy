@@ -237,7 +237,7 @@ combine-as-imports = true
 split-on-trailing-comma = false
 
 [tool.codespell]
-ignore-words-list = ["ser", "nd", "hass", "checkin", "socio-economic"]
+ignore-words-list = ["ser", "nd", "hass", "checkin", "socio-economic", "IntStruct"]
 skip = ["./.*", "tests/*", "pyproject.toml"]
 quiet-level = 2
 
