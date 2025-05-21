@@ -15,6 +15,8 @@ from zigpy.zcl.foundation import (
     ZCLAttributeDef,
     ZCLCommandDef,
 )
+import logging
+_LOGGER = logging.getLogger(__name__)
 
 ZIGBEE_EPOCH = datetime(2000, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
 
@@ -941,6 +943,29 @@ class OnOff(Cluster):
             },
             direction=Direction.Client_to_Server,
         )
+
+    def handle_cluster_request(
+            self,
+            hdr: foundation.ZCLHeader,
+            args: list[Any],
+            *,
+            dst_addressing=None,
+    ) -> None:
+        _LOGGER.info(f"handle_cluster_request: {hdr.command_id} {hdr.frame_control.disable_default_response}")
+
+        if not hdr.frame_control.disable_default_response:
+            _LOGGER.info(f"sending default response")
+            self.create_catching_task(
+                self.general_command(
+                    foundation.GeneralCommand.Default_Response,
+                    hdr.command_id,
+                    foundation.Status.SUCCESS,
+                    tsn=hdr.tsn,
+                    priority=t.PacketPriority.LOW,
+                    disable_default_response=False,
+                    direction=Direction.Server_to_Client,
+                )
+            )
 
 
 class SwitchType(t.enum8):

@@ -400,20 +400,24 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
         priority: int = t.PacketPriority.NORMAL,
+        disable_default_response: bool = True,
+        direction: foundation.Direction | None = None,
         **kwargs,
     ) -> None:
+        if direction is None:
+            direction = (
+                foundation.Direction.Server_to_Client
+                if self.is_client
+                else foundation.Direction.Client_to_Server
+            )
         hdr, request = self._create_request(
             general=general,
             command_id=command_id,
             schema=schema,
             manufacturer=manufacturer,
             tsn=tsn,
-            disable_default_response=True,
-            direction=(
-                foundation.Direction.Server_to_Client
-                if self.is_client
-                else foundation.Direction.Client_to_Server
-            ),
+            disable_default_response=disable_default_response,
+            direction=direction,
             args=args,
             kwargs=kwargs,
         )
@@ -914,6 +918,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *args,
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
+        disable_default_response: bool = True,
+        direction: foundation.Direction | None = None,
         tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
@@ -928,6 +934,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 *args,
                 manufacturer=manufacturer,
                 tsn=tsn,
+                disable_default_response=disable_default_response,
+                direction=direction,
                 **kwargs,
             )
 
