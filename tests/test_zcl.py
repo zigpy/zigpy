@@ -1274,3 +1274,48 @@ async def test_zcl_cluster_definition_invalid_name():
                     },
                     direction=foundation.Direction.Client_to_Server,
                 )
+
+async def test_zcl_on_off_default_rsp(app_mock):
+    """Test that the On/Off cluster's default response is sent correctly."""
+    dev = zigpy.device.Device(
+        application=app_mock,
+        ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"),
+        nwk=0x1234,
+    )
+
+    dev._send_sequence = DEFAULT_TSN
+
+    ep = dev.add_endpoint(1)
+    ep.add_input_cluster(zcl.clusters.general.OnOff.cluster_id)
+
+    hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.CLUSTER_COMMAND,
+            is_manufacturer_specific=0,
+            direction=foundation.Direction.Client_to_Server,
+            disable_default_response=0,
+            reserved=0,
+        ),
+        tsn=87,
+        command_id=zcl.clusters.general.OnOff.ClientCommandDefs.toggle.id
+    )
+
+    cmd = zcl.clusters.general.OnOff.ClientCommandDefs.toggle
+
+    ep.handle_message(
+        profile=260,
+        cluster=zcl.clusters.general.OnOff.cluster_id,
+        hdr=hdr,
+        args=cmd,
+    )
+
+    await asyncio.sleep(0.1)
+
+    packet = app_mock.send_packet.mock_calls[0].args[0]
+    assert packet.cluster_id == zcl.clusters.general.OnOff.cluster_id
+
+    # Expect a default response to be sent from server to client
+    packet_hdr, _ = foundation.ZCLHeader.deserialize(packet.data.serialize())
+    assert packet_hdr.command_id == zcl.foundation.GeneralCommand.Default_Response
+    assert packet_hdr.direction == foundation.Direction.Server_to_Client
+

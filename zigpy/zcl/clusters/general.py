@@ -942,6 +942,17 @@ class OnOff(Cluster):
             direction=Direction.Client_to_Server,
         )
 
+    class ClientCommandDefs(BaseCommandDefs):
+        off: Final = ZCLCommandDef(
+            id=0x00, schema={}, direction=Direction.Server_to_Client
+        )
+        on: Final = ZCLCommandDef(
+            id=0x01, schema={}, direction=Direction.Server_to_Client
+        )
+        toggle: Final = ZCLCommandDef(
+            id=0x02, schema={}, direction=Direction.Server_to_Client
+        )
+
     def handle_cluster_request(
             self,
             hdr: foundation.ZCLHeader,
