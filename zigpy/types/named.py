@@ -564,9 +564,9 @@ class AddrModeAddress(BaseDataclassMixin):
 class TransmitOptions(enum.Flag):
     NONE = 0
 
-    ACK = 1
-    APS_Encryption = 2
-    FORCE_ROUTE_DISCOVERY = 3
+    ACK = 1 << 0
+    APS_Encryption = 1 << 1
+    FORCE_ROUTE_DISCOVERY = 1 << 2
 
 
 class PacketPriority(enum.IntEnum):
