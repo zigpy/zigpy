@@ -8,7 +8,6 @@ import typing
 import attrs
 
 from . import basic
-from .helpers import UniqueIntFlag
 from .struct import Struct
 
 if typing.TYPE_CHECKING:
@@ -562,7 +561,7 @@ class AddrModeAddress(BaseDataclassMixin):
         return hash((self.addr_mode, self.address))
 
 
-class TransmitOptions(UniqueIntFlag):
+class TransmitOptions(enum.Flag):
     NONE = 0
 
     ACK = 1 << 0
