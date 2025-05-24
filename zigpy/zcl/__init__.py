@@ -351,22 +351,28 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
         priority: int = t.PacketPriority.NORMAL,
+        disable_default_response: bool = None,
+        direction: foundation.Direction | None = None,
         tsn: int | t.uint8_t | None = None,
         timeout=APS_REPLY_TIMEOUT,
         **kwargs,
     ):
+        if direction is None:
+            direction = (
+                foundation.Direction.Server_to_Client
+                if self.is_client
+                else foundation.Direction.Client_to_Server
+            )
+        if disable_default_response is None:
+            disable_default_response = self.is_client
         hdr, request = self._create_request(
             general=general,
             command_id=command_id,
             schema=schema,
             manufacturer=manufacturer,
             tsn=tsn,
-            disable_default_response=self.is_client,
-            direction=(
-                foundation.Direction.Server_to_Client
-                if self.is_client
-                else foundation.Direction.Client_to_Server
-            ),
+            disable_default_response=disable_default_response,
+            direction=direction,
             args=args,
             kwargs=kwargs,
         )
@@ -503,7 +509,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
             if not hdr.frame_control.disable_default_response:
                 self.send_default_rsp(
-                    hdr,
+                    hdr.tsn,
+                    hdr.command_id,
                     foundation.Status.SUCCESS,
                 )
 
@@ -980,17 +987,22 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def send_default_rsp(
         self,
-        hdr: foundation.ZCLHeader,
+        tsn: t.uint8_t,
+        command_id: t.uint8_t,
         status: foundation.Status = foundation.Status.SUCCESS,
+        disable_default_response: bool = True,
+        direction: foundation.Direction | None = None,
     ) -> None:
         """Send default response unconditionally."""
         self.create_catching_task(
             self.general_command(
                 foundation.GeneralCommand.Default_Response,
-                hdr.command_id,
+                command_id,
                 status,
-                tsn=hdr.tsn,
+                tsn=tsn,
                 priority=t.PacketPriority.LOW,
+                disable_default_response=disable_default_response,
+                direction=direction,
             )
         )
 
