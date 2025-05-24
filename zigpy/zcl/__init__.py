@@ -352,13 +352,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         ask_for_ack: bool | None = None,
         priority: int = t.PacketPriority.NORMAL,
         disable_default_response: bool = None,
-        direction: foundation.Direction | None = None,
+        _direction: foundation.Direction | None = None,
         tsn: int | t.uint8_t | None = None,
         timeout=APS_REPLY_TIMEOUT,
         **kwargs,
     ):
-        if direction is None:
-            direction = (
+        if _direction is None:
+            _direction = (
                 foundation.Direction.Server_to_Client
                 if self.is_client
                 else foundation.Direction.Client_to_Server
@@ -372,7 +372,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             manufacturer=manufacturer,
             tsn=tsn,
             disable_default_response=disable_default_response,
-            direction=direction,
+            direction=_direction,
             args=args,
             kwargs=kwargs,
         )
@@ -407,11 +407,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         ask_for_ack: bool | None = None,
         priority: int = t.PacketPriority.NORMAL,
         disable_default_response: bool = True,
-        direction: foundation.Direction | None = None,
+        _direction: foundation.Direction | None = None,
         **kwargs,
     ) -> None:
-        if direction is None:
-            direction = (
+        if _direction is None:
+            _direction = (
                 foundation.Direction.Server_to_Client
                 if self.is_client
                 else foundation.Direction.Client_to_Server
@@ -423,7 +423,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             manufacturer=manufacturer,
             tsn=tsn,
             disable_default_response=disable_default_response,
-            direction=direction,
+            direction=_direction,
             args=args,
             kwargs=kwargs,
         )
@@ -926,7 +926,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
         disable_default_response: bool = True,
-        direction: foundation.Direction | None = None,
+        _direction: foundation.Direction | None = None,
         tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
@@ -942,7 +942,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 manufacturer=manufacturer,
                 tsn=tsn,
                 disable_default_response=disable_default_response,
-                direction=direction,
+                _direction=_direction,
                 **kwargs,
             )
 
@@ -953,6 +953,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             *args,
             manufacturer=manufacturer,
             expect_reply=expect_reply,
+            disable_default_response=disable_default_response,
+            _direction=_direction,
             tsn=tsn,
             **kwargs,
         )
@@ -991,7 +993,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         command_id: t.uint8_t,
         status: foundation.Status = foundation.Status.SUCCESS,
         disable_default_response: bool = True,
-        direction: foundation.Direction | None = None,
+        _direction: foundation.Direction | None = None,
     ) -> None:
         """Send default response unconditionally."""
         self.create_catching_task(
@@ -1002,7 +1004,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 tsn=tsn,
                 priority=t.PacketPriority.LOW,
                 disable_default_response=disable_default_response,
-                direction=direction,
+                _direction=_direction,
             )
         )
 

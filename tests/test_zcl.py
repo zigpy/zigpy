@@ -656,6 +656,8 @@ async def test_configure_reporting_manuf():
         expect_reply=True,
         manufacturer=None,
         tsn=mock.ANY,
+        disable_default_response=True,
+        _direction=None,
     )
 
     cluster.request.reset_mock()
@@ -669,6 +671,8 @@ async def test_configure_reporting_manuf():
         expect_reply=True,
         manufacturer=manufacturer_id,
         tsn=mock.ANY,
+        disable_default_response=True,
+        _direction=None,
     )
     assert cluster.request.call_count == 1
 
@@ -756,6 +760,8 @@ def test_general_command(cluster):
         sentinel.start,
         sentinel.items,
         expect_reply=True,
+        disable_default_response=True,
+        _direction=None,
         manufacturer=0x4567,
         tsn=mock.ANY,
     )
@@ -770,7 +776,7 @@ def test_general_command_reply(cluster):
     assert cluster.request.call_count == 0
     assert cluster.reply.call_count == 1
     cluster.reply.assert_called_with(
-        True, cmd_id, mock.ANY, True, [], manufacturer=0x4567, tsn=None
+        True, cmd_id, mock.ANY, True, [], manufacturer=0x4567, tsn=None, disable_default_response=True, _direction=None
     )
 
     cluster.request.reset_mock()
@@ -780,7 +786,7 @@ def test_general_command_reply(cluster):
     assert cluster.request.call_count == 0
     assert cluster.reply.call_count == 1
     cluster.reply.assert_called_with(
-        True, cmd_id, mock.ANY, True, [], manufacturer=0x4567, tsn=sentinel.tsn
+        True, cmd_id, mock.ANY, True, [], manufacturer=0x4567, tsn=sentinel.tsn, disable_default_response=True, _direction=None
     )
 
 

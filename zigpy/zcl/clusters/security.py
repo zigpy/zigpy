@@ -153,7 +153,7 @@ class IasZone(Cluster):
             and self.is_server
             and not hdr.frame_control.disable_default_response
         ):
-            self.send_default_rsp(hdr.tsn, hdr.command_id, foundation.Status.SUCCESS, direction=Direction.Client_to_Server)
+            self.send_default_rsp(hdr.tsn, hdr.command_id, foundation.Status.SUCCESS, _direction=Direction.Client_to_Server)
 
 
 class AlarmStatus(t.enum8):

@@ -950,7 +950,7 @@ class OnOff(Cluster):
             dst_addressing=None,
     ) -> None:
         if not hdr.frame_control.disable_default_response:
-            self.send_default_rsp(hdr.tsn, hdr.command_id, disable_default_response=False, direction=Direction.Server_to_Client)
+            self.send_default_rsp(hdr.tsn, hdr.command_id, disable_default_response=False, _direction=Direction.Server_to_Client)
 
 
 class SwitchType(t.enum8):
