@@ -497,6 +497,7 @@ async def test_quirks_v2_endpoints(device_mock):
         .replaces_endpoint(3, profile_id=260, device_type=260)
         .adds_endpoint(4)
         .adds(OnOff.cluster_id, endpoint_id=4)
+        .replaces_endpoint(5)
         .add_to_registry()
     )
 
@@ -516,13 +517,22 @@ async def test_quirks_v2_endpoints(device_mock):
     assert quirked.endpoints[3].profile_id == 260
     assert quirked.endpoints[3].device_type == 260
 
-    # verify endpoint 4 was added with default profile id and device type
+    # verify original clusters still exist on endpoint 3 where id and type were replaced
+    assert quirked.endpoints[3].in_clusters.get(Identify.cluster_id) is not None
+    assert quirked.endpoints[3].out_clusters.get(OnOff.cluster_id) is not None
+
+    # verify endpoint 4 was added with default profile id and device type using adds
     assert 4 in quirked.endpoints
     assert quirked.endpoints[4].profile_id == 260
     assert quirked.endpoints[4].device_type == 255
 
     # verify cluster was added to endpoint 4
     assert quirked.endpoints[4].in_clusters.get(OnOff.cluster_id) is not None
+
+    # verify endpoint 5 was added with default profile id and device type using replaces
+    assert 5 in quirked.endpoints
+    assert quirked.endpoints[5].profile_id == 260
+    assert quirked.endpoints[5].device_type == 255
 
 
 async def test_quirks_v2_apply_custom_configuration(device_mock):
