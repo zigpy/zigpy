@@ -285,15 +285,18 @@ class RemovesEndpointMetadata:
 class ReplacesEndpointMetadata:
     """Replaces metadata for replacing an endpoint on a device."""
 
-    add: AddsEndpointMetadata = attrs.field()
+    endpoint_id: int = attrs.field()
+    profile_id: int = attrs.field()
+    device_type: int = attrs.field()
 
     def __call__(self, device: CustomDeviceV2) -> None:
         """Process the replace."""
-        if isinstance(ep := device.endpoints.get(self.add.endpoint_id), Endpoint):
-            ep.profile_id = self.add.profile_id
-            ep.device_type = self.add.device_type
+        if self.endpoint_id in device.endpoints:
+            ep: Endpoint = device.endpoints[self.endpoint_id]
         else:
-            self.add(device)
+            ep = device.add_endpoint(self.endpoint_id)
+        ep.profile_id = self.profile_id
+        ep.device_type = self.device_type
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -764,10 +767,9 @@ class QuirkBuilder:
         device_type: int = 0xFF,
     ) -> QuirkBuilder:
         """Add a ReplacesEndpointMetadata entry and return self."""
-        add = AddsEndpointMetadata(
+        replace = ReplacesEndpointMetadata(
             endpoint_id=endpoint_id, profile_id=profile_id, device_type=device_type
         )
-        replace = ReplacesEndpointMetadata(add=add)
         self.replaces_endpoint_metadata.append(replace)
         return self
 
