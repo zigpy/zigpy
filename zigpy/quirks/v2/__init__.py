@@ -10,7 +10,6 @@ import inspect
 import logging
 import pathlib
 from types import FrameType
-import typing
 from typing import TYPE_CHECKING, Any, Callable
 
 import attrs
@@ -166,7 +165,7 @@ class AddsMetadata:
     cluster: int | type[Cluster | CustomCluster] = attrs.field()
     endpoint_id: int = attrs.field(default=1)
     cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
-    constant_attributes: frozendict[ZCLAttributeDef, typing.Any] = attrs.field(
+    constant_attributes: frozendict[ZCLAttributeDef, Any] = attrs.field(
         factory=frozendict, converter=deepfreeze
     )
 
@@ -344,7 +343,7 @@ class ZCLSensorMetadata(EntityMetadata):
     """Metadata for exposed ZCL attribute based sensor entity."""
 
     attribute_name: str | None = attrs.field(default=None)
-    attribute_converter: typing.Callable[[Any], Any] | None = attrs.field(default=None)
+    attribute_converter: Callable[[Any], Any] | None = attrs.field(default=None)
     reporting_config: ReportingConfig | None = attrs.field(default=None)
     divisor: int | None = attrs.field(default=None)
     multiplier: int | None = attrs.field(default=None)
@@ -386,7 +385,7 @@ class BinarySensorMetadata(EntityMetadata):
     """Metadata for exposed binary sensor entity."""
 
     attribute_name: str = attrs.field()
-    attribute_converter: typing.Callable[[Any], Any] | None = attrs.field(default=None)
+    attribute_converter: Callable[[Any], Any] | None = attrs.field(default=None)
     reporting_config: ReportingConfig | None = attrs.field(default=None)
     device_class: BinarySensorDeviceClass | None = attrs.field(default=None)
 
@@ -629,7 +628,7 @@ class QuirkBuilder:
         cluster: int | type[Cluster | CustomCluster],
         cluster_type: ClusterType = ClusterType.Server,
         endpoint_id: int = 1,
-        constant_attributes: dict[ZCLAttributeDef, typing.Any] | None = None,
+        constant_attributes: dict[ZCLAttributeDef, Any] | None = None,
     ) -> QuirkBuilder:
         """Add an AddsMetadata entry and returns self.
 
@@ -826,7 +825,7 @@ class QuirkBuilder:
         unit: str | None = None,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
-        attribute_converter: typing.Callable[[Any], Any] | None = None,
+        attribute_converter: Callable[[Any], Any] | None = None,
         reporting_config: ReportingConfig | None = None,
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
@@ -972,7 +971,7 @@ class QuirkBuilder:
         device_class: BinarySensorDeviceClass | None = None,
         initially_disabled: bool = False,
         attribute_initialized_from_cache: bool = True,
-        attribute_converter: typing.Callable[[Any], Any] | None = None,
+        attribute_converter: Callable[[Any], Any] | None = None,
         reporting_config: ReportingConfig | None = None,
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
