@@ -448,7 +448,7 @@ class PreventDefaultEntityCreationMetadata:
     cluster_id: int | None = attrs.field()
     cluster_type: ClusterType | None = attrs.field()
     unique_id_suffix: str | None = attrs.field()
-    function: Callable[Any, bool] | None = attrs.field()
+    function: Callable[[Any], bool] | None = attrs.field()
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -1108,7 +1108,7 @@ class QuirkBuilder:
         cluster_id: int | None = None,
         cluster_type: ClusterType | None = None,
         unique_id_suffix: str | None = None,
-        function: Callable[Any, bool] | None = None,
+        function: Callable[[Any], bool] | None = None,
     ) -> QuirkBuilder:
         """Do not create default entities."""
         if cluster_id is not None and cluster_type is None:
