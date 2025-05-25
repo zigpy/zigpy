@@ -88,20 +88,20 @@ class CustomDeviceV2(BaseCustomDevice):
         ] = collections.defaultdict(list)
 
         # endpoints need to be modified before clusters
-        for add_endpoint_meta in quirk_metadata.adds_endpoint_metadata:
-            add_endpoint_meta(self)
-
         for remove_endpoint_meta in quirk_metadata.removes_endpoint_metadata:
             remove_endpoint_meta(self)
+
+        for add_endpoint_meta in quirk_metadata.adds_endpoint_metadata:
+            add_endpoint_meta(self)
 
         for replace_endpoint_meta in quirk_metadata.replaces_endpoint_metadata:
             replace_endpoint_meta(self)
 
-        for add_meta in quirk_metadata.adds_metadata:
-            add_meta(self)
-
         for remove_meta in quirk_metadata.removes_metadata:
             remove_meta(self)
+
+        for add_meta in quirk_metadata.adds_metadata:
+            add_meta(self)
 
         for replace_meta in quirk_metadata.replaces_metadata:
             replace_meta(self)

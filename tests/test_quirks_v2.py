@@ -535,6 +535,52 @@ async def test_quirks_v2_endpoints(device_mock):
     assert quirked.endpoints[5].device_type == 255
 
 
+async def test_quirks_v2_processing_order(device_mock):
+    """Test quirks v2 metadata processing order."""
+    registry = DeviceRegistry()
+
+    device_mock.add_endpoint(2)
+    device_mock[2].add_input_cluster(Identify.cluster_id)
+    device_mock[2].add_output_cluster(OnOff.cluster_id)
+
+    device_mock.add_endpoint(3)
+    device_mock[3].add_input_cluster(Identify.cluster_id)
+    device_mock[3].add_output_cluster(OnOff.cluster_id)
+
+    class TestCustomIdentifyCluster(CustomCluster, Identify):
+        """Custom identify cluster for testing quirks v2."""
+
+    # the order of operations in the quirk builder below barely matters,
+    # but is laid out in a way that generally follows the expected execution order
+    (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .removes_endpoint(2)  # wipes device reported clusters from endpoint 2
+        .adds_endpoint(2)  # adds a new "blank" endpoint 2 with no clusters
+        .removes(Identify.cluster_id, endpoint_id=3)  # test removing cluster
+        .adds(TestCustomIdentifyCluster, endpoint_id=3)  # then "replacing" it by adds
+        .adds(LevelControl.cluster_id, endpoint_id=2)  # adds one custom cluster to ep 2
+        .add_to_registry()
+    )
+
+    quirked: CustomDeviceV2 = registry.get_device(device_mock)
+    assert isinstance(quirked, CustomDeviceV2)
+
+    # verify endpoint 2 was removed and a new one added with device clusters removed
+    assert 2 in quirked.endpoints
+    assert quirked.endpoints[2].in_clusters.get(Identify.cluster_id) is None
+    assert quirked.endpoints[2].out_clusters.get(OnOff.cluster_id) is None
+
+    # verify endpoint 2 cluster added by quirk is present though
+    assert quirked.endpoints[2].in_clusters.get(LevelControl.cluster_id) is not None
+
+    # verify endpoint 3 cluster was replaced by alternatively using removes and adds
+    # instead of just using replaces directly
+    assert 3 in quirked.endpoints
+    assert isinstance(
+        quirked.endpoints[3].in_clusters[Identify.cluster_id], TestCustomIdentifyCluster
+    )
+
+
 async def test_quirks_v2_apply_custom_configuration(device_mock):
     """Test adding a quirk custom configuration to the registry."""
     registry = DeviceRegistry()
