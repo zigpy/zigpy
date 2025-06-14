@@ -517,6 +517,9 @@ class QuirksV2RegistryEntry:
 
         if self.fw_version_filter is not None:
             ota = find_ota_cluster(device)
+            if ota is None:
+                return self.fw_version_filter.allow_missing
+
             current_file_version = ota.get(Ota.AttributeDefs.current_file_version.id)
 
             if current_file_version is None:
