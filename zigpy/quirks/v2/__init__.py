@@ -528,7 +528,7 @@ class QuirksV2RegistryEntry:
                 return False
 
             if self.fw_version_filter.max_version is not None and (
-                current_file_version > self.fw_version_filter.max_version
+                current_file_version >= self.fw_version_filter.max_version
             ):
                 return False
 
@@ -641,8 +641,8 @@ class QuirkBuilder:
         """Add a firmware version filter and returns self.
 
         The min_version and max_version are integers representing the firmware version,
-        inclusive. If allow_missing is True, the filter will pass if the device does
-        not have a firmware version.
+        minimum inclusive but maximum exclusive. If allow_missing is True, the filter
+        will pass if the device does not have a firmware version.
         """
         self.fw_version_filter = FirmwareVersionFilterMetadata(
             min_version=min_version,
