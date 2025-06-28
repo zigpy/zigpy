@@ -4,7 +4,7 @@ asynctest
 coveralls
 coverage[toml]
 pytest
-pytest-asyncio
+pytest-asyncio<1.0.0
 pytest-cov
 pytest-timeout
 freezegun
