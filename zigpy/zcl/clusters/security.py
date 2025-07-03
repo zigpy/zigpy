@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import Final
 
 import zigpy.types as t
-from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
@@ -137,23 +136,6 @@ class IasZone(Cluster):
             id=0x01,
             schema={"zone_type": ZoneType, "manufacturer_code": t.uint16_t},
         )
-
-    def handle_cluster_request(
-        self,
-        hdr: foundation.ZCLHeader,
-        args: list[Any],
-        *,
-        dst_addressing: AddressingMode | None = None,
-    ):
-        if (
-            hdr.command_id == self.commands_by_name["enroll_response"].id
-            and self.is_server
-            and not hdr.frame_control.disable_default_response
-        ):
-            hdr.frame_control = hdr.frame_control.replace(
-                direction=Direction.Client_to_Server
-            )  # this is a client -> server cmd
-            self.send_default_rsp(hdr, foundation.Status.SUCCESS)
 
 
 class AlarmStatus(t.enum8):
