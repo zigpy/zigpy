@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 from unittest import mock
-from unittest.mock import AsyncMock, MagicMock, patch, sentinel
+from unittest.mock import AsyncMock, MagicMock, call, patch, sentinel
 
 import pytest
 
@@ -784,9 +784,10 @@ def test_general_command_reply(cluster):
     )
 
 
-def test_handle_cluster_request_handler(cluster):
+async def test_handle_cluster_request_handler(cluster):
     hdr = foundation.ZCLHeader.cluster(123, 0x00)
     cluster.handle_cluster_request(hdr, [sentinel.arg1, sentinel.arg2])
+    await asyncio.sleep(0)
 
 
 async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
@@ -816,13 +817,22 @@ async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
 
 async def test_handle_cluster_general_request_not_attr_report(cluster):
     hdr = foundation.ZCLHeader.general(1, foundation.GeneralCommand.Write_Attributes)
-    p1 = patch.object(cluster, "_update_attribute")
-    p2 = patch.object(cluster, "create_catching_task")
-    with p1 as attr_lst_mock, p2 as response_mock:
+    with (
+        patch.object(cluster, "_update_attribute") as attr_lst_mock,
+        patch.object(cluster, "general_command") as response_mock,
+    ):
         cluster.handle_cluster_general_request(hdr, [1, 2, 3])
         await asyncio.sleep(0)
         assert attr_lst_mock.call_count == 0
-        assert response_mock.call_count == 0
+        assert response_mock.mock_calls == [
+            call(
+                foundation.GeneralCommand.Default_Response,
+                foundation.GeneralCommand.Write_Attributes,
+                foundation.Status.SUCCESS,
+                tsn=mock.ANY,
+                priority=t.PacketPriority.LOW,
+            )
+        ]
 
 
 async def test_write_attributes_undivided(cluster):
