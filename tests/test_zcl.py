@@ -7,12 +7,14 @@ from unittest.mock import AsyncMock, MagicMock, call, patch, sentinel
 
 import pytest
 
+from tests.conftest import add_initialized_device, make_app
 from zigpy import zcl
 import zigpy.device
 import zigpy.endpoint
+import zigpy.profiles.zha
 import zigpy.types as t
 from zigpy.zcl import foundation
-from zigpy.zcl.clusters.general import Ota
+from zigpy.zcl.clusters.general import OnOff, Ota
 
 DEFAULT_TSN = 123
 
@@ -1322,3 +1324,44 @@ async def test_cluster_definition_invalid_direction():
         TestCluster2.ClientCommandDefs.client_command.direction
         == foundation.Direction.Client_to_Server
     )
+
+
+async def test_received_onoff_toggle_generates_default_response():
+    """Test that a received OnOff:toggle generates a default response."""
+
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    on_off = dev.endpoints[1].add_output_cluster(zcl.clusters.general.OnOff.cluster_id)
+
+    await dev.initialize()
+
+    req_hdr, req_cmd = on_off._create_request(
+        general=False,
+        command_id=OnOff.ServerCommandDefs.toggle.id,
+        schema=OnOff.ServerCommandDefs.toggle.schema,
+        tsn=45,
+        disable_default_response=False,
+        direction=foundation.Direction.Server_to_Client,
+        args=(),
+        kwargs={},
+    )
+
+    with patch.object(on_off, "send_default_rsp") as send_rsp_mock:
+        dev.application.packet_received(
+            t.ZigbeePacket(
+                src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+                src_ep=1,
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+                dst_ep=1,
+                tsn=req_hdr.tsn,
+                profile_id=zigpy.profiles.zha.PROFILE_ID,
+                cluster_id=OnOff.cluster_id,
+                data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
+                lqi=255,
+                rssi=-30,
+            )
+        )
+
+    assert len(send_rsp_mock.mock_calls) == 1
