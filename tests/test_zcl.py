@@ -1036,12 +1036,8 @@ def test_zcl_command_duplicate_name_prevention():
             cluster_id = 0x1234
             ep_attribute = "test_cluster"
             server_commands = {
-                0x00: foundation.ZCLCommandDef(
-                    name="command1", schema={}, direction=False
-                ),
-                0x01: foundation.ZCLCommandDef(
-                    name="command1", schema={}, direction=False
-                ),
+                0x00: foundation.ZCLCommandDef(name="command1", schema={}),
+                0x01: foundation.ZCLCommandDef(name="command1", schema={}),
             }
 
 
@@ -1230,7 +1226,6 @@ async def test_zcl_cluster_definition_invalid_name():
                     "image_type": t.uint16_t,
                     "file_version": t.uint32_t,
                 },
-                direction=foundation.Direction.Client_to_Server,
             )
 
     # This is not
@@ -1266,5 +1261,4 @@ async def test_zcl_cluster_definition_invalid_name():
                         "image_type": t.uint16_t,
                         "file_version": t.uint32_t,
                     },
-                    direction=foundation.Direction.Client_to_Server,
                 )
