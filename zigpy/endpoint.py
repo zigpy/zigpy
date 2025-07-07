@@ -15,6 +15,7 @@ import zigpy.zcl
 from zigpy.zcl.foundation import (
     GENERAL_COMMANDS,
     CommandSchema,
+    Direction,
     GeneralCommand,
     Status as ZCLStatus,
     ZCLHeader,
@@ -236,16 +237,17 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         *,
         dst_addressing: AddressingMode | None = None,
     ) -> None:
-        if cluster in self.in_clusters:
-            handler = self.in_clusters[cluster].handle_message
-        elif cluster in self.out_clusters:
-            handler = self.out_clusters[cluster].handle_message
-        else:
+        try:
+            if hdr.direction == Direction.Client_to_Server:
+                cluster = self.out_clusters[cluster]
+            else:
+                cluster = self.in_clusters[cluster]
+        except KeyError:
             self.debug("Message on unknown cluster 0x%04x", cluster)
             self.listener_event("unknown_cluster_message", hdr.command_id, args)
             return
 
-        handler(hdr, args, dst_addressing=dst_addressing)
+        cluster.handle_message(hdr, args, dst_addressing=dst_addressing)
 
     async def request(
         self,
