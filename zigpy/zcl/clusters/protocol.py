@@ -9,7 +9,6 @@ from zigpy.zcl import Cluster
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
-    Direction,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -30,17 +29,11 @@ class GenericTunnel(Cluster):
         protocol_addr: Final = ZCLAttributeDef(id=0x0003, type=t.LVBytes)
 
     class ServerCommandDefs(BaseCommandDefs):
-        match_protocol_addr: Final = ZCLCommandDef(
-            id=0x00, schema={}, direction=Direction.Client_to_Server
-        )
+        match_protocol_addr: Final = ZCLCommandDef(id=0x00, schema={})
 
     class ClientCommandDefs(BaseCommandDefs):
-        match_protocol_addr_response: Final = ZCLCommandDef(
-            id=0x00, schema={}, direction=Direction.Server_to_Client
-        )
-        advertise_protocol_address: Final = ZCLCommandDef(
-            id=0x01, schema={}, direction=Direction.Client_to_Server
-        )
+        match_protocol_addr_response: Final = ZCLCommandDef(id=0x00, schema={})
+        advertise_protocol_address: Final = ZCLCommandDef(id=0x01, schema={})
 
 
 class BacnetProtocolTunnel(Cluster):
@@ -48,9 +41,7 @@ class BacnetProtocolTunnel(Cluster):
     ep_attribute: Final = "bacnet_tunnel"
 
     class ServerCommandDefs(BaseCommandDefs):
-        transfer_npdu: Final = ZCLCommandDef(
-            id=0x00, schema={"npdu": t.LVBytes}, direction=Direction.Client_to_Server
-        )
+        transfer_npdu: Final = ZCLCommandDef(id=0x00, schema={"npdu": t.LVBytes})
 
 
 class AnalogInputRegular(Cluster):
@@ -86,18 +77,10 @@ class AnalogInputExtended(Cluster):
         # integer, time of day, or structure of (date, time of day))
 
     class ServerCommandDefs(BaseCommandDefs):
-        transfer_apdu: Final = ZCLCommandDef(
-            id=0x00, schema={}, direction=Direction.Client_to_Server
-        )
-        connect_req: Final = ZCLCommandDef(
-            id=0x01, schema={}, direction=Direction.Client_to_Server
-        )
-        disconnect_req: Final = ZCLCommandDef(
-            id=0x02, schema={}, direction=Direction.Client_to_Server
-        )
-        connect_status_noti: Final = ZCLCommandDef(
-            id=0x03, schema={}, direction=Direction.Client_to_Server
-        )
+        transfer_apdu: Final = ZCLCommandDef(id=0x00, schema={})
+        connect_req: Final = ZCLCommandDef(id=0x01, schema={})
+        disconnect_req: Final = ZCLCommandDef(id=0x02, schema={})
+        connect_status_noti: Final = ZCLCommandDef(id=0x03, schema={})
 
 
 class AnalogOutputRegular(Cluster):
