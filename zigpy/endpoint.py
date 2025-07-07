@@ -239,15 +239,15 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     ) -> None:
         try:
             if hdr.direction == Direction.Client_to_Server:
-                cluster = self.out_clusters[cluster]
+                zcl_cluster = self.out_clusters[cluster]
             else:
-                cluster = self.in_clusters[cluster]
+                zcl_cluster = self.in_clusters[cluster]
         except KeyError:
             self.debug("Message on unknown cluster 0x%04x", cluster)
             self.listener_event("unknown_cluster_message", hdr.command_id, args)
             return
 
-        cluster.handle_message(hdr, args, dst_addressing=dst_addressing)
+        zcl_cluster.handle_message(hdr, args, dst_addressing=dst_addressing)
 
     async def request(
         self,
