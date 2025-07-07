@@ -1333,22 +1333,29 @@ async def test_received_onoff_toggle_generates_default_response():
     dev = add_initialized_device(
         app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
     )
-    on_off = dev.endpoints[1].add_output_cluster(zcl.clusters.general.OnOff.cluster_id)
+
+    # The device has both
+    _on_off_server = dev.endpoints[1].add_input_cluster(
+        zcl.clusters.general.OnOff.cluster_id
+    )
+    on_off_client = dev.endpoints[1].add_output_cluster(
+        zcl.clusters.general.OnOff.cluster_id
+    )
 
     await dev.initialize()
 
-    req_hdr, req_cmd = on_off._create_request(
+    req_hdr, req_cmd = on_off_client._create_request(
         general=False,
         command_id=OnOff.ServerCommandDefs.toggle.id,
         schema=OnOff.ServerCommandDefs.toggle.schema,
         tsn=45,
         disable_default_response=False,
-        direction=foundation.Direction.Server_to_Client,
+        direction=foundation.Direction.Client_to_Server,
         args=(),
         kwargs={},
     )
 
-    with patch.object(on_off, "send_default_rsp") as send_rsp_mock:
+    with patch.object(dev.endpoints[1], "reply") as mock_request:
         dev.application.packet_received(
             t.ZigbeePacket(
                 src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
@@ -1363,5 +1370,34 @@ async def test_received_onoff_toggle_generates_default_response():
                 rssi=-30,
             )
         )
+        await asyncio.sleep(0)
 
-    assert len(send_rsp_mock.mock_calls) == 1
+    expected_rsp_hdr, expected_rsp_cmd = on_off_client._create_request(
+        general=True,
+        command_id=foundation.GeneralCommand.Default_Response,
+        schema=foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Default_Response
+        ].schema,
+        tsn=req_hdr.tsn,
+        disable_default_response=True,
+        direction=foundation.Direction.Server_to_Client,
+        args=(),
+        kwargs={
+            "command_id": OnOff.ServerCommandDefs.toggle.id,
+            "status": foundation.Status.SUCCESS,
+        },
+    )
+
+    assert mock_request.mock_calls == [
+        call(
+            cluster=OnOff.cluster_id,
+            sequence=expected_rsp_hdr.tsn,
+            command_id=foundation.GeneralCommand.Default_Response,
+            data=expected_rsp_hdr.serialize() + expected_rsp_cmd.serialize(),
+            timeout=5,
+            expect_reply=False,
+            use_ieee=False,
+            ask_for_ack=None,
+            priority=t.PacketPriority.LOW,
+        )
+    ]
