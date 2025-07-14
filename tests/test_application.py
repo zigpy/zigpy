@@ -1689,3 +1689,10 @@ async def test_request_priority_context_concurrency(app, packet):
         call(packet.replace(data=b"high")),
         call(packet.replace(data=b"normal")),
     ]
+
+
+async def test_can_write_network_settings(app) -> None:
+    # The default is True
+    assert await app.can_write_network_settings(
+        network_info=app.state.network_info, node_info=app.state.node_info
+    )

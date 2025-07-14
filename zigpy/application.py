@@ -1344,6 +1344,21 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Permit a node to join with the provided link key."""
         raise NotImplementedError  # pragma: no cover
 
+    async def can_write_network_settings(
+        self,
+        network_info: zigpy.state.NetworkInfo,
+        node_info: zigpy.state.NodeInfo,
+    ) -> bool:
+        """Returns `True` if the radio can write the given network settings.
+
+        Some radio firmwares do not support writing every network setting in a backup
+        (ZiGate cannot set the PAN ID, older EZSP can only write the EUI64 once, etc.).
+        Not all situations, however, are critical failures: if we are restoring a
+        backup where the PAN ID does not change or the EUI64 remains the same, we can
+        restore the backup successfully.
+        """
+        return True
+
     @abc.abstractmethod
     async def write_network_info(
         self,

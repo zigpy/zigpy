@@ -18,6 +18,10 @@ class ControllerException(ZigbeeException):
     """Application controller failed in some way."""
 
 
+class CannotWriteNetworkSettings(ZigbeeException):
+    """The provided network settings cannot be written due to a radio limitation."""
+
+
 class APIException(ZigbeeException):
     """Radio API failed in some way."""
 
