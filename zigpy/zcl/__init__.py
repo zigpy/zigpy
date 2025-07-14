@@ -180,12 +180,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                         else foundation.Direction.Server_to_Client
                     )
 
-                    if definition.direction is None:
-                        object.__setattr__(definition, "direction", direction)
-                    elif definition.direction != direction:
-                        raise TypeError(
-                            f"Command {definition.name!r} has an incorrect direction"
+                    if definition.direction != direction:
+                        warnings.warn(
+                            f"Command {definition.name!r} has an incorrect direction, please remove the definition",
+                            DeprecationWarning,
                         )
+                        LOGGER.warning(
+                            "Command %r has an incorrect direction, please remove the definition",
+                            definition.name,
+                        )
+
+                    object.__setattr__(definition, "direction", direction)
 
                 if isinstance(
                     definition,
