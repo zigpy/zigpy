@@ -11,8 +11,8 @@ import time
 import typing
 import warnings
 
-from zigpy.ota.manager import find_ota_cluster, update_firmware
-from zigpy.zcl.clusters.general import Ota
+from zigpy.ota.manager import update_firmware
+from zigpy.zcl.clusters.general import Ota, PollControl
 
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
@@ -39,7 +39,7 @@ import zigpy.listeners
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 import zigpy.util
-from zigpy.zcl import foundation
+from zigpy.zcl import Cluster, ClusterType, foundation
 import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
@@ -95,6 +95,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._skip_configuration: bool = False
         self._send_sequence: int = 0
 
+        self._on_remove_callbacks: list[typing.Callable[[], None]] = []
+
         self._packet_debouncer = zigpy.datastructures.Debouncer()
         self._concurrent_requests_semaphore = (
             zigpy.datastructures.PriorityDynamicBoundedSemaphore(MAX_DEVICE_CONCURRENCY)
@@ -102,6 +104,21 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         # Retained for backwards compatibility, will be removed in a future release
         self.status = Status.NEW
+
+        self._on_remove_callbacks.append(
+            self._application.register_callback_listener(
+                src=self,
+                filters=PollControl.ClientCommandDefs.checkin.schema,
+                callback=self.poll_control_checkin_callback,
+            )
+        )
+
+    def on_remove(self) -> None:
+        """Call on remove callbacks."""
+        for callback in self._on_remove_callbacks:
+            callback()
+
+        self._on_remove_callbacks.clear()
 
     @contextlib.asynccontextmanager
     async def _limit_concurrency(self, *, priority: int = 0):
@@ -246,6 +263,33 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
             self.application.listener_event("device_init_failure", self)
 
+    def find_cluster(
+        self, cluster_id: int, cluster_type: ClusterType = ClusterType.Server
+    ) -> Cluster:
+        """Find a cluster by its ID and type on any endpoint."""
+        for ep in self.non_zdo_endpoints:
+            if cluster_type == ClusterType.Server and cluster_id in ep.in_clusters:
+                return ep.in_clusters[cluster_id]
+            elif cluster_type == ClusterType.Client and cluster_id in ep.out_clusters:
+                return ep.out_clusters[cluster_id]
+        raise ValueError(
+            f"Cluster {cluster_id:#04x} not found in any endpoint of device {self}"
+        )
+
+    async def poll_control_checkin_callback(
+        self,
+        hdr: foundation.ZCLHeader,
+        command: foundation.CommandSchema,
+    ) -> None:
+        """Handle Poll Control check-in callback."""
+        poll_control_cluster = self.find_cluster(cluster_id=PollControl.id)
+
+        await poll_control_cluster.checkin_response(
+            start_fast_polling=False,
+            fast_poll_timeout=0,
+            tsn=hdr.tsn,
+        )
+
     @zigpy.util.retryable_request(tries=5, delay=0.5)
     async def _initialize(self) -> None:
         """Attempts multiple times to discover all basic information about a device: namely
@@ -287,9 +331,23 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
         else:
             self.info("Initializing endpoints %s", self.non_zdo_endpoints)
+            initiated_fast_polling = False
 
             for ep in self.non_zdo_endpoints:
                 await ep.initialize()
+
+                if (
+                    initiated_fast_polling
+                    or PollControl.cluster_id not in ep.in_clusters
+                ):
+                    continue
+
+                await ep.poll_control.checkin_response(
+                    start_fast_polling=True,
+                    # The timeout is measured in quarter seconds
+                    fast_poll_timeout=30 * 4,
+                )
+                initiated_fast_polling = True
 
         # Query model info
         if self.model is not None and self.manufacturer is not None:
@@ -599,7 +657,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return result
 
         # Clear the current file version when the update succeeds
-        ota = find_ota_cluster(self)
+        ota = self.find_cluster(
+            cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
+        )
         ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
 
         await asyncio.sleep(AFTER_OTA_ATTR_READ_DELAY)
