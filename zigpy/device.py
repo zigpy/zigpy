@@ -11,6 +11,7 @@ import time
 import typing
 import warnings
 
+from zigpy.exceptions import DeliveryError
 from zigpy.ota.manager import update_firmware
 from zigpy.zcl.clusters.general import Ota, PollControl
 
@@ -51,6 +52,7 @@ LOGGER = logging.getLogger(__name__)
 
 PACKET_DEBOUNCE_WINDOW = 10
 MAX_DEVICE_CONCURRENCY = 1
+FAST_POLL_TIMEOUT = 30
 
 AFTER_OTA_ATTR_READ_DELAY = 10
 OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
@@ -108,7 +110,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._on_remove_callbacks.append(
             self._application.register_callback_listener(
                 src=self,
-                filters=PollControl.ClientCommandDefs.checkin.schema,
+                filters=[PollControl.ClientCommandDefs.checkin.schema()],
                 callback=self.poll_control_checkin_callback,
             )
         )
@@ -282,12 +284,33 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         command: foundation.CommandSchema,
     ) -> None:
         """Handle Poll Control check-in callback."""
-        poll_control_cluster = self.find_cluster(cluster_id=PollControl.id)
+        poll_control = self.find_cluster(cluster_id=PollControl.id)
 
-        await poll_control_cluster.checkin_response(
-            start_fast_polling=False,
-            fast_poll_timeout=0,
-            tsn=hdr.tsn,
+        if self.initializing or self._concurrent_requests_semaphore.locked():
+            # Initiate fast polling mode if we are initializing or waiting for requests
+            # to be sent
+            await poll_control.checkin_response(
+                start_fast_polling=True,
+                fast_poll_timeout=int(FAST_POLL_TIMEOUT * 4),
+                tsn=hdr.tsn,
+                priority=t.PacketPriority.CRITICAL,
+            )
+        else:
+            await poll_control.checkin_response(
+                start_fast_polling=False,
+                fast_poll_timeout=0,
+                tsn=hdr.tsn,
+                priority=t.PacketPriority.CRITICAL,
+            )
+
+    async def begin_fast_polling(self, timeout: float) -> None:
+        poll_control = self.find_cluster(cluster_id=PollControl.cluster_id)
+
+        await poll_control.bind()
+        await poll_control.write_attributes(
+            # The units for the fast poll timeout are quarter seconds
+            {PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4)},
+            priority=t.PacketPriority.CRITICAL,
         )
 
     @zigpy.util.retryable_request(tries=5, delay=0.5)
@@ -324,30 +347,34 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.status = Status.ZDO_INIT
 
+        initiated_fast_polling = False
+
         # Initialize all of the discovered endpoints
         if self.all_endpoints_init:
             self.info(
                 "All endpoints are already initialized: %s", self.non_zdo_endpoints
             )
+
+            # Begin fast polling if we are re-initializing
+            with contextlib.suppress(ValueError):
+                await self.begin_fast_polling(FAST_POLL_TIMEOUT)
         else:
             self.info("Initializing endpoints %s", self.non_zdo_endpoints)
+
             initiated_fast_polling = False
 
             for ep in self.non_zdo_endpoints:
                 await ep.initialize()
 
-                if (
-                    initiated_fast_polling
-                    or PollControl.cluster_id not in ep.in_clusters
-                ):
-                    continue
-
-                await ep.poll_control.checkin_response(
-                    start_fast_polling=True,
-                    # The timeout is measured in quarter seconds
-                    fast_poll_timeout=30 * 4,
-                )
-                initiated_fast_polling = True
+                if not initiated_fast_polling:
+                    # Ask the device to enter fast polling mode mode as soon as we are
+                    # aware of a PollControl cluster
+                    try:
+                        await self.begin_fast_polling(FAST_POLL_TIMEOUT)
+                    except (ValueError, asyncio.TimeoutError, DeliveryError):
+                        pass
+                    else:
+                        initiated_fast_polling = True
 
         # Query model info
         if self.model is not None and self.manufacturer is not None:
