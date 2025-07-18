@@ -515,13 +515,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
         )
 
-    def deserialize(self, endpoint_id, cluster_id, data):
-        """Deprecated compatibility function."""
-        warnings.warn(
-            "`deserialize` is deprecated, avoid rewriting packet structures this way",
-            DeprecationWarning,
-        )
-        return self.endpoints[endpoint_id].deserialize(cluster_id, data)
+    def _find_zcl_cluster_for_packet(
+        self, hdr: foundation.ZCLHeader, packet: t.ZigbeePacket
+    ) -> Cluster:
+        """Find a cluster for the packet."""
+        assert packet.src_ep is not None
+        endpoint = self.endpoints[packet.src_ep]
+
+        if hdr.direction == foundation.Direction.Client_to_Server:
+            return endpoint.out_clusters[packet.cluster_id]
+        else:
+            return endpoint.in_clusters[packet.cluster_id]
 
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         # Set radio details that can be read from any type of packet
@@ -541,7 +545,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.debug("Filtering duplicate packet")
             return
 
-        # Filter out packets that refer to unknown endpoints or clusters
+        # Filter out packets that come from unregistered endpoints
         if packet.src_ep not in self.endpoints:
             self.debug(
                 "Ignoring message on unknown endpoint %s (expected one of %s)",
@@ -550,41 +554,39 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
             return
 
-        endpoint = self.endpoints[packet.src_ep]
-
-        # Ignore packets that do not match the endpoint's clusters.
-        # TODO: this isn't actually necessary, we can parse most packets by cluster ID.
-        if (
-            packet.dst_ep != zdo.ZDO_ENDPOINT
-            and packet.cluster_id not in endpoint.in_clusters
-            and packet.cluster_id not in endpoint.out_clusters
-        ):
-            self.debug(
-                "Ignoring message on unknown cluster %s for endpoint %s",
-                packet.cluster_id,
-                endpoint,
-            )
+        # ZDO packets are simple
+        if packet.dst_ep == zdo.ZDO_ENDPOINT:
+            self.zdo_packet_received(packet)
             return
 
-        # Parse the ZCL/ZDO header first. This should never fail.
-        data = packet.data.serialize()
+        self.zcl_packet_received(packet)
 
-        if packet.dst_ep == zdo.ZDO_ENDPOINT:
-            hdr, _ = zdo_t.ZDOHeader.deserialize(packet.cluster_id, data)
-        else:
-            hdr, _ = foundation.ZCLHeader.deserialize(data)
+    def zcl_packet_received(self, packet: t.ZigbeePacket) -> None:
+        # ZCL packets need to be parsed a little to determine where they go
+        data = packet.data.serialize()
+        zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
 
         try:
-            if (
-                type(self).deserialize is not Device.deserialize
-                or getattr(self.deserialize, "__func__", None) is not Device.deserialize
-            ):
-                # XXX: support for custom deserialization will be removed
-                hdr, args = self.deserialize(packet.src_ep, packet.cluster_id, data)
-            else:
-                # Next, parse the ZCL/ZDO payload
-                # FIXME: ZCL deserialization mutates the header!
-                hdr, args = endpoint.deserialize(packet.cluster_id, data)
+            self._find_zcl_cluster_for_packet(zcl_hdr, packet)
+        except KeyError:
+            self.debug("Ignoring message on an unexpected cluster", packet.cluster_id)
+            return
+
+        if zcl_hdr.frame_control.frame_type == foundation.FrameType.GLOBAL_COMMAND:
+            self.zcl_global_packet_received(packet)
+        else:
+            self.zcl_cluster_packet_received(packet)
+
+    def zdo_packet_received(self, packet: t.ZigbeePacket) -> None:
+        assert packet.src_ep is not None
+        zdo_endpoint = self.endpoints[packet.src_ep]
+        data = packet.data.serialize()
+
+        hdr, _ = zdo_t.ZDOHeader.deserialize(packet.cluster_id, data)
+
+        # Next, try to parse the command
+        try:
+            _, cmd = zdo_endpoint.deserialize(packet.cluster_id, data)
         except Exception as exc:  # noqa: BLE001
             error = zigpy.exceptions.ParsingError()
             error.__cause__ = exc
@@ -594,24 +596,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             error = None
 
         # Resolve the future if this is a response to a request
-        if hdr.tsn in self._pending and (
-            True if isinstance(hdr, foundation.ZCLHeader) else hdr.is_reply
-        ):
+        if hdr.tsn in self._pending and hdr.is_reply:
             future = self._pending[hdr.tsn]
 
-            try:
-                if error is not None:
-                    future.result.set_exception(error)
-                else:
-                    future.result.set_result(args)
-            except asyncio.InvalidStateError:
-                self.debug(
-                    (
-                        "Invalid state on future for 0x%02x seq "
-                        "-- probably duplicate response"
-                    ),
-                    hdr.tsn,
-                )
+            if error is not None:
+                future.result.set_exception(error)
+            else:
+                future.result.set_result(cmd)
 
             return
 
@@ -624,19 +615,88 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._application._req_listeners[self],
         ):
             # Resolve only until the first future listener
-            if listener.resolve(hdr, args) and isinstance(
+            if listener.resolve(hdr, cmd) and isinstance(
                 listener, zigpy.listeners.FutureListener
             ):
                 break
 
-        # Finally, pass it off to the endpoint message handler. This will be removed.
-        endpoint.handle_message(
-            packet.profile_id,
-            packet.cluster_id,
-            hdr,
-            args,
-            dst_addressing=packet.dst.addr_mode if packet.dst is not None else None,
-        )
+    def zcl_cluster_packet_received(self, packet: t.ZigbeePacket) -> None:
+        data = packet.data.serialize()
+        hdr, command_data = foundation.ZCLHeader.deserialize(data)
+        zcl_cluster = self._find_zcl_cluster_for_packet(hdr, packet)
+
+        # Next, try to parse the command
+        try:
+            if hdr.direction == foundation.Direction.Server_to_Client:
+                commands = zcl_cluster.client_commands
+            else:
+                commands = zcl_cluster.server_commands
+
+            cmd, remaining = commands[hdr.command_id].deserialize(command_data)
+        except Exception as exc:  # noqa: BLE001
+            error = zigpy.exceptions.ParsingError()
+            error.__cause__ = exc
+
+            self.debug("Failed to parse packet %r", packet, exc_info=error)
+        else:
+            error = None
+
+            if remaining:
+                self.debug(
+                    "Data remains after deserializing ZCL command: %r", remaining
+                )
+
+        # Resolve the future if this is a response to a request
+        # TODO: this needs to be further narrowed down by cluster ID and endpoint ID
+        if hdr.tsn in self._pending:
+            future = self._pending[hdr.tsn]
+
+            if error is not None:
+                future.result.set_exception(error)
+            else:
+                future.result.set_result(cmd)
+
+            return
+
+        if error is not None:
+            return
+
+        # Pass the request off to a listener, if one is registered
+        for listener in itertools.chain(
+            self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
+            self._application._req_listeners[self],
+        ):
+            # Resolve only until the first future listener
+            if listener.resolve(hdr, cmd) and isinstance(
+                listener, zigpy.listeners.FutureListener
+            ):
+                break
+
+        # Finally, pass it off to a cluster to generate events
+        zcl_cluster.handle_cluster_request(hdr, cmd)
+        zcl_cluster.listener_event("cluster_command", hdr.tsn, hdr.command_id, cmd)
+
+    def zcl_global_packet_received(self, packet: t.ZigbeePacket) -> None:
+        data = packet.data.serialize()
+        hdr, command_data = foundation.ZCLHeader.deserialize(data)
+        zcl_cluster = self._find_zcl_cluster_for_packet(hdr, packet)
+
+        # Next, try to parse the command
+        try:
+            cmd, remaining = foundation.GENERAL_COMMANDS.deserialize(command_data)
+        except Exception as exc:  # noqa: BLE001
+            error = zigpy.exceptions.ParsingError()
+            error.__cause__ = exc
+
+            self.debug("Failed to parse packet %r", packet, exc_info=error)
+            return
+
+        if remaining:
+            self.debug("Data remains after deserializing ZCL command: %r", remaining)
+
+        # Finally, pass it off to a cluster to generate events
+        zcl_cluster.handle_cluster_general_request(hdr, cmd)
+        zcl_cluster.listener_event("general_command", hdr, cmd)
 
     async def reply(
         self,

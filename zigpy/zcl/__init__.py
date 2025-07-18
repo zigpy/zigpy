@@ -263,41 +263,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         cluster.cluster_id = cluster_id
         return cluster
 
-    def deserialize(self, data: bytes) -> tuple[foundation.ZCLHeader, ...]:
-        self.debug("Received ZCL frame: %r", data)
-
-        hdr, data = foundation.ZCLHeader.deserialize(data)
-        self.debug("Decoded ZCL frame header: %r", hdr)
-
-        if hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND:
-            # Cluster command
-            if hdr.direction == foundation.Direction.Server_to_Client:
-                commands = self.client_commands
-            else:
-                commands = self.server_commands
-
-            if hdr.command_id not in commands:
-                self.debug("Unknown cluster command %s %s", hdr.command_id, data)
-                return hdr, data
-
-            command = commands[hdr.command_id]
-        else:
-            # General command
-            if hdr.command_id not in foundation.GENERAL_COMMANDS:
-                self.debug("Unknown foundation command %s %s", hdr.command_id, data)
-                return hdr, data
-
-            command = foundation.GENERAL_COMMANDS[hdr.command_id]
-
-        response, data = command.schema.deserialize(data)
-
-        self.debug("Decoded ZCL frame: %s:%r", type(self).__name__, response)
-
-        if data:
-            self.debug("Data remains after deserializing ZCL frame: %r", data)
-
-        return hdr, response
-
     def _create_request(
         self,
         *,
@@ -432,23 +397,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             ask_for_ack=ask_for_ack,
             priority=priority,
         )
-
-    def handle_message(
-        self,
-        hdr: foundation.ZCLHeader,
-        args: list[Any],
-        *,
-        dst_addressing: AddressingMode | None = None,
-    ) -> None:
-        self.debug(
-            "Received command 0x%02X (TSN %d): %s", hdr.command_id, hdr.tsn, args
-        )
-        if hdr.frame_control.is_cluster:
-            self.handle_cluster_request(hdr, args, dst_addressing=dst_addressing)
-            self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
-            return
-        self.listener_event("general_command", hdr, args)
-        self.handle_cluster_general_request(hdr, args, dst_addressing=dst_addressing)
 
     def handle_cluster_request(
         self,
