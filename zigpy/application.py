@@ -744,6 +744,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def _limit_concurrency(self, *, priority: int = t.PacketPriority.NORMAL):
         """Async context manager to limit global coordinator request concurrency."""
 
+        start_time = time.monotonic()
+
         if priority >= t.PacketPriority.CRITICAL:
             LOGGER.debug(
                 "Critical priority request received (%s), skipping queue with %d requests",
@@ -751,11 +753,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 self._concurrent_requests_semaphore.num_waiting,
             )
             manager = contextlib.nullcontext()
+            was_locked = False
         else:
             manager = self._concurrent_requests_semaphore(priority=priority)
-
-        start_time = time.monotonic()
-        was_locked = self._concurrent_requests_semaphore.locked()
+            was_locked = self._concurrent_requests_semaphore.locked()
 
         if was_locked:
             LOGGER.debug(
