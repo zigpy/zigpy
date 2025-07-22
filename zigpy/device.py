@@ -280,7 +280,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     async def poll_control_checkin_callback(
         self,
-        hdr: foundation.ZCLHeader,
+        zcl_hdr: foundation.ZCLHeader,
         command: foundation.CommandSchema,
     ) -> None:
         """Handle Poll Control check-in callback."""
@@ -292,14 +292,14 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             await poll_control.checkin_response(
                 start_fast_polling=True,
                 fast_poll_timeout=int(FAST_POLL_TIMEOUT * 4),
-                tsn=hdr.tsn,
+                tsn=zcl_hdr.tsn,
                 priority=t.PacketPriority.CRITICAL,
             )
         else:
             await poll_control.checkin_response(
                 start_fast_polling=False,
                 fast_poll_timeout=0,
-                tsn=hdr.tsn,
+                tsn=zcl_hdr.tsn,
                 priority=t.PacketPriority.CRITICAL,
             )
 
@@ -516,13 +516,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         )
 
     def _find_zcl_cluster_for_packet(
-        self, hdr: foundation.ZCLHeader, packet: t.ZigbeePacket
+        self, zcl_hdr: foundation.ZCLHeader, packet: t.ZigbeePacket
     ) -> Cluster:
         """Find a cluster for the packet."""
         assert packet.src_ep is not None
         endpoint = self.endpoints[packet.src_ep]
 
-        if hdr.direction == foundation.Direction.Client_to_Server:
+        if zcl_hdr.direction == foundation.Direction.Client_to_Server:
             return endpoint.out_clusters[packet.cluster_id]
         else:
             return endpoint.in_clusters[packet.cluster_id]
@@ -554,35 +554,98 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
             return
 
-        # ZDO packets are simple
         if packet.dst_ep == zdo.ZDO_ENDPOINT:
             self.zdo_packet_received(packet)
-            return
+        else:
+            self.zcl_packet_received(packet)
 
-        self.zcl_packet_received(packet)
+    def _parse_zcl_command(
+        self, zcl_cluster: Cluster, zcl_hdr: foundation.ZCLHeader, command_data: bytes
+    ) -> tuple[typing.Any, bytes]:
+        """Parse a ZCL command from the data."""
+        if zcl_hdr.frame_control.frame_type == foundation.FrameType.GLOBAL_COMMAND:
+            cmd, remaining = foundation.GENERAL_COMMANDS[
+                zcl_hdr.command_id
+            ].schema.deserialize(command_data)
+        else:
+            if zcl_hdr.direction == foundation.Direction.Server_to_Client:
+                commands = zcl_cluster.client_commands
+            else:
+                commands = zcl_cluster.server_commands
+
+            cmd, remaining = commands[zcl_hdr.command_id].deserialize(command_data)
+
+        return cmd, remaining
 
     def zcl_packet_received(self, packet: t.ZigbeePacket) -> None:
         # ZCL packets need to be parsed a little to determine where they go
         data = packet.data.serialize()
-        zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
+        zcl_hdr, command_data = foundation.ZCLHeader.deserialize(data)
 
         try:
-            self._find_zcl_cluster_for_packet(zcl_hdr, packet)
+            zcl_cluster = self._find_zcl_cluster_for_packet(zcl_hdr, packet)
         except KeyError:
             self.debug("Ignoring message on an unexpected cluster", packet.cluster_id)
             return
 
-        if zcl_hdr.frame_control.frame_type == foundation.FrameType.GLOBAL_COMMAND:
-            self.zcl_global_packet_received(packet)
+        try:
+            cmd, remaining = self._parse_zcl_command(zcl_cluster, zcl_hdr, command_data)
+        except Exception as exc:  # noqa: BLE001
+            error = zigpy.exceptions.ParsingError()
+            error.__cause__ = exc
+
+            self.debug("Failed to parse packet %r", packet, exc_info=error)
         else:
-            self.zcl_cluster_packet_received(packet)
+            error = None
+            self.debug("Decoded ZCL frame: %s:%r", type(zcl_cluster).__name__, cmd)
+
+            if remaining:
+                self.debug(
+                    "Data remains after deserializing ZCL command: %r", remaining
+                )
+
+        # Resolve the future if this is a response to a request
+        # TODO: this needs to be further narrowed down by cluster ID and endpoint ID
+        if zcl_hdr.tsn in self._pending:
+            future = self._pending[zcl_hdr.tsn]
+
+            if error is not None:
+                future.result.set_exception(error)
+            else:
+                future.result.set_result(cmd)
+
+            return
+
+        if error is not None:
+            return
+
+        # Pass the request off to a listener, if one is registered
+        for listener in itertools.chain(
+            self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
+            self._application._req_listeners[self],
+        ):
+            # Resolve only until the first future listener
+            if listener.resolve(zcl_hdr, cmd) and isinstance(
+                listener, zigpy.listeners.FutureListener
+            ):
+                break
+
+        # Finally, pass it off to a cluster to generate events
+        if zcl_hdr.frame_control.frame_type == foundation.FrameType.GLOBAL_COMMAND:
+            zcl_cluster.handle_cluster_general_request(zcl_hdr, cmd)
+            zcl_cluster.listener_event("general_command", zcl_hdr, cmd)
+        else:
+            zcl_cluster.handle_cluster_request(zcl_hdr, cmd)
+            zcl_cluster.listener_event(
+                "cluster_command", zcl_hdr.tsn, zcl_hdr.command_id, cmd
+            )
 
     def zdo_packet_received(self, packet: t.ZigbeePacket) -> None:
         assert packet.src_ep is not None
         zdo_endpoint = self.endpoints[packet.src_ep]
         data = packet.data.serialize()
 
-        hdr, _ = zdo_t.ZDOHeader.deserialize(packet.cluster_id, data)
+        zdo_hdr, _ = zdo_t.ZDOHeader.deserialize(packet.cluster_id, data)
 
         # Next, try to parse the command
         try:
@@ -596,8 +659,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             error = None
 
         # Resolve the future if this is a response to a request
-        if hdr.tsn in self._pending and hdr.is_reply:
-            future = self._pending[hdr.tsn]
+        if zdo_hdr.tsn in self._pending and zdo_hdr.is_reply:
+            future = self._pending[zdo_hdr.tsn]
 
             if error is not None:
                 future.result.set_exception(error)
@@ -615,90 +678,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._application._req_listeners[self],
         ):
             # Resolve only until the first future listener
-            if listener.resolve(hdr, cmd) and isinstance(
+            if listener.resolve(zdo_hdr, cmd) and isinstance(
                 listener, zigpy.listeners.FutureListener
             ):
                 break
-
-    def zcl_cluster_packet_received(self, packet: t.ZigbeePacket) -> None:
-        data = packet.data.serialize()
-        hdr, command_data = foundation.ZCLHeader.deserialize(data)
-        zcl_cluster = self._find_zcl_cluster_for_packet(hdr, packet)
-
-        # Next, try to parse the command
-        try:
-            if hdr.direction == foundation.Direction.Server_to_Client:
-                commands = zcl_cluster.client_commands
-            else:
-                commands = zcl_cluster.server_commands
-
-            cmd, remaining = commands[hdr.command_id].deserialize(command_data)
-        except Exception as exc:  # noqa: BLE001
-            error = zigpy.exceptions.ParsingError()
-            error.__cause__ = exc
-
-            self.debug("Failed to parse packet %r", packet, exc_info=error)
-        else:
-            error = None
-
-            if remaining:
-                self.debug(
-                    "Data remains after deserializing ZCL command: %r", remaining
-                )
-
-        # Resolve the future if this is a response to a request
-        # TODO: this needs to be further narrowed down by cluster ID and endpoint ID
-        if hdr.tsn in self._pending:
-            future = self._pending[hdr.tsn]
-
-            if error is not None:
-                future.result.set_exception(error)
-            else:
-                future.result.set_result(cmd)
-
-            return
-
-        if error is not None:
-            return
-
-        # Pass the request off to a listener, if one is registered
-        for listener in itertools.chain(
-            self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
-            self._application._req_listeners[self],
-        ):
-            # Resolve only until the first future listener
-            if listener.resolve(hdr, cmd) and isinstance(
-                listener, zigpy.listeners.FutureListener
-            ):
-                break
-
-        # Finally, pass it off to a cluster to generate events
-        zcl_cluster.handle_cluster_request(hdr, cmd)
-        zcl_cluster.listener_event("cluster_command", hdr.tsn, hdr.command_id, cmd)
-
-    def zcl_global_packet_received(self, packet: t.ZigbeePacket) -> None:
-        data = packet.data.serialize()
-        hdr, command_data = foundation.ZCLHeader.deserialize(data)
-        zcl_cluster = self._find_zcl_cluster_for_packet(hdr, packet)
-
-        # Next, try to parse the command
-        try:
-            cmd, remaining = foundation.GENERAL_COMMANDS[
-                hdr.command_id
-            ].schema.deserialize(command_data)
-        except Exception as exc:  # noqa: BLE001
-            error = zigpy.exceptions.ParsingError()
-            error.__cause__ = exc
-
-            self.debug("Failed to parse packet %r", packet, exc_info=error)
-            return
-
-        if remaining:
-            self.debug("Data remains after deserializing ZCL command: %r", remaining)
-
-        # Finally, pass it off to a cluster to generate events
-        zcl_cluster.handle_cluster_general_request(hdr, cmd)
-        zcl_cluster.listener_event("general_command", hdr, cmd)
 
     async def reply(
         self,
