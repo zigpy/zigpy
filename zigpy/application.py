@@ -743,10 +743,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             await self.add_endpoint(endpoint)
 
     @contextlib.asynccontextmanager
-    async def _limit_concurrency(self, *, priority: int = t.PacketPriority.NORMAL):
+    async def _limit_concurrency(
+        self, *, priority: int = t.PacketPriority.NORMAL
+    ) -> AsyncGenerator[None, None]:
         """Async context manager to limit global coordinator request concurrency."""
 
         start_time = time.monotonic()
+        manager: contextlib.AbstractAsyncContextManager
 
         if priority >= t.PacketPriority.CRITICAL:
             LOGGER.debug(
