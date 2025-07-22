@@ -16,6 +16,8 @@ import typing
 from typing import Any, TypeVar
 import warnings
 
+from zigpy.backports import nullcontext
+
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
 else:
@@ -752,7 +754,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 priority,
                 self._concurrent_requests_semaphore.num_waiting,
             )
-            manager = contextlib.nullcontext()
+            manager = nullcontext()
             was_locked = False
         else:
             manager = self._concurrent_requests_semaphore(priority=priority)
