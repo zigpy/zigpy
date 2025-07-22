@@ -266,6 +266,7 @@ follow_imports = "silent"
 
 [tool.coverage.run]
 source = ["zigpy"]
+omit = ["zigpy/backports/*"]
 
 [tool.coverage.report]
 exclude_lines = [
