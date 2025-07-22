@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import errno
 import logging
 from unittest import mock
-from unittest.mock import ANY, PropertyMock, call
+from unittest.mock import ANY, Mock, PropertyMock, call
 
 import pytest
 
@@ -1614,3 +1614,29 @@ async def test_packet_capture(app) -> None:
     with patch.object(app, "_packet_capture_change_channel"):
         await app.packet_capture_change_channel(channel=25)
         assert app._packet_capture_change_channel.mock_calls == [call(channel=25)]
+
+
+async def test_request_priority(app) -> None:
+    app._concurrent_requests_semaphore.max_value = 1
+
+    with patch.object(app, "_send_packet", wraps=app._send_packet) as mock_send_packet:
+        packet_low = Mock(name="LOW", priority=t.PacketPriority.LOW)
+        packet_normal = Mock(name="NORMAL", priority=t.PacketPriority.NORMAL)
+        packet_high = Mock(name="HIGH", priority=t.PacketPriority.HIGH)
+        packet_critical = Mock(name="CRITICAL", priority=t.PacketPriority.CRITICAL)
+
+        await asyncio.gather(
+            app.send_packet(packet_low),
+            app.send_packet(packet_normal),
+            app.send_packet(packet_high),
+            app.send_packet(packet_critical),
+        )
+
+    assert mock_send_packet.mock_calls == [
+        # The low priority packet made it through first, locking up the queue
+        call(packet_low),
+        # The critical one bypasses all others even though it's sent last
+        call(packet_critical),
+        call(packet_high),
+        call(packet_normal),
+    ]
