@@ -12,7 +12,7 @@ authors = [
 ]
 readme = "README.md"
 license = {text = "GPL-3.0"}
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "attrs",
     "aiohttp",
@@ -57,7 +57,7 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 required-version = ">=0.5.0"
-target-version = "py39"
+target-version = "py310"
 line-length = 88
 
 exclude = [

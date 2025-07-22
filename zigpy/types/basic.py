@@ -56,7 +56,7 @@ class SerializableBytes:
     def __init__(self, value: bytes = b"") -> None:
         if isinstance(value, SerializableBytes):
             value = value.value
-        elif not isinstance(value, (bytes, bytearray)):
+        elif not isinstance(value, bytes | bytearray):
             raise ValueError(f"Object is not bytes: {value!r}")  # noqa: TRY004
 
         self.value: bytes | bytearray = value
@@ -150,14 +150,6 @@ class FixedIntType(int):
             cls._byteorder = byteorder
         elif cls._byteorder is None:
             cls._byteorder = "little"
-
-        if sys.version_info < (3, 10):
-            # XXX: The enum module uses the first class with __new__ in its __dict__
-            #      as the member type. We have to ensure this is true for
-            #      every subclass.
-            # Fixed with https://github.com/python/cpython/pull/26658
-            if "__new__" not in cls.__dict__:
-                cls.__new__ = cls.__new__
 
         # XXX: The enum module sabotages pickling using the same logic.
         if "__reduce_ex__" not in cls.__dict__:

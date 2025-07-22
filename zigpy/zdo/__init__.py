@@ -302,7 +302,7 @@ def broadcast(
 ):
     params, param_types = types.CLUSTERS[command]
 
-    named_args = dict(zip(params, args))
+    named_args = dict(zip(params, args, strict=False))
     named_args.update(kwargs)
     assert set(named_args.keys()) & set(params)
 

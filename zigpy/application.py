@@ -262,7 +262,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         else:
             _, scanned_channels, _, _, energy_values = rsp
 
-        return dict(zip(scanned_channels, energy_values))
+        return dict(zip(scanned_channels, energy_values, strict=False))
 
     async def _move_network_to_channel(
         self, new_channel: int, new_nwk_update_id: int

@@ -130,9 +130,9 @@ class CallbackListener(BaseRequestListener):
 
 MatcherFuncType = typing.Callable[
     [
-        typing.Union[foundation.ZCLHeader, zdo_t.ZDOHeader],
+        foundation.ZCLHeader | zdo_t.ZDOHeader,
         foundation.CommandSchema,
     ],
     bool,
 ]
-MatcherType = typing.Union[MatcherFuncType, foundation.CommandSchema]
+MatcherType = MatcherFuncType | foundation.CommandSchema

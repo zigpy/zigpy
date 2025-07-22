@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+from collections.abc import Callable
 from copy import deepcopy
 import dataclasses
 from enum import Enum
@@ -10,7 +11,7 @@ import inspect
 import logging
 import pathlib
 from types import FrameType
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import attrs
 from frozendict import deepfreeze, frozendict
