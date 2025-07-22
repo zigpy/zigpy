@@ -219,7 +219,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         status, _, node_desc = await self.zdo.Node_Desc_req(
             self.nwk,
-            priority=t.PacketPriority.HIGH,
+            priority=t.PacketPriority.CRITICAL,
         )
 
         if status != zdo_t.Status.SUCCESS:
@@ -264,7 +264,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.info("Discovering endpoints")
 
             status, _, endpoints = await self.zdo.Active_EP_req(
-                self.nwk, priority=t.PacketPriority.HIGH
+                self.nwk, priority=t.PacketPriority.CRITICAL
             )
 
             if status != zdo_t.Status.SUCCESS:
