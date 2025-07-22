@@ -683,7 +683,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         # Next, try to parse the command
         try:
-            cmd, remaining = foundation.GENERAL_COMMANDS.deserialize(command_data)
+            cmd, remaining = foundation.GENERAL_COMMANDS[
+                hdr.command_id
+            ].schema.deserialize(command_data)
         except Exception as exc:  # noqa: BLE001
             error = zigpy.exceptions.ParsingError()
             error.__cause__ = exc
