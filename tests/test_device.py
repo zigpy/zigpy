@@ -18,7 +18,7 @@ from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import Basic, Ota
 from zigpy.zdo import types as zdo_t
 
-from .async_mock import AsyncMock, MagicMock, int_sentinel, patch, sentinel
+from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
 
 @pytest.fixture
@@ -105,45 +105,6 @@ async def test_initialize_ep_failed(monkeypatch, dev):
     assert dev.application.listener_event.call_args[0][0] == "device_init_failure"
 
 
-async def test_request(dev):
-    seq = int_sentinel.tsn
-
-    async def mock_req(*args, **kwargs):
-        dev._pending[seq].result.set_result(sentinel.result)
-
-    dev.application.send_packet = AsyncMock(side_effect=mock_req)
-    r = await dev.request(1, 2, 3, 3, seq, b"")
-    assert r is sentinel.result
-    assert dev._application.send_packet.call_count == 1
-
-
-async def test_request_without_reply(dev):
-    seq = int_sentinel.tsn
-
-    dev._pending.new = MagicMock()
-    dev.application.send_packet = AsyncMock()
-    r = await dev.request(1, 2, 3, 3, seq, b"", expect_reply=False)
-    assert r is None
-    assert dev._application.send_packet.call_count == 1
-    assert len(dev._pending.new.mock_calls) == 0
-
-
-async def test_request_tsn_error(dev):
-    seq = int_sentinel.tsn
-
-    dev._pending.new = MagicMock(side_effect=zigpy.exceptions.ControllerException())
-    dev.application.request = MagicMock()
-    dev.application.send_packet = AsyncMock()
-
-    # We don't leave a dangling coroutine on error
-    with pytest.raises(zigpy.exceptions.ControllerException):
-        await dev.request(1, 2, 3, 3, seq, b"")
-
-    assert dev._application.send_packet.call_count == 0
-    assert dev._application.request.call_count == 0
-    assert len(dev._pending.new.mock_calls) == 1
-
-
 async def test_failed_request(dev):
     assert dev.last_seen is None
     dev._application.send_packet = AsyncMock(
@@ -172,93 +133,6 @@ def test_radio_details(dev):
     dev.radio_details(rssi=4)
     assert dev.lqi == 3
     assert dev.rssi == 4
-
-
-async def test_handle_message_read_report_conf(dev):
-    ep = dev.add_endpoint(3)
-    ep.add_input_cluster(0x702)
-    tsn = 0x56
-    req_mock = MagicMock()
-    dev._pending[tsn] = req_mock
-
-    # Read Report Configuration Success
-    rsp = dev.packet_received(
-        t.ZigbeePacket(
-            profile_id=0x104,
-            cluster_id=0x702,
-            src_ep=3,
-            dst_ep=3,
-            data=t.SerializableBytes(
-                b"\x18\x56\x09\x00\x00\x00\x00\x25\x1e\x00\x84\x03\x01\x02\x03\x04\x05\x06"
-            ),  # message
-            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
-        )
-    )
-    # Returns decoded msg when response is not pending, None otherwise
-    assert rsp is None
-    assert req_mock.result.set_result.call_count == 1
-    cfg_sup1 = req_mock.result.set_result.call_args[0][0].attribute_configs[0]
-    assert isinstance(cfg_sup1, zigpy.zcl.foundation.AttributeReportingConfigWithStatus)
-    assert cfg_sup1.status == zigpy.zcl.foundation.Status.SUCCESS
-    assert cfg_sup1.config.direction == 0
-    assert cfg_sup1.config.attrid == 0
-    assert cfg_sup1.config.datatype == 0x25
-    assert cfg_sup1.config.min_interval == 30
-    assert cfg_sup1.config.max_interval == 900
-    assert cfg_sup1.config.reportable_change == 0x060504030201
-
-    # Unsupported attributes
-    tsn2 = 0x5B
-    req_mock2 = MagicMock()
-    dev._pending[tsn2] = req_mock2
-    rsp2 = dev.packet_received(
-        t.ZigbeePacket(
-            profile_id=0x104,
-            cluster_id=0x702,
-            src_ep=3,
-            dst_ep=3,
-            data=t.SerializableBytes(
-                b"\x18\x5b\x09\x86\x00\x00\x00\x86\x00\x12\x00\x86\x00\x00\x04"
-            ),  # message 3x("Unsupported attribute" response)
-            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
-        )
-    )
-    # Returns decoded msg when response is not pending, None otherwise
-    assert rsp2 is None
-    cfg_unsup1, cfg_unsup2, cfg_unsup3 = req_mock2.result.set_result.call_args[0][
-        0
-    ].attribute_configs
-    assert (
-        cfg_unsup1.status
-        == cfg_unsup2.status
-        == cfg_unsup3.status
-        == zigpy.zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE
-    )
-    assert cfg_unsup1.config.direction == 0x00 and cfg_unsup1.config.attrid == 0x0000
-    assert cfg_unsup2.config.direction == 0x00 and cfg_unsup2.config.attrid == 0x0012
-    assert cfg_unsup3.config.direction == 0x00 and cfg_unsup3.config.attrid == 0x0400
-
-    # One supported, one unsupported
-    tsn3 = 0x5C
-    req_mock3 = MagicMock()
-    dev._pending[tsn3] = req_mock3
-    rsp3 = dev.packet_received(
-        t.ZigbeePacket(
-            profile_id=0x104,
-            cluster_id=0x702,
-            src_ep=3,
-            dst_ep=3,
-            data=t.SerializableBytes(
-                b"\x18\x5c\x09\x86\x00\x00\x00\x00\x00\x00\x00\x25\x1e\x00\x84\x03\x01\x02\x03\x04\x05\x06"
-            ),
-            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
-        )
-    )
-    assert rsp3 is None
-    cfg_unsup4, cfg_sup2 = req_mock3.result.set_result.call_args[0][0].attribute_configs
-    assert cfg_unsup4.status == zigpy.zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE
-    assert cfg_sup2.status == zigpy.zcl.foundation.Status.SUCCESS
-    assert cfg_sup2.serialize() == cfg_sup1.serialize()
 
 
 async def test_handle_message_deserialize_error(dev):

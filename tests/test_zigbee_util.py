@@ -8,7 +8,6 @@ import typing
 import pytest
 
 from zigpy import util
-from zigpy.exceptions import ControllerException
 from zigpy.types.named import KeyData
 
 from .async_mock import AsyncMock, MagicMock, call, patch, sentinel
@@ -276,52 +275,6 @@ async def test_async_listener():
 
     r = await listenable.async_event("no_such_event", sentinel.no_data)
     assert r == []
-
-
-def test_requests(monkeypatch):
-    req_mock = MagicMock()
-    monkeypatch.setattr(util, "Request", req_mock)
-    r = util.Requests()
-    r.new(sentinel.seq)
-    assert req_mock.call_count == 1
-
-
-async def test_request():
-    pending = util.Requests()
-    seq = 0x11
-
-    req = pending.new(seq)
-    assert seq not in pending
-    assert req.result.done() is False
-    with req:
-        assert seq in pending
-        assert req.result.done() is False
-        assert req.sequence is seq
-    assert req.result.done() is True
-    assert req.result.cancelled() is True
-    assert seq not in pending
-
-    seq = sentinel.seq
-    req = pending.new(seq)
-    assert seq not in pending
-    assert req.result.done() is False
-    with req:
-        assert seq in pending
-        assert req.result.done() is False
-        assert req.sequence is seq
-        req.result.set_result(True)
-    assert req.result.done() is True
-    assert req.result.cancelled() is False
-    assert seq not in pending
-
-
-async def test_request_duplicate():
-    pending = util.Requests()
-    seq = 0x23
-    with pending.new(seq):
-        with pytest.raises(ControllerException):
-            with pending.new(seq):
-                pass
 
 
 class _ClusterMock(util.CatchingTaskMixin):
