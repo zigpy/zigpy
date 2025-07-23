@@ -1359,7 +1359,7 @@ async def test_energy_scan_default(app):
     )
 
     assert len(results) == 16
-    assert results == dict(zip(range(11, 26 + 1), raw_scan_results, strict=False))
+    assert results == dict(zip(range(11, 26 + 1), raw_scan_results, strict=True))
 
 
 async def test_energy_scan_not_implemented(app):

@@ -124,7 +124,7 @@ async def test_local_z2m_provider():
 
     assert len(index) == len(index_obj)
 
-    for obj, meta in zip(index_obj, index, strict=False):
+    for obj, meta in zip(index_obj, index, strict=True):
         assert _test_z2m_index_entry(obj, meta)
 
         if isinstance(meta, providers.RemoteOtaImageMetadata):
@@ -164,7 +164,7 @@ async def test_remote_z2m_provider():
 
     assert len(index) == len(index_obj)
 
-    for obj, meta in zip(index_obj, index, strict=False):
+    for obj, meta in zip(index_obj, index, strict=True):
         assert _test_z2m_index_entry(obj, meta)
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.url == obj.pop("url")
@@ -214,7 +214,7 @@ async def test_tradfri_provider_dirigera():
     ]
     assert len(index) == len(index_obj) - 3 == len(filtered_version_info_obj)
 
-    for obj, meta in zip(filtered_version_info_obj, index, strict=False):
+    for obj, meta in zip(filtered_version_info_obj, index, strict=True):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.file_version == int(
             obj["fw_binary_url"].split("_v", 1)[1].split("_", 1)[0]
@@ -289,7 +289,7 @@ async def test_tradfri_provider_old(index_url: str, index_file: str) -> None:
     assert index
     assert len(index) == len(filtered_version_info_obj)
 
-    for obj, meta in zip(filtered_version_info_obj, index, strict=False):
+    for obj, meta in zip(filtered_version_info_obj, index, strict=True):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.file_version == (
             (obj.pop("fw_file_version_MSB") << 16)
@@ -421,7 +421,7 @@ async def test_ledvance_provider():
 
     assert len(index) == len(index_obj["firmwares"])
 
-    for obj, meta in zip(index_obj["firmwares"], index, strict=False):
+    for obj, meta in zip(index_obj["firmwares"], index, strict=True):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.image_type == obj["identity"]["product"]
         assert meta.checksum == "sha256:" + obj.pop("shA256")
@@ -468,7 +468,7 @@ async def test_sonoff_provider():
 
     assert len(index) == len(index_obj)
 
-    for obj, meta in zip(index_obj, index, strict=False):
+    for obj, meta in zip(index_obj, index, strict=True):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.url == obj.pop("fw_binary_url")
         assert meta.file_version == obj.pop("fw_file_version")
@@ -496,7 +496,7 @@ async def test_inovelli_provider():
     unpacked_objs = [(model, obj) for model, fws in index_obj.items() for obj in fws]
     assert len(index) == len(unpacked_objs)
 
-    for (model, obj), meta in zip(unpacked_objs, index, strict=False):
+    for (model, obj), meta in zip(unpacked_objs, index, strict=True):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
 
         if obj["version"] == "0000000B":
@@ -534,7 +534,7 @@ async def test_third_reality_provider():
 
     assert len(index) == len(index_obj["versions"])
 
-    for obj, meta in zip(index_obj["versions"], index, strict=False):
+    for obj, meta in zip(index_obj["versions"], index, strict=True):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.model_names == (obj.pop("modelId"),)
         assert meta.url == obj.pop("url")
@@ -571,7 +571,7 @@ async def test_remote_zigpy_provider():
 
     assert len(index) == len(index_obj["firmwares"])
 
-    for obj, meta in zip(index_obj["firmwares"], index, strict=False):
+    for obj, meta in zip(index_obj["firmwares"], index, strict=True):
         assert isinstance(meta, providers.RemoteOtaImageMetadata)
         assert meta.url == obj.pop("binary_url")
         assert meta.file_version == obj.pop("file_version")
@@ -607,7 +607,7 @@ async def test_local_zigpy_provider():
 
     assert len(index) == len(index_obj["firmwares"])
 
-    for obj, meta in zip(index_obj["firmwares"], index, strict=False):
+    for obj, meta in zip(index_obj["firmwares"], index, strict=True):
         assert isinstance(meta, providers.LocalOtaImageMetadata)
         assert meta.path == pathlib.Path(FILES_DIR / obj.pop("path"))
         assert meta.file_version == obj.pop("file_version")
@@ -655,7 +655,7 @@ async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
 
     assert len(index) == len(files)
 
-    for path, meta in zip(files, index, strict=False):
+    for path, meta in zip(files, index, strict=True):
         data = path.read_bytes()
 
         assert isinstance(meta, providers.LocalOtaImageMetadata)

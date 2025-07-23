@@ -244,7 +244,7 @@ def _get_model_info(ep, attributes={}):
 
         result = []
 
-        for attr_id, value in zip(args, attributes[tuple(args)], strict=False):
+        for attr_id, value in zip(args, attributes[tuple(args)], strict=True):
             if isinstance(value, BaseException):
                 raise value
             elif value is None:

@@ -447,7 +447,7 @@ class OTA:
             return_exceptions=True,
         )
 
-        for img, result in zip(undownloaded_images, results, strict=False):
+        for img, result in zip(undownloaded_images, results, strict=True):
             if isinstance(result, BaseException):
                 _LOGGER.debug(
                     "Failed to download image, ignoring: %s", img, exc_info=result
