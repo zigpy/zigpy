@@ -66,8 +66,8 @@ class ResponseKey:
     """Key for request/response matching."""
 
     endpoint_id: int
-    cluster_id: int | None
-    direction: foundation.Direction
+    cluster_id: int
+    direction: foundation.Direction | None
     tsn: int
 
 
@@ -399,11 +399,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     tsn=sequence,
                 )
             else:
-                zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
+                try:
+                    zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
+                except ValueError:
+                    direction = None
+                else:
+                    direction = zcl_hdr.frame_control.direction
+
                 rsp_key = ResponseKey(
                     endpoint_id=dst_ep,
                     cluster_id=cluster,
-                    direction=zcl_hdr.frame_control.direction,
+                    direction=direction.flip() if direction is not None else None,
                     tsn=sequence,
                 )
 
@@ -554,11 +560,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 tsn=hdr.tsn,
             )
         else:
-            zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
+            try:
+                zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
+            except ValueError:
+                direction = None
+            else:
+                direction = zcl_hdr.frame_control.direction
+
             rsp_key = ResponseKey(
                 endpoint_id=packet.src_ep,
                 cluster_id=packet.cluster_id,
-                direction=zcl_hdr.frame_control.direction,
+                direction=direction,
                 tsn=hdr.tsn,
             )
 
