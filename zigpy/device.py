@@ -43,7 +43,7 @@ import zigpy.listeners
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 import zigpy.util
-from zigpy.zcl import foundation
+from zigpy.zcl import Cluster, ClusterType, foundation
 import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
@@ -274,6 +274,19 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
 
             self.application.listener_event("device_init_failure", self)
+
+    def find_cluster(
+        self, cluster_id: int, cluster_type: ClusterType = ClusterType.Server
+    ) -> Cluster:
+        """Find a cluster by its ID and type on any endpoint."""
+        for ep in self.non_zdo_endpoints:
+            if cluster_type == ClusterType.Server and cluster_id in ep.in_clusters:
+                return ep.in_clusters[cluster_id]
+            elif cluster_type == ClusterType.Client and cluster_id in ep.out_clusters:
+                return ep.out_clusters[cluster_id]
+        raise ValueError(
+            f"Cluster {cluster_id:#04x} not found in any endpoint of device {self}"
+        )
 
     @zigpy.util.retryable_request(tries=5, delay=0.5)
     async def _initialize(self) -> None:
