@@ -304,7 +304,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             elif cluster_type == ClusterType.Client and cluster_id in ep.out_clusters:
                 return ep.out_clusters[cluster_id]
         raise ValueError(
-            f"Cluster {cluster_id:#04x} not found in any endpoint of device {self}"
+            f"Cluster {cluster_id:#06x} not found in any endpoint of device {self}"
         )
 
     async def poll_control_checkin_callback(

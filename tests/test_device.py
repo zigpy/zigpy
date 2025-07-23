@@ -345,12 +345,12 @@ async def test_ignore_unknown_endpoint(dev, caplog):
 
 async def test_update_device_firmware_no_ota_cluster(dev):
     """Test that device firmware updates fails: no ota cluster."""
-    with pytest.raises(ValueError, match="Device has no OTA cluster"):
+    with pytest.raises(ValueError, match="Cluster 0x0019 not found"):
         await dev.update_firmware(sentinel.firmware_image, sentinel.progress_callback)
 
     dev.add_endpoint(1)
     dev.endpoints[1].output_clusters = MagicMock(side_effect=KeyError)
-    with pytest.raises(ValueError, match="Device has no OTA cluster"):
+    with pytest.raises(ValueError, match="Cluster 0x0019 not found"):
         await dev.update_firmware(sentinel.firmware_image, sentinel.progress_callback)
 
 
