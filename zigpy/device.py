@@ -374,8 +374,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.status = Status.ZDO_INIT
 
-        initiated_fast_polling = False
-
         # Initialize all of the discovered endpoints
         if self.all_endpoints_init:
             self.info(
@@ -394,7 +392,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 await ep.initialize()
 
                 if not initiated_fast_polling:
-                    # Ask the device to enter fast polling mode mode as soon as we are
+                    # Ask the device to enter fast polling mode as soon as we are
                     # aware of a PollControl cluster
                     try:
                         await self.begin_fast_polling(FAST_POLL_TIMEOUT)
