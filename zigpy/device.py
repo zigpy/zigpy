@@ -42,7 +42,7 @@ import zigpy.listeners
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 import zigpy.util
-from zigpy.zcl import ClusterType, foundation
+from zigpy.zcl import foundation
 import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
@@ -62,12 +62,12 @@ OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
 
 
 @dataclass(slots=True, frozen=True)
-class RequestKey:
+class ResponseKey:
     """Key for request/response matching."""
 
     endpoint_id: int
     cluster_id: int | None
-    cluster_type: ClusterType | None  # None for ZDO
+    direction: foundation.Direction
     tsn: int
 
 
@@ -103,7 +103,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._manufacturer: str | None = None
         self._model: str | None = None
         self.node_desc: zdo_t.NodeDescriptor | None = None
-        self._pending: dict[RequestKey, asyncio.Future] = {}
+        self._requests: dict[ResponseKey, asyncio.Future] = {}
         self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
         self._send_sequence: int = 0
@@ -387,28 +387,36 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 return None
 
             if dst_ep == zdo.ZDO_ENDPOINT:
-                key = RequestKey(
+                rsp_key = ResponseKey(
                     endpoint_id=dst_ep,
-                    cluster_id=None,
-                    cluster_type=None,
+                    # e.g. Node_Desc_req = 0x0002 corresponds to Node_Desc_rsp = 0x8002
+                    cluster_id=cluster ^ 0x8000,
+                    direction=(
+                        foundation.Direction.Client_to_Server
+                        if cluster & 0x8000
+                        else foundation.Direction.Server_to_Client
+                    ),
                     tsn=sequence,
                 )
             else:
-                key = RequestKey(
+                zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
+                rsp_key = ResponseKey(
                     endpoint_id=dst_ep,
                     cluster_id=cluster,
-                    cluster_type=ClusterType.Server,
+                    direction=zcl_hdr.frame_control.direction,
                     tsn=sequence,
                 )
 
-            if key in self._pending:
-                self.debug("Duplicate %s TSN: pending %s", key, self._pending)
-                raise zigpy.exceptions.ControllerException(f"Duplicate TSN: {key}")
+            if rsp_key in self._requests:
+                self.debug("Duplicate request key: %s", rsp_key, self._requests)
+                raise zigpy.exceptions.ControllerException(
+                    f"Duplicate request key: {rsp_key}"
+                )
 
             future: asyncio.Future[list[typing.Any, ...] | foundation.CommandSchema] = (
                 asyncio.Future()
             )
-            self._pending[key] = future
+            self._requests[rsp_key] = future
 
             try:
                 await send_request()
@@ -417,7 +425,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             finally:
                 if not future.done():
                     future.cancel()
-                self._pending.pop(key, None)
+                self._requests.pop(rsp_key, None)
 
     def handle_message(
         self,
@@ -534,35 +542,39 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             error = None
 
         # Resolve the future if this is a response to a request
-        if isinstance(hdr, foundation.ZCLHeader) or hdr.is_reply:
-            if packet.src_ep == zdo.ZDO_ENDPOINT:
-                key = RequestKey(
-                    endpoint_id=packet.src_ep,
-                    cluster_id=None,
-                    cluster_type=None,
-                    tsn=hdr.tsn,
-                )
-            else:
-                key = RequestKey(
-                    endpoint_id=packet.src_ep,
-                    cluster_id=packet.cluster_id,
-                    cluster_type=ClusterType.Server,
-                    tsn=hdr.tsn,
-                )
+        if packet.src_ep == zdo.ZDO_ENDPOINT:
+            rsp_key = ResponseKey(
+                endpoint_id=packet.src_ep,
+                cluster_id=packet.cluster_id,
+                direction=(
+                    foundation.Direction.Server_to_Client
+                    if packet.cluster_id & 0x8000
+                    else foundation.Direction.Client_to_Server
+                ),
+                tsn=hdr.tsn,
+            )
+        else:
+            zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
+            rsp_key = ResponseKey(
+                endpoint_id=packet.src_ep,
+                cluster_id=packet.cluster_id,
+                direction=zcl_hdr.frame_control.direction,
+                tsn=hdr.tsn,
+            )
 
-            future = self._pending.get(key)
-            if future is not None:
-                try:
-                    if error is not None:
-                        future.set_exception(error)
-                    else:
-                        future.set_result(args)
-                except asyncio.InvalidStateError:
-                    self.debug(
-                        "Invalid state on future for %s -- probably duplicate response",
-                        key,
-                    )
-                return
+        future = self._requests.get(rsp_key)
+        if future is not None:
+            try:
+                if error is not None:
+                    future.set_exception(error)
+                else:
+                    future.set_result(args)
+            except asyncio.InvalidStateError:
+                self.debug(
+                    "Invalid state on future for %s -- probably duplicate response",
+                    rsp_key,
+                )
+            return
 
         if error is not None:
             return
