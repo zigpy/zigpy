@@ -111,7 +111,7 @@ async def test_failed_request(dev):
         side_effect=zigpy.exceptions.DeliveryError("Uh oh")
     )
     with pytest.raises(zigpy.exceptions.DeliveryError):
-        await dev.request(1, 2, 3, 4, 5, b"")
+        await dev.request(1, 2, 3, 4, 5, b"1234")
     assert dev.last_seen is None
 
 
