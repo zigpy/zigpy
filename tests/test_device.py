@@ -1330,3 +1330,70 @@ async def test_device_concurrency(dev: device.Device) -> None:
         t.PacketPriority.NORMAL,
         t.PacketPriority.LOW,
     ]
+
+
+async def test_duplicate_request_matching(dev: device.Device) -> None:
+    """Test that a device throws an error if requests duplicate."""
+
+    ep = dev.add_endpoint(1)
+    ep.add_input_cluster(Basic.cluster_id)
+
+    async def delayed_receive(*args, **kwargs) -> None:
+        await asyncio.sleep(0.1)
+        raise asyncio.TimeoutError()
+
+    dev._application.request = AsyncMock(side_effect=delayed_receive)
+    dev._concurrent_requests_semaphore.max_value = 100000
+
+    # We send 256 + 1 requests
+    errors = await asyncio.gather(
+        *(dev.endpoints[1].basic.reset_fact_default() for _ in range(256 + 1)),
+        return_exceptions=True,
+    )
+
+    # The 257th will fail to send because it will collide with the first due to TSN
+    # wrapping
+    assert all(isinstance(errors[i], asyncio.TimeoutError) for i in range(256))
+    assert isinstance(errors[256], zigpy.exceptions.ControllerException)
+    assert str(errors[256]).startswith("Duplicate request key: ")
+
+
+async def test_non_zcl_packet_matching(dev: device.Device) -> None:
+    """Test being able to match packets without valid ZCL headers."""
+
+    ep = dev.add_endpoint(1)
+    ep.add_input_cluster(Basic.cluster_id)
+
+    asyncio.get_running_loop().call_soon(
+        dev.packet_received,
+        t.ZigbeePacket(
+            profile_id=1234,
+            cluster_id=Basic.cluster_id,
+            src_ep=1,
+            dst_ep=1,
+            data=t.SerializableBytes(b"cd"),  # Too short to be a ZCL header
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        ),
+    )
+
+    def strange_deserialize(self, data: bytes) -> bytes:
+        """Simulate a non-Zigbee protocol in use."""
+
+        class hdr:
+            tsn = 12
+
+        return hdr, data
+
+    with patch.object(ep, "deserialize", side_effect=strange_deserialize):
+        rsp = await dev.request(
+            profile=1234,
+            cluster=Basic.cluster_id,
+            src_ep=1,
+            dst_ep=1,
+            sequence=12,
+            data=b"ab",  # Too short to be a ZCL header
+            expect_reply=True,
+        )
+
+    # We can still match up a response
+    assert rsp == b"cd"

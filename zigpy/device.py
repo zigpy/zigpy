@@ -524,11 +524,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         # Parse the ZCL/ZDO header first. This should never fail.
         data = packet.data.serialize()
 
-        if packet.dst_ep == zdo.ZDO_ENDPOINT:
-            hdr, _ = zdo_t.ZDOHeader.deserialize(packet.cluster_id, data)
-        else:
-            hdr, _ = foundation.ZCLHeader.deserialize(data)
-
         try:
             if (
                 type(self).deserialize is not Device.deserialize
