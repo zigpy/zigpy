@@ -12,7 +12,8 @@ import typing
 import warnings
 
 from zigpy.backports.contextlib import nullcontext
-from zigpy.ota.manager import find_ota_cluster, update_firmware
+from zigpy.exceptions import DeliveryError
+from zigpy.ota.manager import update_firmware
 from zigpy.zcl.clusters.general import Ota, PollControl
 
 if sys.version_info[:2] < (3, 11):
@@ -331,6 +332,16 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 priority=t.PacketPriority.CRITICAL,
             )
 
+    async def begin_fast_polling(self, timeout: float) -> None:
+        poll_control = self.find_cluster(cluster_id=PollControl.cluster_id)
+
+        await poll_control.bind()
+        await poll_control.write_attributes(
+            # The units for the fast poll timeout are quarter seconds
+            {PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4)},
+            priority=t.PacketPriority.CRITICAL,
+        )
+
     @zigpy.util.retryable_request(tries=5, delay=0.5)
     async def _initialize(self) -> None:
         """Attempts multiple times to discover all basic information about a device: namely
@@ -363,16 +374,34 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.status = Status.ZDO_INIT
 
+        initiated_fast_polling = False
+
         # Initialize all of the discovered endpoints
         if self.all_endpoints_init:
             self.info(
                 "All endpoints are already initialized: %s", self.non_zdo_endpoints
             )
+
+            # Begin fast polling if we are re-initializing
+            with contextlib.suppress(ValueError):
+                await self.begin_fast_polling(FAST_POLL_TIMEOUT)
         else:
             self.info("Initializing endpoints %s", self.non_zdo_endpoints)
 
+            initiated_fast_polling = False
+
             for ep in self.non_zdo_endpoints:
                 await ep.initialize()
+
+                if not initiated_fast_polling:
+                    # Ask the device to enter fast polling mode mode as soon as we are
+                    # aware of a PollControl cluster
+                    try:
+                        await self.begin_fast_polling(FAST_POLL_TIMEOUT)
+                    except (ValueError, asyncio.TimeoutError, DeliveryError):
+                        pass
+                    else:
+                        initiated_fast_polling = True
 
         # Query model info
         if self.model is not None and self.manufacturer is not None:
