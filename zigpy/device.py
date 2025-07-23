@@ -410,7 +410,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 )
 
             if rsp_key in self._requests:
-                self.debug("Duplicate request key: %s", rsp_key, self._requests)
+                self.debug(
+                    "Duplicate request key %s, pending requests %s",
+                    rsp_key,
+                    self._requests,
+                )
                 raise zigpy.exceptions.ControllerException(
                     f"Duplicate request key: {rsp_key}"
                 )
