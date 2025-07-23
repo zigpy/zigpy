@@ -391,11 +391,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     endpoint_id=dst_ep,
                     # e.g. Node_Desc_req = 0x0002 corresponds to Node_Desc_rsp = 0x8002
                     cluster_id=cluster ^ 0x8000,
-                    direction=(
-                        foundation.Direction.Client_to_Server
-                        if cluster & 0x8000
-                        else foundation.Direction.Server_to_Client
-                    ),
+                    direction=None,
                     tsn=sequence,
                 )
             else:
@@ -552,11 +548,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             rsp_key = ResponseKey(
                 endpoint_id=packet.src_ep,
                 cluster_id=packet.cluster_id,
-                direction=(
-                    foundation.Direction.Server_to_Client
-                    if packet.cluster_id & 0x8000
-                    else foundation.Direction.Client_to_Server
-                ),
+                direction=None,
                 tsn=hdr.tsn,
             )
         else:
