@@ -13,7 +13,7 @@ import warnings
 
 from zigpy.backports.contextlib import nullcontext
 from zigpy.ota.manager import find_ota_cluster, update_firmware
-from zigpy.zcl.clusters.general import Ota
+from zigpy.zcl.clusters.general import Ota, PollControl
 
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
@@ -55,6 +55,7 @@ LOGGER = logging.getLogger(__name__)
 
 PACKET_DEBOUNCE_WINDOW = 10
 MAX_DEVICE_CONCURRENCY = 1
+FAST_POLL_TIMEOUT = 30
 
 AFTER_OTA_ATTR_READ_DELAY = 10
 OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
@@ -110,6 +111,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._skip_configuration: bool = False
         self._send_sequence: int = 0
 
+        self._on_remove_callbacks: list[typing.Callable[[], None]] = []
+
         self._packet_debouncer = zigpy.datastructures.Debouncer()
         self._concurrent_requests_semaphore = (
             zigpy.datastructures.PriorityDynamicBoundedSemaphore(MAX_DEVICE_CONCURRENCY)
@@ -117,6 +120,21 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         # Retained for backwards compatibility, will be removed in a future release
         self.status = Status.NEW
+
+        self._on_remove_callbacks.append(
+            self._application.register_callback_listener(
+                src=self,
+                filters=[PollControl.ClientCommandDefs.checkin.schema()],
+                callback=self.poll_control_checkin_callback,
+            )
+        )
+
+    def on_remove(self) -> None:
+        """Call on remove callbacks."""
+        for callback in self._on_remove_callbacks:
+            callback()
+
+        self._on_remove_callbacks.clear()
 
     @contextlib.asynccontextmanager
     async def _limit_concurrency(self, *, priority: int | None = None):
@@ -287,6 +305,31 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         raise ValueError(
             f"Cluster {cluster_id:#04x} not found in any endpoint of device {self}"
         )
+
+    async def poll_control_checkin_callback(
+        self,
+        zcl_hdr: foundation.ZCLHeader,
+        command: foundation.CommandSchema,
+    ) -> None:
+        """Handle Poll Control check-in callback."""
+        poll_control = self.find_cluster(cluster_id=PollControl.id)
+
+        if self.initializing or self._concurrent_requests_semaphore.locked():
+            # Initiate fast polling mode if we are initializing or waiting for requests
+            # to be sent
+            await poll_control.checkin_response(
+                start_fast_polling=True,
+                fast_poll_timeout=int(FAST_POLL_TIMEOUT * 4),
+                tsn=zcl_hdr.tsn,
+                priority=t.PacketPriority.CRITICAL,
+            )
+        else:
+            await poll_control.checkin_response(
+                start_fast_polling=False,
+                fast_poll_timeout=0,
+                tsn=zcl_hdr.tsn,
+                priority=t.PacketPriority.CRITICAL,
+            )
 
     @zigpy.util.retryable_request(tries=5, delay=0.5)
     async def _initialize(self) -> None:
@@ -675,7 +718,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return result
 
         # Clear the current file version when the update succeeds
-        ota = find_ota_cluster(self)
+        ota = self.find_cluster(
+            cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
+        )
         ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
 
         await asyncio.sleep(AFTER_OTA_ATTR_READ_DELAY)

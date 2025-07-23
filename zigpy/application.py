@@ -74,7 +74,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._config = self.SCHEMA(config)
         self._dblistener = None
         self._groups = zigpy.group.Groups(self)
-        self._listeners = {}
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()
 
@@ -436,9 +435,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if self._watchdog_task is not None:
             self._watchdog_task.cancel()
 
+        for task in self._tasks:
+            task.cancel()
+
         self.ota.stop_periodic_broadcasts()
         self.backups.stop_periodic_backups()
         self.topology.stop_periodic_scans()
+
+        for device in self.devices.values():
+            device.on_remove()
 
         try:
             await self.disconnect()
