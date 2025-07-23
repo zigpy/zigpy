@@ -61,7 +61,8 @@ OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
 )
 
 
-@dataclass(slots=True, frozen=True)
+# TODO: Only Python 3.10+ support `slots=True` for dataclasses
+@dataclass(frozen=True, **({"slots": True} if sys.version_info[:2] >= (3, 10) else {}))
 class ResponseKey:
     """Key for request/response matching."""
 
