@@ -464,8 +464,9 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                         field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
                         manufacturer_code=active_fw_image.firmware.header.manufacturer_id,
                         image_type=active_fw_image.firmware.header.image_type,
-                        current_file_version=active_fw_image.firmware.header.file_version
-                        - 10,
+                        current_file_version=(
+                            active_fw_image.firmware.header.file_version - 10
+                        ),
                         hardware_version=1,
                     )
                 )
@@ -564,7 +565,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                     ].schema,
                     tsn=hdr.tsn,
                     disable_default_response=True,
-                    direction=foundation.Direction.Server_to_Client,
+                    direction=foundation.Direction.Client_to_Server,
                     args=(),
                     kwargs={
                         "status_records": [
@@ -944,7 +945,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
                     ].schema,
                     tsn=hdr.tsn,
                     disable_default_response=True,
-                    direction=foundation.Direction.Server_to_Client,
+                    direction=foundation.Direction.Client_to_Server,
                     args=(),
                     kwargs={
                         "status_records": [
