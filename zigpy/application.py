@@ -1185,6 +1185,32 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         else:
             raise ValueError(f"Invalid address: {address!r}")
 
+    def register_callback_listener(
+        self,
+        src: zigpy.device.Device | zigpy.listeners.ANY_DEVICE,
+        filters: list[zigpy.listeners.MatcherType],
+        callback: typing.Callable[
+            [
+                zigpy.zcl.foundation.ZCLHeader,
+                zigpy.zcl.foundation.CommandSchema,
+            ],
+            typing.Any,
+        ],
+    ) -> typing.Callable[[], None]:
+        listener = zigpy.listeners.CallbackListener(
+            matchers=tuple(filters),
+            callback=callback,
+        )
+
+        self._req_listeners[src].append(listener)
+
+        def cancel_callback() -> None:
+            """Remove the listener."""
+            if listener in self._req_listeners[src]:
+                self._req_listeners[src].remove(listener)
+
+        return cancel_callback
+
     @contextlib.contextmanager
     def callback_for_response(
         self,
@@ -1199,18 +1225,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         ],
     ) -> typing.Any:
         """Context manager to create a callback that is passed Zigbee responses."""
-
-        listener = zigpy.listeners.CallbackListener(
-            matchers=tuple(filters),
-            callback=callback,
+        cancel = self.register_callback_listener(
+            src=src, filters=filters, callback=callback
         )
-
-        self._req_listeners[src].append(listener)
 
         try:
             yield
         finally:
-            self._req_listeners[src].remove(listener)
+            cancel()
 
     @contextlib.contextmanager
     def wait_for_response(
