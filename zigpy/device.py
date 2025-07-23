@@ -524,27 +524,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         # Parse the ZCL/ZDO header first. This should never fail.
         data = packet.data.serialize()
 
-        try:
-            if (
-                type(self).deserialize is not Device.deserialize
-                or getattr(self.deserialize, "__func__", None) is not Device.deserialize
-            ):
-                # XXX: support for custom deserialization will be removed
-                hdr, args = self.deserialize(packet.src_ep, packet.cluster_id, data)
-            else:
-                # Next, parse the ZCL/ZDO payload
-                # FIXME: ZCL deserialization mutates the header!
-                hdr, args = endpoint.deserialize(packet.cluster_id, data)
-        except Exception as exc:  # noqa: BLE001
-            error = zigpy.exceptions.ParsingError()
-            error.__cause__ = exc
-
-            self.debug("Failed to parse packet %r", packet, exc_info=error)
-        else:
-            error = None
-
-        # Resolve the future if this is a response to a request
         if packet.src_ep == zdo.ZDO_ENDPOINT:
+            hdr, _ = zdo_t.ZDOHeader.deserialize(packet.cluster_id, data)
             rsp_key = ResponseKey(
                 endpoint_id=packet.src_ep,
                 cluster_id=packet.cluster_id,
@@ -552,19 +533,32 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 tsn=hdr.tsn,
             )
         else:
-            try:
-                zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
-            except ValueError:
-                direction = None
-            else:
-                direction = zcl_hdr.frame_control.direction
-
+            hdr, _ = foundation.ZCLHeader.deserialize(data)
             rsp_key = ResponseKey(
                 endpoint_id=packet.src_ep,
                 cluster_id=packet.cluster_id,
-                direction=direction,
+                direction=hdr.frame_control.direction,
                 tsn=hdr.tsn,
             )
+
+        try:
+            if (
+                type(self).deserialize is not Device.deserialize
+                or getattr(self.deserialize, "__func__", None) is not Device.deserialize
+            ):
+                # XXX: support for custom deserialization will be removed
+                _, args = self.deserialize(packet.src_ep, packet.cluster_id, data)
+            else:
+                # Next, parse the ZCL/ZDO payload
+                # FIXME: ZCL deserialization mutates the header!
+                _, args = endpoint.deserialize(packet.cluster_id, data)
+        except Exception as exc:  # noqa: BLE001
+            error = zigpy.exceptions.ParsingError()
+            error.__cause__ = exc
+
+            self.debug("Failed to parse packet %r", packet, exc_info=error)
+        else:
+            error = None
 
         future = self._requests.get(rsp_key)
         if future is not None:
