@@ -9,13 +9,13 @@ import logging
 import traceback
 import types
 import typing
+from typing import Self
 import warnings
 
 from crccheck.crc import CrcX25
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.modes import ECB
-from typing_extensions import Self
 
 from zigpy.datastructures import DynamicBoundedSemaphore  # noqa: F401
 from zigpy.exceptions import ControllerException, ZigbeeException

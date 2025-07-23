@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import enum
 import logging
 from typing import Any
@@ -182,7 +181,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             res = await self.groups.get_membership(groups=[])
         except AttributeError:
             return
-        except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
+        except (TimeoutError, zigpy.exceptions.ZigbeeException):
             self.debug("Failed to sync-up group membership")
             return
 
@@ -203,7 +202,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 success, failure = await self.basic.read_attributes(
                     names, allow_cache=True, priority=t.PacketPriority.HIGH
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Only swallow the `TimeoutError` on the double attribute read
                 if len(names) == 2:
                     continue

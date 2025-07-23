@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import json
 import logging
 import re
@@ -33,7 +33,7 @@ DB_VERSION = 13
 DB_V = f"_v{DB_VERSION}"
 MIN_SQLITE_VERSION = (3, 24, 0)
 
-UNIX_EPOCH = datetime.fromtimestamp(0, tz=timezone.utc)
+UNIX_EPOCH = datetime.fromtimestamp(0, tz=UTC)
 DB_V_REGEX = re.compile(r"(?:_v\d+)?$")
 
 MIN_UPDATE_DELTA = timedelta(seconds=30).total_seconds()
@@ -728,7 +728,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
                 clusters[cluster_id]._attr_cache[attr_id] = value
                 clusters[cluster_id]._attr_last_updated[attr_id] = (
-                    datetime.fromtimestamp(last_updated, timezone.utc)
+                    datetime.fromtimestamp(last_updated, UTC)
                 )
 
                 LOGGER.debug(

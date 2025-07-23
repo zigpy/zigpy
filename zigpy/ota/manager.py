@@ -11,7 +11,7 @@ from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import Ota
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
     from zigpy.device import Device
     from zigpy.ota.providers import OtaImageWithMetadata

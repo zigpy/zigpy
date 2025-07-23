@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import collections
 from collections.abc import Iterable, Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import enum
 import functools
 import itertools
@@ -175,7 +175,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
                 if isinstance(
                     definition,
-                    (foundation.ZCLCommandDef, foundation.ZCLAttributeDef),
+                    foundation.ZCLCommandDef | foundation.ZCLAttributeDef,
                 ):
                     if definition.name is None:
                         object.__setattr__(definition, "name", name)
@@ -860,7 +860,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             self._attr_last_updated.pop(attrid)
             self.listener_event("attribute_cleared", attrid)
         else:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             self._attr_cache[attrid] = value
             self._attr_last_updated[attrid] = now
             self.listener_event("attribute_updated", attrid, value, now)
@@ -903,7 +903,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def __setitem__(self, key: int | str, value: Any) -> None:
         """Set cached value through attribute write."""
-        if not isinstance(key, (int, str)):
+        if not isinstance(key, int | str):
             raise ValueError("attr_name or attr_id are accepted only")  # noqa: TRY004
         self.create_catching_task(self.write_attributes({key: value}))
 

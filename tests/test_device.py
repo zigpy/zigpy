@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import logging
 from unittest.mock import call
 
@@ -313,7 +313,7 @@ async def test_broadcast(app_mock):
 async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
     async def mockrequest(nwk, tries=None, delay=None, **kwargs):
         if not request_success:
-            raise asyncio.TimeoutError
+            raise TimeoutError
 
         status = 0 if zdo_success else 1
         return [status, nwk, zdo_t.NodeDescriptor.deserialize(b"abcdefghijklm")[0]]
@@ -432,13 +432,13 @@ def test_device_last_seen(dev, monkeypatch):
     assert dev.last_seen is None
 
     dev.last_seen = 0
-    epoch = datetime(1970, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
+    epoch = datetime(1970, 1, 1, 0, 0, 0, 0, tzinfo=UTC)
     assert dev.last_seen == epoch.timestamp()
 
     dev.listener_event.assert_called_once_with("device_last_seen_updated", epoch)
     dev.listener_event.reset_mock()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     dev.last_seen = now
     dev.listener_event.assert_called_once_with("device_last_seen_updated", now)
 

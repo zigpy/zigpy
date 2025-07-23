@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from typing import Self
 
 import attr
-from typing_extensions import Self
 
 import zigpy.types as t
 

@@ -6,8 +6,7 @@ import functools
 import keyword
 import logging
 import typing
-
-from typing_extensions import Self
+from typing import Self
 
 import zigpy.types as t
 
@@ -690,7 +689,7 @@ class ReadAttributeRecord:
         if self.status == Status.SUCCESS:
             assert self.value is not None
 
-            if isinstance(self.value, (Array, Set, Bag)):
+            if isinstance(self.value, Array | Set | Bag):
                 data += (
                     DataType.from_python_type(type(self.value)).type_id.serialize()
                     + self.value.serialize()

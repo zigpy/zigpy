@@ -1,17 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import timeout as asyncio_timeout
 import logging
 import pathlib
-import sys
 import typing
 from typing import Literal
 import urllib.parse
-
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
-else:
-    from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
 import serial as pyserial
 

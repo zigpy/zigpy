@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import timeout as asyncio_timeout
 from collections import defaultdict
 import contextlib
 import dataclasses
 import logging
-import sys
 import typing
 
 from zigpy.config import (
@@ -35,11 +35,6 @@ import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import Ota
-
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
-else:
-    from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
 if typing.TYPE_CHECKING:
     import zigpy.application

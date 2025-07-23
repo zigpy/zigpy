@@ -1,23 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import timeout as asyncio_timeout
 import contextlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import enum
 import itertools
 import logging
-import sys
 import time
 import typing
 import warnings
-
-from zigpy.ota.manager import find_ota_cluster, update_firmware
-from zigpy.zcl.clusters.general import Ota
-
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
-else:
-    from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
 from zigpy import zdo
 from zigpy.const import (
@@ -36,10 +28,12 @@ import zigpy.datastructures
 import zigpy.endpoint
 import zigpy.exceptions
 import zigpy.listeners
+from zigpy.ota.manager import find_ota_cluster, update_firmware
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 import zigpy.util
 from zigpy.zcl import foundation
+from zigpy.zcl.clusters.general import Ota
 import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
@@ -141,7 +135,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             "Calling `update_last_seen` directly is deprecated", DeprecationWarning
         )
 
-        self.last_seen = datetime.now(timezone.utc)
+        self.last_seen = datetime.now(UTC)
 
     @property
     def last_seen(self) -> float | None:
@@ -149,8 +143,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     @last_seen.setter
     def last_seen(self, value: datetime | float):
-        if isinstance(value, (int, float)):
-            value = datetime.fromtimestamp(value, timezone.utc)
+        if isinstance(value, int | float):
+            value = datetime.fromtimestamp(value, UTC)
 
         self._last_seen = value
         self.listener_event("device_last_seen_updated", self._last_seen)
@@ -235,7 +229,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     async def initialize(self) -> None:
         try:
             await self._initialize()
-        except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
+        except (TimeoutError, zigpy.exceptions.ZigbeeException):
             self.application.listener_event("device_init_failure", self)
         except Exception:  # noqa: BLE001
             LOGGER.warning(

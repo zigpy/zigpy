@@ -2,24 +2,19 @@ from __future__ import annotations
 
 import abc
 import asyncio
+from asyncio import timeout as asyncio_timeout
 import collections
 from collections.abc import AsyncGenerator, Coroutine
 import contextlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import errno
 import logging
 import os
 import random
-import sys
 import time
 import typing
 from typing import Any, TypeVar
 import warnings
-
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
-else:
-    from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
 import zigpy.appdb
 import zigpy.backups
@@ -255,7 +250,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     ScanCount=count,
                 )
             )
-        except (asyncio.TimeoutError, zigpy.exceptions.DeliveryError):
+        except (TimeoutError, zigpy.exceptions.DeliveryError):
             LOGGER.warning("Coordinator does not support energy scanning")
             scanned_channels = channels
             energy_values = [0] * scanned_channels
@@ -515,7 +510,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 else 7
             ):
                 await device.zdo.leave(remove_children=remove_children, rejoin=rejoin)
-        except (zigpy.exceptions.DeliveryError, asyncio.TimeoutError) as ex:
+        except (TimeoutError, zigpy.exceptions.DeliveryError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
         self.devices.pop(device.ieee, None)
@@ -560,7 +555,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         # Not all stacks send a ZDO command when a device joins so the last_seen should
         # be updated
-        dev.last_seen = datetime.now(timezone.utc)
+        dev.last_seen = datetime.now(UTC)
 
         # Cancel all pending requests for the device
         dev._concurrent_requests_semaphore.cancel_waiting(

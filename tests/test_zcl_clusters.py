@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import re
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -170,7 +170,7 @@ async def test_time_cluster():
                     cls._fake_now.second,
                 )
             else:
-                assert tzinfo is timezone.utc
+                assert tzinfo is UTC
                 return (
                     cls(
                         cls._fake_now.year,
