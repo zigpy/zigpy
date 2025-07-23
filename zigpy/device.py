@@ -396,17 +396,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     tsn=sequence,
                 )
             else:
-                try:
-                    zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
-                except ValueError:
-                    direction = None
-                else:
-                    direction = zcl_hdr.frame_control.direction
-
+                zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
                 rsp_key = ResponseKey(
                     endpoint_id=dst_ep,
                     cluster_id=cluster,
-                    direction=direction.flip() if direction is not None else None,
+                    direction=zcl_hdr.frame_control.direction.flip(),
                     tsn=sequence,
                 )
 
