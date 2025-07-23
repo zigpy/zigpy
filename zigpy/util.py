@@ -7,7 +7,6 @@ import inspect
 import itertools
 import logging
 import traceback
-import types
 import typing
 import warnings
 
@@ -15,10 +14,9 @@ from crccheck.crc import CrcX25
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.modes import ECB
-from typing_extensions import Self
 
 from zigpy.datastructures import DynamicBoundedSemaphore  # noqa: F401
-from zigpy.exceptions import ControllerException, ZigbeeException
+from zigpy.exceptions import ZigbeeException
 import zigpy.types as t
 
 LOGGER = logging.getLogger(__name__)
@@ -250,56 +248,6 @@ def convert_install_code(code: bytes) -> t.KeyData:
         return None
 
     return aes_mmo_hash(code)
-
-
-T = typing.TypeVar("T")
-
-
-class Request(typing.Generic[T]):
-    """Request context manager."""
-
-    def __init__(self, pending: dict, sequence: T) -> None:
-        """Init context manager for requests."""
-        self._pending = pending
-        self._result: asyncio.Future = asyncio.Future()
-        self._sequence = sequence
-
-    @property
-    def result(self) -> asyncio.Future:
-        return self._result
-
-    @property
-    def sequence(self) -> T:
-        """Request sequence."""
-        return self._sequence
-
-    def __enter__(self) -> Self:
-        """Return context manager."""
-        self._pending[self.sequence] = self
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        exc_traceback: types.TracebackType | None,
-    ) -> bool:
-        """Clean up pending on exit."""
-        if not self.result.done():
-            self.result.cancel()
-        self._pending.pop(self.sequence)
-
-        return not exc_type
-
-
-class Requests(dict, typing.Generic[T]):
-    def new(self, sequence: T) -> Self[T]:
-        """Wrap new request into a context manager."""
-        if sequence in self:
-            LOGGER.debug("Duplicate %s TSN: pending %s", sequence, self)
-            raise ControllerException(f"Duplicate TSN: {sequence}")
-
-        return Request(self, sequence)
 
 
 class CatchingTaskMixin(LocalLogMixin):

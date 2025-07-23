@@ -19,6 +19,9 @@ if sys.version_info[:2] < (3, 11):
 else:
     from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
+
+from dataclasses import dataclass
+
 from zigpy import zdo
 from zigpy.const import (
     APS_REPLY_TIMEOUT,
@@ -39,7 +42,7 @@ import zigpy.listeners
 import zigpy.types as t
 from zigpy.typing import AddressingMode
 import zigpy.util
-from zigpy.zcl import foundation
+from zigpy.zcl import ClusterType, foundation
 import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
@@ -56,6 +59,16 @@ AFTER_OTA_ATTR_READ_DELAY = 10
 OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
     tries=4, delay=AFTER_OTA_ATTR_READ_DELAY
 )
+
+
+@dataclass(slots=True, frozen=True)
+class RequestKey:
+    """Key for request/response matching."""
+
+    endpoint_id: int
+    cluster_id: int | None
+    cluster_type: ClusterType | None  # None for ZDO
+    tsn: int
 
 
 class Status(enum.IntEnum):
@@ -90,7 +103,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._manufacturer: str | None = None
         self._model: str | None = None
         self.node_desc: zdo_t.NodeDescriptor | None = None
-        self._pending: zigpy.util.Requests[t.uint8_t] = zigpy.util.Requests()
+        self._pending: dict[RequestKey, asyncio.Future] = {}
         self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
         self._send_sequence: int = 0
@@ -373,12 +386,38 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 await send_request()
                 return None
 
-            # Only create a pending request if we are expecting a reply
-            with self._pending.new(sequence) as req:
-                await send_request()
+            if dst_ep == zdo.ZDO_ENDPOINT:
+                key = RequestKey(
+                    endpoint_id=dst_ep,
+                    cluster_id=None,
+                    cluster_type=None,
+                    tsn=sequence,
+                )
+            else:
+                key = RequestKey(
+                    endpoint_id=dst_ep,
+                    cluster_id=cluster,
+                    cluster_type=ClusterType.Server,
+                    tsn=sequence,
+                )
 
+            if key in self._pending:
+                self.debug("Duplicate %s TSN: pending %s", key, self._pending)
+                raise zigpy.exceptions.ControllerException(f"Duplicate TSN: {key}")
+
+            future: asyncio.Future[list[typing.Any, ...] | foundation.CommandSchema] = (
+                asyncio.Future()
+            )
+            self._pending[key] = future
+
+            try:
+                await send_request()
                 async with asyncio_timeout(timeout):
-                    return await req.result
+                    return await future
+            finally:
+                if not future.done():
+                    future.cancel()
+                self._pending.pop(key, None)
 
     def handle_message(
         self,
@@ -495,26 +534,35 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             error = None
 
         # Resolve the future if this is a response to a request
-        if hdr.tsn in self._pending and (
-            True if isinstance(hdr, foundation.ZCLHeader) else hdr.is_reply
-        ):
-            future = self._pending[hdr.tsn]
-
-            try:
-                if error is not None:
-                    future.result.set_exception(error)
-                else:
-                    future.result.set_result(args)
-            except asyncio.InvalidStateError:
-                self.debug(
-                    (
-                        "Invalid state on future for 0x%02x seq "
-                        "-- probably duplicate response"
-                    ),
-                    hdr.tsn,
+        if isinstance(hdr, foundation.ZCLHeader) or hdr.is_reply:
+            if packet.src_ep == zdo.ZDO_ENDPOINT:
+                key = RequestKey(
+                    endpoint_id=packet.src_ep,
+                    cluster_id=None,
+                    cluster_type=None,
+                    tsn=hdr.tsn,
+                )
+            else:
+                key = RequestKey(
+                    endpoint_id=packet.src_ep,
+                    cluster_id=packet.cluster_id,
+                    cluster_type=ClusterType.Server,
+                    tsn=hdr.tsn,
                 )
 
-            return
+            future = self._pending.get(key)
+            if future is not None:
+                try:
+                    if error is not None:
+                        future.set_exception(error)
+                    else:
+                        future.set_result(args)
+                except asyncio.InvalidStateError:
+                    self.debug(
+                        "Invalid state on future for %s -- probably duplicate response",
+                        key,
+                    )
+                return
 
         if error is not None:
             return
@@ -698,7 +746,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             signature[SIG_NODE_DESC] = self.node_desc.as_dict()
 
         for endpoint_id, endpoint in self.endpoints.items():
-            if endpoint_id == 0:  # ZDO
+            if endpoint_id == zdo.ZDO_ENDPOINT:  # ZDO
                 continue
             signature.setdefault(SIG_ENDPOINTS, {})
             in_clusters = list(endpoint.in_clusters)
