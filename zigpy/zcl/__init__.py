@@ -714,8 +714,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         args = self._write_attr_records(attributes)
         return self._write_attributes_undivided(args, manufacturer=manufacturer)
 
-    async def bind(self):
-        return await self._endpoint.device.zdo.bind(cluster=self)
+    async def bind(self, **kwargs):
+        return await self._endpoint.device.zdo.bind(cluster=self, **kwargs)
 
     async def unbind(self):
         return await self._endpoint.device.zdo.unbind(cluster=self)

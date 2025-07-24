@@ -1356,3 +1356,13 @@ async def test_duplicate_request_matching(dev: device.Device) -> None:
     assert all(isinstance(errors[i], asyncio.TimeoutError) for i in range(256))
     assert isinstance(errors[256], zigpy.exceptions.ControllerException)
     assert str(errors[256]).startswith("Duplicate request key: ")
+
+
+async def test_initialize_fast_poll_already_joined(dev: device.Device) -> None:
+    """Test that the device initializes, with fast polling."""
+    ep = dev.add_endpoint(1)
+    ep.add_input_cluster(Basic.cluster_id)
+    ep.status = zigpy.endpoint.Status.NEW
+
+    await dev.initialize()
+    1/0

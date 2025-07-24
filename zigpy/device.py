@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import enum
 import itertools
 import logging
@@ -112,6 +112,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._skip_configuration: bool = False
         self._send_sequence: int = 0
 
+        self._fast_polling_end_time = datetime.min.replace(tzinfo=timezone.utc)
         self._on_remove_callbacks: list[typing.Callable[[], None]] = []
 
         self._packet_debouncer = zigpy.datastructures.Debouncer()
@@ -333,14 +334,31 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
 
     async def begin_fast_polling(self, timeout: float) -> None:
-        poll_control = self.find_cluster(cluster_id=PollControl.cluster_id)
+        """Ask the device to enter fast polling mode."""
+        try:
+            poll_control = self.find_cluster(cluster_id=PollControl.cluster_id)
+        except ValueError:
+            # The device doesn't have the cluster, there's nothing more we can do
+            return
 
-        await poll_control.bind()
+        LOGGER.debug("Beginning fast polling for %0.2fs", timeout)
+
         await poll_control.write_attributes(
             # The units for the fast poll timeout are quarter seconds
-            {PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4)},
+            {
+                PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4),
+            },
             priority=t.PacketPriority.CRITICAL,
         )
+        await poll_control.bind(priority=t.PacketPriority.CRITICAL)
+
+        self._fast_polling_end_time = datetime.now(timezone.utc) + timedelta(
+            seconds=timeout
+        )
+
+    def reset_timers(self) -> None:
+        """Reset timers if we suspect a device has rebooted or reset."""
+        self._fast_polling_end_time = datetime.min.replace(tzinfo=timezone.utc)
 
     @zigpy.util.retryable_request(tries=5, delay=0.5)
     async def _initialize(self) -> None:
@@ -375,18 +393,20 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status = Status.ZDO_INIT
 
         # Initialize all of the discovered endpoints
+        initiated_fast_polling = self._fast_polling_end_time > datetime.now(
+            timezone.utc
+        )
+
         if self.all_endpoints_init:
             self.info(
                 "All endpoints are already initialized: %s", self.non_zdo_endpoints
             )
 
-            # Begin fast polling if we are re-initializing
-            with contextlib.suppress(ValueError):
+            if not initiated_fast_polling:
+                # Begin fast polling if we are re-initializing
                 await self.begin_fast_polling(FAST_POLL_TIMEOUT)
         else:
             self.info("Initializing endpoints %s", self.non_zdo_endpoints)
-
-            initiated_fast_polling = False
 
             for ep in self.non_zdo_endpoints:
                 await ep.initialize()
@@ -396,7 +416,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     # aware of a PollControl cluster
                     try:
                         await self.begin_fast_polling(FAST_POLL_TIMEOUT)
-                    except (ValueError, asyncio.TimeoutError, DeliveryError):
+                    except (asyncio.TimeoutError, DeliveryError):
                         pass
                     else:
                         initiated_fast_polling = True
