@@ -298,7 +298,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def find_cluster(
         self, cluster_id: int, cluster_type: ClusterType = ClusterType.Server
     ) -> Cluster:
-        """Find a cluster by its ID and type on any endpoint."""
+        """Find the first cluster by its ID and type on any endpoint."""
         for ep in self.non_zdo_endpoints:
             if cluster_type == ClusterType.Server and cluster_id in ep.in_clusters:
                 return ep.in_clusters[cluster_id]
