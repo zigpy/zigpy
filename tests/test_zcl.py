@@ -1262,3 +1262,20 @@ async def test_zcl_cluster_definition_invalid_name():
                         "file_version": t.uint32_t,
                     },
                 )
+
+
+async def test_cluster_definition_invalid_direction():
+    # This is fine
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+
+        class ServerCommandDefs(zcl.BaseCommandDefs):
+            server_command = foundation.ZCLCommandDef(
+                name="server_command",
+                id=0x00,
+                schema={},
+                direction=foundation.Direction.Server_to_Client,
+            )
+
+    # This is not but will just log a warning
