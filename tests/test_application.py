@@ -794,7 +794,9 @@ async def test_request(app, device, packet):
     assert status == zigpy.zcl.foundation.Status.SUCCESS
     assert isinstance(msg, str)
 
-    app.send_packet.assert_called_once_with(packet)
+    app.send_packet.assert_called_once_with(
+        packet.replace(priority=t.PacketPriority.NORMAL)
+    )
     app.send_packet.reset_mock()
 
     # Test sending with IEEE
@@ -809,6 +811,7 @@ async def test_request(app, device, packet):
                 addr_mode=t.AddrMode.IEEE,
                 address=device.ieee,
             ),
+            priority=t.PacketPriority.NORMAL,
         )
     )
     app.send_packet.reset_mock()
@@ -821,7 +824,7 @@ async def test_request(app, device, packet):
 
     app.build_source_route_to.assert_called_once_with(dest=device)
     app.send_packet.assert_called_once_with(
-        packet.replace(source_route=[0x000A, 0x000B])
+        packet.replace(source_route=[0x000A, 0x000B], priority=t.PacketPriority.NORMAL)
     )
     app.send_packet.reset_mock()
 
@@ -829,7 +832,9 @@ async def test_request(app, device, packet):
     status, msg = await send_request(app, expect_reply=False)
 
     app.send_packet.assert_called_once_with(
-        packet.replace(tx_options=t.TransmitOptions.ACK)
+        packet.replace(
+            tx_options=t.TransmitOptions.ACK, priority=t.PacketPriority.NORMAL
+        )
     )
     app.send_packet.reset_mock()
 
@@ -837,7 +842,9 @@ async def test_request(app, device, packet):
     status, msg = await send_request(app, ask_for_ack=True)
 
     app.send_packet.assert_called_once_with(
-        packet.replace(tx_options=t.TransmitOptions.ACK)
+        packet.replace(
+            tx_options=t.TransmitOptions.ACK, priority=t.PacketPriority.NORMAL
+        )
     )
     app.send_packet.reset_mock()
 
@@ -845,7 +852,9 @@ async def test_request(app, device, packet):
     status, msg = await send_request(app, ask_for_ack=False)
 
     app.send_packet.assert_called_once_with(
-        packet.replace(tx_options=t.TransmitOptions(0))
+        packet.replace(
+            tx_options=t.TransmitOptions(0), priority=t.PacketPriority.NORMAL
+        )
     )
     app.send_packet.reset_mock()
 
@@ -871,15 +880,17 @@ async def test_request_retrying_success(app, device, packet) -> None:
     )
 
     assert app.send_packet.mock_calls == [
-        call(packet),
+        call(packet.replace(priority=t.PacketPriority.NORMAL)),
         call(
             packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
+                priority=t.PacketPriority.NORMAL,
             )
         ),
         call(
             packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
+                priority=t.PacketPriority.NORMAL,
             )
         ),
     ]
@@ -907,15 +918,17 @@ async def test_request_retrying_failure(app, device, packet) -> None:
         )
 
     assert app.send_packet.mock_calls == [
-        call(packet),
+        call(packet.replace(priority=t.PacketPriority.NORMAL)),
         call(
             packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
+                priority=t.PacketPriority.NORMAL,
             )
         ),
         call(
             packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
+                priority=t.PacketPriority.NORMAL,
             )
         ),
     ]
@@ -956,6 +969,7 @@ async def test_send_mrequest(app, packet):
             radius=12,
             non_member_radius=34,
             tx_options=t.TransmitOptions.NONE,
+            priority=t.PacketPriority.NORMAL,
         )
     )
 
@@ -983,6 +997,7 @@ async def test_send_broadcast(app, packet):
             ),
             radius=12,
             tx_options=t.TransmitOptions.NONE,
+            priority=t.PacketPriority.NORMAL,
         )
     )
 
