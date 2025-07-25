@@ -94,7 +94,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         ] = collections.defaultdict(lambda: collections.deque([]))
 
         # Context variable for request priority context manager
-        self._priority_var = contextvars.ContextVar(
+        self._packet_priority_var = contextvars.ContextVar(
             "request_priority", default=t.PacketPriority.NORMAL
         )
 
@@ -119,12 +119,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             yield
             return
 
-        token = self._priority_var.set(priority)
+        token = self._packet_priority_var.set(priority)
 
         try:
             yield
         finally:
-            self._priority_var.reset(token)
+            self._packet_priority_var.reset(token)
 
     async def _load_db(self) -> None:
         """Restore save state."""
@@ -771,7 +771,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> AsyncGenerator[None, None]:
         """Async context manager to limit global coordinator request concurrency."""
         if priority is None:
-            priority = self._priority_var.get()
+            priority = self._packet_priority_var.get()
 
         start_time = time.monotonic()
         manager: contextlib.AbstractAsyncContextManager

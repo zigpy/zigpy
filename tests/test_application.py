@@ -1640,3 +1640,34 @@ async def test_request_priority(app) -> None:
         call(packet_high),
         call(packet_normal),
     ]
+
+
+async def test_request_priority_context_concurrency(app, packet):
+    """Test that request_priority contexts work correctly with concurrent tasks."""
+    # Limit concurrency to see priority ordering effects
+    app._concurrent_requests_semaphore.max_value = 1
+
+    with patch.object(app, "_send_packet", wraps=app._send_packet) as mock_send:
+
+        async def task_with_priority(name: str, priority: int):
+            async with app.request_priority(priority):
+                await app.send_packet(packet.replace(data=name.encode()))
+
+        # Start multiple concurrent tasks with different priority contexts
+        await asyncio.gather(
+            asyncio.create_task(task_with_priority("low", t.PacketPriority.LOW)),
+            asyncio.create_task(task_with_priority("normal", t.PacketPriority.NORMAL)),
+            asyncio.create_task(task_with_priority("high", t.PacketPriority.HIGH)),
+            asyncio.create_task(
+                task_with_priority("critical", t.PacketPriority.CRITICAL)
+            ),
+        )
+
+    # Verify packets were processed in priority order, not send order
+    assert mock_send.mock_calls == [
+        # The low priority task started first but gets processed in priority order
+        call(packet.replace(data=b"low")),
+        call(packet.replace(data=b"critical")),
+        call(packet.replace(data=b"high")),
+        call(packet.replace(data=b"normal")),
+    ]

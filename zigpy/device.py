@@ -123,7 +123,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         """Async context manager to limit device request concurrency."""
         # Defer to the current app-level priority if not specified
         if priority is None:
-            priority = self._application._priority_var.get()
+            priority = self._application._packet_priority_var.get()
 
         start_time = time.monotonic()
         manager: contextlib.AbstractAsyncContextManager
