@@ -981,13 +981,11 @@ async def test_quirks_v2_matches_v1(app_mock):
                 0x0007: ZCLCommandDef(
                     "press",
                     {"param1": t.int16s, "param2": t.int8s, "param3": t.int8s},
-                    False,
                     is_manufacturer_specific=True,
                 ),
                 0x0008: ZCLCommandDef(
                     "hold",
                     {"param1": t.int16s, "param2": t.int8s},
-                    False,
                     is_manufacturer_specific=True,
                 ),
                 0x0009: ZCLCommandDef(
@@ -995,7 +993,6 @@ async def test_quirks_v2_matches_v1(app_mock):
                     {
                         "param1": t.int16s,
                     },
-                    False,
                     is_manufacturer_specific=True,
                 ),
             }

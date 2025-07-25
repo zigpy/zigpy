@@ -173,6 +173,30 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             for name in dir(defs):
                 definition = getattr(defs, name)
 
+                if isinstance(definition, foundation.ZCLCommandDef):
+                    direction = (
+                        foundation.Direction.Client_to_Server
+                        if defs is cls.ClientCommandDefs
+                        else foundation.Direction.Server_to_Client
+                    )
+
+                    if (
+                        definition.direction is not None
+                        and definition.direction != direction
+                    ):
+                        warnings.warn(
+                            f"Command {definition.name!r} has an incorrect direction, please remove the `direction` kwarg",
+                            DeprecationWarning,
+                            stacklevel=2,
+                        )
+                        LOGGER.warning(
+                            "Command %r has an incorrect direction, please remove the `direction` kwarg",
+                            definition.name,
+                            stacklevel=2,
+                        )
+
+                    object.__setattr__(definition, "direction", direction)
+
                 if isinstance(
                     definition,
                     (foundation.ZCLCommandDef, foundation.ZCLAttributeDef),

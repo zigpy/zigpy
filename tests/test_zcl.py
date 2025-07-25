@@ -1036,12 +1036,8 @@ def test_zcl_command_duplicate_name_prevention():
             cluster_id = 0x1234
             ep_attribute = "test_cluster"
             server_commands = {
-                0x00: foundation.ZCLCommandDef(
-                    name="command1", schema={}, direction=False
-                ),
-                0x01: foundation.ZCLCommandDef(
-                    name="command1", schema={}, direction=False
-                ),
+                0x00: foundation.ZCLCommandDef(name="command1", schema={}),
+                0x01: foundation.ZCLCommandDef(name="command1", schema={}),
             }
 
 
@@ -1230,7 +1226,6 @@ async def test_zcl_cluster_definition_invalid_name():
                     "image_type": t.uint16_t,
                     "file_version": t.uint32_t,
                 },
-                direction=foundation.Direction.Client_to_Server,
             )
 
     # This is not
@@ -1266,5 +1261,54 @@ async def test_zcl_cluster_definition_invalid_name():
                         "image_type": t.uint16_t,
                         "file_version": t.uint32_t,
                     },
-                    direction=foundation.Direction.Client_to_Server,
                 )
+
+
+async def test_cluster_definition_invalid_direction():
+    # Test that incorrect direction on server command triggers warning
+    # ServerCommandDefs should have direction Server_to_Client, so Client_to_Server is wrong
+    with pytest.warns(
+        DeprecationWarning, match="Command 'server_command' has an incorrect direction"
+    ):
+
+        class TestCluster(zcl.Cluster):
+            cluster_id = 0xABCD
+            ep_attribute = "test_cluster"
+
+            class ServerCommandDefs(zcl.BaseCommandDefs):
+                server_command = foundation.ZCLCommandDef(
+                    name="server_command",
+                    id=0x00,
+                    schema={},
+                    direction=foundation.Direction.Client_to_Server,  # Wrong direction
+                )
+
+    # Verify direction was auto-corrected
+    assert (
+        TestCluster.ServerCommandDefs.server_command.direction
+        == foundation.Direction.Server_to_Client
+    )
+
+    # Test that incorrect direction on client command also triggers warning
+    # ClientCommandDefs should have direction Client_to_Server, so Server_to_Client is wrong
+    with pytest.warns(
+        DeprecationWarning, match="Command 'client_command' has an incorrect direction"
+    ):
+
+        class TestCluster2(zcl.Cluster):
+            cluster_id = 0xDEF0
+            ep_attribute = "test_cluster2"
+
+            class ClientCommandDefs(zcl.BaseCommandDefs):
+                client_command = foundation.ZCLCommandDef(
+                    name="client_command",
+                    id=0x00,
+                    schema={},
+                    direction=foundation.Direction.Server_to_Client,  # Wrong direction
+                )
+
+    # Verify direction was auto-corrected
+    assert (
+        TestCluster2.ClientCommandDefs.client_command.direction
+        == foundation.Direction.Client_to_Server
+    )
