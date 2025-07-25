@@ -11,6 +11,7 @@ import time
 import typing
 import warnings
 
+from zigpy.backports.contextlib import nullcontext
 from zigpy.ota.manager import find_ota_cluster, update_firmware
 from zigpy.zcl.clusters.general import Ota
 
@@ -118,11 +119,26 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status = Status.NEW
 
     @contextlib.asynccontextmanager
-    async def _limit_concurrency(self, *, priority: int = 0):
+    async def _limit_concurrency(self, *, priority: int | None = None):
         """Async context manager to limit device request concurrency."""
+        # Defer to the current app-level priority if not specified
+        if priority is None:
+            priority = self._application._priority_var.get()
 
         start_time = time.monotonic()
-        was_locked = self._concurrent_requests_semaphore.locked()
+        manager: contextlib.AbstractAsyncContextManager
+
+        if priority >= t.PacketPriority.CRITICAL:
+            LOGGER.debug(
+                "Critical priority request received (%s), skipping queue with %d requests",
+                priority,
+                self._concurrent_requests_semaphore.num_waiting,
+            )
+            manager = nullcontext()
+            was_locked = False
+        else:
+            manager = self._concurrent_requests_semaphore(priority=priority)
+            was_locked = self._concurrent_requests_semaphore.locked()
 
         if was_locked:
             LOGGER.debug(
@@ -131,7 +147,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 self._concurrent_requests_semaphore.num_waiting,
             )
 
-        async with self._concurrent_requests_semaphore(priority=priority):
+        async with manager:
             if was_locked:
                 LOGGER.debug(
                     "Previously delayed device request is now running, delayed by %0.2fs",
@@ -357,7 +373,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         timeout=APS_REPLY_TIMEOUT,
         use_ieee=False,
         ask_for_ack: bool | None = None,
-        priority: int = t.PacketPriority.NORMAL,
+        priority: int | None = None,
     ):
         extended_timeout = False
 
@@ -603,7 +619,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         expect_reply: bool = False,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
-        priority: int = t.PacketPriority.NORMAL,
+        priority: int | None = None,
     ):
         return await self.request(
             profile=profile,

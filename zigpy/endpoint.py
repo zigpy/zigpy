@@ -259,7 +259,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         expect_reply: bool = True,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
-        priority: int = t.PacketPriority.NORMAL,
+        priority: int | None = None,
     ):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -293,7 +293,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         expect_reply: bool = False,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
-        priority: int = t.PacketPriority.NORMAL,
+        priority: int | None = None,
     ) -> None:
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
