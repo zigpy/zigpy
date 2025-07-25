@@ -115,6 +115,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self, priority: int | None = None
     ) -> AsyncGenerator[None]:
         """Context manager to set the request priority for the duration of the context."""
+        if priority is None:
+            yield
+            return
+
         token = self._priority_var.set(priority)
 
         try:
