@@ -247,10 +247,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     async def get_node_descriptor(self) -> zdo_t.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
 
-        status, _, node_desc = await self.zdo.Node_Desc_req(
-            self.nwk,
-            priority=t.PacketPriority.CRITICAL,
-        )
+        status, _, node_desc = await self.zdo.Node_Desc_req(self.nwk)
 
         if status != zdo_t.Status.SUCCESS:
             raise zigpy.exceptions.InvalidResponse(
@@ -264,7 +261,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     async def initialize(self) -> None:
         try:
-            await self._initialize()
+            # Perform initialization with critical priority
+            async with self._application.request_priority(t.PacketPriority.CRITICAL):
+                await self._initialize()
         except (asyncio.TimeoutError, zigpy.exceptions.ZigbeeException):
             self.application.listener_event("device_init_failure", self)
         except Exception:  # noqa: BLE001
@@ -293,9 +292,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         else:
             self.info("Discovering endpoints")
 
-            status, _, endpoints = await self.zdo.Active_EP_req(
-                self.nwk, priority=t.PacketPriority.CRITICAL
-            )
+            status, _, endpoints = await self.zdo.Active_EP_req(self.nwk)
 
             if status != zdo_t.Status.SUCCESS:
                 raise zigpy.exceptions.InvalidResponse(
