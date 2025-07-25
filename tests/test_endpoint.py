@@ -180,7 +180,7 @@ async def test_reply_change_profile_id(ep):
             expect_reply=False,
             use_ieee=False,
             ask_for_ack=None,
-            priority=t.PacketPriority.NORMAL,
+            priority=None,
         )
     ]
 
@@ -198,7 +198,7 @@ async def test_reply_change_profile_id(ep):
             expect_reply=False,
             use_ieee=False,
             ask_for_ack=None,
-            priority=t.PacketPriority.NORMAL,
+            priority=None,
         )
     ]
 
@@ -217,7 +217,7 @@ async def test_reply_change_profile_id(ep):
             expect_reply=False,
             use_ieee=False,
             ask_for_ack=None,
-            priority=t.PacketPriority.NORMAL,
+            priority=None,
         )
     ]
 

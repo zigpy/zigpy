@@ -94,7 +94,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         ] = collections.defaultdict(lambda: collections.deque([]))
 
         # Context variable for request priority context manager
-        self._priority_var = contextvars.ContextVar("request_priority", default=None)
+        self._priority_var = contextvars.ContextVar(
+            "request_priority", default=t.PacketPriority.NORMAL
+        )
 
     def create_task(
         self, target: Coroutine[Any, Any, _R], name: str | None = None

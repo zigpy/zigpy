@@ -1327,7 +1327,7 @@ async def test_device_concurrency(dev: device.Device) -> None:
         t.PacketPriority.LOW,  # First one that made it through
         999,  # Super high
         t.PacketPriority.HIGH,
-        t.PacketPriority.NORMAL,
+        None,  # Normal
         t.PacketPriority.LOW,
     ]
 
