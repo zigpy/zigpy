@@ -987,13 +987,6 @@ async def test_send_broadcast(app, packet):
     )
 
 
-async def test_request_concurrency_duplicate_failure(packet: t.ZigbeePacket) -> None:
-    results = await asyncio.gather(
-        *(app.send_packet(packet) for _ in range(256 + 1)), return_exceptions=True
-    )
-    assert False
-
-
 @pytest.fixture
 def zdo_packet(app, device):
     return t.ZigbeePacket(
