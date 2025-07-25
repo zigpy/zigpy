@@ -111,14 +111,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         return task
 
     @contextlib.asynccontextmanager
-    async def request_priority(
-        self, priority: int | None = None
-    ) -> AsyncGenerator[None]:
+    async def request_priority(self, priority: int) -> AsyncGenerator[None]:
         """Context manager to set the request priority for the duration of the context."""
-        if priority is None:
-            yield
-            return
-
         token = self._packet_priority_var.set(priority)
 
         try:
