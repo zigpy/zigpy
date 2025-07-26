@@ -56,7 +56,7 @@ LOGGER = logging.getLogger(__name__)
 
 PACKET_DEBOUNCE_WINDOW = 10
 MAX_DEVICE_CONCURRENCY = 1
-FAST_POLL_TIMEOUT = 30
+DEFAULT_FAST_POLL_TIMEOUT = 30
 
 AFTER_OTA_ATTR_READ_DELAY = 10
 OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
@@ -318,11 +318,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         async with self._application.request_priority(t.PacketPriority.CRITICAL):
             if self.initializing or self._concurrent_requests_semaphore.locked():
-                # Initiate fast polling mode if we are initializing or waiting for requests
-                # to be sent
+                # Initiate fast polling mode if we are initializing or waiting for
+                # requests to be sent
                 await poll_control.checkin_response(
                     start_fast_polling=True,
-                    fast_poll_timeout=int(FAST_POLL_TIMEOUT * 4),
+                    fast_poll_timeout=int(DEFAULT_FAST_POLL_TIMEOUT * 4),
                     tsn=zcl_hdr.tsn,
                 )
             else:
@@ -332,7 +332,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     tsn=zcl_hdr.tsn,
                 )
 
-    async def begin_fast_polling(self, timeout: float) -> None:
+    async def begin_fast_polling(
+        self, timeout: float = DEFAULT_FAST_POLL_TIMEOUT
+    ) -> None:
         """Ask the device to enter fast polling mode."""
         try:
             poll_control = self.find_cluster(cluster_id=PollControl.cluster_id)
@@ -343,10 +345,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         LOGGER.debug("Beginning fast polling for %0.2fs", timeout)
 
         await poll_control.write_attributes(
-            # The units for the fast poll timeout are quarter seconds
-            {PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4)}
+            # The units are quarter seconds
+            {
+                PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4),
+            }
         )
-        await poll_control.bind()
 
         self._fast_polling_end_time = datetime.now(timezone.utc) + timedelta(
             seconds=timeout
@@ -400,7 +403,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
             if not initiated_fast_polling:
                 # Begin fast polling if we are re-initializing
-                await self.begin_fast_polling(FAST_POLL_TIMEOUT)
+                await self.begin_fast_polling()
         else:
             self.info("Initializing endpoints %s", self.non_zdo_endpoints)
 
@@ -411,7 +414,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     # Ask the device to enter fast polling mode as soon as we are
                     # aware of a PollControl cluster
                     try:
-                        await self.begin_fast_polling(FAST_POLL_TIMEOUT)
+                        await self.begin_fast_polling()
                     except (asyncio.TimeoutError, DeliveryError):
                         pass
                     else:
