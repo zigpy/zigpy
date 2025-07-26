@@ -316,22 +316,21 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         """Handle Poll Control check-in callback."""
         poll_control = self.find_cluster(cluster_id=PollControl.id)
 
-        if self.initializing or self._concurrent_requests_semaphore.locked():
-            # Initiate fast polling mode if we are initializing or waiting for requests
-            # to be sent
-            await poll_control.checkin_response(
-                start_fast_polling=True,
-                fast_poll_timeout=int(FAST_POLL_TIMEOUT * 4),
-                tsn=zcl_hdr.tsn,
-                priority=t.PacketPriority.CRITICAL,
-            )
-        else:
-            await poll_control.checkin_response(
-                start_fast_polling=False,
-                fast_poll_timeout=0,
-                tsn=zcl_hdr.tsn,
-                priority=t.PacketPriority.CRITICAL,
-            )
+        async with self._application.request_priority(t.PacketPriority.CRITICAL):
+            if self.initializing or self._concurrent_requests_semaphore.locked():
+                # Initiate fast polling mode if we are initializing or waiting for requests
+                # to be sent
+                await poll_control.checkin_response(
+                    start_fast_polling=True,
+                    fast_poll_timeout=int(FAST_POLL_TIMEOUT * 4),
+                    tsn=zcl_hdr.tsn,
+                )
+            else:
+                await poll_control.checkin_response(
+                    start_fast_polling=False,
+                    fast_poll_timeout=0,
+                    tsn=zcl_hdr.tsn,
+                )
 
     async def begin_fast_polling(self, timeout: float) -> None:
         """Ask the device to enter fast polling mode."""
@@ -345,12 +344,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         await poll_control.write_attributes(
             # The units for the fast poll timeout are quarter seconds
-            {
-                PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4),
-            },
-            priority=t.PacketPriority.CRITICAL,
+            {PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4)}
         )
-        await poll_control.bind(priority=t.PacketPriority.CRITICAL)
+        await poll_control.bind()
 
         self._fast_polling_end_time = datetime.now(timezone.utc) + timedelta(
             seconds=timeout
