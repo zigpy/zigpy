@@ -314,7 +314,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         command: foundation.CommandSchema,
     ) -> None:
         """Handle Poll Control check-in callback."""
-        poll_control = self.find_cluster(cluster_id=PollControl.id)
+        poll_control = self.find_cluster(cluster_id=PollControl.cluster_id)
 
         async with self._application.request_priority(t.PacketPriority.CRITICAL):
             if self.initializing or self._concurrent_requests_semaphore.locked():
