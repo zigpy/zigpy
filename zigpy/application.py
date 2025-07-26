@@ -23,6 +23,8 @@ if sys.version_info[:2] < (3, 11):
 else:
     from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
+import contextvars
+
 import zigpy.appdb
 import zigpy.backups
 import zigpy.config as conf
@@ -91,6 +93,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
 
+        # Context variable for request priority context manager
+        self._packet_priority_var = contextvars.ContextVar(
+            "request_priority", default=t.PacketPriority.NORMAL
+        )
+
     def create_task(
         self, target: Coroutine[Any, Any, _R], name: str | None = None
     ) -> asyncio.Task[_R]:
@@ -102,6 +109,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._tasks.add(task)
         task.add_done_callback(self._tasks.remove)
         return task
+
+    @contextlib.asynccontextmanager
+    async def request_priority(self, priority: int) -> AsyncGenerator[None]:
+        """Context manager to set the request priority for the duration of the context."""
+        token = self._packet_priority_var.set(priority)
+
+        try:
+            yield
+        finally:
+            self._packet_priority_var.reset(token)
 
     async def _load_db(self) -> None:
         """Restore save state."""
@@ -744,9 +761,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     @contextlib.asynccontextmanager
     async def _limit_concurrency(
-        self, *, priority: int = t.PacketPriority.NORMAL
+        self, *, priority: int | None = None
     ) -> AsyncGenerator[None, None]:
         """Async context manager to limit global coordinator request concurrency."""
+        if priority is None:
+            priority = self._packet_priority_var.get()
 
         start_time = time.monotonic()
         manager: contextlib.AbstractAsyncContextManager
