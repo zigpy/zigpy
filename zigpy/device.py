@@ -344,6 +344,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         LOGGER.debug("Beginning fast polling for %0.2fs", timeout)
 
+        # We must first bind to the cluster, otherwise the device will not send a check-
+        # in command
+        await poll_control.bind()
         await poll_control.write_attributes(
             # The units are quarter seconds
             {
