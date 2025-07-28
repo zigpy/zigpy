@@ -458,6 +458,25 @@ class PreventDefaultEntityCreationMetadata:
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
+class ChangedEntityMetadata:
+    """Metadata to change entity metadata for matching entities."""
+
+    endpoint_id: int | None = attrs.field()
+    cluster_id: int | None = attrs.field()
+    cluster_type: ClusterType | None = attrs.field()
+    unique_id_suffix: str | None = attrs.field()
+    function: Callable[[Any], bool] | None = attrs.field()
+    # Entity metadata changes
+    new_primary: bool | None = attrs.field(default=None)
+    new_unique_id: str | None = attrs.field(default=None)
+    new_translation_key: str | None = attrs.field(default=None)
+    new_device_class: str | None = attrs.field(default=None)
+    new_state_class: str | None = attrs.field(default=None)
+    new_entity_category: str | None = attrs.field(default=None)
+    new_entity_registry_enabled_default: bool | None = attrs.field(default=None)
+
+
+@attrs.define(frozen=True, kw_only=True, repr=True)
 class FirmwareVersionFilterMetadata:
     """Metadata to only apply the quirk if the device's firmware version matches."""
 
@@ -480,6 +499,7 @@ class QuirksV2RegistryEntry:
     disabled_default_entities: tuple[PreventDefaultEntityCreationMetadata] = (
         attrs.field(factory=tuple)
     )
+    changed_entity_metadata: tuple[ChangedEntityMetadata] = attrs.field(factory=tuple)
     filters: tuple[FilterType] = attrs.field(factory=tuple)
     fw_version_filter: FirmwareVersionFilterMetadata | None = attrs.field(default=None)
     custom_device_class: type[CustomDeviceV2] | None = attrs.field(default=None)
@@ -567,6 +587,7 @@ class QuirkBuilder:
         self.friendly_name_metadata: FriendlyNameMetadata | None = None
         self.device_alerts: list[DeviceAlertMetadata] = []
         self.disabled_default_entities: list[PreventDefaultEntityCreationMetadata] = []
+        self.changed_entity_metadata: list[ChangedEntityMetadata] = []
         self.filters: list[FilterType] = []
         self.fw_version_filter: FirmwareVersionFilterMetadata | None = None
         self.custom_device_class: type[CustomDeviceV2] | None = None
@@ -1183,6 +1204,44 @@ class QuirkBuilder:
         )
         return self
 
+    def change_entity_metadata(
+        self,
+        *,
+        endpoint_id: int | None = None,
+        cluster_id: int | None = None,
+        cluster_type: ClusterType | None = None,
+        unique_id_suffix: str | None = None,
+        function: Callable[[Any], bool] | None = None,
+        new_primary: bool | None = None,
+        new_unique_id: str | None = None,
+        new_translation_key: str | None = None,
+        new_device_class: str | None = None,
+        new_state_class: str | None = None,
+        new_entity_category: str | None = None,
+        new_entity_registry_enabled_default: bool | None = None,
+    ) -> QuirkBuilder:
+        """Change entity metadata for matching entities."""
+        if cluster_id is not None and cluster_type is None:
+            cluster_type = ClusterType.Server
+
+        self.changed_entity_metadata.append(
+            ChangedEntityMetadata(
+                endpoint_id=endpoint_id,
+                cluster_id=cluster_id,
+                cluster_type=cluster_type,
+                unique_id_suffix=unique_id_suffix,
+                function=function,
+                new_primary=new_primary,
+                new_unique_id=new_unique_id,
+                new_translation_key=new_translation_key,
+                new_device_class=new_device_class,
+                new_state_class=new_state_class,
+                new_entity_category=new_entity_category,
+                new_entity_registry_enabled_default=new_entity_registry_enabled_default,
+            ),
+        )
+        return self
+
     def add_to_registry(self) -> QuirksV2RegistryEntry:
         """Build the quirks v2 registry entry."""
         if not self.manufacturer_model_metadata:
@@ -1194,6 +1253,7 @@ class QuirkBuilder:
             friendly_name=self.friendly_name_metadata,
             device_alerts=tuple(self.device_alerts),
             disabled_default_entities=tuple(self.disabled_default_entities),
+            changed_entity_metadata=tuple(self.changed_entity_metadata),
             quirk_file=self.quirk_file,
             quirk_file_line=self.quirk_file_line,
             filters=tuple(self.filters),

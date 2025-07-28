@@ -20,6 +20,7 @@ from zigpy.quirks import CustomCluster, CustomDevice, signature_matches
 from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2 import (
     BinarySensorMetadata,
+    ChangedEntityMetadata,
     CustomDeviceV2,
     DeviceAlertLevel,
     DeviceAlertMetadata,
@@ -1423,3 +1424,98 @@ async def test_quirks_v2_firmware_version_filter_metadata(device_mock):
     assert entry.fw_version_filter.min_version == 10
     assert entry.fw_version_filter.max_version == 50
     assert entry.fw_version_filter.allow_missing is False
+
+
+async def test_quirks_v2_change_entity_metadata(device_mock: Device) -> None:
+    """Test changing entity metadata functionality."""
+    registry = DeviceRegistry()
+
+    def filter_func(entity) -> bool:
+        return True
+
+    entry = (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .change_entity_metadata(
+            endpoint_id=1,
+            unique_id_suffix="something",
+            new_primary=True,
+        )
+        .change_entity_metadata(
+            endpoint_id=1,
+            cluster_id=OnOff.cluster_id,
+            new_translation_key="custom_key",
+        )
+        .change_entity_metadata(
+            endpoint_id=1,
+            cluster_id=OnOff.cluster_id,
+            cluster_type=ClusterType.Client,
+            new_device_class="custom_device_class",
+            new_state_class="measurement",
+            new_entity_category="config",
+            new_entity_registry_enabled_default=False,
+        )
+        .change_entity_metadata(
+            function=filter_func,
+            new_unique_id="custom_unique_id",
+        )
+        .add_to_registry()
+    )
+
+    assert entry.changed_entity_metadata == (
+        ChangedEntityMetadata(
+            endpoint_id=1,
+            cluster_id=None,
+            cluster_type=None,
+            unique_id_suffix="something",
+            function=None,
+            new_primary=True,
+            new_unique_id=None,
+            new_translation_key=None,
+            new_device_class=None,
+            new_state_class=None,
+            new_entity_category=None,
+            new_entity_registry_enabled_default=None,
+        ),
+        ChangedEntityMetadata(
+            endpoint_id=1,
+            cluster_id=OnOff.cluster_id,
+            cluster_type=ClusterType.Server,  # by default
+            unique_id_suffix=None,
+            function=None,
+            new_primary=None,
+            new_unique_id=None,
+            new_translation_key="custom_key",
+            new_device_class=None,
+            new_state_class=None,
+            new_entity_category=None,
+            new_entity_registry_enabled_default=None,
+        ),
+        ChangedEntityMetadata(
+            endpoint_id=1,
+            cluster_id=OnOff.cluster_id,
+            cluster_type=ClusterType.Client,
+            unique_id_suffix=None,
+            function=None,
+            new_primary=None,
+            new_unique_id=None,
+            new_translation_key=None,
+            new_device_class="custom_device_class",
+            new_state_class="measurement",
+            new_entity_category="config",
+            new_entity_registry_enabled_default=False,
+        ),
+        ChangedEntityMetadata(
+            endpoint_id=None,
+            cluster_id=None,
+            cluster_type=None,
+            unique_id_suffix=None,
+            function=filter_func,
+            new_primary=None,
+            new_unique_id="custom_unique_id",
+            new_translation_key=None,
+            new_device_class=None,
+            new_state_class=None,
+            new_entity_category=None,
+            new_entity_registry_enabled_default=None,
+        ),
+    )
