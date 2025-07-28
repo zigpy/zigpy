@@ -671,3 +671,9 @@ def test_general_analog_in_application_type():
         app_type.index
         == zcl.clusters.general_const.RelativeHumidityPercent.Space_Humidity
     )
+
+
+def test_ias_zone_enum_subclass_zcl_type():
+    """Test `IasZone.zone_type` is an enum16, not a uint16."""
+
+    assert sec.IasZone.AttributeDefs.zone_type.zcl_type == foundation.DataTypeId.enum16

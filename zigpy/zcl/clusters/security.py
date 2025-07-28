@@ -19,7 +19,7 @@ class ZoneState(t.enum8):
     Enrolled = 0x01
 
 
-class ZoneType(t.enum_factory(t.uint16_t, "manufacturer_specific")):
+class ZoneType(t.enum_factory(t.uint16_t, "manufacturer_specific"), t.enum16):
     """Zone type enum."""
 
     Standard_CIE = 0x0000
@@ -170,7 +170,7 @@ class ArmNotification(t.enum8):
     Already_Disarmed = 0x06
 
 
-class AudibleNotification(t.enum_factory(t.uint8_t, "manufacturer_specific")):
+class AudibleNotification(t.enum_factory(t.uint8_t, "manufacturer_specific"), t.enum8):
     """IAS ACE audible notification enum."""
 
     Mute = 0x00
