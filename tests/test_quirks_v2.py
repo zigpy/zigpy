@@ -1458,6 +1458,7 @@ async def test_quirks_v2_change_entity_metadata(device_mock: Device) -> None:
         .change_entity_metadata(
             function=filter_func,
             new_unique_id="custom_unique_id",
+            new_fallback_name="Custom Fallback Name",
         )
         .add_to_registry()
     )
@@ -1476,6 +1477,7 @@ async def test_quirks_v2_change_entity_metadata(device_mock: Device) -> None:
             new_state_class=None,
             new_entity_category=None,
             new_entity_registry_enabled_default=None,
+            new_fallback_name=None,
         ),
         ChangedEntityMetadata(
             endpoint_id=1,
@@ -1490,6 +1492,7 @@ async def test_quirks_v2_change_entity_metadata(device_mock: Device) -> None:
             new_state_class=None,
             new_entity_category=None,
             new_entity_registry_enabled_default=None,
+            new_fallback_name=None,
         ),
         ChangedEntityMetadata(
             endpoint_id=1,
@@ -1504,6 +1507,7 @@ async def test_quirks_v2_change_entity_metadata(device_mock: Device) -> None:
             new_state_class=SensorStateClass.MEASUREMENT,
             new_entity_category=EntityType.CONFIG,
             new_entity_registry_enabled_default=False,
+            new_fallback_name=None,
         ),
         ChangedEntityMetadata(
             endpoint_id=None,
@@ -1518,5 +1522,6 @@ async def test_quirks_v2_change_entity_metadata(device_mock: Device) -> None:
             new_state_class=None,
             new_entity_category=None,
             new_entity_registry_enabled_default=None,
+            new_fallback_name="Custom Fallback Name",
         ),
     )

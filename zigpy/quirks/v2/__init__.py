@@ -476,6 +476,7 @@ class ChangedEntityMetadata:
     new_state_class: SensorStateClass | None = attrs.field(default=None)
     new_entity_category: EntityType | None = attrs.field(default=None)
     new_entity_registry_enabled_default: bool | None = attrs.field(default=None)
+    new_fallback_name: str | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -1223,6 +1224,7 @@ class QuirkBuilder:
         new_state_class: SensorStateClass | None = None,
         new_entity_category: EntityType | None = None,
         new_entity_registry_enabled_default: bool | None = None,
+        new_fallback_name: str | None = None,
     ) -> QuirkBuilder:
         """Change entity metadata for matching entities."""
         if cluster_id is not None and cluster_type is None:
@@ -1242,6 +1244,7 @@ class QuirkBuilder:
                 new_state_class=new_state_class,
                 new_entity_category=new_entity_category,
                 new_entity_registry_enabled_default=new_entity_registry_enabled_default,
+                new_fallback_name=new_fallback_name,
             ),
         )
         return self
