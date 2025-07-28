@@ -516,8 +516,9 @@ class QuirksV2RegistryEntry:
             return False
 
         if self.fw_version_filter is not None:
-            ota = find_ota_cluster(device)
-            if ota is None:
+            try:
+                ota = find_ota_cluster(device)
+            except ValueError:
                 return self.fw_version_filter.allow_missing
 
             current_file_version = ota.get(Ota.AttributeDefs.current_file_version.id)
@@ -1196,6 +1197,7 @@ class QuirkBuilder:
             quirk_file=self.quirk_file,
             quirk_file_line=self.quirk_file_line,
             filters=tuple(self.filters),
+            fw_version_filter=self.fw_version_filter,
             custom_device_class=self.custom_device_class,
             device_node_descriptor=self.device_node_descriptor,
             skip_device_configuration=self.skip_device_configuration,
