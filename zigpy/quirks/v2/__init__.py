@@ -470,9 +470,11 @@ class ChangedEntityMetadata:
     new_primary: bool | None = attrs.field(default=None)
     new_unique_id: str | None = attrs.field(default=None)
     new_translation_key: str | None = attrs.field(default=None)
-    new_device_class: str | None = attrs.field(default=None)
-    new_state_class: str | None = attrs.field(default=None)
-    new_entity_category: str | None = attrs.field(default=None)
+    new_device_class: (
+        BinarySensorDeviceClass | NumberDeviceClass | SensorDeviceClass | None
+    ) = attrs.field(default=None)
+    new_state_class: SensorStateClass | None = attrs.field(default=None)
+    new_entity_category: EntityType | None = attrs.field(default=None)
     new_entity_registry_enabled_default: bool | None = attrs.field(default=None)
 
 
@@ -1215,9 +1217,11 @@ class QuirkBuilder:
         new_primary: bool | None = None,
         new_unique_id: str | None = None,
         new_translation_key: str | None = None,
-        new_device_class: str | None = None,
-        new_state_class: str | None = None,
-        new_entity_category: str | None = None,
+        new_device_class: (
+            BinarySensorDeviceClass | NumberDeviceClass | SensorDeviceClass | None
+        ) = None,
+        new_state_class: SensorStateClass | None = None,
+        new_entity_category: EntityType | None = None,
         new_entity_registry_enabled_default: bool | None = None,
     ) -> QuirkBuilder:
         """Change entity metadata for matching entities."""

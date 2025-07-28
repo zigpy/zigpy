@@ -37,7 +37,8 @@ from zigpy.quirks.v2 import (
     ZCLSensorMetadata,
     add_to_registry_v2,
 )
-from zigpy.quirks.v2.homeassistant import UnitOfTime
+from zigpy.quirks.v2.homeassistant import EntityType, UnitOfTime
+from zigpy.quirks.v2.homeassistant.sensor import SensorDeviceClass, SensorStateClass
 import zigpy.types as t
 from zigpy.zcl import ClusterType
 from zigpy.zcl.clusters.general import (
@@ -1449,9 +1450,9 @@ async def test_quirks_v2_change_entity_metadata(device_mock: Device) -> None:
             endpoint_id=1,
             cluster_id=OnOff.cluster_id,
             cluster_type=ClusterType.Client,
-            new_device_class="custom_device_class",
-            new_state_class="measurement",
-            new_entity_category="config",
+            new_device_class=SensorDeviceClass.POWER,
+            new_state_class=SensorStateClass.MEASUREMENT,
+            new_entity_category=EntityType.CONFIG,
             new_entity_registry_enabled_default=False,
         )
         .change_entity_metadata(
@@ -1499,9 +1500,9 @@ async def test_quirks_v2_change_entity_metadata(device_mock: Device) -> None:
             new_primary=None,
             new_unique_id=None,
             new_translation_key=None,
-            new_device_class="custom_device_class",
-            new_state_class="measurement",
-            new_entity_category="config",
+            new_device_class=SensorDeviceClass.POWER,
+            new_state_class=SensorStateClass.MEASUREMENT,
+            new_entity_category=EntityType.CONFIG,
             new_entity_registry_enabled_default=False,
         ),
         ChangedEntityMetadata(
