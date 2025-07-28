@@ -8,7 +8,6 @@ from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
     DataType,
-    Direction,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -584,44 +583,20 @@ class Metering(Cluster):
         )
 
     class ServerCommandDefs(BaseCommandDefs):
-        get_profile: Final = ZCLCommandDef(
-            id=0x00, schema={}, direction=Direction.Client_to_Server
-        )
-        req_mirror: Final = ZCLCommandDef(
-            id=0x01, schema={}, direction=Direction.Client_to_Server
-        )
-        mirror_rem: Final = ZCLCommandDef(
-            id=0x02, schema={}, direction=Direction.Client_to_Server
-        )
-        req_fast_poll_mode: Final = ZCLCommandDef(
-            id=0x03, schema={}, direction=Direction.Client_to_Server
-        )
-        get_snapshot: Final = ZCLCommandDef(
-            id=0x04, schema={}, direction=Direction.Client_to_Server
-        )
-        take_snapshot: Final = ZCLCommandDef(
-            id=0x05, schema={}, direction=Direction.Client_to_Server
-        )
-        mirror_report_attr_response: Final = ZCLCommandDef(
-            id=0x06, schema={}, direction=Direction.Server_to_Client
-        )
+        get_profile: Final = ZCLCommandDef(id=0x00, schema={})
+        req_mirror: Final = ZCLCommandDef(id=0x01, schema={})
+        mirror_rem: Final = ZCLCommandDef(id=0x02, schema={})
+        req_fast_poll_mode: Final = ZCLCommandDef(id=0x03, schema={})
+        get_snapshot: Final = ZCLCommandDef(id=0x04, schema={})
+        take_snapshot: Final = ZCLCommandDef(id=0x05, schema={})
+        mirror_report_attr_response: Final = ZCLCommandDef(id=0x06, schema={})
 
     class ClientCommandDefs(BaseCommandDefs):
-        get_profile_response: Final = ZCLCommandDef(
-            id=0x00, schema={}, direction=Direction.Server_to_Client
-        )
-        req_mirror_response: Final = ZCLCommandDef(
-            id=0x01, schema={}, direction=Direction.Server_to_Client
-        )
-        mirror_rem_response: Final = ZCLCommandDef(
-            id=0x02, schema={}, direction=Direction.Server_to_Client
-        )
-        req_fast_poll_mode_response: Final = ZCLCommandDef(
-            id=0x03, schema={}, direction=Direction.Server_to_Client
-        )
-        get_snapshot_response: Final = ZCLCommandDef(
-            id=0x04, schema={}, direction=Direction.Server_to_Client
-        )
+        get_profile_response: Final = ZCLCommandDef(id=0x00, schema={})
+        req_mirror_response: Final = ZCLCommandDef(id=0x01, schema={})
+        mirror_rem_response: Final = ZCLCommandDef(id=0x02, schema={})
+        req_fast_poll_mode_response: Final = ZCLCommandDef(id=0x03, schema={})
+        get_snapshot_response: Final = ZCLCommandDef(id=0x04, schema={})
 
 
 class Messaging(Cluster):

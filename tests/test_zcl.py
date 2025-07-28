@@ -3,16 +3,18 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 from unittest import mock
-from unittest.mock import AsyncMock, MagicMock, patch, sentinel
+from unittest.mock import AsyncMock, MagicMock, call, patch, sentinel
 
 import pytest
 
+from tests.conftest import add_initialized_device, make_app
 from zigpy import zcl
 import zigpy.device
 import zigpy.endpoint
+import zigpy.profiles.zha
 import zigpy.types as t
 from zigpy.zcl import foundation
-from zigpy.zcl.clusters.general import Ota
+from zigpy.zcl.clusters.general import OnOff, Ota
 
 DEFAULT_TSN = 123
 
@@ -784,9 +786,10 @@ def test_general_command_reply(cluster):
     )
 
 
-def test_handle_cluster_request_handler(cluster):
+async def test_handle_cluster_request_handler(cluster):
     hdr = foundation.ZCLHeader.cluster(123, 0x00)
     cluster.handle_cluster_request(hdr, [sentinel.arg1, sentinel.arg2])
+    await asyncio.sleep(0)
 
 
 async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
@@ -816,13 +819,22 @@ async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
 
 async def test_handle_cluster_general_request_not_attr_report(cluster):
     hdr = foundation.ZCLHeader.general(1, foundation.GeneralCommand.Write_Attributes)
-    p1 = patch.object(cluster, "_update_attribute")
-    p2 = patch.object(cluster, "create_catching_task")
-    with p1 as attr_lst_mock, p2 as response_mock:
+    with (
+        patch.object(cluster, "_update_attribute") as attr_lst_mock,
+        patch.object(cluster, "general_command") as response_mock,
+    ):
         cluster.handle_cluster_general_request(hdr, [1, 2, 3])
         await asyncio.sleep(0)
         assert attr_lst_mock.call_count == 0
-        assert response_mock.call_count == 0
+        assert response_mock.mock_calls == [
+            call(
+                foundation.GeneralCommand.Default_Response,
+                foundation.GeneralCommand.Write_Attributes,
+                foundation.Status.SUCCESS,
+                tsn=mock.ANY,
+                priority=t.PacketPriority.LOW,
+            )
+        ]
 
 
 async def test_write_attributes_undivided(cluster):
@@ -1036,12 +1048,8 @@ def test_zcl_command_duplicate_name_prevention():
             cluster_id = 0x1234
             ep_attribute = "test_cluster"
             server_commands = {
-                0x00: foundation.ZCLCommandDef(
-                    name="command1", schema={}, direction=False
-                ),
-                0x01: foundation.ZCLCommandDef(
-                    name="command1", schema={}, direction=False
-                ),
+                0x00: foundation.ZCLCommandDef(name="command1", schema={}),
+                0x01: foundation.ZCLCommandDef(name="command1", schema={}),
             }
 
 
@@ -1230,7 +1238,6 @@ async def test_zcl_cluster_definition_invalid_name():
                     "image_type": t.uint16_t,
                     "file_version": t.uint32_t,
                 },
-                direction=foundation.Direction.Client_to_Server,
             )
 
     # This is not
@@ -1266,5 +1273,131 @@ async def test_zcl_cluster_definition_invalid_name():
                         "image_type": t.uint16_t,
                         "file_version": t.uint32_t,
                     },
-                    direction=foundation.Direction.Client_to_Server,
                 )
+
+
+async def test_cluster_definition_invalid_direction():
+    # Test that incorrect direction on server command triggers warning
+    # ServerCommandDefs should have direction Server_to_Client, so Client_to_Server is wrong
+    with pytest.warns(
+        DeprecationWarning, match="Command 'server_command' has an incorrect direction"
+    ):
+
+        class TestCluster(zcl.Cluster):
+            cluster_id = 0xABCD
+            ep_attribute = "test_cluster"
+
+            class ServerCommandDefs(zcl.BaseCommandDefs):
+                server_command = foundation.ZCLCommandDef(
+                    name="server_command",
+                    id=0x00,
+                    schema={},
+                    direction=foundation.Direction.Client_to_Server,  # Wrong direction
+                )
+
+    # Verify direction was auto-corrected
+    assert (
+        TestCluster.ServerCommandDefs.server_command.direction
+        == foundation.Direction.Server_to_Client
+    )
+
+    # Test that incorrect direction on client command also triggers warning
+    # ClientCommandDefs should have direction Client_to_Server, so Server_to_Client is wrong
+    with pytest.warns(
+        DeprecationWarning, match="Command 'client_command' has an incorrect direction"
+    ):
+
+        class TestCluster2(zcl.Cluster):
+            cluster_id = 0xDEF0
+            ep_attribute = "test_cluster2"
+
+            class ClientCommandDefs(zcl.BaseCommandDefs):
+                client_command = foundation.ZCLCommandDef(
+                    name="client_command",
+                    id=0x00,
+                    schema={},
+                    direction=foundation.Direction.Server_to_Client,  # Wrong direction
+                )
+
+    # Verify direction was auto-corrected
+    assert (
+        TestCluster2.ClientCommandDefs.client_command.direction
+        == foundation.Direction.Client_to_Server
+    )
+
+
+async def test_received_onoff_toggle_generates_default_response():
+    """Test that a received OnOff:toggle generates a default response."""
+
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+
+    # The device has both
+    _on_off_server = dev.endpoints[1].add_input_cluster(
+        zcl.clusters.general.OnOff.cluster_id
+    )
+    on_off_client = dev.endpoints[1].add_output_cluster(
+        zcl.clusters.general.OnOff.cluster_id
+    )
+
+    await dev.initialize()
+
+    req_hdr, req_cmd = on_off_client._create_request(
+        general=False,
+        command_id=OnOff.ServerCommandDefs.toggle.id,
+        schema=OnOff.ServerCommandDefs.toggle.schema,
+        tsn=45,
+        disable_default_response=False,
+        direction=foundation.Direction.Client_to_Server,
+        args=(),
+        kwargs={},
+    )
+
+    with patch.object(dev.endpoints[1], "reply") as mock_request:
+        dev.application.packet_received(
+            t.ZigbeePacket(
+                src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+                src_ep=1,
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+                dst_ep=1,
+                tsn=req_hdr.tsn,
+                profile_id=zigpy.profiles.zha.PROFILE_ID,
+                cluster_id=OnOff.cluster_id,
+                data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
+                lqi=255,
+                rssi=-30,
+            )
+        )
+        await asyncio.sleep(0)
+
+    expected_rsp_hdr, expected_rsp_cmd = on_off_client._create_request(
+        general=True,
+        command_id=foundation.GeneralCommand.Default_Response,
+        schema=foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Default_Response
+        ].schema,
+        tsn=req_hdr.tsn,
+        disable_default_response=True,
+        direction=foundation.Direction.Server_to_Client,
+        args=(),
+        kwargs={
+            "command_id": OnOff.ServerCommandDefs.toggle.id,
+            "status": foundation.Status.SUCCESS,
+        },
+    )
+
+    assert mock_request.mock_calls == [
+        call(
+            cluster=OnOff.cluster_id,
+            sequence=expected_rsp_hdr.tsn,
+            command_id=foundation.GeneralCommand.Default_Response,
+            data=expected_rsp_hdr.serialize() + expected_rsp_cmd.serialize(),
+            timeout=5,
+            expect_reply=False,
+            use_ieee=False,
+            ask_for_ack=None,
+            priority=t.PacketPriority.LOW,
+        )
+    ]

@@ -15,6 +15,7 @@ import zigpy.zcl
 from zigpy.zcl.foundation import (
     GENERAL_COMMANDS,
     CommandSchema,
+    Direction,
     GeneralCommand,
     Status as ZCLStatus,
     ZCLHeader,
@@ -62,7 +63,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.info("Endpoint descriptor already queried")
         else:
             status, _, sd = await self._device.zdo.Simple_Desc_req(
-                self._device.nwk, self._endpoint_id, priority=t.PacketPriority.HIGH
+                self._device.nwk, self._endpoint_id
             )
 
             if status == ZDOStatus.NOT_ACTIVE:
@@ -200,7 +201,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         for names in (["manufacturer", "model"], ["manufacturer"], ["model"]):
             try:
                 success, failure = await self.basic.read_attributes(
-                    names, allow_cache=True, priority=t.PacketPriority.HIGH
+                    names, allow_cache=True
                 )
             except asyncio.TimeoutError:
                 # Only swallow the `TimeoutError` on the double attribute read
@@ -236,16 +237,17 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         *,
         dst_addressing: AddressingMode | None = None,
     ) -> None:
-        if cluster in self.in_clusters:
-            handler = self.in_clusters[cluster].handle_message
-        elif cluster in self.out_clusters:
-            handler = self.out_clusters[cluster].handle_message
-        else:
+        try:
+            if hdr.direction == Direction.Client_to_Server:
+                zcl_cluster = self.out_clusters[cluster]
+            else:
+                zcl_cluster = self.in_clusters[cluster]
+        except KeyError:
             self.debug("Message on unknown cluster 0x%04x", cluster)
             self.listener_event("unknown_cluster_message", hdr.command_id, args)
             return
 
-        handler(hdr, args, dst_addressing=dst_addressing)
+        zcl_cluster.handle_message(hdr, args, dst_addressing=dst_addressing)
 
     async def request(
         self,
@@ -257,7 +259,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         expect_reply: bool = True,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
-        priority: int = t.PacketPriority.NORMAL,
+        priority: int | None = None,
     ):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -291,7 +293,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         expect_reply: bool = False,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
-        priority: int = t.PacketPriority.NORMAL,
+        priority: int | None = None,
     ) -> None:
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id

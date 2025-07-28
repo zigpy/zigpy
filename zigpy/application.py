@@ -16,10 +16,14 @@ import typing
 from typing import Any, TypeVar
 import warnings
 
+from zigpy.backports.contextlib import nullcontext
+
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
 else:
     from asyncio import timeout as asyncio_timeout  # pragma: no cover
+
+import contextvars
 
 import zigpy.appdb
 import zigpy.backups
@@ -89,6 +93,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
 
+        # Context variable for request priority context manager
+        self._packet_priority_var = contextvars.ContextVar(
+            "request_priority", default=t.PacketPriority.NORMAL
+        )
+
     def create_task(
         self, target: Coroutine[Any, Any, _R], name: str | None = None
     ) -> asyncio.Task[_R]:
@@ -100,6 +109,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._tasks.add(task)
         task.add_done_callback(self._tasks.remove)
         return task
+
+    @contextlib.asynccontextmanager
+    async def request_priority(self, priority: int) -> AsyncGenerator[None]:
+        """Context manager to set the request priority for the duration of the context."""
+        token = self._packet_priority_var.set(priority)
+
+        try:
+            yield
+        finally:
+            self._packet_priority_var.reset(token)
 
     async def _load_db(self) -> None:
         """Restore save state."""
@@ -741,11 +760,27 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             await self.add_endpoint(endpoint)
 
     @contextlib.asynccontextmanager
-    async def _limit_concurrency(self, *, priority: int = t.PacketPriority.NORMAL):
+    async def _limit_concurrency(
+        self, *, priority: int | None = None
+    ) -> AsyncGenerator[None, None]:
         """Async context manager to limit global coordinator request concurrency."""
+        if priority is None:
+            priority = self._packet_priority_var.get()
 
         start_time = time.monotonic()
-        was_locked = self._concurrent_requests_semaphore.locked()
+        manager: contextlib.AbstractAsyncContextManager
+
+        if priority >= t.PacketPriority.CRITICAL:
+            LOGGER.debug(
+                "Critical priority request received (%s), skipping queue with %d requests",
+                priority,
+                self._concurrent_requests_semaphore.num_waiting,
+            )
+            manager = nullcontext()
+            was_locked = False
+        else:
+            manager = self._concurrent_requests_semaphore(priority=priority)
+            was_locked = self._concurrent_requests_semaphore.locked()
 
         if was_locked:
             LOGGER.debug(
@@ -754,7 +789,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 self._concurrent_requests_semaphore.num_waiting,
             )
 
-        async with self._concurrent_requests_semaphore(priority=priority):
+        async with manager:
             if was_locked:
                 LOGGER.debug(
                     "Previously delayed request is now running, delayed by %0.2fs",

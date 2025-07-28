@@ -17,8 +17,8 @@ else:
             target=sqlite3,
             **{
                 attr: getattr(pysqlite3, attr)
-                for attr in dir(pysqlite3)
-                if hasattr(sqlite3, attr)
+                for attr in dir(sqlite3)
+                if hasattr(pysqlite3, attr)
             },
         ):
             # Ensure the module was patched

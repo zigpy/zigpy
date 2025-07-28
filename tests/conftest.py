@@ -59,7 +59,11 @@ def raise_on_bad_log_formatting():
 
 class App(zigpy.application.ControllerApplication):
     async def send_packet(self, packet):
-        pass
+        async with self._limit_concurrency(priority=packet.priority):
+            return await self._send_packet(packet)
+
+    async def _send_packet(self, packet):
+        await asyncio.sleep(0)
 
     async def connect(self):
         pass

@@ -9,7 +9,6 @@ from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
-    Direction as CommandDirection,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -234,7 +233,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         move_hue: Final = ZCLCommandDef(
             id=0x01,
@@ -244,7 +242,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         step_hue: Final = ZCLCommandDef(
             id=0x02,
@@ -255,7 +252,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         move_to_saturation: Final = ZCLCommandDef(
             id=0x03,
@@ -265,7 +261,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         move_saturation: Final = ZCLCommandDef(
             id=0x04,
@@ -275,7 +270,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         step_saturation: Final = ZCLCommandDef(
             id=0x05,
@@ -286,7 +280,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         move_to_hue_and_saturation: Final = ZCLCommandDef(
             id=0x06,
@@ -297,7 +290,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         move_to_color: Final = ZCLCommandDef(
             id=0x07,
@@ -308,7 +300,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         move_color: Final = ZCLCommandDef(
             id=0x08,
@@ -318,7 +309,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         step_color: Final = ZCLCommandDef(
             id=0x09,
@@ -329,7 +319,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         move_to_color_temp: Final = ZCLCommandDef(
             id=0x0A,
@@ -339,7 +328,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         enhanced_move_to_hue: Final = ZCLCommandDef(
             id=0x40,
@@ -350,7 +338,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         enhanced_move_hue: Final = ZCLCommandDef(
             id=0x41,
@@ -360,7 +347,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         enhanced_step_hue: Final = ZCLCommandDef(
             id=0x42,
@@ -371,7 +357,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         enhanced_move_to_hue_and_saturation: Final = ZCLCommandDef(
             id=0x43,
@@ -382,7 +367,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         color_loop_set: Final = ZCLCommandDef(
             id=0x44,
@@ -395,7 +379,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         stop_move_step: Final = ZCLCommandDef(
             id=0x47,
@@ -403,7 +386,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         move_color_temp: Final = ZCLCommandDef(
             id=0x4B,
@@ -415,7 +397,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
         step_color_temp: Final = ZCLCommandDef(
             id=0x4C,
@@ -428,7 +409,6 @@ class Color(Cluster):
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
-            direction=CommandDirection.Client_to_Server,
         )
 
 

@@ -969,6 +969,13 @@ class Direction(t.enum1):
     def _from_is_reply(cls, is_reply: bool) -> Direction:
         return cls.Server_to_Client if is_reply else cls.Client_to_Server
 
+    def flip(self) -> Self:
+        return (
+            self.Server_to_Client
+            if self == self.Client_to_Server
+            else self.Client_to_Server
+        )
+
 
 class FrameControl(t.IntStruct, t.uint8_t):
     """The frame control field contains information defining the command type

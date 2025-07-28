@@ -127,24 +127,6 @@ def test_multiple_add_output_cluster(ep):
     assert ep.out_clusters[0].cluster_id == 1
 
 
-def test_handle_message(ep):
-    c = ep.add_input_cluster(0)
-    c.handle_message = MagicMock()
-    ep.handle_message(sentinel.profile, 0, sentinel.hdr, sentinel.data)
-    c.handle_message.assert_called_once_with(
-        sentinel.hdr, sentinel.data, dst_addressing=None
-    )
-
-
-def test_handle_message_output(ep):
-    c = ep.add_output_cluster(0)
-    c.handle_message = MagicMock()
-    ep.handle_message(sentinel.profile, 0, sentinel.hdr, sentinel.data)
-    c.handle_message.assert_called_once_with(
-        sentinel.hdr, sentinel.data, dst_addressing=None
-    )
-
-
 def test_handle_request_unknown(ep):
     hdr = MagicMock()
     hdr.command_id = sentinel.command_id
@@ -198,7 +180,7 @@ async def test_reply_change_profile_id(ep):
             expect_reply=False,
             use_ieee=False,
             ask_for_ack=None,
-            priority=t.PacketPriority.NORMAL,
+            priority=None,
         )
     ]
 
@@ -216,7 +198,7 @@ async def test_reply_change_profile_id(ep):
             expect_reply=False,
             use_ieee=False,
             ask_for_ack=None,
-            priority=t.PacketPriority.NORMAL,
+            priority=None,
         )
     ]
 
@@ -235,7 +217,7 @@ async def test_reply_change_profile_id(ep):
             expect_reply=False,
             use_ieee=False,
             ask_for_ack=None,
-            priority=t.PacketPriority.NORMAL,
+            priority=None,
         )
     ]
 
