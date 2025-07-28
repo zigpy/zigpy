@@ -26,6 +26,7 @@ from zigpy.quirks.v2 import (
     EntityMetadata,
     EntityPlatform,
     EntityType,
+    FirmwareVersionFilterMetadata,
     NumberMetadata,
     PreventDefaultEntityCreationMetadata,
     QuirkBuilder,
@@ -1321,3 +1322,104 @@ async def test_quirks_v2_primary_entity(device_mock: Device) -> None:
 
     assert len(entry.entity_metadata) == 1
     assert entry.entity_metadata[0].primary is True
+
+
+@pytest.mark.parametrize(
+    ("fw_version", "min_version", "max_version", "allow_missing", "expected_match"),
+    [
+        # Basic version filtering
+        (100, 50, 150, True, True),  # Within range
+        (25, 50, 150, True, False),  # Below min
+        (175, 50, 150, True, False),  # Above/equal max
+        (150, 50, 150, True, False),  # Equal to max (exclusive)
+        (50, 50, 150, True, True),  # Equal to min (inclusive)
+        # Only min version specified
+        (100, 50, None, True, True),  # Above min
+        (25, 50, None, True, False),  # Below min
+        (50, 50, None, True, True),  # Equal to min
+        # Only max version specified
+        (100, None, 150, True, True),  # Below max
+        (175, None, 150, True, False),  # Above/equal max
+        (150, None, 150, True, False),  # Equal to max
+        # Missing firmware version handling
+        (None, 50, 150, True, True),  # Missing allowed
+        (None, 50, 150, False, False),  # Missing not allowed
+        (None, None, None, True, True),  # No constraints, missing allowed
+        (None, None, None, False, False),  # No constraints, missing not allowed
+    ],
+)
+async def test_quirks_v2_firmware_version_filter(
+    device_mock, fw_version, min_version, max_version, allow_missing, expected_match
+):
+    """Test firmware version filtering functionality."""
+    registry = DeviceRegistry()
+
+    # Add OTA cluster to device with firmware version
+    device_mock[1].add_output_cluster(Ota.cluster_id)
+    ota_cluster = device_mock[1].out_clusters[Ota.cluster_id]
+
+    if fw_version is not None:
+        ota_cluster._attr_cache[Ota.AttributeDefs.current_file_version.id] = fw_version
+
+    (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .firmware_version_filter(
+            min_version=min_version,
+            max_version=max_version,
+            allow_missing=allow_missing,
+        )
+        .adds(Basic.cluster_id)
+        .add_to_registry()
+    )
+
+    quirked = registry.get_device(device_mock)
+    is_quirked = isinstance(quirked, CustomDeviceV2)
+
+    assert is_quirked == expected_match
+
+
+async def test_quirks_v2_firmware_version_filter_no_ota_cluster(device_mock):
+    """Test firmware version filter when device has no OTA cluster."""
+    registry1 = DeviceRegistry()
+
+    # Test with allow_missing=True (should match)
+    (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry1)
+        .firmware_version_filter(min_version=50, max_version=150, allow_missing=True)
+        .adds(Basic.cluster_id)
+        .add_to_registry()
+    )
+
+    quirked = registry1.get_device(device_mock)
+    assert isinstance(quirked, CustomDeviceV2)
+
+    registry2 = DeviceRegistry()
+
+    # Test with allow_missing=False (should not match)
+    (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry2)
+        .firmware_version_filter(min_version=50, max_version=150, allow_missing=False)
+        .adds(Basic.cluster_id)
+        .add_to_registry()
+    )
+
+    quirked = registry2.get_device(device_mock)
+    assert not isinstance(quirked, CustomDeviceV2)
+
+
+async def test_quirks_v2_firmware_version_filter_metadata(device_mock):
+    """Test that firmware version filter metadata is properly set."""
+    registry = DeviceRegistry()
+
+    entry = (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .firmware_version_filter(min_version=10, max_version=50, allow_missing=False)
+        .adds(Basic.cluster_id)
+        .add_to_registry()
+    )
+
+    assert entry.fw_version_filter is not None
+    assert isinstance(entry.fw_version_filter, FirmwareVersionFilterMetadata)
+    assert entry.fw_version_filter.min_version == 10
+    assert entry.fw_version_filter.max_version == 50
+    assert entry.fw_version_filter.allow_missing is False
