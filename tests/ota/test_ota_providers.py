@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import pathlib
 from unittest.mock import Mock
 
@@ -18,6 +19,13 @@ from zigpy.ota import OtaImageWithMetadata, providers
 import zigpy.types as t
 
 FILES_DIR = pathlib.Path(__file__).parent / "files"
+_LOGGER = logging.getLogger(__name__)
+
+
+async def download(url: str) -> bytes | None:
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, ssl=False, raise_for_status=True) as resp:
+            return await resp.read()
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -29,19 +37,13 @@ def download_external_files():
         path.parent.mkdir(parents=True, exist_ok=True)
 
         if not path.is_file():
-
-            async def download(path: pathlib.Path = path, obj: dict = obj) -> None:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        obj["url"],
-                        ssl=False,
-                        raise_for_status=True,
-                    ) as resp:
-                        data = await resp.read()
-
+            try:
+                data = asyncio.run(download(obj["url"]))
+            except aiohttp.ClientResponseError as e:
+                _LOGGER.error("Failed to download %s: %s", obj["url"], e)
+                continue
+            else:
                 path.write_bytes(data)
-
-            asyncio.run(download())
 
         algorithm, digest = obj["checksum"].split(":")
         assert hashlib.new(algorithm, path.read_bytes()).hexdigest() == digest
@@ -630,6 +632,10 @@ async def test_local_zigpy_provider():
 async def test_advanced_file_provider(tmp_path: pathlib.Path) -> None:
     files = list((FILES_DIR / "external/dl/local_provider").glob("[!.]*"))
     files.sort(key=lambda f: f.name)
+
+    if len(files) < 2:
+        pytest.skip("Not enough files for testing, assuming a provider failed to load")
+        return
 
     (tmp_path / "foo/bar").mkdir(parents=True)
     (tmp_path / "foo/bar" / files[0].name).write_bytes(files[0].read_bytes())
