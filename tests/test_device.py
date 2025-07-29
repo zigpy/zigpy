@@ -14,8 +14,8 @@ from zigpy.profiles import zha
 import zigpy.state
 import zigpy.types as t
 import zigpy.util
-from zigpy.zcl import foundation
-from zigpy.zcl.clusters.general import Basic, Ota
+from zigpy.zcl import ClusterType, foundation
+from zigpy.zcl.clusters.general import Basic, Ota, PollControl
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -1358,11 +1358,186 @@ async def test_duplicate_request_matching(dev: device.Device) -> None:
     assert str(errors[256]).startswith("Duplicate request key: ")
 
 
-async def test_initialize_fast_poll_already_joined(dev: device.Device) -> None:
-    """Test that the device initializes, with fast polling."""
+@pytest.mark.parametrize("cluster_type", [ClusterType.Server, ClusterType.Client])
+async def test_find_cluster(dev: device.Device, cluster_type: ClusterType) -> None:
+    """Test finding a cluster by ID and type."""
     ep = dev.add_endpoint(1)
-    ep.add_input_cluster(Basic.cluster_id)
-    ep.status = zigpy.endpoint.Status.NEW
+    in_cluster = ep.add_input_cluster(Basic.cluster_id)
+    out_cluster = ep.add_output_cluster(Basic.cluster_id)
 
-    await dev.initialize()
-    1/0
+    found_cluster = dev.find_cluster(Basic.cluster_id, cluster_type)
+
+    if cluster_type is ClusterType.Server:
+        assert found_cluster is in_cluster
+    else:
+        assert found_cluster is out_cluster
+
+
+async def test_find_cluster_not_found(dev: device.Device) -> None:
+    """Test finding a cluster that doesn't exist."""
+    dev.add_endpoint(1)
+
+    with pytest.raises(ValueError, match=r"Cluster 0x0000 not found in any endpoint"):
+        dev.find_cluster(Basic.cluster_id, ClusterType.Server)
+
+
+@pytest.mark.parametrize(
+    ("initializing", "semaphore_locked", "expected_fast_poll"),
+    [
+        (True, False, True),  # Fast poll enabled because the device is initializing
+        (False, True, True),  # Fast poll enabled because semaphore is locked
+        (False, False, False),
+    ],
+)
+async def test_poll_control_checkin_callback(
+    dev: device.Device,
+    initializing: bool,
+    semaphore_locked: bool,
+    expected_fast_poll: bool,
+) -> None:
+    """Test PollControl check-in callback with different device states."""
+    ep = dev.add_endpoint(1)
+    poll_control = ep.add_input_cluster(PollControl.cluster_id)
+    poll_control.checkin_response = AsyncMock()
+
+    # Mock device state
+    if initializing:
+        # Create a mock task that isn't done yet
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        dev._initialize_task = mock_task
+    else:
+        dev._initialize_task = None
+
+    if semaphore_locked:
+        await dev._concurrent_requests_semaphore.acquire()
+
+    zcl_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.CLUSTER_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=1,
+            reserved=0,
+        ),
+        tsn=0x12,
+        command_id=PollControl.ClientCommandDefs.checkin.id,
+    )
+    command = PollControl.ClientCommandDefs.checkin.schema()
+
+    # Test the callback
+    await dev.poll_control_checkin_callback(zcl_hdr, command)
+
+    # Verify the correct response was sent
+    if expected_fast_poll:
+        assert poll_control.checkin_response.mock_calls == [
+            call(
+                start_fast_polling=expected_fast_poll,
+                fast_poll_timeout=int(device.DEFAULT_FAST_POLL_TIMEOUT * 4),
+                tsn=0x12,
+            )
+        ]
+    else:
+        assert poll_control.checkin_response.mock_calls == [
+            call(
+                start_fast_polling=expected_fast_poll,
+                fast_poll_timeout=0,
+                tsn=0x12,
+            )
+        ]
+
+    # Clean up semaphore if we acquired it
+    if semaphore_locked:
+        dev._concurrent_requests_semaphore.release()
+
+
+async def test_begin_fast_polling_with_cluster(dev: device.Device) -> None:
+    """Test beginning fast polling when PollControl cluster exists."""
+    ep = dev.add_endpoint(1)
+    poll_control = ep.add_input_cluster(PollControl.cluster_id)
+    poll_control.bind = AsyncMock()
+    poll_control.write_attributes = AsyncMock()
+
+    timeout = 45.0
+    await dev.begin_fast_polling(timeout)
+
+    # Verify bind was called
+    assert poll_control.bind.mock_calls == [call()]
+
+    # Verify write_attributes was called with correct timeout
+    assert poll_control.write_attributes.mock_calls == [
+        call({PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4)})
+    ]
+
+    # Verify end time was set
+    assert dev._fast_polling_end_time > datetime.now(timezone.utc)
+
+
+async def test_begin_fast_polling_no_cluster(dev: device.Device) -> None:
+    """Test beginning fast polling when PollControl cluster doesn't exist."""
+    dev.add_endpoint(1)  # No PollControl cluster
+
+    # Should return silently without error
+    await dev.begin_fast_polling()
+
+    # End time should remain at minimum
+    assert dev._fast_polling_end_time == datetime.min.replace(tzinfo=timezone.utc)
+
+
+async def test_reset_timers(dev: device.Device) -> None:
+    """Test resetting device timers."""
+    # Set a future end time
+    dev._fast_polling_end_time = datetime.now(timezone.utc)
+
+    # Reset timers
+    dev.reset_timers()
+
+    # Verify end time was reset to minimum
+    assert dev._fast_polling_end_time == datetime.min.replace(tzinfo=timezone.utc)
+
+
+async def test_on_remove_callbacks(dev: device.Device) -> None:
+    """Test that on_remove calls all registered callbacks."""
+    callback1 = MagicMock()
+    callback2 = MagicMock()
+
+    # Add callbacks manually
+    dev._on_remove_callbacks.extend([callback1, callback2])
+
+    # Call on_remove
+    dev.on_remove()
+
+    # Verify callbacks were called
+    callback1.assert_called_once()
+    callback2.assert_called_once()
+
+    # Verify callbacks list was cleared
+    assert not dev._on_remove_callbacks
+
+
+async def test_initialize_fast_polling_failure(dev: device.Device) -> None:
+    """Test that fast polling is attempted during initialization."""
+    ep = dev.add_endpoint(1)
+    ep.add_input_cluster(PollControl.cluster_id)
+
+    dev.begin_fast_polling = AsyncMock(side_effect=[asyncio.TimeoutError(), None])
+
+    async def mockepinit(self, *args, **kwargs):
+        self.status = endpoint.Status.ZDO_INIT
+        self.add_input_cluster(Basic.cluster_id)
+
+    async def mock_ep_get_model_info(self):
+        if self.endpoint_id == 1:
+            return "Model2", "Manufacturer2"
+
+    with patch("zigpy.endpoint.Endpoint.initialize", mockepinit):
+        with patch("zigpy.endpoint.Endpoint.get_model_info", mock_ep_get_model_info):
+            with patch.object(
+                dev.zdo,
+                "Active_EP_req",
+                AsyncMock(return_value=[0, None, [0, 1, 2, 3, 4]]),
+            ):
+                await dev.initialize()
+
+    # Initialization attempted to fast poll but failure didn't stop it
+    assert dev.begin_fast_polling.mock_calls == [call()]

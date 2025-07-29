@@ -1689,3 +1689,35 @@ async def test_request_priority_context_concurrency(app, packet):
         call(packet.replace(data=b"high")),
         call(packet.replace(data=b"normal")),
     ]
+
+
+async def test_shutdown_cancels_tasks(app) -> None:
+    """Test that shutdown cancels all running tasks."""
+    # Create mock tasks and add them to the app
+    task1 = MagicMock()
+    task2 = MagicMock()
+    task3 = MagicMock()
+
+    app._tasks.update([task1, task2, task3])
+
+    # Mock the other shutdown methods to avoid side effects
+    app.ota.stop_periodic_broadcasts = MagicMock()
+    app.backups.stop_periodic_backups = MagicMock()
+    app.topology.stop_periodic_scans = MagicMock()
+    app.disconnect = AsyncMock()
+
+    # Mock device on_remove method
+    mock_device = MagicMock()
+    mock_device.on_remove = MagicMock()
+    app.devices[make_ieee()] = mock_device
+
+    # Call shutdown
+    await app.shutdown()
+
+    # Verify all tasks were cancelled
+    task1.cancel.assert_called_once()
+    task2.cancel.assert_called_once()
+    task3.cancel.assert_called_once()
+
+    # Verify device cleanup was called
+    mock_device.on_remove.assert_called_once()
