@@ -23,7 +23,9 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def download(url: str) -> bytes | None:
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(
+        timeout=aiohttp.ClientTimeout(total=10)
+    ) as session:
         async with session.get(url, ssl=False, raise_for_status=True) as resp:
             return await resp.read()
 
