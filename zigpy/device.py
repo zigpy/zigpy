@@ -602,25 +602,18 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             packet.profile_id,
         )
 
-    def packet_received(self, packet: t.ZigbeePacket) -> None:
-        # Set radio details that can be read from any type of packet
-        self.last_seen = packet.timestamp
-
-        if packet.lqi is not None:
-            self.lqi = packet.lqi
-
-        if packet.rssi is not None:
-            self.rssi = packet.rssi
-
-        if self._packet_debouncer.filter(
+    def _should_filter_packet(self, packet: t.ZigbeePacket) -> bool:
+        """Check if packet should be filtered as duplicate."""
+        return self._packet_debouncer.filter(
             # Be conservative with deduplication
             obj=packet.replace(timestamp=None, tsn=None, lqi=None, rssi=None),
             expire_in=PACKET_DEBOUNCE_WINDOW,
-        ):
-            self.debug("Filtering duplicate packet")
-            return
+        )
 
-        # Parse the ZCL/ZDO header first. This should never fail.
+    def _parse_packet_header(
+        self, packet: t.ZigbeePacket
+    ) -> tuple[zdo_t.ZDOHeader | foundation.ZCLHeader, ResponseKey] | tuple[None, None]:
+        """Parse packet header and create response key."""
         data = packet.data.serialize()
 
         if packet.src_ep == zdo.ZDO_ENDPOINT:
@@ -631,6 +624,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 direction=None,
                 tsn=hdr.tsn,
             )
+            return hdr, rsp_key
         elif packet.profile_id in (zha.PROFILE_ID, zll.PROFILE_ID):
             hdr, _ = foundation.ZCLHeader.deserialize(data)
             rsp_key = ResponseKey(
@@ -639,23 +633,26 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 direction=hdr.frame_control.direction,
                 tsn=hdr.tsn,
             )
+            return hdr, rsp_key
         else:
-            self.custom_profile_packet_received(packet)
-            return
+            return None, None
 
-        # Filter out packets that refer to unknown endpoints or clusters
+    def _match_packet_endpoint_cluster(
+        self, packet: t.ZigbeePacket, hdr: zdo_t.ZDOHeader | foundation.ZCLHeader
+    ) -> tuple[typing.Any, Cluster | None] | tuple[None, None]:
+        """Validate packet routing and find target endpoint and cluster."""
         if packet.src_ep not in self.endpoints:
             self.debug(
                 "Ignoring message on unknown endpoint %s (expected one of %s)",
                 packet.src_ep,
                 self.endpoints,
             )
-            return
+            return None, None
 
         endpoint = self.endpoints[packet.src_ep]
 
         if packet.src_ep == zdo.ZDO_ENDPOINT:
-            zcl_cluster = None
+            return endpoint, None
         else:
             try:
                 zcl_cluster = self._find_zcl_cluster(hdr, packet)
@@ -664,56 +661,118 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     "Ignoring message on unknown cluster: %04x",
                     packet.cluster_id,
                 )
-                return
+                return None, None
+            else:
+                return endpoint, zcl_cluster
+
+    def _parse_packet_command(
+        self, packet: t.ZigbeePacket, endpoint: typing.Any, zcl_cluster: Cluster | None
+    ) -> typing.Any:
+        """Deserialize packet data."""
+        data = packet.data.serialize()
+
+        if packet.src_ep == zdo.ZDO_ENDPOINT:
+            _, cmd = endpoint.deserialize(packet.cluster_id, data)
+        else:
+            assert zcl_cluster is not None
+            _, cmd = zcl_cluster.deserialize(data)
+
+        return cmd
+
+    def _maybe_match_response(
+        self, rsp_key: ResponseKey, cmd: typing.Any, error: Exception | None
+    ) -> bool:
+        """Handle response matching for pending requests, returns True if packet was matched."""
+        future = self._requests.get(rsp_key)
+        if future is None:
+            return False
 
         try:
-            if packet.src_ep == zdo.ZDO_ENDPOINT:
-                _, args = endpoint.deserialize(packet.cluster_id, data)
+            if error is not None:
+                future.set_exception(error)
             else:
-                assert zcl_cluster is not None
-                _, args = zcl_cluster.deserialize(data)
-        except Exception as exc:  # noqa: BLE001
-            error = zigpy.exceptions.ParsingError()
-            error.__cause__ = exc
+                future.set_result(cmd)
+        except asyncio.InvalidStateError:
+            self.debug(
+                "Invalid state on future for %s -- probably duplicate response",
+                rsp_key,
+            )
 
-            self.debug("Failed to parse packet %r", packet, exc_info=error)
-        else:
-            error = None
+        return True
 
-        future = self._requests.get(rsp_key)
-        if future is not None:
-            try:
-                if error is not None:
-                    future.set_exception(error)
-                else:
-                    future.set_result(args)
-            except asyncio.InvalidStateError:
-                self.debug(
-                    "Invalid state on future for %s -- probably duplicate response",
-                    rsp_key,
-                )
-            return
-
-        if error is not None:
-            return
-
-        # Pass the request off to a listener, if one is registered
+    def _notify_listeners(self, hdr: typing.Any, cmd: typing.Any) -> None:
+        """Notify registered listeners of the packet."""
         for listener in itertools.chain(
             self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
             self._application._req_listeners[self],
         ):
             # Resolve only until the first future listener
-            if listener.resolve(hdr, args) and isinstance(
+            if listener.resolve(hdr, cmd) and isinstance(
                 listener, zigpy.listeners.FutureListener
             ):
                 break
 
-        # Finally, pass it off to the cluster message handler. This will be removed.
+    def packet_received(self, packet: t.ZigbeePacket) -> None:
+        """Process received packet through the device's packet handling pipeline."""
+        self.last_seen = packet.timestamp
+
+        if packet.lqi is not None:
+            self.lqi = packet.lqi
+
+        if packet.rssi is not None:
+            self.rssi = packet.rssi
+
+        # Filter duplicate packets
+        if self._should_filter_packet(packet):
+            self.debug("Filtering duplicate packet")
+            return
+
+        # Parse packet header and create response key
+        hdr, rsp_key = self._parse_packet_header(packet)
+        if hdr is None:
+            self.custom_profile_packet_received(packet)
+            return
+
+        # Validate packet routing and find target endpoint/cluster
+        endpoint, zcl_cluster = self._match_packet_endpoint_cluster(packet, hdr)
+        if endpoint is None:
+            return
+
+        # Deserialize packet data
+        try:
+            cmd = self._parse_packet_command(packet, endpoint, zcl_cluster)
+        except Exception as exc:  # noqa: BLE001
+            error = zigpy.exceptions.ParsingError()
+            error.__cause__ = exc
+            self.debug("Failed to parse packet %r", packet, exc_info=error)
+        else:
+            error = None
+
+        # Handle response matching for pending requests
+        if self._maybe_match_response(rsp_key, cmd, error):
+            return
+
+        # Skip further processing if there was a parsing error
+        if error is not None:
+            return
+
+        # Notify registered listeners
+        for listener in itertools.chain(
+            self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
+            self._application._req_listeners[self],
+        ):
+            # Resolve only until the first future listener
+            if listener.resolve(hdr, cmd) and isinstance(
+                listener, zigpy.listeners.FutureListener
+            ):
+                break
+
+        # Dispatch to appropriate message handler
         if zcl_cluster is not None:
-            zcl_cluster.handle_message(hdr, args)
+            zcl_cluster.handle_message(hdr, cmd)
         else:
             assert isinstance(endpoint, zdo.ZDO)
-            endpoint.handle_message(packet.profile_id, packet.cluster_id, hdr, args)
+            endpoint.handle_message(packet.profile_id, packet.cluster_id, hdr, cmd)
 
     async def reply(
         self,

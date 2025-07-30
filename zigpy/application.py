@@ -88,7 +88,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.topology: zigpy.topology.Topology = zigpy.topology.Topology(self)
 
         self._req_listeners: collections.defaultdict[
-            zigpy.device.Device,
+            zigpy.device.Device | zigpy.listeners.Singleton,
             collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
 
