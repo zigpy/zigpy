@@ -639,7 +639,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     def _match_packet_endpoint_cluster(
         self, packet: t.ZigbeePacket, hdr: zdo_t.ZDOHeader | foundation.ZCLHeader
-    ) -> tuple[typing.Any, Cluster | None] | tuple[None, None]:
+    ) -> (
+        tuple[zigpy.endpoint.Endpoint, Cluster]
+        | tuple[zigpy.zdo.ZDO, None]
+        | tuple[None, None]
+    ):
         """Validate packet routing and find target endpoint and cluster."""
         if packet.src_ep not in self.endpoints:
             self.debug(
