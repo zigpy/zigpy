@@ -25,8 +25,7 @@ class ZoneType(t.enum16):
     @classmethod
     def _missing_(cls, value):
         new = cls._member_type_.__new__(cls, value)
-        name = f"manufacturer_specific_{new._hex_repr().lower()}"
-        new._name_ = name.format(value)
+        new._name_ = f"manufacturer_specific_{new._hex_repr().lower()}"
         new._value_ = value
         return new
 
@@ -184,8 +183,7 @@ class AudibleNotification(t.enum8):
     @classmethod
     def _missing_(cls, value):
         new = cls._member_type_.__new__(cls, value)
-        name = f"manufacturer_specific_{new._hex_repr().lower()}"
-        new._name_ = name.format(value)
+        new._name_ = f"manufacturer_specific_{new._hex_repr().lower()}"
         new._value_ = value
         return new
 
