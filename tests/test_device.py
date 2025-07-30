@@ -328,7 +328,7 @@ async def test_ignore_unknown_endpoint(dev, caplog):
                 cluster_id=1,
                 src_ep=2,
                 dst_ep=3,
-                data=t.SerializableBytes(b"data"),
+                data=t.SerializableBytes(b"some data"),
                 src=t.AddrModeAddress(
                     addr_mode=t.AddrMode.NWK,
                     address=dev.nwk,
