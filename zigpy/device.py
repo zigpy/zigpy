@@ -582,13 +582,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
         )
 
-    def deserialize(self, endpoint_id, cluster_id, data):
-        """Deprecated compatibility function."""
-        warnings.warn(
-            "`deserialize` is deprecated, avoid rewriting packet structures this way",
-            DeprecationWarning,
-        )
-        return self.endpoints[endpoint_id].deserialize(cluster_id, data)
+    def _find_zcl_cluster(
+        self, hdr: foundation.ZCLHeader, packet: t.ZigbeePacket
+    ) -> Cluster:
+        """Find the ZCL cluster for a given header and packet."""
+        assert packet.src_ep is not None
+        ep = self.endpoints[packet.src_ep]
+
+        if hdr.frame_control.direction == foundation.Direction.Client_to_Server:
+            return ep.out_clusters[packet.cluster_id]
+        else:
+            return ep.in_clusters[packet.cluster_id]
 
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         # Set radio details that can be read from any type of packet
@@ -617,22 +621,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
             return
 
-        endpoint = self.endpoints[packet.src_ep]
-
-        # Ignore packets that do not match the endpoint's clusters.
-        # TODO: this isn't actually necessary, we can parse most packets by cluster ID.
-        if (
-            packet.dst_ep != zdo.ZDO_ENDPOINT
-            and packet.cluster_id not in endpoint.in_clusters
-            and packet.cluster_id not in endpoint.out_clusters
-        ):
-            self.debug(
-                "Ignoring message on unknown cluster %s for endpoint %s",
-                packet.cluster_id,
-                endpoint,
-            )
-            return
-
         # Parse the ZCL/ZDO header first. This should never fail.
         data = packet.data.serialize()
 
@@ -653,17 +641,26 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 tsn=hdr.tsn,
             )
 
+        endpoint = self.endpoints[packet.src_ep]
+
+        if packet.src_ep == zdo.ZDO_ENDPOINT:
+            zcl_cluster = None
+        else:
+            try:
+                zcl_cluster = self._find_zcl_cluster(hdr, packet)
+            except KeyError:
+                self.debug(
+                    "Ignoring message on unknown cluster: %04x",
+                    packet.cluster_id,
+                )
+                return
+
         try:
-            if (
-                type(self).deserialize is not Device.deserialize
-                or getattr(self.deserialize, "__func__", None) is not Device.deserialize
-            ):
-                # XXX: support for custom deserialization will be removed
-                _, args = self.deserialize(packet.src_ep, packet.cluster_id, data)
-            else:
-                # Next, parse the ZCL/ZDO payload
-                # FIXME: ZCL deserialization mutates the header!
+            if packet.src_ep == zdo.ZDO_ENDPOINT:
                 _, args = endpoint.deserialize(packet.cluster_id, data)
+            else:
+                assert zcl_cluster is not None
+                _, args = zcl_cluster.deserialize(data)
         except Exception as exc:  # noqa: BLE001
             error = zigpy.exceptions.ParsingError()
             error.__cause__ = exc
@@ -700,14 +697,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             ):
                 break
 
-        # Finally, pass it off to the endpoint message handler. This will be removed.
-        endpoint.handle_message(
-            packet.profile_id,
-            packet.cluster_id,
-            hdr,
-            args,
-            dst_addressing=packet.dst.addr_mode if packet.dst is not None else None,
-        )
+        # Finally, pass it off to the cluster message handler. This will be removed.
+        if zcl_cluster is not None:
+            zcl_cluster.handle_message(hdr, args)
 
     async def reply(
         self,

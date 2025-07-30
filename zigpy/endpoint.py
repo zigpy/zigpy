@@ -9,17 +9,10 @@ from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.exceptions
 import zigpy.profiles
 import zigpy.types as t
-from zigpy.typing import AddressingMode, DeviceType
+from zigpy.typing import DeviceType
 import zigpy.util
 import zigpy.zcl
-from zigpy.zcl.foundation import (
-    GENERAL_COMMANDS,
-    CommandSchema,
-    Direction,
-    GeneralCommand,
-    Status as ZCLStatus,
-    ZCLHeader,
-)
+from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCLStatus
 from zigpy.zdo.types import Status as ZDOStatus
 
 LOGGER = logging.getLogger(__name__)
@@ -217,37 +210,6 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 self._manufacturer = success["manufacturer"]
 
         return self._model, self._manufacturer
-
-    def deserialize(
-        self, cluster_id: t.ClusterId, data: bytes
-    ) -> tuple[ZCLHeader, CommandSchema]:
-        """Deserialize data for ZCL"""
-        if cluster_id not in self.in_clusters and cluster_id not in self.out_clusters:
-            raise KeyError(f"No cluster ID 0x{cluster_id:04x} on {self.unique_id}")
-
-        cluster = self.in_clusters.get(cluster_id, self.out_clusters.get(cluster_id))
-        return cluster.deserialize(data)
-
-    def handle_message(
-        self,
-        profile: int,
-        cluster: int,
-        hdr: ZCLHeader,
-        args: list,
-        *,
-        dst_addressing: AddressingMode | None = None,
-    ) -> None:
-        try:
-            if hdr.direction == Direction.Client_to_Server:
-                zcl_cluster = self.out_clusters[cluster]
-            else:
-                zcl_cluster = self.in_clusters[cluster]
-        except KeyError:
-            self.debug("Message on unknown cluster 0x%04x", cluster)
-            self.listener_event("unknown_cluster_message", hdr.command_id, args)
-            return
-
-        zcl_cluster.handle_message(hdr, args, dst_addressing=dst_addressing)
 
     async def request(
         self,

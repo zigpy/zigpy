@@ -1122,48 +1122,13 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     cluster.image_block_response = image_block_response
 
 
-@pytest.mark.filterwarnings("ignore::DeprecationWarning")
-async def test_deserialize_backwards_compat(dev):
-    """Test that deserialization uses the method if it is overloaded."""
-    dev._packet_debouncer.filter = MagicMock(return_value=False)
-
-    packet = t.ZigbeePacket(
-        profile_id=260,
-        cluster_id=Basic.cluster_id,
-        src_ep=1,
-        dst_ep=1,
-        data=t.SerializableBytes(
-            b"\x18\x56\x09\x00\x00\x00\x00\x25\x1e\x00\x84\x03\x01\x02\x03\x04\x05\x06"
-        ),
-        src=t.AddrModeAddress(
-            addr_mode=t.AddrMode.NWK,
-            address=dev.nwk,
-        ),
-        dst=t.AddrModeAddress(
-            addr_mode=t.AddrMode.NWK,
-            address=0x0000,
-        ),
-    )
-
-    ep = dev.add_endpoint(1)
-    ep.add_input_cluster(Basic.cluster_id)
-
-    dev.packet_received(packet)
-
-    # Replace the method
-    dev.deserialize = MagicMock(side_effect=dev.deserialize)
-    dev.packet_received(packet)
-
-    assert dev.deserialize.call_count == 1
-
-
 async def test_request_exception_propagation(dev):
     """Test that exceptions are propagated to the caller."""
     tsn = 0x12
 
     ep = dev.add_endpoint(1)
     ep.add_input_cluster(Basic.cluster_id)
-    ep.deserialize = MagicMock(side_effect=RuntimeError())
+    ep.basic.deserialize = MagicMock(side_effect=RuntimeError())
 
     dev.get_sequence = MagicMock(return_value=tsn)
 
