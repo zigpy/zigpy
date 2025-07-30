@@ -711,6 +711,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         # Finally, pass it off to the cluster message handler. This will be removed.
         if zcl_cluster is not None:
             zcl_cluster.handle_message(hdr, args)
+        else:
+            assert isinstance(endpoint, zdo.ZDO)
+            endpoint.handle_message(packet.profile_id, packet.cluster_id, hdr, args)
 
     async def reply(
         self,
