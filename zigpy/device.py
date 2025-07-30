@@ -14,6 +14,7 @@ import warnings
 from zigpy.backports.contextlib import nullcontext
 from zigpy.exceptions import DeliveryError
 from zigpy.ota.manager import update_firmware
+from zigpy.profiles import zha, zll
 from zigpy.zcl.clusters.general import Ota, PollControl
 
 if sys.version_info[:2] < (3, 11):
@@ -594,6 +595,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         else:
             return ep.in_clusters[packet.cluster_id]
 
+    def custom_profile_packet_received(self, packet: t.ZigbeePacket) -> None:
+        """Handle packets with a custom profile ID."""
+        self.debug(
+            "Received packet with custom profile %04x, ignoring",
+            packet.profile_id,
+        )
+
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         # Set radio details that can be read from any type of packet
         self.last_seen = packet.timestamp
@@ -612,15 +620,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.debug("Filtering duplicate packet")
             return
 
-        # Filter out packets that refer to unknown endpoints or clusters
-        if packet.src_ep not in self.endpoints:
-            self.debug(
-                "Ignoring message on unknown endpoint %s (expected one of %s)",
-                packet.src_ep,
-                self.endpoints,
-            )
-            return
-
         # Parse the ZCL/ZDO header first. This should never fail.
         data = packet.data.serialize()
 
@@ -632,7 +631,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 direction=None,
                 tsn=hdr.tsn,
             )
-        else:
+        elif packet.profile_id in (zha.PROFILE_ID, zll.PROFILE_ID):
             hdr, _ = foundation.ZCLHeader.deserialize(data)
             rsp_key = ResponseKey(
                 endpoint_id=packet.src_ep,
@@ -640,6 +639,18 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 direction=hdr.frame_control.direction,
                 tsn=hdr.tsn,
             )
+        else:
+            self.custom_profile_packet_received(packet)
+            return
+
+        # Filter out packets that refer to unknown endpoints or clusters
+        if packet.src_ep not in self.endpoints:
+            self.debug(
+                "Ignoring message on unknown endpoint %s (expected one of %s)",
+                packet.src_ep,
+                self.endpoints,
+            )
+            return
 
         endpoint = self.endpoints[packet.src_ep]
 
