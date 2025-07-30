@@ -28,14 +28,14 @@ def endpoint():
 
 
 def test_deserialize_general(endpoint):
-    hdr, args = endpoint.deserialize(0, b"\x00\x01\x00")
+    hdr, args = endpoint.in_clusters[0].deserialize(b"\x00\x01\x00")
     assert hdr.tsn == 1
     assert hdr.command_id == 0
     assert hdr.direction == foundation.Direction.Client_to_Server
 
 
 def test_deserialize_general_unknown(endpoint):
-    hdr, args = endpoint.deserialize(0, b"\x00\x01\xff")
+    hdr, args = endpoint.in_clusters[0].deserialize(b"\x00\x01\xff")
     assert hdr.tsn == 1
     assert hdr.frame_control.is_general is True
     assert hdr.frame_control.is_cluster is False
@@ -44,7 +44,7 @@ def test_deserialize_general_unknown(endpoint):
 
 
 def test_deserialize_cluster(endpoint):
-    hdr, args = endpoint.deserialize(0, b"\x01\x01\x00xxx")
+    hdr, args = endpoint.in_clusters[0].deserialize(b"\x01\x01\x00xxx")
     assert hdr.tsn == 1
     assert hdr.frame_control.is_general is False
     assert hdr.frame_control.is_cluster is True
@@ -53,7 +53,7 @@ def test_deserialize_cluster(endpoint):
 
 
 def test_deserialize_cluster_client(endpoint):
-    hdr, args = endpoint.deserialize(3, b"\x09\x01\x00AB")
+    hdr, args = endpoint.in_clusters[3].deserialize(b"\x09\x01\x00AB")
     assert hdr.tsn == 1
     assert hdr.frame_control.is_general is False
     assert hdr.frame_control.is_cluster is True
@@ -64,11 +64,11 @@ def test_deserialize_cluster_client(endpoint):
 
 def test_deserialize_cluster_unknown(endpoint):
     with pytest.raises(KeyError):
-        endpoint.deserialize(0xFF00, b"\x05\x00\x00\x01\x00")
+        endpoint.in_clusters[0xFF00].deserialize(b"\x05\x00\x00\x01\x00")
 
 
 def test_deserialize_cluster_command_unknown(endpoint):
-    hdr, args = endpoint.deserialize(0, b"\x01\x01\xff")
+    hdr, args = endpoint.in_clusters[0].deserialize(b"\x01\x01\xff")
     assert hdr.tsn == 1
     assert hdr.command_id == 255
     assert hdr.direction == foundation.Direction.Client_to_Server
@@ -793,8 +793,7 @@ async def test_handle_cluster_request_handler(cluster):
 
 
 async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
-    hdr, values = endpoint.deserialize(
-        0,
+    hdr, values = endpoint.in_clusters[0].deserialize(
         b"\x18\xcd\x0a\x01\xff\x42\x25\x01\x21\x95\x0b\x04\x21\xa8\x43\x05\x21\x36\x00"
         b"\x06\x24\x02\x00\x05\x00\x00\x64\x29\xf8\x07\x65\x21\xd9\x0e\x66\x2b\x84\x87"
         b"\x01\x00\x0a\x21\x00\x00",
@@ -1149,12 +1148,7 @@ async def test_zcl_reply_direction(app_mock):
         foundation.GeneralCommand.Report_Attributes
     ].schema([attr])
 
-    ep.handle_message(
-        profile=260,
-        cluster=zcl.clusters.general.OnOff.cluster_id,
-        hdr=hdr,
-        args=cmd,
-    )
+    ep.on_off.handle_message(hdr, cmd)
 
     await asyncio.sleep(0.1)
 

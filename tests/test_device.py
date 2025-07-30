@@ -328,7 +328,7 @@ async def test_ignore_unknown_endpoint(dev, caplog):
                 cluster_id=1,
                 src_ep=2,
                 dst_ep=3,
-                data=t.SerializableBytes(b"data"),
+                data=t.SerializableBytes(b"some data"),
                 src=t.AddrModeAddress(
                     addr_mode=t.AddrMode.NWK,
                     address=dev.nwk,
@@ -341,6 +341,58 @@ async def test_ignore_unknown_endpoint(dev, caplog):
         )
 
     assert "Ignoring message on unknown endpoint" in caplog.text
+
+
+async def test_handle_custom_profile(dev) -> None:
+    """Test that custom profile messages are handled."""
+    dev.add_endpoint(1)
+
+    packet = t.ZigbeePacket(
+        profile_id=0x1234,
+        cluster_id=1,
+        src_ep=1,
+        dst_ep=1,
+        data=t.SerializableBytes(b"custom data"),
+        src=t.AddrModeAddress(
+            addr_mode=t.AddrMode.NWK,
+            address=dev.nwk,
+        ),
+        dst=t.AddrModeAddress(
+            addr_mode=t.AddrMode.NWK,
+            address=0x0000,
+        ),
+    )
+
+    with patch.object(dev, "custom_profile_packet_received") as mock_handler:
+        dev.packet_received(packet)
+
+    assert mock_handler.mock_calls == [call(packet)]
+
+
+async def test_handle_unknown_cluster(dev, caplog) -> None:
+    """Test that unknown cluster messages are ignored."""
+    dev.add_endpoint(1)
+
+    with caplog.at_level(logging.DEBUG):
+        dev.packet_received(
+            t.ZigbeePacket(
+                profile_id=260,
+                cluster_id=0x9999,  # Unknown cluster
+                src_ep=1,
+                dst_ep=1,
+                data=t.SerializableBytes(b"unknown cluster data"),
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=dev.nwk,
+                ),
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=0x0000,
+                ),
+            )
+        )
+
+    assert "Ignoring message on unknown cluster: 0x9999" in caplog.text
 
 
 async def test_update_device_firmware_no_ota_cluster(dev):
@@ -1122,48 +1174,13 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     cluster.image_block_response = image_block_response
 
 
-@pytest.mark.filterwarnings("ignore::DeprecationWarning")
-async def test_deserialize_backwards_compat(dev):
-    """Test that deserialization uses the method if it is overloaded."""
-    dev._packet_debouncer.filter = MagicMock(return_value=False)
-
-    packet = t.ZigbeePacket(
-        profile_id=260,
-        cluster_id=Basic.cluster_id,
-        src_ep=1,
-        dst_ep=1,
-        data=t.SerializableBytes(
-            b"\x18\x56\x09\x00\x00\x00\x00\x25\x1e\x00\x84\x03\x01\x02\x03\x04\x05\x06"
-        ),
-        src=t.AddrModeAddress(
-            addr_mode=t.AddrMode.NWK,
-            address=dev.nwk,
-        ),
-        dst=t.AddrModeAddress(
-            addr_mode=t.AddrMode.NWK,
-            address=0x0000,
-        ),
-    )
-
-    ep = dev.add_endpoint(1)
-    ep.add_input_cluster(Basic.cluster_id)
-
-    dev.packet_received(packet)
-
-    # Replace the method
-    dev.deserialize = MagicMock(side_effect=dev.deserialize)
-    dev.packet_received(packet)
-
-    assert dev.deserialize.call_count == 1
-
-
 async def test_request_exception_propagation(dev):
     """Test that exceptions are propagated to the caller."""
     tsn = 0x12
 
     ep = dev.add_endpoint(1)
     ep.add_input_cluster(Basic.cluster_id)
-    ep.deserialize = MagicMock(side_effect=RuntimeError())
+    ep.basic.deserialize = MagicMock(side_effect=RuntimeError())
 
     dev.get_sequence = MagicMock(return_value=tsn)
 
@@ -1332,7 +1349,7 @@ async def test_device_concurrency(dev: device.Device) -> None:
     ]
 
 
-async def test_duplicate_request_matching(dev: device.Device) -> None:
+async def test_duplicate_request_sending(dev: device.Device) -> None:
     """Test that a device throws an error if requests duplicate."""
 
     ep = dev.add_endpoint(1)
@@ -1356,6 +1373,61 @@ async def test_duplicate_request_matching(dev: device.Device) -> None:
     assert all(isinstance(errors[i], asyncio.TimeoutError) for i in range(256))
     assert isinstance(errors[256], zigpy.exceptions.ControllerException)
     assert str(errors[256]).startswith("Duplicate request key: ")
+
+
+async def test_duplicate_request_matching(dev: device.Device, caplog) -> None:
+    """Test that a device handles duplicate packets matching the same request."""
+    ep = dev.add_endpoint(1)
+    ep.add_input_cluster(Basic.cluster_id)
+
+    def send_responses():
+        packet = t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=1,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=1,
+            tsn=1,
+            profile_id=260,
+            cluster_id=Basic.cluster_id,
+            data=t.SerializableBytes(
+                foundation.ZCLHeader(
+                    frame_control=foundation.FrameControl(
+                        frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                        is_manufacturer_specific=False,
+                        direction=foundation.Direction.Server_to_Client,
+                        disable_default_response=True,
+                        reserved=0,
+                    ),
+                    tsn=1,
+                    command_id=foundation.GeneralCommand.Default_Response,
+                ).serialize()
+                + (
+                    foundation.GENERAL_COMMANDS[
+                        foundation.GeneralCommand.Default_Response
+                    ]
+                    .schema(
+                        command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+                        status=foundation.Status.SUCCESS,
+                    )
+                    .serialize()
+                )
+            ),
+            lqi=255,
+            rssi=-30,
+        )
+
+        dev.packet_received(packet)
+        dev.packet_received(packet)
+        dev.packet_received(packet)
+
+    with (
+        caplog.at_level(logging.DEBUG),
+        patch.object(dev, "_should_filter_packet", return_value=False),
+    ):
+        asyncio.get_running_loop().call_soon(send_responses)
+        await dev.endpoints[1].basic.reset_fact_default()
+
+    assert "probably duplicate response" in caplog.text
 
 
 @pytest.mark.parametrize("cluster_type", [ClusterType.Server, ClusterType.Client])
