@@ -700,18 +700,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         return True
 
-    def _notify_listeners(self, hdr: typing.Any, cmd: typing.Any) -> None:
-        """Notify registered listeners of the packet."""
-        for listener in itertools.chain(
-            self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
-            self._application._req_listeners[self],
-        ):
-            # Resolve only until the first future listener
-            if listener.resolve(hdr, cmd) and isinstance(
-                listener, zigpy.listeners.FutureListener
-            ):
-                break
-
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         """Process received packet through the device's packet handling pipeline."""
         self.last_seen = packet.timestamp

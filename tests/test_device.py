@@ -1349,7 +1349,7 @@ async def test_device_concurrency(dev: device.Device) -> None:
     ]
 
 
-async def test_duplicate_request_matching(dev: device.Device) -> None:
+async def test_duplicate_request_sending(dev: device.Device) -> None:
     """Test that a device throws an error if requests duplicate."""
 
     ep = dev.add_endpoint(1)
@@ -1373,6 +1373,61 @@ async def test_duplicate_request_matching(dev: device.Device) -> None:
     assert all(isinstance(errors[i], asyncio.TimeoutError) for i in range(256))
     assert isinstance(errors[256], zigpy.exceptions.ControllerException)
     assert str(errors[256]).startswith("Duplicate request key: ")
+
+
+async def test_duplicate_request_matching(dev: device.Device, caplog) -> None:
+    """Test that a device handles duplicate packets matching the same request."""
+    ep = dev.add_endpoint(1)
+    ep.add_input_cluster(Basic.cluster_id)
+
+    def send_responses():
+        packet = t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=1,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=1,
+            tsn=1,
+            profile_id=260,
+            cluster_id=Basic.cluster_id,
+            data=t.SerializableBytes(
+                foundation.ZCLHeader(
+                    frame_control=foundation.FrameControl(
+                        frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                        is_manufacturer_specific=False,
+                        direction=foundation.Direction.Server_to_Client,
+                        disable_default_response=True,
+                        reserved=0,
+                    ),
+                    tsn=1,
+                    command_id=foundation.GeneralCommand.Default_Response,
+                ).serialize()
+                + (
+                    foundation.GENERAL_COMMANDS[
+                        foundation.GeneralCommand.Default_Response
+                    ]
+                    .schema(
+                        command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+                        status=foundation.Status.SUCCESS,
+                    )
+                    .serialize()
+                )
+            ),
+            lqi=255,
+            rssi=-30,
+        )
+
+        dev.packet_received(packet)
+        dev.packet_received(packet)
+        dev.packet_received(packet)
+
+    with (
+        caplog.at_level(logging.DEBUG),
+        patch.object(dev, "_should_filter_packet", return_value=False),
+    ):
+        asyncio.get_running_loop().call_soon(send_responses)
+        await dev.endpoints[1].basic.reset_fact_default()
+
+    assert "probably duplicate response" in caplog.text
 
 
 @pytest.mark.parametrize("cluster_type", [ClusterType.Server, ClusterType.Client])
