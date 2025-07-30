@@ -756,7 +756,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if error is not None:
             return
 
-        # Notify registered listeners
+        # Pass the request off to a listener, if one is registered
         for listener in itertools.chain(
             self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
             self._application._req_listeners[self],
@@ -767,7 +767,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             ):
                 break
 
-        # Dispatch to appropriate message handler
+        # Finally, pass it off to the cluster message handler. This will be removed.
         if zcl_cluster is not None:
             zcl_cluster.handle_message(hdr, cmd)
         else:
