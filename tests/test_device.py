@@ -1277,6 +1277,8 @@ async def test_debouncing(dev):
 
 async def test_device_concurrency(dev: device.Device) -> None:
     """Test that the device can handle multiple requests concurrently."""
+    dev._concurrent_requests_semaphore.max_value = 1
+
     ep = dev.add_endpoint(1)
     ep.add_input_cluster(Basic.cluster_id)
 
@@ -1468,6 +1470,8 @@ async def test_poll_control_checkin_callback(
     expected_fast_poll: bool,
 ) -> None:
     """Test PollControl check-in callback with different device states."""
+    dev._concurrent_requests_semaphore.max_value = 1
+
     ep = dev.add_endpoint(1)
     poll_control = ep.add_input_cluster(PollControl.cluster_id)
     poll_control.checkin_response = AsyncMock()
