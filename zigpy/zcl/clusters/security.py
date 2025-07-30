@@ -19,8 +19,15 @@ class ZoneState(t.enum8):
     Enrolled = 0x01
 
 
-class ZoneType(t.enum_factory(t.uint16_t, "manufacturer_specific"), t.enum16):
+class ZoneType(t.enum16):
     """Zone type enum."""
+
+    @classmethod
+    def _missing_(cls, value):
+        new = cls._member_type_.__new__(cls, value)
+        new._name_ = f"manufacturer_specific_{new._hex_repr().lower()}"
+        new._value_ = value
+        return new
 
     Standard_CIE = 0x0000
     Motion_Sensor = 0x000D
@@ -170,8 +177,15 @@ class ArmNotification(t.enum8):
     Already_Disarmed = 0x06
 
 
-class AudibleNotification(t.enum_factory(t.uint8_t, "manufacturer_specific"), t.enum8):
+class AudibleNotification(t.enum8):
     """IAS ACE audible notification enum."""
+
+    @classmethod
+    def _missing_(cls, value):
+        new = cls._member_type_.__new__(cls, value)
+        new._name_ = f"manufacturer_specific_{new._hex_repr().lower()}"
+        new._value_ = value
+        return new
 
     Mute = 0x00
     Default_Sound = 0x01
