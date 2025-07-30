@@ -369,6 +369,32 @@ async def test_handle_custom_profile(dev) -> None:
     assert mock_handler.mock_calls == [call(packet)]
 
 
+async def test_handle_unknown_cluster(dev, caplog) -> None:
+    """Test that unknown cluster messages are ignored."""
+    dev.add_endpoint(1)
+
+    with caplog.at_level(logging.DEBUG):
+        dev.packet_received(
+            t.ZigbeePacket(
+                profile_id=260,
+                cluster_id=0x9999,  # Unknown cluster
+                src_ep=1,
+                dst_ep=1,
+                data=t.SerializableBytes(b"unknown cluster data"),
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=dev.nwk,
+                ),
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=0x0000,
+                ),
+            )
+        )
+
+    assert "Ignoring message on unknown cluster: 0x9999" in caplog.text
+
+
 async def test_update_device_firmware_no_ota_cluster(dev):
     """Test that device firmware updates fails: no ota cluster."""
     with pytest.raises(ValueError, match="Cluster 0x0019 not found"):

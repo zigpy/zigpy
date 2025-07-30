@@ -598,7 +598,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def custom_profile_packet_received(self, packet: t.ZigbeePacket) -> None:
         """Handle packets with a custom profile ID."""
         self.debug(
-            "Received packet with custom profile %04x, ignoring",
+            "Received packet with custom profile 0x%04x, ignoring",
             packet.profile_id,
         )
 
@@ -658,7 +658,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 zcl_cluster = self._find_zcl_cluster(hdr, packet)
             except KeyError:
                 self.debug(
-                    "Ignoring message on unknown cluster: %04x",
+                    "Ignoring message on unknown cluster: 0x%04x",
                     packet.cluster_id,
                 )
                 return None, None
@@ -680,7 +680,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return cmd
 
     def _maybe_match_response(
-        self, rsp_key: ResponseKey, cmd: typing.Any, error: Exception | None
+        self, rsp_key: ResponseKey, cmd: typing.Any | None, error: Exception | None
     ) -> bool:
         """Handle response matching for pending requests, returns True if packet was matched."""
         future = self._requests.get(rsp_key)
@@ -742,6 +742,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         try:
             cmd = self._parse_packet_command(packet, endpoint, zcl_cluster)
         except Exception as exc:  # noqa: BLE001
+            cmd = None
             error = zigpy.exceptions.ParsingError()
             error.__cause__ = exc
             self.debug("Failed to parse packet %r", packet, exc_info=error)
