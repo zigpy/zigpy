@@ -497,6 +497,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     if manufacturer is not None:
                         self.manufacturer = manufacturer
 
+        try:
+            ota = self.find_cluster(
+                cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
+            )
+        except ValueError:
+            self.debug("Device does not support OTA cluster")
+        else:
+            await ota.read_attributes([Ota.AttributeDefs.current_file_version.name])
+
         self.status = Status.ENDPOINTS_INIT
 
         self.info("Discovered basic device information for %s", self)

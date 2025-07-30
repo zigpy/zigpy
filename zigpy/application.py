@@ -1235,6 +1235,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 and packet.cluster_id
                 in (
                     zigpy.zcl.clusters.general.Basic.cluster_id,
+                    zigpy.zcl.clusters.general.Ota.cluster_id,
                     zigpy.zcl.clusters.general.PollControl.cluster_id,
                 )
             )
@@ -1242,7 +1243,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             # Allow the following responses:
             #  - any ZDO
             #  - ZCL if endpoints are initialized
-            #  - ZCL from Basic or PollControl clusters, if endpoints are initializing
+            #  - ZCL from Basic, OTA, or PollControl clusters, if endpoints are initializing
 
             if not device.initializing:
                 device.schedule_initialize()
