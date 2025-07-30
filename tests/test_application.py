@@ -1221,8 +1221,9 @@ def test_get_device_with_address_nwk(app, device):
 async def test_request_future_matching(app, make_initialized_device):
     device = make_initialized_device(app)
     device._packet_debouncer.filter = MagicMock(return_value=False)
-
     ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
+
+    orig_listeners = app._req_listeners[device].copy()
 
     req_hdr, req_cmd = ota._create_request(
         general=False,
@@ -1252,7 +1253,7 @@ async def test_request_future_matching(app, make_initialized_device):
         rssi=-30,
     )
 
-    assert not app._req_listeners[device]
+    assert app._req_listeners[device] == orig_listeners
 
     with app.wait_for_response(
         device, [ota.commands_by_name["query_next_image"].schema()]
@@ -1280,13 +1281,15 @@ async def test_request_future_matching(app, make_initialized_device):
             assert rsp_cmd == req_cmd
             assert rsp_cmd.current_file_version == 0x11112222
 
-    assert not app._req_listeners[device]
+    assert app._req_listeners[device] == orig_listeners
 
 
 async def test_request_callback_matching(app, make_initialized_device):
     device = make_initialized_device(app)
     device._packet_debouncer.filter = MagicMock(return_value=False)
     ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
+
+    orig_listeners = app._req_listeners[device].copy()
 
     req_hdr, req_cmd = ota._create_request(
         general=False,
@@ -1318,12 +1321,12 @@ async def test_request_callback_matching(app, make_initialized_device):
 
     mock_callback = mock.Mock()
 
-    assert not app._req_listeners[device]
+    assert app._req_listeners[device] == orig_listeners
 
     with app.callback_for_response(
         device, [ota.commands_by_name["query_next_image"].schema()], mock_callback
     ):
-        assert app._req_listeners[device]
+        assert app._req_listeners[device] != orig_listeners
 
         asyncio.get_running_loop().call_soon(app.packet_received, packet)
         asyncio.get_running_loop().call_soon(app.packet_received, packet)
@@ -1334,7 +1337,7 @@ async def test_request_callback_matching(app, make_initialized_device):
         assert len(mock_callback.mock_calls) == 3
         assert mock_callback.mock_calls == [mock.call(req_hdr, req_cmd)] * 3
 
-    assert not app._req_listeners[device]
+    assert app._req_listeners[device] == orig_listeners
 
 
 async def test_energy_scan_default(app):

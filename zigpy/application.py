@@ -74,7 +74,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._config = self.SCHEMA(config)
         self._dblistener = None
         self._groups = zigpy.group.Groups(self)
-        self._listeners = {}
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()
 
@@ -436,9 +435,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if self._watchdog_task is not None:
             self._watchdog_task.cancel()
 
+        for task in self._tasks:
+            task.cancel()
+
         self.ota.stop_periodic_broadcasts()
         self.backups.stop_periodic_backups()
         self.topology.stop_periodic_scans()
+
+        for device in self.devices.values():
+            device.on_remove()
 
         try:
             await self.disconnect()
@@ -585,6 +590,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dev._concurrent_requests_semaphore.cancel_waiting(
             zigpy.exceptions.DeliveryError("Device has re-joined the network")
         )
+
+        # Reset all timers related to the device
+        dev.reset_timers()
 
         if new_join:
             self.listener_event("device_joined", dev)
@@ -1102,13 +1110,17 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             or device.all_endpoints_init
             or (
                 device.has_non_zdo_endpoints
-                and packet.cluster_id == zigpy.zcl.clusters.general.Basic.cluster_id
+                and packet.cluster_id
+                in (
+                    zigpy.zcl.clusters.general.Basic.cluster_id,
+                    zigpy.zcl.clusters.general.PollControl.cluster_id,
+                )
             )
         ):
             # Allow the following responses:
             #  - any ZDO
             #  - ZCL if endpoints are initialized
-            #  - ZCL from Basic packet.cluster_id if endpoints are initializing
+            #  - ZCL from Basic or PollControl clusters, if endpoints are initializing
 
             if not device.initializing:
                 device.schedule_initialize()
@@ -1185,6 +1197,32 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         else:
             raise ValueError(f"Invalid address: {address!r}")
 
+    def register_callback_listener(
+        self,
+        src: zigpy.device.Device | zigpy.listeners.ANY_DEVICE,
+        filters: list[zigpy.listeners.MatcherType],
+        callback: typing.Callable[
+            [
+                zigpy.zcl.foundation.ZCLHeader,
+                zigpy.zcl.foundation.CommandSchema,
+            ],
+            typing.Any,
+        ],
+    ) -> typing.Callable[[], None]:
+        listener = zigpy.listeners.CallbackListener(
+            matchers=tuple(filters),
+            callback=callback,
+        )
+
+        self._req_listeners[src].append(listener)
+
+        def cancel_callback() -> None:
+            """Remove the listener."""
+            if listener in self._req_listeners[src]:
+                self._req_listeners[src].remove(listener)
+
+        return cancel_callback
+
     @contextlib.contextmanager
     def callback_for_response(
         self,
@@ -1199,18 +1237,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         ],
     ) -> typing.Any:
         """Context manager to create a callback that is passed Zigbee responses."""
-
-        listener = zigpy.listeners.CallbackListener(
-            matchers=tuple(filters),
-            callback=callback,
+        cancel = self.register_callback_listener(
+            src=src, filters=filters, callback=callback
         )
-
-        self._req_listeners[src].append(listener)
 
         try:
             yield
         finally:
-            self._req_listeners[src].remove(listener)
+            cancel()
 
     @contextlib.contextmanager
     def wait_for_response(

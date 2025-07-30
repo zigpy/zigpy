@@ -24,7 +24,6 @@ from zigpy.const import (
     SIG_NODE_DESC,
     SIG_SKIP_CONFIG,
 )
-from zigpy.ota.manager import find_ota_cluster
 import zigpy.profiles.zha
 from zigpy.quirks import _DEVICE_REGISTRY, BaseCustomDevice, CustomCluster, FilterType
 from zigpy.quirks.registry import DeviceRegistry
@@ -540,7 +539,9 @@ class QuirksV2RegistryEntry:
 
         if self.fw_version_filter is not None:
             try:
-                ota = find_ota_cluster(device)
+                ota = device.find_cluster(
+                    cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
+                )
             except ValueError:
                 return self.fw_version_filter.allow_missing
 

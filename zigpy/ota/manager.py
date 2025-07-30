@@ -7,7 +7,7 @@ import contextlib
 from typing import TYPE_CHECKING
 
 import zigpy.datastructures
-from zigpy.zcl import foundation
+from zigpy.zcl import ClusterType, foundation
 from zigpy.zcl.clusters.general import Ota
 
 if TYPE_CHECKING:
@@ -22,14 +22,6 @@ MAXIMUM_IMAGE_BLOCK_SIZE = 40
 MAX_TIME_WITHOUT_PROGRESS = 30
 
 
-def find_ota_cluster(device: Device) -> Ota:
-    """Finds the first OTA cluster available on the device."""
-    for ep in device.non_zdo_endpoints:
-        if Ota.cluster_id in ep.out_clusters:
-            return ep.out_clusters[Ota.cluster_id]
-    raise ValueError("Device has no OTA cluster")
-
-
 class OTAManager:
     """Class to manage OTA updates for a device."""
 
@@ -41,7 +33,9 @@ class OTAManager:
         force: bool = False,
     ) -> None:
         self.device = device
-        self.ota_cluster = find_ota_cluster(device)
+        self.ota_cluster = device.find_cluster(
+            cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
+        )
 
         self.image = image
         self._image_data = image.firmware.serialize()
