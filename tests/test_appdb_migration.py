@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 import logging
 import pathlib
+import sqlite3
 from sqlite3.dump import _iterdump as iterdump
 
 from aiosqlite.context import contextmanager
@@ -10,7 +11,6 @@ from tests.async_mock import AsyncMock, MagicMock, patch
 from tests.conftest import app  # noqa: F401
 from tests.test_appdb import auto_kill_aiosqlite, make_app_with_db  # noqa: F401
 import zigpy.appdb
-from zigpy.appdb import sqlite3
 import zigpy.appdb_schemas
 import zigpy.types as t
 from zigpy.zdo import types as zdo_t
