@@ -6,6 +6,7 @@ from sqlite3.dump import _iterdump as iterdump
 
 from aiosqlite.context import contextmanager
 import pytest
+from sqlalchemy.ext.asyncio.engine import AsyncConnection
 
 from tests.async_mock import AsyncMock, MagicMock, patch
 from tests.conftest import app  # noqa: F401
@@ -267,10 +268,10 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
 @pytest.mark.parametrize(
     ("fail_on_sql", "fail_on_count"),
     [
-        ("INSERT INTO node_descriptors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 0),
-        ("INSERT INTO neighbors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 5),
-        ("SELECT * FROM output_clusters", 0),
-        ("INSERT INTO neighbors_v5 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 5),
+        ("node_descriptors_v4", 0),
+        ("neighbors_v4", 5),
+        ("output_clusters", 0),
+        ("neighbors_v5", 5),
     ],
 )
 async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
@@ -281,12 +282,12 @@ async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
 
     count = 0
     sql_seen = False
-    execute = zigpy.appdb.PersistingListener.execute
+    orig_execute = AsyncConnection.execute
 
-    def patched_execute(self, sql, *args, **kwargs):
+    async def patched_execute(self, sql, *args, **kwargs):
         nonlocal count, sql_seen
 
-        if sql == fail_on_sql:
+        if fail_on_sql in str(sql):
             sql_seen = True
 
             if count == fail_on_count:
@@ -294,9 +295,11 @@ async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
 
             count += 1
 
-        return execute(self, sql, *args, **kwargs)
+        return await orig_execute(self, sql, *args, **kwargs)
 
-    with patch("zigpy.appdb.PersistingListener.execute", new=patched_execute):
+    with patch(
+        "sqlalchemy.ext.asyncio.engine.AsyncConnection.execute", new=patched_execute
+    ):
         with pytest.raises(sqlite3.ProgrammingError):
             await make_app_with_db(test_db_bad_attrs)
 
