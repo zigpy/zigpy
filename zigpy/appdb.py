@@ -10,8 +10,8 @@ import types
 from typing import Any
 
 import aiosqlite
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine, AsyncConnection
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 import zigpy.appdb_schemas
 import zigpy.backups
@@ -121,31 +121,31 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def initialize_tables(self) -> None:
         self._connection = await self._engine.connect()
-        
-        async with self._connection.begin():
-            result = await self._connection.execute(text("PRAGMA integrity_check"))
-            rows = await result.fetchall()
-            status = "\n".join(row[0] for row in rows)
 
-            if status != "ok":
-                LOGGER.error(
-                    "Zigbee database is corrupted, integrity check failed!\n%s", status
-                )
+        # Run integrity checks and configure pragmas
+        result = await self._connection.execute(text("PRAGMA integrity_check"))
+        rows = result.fetchall()
+        status = "\n".join(row[0] for row in rows)
 
-            result = await self._connection.execute(text("PRAGMA foreign_key_check"))
-            rows = await result.fetchall()
+        if status != "ok":
+            LOGGER.error(
+                "Zigbee database is corrupted, integrity check failed!\n%s", status
+            )
 
-            if rows:
-                LOGGER.error(
-                    "Zigbee database is corrupted, foreign key check failed!\n%s", rows
-                )
+        result = await self._connection.execute(text("PRAGMA foreign_key_check"))
+        rows = result.fetchall()
 
-            # Configure SQLite pragmas
-            await self._connection.execute(text("PRAGMA journal_mode = WAL"))
-            await self._connection.execute(text("PRAGMA synchronous = normal"))
-            await self._connection.execute(text("PRAGMA temp_store = memory"))
-            await self._connection.execute(text("PRAGMA foreign_keys = ON"))
-            
+        if rows:
+            LOGGER.error(
+                "Zigbee database is corrupted, foreign key check failed!\n%s", rows
+            )
+
+        # Configure SQLite pragmas
+        await self._connection.execute(text("PRAGMA journal_mode = WAL"))
+        await self._connection.execute(text("PRAGMA synchronous = normal"))
+        await self._connection.execute(text("PRAGMA temp_store = memory"))
+        await self._connection.execute(text("PRAGMA foreign_keys = ON"))
+
         await self._run_migrations()
 
     @classmethod
@@ -202,7 +202,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             # Delete the journal on shutdown
             await self._connection.execute(text("PRAGMA wal_checkpoint;"))
             await self._connection.close()
-            
+
         await self._engine.dispose()
 
     def enqueue(self, cb_name: str, *args) -> None:
@@ -215,7 +215,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _set_isolation_level(self, level: str | None):
         """Set the SQLite statement isolation level in a thread-safe way."""
         # SQLAlchemy handles isolation levels automatically
-        pass
 
     async def execute(self, query: str, params=None):
         """Execute a SQL statement."""
@@ -240,7 +239,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
         async with self._connection.begin():
-            await self.execute(f"UPDATE devices{DB_V} SET nwk=:nwk WHERE ieee=:ieee", {"nwk": nwk, "ieee": ieee})
+            await self.execute(
+                f"UPDATE devices{DB_V} SET nwk=:nwk WHERE ieee=:ieee",
+                {"nwk": nwk, "ieee": ieee},
+            )
 
     def device_initialized(self, device: zigpy.typing.DeviceType) -> None:
         pass
@@ -277,7 +279,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_device_relays(self, ieee: t.EUI64, relays: t.Relays | None) -> None:
         async with self._connection.begin():
             if relays is None:
-                await self.execute(f"DELETE FROM relays{DB_V} WHERE ieee = :ieee", {"ieee": ieee})
+                await self.execute(
+                    f"DELETE FROM relays{DB_V} WHERE ieee = :ieee", {"ieee": ieee}
+                )
             else:
                 q = f"""INSERT INTO relays{DB_V} VALUES (:ieee, :relays)
                             ON CONFLICT (ieee)
@@ -336,7 +340,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id)
                    DO NOTHING"""
         async with self._connection.begin():
-            await self.execute(q, {"ieee": ieee, "endpoint_id": endpoint_id, "cluster_type": cluster_type, "cluster_id": cluster_id, "attrid": attrid})
+            await self.execute(
+                q,
+                {
+                    "ieee": ieee,
+                    "endpoint_id": endpoint_id,
+                    "cluster_type": cluster_type,
+                    "cluster_id": cluster_id,
+                    "attrid": attrid,
+                },
+            )
 
     def unsupported_attribute_removed(
         self, cluster: zigpy.typing.ClusterType, attrid: int
@@ -364,7 +377,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                                                          AND cluster_id = :cluster_id
                                                          AND attr_id = :attrid"""
         async with self._connection.begin():
-            await self.execute(q, {"ieee": ieee, "endpoint_id": endpoint_id, "cluster_type": cluster_type, "cluster_id": cluster_id, "attrid": attrid})
+            await self.execute(
+                q,
+                {
+                    "ieee": ieee,
+                    "endpoint_id": endpoint_id,
+                    "cluster_type": cluster_type,
+                    "cluster_id": cluster_id,
+                    "attrid": attrid,
+                },
+            )
 
     def neighbors_updated(self, ieee: t.EUI64, neighbors: list[zdo_t.Neighbor]) -> None:
         """Neighbor update from Mgmt_Lqi_req."""
@@ -374,7 +396,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, ieee: t.EUI64, neighbors: list[zdo_t.Neighbor]
     ) -> None:
         async with self._connection.begin():
-            await self.execute(f"DELETE FROM neighbors{DB_V} WHERE device_ieee = :ieee", {"ieee": ieee})
+            await self.execute(
+                f"DELETE FROM neighbors{DB_V} WHERE device_ieee = :ieee", {"ieee": ieee}
+            )
 
             for neighbor in neighbors:
                 neighbor_data = neighbor.as_tuple()
@@ -393,7 +417,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         "reserved2": neighbor_data[8],
                         "depth": neighbor_data[9],
                         "lqi": neighbor_data[10],
-                    }
+                    },
                 )
 
     def routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
@@ -402,7 +426,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
         async with self._connection.begin():
-            await self.execute(f"DELETE FROM routes{DB_V} WHERE device_ieee = :ieee", {"ieee": ieee})
+            await self.execute(
+                f"DELETE FROM routes{DB_V} WHERE device_ieee = :ieee", {"ieee": ieee}
+            )
 
             for route in routes:
                 route_data = route.as_tuple()
@@ -417,7 +443,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         "route_record_required": route_data[4],
                         "reserved": route_data[5],
                         "next_hop": route_data[6],
-                    }
+                    },
                 )
 
     def group_added(self, group: zigpy.group.Group) -> None:
@@ -445,7 +471,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     DO NOTHING"""
         unique_id = ep.unique_id
         async with self._connection.begin():
-            await self.execute(q, {"group_id": group.group_id, "ieee": unique_id[0], "endpoint_id": unique_id[1]})
+            await self.execute(
+                q,
+                {
+                    "group_id": group.group_id,
+                    "ieee": unique_id[0],
+                    "endpoint_id": unique_id[1],
+                },
+            )
 
     def group_member_removed(
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
@@ -461,7 +494,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                                                 AND endpoint_id=:endpoint_id"""
         unique_id = ep.unique_id
         async with self._connection.begin():
-            await self.execute(q, {"group_id": group.group_id, "ieee": unique_id[0], "endpoint_id": unique_id[1]})
+            await self.execute(
+                q,
+                {
+                    "group_id": group.group_id,
+                    "ieee": unique_id[0],
+                    "endpoint_id": unique_id[1],
+                },
+            )
 
     def group_removed(self, group: zigpy.group.Group) -> None:
         """Called when a group is removed."""
@@ -477,7 +517,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _remove_device(self, device: zigpy.typing.DeviceType) -> None:
         async with self._connection.begin():
-            await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee = :ieee", {"ieee": device.ieee})
+            await self.execute(
+                f"DELETE FROM devices{DB_V} WHERE ieee = :ieee", {"ieee": device.ieee}
+            )
 
     def raw_device_initialized(self, device: zigpy.typing.DeviceType) -> None:
         self.enqueue("_save_device", device)
@@ -530,7 +572,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     "profile_id": ep.profile_id,
                     "device_type": ep.device_type,
                     "status": ep.status,
-                }
+                },
             )
 
     async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
@@ -570,7 +612,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "server_mask": node_desc_data[10],
                 "maximum_outgoing_transfer_size": node_desc_data[11],
                 "descriptor_capability_field": node_desc_data[12],
-            }
+            },
         )
 
     async def _save_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
@@ -585,7 +627,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     "endpoint_id": endpoint.endpoint_id,
                     "cluster_type": cluster.cluster_type,
                     "cluster_id": cluster.cluster_id,
-                }
+                },
             )
 
     async def _save_attribute_cache(self, ep: zigpy.typing.EndpointType) -> None:
@@ -603,8 +645,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         "cluster_id": cluster.cluster_id,
                         "attr_id": attrid,
                         "value": value,
-                        "last_updated": cluster._attr_last_updated.get(attrid, UNIX_EPOCH).timestamp(),
-                    }
+                        "last_updated": cluster._attr_last_updated.get(
+                            attrid, UNIX_EPOCH
+                        ).timestamp(),
+                    },
                 )
 
     async def _save_unsupported_attributes(self, ep: zigpy.typing.EndpointType) -> None:
@@ -622,7 +666,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                             "cluster_type": cluster.cluster_type,
                             "cluster_id": cluster.cluster_id,
                             "attr_id": attr,
-                        }
+                        },
                     )
 
     async def _save_attribute(
@@ -751,7 +795,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             query = f"SELECT * FROM attributes_cache{DB_V}"
 
         result = await self.execute(query)
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for (
             ieee,
             endpoint_id,
@@ -761,161 +805,161 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             value,
             last_updated,
         ) in rows:
-                dev = self._application.get_device(ieee)
+            dev = self._application.get_device(ieee)
 
-                # Some quirks create endpoints and clusters that do not exist
-                if endpoint_id not in dev.endpoints:
-                    continue
+            # Some quirks create endpoints and clusters that do not exist
+            if endpoint_id not in dev.endpoints:
+                continue
 
-                ep = dev.endpoints[endpoint_id]
-                clusters = (
-                    ep.in_clusters
-                    if cluster_type == ClusterType.Server
-                    else ep.out_clusters
-                )
+            ep = dev.endpoints[endpoint_id]
+            clusters = (
+                ep.in_clusters
+                if cluster_type == ClusterType.Server
+                else ep.out_clusters
+            )
 
-                if cluster_id not in clusters:
-                    continue
+            if cluster_id not in clusters:
+                continue
 
-                clusters[cluster_id]._attr_cache[attr_id] = value
-                clusters[cluster_id]._attr_last_updated[attr_id] = (
-                    datetime.fromtimestamp(last_updated, timezone.utc)
-                )
+            clusters[cluster_id]._attr_cache[attr_id] = value
+            clusters[cluster_id]._attr_last_updated[attr_id] = datetime.fromtimestamp(
+                last_updated, timezone.utc
+            )
 
-                LOGGER.debug(
-                    "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
-                    dev.nwk,
-                    endpoint_id,
-                    cluster_id,
-                    attr_id,
-                    value,
-                )
+            LOGGER.debug(
+                "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
+                dev.nwk,
+                endpoint_id,
+                cluster_id,
+                attr_id,
+                value,
+            )
 
-                # Populate the device's manufacturer and model attributes
-                if (
-                    cluster_id == Basic.cluster_id
-                    and attr_id == Basic.AttributeDefs.manufacturer.id
-                ):
-                    dev.manufacturer = decode_str_attribute(value)
-                elif (
-                    cluster_id == Basic.cluster_id
-                    and attr_id == Basic.AttributeDefs.model.id
-                ):
-                    dev.model = decode_str_attribute(value)
+            # Populate the device's manufacturer and model attributes
+            if (
+                cluster_id == Basic.cluster_id
+                and attr_id == Basic.AttributeDefs.manufacturer.id
+            ):
+                dev.manufacturer = decode_str_attribute(value)
+            elif (
+                cluster_id == Basic.cluster_id
+                and attr_id == Basic.AttributeDefs.model.id
+            ):
+                dev.model = decode_str_attribute(value)
 
     async def _load_unsupported_attributes(self) -> None:
         """Load unsuppoted attributes."""
 
         result = await self.execute(f"SELECT * FROM unsupported_attributes{DB_V}")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for ieee, endpoint_id, cluster_type, cluster_id, attr_id in rows:
-                dev = self._application.get_device(ieee)
+            dev = self._application.get_device(ieee)
 
-                try:
-                    ep = dev.endpoints[endpoint_id]
-                except KeyError:
-                    continue
+            try:
+                ep = dev.endpoints[endpoint_id]
+            except KeyError:
+                continue
 
-                clusters = (
-                    ep.in_clusters
-                    if cluster_type == ClusterType.Server
-                    else ep.out_clusters
-                )
+            clusters = (
+                ep.in_clusters
+                if cluster_type == ClusterType.Server
+                else ep.out_clusters
+            )
 
-                try:
-                    cluster = clusters[cluster_id]
-                except KeyError:
-                    continue
+            try:
+                cluster = clusters[cluster_id]
+            except KeyError:
+                continue
 
-                cluster.add_unsupported_attribute(attr_id, inhibit_events=True)
+            cluster.add_unsupported_attribute(attr_id, inhibit_events=True)
 
     async def _load_devices(self) -> None:
         result = await self.execute(f"SELECT * FROM devices{DB_V}")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for ieee, nwk, status, last_seen in rows:
-                dev = self._application.add_device(ieee, nwk)
-                dev.status = zigpy.device.Status(status)
+            dev = self._application.add_device(ieee, nwk)
+            dev.status = zigpy.device.Status(status)
 
-                if last_seen > 0:
-                    dev.last_seen = last_seen
+            if last_seen > 0:
+                dev.last_seen = last_seen
 
     async def _load_node_descriptors(self) -> None:
         result = await self.execute(f"SELECT * FROM node_descriptors{DB_V}")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for ieee, *fields in rows:
-                dev = self._application.get_device(ieee)
-                dev.node_desc = zdo_t.NodeDescriptor(*fields)
-                assert dev.node_desc.is_valid
+            dev = self._application.get_device(ieee)
+            dev.node_desc = zdo_t.NodeDescriptor(*fields)
+            assert dev.node_desc.is_valid
 
     async def _load_endpoints(self) -> None:
         result = await self.execute(f"SELECT * FROM endpoints{DB_V}")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for ieee, epid, profile_id, device_type, status in rows:
-                dev = self._application.get_device(ieee)
-                ep = dev.add_endpoint(epid)
-                ep.profile_id = profile_id
-                ep.status = zigpy.endpoint.Status(status)
+            dev = self._application.get_device(ieee)
+            ep = dev.add_endpoint(epid)
+            ep.profile_id = profile_id
+            ep.status = zigpy.endpoint.Status(status)
 
-                if profile_id == zigpy.profiles.zha.PROFILE_ID:
-                    ep.device_type = zigpy.profiles.zha.DeviceType(device_type)
-                elif profile_id == zigpy.profiles.zll.PROFILE_ID:
-                    ep.device_type = zigpy.profiles.zll.DeviceType(device_type)
-                else:
-                    ep.device_type = device_type
+            if profile_id == zigpy.profiles.zha.PROFILE_ID:
+                ep.device_type = zigpy.profiles.zha.DeviceType(device_type)
+            elif profile_id == zigpy.profiles.zll.PROFILE_ID:
+                ep.device_type = zigpy.profiles.zll.DeviceType(device_type)
+            else:
+                ep.device_type = device_type
 
     async def _load_clusters(self) -> None:
         result = await self.execute(f"SELECT * FROM clusters{DB_V}")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for ieee, endpoint_id, cluster_type, cluster_id in rows:
-                dev = self._application.get_device(ieee)
-                ep = dev.endpoints[endpoint_id]
+            dev = self._application.get_device(ieee)
+            ep = dev.endpoints[endpoint_id]
 
-                if ClusterType(cluster_type) == ClusterType.Server:
-                    ep.add_input_cluster(cluster_id)
-                else:
-                    ep.add_output_cluster(cluster_id)
+            if ClusterType(cluster_type) == ClusterType.Server:
+                ep.add_input_cluster(cluster_id)
+            else:
+                ep.add_output_cluster(cluster_id)
 
     async def _load_groups(self) -> None:
         result = await self.execute(f"SELECT * FROM groups{DB_V}")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for group_id, name in rows:
-                self._application.groups.add_group(group_id, name, suppress_event=True)
+            self._application.groups.add_group(group_id, name, suppress_event=True)
 
     async def _load_group_members(self) -> None:
         result = await self.execute(f"SELECT * FROM group_members{DB_V}")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for group_id, ieee, ep_id in rows:
-                dev = self._application.get_device(ieee)
-                group = self._application.groups[group_id]
-                group.add_member(dev.endpoints[ep_id], suppress_event=True)
+            dev = self._application.get_device(ieee)
+            group = self._application.groups[group_id]
+            group.add_member(dev.endpoints[ep_id], suppress_event=True)
 
     async def _load_relays(self) -> None:
         result = await self.execute(f"SELECT * FROM relays{DB_V}")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for ieee, value in rows:
-                dev = self._application.get_device(ieee)
-                relays, _ = t.Relays.deserialize(value)
-                dev.relays = zigpy.util.filter_relays(relays)
+            dev = self._application.get_device(ieee)
+            relays, _ = t.Relays.deserialize(value)
+            dev.relays = zigpy.util.filter_relays(relays)
 
     async def _load_neighbors(self) -> None:
         result = await self.execute(f"SELECT * FROM neighbors{DB_V}")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for ieee, *fields in rows:
-                neighbor = zdo_t.Neighbor(*fields)
-                self._application.topology.neighbors[ieee].append(neighbor)
+            neighbor = zdo_t.Neighbor(*fields)
+            self._application.topology.neighbors[ieee].append(neighbor)
 
     async def _load_routes(self) -> None:
         result = await self.execute(f"SELECT * FROM routes{DB_V}")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for ieee, *fields in rows:
-                route = zdo_t.Route(*fields)
-                self._application.topology.routes[ieee].append(route)
+            route = zdo_t.Route(*fields)
+            self._application.topology.routes[ieee].append(route)
 
     async def _load_network_backups(self) -> None:
         self._application.backups.backups.clear()
 
         result = await self.execute(f"SELECT * FROM network_backups{DB_V} ORDER BY id")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         backups = []
 
         for _id, backup_json in rows:
@@ -940,7 +984,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         tables = {}
 
         result = await self.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for (name,) in rows:
             # Ignore tables internal to SQLite
             if name.startswith("sqlite_"):
@@ -964,7 +1008,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         tables_version = max(tables.values(), default=0)
 
         result = await self.execute("PRAGMA user_version")
-        row = await result.fetchone()
+        row = result.fetchone()
         (db_version,) = row
 
         LOGGER.debug(
@@ -1021,6 +1065,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 await migration()
 
                 db_version = to_db_version
+        except Exception:
+            # Let the exception propagate up - the transaction will be rolled back
+            # by the initialize_tables method
+            raise
 
         return True
 
@@ -1051,7 +1099,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 continue
 
             result = await self.execute(f"SELECT * FROM {old_table}")
-            rows = await result.fetchall()
+            rows = result.fetchall()
             for row in rows:
                 placeholders = ",".join(":param" + str(i) for i in range(len(row)))
                 params = {f"param{i}": value for i, value in enumerate(row)}
@@ -1061,25 +1109,25 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         f"INSERT INTO {new_table} VALUES ({placeholders})", params
                     )
                 except sqlite3.IntegrityError as e:
-                        if errors == "raise":
-                            raise
-                        elif errors == "warn":
-                            LOGGER.warning(
-                                "Failed to migrate row %s%s: %s", old_table, row, e
-                            )
-                        elif errors == "ignore":
-                            pass
-                        else:
-                            raise ValueError(
-                                f"Invalid value for `errors`: {errors!r}"
-                            ) from e
+                    if errors == "raise":
+                        raise
+                    elif errors == "warn":
+                        LOGGER.warning(
+                            "Failed to migrate row %s%s: %s", old_table, row, e
+                        )
+                    elif errors == "ignore":
+                        pass
+                    else:
+                        raise ValueError(
+                            f"Invalid value for `errors`: {errors!r}"
+                        ) from e
 
     async def _migrate_to_v4(self):
         """Schema v4 expanded the node descriptor and neighbor table columns"""
         # The `node_descriptors` table was added in v1
         if await self._table_exists("node_descriptors"):
             result = await self.execute("SELECT * FROM node_descriptors")
-            rows = await result.fetchall()
+            rows = result.fetchall()
             for dev_ieee, value in rows:
                 node_desc, rest = zdo_t.NodeDescriptor.deserialize(value)
                 assert not rest
@@ -1109,7 +1157,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         # incremented. It may not exist.
         if await self._table_exists("neighbors"):
             result = await self.execute("SELECT * FROM neighbors")
-            rows = await result.fetchall()
+            rows = result.fetchall()
             for dev_ieee, epid, ieee, nwk, packed, prm, depth, lqi in rows:
                 neighbor = zdo_t.Neighbor(
                     extended_pan_id=epid,
@@ -1350,7 +1398,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             # Set the default `last_updated` to the unix epoch
             await self.execute(
                 "INSERT INTO attributes_cache_v12 VALUES (:ieee, :endpoint_id, :cluster_id, :attrid, :value, :last_updated)",
-                {"ieee": ieee, "endpoint_id": endpoint_id, "cluster_id": cluster_id, "attrid": attrid, "value": value, "last_updated": 0},
+                {
+                    "ieee": ieee,
+                    "endpoint_id": endpoint_id,
+                    "cluster_id": cluster_id,
+                    "attrid": attrid,
+                    "value": value,
+                    "last_updated": 0,
+                },
             )
 
     async def _migrate_to_v13(self):
@@ -1379,7 +1434,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for ieee, endpoint_id, cluster_id in rows:
             await self.execute(
                 "INSERT INTO clusters_v13 VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id)",
-                {"ieee": ieee, "endpoint_id": endpoint_id, "cluster_type": ClusterType.Server, "cluster_id": cluster_id},
+                {
+                    "ieee": ieee,
+                    "endpoint_id": endpoint_id,
+                    "cluster_type": ClusterType.Server,
+                    "cluster_id": cluster_id,
+                },
             )
 
         result = await self.execute("SELECT * FROM out_clusters_v12")
@@ -1387,7 +1447,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for ieee, endpoint_id, cluster_id in rows:
             await self.execute(
                 "INSERT INTO clusters_v13 VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id)",
-                {"ieee": ieee, "endpoint_id": endpoint_id, "cluster_type": ClusterType.Client, "cluster_id": cluster_id},
+                {
+                    "ieee": ieee,
+                    "endpoint_id": endpoint_id,
+                    "cluster_type": ClusterType.Client,
+                    "cluster_id": cluster_id,
+                },
             )
 
         result = await self.execute("SELECT * FROM unsupported_attributes_v12")
@@ -1395,7 +1460,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for ieee, endpoint_id, cluster_id, attrid in rows:
             await self.execute(
                 "INSERT INTO unsupported_attributes_v13 VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attrid)",
-                {"ieee": ieee, "endpoint_id": endpoint_id, "cluster_type": ClusterType.Server, "cluster_id": cluster_id, "attrid": attrid},
+                {
+                    "ieee": ieee,
+                    "endpoint_id": endpoint_id,
+                    "cluster_type": ClusterType.Server,
+                    "cluster_id": cluster_id,
+                    "attrid": attrid,
+                },
             )
 
         result = await self.execute("SELECT * FROM attributes_cache_v12")
