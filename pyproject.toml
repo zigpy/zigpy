@@ -17,6 +17,7 @@ dependencies = [
     "attrs",
     "aiohttp",
     "aiosqlite>=0.20.0",
+    "sqlalchemy[asyncio]>=2.0.0",
     "crccheck",
     "cryptography",
     'async-timeout; python_version<"3.11"',
