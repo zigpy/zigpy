@@ -222,7 +222,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             raise RuntimeError("Database connection not initialized")
         return await self._connection.execute(text(query), params or {})
 
-    async def executescript(self, sql):
+    async def executescript(self, sql, connection: AsyncConnection):
         """Naive replacement for `sqlite3.Cursor.executescript` that does not execute a
         `COMMIT` before running the script. This extra `COMMIT` breaks transactions that
         run scripts.
@@ -232,7 +232,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for statement in sql.split(";"):
             statement = statement.strip()
             if statement:
-                await self.execute(statement)
+                await connection.execute(text(statement))
 
     def device_joined(self, device: zigpy.typing.DeviceType) -> None:
         self.enqueue("_update_device_nwk", device.ieee, device.nwk)
@@ -1042,7 +1042,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             return False
 
         # All migrations must succeed. If any fail, the database is not touched.
-        async with self._connection.begin():
+        # Use the engine's begin() method for proper transaction handling
+        async with self._engine.begin() as migration_conn:
             for migration, to_db_version in [
                 (self._migrate_to_v4, 4),
                 (self._migrate_to_v5, 5),
@@ -1061,19 +1062,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 LOGGER.info(
                     "Migrating database from v%d to v%d", db_version, to_db_version
                 )
-                await self.executescript(zigpy.appdb_schemas.SCHEMAS[to_db_version])
-                await migration()
+                await self.executescript(zigpy.appdb_schemas.SCHEMAS[to_db_version], migration_conn)
+                await migration(migration_conn)
 
                 db_version = to_db_version
-        except Exception:
-            # Let the exception propagate up - the transaction will be rolled back
-            # by the initialize_tables method
-            raise
 
         return True
 
     async def _migrate_tables(
-        self, table_map: dict[str, str], *, errors: str = "raise"
+        self, table_map: dict[str, str], connection: AsyncConnection, *, errors: str = "raise"
     ):
         """Copy rows from one set of tables into another."""
 
@@ -1098,15 +1095,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             if new_table is None:
                 continue
 
-            result = await self.execute(f"SELECT * FROM {old_table}")
-            rows = result.fetchall()
-            for row in rows:
+            result = await connection.execute(text(f"SELECT * FROM {old_table}"))
+            for row in result.fetchall():
                 placeholders = ",".join(":param" + str(i) for i in range(len(row)))
                 params = {f"param{i}": value for i, value in enumerate(row)}
 
                 try:
-                    await self.execute(
-                        f"INSERT INTO {new_table} VALUES ({placeholders})", params
+                    await connection.execute(
+                        text(f"INSERT INTO {new_table} VALUES ({placeholders})"), params
                     )
                 except sqlite3.IntegrityError as e:
                     if errors == "raise":
@@ -1122,7 +1118,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                             f"Invalid value for `errors`: {errors!r}"
                         ) from e
 
-    async def _migrate_to_v4(self):
+    async def _migrate_to_v4(self, connection: AsyncConnection):
         """Schema v4 expanded the node descriptor and neighbor table columns"""
         # The `node_descriptors` table was added in v1
         if await self._table_exists("node_descriptors"):
@@ -1189,7 +1185,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     },
                 )
 
-    async def _migrate_to_v5(self):
+    async def _migrate_to_v5(self, connection: AsyncConnection):
         """Schema v5 introduced global table version suffixes and removed stale rows"""
 
         await self._migrate_tables(
@@ -1209,10 +1205,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "neighbors": None,
                 "node_descriptors": None,
             },
+            connection,
             errors="warn",
         )
 
-    async def _migrate_to_v6(self):
+    async def _migrate_to_v6(self, connection: AsyncConnection):
         """Schema v6 relaxed the `attribute_cache` table schema to ignore endpoints"""
 
         await self._migrate_tables(
@@ -1233,11 +1230,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         # See if we can migrate any `attributes_cache` rows skipped by the v5 migration
         if await self._table_exists("attributes"):
             result = await self.execute("SELECT count(*) FROM attributes")
-            row = await result.fetchone()
+            row = result.fetchone()
             (num_attrs_v4,) = row
 
             result = await self.execute("SELECT count(*) FROM attributes_cache_v6")
-            row = await result.fetchone()
+            row = result.fetchone()
             (num_attrs_v6,) = row
 
             if num_attrs_v6 < num_attrs_v4:
@@ -1262,7 +1259,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     errors="ignore",
                 )
 
-    async def _migrate_to_v7(self):
+    async def _migrate_to_v7(self, connection: AsyncConnection):
         """Schema v7 added the `unsupported_attributes` table."""
 
         await self._migrate_tables(
@@ -1280,11 +1277,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             }
         )
 
-    async def _migrate_to_v8(self):
+    async def _migrate_to_v8(self, connection: AsyncConnection):
         """Schema v8 added the `devices_v8.last_seen` column."""
 
         result = await self.execute("SELECT * FROM devices_v7")
-        rows = await result.fetchall()
+        rows = result.fetchall()
         for ieee, nwk, status in rows:
             # Set the default `last_seen` to the unix epoch
             await self.execute(
@@ -1309,7 +1306,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             }
         )
 
-    async def _migrate_to_v9(self):
+    async def _migrate_to_v9(self, connection: AsyncConnection):
         """Schema v9 changed the data type of the `devices_v8.last_seen` column."""
 
         await self.execute(
@@ -1329,10 +1326,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "node_descriptors_v8": "node_descriptors_v9",
                 "unsupported_attributes_v8": "unsupported_attributes_v9",
                 "devices_v8": None,
-            }
+            },
+            connection,
         )
 
-    async def _migrate_to_v10(self):
+    async def _migrate_to_v10(self, connection: AsyncConnection):
         """Schema v10 added a new `network_backups_v10` table."""
 
         await self._migrate_tables(
@@ -1348,10 +1346,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "neighbors_v9": "neighbors_v10",
                 "node_descriptors_v9": "node_descriptors_v10",
                 "unsupported_attributes_v9": "unsupported_attributes_v10",
-            }
+            },
+            connection,
         )
 
-    async def _migrate_to_v11(self):
+    async def _migrate_to_v11(self, connection: AsyncConnection):
         """Schema v11 added a new `routes_v11` table."""
 
         await self._migrate_tables(
@@ -1368,10 +1367,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "node_descriptors_v10": "node_descriptors_v11",
                 "unsupported_attributes_v10": "unsupported_attributes_v11",
                 "network_backups_v10": "network_backups_v11",
-            }
+            },
+            connection,
         )
 
-    async def _migrate_to_v12(self):
+    async def _migrate_to_v12(self, connection: AsyncConnection):
         """Schema v12 added a `timestamp` column to attribute updates."""
 
         await self._migrate_tables(
@@ -1389,7 +1389,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "unsupported_attributes_v11": "unsupported_attributes_v12",
                 "network_backups_v11": "network_backups_v12",
                 "attributes_cache_v11": None,
-            }
+            },
+            connection,
         )
 
         result = await self.execute("SELECT * FROM attributes_cache_v11")
@@ -1408,7 +1409,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 },
             )
 
-    async def _migrate_to_v13(self):
+    async def _migrate_to_v13(self, connection: AsyncConnection):
         """Schema v13 combines both cluster types and caching for all attributes."""
 
         await self._migrate_tables(
@@ -1426,7 +1427,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "out_clusters_v12": None,
                 "unsupported_attributes_v12": None,
                 "attributes_cache_v12": None,
-            }
+            },
+            connection,
         )
 
         result = await self.execute("SELECT * FROM in_clusters_v12")
