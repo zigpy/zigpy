@@ -452,6 +452,12 @@ class RequestLimiter:
         """Returns the number of requests waiting for a slot."""
         return len(self._waiters)
 
+    def cancel_waiting(self, exc: BaseException) -> None:
+        """Cancel all waiters with the given exception."""
+        for _, _, fut in self._waiters:
+            if not fut.done():
+                fut.set_exception(exc)
+
     def __repr__(self) -> str:
         """Provides a string representation of the limiter's state."""
         return (

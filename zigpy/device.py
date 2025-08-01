@@ -353,9 +353,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             # to be sent
             if (
                 self.initializing
-                or self._concurrent_requests_semaphore.active_requests
+                or self._concurrent_requests_semaphore.active_requests > 0
                 or self._fast_polling
             ):
+                # Initiate fast polling mode if we are initializing or waiting for
+                # requests to be sent
                 await poll_control.checkin_response(
                     start_fast_polling=True,
                     fast_poll_timeout=int(DEFAULT_FAST_POLL_TIMEOUT * 4),
