@@ -182,7 +182,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             LOGGER.debug(
                 "Critical priority request received (%s), skipping queue with %d requests",
                 priority,
-                self._concurrent_requests_semaphore.num_waiting,
+                self._concurrent_requests_semaphore.waiting_requests,
             )
             manager = nullcontext()
             was_locked = False

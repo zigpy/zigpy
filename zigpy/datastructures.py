@@ -372,7 +372,7 @@ class RequestLimiter:
             for tier, count in self._active_requests_by_tier.items()
             if tier <= effective_tier
         )
-        return competing_requests < limit
+        return competing_requests >= limit
 
     def _wake_waiters(self) -> None:
         """Wakes up any waiting tasks that can now run."""
