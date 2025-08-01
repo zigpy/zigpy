@@ -192,20 +192,6 @@ class PriorityDynamicBoundedSemaphore:
         return f"<{self.__class__.__name__} [{extra}]>"
 
 
-class PriorityLock(PriorityDynamicBoundedSemaphore):
-    def __init__(self):
-        super().__init__(value=1)
-
-    @PriorityDynamicBoundedSemaphore.max_value.setter
-    def max_value(self, new_value: int) -> None:
-        """Update the locks's max value."""
-        raise ValueError("Max value of lock cannot be updated")
-
-
-# Backwards compatibility
-DynamicBoundedSemaphore = PriorityDynamicBoundedSemaphore
-
-
 class ReschedulableTimeout:
     """Timeout object made to be efficiently rescheduled continuously."""
 
