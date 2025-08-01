@@ -55,13 +55,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self._engine = engine
         self._connection: AsyncConnection | None = None
         self._application = application
-        self._callback_handlers: asyncio.Queue = asyncio.Queue()
         self.running = False
-        self._worker_task = asyncio.create_task(self._worker())
+        self._db_write_lock = asyncio.Lock()
+        self._pending_tasks: set[asyncio.Task] = set()
 
     async def initialize_tables(self) -> None:
         self._connection = await self._engine.connect()
-        self._connection.sync_connection._allow_autobegin = False
 
         async with self._connection.begin():
             # Run integrity checks and configure pragmas
@@ -99,7 +98,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         engine = create_async_engine(
             f"sqlite+aiosqlite:///{database_file}",
             echo=True,
-            isolation_level="SERIALIZABLE",
+            # isolation_level="SERIALIZABLE",
         )
         listener = cls(engine, app)
 
@@ -112,36 +111,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         listener.running = True
         return listener
 
-    async def _worker(self) -> None:
-        """Process request in the received order."""
-        while True:
-            cb_name, args = await self._callback_handlers.get()
-            handler = getattr(self, cb_name)
-            assert handler
-            try:
-                await handler(*args)
-            except IntegrityError as exc:
-                LOGGER.debug(
-                    "Error handling '%s' event with %s params: %s",
-                    cb_name,
-                    args,
-                    str(exc),
-                )
-            except Exception as ex:  # noqa: BLE001
-                LOGGER.error(
-                    "Unexpected error while processing %s(%s)",
-                    cb_name,
-                    args,
-                    exc_info=ex,
-                )
-            self._callback_handlers.task_done()
-
     async def shutdown(self) -> None:
         """Shutdown connection."""
         self.running = False
-        await self._callback_handlers.join()
-        if not self._worker_task.done():
-            self._worker_task.cancel()
+
+        # Wait for all pending tasks
+        await asyncio.gather(*self._pending_tasks, return_exceptions=True)
 
         if self._connection:
             # Delete the journal on shutdown
@@ -150,12 +125,32 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         await self._engine.dispose()
 
-    def enqueue(self, cb_name: str, *args) -> None:
-        """Enqueue an async callback handler action."""
-        if not self.running:
-            LOGGER.debug("Discarding %s event", cb_name)
-            return
-        self._callback_handlers.put_nowait((cb_name, args))
+    def _create_task(self, coro):
+        """Create a task and track it for cleanup."""
+        task = asyncio.create_task(coro)
+        self._pending_tasks.add(task)
+
+        def task_done_callback(task):
+            self._pending_tasks.discard(task)
+
+        task.add_done_callback(task_done_callback)
+        return task
+
+    async def _execute_with_lock(self, coro):
+        """Execute a database operation with the instance write lock."""
+        async with self._db_write_lock:
+            try:
+                await coro
+            except IntegrityError as exc:
+                LOGGER.debug(
+                    "Error handling database operation: %s",
+                    str(exc),
+                )
+            except Exception as ex:  # noqa: BLE001
+                LOGGER.error(
+                    "Unexpected error while processing database operation",
+                    exc_info=ex,
+                )
 
     async def executescript(self, sql):
         """Naive replacement for `sqlite3.Cursor.executescript` that does not execute a
@@ -170,7 +165,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 await self._connection.execute(text(statement))
 
     def device_joined(self, device: zigpy.typing.DeviceType) -> None:
-        self.enqueue("_update_device_nwk", device.ieee, device.nwk)
+        self._create_task(
+            self._execute_with_lock(self._update_device_nwk(device.ieee, device.nwk))
+        )
 
     async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
         async with self._connection.begin():
@@ -189,7 +186,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, device: zigpy.typing.DeviceType, last_seen: datetime
     ) -> None:
         """Device last_seen time is updated."""
-        self.enqueue("_save_device_last_seen", device.ieee, last_seen)
+        self._create_task(
+            self._execute_with_lock(self._save_device_last_seen(device.ieee, last_seen))
+        )
 
     async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
         q = f"""UPDATE devices{DB_V}
@@ -204,13 +203,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     "min_update_delta": MIN_UPDATE_DELTA,
                 },
             )
-            await self._connection.commit()
 
     def device_relays_updated(
         self, device: zigpy.typing.DeviceType, relays: t.Relays | None
     ) -> None:
         """Device relay list is updated."""
-        self.enqueue("_save_device_relays", device.ieee, relays)
+        self._create_task(
+            self._execute_with_lock(self._save_device_relays(device.ieee, relays))
+        )
 
     async def _save_device_relays(self, ieee: t.EUI64, relays: t.Relays | None) -> None:
         async with self._connection.begin():
@@ -227,8 +227,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     text(q), {"ieee": str(ieee), "relays": relays.serialize()}
                 )
 
-            await self._connection.commit()
-
     def attribute_updated(
         self,
         cluster: zigpy.typing.ClusterType,
@@ -236,37 +234,46 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         value: Any,
         timestamp: datetime,
     ) -> None:
-        self.enqueue(
-            "_save_attribute",
-            cluster.endpoint.device.ieee,
-            cluster.endpoint.endpoint_id,
-            cluster.cluster_type,
-            cluster.cluster_id,
-            attrid,
-            value,
-            timestamp,
+        self._create_task(
+            self._execute_with_lock(
+                self._save_attribute(
+                    cluster.endpoint.device.ieee,
+                    cluster.endpoint.endpoint_id,
+                    cluster.cluster_type,
+                    cluster.cluster_id,
+                    attrid,
+                    value,
+                    timestamp,
+                )
+            )
         )
 
     def attribute_cleared(self, cluster: zigpy.typing.ClusterType, attrid: int) -> None:
-        self.enqueue(
-            "_clear_attribute",
-            cluster.endpoint.device.ieee,
-            cluster.endpoint.endpoint_id,
-            cluster.cluster_type,
-            cluster.cluster_id,
-            attrid,
+        self._create_task(
+            self._execute_with_lock(
+                self._clear_attribute(
+                    cluster.endpoint.device.ieee,
+                    cluster.endpoint.endpoint_id,
+                    cluster.cluster_type,
+                    cluster.cluster_id,
+                    attrid,
+                )
+            )
         )
 
     def unsupported_attribute_added(
         self, cluster: zigpy.typing.ClusterType, attrid: int
     ) -> None:
-        self.enqueue(
-            "_unsupported_attribute_added",
-            cluster.endpoint.device.ieee,
-            cluster.endpoint.endpoint_id,
-            cluster.cluster_type,
-            cluster.cluster_id,
-            attrid,
+        self._create_task(
+            self._execute_with_lock(
+                self._unsupported_attribute_added(
+                    cluster.endpoint.device.ieee,
+                    cluster.endpoint.endpoint_id,
+                    cluster.cluster_type,
+                    cluster.cluster_id,
+                    attrid,
+                )
+            )
         )
 
     async def _unsupported_attribute_added(
@@ -291,18 +298,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     "attrid": attrid,
                 },
             )
-            await self._connection.commit()
 
     def unsupported_attribute_removed(
         self, cluster: zigpy.typing.ClusterType, attrid: int
     ) -> None:
-        self.enqueue(
-            "_unsupported_attribute_removed",
-            cluster.endpoint.device.ieee,
-            cluster.endpoint.endpoint_id,
-            cluster.cluster_type,
-            cluster.cluster_id,
-            attrid,
+        self._create_task(
+            self._execute_with_lock(
+                self._unsupported_attribute_removed(
+                    cluster.endpoint.device.ieee,
+                    cluster.endpoint.endpoint_id,
+                    cluster.cluster_type,
+                    cluster.cluster_id,
+                    attrid,
+                )
+            )
         )
 
     async def _unsupported_attribute_removed(
@@ -329,11 +338,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     "attrid": attrid,
                 },
             )
-            await self._connection.commit()
 
     def neighbors_updated(self, ieee: t.EUI64, neighbors: list[zdo_t.Neighbor]) -> None:
         """Neighbor update from Mgmt_Lqi_req."""
-        self.enqueue("_neighbors_updated", ieee, neighbors)
+        self._create_task(
+            self._execute_with_lock(self._neighbors_updated(ieee, neighbors))
+        )
 
     async def _neighbors_updated(
         self, ieee: t.EUI64, neighbors: list[zdo_t.Neighbor]
@@ -366,11 +376,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     },
                 )
 
-            await self._connection.commit()
-
     def routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
         """Route update from Mgmt_Rtg_req."""
-        self.enqueue("_routes_updated", ieee, routes)
+        self._create_task(self._execute_with_lock(self._routes_updated(ieee, routes)))
 
     async def _routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
         async with self._connection.begin():
@@ -397,11 +405,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     },
                 )
 
-            await self._connection.commit()
-
     def group_added(self, group: zigpy.group.Group) -> None:
         """Group is added."""
-        self.enqueue("_group_added", group)
+        self._create_task(self._execute_with_lock(self._group_added(group)))
 
     async def _group_added(self, group: zigpy.group.Group) -> None:
         q = f"""INSERT INTO groups{DB_V} VALUES (:group_id, :name)
@@ -411,13 +417,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self._connection.execute(
                 text(q), {"group_id": group.group_id, "name": group.name}
             )
-            await self._connection.commit()
 
     def group_member_added(
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
     ) -> None:
         """Called when a group member is added."""
-        self.enqueue("_group_member_added", group, ep)
+        self._create_task(self._execute_with_lock(self._group_member_added(group, ep)))
 
     async def _group_member_added(
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
@@ -435,13 +440,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     "endpoint_id": unique_id[1],
                 },
             )
-            await self._connection.commit()
 
     def group_member_removed(
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
     ) -> None:
         """Called when a group member is removed."""
-        self.enqueue("_group_member_removed", group, ep)
+        self._create_task(
+            self._execute_with_lock(self._group_member_removed(group, ep))
+        )
 
     async def _group_member_removed(
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
@@ -459,20 +465,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     "endpoint_id": unique_id[1],
                 },
             )
-            await self._connection.commit()
 
     def group_removed(self, group: zigpy.group.Group) -> None:
         """Called when a group is removed."""
-        self.enqueue("_group_removed", group)
+        self._create_task(self._execute_with_lock(self._group_removed(group)))
 
     async def _group_removed(self, group: zigpy.group.Group) -> None:
         q = f"DELETE FROM groups{DB_V} WHERE group_id=:group_id"
         async with self._connection.begin():
             await self._connection.execute(text(q), {"group_id": group.group_id})
-            await self._connection.commit()
 
     def device_removed(self, device: zigpy.typing.DeviceType) -> None:
-        self.enqueue("_remove_device", device)
+        self._create_task(self._execute_with_lock(self._remove_device(device)))
 
     async def _remove_device(self, device: zigpy.typing.DeviceType) -> None:
         async with self._connection.begin():
@@ -480,10 +484,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 text(f"DELETE FROM devices{DB_V} WHERE ieee = :ieee"),
                 {"ieee": str(device.ieee)},
             )
-            await self._connection.commit()
 
     def raw_device_initialized(self, device: zigpy.typing.DeviceType) -> None:
-        self.enqueue("_save_device", device)
+        self._create_task(self._execute_with_lock(self._save_device(device)))
 
     async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
         async with self._connection.begin():
@@ -508,7 +511,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 await self._save_node_descriptor(device)
 
             if isinstance(device, zigpy.quirks.BaseCustomDevice):
-                await self._connection.commit()
                 return
 
             await self._save_endpoints(device)
@@ -516,8 +518,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 await self._save_clusters(ep)
                 await self._save_attribute_cache(ep)
                 await self._save_unsupported_attributes(ep)
-
-            await self._connection.commit()
 
     async def _save_endpoints(self, device: zigpy.typing.DeviceType) -> None:
         q = f"""INSERT INTO endpoints{DB_V} VALUES (:ieee, :endpoint_id, :profile_id, :device_type, :status)
@@ -666,7 +666,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     "min_update_delta": MIN_UPDATE_DELTA,
                 },
             )
-            await self._connection.commit()
 
     async def _clear_attribute(
         self,
@@ -699,7 +698,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             )
 
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
-        self.enqueue("_network_backup_created", json.dumps(backup.as_dict()))
+        self._create_task(
+            self._execute_with_lock(
+                self._network_backup_created(json.dumps(backup.as_dict()))
+            )
+        )
 
     async def _network_backup_created(self, backup_json: str) -> None:
         q = f"""INSERT INTO network_backups{DB_V} VALUES (:id, :backup_json)
@@ -713,7 +716,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             )
 
     def network_backup_removed(self, backup: zigpy.backups.NetworkBackup) -> None:
-        self.enqueue("_network_backup_removed", backup.backup_time)
+        self._create_task(
+            self._execute_with_lock(self._network_backup_removed(backup.backup_time))
+        )
 
     async def _network_backup_removed(self, backup_time: datetime) -> None:
         q = f"""DELETE FROM network_backups{DB_V}
@@ -1058,8 +1063,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 await migration()
 
                 db_version = to_db_version
-
-            await self._connection.commit()
 
         return True
 
