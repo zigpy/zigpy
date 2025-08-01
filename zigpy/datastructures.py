@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import bisect
+import collections
 import contextlib
 import functools
+import heapq
 import types
 import typing
 
@@ -295,3 +297,164 @@ class Debouncer:
     def __repr__(self) -> str:
         """String representation of the debouncer."""
         return f"<{self.__class__.__name__} [tracked:{len(self._queue)}]>"
+
+
+class _LimiterContext:
+    """Helper class to manage the async context for the RequestLimiter."""
+
+    def __init__(self, limiter: RequestLimiter, priority: int) -> None:
+        self._limiter = limiter
+        self._priority = priority
+
+    async def __aenter__(self) -> None:
+        """Acquire a slot from the limiter."""
+        await self._limiter._acquire(self._priority)
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: types.TracebackType | None,
+    ) -> None:
+        """Release the slot back to the limiter."""
+        await self._limiter._release(self._priority)
+
+
+class RequestLimiter:
+    """Limits concurrent requests with cascading capacity for multiple priority levels."""
+
+    def __init__(self, capacities: dict[int, int]) -> None:
+        """Initializes the RequestLimiter."""
+        if not capacities:
+            raise ValueError("capacities dictionary cannot be empty")
+        if not all(
+            isinstance(k, int) and isinstance(v, int) and v >= 0
+            for k, v in capacities.items()
+        ):
+            raise ValueError(
+                "capacities keys must be integers and values must be non-negative integers"
+            )
+
+        self._lock = asyncio.Lock()
+        self._sorted_priorities = sorted(capacities.keys())
+
+        self._accessible_capacity: dict[int, int] = {}
+        current_capacity = 0
+        for priority in self._sorted_priorities:
+            current_capacity += capacities[priority]
+            self._accessible_capacity[priority] = current_capacity
+
+        self._total_capacity = current_capacity
+        self._active_requests_by_tier: typing.Counter[int] = collections.Counter()
+        self._waiters: list[tuple[int, int, asyncio.Future]] = []
+        self._comparison_counter = 0
+
+    def __call__(self, priority: int = 0) -> _LimiterContext:
+        """Returns an async context manager to safely acquire and release a slot."""
+        return _LimiterContext(self, priority)
+
+    def _get_effective_priority_tier(self, priority: int) -> int | None:
+        """Finds the capacity tier that the given priority falls into."""
+        idx = bisect.bisect_right(self._sorted_priorities, priority)
+        if idx == 0:
+            return None
+        return self._sorted_priorities[idx - 1]
+
+    def _can_run(self, priority: int) -> bool:
+        """Checks if a request with a given priority can run."""
+        effective_tier = self._get_effective_priority_tier(priority)
+        if effective_tier is None:
+            return False
+
+        limit = self._accessible_capacity[effective_tier]
+        competing_requests = sum(
+            count
+            for tier, count in self._active_requests_by_tier.items()
+            if tier <= effective_tier
+        )
+        return competing_requests < limit
+
+    def _wake_waiters(self) -> None:
+        """Wakes up any waiting tasks that can now run."""
+        while self._waiters:
+            priority_val, _, fut = self._waiters[0]
+            waiter_priority = -priority_val
+
+            if self._can_run(waiter_priority):
+                heapq.heappop(self._waiters)
+                if not fut.done():
+                    effective_tier = self._get_effective_priority_tier(waiter_priority)
+                    if effective_tier is not None:
+                        self._active_requests_by_tier[effective_tier] += 1
+                    fut.set_result(None)
+            else:
+                break
+
+    async def _acquire(self, priority: int = 0) -> None:
+        """Acquires a slot in the limiter, waiting if necessary."""
+        effective_tier = self._get_effective_priority_tier(priority)
+        if effective_tier is None:
+            raise ValueError(f"Priority {priority} has no capacity allocated.")
+
+        async with self._lock:
+            # A task can run immediately if it has capacity AND it has a higher
+            # priority than any task already waiting. This allows high-priority
+            # tasks to jump the queue, while maintaining FIFO for tasks of the
+            # same priority.
+            highest_waiter_priority = (
+                -self._waiters[0][0] if self._waiters else -float("inf")
+            )
+
+            if self._can_run(priority) and priority > highest_waiter_priority:
+                self._active_requests_by_tier[effective_tier] += 1
+                return
+
+            # Otherwise, the task must wait for a slot to be released.
+            self._comparison_counter += 1
+            fut = asyncio.get_running_loop().create_future()
+            waiter_obj = (-priority, self._comparison_counter, fut)
+            heapq.heappush(self._waiters, waiter_obj)
+
+        try:
+            await fut
+        except asyncio.CancelledError:
+            async with self._lock:
+                if fut.done() and not fut.cancelled():
+                    self._active_requests_by_tier[effective_tier] -= 1
+                    if self._active_requests_by_tier[effective_tier] == 0:
+                        del self._active_requests_by_tier[effective_tier]
+                    self._wake_waiters()
+                elif waiter_obj in self._waiters:
+                    self._waiters.remove(waiter_obj)
+                    heapq.heapify(self._waiters)
+            raise
+
+    async def _release(self, priority: int = 0) -> None:
+        """Releases an acquired slot back to the limiter."""
+        effective_tier = self._get_effective_priority_tier(priority)
+        if effective_tier is None:
+            return
+
+        async with self._lock:
+            if self._active_requests_by_tier[effective_tier] > 0:
+                self._active_requests_by_tier[effective_tier] -= 1
+                if self._active_requests_by_tier[effective_tier] == 0:
+                    del self._active_requests_by_tier[effective_tier]
+            self._wake_waiters()
+
+    @property
+    def active_requests(self) -> int:
+        """Returns the total number of currently running requests."""
+        return sum(self._active_requests_by_tier.values())
+
+    @property
+    def waiting_requests(self) -> int:
+        """Returns the number of requests waiting for a slot."""
+        return len(self._waiters)
+
+    def __repr__(self) -> str:
+        """Provides a string representation of the limiter's state."""
+        return (
+            f"<{self.__class__.__name__}(total_capacity={self._total_capacity}, "
+            f"active={self.active_requests}, waiting={self.waiting_requests})>"
+        )
