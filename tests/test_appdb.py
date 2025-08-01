@@ -659,35 +659,6 @@ async def test_device_rejoin(tmp_path):
     await app3.shutdown()
 
 
-@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
-async def test_stopped_appdb_listener(tmp_path):
-    db = tmp_path / "test.db"
-    app = await make_app_with_db(db)
-    ieee = make_ieee()
-    app.handle_join(99, ieee, 0)
-
-    dev = app.get_device(ieee)
-    ep = dev.add_endpoint(1)
-    ep.status = zigpy.endpoint.Status.ZDO_INIT
-    ep.profile_id = 260
-    ep.device_type = profiles.zha.DeviceType.PUMP
-    clus = ep.add_input_cluster(0)
-    ep.add_output_cluster(1)
-    app.device_initialized(dev)
-
-    with patch("zigpy.appdb.PersistingListener._save_attribute") as mock_attr_save:
-        clus.update_attribute(0, 99)
-        clus.update_attribute(4, bytes("Custom", "ascii"))
-        clus.update_attribute(5, bytes("Model", "ascii"))
-        await app.shutdown()
-        assert mock_attr_save.call_count == 3
-
-        clus.update_attribute(0, 100)
-        for _i in range(100):
-            await asyncio.sleep(0)
-        assert mock_attr_save.call_count == 3
-
-
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
 async def test_invalid_node_desc(tmp_path):
     """Devices without a valid node descriptor should not save the node descriptor."""

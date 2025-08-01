@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from datetime import datetime, timedelta, timezone
 import json
 import logging
@@ -53,9 +52,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         application: zigpy.typing.ControllerApplicationType,
     ) -> None:
         self._engine = engine
-        self._connection: AsyncConnection | None = None
+        self._connection: AsyncConnection = None
         self._application = application
-        self.running = False
         self._db_write_lock = asyncio.Lock()
         self._pending_tasks: set[asyncio.Task] = set()
 
@@ -65,16 +63,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self._connection.begin():
             # Run integrity checks and configure pragmas
             result = await self._connection.execute(text("PRAGMA integrity_check"))
-            rows = result.fetchall()
-            status = "\n".join(row[0] for row in rows)
+            status = "\n".join(row[0] for row in result.fetchall())
 
             if status != "ok":
                 LOGGER.error(
                     "Zigbee database is corrupted, integrity check failed!\n%s", status
                 )
 
-            result = await self._connection.execute(text("PRAGMA foreign_key_check"))
-            rows = result.fetchall()
+            rows = await self._connection.execute(text("PRAGMA foreign_key_check"))
 
             if rows:
                 LOGGER.error(
@@ -95,11 +91,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     ) -> PersistingListener:
         """Create an instance of persisting listener."""
         # Create SQLAlchemy async engine for SQLite
-        engine = create_async_engine(
-            f"sqlite+aiosqlite:///{database_file}",
-            echo=True,
-            # isolation_level="SERIALIZABLE",
-        )
+        engine = create_async_engine(f"sqlite+aiosqlite:///{database_file}")
         listener = cls(engine, app)
 
         try:
@@ -108,22 +100,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await listener.shutdown()
             raise
 
-        listener.running = True
         return listener
 
     async def shutdown(self) -> None:
         """Shutdown connection."""
-        self.running = False
-
-        # Wait for all pending tasks
         await asyncio.gather(*self._pending_tasks, return_exceptions=True)
 
         if self._connection:
-            # Delete the journal on shutdown
-            await self._connection.execute(text("PRAGMA wal_checkpoint;"))
             await self._connection.close()
+            self._connection = None
 
         await self._engine.dispose()
+        self._engine = None
 
     def _create_task(self, coro):
         """Create a task and track it for cleanup."""
@@ -139,6 +127,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _execute_with_lock(self, coro):
         """Execute a database operation with the instance write lock."""
         async with self._db_write_lock:
+            if self._connection is None:
+                LOGGER.debug(
+                    "Ignoring database operation, connection is closed: %r", coro
+                )
+                return
+
             try:
                 await coro
             except IntegrityError as exc:
@@ -971,11 +965,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
 
-    @contextlib.asynccontextmanager
-    async def _transaction(self):
-        async with self._connection.begin():
-            yield
-
     async def _get_table_versions(self) -> dict[str, int]:
         tables = {}
 
@@ -1006,8 +995,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             tables_version = max(tables.values(), default=0)
 
             result = await self._connection.execute(text("PRAGMA user_version"))
-            row = result.fetchone()
-            (db_version,) = row
+            (db_version,) = result.fetchone()
 
             LOGGER.debug(
                 "Current database version is v%s (table version v%s)",

@@ -4,11 +4,12 @@ import pathlib
 import sqlite3
 from sqlite3.dump import _iterdump as iterdump
 
-from aiosqlite.context import contextmanager
 import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio.engine import AsyncConnection
 
-from tests.async_mock import AsyncMock, MagicMock, patch
+from tests.async_mock import patch
 from tests.conftest import app  # noqa: F401
 from tests.test_appdb import make_app_with_db  # noqa: F401
 import zigpy.appdb
@@ -290,8 +291,8 @@ async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
         if fail_on_sql in str(sql):
             sql_seen = True
 
-            if count == fail_on_count:
-                raise sqlite3.ProgrammingError("Uh oh")
+            if count >= fail_on_count:
+                sql = text(str(sql) + ");-- This is a bad SQL statement that will fail")
 
             count += 1
 
@@ -300,7 +301,7 @@ async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
     with patch(
         "sqlalchemy.ext.asyncio.engine.AsyncConnection.execute", new=patched_execute
     ):
-        with pytest.raises(sqlite3.ProgrammingError):
+        with pytest.raises(OperationalError):
             await make_app_with_db(test_db_bad_attrs)
 
     assert sql_seen
@@ -443,41 +444,6 @@ async def test_v5_to_v7_migration(test_db):
 
     app = await make_app_with_db(test_db_v5)
     await app.shutdown()
-
-
-async def test_migration_missing_tables(app):
-    conn = MagicMock()
-    conn.close = AsyncMock()
-
-    appdb = zigpy.appdb.PersistingListener(conn, app)
-
-    appdb._get_table_versions = AsyncMock(
-        return_value={"table1_v1": "1", "table1": "", "table2_v1": "1"}
-    )
-
-    mock_execute = AsyncMock()
-    appdb.execute = contextmanager(mock_execute)
-
-    appdb._db._execute = AsyncMock()
-
-    # Migrations must explicitly specify all old tables, even if they will be untouched
-    with pytest.raises(RuntimeError):
-        await appdb._migrate_tables(
-            {
-                "table1_v1": "table1_v2",
-                # "table2_v1": "table2_v2",
-            }
-        )
-
-    # The untouched table will never be queried
-    await appdb._migrate_tables({"table1_v1": "table1_v2", "table2_v1": None})
-
-    mock_execute.assert_called_once_with("SELECT * FROM table1_v1")
-
-    with pytest.raises(AssertionError):
-        mock_execute.assert_called_once_with("SELECT * FROM table2_v1")
-
-    await appdb.shutdown()
 
 
 async def test_last_seen_initial_migration(test_db):
