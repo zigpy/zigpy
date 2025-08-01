@@ -74,6 +74,7 @@ class ResponseKey:
     cluster_id: int
     direction: foundation.Direction | None
     tsn: int
+    response_command_ids: int | None = None
 
 
 class Status(enum.IntEnum):
@@ -513,14 +514,43 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     cluster_id=cluster ^ 0x8000,
                     direction=None,
                     tsn=sequence,
+                    response_command_ids=None,
                 )
             else:
                 zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
+
+                # Try to further narrow down the acceptable responses
+                try:
+                    zcl_cluster = self._find_zcl_cluster(
+                        zcl_hdr,
+                        t.ZigbeePacket(
+                            profile_id=profile,
+                            cluster_id=cluster,
+                            src_ep=src_ep,
+                            dst_ep=dst_ep,
+                            data=t.SerializableBytes(data),
+                        ),
+                    )
+                except KeyError:
+                    response_command_ids = None
+                else:
+                    # Find the command definition
+                    if (
+                        zcl_hdr.frame_control.direction
+                        == foundation.Direction.Client_to_Server
+                    ):
+                        zcl_command = zcl_cluster.client_commands[zcl_hdr.command_id]
+                    else:
+                        zcl_command = zcl_cluster.server_commands[zcl_hdr.command_id]
+
+                    response_command_ids = zcl_command.response_command_ids
+
                 rsp_key = ResponseKey(
                     endpoint_id=dst_ep,
                     cluster_id=cluster,
                     direction=zcl_hdr.frame_control.direction.flip(),
                     tsn=sequence,
+                    response_command_ids=response_command_ids,
                 )
 
             if rsp_key in self._requests:
