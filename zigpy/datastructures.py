@@ -360,7 +360,7 @@ class RequestLimiter:
             return None
         return self._sorted_priorities[idx - 1]
 
-    def _can_run(self, priority: int) -> bool:
+    def locked(self, priority: int) -> bool:
         """Checks if a request with a given priority can run."""
         effective_tier = self._get_effective_priority_tier(priority)
         if effective_tier is None:
@@ -380,7 +380,7 @@ class RequestLimiter:
             priority_val, _, fut = self._waiters[0]
             waiter_priority = -priority_val
 
-            if self._can_run(waiter_priority):
+            if not self.locked(waiter_priority):
                 heapq.heappop(self._waiters)
                 if not fut.done():
                     effective_tier = self._get_effective_priority_tier(waiter_priority)
@@ -405,7 +405,7 @@ class RequestLimiter:
                 -self._waiters[0][0] if self._waiters else -float("inf")
             )
 
-            if self._can_run(priority) and priority > highest_waiter_priority:
+            if not self.locked(priority) and priority > highest_waiter_priority:
                 self._active_requests_by_tier[effective_tier] += 1
                 return
 

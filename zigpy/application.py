@@ -29,7 +29,7 @@ import zigpy.appdb
 import zigpy.backups
 import zigpy.config as conf
 from zigpy.const import INTERFERENCE_MESSAGE
-from zigpy.datastructures import PriorityDynamicBoundedSemaphore
+from zigpy.datastructures import RequestLimiter
 import zigpy.device
 import zigpy.endpoint
 import zigpy.exceptions
@@ -79,8 +79,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         self._watchdog_task: asyncio.Task | None = None
 
-        self._concurrent_requests_semaphore = PriorityDynamicBoundedSemaphore(
-            self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
+        max_concurrency = self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
+        assert max_concurrency > 4
+
+        self._concurrent_requests_semaphore = RequestLimiter(
+            capacities={
+                t.PacketPriority.HIGH: 2,
+                t.PacketPriority.NORMAL: max_concurrency - 4,
+                t.PacketPriority.LOW: 2,
+            }
         )
 
         self.ota = zigpy.ota.OTA(self._config[conf.CONF_OTA], self)
@@ -790,13 +797,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             was_locked = False
         else:
             manager = self._concurrent_requests_semaphore(priority=priority)
-            was_locked = self._concurrent_requests_semaphore.locked()
+            was_locked = self._concurrent_requests_semaphore.locked(priority=priority)
 
         if was_locked:
             LOGGER.debug(
                 "Max concurrency (%s) reached, delaying request (%s enqueued)",
-                self._concurrent_requests_semaphore.max_value,
-                self._concurrent_requests_semaphore.num_waiting,
+                self._concurrent_requests_semaphore.active_requests,
+                self._concurrent_requests_semaphore.waiting_requests,
             )
 
         async with manager:

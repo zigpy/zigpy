@@ -126,8 +126,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._tasks: set[asyncio.Future[Any]] = set()
 
         self._packet_debouncer = zigpy.datastructures.Debouncer()
-        self._concurrent_requests_semaphore = (
-            zigpy.datastructures.PriorityDynamicBoundedSemaphore(MAX_DEVICE_CONCURRENCY)
+        self._concurrent_requests_semaphore = zigpy.datastructures.RequestLimiter(
+            capacities={
+                t.PacketPriority.HIGH: 1,
+                t.PacketPriority.LOW: 1,
+            }
         )
 
         # Retained for backwards compatibility, will be removed in a future release
@@ -185,13 +188,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             was_locked = False
         else:
             manager = self._concurrent_requests_semaphore(priority=priority)
-            was_locked = self._concurrent_requests_semaphore.locked()
+            was_locked = self._concurrent_requests_semaphore.locked(priority=priority)
 
         if was_locked:
             LOGGER.debug(
-                "Device concurrency (%s) reached, delaying device request (%s enqueued)",
-                self._concurrent_requests_semaphore.max_value,
-                self._concurrent_requests_semaphore.num_waiting,
+                "Device concurrency (%s) reached, delaying request (%s enqueued)",
+                self._concurrent_requests_semaphore.active_requests,
+                self._concurrent_requests_semaphore.waiting_requests,
             )
 
         async with manager:
@@ -350,7 +353,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             # to be sent
             if (
                 self.initializing
-                or self._concurrent_requests_semaphore.locked()
+                or self._concurrent_requests_semaphore.active_requests
                 or self._fast_polling
             ):
                 await poll_control.checkin_response(
