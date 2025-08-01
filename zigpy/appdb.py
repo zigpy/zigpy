@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import json
 import logging
@@ -57,10 +58,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self._db_write_lock = asyncio.Lock()
         self._pending_tasks: set[asyncio.Task] = set()
 
+    @asynccontextmanager
+    async def _transaction(self):
+        async with self._db_write_lock:
+            async with self._connection.begin():
+                yield
+
     async def initialize_tables(self) -> None:
         self._connection = await self._engine.connect()
 
-        async with self._connection.begin():
+        async with self._transaction():
             # Run integrity checks and configure pragmas
             result = await self._connection.execute(text("PRAGMA integrity_check"))
             status = "\n".join(row[0] for row in result.fetchall())
@@ -124,28 +131,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         task.add_done_callback(task_done_callback)
         return task
 
-    async def _execute_with_lock(self, coro):
-        """Execute a database operation with the instance write lock."""
-        async with self._db_write_lock:
-            if self._connection is None:
-                LOGGER.debug(
-                    "Ignoring database operation, connection is closed: %r", coro
-                )
-                return
-
-            try:
-                await coro
-            except IntegrityError as exc:
-                LOGGER.debug(
-                    "Error handling database operation: %s",
-                    str(exc),
-                )
-            except Exception as ex:  # noqa: BLE001
-                LOGGER.error(
-                    "Unexpected error while processing database operation",
-                    exc_info=ex,
-                )
-
     async def executescript(self, sql):
         """Naive replacement for `sqlite3.Cursor.executescript` that does not execute a
         `COMMIT` before running the script. This extra `COMMIT` breaks transactions that
@@ -159,12 +144,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 await self._connection.execute(text(statement))
 
     def device_joined(self, device: zigpy.typing.DeviceType) -> None:
-        self._create_task(
-            self._execute_with_lock(self._update_device_nwk(device.ieee, device.nwk))
-        )
+        self._create_task(self._update_device_nwk(device.ieee, device.nwk))
 
     async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(f"UPDATE devices{DB_V} SET nwk=:nwk WHERE ieee=:ieee"),
                 {"nwk": nwk, "ieee": str(ieee)},
@@ -180,15 +163,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, device: zigpy.typing.DeviceType, last_seen: datetime
     ) -> None:
         """Device last_seen time is updated."""
-        self._create_task(
-            self._execute_with_lock(self._save_device_last_seen(device.ieee, last_seen))
-        )
+        self._create_task(self._save_device_last_seen(device.ieee, last_seen))
 
     async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
         q = f"""UPDATE devices{DB_V}
                     SET last_seen=:ts
                     WHERE ieee=:ieee AND :ts - last_seen > :min_update_delta"""
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(q),
                 {
@@ -202,12 +183,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, device: zigpy.typing.DeviceType, relays: t.Relays | None
     ) -> None:
         """Device relay list is updated."""
-        self._create_task(
-            self._execute_with_lock(self._save_device_relays(device.ieee, relays))
-        )
+        self._create_task(self._save_device_relays(device.ieee, relays))
 
     async def _save_device_relays(self, ieee: t.EUI64, relays: t.Relays | None) -> None:
-        async with self._connection.begin():
+        async with self._transaction():
             if relays is None:
                 await self._connection.execute(
                     text(f"DELETE FROM relays{DB_V} WHERE ieee = :ieee"),
@@ -229,29 +208,25 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         timestamp: datetime,
     ) -> None:
         self._create_task(
-            self._execute_with_lock(
-                self._save_attribute(
-                    cluster.endpoint.device.ieee,
-                    cluster.endpoint.endpoint_id,
-                    cluster.cluster_type,
-                    cluster.cluster_id,
-                    attrid,
-                    value,
-                    timestamp,
-                )
+            self._save_attribute(
+                cluster.endpoint.device.ieee,
+                cluster.endpoint.endpoint_id,
+                cluster.cluster_type,
+                cluster.cluster_id,
+                attrid,
+                value,
+                timestamp,
             )
         )
 
     def attribute_cleared(self, cluster: zigpy.typing.ClusterType, attrid: int) -> None:
         self._create_task(
-            self._execute_with_lock(
-                self._clear_attribute(
-                    cluster.endpoint.device.ieee,
-                    cluster.endpoint.endpoint_id,
-                    cluster.cluster_type,
-                    cluster.cluster_id,
-                    attrid,
-                )
+            self._clear_attribute(
+                cluster.endpoint.device.ieee,
+                cluster.endpoint.endpoint_id,
+                cluster.cluster_type,
+                cluster.cluster_id,
+                attrid,
             )
         )
 
@@ -259,14 +234,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, cluster: zigpy.typing.ClusterType, attrid: int
     ) -> None:
         self._create_task(
-            self._execute_with_lock(
-                self._unsupported_attribute_added(
-                    cluster.endpoint.device.ieee,
-                    cluster.endpoint.endpoint_id,
-                    cluster.cluster_type,
-                    cluster.cluster_id,
-                    attrid,
-                )
+            self._unsupported_attribute_added(
+                cluster.endpoint.device.ieee,
+                cluster.endpoint.endpoint_id,
+                cluster.cluster_type,
+                cluster.cluster_id,
+                attrid,
             )
         )
 
@@ -281,7 +254,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         q = f"""INSERT INTO unsupported_attributes{DB_V} VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attrid)
                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id)
                    DO NOTHING"""
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(q),
                 {
@@ -297,14 +270,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, cluster: zigpy.typing.ClusterType, attrid: int
     ) -> None:
         self._create_task(
-            self._execute_with_lock(
-                self._unsupported_attribute_removed(
-                    cluster.endpoint.device.ieee,
-                    cluster.endpoint.endpoint_id,
-                    cluster.cluster_type,
-                    cluster.cluster_id,
-                    attrid,
-                )
+            self._unsupported_attribute_removed(
+                cluster.endpoint.device.ieee,
+                cluster.endpoint.endpoint_id,
+                cluster.cluster_type,
+                cluster.cluster_id,
+                attrid,
             )
         )
 
@@ -321,7 +292,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                                                          AND cluster_type = :cluster_type
                                                          AND cluster_id = :cluster_id
                                                          AND attr_id = :attrid"""
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(q),
                 {
@@ -335,14 +306,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def neighbors_updated(self, ieee: t.EUI64, neighbors: list[zdo_t.Neighbor]) -> None:
         """Neighbor update from Mgmt_Lqi_req."""
-        self._create_task(
-            self._execute_with_lock(self._neighbors_updated(ieee, neighbors))
-        )
+        self._create_task(self._neighbors_updated(ieee, neighbors))
 
     async def _neighbors_updated(
         self, ieee: t.EUI64, neighbors: list[zdo_t.Neighbor]
     ) -> None:
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(f"DELETE FROM neighbors{DB_V} WHERE device_ieee = :ieee"),
                 {"ieee": str(ieee)},
@@ -372,10 +341,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
         """Route update from Mgmt_Rtg_req."""
-        self._create_task(self._execute_with_lock(self._routes_updated(ieee, routes)))
+        self._create_task(self._routes_updated(ieee, routes))
 
     async def _routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(f"DELETE FROM routes{DB_V} WHERE device_ieee = :ieee"),
                 {"ieee": str(ieee)},
@@ -401,13 +370,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def group_added(self, group: zigpy.group.Group) -> None:
         """Group is added."""
-        self._create_task(self._execute_with_lock(self._group_added(group)))
+        self._create_task(self._group_added(group))
 
     async def _group_added(self, group: zigpy.group.Group) -> None:
         q = f"""INSERT INTO groups{DB_V} VALUES (:group_id, :name)
                     ON CONFLICT (group_id)
                     DO UPDATE SET name=excluded.name"""
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(q), {"group_id": group.group_id, "name": group.name}
             )
@@ -416,7 +385,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
     ) -> None:
         """Called when a group member is added."""
-        self._create_task(self._execute_with_lock(self._group_member_added(group, ep)))
+        self._create_task(self._group_member_added(group, ep))
 
     async def _group_member_added(
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
@@ -425,7 +394,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     ON CONFLICT
                     DO NOTHING"""
         unique_id = ep.unique_id
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(q),
                 {
@@ -439,9 +408,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
     ) -> None:
         """Called when a group member is removed."""
-        self._create_task(
-            self._execute_with_lock(self._group_member_removed(group, ep))
-        )
+        self._create_task(self._group_member_removed(group, ep))
 
     async def _group_member_removed(
         self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
@@ -450,7 +417,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                                                 AND ieee=:ieee
                                                 AND endpoint_id=:endpoint_id"""
         unique_id = ep.unique_id
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(q),
                 {
@@ -462,28 +429,28 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def group_removed(self, group: zigpy.group.Group) -> None:
         """Called when a group is removed."""
-        self._create_task(self._execute_with_lock(self._group_removed(group)))
+        self._create_task(self._group_removed(group))
 
     async def _group_removed(self, group: zigpy.group.Group) -> None:
         q = f"DELETE FROM groups{DB_V} WHERE group_id=:group_id"
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(text(q), {"group_id": group.group_id})
 
     def device_removed(self, device: zigpy.typing.DeviceType) -> None:
-        self._create_task(self._execute_with_lock(self._remove_device(device)))
+        self._create_task(self._remove_device(device))
 
     async def _remove_device(self, device: zigpy.typing.DeviceType) -> None:
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(f"DELETE FROM devices{DB_V} WHERE ieee = :ieee"),
                 {"ieee": str(device.ieee)},
             )
 
     def raw_device_initialized(self, device: zigpy.typing.DeviceType) -> None:
-        self._create_task(self._execute_with_lock(self._save_device(device)))
+        self._create_task(self._save_device(device))
 
     async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
-        async with self._connection.begin():
+        async with self._transaction():
             q = f"""INSERT INTO devices{DB_V} (ieee, nwk, status, last_seen)
                         VALUES (:ieee, :nwk, :status, :last_seen)
                         ON CONFLICT (ieee)
@@ -646,7 +613,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     value != excluded.value
                     OR :timestamp - last_updated > :min_update_delta
             """
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(q),
                 {
@@ -679,7 +646,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 AND attr_id = :attr_id
             """
 
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(q),
                 {
@@ -692,11 +659,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             )
 
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
-        self._create_task(
-            self._execute_with_lock(
-                self._network_backup_created(json.dumps(backup.as_dict()))
-            )
-        )
+        self._create_task(self._network_backup_created(json.dumps(backup.as_dict())))
 
     async def _network_backup_created(self, backup_json: str) -> None:
         q = f"""INSERT INTO network_backups{DB_V} VALUES (:id, :backup_json)
@@ -704,21 +667,19 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     DO UPDATE SET
                         backup_json=excluded.backup_json"""
 
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(q), {"id": None, "backup_json": backup_json}
             )
 
     def network_backup_removed(self, backup: zigpy.backups.NetworkBackup) -> None:
-        self._create_task(
-            self._execute_with_lock(self._network_backup_removed(backup.backup_time))
-        )
+        self._create_task(self._network_backup_removed(backup.backup_time))
 
     async def _network_backup_removed(self, backup_time: datetime) -> None:
         q = f"""DELETE FROM network_backups{DB_V}
                     WHERE json_extract(backup_json, '$.backup_time')=:backup_time"""
 
-        async with self._connection.begin():
+        async with self._transaction():
             await self._connection.execute(
                 text(q), {"backup_time": backup_time.isoformat()}
             )
@@ -726,7 +687,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def load(self) -> None:
         LOGGER.debug("Loading application state")
 
-        async with self._connection.begin():
+        async with self._transaction():
             await self._load_devices()
             await self._load_node_descriptors()
             await self._load_endpoints()
@@ -990,7 +951,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _run_migrations(self) -> bool:
         """Migrates the database to the newest schema, returning True if migrations ran."""
 
-        async with self._connection.begin():
+        async with self._transaction():
             tables = await self._get_table_versions()
             tables_version = max(tables.values(), default=0)
 
@@ -1028,7 +989,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 return False
 
         # All migrations must succeed. If any fail, the database is not touched.
-        async with self._connection.begin():
+        async with self._transaction():
             for migration, to_db_version in [
                 (self._migrate_to_v4, 4),
                 (self._migrate_to_v5, 5),
