@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio.engine import AsyncConnection
 
 from tests.async_mock import AsyncMock, MagicMock, patch
 from tests.conftest import app  # noqa: F401
-from tests.test_appdb import auto_kill_aiosqlite, make_app_with_db  # noqa: F401
+from tests.test_appdb import make_app_with_db  # noqa: F401
 import zigpy.appdb
 import zigpy.appdb_schemas
 import zigpy.types as t

@@ -1,11 +1,8 @@
 import asyncio
-import contextlib
 from datetime import datetime, timedelta, timezone
 import pathlib
-import threading
 import time
 
-import aiosqlite
 import freezegun
 import pytest
 
@@ -26,26 +23,6 @@ import zigpy.zcl
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
-
-
-@pytest.fixture(autouse=True)
-def auto_kill_aiosqlite():
-    """Aiosqlite's background thread does not let pytest exit when a failure occurs"""
-    yield
-
-    for thread in threading.enumerate():
-        if not isinstance(thread, aiosqlite.core.Connection):
-            continue
-
-        try:
-            conn = thread._conn
-        except ValueError:
-            pass
-        else:
-            with contextlib.suppress(zigpy.appdb.sqlite3.ProgrammingError):
-                conn.close()
-
-        thread._running = False
 
 
 async def make_app_with_db(database_file):
