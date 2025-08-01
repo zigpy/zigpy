@@ -319,6 +319,8 @@ async def update_firmware(
         if progress_callback is not None:
             progress_callback(current, total, progress)
 
-    with OTAManager(device, image, progress_callback=progress, force=force) as ota:
-        await ota.notify()
-        return await ota.wait()
+    # Ask the device to start fast polling before we send the OTA image
+    async with device.fast_poll_mode():
+        with OTAManager(device, image, progress_callback=progress, force=force) as ota:
+            await ota.notify()
+            return await ota.wait()
