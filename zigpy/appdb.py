@@ -726,36 +726,38 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def load(self) -> None:
         LOGGER.debug("Loading application state")
-        await self._load_devices()
-        await self._load_node_descriptors()
-        await self._load_endpoints()
-        await self._load_clusters()
 
-        # Quirks require the manufacturer and model name to be populated
-        await self._load_attributes(
-            f"""
-                cluster_type={ClusterType.Server}
-            AND cluster_id={Basic.cluster_id}
-            AND (
-                   attr_id={Basic.AttributeDefs.manufacturer.id}
-                OR attr_id={Basic.AttributeDefs.model.id}
+        async with self._connection.begin():
+            await self._load_devices()
+            await self._load_node_descriptors()
+            await self._load_endpoints()
+            await self._load_clusters()
+
+            # Quirks require the manufacturer and model name to be populated
+            await self._load_attributes(
+                f"""
+                    cluster_type={ClusterType.Server}
+                AND cluster_id={Basic.cluster_id}
+                AND (
+                       attr_id={Basic.AttributeDefs.manufacturer.id}
+                    OR attr_id={Basic.AttributeDefs.model.id}
+                )
+                """
             )
-            """
-        )
 
-        for device in self._application.devices.values():
-            device = zigpy.quirks.get_device(device)
-            self._application.devices[device.ieee] = device
+            for device in self._application.devices.values():
+                device = zigpy.quirks.get_device(device)
+                self._application.devices[device.ieee] = device
 
-        await self._load_attributes()
-        await self._load_unsupported_attributes()
-        await self._load_groups()
-        await self._load_group_members()
-        await self._load_relays()
-        await self._load_neighbors()
-        await self._load_routes()
-        await self._load_network_backups()
-        await self._register_device_listeners()
+            await self._load_attributes()
+            await self._load_unsupported_attributes()
+            await self._load_groups()
+            await self._load_group_members()
+            await self._load_relays()
+            await self._load_neighbors()
+            await self._load_routes()
+            await self._load_network_backups()
+            await self._register_device_listeners()
 
     async def _load_attributes(self, filter: str | None = None) -> None:
         if filter:
