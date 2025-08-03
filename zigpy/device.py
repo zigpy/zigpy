@@ -113,7 +113,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
         self._tx_sequence: int = 0
-        self._last_rx_sequence: int | None = None
+        self._last_rx_sequence: int = 0
 
         self._fast_polling_end_time = datetime.min.replace(tzinfo=timezone.utc)
         self._on_remove_callbacks: list[typing.Callable[[], None]] = []
@@ -180,26 +180,31 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             yield
 
     def get_sequence(self) -> t.uint8_t:
-        self._tx_sequence = (self._tx_sequence + 1) % 256
+        """Get the next sequence number for an outgoing request."""
+        taken_tsns = {request.tsn for request in self._requests}
 
-        # Sequence numbers do not necessarily have to be consecutive. If devices report
-        # very frequently, we can run into the situation of our sequence number
-        # "aligning" with the device's sequence number, causing mis-matched responses.
-        # To avoid this issue, we can just flip to the opposite side of the TSN circle
-        # if they ever get too close.
-        if self._last_rx_sequence is not None and (
-            abs(self._tx_sequence - self._last_rx_sequence)
-            < SEQUENCE_NUMBER_ROTATION_THRESHOLD
-        ):
-            LOGGER.debug(
-                "TX=%d and RX=%d sequences for device are too close, rotating TX sequence to %d",
-                self._tx_sequence,
-                self._last_rx_sequence,
-                (self._tx_sequence + 128) % 256,
+        for delta in range(1, 256):
+            candidate = (self._tx_sequence + delta) % 256
+
+            # Ignore collisions with outgoing requests
+            if candidate in taken_tsns:
+                continue
+
+            # Ignore any that are too close to the device's last TSN
+            distance = abs(candidate - self._last_rx_sequence)
+            mod_distance = min(distance, 256 - distance)
+
+            if mod_distance < SEQUENCE_NUMBER_ROTATION_THRESHOLD:
+                continue
+
+            break
+        else:
+            raise zigpy.exceptions.ControllerException(
+                "Cannot send, no available sequence numbers"
             )
-            self._tx_sequence = (self._tx_sequence + 128) % 256
 
-        return self._tx_sequence
+        self._tx_sequence = candidate
+        return candidate
 
     @property
     def name(self) -> str:
