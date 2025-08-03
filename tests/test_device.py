@@ -1356,6 +1356,7 @@ async def test_duplicate_request_sending(dev: device.Device) -> None:
 
     ep = dev.add_endpoint(1)
     ep.add_input_cluster(Basic.cluster_id)
+    dev._last_rx_sequence = 82
 
     async def delayed_receive(*args, **kwargs) -> None:
         await asyncio.sleep(0.1)
@@ -1370,17 +1371,23 @@ async def test_duplicate_request_sending(dev: device.Device) -> None:
         return_exceptions=True,
     )
 
-    # The 257th will fail to send because it will collide with the first due to TSN
+    # Requests will fail to send because they will collide with the first due to TSN
     # wrapping
-    assert all(isinstance(errors[i], asyncio.TimeoutError) for i in range(256))
-    assert isinstance(errors[256], zigpy.exceptions.ControllerException)
-    assert str(errors[256]).startswith("Duplicate request key: ")
+    tsn_wrap_point = 256 - 2 * device.SEQUENCE_NUMBER_ROTATION_THRESHOLD + 1
+    assert all(
+        isinstance(errors[i], asyncio.TimeoutError) for i in range(tsn_wrap_point)
+    )
+    assert isinstance(errors[tsn_wrap_point], zigpy.exceptions.ControllerException)
+    assert str(errors[tsn_wrap_point]).startswith(
+        ("Duplicate request key: ", "Cannot send, no available sequence numbers")
+    )
 
 
 async def test_duplicate_request_matching(dev: device.Device, caplog) -> None:
     """Test that a device handles duplicate packets matching the same request."""
     ep = dev.add_endpoint(1)
     ep.add_input_cluster(Basic.cluster_id)
+    dev._last_rx_sequence = 82
 
     def send_responses():
         packet = t.ZigbeePacket(

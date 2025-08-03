@@ -220,8 +220,8 @@ async def test_reply_tsn_override(zdo_f, monkeypatch):
     await zdo_f.reply(sentinel.cmd, sentinel.arg1, sentinel.arg2)
     seq = zdo_f.device.request.mock_calls[0].kwargs["sequence"]
     data = zdo_f.device.request.mock_calls[0].kwargs["data"]
-    assert seq == 1
-    assert data[0] == 1
+    assert seq == 20
+    assert data[0] == 20
     assert data[1:3] == b"\xaa\x55"
 
     # override tsn
