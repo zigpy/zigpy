@@ -58,6 +58,7 @@ LOGGER = logging.getLogger(__name__)
 PACKET_DEBOUNCE_WINDOW = 10
 MAX_DEVICE_CONCURRENCY = 2
 DEFAULT_FAST_POLL_TIMEOUT = 30
+SEQUENCE_NUMBER_ROTATION_THRESHOLD = 20
 
 AFTER_OTA_ATTR_READ_DELAY = 10
 OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
@@ -111,7 +112,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._requests: dict[ResponseKey, asyncio.Future] = {}
         self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
-        self._send_sequence: int = 0
+        self._tx_sequence: int = 0
+        self._last_rx_sequence: int | None = None
 
         self._fast_polling_end_time = datetime.min.replace(tzinfo=timezone.utc)
         self._on_remove_callbacks: list[typing.Callable[[], None]] = []
@@ -178,8 +180,26 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             yield
 
     def get_sequence(self) -> t.uint8_t:
-        self._send_sequence = (self._send_sequence + 1) % 256
-        return self._send_sequence
+        self._tx_sequence = (self._tx_sequence + 1) % 256
+
+        # Sequence numbers do not necessarily have to be consecutive. If devices report
+        # very frequently, we can run into the situation of our sequence number
+        # "aligning" with the device's sequence number, causing mis-matched responses.
+        # To avoid this issue, we can just flip to the opposite side of the TSN circle
+        # if they ever get too close.
+        if (
+            self._last_rx_sequence is not None
+            and abs(self._tx_sequence - self._last_rx_sequence)
+            < SEQUENCE_NUMBER_ROTATION_THRESHOLD
+        ):
+            LOGGER.debug(
+                "TX and RX sequences for device (%d and %d) are too close, rotating TX sequence",
+                self._tx_sequence,
+                self._last_rx_sequence,
+            )
+            self._tx_sequence = (self._tx_sequence + 128) % 256
+
+        return self._tx_sequence
 
     @property
     def name(self) -> str:
@@ -724,6 +744,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if hdr is None:
             self.custom_profile_packet_received(packet)
             return
+
+        self._last_rx_sequence = hdr.tsn
 
         # Validate packet routing and find target endpoint/cluster
         endpoint, zcl_cluster = self._match_packet_endpoint_cluster(packet, hdr)
