@@ -187,15 +187,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         # "aligning" with the device's sequence number, causing mis-matched responses.
         # To avoid this issue, we can just flip to the opposite side of the TSN circle
         # if they ever get too close.
-        if (
-            self._last_rx_sequence is not None
-            and abs(self._tx_sequence - self._last_rx_sequence)
+        if self._last_rx_sequence is not None and (
+            abs(self._tx_sequence - self._last_rx_sequence)
             < SEQUENCE_NUMBER_ROTATION_THRESHOLD
         ):
             LOGGER.debug(
-                "TX and RX sequences for device (%d and %d) are too close, rotating TX sequence",
+                "TX=%d and RX=%d sequences for device are too close, rotating TX sequence to %d",
                 self._tx_sequence,
                 self._last_rx_sequence,
+                (self._tx_sequence + 128) % 256,
             )
             self._tx_sequence = (self._tx_sequence + 128) % 256
 
