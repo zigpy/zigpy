@@ -750,8 +750,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.custom_profile_packet_received(packet)
             return
 
-        self._last_rx_sequence = hdr.tsn
-
         # Validate packet routing and find target endpoint/cluster
         endpoint, zcl_cluster = self._match_packet_endpoint_cluster(packet, hdr)
         if endpoint is None:
@@ -771,6 +769,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         # Handle response matching for pending requests
         if self._maybe_match_response(rsp_key, cmd, error):
             return
+
+        # Only update the RX sequence number when we receive an unsolicited report
+        self._last_rx_sequence = hdr.tsn
 
         # Skip further processing if there was a parsing error
         if error is not None:
