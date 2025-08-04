@@ -612,10 +612,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 ),
                 packet,
             )
-            self.warning(
-                "Cluster 0x%04x has incorrect direction (got %r for %r cluster)",
-                self,
+            LOGGER.warning(
+                "Cluster 0x%04x on %r has incorrect direction (got %r for %r cluster)",
                 packet.cluster_id,
+                self,
                 hdr.frame_control.direction,
                 cluster.cluster_type,
             )
