@@ -1639,44 +1639,28 @@ async def test_device_flipped_cluster_warning(dev: device.Device, caplog) -> Non
         command_id=OnOff.ServerCommandDefs.on.id,
     )
 
+    packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        src_ep=1,
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        dst_ep=1,
+        profile_id=260,
+        cluster_id=OnOff.cluster_id,
+        data=t.SerializableBytes(
+            zcl_hdr.serialize() + OnOff.ServerCommandDefs.on.schema().serialize()
+        ),
+        lqi=255,
+        rssi=-30,
+    )
+
     # Correct
     with caplog.at_level(logging.WARNING):
-        dev.packet_received(
-            t.ZigbeePacket(
-                src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
-                src_ep=2,
-                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
-                dst_ep=1,
-                profile_id=260,
-                cluster_id=OnOff.cluster_id,
-                data=t.SerializableBytes(
-                    zcl_hdr.serialize()
-                    + OnOff.ServerCommandDefs.on.schema().serialize()
-                ),
-                lqi=255,
-                rssi=-30,
-            )
-        )
+        dev.packet_received(packet.replace(src_ep=2))
 
     assert "has incorrect direction" not in caplog.text
 
     # Incorrect
     with caplog.at_level(logging.WARNING):
-        dev.packet_received(
-            t.ZigbeePacket(
-                src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
-                src_ep=1,
-                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
-                dst_ep=1,
-                profile_id=260,
-                cluster_id=OnOff.cluster_id,
-                data=t.SerializableBytes(
-                    zcl_hdr.serialize()
-                    + OnOff.ServerCommandDefs.on.schema().serialize()
-                ),
-                lqi=255,
-                rssi=-30,
-            )
-        )
+        dev.packet_received(packet.replace(src_ep=1))
 
     assert "has incorrect direction" in caplog.text
