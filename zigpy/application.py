@@ -92,6 +92,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
 
+        # Add callback storage
+        self._packet_callbacks: collections.defaultdict[
+            t.AddrModeAddress | None,
+            list[typing.Callable[[t.ZigbeePacket], Any]]
+        ] = collections.defaultdict(list)
+
         # Context variable for request priority context manager
         self._packet_priority_var = contextvars.ContextVar(
             "request_priority", default=t.PacketPriority.NORMAL
@@ -1059,7 +1065,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         """Notify zigpy of a received Zigbee packet."""
-
+        
         LOGGER.debug("Received a packet: %r", packet)
         assert packet.src is not None
         assert packet.dst is not None
@@ -1196,6 +1202,37 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             return self.get_device(ieee=address.address)
         else:
             raise ValueError(f"Invalid address: {address!r}")
+
+    def register_packet_callback(
+        self,
+        filter: t.AddrModeAddress | None,
+        callback: typing.Callable[[t.ZigbeePacket], Any],
+        # Question: Can every device (including unknown, provide a full AddrModeAddress filter? And is AddrModeAddress always unique?)
+        ) -> typing.Callable[[], None]:
+
+        """Register a callback that is called when a Zigbee packet is received.
+
+        Args:
+            callback: Function to call when a packet is received.
+            filter: Optional address filter to apply to the received packets.
+                    If provided, only packets matching this address will trigger the callback.
+
+        Returns:
+            A callable that can be used to unregister the callback.
+        """
+
+        # Register the callback
+        self._packet_callbacks[filter].append(callback)
+        
+        def cancel_callback() -> None:
+            """Remove the callback."""
+            if callback in self._packet_callbacks[filter]:
+                self._packet_callbacks[filter].remove(callback)
+
+        return cancel_callback
+    
+    # notify packet callbacks when a packet is received, this would happen in packet_received before any device lookup
+
 
     def register_callback_listener(
         self,
