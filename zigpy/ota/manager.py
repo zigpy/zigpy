@@ -7,6 +7,7 @@ import contextlib
 from typing import TYPE_CHECKING
 
 import zigpy.datastructures
+import zigpy.types as t
 from zigpy.zcl import ClusterType, foundation
 from zigpy.zcl.clusters.general import Ota
 
@@ -221,21 +222,26 @@ class OTAManager:
             bytes_remaining -= block_size
 
             try:
-                # Once we have a way to send requests without waiting for replies,
-                # this can be converted to just `self.ota_cluster.image_block_response`
-                await self.ota_cluster.request(
-                    general=False,
-                    command_id=Ota.ClientCommandDefs.image_block_response.id,
-                    schema=Ota.ClientCommandDefs.image_block_response.schema,
-                    expect_reply=False,
-                    # kwargs
-                    status=foundation.Status.SUCCESS,
-                    manufacturer_code=self.image.firmware.header.manufacturer_id,
-                    image_type=self.image.firmware.header.image_type,
-                    file_version=self.image.firmware.header.file_version,
-                    file_offset=offset - block_size,
-                    image_data=block,
-                )
+                # OTA sometimes is overwhelmingly fast, we should allow higher priority
+                # requests to make it through
+                async with self.device.application.request_priority(
+                    t.PacketPriority.LOW
+                ):
+                    # Once we have a way to send requests without waiting for replies,
+                    # this can be converted to just `self.ota_cluster.image_block_response`.
+                    await self.ota_cluster.request(
+                        general=False,
+                        command_id=Ota.ClientCommandDefs.image_block_response.id,
+                        schema=Ota.ClientCommandDefs.image_block_response.schema,
+                        expect_reply=False,
+                        # kwargs
+                        status=foundation.Status.SUCCESS,
+                        manufacturer_code=self.image.firmware.header.manufacturer_id,
+                        image_type=self.image.firmware.header.image_type,
+                        file_version=self.image.firmware.header.file_version,
+                        file_offset=offset - block_size,
+                        image_data=block,
+                    )
 
                 self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
 
