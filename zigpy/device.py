@@ -583,10 +583,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
         )
 
-    def _find_zcl_cluster(
+    def _find_zcl_cluster_strict(
         self, hdr: foundation.ZCLHeader, packet: t.ZigbeePacket
     ) -> Cluster:
-        """Find the ZCL cluster for a given header and packet."""
+        """Find the ZCL cluster for a given header and packet, strict."""
         assert packet.src_ep is not None
         ep = self.endpoints[packet.src_ep]
 
@@ -594,6 +594,36 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return ep.out_clusters[packet.cluster_id]
         else:
             return ep.in_clusters[packet.cluster_id]
+
+    def _find_zcl_cluster(
+        self, hdr: foundation.ZCLHeader, packet: t.ZigbeePacket
+    ) -> Cluster:
+        """Find the ZCL cluster for a given header and packet."""
+        try:
+            return self._find_zcl_cluster_strict(hdr, packet)
+        except KeyError:
+            # If the cluster is not found, try to find it with flipped direction. This
+            # will be removed in 2025.9.0.
+            cluster = self._find_zcl_cluster_strict(
+                hdr.replace(
+                    frame_control=hdr.frame_control.replace(
+                        direction=hdr.frame_control.direction.flip()
+                    )
+                ),
+                packet,
+            )
+            LOGGER.warning(
+                (
+                    "Cluster 0x%04x on %r has incorrect direction (got %r for %r cluster)."
+                    " Please report this here: https://github.com/zigpy/zigpy/issues/1640"
+                ),
+                packet.cluster_id,
+                self,
+                hdr.frame_control.direction,
+                cluster.cluster_type,
+            )
+
+            return cluster
 
     def custom_profile_packet_received(self, packet: t.ZigbeePacket) -> None:
         """Handle packets with a custom profile ID."""

@@ -15,7 +15,7 @@ import zigpy.state
 import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import ClusterType, foundation
-from zigpy.zcl.clusters.general import Basic, Ota, PollControl
+from zigpy.zcl.clusters.general import Basic, OnOff, Ota, PollControl
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -1617,3 +1617,50 @@ async def test_initialize_fast_polling_failure(dev: device.Device) -> None:
 
     # Initialization attempted to fast poll but failure didn't stop it
     assert dev.begin_fast_polling.mock_calls == [call()]
+
+
+async def test_device_flipped_cluster_warning(dev: device.Device, caplog) -> None:
+    """Test that a warning is logged when a cluster is flipped."""
+    ep1 = dev.add_endpoint(1)
+    ep1.add_input_cluster(OnOff.cluster_id)
+
+    ep2 = dev.add_endpoint(2)
+    ep2.add_output_cluster(OnOff.cluster_id)
+
+    zcl_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.CLUSTER_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Client_to_Server,
+            disable_default_response=1,
+            reserved=0,
+        ),
+        tsn=0x12,
+        command_id=OnOff.ServerCommandDefs.on.id,
+    )
+
+    packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        src_ep=1,
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        dst_ep=1,
+        profile_id=260,
+        cluster_id=OnOff.cluster_id,
+        data=t.SerializableBytes(
+            zcl_hdr.serialize() + OnOff.ServerCommandDefs.on.schema().serialize()
+        ),
+        lqi=255,
+        rssi=-30,
+    )
+
+    # Correct
+    with caplog.at_level(logging.WARNING):
+        dev.packet_received(packet.replace(src_ep=2))
+
+    assert "has incorrect direction" not in caplog.text
+
+    # Incorrect
+    with caplog.at_level(logging.WARNING):
+        dev.packet_received(packet.replace(src_ep=1))
+
+    assert "has incorrect direction" in caplog.text
