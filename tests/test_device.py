@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 import logging
+import math
 from unittest.mock import call
 
 import pytest
@@ -1541,7 +1542,9 @@ async def test_begin_fast_polling_with_cluster(dev: device.Device) -> None:
 
         # Verify write_attributes was called with correct timeout
         assert poll_control.write_attributes.mock_calls == [
-            call({PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4)})
+            call(
+                {PollControl.AttributeDefs.fast_poll_timeout.id: math.ceil(timeout * 4)}
+            )
         ]
 
         # Verify we are now fast polling
