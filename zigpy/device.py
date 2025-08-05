@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import enum
 import itertools
 import logging
+import math
 import sys
 import time
 import typing
@@ -386,9 +387,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         # in command
         await poll_control.bind()
         await poll_control.write_attributes(
-            # The units are quarter seconds
             {
-                PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4),
+                # The units are quarter seconds, we round up
+                PollControl.AttributeDefs.fast_poll_timeout.id: math.ceil(timeout * 4),
             }
         )
 
@@ -397,6 +398,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if reset_after:
 
             async def reset_fast_polling():
+                await asyncio.sleep(math.ceil(timeout * 4) / 4)
                 self._fast_polling = False
 
             self._fast_polling_reset_task = self.create_task(

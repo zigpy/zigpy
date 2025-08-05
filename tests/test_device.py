@@ -1552,6 +1552,30 @@ async def test_begin_fast_polling_with_cluster(dev: device.Device) -> None:
     assert not dev._fast_polling
 
 
+async def test_fast_poll_mode_cancel_old_timer(dev: device.Device) -> None:
+    """Test that multiple fast_poll_mode runs cancel the previous timer."""
+    ep = dev.add_endpoint(1)
+    poll_control = ep.add_input_cluster(PollControl.cluster_id)
+    poll_control.bind = AsyncMock()
+    poll_control.write_attributes = AsyncMock()
+
+    # Start one fast polling session
+    await dev.begin_fast_polling(0.25)
+    assert dev._fast_polling
+
+    # A second run shouldn't be cancelled by the first expiring
+    await dev.begin_fast_polling(0.5)
+    assert dev._fast_polling
+
+    # It would have happened by now
+    await asyncio.sleep(0.3)
+    assert dev._fast_polling
+
+    # The second one resets it
+    await asyncio.sleep(0.3)
+    assert not dev._fast_polling
+
+
 async def test_begin_fast_polling_no_cluster(dev: device.Device) -> None:
     """Test beginning fast polling when PollControl cluster doesn't exist."""
     dev.add_endpoint(1)  # No PollControl cluster
