@@ -381,24 +381,23 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._fast_polling_reset_task.cancel()
             self._fast_polling_reset_task = None
 
-        LOGGER.debug("Beginning fast polling for %0.2fs", timeout)
+        # The units are quarter seconds, we round up to the nearest one
+        adjusted_timeout = math.ceil(timeout * 4) / 4
+        LOGGER.debug("Beginning fast polling for %0.2fs", adjusted_timeout)
 
         # We must first bind to the cluster, otherwise the device will not send a check-
         # in command
         await poll_control.bind()
         await poll_control.write_attributes(
-            {
-                # The units are quarter seconds, we round up
-                PollControl.AttributeDefs.fast_poll_timeout.id: math.ceil(timeout * 4),
-            }
+            {PollControl.AttributeDefs.fast_poll_timeout.id: int(4 * adjusted_timeout)}
         )
 
         self._fast_polling = True
 
         if reset_after:
 
-            async def reset_fast_polling():
-                await asyncio.sleep(math.ceil(timeout * 4) / 4)
+            async def reset_fast_polling() -> None:
+                await asyncio.sleep(adjusted_timeout)
                 self._fast_polling = False
 
             self._fast_polling_reset_task = self.create_task(
