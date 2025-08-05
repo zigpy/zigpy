@@ -7,9 +7,9 @@ import contextlib
 from typing import TYPE_CHECKING
 
 import zigpy.datastructures
+import zigpy.types as t
 from zigpy.zcl import ClusterType, foundation
 from zigpy.zcl.clusters.general import Ota
-import zigpy.zcl.types as t
 
 if TYPE_CHECKING:
     from typing_extensions import Self
