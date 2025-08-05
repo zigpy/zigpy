@@ -591,9 +591,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             zigpy.exceptions.DeliveryError("Device has re-joined the network")
         )
 
-        # Reset all timers related to the device
-        dev.reset_timers()
-
         if new_join:
             self.listener_event("device_joined", dev)
             dev.schedule_initialize()

@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 import logging
+import math
 from unittest.mock import call
 
 import pytest
@@ -1534,19 +1535,48 @@ async def test_begin_fast_polling_with_cluster(dev: device.Device) -> None:
     poll_control.bind = AsyncMock()
     poll_control.write_attributes = AsyncMock()
 
-    timeout = 45.0
-    await dev.begin_fast_polling(timeout)
+    timeout = 0.25
+    async with dev.fast_poll_mode(timeout):
+        # Verify bind was called
+        assert poll_control.bind.mock_calls == [call()]
 
-    # Verify bind was called
-    assert poll_control.bind.mock_calls == [call()]
+        # Verify write_attributes was called with correct timeout
+        assert poll_control.write_attributes.mock_calls == [
+            call(
+                {PollControl.AttributeDefs.fast_poll_timeout.id: math.ceil(timeout * 4)}
+            )
+        ]
 
-    # Verify write_attributes was called with correct timeout
-    assert poll_control.write_attributes.mock_calls == [
-        call({PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4)})
-    ]
+        # Verify we are now fast polling
+        assert dev._fast_polling
 
-    # Verify end time was set
-    assert dev._fast_polling_end_time > datetime.now(timezone.utc)
+    # We reset afterwards
+    await asyncio.sleep(0.3)
+    assert not dev._fast_polling
+
+
+async def test_fast_poll_mode_cancel_old_timer(dev: device.Device) -> None:
+    """Test that multiple fast_poll_mode runs cancel the previous timer."""
+    ep = dev.add_endpoint(1)
+    poll_control = ep.add_input_cluster(PollControl.cluster_id)
+    poll_control.bind = AsyncMock()
+    poll_control.write_attributes = AsyncMock()
+
+    # Start one fast polling session
+    await dev.begin_fast_polling(0.25)
+    assert dev._fast_polling
+
+    # A second run shouldn't be cancelled by the first expiring
+    await dev.begin_fast_polling(0.5)
+    assert dev._fast_polling
+
+    # It would have happened by now
+    await asyncio.sleep(0.3)
+    assert dev._fast_polling
+
+    # The second one resets it
+    await asyncio.sleep(0.3)
+    assert not dev._fast_polling
 
 
 async def test_begin_fast_polling_no_cluster(dev: device.Device) -> None:
@@ -1557,19 +1587,7 @@ async def test_begin_fast_polling_no_cluster(dev: device.Device) -> None:
     await dev.begin_fast_polling()
 
     # End time should remain at minimum
-    assert dev._fast_polling_end_time == datetime.min.replace(tzinfo=timezone.utc)
-
-
-async def test_reset_timers(dev: device.Device) -> None:
-    """Test resetting device timers."""
-    # Set a future end time
-    dev._fast_polling_end_time = datetime.now(timezone.utc)
-
-    # Reset timers
-    dev.reset_timers()
-
-    # Verify end time was reset to minimum
-    assert dev._fast_polling_end_time == datetime.min.replace(tzinfo=timezone.utc)
+    assert not dev._fast_polling
 
 
 async def test_on_remove_callbacks(dev: device.Device) -> None:
