@@ -79,15 +79,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         self._watchdog_task: asyncio.Task | None = None
 
-        max_concurrency = self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
-        assert max_concurrency > 4
-
+        breakpoint()
         self._concurrent_requests_semaphore = RequestLimiter(
-            capacities={
-                t.PacketPriority.HIGH: 2,
-                t.PacketPriority.NORMAL: max_concurrency - 4,
-                t.PacketPriority.LOW: 2,
-            }
+            max_concurrency=self._config[conf.CONF_MAX_CONCURRENT_REQUESTS],
+            capacities=self._config[conf.CONF_EXPERIMENTAL][conf.CONF_CONCURRENCY][
+                conf.CONF_CONCURRENCY_RESERVED_CAPACITY
+            ],
         )
 
         self.ota = zigpy.ota.OTA(self._config[conf.CONF_OTA], self)

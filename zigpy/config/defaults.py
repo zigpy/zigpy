@@ -50,3 +50,11 @@ CONF_TOPO_SCAN_PERIOD_DEFAULT = 4 * 60  # 4 hours
 CONF_TOPO_SCAN_ENABLED_DEFAULT = True
 CONF_TOPO_SKIP_COORDINATOR_DEFAULT = False
 CONF_WATCHDOG_ENABLED_DEFAULT = True
+CONF_EXPERIMENTAL_WARNING_STRING = (
+    "Everything in this section can change without notice, please keep track of the zigpy repo for any changes."
+)
+CONF_CONCURRENCY_DEFAULT = {
+    t.PacketPriority.HIGH: 0.25,
+    t.PacketPriority.NORMAL: 0.50,
+    t.PacketPriority.LOW: 0.25,
+}

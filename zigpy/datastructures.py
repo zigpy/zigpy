@@ -7,6 +7,7 @@ import bisect
 import collections
 import contextlib
 import functools
+import math
 import heapq
 import types
 import typing
@@ -337,28 +338,26 @@ class _LimiterContext:
 class RequestLimiter:
     """Limits concurrent requests with cascading capacity for multiple priority levels."""
 
-    def __init__(self, capacities: dict[int, int]) -> None:
+    def __init__(self, max_concurrency: int, capacities: dict[int, float]) -> None:
         """Initializes the RequestLimiter."""
-        if not capacities:
-            raise ValueError("capacities dictionary cannot be empty")
-        if not all(
-            isinstance(k, int) and isinstance(v, int) and v >= 0
-            for k, v in capacities.items()
-        ):
-            raise ValueError(
-                "capacities keys must be integers and values must be non-negative integers"
-            )
-
         self._lock = asyncio.Lock()
-        self._sorted_priorities = sorted(capacities.keys())
+        
+        # Calculate actual capacities from fractions, ensuring at least 1 per priority
+        raw_capacities = {}
+        for priority, fraction in capacities.items():
+            raw_capacity = max(1, fraction * max_concurrency)
+            raw_capacities[priority] = raw_capacity
 
+        self._sorted_priorities = sorted(raw_capacities.keys())
+        
+        # Calculate accessible (cascading) capacities
         self._accessible_capacity: dict[int, int] = {}
         current_capacity = 0
         for priority in self._sorted_priorities:
-            current_capacity += capacities[priority]
+            current_capacity += raw_capacities[priority]
             self._accessible_capacity[priority] = current_capacity
 
-        self._total_capacity = current_capacity
+        self._total_capacity = max_concurrency
         self._active_requests_by_tier: typing.Counter[int] = collections.Counter()
         self._waiters: list[tuple[int, int, asyncio.Future]] = []
         self._comparison_counter = 0

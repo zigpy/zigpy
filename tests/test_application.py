@@ -714,27 +714,26 @@ async def test_request_concurrency():
     peak_concurrency = 0
 
     class SlowApp(App):
-        async def send_packet(self, packet):
+        async def _send_packet(self, packet):
             nonlocal current_concurrency, peak_concurrency
 
-            async with self._limit_concurrency():
-                current_concurrency += 1
-                peak_concurrency = max(peak_concurrency, current_concurrency)
+            current_concurrency += 1
+            peak_concurrency = max(peak_concurrency, current_concurrency)
 
-                await asyncio.sleep(0.1)
-                current_concurrency -= 1
+            await asyncio.sleep(0.1)
+            current_concurrency -= 1
 
-                if packet % 10 == 7:
-                    # Fail randomly
-                    raise DeliveryError("Failure")
+            if packet % 10 == 7:
+                # Fail randomly
+                raise DeliveryError("Failure")
 
     app = make_app({conf.CONF_MAX_CONCURRENT_REQUESTS: 16}, app_base=SlowApp)
 
     assert current_concurrency == 0
     assert peak_concurrency == 0
 
-    await asyncio.gather(
-        *[app.send_packet(i) for i in range(100)], return_exceptions=True
+    results = await asyncio.gather(
+        *[app.send_packet(t.ZigbeePacket()) for i in range(100)], return_exceptions=True
     )
 
     assert current_concurrency == 0
