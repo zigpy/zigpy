@@ -9,6 +9,7 @@ import pytest
 
 import zigpy.application
 import zigpy.config as conf
+from zigpy.datastructures import RequestLimiter
 from zigpy.exceptions import (
     DeliveryError,
     NetworkNotFormed,
@@ -732,8 +733,12 @@ async def test_request_concurrency():
     assert current_concurrency == 0
     assert peak_concurrency == 0
 
-    results = await asyncio.gather(
-        *[app.send_packet(t.ZigbeePacket()) for i in range(100)], return_exceptions=True
+    await asyncio.gather(
+        *[
+            app.send_packet(t.ZigbeePacket(priority=t.PacketPriority.HIGH))
+            for i in range(100)
+        ],
+        return_exceptions=True,
     )
 
     assert current_concurrency == 0
@@ -1634,7 +1639,9 @@ async def test_packet_capture(app) -> None:
 
 
 async def test_request_priority(app) -> None:
-    app._concurrent_requests_semaphore.max_value = 1
+    app._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
 
     with patch.object(app, "_send_packet", wraps=app._send_packet) as mock_send_packet:
         packet_low = Mock(name="LOW", priority=t.PacketPriority.LOW)
@@ -1662,7 +1669,9 @@ async def test_request_priority(app) -> None:
 async def test_request_priority_context_concurrency(app, packet):
     """Test that request_priority contexts work correctly with concurrent tasks."""
     # Limit concurrency to see priority ordering effects
-    app._concurrent_requests_semaphore.max_value = 1
+    app._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
 
     with patch.object(app, "_send_packet", wraps=app._send_packet) as mock_send:
 

@@ -491,28 +491,9 @@ async def test_debouncer_cleaning_bug():
     assert len(debouncer._queue) == 0
 
 
-def test_request_limiter_initialization():
-    """Test initialization of the RequestLimiter with various inputs."""
-    # Test invalid capacities
-    with pytest.raises(ValueError, match="capacities dictionary cannot be empty"):
-        datastructures.RequestLimiter({})
-
-    with pytest.raises(ValueError, match="must be non-negative integers"):
-        datastructures.RequestLimiter({0: -1})
-
-    with pytest.raises(ValueError, match="keys must be integers"):
-        datastructures.RequestLimiter({"a": 1})
-
-    # Test valid initialization
-    limiter = datastructures.RequestLimiter({0: 5, 10: 2})
-    assert limiter.active_requests == 0
-    assert limiter.waiting_requests == 0
-    assert "total_capacity=7" in repr(limiter)
-
-
 async def test_request_limiter_simple_tier():
     """Test the limiter behaving like a simple semaphore with one tier."""
-    limiter = datastructures.RequestLimiter({0: 2})
+    limiter = datastructures.RequestLimiter(2, {0: 1})
     results = []
     order = []
 
@@ -548,7 +529,7 @@ async def test_request_limiter_simple_tier():
 async def test_request_limiter_cascading_priority():
     """Test the core cascading priority logic."""
     # 2 slots for low priority, 1 extra for high priority (total 3)
-    limiter = datastructures.RequestLimiter({0: 2, 10: 1})
+    limiter = datastructures.RequestLimiter(3, {0: 2 / 3, 10: 1 / 3})
     events = []
 
     async def worker(uid, priority, delay):
@@ -591,7 +572,7 @@ async def test_request_limiter_cascading_priority():
 
 async def test_request_limiter_priority_queueing():
     """Test that waiters are woken up according to their priority."""
-    limiter = datastructures.RequestLimiter({0: 1})
+    limiter = datastructures.RequestLimiter(1, {0: 1})
     events = []
 
     async def worker(uid, priority):
@@ -622,7 +603,7 @@ async def test_request_limiter_priority_queueing():
 
 async def test_request_limiter_cancellation():
     """Test cancelling tasks that are waiting for or holding a slot."""
-    limiter = datastructures.RequestLimiter({0: 1})
+    limiter = datastructures.RequestLimiter(1, {0: 1})
 
     async def holder():
         async with limiter(priority=0):
@@ -665,7 +646,7 @@ async def test_request_limiter_cancellation():
 
 async def test_request_limiter_invalid_priority():
     """Test that using a priority with no allocated tier raises an error."""
-    limiter = datastructures.RequestLimiter({10: 1})
+    limiter = datastructures.RequestLimiter(1, {10: 1})
 
     with pytest.raises(ValueError, match="Priority 5 has no capacity allocated"):
         async with limiter(priority=5):

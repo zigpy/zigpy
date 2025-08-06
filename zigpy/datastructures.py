@@ -341,23 +341,30 @@ class RequestLimiter:
     def __init__(self, max_concurrency: int, capacities: dict[int, float]) -> None:
         """Initializes the RequestLimiter."""
         self._lock = asyncio.Lock()
+        self._capacities_fractions = capacities
         self._sorted_priorities = sorted(capacities.keys())
 
-        # Calculate accessible (cascading) capacities
         self._accessible_capacity: dict[int, int] = {}
-        cumulative_capacity = 0
-
-        for priority in self._sorted_priorities:
-            capacity_fraction = capacities[priority] * max_concurrency
-            assert math.isclose(capacity_fraction, round(capacity_fraction))
-
-            cumulative_capacity += round(capacity_fraction)
-            self._accessible_capacity[priority] = cumulative_capacity
-
         self._total_capacity = max_concurrency
+        self._recalculate_capacity()
+
         self._active_requests_by_tier: typing.Counter[int] = collections.Counter()
         self._waiters: list[tuple[int, int, asyncio.Future]] = []
         self._comparison_counter = 0
+
+    def _recalculate_capacity(self) -> None:
+        cumulative_capacity = 0
+
+        for priority in self._sorted_priorities:
+            capacity_fraction = (
+                self._capacities_fractions[priority] * self._total_capacity
+            )
+            assert math.isclose(
+                capacity_fraction, round(capacity_fraction)
+            ), f"With max concurrency {self._total_capacity}, fraction {capacity_fraction} for priority {priority} is not an integer."
+
+            cumulative_capacity += round(capacity_fraction)
+            self._accessible_capacity[priority] = cumulative_capacity
 
     def __call__(self, priority: int = 0) -> _LimiterContext:
         """Returns an async context manager to safely acquire and release a slot."""
@@ -467,6 +474,18 @@ class RequestLimiter:
         for _, _, fut in self._waiters:
             if not fut.done():
                 fut.set_exception(exc)
+
+    @property
+    def max_concurrency(self) -> int:
+        """Returns the maximum concurrency of the limiter."""
+        return self._total_capacity
+
+    @max_concurrency.setter
+    def max_concurrency(self, new_value: int) -> None:
+        """Updates the maximum concurrency of the limiter."""
+        self._total_capacity = new_value
+        self._recalculate_capacity()
+        self._wake_waiters()
 
     def __repr__(self) -> str:
         """Provides a string representation of the limiter's state."""
