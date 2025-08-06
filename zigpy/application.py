@@ -1065,9 +1065,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         """Notify zigpy of a received Zigbee packet."""
-        
-        # self.notify_packet_received(packet)
-        
+
         LOGGER.debug("Received a packet: %r", packet)
         assert packet.src is not None
         assert packet.dst is not None
@@ -1208,25 +1206,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def register_packet_callback(
         self,
         filter: t.AddrModeAddress | None,
-        callback: typing.Callable[[t.ZigbeePacket], Any],
-        # Question: Can every device (including unknown, provide a full AddrModeAddress filter? And is AddrModeAddress always unique?)
-        # In what form do packets arrive? What does bellows send us?
-        # When we do a scan in interpan mode, what packets are received from unknown devices? What do unknown devices emit?
-        # What info do they have about the device? Has bellows created a ZigbeePacket?
-        ) -> typing.Callable[[], None]:
-
+        callback: typing.Callable[[t.ZigbeePacket], None],
+    ) -> typing.Callable[[], None]:
         """Register a callback that is called when a Zigbee packet is received.
 
         Args:
-            callback: Function to call when a packet is received.
-            filter: Optional address filter to apply to the received packets.
-                    If provided, only packets matching this address will trigger the callback.
+            filter: Optional address filter. If None, callback receives all packets.
+            If provided, only packets from this source address trigger the callback.
+            callback: Function to call when a matching packet is received.
 
         Returns:
             A callable that can be used to unregister the callback.
-            """
 
-        # Register the callback
+        """
         self._packet_callbacks[filter].append(callback)
 
         def cancel_callback() -> None:
@@ -1236,17 +1228,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         return cancel_callback
 
-    # notify packet callbacks when a packet is received, this would happen in packet_received() before any device lookup
-    # When a packet is received, we check if there is a callback waiting to be executed on it
     def notify_packet_callbacks(self, packet: t.ZigbeePacket) -> None:
         """Notify registered packet callbacks about a received Zigbee packet."""
+        
         # Notify global callbacks (registered with None filter)
-                
         for callback in self._packet_callbacks.get(None, []):
             try:
                 callback(packet)
             except Exception:
-                LOGGER.exception("Error in packet callback: %s", callback)
+                LOGGER.exception("Error in global packet callback: %s", callback)
         
         # Notify address-specific callbacks
         for callback in self._packet_callbacks.get(packet.src, []):
