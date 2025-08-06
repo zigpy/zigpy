@@ -1227,14 +1227,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def notify_packet_callbacks(self, packet: t.ZigbeePacket) -> None:
         """Notify registered packet callbacks about a received Zigbee packet."""
-        
+
         # Notify global callbacks (registered with None filter)
         for callback in self._packet_callbacks.get(None, []):
             try:
                 callback(packet)
             except Exception:
                 LOGGER.exception("Error in global packet callback: %s", callback)
-        
+
         # Notify address-specific callbacks
         for callback in self._packet_callbacks.get(packet.src, []):
             try:
