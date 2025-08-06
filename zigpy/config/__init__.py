@@ -5,10 +5,9 @@ from __future__ import annotations
 import voluptuous as vol
 
 from zigpy.config.defaults import (
+    CONF_CONCURRENCY_DEFAULT,
     CONF_DEVICE_BAUDRATE_DEFAULT,
     CONF_DEVICE_FLOW_CONTROL_DEFAULT,
-    CONF_CONCURRENCY_DEFAULT,
-    CONF_EXPERIMENTAL_WARNING_STRING,
     CONF_MAX_CONCURRENT_REQUESTS_DEFAULT,
     CONF_NWK_BACKUP_ENABLED_DEFAULT,
     CONF_NWK_BACKUP_PERIOD_DEFAULT,
@@ -94,12 +93,7 @@ CONF_TOPO_SCAN_ENABLED = "topology_scan_enabled"
 CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
 CONF_WATCHDOG_ENABLED = "watchdog_enabled"
 CONF_EXPERIMENTAL = "experimental"
-CONF_EXPERIMENTAL_WARNING = "warning"
 CONF_CONCURRENCY = "concurrency"
-CONF_CONCURRENCY_RESERVED_CAPACITY = "reserved_capacity"
-
-CONF_CONCURRENCY = CONF_CONCURRENCY
-CONF_CONCURRENCY_RESERVED_CAPACITY = CONF_CONCURRENCY_RESERVED_CAPACITY
 
 CONF_OTA_ALLOW_ADVANCED_DIR_STRING = (
     "I understand I can *destroy* my devices by enabling OTA updates from files."
@@ -361,11 +355,12 @@ SCHEMA_EXPERIMENTAL = vol.Schema(
                         float,
                         vol.Range(min=0, max=1, min_included=False, max_included=False),
                     )
-                    for name in t.PacketPriority.__members__
+                    for name, value in t.PacketPriority.__members__.items()
+                    if value != t.PacketPriority.CRITICAL
                 }
             ),
             # Coerce the key types
-            lambda d: {PacketPriority[k.upper()]: v for k, v in d.items()},
+            lambda d: {t.PacketPriority[k.upper()]: v for k, v in d.items()},
         ),
     }
 )
@@ -406,7 +401,7 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(
             CONF_WATCHDOG_ENABLED, default=CONF_WATCHDOG_ENABLED_DEFAULT
         ): cv_boolean,
-        vol.Optional(CONF_EXPERIMENTAL): SCHEMA_EXPERIMENTAL,
+        vol.Optional(CONF_EXPERIMENTAL, default={}): SCHEMA_EXPERIMENTAL,
     },
     extra=vol.ALLOW_EXTRA,
 )

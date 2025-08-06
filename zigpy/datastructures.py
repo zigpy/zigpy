@@ -7,8 +7,8 @@ import bisect
 import collections
 import contextlib
 import functools
-import math
 import heapq
+import math
 import types
 import typing
 
@@ -341,21 +341,18 @@ class RequestLimiter:
     def __init__(self, max_concurrency: int, capacities: dict[int, float]) -> None:
         """Initializes the RequestLimiter."""
         self._lock = asyncio.Lock()
-        
-        # Calculate actual capacities from fractions, ensuring at least 1 per priority
-        raw_capacities = {}
-        for priority, fraction in capacities.items():
-            raw_capacity = max(1, fraction * max_concurrency)
-            raw_capacities[priority] = raw_capacity
+        self._sorted_priorities = sorted(capacities.keys())
 
-        self._sorted_priorities = sorted(raw_capacities.keys())
-        
         # Calculate accessible (cascading) capacities
         self._accessible_capacity: dict[int, int] = {}
-        current_capacity = 0
+        cumulative_capacity = 0
+
         for priority in self._sorted_priorities:
-            current_capacity += raw_capacities[priority]
-            self._accessible_capacity[priority] = current_capacity
+            capacity_fraction = capacities[priority] * max_concurrency
+            assert math.isclose(capacity_fraction, round(capacity_fraction))
+
+            cumulative_capacity += round(capacity_fraction)
+            self._accessible_capacity[priority] = cumulative_capacity
 
         self._total_capacity = max_concurrency
         self._active_requests_by_tier: typing.Counter[int] = collections.Counter()

@@ -127,10 +127,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self._packet_debouncer = zigpy.datastructures.Debouncer()
         self._concurrent_requests_semaphore = zigpy.datastructures.RequestLimiter(
+            max_concurrency=MAX_DEVICE_CONCURRENCY,
             capacities={
-                t.PacketPriority.HIGH: 1,
-                t.PacketPriority.LOW: 1,
-            }
+                t.PacketPriority.HIGH: 0.5,
+                # t.PacketPriority.NORMAL is shared with LOW
+                t.PacketPriority.LOW: 0.5,
+            },
         )
 
         # Retained for backwards compatibility, will be removed in a future release
