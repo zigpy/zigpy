@@ -35,12 +35,8 @@ def test_deserialize_general(endpoint):
 
 
 def test_deserialize_general_unknown(endpoint):
-    hdr, args = endpoint.in_clusters[0].deserialize(b"\x00\x01\xff")
-    assert hdr.tsn == 1
-    assert hdr.frame_control.is_general is True
-    assert hdr.frame_control.is_cluster is False
-    assert hdr.command_id == 255
-    assert hdr.direction == foundation.Direction.Client_to_Server
+    with pytest.raises(ValueError):
+        endpoint.in_clusters[0].deserialize(b"\x00\x01\xff")
 
 
 def test_deserialize_cluster(endpoint):
@@ -68,10 +64,8 @@ def test_deserialize_cluster_unknown(endpoint):
 
 
 def test_deserialize_cluster_command_unknown(endpoint):
-    hdr, args = endpoint.in_clusters[0].deserialize(b"\x01\x01\xff")
-    assert hdr.tsn == 1
-    assert hdr.command_id == 255
-    assert hdr.direction == foundation.Direction.Client_to_Server
+    with pytest.raises(ValueError):
+        endpoint.in_clusters[0].deserialize(b"\x01\x01\xff")
 
 
 def test_unknown_cluster():

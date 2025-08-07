@@ -1237,7 +1237,7 @@ async def test_debouncing(dev):
     """Test that request debouncing filters out duplicate packets."""
 
     ep = dev.add_endpoint(1)
-    cluster = ep.add_input_cluster(0xEF00)
+    on_off = ep.add_output_cluster(OnOff.cluster_id)
 
     packet = t.ZigbeePacket(
         src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
@@ -1248,8 +1248,21 @@ async def test_debouncing(dev):
         extended_timeout=False,
         tsn=202,
         profile_id=260,
-        cluster_id=cluster.cluster_id,
-        data=t.SerializableBytes(b"\t6\x02\x00\x89m\x02\x00\x04\x00\x00\x00\x00"),
+        cluster_id=on_off.cluster_id,
+        data=t.SerializableBytes(
+            foundation.ZCLHeader(
+                frame_control=foundation.FrameControl(
+                    frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                    is_manufacturer_specific=False,
+                    direction=foundation.Direction.Client_to_Server,
+                    disable_default_response=True,
+                    reserved=0,
+                ),
+                tsn=1,
+                command_id=OnOff.ServerCommandDefs.toggle.id,
+            ).serialize()
+            + OnOff.ServerCommandDefs.toggle.schema().serialize()
+        ),
         tx_options=t.TransmitOptions.NONE,
         radius=0,
         non_member_radius=0,
