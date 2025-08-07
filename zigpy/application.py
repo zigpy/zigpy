@@ -95,7 +95,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # Add callback storage
         self._packet_callbacks: collections.defaultdict[
             t.AddrModeAddress | None,
-            list[typing.Callable[[t.ZigbeePacket], Any]]
+            list[typing.Callable[[t.ZigbeePacket], None]]
         ] = collections.defaultdict(list)
 
         # Context variable for request priority context manager
@@ -1220,7 +1220,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         def cancel_callback() -> None:
             """Remove the callback."""
-            if callback in self._packet_callbacks[filter]:
+            with contextlib.suppress(ValueError):
                 self._packet_callbacks[filter].remove(callback)
 
         return cancel_callback
@@ -1229,14 +1229,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Notify registered packet callbacks about a received Zigbee packet."""
 
         # Notify global callbacks (registered with None filter)
-        for callback in self._packet_callbacks.get(None, []):
+        for callback in self._packet_callbacks[None]:
             try:
                 callback(packet)
             except Exception:
                 LOGGER.exception("Error in global packet callback: %s", callback)
 
         # Notify address-specific callbacks
-        for callback in self._packet_callbacks.get(packet.src, []):
+        for callback in self._packet_callbacks[packet.src]:
             try:
                 callback(packet)
             except Exception:
