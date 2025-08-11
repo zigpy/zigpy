@@ -167,7 +167,7 @@ class AddsMetadata:
     endpoint_id: int = attrs.field(default=1)
     cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
     constant_attributes: frozendict[ZCLAttributeDef, Any] = attrs.field(
-        factory=frozendict
+        factory=frozendict, converter=frozendict
     )
 
     def __call__(self, device: CustomDeviceV2) -> None:
