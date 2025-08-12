@@ -683,6 +683,7 @@ async def test_configure_reporting_manuf():
         (0, "device_enabled", 0x10),
         (0, "alarm_mask", 0x18),
         (0x0202, "fan_mode", 0x30),
+        (0x0702, "summation_formatting", 0x18),
     ],
 )
 async def test_configure_reporting_types(cluster_id, attr, data_type, cluster_by_id):
