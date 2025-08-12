@@ -332,7 +332,7 @@ class _LimiterContext:
         traceback: types.TracebackType | None,
     ) -> None:
         """Release the slot back to the limiter."""
-        await self._limiter._release(self._priority)
+        self._limiter._release(self._priority)
 
 
 class RequestLimiter:
@@ -488,7 +488,7 @@ class RequestLimiter:
         finally:
             self._wake_waiters()
 
-    async def _release(self, priority: int = 0) -> None:
+    def _release(self, priority: int = 0) -> None:
         """Releases an acquired slot back to the limiter."""
         effective_tier = self._get_effective_priority_tier(priority)
         assert self._active_requests_by_tier[effective_tier] > 0
