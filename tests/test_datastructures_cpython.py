@@ -26,28 +26,31 @@ class SemaphoreTests(unittest.IsolatedAsyncioTestCase):
         sem = RequestLimiter(max_concurrency=0, capacities={1: 1.0})
         self.assertTrue(sem.locked(priority=1))
 
-    """
     async def test_repr(self):
         sem = RequestLimiter(max_concurrency=1, capacities={1: 1.0})
-        self.assertTrue(repr(sem).endswith("[unlocked, value:1]>"))
-        self.assertTrue(RGX_REPR.match(repr(sem)))
+        # RequestLimiter format: <RequestLimiter(max_concurrency=1, active=0, waiting=0)>
+        self.assertIn("max_concurrency=1", repr(sem))
+        self.assertIn("active=0", repr(sem))
+        self.assertIn("waiting=0", repr(sem))
 
         await sem._acquire(priority=1)
-        self.assertTrue(repr(sem).endswith("[locked]>"))
-        self.assertTrue("waiters" not in repr(sem))
-        self.assertTrue(RGX_REPR.match(repr(sem)))
+        self.assertIn("active=1", repr(sem))
+        self.assertIn("waiting=0", repr(sem))
 
-        if sem._waiters is None:
-            sem._waiters = collections.deque()
+        # Start tasks that will wait since semaphore is already acquired
+        task1 = asyncio.create_task(sem._acquire(priority=1))
+        await asyncio.sleep(0)  # Let task1 start and get queued
+        self.assertIn("waiting=1", repr(sem))
 
-        sem._waiters.append(mock.Mock())
-        self.assertTrue("waiters:1" in repr(sem))
-        self.assertTrue(RGX_REPR.match(repr(sem)))
+        task2 = asyncio.create_task(sem._acquire(priority=1))
+        await asyncio.sleep(0)  # Let task2 start and get queued
+        self.assertIn("waiting=2", repr(sem))
 
-        sem._waiters.append(mock.Mock())
-        self.assertTrue("waiters:2" in repr(sem))
-        self.assertTrue(RGX_REPR.match(repr(sem)))
-    """
+        # Clean up
+        task1.cancel()
+        task2.cancel()
+
+        await asyncio.gather(task1, task2, return_exceptions=True)
 
     async def test_semaphore(self):
         sem = RequestLimiter(max_concurrency=1, capacities={1: 1.0})
