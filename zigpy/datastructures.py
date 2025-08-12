@@ -406,12 +406,6 @@ class RequestLimiter:
             )
 
         idx = bisect.bisect_right(self._sorted_priorities, priority)
-
-        # Priorities higher than the highest known still use the highest tier. This is
-        # technically handled by the line above but we want to be explicit.
-        if idx == 0:
-            return self._sorted_priorities[-1]
-
         return self._sorted_priorities[idx - 1]
 
     def locked(self, priority: int) -> bool:
