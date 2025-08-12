@@ -448,7 +448,7 @@ class RequestLimiter:
             else:
                 break
 
-    async def _acquire(self, priority: int = 0) -> None:
+    async def _acquire(self, priority: int = 0) -> bool:
         """Acquires a slot in the limiter, waiting if necessary."""
         effective_tier = self._get_effective_priority_tier(priority)
 
@@ -462,7 +462,7 @@ class RequestLimiter:
 
         if not self.locked(priority) and priority > highest_waiter_priority:
             self._active_requests_by_tier[effective_tier] += 1
-            return
+            return True
 
         # To ensure that our objects don't have to be themselves comparable, we
         # maintain a global count and increment it on every insert. This way,
@@ -475,6 +475,7 @@ class RequestLimiter:
         try:
             try:
                 await fut
+                return True
             finally:
                 if waiter_obj in self._waiters:
                     self._waiters.remove(waiter_obj)
