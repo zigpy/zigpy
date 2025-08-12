@@ -13,7 +13,7 @@ from types import FrameType
 from typing import TYPE_CHECKING, Any, Callable
 
 import attrs
-from frozendict import deepfreeze, frozendict
+from frozendict import frozendict
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -167,7 +167,7 @@ class AddsMetadata:
     endpoint_id: int = attrs.field(default=1)
     cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
     constant_attributes: frozendict[ZCLAttributeDef, Any] = attrs.field(
-        factory=frozendict, converter=deepfreeze
+        factory=frozendict, converter=frozendict
     )
 
     def __call__(self, device: CustomDeviceV2) -> None:
@@ -530,7 +530,10 @@ class QuirksV2RegistryEntry:
     ] = attrs.field(factory=tuple)
     device_automation_triggers_metadata: frozendict[
         tuple[str, str], frozendict[str, str]
-    ] = attrs.field(factory=frozendict, converter=deepfreeze)
+    ] = attrs.field(
+        factory=frozendict,
+        converter=lambda d: frozendict({k: frozendict(v) for k, v in d.items()}),
+    )
 
     def matches_device(self, device: Device) -> bool:
         """Determine if this quirk should be applied to the passed in device."""

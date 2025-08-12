@@ -1014,12 +1014,12 @@ async def test_quirks_v2_matches_v1(app_mock):
     triggers = {
         (SHORT_PRESS, TURN_ON): {
             COMMAND: COMMAND_TOGGLE,
-            CLUSTER_ID: 6,
+            CLUSTER_ID: OnOff.cluster_id,
             ENDPOINT_ID: 1,
         },
         (LONG_PRESS, TURN_ON): {
             COMMAND: COMMAND_RELEASE,
-            CLUSTER_ID: 5,
+            CLUSTER_ID: Scenes.cluster_id,
             ENDPOINT_ID: 1,
             PARAMS: {"param1": 0},
         },
@@ -1153,6 +1153,12 @@ async def test_quirks_v2_matches_v1(app_mock):
         )
 
     assert quirked.device_automation_triggers == quirked_v2.device_automation_triggers
+    assert (
+        quirked.device_automation_triggers[("remote_button_long_press", "turn_on")][
+            "cluster_id"
+        ]
+        == 0x0005
+    )
 
 
 async def test_quirks_v2_add_to_registry_v2_logs_error(caplog):
