@@ -340,6 +340,9 @@ class RequestLimiter:
 
     def __init__(self, max_concurrency: int, capacities: dict[int, float]) -> None:
         """Initializes the RequestLimiter."""
+        if max_concurrency < 0:
+            raise ValueError(f"max_concurrency must be >= 0: {max_concurrency}")
+
         self._lock = asyncio.Lock()
         self._capacity_fractions = dict(sorted(capacities.items()))
         self._sorted_priorities = list(capacities.keys())
@@ -416,6 +419,9 @@ class RequestLimiter:
         effective_tier = self._get_effective_priority_tier(priority)
         limit = self._cumulative_capacity[effective_tier]
         waiting_requests = 0
+
+        if limit == 0:
+            return True
 
         for tier, count in self._active_requests_by_tier.items():
             if tier > effective_tier:
