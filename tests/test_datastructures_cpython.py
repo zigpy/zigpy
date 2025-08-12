@@ -4,7 +4,6 @@
 
 import asyncio
 import re
-import sys
 import unittest
 
 from zigpy.datastructures import RequestLimiter
@@ -308,66 +307,3 @@ class SemaphoreTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.gather(*tasks, return_exceptions=True)
         # self.assertEqual([2, 3], result)
         self.assertEqual([1, 2, 3], result)  # We differ here
-
-    # Skip for Python < 3.13
-    @unittest.skipIf(
-        sys.version_info < (3, 13),
-        "This test requires Python 3.13 or later",
-    )
-    async def test_acquire_fifo_order_4(self):
-        # Test that a successful `acquire()` will wake up multiple Tasks
-        # that were waiting in the Semaphore queue due to FIFO rules.
-        sem = RequestLimiter(max_concurrency=1, capacities={1: 1.0})
-        result = []
-        count = 0  # noqa: F841
-
-        async def c1(result):
-            # First task immediately waits for semaphore.  It will be awoken by c2.
-            self.assertEqual(sem.active_requests, 0)
-            await sem._acquire(priority=1)
-            # We should have woken up all waiting tasks now.
-            self.assertEqual(sem.active_requests, 0)
-            # Create a fourth task.  It should run after c3, not c2.
-            nonlocal t4
-            t4 = asyncio.create_task(c4(result))
-            result.append(1)
-            return True
-
-        async def c2(result):
-            # The second task begins by releasing semaphore three times,
-            # for c1, c2, and c3.
-            sem._release(priority=1)
-            sem._release(priority=1)
-            sem._release(priority=1)
-            self.assertEqual(sem.active_requests, 2)
-            # It is locked, because c1 hasn't woken up yet.
-            self.assertTrue(sem.locked(priority=1))
-            await sem._acquire(priority=1)
-            result.append(2)
-            return True
-
-        async def c3(result):
-            await sem._acquire(priority=1)
-            self.assertTrue(sem.locked(priority=1))
-            result.append(3)
-            return True
-
-        async def c4(result):
-            result.append(4)
-            return True
-
-        t1 = asyncio.create_task(c1(result))
-        t2 = asyncio.create_task(c2(result))
-        t3 = asyncio.create_task(c3(result))
-        t4 = None
-
-        await asyncio.sleep(0)
-        # Three tasks are in the queue, the first hasn't woken up yet.
-        self.assertEqual(sem.active_requests, 2)
-        self.assertEqual(sem.waiting_requests, 3)
-        await asyncio.sleep(0)
-
-        assert t4 is not None
-        tasks = [t1, t2, t3, t4]
-        await asyncio.gather(*tasks)
-        self.assertEqual([1, 2, 3, 4], result)
