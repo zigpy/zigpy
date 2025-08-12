@@ -344,8 +344,8 @@ class RequestLimiter:
             raise ValueError(f"max_concurrency must be >= 0: {max_concurrency}")
 
         self._lock = asyncio.Lock()
-        self._capacity_fractions = dict(sorted(capacities.items()))
-        self._sorted_priorities = list(capacities.keys())
+        self._capacity_fractions = capacities
+        self._sorted_priorities = sorted(capacities.keys())
 
         self._cumulative_capacity: dict[int, int] = {}
         self._max_concurrency = max_concurrency
