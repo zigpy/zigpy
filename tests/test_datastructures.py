@@ -664,3 +664,52 @@ async def test_request_limiter_highest_priority():
         assert limiter.active_requests == 1
 
         assert limiter.locked(priority=100)
+
+
+async def test_request_limiter_max_concurrency_property():
+    """Test the max_concurrency property getter."""
+    limiter = datastructures.RequestLimiter(5, {1: 1.0})
+    assert limiter.max_concurrency == 5
+
+
+async def test_request_limiter_non_integer_capacity_fraction():
+    """Test that non-integer capacity fractions raise ValueError."""
+    # This should work - 3 * 0.5 = 1.5, not an integer
+    with pytest.raises(ValueError, match="is not an integer"):
+        datastructures.RequestLimiter(3, {1: 0.5})
+
+
+async def test_request_limiter_priority_higher_than_known():
+    """Test priority higher than the highest known tier."""
+    limiter = datastructures.RequestLimiter(2, {5: 0.5, 10: 0.5})
+
+    # Priority 15 is higher than highest known (10), should use highest tier
+    async with limiter(priority=15):
+        assert limiter.active_requests == 1
+
+
+async def test_request_limiter_cancel_waiting():
+    """Test cancelling all waiting tasks."""
+    limiter = datastructures.RequestLimiter(1, {1: 1.0})
+
+    # Acquire the limiter first
+    async with limiter(priority=1):
+        # Create waiting tasks
+        async def waiter():
+            await limiter._acquire(priority=1)
+
+        task1 = asyncio.create_task(waiter())
+        task2 = asyncio.create_task(waiter())
+        await asyncio.sleep(0)  # Let tasks start waiting
+
+        assert limiter.waiting_requests == 2
+
+        # Cancel all waiting tasks
+        exc = RuntimeError("Test cancellation")
+        limiter.cancel_waiting(exc)
+
+        # Tasks should be cancelled with the provided exception
+        with pytest.raises(RuntimeError, match="Test cancellation"):
+            await task1
+        with pytest.raises(RuntimeError, match="Test cancellation"):
+            await task2
