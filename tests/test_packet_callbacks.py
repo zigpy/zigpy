@@ -1,5 +1,7 @@
 import pytest
+
 import zigpy.types as t
+
 from .async_mock import MagicMock, call
 from .conftest import make_ieee
 
@@ -46,7 +48,9 @@ async def test_packet_callback_register_cancel(app, filter_address):
         (t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x5678), False),
     ],
 )
-async def test_packet_callback_address_filter(app, base_packet, src_address, should_trigger):
+async def test_packet_callback_address_filter(
+    app, base_packet, src_address, should_trigger
+):
     """Source address match."""
     filt = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x1234)
     cb = MagicMock()
@@ -83,8 +87,8 @@ async def test_packet_callback_multiple_same_filter(app, base_packet):
     cancel1()
     pkt2 = base_packet.replace(src=addr, tsn=201)
     app.notify_packet_callbacks(pkt2)
-    assert cb1.mock_calls == [call(pkt1)] 
-    assert cb2.mock_calls == [call(pkt1), call(pkt2)] 
+    assert cb1.mock_calls == [call(pkt1)]
+    assert cb2.mock_calls == [call(pkt1), call(pkt2)]
 
 
 async def test_packet_callback_exception_global(app, base_packet, caplog):

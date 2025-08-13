@@ -94,8 +94,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         # Add callback storage
         self._packet_callbacks: collections.defaultdict[
-            t.AddrModeAddress | None,
-            list[typing.Callable[[t.ZigbeePacket], None]]
+            t.AddrModeAddress | None, list[typing.Callable[[t.ZigbeePacket], None]]
         ] = collections.defaultdict(list)
 
         # Context variable for request priority context manager
@@ -1208,11 +1207,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Register a callback that is called when a Zigbee packet is received.
 
         Args:
+        ----
             filter: Optional address filter. If None, callback receives all packets.
             If provided, only packets from this source address trigger the callback.
             callback: Function to call when a matching packet is received.
 
         Returns:
+        -------
             A callable that can be used to unregister the callback.
 
         """
