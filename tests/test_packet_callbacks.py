@@ -92,11 +92,25 @@ async def test_packet_callback_multiple_same_filter(app, base_packet):
 
 
 async def test_packet_callback_exception_global(app, base_packet, caplog):
-    """Exception isolation."""
+    """Exception isolation for global callbacks."""
     failing = MagicMock(side_effect=ValueError("boom"))
     ok = MagicMock()
     app.register_packet_callback(None, failing)
     app.register_packet_callback(None, ok)
     app.notify_packet_callbacks(base_packet)
     assert ok.mock_calls == [call(base_packet)]
-    assert any("packet callback" in r.message.lower() for r in caplog.records)
+    assert any("global packet callback" in r.message.lower() for r in caplog.records)
+
+
+async def test_packet_callback_exception_address(app, base_packet, caplog):
+    """Exception isolation for address-specific callbacks."""
+    addr = base_packet.src
+    failing = MagicMock(side_effect=ValueError("boom"))
+    ok = MagicMock()
+    app.register_packet_callback(addr, failing)
+    app.register_packet_callback(addr, ok)
+    app.notify_packet_callbacks(base_packet)
+    assert ok.mock_calls == [call(base_packet)]
+    assert any(
+        "packet callback for address" in r.message.lower() for r in caplog.records
+    )
