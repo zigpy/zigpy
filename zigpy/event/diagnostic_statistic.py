@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 from .event_base import EventBase
 
 T = TypeVar("T", int, float)
 
 
-@dataclass(frozen=True, kw_only=True)
+# TODO: once we drop 3.9, this can be moved into the dataclass with `kw_only=True`
+DIAGNOSTICS_STATISTIC_CHANGE_EVENT_TYPE: str = "diagnostic_statistics_change"
+
+
+@dataclass(frozen=True)
 class DiagnosticStatisticChangeEvent:
-    event_type: str = "diagnostic_statistics_change"
+    event_type: Literal[DIAGNOSTICS_STATISTIC_CHANGE_EVENT_TYPE]
 
     name: str
     old_value: T
@@ -36,6 +40,7 @@ class DiagnosticStatistic(EventBase):
         self.emit(
             DiagnosticStatisticChangeEvent.event_type,
             DiagnosticStatisticChangeEvent(
+                event_type=DIAGNOSTICS_STATISTIC_CHANGE_EVENT_TYPE,
                 name=self.name,
                 old_value=old_value,
                 new_value=self.value,
