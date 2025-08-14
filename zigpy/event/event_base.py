@@ -7,12 +7,15 @@ from collections.abc import Callable
 import dataclasses
 import inspect
 import logging
+import sys
 from typing import Any
 
 _LOGGER = logging.getLogger(__package__)
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
+@dataclasses.dataclass(
+    frozen=True, **({"slots": True} if sys.version_info >= (3, 10) else {})
+)
 class EventListener:
     """Listener for an event."""
 
