@@ -129,7 +129,6 @@ async def test_event_base_emit_coro():
     event.once("test", callback)
     event.emit("test", "data")
 
-    await asyncio.sleep(0)
     await asyncio.gather(*event._event_tasks)
 
     assert callback.await_count == 1
@@ -141,7 +140,6 @@ async def test_event_base_emit_coro():
     unsub = event.on_event("test", callback)
     event.emit("test", "data")
 
-    await asyncio.sleep(0)
     await asyncio.gather(*event._event_tasks)
 
     assert callback.await_count == 1
@@ -154,7 +152,6 @@ async def test_event_base_emit_coro():
     unsub = event.on_all_events(callback)
     event.emit("test", "data")
 
-    await asyncio.sleep(0)
     await asyncio.gather(*event._event_tasks)
 
     assert callback.await_count == 1
@@ -168,7 +165,6 @@ async def test_event_base_emit_coro():
 
     event.emit(test_event.event, test_event)
 
-    await asyncio.sleep(0)
     await asyncio.gather(*event._event_tasks)
 
     assert event.handle_test.await_count == 1
@@ -187,7 +183,6 @@ async def test_event_emit_with_context():
     event.once("test", async_callback, with_context=True)
     event.emit("test", "data")
 
-    await asyncio.sleep(0)
     await asyncio.gather(*event._event_tasks)
 
     sync_callback.assert_called_once_with("test", "data")
