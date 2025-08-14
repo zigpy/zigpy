@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeVar
 
-from .event import EventBase
+from .event_base import EventBase
 
 T = TypeVar("T", int, float)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class DiagnosticStatisticChangeEvent:
     event_type: str = "diagnostic_statistics_change"
 

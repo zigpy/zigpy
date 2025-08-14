@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
-from zigpy.event import EventBase, EventListener
+from zigpy.event import EventBase
+from zigpy.event.event_base import EventListener
 
 
 class EventGenerator(EventBase):
