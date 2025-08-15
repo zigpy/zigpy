@@ -37,8 +37,11 @@ class DiagnosticStatistic(EventBase):
         old_value = self.value
         self.value = new_value
 
+        if old_value == new_value:
+            return
+
         self.emit(
-            DiagnosticStatisticChangeEvent.event_type,
+            DIAGNOSTICS_STATISTIC_CHANGE_EVENT_TYPE,
             DiagnosticStatisticChangeEvent(
                 event_type=DIAGNOSTICS_STATISTIC_CHANGE_EVENT_TYPE,
                 name=self.name,
