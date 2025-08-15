@@ -5,10 +5,15 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 import dataclasses
-import inspect
 import logging
 import sys
 from typing import Any
+
+if sys.version_info >= (3, 10):
+    from inspect import iscoroutinefunction
+else:
+    # https://github.com/python/cpython/issues/84753
+    from asyncio import iscoroutinefunction
 
 _LOGGER = logging.getLogger(__package__)
 
@@ -67,7 +72,7 @@ class EventBase:
         self, event_name: str, callback: Callable, with_context: bool = False
     ) -> Callable:
         """Listen for an event exactly once."""
-        if inspect.iscoroutinefunction(callback):
+        if iscoroutinefunction(callback):
 
             async def async_event_listener(*args, **kwargs) -> None:
                 unsub()
@@ -103,7 +108,7 @@ class EventBase:
             else:
                 call = listener.callback(data)
 
-            if inspect.iscoroutinefunction(listener.callback):
+            if iscoroutinefunction(listener.callback):
                 task = asyncio.create_task(call)
                 self._event_tasks.append(task)
                 task.add_done_callback(self._event_tasks.remove)
@@ -117,7 +122,7 @@ class EventBase:
         if handler is None:
             _LOGGER.warning("Received unknown event: %s", event)
             return
-        if inspect.iscoroutinefunction(handler):
+        if iscoroutinefunction(handler):
             task = asyncio.create_task(handler(event))
             self._event_tasks.append(task)
             task.add_done_callback(self._event_tasks.remove)
