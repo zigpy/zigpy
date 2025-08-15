@@ -832,15 +832,16 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return
 
         # Pass the request off to a listener, if one is registered
-        for listener in itertools.chain(
-            self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
-            self._application._req_listeners[self],
-        ):
-            # Resolve only until the first future listener
-            if listener.resolve(hdr, cmd) and isinstance(
-                listener, zigpy.listeners.FutureListener
+        if not isinstance(cmd, bytes):
+            for listener in itertools.chain(
+                self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
+                self._application._req_listeners[self],
             ):
-                break
+                # Resolve only until the first future listener
+                if listener.resolve(hdr, cmd) and isinstance(
+                    listener, zigpy.listeners.FutureListener
+                ):
+                    break
 
         # Finally, pass it off to the cluster message handler. This will be removed.
         if zcl_cluster is not None:
