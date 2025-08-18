@@ -41,7 +41,7 @@ class BaseRequestListener:
             elif callable(matcher):
                 match = matcher(hdr, command)
             else:
-                LOGGER.warning(
+                LOGGER.debug(
                     "Matcher %r and command %r %r are incompatible",
                     matcher,
                     hdr,
