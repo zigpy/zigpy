@@ -157,7 +157,7 @@ async def test_listener_callback_invalid_matcher(caplog):
         callback=mock.Mock(),
     )
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.DEBUG):
         assert not listener.resolve(make_hdr(off()), off())
 
     assert listener.callback.mock_calls == []
@@ -170,7 +170,7 @@ async def test_listener_callback_invalid_call(caplog):
         callback=mock.Mock(),
     )
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.DEBUG):
         assert not listener.resolve(make_hdr(on()), b"data")
 
     assert listener.callback.mock_calls == []
