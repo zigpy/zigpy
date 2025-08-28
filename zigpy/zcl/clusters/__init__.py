@@ -7,6 +7,7 @@ from . import (
     closures,
     general,
     general_const as general_const,  # noqa: PLC0414
+    greenpower,
     homeautomation,
     hvac,
     lighting,
@@ -24,6 +25,7 @@ CLUSTERS_BY_NAME: dict[str, Cluster] = {}
 for cls in (
     closures,
     general,
+    greenpower,
     homeautomation,
     hvac,
     lighting,
