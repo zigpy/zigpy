@@ -16,18 +16,19 @@ from zigpy.zcl.foundation import (
 import zigpy.zgp.types as zgptypes
 
 
+class CommissioningNotificationOptions(t.Struct):
+    application_id: zgptypes.ApplicationID
+    rx_after_tx: t.uint1_t
+    security_level: zgptypes.SecurityLevel
+    security_key_type: zgptypes.SecurityKeyType
+    security_failed: t.uint1_t
+    bidirectional_cap: t.uint1_t
+    proxy_info_present: t.uint1_t
+    _reserved: t.uint6_t
+
+
 # Figure 27
 class CommissioningNotificationSchema(foundation.CommandSchema):
-    class CommissioningNotificationOptions(t.Struct):
-        application_id: zgptypes.ApplicationID
-        rx_after_tx: t.uint1_t
-        security_level: zgptypes.SecurityLevel
-        security_key_type: zgptypes.SecurityKeyType
-        security_failed: t.uint1_t
-        bidirectional_cap: t.uint1_t
-        proxy_info_present: t.uint1_t
-        _reserved: t.uint6_t
-
     options: CommissioningNotificationOptions
     gpd_id: zgptypes.DeviceID
     frame_counter: t.uint32_t
@@ -42,12 +43,13 @@ class CommissioningNotificationSchema(foundation.CommandSchema):
     mic: t.uint32_t = StructField(requires=lambda s: s.security_failed, optional=True)
 
 
+class ResponseOptions(t.Struct):
+    application_id: zgptypes.ApplicationID
+    _reserved: t.uint5_t
+
+
 # Figure 45
 class ResponseSchema(foundation.CommandSchema):
-    class ResponseOptions(t.Struct):
-        application_id: zgptypes.ApplicationID
-        _reserved: t.uint5_t
-
     options: ResponseOptions
     temp_master_short_addr: t.uint16_t
     temp_master_tx_channel: t.uint8_t
@@ -56,36 +58,38 @@ class ResponseSchema(foundation.CommandSchema):
     gpd_command_payload: t.LVBytes
 
 
+# Figure 26
+class PairingSearchOptions(t.Struct):
+    application_id: zgptypes.ApplicationID
+    request_unicast_sink: t.uint1_t
+    request_derived_groupcast_sink: t.uint1_t
+    request_commissioned_groupcast_sink: t.uint1_t
+    request_frame_counter: t.uint1_t
+    request_security_key: t.uint1_t
+    _reserved: t.uint8_t
+
+
 # Figure 25
 class PairingSearchSchema(foundation.CommandSchema):
-    # Figure 26
-    class PairingSearchOptions(t.Struct):
-        application_id: zgptypes.ApplicationID
-        request_unicast_sink: t.uint1_t
-        request_derived_groupcast_sink: t.uint1_t
-        request_commissioned_groupcast_sink: t.uint1_t
-        request_frame_counter: t.uint1_t
-        request_security_key: t.uint1_t
-        _reserved: t.uint8_t
-
     options: PairingSearchOptions
     gpd_id: zgptypes.DeviceID
 
 
+# Figure 24
+class NotificationOptions(t.Struct):
+    application_id: zgptypes.ApplicationID
+    also_unicast: t.uint1_t
+    also_derived_group: t.uint1_t
+    also_commissioned_group: t.uint1_t
+    security_level: zgptypes.SecurityLevel
+    security_key_type: zgptypes.SecurityKeyType
+    appoint_temp_master: t.uint1_t
+    tx_queue_full: t.uint1_t
+    _reserved: t.uint3_t
+
+
 # Figure 23
 class NotificationSchema(foundation.CommandSchema):
-    # Figure 24
-    class NotificationOptions(t.Struct):
-        application_id: zgptypes.ApplicationID
-        also_unicast: t.uint1_t
-        also_derived_group: t.uint1_t
-        also_commissioned_group: t.uint1_t
-        security_level: zgptypes.SecurityLevel
-        security_key_type: zgptypes.SecurityKeyType
-        appoint_temp_master: t.uint1_t
-        tx_queue_full: t.uint1_t
-        _reserved: t.uint3_t
-
     options: NotificationOptions
     gpd_id: zgptypes.DeviceID
     frame_counter: t.uint32_t
@@ -99,24 +103,25 @@ class NotificationSchema(foundation.CommandSchema):
     )
 
 
+# Figure 40, 41
+class PairingOptions(t.Struct):
+    application_id: zgptypes.ApplicationID
+    add_sink: t.uint1_t
+    remove_gpd: t.uint1_t
+    communication_mode: zgptypes.CommunicationMode
+    gpd_fixed: t.uint1_t
+    gpd_mac_seq_num_cap: t.uint1_t
+    security_level: zgptypes.SecurityLevel
+    security_key_type: zgptypes.SecurityKeyType
+    security_frame_counter_present: t.uint1_t
+    security_key_present: t.uint1_t
+    assigned_alias_present: t.uint1_t
+    forwarding_radius_present: t.uint1_t
+    _reserved: t.uint6_t
+
+
 # Figure 38, 39
 class PairingSchema(foundation.CommandSchema):
-    # Figure 40, 41
-    class PairingOptions(t.Struct):
-        application_id: zgptypes.ApplicationID
-        add_sink: t.uint1_t
-        remove_gpd: t.uint1_t
-        communication_mode: zgptypes.CommunicationMode
-        gpd_fixed: t.uint1_t
-        gpd_mac_seq_num_cap: t.uint1_t
-        security_level: zgptypes.SecurityLevel
-        security_key_type: zgptypes.SecurityKeyType
-        security_frame_counter_present: t.uint1_t
-        security_key_present: t.uint1_t
-        assigned_alias_present: t.uint1_t
-        forwarding_radius_present: t.uint1_t
-        _reserved: t.uint6_t
-
     options: PairingOptions
     gpd_id: zgptypes.DeviceID
     # Table 37
@@ -170,28 +175,30 @@ class PairingSchema(foundation.CommandSchema):
     )
 
 
-class NotificationResponseSchema(foundation.CommandSchema):
-    # Figure 37
-    class NotificationResponseOptions(t.Struct):
-        application_id: zgptypes.ApplicationID
-        first_to_forward: t.uint1_t
-        no_pairing: t.uint1_t
-        _reserved: t.uint3_t
+# Figure 37
+class NotificationResponseOptions(t.Struct):
+    application_id: zgptypes.ApplicationID
+    first_to_forward: t.uint1_t
+    no_pairing: t.uint1_t
+    _reserved: t.uint3_t
 
+
+class NotificationResponseSchema(foundation.CommandSchema):
     options: NotificationResponseOptions
     gpd_id: zgptypes.DeviceID
     frame_counter: t.uint32_t
 
 
-class ProxyCommissioningModeSchema(foundation.CommandSchema):
-    # Figure 43
-    class ProxyCommissioningModeOptions(t.Struct):
-        enter: t.uint1_t
-        exit_mode: zgptypes.ProxyCommissioningModeExitMode
-        channel_present: t.uint1_t
-        unicast: t.uint1_t
-        _reserved: t.uint2_t
+# Figure 43
+class ProxyCommissioningModeOptions(t.Struct):
+    enter: t.uint1_t
+    exit_mode: zgptypes.ProxyCommissioningModeExitMode
+    channel_present: t.uint1_t
+    unicast: t.uint1_t
+    _reserved: t.uint2_t
 
+
+class ProxyCommissioningModeSchema(foundation.CommandSchema):
     options: ProxyCommissioningModeOptions
     window: t.uint16_t = StructField(optional=True)
 
