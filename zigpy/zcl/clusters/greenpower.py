@@ -18,7 +18,17 @@ import zigpy.zgp.types as zgptypes
 
 # Figure 27
 class CommissioningNotificationSchema(foundation.CommandSchema):
-    options: t.bitmap16
+    class CommissioningNotificationOptions(t.IntStruct, t.uint16_t):
+        application_id: zgptypes.ApplicationID
+        rx_after_tx: t.uint1_t
+        security_level: zgptypes.SecurityLevel
+        security_key_type: zgptypes.SecurityKeyType
+        security_failed: t.uint1_t
+        bidirectional_cap: t.uint1_t
+        proxy_info_present: t.uint1_t
+        _reserved: t.uint6_t
+
+    options: CommissioningNotificationOptions
     gpd_id: zgptypes.DeviceID
     frame_counter: t.uint32_t
     command_id: t.uint8_t
@@ -31,140 +41,83 @@ class CommissioningNotificationSchema(foundation.CommandSchema):
     )
     mic: t.uint32_t = StructField(requires=lambda s: s.security_failed, optional=True)
 
-    @property
-    def application_id(self) -> zgptypes.ApplicationID:
-        return zgptypes.ApplicationID(self.options & 0b111)
 
-    @property
-    def rx_after_tx(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 3) & 0x01)
-
-    @property
-    def security_level(self) -> zgptypes.SecurityLevel:
-        return zgptypes.SecurityLevel((self.options >> 4) & 0b11)
-
-    @property
-    def security_key_type(self) -> zgptypes.SecurityKeyType:
-        return zgptypes.SecurityKeyType((self.options >> 6) & 0b111)
-
-    @property
-    def security_failed(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 9) & 0x01)
-
-    @property
-    def bidirectional_cap(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 10) & 0x01)
-
-    @property
-    def proxy_info_present(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 11) & 0x01)
-
-
-# ZGP spec Figure 45
+# Figure 45
 class ResponseSchema(foundation.CommandSchema):
-    options: t.bitmap8
+    class ResponseOptions(t.IntStruct, t.uint8_t):
+        application_id: zgptypes.ApplicationID
+        _reserved: t.uint5_t
+
+    options: ResponseOptions
     temp_master_short_addr: t.uint16_t
     temp_master_tx_channel: t.uint8_t
     gpd_id: zgptypes.DeviceID
     gpd_command_id: t.uint8_t
     gpd_command_payload: t.LVBytes
 
-    @property
-    def application_id(self) -> zgptypes.ApplicationID:
-        return zgptypes.ApplicationID(self.options & 0b111)
 
-    @application_id.setter
-    def application_id(self, value: zgptypes.ApplicationID):
-        self.options = (self.options & ~(0b111)) | value
-
-
-# ZGP spec Figure 26
+# Figure 25
 class PairingSearchSchema(foundation.CommandSchema):
-    options: t.bitmap16
+    # Figure 26
+    class PairingSearchOptions(t.IntStruct, t.uint16_t):
+        application_id: zgptypes.ApplicationID
+        request_unicast_sink: t.uint1_t
+        request_derived_groupcast_sink: t.uint1_t
+        request_commissioned_groupcast_sink: t.uint1_t
+        request_frame_counter: t.uint1_t
+        request_security_key: t.uint1_t
+        _reserved: t.uint8_t
+
+    options: PairingSearchOptions
     gpd_id: zgptypes.DeviceID
 
-    @property
-    def application_id(self) -> zgptypes.ApplicationID:
-        return zgptypes.ApplicationID(self.options & 0b111)
 
-    @property
-    def request_unicast_sink(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 3) & 0x01)
-
-    @property
-    def request_derived_groupcast_sink(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 4) & 0x01)
-
-    @property
-    def request_commissioned_groupcast_sink(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 5) & 0x01)
-
-    @property
-    def request_frame_counter(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 6) & 0x01)
-
-    @property
-    def request_security_key(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 7) & 0x01)
-
-
+# Figure 23
 class NotificationSchema(foundation.CommandSchema):
-    options: t.bitmap16
+    # Figure 24
+    class NotificationOptions(t.IntStruct, t.uint16_t):
+        application_id: zgptypes.ApplicationID
+        also_unicast: t.uint1_t
+        also_derived_group: t.uint1_t
+        also_commissioned_group: t.uint1_t
+        security_level: zgptypes.SecurityLevel
+        security_key_type: zgptypes.SecurityKeyType
+        appoint_temp_master: t.uint1_t
+        tx_queue_full: t.uint1_t
+        _reserved: t.uint3_t
+
+    options: NotificationOptions
     gpd_id: zgptypes.DeviceID
     frame_counter: t.uint32_t
     command_id: t.uint8_t
     payload: t.LVBytes
     short_addr: t.uint16_t = StructField(
-        requires=lambda s: s.proxy_info_present, optional=True
+        requires=lambda s: s.options.appoint_temp_master, optional=True
     )
     distance: t.uint8_t = StructField(
-        requires=lambda s: s.proxy_info_present, optional=True
+        requires=lambda s: s.options.appoint_temp_master, optional=True
     )
 
-    @property
-    def application_id(self) -> zgptypes.ApplicationID:
-        return zgptypes.ApplicationID(self.options & 0b111)
 
-    @property
-    def also_unicast(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 3) & 0x01)
-
-    @property
-    def also_derived_group(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 4) & 0x01)
-
-    @property
-    def also_commissioned_group(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 5) & 0x01)
-
-    @property
-    def security_level(self) -> zgptypes.SecurityLevel:
-        return zgptypes.SecurityLevel((self.options >> 6) & 0b11)
-
-    @property
-    def security_key_type(self) -> zgptypes.SecurityKeyType:
-        return zgptypes.SecurityKeyType((self.options >> 8) & 0b111)
-
-    # XXX: these come from Wireshark, not the spec!
-    @property
-    def rx_after_tx(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 11) & 0x01)
-
-    @property
-    def gpp_tx_queue_full(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 12) & 0x01)
-
-    @property
-    def bidirectional_cap(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 13) & 0x01)
-
-    @property
-    def proxy_info_present(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 14) & 0x01)
-
-
+# Figure 38, 39
 class PairingSchema(foundation.CommandSchema):
-    options: t.bitmap24
+    # Figure 40, 41
+    class PairingOptions(t.IntStruct, t.uint24_t):
+        application_id: zgptypes.ApplicationID
+        add_sink: t.uint1_t
+        remove_gpd: t.uint1_t
+        communication_mode: zgptypes.CommunicationMode
+        gpd_fixed: t.uint1_t
+        gpd_mac_seq_num_cap: t.uint1_t
+        security_level: zgptypes.SecurityLevel
+        security_key_type: zgptypes.SecurityKeyType
+        security_frame_counter_present: t.uint1_t
+        security_key_present: t.uint1_t
+        assigned_alias_present: t.uint1_t
+        forwarding_radius_present: t.uint1_t
+        _reserved: t.uint6_t
+
+    options: PairingOptions
     gpd_id: zgptypes.DeviceID
     sink_ieee: t.EUI64 = StructField(optional=True)
     sink_nwk_addr: t.NWK = StructField(optional=True)
@@ -174,102 +127,6 @@ class PairingSchema(foundation.CommandSchema):
     key: t.KeyData = StructField(optional=True)
     alias: t.uint16_t = StructField(optional=True)
     forwarding_radius: t.uint8_t = StructField(optional=True)
-
-    @property
-    def application_id(self) -> zgptypes.ApplicationID:
-        return zgptypes.ApplicationID(self.options & 0b111)
-
-    @application_id.setter
-    def application_id(self, value: zgptypes.ApplicationID):
-        self.options = (self.options & ~(0b111)) | value
-
-    @property
-    def add_sink(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 3) & 0x01)
-
-    @add_sink.setter
-    def add_sink(self, value: t.uint1_t):
-        self.options = (self.options & ~(1 << 3)) | (value << 3)
-
-    @property
-    def remove_gpd(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 4) & 0x01)
-
-    @remove_gpd.setter
-    def remove_gpd(self, value: t.uint1_t):
-        self.options = (self.options & ~(1 << 4)) | (value << 4)
-
-    @property
-    def communication_mode(self) -> zgptypes.CommunicationMode:
-        return zgptypes.CommunicationMode((self.options >> 5) & 0b11)
-
-    @communication_mode.setter
-    def communication_mode(self, value: zgptypes.CommunicationMode):
-        self.options = (self.options & ~(0b11 << 5)) | (value << 5)
-
-    @property
-    def gpd_fixed(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 7) & 0x01)
-
-    @gpd_fixed.setter
-    def gpd_fixed(self, value: t.uint1_t):
-        self.options = (self.options & ~(1 << 7)) | (value << 7)
-
-    @property
-    def gpd_mac_seq_num_cap(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 8) & 0x01)
-
-    @gpd_mac_seq_num_cap.setter
-    def gpd_mac_seq_num_cap(self, value: t.uint1_t):
-        self.options = (self.options & ~(1 << 8)) | (value << 8)
-
-    @property
-    def security_level(self) -> zgptypes.SecurityLevel:
-        return zgptypes.SecurityLevel((self.options >> 9) & 0b11)
-
-    @security_level.setter
-    def security_level(self, value: zgptypes.SecurityLevel):
-        self.options = (self.options & ~(0b11 << 9)) | (value << 9)
-
-    @property
-    def security_key_type(self) -> zgptypes.SecurityKeyType:
-        return zgptypes.SecurityKeyType((self.options >> 11) & 0b111)
-
-    @security_key_type.setter
-    def security_key_type(self, value: zgptypes.SecurityKeyType):
-        self.options = (self.options & ~(0b111 << 11)) | (value << 11)
-
-    @property
-    def security_frame_counter_present(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 14) & 0x01)
-
-    @security_frame_counter_present.setter
-    def security_frame_counter_present(self, value: t.uint1_t):
-        self.options = (self.options & ~(1 << 14)) | (value << 14)
-
-    @property
-    def security_key_present(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 15) & 0x01)
-
-    @security_key_present.setter
-    def security_key_present(self, value: t.uint1_t):
-        self.options = (self.options & ~(1 << 15)) | (value << 15)
-
-    @property
-    def assigned_alias_present(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 16) & 0x01)
-
-    @assigned_alias_present.setter
-    def assigned_alias_present(self, value: t.uint1_t):
-        self.options = (self.options & ~(1 << 16)) | (value << 16)
-
-    @property
-    def forwarding_radius_present(self) -> t.uint1_t:
-        return t.uint1_t((self.options >> 17) & 0x01)
-
-    @forwarding_radius_present.setter
-    def forwarding_radius_present(self, value: t.uint1_t):
-        self.options = (self.options & ~(1 << 17)) | (value << 17)
 
 
 class GreenPowerProxy(Cluster):
