@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import typing
 
-import zigpy.types as t
 from zigpy.types import basic
 
 if typing.TYPE_CHECKING:
@@ -63,20 +62,3 @@ class CommunicationMode(basic.enum2):
 class CommunicationDirection(basic.enum1):
     GPDtoGPP = 0
     GPPtoGPD = 1
-
-
-# ZGP spec Figure 37
-class NotificationResponseOptions(t.Struct):
-    application_id: ApplicationID
-    first_to_forward: basic.uint1_t
-    no_pairing: basic.uint1_t
-    reserved: basic.uint3_t
-
-
-# ZGP spec Figure 43
-class ProxyCommissioningModeOptions(t.Struct):
-    enter: t.uint1_t
-    exit_mode: ProxyCommissioningModeExitMode
-    channel_present: t.uint1_t
-    unicast: t.uint1_t
-    reserved: t.uint2_t
