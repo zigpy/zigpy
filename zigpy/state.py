@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 import dataclasses
+from dataclasses import InitVar
+import functools
 from typing import Any
 
 import zigpy.config as conf
@@ -174,9 +177,164 @@ class NetworkInfo(t.BaseDataclassMixin):
 
 
 @dataclasses.dataclass
+class Counter(t.BaseDataclassMixin):
+    """Ever increasing Counter."""
+
+    name: str
+    initial_value: InitVar[int] = 0
+    _raw_value: int = dataclasses.field(init=False, default=0)
+    reset_count: int = dataclasses.field(init=False, default=0)
+    _last_reset_value: int = dataclasses.field(init=False, default=0)
+
+    def __eq__(self, other) -> bool:
+        """Compare two counters."""
+        if isinstance(other, self.__class__):
+            return self.value == other.value
+
+        return self.value == other
+
+    def __int__(self) -> int:
+        """Return int of the current value."""
+        return self.value
+
+    def __post_init__(self, initial_value: int) -> None:
+        """Initialize instance."""
+        self._raw_value = initial_value
+
+    def __str__(self) -> str:
+        """String representation."""
+        return f"{self.name} = {self.value}"
+
+    @property
+    def value(self) -> int:
+        """Current value of the counter."""
+
+        return self._last_reset_value + self._raw_value
+
+    def update(self, new_value: int) -> None:
+        """Update counter value."""
+
+        if new_value == self._raw_value:
+            return
+
+        diff = new_value - self._raw_value
+        if diff < 0:  # Roll over or reset
+            self.reset_and_update(new_value)
+            return
+
+        self._raw_value = new_value
+
+    def increment(self, increment: int = 1) -> None:
+        """Increment current value by increment."""
+
+        assert increment >= 0
+        self._raw_value += increment
+
+    def reset_and_update(self, value: int) -> None:
+        """Clear (rollover event) and optionally update."""
+
+        self._last_reset_value = self.value
+        self._raw_value = value
+        self.reset_count += 1
+
+    reset = functools.partialmethod(reset_and_update, 0)
+
+
+class CounterGroup(dict):
+    """Named collection of related counters."""
+
+    def __init__(
+        self,
+        collection_name: str | None = None,
+    ) -> None:
+        """Initialize instance."""
+
+        self._name: str | None = collection_name
+        super().__init__()
+
+    def counters(self) -> Iterable[Counter]:
+        """Return an iterable of the counters"""
+        return (counter for counter in self.values() if isinstance(counter, Counter))
+
+    def groups(self) -> Iterable[CounterGroup]:
+        """Return an iterable of the counter groups"""
+        return (group for group in self.values() if isinstance(group, CounterGroup))
+
+    def tags(self) -> Iterable[int | str]:
+        """Return an iterable if tags"""
+        return (group.name for group in self.groups())
+
+    def __missing__(self, counter_id: Any) -> Counter:
+        """Default counter factory."""
+
+        counter = Counter(counter_id)
+        self[counter_id] = counter
+        return counter
+
+    def __repr__(self) -> str:
+        """Representation magic method."""
+        counters = (
+            f"{counter.__class__.__name__}('{counter.name}', {int(counter)})"
+            for counter in self.counters()
+        )
+        counters = ", ".join(counters)
+        return f"{self.__class__.__name__}('{self.name}', {{{counters}}})"
+
+    def __str__(self) -> str:
+        """String magic method."""
+        counters = [str(counter) for counter in self.counters()]
+        return f"{self.name}: [{', '.join(counters)}]"
+
+    @property
+    def name(self) -> str:
+        """Return counter collection name."""
+        return self._name if self._name is not None else "No Name"
+
+    def increment(self, name: int | str, *tags: int | str) -> None:
+        """Create and Update all counters recursively."""
+
+        if tags:
+            tag, *rest = tags
+            self.setdefault(tag, CounterGroup(tag))
+            self[tag][name].increment()
+            self[tag].increment(name, *rest)
+            return
+
+    def reset(self) -> None:
+        """Clear and rollover counters."""
+
+        for counter in self.values():
+            counter.reset()
+
+
+class CounterGroups(dict):
+    """A collection of unrelated counter groups in a dict."""
+
+    def __iter__(self) -> Iterator[CounterGroup]:
+        """Return an iterable of the counters"""
+        return iter(self.values())
+
+    def __missing__(self, counter_group_name: Any) -> CounterGroup:
+        """Default counter factory."""
+
+        counter_group = CounterGroup(counter_group_name)
+        super().__setitem__(counter_group_name, counter_group)
+        return counter_group
+
+
+@dataclasses.dataclass
 class State:
     node_info: NodeInfo = dataclasses.field(default_factory=NodeInfo)
     network_info: NetworkInfo = dataclasses.field(default_factory=NetworkInfo)
+    counters: CounterGroups = dataclasses.field(init=False, default=None)
+    broadcast_counters: CounterGroups = dataclasses.field(init=False, default=None)
+    device_counters: CounterGroups = dataclasses.field(init=False, default=None)
+    group_counters: CounterGroups = dataclasses.field(init=False, default=None)
+
+    def __post_init__(self) -> None:
+        """Initialize default counters."""
+        for col_name in ("", "broadcast_", "device_", "group_"):
+            setattr(self, f"{col_name}counters", CounterGroups())
 
     @property
     @zigpy.util.deprecated("`network_information` has been renamed to `network_info`")

@@ -43,7 +43,6 @@ from zigpy.const import (
 )
 import zigpy.datastructures
 import zigpy.endpoint
-from zigpy.event import DiagnosticStatistic
 import zigpy.exceptions
 import zigpy.listeners
 import zigpy.types as t
@@ -141,8 +140,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 callback=self.poll_control_checkin_callback,
             )
         )
-
-        self.diagnostics: dict[str, DiagnosticStatistic] = {}
 
     def create_task(
         self, target: Coroutine[Any, Any, _R], name: str | None = None

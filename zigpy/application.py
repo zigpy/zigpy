@@ -17,7 +17,6 @@ from typing import Any, TypeVar
 import warnings
 
 from zigpy.backports.contextlib import nullcontext
-from zigpy.event import DiagnosticStatistic
 
 if sys.version_info[:2] < (3, 11):
     from async_timeout import timeout as asyncio_timeout  # pragma: no cover
@@ -97,8 +96,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._packet_priority_var = contextvars.ContextVar(
             "request_priority", default=t.PacketPriority.NORMAL
         )
-
-        self.diagnostics: dict[str, DiagnosticStatistic] = {}
 
     def create_task(
         self, target: Coroutine[Any, Any, _R], name: str | None = None
