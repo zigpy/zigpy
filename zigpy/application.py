@@ -13,7 +13,7 @@ import random
 import sys
 import time
 import typing
-from typing import Any, TypeVar
+from typing import Any, TypeVar, overload
 import warnings
 
 from zigpy.backports.contextlib import nullcontext
@@ -1344,12 +1344,28 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Permit a node to join with the provided link key."""
         raise NotImplementedError  # pragma: no cover
 
+    @overload
     async def can_write_network_settings(
         self,
         network_info: zigpy.state.NetworkInfo,
         node_info: zigpy.state.NodeInfo,
+    ) -> bool: ...
+
+    @overload
+    async def can_write_network_settings(
+        self,
+        network_info: None,
+        node_info: None,
+    ) -> bool: ...
+
+    async def can_write_network_settings(
+        self,
+        network_info: zigpy.state.NetworkInfo | None,
+        node_info: zigpy.state.NodeInfo | None,
     ) -> bool:
         """Returns `True` if the radio can write the given network settings.
+
+        If restoration is not possible, `CannotWriteNetworkSettings` is raised.
 
         Some radio firmwares do not support writing every network setting in a backup
         (ZiGate cannot set the PAN ID, older EZSP can only write the EUI64 once, etc.).
