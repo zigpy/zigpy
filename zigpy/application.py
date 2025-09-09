@@ -92,6 +92,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
 
+        # Add callback storage
+        self._packet_callbacks: collections.defaultdict[
+            t.AddrModeAddress | None, list[typing.Callable[[t.ZigbeePacket], None]]
+        ] = collections.defaultdict(list)
+
         # Context variable for request priority context manager
         self._packet_priority_var = contextvars.ContextVar(
             "request_priority", default=t.PacketPriority.NORMAL
@@ -1193,6 +1198,54 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             return self.get_device(ieee=address.address)
         else:
             raise ValueError(f"Invalid address: {address!r}")
+
+    def register_packet_callback(
+        self,
+        filter: t.AddrModeAddress | None,
+        callback: typing.Callable[[t.ZigbeePacket], None],
+    ) -> typing.Callable[[], None]:
+        """Register a callback that is called when a Zigbee packet is received.
+
+        Args:
+        ----
+            filter: Optional address filter. If None, callback receives all packets.
+            If provided, only packets from this source address trigger the callback.
+            callback: Function to call when a matching packet is received.
+
+        Returns:
+        -------
+            A callable that can be used to unregister the callback.
+
+        """
+        self._packet_callbacks[filter].append(callback)
+
+        def cancel_callback() -> None:
+            """Remove the callback."""
+            with contextlib.suppress(ValueError):
+                self._packet_callbacks[filter].remove(callback)
+
+        return cancel_callback
+
+    def notify_packet_callbacks(self, packet: t.ZigbeePacket) -> None:
+        """Notify registered packet callbacks about a received Zigbee packet."""
+
+        # Notify global callbacks (registered with None filter)
+        for callback in self._packet_callbacks[None]:
+            try:
+                callback(packet)
+            except Exception:
+                LOGGER.exception("Error in global packet callback: %s", callback)
+
+        # Notify address-specific callbacks
+        for callback in self._packet_callbacks[packet.src]:
+            try:
+                callback(packet)
+            except Exception:
+                LOGGER.exception(
+                    "Error in packet callback for address %s: %s",
+                    packet.src,
+                    callback,
+                )
 
     def register_callback_listener(
         self,

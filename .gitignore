@@ -76,3 +76,6 @@ ENV/
 
 # Don't keep track of downloaded OTA files
 tests/ota/files/external/dl
+
+# VS Code workspace files
+*.code-workspace
