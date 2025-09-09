@@ -96,11 +96,9 @@ class NotificationSchema(foundation.CommandSchema):
     command_id: t.uint8_t
     payload: t.LVBytes
     short_addr: t.uint16_t = StructField(
-        requires=lambda s: s.options.appoint_temp_master, optional=True
+        requires=lambda s: s.options.appoint_temp_master
     )
-    distance: t.uint8_t = StructField(
-        requires=lambda s: s.options.appoint_temp_master, optional=True
-    )
+    distance: t.uint8_t = StructField(requires=lambda s: s.options.appoint_temp_master)
 
 
 # Figure 40, 41
@@ -131,8 +129,7 @@ class PairingSchema(foundation.CommandSchema):
         in (
             zgptypes.CommunicationMode.Unicast,
             zgptypes.CommunicationMode.UnicastLightweight,
-        ),
-        optional=True,
+        )
     )
     sink_nwk_addr: t.NWK = StructField(
         requires=lambda s: not s.options.remove_gpd
@@ -140,8 +137,7 @@ class PairingSchema(foundation.CommandSchema):
         in (
             zgptypes.CommunicationMode.Unicast,
             zgptypes.CommunicationMode.UnicastLightweight,
-        ),
-        optional=True,
+        )
     )
     sink_group: t.Group = StructField(
         requires=lambda s: not s.options.remove_gpd
@@ -149,29 +145,22 @@ class PairingSchema(foundation.CommandSchema):
         in (
             zgptypes.CommunicationMode.GroupcastForwardToDGroup,
             zgptypes.CommunicationMode.GroupcastForwardToCommGroup,
-        ),
-        optional=True,
+        )
     )
 
-    device_id: t.uint8_t = StructField(
-        requires=lambda s: s.options.add_sink, optional=True
-    )
+    device_id: t.uint8_t = StructField(requires=lambda s: s.options.add_sink)
     frame_counter: t.uint32_t = StructField(
         requires=lambda s: s.options.add_sink
-        and s.options.security_frame_counter_present,
-        optional=True,
+        and s.options.security_frame_counter_present
     )
     key: t.KeyData = StructField(
-        requires=lambda s: s.options.add_sink and s.options.security_key_present,
-        optional=True,
+        requires=lambda s: s.options.add_sink and s.options.security_key_present
     )
     alias: t.uint16_t = StructField(
-        requires=lambda s: s.options.add_sink and s.options.assigned_alias_present,
-        optional=True,
+        requires=lambda s: s.options.add_sink and s.options.assigned_alias_present
     )
     forwarding_radius: t.uint8_t = StructField(
-        requires=lambda s: s.options.add_sink and s.options.forwarding_radius_present,
-        optional=True,
+        requires=lambda s: s.options.add_sink and s.options.forwarding_radius_present
     )
 
 
