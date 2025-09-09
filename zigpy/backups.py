@@ -139,7 +139,7 @@ class BackupManager(ListenableMixin):
             node_info=self.app.state.node_info,
         )
 
-    async def create_backup(self, *, load_devices: bool = False) -> NetworkBackup:
+    async def create_backup(self, *, load_devices: bool = True) -> NetworkBackup:
         await self.app.load_network_info(load_devices=load_devices)
 
         backup = self.from_network_state()
