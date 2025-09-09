@@ -1351,6 +1351,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> bool:
         """Returns `True` if the radio can write the given network settings.
 
+        If restoration is not possible, `CannotWriteNetworkSettings` is raised.
+        If restoration is possible in a destructive way (e.g. write-once tokens),
+        `DestructiveWriteNetworkSettings` is raised.
+
         Some radio firmwares do not support writing every network setting in a backup
         (ZiGate cannot set the PAN ID, older EZSP can only write the EUI64 once, etc.).
         Not all situations, however, are critical failures: if we are restoring a
