@@ -26,10 +26,6 @@ class DestructiveWriteNetworkSettings(ZigbeeException):
     """The provided network settings will be written but in a destructive manner."""
 
 
-class CannotReadNetworkSettings(ZigbeeException):
-    """Adapter network settings cannot be read due to a radio limitation."""
-
-
 class APIException(ZigbeeException):
     """Radio API failed in some way."""
 

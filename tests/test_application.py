@@ -1691,11 +1691,6 @@ async def test_request_priority_context_concurrency(app, packet):
     ]
 
 
-async def test_can_read_network_settings(app) -> None:
-    # The default is True
-    assert await app.can_read_network_settings()
-
-
 async def test_can_write_network_settings(app) -> None:
     # The default is True
     assert await app.can_write_network_settings(
