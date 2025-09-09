@@ -1346,6 +1346,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def can_write_network_settings(
         self,
+        *,
         network_info: zigpy.state.NetworkInfo,
         node_info: zigpy.state.NodeInfo,
     ) -> bool:
