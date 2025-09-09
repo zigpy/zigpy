@@ -1344,12 +1344,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Permit a node to join with the provided link key."""
         raise NotImplementedError  # pragma: no cover
 
-    async def can_read_network_settings(
-        self,
-        *,
-        network_info: zigpy.state.NetworkInfo,
-        node_info: zigpy.state.NodeInfo,
-    ) -> bool:
+    async def can_read_network_settings(self) -> bool:
         """Returns `True` if the radio can read the given network settings.
 
         If reading is not possible, `CannotReadNetworkSettings` is raised.
