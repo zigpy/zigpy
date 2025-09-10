@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-import typing
-
 from zigpy.types import basic
-
-if typing.TYPE_CHECKING:
-    pass
 
 
 class DeviceID(basic.uint32_t, repr="hex"):
