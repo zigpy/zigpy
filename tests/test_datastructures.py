@@ -713,3 +713,19 @@ async def test_request_limiter_cancel_waiting():
             await task1
         with pytest.raises(RuntimeError, match="Test cancellation"):
             await task2
+
+
+async def test_request_limiter_backwards_compatibility() -> None:
+    """Test `max_value` property proxying `max_concurrency`."""
+    limiter = datastructures.RequestLimiter(5, {1: 1.0})
+
+    with pytest.deprecated_call():
+        assert limiter.max_value == 5
+
+    with pytest.deprecated_call():
+        limiter.max_value = 10
+
+    assert limiter.max_concurrency == 10
+
+    with pytest.deprecated_call():
+        assert limiter.max_value == 10
