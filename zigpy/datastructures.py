@@ -11,6 +11,7 @@ import heapq
 import math
 import types
 import typing
+import warnings
 
 
 class WrappedContextManager:
@@ -376,6 +377,26 @@ class RequestLimiter:
         self._max_concurrency = new_value
         self._recalculate_capacity()
         self._wake_waiters()
+
+    @property
+    def max_value(self) -> None:
+        """Deprecated alias for `max_concurrency`."""
+        warnings.warn(
+            "`max_value` is deprecated, use `max_concurrency` instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.max_concurrency
+
+    @max_value.setter
+    def max_value(self, new_value: int) -> None:
+        """Deprecated setter alias for `max_concurrency`."""
+        warnings.warn(
+            "`max_value` is deprecated, use `max_concurrency` instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.max_concurrency = new_value
 
     def _recalculate_capacity(self) -> None:
         cumulative_capacity = 0
