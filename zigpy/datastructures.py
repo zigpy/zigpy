@@ -427,15 +427,8 @@ class RequestLimiter:
 
         for priority in self._sorted_priorities:
             portion = self._capacity_fractions[priority] * self._max_concurrency
-
-            if not math.isclose(portion, round(portion)):
-                raise ValueError(
-                    f"With max concurrency {self._max_concurrency}"
-                    f", fraction {portion} for priority {priority}"
-                    f" is not an integer."
-                )
-
             cumulative_capacity += round(portion)
+
             self._cumulative_capacity[priority] = cumulative_capacity
 
     def __call__(self, priority: int = 0) -> _LimiterContext:
