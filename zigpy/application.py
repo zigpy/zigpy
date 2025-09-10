@@ -29,7 +29,7 @@ import zigpy.appdb
 import zigpy.backups
 import zigpy.config as conf
 from zigpy.const import INTERFERENCE_MESSAGE
-from zigpy.datastructures import PriorityDynamicBoundedSemaphore
+from zigpy.datastructures import RequestLimiter
 import zigpy.device
 import zigpy.endpoint
 import zigpy.exceptions
@@ -79,8 +79,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         self._watchdog_task: asyncio.Task | None = None
 
-        self._concurrent_requests_semaphore = PriorityDynamicBoundedSemaphore(
-            self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
+        self._concurrent_requests_semaphore = RequestLimiter(
+            max_concurrency=self._config[conf.CONF_MAX_CONCURRENT_REQUESTS],
+            capacities=self._config[conf.CONF_EXPERIMENTAL][conf.CONF_CONCURRENCY],
         )
 
         self.ota = zigpy.ota.OTA(self._config[conf.CONF_OTA], self)
@@ -784,19 +785,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.debug(
                 "Critical priority request received (%s), skipping queue with %d requests",
                 priority,
-                self._concurrent_requests_semaphore.num_waiting,
+                self._concurrent_requests_semaphore.waiting_requests,
             )
             manager = nullcontext()
             was_locked = False
         else:
             manager = self._concurrent_requests_semaphore(priority=priority)
-            was_locked = self._concurrent_requests_semaphore.locked()
+            was_locked = self._concurrent_requests_semaphore.locked(priority=priority)
 
         if was_locked:
             LOGGER.debug(
                 "Max concurrency (%s) reached, delaying request (%s enqueued)",
-                self._concurrent_requests_semaphore.max_value,
-                self._concurrent_requests_semaphore.num_waiting,
+                self._concurrent_requests_semaphore.active_requests,
+                self._concurrent_requests_semaphore.waiting_requests,
             )
 
         async with manager:

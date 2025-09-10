@@ -15,7 +15,6 @@ from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.modes import ECB
 
-from zigpy.datastructures import DynamicBoundedSemaphore  # noqa: F401
 from zigpy.exceptions import ZigbeeException
 import zigpy.types as t
 

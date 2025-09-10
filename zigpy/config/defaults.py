@@ -50,3 +50,8 @@ CONF_TOPO_SCAN_PERIOD_DEFAULT = 4 * 60  # 4 hours
 CONF_TOPO_SCAN_ENABLED_DEFAULT = True
 CONF_TOPO_SKIP_COORDINATOR_DEFAULT = False
 CONF_WATCHDOG_ENABLED_DEFAULT = True
+CONF_CONCURRENCY_DEFAULT = {
+    t.PacketPriority.HIGH.name.lower(): 0.25,
+    t.PacketPriority.NORMAL.name.lower(): 0.50,
+    t.PacketPriority.LOW.name.lower(): 0.25,
+}

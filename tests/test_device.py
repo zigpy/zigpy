@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import AsyncExitStack
 from datetime import datetime, timezone
 import logging
 import math
@@ -8,6 +9,7 @@ import pytest
 
 from zigpy import device, endpoint
 import zigpy.application
+from zigpy.datastructures import RequestLimiter
 import zigpy.exceptions
 from zigpy.ota import OtaImagesResult
 import zigpy.ota.image
@@ -1278,7 +1280,9 @@ async def test_debouncing(dev):
 
 async def test_device_concurrency(dev: device.Device) -> None:
     """Test that the device can handle multiple requests concurrently."""
-    dev._concurrent_requests_semaphore.max_value = 1
+    dev._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
 
     ep = dev.add_endpoint(1)
     ep.add_input_cluster(Basic.cluster_id)
@@ -1363,7 +1367,7 @@ async def test_duplicate_request_sending(dev: device.Device) -> None:
         raise asyncio.TimeoutError()
 
     dev._application.request = AsyncMock(side_effect=delayed_receive)
-    dev._concurrent_requests_semaphore.max_value = 100000
+    dev._concurrent_requests_semaphore.max_concurrency = 100000
 
     # We send 256 + 1 requests
     errors = await asyncio.gather(
@@ -1471,7 +1475,9 @@ async def test_poll_control_checkin_callback(
     expected_fast_poll: bool,
 ) -> None:
     """Test PollControl check-in callback with different device states."""
-    dev._concurrent_requests_semaphore.max_value = 1
+    dev._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
 
     ep = dev.add_endpoint(1)
     poll_control = ep.add_input_cluster(PollControl.cluster_id)
@@ -1486,46 +1492,45 @@ async def test_poll_control_checkin_callback(
     else:
         dev._initialize_task = None
 
-    if semaphore_locked:
-        await dev._concurrent_requests_semaphore.acquire()
-
-    zcl_hdr = foundation.ZCLHeader(
-        frame_control=foundation.FrameControl(
-            frame_type=foundation.FrameType.CLUSTER_COMMAND,
-            is_manufacturer_specific=False,
-            direction=foundation.Direction.Server_to_Client,
-            disable_default_response=1,
-            reserved=0,
-        ),
-        tsn=0x12,
-        command_id=PollControl.ClientCommandDefs.checkin.id,
-    )
-    command = PollControl.ClientCommandDefs.checkin.schema()
-
-    # Test the callback
-    await dev.poll_control_checkin_callback(zcl_hdr, command)
-
-    # Verify the correct response was sent
-    if expected_fast_poll:
-        assert poll_control.checkin_response.mock_calls == [
-            call(
-                start_fast_polling=expected_fast_poll,
-                fast_poll_timeout=int(device.DEFAULT_FAST_POLL_TIMEOUT * 4),
-                tsn=0x12,
+    async with AsyncExitStack() as stack:
+        if semaphore_locked:
+            await stack.enter_async_context(
+                dev._concurrent_requests_semaphore(priority=t.PacketPriority.LOW)
             )
-        ]
-    else:
-        assert poll_control.checkin_response.mock_calls == [
-            call(
-                start_fast_polling=expected_fast_poll,
-                fast_poll_timeout=0,
-                tsn=0x12,
-            )
-        ]
 
-    # Clean up semaphore if we acquired it
-    if semaphore_locked:
-        dev._concurrent_requests_semaphore.release()
+        zcl_hdr = foundation.ZCLHeader(
+            frame_control=foundation.FrameControl(
+                frame_type=foundation.FrameType.CLUSTER_COMMAND,
+                is_manufacturer_specific=False,
+                direction=foundation.Direction.Server_to_Client,
+                disable_default_response=1,
+                reserved=0,
+            ),
+            tsn=0x12,
+            command_id=PollControl.ClientCommandDefs.checkin.id,
+        )
+        command = PollControl.ClientCommandDefs.checkin.schema()
+
+        # Test the callback
+        await dev.poll_control_checkin_callback(zcl_hdr, command)
+
+        # Verify the correct response was sent
+        if expected_fast_poll:
+            assert poll_control.checkin_response.mock_calls == [
+                call(
+                    start_fast_polling=expected_fast_poll,
+                    fast_poll_timeout=int(device.DEFAULT_FAST_POLL_TIMEOUT * 4),
+                    tsn=0x12,
+                )
+            ]
+        else:
+            assert poll_control.checkin_response.mock_calls == [
+                call(
+                    start_fast_polling=expected_fast_poll,
+                    fast_poll_timeout=0,
+                    tsn=0x12,
+                )
+            ]
 
 
 async def test_begin_fast_polling_with_cluster(dev: device.Device) -> None:

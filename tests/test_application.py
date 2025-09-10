@@ -9,6 +9,7 @@ import pytest
 
 import zigpy.application
 import zigpy.config as conf
+from zigpy.datastructures import RequestLimiter
 from zigpy.exceptions import (
     DeliveryError,
     NetworkNotFormed,
@@ -714,19 +715,18 @@ async def test_request_concurrency():
     peak_concurrency = 0
 
     class SlowApp(App):
-        async def send_packet(self, packet):
+        async def _send_packet(self, packet):
             nonlocal current_concurrency, peak_concurrency
 
-            async with self._limit_concurrency():
-                current_concurrency += 1
-                peak_concurrency = max(peak_concurrency, current_concurrency)
+            current_concurrency += 1
+            peak_concurrency = max(peak_concurrency, current_concurrency)
 
-                await asyncio.sleep(0.1)
-                current_concurrency -= 1
+            await asyncio.sleep(0.1)
+            current_concurrency -= 1
 
-                if packet % 10 == 7:
-                    # Fail randomly
-                    raise DeliveryError("Failure")
+            if packet % 10 == 7:
+                # Fail randomly
+                raise DeliveryError("Failure")
 
     app = make_app({conf.CONF_MAX_CONCURRENT_REQUESTS: 16}, app_base=SlowApp)
 
@@ -734,7 +734,11 @@ async def test_request_concurrency():
     assert peak_concurrency == 0
 
     await asyncio.gather(
-        *[app.send_packet(i) for i in range(100)], return_exceptions=True
+        *[
+            app.send_packet(t.ZigbeePacket(priority=t.PacketPriority.HIGH))
+            for i in range(100)
+        ],
+        return_exceptions=True,
     )
 
     assert current_concurrency == 0
@@ -1635,7 +1639,9 @@ async def test_packet_capture(app) -> None:
 
 
 async def test_request_priority(app) -> None:
-    app._concurrent_requests_semaphore.max_value = 1
+    app._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
 
     with patch.object(app, "_send_packet", wraps=app._send_packet) as mock_send_packet:
         packet_low = Mock(name="LOW", priority=t.PacketPriority.LOW)
@@ -1663,7 +1669,9 @@ async def test_request_priority(app) -> None:
 async def test_request_priority_context_concurrency(app, packet):
     """Test that request_priority contexts work correctly with concurrent tasks."""
     # Limit concurrency to see priority ordering effects
-    app._concurrent_requests_semaphore.max_value = 1
+    app._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
 
     with patch.object(app, "_send_packet", wraps=app._send_packet) as mock_send:
 
