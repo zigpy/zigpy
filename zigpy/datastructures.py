@@ -6,12 +6,16 @@ import asyncio
 import bisect
 import collections
 import contextlib
+from fractions import Fraction
 import functools
 import heapq
+import logging
 import math
 import types
 import typing
 import warnings
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class WrappedContextManager:
@@ -399,6 +403,26 @@ class RequestLimiter:
         self.max_concurrency = new_value
 
     def _recalculate_capacity(self) -> None:
+        # Assume that all of the fractions are simple
+        divisors = [
+            Fraction.from_float(f).limit_denominator(10).denominator
+            for f in self._capacity_fractions.values()
+        ]
+
+        lcm = math.lcm(*divisors)
+
+        if self._max_concurrency % lcm != 0:
+            next_best = lcm - self._max_concurrency % lcm
+            assert next_best > 0
+
+            _LOGGER.warning(
+                "Requested adapter concurrency %d is not compatible with priority fractions %r. Increasing concurrency to %d.",
+                self._max_concurrency,
+                self._capacity_fractions,
+                self._max_concurrency + next_best,
+            )
+            self._max_concurrency += next_best
+
         cumulative_capacity = 0
 
         for priority in self._sorted_priorities:

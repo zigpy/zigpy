@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from unittest.mock import Mock, patch
 
 import pytest
@@ -672,13 +673,6 @@ async def test_request_limiter_max_concurrency_property():
     assert limiter.max_concurrency == 5
 
 
-async def test_request_limiter_non_integer_capacity_fraction():
-    """Test that non-integer capacity fractions raise ValueError."""
-    # This should work - 3 * 0.5 = 1.5, not an integer
-    with pytest.raises(ValueError, match="is not an integer"):
-        datastructures.RequestLimiter(3, {1: 0.5})
-
-
 async def test_request_limiter_priority_higher_than_known():
     """Test priority higher than the highest known tier."""
     limiter = datastructures.RequestLimiter(2, {5: 0.5, 10: 0.5})
@@ -729,3 +723,18 @@ async def test_request_limiter_backwards_compatibility() -> None:
 
     with pytest.deprecated_call():
         assert limiter.max_value == 10
+
+
+async def test_request_limiter_adjust_max_concurrency(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test adjusting max concurrency at runtime snaps to a reasonable value."""
+    limiter = datastructures.RequestLimiter(8, {1: 1 / 3, 2: 1 / 2, 3: 1 / 6})
+
+    assert limiter.max_concurrency == 12
+
+    with caplog.at_level(logging.WARNING):
+        limiter.max_concurrency = 13
+
+    # It'll be bumped to 18, which is divisible by 3, 2, and 6
+    assert limiter.max_concurrency == 18
