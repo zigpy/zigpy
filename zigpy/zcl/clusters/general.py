@@ -15,6 +15,9 @@ from zigpy.zcl.foundation import (
     ZCLCommandDef,
 )
 
+# Backwards compatibility for when ZGP was still included in this file
+from .greenpower import GreenPowerProxy  # noqa: F401
+
 ZIGBEE_EPOCH = datetime(2000, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
 
 
@@ -2403,11 +2406,6 @@ class PollControl(Cluster):
 
     class ClientCommandDefs(BaseCommandDefs):
         checkin: Final = ZCLCommandDef(id=0x0000, schema={})
-
-
-class GreenPowerProxy(Cluster):
-    cluster_id: Final[t.uint16_t] = 0x0021
-    ep_attribute: Final = "green_power"
 
 
 class KeepAlive(Cluster):
