@@ -1451,7 +1451,7 @@ async def test_quirks_v2_change_entity_metadata(device_mock: Device) -> None:
             endpoint_id=1,
             cluster_id=OnOff.cluster_id,
             new_translation_key="custom_key",
-            new_translation_placeholders={"index":"subkey"},
+            new_translation_placeholders={"index": "subkey"},
         )
         .change_entity_metadata(
             endpoint_id=1,
@@ -1496,7 +1496,7 @@ async def test_quirks_v2_change_entity_metadata(device_mock: Device) -> None:
             new_primary=None,
             new_unique_id=None,
             new_translation_key="custom_key",
-            new_translation_placeholders={"index":"subkey"},
+            new_translation_placeholders={"index": "subkey"},
             new_device_class=None,
             new_state_class=None,
             new_entity_category=None,
