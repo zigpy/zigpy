@@ -288,7 +288,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         return cluster
 
     def deserialize(self, data: bytes) -> tuple[foundation.ZCLHeader, ...]:
-        self.debug("Received ZCL frame: %r", data)
+        self.debug("Received ZCL frame: %r", data.hex(" "))
 
         hdr, data = foundation.ZCLHeader.deserialize(data)
         self.debug("Decoded ZCL frame header: %r", hdr)
@@ -301,14 +301,18 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 commands = self.server_commands
 
             if hdr.command_id not in commands:
-                self.debug("Unknown cluster command %s %s", hdr.command_id, data)
+                self.debug(
+                    "Unknown cluster command %s %r", hdr.command_id, data.hex(" ")
+                )
                 return hdr, data
 
             command = commands[hdr.command_id]
         else:
             # General command
             if hdr.command_id not in foundation.GENERAL_COMMANDS:
-                self.debug("Unknown foundation command %s %s", hdr.command_id, data)
+                self.debug(
+                    "Unknown foundation command %s %r", hdr.command_id, data.hex(" ")
+                )
                 return hdr, data
 
             command = foundation.GENERAL_COMMANDS[hdr.command_id]
@@ -318,7 +322,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self.debug("Decoded ZCL frame: %s:%r", type(self).__name__, response)
 
         if data:
-            self.debug("Data remains after deserializing ZCL frame: %r", data)
+            self.debug("Data remains after deserializing ZCL frame: %r", data.hex(" "))
 
         return hdr, response
 
