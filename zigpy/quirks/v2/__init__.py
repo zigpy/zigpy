@@ -313,7 +313,9 @@ class EntityMetadata:
     attribute_initialized_from_cache: bool = attrs.field(default=True)
     unique_id_suffix: str | None = attrs.field(default=None)
     translation_key: str | None = attrs.field(default=None)
-    translation_placeholders: dict[str, str] | None = attrs.field(default=None)
+    translation_placeholders: frozendict[str, str] = attrs.field(
+        default=frozendict, converter=frozendict
+    )
     fallback_name: str = attrs.field(validator=attrs.validators.instance_of(str))
     primary: bool | None = attrs.field(default=None)
 
@@ -471,7 +473,9 @@ class ChangedEntityMetadata:
     new_primary: bool | None = attrs.field(default=None)
     new_unique_id: str | None = attrs.field(default=None)
     new_translation_key: str | None = attrs.field(default=None)
-    new_translation_placeholders: dict[str, str] | None = attrs.field(default=None)
+    new_translation_placeholders: frozendict[str, str] | None = attrs.field(
+        default=None, converter=lambda d: None if d is None else frozendict(d)
+    )
     new_device_class: (
         BinarySensorDeviceClass | NumberDeviceClass | SensorDeviceClass | None
     ) = attrs.field(default=None)
@@ -894,7 +898,7 @@ class QuirkBuilder:
                 reporting_config=reporting_config,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
-                translation_placeholders=translation_placeholders,
+                translation_placeholders=translation_placeholders or {},
                 fallback_name=fallback_name,
                 enum=enum_class,
                 attribute_name=attribute_name,
@@ -943,7 +947,7 @@ class QuirkBuilder:
                 reporting_config=reporting_config,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
-                translation_placeholders=translation_placeholders,
+                translation_placeholders=translation_placeholders or {},
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 attribute_converter=attribute_converter,
@@ -996,7 +1000,7 @@ class QuirkBuilder:
                 reporting_config=reporting_config,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
-                translation_placeholders=translation_placeholders,
+                translation_placeholders=translation_placeholders or {},
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 force_inverted=force_inverted,
@@ -1048,7 +1052,7 @@ class QuirkBuilder:
                 reporting_config=reporting_config,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
-                translation_placeholders=translation_placeholders,
+                translation_placeholders=translation_placeholders or {},
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 min=min_value,
@@ -1098,7 +1102,7 @@ class QuirkBuilder:
                 reporting_config=reporting_config,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
-                translation_placeholders=translation_placeholders,
+                translation_placeholders=translation_placeholders or {},
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 attribute_converter=attribute_converter,
@@ -1141,7 +1145,7 @@ class QuirkBuilder:
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
-                translation_placeholders=translation_placeholders,
+                translation_placeholders=translation_placeholders or {},
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 attribute_value=attribute_value,
@@ -1182,7 +1186,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
-                translation_placeholders=translation_placeholders,
+                translation_placeholders=translation_placeholders or {},
                 fallback_name=fallback_name,
                 command_name=command_name,
                 args=command_args if command_args is not None else (),
