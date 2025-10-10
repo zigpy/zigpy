@@ -313,6 +313,7 @@ class EntityMetadata:
     attribute_initialized_from_cache: bool = attrs.field(default=True)
     unique_id_suffix: str | None = attrs.field(default=None)
     translation_key: str | None = attrs.field(default=None)
+    translation_placeholders: dict[str, str] | None = attrs.field(default=None)
     fallback_name: str = attrs.field(validator=attrs.validators.instance_of(str))
     primary: bool | None = attrs.field(default=None)
 
@@ -470,6 +471,7 @@ class ChangedEntityMetadata:
     new_primary: bool | None = attrs.field(default=None)
     new_unique_id: str | None = attrs.field(default=None)
     new_translation_key: str | None = attrs.field(default=None)
+    new_translation_placeholders: dict[str, str] | None = attrs.field(default=None)
     new_device_class: (
         BinarySensorDeviceClass | NumberDeviceClass | SensorDeviceClass | None
     ) = attrs.field(default=None)
@@ -873,6 +875,8 @@ class QuirkBuilder:
         translation_key: str | None = None,
         fallback_name: str | None = None,
         primary: bool | None = None,
+        *,
+        translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing ZCLEnumMetadata and return self.
 
@@ -890,6 +894,7 @@ class QuirkBuilder:
                 reporting_config=reporting_config,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
+                translation_placeholders=translation_placeholders,
                 fallback_name=fallback_name,
                 enum=enum_class,
                 attribute_name=attribute_name,
@@ -919,6 +924,8 @@ class QuirkBuilder:
         translation_key: str | None = None,
         fallback_name: str | None = None,
         primary: bool | None = None,
+        *,
+        translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing ZCLSensorMetadata and return self.
 
@@ -936,6 +943,7 @@ class QuirkBuilder:
                 reporting_config=reporting_config,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
+                translation_placeholders=translation_placeholders,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 attribute_converter=attribute_converter,
@@ -969,6 +977,8 @@ class QuirkBuilder:
         translation_key: str | None = None,
         fallback_name: str | None = None,
         primary: bool | None = None,
+        *,
+        translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing SwitchMetadata and return self.
 
@@ -986,6 +996,7 @@ class QuirkBuilder:
                 reporting_config=reporting_config,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
+                translation_placeholders=translation_placeholders,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 force_inverted=force_inverted,
@@ -1018,6 +1029,8 @@ class QuirkBuilder:
         translation_key: str | None = None,
         fallback_name: str | None = None,
         primary: bool | None = None,
+        *,
+        translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing NumberMetadata and return self.
 
@@ -1035,6 +1048,7 @@ class QuirkBuilder:
                 reporting_config=reporting_config,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
+                translation_placeholders=translation_placeholders,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 min=min_value,
@@ -1065,6 +1079,8 @@ class QuirkBuilder:
         translation_key: str | None = None,
         fallback_name: str | None = None,
         primary: bool | None = None,
+        *,
+        translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing BinarySensorMetadata and return self.
 
@@ -1082,6 +1098,7 @@ class QuirkBuilder:
                 reporting_config=reporting_config,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
+                translation_placeholders=translation_placeholders,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 attribute_converter=attribute_converter,
@@ -1105,6 +1122,8 @@ class QuirkBuilder:
         translation_key: str | None = None,
         fallback_name: str | None = None,
         primary: bool | None = None,
+        *,
+        translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing WriteAttributeButtonMetadata and return self.
 
@@ -1122,6 +1141,7 @@ class QuirkBuilder:
                 attribute_initialized_from_cache=attribute_initialized_from_cache,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
+                translation_placeholders=translation_placeholders,
                 fallback_name=fallback_name,
                 attribute_name=attribute_name,
                 attribute_value=attribute_value,
@@ -1144,6 +1164,8 @@ class QuirkBuilder:
         translation_key: str | None = None,
         fallback_name: str | None = None,
         primary: bool | None = None,
+        *,
+        translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing ZCLCommandButtonMetadata and return self.
 
@@ -1160,6 +1182,7 @@ class QuirkBuilder:
                 initially_disabled=initially_disabled,
                 unique_id_suffix=unique_id_suffix,
                 translation_key=translation_key,
+                translation_placeholders=translation_placeholders,
                 fallback_name=fallback_name,
                 command_name=command_name,
                 args=command_args if command_args is not None else (),
@@ -1223,6 +1246,7 @@ class QuirkBuilder:
         new_primary: bool | None = None,
         new_unique_id: str | None = None,
         new_translation_key: str | None = None,
+        new_translation_placeholders: dict[str, str] | None = None,
         new_device_class: (
             BinarySensorDeviceClass | NumberDeviceClass | SensorDeviceClass | None
         ) = None,
@@ -1245,6 +1269,7 @@ class QuirkBuilder:
                 new_primary=new_primary,
                 new_unique_id=new_unique_id,
                 new_translation_key=new_translation_key,
+                new_translation_placeholders=new_translation_placeholders,
                 new_device_class=new_device_class,
                 new_state_class=new_state_class,
                 new_entity_category=new_entity_category,
