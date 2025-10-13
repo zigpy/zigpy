@@ -449,7 +449,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.topology.stop_periodic_scans()
 
         for device in self.devices.values():
-            device.on_remove()
+            try:
+                device.on_remove()
+            except Exception:  # noqa: BLE001
+                LOGGER.warning(
+                    "Failed to remove device %s during shutdown",
+                    device,
+                    exc_info=True,
+                )
 
         try:
             await self.disconnect()
