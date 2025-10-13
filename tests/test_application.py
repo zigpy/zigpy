@@ -1704,3 +1704,15 @@ async def test_can_write_network_settings(app) -> None:
     assert await app.can_write_network_settings(
         network_info=app.state.network_info, node_info=app.state.node_info
     )
+
+
+async def test_shutdown_device_remove_fails(app, ieee, caplog):
+    """Test shutdown continues if a device fails to be removed."""
+    dev = app.add_device(ieee, 0x1234)
+
+    with patch.object(dev, "on_remove", side_effect=Exception("Boom!")):
+        with caplog.at_level(logging.WARNING):
+            await app.shutdown()
+
+    assert "Failed to remove device" in caplog.text
+    assert "Boom!" in caplog.text
