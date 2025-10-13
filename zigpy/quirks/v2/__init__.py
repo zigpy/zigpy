@@ -314,7 +314,7 @@ class EntityMetadata:
     unique_id_suffix: str | None = attrs.field(default=None)
     translation_key: str | None = attrs.field(default=None)
     translation_placeholders: frozendict[str, str] = attrs.field(
-        default=frozendict, converter=frozendict
+        factory=frozendict, converter=frozendict
     )
     fallback_name: str = attrs.field(validator=attrs.validators.instance_of(str))
     primary: bool | None = attrs.field(default=None)
