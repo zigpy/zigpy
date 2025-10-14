@@ -31,6 +31,7 @@ def backup_factory():
                 nwk_manager_id=t.NWK(0x0000),
                 channel=t.uint8_t(15),
                 channel_mask=t.Channels.from_channel_list([15, 20, 25]),
+                tx_power=8,
                 security_level=t.uint8_t(5),
                 network_key=app_state.Key(
                     key=t.KeyData.convert(
@@ -242,6 +243,7 @@ def test_z2m_backup_parsing(z2m_backup_json, backup):
     backup.node_info.model = None
     backup.node_info.version = None
     backup.network_info.tc_link_key.tx_counter = 0
+    backup.network_info.tx_power = None
     backup.network_info.route_table = {}
 
     for key in backup.network_info.key_table:
