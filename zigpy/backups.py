@@ -105,7 +105,6 @@ class NetworkBackup(t.BaseDataclassMixin):
                 obj = copy.deepcopy(obj)
 
                 obj["network_info"]["route_table"] = {}
-                obj["network_info"]["tx_power"] = None
                 version = 2
 
             assert version == BACKUP_FORMAT_VERSION
@@ -308,7 +307,6 @@ def _network_backup_to_open_coordinator_backup(backup: NetworkBackup) -> dict[st
                     str(t.NWK(dst))[2:]: str(t.NWK(next_hop))[2:]
                     for dst, next_hop in network_info.route_table.items()
                 },
-                "tx_power": network_info.tx_power,
                 **network_info.metadata,
             },
         },
@@ -366,7 +364,6 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
             "link_key_seqs",
             "creation_time",
             "route_table",
-            "tx_power",
         )
     }
     network_info.pan_id, _ = t.NWK.deserialize(bytes.fromhex(obj["pan_id"])[::-1])
@@ -456,8 +453,6 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
 
     for dst, next_hop in obj["metadata"]["internal"].get("route_table", {}).items():
         network_info.route_table[t.NWK.convert(dst)] = t.NWK.convert(next_hop)
-
-    network_info.tx_power = obj["metadata"]["internal"].get("tx_power")
 
     if "date" in internal:
         # Z2M format
