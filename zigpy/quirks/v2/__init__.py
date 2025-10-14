@@ -412,7 +412,7 @@ class ZCLCommandButtonMetadata(EntityMetadata):
 
     command_name: str = attrs.field()
     args: tuple = attrs.field(default=tuple)
-    kwargs: frozendict[str, Any] = attrs.field(default=frozendict, converter=frozendict)
+    kwargs: frozendict[str, Any] = attrs.field(factory=frozendict, converter=frozendict)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
