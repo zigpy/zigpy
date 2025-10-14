@@ -353,7 +353,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if config is None:
             config = self.config[conf.CONF_NWK]
         else:
-            config = conf.SCHEMA_NWK(config)
+            config = conf.SCHEMA_NETWORK(config)
 
         assert config is not None
 

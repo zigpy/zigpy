@@ -527,6 +527,34 @@ async def test_form_network(app):
     assert nwk_info1.channel in (11, 15, 20, 25)
 
 
+@pytest.mark.parametrize(
+    ("config_override", "expected_tx_power", "should_warn"),
+    [
+        (None, 8, False),
+        ({"tx_power": 10}, 10, False),
+        ({"tx_power": -5}, -5, False),
+        ({"tx_power": 20}, 20, True),
+    ],
+)
+async def test_form_network_tx_power(
+    app, config_override, expected_tx_power, should_warn
+):
+    with patch.object(app, "write_network_info") as write:
+        if should_warn:
+            with pytest.warns(UserWarning, match="Increasing the TX power"):
+                if config_override is None:
+                    await app.form_network()
+                else:
+                    await app.form_network(config=config_override)
+        elif config_override is None:
+            await app.form_network()
+        else:
+            await app.form_network(config=config_override)
+
+    nwk_info = write.mock_calls[0].kwargs["network_info"]
+    assert nwk_info.tx_power == expected_tx_power
+
+
 @mock.patch("zigpy.util.pick_optimal_channel", mock.Mock(return_value=22))
 async def test_form_network_find_best_channel(app):
     orig_start_network = app.start_network
