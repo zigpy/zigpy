@@ -20,6 +20,7 @@ from zigpy.config.defaults import (
     CONF_NWK_PAN_ID_DEFAULT,
     CONF_NWK_TC_ADDRESS_DEFAULT,
     CONF_NWK_TC_LINK_KEY_DEFAULT,
+    CONF_NWK_TX_POWER_DEFAULT,
     CONF_NWK_UPDATE_ID_DEFAULT,
     CONF_NWK_VALIDATE_SETTINGS_DEFAULT,
     CONF_OTA_BROADCAST_ENABLED_DEFAULT,
@@ -45,6 +46,7 @@ from zigpy.config.validators import (
     cv_ota_provider,
     cv_ota_provider_name,
     cv_simple_descriptor,
+    cv_warn_if_greater,
 )
 import zigpy.types as t
 
@@ -65,6 +67,7 @@ CONF_NWK_KEY_SEQ = "key_sequence_number"
 CONF_NWK_MAX_RETRIES = "max_retries"
 CONF_NWK_TC_ADDRESS = "tc_address"
 CONF_NWK_TC_LINK_KEY = "tc_link_key"
+CONF_NWK_TX_POWER = "tx_power"
 CONF_NWK_UPDATE_ID = "update_id"
 CONF_NWK_BACKUP_ENABLED = "backup_enabled"
 CONF_NWK_BACKUP_PERIOD = "backup_period"
@@ -152,6 +155,38 @@ SCHEMA_NETWORK = vol.Schema(
         vol.Optional(
             CONF_NWK_TC_LINK_KEY, default=CONF_NWK_TC_LINK_KEY_DEFAULT
         ): cv_key,
+        # For background, TX power is used by some end devices to pick parent routers.
+        # If your coordinator is transmitting at +20dBm, end devices will try to pick
+        # the coordinator as their parent, thinking it is close, but it will actually be
+        # too far to hear them. Some recover from this but you may run into end devices
+        # picking the coordinator as a parent when they should have instead picked
+        # a closer router instead.
+        #
+        # Similarly, a higher TX power will cause the coordinator's messages to travel
+        # farther, which can cause it to be heard by more devices, but also "interrupt"
+        # other devices that are transmitting far away, resulting in more retries and
+        # thus less reliability.
+        #
+        # Finally, a Zigbee network requires reliable *bidirectional* communication for
+        # many operations: just because a device is able to hear the coordinator does
+        # not mean that the device can actually send a reply back.
+        #
+        # Tweak this setting at your own risk. Turning it up to 20 is
+        vol.Optional(CONF_NWK_TX_POWER, default=CONF_NWK_TX_POWER_DEFAULT): vol.All(
+            int,
+            vol.Range(min=-10, max=20),
+            cv_warn_if_greater(
+                limit=10,
+                message=(
+                    "Increasing the TX power will not increase the range of your"
+                    " network, devices still need to be able to respond to your"
+                    " coordinator and will do so at their default transmit power."
+                    " Changing the TX power may cause routing issues and result in end"
+                    " devices being unable to join reliably. Modify this setting at"
+                    " your own risk.",
+                ),
+            ),
+        ),
         vol.Optional(CONF_NWK_UPDATE_ID, default=CONF_NWK_UPDATE_ID_DEFAULT): vol.All(
             cv_hex, vol.Range(min=0, max=255)
         ),
