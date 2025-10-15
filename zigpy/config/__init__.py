@@ -171,7 +171,7 @@ SCHEMA_NETWORK = vol.Schema(
         # many operations: just because a device is able to hear the coordinator does
         # not mean that the device can actually send a reply back.
         #
-        # Tweak this setting at your own risk. Turning it up to 20 is
+        # Tweak this setting at your own risk.
         vol.Optional(CONF_NWK_TX_POWER, default=CONF_NWK_TX_POWER_DEFAULT): vol.All(
             int,
             vol.Range(min=-10, max=20),
