@@ -183,7 +183,8 @@ SCHEMA_NETWORK = vol.Schema(
                     " coordinator and will do so at their default transmit power."
                     " Changing the TX power may cause routing issues and result in end"
                     " devices being unable to join reliably. Modify this setting at"
-                    " your own risk."
+                    " your own risk and check local regulations for legal limits on"
+                    " transmit power in your area."
                 ),
             ),
         ),
