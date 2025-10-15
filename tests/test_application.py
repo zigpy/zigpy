@@ -536,20 +536,24 @@ async def test_form_network(app):
         ({"tx_power": 20}, 20, True),
     ],
 )
+@pytest.mark.filterwarnings("ignore::UserWarning")
 async def test_form_network_tx_power(
-    app, config_override, expected_tx_power, should_warn
+    app,
+    config_override: dict | None,
+    expected_tx_power: int,
+    should_warn: bool,
+    caplog,
 ):
-    with patch.object(app, "write_network_info") as write:
+    with (
+        patch.object(app, "write_network_info") as write,
+        caplog.at_level(logging.WARNING),
+    ):
+        await app.form_network(config=config_override)
+
         if should_warn:
-            with pytest.warns(UserWarning, match="Increasing the TX power"):
-                if config_override is None:
-                    await app.form_network()
-                else:
-                    await app.form_network(config=config_override)
-        elif config_override is None:
-            await app.form_network()
+            assert "Increasing the TX power" in caplog.text
         else:
-            await app.form_network(config=config_override)
+            assert "Increasing the TX power" not in caplog.text
 
     nwk_info = write.mock_calls[0].kwargs["network_info"]
     assert nwk_info.tx_power == expected_tx_power
