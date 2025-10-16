@@ -1584,6 +1584,7 @@ def strict_eq(a: Any, b: Any) -> bool:
         (3.14, 3.14),
         (frozendict({"a": 1}), frozendict({"a": 1})),
         ((1, 2, 3), (1, 2, 3)),
+        ((1, [2], {3: 4}), (1, (2,), frozendict({3: 4}))),
         (
             {"triggers": {("key1", "key2"): {"param": 0}}},
             frozendict(
