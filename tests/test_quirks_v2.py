@@ -1,9 +1,10 @@
 """Tests for the quirks v2 module."""
 
 import pathlib
-from typing import Final
+from typing import Any, Final
 from unittest.mock import AsyncMock
 
+from frozendict import frozendict
 import pytest
 
 from zigpy.const import (
@@ -36,6 +37,7 @@ from zigpy.quirks.v2 import (
     ZCLCommandButtonMetadata,
     ZCLSensorMetadata,
     add_to_registry_v2,
+    recursive_freeze,
 )
 from zigpy.quirks.v2.homeassistant import EntityType, UnitOfTime
 from zigpy.quirks.v2.homeassistant.sensor import SensorDeviceClass, SensorStateClass
@@ -1536,3 +1538,62 @@ async def test_quirks_v2_change_entity_metadata(device_mock: Device) -> None:
             new_fallback_name="Custom Fallback Name",
         ),
     )
+
+
+def strict_eq(a: Any, b: Any) -> bool:
+    """Recursively check equality and type matching."""
+    if type(a) is not type(b):
+        return False
+    if a != b:
+        return False
+    if isinstance(a, dict):
+        if a.keys() != b.keys():
+            return False
+        return all(strict_eq(a[k], b[k]) for k in a)
+    if isinstance(a, (tuple, list)):
+        if len(a) != len(b):
+            return False
+        return all(strict_eq(a_item, b_item) for a_item, b_item in zip(a, b))
+    return True
+
+
+@pytest.mark.parametrize(
+    ("obj", "expected"),
+    [
+        ({}, frozendict()),
+        ([], ()),
+        ({"a": 1, "b": 2}, frozendict({"a": 1, "b": 2})),
+        ([1, 2, 3], (1, 2, 3)),
+        (
+            {"outer": {"inner": "value"}},
+            frozendict({"outer": frozendict({"inner": "value"})}),
+        ),
+        ({"key": [1, 2, 3]}, frozendict({"key": (1, 2, 3)})),
+        ([{"a": 1}, {"b": 2}], (frozendict({"a": 1}), frozendict({"b": 2}))),
+        ([[1, 2], [3, 4]], ((1, 2), (3, 4))),
+        (
+            {"a": [1, {"b": 2}], "c": {"d": [3, 4]}},
+            frozendict(
+                {"a": (1, frozendict({"b": 2})), "c": frozendict({"d": (3, 4)})}
+            ),
+        ),
+        (42, 42),
+        ("string", "string"),
+        (None, None),
+        (True, True),
+        (3.14, 3.14),
+        (frozendict({"a": 1}), frozendict({"a": 1})),
+        ((1, 2, 3), (1, 2, 3)),
+        (
+            {"triggers": {("key1", "key2"): {"param": 0}}},
+            frozendict(
+                {"triggers": frozendict({("key1", "key2"): frozendict({"param": 0})})}
+            ),
+        ),
+    ],
+)
+def test_recursive_freeze(obj, expected):
+    """Test recursive_freeze converts mutable collections to immutable ones."""
+    result = recursive_freeze(obj)
+    assert strict_eq(result, expected)
+    hash(result)
