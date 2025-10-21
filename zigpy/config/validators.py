@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 import pathlib
 import typing
-from typing import Callable
 import warnings
 
 import voluptuous as vol
