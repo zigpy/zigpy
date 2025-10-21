@@ -91,6 +91,14 @@ class NetworkBackup(t.BaseDataclassMixin):
         elif "network_info" in obj:
             version = obj.get("version", 0)
 
+            if version > BACKUP_FORMAT_VERSION:
+                LOGGER.warning(
+                    "Network backup has version %d but current backup format"
+                    " version is %d. Downgrading is not recommended.",
+                    version,
+                    BACKUP_FORMAT_VERSION,
+                )
+
             # Version 1 introduced the `model`, `manufacturer`, and `version` fields
             if version == 0:
                 obj = copy.deepcopy(obj)
@@ -107,8 +115,6 @@ class NetworkBackup(t.BaseDataclassMixin):
                 obj["network_info"]["route_table"] = {}
                 obj["network_info"]["tx_power"] = None
                 version = 2
-
-            assert version == BACKUP_FORMAT_VERSION
 
             return cls(
                 version=BACKUP_FORMAT_VERSION,

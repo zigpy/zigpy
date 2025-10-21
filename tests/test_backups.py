@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 
 import pytest
 
@@ -270,6 +271,22 @@ def test_from_dict_automatic(z2m_backup_json):
 def test_from_dict_failure():
     with pytest.raises(ValueError):
         zigpy.backups.NetworkBackup.from_dict({"some": "json"})
+
+
+def test_from_dict_future_version(backup: zigpy.backups.NetworkBackup, caplog) -> None:
+    """Test that loading a backup with a future version logs a warning."""
+    with caplog.at_level(logging.WARNING):
+        backup = zigpy.backups.NetworkBackup.from_dict(
+            {**backup.as_dict(), "version": 99}
+        )
+
+    assert "Network backup has version 99 but current backup format" in caplog.text
+    assert "Downgrading is not recommended" in caplog.text
+
+    assert backup is not None
+
+    # Verify version was downgraded to current BACKUP_FORMAT_VERSION
+    assert backup.version == zigpy.backups.BACKUP_FORMAT_VERSION
 
 
 def test_backup_compatibility(backup_factory):
