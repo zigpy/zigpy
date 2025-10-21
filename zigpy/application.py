@@ -18,7 +18,6 @@ from typing import Any, TypeVar
 import warnings
 
 import zigpy.appdb
-from zigpy.backports.contextlib import nullcontext
 import zigpy.backups
 import zigpy.config as conf
 from zigpy.const import INTERFERENCE_MESSAGE
@@ -796,7 +795,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 priority,
                 self._concurrent_requests_semaphore.waiting_requests,
             )
-            manager = nullcontext()
+            manager = contextlib.nullcontext()
             was_locked = False
         else:
             manager = self._concurrent_requests_semaphore(priority=priority)

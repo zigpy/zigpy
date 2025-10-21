@@ -10,14 +10,12 @@ import enum
 import itertools
 import logging
 import math
-import sys
 import time
 import typing
 from typing import Any, TypeVar
 import warnings
 
 from zigpy import zdo
-from zigpy.backports.contextlib import nullcontext
 from zigpy.const import (
     APS_REPLY_TIMEOUT,
     APS_REPLY_TIMEOUT_EXTENDED,
@@ -63,8 +61,7 @@ OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
 )
 
 
-# TODO: Only Python 3.10+ support `slots=True` for dataclasses
-@dataclass(frozen=True, **({"slots": True} if sys.version_info[:2] >= (3, 10) else {}))
+@dataclass(frozen=True, slots=True)
 class ResponseKey:
     """Key for request/response matching."""
 
@@ -179,7 +176,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 priority,
                 self._concurrent_requests_semaphore.waiting_requests,
             )
-            manager = nullcontext()
+            manager = contextlib.nullcontext()
             was_locked = False
         else:
             manager = self._concurrent_requests_semaphore(priority=priority)
