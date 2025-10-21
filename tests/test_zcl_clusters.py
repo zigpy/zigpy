@@ -607,11 +607,13 @@ async def test_ias_zone(send_rsp_mock):
     hdr.frame_control = hdr.frame_control.replace(disable_default_response=True)
     t.handle_message(hdr, args)
     assert send_rsp_mock.call_count == 0
+    send_rsp_mock.reset_mock()
 
     # this should generate a default response
     hdr.frame_control = hdr.frame_control.replace(disable_default_response=False)
     t.handle_message(hdr, args)
-    assert send_rsp_mock.call_count == 0
+    assert send_rsp_mock.call_count == 1
+    send_rsp_mock.reset_mock()
 
     t = zcl.Cluster._registry[sec.IasZone.cluster_id](ep, is_server=True)
 
@@ -620,11 +622,13 @@ async def test_ias_zone(send_rsp_mock):
     hdr.frame_control = hdr.frame_control.replace(disable_default_response=True)
     t.handle_message(hdr, args)
     assert send_rsp_mock.call_count == 0
+    send_rsp_mock.reset_mock()
 
     # this should generate a default response
     hdr.frame_control = hdr.frame_control.replace(disable_default_response=False)
     t.handle_message(hdr, args)
     assert send_rsp_mock.call_count == 1
+    send_rsp_mock.reset_mock()
 
 
 def test_ota_image_block_field_control():
@@ -667,3 +671,9 @@ def test_general_analog_in_application_type():
         app_type.index
         == zcl.clusters.general_const.RelativeHumidityPercent.Space_Humidity
     )
+
+
+def test_ias_zone_enum_subclass_zcl_type():
+    """Test `IasZone.zone_type` is an enum16, not a uint16."""
+
+    assert sec.IasZone.AttributeDefs.zone_type.zcl_type == foundation.DataTypeId.enum16

@@ -227,3 +227,28 @@ def test_cv_folder(tmp_path: pathlib.Path) -> None:
     # Folder exists
     folder_path.mkdir()
     assert zigpy.config.validators.cv_folder(str(folder_path)) == folder_path
+
+
+@pytest.mark.parametrize(
+    ("value", "limit", "should_warn"),
+    [
+        (5, 10, False),
+        (10, 10, False),
+        (11, 10, True),
+        (20, 10, True),
+        (-5, 0, False),
+        (1, 0, True),
+    ],
+)
+def test_cv_warn_if_greater(value, limit, should_warn):
+    """Test `cv_warn_if_greater` validator."""
+    message = "Test warning message"
+    validator = zigpy.config.validators.cv_warn_if_greater(limit, message)
+
+    if should_warn:
+        with pytest.warns(UserWarning, match=message):
+            assert validator(value) == value
+    else:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert validator(value) == value

@@ -173,6 +173,30 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             for name in dir(defs):
                 definition = getattr(defs, name)
 
+                if isinstance(definition, foundation.ZCLCommandDef):
+                    direction = (
+                        foundation.Direction.Client_to_Server
+                        if defs is cls.ClientCommandDefs
+                        else foundation.Direction.Server_to_Client
+                    )
+
+                    if (
+                        definition.direction is not None
+                        and definition.direction != direction
+                    ):
+                        warnings.warn(
+                            f"Command {definition.name!r} has an incorrect direction, please remove the `direction` kwarg",
+                            DeprecationWarning,
+                            stacklevel=2,
+                        )
+                        LOGGER.warning(
+                            "Command %r has an incorrect direction, please remove the `direction` kwarg",
+                            definition.name,
+                            stacklevel=2,
+                        )
+
+                    object.__setattr__(definition, "direction", direction)
+
                 if isinstance(
                     definition,
                     foundation.ZCLCommandDef | foundation.ZCLAttributeDef,
@@ -349,7 +373,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         expect_reply: bool = True,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
-        priority: int = t.PacketPriority.NORMAL,
+        priority: int | None = None,
         tsn: int | t.uint8_t | None = None,
         timeout=APS_REPLY_TIMEOUT,
         **kwargs,
@@ -398,7 +422,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         expect_reply: bool = False,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
-        priority: int = t.PacketPriority.NORMAL,
+        priority: int | None = None,
         **kwargs,
     ) -> None:
         hdr, request = self._create_request(
@@ -463,6 +487,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             args,
         )
 
+        if not hdr.frame_control.disable_default_response:
+            self.send_default_rsp(
+                hdr,
+                foundation.Status.SUCCESS,
+            )
+
     def handle_cluster_general_request(
         self,
         hdr: foundation.ZCLHeader,
@@ -470,38 +500,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *,
         dst_addressing: AddressingMode | None = None,
     ) -> None:
-        if hdr.command_id == foundation.GeneralCommand.Report_Attributes:
-            values = []
-
-            for a in args.attribute_reports:
-                if a.attrid in self.attributes:
-                    values.append(f"{self.attributes[a.attrid].name}={a.value.value!r}")
-                else:
-                    values.append(f"0x{a.attrid:04X}={a.value.value!r}")
-
-            self.debug("Attribute report received: %s", ", ".join(values))
-
-            for attr in args.attribute_reports:
-                try:
-                    value = self.attributes[attr.attrid].type(attr.value.value)
-                except KeyError:
-                    value = attr.value.value
-                except ValueError:
-                    self.debug(
-                        "Couldn't normalize %a attribute with %s value",
-                        attr.attrid,
-                        attr.value.value,
-                        exc_info=True,
-                    )
-                    value = attr.value.value
-                self._update_attribute(attr.attrid, value)
-
-            if not hdr.frame_control.disable_default_response:
-                self.send_default_rsp(
-                    hdr,
-                    foundation.Status.SUCCESS,
-                )
-
         if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
             records = []
 
@@ -529,7 +527,42 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                     value=attr_read_func(),
                 )
 
+            # We do not emit a default response here because a ReadAttributesResponse is
+            # sent instead
             self.create_catching_task(self.read_attributes_rsp(records, tsn=hdr.tsn))
+            return
+
+        if hdr.command_id == foundation.GeneralCommand.Report_Attributes:
+            values = []
+
+            for a in args.attribute_reports:
+                if a.attrid in self.attributes:
+                    values.append(f"{self.attributes[a.attrid].name}={a.value.value!r}")
+                else:
+                    values.append(f"0x{a.attrid:04X}={a.value.value!r}")
+
+            self.debug("Attribute report received: %s", ", ".join(values))
+
+            for attr in args.attribute_reports:
+                try:
+                    value = self.attributes[attr.attrid].type(attr.value.value)
+                except KeyError:
+                    value = attr.value.value
+                except ValueError:
+                    self.debug(
+                        "Couldn't normalize %a attribute with %s value",
+                        attr.attrid,
+                        attr.value.value,
+                        exc_info=True,
+                    )
+                    value = attr.value.value
+                self._update_attribute(attr.attrid, value)
+
+        if not hdr.frame_control.disable_default_response:
+            self.send_default_rsp(
+                hdr,
+                foundation.Status.SUCCESS,
+            )
 
     def read_attributes_raw(self, attributes, manufacturer=None, **kwargs):
         attributes = [t.uint16_t(a) for a in attributes]
@@ -681,8 +714,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         args = self._write_attr_records(attributes)
         return self._write_attributes_undivided(args, manufacturer=manufacturer)
 
-    async def bind(self):
-        return await self._endpoint.device.zdo.bind(cluster=self)
+    async def bind(self, **kwargs):
+        return await self._endpoint.device.zdo.bind(cluster=self, **kwargs)
 
     async def unbind(self):
         return await self._endpoint.device.zdo.unbind(cluster=self)
@@ -705,7 +738,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         cfg = foundation.AttributeReportingConfig()
         cfg.direction = direction
         cfg.attrid = attr_def.id
-        cfg.datatype = foundation.DataType.from_python_type(attr_def.type).type_id
+        cfg.datatype = (
+            attr_def.zcl_type
+            if attr_def.zcl_type is not None
+            else foundation.DataType.from_python_type(attr_def.type).type_id
+        )
         cfg.min_interval = min_interval
         cfg.max_interval = max_interval
         cfg.reportable_change = reportable_change

@@ -59,7 +59,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         expect_reply: bool = True,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
-        priority: int = t.PacketPriority.NORMAL,
+        priority: int | None = None,
         **kwargs,
     ):
         data = self._serialize(command, *args, **kwargs)
@@ -87,7 +87,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         expect_reply: bool = False,
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
-        priority: int = t.PacketPriority.NORMAL,
+        priority: int | None = None,
         **kwargs,
     ):
         data = self._serialize(command, *args, **kwargs)
@@ -228,7 +228,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                     local_addr,
                     [],
                     tsn=hdr.tsn,
-                    priority=t.PacketPriority.HIGH,
+                    priority=t.PacketPriority.CRITICAL,
                 )
             )
             return
@@ -239,16 +239,17 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                 local_addr,
                 [t.uint8_t(1)],
                 tsn=hdr.tsn,
-                priority=t.PacketPriority.HIGH,
+                priority=t.PacketPriority.CRITICAL,
             )
         )
 
-    async def bind(self, cluster):
+    async def bind(self, cluster, **kwargs):
         return await self.Bind_req(
             self._device.ieee,
             cluster.endpoint.endpoint_id,
             cluster.cluster_id,
             self.device.application.get_dst_address(cluster),
+            **kwargs,
         )
 
     async def unbind(self, cluster):

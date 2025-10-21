@@ -222,6 +222,8 @@ ignore = [
     "PYI024", # Use typing.NamedTuple instead of collections.namedtuple
     "RET503",
     "TRY002",
+
+    "RSE102", # For consistency, `raise TypeError()` instead of `raise TypeError`
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -265,6 +267,7 @@ follow_imports = "silent"
 
 [tool.coverage.run]
 source = ["zigpy"]
+omit = ["zigpy/backports/*"]
 
 [tool.coverage.report]
 exclude_lines = [

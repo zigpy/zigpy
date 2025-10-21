@@ -192,7 +192,7 @@ class Topology(zigpy.util.ListenableMixin):
             except Exception as e:  # noqa: BLE001
                 LOGGER.debug("Failed to scan neighbors of %s", device, exc_info=e)
             else:
-                LOGGER.info(
+                LOGGER.debug(
                     "Scanned neighbors of %s: %s", device, self.neighbors[device.ieee]
                 )
 
@@ -211,7 +211,7 @@ class Topology(zigpy.util.ListenableMixin):
             except Exception as e:  # noqa: BLE001
                 LOGGER.debug("Failed to scan routes of %s", device, exc_info=e)
             else:
-                LOGGER.info(
+                LOGGER.debug(
                     "Scanned routes of %s: %s", device, self.routes[device.ieee]
                 )
 

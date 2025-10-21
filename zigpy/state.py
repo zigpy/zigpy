@@ -113,6 +113,8 @@ class NetworkInfo(t.BaseDataclassMixin):
     )
     key_table: list[Key] = dataclasses.field(default_factory=list)
     children: list[t.EUI64] = dataclasses.field(default_factory=list)
+    route_table: dict[t.NWK, t.NWK] = dataclasses.field(default_factory=dict)
+    tx_power: int | None = None
 
     # If exposed by the stack, NWK addresses of other connected devices on the network
     nwk_addresses: dict[t.EUI64, t.NWK] = dataclasses.field(default_factory=dict)
@@ -140,6 +142,11 @@ class NetworkInfo(t.BaseDataclassMixin):
             "tc_link_key": self.tc_link_key.as_dict(),
             "key_table": [key.as_dict() for key in self.key_table],
             "children": sorted(str(ieee) for ieee in self.children),
+            "route_table": {
+                str(t.NWK(dst))[2:]: str(t.NWK(next_hop))[2:]
+                for dst, next_hop in self.route_table.items()
+            },
+            "tx_power": self.tx_power,
             "nwk_addresses": {
                 str(ieee): str(t.NWK(nwk))[2:]
                 for ieee, nwk in sorted(self.nwk_addresses.items())
@@ -166,6 +173,11 @@ class NetworkInfo(t.BaseDataclassMixin):
                 key=lambda k: k.partner_ieee,
             ),
             children=[t.EUI64.convert(ieee) for ieee in obj["children"]],
+            route_table={
+                t.NWK.convert(dst): t.NWK.convert(next_hop)
+                for dst, next_hop in obj["route_table"].items()
+            },
+            tx_power=obj["tx_power"],
             nwk_addresses={
                 t.EUI64.convert(ieee): t.NWK.convert(nwk)
                 for ieee, nwk in obj["nwk_addresses"].items()

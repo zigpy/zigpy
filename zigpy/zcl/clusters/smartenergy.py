@@ -7,8 +7,7 @@ from zigpy.zcl import Cluster
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
-    DataType,
-    Direction,
+    DataTypeId,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -355,7 +354,7 @@ class Metering(Cluster):
         # • DFTSummation
         # • Block Information attributes
         summation_formatting: Final = ZCLAttributeDef(
-            id=0x0303, zcl_type=DataType.map8, type=NumberFormatting, access="r"
+            id=0x0303, zcl_type=DataTypeId.map8, type=NumberFormatting, access="r"
         )
 
         # This attribute shall be used against the following attributes:
@@ -363,7 +362,7 @@ class Metering(Cluster):
         # • CurrentMaxDemandReceived
         # • InstantaneousDemand
         demand_formatting: Final = ZCLAttributeDef(
-            id=0x0304, zcl_type=DataType.map8, type=NumberFormatting, access="r"
+            id=0x0304, zcl_type=DataTypeId.map8, type=NumberFormatting, access="r"
         )
 
         # This attribute shall be used against the following attributes:
@@ -387,7 +386,7 @@ class Metering(Cluster):
         # • PreviousMonthNConsumptionDelivered
         # • PreviousMonthNConsumptionReceived
         historical_consumption_formatting: Final = ZCLAttributeDef(
-            id=0x0305, zcl_type=DataType.map8, type=NumberFormatting, access="r"
+            id=0x0305, zcl_type=DataTypeId.map8, type=NumberFormatting, access="r"
         )
         metering_device_type: Final = ZCLAttributeDef(
             id=0x0306,
@@ -396,7 +395,7 @@ class Metering(Cluster):
             # as indicated in the attribute description. For backwards compatibility
             # reasons, the data type has not been changed, though the data itself should
             # be treated like an enum
-            zcl_type=DataType.map8,
+            zcl_type=DataTypeId.map8,
             access="r",
         )
         site_id: Final = ZCLAttributeDef(
@@ -409,10 +408,10 @@ class Metering(Cluster):
             id=0x0309, type=MeteringUnitofMeasure, access="r"
         )
         energy_carrier_summation_formatting: Final = ZCLAttributeDef(
-            id=0x030A, zcl_type=DataType.map8, type=NumberFormatting, access="r"
+            id=0x030A, zcl_type=DataTypeId.map8, type=NumberFormatting, access="r"
         )
         energy_carrier_demand_formatting: Final = ZCLAttributeDef(
-            id=0x030B, zcl_type=DataType.map8, type=NumberFormatting, access="r"
+            id=0x030B, zcl_type=DataTypeId.map8, type=NumberFormatting, access="r"
         )
         temperature_unit_of_measure: Final = ZCLAttributeDef(
             id=0x030C, type=MeteringUnitofMeasure, access="r"
@@ -423,7 +422,7 @@ class Metering(Cluster):
         # • OutletTemperature
         # • ControlTemperature
         temperature_formatting: Final = ZCLAttributeDef(
-            id=0x030D, zcl_type=DataType.map8, type=NumberFormatting, access="r"
+            id=0x030D, zcl_type=DataTypeId.map8, type=NumberFormatting, access="r"
         )
         module_serial_number: Final = ZCLAttributeDef(
             id=0x030E, type=t.LimitedLVBytes(24), access="r"
@@ -444,7 +443,7 @@ class Metering(Cluster):
         # This attribute shall be used against the following attribute:
         # • AlternativeInstantaneousDemand
         alternative_demand_formatting: Final = ZCLAttributeDef(
-            id=0x0313, zcl_type=DataType.map8, type=NumberFormatting, access="r"
+            id=0x0313, zcl_type=DataTypeId.map8, type=NumberFormatting, access="r"
         )
         # This attribute shall be used against the following attributes:
         # • CurrentDayAlternativeConsumptionDelivered
@@ -463,7 +462,7 @@ class Metering(Cluster):
         # • PreviousMonthNAlternativeConsumptionDelivered
         # • PreviousMonthNAlternativeConsumptionReceived
         alternative_consumption_formatting: Final = ZCLAttributeDef(
-            id=0x0314, zcl_type=DataType.map8, type=NumberFormatting, access="r"
+            id=0x0314, zcl_type=DataTypeId.map8, type=NumberFormatting, access="r"
         )
         instantaneous_demand: Final = ZCLAttributeDef(
             id=0x0400, type=t.int24s, access="r"
@@ -584,44 +583,20 @@ class Metering(Cluster):
         )
 
     class ServerCommandDefs(BaseCommandDefs):
-        get_profile: Final = ZCLCommandDef(
-            id=0x00, schema={}, direction=Direction.Client_to_Server
-        )
-        req_mirror: Final = ZCLCommandDef(
-            id=0x01, schema={}, direction=Direction.Client_to_Server
-        )
-        mirror_rem: Final = ZCLCommandDef(
-            id=0x02, schema={}, direction=Direction.Client_to_Server
-        )
-        req_fast_poll_mode: Final = ZCLCommandDef(
-            id=0x03, schema={}, direction=Direction.Client_to_Server
-        )
-        get_snapshot: Final = ZCLCommandDef(
-            id=0x04, schema={}, direction=Direction.Client_to_Server
-        )
-        take_snapshot: Final = ZCLCommandDef(
-            id=0x05, schema={}, direction=Direction.Client_to_Server
-        )
-        mirror_report_attr_response: Final = ZCLCommandDef(
-            id=0x06, schema={}, direction=Direction.Server_to_Client
-        )
+        get_profile: Final = ZCLCommandDef(id=0x00, schema={})
+        req_mirror: Final = ZCLCommandDef(id=0x01, schema={})
+        mirror_rem: Final = ZCLCommandDef(id=0x02, schema={})
+        req_fast_poll_mode: Final = ZCLCommandDef(id=0x03, schema={})
+        get_snapshot: Final = ZCLCommandDef(id=0x04, schema={})
+        take_snapshot: Final = ZCLCommandDef(id=0x05, schema={})
+        mirror_report_attr_response: Final = ZCLCommandDef(id=0x06, schema={})
 
     class ClientCommandDefs(BaseCommandDefs):
-        get_profile_response: Final = ZCLCommandDef(
-            id=0x00, schema={}, direction=Direction.Server_to_Client
-        )
-        req_mirror_response: Final = ZCLCommandDef(
-            id=0x01, schema={}, direction=Direction.Server_to_Client
-        )
-        mirror_rem_response: Final = ZCLCommandDef(
-            id=0x02, schema={}, direction=Direction.Server_to_Client
-        )
-        req_fast_poll_mode_response: Final = ZCLCommandDef(
-            id=0x03, schema={}, direction=Direction.Server_to_Client
-        )
-        get_snapshot_response: Final = ZCLCommandDef(
-            id=0x04, schema={}, direction=Direction.Server_to_Client
-        )
+        get_profile_response: Final = ZCLCommandDef(id=0x00, schema={})
+        req_mirror_response: Final = ZCLCommandDef(id=0x01, schema={})
+        mirror_rem_response: Final = ZCLCommandDef(id=0x02, schema={})
+        req_fast_poll_mode_response: Final = ZCLCommandDef(id=0x03, schema={})
+        get_snapshot_response: Final = ZCLCommandDef(id=0x04, schema={})
 
 
 class Messaging(Cluster):

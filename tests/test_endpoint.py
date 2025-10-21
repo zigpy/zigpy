@@ -127,12 +127,6 @@ def test_multiple_add_output_cluster(ep):
     assert ep.out_clusters[0].cluster_id == 1
 
 
-def test_handle_request_unknown(ep):
-    hdr = MagicMock()
-    hdr.command_id = sentinel.command_id
-    ep.handle_message(sentinel.profile, 99, hdr, sentinel.args)
-
-
 def test_cluster_attr(ep):
     with pytest.raises(AttributeError):
         ep.basic  # noqa: B018
@@ -180,7 +174,7 @@ async def test_reply_change_profile_id(ep):
             expect_reply=False,
             use_ieee=False,
             ask_for_ack=None,
-            priority=t.PacketPriority.NORMAL,
+            priority=None,
         )
     ]
 
@@ -198,7 +192,7 @@ async def test_reply_change_profile_id(ep):
             expect_reply=False,
             use_ieee=False,
             ask_for_ack=None,
-            priority=t.PacketPriority.NORMAL,
+            priority=None,
         )
     ]
 
@@ -217,7 +211,7 @@ async def test_reply_change_profile_id(ep):
             expect_reply=False,
             use_ieee=False,
             ask_for_ack=None,
-            priority=t.PacketPriority.NORMAL,
+            priority=None,
         )
     ]
 

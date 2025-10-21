@@ -1,14 +1,17 @@
+from __future__ import annotations
+
 import asyncio
 from datetime import UTC, datetime
 import errno
 import logging
 from unittest import mock
-from unittest.mock import ANY, PropertyMock, call
+from unittest.mock import ANY, Mock, PropertyMock, call
 
 import pytest
 
 import zigpy.application
 import zigpy.config as conf
+from zigpy.datastructures import RequestLimiter
 from zigpy.exceptions import (
     DeliveryError,
     NetworkNotFormed,
@@ -526,6 +529,38 @@ async def test_form_network(app):
     assert nwk_info1.channel in (11, 15, 20, 25)
 
 
+@pytest.mark.parametrize(
+    ("config_override", "expected_tx_power", "should_warn"),
+    [
+        (None, 8, False),
+        ({"tx_power": 10}, 10, False),
+        ({"tx_power": -5}, -5, False),
+        ({"tx_power": 20}, 20, True),
+    ],
+)
+@pytest.mark.filterwarnings("ignore::UserWarning")
+async def test_form_network_tx_power(
+    app,
+    config_override: dict | None,
+    expected_tx_power: int,
+    should_warn: bool,
+    caplog,
+):
+    with (
+        patch.object(app, "write_network_info") as write,
+        caplog.at_level(logging.WARNING),
+    ):
+        await app.form_network(config=config_override)
+
+        if should_warn:
+            assert "Increasing the TX power" in caplog.text
+        else:
+            assert "Increasing the TX power" not in caplog.text
+
+    nwk_info = write.mock_calls[0].kwargs["network_info"]
+    assert nwk_info.tx_power == expected_tx_power
+
+
 @mock.patch("zigpy.util.pick_optimal_channel", mock.Mock(return_value=22))
 async def test_form_network_find_best_channel(app):
     orig_start_network = app.start_network
@@ -714,19 +749,18 @@ async def test_request_concurrency():
     peak_concurrency = 0
 
     class SlowApp(App):
-        async def send_packet(self, packet):
+        async def _send_packet(self, packet):
             nonlocal current_concurrency, peak_concurrency
 
-            async with self._limit_concurrency():
-                current_concurrency += 1
-                peak_concurrency = max(peak_concurrency, current_concurrency)
+            current_concurrency += 1
+            peak_concurrency = max(peak_concurrency, current_concurrency)
 
-                await asyncio.sleep(0.1)
-                current_concurrency -= 1
+            await asyncio.sleep(0.1)
+            current_concurrency -= 1
 
-                if packet % 10 == 7:
-                    # Fail randomly
-                    raise DeliveryError("Failure")
+            if packet % 10 == 7:
+                # Fail randomly
+                raise DeliveryError("Failure")
 
     app = make_app({conf.CONF_MAX_CONCURRENT_REQUESTS: 16}, app_base=SlowApp)
 
@@ -734,7 +768,11 @@ async def test_request_concurrency():
     assert peak_concurrency == 0
 
     await asyncio.gather(
-        *[app.send_packet(i) for i in range(100)], return_exceptions=True
+        *[
+            app.send_packet(t.ZigbeePacket(priority=t.PacketPriority.HIGH))
+            for i in range(100)
+        ],
+        return_exceptions=True,
     )
 
     assert current_concurrency == 0
@@ -794,7 +832,9 @@ async def test_request(app, device, packet):
     assert status == zigpy.zcl.foundation.Status.SUCCESS
     assert isinstance(msg, str)
 
-    app.send_packet.assert_called_once_with(packet)
+    app.send_packet.assert_called_once_with(
+        packet.replace(priority=t.PacketPriority.NORMAL)
+    )
     app.send_packet.reset_mock()
 
     # Test sending with IEEE
@@ -809,6 +849,7 @@ async def test_request(app, device, packet):
                 addr_mode=t.AddrMode.IEEE,
                 address=device.ieee,
             ),
+            priority=t.PacketPriority.NORMAL,
         )
     )
     app.send_packet.reset_mock()
@@ -821,7 +862,7 @@ async def test_request(app, device, packet):
 
     app.build_source_route_to.assert_called_once_with(dest=device)
     app.send_packet.assert_called_once_with(
-        packet.replace(source_route=[0x000A, 0x000B])
+        packet.replace(source_route=[0x000A, 0x000B], priority=t.PacketPriority.NORMAL)
     )
     app.send_packet.reset_mock()
 
@@ -829,7 +870,9 @@ async def test_request(app, device, packet):
     status, msg = await send_request(app, expect_reply=False)
 
     app.send_packet.assert_called_once_with(
-        packet.replace(tx_options=t.TransmitOptions.ACK)
+        packet.replace(
+            tx_options=t.TransmitOptions.ACK, priority=t.PacketPriority.NORMAL
+        )
     )
     app.send_packet.reset_mock()
 
@@ -837,7 +880,9 @@ async def test_request(app, device, packet):
     status, msg = await send_request(app, ask_for_ack=True)
 
     app.send_packet.assert_called_once_with(
-        packet.replace(tx_options=t.TransmitOptions.ACK)
+        packet.replace(
+            tx_options=t.TransmitOptions.ACK, priority=t.PacketPriority.NORMAL
+        )
     )
     app.send_packet.reset_mock()
 
@@ -845,7 +890,9 @@ async def test_request(app, device, packet):
     status, msg = await send_request(app, ask_for_ack=False)
 
     app.send_packet.assert_called_once_with(
-        packet.replace(tx_options=t.TransmitOptions(0))
+        packet.replace(
+            tx_options=t.TransmitOptions(0), priority=t.PacketPriority.NORMAL
+        )
     )
     app.send_packet.reset_mock()
 
@@ -871,15 +918,17 @@ async def test_request_retrying_success(app, device, packet) -> None:
     )
 
     assert app.send_packet.mock_calls == [
-        call(packet),
+        call(packet.replace(priority=t.PacketPriority.NORMAL)),
         call(
             packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
+                priority=t.PacketPriority.NORMAL,
             )
         ),
         call(
             packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
+                priority=t.PacketPriority.NORMAL,
             )
         ),
     ]
@@ -907,15 +956,17 @@ async def test_request_retrying_failure(app, device, packet) -> None:
         )
 
     assert app.send_packet.mock_calls == [
-        call(packet),
+        call(packet.replace(priority=t.PacketPriority.NORMAL)),
         call(
             packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
+                priority=t.PacketPriority.NORMAL,
             )
         ),
         call(
             packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
+                priority=t.PacketPriority.NORMAL,
             )
         ),
     ]
@@ -956,6 +1007,7 @@ async def test_send_mrequest(app, packet):
             radius=12,
             non_member_radius=34,
             tx_options=t.TransmitOptions.NONE,
+            priority=t.PacketPriority.NORMAL,
         )
     )
 
@@ -983,6 +1035,7 @@ async def test_send_broadcast(app, packet):
             ),
             radius=12,
             tx_options=t.TransmitOptions.NONE,
+            priority=t.PacketPriority.NORMAL,
         )
     )
 
@@ -1206,8 +1259,9 @@ def test_get_device_with_address_nwk(app, device):
 async def test_request_future_matching(app, make_initialized_device):
     device = make_initialized_device(app)
     device._packet_debouncer.filter = MagicMock(return_value=False)
-
     ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
+
+    orig_listeners = app._req_listeners[device].copy()
 
     req_hdr, req_cmd = ota._create_request(
         general=False,
@@ -1237,7 +1291,7 @@ async def test_request_future_matching(app, make_initialized_device):
         rssi=-30,
     )
 
-    assert not app._req_listeners[device]
+    assert app._req_listeners[device] == orig_listeners
 
     with app.wait_for_response(
         device, [ota.commands_by_name["query_next_image"].schema()]
@@ -1265,13 +1319,15 @@ async def test_request_future_matching(app, make_initialized_device):
             assert rsp_cmd == req_cmd
             assert rsp_cmd.current_file_version == 0x11112222
 
-    assert not app._req_listeners[device]
+    assert app._req_listeners[device] == orig_listeners
 
 
 async def test_request_callback_matching(app, make_initialized_device):
     device = make_initialized_device(app)
     device._packet_debouncer.filter = MagicMock(return_value=False)
     ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
+
+    orig_listeners = app._req_listeners[device].copy()
 
     req_hdr, req_cmd = ota._create_request(
         general=False,
@@ -1303,12 +1359,12 @@ async def test_request_callback_matching(app, make_initialized_device):
 
     mock_callback = mock.Mock()
 
-    assert not app._req_listeners[device]
+    assert app._req_listeners[device] == orig_listeners
 
     with app.callback_for_response(
         device, [ota.commands_by_name["query_next_image"].schema()], mock_callback
     ):
-        assert app._req_listeners[device]
+        assert app._req_listeners[device] != orig_listeners
 
         asyncio.get_running_loop().call_soon(app.packet_received, packet)
         asyncio.get_running_loop().call_soon(app.packet_received, packet)
@@ -1319,7 +1375,7 @@ async def test_request_callback_matching(app, make_initialized_device):
         assert len(mock_callback.mock_calls) == 3
         assert mock_callback.mock_calls == [mock.call(req_hdr, req_cmd)] * 3
 
-    assert not app._req_listeners[device]
+    assert app._req_listeners[device] == orig_listeners
 
 
 async def test_energy_scan_default(app):
@@ -1614,3 +1670,83 @@ async def test_packet_capture(app) -> None:
     with patch.object(app, "_packet_capture_change_channel"):
         await app.packet_capture_change_channel(channel=25)
         assert app._packet_capture_change_channel.mock_calls == [call(channel=25)]
+
+
+async def test_request_priority(app) -> None:
+    app._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
+
+    with patch.object(app, "_send_packet", wraps=app._send_packet) as mock_send_packet:
+        packet_low = Mock(name="LOW", priority=t.PacketPriority.LOW)
+        packet_normal = Mock(name="NORMAL", priority=t.PacketPriority.NORMAL)
+        packet_high = Mock(name="HIGH", priority=t.PacketPriority.HIGH)
+        packet_critical = Mock(name="CRITICAL", priority=t.PacketPriority.CRITICAL)
+
+        await asyncio.gather(
+            app.send_packet(packet_low),
+            app.send_packet(packet_normal),
+            app.send_packet(packet_high),
+            app.send_packet(packet_critical),
+        )
+
+    assert mock_send_packet.mock_calls == [
+        # The low priority packet made it through first, locking up the queue
+        call(packet_low),
+        # The critical one bypasses all others even though it's sent last
+        call(packet_critical),
+        call(packet_high),
+        call(packet_normal),
+    ]
+
+
+async def test_request_priority_context_concurrency(app, packet):
+    """Test that request_priority contexts work correctly with concurrent tasks."""
+    # Limit concurrency to see priority ordering effects
+    app._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
+
+    with patch.object(app, "_send_packet", wraps=app._send_packet) as mock_send:
+
+        async def task_with_priority(name: str, priority: int):
+            async with app.request_priority(priority):
+                await app.send_packet(packet.replace(data=name.encode()))
+
+        # Start multiple concurrent tasks with different priority contexts
+        await asyncio.gather(
+            asyncio.create_task(task_with_priority("low", t.PacketPriority.LOW)),
+            asyncio.create_task(task_with_priority("normal", t.PacketPriority.NORMAL)),
+            asyncio.create_task(task_with_priority("high", t.PacketPriority.HIGH)),
+            asyncio.create_task(
+                task_with_priority("critical", t.PacketPriority.CRITICAL)
+            ),
+        )
+
+    # Verify packets were processed in priority order, not send order
+    assert mock_send.mock_calls == [
+        # The low priority task started first but gets processed in priority order
+        call(packet.replace(data=b"low")),
+        call(packet.replace(data=b"critical")),
+        call(packet.replace(data=b"high")),
+        call(packet.replace(data=b"normal")),
+    ]
+
+
+async def test_can_write_network_settings(app) -> None:
+    # The default is True
+    assert await app.can_write_network_settings(
+        network_info=app.state.network_info, node_info=app.state.node_info
+    )
+
+
+async def test_shutdown_device_remove_fails(app, ieee, caplog):
+    """Test shutdown continues if a device fails to be removed."""
+    dev = app.add_device(ieee, 0x1234)
+
+    with patch.object(dev, "on_remove", side_effect=Exception("Boom!")):
+        with caplog.at_level(logging.WARNING):
+            await app.shutdown()
+
+    assert "Failed to remove device" in caplog.text
+    assert "Boom!" in caplog.text

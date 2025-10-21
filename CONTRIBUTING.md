@@ -166,8 +166,13 @@ This section is meant to describe the zigpy API (Application Programming Interfa
 Reference collections for different hardware specific Zigbee Stack and related manufacturer documentation.
 - https://github.com/zigpy/zigpy/discussions/595
 
-Silicon Labs video playlist of Zigbee Concepts: Architecture basics, MAC/PHY, node types, and application profiles
-- https://www.youtube.com/playlist?list=PL-awFRrdECXvAs1mN2t2xaI0_bQRh2AqD
+Silicon Labs video series about core Zigbee Concepts: Architecture basics, MAC/PHY, node types, and application profiles
+- ZigBee Concepts 1: Architecture Basics: https://www.youtube.com/watch?v=FIVrfZqhEAY&ab_channel=SiliconLabs
+- ZigBee Concepts 2: MAC and PHY Concepts for ZigBee Networks: https://www.youtube.com/watch?v=gDN5G50dVJ4&ab_channel=SiliconLabs
+- ZigBee Concepts 4: Network Activities: https://www.youtube.com/watch?v=Ug6IJJ-fvFU
+- ZigBee Concepts 3: Node Types, PAN IDs, and Addresses: https://www.youtube.com/watch?v=K8b1Dr74aoQ&ab_channel=SiliconLabs
+- ZigBee Concepts 5: Application Profiles, Clusters, and Endpoints: https://www.youtube.com/watch?v=DbjovO8zvOo
+- ZigBee Concepts 6: Overview of Popular ZigBee Application Profiles (ZHA, ZSE, ZLL): https://www.youtube.com/watch?v=27cFRP7E5JQ&ab_channel=SiliconLabs
 
 ### zigpy wiki and communication channels
 

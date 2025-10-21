@@ -591,7 +591,7 @@ class ZigbeePacket(BaseDataclassMixin):
     )
 
     # Higher priority will try to be sent before lower
-    priority: int = dataclasses.field(default=0)
+    priority: int | None = dataclasses.field(default=None)
 
     # Set to `None` when the packet is outgoing
     src: AddrModeAddress | None = dataclasses.field(default=None)
