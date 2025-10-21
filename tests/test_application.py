@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import errno
 import logging
 from unittest import mock
@@ -117,7 +117,7 @@ async def _remove(
         elif delivery_failure:
             raise DeliveryError("Error")
         else:
-            raise asyncio.TimeoutError
+            raise TimeoutError
 
     device = MagicMock()
     device.ieee = ieee
@@ -1415,13 +1415,13 @@ async def test_energy_scan_default(app):
     )
 
     assert len(results) == 16
-    assert results == dict(zip(range(11, 26 + 1), raw_scan_results))
+    assert results == dict(zip(range(11, 26 + 1), raw_scan_results, strict=True))
 
 
 async def test_energy_scan_not_implemented(app):
     """Energy scanning still "works" even when the radio doesn't implement it."""
     await app.startup()
-    app._device.zdo.Mgmt_NWK_Update_req.side_effect = asyncio.TimeoutError()
+    app._device.zdo.Mgmt_NWK_Update_req.side_effect = TimeoutError()
 
     results = await app.energy_scan(
         channels=t.Channels.ALL_CHANNELS, duration_exp=2, count=1
@@ -1574,7 +1574,7 @@ async def test_probe(app):
 
         async def connect(self):
             if self._config[conf.CONF_DEVICE][conf.CONF_DEVICE_BAUDRATE] != 115200:
-                raise asyncio.TimeoutError
+                raise TimeoutError
 
     # Only one baudrate is valid
     assert (await BaudSpecificApp.probe({conf.CONF_DEVICE_PATH: "/dev/null"})) == {
@@ -1585,7 +1585,7 @@ async def test_probe(app):
 
     class NeverConnectsApp(App):
         async def connect(self):
-            raise asyncio.TimeoutError
+            raise TimeoutError
 
     # No settings will work
     assert (await NeverConnectsApp.probe({conf.CONF_DEVICE_PATH: "/dev/null"})) is False
@@ -1639,14 +1639,14 @@ async def test_network_scan(app) -> None:
 async def test_packet_capture(app) -> None:
     packets = [
         t.CapturedPacket(
-            timestamp=datetime(2021, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
             rssi=-60,
             lqi=250,
             channel=15,
             data=bytes.fromhex("02007f"),
         ),
         t.CapturedPacket(
-            timestamp=datetime(2021, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
+            timestamp=datetime(2021, 1, 1, 0, 0, 1, tzinfo=UTC),
             rssi=-70,
             lqi=240,
             channel=15,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+from collections.abc import Callable
 from copy import deepcopy
 import dataclasses
 from enum import Enum
@@ -10,11 +11,10 @@ import inspect
 import logging
 import pathlib
 from types import FrameType
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Self
 
 import attrs
 from frozendict import frozendict
-from typing_extensions import Self
 
 from zigpy.const import (
     SIG_ENDPOINTS,
@@ -498,7 +498,7 @@ def recursive_freeze(obj: Any) -> Any:
     """Recursively convert mutable collections to immutable ones."""
     if isinstance(obj, dict):
         return frozendict({k: recursive_freeze(v) for k, v in obj.items()})
-    if isinstance(obj, (tuple, list, set)):
+    if isinstance(obj, tuple | list | set):
         return tuple(recursive_freeze(v) for v in obj)
     return obj
 

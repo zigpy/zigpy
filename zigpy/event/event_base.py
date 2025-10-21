@@ -5,15 +5,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 import dataclasses
+from inspect import iscoroutinefunction
 import logging
 import sys
 from typing import Any
-
-if sys.version_info >= (3, 10):
-    from inspect import iscoroutinefunction
-else:
-    # https://github.com/python/cpython/issues/84753
-    from asyncio import iscoroutinefunction
 
 _LOGGER = logging.getLogger(__package__)
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import enum
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any
 
 ConfigType = dict[str, Any]
 
@@ -46,8 +46,8 @@ if TYPE_CHECKING:
     EndpointType = zigpy.endpoint.Endpoint
     ZDOType = zigpy.zdo.ZDO
 
-    AddressingMode = Union[
-        zigpy.types.Addressing.Group,
-        zigpy.types.Addressing.IEEE,
-        zigpy.types.Addressing.NWK,
-    ]
+    AddressingMode = (
+        zigpy.types.Addressing.Group
+        | zigpy.types.Addressing.IEEE
+        | zigpy.types.Addressing.NWK
+    )

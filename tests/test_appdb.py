@@ -1,6 +1,6 @@
 import asyncio
 import contextlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import pathlib
 import sqlite3
 import sys
@@ -490,7 +490,7 @@ async def test_attribute_update_short_interval(tmp_path):
     attr_update_time_first = clus._attr_last_updated[0x4000]
 
     # update attribute again 10 seconds later
-    fake_time = datetime.now(timezone.utc) + timedelta(seconds=10)
+    fake_time = datetime.now(UTC) + timedelta(seconds=10)
     with freezegun.freeze_time(fake_time):
         clus.update_attribute(0x4000, "2.0")
 
@@ -981,9 +981,9 @@ async def test_last_seen(tmp_path):
     dev = app.get_device(ieee=ieee)
 
     # Last-seen is only written to the db every 30s (no write case)
-    now = datetime.fromtimestamp(dev.last_seen + 5, timezone.utc)
+    now = datetime.fromtimestamp(dev.last_seen + 5, UTC)
     with freezegun.freeze_time(now):
-        dev.last_seen = datetime.now(timezone.utc)
+        dev.last_seen = datetime.now(UTC)
 
     await app.shutdown()
 
@@ -996,9 +996,9 @@ async def test_last_seen(tmp_path):
     dev = app.get_device(ieee=ieee)
 
     # Last-seen is only written to the db every 30s (write case)
-    now = datetime.fromtimestamp(dev.last_seen + 35, timezone.utc)
+    now = datetime.fromtimestamp(dev.last_seen + 35, UTC)
     with freezegun.freeze_time(now):
-        dev.last_seen = datetime.now(timezone.utc)
+        dev.last_seen = datetime.now(UTC)
 
     await app.shutdown()
 

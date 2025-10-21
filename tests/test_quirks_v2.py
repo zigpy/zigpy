@@ -1550,10 +1550,12 @@ def strict_eq(a: Any, b: Any) -> bool:
         if a.keys() != b.keys():
             return False
         return all(strict_eq(a[k], b[k]) for k in a)
-    if isinstance(a, (tuple, list)):
+    if isinstance(a, tuple | list):
         if len(a) != len(b):
             return False
-        return all(strict_eq(a_item, b_item) for a_item, b_item in zip(a, b))
+        return all(
+            strict_eq(a_item, b_item) for a_item, b_item in zip(a, b, strict=False)
+        )
     return True
 
 

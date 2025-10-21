@@ -303,9 +303,9 @@ def broadcast(
 ):
     params, param_types = types.CLUSTERS[command]
 
-    named_args = dict(zip(params, args))
+    named_args = dict(zip(params, args, strict=False))
     named_args.update(kwargs)
-    assert set(named_args.keys()) & set(params)
+    assert set(named_args.keys()) == set(params)
 
     sequence = app.get_sequence()
     data = bytes([sequence]) + t.serialize(named_args.values(), param_types)

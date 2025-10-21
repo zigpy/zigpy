@@ -68,7 +68,9 @@ def test_channels():
     assert list(t.Channels.ALL_CHANNELS) == list(range(11, 26 + 1))
     assert list(t.Channels.NO_CHANNELS) == []
 
-    for expected, channel in zip(t.Channels.ALL_CHANNELS, range(11, 26 + 1)):
+    for expected, channel in zip(
+        t.Channels.ALL_CHANNELS, range(11, 26 + 1), strict=True
+    ):
         assert expected == channel
 
     # t.Channels.from_channel_list(another_channel) should be idempotent

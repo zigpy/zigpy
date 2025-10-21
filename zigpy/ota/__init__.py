@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import timeout as asyncio_timeout
 from collections import defaultdict
 import contextlib
 import dataclasses
 import logging
-import sys
 import typing
 
 from zigpy.config import (
@@ -35,11 +35,6 @@ import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import Ota
-
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
-else:
-    from asyncio import timeout as asyncio_timeout  # pragma: no cover
 
 if typing.TYPE_CHECKING:
     import zigpy.application
@@ -452,7 +447,7 @@ class OTA:
             return_exceptions=True,
         )
 
-        for img, result in zip(undownloaded_images, results):
+        for img, result in zip(undownloaded_images, results, strict=True):
             if isinstance(result, BaseException):
                 _LOGGER.debug(
                     "Failed to download image, ignoring: %s", img, exc_info=result

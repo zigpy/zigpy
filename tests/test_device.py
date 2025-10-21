@@ -1,6 +1,6 @@
 import asyncio
 from contextlib import AsyncExitStack
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import logging
 import math
 from unittest.mock import call
@@ -190,7 +190,7 @@ async def test_broadcast(app_mock):
 async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
     async def mockrequest(nwk, tries=None, delay=None, **kwargs):
         if not request_success:
-            raise asyncio.TimeoutError
+            raise TimeoutError
 
         status = 0 if zdo_success else 1
         return [status, nwk, zdo_t.NodeDescriptor.deserialize(b"abcdefghijklm")[0]]
@@ -309,13 +309,13 @@ def test_device_last_seen(dev, monkeypatch):
     assert dev.last_seen is None
 
     dev.last_seen = 0
-    epoch = datetime(1970, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
+    epoch = datetime(1970, 1, 1, 0, 0, 0, 0, tzinfo=UTC)
     assert dev.last_seen == epoch.timestamp()
 
     dev.listener_event.assert_called_once_with("device_last_seen_updated", epoch)
     dev.listener_event.reset_mock()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     dev.last_seen = now
     dev.listener_event.assert_called_once_with("device_last_seen_updated", now)
 
@@ -1364,7 +1364,7 @@ async def test_duplicate_request_sending(dev: device.Device) -> None:
 
     async def delayed_receive(*args, **kwargs) -> None:
         await asyncio.sleep(0.1)
-        raise asyncio.TimeoutError()
+        raise TimeoutError()
 
     dev._application.request = AsyncMock(side_effect=delayed_receive)
     dev._concurrent_requests_semaphore.max_concurrency = 100000
@@ -1619,7 +1619,7 @@ async def test_initialize_fast_polling_failure(dev: device.Device) -> None:
     ep = dev.add_endpoint(1)
     ep.add_input_cluster(PollControl.cluster_id)
 
-    dev.begin_fast_polling = AsyncMock(side_effect=[asyncio.TimeoutError(), None])
+    dev.begin_fast_polling = AsyncMock(side_effect=[TimeoutError(), None])
 
     async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT

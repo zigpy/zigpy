@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import dataclasses
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -24,9 +24,7 @@ BACKUP_FORMAT_VERSION = 2
 @dataclasses.dataclass
 class NetworkBackup(t.BaseDataclassMixin):
     version: int = dataclasses.field(default=BACKUP_FORMAT_VERSION)
-    backup_time: datetime = dataclasses.field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    backup_time: datetime = dataclasses.field(default_factory=lambda: datetime.now(UTC))
     network_info: zigpy.state.NetworkInfo = dataclasses.field(
         default_factory=zigpy.state.NetworkInfo
     )

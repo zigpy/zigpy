@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import json
 import logging
 
@@ -16,7 +16,7 @@ import zigpy.zdo.types as zdo_t
 def backup_factory():
     def inner():
         return zigpy.backups.NetworkBackup(
-            backup_time=datetime(2021, 2, 8, 19, 35, 24, 761000, tzinfo=timezone.utc),
+            backup_time=datetime(2021, 2, 8, 19, 35, 24, 761000, tzinfo=UTC),
             node_info=app_state.NodeInfo(
                 nwk=t.NWK(0x0000),
                 ieee=t.EUI64.convert("93:2C:A9:34:D9:D0:5D:12"),
