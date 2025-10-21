@@ -110,8 +110,6 @@ class NetworkBackup(t.BaseDataclassMixin):
             # versions of zigpy. The backup format version will be incremented from 1
             # to 2 in 2025.12.0, to allow one release cycle to pass before making a
             # backwards-incompatible breaking change.
-            #
-            # Version 2 introduced the `route_table` and `tx_power` fields
             if "route_table" not in obj["network_info"]:
                 obj = copy.deepcopy(obj)
                 obj["network_info"]["route_table"] = {}
