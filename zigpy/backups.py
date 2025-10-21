@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     import zigpy.application
 
 LOGGER = logging.getLogger(__name__)
-BACKUP_FORMAT_VERSION = 2
+BACKUP_FORMAT_VERSION = 1
 
 
 @dataclasses.dataclass
@@ -106,13 +106,17 @@ class NetworkBackup(t.BaseDataclassMixin):
                 obj["node_info"]["version"] = None
                 version = 1
 
-            # Version 2 introduced the `route_table` and `tx_power` fields
-            if version == 1:
+            # Incrementing the version number raised an assertion error in older
+            # versions of zigpy. The backup format version will be incremented from 1
+            # to 2 in 2025.12.0, to allow one release cycle to pass before making a
+            # backwards-incompatible breaking change.
+            if "route_table" not in obj["network_info"]:
                 obj = copy.deepcopy(obj)
-
                 obj["network_info"]["route_table"] = {}
+
+            if "tx_power" not in obj["network_info"]:
+                obj = copy.deepcopy(obj)
                 obj["network_info"]["tx_power"] = None
-                version = 2
 
             return cls(
                 version=BACKUP_FORMAT_VERSION,
