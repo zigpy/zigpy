@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 from datetime import datetime, timezone
 import errno
@@ -525,6 +527,38 @@ async def test_form_network(app):
     )
 
     assert nwk_info1.channel in (11, 15, 20, 25)
+
+
+@pytest.mark.parametrize(
+    ("config_override", "expected_tx_power", "should_warn"),
+    [
+        (None, 8, False),
+        ({"tx_power": 10}, 10, False),
+        ({"tx_power": -5}, -5, False),
+        ({"tx_power": 20}, 20, True),
+    ],
+)
+@pytest.mark.filterwarnings("ignore::UserWarning")
+async def test_form_network_tx_power(
+    app,
+    config_override: dict | None,
+    expected_tx_power: int,
+    should_warn: bool,
+    caplog,
+):
+    with (
+        patch.object(app, "write_network_info") as write,
+        caplog.at_level(logging.WARNING),
+    ):
+        await app.form_network(config=config_override)
+
+        if should_warn:
+            assert "Increasing the TX power" in caplog.text
+        else:
+            assert "Increasing the TX power" not in caplog.text
+
+    nwk_info = write.mock_calls[0].kwargs["network_info"]
+    assert nwk_info.tx_power == expected_tx_power
 
 
 @mock.patch("zigpy.util.pick_optimal_channel", mock.Mock(return_value=22))
