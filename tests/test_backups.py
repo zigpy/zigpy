@@ -83,6 +83,10 @@ def backup_factory():
                     t.EUI64.convert("9A:0E:10:50:00:1B:1A:5F"): t.NWK(0x1AF6),
                     t.EUI64.convert("AA:BB:CC:DD:11:22:33:44"): t.NWK(0x0ABC),
                 },
+                route_table={
+                    t.NWK(0x16B5): t.NWK(0xBFB9),
+                    t.NWK(0x1AF6): t.NWK(0x0ABC),
+                },
                 stack_specific={
                     "zstack": {"tclk_seed": "71e31105bb92a2d15747a0d0a042dbfd"}
                 },
@@ -238,6 +242,7 @@ def test_z2m_backup_parsing(z2m_backup_json, backup):
     backup.node_info.model = None
     backup.node_info.version = None
     backup.network_info.tc_link_key.tx_counter = 0
+    backup.network_info.route_table = {}
 
     for key in backup.network_info.key_table:
         key.seq = 0
