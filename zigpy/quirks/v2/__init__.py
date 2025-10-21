@@ -494,6 +494,15 @@ class FirmwareVersionFilterMetadata:
     allow_missing: bool = attrs.field(default=True)
 
 
+def recursive_freeze(obj: Any) -> Any:
+    """Recursively convert mutable collections to immutable ones."""
+    if isinstance(obj, dict):
+        return frozendict({k: recursive_freeze(v) for k, v in obj.items()})
+    if isinstance(obj, (tuple, list, set)):
+        return tuple(recursive_freeze(v) for v in obj)
+    return obj
+
+
 @attrs.define(frozen=True, kw_only=True, repr=True)
 class QuirksV2RegistryEntry:
     """Quirks V2 registry entry."""
@@ -539,7 +548,7 @@ class QuirksV2RegistryEntry:
         tuple[str, str], frozendict[str, str]
     ] = attrs.field(
         factory=frozendict,
-        converter=lambda d: frozendict({k: frozendict(v) for k, v in d.items()}),
+        converter=recursive_freeze,
     )
 
     def matches_device(self, device: Device) -> bool:
@@ -1314,6 +1323,10 @@ class QuirkBuilder:
             entity_metadata=tuple(self.entity_metadata),
             device_automation_triggers_metadata=self.device_automation_triggers_metadata,
         )
+
+        # v2 quirk registry entries are hashable
+        hash(quirk)
+
         for manufacturer_model in self.manufacturer_model_metadata:
             self.registry.add_to_registry_v2(
                 manufacturer_model.manufacturer, manufacturer_model.model, quirk
