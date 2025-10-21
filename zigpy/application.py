@@ -274,7 +274,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         except (TimeoutError, zigpy.exceptions.DeliveryError):
             LOGGER.warning("Coordinator does not support energy scanning")
             scanned_channels = channels
-            energy_values = [0] * scanned_channels
+            energy_values = [0] * len(scanned_channels)
         else:
             _, scanned_channels, _, _, energy_values = rsp
 
