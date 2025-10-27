@@ -9,19 +9,13 @@ from typing import Literal
 import urllib.parse
 
 import serial as pyserial
+import serial_asyncio_fast as pyserial_asyncio
 
 from zigpy.typing import UNDEFINED, UndefinedType
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_SOCKET_PORT = 6638
 SOCKET_CONNECT_TIMEOUT = 5
-
-try:
-    import serial_asyncio_fast as pyserial_asyncio
-
-    LOGGER.info("Using pyserial-asyncio-fast in place of pyserial-asyncio")
-except ImportError:
-    import serial_asyncio as pyserial_asyncio
 
 
 class SerialProtocol(asyncio.Protocol):
