@@ -18,7 +18,7 @@ import zigpy.state
 import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import ClusterType, foundation
-from zigpy.zcl.clusters.general import Basic, Ota, PollControl
+from zigpy.zcl.clusters.general import Basic, OnOff, Ota, PollControl
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -1640,3 +1640,100 @@ async def test_initialize_fast_polling_failure(dev: device.Device) -> None:
 
     # Initialization attempted to fast poll but failure didn't stop it
     assert dev.begin_fast_polling.mock_calls == [call()]
+
+
+@pytest.mark.parametrize(
+    (
+        "has_input_cluster",
+        "has_output_cluster",
+        "packet_direction",
+        "expected_cluster_type",
+    ),
+    [
+        # Correct cluster matching
+        (True, False, foundation.Direction.Server_to_Client, ClusterType.Server),
+        (False, True, foundation.Direction.Client_to_Server, ClusterType.Client),
+        # Direction flipping: only one cluster type exists, packet has wrong direction
+        (True, False, foundation.Direction.Client_to_Server, ClusterType.Server),
+        (False, True, foundation.Direction.Server_to_Client, ClusterType.Client),
+        # Both clusters exist: should match based on direction, no flipping
+        (True, True, foundation.Direction.Server_to_Client, ClusterType.Server),
+        (True, True, foundation.Direction.Client_to_Server, ClusterType.Client),
+        # Cluster doesn't exist
+        (False, False, foundation.Direction.Server_to_Client, None),
+        (False, False, foundation.Direction.Client_to_Server, None),
+    ],
+)
+async def test_device_cluster_direction_flipping(
+    dev: device.Device,
+    has_input_cluster: bool,
+    has_output_cluster: bool,
+    packet_direction: foundation.Direction,
+    expected_cluster_type: ClusterType | None,
+) -> None:
+    """Test that cluster direction flipping routes messages to the correct cluster."""
+    ep = dev.add_endpoint(1)
+
+    if has_input_cluster:
+        input_cluster = ep.add_input_cluster(OnOff.cluster_id)
+    else:
+        input_cluster = None
+
+    if has_output_cluster:
+        output_cluster = ep.add_output_cluster(OnOff.cluster_id)
+    else:
+        output_cluster = None
+
+    zcl_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.CLUSTER_COMMAND,
+            is_manufacturer_specific=False,
+            direction=packet_direction,
+            disable_default_response=1,
+            reserved=0,
+        ),
+        tsn=0x12,
+        command_id=OnOff.ServerCommandDefs.on.id,
+    )
+
+    packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        src_ep=1,
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        dst_ep=1,
+        profile_id=260,
+        cluster_id=OnOff.cluster_id,
+        data=t.SerializableBytes(
+            zcl_hdr.serialize() + OnOff.ServerCommandDefs.on.schema().serialize()
+        ),
+        lqi=255,
+        rssi=-30,
+    )
+
+    captured_result = []
+
+    original_match = dev._match_packet_endpoint_cluster
+
+    def capture_match(*args, **kwargs):
+        result = original_match(*args, **kwargs)
+        captured_result.append(result)
+        return result
+
+    with patch.object(
+        dev, "_match_packet_endpoint_cluster", side_effect=capture_match
+    ) as spy:
+        dev.packet_received(packet)
+
+    assert spy.call_count == 1
+    assert len(captured_result) == 1
+
+    _, returned_cluster = captured_result[0]
+
+    if expected_cluster_type is None:
+        assert returned_cluster is None
+    elif expected_cluster_type is ClusterType.Server:
+        assert returned_cluster is input_cluster
+    elif expected_cluster_type is ClusterType.Client:
+        assert returned_cluster is output_cluster
+    else:
+        pytest.fail("Unexpected cluster type")
