@@ -661,7 +661,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 ),
                 packet,
             )
-            LOGGER.warning(
+            LOGGER.debug(
                 (
                     "Cluster 0x%04x on %r has incorrect direction (got %r for %r cluster)."
                     " Please report this here: https://github.com/zigpy/zigpy/issues/1640"
