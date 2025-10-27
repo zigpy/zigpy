@@ -57,7 +57,7 @@ class SemaphoreTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaisesRegex(
             TypeError,
-            "object RequestLimiter can't be used in 'await' expression",
+            r"object '?RequestLimiter'? can't be used in 'await' expression",
         ):
             await sem
 
