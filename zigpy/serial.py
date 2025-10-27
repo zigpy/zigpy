@@ -16,12 +16,7 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_SOCKET_PORT = 6638
 SOCKET_CONNECT_TIMEOUT = 5
 
-try:
-    import serial_asyncio_fast as pyserial_asyncio
-
-    LOGGER.info("Using pyserial-asyncio-fast in place of pyserial-asyncio")
-except ImportError:
-    import serial_asyncio as pyserial_asyncio
+import serial_asyncio_fast
 
 
 class SerialProtocol(asyncio.Protocol):
@@ -29,7 +24,7 @@ class SerialProtocol(asyncio.Protocol):
 
     def __init__(self) -> None:
         self._buffer = bytearray()
-        self._transport: pyserial_asyncio.SerialTransport | None = None
+        self._transport: serial_asyncio_fast.SerialTransport | None = None
 
         self._connected_event = asyncio.Event()
         self._disconnected_event = asyncio.Event()
@@ -39,7 +34,7 @@ class SerialProtocol(asyncio.Protocol):
         """Wait for the protocol's transport to be connected."""
         await self._connected_event.wait()
 
-    def connection_made(self, transport: pyserial_asyncio.SerialTransport) -> None:
+    def connection_made(self, transport: serial_asyncio_fast.SerialTransport) -> None:
         LOGGER.debug("Connection made: %s", transport)
 
         self._transport = transport
@@ -82,7 +77,7 @@ async def create_serial_connection(
     flow_control: Literal["hardware", "software", None] | UndefinedType = UNDEFINED,
     **kwargs: typing.Any,
 ) -> tuple[asyncio.Transport, asyncio.Protocol]:
-    """Wrapper around pyserial-asyncio that transparently substitutes a normal TCP
+    """Wrapper around serial_asyncio_fast that transparently substitutes a normal TCP
     transport and protocol when a `socket` connection URI is provided.
     """
 
