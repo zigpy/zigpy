@@ -1642,19 +1642,53 @@ async def test_initialize_fast_polling_failure(dev: device.Device) -> None:
     assert dev.begin_fast_polling.mock_calls == [call()]
 
 
-async def test_device_flipped_cluster_warning(dev: device.Device, caplog) -> None:
-    """Test that a warning is logged when a cluster is flipped."""
-    ep1 = dev.add_endpoint(1)
-    ep1.add_input_cluster(OnOff.cluster_id)
+@pytest.mark.parametrize(
+    (
+        "has_input_cluster",
+        "has_output_cluster",
+        "packet_direction",
+        "expected_cluster_type",
+    ),
+    [
+        # Correct cluster matching
+        (True, False, foundation.Direction.Server_to_Client, ClusterType.Server),
+        (False, True, foundation.Direction.Client_to_Server, ClusterType.Client),
+        # Direction flipping: only one cluster type exists, packet has wrong direction
+        (True, False, foundation.Direction.Client_to_Server, ClusterType.Server),
+        (False, True, foundation.Direction.Server_to_Client, ClusterType.Client),
+        # Both clusters exist: should match based on direction, no flipping
+        (True, True, foundation.Direction.Server_to_Client, ClusterType.Server),
+        (True, True, foundation.Direction.Client_to_Server, ClusterType.Client),
+        # Cluster doesn't exist
+        (False, False, foundation.Direction.Server_to_Client, None),
+        (False, False, foundation.Direction.Client_to_Server, None),
+    ],
+)
+async def test_device_cluster_direction_flipping(
+    dev: device.Device,
+    has_input_cluster: bool,
+    has_output_cluster: bool,
+    packet_direction: foundation.Direction,
+    expected_cluster_type: ClusterType | None,
+) -> None:
+    """Test that cluster direction flipping routes messages to the correct cluster."""
+    ep = dev.add_endpoint(1)
 
-    ep2 = dev.add_endpoint(2)
-    ep2.add_output_cluster(OnOff.cluster_id)
+    if has_input_cluster:
+        input_cluster = ep.add_input_cluster(OnOff.cluster_id)
+    else:
+        input_cluster = None
+
+    if has_output_cluster:
+        output_cluster = ep.add_output_cluster(OnOff.cluster_id)
+    else:
+        output_cluster = None
 
     zcl_hdr = foundation.ZCLHeader(
         frame_control=foundation.FrameControl(
             frame_type=foundation.FrameType.CLUSTER_COMMAND,
             is_manufacturer_specific=False,
-            direction=foundation.Direction.Client_to_Server,
+            direction=packet_direction,
             disable_default_response=1,
             reserved=0,
         ),
@@ -1676,14 +1710,30 @@ async def test_device_flipped_cluster_warning(dev: device.Device, caplog) -> Non
         rssi=-30,
     )
 
-    # Correct
-    with caplog.at_level(logging.WARNING):
-        dev.packet_received(packet.replace(src_ep=2))
+    captured_result = []
 
-    assert "has incorrect direction" not in caplog.text
+    original_match = dev._match_packet_endpoint_cluster
 
-    # Incorrect
-    with caplog.at_level(logging.WARNING):
-        dev.packet_received(packet.replace(src_ep=1))
+    def capture_match(*args, **kwargs):
+        result = original_match(*args, **kwargs)
+        captured_result.append(result)
+        return result
 
-    assert "has incorrect direction" in caplog.text
+    with patch.object(
+        dev, "_match_packet_endpoint_cluster", side_effect=capture_match
+    ) as spy:
+        dev.packet_received(packet)
+
+    assert spy.call_count == 1
+    assert len(captured_result) == 1
+
+    _, returned_cluster = captured_result[0]
+
+    if expected_cluster_type is None:
+        assert returned_cluster is None
+    elif expected_cluster_type is ClusterType.Server:
+        assert returned_cluster is input_cluster
+    elif expected_cluster_type is ClusterType.Client:
+        assert returned_cluster is output_cluster
+    else:
+        pytest.fail("Unexpected cluster type")
