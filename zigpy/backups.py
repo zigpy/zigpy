@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import dataclasses
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -24,9 +24,7 @@ BACKUP_FORMAT_VERSION = 1
 @dataclasses.dataclass
 class NetworkBackup(t.BaseDataclassMixin):
     version: int = dataclasses.field(default=BACKUP_FORMAT_VERSION)
-    backup_time: datetime = dataclasses.field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    backup_time: datetime = dataclasses.field(default_factory=lambda: datetime.now(UTC))
     network_info: zigpy.state.NetworkInfo = dataclasses.field(
         default_factory=zigpy.state.NetworkInfo
     )
@@ -91,6 +89,14 @@ class NetworkBackup(t.BaseDataclassMixin):
         elif "network_info" in obj:
             version = obj.get("version", 0)
 
+            if version > BACKUP_FORMAT_VERSION:
+                LOGGER.warning(
+                    "Network backup has version %d but current backup format"
+                    " version is %d. Downgrading is not recommended.",
+                    version,
+                    BACKUP_FORMAT_VERSION,
+                )
+
             # Version 1 introduced the `model`, `manufacturer`, and `version` fields
             if version == 0:
                 obj = copy.deepcopy(obj)
@@ -100,7 +106,17 @@ class NetworkBackup(t.BaseDataclassMixin):
                 obj["node_info"]["version"] = None
                 version = 1
 
-            assert version == BACKUP_FORMAT_VERSION
+            # Incrementing the version number raised an assertion error in older
+            # versions of zigpy. The backup format version will be incremented from 1
+            # to 2 in 2025.12.0, to allow one release cycle to pass before making a
+            # backwards-incompatible breaking change.
+            if "route_table" not in obj["network_info"]:
+                obj = copy.deepcopy(obj)
+                obj["network_info"]["route_table"] = {}
+
+            if "tx_power" not in obj["network_info"]:
+                obj = copy.deepcopy(obj)
+                obj["network_info"]["tx_power"] = None
 
             return cls(
                 version=BACKUP_FORMAT_VERSION,
@@ -139,7 +155,7 @@ class BackupManager(ListenableMixin):
             node_info=self.app.state.node_info,
         )
 
-    async def create_backup(self, *, load_devices: bool = False) -> NetworkBackup:
+    async def create_backup(self, *, load_devices: bool = True) -> NetworkBackup:
         await self.app.load_network_info(load_devices=load_devices)
 
         backup = self.from_network_state()
@@ -296,6 +312,11 @@ def _network_backup_to_open_coordinator_backup(backup: NetworkBackup) -> dict[st
                     key.partner_ieee.serialize()[::-1].hex(): key.seq
                     for key in network_info.key_table
                 },
+                "route_table": {
+                    str(t.NWK(dst))[2:]: str(t.NWK(next_hop))[2:]
+                    for dst, next_hop in network_info.route_table.items()
+                },
+                "tx_power": network_info.tx_power,
                 **network_info.metadata,
             },
         },
@@ -346,7 +367,15 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
     network_info.metadata = {
         k: v
         for k, v in internal.items()
-        if k not in ("node", "network", "link_key_seqs", "creation_time")
+        if k
+        not in (
+            "node",
+            "network",
+            "link_key_seqs",
+            "creation_time",
+            "route_table",
+            "tx_power",
+        )
     }
     network_info.pan_id, _ = t.NWK.deserialize(bytes.fromhex(obj["pan_id"])[::-1])
     network_info.extended_pan_id, _ = t.EUI64.deserialize(
@@ -432,6 +461,11 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
 
         # XXX: Devices that are not children, have no NWK address, and have no link key
         #      are effectively ignored, since there is no place to write them
+
+    for dst, next_hop in obj["metadata"]["internal"].get("route_table", {}).items():
+        network_info.route_table[t.NWK.convert(dst)] = t.NWK.convert(next_hop)
+
+    network_info.tx_power = obj["metadata"]["internal"].get("tx_power")
 
     if "date" in internal:
         # Z2M format

@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import json
+import logging
 
 import pytest
 
@@ -15,7 +16,7 @@ import zigpy.zdo.types as zdo_t
 def backup_factory():
     def inner():
         return zigpy.backups.NetworkBackup(
-            backup_time=datetime(2021, 2, 8, 19, 35, 24, 761000, tzinfo=timezone.utc),
+            backup_time=datetime(2021, 2, 8, 19, 35, 24, 761000, tzinfo=UTC),
             node_info=app_state.NodeInfo(
                 nwk=t.NWK(0x0000),
                 ieee=t.EUI64.convert("93:2C:A9:34:D9:D0:5D:12"),
@@ -31,6 +32,7 @@ def backup_factory():
                 nwk_manager_id=t.NWK(0x0000),
                 channel=t.uint8_t(15),
                 channel_mask=t.Channels.from_channel_list([15, 20, 25]),
+                tx_power=8,
                 security_level=t.uint8_t(5),
                 network_key=app_state.Key(
                     key=t.KeyData.convert(
@@ -82,6 +84,10 @@ def backup_factory():
                     t.EUI64.convert("10:55:FE:67:24:EA:96:D3"): t.NWK(0xBFB9),
                     t.EUI64.convert("9A:0E:10:50:00:1B:1A:5F"): t.NWK(0x1AF6),
                     t.EUI64.convert("AA:BB:CC:DD:11:22:33:44"): t.NWK(0x0ABC),
+                },
+                route_table={
+                    t.NWK(0x16B5): t.NWK(0xBFB9),
+                    t.NWK(0x1AF6): t.NWK(0x0ABC),
                 },
                 stack_specific={
                     "zstack": {"tclk_seed": "71e31105bb92a2d15747a0d0a042dbfd"}
@@ -238,6 +244,8 @@ def test_z2m_backup_parsing(z2m_backup_json, backup):
     backup.node_info.model = None
     backup.node_info.version = None
     backup.network_info.tc_link_key.tx_counter = 0
+    backup.network_info.tx_power = None
+    backup.network_info.route_table = {}
 
     for key in backup.network_info.key_table:
         key.seq = 0
@@ -263,6 +271,22 @@ def test_from_dict_automatic(z2m_backup_json):
 def test_from_dict_failure():
     with pytest.raises(ValueError):
         zigpy.backups.NetworkBackup.from_dict({"some": "json"})
+
+
+def test_from_dict_future_version(backup: zigpy.backups.NetworkBackup, caplog) -> None:
+    """Test that loading a backup with a future version logs a warning."""
+    with caplog.at_level(logging.WARNING):
+        backup = zigpy.backups.NetworkBackup.from_dict(
+            {**backup.as_dict(), "version": 99}
+        )
+
+    assert "Network backup has version 99 but current backup format" in caplog.text
+    assert "Downgrading is not recommended" in caplog.text
+
+    assert backup is not None
+
+    # Verify version was downgraded to current BACKUP_FORMAT_VERSION
+    assert backup.version == zigpy.backups.BACKUP_FORMAT_VERSION
 
 
 def test_backup_compatibility(backup_factory):

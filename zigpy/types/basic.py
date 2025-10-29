@@ -3,10 +3,8 @@ from __future__ import annotations
 import enum
 import inspect
 import struct
-import sys
 import typing
-
-from typing_extensions import Self
+from typing import Self
 
 CALLABLE_T = typing.TypeVar("CALLABLE_T", bound=typing.Callable)
 T = typing.TypeVar("T")
@@ -56,7 +54,7 @@ class SerializableBytes:
     def __init__(self, value: bytes = b"") -> None:
         if isinstance(value, SerializableBytes):
             value = value.value
-        elif not isinstance(value, (bytes, bytearray)):
+        elif not isinstance(value, bytes | bytearray):
             raise ValueError(f"Object is not bytes: {value!r}")  # noqa: TRY004
 
         self.value: bytes | bytearray = value
@@ -150,14 +148,6 @@ class FixedIntType(int):
             cls._byteorder = byteorder
         elif cls._byteorder is None:
             cls._byteorder = "little"
-
-        if sys.version_info < (3, 10):
-            # XXX: The enum module uses the first class with __new__ in its __dict__
-            #      as the member type. We have to ensure this is true for
-            #      every subclass.
-            # Fixed with https://github.com/python/cpython/pull/26658
-            if "__new__" not in cls.__dict__:
-                cls.__new__ = cls.__new__
 
         # XXX: The enum module sabotages pickling using the same logic.
         if "__reduce_ex__" not in cls.__dict__:
@@ -439,42 +429,6 @@ class _IntEnumMeta(AlwaysCreateEnumType):
         return super().__call__(value, names, *args, **kwargs)
 
 
-def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
-    """Mixins are broken by Python 3.8.6 so we must dynamically create the enum with the
-    appropriate methods but with only one non-Enum parent class.
-    """
-
-    if sys.version_info >= (3, 11):
-
-        class _NewEnum(
-            int_type,
-            enum.ReprEnum,
-            enum.Flag,
-            boundary=enum.KEEP,
-            metaclass=AlwaysCreateEnumType,
-        ):
-            pass
-
-    else:
-
-        class _NewEnum(int_type, enum.Flag):
-            # Rebind classmethods to our own class
-            _missing_ = classmethod(enum.IntFlag._missing_.__func__)
-            _create_pseudo_member_ = classmethod(  # type: ignore[var-annotated]
-                enum.IntFlag._create_pseudo_member_.__func__
-            )
-
-            __or__ = enum.IntFlag.__or__
-            __and__ = enum.IntFlag.__and__
-            __xor__ = enum.IntFlag.__xor__
-            __ror__ = enum.IntFlag.__ror__
-            __rand__ = enum.IntFlag.__rand__
-            __rxor__ = enum.IntFlag.__rxor__
-            __invert__ = enum.IntFlag.__invert__
-
-    return _NewEnum
-
-
 def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined") -> CALLABLE_T:
     """Enum factory."""
 
@@ -551,87 +505,213 @@ class enum32_be(enum_factory(uint32_t_be)):  # noqa: N801
     pass
 
 
-class bitmap2(bitmap_factory(uint2_t)):
+class bitmap2(
+    uint2_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap3(bitmap_factory(uint3_t)):
+class bitmap3(
+    uint3_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap4(bitmap_factory(uint4_t)):
+class bitmap4(
+    uint4_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap5(bitmap_factory(uint5_t)):
+class bitmap5(
+    uint5_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap6(bitmap_factory(uint6_t)):
+class bitmap6(
+    uint6_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap7(bitmap_factory(uint7_t)):
+class bitmap7(
+    uint7_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap8(bitmap_factory(uint8_t)):
+class bitmap8(
+    uint8_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap16(bitmap_factory(uint16_t)):
+class bitmap16(
+    uint16_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap24(bitmap_factory(uint24_t)):
+class bitmap24(
+    uint24_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap32(bitmap_factory(uint32_t)):
+class bitmap32(
+    uint32_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap40(bitmap_factory(uint40_t)):
+class bitmap40(
+    uint40_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap48(bitmap_factory(uint48_t)):
+class bitmap48(
+    uint48_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap56(bitmap_factory(uint56_t)):
+class bitmap56(
+    uint56_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap64(bitmap_factory(uint64_t)):
+class bitmap64(
+    uint64_t,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap16_be(bitmap_factory(uint16_t_be)):
+class bitmap16_be(
+    uint16_t_be,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap24_be(bitmap_factory(uint24_t_be)):
+class bitmap24_be(
+    uint24_t_be,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap32_be(bitmap_factory(uint32_t_be)):
+class bitmap32_be(
+    uint32_t_be,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap40_be(bitmap_factory(uint40_t_be)):
+class bitmap40_be(
+    uint40_t_be,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap48_be(bitmap_factory(uint48_t_be)):
+class bitmap48_be(
+    uint48_t_be,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap56_be(bitmap_factory(uint56_t_be)):
+class bitmap56_be(
+    uint56_t_be,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
-class bitmap64_be(bitmap_factory(uint64_t_be)):
+class bitmap64_be(
+    uint64_t_be,
+    enum.ReprEnum,
+    enum.Flag,
+    boundary=enum.KEEP,
+    metaclass=AlwaysCreateEnumType,
+):
     pass
 
 
@@ -958,7 +1038,10 @@ class CharacterString(str):
         length = int.from_bytes(data[: cls._prefix_length], "little")
 
         if length == cls._invalid_length:
-            return cls("", invalid=True), data[cls._prefix_length :]  # type:ignore[call-arg]
+            return (
+                cls("", invalid=True),  # type:ignore[call-arg]
+                data[cls._prefix_length :],
+            )
 
         if len(data) < cls._prefix_length + length:
             raise ValueError("Data is too short")

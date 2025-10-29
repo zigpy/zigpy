@@ -41,7 +41,7 @@ class BaseRequestListener:
             elif callable(matcher):
                 match = matcher(hdr, command)
             else:
-                LOGGER.warning(
+                LOGGER.debug(
                     "Matcher %r and command %r %r are incompatible",
                     matcher,
                     hdr,
@@ -130,9 +130,9 @@ class CallbackListener(BaseRequestListener):
 
 MatcherFuncType = typing.Callable[
     [
-        typing.Union[foundation.ZCLHeader, zdo_t.ZDOHeader],
+        foundation.ZCLHeader | zdo_t.ZDOHeader,
         foundation.CommandSchema,
     ],
     bool,
 ]
-MatcherType = typing.Union[MatcherFuncType, foundation.CommandSchema]
+MatcherType = MatcherFuncType | foundation.CommandSchema

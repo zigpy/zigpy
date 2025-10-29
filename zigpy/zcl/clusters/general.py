@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Final
 
 import zigpy.types as t
@@ -15,7 +15,10 @@ from zigpy.zcl.foundation import (
     ZCLCommandDef,
 )
 
-ZIGBEE_EPOCH = datetime(2000, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
+# Backwards compatibility for when ZGP was still included in this file
+from .greenpower import GreenPowerProxy  # noqa: F401
+
+ZIGBEE_EPOCH = datetime(2000, 1, 1, 0, 0, 0, 0, tzinfo=UTC)
 
 
 class PowerSource(t.enum8):
@@ -1131,7 +1134,7 @@ class Time(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     def handle_read_attribute_time(self) -> t.UTCTime:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return t.UTCTime((now - ZIGBEE_EPOCH).total_seconds())
 
     def handle_read_attribute_time_status(self) -> TimeStatus:
@@ -1148,7 +1151,7 @@ class Time(Cluster):
         return t.int32s(tz_offset.total_seconds())
 
     def handle_read_attribute_local_time(self) -> t.LocalTime:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         tz_offset = datetime.now().astimezone().utcoffset()
         assert tz_offset is not None
 
@@ -2403,11 +2406,6 @@ class PollControl(Cluster):
 
     class ClientCommandDefs(BaseCommandDefs):
         checkin: Final = ZCLCommandDef(id=0x0000, schema={})
-
-
-class GreenPowerProxy(Cluster):
-    cluster_id: Final[t.uint16_t] = 0x0021
-    ep_attribute: Final = "green_power"
 
 
 class KeepAlive(Cluster):

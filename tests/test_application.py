@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import errno
 import logging
 from unittest import mock
@@ -9,6 +11,7 @@ import pytest
 
 import zigpy.application
 import zigpy.config as conf
+from zigpy.datastructures import RequestLimiter
 from zigpy.exceptions import (
     DeliveryError,
     NetworkNotFormed,
@@ -114,7 +117,7 @@ async def _remove(
         elif delivery_failure:
             raise DeliveryError("Error")
         else:
-            raise asyncio.TimeoutError
+            raise TimeoutError
 
     device = MagicMock()
     device.ieee = ieee
@@ -526,6 +529,38 @@ async def test_form_network(app):
     assert nwk_info1.channel in (11, 15, 20, 25)
 
 
+@pytest.mark.parametrize(
+    ("config_override", "expected_tx_power", "should_warn"),
+    [
+        (None, 8, False),
+        ({"tx_power": 10}, 10, False),
+        ({"tx_power": -5}, -5, False),
+        ({"tx_power": 20}, 20, True),
+    ],
+)
+@pytest.mark.filterwarnings("ignore::UserWarning")
+async def test_form_network_tx_power(
+    app,
+    config_override: dict | None,
+    expected_tx_power: int,
+    should_warn: bool,
+    caplog,
+):
+    with (
+        patch.object(app, "write_network_info") as write,
+        caplog.at_level(logging.WARNING),
+    ):
+        await app.form_network(config=config_override)
+
+        if should_warn:
+            assert "Increasing the TX power" in caplog.text
+        else:
+            assert "Increasing the TX power" not in caplog.text
+
+    nwk_info = write.mock_calls[0].kwargs["network_info"]
+    assert nwk_info.tx_power == expected_tx_power
+
+
 @mock.patch("zigpy.util.pick_optimal_channel", mock.Mock(return_value=22))
 async def test_form_network_find_best_channel(app):
     orig_start_network = app.start_network
@@ -714,19 +749,18 @@ async def test_request_concurrency():
     peak_concurrency = 0
 
     class SlowApp(App):
-        async def send_packet(self, packet):
+        async def _send_packet(self, packet):
             nonlocal current_concurrency, peak_concurrency
 
-            async with self._limit_concurrency():
-                current_concurrency += 1
-                peak_concurrency = max(peak_concurrency, current_concurrency)
+            current_concurrency += 1
+            peak_concurrency = max(peak_concurrency, current_concurrency)
 
-                await asyncio.sleep(0.1)
-                current_concurrency -= 1
+            await asyncio.sleep(0.1)
+            current_concurrency -= 1
 
-                if packet % 10 == 7:
-                    # Fail randomly
-                    raise DeliveryError("Failure")
+            if packet % 10 == 7:
+                # Fail randomly
+                raise DeliveryError("Failure")
 
     app = make_app({conf.CONF_MAX_CONCURRENT_REQUESTS: 16}, app_base=SlowApp)
 
@@ -734,7 +768,11 @@ async def test_request_concurrency():
     assert peak_concurrency == 0
 
     await asyncio.gather(
-        *[app.send_packet(i) for i in range(100)], return_exceptions=True
+        *[
+            app.send_packet(t.ZigbeePacket(priority=t.PacketPriority.HIGH))
+            for i in range(100)
+        ],
+        return_exceptions=True,
     )
 
     assert current_concurrency == 0
@@ -1377,13 +1415,13 @@ async def test_energy_scan_default(app):
     )
 
     assert len(results) == 16
-    assert results == dict(zip(range(11, 26 + 1), raw_scan_results))
+    assert results == dict(zip(range(11, 26 + 1), raw_scan_results, strict=True))
 
 
 async def test_energy_scan_not_implemented(app):
     """Energy scanning still "works" even when the radio doesn't implement it."""
     await app.startup()
-    app._device.zdo.Mgmt_NWK_Update_req.side_effect = asyncio.TimeoutError()
+    app._device.zdo.Mgmt_NWK_Update_req.side_effect = TimeoutError()
 
     results = await app.energy_scan(
         channels=t.Channels.ALL_CHANNELS, duration_exp=2, count=1
@@ -1536,7 +1574,7 @@ async def test_probe(app):
 
         async def connect(self):
             if self._config[conf.CONF_DEVICE][conf.CONF_DEVICE_BAUDRATE] != 115200:
-                raise asyncio.TimeoutError
+                raise TimeoutError
 
     # Only one baudrate is valid
     assert (await BaudSpecificApp.probe({conf.CONF_DEVICE_PATH: "/dev/null"})) == {
@@ -1547,7 +1585,7 @@ async def test_probe(app):
 
     class NeverConnectsApp(App):
         async def connect(self):
-            raise asyncio.TimeoutError
+            raise TimeoutError
 
     # No settings will work
     assert (await NeverConnectsApp.probe({conf.CONF_DEVICE_PATH: "/dev/null"})) is False
@@ -1601,14 +1639,14 @@ async def test_network_scan(app) -> None:
 async def test_packet_capture(app) -> None:
     packets = [
         t.CapturedPacket(
-            timestamp=datetime(2021, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
             rssi=-60,
             lqi=250,
             channel=15,
             data=bytes.fromhex("02007f"),
         ),
         t.CapturedPacket(
-            timestamp=datetime(2021, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
+            timestamp=datetime(2021, 1, 1, 0, 0, 1, tzinfo=UTC),
             rssi=-70,
             lqi=240,
             channel=15,
@@ -1635,7 +1673,9 @@ async def test_packet_capture(app) -> None:
 
 
 async def test_request_priority(app) -> None:
-    app._concurrent_requests_semaphore.max_value = 1
+    app._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
 
     with patch.object(app, "_send_packet", wraps=app._send_packet) as mock_send_packet:
         packet_low = Mock(name="LOW", priority=t.PacketPriority.LOW)
@@ -1663,7 +1703,9 @@ async def test_request_priority(app) -> None:
 async def test_request_priority_context_concurrency(app, packet):
     """Test that request_priority contexts work correctly with concurrent tasks."""
     # Limit concurrency to see priority ordering effects
-    app._concurrent_requests_semaphore.max_value = 1
+    app._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
 
     with patch.object(app, "_send_packet", wraps=app._send_packet) as mock_send:
 
@@ -1689,3 +1731,22 @@ async def test_request_priority_context_concurrency(app, packet):
         call(packet.replace(data=b"high")),
         call(packet.replace(data=b"normal")),
     ]
+
+
+async def test_can_write_network_settings(app) -> None:
+    # The default is True
+    assert await app.can_write_network_settings(
+        network_info=app.state.network_info, node_info=app.state.node_info
+    )
+
+
+async def test_shutdown_device_remove_fails(app, ieee, caplog):
+    """Test shutdown continues if a device fails to be removed."""
+    dev = app.add_device(ieee, 0x1234)
+
+    with patch.object(dev, "on_remove", side_effect=Exception("Boom!")):
+        with caplog.at_level(logging.WARNING):
+            await app.shutdown()
+
+    assert "Failed to remove device" in caplog.text
+    assert "Boom!" in caplog.text

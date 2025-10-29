@@ -2,34 +2,26 @@ from __future__ import annotations
 
 import abc
 import asyncio
+from asyncio import timeout as asyncio_timeout
 import collections
 from collections.abc import AsyncGenerator, Coroutine
 import contextlib
-from datetime import datetime, timezone
+import contextvars
+from datetime import UTC, datetime
 import errno
 import logging
 import os
 import random
-import sys
 import time
 import typing
 from typing import Any, TypeVar
 import warnings
 
-from zigpy.backports.contextlib import nullcontext
-
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
-else:
-    from asyncio import timeout as asyncio_timeout  # pragma: no cover
-
-import contextvars
-
 import zigpy.appdb
 import zigpy.backups
 import zigpy.config as conf
 from zigpy.const import INTERFERENCE_MESSAGE
-from zigpy.datastructures import PriorityDynamicBoundedSemaphore
+from zigpy.datastructures import RequestLimiter
 import zigpy.device
 import zigpy.endpoint
 import zigpy.exceptions
@@ -79,8 +71,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         self._watchdog_task: asyncio.Task | None = None
 
-        self._concurrent_requests_semaphore = PriorityDynamicBoundedSemaphore(
-            self._config[conf.CONF_MAX_CONCURRENT_REQUESTS]
+        self._concurrent_requests_semaphore = RequestLimiter(
+            max_concurrency=self._config[conf.CONF_MAX_CONCURRENT_REQUESTS],
+            capacities=self._config[conf.CONF_EXPERIMENTAL][conf.CONF_CONCURRENCY],
         )
 
         self.ota = zigpy.ota.OTA(self._config[conf.CONF_OTA], self)
@@ -91,6 +84,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             zigpy.device.Device | zigpy.listeners.Singleton,
             collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
+
+        # Add callback storage
+        self._packet_callbacks: collections.defaultdict[
+            t.AddrModeAddress | None, list[typing.Callable[[t.ZigbeePacket], None]]
+        ] = collections.defaultdict(list)
 
         # Context variable for request priority context manager
         self._packet_priority_var = contextvars.ContextVar(
@@ -273,14 +271,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     ScanCount=count,
                 )
             )
-        except (asyncio.TimeoutError, zigpy.exceptions.DeliveryError):
+        except (TimeoutError, zigpy.exceptions.DeliveryError):
             LOGGER.warning("Coordinator does not support energy scanning")
             scanned_channels = channels
-            energy_values = [0] * scanned_channels
+            energy_values = [0] * len(scanned_channels)
         else:
             _, scanned_channels, _, _, energy_values = rsp
 
-        return dict(zip(scanned_channels, energy_values))
+        return dict(zip(scanned_channels, energy_values, strict=True))
 
     async def _move_network_to_channel(
         self, new_channel: int, new_nwk_update_id: int
@@ -340,16 +338,24 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         LOGGER.info("Successfully migrated to channel %d", new_channel)
 
-    async def form_network(self, *, fast: bool = False) -> None:
+    async def form_network(
+        self, *, config: dict[str, Any] | None = None, fast: bool = False
+    ) -> None:
         """Writes random network settings to the coordinator."""
+        if config is None:
+            config = self.config[conf.CONF_NWK]
+        else:
+            config = conf.SCHEMA_NETWORK(config)
+
+        assert config is not None
 
         # First, make the settings consistent and randomly generate missing values
-        channel = self.config[conf.CONF_NWK][conf.CONF_NWK_CHANNEL]
-        channels = self.config[conf.CONF_NWK][conf.CONF_NWK_CHANNELS]
-        pan_id = self.config[conf.CONF_NWK][conf.CONF_NWK_PAN_ID]
-        extended_pan_id = self.config[conf.CONF_NWK][conf.CONF_NWK_EXTENDED_PAN_ID]
-        network_key = self.config[conf.CONF_NWK][conf.CONF_NWK_KEY]
-        tc_address = self.config[conf.CONF_NWK][conf.CONF_NWK_TC_ADDRESS]
+        channel = config[conf.CONF_NWK_CHANNEL]
+        channels = config[conf.CONF_NWK_CHANNELS]
+        pan_id = config[conf.CONF_NWK_PAN_ID]
+        extended_pan_id = config[conf.CONF_NWK_EXTENDED_PAN_ID]
+        network_key = config[conf.CONF_NWK_KEY]
+        tc_address = config[conf.CONF_NWK_TC_ADDRESS]
         stack_specific = {}
 
         if fast:
@@ -388,19 +394,20 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         network_info = zigpy.state.NetworkInfo(
             extended_pan_id=extended_pan_id,
             pan_id=pan_id,
-            nwk_update_id=self.config[conf.CONF_NWK][conf.CONF_NWK_UPDATE_ID],
+            nwk_update_id=config[conf.CONF_NWK_UPDATE_ID],
             nwk_manager_id=0x0000,
             channel=channel,
             channel_mask=t.Channels.from_channel_list([channel]),
             security_level=5,
+            tx_power=config[conf.CONF_NWK_TX_POWER],
             network_key=zigpy.state.Key(
                 key=network_key,
                 tx_counter=0,
                 rx_counter=0,
-                seq=self.config[conf.CONF_NWK][conf.CONF_NWK_KEY_SEQ],
+                seq=config[conf.CONF_NWK_KEY_SEQ],
             ),
             tc_link_key=zigpy.state.Key(
-                key=self.config[conf.CONF_NWK][conf.CONF_NWK_TC_LINK_KEY],
+                key=config[conf.CONF_NWK_TC_LINK_KEY],
                 tx_counter=0,
                 rx_counter=0,
                 seq=0,
@@ -443,7 +450,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.topology.stop_periodic_scans()
 
         for device in self.devices.values():
-            device.on_remove()
+            try:
+                device.on_remove()
+            except Exception:  # noqa: BLE001
+                LOGGER.warning(
+                    "Failed to remove device %s during shutdown",
+                    device,
+                    exc_info=True,
+                )
 
         try:
             await self.disconnect()
@@ -539,7 +553,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 else 7
             ):
                 await device.zdo.leave(remove_children=remove_children, rejoin=rejoin)
-        except (zigpy.exceptions.DeliveryError, asyncio.TimeoutError) as ex:
+        except (TimeoutError, zigpy.exceptions.DeliveryError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
         self.devices.pop(device.ieee, None)
@@ -584,15 +598,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         # Not all stacks send a ZDO command when a device joins so the last_seen should
         # be updated
-        dev.last_seen = datetime.now(timezone.utc)
+        dev.last_seen = datetime.now(UTC)
 
         # Cancel all pending requests for the device
         dev._concurrent_requests_semaphore.cancel_waiting(
             zigpy.exceptions.DeliveryError("Device has re-joined the network")
         )
-
-        # Reset all timers related to the device
-        dev.reset_timers()
 
         if new_join:
             self.listener_event("device_joined", dev)
@@ -782,19 +793,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.debug(
                 "Critical priority request received (%s), skipping queue with %d requests",
                 priority,
-                self._concurrent_requests_semaphore.num_waiting,
+                self._concurrent_requests_semaphore.waiting_requests,
             )
-            manager = nullcontext()
+            manager = contextlib.nullcontext()
             was_locked = False
         else:
             manager = self._concurrent_requests_semaphore(priority=priority)
-            was_locked = self._concurrent_requests_semaphore.locked()
+            was_locked = self._concurrent_requests_semaphore.locked(priority=priority)
 
         if was_locked:
             LOGGER.debug(
                 "Max concurrency (%s) reached, delaying request (%s enqueued)",
-                self._concurrent_requests_semaphore.max_value,
-                self._concurrent_requests_semaphore.num_waiting,
+                self._concurrent_requests_semaphore.active_requests,
+                self._concurrent_requests_semaphore.waiting_requests,
             )
 
         async with manager:
@@ -1197,6 +1208,54 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         else:
             raise ValueError(f"Invalid address: {address!r}")
 
+    def register_packet_callback(
+        self,
+        filter: t.AddrModeAddress | None,
+        callback: typing.Callable[[t.ZigbeePacket], None],
+    ) -> typing.Callable[[], None]:
+        """Register a callback that is called when a Zigbee packet is received.
+
+        Args:
+        ----
+            filter: Optional address filter. If None, callback receives all packets.
+            If provided, only packets from this source address trigger the callback.
+            callback: Function to call when a matching packet is received.
+
+        Returns:
+        -------
+            A callable that can be used to unregister the callback.
+
+        """
+        self._packet_callbacks[filter].append(callback)
+
+        def cancel_callback() -> None:
+            """Remove the callback."""
+            with contextlib.suppress(ValueError):
+                self._packet_callbacks[filter].remove(callback)
+
+        return cancel_callback
+
+    def notify_packet_callbacks(self, packet: t.ZigbeePacket) -> None:
+        """Notify registered packet callbacks about a received Zigbee packet."""
+
+        # Notify global callbacks (registered with None filter)
+        for callback in self._packet_callbacks[None]:
+            try:
+                callback(packet)
+            except Exception:
+                LOGGER.exception("Error in global packet callback: %s", callback)
+
+        # Notify address-specific callbacks
+        for callback in self._packet_callbacks[packet.src]:
+            try:
+                callback(packet)
+            except Exception:
+                LOGGER.exception(
+                    "Error in packet callback for address %s: %s",
+                    packet.src,
+                    callback,
+                )
+
     def register_callback_listener(
         self,
         src: zigpy.device.Device | zigpy.listeners.ANY_DEVICE,
@@ -1293,6 +1352,26 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> None:
         """Permit a node to join with the provided link key."""
         raise NotImplementedError  # pragma: no cover
+
+    async def can_write_network_settings(
+        self,
+        *,
+        network_info: zigpy.state.NetworkInfo,
+        node_info: zigpy.state.NodeInfo,
+    ) -> bool:
+        """Returns `True` if the radio can write the given network settings.
+
+        If restoration is not possible, `CannotWriteNetworkSettings` is raised.
+        If restoration is possible in a destructive way (e.g. write-once tokens),
+        `DestructiveWriteNetworkSettings` is raised.
+
+        Some radio firmwares do not support writing every network setting in a backup
+        (ZiGate cannot set the PAN ID, older EZSP can only write the EUI64 once, etc.).
+        Not all situations, however, are critical failures: if we are restoring a
+        backup where the PAN ID does not change or the EUI64 remains the same, we can
+        restore the backup successfully.
+        """
+        return True
 
     @abc.abstractmethod
     async def write_network_info(

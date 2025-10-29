@@ -169,9 +169,7 @@ class BaseOtaProvider:
         override_previous: bool = False,
     ) -> None:
         self.url = self.DEFAULT_URL if url in (True, None) else url
-        self._index_last_updated = datetime.datetime.fromtimestamp(
-            0, tz=datetime.timezone.utc
-        )
+        self._index_last_updated = datetime.datetime.fromtimestamp(0, tz=datetime.UTC)
 
         if manufacturer_ids is not None:
             self.manufacturer_ids = tuple(manufacturer_ids)
@@ -187,7 +185,7 @@ class BaseOtaProvider:
         return device.manufacturer_id in self.manufacturer_ids
 
     async def load_index(self) -> list[BaseOtaImageMetadata] | None:
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.UTC)
 
         # Don't hammer the OTA indexes too frequently
         if now - self._index_last_updated < self.INDEX_EXPIRATION_TIME:

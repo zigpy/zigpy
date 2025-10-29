@@ -1,8 +1,7 @@
 """Homeassistant specific quirks v2 things."""
 
+from enum import StrEnum
 from typing import Final
-
-from zigpy.backports.enum import StrEnum
 
 
 class EntityType(StrEnum):

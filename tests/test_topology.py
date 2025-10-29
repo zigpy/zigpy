@@ -124,9 +124,9 @@ async def test_scan_no_devices(topology) -> None:
 @pytest.mark.parametrize(
     ("neighbors", "routes"),
     [
-        ([], asyncio.TimeoutError()),
+        ([], TimeoutError()),
         ([], []),
-        (asyncio.TimeoutError(), asyncio.TimeoutError()),
+        (TimeoutError(), TimeoutError()),
     ],
 )
 async def test_scan_failures(

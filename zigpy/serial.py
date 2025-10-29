@@ -1,32 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import timeout as asyncio_timeout
 import logging
 import pathlib
-import sys
 import typing
 from typing import Literal
 import urllib.parse
 
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout  # pragma: no cover
-else:
-    from asyncio import timeout as asyncio_timeout  # pragma: no cover
-
 import serial as pyserial
+import serial_asyncio_fast as pyserial_asyncio
 
 from zigpy.typing import UNDEFINED, UndefinedType
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_SOCKET_PORT = 6638
 SOCKET_CONNECT_TIMEOUT = 5
-
-try:
-    import serial_asyncio_fast as pyserial_asyncio
-
-    LOGGER.info("Using pyserial-asyncio-fast in place of pyserial-asyncio")
-except ImportError:
-    import serial_asyncio as pyserial_asyncio
 
 
 class SerialProtocol(asyncio.Protocol):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import enum
 import typing
 
@@ -11,7 +11,7 @@ from . import basic
 from .struct import Struct
 
 if typing.TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
 
 class BaseDataclassMixin:
@@ -121,7 +121,7 @@ class Channels(basic.bitmap32):
                     f"Invalid channel number {channel}. Must be between 11 and 26."
                 )
 
-            mask |= cls[f"CHANNEL_{channel}"]
+            mask |= cls[f"CHANNEL_{channel}"]  # type: ignore[index]
 
         return mask
 
@@ -587,7 +587,7 @@ class ZigbeePacket(BaseDataclassMixin):
     """
 
     timestamp: datetime = dataclasses.field(
-        compare=False, default_factory=lambda: datetime.now(timezone.utc)
+        compare=False, default_factory=lambda: datetime.now(UTC)
     )
 
     # Higher priority will try to be sent before lower

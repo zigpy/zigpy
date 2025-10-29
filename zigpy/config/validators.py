@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 import pathlib
 import typing
@@ -128,3 +129,15 @@ def cv_ota_provider(obj: dict) -> zigpy.ota.providers.BaseOtaProvider:
     kwargs.pop(zigpy.config.CONF_OTA_PROVIDER_TYPE)
 
     return provider_cls(**kwargs)
+
+
+def cv_warn_if_greater(limit: int, message: str) -> Callable[[int], int]:
+    """Factory function for creating a warning validator."""
+
+    def wrapper(value: int) -> int:
+        if value > limit:
+            _LOGGER.warning(message)
+            warnings.warn(message, UserWarning, stacklevel=2)
+        return value
+
+    return wrapper

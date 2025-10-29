@@ -3,8 +3,7 @@ from __future__ import annotations
 import dataclasses
 import inspect
 import typing
-
-from typing_extensions import Self
+from typing import Self
 
 import zigpy.types as t
 

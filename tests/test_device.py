@@ -1,12 +1,15 @@
 import asyncio
-from datetime import datetime, timezone
+from contextlib import AsyncExitStack
+from datetime import UTC, datetime
 import logging
+import math
 from unittest.mock import call
 
 import pytest
 
 from zigpy import device, endpoint
 import zigpy.application
+from zigpy.datastructures import RequestLimiter
 import zigpy.exceptions
 from zigpy.ota import OtaImagesResult
 import zigpy.ota.image
@@ -15,7 +18,7 @@ import zigpy.state
 import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import ClusterType, foundation
-from zigpy.zcl.clusters.general import Basic, Ota, PollControl
+from zigpy.zcl.clusters.general import Basic, OnOff, Ota, PollControl
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -187,7 +190,7 @@ async def test_broadcast(app_mock):
 async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
     async def mockrequest(nwk, tries=None, delay=None, **kwargs):
         if not request_success:
-            raise asyncio.TimeoutError
+            raise TimeoutError
 
         status = 0 if zdo_success else 1
         return [status, nwk, zdo_t.NodeDescriptor.deserialize(b"abcdefghijklm")[0]]
@@ -306,13 +309,13 @@ def test_device_last_seen(dev, monkeypatch):
     assert dev.last_seen is None
 
     dev.last_seen = 0
-    epoch = datetime(1970, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
+    epoch = datetime(1970, 1, 1, 0, 0, 0, 0, tzinfo=UTC)
     assert dev.last_seen == epoch.timestamp()
 
     dev.listener_event.assert_called_once_with("device_last_seen_updated", epoch)
     dev.listener_event.reset_mock()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     dev.last_seen = now
     dev.listener_event.assert_called_once_with("device_last_seen_updated", now)
 
@@ -1277,7 +1280,9 @@ async def test_debouncing(dev):
 
 async def test_device_concurrency(dev: device.Device) -> None:
     """Test that the device can handle multiple requests concurrently."""
-    dev._concurrent_requests_semaphore.max_value = 1
+    dev._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
 
     ep = dev.add_endpoint(1)
     ep.add_input_cluster(Basic.cluster_id)
@@ -1360,10 +1365,10 @@ async def test_duplicate_request_sending(dev: device.Device) -> None:
 
     async def delayed_receive(*args, **kwargs) -> None:
         await asyncio.sleep(0.1)
-        raise asyncio.TimeoutError()
+        raise TimeoutError()
 
     dev._application.request = AsyncMock(side_effect=delayed_receive)
-    dev._concurrent_requests_semaphore.max_value = 100000
+    dev._concurrent_requests_semaphore.max_concurrency = 100000
 
     # We send 256 + 1 requests
     errors = await asyncio.gather(
@@ -1477,7 +1482,9 @@ async def test_poll_control_checkin_callback(
     expected_fast_poll: bool,
 ) -> None:
     """Test PollControl check-in callback with different device states."""
-    dev._concurrent_requests_semaphore.max_value = 1
+    dev._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
 
     ep = dev.add_endpoint(1)
     poll_control = ep.add_input_cluster(PollControl.cluster_id)
@@ -1492,46 +1499,45 @@ async def test_poll_control_checkin_callback(
     else:
         dev._initialize_task = None
 
-    if semaphore_locked:
-        await dev._concurrent_requests_semaphore.acquire()
-
-    zcl_hdr = foundation.ZCLHeader(
-        frame_control=foundation.FrameControl(
-            frame_type=foundation.FrameType.CLUSTER_COMMAND,
-            is_manufacturer_specific=False,
-            direction=foundation.Direction.Server_to_Client,
-            disable_default_response=1,
-            reserved=0,
-        ),
-        tsn=0x12,
-        command_id=PollControl.ClientCommandDefs.checkin.id,
-    )
-    command = PollControl.ClientCommandDefs.checkin.schema()
-
-    # Test the callback
-    await dev.poll_control_checkin_callback(zcl_hdr, command)
-
-    # Verify the correct response was sent
-    if expected_fast_poll:
-        assert poll_control.checkin_response.mock_calls == [
-            call(
-                start_fast_polling=expected_fast_poll,
-                fast_poll_timeout=int(device.DEFAULT_FAST_POLL_TIMEOUT * 4),
-                tsn=0x12,
+    async with AsyncExitStack() as stack:
+        if semaphore_locked:
+            await stack.enter_async_context(
+                dev._concurrent_requests_semaphore(priority=t.PacketPriority.LOW)
             )
-        ]
-    else:
-        assert poll_control.checkin_response.mock_calls == [
-            call(
-                start_fast_polling=expected_fast_poll,
-                fast_poll_timeout=0,
-                tsn=0x12,
-            )
-        ]
 
-    # Clean up semaphore if we acquired it
-    if semaphore_locked:
-        dev._concurrent_requests_semaphore.release()
+        zcl_hdr = foundation.ZCLHeader(
+            frame_control=foundation.FrameControl(
+                frame_type=foundation.FrameType.CLUSTER_COMMAND,
+                is_manufacturer_specific=False,
+                direction=foundation.Direction.Server_to_Client,
+                disable_default_response=1,
+                reserved=0,
+            ),
+            tsn=0x12,
+            command_id=PollControl.ClientCommandDefs.checkin.id,
+        )
+        command = PollControl.ClientCommandDefs.checkin.schema()
+
+        # Test the callback
+        await dev.poll_control_checkin_callback(zcl_hdr, command)
+
+        # Verify the correct response was sent
+        if expected_fast_poll:
+            assert poll_control.checkin_response.mock_calls == [
+                call(
+                    start_fast_polling=expected_fast_poll,
+                    fast_poll_timeout=int(device.DEFAULT_FAST_POLL_TIMEOUT * 4),
+                    tsn=0x12,
+                )
+            ]
+        else:
+            assert poll_control.checkin_response.mock_calls == [
+                call(
+                    start_fast_polling=expected_fast_poll,
+                    fast_poll_timeout=0,
+                    tsn=0x12,
+                )
+            ]
 
 
 async def test_begin_fast_polling_with_cluster(dev: device.Device) -> None:
@@ -1541,19 +1547,48 @@ async def test_begin_fast_polling_with_cluster(dev: device.Device) -> None:
     poll_control.bind = AsyncMock()
     poll_control.write_attributes = AsyncMock()
 
-    timeout = 45.0
-    await dev.begin_fast_polling(timeout)
+    timeout = 0.25
+    async with dev.fast_poll_mode(timeout):
+        # Verify bind was called
+        assert poll_control.bind.mock_calls == [call()]
 
-    # Verify bind was called
-    assert poll_control.bind.mock_calls == [call()]
+        # Verify write_attributes was called with correct timeout
+        assert poll_control.write_attributes.mock_calls == [
+            call(
+                {PollControl.AttributeDefs.fast_poll_timeout.id: math.ceil(timeout * 4)}
+            )
+        ]
 
-    # Verify write_attributes was called with correct timeout
-    assert poll_control.write_attributes.mock_calls == [
-        call({PollControl.AttributeDefs.fast_poll_timeout.id: int(timeout * 4)})
-    ]
+        # Verify we are now fast polling
+        assert dev._fast_polling
 
-    # Verify end time was set
-    assert dev._fast_polling_end_time > datetime.now(timezone.utc)
+    # We reset afterwards
+    await asyncio.sleep(0.3)
+    assert not dev._fast_polling
+
+
+async def test_fast_poll_mode_cancel_old_timer(dev: device.Device) -> None:
+    """Test that multiple fast_poll_mode runs cancel the previous timer."""
+    ep = dev.add_endpoint(1)
+    poll_control = ep.add_input_cluster(PollControl.cluster_id)
+    poll_control.bind = AsyncMock()
+    poll_control.write_attributes = AsyncMock()
+
+    # Start one fast polling session
+    await dev.begin_fast_polling(0.25)
+    assert dev._fast_polling
+
+    # A second run shouldn't be cancelled by the first expiring
+    await dev.begin_fast_polling(0.5)
+    assert dev._fast_polling
+
+    # It would have happened by now
+    await asyncio.sleep(0.3)
+    assert dev._fast_polling
+
+    # The second one resets it
+    await asyncio.sleep(0.3)
+    assert not dev._fast_polling
 
 
 async def test_begin_fast_polling_no_cluster(dev: device.Device) -> None:
@@ -1564,19 +1599,7 @@ async def test_begin_fast_polling_no_cluster(dev: device.Device) -> None:
     await dev.begin_fast_polling()
 
     # End time should remain at minimum
-    assert dev._fast_polling_end_time == datetime.min.replace(tzinfo=timezone.utc)
-
-
-async def test_reset_timers(dev: device.Device) -> None:
-    """Test resetting device timers."""
-    # Set a future end time
-    dev._fast_polling_end_time = datetime.now(timezone.utc)
-
-    # Reset timers
-    dev.reset_timers()
-
-    # Verify end time was reset to minimum
-    assert dev._fast_polling_end_time == datetime.min.replace(tzinfo=timezone.utc)
+    assert not dev._fast_polling
 
 
 async def test_on_remove_callbacks(dev: device.Device) -> None:
@@ -1603,7 +1626,7 @@ async def test_initialize_fast_polling_failure(dev: device.Device) -> None:
     ep = dev.add_endpoint(1)
     ep.add_input_cluster(PollControl.cluster_id)
 
-    dev.begin_fast_polling = AsyncMock(side_effect=[asyncio.TimeoutError(), None])
+    dev.begin_fast_polling = AsyncMock(side_effect=[TimeoutError(), None])
 
     async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
@@ -1624,3 +1647,100 @@ async def test_initialize_fast_polling_failure(dev: device.Device) -> None:
 
     # Initialization attempted to fast poll but failure didn't stop it
     assert dev.begin_fast_polling.mock_calls == [call()]
+
+
+@pytest.mark.parametrize(
+    (
+        "has_input_cluster",
+        "has_output_cluster",
+        "packet_direction",
+        "expected_cluster_type",
+    ),
+    [
+        # Correct cluster matching
+        (True, False, foundation.Direction.Server_to_Client, ClusterType.Server),
+        (False, True, foundation.Direction.Client_to_Server, ClusterType.Client),
+        # Direction flipping: only one cluster type exists, packet has wrong direction
+        (True, False, foundation.Direction.Client_to_Server, ClusterType.Server),
+        (False, True, foundation.Direction.Server_to_Client, ClusterType.Client),
+        # Both clusters exist: should match based on direction, no flipping
+        (True, True, foundation.Direction.Server_to_Client, ClusterType.Server),
+        (True, True, foundation.Direction.Client_to_Server, ClusterType.Client),
+        # Cluster doesn't exist
+        (False, False, foundation.Direction.Server_to_Client, None),
+        (False, False, foundation.Direction.Client_to_Server, None),
+    ],
+)
+async def test_device_cluster_direction_flipping(
+    dev: device.Device,
+    has_input_cluster: bool,
+    has_output_cluster: bool,
+    packet_direction: foundation.Direction,
+    expected_cluster_type: ClusterType | None,
+) -> None:
+    """Test that cluster direction flipping routes messages to the correct cluster."""
+    ep = dev.add_endpoint(1)
+
+    if has_input_cluster:
+        input_cluster = ep.add_input_cluster(OnOff.cluster_id)
+    else:
+        input_cluster = None
+
+    if has_output_cluster:
+        output_cluster = ep.add_output_cluster(OnOff.cluster_id)
+    else:
+        output_cluster = None
+
+    zcl_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.CLUSTER_COMMAND,
+            is_manufacturer_specific=False,
+            direction=packet_direction,
+            disable_default_response=1,
+            reserved=0,
+        ),
+        tsn=0x12,
+        command_id=OnOff.ServerCommandDefs.on.id,
+    )
+
+    packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        src_ep=1,
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        dst_ep=1,
+        profile_id=260,
+        cluster_id=OnOff.cluster_id,
+        data=t.SerializableBytes(
+            zcl_hdr.serialize() + OnOff.ServerCommandDefs.on.schema().serialize()
+        ),
+        lqi=255,
+        rssi=-30,
+    )
+
+    captured_result = []
+
+    original_match = dev._match_packet_endpoint_cluster
+
+    def capture_match(*args, **kwargs):
+        result = original_match(*args, **kwargs)
+        captured_result.append(result)
+        return result
+
+    with patch.object(
+        dev, "_match_packet_endpoint_cluster", side_effect=capture_match
+    ) as spy:
+        dev.packet_received(packet)
+
+    assert spy.call_count == 1
+    assert len(captured_result) == 1
+
+    _, returned_cluster = captured_result[0]
+
+    if expected_cluster_type is None:
+        assert returned_cluster is None
+    elif expected_cluster_type is ClusterType.Server:
+        assert returned_cluster is input_cluster
+    elif expected_cluster_type is ClusterType.Client:
+        assert returned_cluster is output_cluster
+    else:
+        pytest.fail("Unexpected cluster type")

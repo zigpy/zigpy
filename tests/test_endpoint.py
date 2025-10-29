@@ -238,7 +238,7 @@ def _get_model_info(ep, attributes={}):
 
         result = []
 
-        for attr_id, value in zip(args, attributes[tuple(args)]):
+        for attr_id, value in zip(args, attributes[tuple(args)], strict=True):
             if isinstance(value, BaseException):
                 raise value
             elif value is None:
@@ -354,9 +354,9 @@ async def test_get_model_info_timeout(ep):
         await _get_model_info(
             ep,
             attributes={
-                (0x0004, 0x0005): (asyncio.TimeoutError(), asyncio.TimeoutError()),
-                (0x0004,): (asyncio.TimeoutError(),),
-                (0x0005,): (asyncio.TimeoutError(),),
+                (0x0004, 0x0005): (TimeoutError(), TimeoutError()),
+                (0x0004,): (TimeoutError(),),
+                (0x0005,): (TimeoutError(),),
             },
         )
 
@@ -366,7 +366,7 @@ async def test_get_model_info_double_read_timeout(ep):
         ep,
         attributes={
             # The double read fails
-            (0x0004, 0x0005): (asyncio.TimeoutError(), asyncio.TimeoutError()),
+            (0x0004, 0x0005): (TimeoutError(), TimeoutError()),
             # But individually the attributes can be read
             (0x0004,): (b"Mock Manufacturer",),
             (0x0005,): (b"Mock Model",),

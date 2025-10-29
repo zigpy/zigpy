@@ -14,7 +14,7 @@ def test_commands():
     for cmdid, cmdspec in zdo.types.CLUSTERS.items():
         assert 0 <= cmdid <= 0xFFFF
         assert isinstance(cmdspec, tuple)
-        for paramname, paramtype in zip(cmdspec[0], cmdspec[1]):
+        for paramname, paramtype in zip(cmdspec[0], cmdspec[1], strict=True):
             assert isinstance(paramname, str)
             assert hasattr(paramtype, "serialize")
             assert hasattr(paramtype, "deserialize")

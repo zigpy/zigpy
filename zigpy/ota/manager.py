@@ -7,11 +7,12 @@ import contextlib
 from typing import TYPE_CHECKING
 
 import zigpy.datastructures
+import zigpy.types as t
 from zigpy.zcl import ClusterType, foundation
 from zigpy.zcl.clusters.general import Ota
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
     from zigpy.device import Device
     from zigpy.ota.providers import OtaImageWithMetadata
@@ -221,21 +222,26 @@ class OTAManager:
             bytes_remaining -= block_size
 
             try:
-                # Once we have a way to send requests without waiting for replies,
-                # this can be converted to just `self.ota_cluster.image_block_response`
-                await self.ota_cluster.request(
-                    general=False,
-                    command_id=Ota.ClientCommandDefs.image_block_response.id,
-                    schema=Ota.ClientCommandDefs.image_block_response.schema,
-                    expect_reply=False,
-                    # kwargs
-                    status=foundation.Status.SUCCESS,
-                    manufacturer_code=self.image.firmware.header.manufacturer_id,
-                    image_type=self.image.firmware.header.image_type,
-                    file_version=self.image.firmware.header.file_version,
-                    file_offset=offset - block_size,
-                    image_data=block,
-                )
+                # OTA sometimes is overwhelmingly fast, we should allow higher priority
+                # requests to make it through
+                async with self.device.application.request_priority(
+                    t.PacketPriority.LOW
+                ):
+                    # Once we have a way to send requests without waiting for replies,
+                    # this can be converted to just `self.ota_cluster.image_block_response`.
+                    await self.ota_cluster.request(
+                        general=False,
+                        command_id=Ota.ClientCommandDefs.image_block_response.id,
+                        schema=Ota.ClientCommandDefs.image_block_response.schema,
+                        expect_reply=False,
+                        # kwargs
+                        status=foundation.Status.SUCCESS,
+                        manufacturer_code=self.image.firmware.header.manufacturer_id,
+                        image_type=self.image.firmware.header.image_type,
+                        file_version=self.image.firmware.header.file_version,
+                        file_offset=offset - block_size,
+                        image_data=block,
+                    )
 
                 self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
 
@@ -319,6 +325,8 @@ async def update_firmware(
         if progress_callback is not None:
             progress_callback(current, total, progress)
 
-    with OTAManager(device, image, progress_callback=progress, force=force) as ota:
-        await ota.notify()
-        return await ota.wait()
+    # Ask the device to start fast polling before we send the OTA image
+    async with device.fast_poll_mode():
+        with OTAManager(device, image, progress_callback=progress, force=force) as ota:
+            await ota.notify()
+            return await ota.wait()
