@@ -623,3 +623,9 @@ def test_qr_code_parsing(code: str, ieee: EUI64, link_key: KeyData) -> None:
     parsed_ieee, parsed_link_key = util.parse_install_code_qr(code)
     assert parsed_ieee == ieee
     assert parsed_link_key == link_key
+
+
+def test_qr_code_parsing_failure() -> None:
+    """Test install code QR parsing failure."""
+    with pytest.raises(ValueError, match="Unknown QR code format: "):
+        util.parse_install_code_qr("some invalid QR code")

@@ -517,4 +517,4 @@ def parse_install_code_qr(qr_code: str) -> tuple[t.EUI64, t.KeyData]:
 
         return ieee, link_key
 
-    raise ValueError(f"QR code {qr_code!r} does not follow any known pattern")
+    raise ValueError(f"Unknown QR code format: {qr_code!r}")
