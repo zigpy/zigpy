@@ -602,6 +602,20 @@ async def test_async_iterate_in_chunks() -> None:
                 bytes.fromhex("2E5D2E5F401B82F1A45621A50B551F726101")
             ),
         ),
+        # Bosch (install code)
+        (
+            "RB01SG0D8310182648007000000000000000000094DEB8FFFE41F6D6DLKA87710C3E5C332E5327EE532C3C310E5DFE0",
+            EUI64.convert("94:DE:B8:FF:FE:41:F6:D6"),
+            util.convert_install_code(
+                bytes.fromhex("A87710C3E5C332E5327EE532C3C310E5DFE0")
+            ),
+        ),
+        # Bosch (link key)
+        (
+            "RB01SG0D836591B3CC0010000000000000000000000D6F0017E0870CDLK999F98A7DFBCA6DD3955823AD9089631",
+            EUI64.convert("00:0D:6F:00:17:E0:87:0C"),
+            KeyData.convert("999F98A7DFBCA6DD3955823AD9089631"),
+        ),
     ],
 )
 def test_qr_code_parsing(code: str, ieee: EUI64, link_key: KeyData) -> None:

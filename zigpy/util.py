@@ -31,8 +31,10 @@ QR_CODE_FORMATS = (
     r"^Z:(?P<ieee>[0-9a-fA-F]{16})\$I:(?P<code>[0-9a-fA-F]{36})",
     # Aqara
     r"\$A:(?P<ieee>[0-9a-fA-F]{16})\$I:(?P<code>[0-9a-fA-F]{36})$",
-    # Bosch (can contain either an install code or the link key directly)
-    r"^RB01SG[0-9a-fA-F]{34}(?P<ieee>[0-9a-fA-F]{16})DLK(?:(?P<code>[0-9a-fA-F]{36})|(?P<link_key>[0-9a-fA-F]{32}))$",
+    # Bosch (install code)
+    r"^RB01SG[0-9a-fA-F]{34}(?P<ieee>[0-9a-fA-F]{16})DLK(?P<code>[0-9a-fA-F]{36})$",
+    # Bosch (link key directly)
+    r"^RB01SG[0-9a-fA-F]{34}(?P<ieee>[0-9a-fA-F]{16})DLK(?P<link_key>[0-9a-fA-F]{32})$",
     # Hue (contains a lot of other stuff at the end)
     r"^HUE:Z:(?P<code>[0-9a-fA-F]{36}) M:(?P<ieee>[0-9a-fA-F]{16})",
 )
@@ -503,12 +505,15 @@ def parse_install_code_qr(qr_code: str) -> tuple[t.EUI64, t.KeyData]:
         if str(ieee).lower().endswith("16:a7:20"):
             ieee = t.EUI64(reversed(ieee))
 
-        code = match.group("code")
+        try:
+            code = match.group("code")
+        except IndexError:
+            code = None
 
         if code is not None:
             link_key = convert_install_code(bytes.fromhex(code))
         else:
-            link_key = match.group("link_key")
+            link_key = t.KeyData.convert(match.group("link_key"))
 
         return ieee, link_key
 
