@@ -15,7 +15,6 @@ from crccheck.crc import CrcX25
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.modes import ECB
-import voluptuous as vol
 
 from zigpy.exceptions import ZigbeeException
 import zigpy.types as t
@@ -25,34 +24,17 @@ LOGGER = logging.getLogger(__name__)
 _T = typing.TypeVar("_T")
 
 
-QR_CODES = (
+QR_CODE_FORMATS = (
     # Consciot
-    r"^([\da-fA-F]{16})\|([\da-fA-F]{36})$",
-    # Enbrighten
-    r"""
-        ^Z:
-        ([0-9a-fA-F]{16})  # IEEE address
-        \$I:
-        ([0-9a-fA-F]{36})  # install code
-        $
-    """,
+    r"^(?P<ieee>[0-9a-fA-F]{16})\|(?P<code>[0-9a-fA-F]{36})$",
+    # Enbrighten (and many others, can be suffixed with extra data)
+    r"^Z:(?P<ieee>[0-9a-fA-F]{16})\$I:(?P<code>[0-9a-fA-F]{36})",
     # Aqara
-    r"""
-        \$A:
-        ([0-9a-fA-F]{16})  # IEEE address
-        \$I:
-        ([0-9a-fA-F]{36})  # install code
-        $
-    """,
-    # Bosch
-    r"""
-        ^RB01SG
-        [0-9a-fA-F]{34}
-        ([0-9a-fA-F]{16}) # IEEE address
-        DLK
-        ([0-9a-fA-F]{36}|[0-9a-fA-F]{32}) # install code / link key
-        $
-    """,
+    r"\$A:(?P<ieee>[0-9a-fA-F]{16})\$I:(?P<code>[0-9a-fA-F]{36})$",
+    # Bosch (can contain either an install code or the link key directly)
+    r"^RB01SG[0-9a-fA-F]{34}(?P<ieee>[0-9a-fA-F]{16})DLK(?:(?P<code>[0-9a-fA-F]{36})|(?P<link_key>[0-9a-fA-F]{32}))$",
+    # Hue (contains a lot of other stuff at the end)
+    r"^HUE:Z:(?P<code>[0-9a-fA-F]{36}) M:(?P<ieee>[0-9a-fA-F]{16})",
 )
 
 
@@ -506,40 +488,28 @@ async def async_iterate_in_chunks(
         yield chunk
 
 
-def qr_to_raw_install_code(qr_code: str) -> tuple[t.EUI64, t.KeyData]:
-    """Try to parse the QR code.
+def parse_install_code_qr(qr_code: str) -> tuple[t.EUI64, t.KeyData]:
+    """Try to parse the QR code into a tuple of EUI64 and install code."""
 
-    if successful, return a tuple of a EUI64 address and install code.
-    """
-
-    for code_pattern in QR_CODES:
-        match = re.search(code_pattern, qr_code, re.VERBOSE)
+    for code_pattern in QR_CODE_FORMATS:
+        match = re.search(code_pattern, qr_code)
         if match is None:
             continue
 
-        ieee_hex = bytes.fromhex(match[1])
-        ieee = t.EUI64(ieee_hex[::-1])
+        ieee = t.EUI64.convert(match.group("ieee"))
 
-        # Bosch supplies (A) device specific link key (DSLK) or (A) install code + crc
-        if "RB01SG" in code_pattern and len(match[2]) == 32:
-            link_key_hex = bytes.fromhex(match[2])
-            link_key = t.KeyData(link_key_hex)
-            return ieee, link_key
-        install_code = match[2]
-        # install_code sanity check
-        link_key = convert_install_code(install_code)
+        # Some manufacturers flip the endianness of their IEEE addresses in QR codes. We
+        # can try to detect this and flip it back.
+        if str(ieee).lower().endswith("16:a7:20"):
+            ieee = t.EUI64(reversed(ieee))
+
+        code = match.group("code")
+
+        if code is not None:
+            link_key = convert_install_code(bytes.fromhex(code))
+        else:
+            link_key = match.group("link_key")
+
         return ieee, link_key
 
-    raise vol.Invalid(f"couldn't convert qr code: {qr_code}")
-
-
-def qr_code_to_install_code(qr_code: str) -> tuple[t.EUI64, t.KeyData]:
-    """Convert a QR code to install code and IEEE address, rewriting if necessary."""
-    ieee, link_key = qr_to_raw_install_code(qr_code)
-
-    # Some manufacturers flip the endianness of their IEEE addresses in QR codes. We can
-    # try to detect this and flip it back.
-    if str(ieee).endswith("20:a7:16"):
-        ieee = t.EUI64(reversed(ieee))
-
-    return ieee, link_key
+    raise ValueError(f"QR code {qr_code!r} does not follow any known pattern")
