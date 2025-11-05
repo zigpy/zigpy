@@ -145,6 +145,20 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.groups.remove_listener(self._dblistener)
         self.remove_listener(self._dblistener)
 
+    async def _get_effective_tx_power(self) -> float | None:
+        """Compute TX power from config and radio preferences."""
+        if conf.CONF_NWK_TX_POWER in self.config[conf.CONF_NWK]:
+            # If we've configured an explicit TX power, use it
+            tx_power = self.config[conf.CONF_NWK][conf.CONF_NWK_TX_POWER]
+        elif conf.CONF_NWK_COUNTRY_CODE in self.config[conf.CONF_NWK]:
+            # Otherwise, use the recommended TX power for the country
+            country = self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE]
+            tx_power = await self.get_recommended_tx_power(country)
+        else:
+            tx_power = None
+
+        return tx_power
+
     async def initialize(self, *, auto_form: bool = False) -> None:
         """Starts the network on a connected radio, optionally forming one with random
         settings if necessary.
@@ -193,16 +207,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         await self.start_network()
 
-        if conf.CONF_NWK_TX_POWER in self.config[conf.CONF_NWK]:
-            # If we've configured an explicit TX power, use it
-            tx_power = self.config[conf.CONF_NWK][conf.CONF_NWK_TX_POWER]
-        elif conf.CONF_NWK_COUNTRY_CODE in self.config[conf.CONF_NWK]:
-            # Otherwise, use the recommended TX power for the country
-            country = self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE]
-            tx_power = await self.get_recommended_tx_power(country)
-        else:
-            tx_power = None
-
+        # Networks can move between RF domains so we need to be able to adjust the TX
+        # power on startup
+        tx_power = await self._get_effective_tx_power()
         if tx_power is not None:
             await self.set_tx_power(tx_power)
 
@@ -438,9 +445,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if tc_address is None:
             tc_address = t.EUI64.UNKNOWN
 
-        tx_power = await self.get_recommended_tx_power(
-            country=config[conf.CONF_NWK_COUNTRY_CODE]
-        )
+        tx_power = await self._get_effective_tx_power()
+        if tx_power is None:
+            tx_power = conf.CONF_NWK_TX_POWER_SAFE
 
         network_info = zigpy.state.NetworkInfo(
             extended_pan_id=extended_pan_id,
