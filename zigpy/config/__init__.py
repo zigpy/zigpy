@@ -13,6 +13,7 @@ from zigpy.config.defaults import (
     CONF_NWK_BACKUP_PERIOD_DEFAULT,
     CONF_NWK_CHANNEL_DEFAULT,
     CONF_NWK_CHANNELS_DEFAULT,
+    CONF_NWK_COUNTRY_CODE_DEFAULT,
     CONF_NWK_EXTENDED_PAN_ID_DEFAULT,
     CONF_NWK_KEY_DEFAULT,
     CONF_NWK_KEY_SEQ_DEFAULT,
@@ -60,6 +61,7 @@ CONF_MAX_CONCURRENT_REQUESTS = "max_concurrent_requests"
 CONF_NWK = "network"
 CONF_NWK_CHANNEL = "channel"
 CONF_NWK_CHANNELS = "channels"
+CONF_NWK_COUNTRY_CODE = "country_code"
 CONF_NWK_EXTENDED_PAN_ID = "extended_pan_id"
 CONF_NWK_PAN_ID = "pan_id"
 CONF_NWK_KEY = "key"
@@ -146,6 +148,9 @@ SCHEMA_NETWORK = vol.Schema(
         vol.Optional(CONF_NWK_KEY_SEQ, default=CONF_NWK_KEY_SEQ_DEFAULT): vol.Range(
             min=0, max=255
         ),
+        vol.Optional(
+            CONF_NWK_COUNTRY_CODE, default=CONF_NWK_COUNTRY_CODE_DEFAULT
+        ): vol.Any(None, vol.Match(r"^[A-Z][A-Z]$")),
         vol.Optional(CONF_NWK_PAN_ID, default=CONF_NWK_PAN_ID_DEFAULT): vol.Any(
             None, t.PanId, vol.All(cv_hex, vol.Coerce(t.PanId))
         ),

@@ -192,6 +192,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             )
 
         await self.start_network()
+
+        # Set the TX power at runtime
+        if self.config[conf.CONF_NWK_COUNTRY_CODE] is not None:
+            await self.set_tx_power(
+                country=self.config[conf.CONF_NWK_COUNTRY_CODE],
+                dbm=self.config[conf.CONF_NWK_TX_POWER],
+            )
+
         self._persist_coordinator_model_strings_in_db()
 
         # Some radios erroneously permit joins on startup
@@ -279,6 +287,26 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             _, scanned_channels, _, _, energy_values = rsp
 
         return dict(zip(scanned_channels, energy_values, strict=True))
+
+    async def _set_tx_power(
+        self, *, country: str | None = None, dbm: float | None = None
+    ) -> float | None:
+        """Set the transmit power of the radio, internal."""
+        LOGGER.debug("Radio does not support setting TX power, ignoring")
+        return None
+
+    async def set_tx_power(
+        self, *, country: str | None = None, dbm: float | None = None
+    ) -> float | None:
+        """Sets the transmit power of the radio, potentially limited by firmware."""
+        if country is None and dbm is None:
+            raise ValueError("Either country or dbm must be specified")
+
+        actual_tx_power = await self._set_tx_power(country=country, dbm=dbm)
+        if actual_tx_power is not None:
+            LOGGER.debug("Set transmit power to %.2f dBm", actual_tx_power)
+
+        return actual_tx_power
 
     async def _move_network_to_channel(
         self, new_channel: int, new_nwk_update_id: int
