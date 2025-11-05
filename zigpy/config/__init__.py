@@ -22,6 +22,7 @@ from zigpy.config.defaults import (
     CONF_NWK_TC_ADDRESS_DEFAULT,
     CONF_NWK_TC_LINK_KEY_DEFAULT,
     CONF_NWK_TX_POWER_DEFAULT,
+    CONF_NWK_TX_POWER_SAFE,  # noqa: F401
     CONF_NWK_UPDATE_ID_DEFAULT,
     CONF_NWK_VALIDATE_SETTINGS_DEFAULT,
     CONF_OTA_BROADCAST_ENABLED_DEFAULT,
@@ -177,19 +178,22 @@ SCHEMA_NETWORK = vol.Schema(
         # not mean that the device can actually send a reply back.
         #
         # Tweak this setting at your own risk.
-        vol.Optional(CONF_NWK_TX_POWER, default=CONF_NWK_TX_POWER_DEFAULT): vol.All(
-            int,
-            vol.Range(min=-10, max=20),
-            cv_warn_if_greater(
-                limit=10,
-                message=(
-                    "Increasing the TX power will not increase the range of your"
-                    " network, devices still need to be able to respond to your"
-                    " coordinator and will do so at their default transmit power."
-                    " Changing the TX power may cause routing issues and result in end"
-                    " devices being unable to join reliably. Modify this setting at"
-                    " your own risk and check local regulations for legal limits on"
-                    " transmit power in your area."
+        vol.Optional(CONF_NWK_TX_POWER, default=CONF_NWK_TX_POWER_DEFAULT): vol.Any(
+            None,
+            vol.All(
+                int,
+                vol.Range(min=-10, max=20),
+                cv_warn_if_greater(
+                    limit=10,
+                    message=(
+                        "Increasing the TX power will not increase the range of your"
+                        " network, devices still need to be able to respond to your"
+                        " coordinator and will do so at their default transmit power."
+                        " Changing the TX power may cause routing issues and result in end"
+                        " devices being unable to join reliably. Modify this setting at"
+                        " your own risk and check local regulations for legal limits on"
+                        " transmit power in your area."
+                    ),
                 ),
             ),
         ),

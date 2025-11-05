@@ -193,12 +193,18 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         await self.start_network()
 
-        # Set the TX power at runtime
-        if self.config[conf.CONF_NWK_COUNTRY_CODE] is not None:
-            await self.set_tx_power(
-                country=self.config[conf.CONF_NWK_COUNTRY_CODE],
-                dbm=self.config[conf.CONF_NWK_TX_POWER],
-            )
+        if conf.CONF_NWK_TX_POWER in self.config[conf.CONF_NWK]:
+            # If we've configured an explicit TX power, use it
+            tx_power = self.config[conf.CONF_NWK][conf.CONF_NWK_TX_POWER]
+        elif conf.CONF_NWK_COUNTRY_CODE in self.config[conf.CONF_NWK]:
+            # Otherwise, use the recommended TX power for the country
+            country = self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE]
+            tx_power = await self.get_recommended_tx_power(country)
+        else:
+            tx_power = None
+
+        if tx_power is not None:
+            await self.set_tx_power(tx_power)
 
         self._persist_coordinator_model_strings_in_db()
 
@@ -288,23 +294,36 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         return dict(zip(scanned_channels, energy_values, strict=True))
 
-    async def _set_tx_power(
-        self, *, country: str | None = None, dbm: float | None = None
-    ) -> float | None:
-        """Set the transmit power of the radio, internal."""
+    async def _get_recommended_tx_power(self, country: str) -> float:
+        """Get the recommended transmit power for the radio, internal."""
+        return conf.CONF_NWK_TX_POWER_SAFE
+
+    async def get_recommended_tx_power(self, country: str) -> float:
+        """Get the recommended transmit power for the radio."""
+        return await self._get_recommended_tx_power(country)
+
+    async def _get_maximum_tx_power(self, country: str) -> float:
+        """Get the maximum transmit power for the radio, internal."""
+        return conf.CONF_NWK_TX_POWER_MAXIMUM_DEFAULT
+
+    async def get_maximum_tx_power(self, country: str) -> float:
+        """Get the maximum transmit power for the radio."""
+        return await self._get_maximum_tx_power(country)
+
+    async def _set_tx_power(self, tx_power: float) -> float | None:
+        """Set TX power (if supported by the radio), returning the actual TX power."""
         LOGGER.debug("Radio does not support setting TX power, ignoring")
         return None
 
-    async def set_tx_power(
-        self, *, country: str | None = None, dbm: float | None = None
-    ) -> float | None:
+    async def set_tx_power(self, tx_power: float) -> float | None:
         """Sets the transmit power of the radio, potentially limited by firmware."""
-        if country is None and dbm is None:
-            raise ValueError("Either country or dbm must be specified")
-
-        actual_tx_power = await self._set_tx_power(country=country, dbm=dbm)
+        actual_tx_power = await self._set_tx_power(tx_power)
         if actual_tx_power is not None:
-            LOGGER.debug("Set transmit power to %.2f dBm", actual_tx_power)
+            LOGGER.debug(
+                "Set transmit power to %0.2f dBm (requested %0.2f)",
+                actual_tx_power,
+                tx_power,
+            )
 
         return actual_tx_power
 
@@ -419,6 +438,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if tc_address is None:
             tc_address = t.EUI64.UNKNOWN
 
+        tx_power = await self.get_recommended_tx_power(
+            country=config[conf.CONF_NWK_COUNTRY_CODE]
+        )
+
         network_info = zigpy.state.NetworkInfo(
             extended_pan_id=extended_pan_id,
             pan_id=pan_id,
@@ -427,7 +450,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             channel=channel,
             channel_mask=t.Channels.from_channel_list([channel]),
             security_level=5,
-            tx_power=config[conf.CONF_NWK_TX_POWER],
+            tx_power=tx_power,
             network_key=zigpy.state.Key(
                 key=network_key,
                 tx_counter=0,
