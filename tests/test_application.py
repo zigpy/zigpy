@@ -533,24 +533,25 @@ async def test_form_network(app):
     ("config_override", "expected_tx_power", "should_warn"),
     [
         (None, 8, False),
-        ({"tx_power": 10}, 10, False),
-        ({"tx_power": -5}, -5, False),
-        ({"tx_power": 20}, 20, True),
+        ({"network": {"tx_power": 10}}, 10, False),
+        ({"network": {"tx_power": -5}}, -5, False),
+        ({"network": {"tx_power": 20}}, 20, True),
     ],
 )
 @pytest.mark.filterwarnings("ignore::UserWarning")
 async def test_form_network_tx_power(
-    app,
     config_override: dict | None,
     expected_tx_power: int,
     should_warn: bool,
     caplog,
 ):
+    app = make_app(config_override)
+
     with (
         patch.object(app, "write_network_info") as write,
         caplog.at_level(logging.WARNING),
     ):
-        await app.form_network(config=config_override)
+        await app.form_network()
 
         if should_warn:
             assert "Increasing the TX power" in caplog.text

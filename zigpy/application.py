@@ -392,16 +392,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         LOGGER.info("Successfully migrated to channel %d", new_channel)
 
-    async def form_network(
-        self, *, config: dict[str, Any] | None = None, fast: bool = False
-    ) -> None:
+    async def form_network(self, *, fast: bool = False) -> None:
         """Writes random network settings to the coordinator."""
-        if config is None:
-            config = self.config[conf.CONF_NWK]
-        else:
-            config = conf.SCHEMA_NETWORK(config)
-
-        assert config is not None
+        config = self.config[conf.CONF_NWK]
 
         # First, make the settings consistent and randomly generate missing values
         channel = config[conf.CONF_NWK_CHANNEL]
