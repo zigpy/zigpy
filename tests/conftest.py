@@ -120,6 +120,18 @@ class App(zigpy.application.ControllerApplication):
     async def _packet_capture_change_channel(self, channel):
         pass
 
+    async def _get_recommended_tx_power(self, country: str) -> float:
+        if country == "US":
+            return 8
+        else:
+            return 10
+
+    async def _get_maximum_tx_power(self, country: str) -> float:
+        if country == "US":
+            return 8
+        else:
+            return 10
+
 
 def recursive_dict_merge(
     obj: dict[str, typing.Any], updates: dict[str, typing.Any]

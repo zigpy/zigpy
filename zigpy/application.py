@@ -147,10 +147,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def _get_effective_tx_power(self) -> float | None:
         """Compute TX power from config and radio preferences."""
-        if conf.CONF_NWK_TX_POWER in self.config[conf.CONF_NWK]:
+        if self.config[conf.CONF_NWK][conf.CONF_NWK_TX_POWER] is not None:
             # If we've configured an explicit TX power, use it
             tx_power = self.config[conf.CONF_NWK][conf.CONF_NWK_TX_POWER]
-        elif conf.CONF_NWK_COUNTRY_CODE in self.config[conf.CONF_NWK]:
+        elif self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE] is not None:
             # Otherwise, use the recommended TX power for the country
             country = self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE]
             tx_power = await self.get_recommended_tx_power(country)

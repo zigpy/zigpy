@@ -532,10 +532,16 @@ async def test_form_network(app):
 @pytest.mark.parametrize(
     ("config_override", "expected_tx_power", "should_warn"),
     [
-        (None, 8, False),
+        # No config: uses safe default
+        ({}, 8, False),
+        # Explicit tx_power configured: uses configured value
         ({"network": {"tx_power": 10}}, 10, False),
         ({"network": {"tx_power": -5}}, -5, False),
         ({"network": {"tx_power": 20}}, 20, True),
+        # Country code configured: uses recommended power for country
+        ({"network": {"country_code": "US"}}, 8, False),
+        # Both country_code and explicit tx_power: uses explicit (ignores country)
+        ({"network": {"country_code": "US", "tx_power": 9}}, 9, False),
     ],
 )
 @pytest.mark.filterwarnings("ignore::UserWarning")
@@ -549,6 +555,7 @@ async def test_form_network_tx_power(
 
     with (
         patch.object(app, "write_network_info") as write,
+        patch.object(app, "_get_recommended_tx_power", return_value=8),
         caplog.at_level(logging.WARNING),
     ):
         await app.form_network()
@@ -560,6 +567,36 @@ async def test_form_network_tx_power(
 
     nwk_info = write.mock_calls[0].kwargs["network_info"]
     assert nwk_info.tx_power == expected_tx_power
+
+
+@pytest.mark.parametrize(
+    ("config_override", "expected_tx_power"),
+    [
+        # No config: returns None
+        ({}, None),
+        # Explicit tx_power configured: returns configured value
+        ({"network": {"tx_power": 10}}, 10),
+        ({"network": {"tx_power": -5}}, -5),
+        # Country code configured, no explicit tx_power: returns recommended power
+        ({"network": {"country_code": "US"}}, 8),
+        # Both tx_power and country_code: prioritizes explicit
+        ({"network": {"tx_power": 15, "country_code": "US"}}, 15),
+    ],
+)
+async def test_get_effective_tx_power(config_override, expected_tx_power):
+    app = make_app(config_override)
+
+    with patch.object(app, "_get_recommended_tx_power", return_value=8) as mock_rec:
+        tx_power = await app._get_effective_tx_power()
+
+        assert tx_power == expected_tx_power
+
+        # Should only call get_recommended_tx_power when country_code is set without tx_power
+        network_config = config_override.get("network", {})
+        if "country_code" in network_config and "tx_power" not in network_config:
+            assert mock_rec.mock_calls == [call(network_config["country_code"])]
+        else:
+            assert len(mock_rec.mock_calls) == 0
 
 
 @mock.patch("zigpy.util.pick_optimal_channel", mock.Mock(return_value=22))
@@ -722,6 +759,56 @@ async def test_initialize_incompatible_backup(
 
     assert exc.value.old_state is mock_most_recent_backup()
     assert exc.value.new_state is mock_backup_from_state.return_value
+
+
+@pytest.mark.parametrize(
+    ("config_override", "should_set_tx_power", "expected_tx_power"),
+    [
+        # Explicit tx_power configured → calls set_tx_power with configured value
+        ({"network": {"tx_power": 10}}, True, 10),
+        ({"network": {"tx_power": 15}}, True, 15),
+        # Country code configured → calls set_tx_power with recommended power
+        ({"network": {"country_code": "US"}}, True, 8),
+        # No TX power config → does NOT call set_tx_power
+        ({}, False, None),
+        # Both configured → uses explicit tx_power
+        ({"network": {"tx_power": 9, "country_code": "US"}}, True, 9),
+    ],
+)
+@patch("zigpy.backups.BackupManager.from_network_state")
+@patch("zigpy.backups.BackupManager.most_recent_backup")
+async def test_initialize_sets_tx_power(
+    mock_most_recent_backup,
+    mock_backup_from_state,
+    config_override,
+    should_set_tx_power,
+    expected_tx_power,
+):
+    app = make_app(config_override)
+    mock_backup_from_state.return_value.is_compatible_with.return_value = True
+
+    with (
+        patch.object(app, "_set_tx_power", return_value=None) as mock_set_tx_power,
+        patch.object(app, "_get_recommended_tx_power", return_value=8),
+        patch.object(app, "start_network") as mock_start,
+        patch.object(app, "_persist_coordinator_model_strings_in_db"),
+    ):
+        await app.initialize()
+
+        if should_set_tx_power:
+            assert mock_set_tx_power.mock_calls == [call(expected_tx_power)]
+            assert len(mock_start.mock_calls) == 1
+        else:
+            assert len(mock_set_tx_power.mock_calls) == 0
+
+
+async def test_set_tx_power(app):
+    # Test default implementation returns None (not supported)
+    result = await app.set_tx_power(10)
+    assert result is None
+
+    result = await app.set_tx_power(15)
+    assert result is None
 
 
 async def test_relays_received_device_exists(app):
