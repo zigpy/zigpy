@@ -438,6 +438,7 @@ class ExposesFeatureMetadata:
     """Metadata for an exposed feature to match against in ZHA."""
 
     feature: str = attrs.field()
+    config: frozendict[str, Any] = attrs.field(factory=frozendict, converter=frozendict)
 
 
 class DeviceAlertLevel(Enum):
@@ -1228,9 +1229,13 @@ class QuirkBuilder:
         )
         return self
 
-    def exposes_feature(self, feature: str) -> Self:
+    def exposes_feature(
+        self, feature: str, config: dict[str, Any] | None = None
+    ) -> Self:
         """Adds an exposed feature."""
-        self.exposes_features.append(ExposesFeatureMetadata(feature=feature))
+        self.exposes_features.append(
+            ExposesFeatureMetadata(feature=feature, config=config or {})
+        )
         return self
 
     def device_alert(self, *, level: DeviceAlertLevel, message: str) -> Self:
