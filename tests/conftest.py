@@ -57,7 +57,7 @@ def raise_on_bad_log_formatting():
         root.removeHandler(handler)
 
 
-class App(zigpy.application.ControllerApplication):
+class BaseApp(zigpy.application.ControllerApplication):
     async def send_packet(self, packet):
         async with self._limit_concurrency(priority=packet.priority):
             return await self._send_packet(packet)
@@ -109,6 +109,14 @@ class App(zigpy.application.ControllerApplication):
     async def load_network_info(self, *, load_devices=False):
         self.state.network_info.channel = 15
 
+
+class FeaturelessApp(BaseApp):
+    """Zigpy application implementation that supports no optional features."""
+
+
+class App(BaseApp):
+    """Zigpy application implementation that supports all optional features."""
+
     async def _network_scan(self, channels, duration_exp):
         if False:
             yield
@@ -119,6 +127,21 @@ class App(zigpy.application.ControllerApplication):
 
     async def _packet_capture_change_channel(self, channel):
         pass
+
+    async def _set_tx_power(self, tx_power: float) -> float:
+        return round(tx_power)
+
+    async def _get_recommended_tx_power(self, country: str) -> float:
+        if country == "US":
+            return 8
+        else:
+            return 10
+
+    async def _get_maximum_tx_power(self, country: str) -> float:
+        if country == "US":
+            return 8
+        else:
+            return 10
 
 
 def recursive_dict_merge(

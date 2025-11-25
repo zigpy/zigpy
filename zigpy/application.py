@@ -145,6 +145,35 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.groups.remove_listener(self._dblistener)
         self.remove_listener(self._dblistener)
 
+    async def _get_effective_tx_power(self) -> float | None:
+        """Compute TX power from config and radio preferences."""
+        if self.config[conf.CONF_NWK][conf.CONF_NWK_TX_POWER] is not None:
+            # If we've configured an explicit TX power, use it
+            tx_power = self.config[conf.CONF_NWK][conf.CONF_NWK_TX_POWER]
+            LOGGER.debug("Using configured TX power: %0.2f dBm", tx_power)
+        elif self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE] is not None:
+            # Otherwise, use the recommended TX power for the country
+            country = self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE]
+            tx_power = await self.get_recommended_tx_power(country)
+            LOGGER.debug(
+                "Using recommended TX power %0.2f dBm for country %s",
+                tx_power,
+                country,
+            )
+        else:
+            tx_power = None
+            LOGGER.debug("No TX power configured, using radio default")
+
+        return tx_power
+
+    async def _get_effective_maximum_tx_power(self) -> float:
+        """Compute maximum TX power from config and radio preferences."""
+        if self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE] is None:
+            return self.config[conf.CONF_NWK][conf.CONF_NWK_TX_POWER_MAXIMUM]
+
+        country = self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE]
+        return await self.get_maximum_tx_power(country)
+
     async def initialize(self, *, auto_form: bool = False) -> None:
         """Starts the network on a connected radio, optionally forming one with random
         settings if necessary.
@@ -192,6 +221,25 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             )
 
         await self.start_network()
+
+        # Networks can move between RF domains so we need to be able to adjust the TX
+        # power on startup
+        tx_power = await self._get_effective_tx_power()
+        max_tx_power = await self._get_effective_maximum_tx_power()
+
+        if max_tx_power is not None and tx_power is not None:
+            if tx_power > max_tx_power:
+                LOGGER.warning(
+                    "Requested TX power %0.2f dBm exceeds maximum %0.2f dBm for"
+                    " regulatory domain, limiting",
+                    tx_power,
+                    max_tx_power,
+                )
+                tx_power = max_tx_power
+
+        if tx_power is not None:
+            await self.set_tx_power(tx_power)
+
         self._persist_coordinator_model_strings_in_db()
 
         # Some radios erroneously permit joins on startup
@@ -280,6 +328,39 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         return dict(zip(scanned_channels, energy_values, strict=True))
 
+    async def _get_recommended_tx_power(self, country: str) -> float:
+        """Get the recommended transmit power for the radio, internal."""
+        return conf.CONF_NWK_TX_POWER_SAFE
+
+    async def get_recommended_tx_power(self, country: str) -> float:
+        """Get the recommended transmit power for the radio."""
+        return await self._get_recommended_tx_power(country)
+
+    async def _get_maximum_tx_power(self, country: str) -> float:
+        """Get the maximum transmit power for the radio, internal."""
+        return conf.CONF_NWK_TX_POWER_MAXIMUM_DEFAULT
+
+    async def get_maximum_tx_power(self, country: str) -> float:
+        """Get the maximum transmit power for the radio."""
+        return await self._get_maximum_tx_power(country)
+
+    async def _set_tx_power(self, tx_power: float) -> float | None:
+        """Set TX power (if supported by the radio), returning the actual TX power."""
+        LOGGER.debug("Radio does not support setting TX power, ignoring")
+        return None
+
+    async def set_tx_power(self, tx_power: float) -> float | None:
+        """Sets the transmit power of the radio, potentially limited by firmware."""
+        actual_tx_power = await self._set_tx_power(tx_power)
+        if actual_tx_power is not None:
+            LOGGER.debug(
+                "Set transmit power to %0.2f dBm (requested %0.2f)",
+                actual_tx_power,
+                tx_power,
+            )
+
+        return actual_tx_power
+
     async def _move_network_to_channel(
         self, new_channel: int, new_nwk_update_id: int
     ) -> None:
@@ -338,16 +419,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         LOGGER.info("Successfully migrated to channel %d", new_channel)
 
-    async def form_network(
-        self, *, config: dict[str, Any] | None = None, fast: bool = False
-    ) -> None:
+    async def form_network(self, *, fast: bool = False) -> None:
         """Writes random network settings to the coordinator."""
-        if config is None:
-            config = self.config[conf.CONF_NWK]
-        else:
-            config = conf.SCHEMA_NETWORK(config)
-
-        assert config is not None
+        config = self.config[conf.CONF_NWK]
 
         # First, make the settings consistent and randomly generate missing values
         channel = config[conf.CONF_NWK_CHANNEL]
@@ -391,6 +465,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if tc_address is None:
             tc_address = t.EUI64.UNKNOWN
 
+        tx_power = await self._get_effective_tx_power()
+        if tx_power is None:
+            tx_power = conf.CONF_NWK_TX_POWER_SAFE
+
         network_info = zigpy.state.NetworkInfo(
             extended_pan_id=extended_pan_id,
             pan_id=pan_id,
@@ -399,7 +477,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             channel=channel,
             channel_mask=t.Channels.from_channel_list([channel]),
             security_level=5,
-            tx_power=config[conf.CONF_NWK_TX_POWER],
+            tx_power=tx_power,
             network_key=zigpy.state.Key(
                 key=network_key,
                 tx_counter=0,

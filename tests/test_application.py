@@ -28,6 +28,7 @@ from .async_mock import AsyncMock, MagicMock, patch, sentinel
 from .conftest import (
     NCP_IEEE,
     App,
+    FeaturelessApp,
     make_app,
     make_ieee,
     make_neighbor,
@@ -529,28 +530,37 @@ async def test_form_network(app):
     assert nwk_info1.channel in (11, 15, 20, 25)
 
 
+@pytest.mark.parametrize("app_cls", [App, FeaturelessApp])
 @pytest.mark.parametrize(
     ("config_override", "expected_tx_power", "should_warn"),
     [
-        (None, 8, False),
-        ({"tx_power": 10}, 10, False),
-        ({"tx_power": -5}, -5, False),
-        ({"tx_power": 20}, 20, True),
+        # No config: uses safe default
+        ({}, 8, False),
+        # Explicit tx_power configured: uses configured value
+        ({"network": {"tx_power": 10}}, 10, False),
+        ({"network": {"tx_power": -5}}, -5, False),
+        ({"network": {"tx_power": 20}}, 20, True),
+        # Country code configured: uses recommended power for country
+        ({"network": {"country_code": "US"}}, 8, False),
+        # Both country_code and explicit tx_power: uses explicit (ignores country)
+        ({"network": {"country_code": "US", "tx_power": 9}}, 9, False),
     ],
 )
 @pytest.mark.filterwarnings("ignore::UserWarning")
 async def test_form_network_tx_power(
-    app,
+    app_cls: type[zigpy.application.ControllerApplication],
     config_override: dict | None,
     expected_tx_power: int,
     should_warn: bool,
     caplog,
 ):
+    app = make_app(config_override, app_base=app_cls)
+
     with (
         patch.object(app, "write_network_info") as write,
         caplog.at_level(logging.WARNING),
     ):
-        await app.form_network(config=config_override)
+        await app.form_network()
 
         if should_warn:
             assert "Increasing the TX power" in caplog.text
@@ -559,6 +569,43 @@ async def test_form_network_tx_power(
 
     nwk_info = write.mock_calls[0].kwargs["network_info"]
     assert nwk_info.tx_power == expected_tx_power
+
+
+@pytest.mark.parametrize(
+    ("app_cls", "config_override", "expected_tx_power"),
+    [
+        # No config: nothing is adjusted
+        (App, {}, None),
+        # Explicit tx_power configured: use configured value
+        (App, {"network": {"tx_power": 10}}, 10),
+        (App, {"network": {"tx_power": -5}}, -5),
+        # Country code configured, no explicit tx_power: returns recommended power
+        (App, {"network": {"country_code": "US"}}, 8),
+        (App, {"network": {"country_code": "NL"}}, 10),
+        # Both tx_power and country_code: prioritizes explicit
+        (App, {"network": {"tx_power": 15, "country_code": "US"}}, 8),
+        (App, {"network": {"tx_power": 15, "country_code": "NL"}}, 10),
+        # With no firmware support, we have no way to detect maximums
+        (FeaturelessApp, {"network": {"tx_power": 15, "country_code": "US"}}, 15),
+        (FeaturelessApp, {"network": {"tx_power": 15, "country_code": "NL"}}, 15),
+    ],
+)
+async def test_startup_tx_power_config(
+    app_cls: type[zigpy.application.ControllerApplication],
+    config_override: dict,
+    expected_tx_power: int | None,
+) -> None:
+    app = make_app(config_override, app_base=app_cls)
+
+    with patch.object(app, "_set_tx_power", wraps=app._set_tx_power) as set_tx_power:
+        await app.initialize()
+
+    try:
+        tx_power = set_tx_power.mock_calls[0].args[0]
+    except IndexError:
+        tx_power = None
+
+    assert tx_power == expected_tx_power
 
 
 @mock.patch("zigpy.util.pick_optimal_channel", mock.Mock(return_value=22))

@@ -13,6 +13,7 @@ from zigpy.config.defaults import (
     CONF_NWK_BACKUP_PERIOD_DEFAULT,
     CONF_NWK_CHANNEL_DEFAULT,
     CONF_NWK_CHANNELS_DEFAULT,
+    CONF_NWK_COUNTRY_CODE_DEFAULT,
     CONF_NWK_EXTENDED_PAN_ID_DEFAULT,
     CONF_NWK_KEY_DEFAULT,
     CONF_NWK_KEY_SEQ_DEFAULT,
@@ -21,6 +22,8 @@ from zigpy.config.defaults import (
     CONF_NWK_TC_ADDRESS_DEFAULT,
     CONF_NWK_TC_LINK_KEY_DEFAULT,
     CONF_NWK_TX_POWER_DEFAULT,
+    CONF_NWK_TX_POWER_MAXIMUM_DEFAULT,
+    CONF_NWK_TX_POWER_SAFE,  # noqa: F401
     CONF_NWK_UPDATE_ID_DEFAULT,
     CONF_NWK_VALIDATE_SETTINGS_DEFAULT,
     CONF_OTA_BROADCAST_ENABLED_DEFAULT,
@@ -60,6 +63,7 @@ CONF_MAX_CONCURRENT_REQUESTS = "max_concurrent_requests"
 CONF_NWK = "network"
 CONF_NWK_CHANNEL = "channel"
 CONF_NWK_CHANNELS = "channels"
+CONF_NWK_COUNTRY_CODE = "country_code"
 CONF_NWK_EXTENDED_PAN_ID = "extended_pan_id"
 CONF_NWK_PAN_ID = "pan_id"
 CONF_NWK_KEY = "key"
@@ -68,6 +72,7 @@ CONF_NWK_MAX_RETRIES = "max_retries"
 CONF_NWK_TC_ADDRESS = "tc_address"
 CONF_NWK_TC_LINK_KEY = "tc_link_key"
 CONF_NWK_TX_POWER = "tx_power"
+CONF_NWK_TX_POWER_MAXIMUM = "tx_power_maximum"
 CONF_NWK_UPDATE_ID = "update_id"
 CONF_NWK_BACKUP_ENABLED = "backup_enabled"
 CONF_NWK_BACKUP_PERIOD = "backup_period"
@@ -146,6 +151,9 @@ SCHEMA_NETWORK = vol.Schema(
         vol.Optional(CONF_NWK_KEY_SEQ, default=CONF_NWK_KEY_SEQ_DEFAULT): vol.Range(
             min=0, max=255
         ),
+        vol.Optional(
+            CONF_NWK_COUNTRY_CODE, default=CONF_NWK_COUNTRY_CODE_DEFAULT
+        ): vol.Any(None, vol.Match(r"^[A-Z][A-Z]$")),
         vol.Optional(CONF_NWK_PAN_ID, default=CONF_NWK_PAN_ID_DEFAULT): vol.Any(
             None, t.PanId, vol.All(cv_hex, vol.Coerce(t.PanId))
         ),
@@ -172,22 +180,28 @@ SCHEMA_NETWORK = vol.Schema(
         # not mean that the device can actually send a reply back.
         #
         # Tweak this setting at your own risk.
-        vol.Optional(CONF_NWK_TX_POWER, default=CONF_NWK_TX_POWER_DEFAULT): vol.All(
-            int,
-            vol.Range(min=-10, max=20),
-            cv_warn_if_greater(
-                limit=10,
-                message=(
-                    "Increasing the TX power will not increase the range of your"
-                    " network, devices still need to be able to respond to your"
-                    " coordinator and will do so at their default transmit power."
-                    " Changing the TX power may cause routing issues and result in end"
-                    " devices being unable to join reliably. Modify this setting at"
-                    " your own risk and check local regulations for legal limits on"
-                    " transmit power in your area."
+        vol.Optional(CONF_NWK_TX_POWER, default=CONF_NWK_TX_POWER_DEFAULT): vol.Any(
+            None,
+            vol.All(
+                int,
+                vol.Range(min=-10, max=20),
+                cv_warn_if_greater(
+                    limit=10,
+                    message=(
+                        "Increasing the TX power will not increase the range of your"
+                        " network, devices still need to be able to respond to your"
+                        " coordinator and will do so at their default transmit power."
+                        " Changing the TX power may cause routing issues and result in end"
+                        " devices being unable to join reliably. Modify this setting at"
+                        " your own risk and check local regulations for legal limits on"
+                        " transmit power in your area."
+                    ),
                 ),
             ),
         ),
+        vol.Optional(
+            CONF_NWK_TX_POWER_MAXIMUM, default=CONF_NWK_TX_POWER_MAXIMUM_DEFAULT
+        ): vol.All(int, vol.Range(min=-10, max=20)),
         vol.Optional(CONF_NWK_UPDATE_ID, default=CONF_NWK_UPDATE_ID_DEFAULT): vol.All(
             cv_hex, vol.Range(min=0, max=255)
         ),
