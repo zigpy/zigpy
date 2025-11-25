@@ -1548,13 +1548,13 @@ async def test_quirks_v2_exposes_feature(device_mock: Device) -> None:
     entry = (
         QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
         .exposes_feature("some_feature")
-        .exposes_feature("another_feature")
+        .exposes_feature("another_feature", config={"option": True})
         .add_to_registry()
     )
 
     assert entry.exposes_features == (
         ExposesFeatureMetadata(feature="some_feature"),
-        ExposesFeatureMetadata(feature="another_feature"),
+        ExposesFeatureMetadata(feature="another_feature", config={"option": True}),
     )
 
 
