@@ -1228,7 +1228,7 @@ class QuirkBuilder:
         )
         return self
 
-    def exposes_feature(self, *, feature: str) -> Self:
+    def exposes_feature(self, feature: str) -> Self:
         """Adds an exposed feature."""
         self.exposes_features.append(ExposesFeatureMetadata(feature=feature))
         return self
