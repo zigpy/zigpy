@@ -8,8 +8,13 @@ import typing
 from typing import Literal
 import urllib.parse
 
-import serial as pyserial
-import serial_asyncio_fast as pyserial_asyncio
+try:
+    # serialx is API-compatible with pyserial
+    import serialx as pyserial
+    import serialx as pyserial_asyncio
+except ImportError:
+    import serial as pyserial
+    import serial_asyncio_fast as pyserial_asyncio
 
 from zigpy.typing import UNDEFINED, UndefinedType
 
