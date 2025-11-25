@@ -21,8 +21,7 @@ dependencies = [
     "cryptography",
     "voluptuous",
     "jsonschema",
-    'pyserial-asyncio; platform_system!="Windows"',
-    'pyserial-asyncio!=0.5; platform_system=="Windows"',
+    'pyserial-asyncio-fast',
     "typing_extensions",
     "frozendict",
 ]

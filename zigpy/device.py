@@ -661,7 +661,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 ),
                 packet,
             )
-            LOGGER.warning(
+            LOGGER.debug(
                 (
                     "Cluster 0x%04x on %r has incorrect direction (got %r for %r cluster)."
                     " Please report this here: https://github.com/zigpy/zigpy/issues/1640"
@@ -768,6 +768,16 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         """Handle response matching for pending requests, returns True if packet was matched."""
         future = self._requests.get(rsp_key)
         if future is None:
+            return False
+
+        # Attribute reports often collide with command responses, they should never be
+        # matched up
+        if isinstance(
+            cmd,
+            foundation.GENERAL_COMMANDS[
+                foundation.GeneralCommand.Report_Attributes
+            ].schema,
+        ):
             return False
 
         try:

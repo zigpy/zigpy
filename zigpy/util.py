@@ -6,6 +6,7 @@ import functools
 import inspect
 import itertools
 import logging
+import re
 import traceback
 import typing
 import warnings
@@ -21,6 +22,22 @@ import zigpy.types as t
 LOGGER = logging.getLogger(__name__)
 
 _T = typing.TypeVar("_T")
+
+
+QR_CODE_FORMATS = (
+    # Consciot
+    r"^(?P<ieee>[0-9a-fA-F]{16})\|(?P<code>[0-9a-fA-F]{36})$",
+    # Enbrighten (and many others, can be suffixed with extra data)
+    r"^Z:(?P<ieee>[0-9a-fA-F]{16})\$I:(?P<code>[0-9a-fA-F]{36})",
+    # Aqara
+    r"\$A:(?P<ieee>[0-9a-fA-F]{16})\$I:(?P<code>[0-9a-fA-F]{36})$",
+    # Bosch (install code)
+    r"^RB01SG[0-9a-fA-F]{34}(?P<ieee>[0-9a-fA-F]{16})DLK(?P<code>[0-9a-fA-F]{36})$",
+    # Bosch (link key directly)
+    r"^RB01SG[0-9a-fA-F]{34}(?P<ieee>[0-9a-fA-F]{16})DLK(?P<link_key>[0-9a-fA-F]{32})$",
+    # Hue (contains a lot of other stuff at the end)
+    r"^HUE:Z:(?P<code>[0-9a-fA-F]{36}) M:(?P<ieee>[0-9a-fA-F]{16})",
+)
 
 
 class ListenableMixin:
@@ -238,13 +255,15 @@ def aes_mmo_hash(data: bytes) -> t.KeyData:
 
 def convert_install_code(code: bytes) -> t.KeyData:
     if len(code) not in (8, 10, 14, 18):
-        return None
+        raise ValueError(
+            f"Invalid install code length: {code.hex()} must be 8, 10, 14, or 18 bytes"
+        )
 
     real_crc = bytes(code[-2:])
     crc = CrcX25()
     crc.process(code[:-2])
     if real_crc != crc.finalbytes(byteorder="little"):
-        return None
+        raise ValueError(f"Invalid install code CRC: {code.hex()}")
 
     return aes_mmo_hash(code)
 
@@ -469,3 +488,33 @@ async def async_iterate_in_chunks(
             break
 
         yield chunk
+
+
+def parse_install_code_qr(qr_code: str) -> tuple[t.EUI64, t.KeyData]:
+    """Try to parse the QR code into a tuple of EUI64 and install code."""
+
+    for code_pattern in QR_CODE_FORMATS:
+        match = re.search(code_pattern, qr_code)
+        if match is None:
+            continue
+
+        ieee = t.EUI64.convert(match.group("ieee"))
+
+        # Some manufacturers flip the endianness of their IEEE addresses in QR codes. We
+        # can try to detect this and flip it back.
+        if str(ieee).lower().endswith("16:a7:20"):
+            ieee = t.EUI64(reversed(ieee))
+
+        try:
+            code = match.group("code")
+        except IndexError:
+            code = None
+
+        if code is not None:
+            link_key = convert_install_code(bytes.fromhex(code))
+        else:
+            link_key = t.KeyData.convert(match.group("link_key"))
+
+        return ieee, link_key
+
+    raise ValueError(f"Unknown QR code format: {qr_code!r}")

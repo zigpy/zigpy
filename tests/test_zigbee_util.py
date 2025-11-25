@@ -8,7 +8,7 @@ import typing
 import pytest
 
 from zigpy import util
-from zigpy.types.named import KeyData
+from zigpy.types.named import EUI64, KeyData
 
 from .async_mock import AsyncMock, MagicMock, call, patch, sentinel
 
@@ -232,12 +232,11 @@ def test_convert_install_code(message, expected_key):
 
 
 def test_fail_convert_install_code():
-    key = util.convert_install_code(bytes([]))
-    assert key is None
+    with pytest.raises(ValueError, match="Invalid install code length"):
+        util.convert_install_code(b"")
 
-    message = bytes([0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0xFF, 0xFF])
-    key = util.convert_install_code(message)
-    assert key is None
+    with pytest.raises(ValueError, match="Invalid install code CRC"):
+        util.convert_install_code(b"\x11\x22\x33\x44\x55\x66\x77\x88\xff\xff")
 
 
 async def test_async_listener():
@@ -550,3 +549,83 @@ async def test_async_iterate_in_chunks() -> None:
 
     chunks = [c async for c in util.async_iterate_in_chunks(iterator(10), chunk_size=3)]
     assert chunks == [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]
+
+
+@pytest.mark.parametrize(
+    ("code", "ieee", "link_key"),
+    [
+        # Atlantic Galapagos electric heater (core#155014)
+        (
+            "Z:22B78EFEFF16A720$I:B1817AFD64D8BB3A8F275C2117327AEC684B",
+            EUI64.convert("20:A7:16:FF:FE:8E:B7:22"),  # reversed!
+            util.convert_install_code(
+                bytes.fromhex("B1817AFD64D8BB3A8F275C2117327AEC684B")
+            ),
+        ),
+        # Inovelli, others
+        (
+            "Z:943469FFFE05CE55$I:FC5ECD1E8DFD3E0603E3689F8D0226BBF80B",
+            EUI64.convert("94:34:69:FF:FE:05:CE:55"),
+            util.convert_install_code(
+                bytes.fromhex("FC5ECD1E8DFD3E0603E3689F8D0226BBF80B")
+            ),
+        ),
+        # Muller-Light, Schneider, others
+        (
+            "000D6FFFFE63CCA0|58A4DD6123F38ECF22B17FDA0D95A43DED19",
+            EUI64.convert("00:0D:6F:FF:FE:63:CC:A0"),
+            util.convert_install_code(
+                bytes.fromhex("58A4DD6123F38ECF22B17FDA0D95A43DED19")
+            ),
+        ),
+        # Aqara
+        (
+            "G$M:69775$S:680S00003915$D:0000000017B2335C%Z$A:54EF44100006E7DF$I:3313A005E177A647FC7925620AB207C4BEF5",
+            EUI64.convert("54:EF:44:10:00:06:E7:DF"),
+            util.convert_install_code(
+                bytes.fromhex("3313A005E177A647FC7925620AB207C4BEF5")
+            ),
+        ),
+        # Somfy?
+        (
+            "Z:4CC206FFFE805E7A$I:560BCC1FF50E704B9BA93A5CA817C35E799F$D:202%B:4CC206805E7A$P:613727%M:1220$F:0024",
+            EUI64.convert("4C:C2:06:FF:FE:80:5E:7A"),
+            util.convert_install_code(
+                bytes.fromhex("560BCC1FF50E704B9BA93A5CA817C35E799F")
+            ),
+        ),
+        # Hue
+        (
+            "HUE:Z:2E5D2E5F401B82F1A45621A50B551F726101 M:001788010CE5C843 D:H2504 A:2266",
+            EUI64.convert("00:17:88:01:0C:E5:C8:43"),
+            util.convert_install_code(
+                bytes.fromhex("2E5D2E5F401B82F1A45621A50B551F726101")
+            ),
+        ),
+        # Bosch (install code)
+        (
+            "RB01SG0D8310182648007000000000000000000094DEB8FFFE41F6D6DLKA87710C3E5C332E5327EE532C3C310E5DFE0",
+            EUI64.convert("94:DE:B8:FF:FE:41:F6:D6"),
+            util.convert_install_code(
+                bytes.fromhex("A87710C3E5C332E5327EE532C3C310E5DFE0")
+            ),
+        ),
+        # Bosch (link key)
+        (
+            "RB01SG0D836591B3CC0010000000000000000000000D6F0017E0870CDLK999F98A7DFBCA6DD3955823AD9089631",
+            EUI64.convert("00:0D:6F:00:17:E0:87:0C"),
+            KeyData.convert("999F98A7DFBCA6DD3955823AD9089631"),
+        ),
+    ],
+)
+def test_qr_code_parsing(code: str, ieee: EUI64, link_key: KeyData) -> None:
+    """Test install code QR parsing."""
+    parsed_ieee, parsed_link_key = util.parse_install_code_qr(code)
+    assert parsed_ieee == ieee
+    assert parsed_link_key == link_key
+
+
+def test_qr_code_parsing_failure() -> None:
+    """Test install code QR parsing failure."""
+    with pytest.raises(ValueError, match="Unknown QR code format: "):
+        util.parse_install_code_qr("some invalid QR code")
