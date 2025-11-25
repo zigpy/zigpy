@@ -22,6 +22,7 @@ from zigpy.config.defaults import (
     CONF_NWK_TC_ADDRESS_DEFAULT,
     CONF_NWK_TC_LINK_KEY_DEFAULT,
     CONF_NWK_TX_POWER_DEFAULT,
+    CONF_NWK_TX_POWER_MAXIMUM_DEFAULT,
     CONF_NWK_TX_POWER_SAFE,  # noqa: F401
     CONF_NWK_UPDATE_ID_DEFAULT,
     CONF_NWK_VALIDATE_SETTINGS_DEFAULT,
@@ -71,6 +72,7 @@ CONF_NWK_MAX_RETRIES = "max_retries"
 CONF_NWK_TC_ADDRESS = "tc_address"
 CONF_NWK_TC_LINK_KEY = "tc_link_key"
 CONF_NWK_TX_POWER = "tx_power"
+CONF_NWK_TX_POWER_MAXIMUM = "tx_power_maximum"
 CONF_NWK_UPDATE_ID = "update_id"
 CONF_NWK_BACKUP_ENABLED = "backup_enabled"
 CONF_NWK_BACKUP_PERIOD = "backup_period"
@@ -197,6 +199,9 @@ SCHEMA_NETWORK = vol.Schema(
                 ),
             ),
         ),
+        vol.Optional(
+            CONF_NWK_TX_POWER_MAXIMUM, default=CONF_NWK_TX_POWER_MAXIMUM_DEFAULT
+        ): vol.All(int, vol.Range(min=-10, max=20)),
         vol.Optional(CONF_NWK_UPDATE_ID, default=CONF_NWK_UPDATE_ID_DEFAULT): vol.All(
             cv_hex, vol.Range(min=0, max=255)
         ),

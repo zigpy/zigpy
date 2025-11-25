@@ -57,7 +57,7 @@ def raise_on_bad_log_formatting():
         root.removeHandler(handler)
 
 
-class App(zigpy.application.ControllerApplication):
+class BaseApp(zigpy.application.ControllerApplication):
     async def send_packet(self, packet):
         async with self._limit_concurrency(priority=packet.priority):
             return await self._send_packet(packet)
@@ -108,6 +108,14 @@ class App(zigpy.application.ControllerApplication):
 
     async def load_network_info(self, *, load_devices=False):
         self.state.network_info.channel = 15
+
+
+class FeaturelessApp(BaseApp):
+    """Zigpy application implementation that supports no optional features."""
+
+
+class App(BaseApp):
+    """Zigpy application implementation that supports all optional features."""
 
     async def _network_scan(self, channels, duration_exp):
         if False:

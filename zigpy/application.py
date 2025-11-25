@@ -159,6 +159,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         return tx_power
 
+    async def _get_effective_maximum_tx_power(self) -> float:
+        """Compute maximum TX power from config and radio preferences."""
+        if self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE] is None:
+            return self.config[conf.CONF_NWK][conf.CONF_NWK_TX_POWER_MAXIMUM]
+
+        country = self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE]
+        return await self.get_maximum_tx_power(country)
+
     async def initialize(self, *, auto_form: bool = False) -> None:
         """Starts the network on a connected radio, optionally forming one with random
         settings if necessary.
@@ -210,6 +218,18 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # Networks can move between RF domains so we need to be able to adjust the TX
         # power on startup
         tx_power = await self._get_effective_tx_power()
+        max_tx_power = await self._get_effective_maximum_tx_power()
+
+        if max_tx_power is not None and tx_power is not None:
+            if tx_power > max_tx_power:
+                LOGGER.warning(
+                    "Requested TX power %0.2f dBm exceeds maximum %0.2f dBm for"
+                    " regulatory domain, limiting",
+                    tx_power,
+                    max_tx_power,
+                )
+                tx_power = max_tx_power
+
         if tx_power is not None:
             await self.set_tx_power(tx_power)
 
