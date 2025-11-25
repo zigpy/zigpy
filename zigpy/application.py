@@ -150,12 +150,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if self.config[conf.CONF_NWK][conf.CONF_NWK_TX_POWER] is not None:
             # If we've configured an explicit TX power, use it
             tx_power = self.config[conf.CONF_NWK][conf.CONF_NWK_TX_POWER]
+            LOGGER.debug("Using configured TX power: %0.2f dBm", tx_power)
         elif self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE] is not None:
             # Otherwise, use the recommended TX power for the country
             country = self.config[conf.CONF_NWK][conf.CONF_NWK_COUNTRY_CODE]
             tx_power = await self.get_recommended_tx_power(country)
+            LOGGER.debug(
+                "Using recommended TX power %0.2f dBm for country %s",
+                tx_power,
+                country,
+            )
         else:
             tx_power = None
+            LOGGER.debug("No TX power configured, using radio default")
 
         return tx_power
 
