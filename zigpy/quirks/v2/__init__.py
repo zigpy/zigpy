@@ -433,6 +433,13 @@ class FriendlyNameMetadata:
     manufacturer: str = attrs.field()
 
 
+@attrs.define(frozen=True, kw_only=True, repr=True)
+class ExposesFeatureMetadata:
+    """Metadata for an exposed feature to match against in ZHA."""
+
+    feature: str = attrs.field()
+
+
 class DeviceAlertLevel(Enum):
     """Device alert level."""
 
@@ -513,6 +520,7 @@ class QuirksV2RegistryEntry:
         factory=tuple
     )
     friendly_name: FriendlyNameMetadata | None = attrs.field(default=None)
+    exposes_features: tuple[ExposesFeatureMetadata] = attrs.field(factory=tuple)
     device_alerts: tuple[DeviceAlertMetadata] = attrs.field(factory=tuple)
     disabled_default_entities: tuple[PreventDefaultEntityCreationMetadata] = (
         attrs.field(factory=tuple)
@@ -608,6 +616,7 @@ class QuirkBuilder:
         self.registry: DeviceRegistry = registry
         self.manufacturer_model_metadata: list[ManufacturerModelMetadata] = []
         self.friendly_name_metadata: FriendlyNameMetadata | None = None
+        self.exposes_features: list[ExposesFeatureMetadata] = []
         self.device_alerts: list[DeviceAlertMetadata] = []
         self.disabled_default_entities: list[PreventDefaultEntityCreationMetadata] = []
         self.changed_entity_metadata: list[ChangedEntityMetadata] = []
@@ -1219,6 +1228,11 @@ class QuirkBuilder:
         )
         return self
 
+    def exposes_feature(self, feature: str) -> Self:
+        """Adds an exposed feature."""
+        self.exposes_features.append(ExposesFeatureMetadata(feature=feature))
+        return self
+
     def device_alert(self, *, level: DeviceAlertLevel, message: str) -> Self:
         """Adds a device alert."""
         self.device_alerts.append(DeviceAlertMetadata(level=level, message=message))
@@ -1301,6 +1315,7 @@ class QuirkBuilder:
         quirk: QuirksV2RegistryEntry = QuirksV2RegistryEntry(
             manufacturer_model_metadata=tuple(self.manufacturer_model_metadata),
             friendly_name=self.friendly_name_metadata,
+            exposes_features=tuple(self.exposes_features),
             device_alerts=tuple(self.device_alerts),
             disabled_default_entities=tuple(self.disabled_default_entities),
             changed_entity_metadata=tuple(self.changed_entity_metadata),
