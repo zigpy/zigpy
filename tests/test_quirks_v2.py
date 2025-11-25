@@ -28,6 +28,7 @@ from zigpy.quirks.v2 import (
     EntityMetadata,
     EntityPlatform,
     EntityType,
+    ExposesFeatureMetadata,
     FirmwareVersionFilterMetadata,
     NumberMetadata,
     PreventDefaultEntityCreationMetadata,
@@ -1537,6 +1538,23 @@ async def test_quirks_v2_change_entity_metadata(device_mock: Device) -> None:
             new_entity_registry_enabled_default=None,
             new_fallback_name="Custom Fallback Name",
         ),
+    )
+
+
+async def test_quirks_v2_exposes_feature(device_mock: Device) -> None:
+    """Test exposes feature functionality."""
+    registry = DeviceRegistry()
+
+    entry = (
+        QuirkBuilder(device_mock.manufacturer, device_mock.model, registry=registry)
+        .exposes_feature("some_feature")
+        .exposes_feature("another_feature")
+        .add_to_registry()
+    )
+
+    assert entry.exposes_features == (
+        ExposesFeatureMetadata(feature="some_feature"),
+        ExposesFeatureMetadata(feature="another_feature"),
     )
 
 
