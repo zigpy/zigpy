@@ -770,6 +770,16 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if future is None:
             return False
 
+        # Attribute reports often collide with command responses, they should never be
+        # matched up
+        if isinstance(
+            cmd,
+            foundation.GENERAL_COMMANDS[
+                foundation.GeneralCommand.Report_Attributes
+            ].schema,
+        ):
+            return False
+
         try:
             if error is not None:
                 future.set_exception(error)

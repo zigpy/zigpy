@@ -1737,3 +1737,105 @@ async def test_device_cluster_direction_flipping(
         assert returned_cluster is output_cluster
     else:
         pytest.fail("Unexpected cluster type")
+
+
+async def test_attribute_report_not_matched_with_request(dev):
+    """Test that attribute reports don't match pending requests."""
+    ep = dev.add_endpoint(1)
+    ep.add_input_cluster(OnOff.cluster_id)
+
+    with patch.object(dev._application, "send_packet") as mock_packet_send:
+        request_task = asyncio.create_task(dev.endpoints[1].on_off.on())
+
+        # Get the TSN that was used for the request
+        await asyncio.sleep(0)
+        assert len(mock_packet_send.mock_calls) == 1
+        sent_packet = mock_packet_send.mock_calls[0].args[0]
+
+    tsn_hdr, _ = foundation.ZCLHeader.deserialize(sent_packet.data.serialize())
+
+    # Device sends an attribute report with the same TSN
+    attr_report_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=tsn_hdr.tsn,
+        command_id=foundation.GeneralCommand.Report_Attributes,
+    )
+
+    attr = foundation.Attribute()
+    attr.attrid = OnOff.AttributeDefs.on_off.id
+    attr.value = foundation.TypeValue()
+    attr.value.type = foundation.DataTypeId.bool_
+    attr.value.value = t.Bool.true
+
+    attr_report_cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Report_Attributes
+    ].schema([attr])
+
+    dev.packet_received(
+        t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=1,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=1,
+            profile_id=260,
+            cluster_id=OnOff.cluster_id,
+            data=t.SerializableBytes(
+                attr_report_hdr.serialize() + attr_report_cmd.serialize()
+            ),
+            lqi=255,
+            rssi=-30,
+        )
+    )
+
+    # The request should still be pending (not resolved by the attribute report)
+    assert not request_task.done()
+
+    # The device now sends its real response
+    default_rsp_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=tsn_hdr.tsn,
+        command_id=foundation.GeneralCommand.Default_Response,
+    )
+
+    default_rsp_cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Default_Response
+    ].schema(
+        command_id=OnOff.ServerCommandDefs.on.id,
+        status=foundation.Status.SUCCESS,
+    )
+
+    # Inject the default response
+    dev.packet_received(
+        t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=1,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=1,
+            profile_id=260,
+            cluster_id=OnOff.cluster_id,
+            data=t.SerializableBytes(
+                default_rsp_hdr.serialize() + default_rsp_cmd.serialize()
+            ),
+            lqi=255,
+            rssi=-30,
+        )
+    )
+    await asyncio.sleep(0)
+
+    # Now the request should be complete and correctly matched
+    assert request_task.done()
+    result = await request_task
+
+    assert result == default_rsp_cmd
