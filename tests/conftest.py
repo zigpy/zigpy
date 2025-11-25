@@ -128,6 +128,9 @@ class App(BaseApp):
     async def _packet_capture_change_channel(self, channel):
         pass
 
+    async def _set_tx_power(self, tx_power: float) -> float:
+        return round(tx_power)
+
     async def _get_recommended_tx_power(self, country: str) -> float:
         if country == "US":
             return 8

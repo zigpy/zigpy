@@ -572,23 +572,30 @@ async def test_form_network_tx_power(
 
 
 @pytest.mark.parametrize(
-    ("config_override", "expected_tx_power"),
+    ("app_cls", "config_override", "expected_tx_power"),
     [
         # No config: nothing is adjusted
-        ({}, None),
+        (App, {}, None),
         # Explicit tx_power configured: use configured value
-        ({"network": {"tx_power": 10}}, 10),
-        ({"network": {"tx_power": -5}}, -5),
+        (App, {"network": {"tx_power": 10}}, 10),
+        (App, {"network": {"tx_power": -5}}, -5),
         # Country code configured, no explicit tx_power: returns recommended power
-        ({"network": {"country_code": "US"}}, 8),
-        ({"network": {"country_code": "NL"}}, 10),
+        (App, {"network": {"country_code": "US"}}, 8),
+        (App, {"network": {"country_code": "NL"}}, 10),
         # Both tx_power and country_code: prioritizes explicit
-        ({"network": {"tx_power": 15, "country_code": "US"}}, 8),
-        ({"network": {"tx_power": 15, "country_code": "NL"}}, 10),
+        (App, {"network": {"tx_power": 15, "country_code": "US"}}, 8),
+        (App, {"network": {"tx_power": 15, "country_code": "NL"}}, 10),
+        # With no firmware support, we have no way to detect maximums
+        (FeaturelessApp, {"network": {"tx_power": 15, "country_code": "US"}}, 15),
+        (FeaturelessApp, {"network": {"tx_power": 15, "country_code": "NL"}}, 15),
     ],
 )
-async def test_startup_tx_power_config(config_override, expected_tx_power):
-    app = make_app(config_override)
+async def test_startup_tx_power_config(
+    app_cls: type[zigpy.application.ControllerApplication],
+    config_override: dict,
+    expected_tx_power: int | None,
+) -> None:
+    app = make_app(config_override, app_base=app_cls)
 
     with patch.object(app, "_set_tx_power", wraps=app._set_tx_power) as set_tx_power:
         await app.initialize()
@@ -761,15 +768,6 @@ async def test_initialize_incompatible_backup(
 
     assert exc.value.old_state is mock_most_recent_backup()
     assert exc.value.new_state is mock_backup_from_state.return_value
-
-
-async def test_set_tx_power(app):
-    # Test default implementation returns None (not supported)
-    result = await app.set_tx_power(10)
-    assert result is None
-
-    result = await app.set_tx_power(15)
-    assert result is None
 
 
 async def test_relays_received_device_exists(app):
