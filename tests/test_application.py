@@ -1797,3 +1797,58 @@ async def test_shutdown_device_remove_fails(app, ieee, caplog):
 
     assert "Failed to remove device" in caplog.text
     assert "Boom!" in caplog.text
+
+
+async def test_callback_wrapping(
+    app: zigpy.application.ControllerApplication, ieee, caplog
+) -> None:
+    # The default is True
+    dev = app.add_device(ieee, 0x1234)
+
+    def _callback():
+        raise ValueError("Boom!")
+
+    callback = app.wrap_callback(dev, _callback)
+    with caplog.at_level(logging.WARNING):
+        callback()
+
+    assert caplog.record_tuples == [
+        (
+            "zigpy.application",
+            logging.WARNING,
+            (
+                "Device <Device model=None manuf=None nwk=0x1234 "
+                "ieee=07:06:05:04:03:02:01:00 is_initialized=False> "
+                "callback failed - ValueError('Boom!')"
+            ),
+        ),
+    ]
+
+
+async def test_callback_wrapping_async(
+    app: zigpy.application.ControllerApplication, ieee, caplog
+) -> None:
+    # The default is True
+    dev = app.add_device(ieee, 0x1234)
+
+    async def _callback():
+        raise ValueError("Boom!")
+
+    callback = app.wrap_callback(dev, _callback)
+    with caplog.at_level(logging.WARNING):
+        callback()
+        tasks = app._tasks.copy()
+        for task in tasks:
+            await task
+
+    assert caplog.record_tuples == [
+        (
+            "zigpy.application",
+            logging.WARNING,
+            (
+                "Device <Device model=None manuf=None nwk=0x1234 "
+                "ieee=07:06:05:04:03:02:01:00 is_initialized=False> "
+                "callback failed - ValueError('Boom!')"
+            ),
+        ),
+    ]

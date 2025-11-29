@@ -116,21 +116,6 @@ async def test_callback_listener():
     ]
 
 
-async def test_callback_listener_error(caplog):
-    listener = listeners.CallbackListener(
-        matchers=[
-            on(),
-        ],
-        callback=mock.Mock(side_effect=RuntimeError("Uh oh")),
-    )
-
-    with caplog.at_level(logging.WARNING):
-        assert listener.resolve(make_hdr(on()), on())
-
-    assert "Caught an exception while executing callback" in caplog.text
-    assert "RuntimeError: Uh oh" in caplog.text
-
-
 async def test_listener_callback_matches():
     listener = listeners.CallbackListener(
         matchers=[lambda hdr, command: True],
