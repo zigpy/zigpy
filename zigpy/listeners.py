@@ -99,7 +99,6 @@ class CallbackListener(BaseRequestListener):
     callback: typing.Callable[
         [foundation.ZCLHeader | zdo_t.ZDOHeader, foundation.CommandSchema], typing.Any
     ]
-    _tasks: set[asyncio.Task] = dataclasses.field(default_factory=set)
 
     def _resolve(
         self,
