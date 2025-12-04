@@ -29,7 +29,7 @@ from zigpy.zdo import types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 13
+DB_VERSION = 14
 DB_V = f"_v{DB_VERSION}"
 MIN_SQLITE_VERSION = (3, 24, 0)
 
@@ -37,6 +37,13 @@ UNIX_EPOCH = datetime.fromtimestamp(0, tz=UTC)
 DB_V_REGEX = re.compile(r"(?:_v\d+)?$")
 
 MIN_UPDATE_DELTA = timedelta(seconds=30).total_seconds()
+
+# The old attribute cache was a simple `attrid: value` mapping. This works 99.9% of the
+# time but unfortunately some devices reuse the same attribute ID on a standard cluster
+# for two separate purposes, using a manufacturer code to distinguish them. We migrate
+# attributes safely at runtime, once a device quirk has loaded and we can tell for sure
+# if the device has "colliding" attributes.
+UNMIGRATED_MANUFACTURER_CODE = -1
 
 
 def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.ModuleType:
@@ -546,14 +553,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 cluster.cluster_type,
                 cluster.cluster_id,
                 attrid,
+                manufacturer_code,
                 value,
                 cluster._attr_last_updated.get(attrid, UNIX_EPOCH).timestamp(),
             )
             for cluster in ep.clusters
-            for attrid, value in cluster._attr_cache.items()
+            for (attrid, manufacturer_code), value in cluster._attr_cache.items()
         ]
-        q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id)
+        q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code)
                     DO UPDATE SET value=excluded.value, last_updated=excluded.last_updated"""
         await self._db.executemany(q, clusters)
 
@@ -707,6 +715,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 cluster_type,
                 cluster_id,
                 attr_id,
+                manufacturer_code,
                 value,
                 last_updated,
             ) in cursor:
@@ -726,7 +735,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 if cluster_id not in clusters:
                     continue
 
-                clusters[cluster_id]._attr_cache[attr_id] = value
+                clusters[cluster_id]._attr_cache[attr_id, manufacturer_code] = value
                 clusters[cluster_id]._attr_last_updated[attr_id] = (
                     datetime.fromtimestamp(last_updated, UTC)
                 )
@@ -1325,6 +1334,49 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         ClusterType.Server,
                         cluster_id,
                         attrid,
+                        value,
+                        last_updated,
+                    ),
+                )
+
+    async def _migrate_to_v14(self) -> None:
+        """Schema v14 adds `manufacturer_code` to the attribute cache."""
+        await self._migrate_tables(
+            {
+                "devices_v13": "devices_v14",
+                "endpoints_v13": "endpoints_v14",
+                "neighbors_v13": "neighbors_v14",
+                "routes_v13": "routes_v14",
+                "node_descriptors_v13": "node_descriptors_v14",
+                "groups_v13": "groups_v14",
+                "group_members_v13": "group_members_v14",
+                "relays_v13": "relays_v14",
+                "network_backups_v13": "network_backups_v14",
+                "clusters_v13": "clusters_v14",
+                "unsupported_attributes_v13": "unsupported_attributes_v14",
+                "attributes_cache_v13": None,
+            }
+        )
+
+        async with self.execute("SELECT * FROM attributes_cache_v13") as cursor:
+            async for (
+                ieee,
+                endpoint_id,
+                cluster_type,
+                cluster_id,
+                attrid,
+                value,
+                last_updated,
+            ) in cursor:
+                await self.execute(
+                    "INSERT INTO attributes_cache_v14 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        ieee,
+                        endpoint_id,
+                        cluster_type,
+                        cluster_id,
+                        attrid,
+                        UNMIGRATED_MANUFACTURER_CODE,
                         value,
                         last_updated,
                     ),

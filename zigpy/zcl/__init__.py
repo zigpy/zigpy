@@ -611,12 +611,24 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         return None
 
-    def _get_cached_attribute(self, attr_def: foundation.ZCLAttributeDef) -> Any | None:
+    def _get_cached_attribute(
+        self,
+        attr_def: foundation.ZCLAttributeDef,
+        *,
+        default: Any | UndefinedType = UNDEFINED,
+    ) -> Any | None:
         """Get a cached attribute value, if it exists and is fresh enough."""
-        if attr_def.id not in self._attr_cache:
-            return None
+        manufacturer_code = self._get_effective_manufacturer_code(
+            attr_def, manufacturer=None
+        )
 
-        return self._attr_cache[attr_def.id]
+        try:
+            return self._attr_cache[attr_def.id, manufacturer_code]
+        except KeyError:
+            if default is UNDEFINED:
+                raise
+
+            return default
 
     def _get_unsupported_attribute(self, attr_def: foundation.ZCLAttributeDef) -> bool:
         """Check if an attribute is known to be unsupported."""
@@ -667,7 +679,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             )
 
             if allow_cache or only_cache:
-                cached_value = self._get_cached_attribute(attr_def)
+                cached_value = self._get_cached_attribute(attr_def, default=None)
 
                 if cached_value is not None:
                     # If an attribute was in the cache, we do not read it
@@ -990,11 +1002,23 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def commands(self):
         return list(self.ServerCommandDefs)
 
-    def update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
+    def update_attribute(
+        self,
+        attrid: int | t.uint16_t,
+        value: Any,
+        *,
+        manufacturer_code: int | UndefinedType | None = UNDEFINED,
+    ) -> None:
         """Update specified attribute with specified value"""
-        self._update_attribute(attrid, value)
+        self._update_attribute(attrid, value, manufacturer_code=manufacturer_code)
 
-    def _update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
+    def _update_attribute(
+        self,
+        attrid: int | t.uint16_t,
+        value: Any,
+        *,
+        manufacturer_code: int | UndefinedType | None = UNDEFINED,
+    ) -> None:
         if value is None:
             if attrid not in self._attr_cache:
                 return
@@ -1038,17 +1062,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def get(self, key: int | str, default: Any | None = None) -> Any:
         """Get cached attribute."""
         attr_def = self.find_attribute(key)
-        return self._attr_cache.get(attr_def.id, default)
+        return self._get_cached_attribute(attr_def, default)
 
     def __getitem__(self, key: int | str) -> Any:
         """Return cached value of the attr."""
-        return self._attr_cache[self.find_attribute(key).id]
-
-    def __setitem__(self, key: int | str, value: Any) -> None:
-        """Set cached value through attribute write."""
-        if not isinstance(key, int | str):
-            raise ValueError("attr_name or attr_id are accepted only")  # noqa: TRY004
-        self.create_catching_task(self.write_attributes({key: value}))
+        return self.get(key, default=UNDEFINED)
 
     def general_command(
         self,
