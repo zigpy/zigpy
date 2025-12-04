@@ -1118,6 +1118,7 @@ class ZCLCommandDef(t.BaseDataclassMixin):
 
     # set later
     name: str = None
+    manufacturer_code: t.uint16_t | None = None
 
     def __post_init__(self) -> None:
         # Backwards compatibility with positional syntax where the name was first
@@ -1181,7 +1182,8 @@ class ZCLCommandDef(t.BaseDataclassMixin):
             f"name={self.name!r}, "
             f"direction={self.direction}, "
             f"schema={self.schema}, "
-            f"is_manufacturer_specific={self.is_manufacturer_specific}"
+            f"is_manufacturer_specific={self.is_manufacturer_specific}, "
+            f"manufacturer_code={self.manufacturer_code}"
             f")"
         )
 
@@ -1257,8 +1259,9 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
     mandatory: bool = False
     is_manufacturer_specific: bool = False
 
-    # The name will be specified later
+    # These are (optionally) computed later in the ZCL cluster subclass hook
     name: str = None
+    manufacturer_code: t.uint16_t | None = None
 
     def __post_init__(self) -> None:
         # Backwards compatibility with positional syntax where the name was first
@@ -1288,7 +1291,8 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
             f"zcl_type={self.zcl_type}, "
             f"access={self.access!r}, "
             f"mandatory={self.mandatory!r}, "
-            f"is_manufacturer_specific={self.is_manufacturer_specific}"
+            f"is_manufacturer_specific={self.is_manufacturer_specific}, "
+            f"manufacturer_code={self.manufacturer_code}"
             f")"
         )
 

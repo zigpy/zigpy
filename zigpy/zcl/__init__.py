@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections
+from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 import enum
@@ -14,7 +15,7 @@ import warnings
 from zigpy import util
 from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.types as t
-from zigpy.typing import AddressingMode, EndpointType
+from zigpy.typing import UNDEFINED, AddressingMode, EndpointType, UndefinedType
 from zigpy.zcl import foundation
 from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs
 
@@ -73,6 +74,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     # Most clusters are identified by a single cluster ID
     cluster_id: t.uint16_t = None
+
+    # If set, this manufacturer code will be used for all manufacturer-specific
+    # attributes and commands in this cluster.
+    manufacturer_id_override: t.uint16_t | UndefinedType | None = UNDEFINED
 
     # Clusters are accessible by name from their endpoint as an attribute
     ep_attribute: str = None
@@ -168,7 +173,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 duplicates = [n for n, c in counts.items() if c > 1]
                 raise TypeError(f"Duplicate definitions exist for {duplicates}")
 
-        # Populate the `name` attribute of every definition
+        # Populate the `name` and `manufacturer_code` attribute of every definition
         for defs in (cls.ServerCommandDefs, cls.ClientCommandDefs, cls.AttributeDefs):
             for name in dir(defs):
                 definition = getattr(defs, name)
@@ -255,14 +260,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
         return self.attributes_by_name
 
-    def find_attribute(self, name_or_id: int | str) -> foundation.ZCLAttributeDef:
-        if isinstance(name_or_id, str):
+    def find_attribute(
+        self, name_or_id: int | str | foundation.ZCLAttributeDef
+    ) -> foundation.ZCLAttributeDef:
+        if isinstance(name_or_id, foundation.ZCLAttributeDef):
+            return name_or_id
+        elif isinstance(name_or_id, str):
             return self.attributes_by_name[name_or_id]
         elif isinstance(name_or_id, int):
+            # TODO: throw an error if two attributes have the same ID
             return self.attributes[name_or_id]
         else:
             raise ValueError(  # noqa: TRY004
-                f"Attribute must be either a string or an integer,"
+                f"Attribute must be a definition, string, or integer,"
                 f" not {name_or_id!r} ({type(name_or_id)!r}"
             )
 
@@ -580,73 +590,137 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         attributes = [t.uint16_t(a) for a in attributes]
         return self._read_attributes(attributes, manufacturer=manufacturer, **kwargs)
 
+    def _get_effective_manufacturer_code(
+        self,
+        definition: foundation.ZCLAttributeDef | foundation.ZCLCommandDef,
+        manufacturer: int | None,
+    ) -> int | None:
+        """Get the effective manufacturer code for an attribute or command."""
+        if manufacturer is not None:
+            return manufacturer
+
+        if definition.manufacturer_code is not None:
+            return definition.manufacturer_code
+
+        if 0xFC00 <= self.cluster_id <= 0xFFFF or definition.is_manufacturer_specific:
+            return (
+                self.manufacturer_id_override
+                if self.manufacturer_id_override is not UNDEFINED
+                else self.endpoint.device.manufacturer_id
+            )
+
+        return None
+
+    def _get_cached_attribute(self, attr_def: foundation.ZCLAttributeDef) -> Any | None:
+        """Get a cached attribute value, if it exists and is fresh enough."""
+        if attr_def.id not in self._attr_cache:
+            return None
+
+        return self._attr_cache[attr_def.id]
+
+    def _get_unsupported_attribute(self, attr_def: foundation.ZCLAttributeDef) -> bool:
+        """Check if an attribute is known to be unsupported."""
+        return attr_def.id in self.unsupported_attributes
+
     async def read_attributes(
         self,
-        attributes: list[int | str],
+        attributes: list[int | str | foundation.ZCLAttributeDef],
         allow_cache: bool = False,
         only_cache: bool = False,
-        manufacturer: int | t.uint16_t | None = None,
+        manufacturer: int | None = None,
         **kwargs,
     ) -> Any:
-        success, failure = {}, {}
-        attribute_ids: list[int] = []
-        orig_attributes: dict[int, int | str] = {}
+        # Find definition objects for every attribute
+        attribute_defs: list[foundation.ZCLAttributeDef] = []
+
+        # And keep track of the original object, for return values
+        attribute_map: dict[
+            foundation.ZCLAttributeDef, int | str | foundation.ZCLAttributeDef
+        ] = {}
 
         for attribute in attributes:
-            if isinstance(attribute, str):
-                attrid = self.attributes_by_name[attribute].id
-            else:
-                # Allow reading attributes that aren't defined
-                attrid = attribute
+            # This lookup can fail if we pass an integer attribute ID and two attributes
+            # sharing an ID exist
+            attr_def = self.find_attribute(attribute)
+            attribute_defs.append(attr_def)
 
-            attribute_ids.append(attrid)
-            orig_attributes[attrid] = attribute
+            if attr_def in attribute_map:
+                raise ValueError(
+                    f"Cannot read the same attribute twice in the same call: {attr_def}"
+                )
 
-        to_read = []
-        if allow_cache or only_cache:
-            for idx, attribute in enumerate(attribute_ids):
-                if attribute in self._attr_cache:
-                    success[attributes[idx]] = self._attr_cache[attribute]
-                elif attribute in self.unsupported_attributes:
-                    failure[attributes[idx]] = foundation.Status.UNSUPPORTED_ATTRIBUTE
-                else:
-                    to_read.append(attribute)
-        else:
-            to_read = attribute_ids
+            attribute_map[attr_def] = attribute
 
-        if not to_read or only_cache:
+        # Attribute read commands share a manufacturer code (or lack of one), we need to
+        # group heterogeneous reads into separate requests
+        reads_by_manuf_code: defaultdict[
+            int | None, list[foundation.ZCLAttributeDef]
+        ] = defaultdict(list)
+
+        # Pre-fill the success and failure dicts with cached information, if necessary
+        success = {}
+        failure = {}
+
+        for attr_def in attribute_defs:
+            manufacturer_code = self._get_effective_manufacturer_code(
+                attr_def, manufacturer=manufacturer
+            )
+
+            if allow_cache or only_cache:
+                cached_value = self._get_cached_attribute(attr_def)
+
+                if cached_value is not None:
+                    # If an attribute was in the cache, we do not read it
+                    success[attribute_map[attr_def]] = cached_value
+                    continue
+                elif self._get_unsupported_attribute(attr_def):
+                    # If an attribute is known to be unsupported, we do not read it
+                    failure[attribute_map[attr_def]] = (
+                        foundation.Status.UNSUPPORTED_ATTRIBUTE
+                    )
+                    continue
+
+            # Otherwise, populate the groups of attributes to read
+            reads_by_manuf_code[manufacturer_code].append(attr_def)
+
+        if only_cache:
+            LOGGER.debug(
+                "Reading only from cache, skipping reads: %s", reads_by_manuf_code
+            )
             return success, failure
 
-        result = await self.read_attributes_raw(
-            to_read, manufacturer=manufacturer, **kwargs
-        )
-        if not isinstance(result[0], list):
-            for attrid in to_read:
-                orig_attribute = orig_attributes[attrid]
-                failure[orig_attribute] = result[0]  # Assume default response
-        else:
-            for record in result[0]:
-                orig_attribute = orig_attributes[record.attrid]
-                if record.status == foundation.Status.SUCCESS:
-                    try:
-                        value = self.attributes[record.attrid].type(record.value.value)
-                    except KeyError:
-                        value = record.value.value
-                    except ValueError:
-                        value = record.value.value
-                        self.debug(
-                            "Couldn't normalize %a attribute with %s value",
-                            record.attrid,
-                            value,
-                            exc_info=True,
-                        )
-                    self._update_attribute(record.attrid, value)
-                    success[orig_attribute] = value
-                    self.remove_unsupported_attribute(record.attrid)
-                else:
-                    if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
-                        self.add_unsupported_attribute(record.attrid)
-                    failure[orig_attribute] = record.status
+        # Now, we can perform the reads for each manufacturer code group
+        for manufacturer_code, attribute_group in reads_by_manuf_code.items():
+            result = await self.read_attributes_raw(
+                [attr_def.id for attr_def in attribute_group],
+                manufacturer=manufacturer,
+                **kwargs,
+            )
+
+            # The read response should contain only these attributes
+            potential_attributes = {
+                attr_def.id: attr_def for attr_def in attribute_group
+            }
+
+            if not isinstance(result[0], list):
+                # If we get back a single response status, all reads failed
+                for attr_def in attribute_group:
+                    failure[attribute_map[attr_def]] = result[0]
+            else:
+                for record in result[0]:
+                    if record.status == foundation.Status.SUCCESS:
+                        attr_def = potential_attributes[record.attrid]
+                        value = attr_def.type(record.value.value)
+
+                        # TODO: get rid of `_update_attribute`
+                        self._update_attribute(record.attrid, value)
+                        success[attribute_map[attr_def]] = value
+                        self.remove_unsupported_attribute(record.attrid)
+                    else:
+                        if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
+                            self.add_unsupported_attribute(record.attrid)
+
+                        failure[attribute_map[attr_def]] = record.status
 
         return success, failure
 
@@ -833,10 +907,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *args,
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
-        tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
         command = self.server_commands[command_id]
+        manufacturer = self._get_effective_manufacturer_code(command, manufacturer)
 
         return self.request(
             False,
@@ -845,7 +919,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             *args,
             manufacturer=manufacturer,
             expect_reply=expect_reply,
-            tsn=tsn,
             **kwargs,
         )
 
@@ -854,10 +927,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         command_id: foundation.GeneralCommand | int | t.uint8_t,
         *args,
         manufacturer: int | t.uint16_t | None = None,
-        tsn: int | t.uint8_t | None = None,
         **kwargs,
     ):
         command = self.client_commands[command_id]
+        manufacturer = self._get_effective_manufacturer_code(command, manufacturer)
 
         return self.reply(
             False,
@@ -865,7 +938,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             command.schema,
             *args,
             manufacturer=manufacturer,
-            tsn=tsn,
             **kwargs,
         )
 
