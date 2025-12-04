@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Final
 
-from zigpy.quirks import CustomCluster
 import zigpy.types as t
+from zigpy.zcl import Cluster
 from zigpy.zcl.foundation import (
     ZCL_CLUSTER_REVISION_ATTR,
     ZCL_REPORTING_STATUS_ATTR,
@@ -57,9 +57,7 @@ class WwahClusterStatusToUseTC(t.Struct):
     status: Status
 
 
-# WWAH uses a custom cluster (TODO: fix this) because it requires a specific
-# `manufacturer_code` for all commands and attributes
-class WorksWithAllHubs(CustomCluster):
+class WorksWithAllHubs(Cluster):
     """Works With All Hubs cluster"""
 
     cluster_id: Final[t.uint16_t] = 0xFC57
