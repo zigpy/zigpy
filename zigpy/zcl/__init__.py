@@ -693,7 +693,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         for manufacturer_code, attribute_group in reads_by_manuf_code.items():
             result = await self.read_attributes_raw(
                 [attr_def.id for attr_def in attribute_group],
-                manufacturer=manufacturer,
+                manufacturer=manufacturer_code,
                 **kwargs,
             )
 
@@ -760,24 +760,53 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     async def write_attributes(
         self,
-        attributes: dict[str | int, Any],
+        attributes: dict[str | int | foundation.ZCLAttributeDef, Any],
         manufacturer: int | None = None,
         **kwargs,
-    ) -> list:
-        """Write attributes to device with internal 'attributes' validation"""
-        attrs = self._write_attr_records(attributes)
-        return await self.write_attributes_raw(attrs, manufacturer, **kwargs)
+    ) -> list[list[foundation.WriteAttributesStatusRecord]]:
+        """Write attributes to device with internal 'attributes' validation."""
+
+        # Group attributes by effective manufacturer code
+        writes_by_manuf_code: defaultdict[
+            int | None, dict[str | int | foundation.ZCLAttributeDef, Any]
+        ] = defaultdict(dict)
+
+        for attrid, value in attributes.items():
+            attr_def = self.find_attribute(attrid)
+            manufacturer_code = self._get_effective_manufacturer_code(
+                attr_def, manufacturer=manufacturer
+            )
+            writes_by_manuf_code[manufacturer_code][attrid] = value
+
+        # Write each group separately and merge results
+        records: list[foundation.WriteAttributesStatusRecord] = []
+
+        for manufacturer_code, attribute_group in writes_by_manuf_code.items():
+            attrs = self._write_attr_records(attribute_group)
+            result = await self.write_attributes_raw(
+                attrs, manufacturer=manufacturer_code, **kwargs
+            )
+
+            if isinstance(result[0], list):
+                records.extend(result[0])
+            else:
+                # Default response: apply status to all attributes in this group
+                status = result[0]
+                records.extend(
+                    foundation.WriteAttributesStatusRecord(
+                        status=status, attrid=attr.attrid
+                    )
+                    for attr in attrs
+                )
+
+        # TODO: ditch the low-level return type
+        return [records]
 
     async def write_attributes_raw(
-        self,
-        attrs: list[foundation.Attribute],
-        manufacturer: int | None = None,
-        **kwargs,
+        self, attrs: list[foundation.Attribute], **kwargs
     ) -> list:
         """Write attributes to device without internal 'attributes' validation"""
-        result = await self._write_attributes(
-            attrs, manufacturer=manufacturer, **kwargs
-        )
+        result = await self._write_attributes(attrs, **kwargs)
         if not isinstance(result[0], list):
             return result
 
@@ -792,13 +821,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                     self._update_attribute(attr_rec.attrid, attr_rec.value.value)
 
         return result
-
-    def write_attributes_undivided(
-        self, attributes: dict[str | int, Any], manufacturer: int | None = None
-    ) -> list:
-        """Either all or none of the attributes are written by the device."""
-        args = self._write_attr_records(attributes)
-        return self._write_attributes_undivided(args, manufacturer=manufacturer)
 
     async def bind(self, **kwargs):
         return await self._endpoint.device.zdo.bind(cluster=self, **kwargs)
@@ -1073,9 +1095,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     )
     _write_attributes = functools.partialmethod(
         general_command, foundation.GeneralCommand.Write_Attributes
-    )
-    _write_attributes_undivided = functools.partialmethod(
-        general_command, foundation.GeneralCommand.Write_Attributes_Undivided
     )
     discover_attributes = functools.partialmethod(
         general_command, foundation.GeneralCommand.Discover_Attributes
