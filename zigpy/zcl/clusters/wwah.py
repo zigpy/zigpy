@@ -156,7 +156,6 @@ class WorksWithAllHubs(CustomCluster):
             schema={},
         )
 
-        # Enable WWAH App Event retry algorithm.
         enable_wwah_app_event_retry_algorithm: Final = ZCLCommandDef(
             id=0x04,
             schema={
@@ -167,7 +166,6 @@ class WorksWithAllHubs(CustomCluster):
             },
         )
 
-        # Disable WWAH App Event retry algorithm.
         disable_wwah_app_event_retry_algorithm: Final = ZCLCommandDef(
             id=0x05,
             schema={},
@@ -179,7 +177,6 @@ class WorksWithAllHubs(CustomCluster):
             schema={},
         )
 
-        # Enable WWAH rejoin algorithm.
         enable_wwah_rejoin_algorithm: Final = ZCLCommandDef(
             id=0x07,
             schema={
@@ -191,7 +188,6 @@ class WorksWithAllHubs(CustomCluster):
             },
         )
 
-        # Disable WWAH rejoin algorithm.
         disable_wwah_rejoin_algorithm: Final = ZCLCommandDef(
             id=0x08,
             schema={},
@@ -203,7 +199,6 @@ class WorksWithAllHubs(CustomCluster):
             schema={"enrollment_mode": WwahIasZoneEnrollmentMode},
         )
 
-        # Clear the binding table.
         clear_binding_table: Final = ZCLCommandDef(
             id=0x0A,
             schema={},
@@ -221,7 +216,6 @@ class WorksWithAllHubs(CustomCluster):
             schema={},
         )
 
-        # Set MAC poll failure wait time.
         set_mac_poll_failure_wait_time: Final = ZCLCommandDef(
             id=0x0D,
             schema={"wait_time": t.uint8_t},
@@ -251,7 +245,6 @@ class WorksWithAllHubs(CustomCluster):
             schema={},
         )
 
-        # Query for specified debug report.
         debug_report_query: Final = ZCLCommandDef(
             id=0x12,
             schema={"debug_report_id": t.uint8_t},
@@ -281,13 +274,11 @@ class WorksWithAllHubs(CustomCluster):
             schema={},
         )
 
-        # Enable WWAH Parent Classification advertisements.
         enable_wwah_parent_classification: Final = ZCLCommandDef(
             id=0x17,
             schema={},
         )
 
-        # Disable WWAH Parent Classification advertisements.
         disable_wwah_parent_classification: Final = ZCLCommandDef(
             id=0x18,
             schema={},
@@ -299,25 +290,21 @@ class WorksWithAllHubs(CustomCluster):
             schema={},
         )
 
-        # Enable WWAH Bad Parent Recovery feature.
         enable_wwah_bad_parent_recovery: Final = ZCLCommandDef(
             id=0x1A,
             schema={},
         )
 
-        # Disable WWAH Bad Parent Recovery feature.
         disable_wwah_bad_parent_recovery: Final = ZCLCommandDef(
             id=0x1B,
             schema={},
         )
 
-        # Enable Configuration Mode.
         enable_configuration_mode: Final = ZCLCommandDef(
             id=0x1C,
             schema={},
         )
 
-        # Disable Configuration Mode.
         disable_configuration_mode: Final = ZCLCommandDef(
             id=0x1D,
             schema={},
