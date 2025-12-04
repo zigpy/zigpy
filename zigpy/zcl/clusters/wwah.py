@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from typing import Final
 
+from zigpy.quirks import CustomCluster
 import zigpy.types as t
-from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
+    ZCL_CLUSTER_REVISION_ATTR,
+    ZCL_REPORTING_STATUS_ATTR,
     BaseAttributeDefs,
     BaseCommandDefs,
+    Status,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -51,14 +54,18 @@ class WwahClusterStatusToUseTC(t.Struct):
     """WWAH Cluster Status to Use TC structure."""
 
     cluster_id: t.ClusterId
-    status: foundation.Status
+    status: Status
 
 
-class WorksWithAllHubs(Cluster):
+# WWAH uses a custom cluster (TODO: fix this) because it requires a specific
+# `manufacturer_code` for all commands and attributes
+class WorksWithAllHubs(CustomCluster):
     """Works With All Hubs cluster"""
 
     cluster_id: Final[t.uint16_t] = 0xFC57
     ep_attribute: Final = "works_with_all_hubs"
+
+    manufacturer_code_override: Final[t.uint16_t] = 0x1217
 
     # Enums
     WwahIasZoneEnrollmentMode: Final = WwahIasZoneEnrollmentMode
@@ -120,8 +127,8 @@ class WorksWithAllHubs(Cluster):
         ota_max_offline_duration: Final = ZCLAttributeDef(
             id=0x0013, type=t.uint16_t, access="r", mandatory=False
         )
-        cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
-        reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
+        cluster_revision: Final = ZCL_CLUSTER_REVISION_ATTR
+        reporting_status: Final = ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs(BaseCommandDefs):
         # Client-to-Server commands (sent by client, received by server)
@@ -401,7 +408,7 @@ class WorksWithAllHubs(Cluster):
         use_trust_center_for_cluster_server_response: Final = ZCLCommandDef(
             id=0x9E,
             schema={
-                "status": foundation.Status,
+                "status": Status,
                 "cluster_status": t.LVList[WwahClusterStatusToUseTC],
             },
         )
