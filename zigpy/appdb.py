@@ -676,39 +676,30 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_endpoints()
         await self._load_clusters()
 
-        # Quirks require the manufacturer and model name to be populated
-        await self._load_attributes(
-            f"""
-                cluster_type={ClusterType.Server}
-            AND cluster_id={Basic.cluster_id}
-            AND (
-                   attr_id={Basic.AttributeDefs.manufacturer.id}
-                OR attr_id={Basic.AttributeDefs.model.id}
-            )
-            """
-        )
+        # Load as many attributes as we can in the first pass
+        await self._load_attributes()
+        await self._load_unsupported_attributes()
 
         for device in self._application.devices.values():
             device = zigpy.quirks.get_device(device)
             self._application.devices[device.ieee] = device
 
+        # Load them again once more, to make sure virtual clusters get re-populated
         await self._load_attributes()
         await self._load_unsupported_attributes()
+
         await self._load_groups()
         await self._load_group_members()
         await self._load_relays()
         await self._load_neighbors()
         await self._load_routes()
         await self._load_network_backups()
+        await self._run_data_migrations()
+
         await self._register_device_listeners()
 
-    async def _load_attributes(self, filter: str | None = None) -> None:
-        if filter:
-            query = f"SELECT * FROM attributes_cache{DB_V} WHERE {filter}"
-        else:
-            query = f"SELECT * FROM attributes_cache{DB_V}"
-
-        async with self.execute(query) as cursor:
+    async def _load_attributes(self) -> None:
+        async with self.execute(f"SELECT * FROM attributes_cache{DB_V}") as cursor:
             async for (
                 ieee,
                 endpoint_id,
@@ -968,6 +959,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v11, 11),
                 (self._migrate_to_v12, 12),
                 (self._migrate_to_v13, 13),
+                (self._migrate_to_v14, 14),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -1380,4 +1372,66 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         value,
                         last_updated,
                     ),
+                )
+
+    async def _run_data_migrations(self) -> None:
+        """Run any data migrations needed after loading the database."""
+        async with self.execute(
+            f"SELECT * FROM attributes_cache{DB_V} WHERE manufacturer_code = :manufacturer_code",
+            {"manufacturer_code": UNMIGRATED_MANUFACTURER_CODE},
+        ) as cursor:
+            async for (
+                ieee,
+                endpoint_id,
+                cluster_type,
+                cluster_id,
+                attr_id,
+                manufacturer_code,
+                value,
+                last_updated,
+            ) in cursor:
+                dev = self._application.get_device(ieee)
+
+                try:
+                    ep = dev.endpoints[endpoint_id]
+                except KeyError:
+                    continue
+
+                clusters = (
+                    ep.in_clusters
+                    if cluster_type == ClusterType.Server
+                    else ep.out_clusters
+                )
+
+                try:
+                    cluster = clusters[cluster_id]
+                except KeyError:
+                    continue
+
+                attr_def = cluster.find_attribute(attr_id)
+                manufacturer_code = cluster._get_effective_manufacturer_code(
+                    attr_def, manufacturer=None
+                )
+
+                await self.execute(
+                    f"""
+                    UPDATE attributes_cache{DB_V}
+                    SET manufacturer_code = :manufacturer_code
+                    WHERE
+                        ieee = :ieee
+                        AND endpoint_id = :endpoint_id
+                        AND cluster_type = :cluster_type
+                        AND cluster_id = :cluster_id
+                        AND attr_id = :attr_id
+                        AND manufacturer_code = :old_manufacturer_code
+                    """,
+                    {
+                        "manufacturer_code": manufacturer_code,
+                        "ieee": ieee,
+                        "endpoint_id": endpoint_id,
+                        "cluster_type": cluster_type,
+                        "cluster_id": cluster_id,
+                        "attr_id": attr_id,
+                        "old_manufacturer_code": UNMIGRATED_MANUFACTURER_CODE,
+                    },
                 )

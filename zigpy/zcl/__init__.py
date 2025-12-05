@@ -1062,7 +1062,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     def get(self, key: int | str, default: Any | None = None) -> Any:
         """Get cached attribute."""
         attr_def = self.find_attribute(key)
-        return self._get_cached_attribute(attr_def, default)
+        return self._get_cached_attribute(attr_def, default=default)
 
     def __getitem__(self, key: int | str) -> Any:
         """Return cached value of the attr."""

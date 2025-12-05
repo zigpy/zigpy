@@ -68,7 +68,7 @@ CREATE TABLE attributes_cache_v14 (
 );
 
 CREATE UNIQUE INDEX attributes_cache_idx_v14
-    ON attributes_cache_v14(ieee, endpoint_id, cluster_type, cluster_id, attr_id);
+    ON attributes_cache_v14(ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code);
 
 
 -- neighbors
