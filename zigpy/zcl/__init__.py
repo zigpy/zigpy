@@ -9,11 +9,12 @@ import functools
 import itertools
 import logging
 import types
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 import warnings
 
 from zigpy import util
 from zigpy.const import APS_REPLY_TIMEOUT
+from zigpy.event import EventBase
 import zigpy.types as t
 from zigpy.typing import UNDEFINED, AddressingMode, EndpointType, UndefinedType
 from zigpy.zcl import foundation
@@ -25,6 +26,30 @@ if TYPE_CHECKING:
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(kw_only=True, frozen=True)
+class AttributeReadEvent:
+    """Event generated when an attribute has been read."""
+
+    event_type: Final[str] = "attribute_read"
+
+    attribute_name: str
+    attribute_id: int
+    manufacturer_code: int | None
+    value: Any
+
+
+@dataclass(kw_only=True, frozen=True)
+class AttributeReportedEvent:
+    """Event generated when an attribute has been reported."""
+
+    event_type: Final[str] = "attribute_report"
+
+    attribute_name: str
+    attribute_id: int
+    manufacturer_code: int | None
+    value: Any
 
 
 def convert_list_schema(
@@ -56,7 +81,7 @@ class ClusterType(enum.IntEnum):
     Client = 1
 
 
-class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
+class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     """A cluster on an endpoint"""
 
     class AttributeDefs(BaseAttributeDefs):
@@ -85,6 +110,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     # Manufacturer specific clusters exist between 0xFC00 and 0xFFFF. This exists solely
     # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
     cluster_id_range: tuple[t.uint16_t, t.uint16_t] = None
+
+    attributes_by_id: dict[int, dict[int | None, foundation.ZCLAttributeDef]] = {}
 
     # Deprecated: clusters contain attributes and both client and server commands
     attributes: dict[int, foundation.ZCLAttributeDef] = {}
@@ -222,6 +249,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 if isinstance(definition, foundation.ZCLCommandDef):
                     setattr(defs, definition.name, definition.with_compiled_schema())
 
+        # Create a way to look up attributes (with manufacturer_code)
+        cls.attributes_by_id = {}
+
+        for attr_def in cls.AttributeDefs:
+            if attr_def.id not in cls.attributes_by_id:
+                cls.attributes_by_id[attr_def.id] = {}
+
+            cls.attributes_by_id[attr_def.id][attr_def.manufacturer_code] = attr_def
+
         # Recreate the old structures using the new-style definitions
         cls.attributes = {attr.id: attr for attr in cls.AttributeDefs}
         cls.client_commands = {cmd.id: cmd for cmd in cls.ClientCommandDefs}
@@ -243,33 +279,39 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             cls._registry_range[cls.cluster_id_range] = cls
 
     def __init__(self, endpoint: EndpointType, is_server: bool = True) -> None:
+        super().__init__()
         self._endpoint: EndpointType = endpoint
         self._attr_cache: dict[int, Any] = {}
         self._attr_last_updated: dict[int, datetime] = {}
         self.unsupported_attributes: set[int | str] = set()
-        self._listeners = {}
         self._type: ClusterType = (
             ClusterType.Server if is_server else ClusterType.Client
         )
 
-    @property
-    def attridx(self):
-        warnings.warn(
-            "`attridx` has been replaced by `attributes_by_name`", DeprecationWarning
-        )
-
-        return self.attributes_by_name
-
     def find_attribute(
-        self, name_or_id: int | str | foundation.ZCLAttributeDef
+        self,
+        name_or_id: int | str | foundation.ZCLAttributeDef,
+        *,
+        manufacturer_code: int | UndefinedType | None = UNDEFINED,
     ) -> foundation.ZCLAttributeDef:
         if isinstance(name_or_id, foundation.ZCLAttributeDef):
-            return name_or_id
+            return self.attributes_by_name[name_or_id.name]
         elif isinstance(name_or_id, str):
             return self.attributes_by_name[name_or_id]
         elif isinstance(name_or_id, int):
-            # TODO: throw an error if two attributes have the same ID
-            return self.attributes[name_or_id]
+            candidates = self.attributes_by_id[name_or_id]
+
+            if manufacturer_code is not UNDEFINED:
+                return candidates[manufacturer_code]
+
+            if len(candidates) > 1:
+                raise KeyError(
+                    f"Multiple definitions exist for attribute ID {name_or_id:#04x},"
+                    f" please specify a manufacturer code"
+                )
+
+            # Pick the only one
+            return next(iter(candidates.values()))
         else:
             raise ValueError(  # noqa: TRY004
                 f"Attribute must be a definition, string, or integer,"
@@ -555,30 +597,26 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             return
 
         if hdr.command_id == foundation.GeneralCommand.Report_Attributes:
-            values = []
-
-            for a in args.attribute_reports:
-                if a.attrid in self.attributes:
-                    values.append(f"{self.attributes[a.attrid].name}={a.value.value!r}")
-                else:
-                    values.append(f"0x{a.attrid:04X}={a.value.value!r}")
-
-            self.debug("Attribute report received: %s", ", ".join(values))
-
             for attr in args.attribute_reports:
                 try:
-                    value = self.attributes[attr.attrid].type(attr.value.value)
-                except KeyError:
-                    value = attr.value.value
-                except ValueError:
-                    self.debug(
-                        "Couldn't normalize %a attribute with %s value",
-                        attr.attrid,
-                        attr.value.value,
-                        exc_info=True,
+                    attr_def = self.find_attribute(
+                        attr.attrid, manufacturer_code=hdr.manufacturer
                     )
+                except KeyError:
+                    attr_name = None
                     value = attr.value.value
-                self._update_attribute(attr.attrid, value)
+                else:
+                    attr_name = attr_def.name
+                    value = attr_def.type(attr.value.value)
+
+                self.emit(
+                    AttributeReportedEvent(
+                        attribute_name=attr_name,
+                        attribute_id=attr.attrid,
+                        manufacturer_code=hdr.manufacturer,
+                        value=value,
+                    )
+                )
 
         if not hdr.frame_control.disable_default_response:
             self.send_default_rsp(
@@ -618,12 +656,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         default: Any | UndefinedType = UNDEFINED,
     ) -> Any | None:
         """Get a cached attribute value, if it exists and is fresh enough."""
-        manufacturer_code = self._get_effective_manufacturer_code(
-            attr_def, manufacturer=None
-        )
-
         try:
-            return self._attr_cache[attr_def.id, manufacturer_code]
+            return self._attr_cache[attr_def.id, attr_def.manufacturer_code]
         except KeyError:
             if default is UNDEFINED:
                 raise
@@ -639,7 +673,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         attributes: list[int | str | foundation.ZCLAttributeDef],
         allow_cache: bool = False,
         only_cache: bool = False,
-        manufacturer: int | None = None,
+        manufacturer: int | UndefinedType | None = UNDEFINED,
         **kwargs,
     ) -> Any:
         # Find definition objects for every attribute
@@ -653,7 +687,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         for attribute in attributes:
             # This lookup can fail if we pass an integer attribute ID and two attributes
             # sharing an ID exist
-            attr_def = self.find_attribute(attribute)
+            attr_def = self.find_attribute(attribute, manufacturer_code=manufacturer)
             attribute_defs.append(attr_def)
 
             if attr_def in attribute_map:
@@ -674,10 +708,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         failure = {}
 
         for attr_def in attribute_defs:
-            manufacturer_code = self._get_effective_manufacturer_code(
-                attr_def, manufacturer=manufacturer
-            )
-
             if allow_cache or only_cache:
                 cached_value = self._get_cached_attribute(attr_def, default=None)
 
@@ -693,7 +723,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                     continue
 
             # Otherwise, populate the groups of attributes to read
-            reads_by_manuf_code[manufacturer_code].append(attr_def)
+            reads_by_manuf_code[attr_def.manufacturer_code].append(attr_def)
 
         if only_cache:
             LOGGER.debug(
@@ -741,17 +771,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     ) -> list[foundation.Attribute]:
         args = []
         for attrid, value in attributes.items():
-            try:
-                attr_def = self.find_attribute(attrid)
-            except KeyError:
-                self.error("%s is not a valid attribute id", attrid)
-
-                # Throw an error if it's an unknown attribute name, without an ID
-                if isinstance(attrid, str):
-                    raise
-
-                continue
-
+            attr_def = self.find_attribute(attrid)
             attr = foundation.Attribute(attr_def.id, foundation.TypeValue())
             attr.value.type = attr_def.zcl_type
 
@@ -773,7 +793,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     async def write_attributes(
         self,
         attributes: dict[str | int | foundation.ZCLAttributeDef, Any],
-        manufacturer: int | None = None,
+        manufacturer: int | UndefinedType | None = UNDEFINED,
         **kwargs,
     ) -> list[list[foundation.WriteAttributesStatusRecord]]:
         """Write attributes to device with internal 'attributes' validation."""
@@ -783,12 +803,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             int | None, dict[str | int | foundation.ZCLAttributeDef, Any]
         ] = defaultdict(dict)
 
-        for attrid, value in attributes.items():
-            attr_def = self.find_attribute(attrid)
-            manufacturer_code = self._get_effective_manufacturer_code(
-                attr_def, manufacturer=manufacturer
-            )
-            writes_by_manuf_code[manufacturer_code][attrid] = value
+        for attr, value in attributes.items():
+            attr_def = self.find_attribute(attr, manufacturer_code=manufacturer)
+            writes_by_manuf_code[attr_def.manufacturer_code][attr_def.id] = value
 
         # Write each group separately and merge results
         records: list[foundation.WriteAttributesStatusRecord] = []
@@ -944,14 +961,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         **kwargs,
     ):
         command = self.server_commands[command_id]
-        manufacturer = self._get_effective_manufacturer_code(command, manufacturer)
 
         return self.request(
             False,
             command_id,
             command.schema,
             *args,
-            manufacturer=manufacturer,
+            manufacturer=command.manufacturer_code,
             expect_reply=expect_reply,
             **kwargs,
         )
@@ -964,14 +980,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         **kwargs,
     ):
         command = self.client_commands[command_id]
-        manufacturer = self._get_effective_manufacturer_code(command, manufacturer)
 
         return self.reply(
             False,
             command_id,
             command.schema,
             *args,
-            manufacturer=manufacturer,
+            manufacturer=command.manufacturer_code,
             **kwargs,
         )
 
@@ -1001,36 +1016,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
     @property
     def commands(self):
         return list(self.ServerCommandDefs)
-
-    def update_attribute(
-        self,
-        attrid: int | t.uint16_t,
-        value: Any,
-        *,
-        manufacturer_code: int | UndefinedType | None = UNDEFINED,
-    ) -> None:
-        """Update specified attribute with specified value"""
-        self._update_attribute(attrid, value, manufacturer_code=manufacturer_code)
-
-    def _update_attribute(
-        self,
-        attrid: int | t.uint16_t,
-        value: Any,
-        *,
-        manufacturer_code: int | UndefinedType | None = UNDEFINED,
-    ) -> None:
-        if value is None:
-            if attrid not in self._attr_cache:
-                return
-
-            self._attr_cache.pop(attrid)
-            self._attr_last_updated.pop(attrid)
-            self.listener_event("attribute_cleared", attrid)
-        else:
-            now = datetime.now(UTC)
-            self._attr_cache[attrid] = value
-            self._attr_last_updated[attrid] = now
-            self.listener_event("attribute_updated", attrid, value, now)
 
     def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
         msg = "[%s:%s:0x%04x] " + msg

@@ -289,6 +289,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         cluster: zigpy.typing.ClusterType,
         attrid: int,
         value: Any,
+        manufacturer_code: int | None,
         timestamp: datetime,
     ) -> None:
         self.enqueue(
@@ -299,10 +300,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             cluster.cluster_id,
             attrid,
             value,
+            manufacturer_code,
             timestamp,
         )
 
-    def attribute_cleared(self, cluster: zigpy.typing.ClusterType, attrid: int) -> None:
+    def attribute_cleared(
+        self,
+        cluster: zigpy.typing.ClusterType,
+        attrid: int,
+        manufacturer_code: int | None,
+    ) -> None:
         self.enqueue(
             "_clear_attribute",
             cluster.endpoint.device.ieee,
@@ -310,6 +317,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             cluster.cluster_type,
             cluster.cluster_id,
             attrid,
+            manufacturer_code,
         )
 
     def unsupported_attribute_added(
@@ -322,6 +330,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             cluster.cluster_type,
             cluster.cluster_id,
             attrid,
+            manufacturer_code,
         )
 
     async def _unsupported_attribute_added(
@@ -590,13 +599,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         cluster_type: ClusterType,
         cluster_id: int,
         attrid: int,
+        manufacturer_code: int | None,
         value: Any,
         timestamp: datetime,
     ) -> None:
         q = f"""
             INSERT INTO attributes_cache{DB_V}
-            VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :value, :timestamp)
-                ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id) DO UPDATE
+            VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :value, :timestamp)
+                ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code) DO UPDATE
                 SET value=excluded.value, last_updated=excluded.last_updated
                 WHERE
                     value != excluded.value
@@ -610,6 +620,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "cluster_type": cluster_type,
                 "cluster_id": cluster_id,
                 "attr_id": attrid,
+                "manufacturer_code": manufacturer_code,
                 "value": value,
                 "timestamp": timestamp.timestamp(),
                 "min_update_delta": MIN_UPDATE_DELTA,
