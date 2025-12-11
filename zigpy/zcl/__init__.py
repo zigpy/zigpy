@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import enum
 import functools
 import itertools
+from dataclasses import dataclass
 import logging
 import types
 from typing import TYPE_CHECKING, Any, Final

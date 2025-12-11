@@ -1388,7 +1388,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _run_data_migrations(self) -> None:
         """Run any data migrations needed after loading the database."""
         async with self.execute(
-            f"SELECT * FROM attributes_cache{DB_V} WHERE manufacturer_code = :manufacturer_code",
+            f"SELECT * FROM attributes_cache_v14 WHERE manufacturer_code = :manufacturer_code",
             {"manufacturer_code": UNMIGRATED_MANUFACTURER_CODE},
         ) as cursor:
             async for (
@@ -1426,7 +1426,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
                 await self.execute(
                     f"""
-                    UPDATE attributes_cache{DB_V}
+                    UPDATE attributes_cache_v14
                     SET manufacturer_code = :manufacturer_code
                     WHERE
                         ieee = :ieee
