@@ -492,7 +492,7 @@ class ChangedEntityMetadata:
     new_entity_registry_enabled_default: bool | None = attrs.field(default=None)
     new_fallback_name: str | None = attrs.field(default=None)
     new_suggested_display_precision: int | None = attrs.field(default=None)
-    new_unit: str | None = attrs.field(default=None)
+    new_native_unit_of_measurement: str | None = attrs.field(default=None)
     new_divisor: int | None = attrs.field(default=None)
     new_multiplier: float | None = attrs.field(default=None)
     new_min: float | None = attrs.field(default=None)
@@ -1295,7 +1295,7 @@ class QuirkBuilder:
         new_entity_registry_enabled_default: bool | None = None,
         new_fallback_name: str | None = None,
         new_suggested_display_precision: int | None = None,
-        new_unit: str | None = None,
+        new_native_unit_of_measurement: str | None = None,
         new_divisor: int | None = None,
         new_multiplier: float | None = None,
         new_min: float | None = None,
@@ -1324,7 +1324,7 @@ class QuirkBuilder:
                 new_entity_registry_enabled_default=new_entity_registry_enabled_default,
                 new_fallback_name=new_fallback_name,
                 new_suggested_display_precision=new_suggested_display_precision,
-                new_unit=new_unit,
+                new_native_unit_of_measurement=new_native_unit_of_measurement,
                 new_divisor=new_divisor,
                 new_multiplier=new_multiplier,
                 new_min=new_min,
