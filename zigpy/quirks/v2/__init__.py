@@ -491,6 +491,14 @@ class ChangedEntityMetadata:
     new_entity_category: EntityType | None = attrs.field(default=None)
     new_entity_registry_enabled_default: bool | None = attrs.field(default=None)
     new_fallback_name: str | None = attrs.field(default=None)
+    new_suggested_display_precision: int | None = attrs.field(default=None)
+    new_unit: str | None = attrs.field(default=None)
+    new_divisor: int | None = attrs.field(default=None)
+    new_multiplier: float | None = attrs.field(default=None)
+    new_min: float | None = attrs.field(default=None)
+    new_max: float | None = attrs.field(default=None)
+    new_step: float | None = attrs.field(default=None)
+    new_mode: str | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -1286,6 +1294,14 @@ class QuirkBuilder:
         new_entity_category: EntityType | None = None,
         new_entity_registry_enabled_default: bool | None = None,
         new_fallback_name: str | None = None,
+        new_suggested_display_precision: int | None = None,
+        new_unit: str | None = None,
+        new_divisor: int | None = None,
+        new_multiplier: float | None = None,
+        new_min: float | None = None,
+        new_max: float | None = None,
+        new_step: float | None = None,
+        new_mode: str | None = None,
     ) -> Self:
         """Change entity metadata for matching entities."""
         if cluster_id is not None and cluster_type is None:
@@ -1307,6 +1323,14 @@ class QuirkBuilder:
                 new_entity_category=new_entity_category,
                 new_entity_registry_enabled_default=new_entity_registry_enabled_default,
                 new_fallback_name=new_fallback_name,
+                new_suggested_display_precision=new_suggested_display_precision,
+                new_unit=new_unit,
+                new_divisor=new_divisor,
+                new_multiplier=new_multiplier,
+                new_min=new_min,
+                new_max=new_max,
+                new_step=new_step,
+                new_mode=new_mode,
             ),
         )
         return self
