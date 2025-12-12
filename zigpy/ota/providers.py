@@ -661,6 +661,103 @@ clwJRVSsq8EApeFREenCkRM0EIk=
 
 
 @register_provider
+class ZigpyOtaProvider(BaseZigpyProvider):
+    """OTA provider for zigpy-ota repository.
+
+    The provider supports multiple release channels:
+    - stable: Production releases (default)
+    - beta: Pre-release testing versions
+    - dev: Latest development builds
+
+    Configuration examples:
+        # Default: stable channel is enabled automatically (no config needed)
+
+        # Use beta channel instead of stable
+        extra_providers:
+          - type: zigpy_ota
+            channel: beta
+            override_previous: true
+
+        # Use custom version file URL (for testing/self-hosted)
+        extra_providers:
+          - type: zigpy_ota
+            url: https://example.org/custom/version.json
+            override_previous: true
+
+    The provider uses a two-step fetch process:
+    1. Fetch version file from GitHub to get the current index URL
+    2. Fetch the actual OTA index from the URL in the version file
+    """
+
+    NAME = "zigpy_ota"
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_ZIGPY_OTA
+
+    DEFAULT_CHANNEL = "stable"
+    SUPPORTED_CHANNELS = {"stable", "beta", "dev"}
+
+    VERSION_FILE_BASE_URL = (
+        "https://raw.githubusercontent.com/zigpy/zigpy-ota/release/version"
+    )
+
+    def __init__(
+        self,
+        url: str | typing.Literal[True] | None = None,
+        channel: str | None = None,
+        **kwargs,
+    ) -> None:
+        # If a specific URL is provided, use it directly (for testing or custom endpoints)
+        # Otherwise, construct the version file URL based on the channel
+        if url in (True, None):
+            self.channel = channel or self.DEFAULT_CHANNEL
+            if self.channel not in self.SUPPORTED_CHANNELS:
+                raise ValueError(
+                    f"Invalid channel '{self.channel}'. Must be one of: {self.SUPPORTED_CHANNELS}"
+                )
+            url = f"{self.VERSION_FILE_BASE_URL}/{self.channel}.json"
+        else:
+            # Custom URL provided (direct to version file)
+            self.channel = channel
+
+        super().__init__(url=url, **kwargs)
+
+    async def _load_index(
+        self, session: aiohttp.ClientSession
+    ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
+        # First fetch the version file to get the actual index URL
+        async with session.get(self.url) as rsp:
+            version_data = await rsp.json(content_type=None)
+
+        # Extract the index URL from the version file
+        # Format: {"schemas": {"zigpy_v1": {"version": "...", "url": "..."}}}
+        index_url = version_data["schemas"]["zigpy_v1"]["url"]
+
+        # Now fetch the actual OTA index
+        async with session.get(index_url) as rsp:
+            fw_lst = await rsp.json(content_type=None)
+
+        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
+
+        for img in self._load_zigpy_index(fw_lst):
+            channel_name = self.channel or "custom"
+            yield img.replace(source=f"zigpy-ota provider ({channel_name} channel)")
+
+    def __eq__(self, other: object) -> bool:
+        if (
+            not isinstance(other, self.__class__)
+            or super().__eq__(other) is NotImplemented
+        ):
+            return NotImplemented
+
+        return super().__eq__(other) and self.channel == other.channel
+
+    def __hash__(self) -> int:
+        return hash((self.url, self.channel, self.manufacturer_ids))
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(url={self.url!r}, channel={self.channel!r}, manufacturer_ids={self.manufacturer_ids!r})"
+
+
+@register_provider
 class AdvancedFileProvider(BaseOtaProvider):
     NAME = "advanced"
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_FOLDER

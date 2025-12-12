@@ -1,0 +1,24 @@
+{
+    "firmwares": [
+        {
+            "binary_url": "https://raw.githubusercontent.com/zigpy/zigpy-ota/dev/images/test/image1.zigbee",
+            "manufacturer_id": 1234,
+            "image_type": 12,
+            "file_version": 123456,
+            "file_size": 281920,
+            "checksum": "sha3-256:3338be694f50c5f338814986cdf0686453a888b84f424d792af4b9202398f392"
+        },
+        {
+            "binary_url": "https://raw.githubusercontent.com/zigpy/zigpy-ota/dev/images/test/image2.zigbee",
+            "manufacturer_id": 1234,
+            "image_type": 34,
+            "file_version": 12345678,
+            "file_size": 328956,
+            "checksum": "sha3-256:c2180708ad651d54bdac08b5eafe266105fa683554af6009c4f773228c9ca8b6",
+            "release_notes": "- Bug fixes\n- New features",
+            "min_hardware_version": 123,
+            "min_current_file_version": 456,
+            "release_url": "https://github.com/zigpy/zigpy-ota/pull/42"
+        }
+    ]
+}
