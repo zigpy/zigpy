@@ -302,6 +302,7 @@ REMOTE_PROVIDER_SCHEMA = {
                     # "min_current_file_version",
                     # "max_current_file_version",
                     # "release_notes",
+                    # "release_url",
                     # "specificity",
                 ],
             },
