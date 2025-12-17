@@ -9,6 +9,7 @@ import contextlib
 import contextvars
 from datetime import UTC, datetime
 import errno
+import inspect
 import logging
 import os
 import random
@@ -48,6 +49,7 @@ TRANSIENT_CONNECTION_ERRORS = {
 
 ENERGY_SCAN_WARN_THRESHOLD = 0.75 * 255
 _R = TypeVar("_R")
+_C = TypeVar("_C", bound=typing.Callable)
 
 CHANNEL_CHANGE_BROADCAST_DELAY_S = 1.0
 CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S = 1.0
@@ -94,6 +96,35 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._packet_priority_var = contextvars.ContextVar(
             "request_priority", default=t.PacketPriority.NORMAL
         )
+
+    def wrap_callback(
+        self, src: zigpy.device.Device | zigpy.listeners.ANY_DEVICE, callback: _C
+    ) -> _C:
+        """Wrap a callback to log exceptions and run as task if needed."""
+        if inspect.iscoroutinefunction(callback):
+
+            async def _async_callback(*args: Any, **kwargs: Any) -> Any:
+                try:
+                    return await callback(*args, **kwargs)
+                except Exception as exc:  # noqa: BLE001
+                    LOGGER.warning(
+                        "Device %r callback failed - %r", src, exc, exc_info=True
+                    )
+
+            def _callback(*args: Any, **kwargs: Any) -> Any:
+                self.create_task(_async_callback(*args, **kwargs))
+
+        else:
+
+            def _callback(*args: Any, **kwargs: Any) -> Any:
+                try:
+                    return callback(*args, **kwargs)
+                except Exception as exc:  # noqa: BLE001
+                    LOGGER.warning(
+                        "Device %r callback failed - %r", src, exc, exc_info=True
+                    )
+
+        return _callback
 
     def create_task(
         self, target: Coroutine[Any, Any, _R], name: str | None = None
@@ -1348,7 +1379,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> typing.Callable[[], None]:
         listener = zigpy.listeners.CallbackListener(
             matchers=tuple(filters),
-            callback=callback,
+            callback=self.wrap_callback(src, callback),
         )
 
         self._req_listeners[src].append(listener)

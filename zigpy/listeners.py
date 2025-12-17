@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import inspect
 import logging
 import typing
 
@@ -100,26 +99,13 @@ class CallbackListener(BaseRequestListener):
     callback: typing.Callable[
         [foundation.ZCLHeader | zdo_t.ZDOHeader, foundation.CommandSchema], typing.Any
     ]
-    _tasks: set[asyncio.Task] = dataclasses.field(default_factory=set)
 
     def _resolve(
         self,
         hdr: foundation.ZCLHeader | zdo_t.ZDOHeader,
         command: foundation.CommandSchema,
     ) -> bool:
-        try:
-            potential_awaitable = self.callback(hdr, command)
-            if inspect.isawaitable(potential_awaitable):
-                task: asyncio.Task = asyncio.get_running_loop().create_task(
-                    potential_awaitable, name="CallbackListener"
-                )
-                self._tasks.add(task)
-                task.add_done_callback(self._tasks.remove)
-        except Exception:  # noqa: BLE001
-            LOGGER.warning(
-                "Caught an exception while executing callback", exc_info=True
-            )
-
+        self.callback(hdr, command)
         # Callbacks are always resolved
         return True
 
