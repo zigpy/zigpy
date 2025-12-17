@@ -275,6 +275,7 @@ REMOTE_PROVIDER_SCHEMA = {
                     "manufacturer_id": {"type": "integer"},
                     "changelog": {"type": "string"},
                     "release_notes": {"type": "string"},
+                    "release_url": {"type": "string", "format": "uri"},
                     "checksum": {
                         "type": "string",
                         "pattern": "^sha3-256:[a-f0-9]{64}$",
@@ -301,6 +302,7 @@ REMOTE_PROVIDER_SCHEMA = {
                     # "min_current_file_version",
                     # "max_current_file_version",
                     # "release_notes",
+                    # "release_url",
                     # "specificity",
                 ],
             },

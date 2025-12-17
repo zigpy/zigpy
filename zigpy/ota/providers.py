@@ -50,6 +50,7 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
 
     changelog: str | None = None
     release_notes: str | None = None
+    release_url: str | None = None
 
     min_hardware_version: int | None = None
     max_hardware_version: int | None = None
@@ -481,6 +482,7 @@ class BaseZigpyProvider(BaseOtaProvider):
                 "max_current_file_version": fw.get("max_current_file_version"),
                 "changelog": fw.get("changelog"),
                 "release_notes": fw.get("release_notes"),
+                "release_url": fw.get("release_url"),
                 "specificity": fw.get("specificity"),
                 "source": "",  # Set in a subclass
             }
