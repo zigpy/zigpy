@@ -388,7 +388,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
             schema=schema,
             manufacturer=manufacturer,
             tsn=tsn,
-            disable_default_response=self.is_client,
+            disable_default_response=not expect_reply,
             direction=(
                 foundation.Direction.Server_to_Client
                 if self.is_client

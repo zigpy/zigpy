@@ -1521,6 +1521,7 @@ async def test_poll_control_checkin_callback(
                     start_fast_polling=expected_fast_poll,
                     fast_poll_timeout=int(device.DEFAULT_FAST_POLL_TIMEOUT * 4),
                     tsn=0x12,
+                    expect_reply=False,
                 )
             ]
         else:
@@ -1529,6 +1530,7 @@ async def test_poll_control_checkin_callback(
                     start_fast_polling=expected_fast_poll,
                     fast_poll_timeout=0,
                     tsn=0x12,
+                    expect_reply=False,
                 )
             ]
 
