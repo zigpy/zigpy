@@ -355,6 +355,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     fast_poll_timeout=int(DEFAULT_FAST_POLL_TIMEOUT * 4),
                     tsn=zcl_hdr.tsn,
                     expect_reply=False,
+                    disable_default_response=True,
                 )
             else:
                 await poll_control.checkin_response(
@@ -362,6 +363,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     fast_poll_timeout=0,
                     tsn=zcl_hdr.tsn,
                     expect_reply=False,
+                    disable_default_response=True,
                 )
 
     async def begin_fast_polling(
