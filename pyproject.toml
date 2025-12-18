@@ -16,7 +16,7 @@ requires-python = ">=3.11"
 dependencies = [
     "attrs",
     "aiohttp",
-    "aiosqlite>=0.20.0",
+    "aiosqlite>=0.20.0,<0.22.0",
     "crccheck",
     "cryptography",
     "voluptuous",
