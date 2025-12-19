@@ -464,7 +464,13 @@ class BaseZigpyProvider(BaseOtaProvider):
     JSON_SCHEMA = json_schemas.REMOTE_PROVIDER_SCHEMA
 
     @classmethod
-    def _load_zigpy_index(cls, index: dict, *, index_root: pathlib.Path | None = None):
+    def _load_zigpy_index(
+        cls,
+        index: dict,
+        *,
+        index_root: pathlib.Path | None = None,
+        ssl_ctx: ssl.SSLContext | None = None,
+    ):
         jsonschema.validate(index, cls.JSON_SCHEMA)
 
         for fw in index["firmwares"]:
@@ -492,7 +498,9 @@ class BaseZigpyProvider(BaseOtaProvider):
                     **shared_kwargs, path=index_root / fw["path"]
                 )
             else:
-                yield RemoteOtaImageMetadata(**shared_kwargs, url=fw["binary_url"])
+                yield RemoteOtaImageMetadata(
+                    **shared_kwargs, url=fw["binary_url"], ssl_ctx=ssl_ctx
+                )
 
 
 @register_provider
@@ -679,6 +687,44 @@ class ZigpyOtaProvider(BaseZigpyProvider):
         "https://raw.githubusercontent.com/zigpy/zigpy-ota/release/version"
     )
 
+    # Combined SSL context for downloading images from IKEA and Hue servers
+    # (zigpy-ota index may point to images hosted on these servers)
+    SSL_CTX: ssl.SSLContext = ssl.create_default_context()
+    # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
+    SSL_CTX.load_verify_locations(
+        cadata="""\
+-----BEGIN CERTIFICATE-----
+MIICGDCCAZ+gAwIBAgIUdfH0KDnENv/dEcxH8iVqGGGDqrowCgYIKoZIzj0EAwMw
+SzELMAkGA1UEBhMCU0UxGjAYBgNVBAoMEUlLRUEgb2YgU3dlZGVuIEFCMSAwHgYD
+VQQDDBdJS0VBIEhvbWUgc21hcnQgUm9vdCBDQTAgFw0yMTA1MjYxOTAxMDlaGA8y
+MDcxMDUxNDE5MDEwOFowSzELMAkGA1UEBhMCU0UxGjAYBgNVBAoMEUlLRUEgb2Yg
+U3dlZGVuIEFCMSAwHgYDVQQDDBdJS0VBIEhvbWUgc21hcnQgUm9vdCBDQTB2MBAG
+ByqGSM49AgEGBSuBBAAiA2IABIDRUvKGFMUu2zIhTdgfrfNcPULwMlc0TGSrDLBA
+oTr0SMMV4044CRZQbl81N4qiuHGhFzCnXapZogkiVuFu7ZqSslsFuELFjc6ZxBjk
+Kmud+pQM6QQdsKTE/cS06dA+P6NCMEAwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4E
+FgQUcdlEnfX0MyZA4zAdY6CLOye9wfwwDgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49
+BAMDA2cAMGQCMG6mFIeB2GCFch3r0Gre4xRH+f5pn/bwLr9yGKywpeWvnUPsQ1KW
+ckMLyxbeNPXdQQIwQc2YZDq/Mz0mOkoheTUWiZxK2a5bk0Uz1XuGshXmQvEg5TGy
+2kVHW/Mz9/xwpy4u
+-----END CERTIFICATE-----"""
+    )
+    # `openssl s_client -connect otau.meethue.com:443 -showcerts`
+    SSL_CTX.load_verify_locations(
+        cadata="""\
+-----BEGIN CERTIFICATE-----
+MIIBwDCCAWagAwIBAgIJAJtrMkoTxs+WMAoGCCqGSM49BAMCMDIxCzAJBgNVBAYT
+Ak5MMRQwEgYDVQQKDAtQaGlsaXBzIEh1ZTENMAsGA1UEAwwEcm9vdDAgFw0xNjA4
+MjUwNzU5NDNaGA8yMDY4MDEwNTA3NTk0M1owMjELMAkGA1UEBhMCTkwxFDASBgNV
+BAoMC1BoaWxpcHMgSHVlMQ0wCwYDVQQDDARyb290MFkwEwYHKoZIzj0CAQYIKoZI
+zj0DAQcDQgAEENC1JOl6BxJrwCb+YK655zlM57VKFSi5OHDsmlCaF/EfTGGgU08/
+JUtkCyMlHUUoYBZyzCBKXqRKkrT512evEKNjMGEwHQYDVR0OBBYEFAlkFYACVzir
+qTr++cWia8AKH/fOMB8GA1UdIwQYMBaAFAlkFYACVzirqTr++cWia8AKH/fOMA8G
+A1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49BAMCA0gAMEUC
+IQDcGfyXaUl5hjr5YE8m2piXhMcDzHTNbO1RvGgz4r9IswIgFTTw/R85KyfIiW+E
+clwJRVSsq8EApeFREenCkRM0EIk=
+-----END CERTIFICATE-----"""
+    )
+
     def __init__(
         self,
         url: str | typing.Literal[True] | None = None,
@@ -717,7 +763,7 @@ class ZigpyOtaProvider(BaseZigpyProvider):
 
         jsonschema.validate(fw_lst, self.JSON_SCHEMA)
 
-        for img in self._load_zigpy_index(fw_lst):
+        for img in self._load_zigpy_index(fw_lst, ssl_ctx=self.SSL_CTX):
             channel_name = self.channel or "custom"
             yield img.replace(source=f"zigpy-ota provider ({channel_name} channel)")
 
