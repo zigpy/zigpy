@@ -41,7 +41,7 @@ def download_external_files():
         if not path.is_file():
             try:
                 data = asyncio.run(download(obj["url"]))
-            except (TimeoutError, aiohttp.ClientResponseError) as e:
+            except (TimeoutError, aiohttp.ClientError) as e:
                 _LOGGER.error("Failed to download %s: %s", obj["url"], e)
                 continue
             else:
