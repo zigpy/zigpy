@@ -662,27 +662,7 @@ clwJRVSsq8EApeFREenCkRM0EIk=
 
 @register_provider
 class ZigpyOtaProvider(BaseZigpyProvider):
-    """OTA provider for zigpy-ota repository.
-
-    The provider supports multiple release channels:
-    - stable: Production releases (default)
-    - beta: Pre-release testing versions
-    - dev: Latest development builds
-
-    Configuration examples:
-        # Default: stable channel is enabled automatically (no config needed)
-
-        # Use beta channel instead of stable
-        extra_providers:
-          - type: zigpy_ota
-            channel: beta
-            override_previous: true
-
-        # Use custom version file URL (for testing/self-hosted)
-        extra_providers:
-          - type: zigpy_ota
-            url: https://example.org/custom/version.json
-            override_previous: true
+    """OTA provider for zigpy-ota repository with multiple release channels.
 
     The provider uses a two-step fetch process:
     1. Fetch version file from GitHub to get the current index URL
