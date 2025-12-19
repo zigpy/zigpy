@@ -820,3 +820,7 @@ async def test_zigpy_ota_provider_equality():
     assert provider1 != provider3
     assert provider1 != provider4
     assert provider1 != providers.RemoteZigpyProvider("https://example.org/custom.json")
+
+    # Test __hash__ (required for combine_concurrent_calls in get_ota_images)
+    assert len({provider1, provider2}) == 1
+    assert len({provider1, provider3, provider4}) == 3
