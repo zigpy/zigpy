@@ -321,7 +321,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
 
     def unsupported_attribute_added(
-        self, cluster: zigpy.typing.ClusterType, attrid: int
+        self,
+        cluster: zigpy.typing.ClusterType,
+        attrid: int,
+        manufacturer_code: int,
     ) -> None:
         self.enqueue(
             "_unsupported_attribute_added",
@@ -986,7 +989,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         return True
 
     async def _migrate_tables(
-        self, table_map: dict[str, str], *, errors: str = "raise"
+        self, table_map: dict[str, str | None], *, errors: str = "raise"
     ):
         """Copy rows from one set of tables into another."""
 
@@ -1388,8 +1391,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _run_data_migrations(self) -> None:
         """Run any data migrations needed after loading the database."""
         async with self.execute(
-            f"SELECT * FROM attributes_cache_v14 WHERE manufacturer_code = :manufacturer_code",
-            {"manufacturer_code": UNMIGRATED_MANUFACTURER_CODE},
+            "SELECT * FROM attributes_cache_v14 WHERE manufacturer_code = :unmigrated",
+            {"unmigrated": UNMIGRATED_MANUFACTURER_CODE},
         ) as cursor:
             async for (
                 ieee,
@@ -1425,7 +1428,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
 
                 await self.execute(
-                    f"""
+                    """
                     UPDATE attributes_cache_v14
                     SET manufacturer_code = :manufacturer_code
                     WHERE
