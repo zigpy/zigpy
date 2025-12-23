@@ -770,7 +770,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     dev.model = decode_str_attribute(value)
 
     async def _load_unsupported_attributes(self) -> None:
-        """Load unsuppoted attributes."""
+        """Load unsupported attributes."""
 
         async with self.execute(
             f"SELECT * FROM unsupported_attributes{DB_V}"
@@ -801,14 +801,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 except KeyError:
                     continue
 
-                with suppress_events():
-                    cluster.add_unsupported_attribute(
+                try:
+                    with suppress_events():
+                        cluster.add_unsupported_attribute(
+                            attr_id,
+                            manufacturer_code=(
+                                UNDEFINED
+                                if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
+                                else manufacturer_code
+                            ),
+                        )
+                except KeyError:
+                    LOGGER.warning(
+                        "Unable to find attribute %r for unsupported attribute, skipping",
                         attr_id,
-                        manufacturer_code=(
-                            UNDEFINED
-                            if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
-                            else manufacturer_code
-                        ),
                     )
 
     async def _load_devices(self) -> None:

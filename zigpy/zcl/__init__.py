@@ -777,7 +777,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         if manufacturer is not None:
             return manufacturer
 
-        if definition.manufacturer_code is not None:
+        if definition.manufacturer_code not in (None, UNDEFINED):
             return definition.manufacturer_code
 
         if 0xFC00 <= self.cluster_id <= 0xFFFF or definition.is_manufacturer_specific:
