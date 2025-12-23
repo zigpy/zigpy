@@ -852,16 +852,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         for attr_def in attribute_defs:
             if allow_cache or only_cache:
-                try:
-                    cached_value = self._get_cached_attribute(attr_def, default=None)
-                except UnsupportedAttribute:
-                    # If an attribute is known to be unsupported, we do not read it
+                if self._attr_cache.is_unsupported(attr_def):
                     failure[attribute_map[attr_def]] = (
                         foundation.Status.UNSUPPORTED_ATTRIBUTE
                     )
                     continue
 
-                if cached_value is not None:
+                try:
+                    cached_value = self._get_cached_attribute(attr_def)
+                except KeyError:
+                    pass
+                else:
                     # If an attribute was in the cache, we do not read it
                     success[attribute_map[attr_def]] = cached_value
                     continue
