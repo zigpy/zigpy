@@ -196,13 +196,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     str(exc),
                     exc_info=True,
                 )
-            except Exception as ex:  # noqa: BLE001
-                LOGGER.error(
-                    "Unexpected error while processing %s(%s): %s",
-                    cb_name,
-                    args,
-                    ex,
-                    exc_info=True,
+            except Exception:  # noqa: BLE001
+                LOGGER.exception(
+                    "Unexpected error while processing %s(%s)", cb_name, args
                 )
             self._callback_handlers.task_done()
 
@@ -628,7 +624,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 AND cluster_type = :cluster_type
                 AND cluster_id = :cluster_id
                 AND attr_id = :attr_id
-                AND manufacturer_code = :manufacturer_code
+                AND manufacturer_code IS :manufacturer_code
             """
 
         await self.execute(

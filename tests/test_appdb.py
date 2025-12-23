@@ -444,7 +444,9 @@ async def test_attribute_update(tmp_path, dev_init):
     app.device_initialized(dev)
     await app.shutdown()
 
-    attr_update_time = clus._attr_last_updated[0x0004]
+    attr_update_time = clus._attr_cache.get_last_updated(
+        Basic.AttributeDefs.manufacturer
+    )
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app_with_db(db)
@@ -456,7 +458,10 @@ async def test_attribute_update(tmp_path, dev_init):
     assert clus._attr_cache[0x0004] == test_manufacturer
     assert clus._attr_cache[0x0005] == test_model
 
-    assert (attr_update_time - clus._attr_last_updated[0x0004]) < timedelta(seconds=0.1)
+    assert (
+        attr_update_time
+        - clus._attr_cache.get_last_updated(Basic.AttributeDefs.manufacturer)
+    ) < timedelta(seconds=0.1)
 
     await app2.shutdown()
 
@@ -487,7 +492,9 @@ async def test_attribute_update_short_interval(tmp_path):
 
     # update an attribute twice in a short interval
     clus.update_attribute(0x4000, "1.0")
-    attr_update_time_first = clus._attr_last_updated[0x4000]
+    attr_update_time_first = clus._attr_cache.get_last_updated(
+        Basic.AttributeDefs.sw_build_id
+    )
 
     # update attribute again 10 seconds later
     fake_time = datetime.now(UTC) + timedelta(seconds=10)
@@ -504,9 +511,10 @@ async def test_attribute_update_short_interval(tmp_path):
     assert clus._attr_cache[0x4000] == "2.0"  # verify second attribute update was saved
 
     # verify the first update attribute time was not overwritten, as it was within the short interval
-    assert (attr_update_time_first - clus._attr_last_updated[0x0004]) < timedelta(
-        seconds=0.1
-    )
+    assert (
+        attr_update_time_first
+        - clus._attr_cache.get_last_updated(Basic.AttributeDefs.sw_build_id)
+    ) < timedelta(seconds=0.1)
 
     await app2.shutdown()
 
