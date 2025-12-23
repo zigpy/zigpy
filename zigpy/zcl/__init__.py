@@ -900,7 +900,25 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self._update_attribute(attrid, value)
 
     def _update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
-        attr_def = self.find_attribute(attrid)
+        try:
+            attr_def = self.find_attribute(attrid)
+        except KeyError:
+            if value is not None:
+                self._attr_cache.set_legacy_value(attrid, value)
+                self.emit(
+                    AttributeUpdatedEvent.event_type,
+                    AttributeUpdatedEvent(
+                        device_ieee=str(self.endpoint.device.ieee),
+                        endpoint_id=self.endpoint.endpoint_id,
+                        cluster_type=self._type,
+                        cluster_id=self.cluster_id,
+                        attribute_name=None,
+                        attribute_id=attrid,
+                        manufacturer_code=None,
+                        value=value,
+                    ),
+                )
+            return
 
         if value is None:
             self._attr_cache.remove(attr_def)
