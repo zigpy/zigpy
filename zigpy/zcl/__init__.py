@@ -739,6 +739,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             return definition.manufacturer_code
 
         if 0xFC00 <= self.cluster_id <= 0xFFFF or definition.is_manufacturer_specific:
+            LOGGER.warning(
+                "Cluster %s uses deprecated is_manufacturer_specific without "
+                "explicit manufacturer_code. Please update to use "
+                "manufacturer_code=0x%04X in the definition.",
+                type(self).__name__,
+                self.endpoint.device.manufacturer_id or 0,
+            )
             return (
                 self.manufacturer_id_override
                 if self.manufacturer_id_override is not UNDEFINED
@@ -818,7 +825,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     continue
 
             # Otherwise, populate the groups of attributes to read
-            reads_by_manuf_code[attr_def.manufacturer_code].append(attr_def)
+            effective_manuf = self._get_effective_manufacturer_code(attr_def, None)
+            reads_by_manuf_code[effective_manuf].append(attr_def)
 
         if only_cache:
             LOGGER.debug(
@@ -933,26 +941,26 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         """Write attributes to device with internal 'attributes' validation."""
 
         # Group attributes by effective manufacturer code
-        writes_by_manuf_code: defaultdict[int | None, dict[int, Any]] = defaultdict(
-            dict
-        )
+        writes_by_manuf_code: defaultdict[
+            int | None, list[tuple[foundation.ZCLAttributeDef, Any]]
+        ] = defaultdict(list)
 
         for attr, value in attributes.items():
             attr_def = self.find_attribute(attr, manufacturer_code=manufacturer)
-            writes_by_manuf_code[attr_def.manufacturer_code][attr_def.id] = value
+            effective_manuf = self._get_effective_manufacturer_code(attr_def, None)
+            writes_by_manuf_code[effective_manuf].append((attr_def, value))
 
         # Write each group separately and merge results
         results: list[foundation.WriteAttributesStatusRecord] = []
 
-        for manufacturer_code, attribute_values in writes_by_manuf_code.items():
+        for manufacturer_code, attribute_list in writes_by_manuf_code.items():
             attrs = []
             attr_defs: dict[int, foundation.ZCLAttributeDef] = {}
+            attribute_values: dict[int, Any] = {}
 
-            for attr_id, value in attribute_values.items():
-                attr_def = self.find_attribute(
-                    attr_id, manufacturer_code=manufacturer_code
-                )
-                attr_defs[attr_id] = attr_def
+            for attr_def, value in attribute_list:
+                attr_defs[attr_def.id] = attr_def
+                attribute_values[attr_def.id] = value
 
                 attr = foundation.Attribute(attr_def.id, foundation.TypeValue())
                 attr.value.type = attr_def.zcl_type
@@ -1085,12 +1093,16 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             cfg.max_interval = reporting_config.max_interval
             cfg.reportable_change = reporting_config.reportable_change
 
-            reporting_by_manuf_code[attr_def.manufacturer_code].append((attr_def, cfg))
+            effective_manuf = self._get_effective_manufacturer_code(attr_def, None)
+            reporting_by_manuf_code[effective_manuf].append((attr_def, cfg))
 
         results = []
 
         for manufacturer_code, reporting_configs in reporting_by_manuf_code.items():
             configs = [cfg for _attr_def, cfg in reporting_configs]
+            attr_defs_by_id = {
+                attr_def.id: attr_def for attr_def, _cfg in reporting_configs
+            }
 
             rsp = await self._configure_reporting(
                 configs, manufacturer=manufacturer_code
@@ -1124,9 +1136,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     )
 
             for result in reporting_results:
-                attr_def = self.find_attribute(
-                    result.attrid, manufacturer_code=manufacturer_code
-                )
+                attr_def = attr_defs_by_id[result.attrid]
 
                 if result.status == foundation.Status.SUCCESS:
                     self._attr_cache.remove_unsupported(attr_def)
@@ -1180,7 +1190,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             command_id,
             command.schema,
             *args,
-            manufacturer=command.manufacturer_code,
+            manufacturer=self._get_effective_manufacturer_code(command, manufacturer),
             expect_reply=expect_reply,
             **kwargs,
         )
@@ -1199,7 +1209,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             command_id,
             command.schema,
             *args,
-            manufacturer=command.manufacturer_code,
+            manufacturer=self._get_effective_manufacturer_code(command, manufacturer),
             **kwargs,
         )
 

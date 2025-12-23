@@ -1027,8 +1027,6 @@ class FrameControl(t.IntStruct, t.uint8_t):
 
 
 class ZCLHeader(t.Struct):
-    NO_MANUFACTURER_ID = -1  # type: typing.Literal
-
     frame_control: FrameControl
     manufacturer: t.uint16_t = t.StructField(
         requires=lambda hdr: hdr.frame_control.is_manufacturer_specific
@@ -1043,10 +1041,6 @@ class ZCLHeader(t.Struct):
         tsn: int | t.uint8_t | None = None,
         command_id: int | GeneralCommand | None = None,
     ) -> Self:
-        # Allow "auto manufacturer ID" to be disabled in higher layers
-        if manufacturer is cls.NO_MANUFACTURER_ID:
-            manufacturer = None
-
         if frame_control is not None and manufacturer is not None:
             frame_control = frame_control.replace(is_manufacturer_specific=True)
 
@@ -1062,9 +1056,6 @@ class ZCLHeader(t.Struct):
         name: str,
         value: t.uint16_t | FrameControl | t.uint8_t | GeneralCommand | None,
     ) -> None:
-        if name == "manufacturer" and value is self.NO_MANUFACTURER_ID:
-            value = None
-
         super().__setattr__(name, value)
 
         if name == "manufacturer" and self.frame_control is not None:
