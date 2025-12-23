@@ -194,6 +194,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     cb_name,
                     args,
                     str(exc),
+                    exc_info=True,
                 )
             except Exception as ex:  # noqa: BLE001
                 LOGGER.error(
@@ -518,14 +519,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 cluster.cluster_id,
                 attrid,
                 manufacturer_code,
-                value,
-                last_updated.timestamp(),
+                cache_item.value,
+                cache_item.last_updated.timestamp(),
             )
             for cluster in ep.clusters
-            for (attrid, manufacturer_code), (
-                value,
-                last_updated,
-            ) in cluster._attr_cache._cache.items()
+            for (
+                attrid,
+                manufacturer_code,
+            ), cache_item in cluster._attr_cache._cache.items()
         ]
         q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code)
@@ -722,9 +723,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 if cluster_id not in clusters:
                     continue
 
-                clusters[cluster_id]._attr_cache[attr_id, manufacturer_code] = value
-                clusters[cluster_id]._attr_last_updated[attr_id] = (
-                    datetime.fromtimestamp(last_updated, UTC)
+                cluster = clusters[cluster_id]
+                attr_def = cluster.find_attribute(
+                    attr_id, manufacturer_code=manufacturer_code
+                )
+                clusters[cluster_id]._attr_cache.set_value(
+                    attr_def,
+                    value,
+                    last_updated=datetime.fromtimestamp(last_updated, UTC),
                 )
 
                 LOGGER.debug(

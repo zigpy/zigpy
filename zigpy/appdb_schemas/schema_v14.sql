@@ -194,6 +194,7 @@ CREATE TABLE unsupported_attributes_v14 (
     cluster_type INTEGER NOT NULL,
     cluster_id INTEGER NOT NULL,
     attr_id INTEGER NOT NULL,
+    manufacturer_code INTEGER,
 
     FOREIGN KEY(ieee)
         REFERENCES devices_v14(ieee)
@@ -204,7 +205,7 @@ CREATE TABLE unsupported_attributes_v14 (
 );
 
 CREATE UNIQUE INDEX unsupported_attributes_idx_v14
-    ON unsupported_attributes_v14(ieee, endpoint_id, cluster_type, cluster_id, attr_id);
+    ON unsupported_attributes_v14(ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code);
 
 
 -- network backups

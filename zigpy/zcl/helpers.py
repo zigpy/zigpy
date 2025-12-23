@@ -53,11 +53,17 @@ class AttributeCache:
         self._raise_if_unsupported(attr_def)
         return self._cache[attr_def.id, attr_def.manufacturer_code].last_updated
 
-    def set_value(self, attr_def: ZCLAttributeDef, value: Any) -> None:
+    def set_value(
+        self,
+        attr_def: ZCLAttributeDef,
+        value: Any,
+        *,
+        last_updated: datetime | None = None,
+    ) -> None:
         self.remove_unsupported(attr_def)
         self._cache[attr_def.id, attr_def.manufacturer_code] = CacheItem(
             value=value,
-            last_updated=datetime.now(UTC),
+            last_updated=datetime.now(UTC) if last_updated is None else last_updated,
         )
 
     def get(self, key: int, default: Any | None = None) -> Any:
