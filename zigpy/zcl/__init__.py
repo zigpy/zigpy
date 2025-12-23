@@ -3,11 +3,10 @@ from __future__ import annotations
 import collections
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime
+from dataclasses import dataclass
 import enum
 import functools
 import itertools
-from dataclasses import dataclass
 import logging
 import types
 from typing import TYPE_CHECKING, Any, Final
@@ -19,14 +18,20 @@ from zigpy.event import EventBase
 import zigpy.types as t
 from zigpy.typing import UNDEFINED, AddressingMode, EndpointType, UndefinedType
 from zigpy.zcl import foundation
-from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs
+from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs, ReportingDirection
+
+from .helpers import AttributeCache, ReportingConfig, UnsupportedAttribute
 
 if TYPE_CHECKING:
-    from zigpy.appdb import PersistingListener
     from zigpy.endpoint import Endpoint
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+class ClusterType(enum.IntEnum):
+    Server = 0
+    Client = 1
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -35,10 +40,15 @@ class AttributeReadEvent:
 
     event_type: Final[str] = "attribute_read"
 
+    device_ieee: str
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
     attribute_name: str
     attribute_id: int
-    manufacturer_code: int | None
-    value: Any
+    manufacturer_code: int
+    raw_value: Any | None
+    value: Any | None
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -47,10 +57,96 @@ class AttributeReportedEvent:
 
     event_type: Final[str] = "attribute_report"
 
+    device_ieee: str
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    attribute_name: str | None
+    attribute_id: int
+    manufacturer_code: int
+    raw_value: Any | None
+    value: Any
+
+
+@dataclass(kw_only=True, frozen=True)
+class AttributeWrittenEvent:
+    """Event generated when an attribute is written."""
+
+    event_type: Final[str] = "attribute_written"
+
+    device_ieee: str
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
     attribute_name: str
     attribute_id: int
     manufacturer_code: int | None
+    value: Any | None
+    status: foundation.Status
+
+
+@dataclass(kw_only=True, frozen=True)
+class AttributeUpdatedEvent:
+    """Event generated when an attribute has been updated externally (deprecated)."""
+
+    event_type: Final[str] = "attribute_report"
+
+    device_ieee: str
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    attribute_name: str | None
+    attribute_id: int
+    manufacturer_code: int
     value: Any
+
+
+@dataclass(kw_only=True, frozen=True)
+class AttributeUnsupportedEvent:
+    """Event generated when an attribute is found to be unsupported."""
+
+    event_type: Final[str] = "attribute_unsupported"
+
+    device_ieee: str
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    attribute_name: str
+    attribute_id: int
+    manufacturer_code: int | None
+
+
+@dataclass(kw_only=True, frozen=True)
+class AttributeReportingConfiguredEvent:
+    """Event generated when attribute reporting is configured."""
+
+    event_type: Final[str] = "attribute_reporting_configured"
+
+    device_ieee: str
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    attribute_name: str
+    attribute_id: int
+    manufacturer_code: int | None
+    min_interval: int
+    max_interval: int
+    reportable_change: Any | None
+
+
+@dataclass(kw_only=True, frozen=True)
+class AttributeClearedEvent:
+    """Event generated when an attribute is cleared."""
+
+    event_type: Final[str] = "attribute_cleared"
+
+    device_ieee: str
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    attribute_name: str
+    attribute_id: int
+    manufacturer_code: int | None
 
 
 def convert_list_schema(
@@ -75,11 +171,6 @@ def convert_list_schema(
     )
 
     return temp.with_compiled_schema().schema
-
-
-class ClusterType(enum.IntEnum):
-    Server = 0
-    Client = 1
 
 
 class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
@@ -282,12 +373,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def __init__(self, endpoint: EndpointType, is_server: bool = True) -> None:
         super().__init__()
         self._endpoint: EndpointType = endpoint
-        self._attr_cache: dict[int, Any] = {}
-        self._attr_last_updated: dict[int, datetime] = {}
-        self.unsupported_attributes: set[int | str] = set()
         self._type: ClusterType = (
             ClusterType.Server if is_server else ClusterType.Client
         )
+
+        self._attr_cache: AttributeCache = AttributeCache(self)
 
     def find_attribute(
         self,
@@ -612,9 +702,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 self.emit(
                     AttributeReportedEvent(
+                        device_ieee=str(self.endpoint.device.ieee),
+                        endpoint_id=self.endpoint.endpoint_id,
+                        cluster_type=self._type,
+                        cluster_id=self.cluster_id,
                         attribute_name=attr_name,
                         attribute_id=attr.attrid,
                         manufacturer_code=hdr.manufacturer,
+                        raw_value=attr.value.value,
                         value=value,
                     )
                 )
@@ -658,16 +753,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ) -> Any | None:
         """Get a cached attribute value, if it exists and is fresh enough."""
         try:
-            return self._attr_cache[attr_def.id, attr_def.manufacturer_code]
+            return self._attr_cache.get_value(attr_def)
         except KeyError:
             if default is UNDEFINED:
                 raise
 
             return default
-
-    def _get_unsupported_attribute(self, attr_def: foundation.ZCLAttributeDef) -> bool:
-        """Check if an attribute is known to be unsupported."""
-        return attr_def.id in self.unsupported_attributes
 
     async def read_attributes(
         self,
@@ -716,7 +807,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     # If an attribute was in the cache, we do not read it
                     success[attribute_map[attr_def]] = cached_value
                     continue
-                elif self._get_unsupported_attribute(attr_def):
+
+                try:
+                    self._attr_cache.get_value(attr_def)
+                except UnsupportedAttribute:
                     # If an attribute is known to be unsupported, we do not read it
                     failure[attribute_map[attr_def]] = (
                         foundation.Status.UNSUPPORTED_ATTRIBUTE
@@ -755,41 +849,74 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         attr_def = potential_attributes[record.attrid]
                         value = attr_def.type(record.value.value)
 
-                        # TODO: get rid of `_update_attribute`
-                        self._update_attribute(record.attrid, value)
                         success[attribute_map[attr_def]] = value
-                        self.remove_unsupported_attribute(record.attrid)
+
+                        self._attr_cache.set_value(attr_def, value)
+                        self.emit(
+                            AttributeReadEvent(
+                                device_ieee=str(self.endpoint.device.ieee),
+                                endpoint_id=self.endpoint.endpoint_id,
+                                cluster_type=self._type,
+                                cluster_id=self.cluster_id,
+                                attribute_name=attr_def.name,
+                                attribute_id=attr_def.id,
+                                manufacturer_code=attr_def.manufacturer_code,
+                                raw_value=record.value.value,
+                                value=value,
+                            )
+                        )
                     else:
                         if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
-                            self.add_unsupported_attribute(record.attrid)
+                            self.emit(
+                                AttributeUnsupportedEvent(
+                                    device_ieee=str(self.endpoint.device.ieee),
+                                    endpoint_id=self.endpoint.endpoint_id,
+                                    cluster_type=self._type,
+                                    cluster_id=self.cluster_id,
+                                    attribute_name=attr_def.name,
+                                    attribute_id=attr_def.id,
+                                    manufacturer_code=manufacturer_code,
+                                )
+                            )
 
                         failure[attribute_map[attr_def]] = record.status
 
         return success, failure
 
-    def _write_attr_records(
-        self, attributes: dict[str | int, Any]
-    ) -> list[foundation.Attribute]:
-        args = []
-        for attrid, value in attributes.items():
-            attr_def = self.find_attribute(attrid)
-            attr = foundation.Attribute(attr_def.id, foundation.TypeValue())
-            attr.value.type = attr_def.zcl_type
+    def update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
+        """Update specified attribute with specified value"""
+        self._update_attribute(attrid, value)
 
-            try:
-                attr.value.value = attr_def.type(value)
-            except ValueError as e:
-                if isinstance(attrid, int):
-                    attrid = f"0x{attrid:04X}"
+    def _update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
+        attr_def = self.find_attribute(attrid)
 
-                raise ValueError(
-                    f"Failed to convert attribute {attrid} from {value!r}"
-                    f" ({type(value)}) to type {attr_def.type}"
-                ) from e
-            else:
-                args.append(attr)
-
-        return args
+        if value is None:
+            self._attr_cache.remove(attr_def)
+            self.emit(
+                AttributeClearedEvent(
+                    device_ieee=str(self.endpoint.device.ieee),
+                    endpoint_id=self.endpoint.endpoint_id,
+                    cluster_type=self._type,
+                    cluster_id=self.cluster_id,
+                    attribute_name=attr_def.name,
+                    attribute_id=attr_def.id,
+                    manufacturer_code=attr_def.manufacturer_code,
+                )
+            )
+        else:
+            self._attr_cache.set_value(attr_def, value)
+            self.emit(
+                AttributeUpdatedEvent(
+                    device_ieee=str(self.endpoint.device.ieee),
+                    endpoint_id=self.endpoint.endpoint_id,
+                    cluster_type=self._type,
+                    cluster_id=self.cluster_id,
+                    attribute_name=attr_def.name,
+                    attribute_id=attr_def.id,
+                    manufacturer_code=attr_def.manufacturer_code,
+                    value=value,
+                )
+            )
 
     async def write_attributes(
         self,
@@ -800,57 +927,71 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         """Write attributes to device with internal 'attributes' validation."""
 
         # Group attributes by effective manufacturer code
-        writes_by_manuf_code: defaultdict[
-            int | None, dict[str | int | foundation.ZCLAttributeDef, Any]
-        ] = defaultdict(dict)
+        writes_by_manuf_code: defaultdict[int | None, dict[int, Any]] = defaultdict(
+            dict
+        )
 
         for attr, value in attributes.items():
             attr_def = self.find_attribute(attr, manufacturer_code=manufacturer)
             writes_by_manuf_code[attr_def.manufacturer_code][attr_def.id] = value
 
         # Write each group separately and merge results
-        records: list[foundation.WriteAttributesStatusRecord] = []
+        results: list[foundation.WriteAttributesStatusRecord] = []
 
-        for manufacturer_code, attribute_group in writes_by_manuf_code.items():
-            attrs = self._write_attr_records(attribute_group)
-            result = await self.write_attributes_raw(
+        for manufacturer_code, attribute_values in writes_by_manuf_code.items():
+            attrs = []
+            attr_defs: dict[int, foundation.ZCLAttributeDef] = {}
+
+            for attr_id, value in attribute_values:
+                attr_def = self.find_attribute(
+                    attr_id, manufacturer_code=manufacturer_code
+                )
+                attr_defs[attr_id] = attr_def
+
+                attr = foundation.Attribute(attr_def.id, foundation.TypeValue())
+                attr.value.type = attr_def.zcl_type
+                attr.value.value = attr_def.type(value)
+                attrs.append(attr)
+
+            result = await self._write_attributes(
                 attrs, manufacturer=manufacturer_code, **kwargs
             )
 
+            records_group: list[foundation.WriteAttributesStatusRecord] = []
+
             if isinstance(result[0], list):
-                records.extend(result[0])
+                records_group.extend(result[0])
             else:
                 # Default response: apply status to all attributes in this group
                 status = result[0]
-                records.extend(
+                records_group.extend(
                     foundation.WriteAttributesStatusRecord(
                         status=status, attrid=attr.attrid
                     )
                     for attr in attrs
                 )
 
+            # Finally, emit events for the group
+            for record in records_group:
+                attr_def = attr_defs[record.attrid]
+                self.emit(
+                    AttributeWrittenEvent(
+                        device_ieee=str(self.endpoint.device.ieee),
+                        endpoint_id=self.endpoint.endpoint_id,
+                        cluster_type=self._type,
+                        cluster_id=self.cluster_id,
+                        attribute_name=attr_def.name,
+                        attribute_id=attr_def.id,
+                        manufacturer_code=manufacturer_code,
+                        value=attribute_values[record.attrid],
+                        status=record.status,
+                    )
+                )
+
+            results.extend(records_group)
+
         # TODO: ditch the low-level return type
-        return [records]
-
-    async def write_attributes_raw(
-        self, attrs: list[foundation.Attribute], **kwargs
-    ) -> list:
-        """Write attributes to device without internal 'attributes' validation"""
-        result = await self._write_attributes(attrs, **kwargs)
-        if not isinstance(result[0], list):
-            return result
-
-        records = result[0]
-        if len(records) == 1 and records[0].status == foundation.Status.SUCCESS:
-            for attr_rec in attrs:
-                self._update_attribute(attr_rec.attrid, attr_rec.value.value)
-        else:
-            failed = [rec.attrid for rec in records]
-            for attr_rec in attrs:
-                if attr_rec.attrid not in failed:
-                    self._update_attribute(attr_rec.attrid, attr_rec.value.value)
-
-        return result
+        return [results]
 
     async def bind(self, **kwargs):
         return await self._endpoint.device.zdo.bind(cluster=self, **kwargs)
@@ -858,100 +999,114 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     async def unbind(self):
         return await self._endpoint.device.zdo.unbind(cluster=self)
 
-    def _attr_reporting_rec(
-        self,
-        attribute: int | str,
-        min_interval: int,
-        max_interval: int,
-        reportable_change: int = 1,
-        direction: int = 0x00,
-    ) -> foundation.AttributeReportingConfig:
-        try:
-            attr_def = self.find_attribute(attribute)
-        except KeyError as exc:
-            raise ValueError(
-                f"Unknown attribute {attribute!r} of {self} cluster"
-            ) from exc
-
-        cfg = foundation.AttributeReportingConfig()
-        cfg.direction = direction
-        cfg.attrid = attr_def.id
-        cfg.datatype = (
-            attr_def.zcl_type
-            if attr_def.zcl_type is not None
-            else foundation.DataType.from_python_type(attr_def.type).type_id
-        )
-        cfg.min_interval = min_interval
-        cfg.max_interval = max_interval
-        cfg.reportable_change = reportable_change
-
-        return cfg
-
     async def configure_reporting(
         self,
-        attribute: int | str,
+        attribute: foundation.ZCLAttributeDef | int | str,
         min_interval: int,
         max_interval: int,
         reportable_change: int,
         manufacturer: int | None = None,
     ) -> list[foundation.ConfigureReportingResponseRecord]:
         """Configure attribute reporting for a single attribute."""
+        attr_def = self.find_attribute(attribute)
         return await self.configure_reporting_multiple(
-            {attribute: (min_interval, max_interval, reportable_change)},
-            manufacturer=manufacturer,
+            {
+                attr_def: ReportingConfig(
+                    min_interval=min_interval,
+                    max_interval=max_interval,
+                    reportable_change=reportable_change,
+                ),
+            }
         )
 
     async def configure_reporting_multiple(
-        self,
-        attributes: dict[int | str, tuple[int, int, int]],
-        manufacturer: int | None = None,
+        self, config: dict[foundation.ZCLAttributeDef, ReportingConfig]
     ) -> list[foundation.ConfigureReportingResponseRecord]:
-        """Configure attribute reporting for multiple attributes in the same request.
+        """Configure attribute reporting for multiple attributes in the same request."""
 
-        :param attributes: dict of attributes to configure attribute reporting.
-        Key is either int or str for attribute id or attribute name.
-        Value is a tuple of:
-        - minimum reporting interval
-        - maximum reporting interval
-        - reportable change
-        :param manufacturer: optional manufacturer id to use with the command
-        """
+        # Group attributes by effective manufacturer code
+        reporting_by_manuf_code: defaultdict[int | None, list[ReportingConfig]] = (
+            defaultdict(list)
+        )
 
-        cfg = [
-            self._attr_reporting_rec(attr, rep[0], rep[1], rep[2])
-            for attr, rep in attributes.items()
-        ]
-        res = await self._configure_reporting(cfg, manufacturer=manufacturer)
-
-        # Parse configure reporting result for unsupported attributes
-        records = res[0]
-        if (
-            isinstance(records, list)
-            and not (
-                len(records) == 1 and records[0].status == foundation.Status.SUCCESS
+        for attr_def, reporting_config in config.items():
+            cfg = foundation.AttributeReportingConfig()
+            cfg.direction = ReportingDirection.SendReports
+            cfg.attrid = attr_def.id
+            cfg.datatype = (
+                attr_def.zcl_type
+                if attr_def.zcl_type is not None
+                else foundation.DataType.from_python_type(attr_def.type).type_id
             )
-            and len(records) >= 0
-        ):
-            failed = [
-                r.attrid
-                for r in records
-                if r.status == foundation.Status.UNSUPPORTED_ATTRIBUTE
-            ]
-            for attr in failed:
-                self.add_unsupported_attribute(attr)
+            cfg.min_interval = reporting_config.min_interval
+            cfg.max_interval = reporting_config.max_interval
+            cfg.reportable_change = reporting_config.reportable_change
 
-            success = [
-                r.attrid for r in records if r.status == foundation.Status.SUCCESS
-            ]
-            for attr in success:
-                self.remove_unsupported_attribute(attr)
-        elif isinstance(records, list) and (
-            len(records) == 1 and records[0].status == foundation.Status.SUCCESS
-        ):
-            # we get a single success when all are supported
-            for attr in attributes:
-                self.remove_unsupported_attribute(attr)
-        return res
+            reporting_by_manuf_code[attr_def.manufacturer_code][attr_def.id].append(
+                (attr_def, cfg)
+            )
+
+        results = []
+
+        for manufacturer_code, reporting_configs in reporting_by_manuf_code.items():
+            configs = [cfg for _attr_def, cfg in reporting_configs]
+
+            rsp = await self._configure_reporting(
+                configs, manufacturer=manufacturer_code
+            )
+            records = rsp[0]
+
+            reporting_results = []
+
+            # Single status report for all attributes
+            if len(records) == 1:
+                for attr_def, _cfg in reporting_configs:
+                    reporting_results.append(
+                        foundation.ConfigureReportingResponseRecord(
+                            status=records[0].status,
+                            attrid=attr_def.id,
+                        )
+                    )
+            else:
+                reporting_results = records
+
+            for result in reporting_results:
+                attr_def = self.find_attribute(
+                    result.attrid, manufacturer_code=manufacturer_code
+                )
+
+                if result.status == foundation.Status.SUCCESS:
+                    self.emit(
+                        AttributeReportingConfiguredEvent(
+                            device_ieee=str(self.endpoint.device.ieee),
+                            endpoint_id=self.endpoint.endpoint_id,
+                            cluster_type=self._type,
+                            cluster_id=self.cluster_id,
+                            attribute_name=attr_def.name,
+                            attribute_id=attr_def.id,
+                            manufacturer_code=manufacturer_code,
+                            min_interval=config[attr_def].min_interval,
+                            max_interval=config[attr_def].max_interval,
+                            reportable_change=config[attr_def].reportable_change,
+                        )
+                    )
+                elif result.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
+                    self.emit(
+                        AttributeUnsupportedEvent(
+                            device_ieee=str(self.endpoint.device.ieee),
+                            endpoint_id=self.endpoint.endpoint_id,
+                            cluster_type=self._type,
+                            cluster_id=self.cluster_id,
+                            attribute_name=attr_def.name,
+                            attribute_id=attr_def.id,
+                            manufacturer_code=manufacturer_code,
+                        )
+                    )
+                else:
+                    # Is this even possible?
+                    pass
+
+        return results
 
     def command(
         self,
@@ -1133,75 +1288,21 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self, attr: int | str, inhibit_events: bool = False
     ) -> None:
         """Adds unsupported attribute."""
+        attr_def = self.find_attribute(attr)
+        self._attr_cache.mark_unsupported(attr_def)
 
-        if attr in self.unsupported_attributes:
-            return
-
-        self.unsupported_attributes.add(attr)
-
-        if isinstance(attr, int) and not inhibit_events:
-            self.listener_event("unsupported_attribute_added", attr)
-
-        try:
-            attrdef = self.find_attribute(attr)
-        except KeyError:
-            pass
-        else:
-            if isinstance(attr, int):
-                self.add_unsupported_attribute(attrdef.name, inhibit_events)
-            else:
-                self.add_unsupported_attribute(attrdef.id, inhibit_events)
-
-    def remove_unsupported_attribute(
-        self, attr: int | str, inhibit_events: bool = False
-    ) -> None:
-        """Removes an unsupported attribute."""
-
-        if attr not in self.unsupported_attributes:
-            return
-
-        self.unsupported_attributes.remove(attr)
-
-        if isinstance(attr, int) and not inhibit_events:
-            self.listener_event("unsupported_attribute_removed", attr)
-
-        try:
-            attrdef = self.find_attribute(attr)
-        except KeyError:
-            pass
-        else:
-            if isinstance(attr, int):
-                self.remove_unsupported_attribute(attrdef.name, inhibit_events)
-            else:
-                self.remove_unsupported_attribute(attrdef.id, inhibit_events)
-
-
-class ClusterPersistingListener:
-    def __init__(self, applistener: PersistingListener, cluster: Cluster) -> None:
-        self._applistener = applistener
-        self._cluster = cluster
-
-    def attribute_updated(
-        self, attrid: int | t.uint16_t, value: Any, timestamp: datetime
-    ) -> None:
-        self._applistener.attribute_updated(self._cluster, attrid, value, timestamp)
-
-    def attribute_cleared(self, attrid: int | t.uint16_t) -> None:
-        self._applistener.attribute_cleared(self._cluster, attrid)
-
-    def cluster_command(self, *args, **kwargs) -> None:
-        pass
-
-    def general_command(self, *args, **kwargs) -> None:
-        pass
-
-    def unsupported_attribute_added(self, attrid: int) -> None:
-        """An unsupported attribute was added."""
-        self._applistener.unsupported_attribute_added(self._cluster, attrid)
-
-    def unsupported_attribute_removed(self, attrid: int) -> None:
-        """Remove an unsupported attribute."""
-        self._applistener.unsupported_attribute_removed(self._cluster, attrid)
+        if not inhibit_events:
+            self.emit(
+                AttributeUnsupportedEvent(
+                    device_ieee=str(self.endpoint.device.ieee),
+                    endpoint_id=self.endpoint.endpoint_id,
+                    cluster_type=self._type,
+                    cluster_id=self.cluster_id,
+                    attribute_name=attr_def.name,
+                    attribute_id=attr_def.id,
+                    manufacturer_code=attr_def.manufacturer_code,
+                )
+            )
 
 
 # Import to populate the registry

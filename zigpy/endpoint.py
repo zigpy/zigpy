@@ -108,10 +108,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._cluster_attr[cluster.ep_attribute] = cluster
 
         if self._device.application._dblistener is not None:
-            listener = zigpy.zcl.ClusterPersistingListener(
-                self._device.application._dblistener, cluster
-            )
-            cluster.add_listener(listener)
+            self._device.application._dblistener.register_cluster_events(cluster)
 
         return cluster
 
@@ -131,10 +128,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.out_clusters[cluster_id] = cluster
 
         if self._device.application._dblistener is not None:
-            listener = zigpy.zcl.ClusterPersistingListener(
-                self._device.application._dblistener, cluster
-            )
-            cluster.add_listener(listener)
+            self._device.application._dblistener.register_cluster_events(cluster)
 
         return cluster
 

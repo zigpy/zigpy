@@ -1,0 +1,91 @@
+"""ZCL helpers."""
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
+
+from .foundation import ZCLAttributeDef
+
+type CacheKey = tuple[int, int | None]  # attribute id, manufacturer code
+
+
+@dataclass(kw_only=True, frozen=True)
+class CacheItem:
+    value: Any
+    last_updated: datetime
+
+
+class UnsupportedAttribute(Exception):
+    """Exception for unsupported attributes."""
+
+    def __init__(self, attr_def: ZCLAttributeDef) -> None:
+        super().__init__(f"Attribute {attr_def} is unsupported")
+
+
+class AttributeCache:
+    def __init__(self, cluster) -> None:
+        self._cluster = cluster
+
+        self._cache: dict[CacheKey, CacheItem] = {}
+        self._unsupported: set[CacheKey] = set()
+
+    def remove(self, attr_def: ZCLAttributeDef) -> None:
+        key = (attr_def.id, attr_def.manufacturer_code)
+        self._cache.pop(key, None)
+        self._unsupported.discard(key)
+
+    def _raise_if_unsupported(self, attr_def: ZCLAttributeDef) -> None:
+        key = (attr_def.id, attr_def.manufacturer_code)
+        if key in self._unsupported:
+            raise UnsupportedAttribute(attr_def)
+
+    def remove_unsupported(self, attr_def: ZCLAttributeDef) -> None:
+        self._unsupported.discard((attr_def.id, attr_def.manufacturer_code))
+
+    def mark_unsupported(self, attr_def: ZCLAttributeDef) -> None:
+        self._unsupported.add((attr_def.id, attr_def.manufacturer_code))
+
+    def get_value(self, attr_def: ZCLAttributeDef) -> Any:
+        self._raise_if_unsupported(attr_def)
+        return self._cache[attr_def.id, attr_def.manufacturer_code].value
+
+    def get_last_updated(self, attr_def: ZCLAttributeDef) -> datetime:
+        self._raise_if_unsupported(attr_def)
+        return self._cache[attr_def.id, attr_def.manufacturer_code].last_updated
+
+    def set_value(self, attr_def: ZCLAttributeDef, value: Any) -> None:
+        self.remove_unsupported(attr_def)
+        self._cache[attr_def.id, attr_def.manufacturer_code] = CacheItem(
+            value=value,
+            last_updated=datetime.now(UTC),
+        )
+
+    def get(self, key: int, default: Any | None = None) -> Any:
+        try:
+            return self.get_value(self._cluster.find_attribute(key))
+        except KeyError:
+            return default
+
+    def __getitem__(self, key: int) -> Any:
+        return self.get_value(self._cluster.find_attribute(key))
+
+    def __setitem__(self, key: int, value: Any) -> None:
+        attr_def = self._cluster.find_attribute(key)
+        self.set_value(attr_def, value)
+
+    def __contains__(self, key: int) -> bool:
+        try:
+            self[key]
+        except KeyError:
+            return False
+        else:
+            return True
+
+
+@dataclass(frozen=True)
+class ReportingConfig:
+    """Reporting config for a ZCL attribute."""
+
+    min_interval: int
+    max_interval: int
+    reportable_change: int
