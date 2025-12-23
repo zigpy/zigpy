@@ -954,7 +954,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         results: list[foundation.WriteAttributesStatusRecord] = []
 
         for manufacturer_code, attribute_list in writes_by_manuf_code.items():
-            attrs = []
+            zcl_attrs: list[foundation.Attribute] = []
             attr_defs: dict[int, foundation.ZCLAttributeDef] = {}
             attribute_values: dict[int, Any] = {}
 
@@ -962,13 +962,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 attr_defs[attr_def.id] = attr_def
                 attribute_values[attr_def.id] = value
 
-                attr = foundation.Attribute(attr_def.id, foundation.TypeValue())
-                attr.value.type = attr_def.zcl_type
-                attr.value.value = attr_def.type(value)
-                attrs.append(attr)
+                zcl_attr = foundation.Attribute(attr_def.id, foundation.TypeValue())
+                zcl_attr.value.type = attr_def.zcl_type
+                zcl_attr.value.value = attr_def.type(value)
+                zcl_attrs.append(zcl_attr)
 
             result = await self._write_attributes(
-                attrs, manufacturer=manufacturer_code, **kwargs
+                zcl_attrs, manufacturer=manufacturer_code, **kwargs
             )
 
             records_group: list[foundation.WriteAttributesStatusRecord] = []
@@ -983,24 +983,24 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     # Global success: all attributes succeeded
                     records_group.extend(
                         foundation.WriteAttributesStatusRecord(
-                            status=foundation.Status.SUCCESS, attrid=attr.attrid
+                            status=foundation.Status.SUCCESS, attrid=zcl_attr.attrid
                         )
-                        for attr in attrs
+                        for zcl_attr in zcl_attrs
                     )
                 else:
                     # Only failed writes are in the response. Attributes not
                     # present implicitly succeeded.
                     failed_attrids = {r.attrid for r in result[0]}
-                    for attr in attrs:
-                        if attr.attrid in failed_attrids:
+                    for zcl_attr in zcl_attrs:
+                        if zcl_attr.attrid in failed_attrids:
                             records_group.extend(
-                                r for r in result[0] if r.attrid == attr.attrid
+                                r for r in result[0] if r.attrid == zcl_attr.attrid
                             )
                         else:
                             records_group.append(
                                 foundation.WriteAttributesStatusRecord(
                                     status=foundation.Status.SUCCESS,
-                                    attrid=attr.attrid,
+                                    attrid=zcl_attr.attrid,
                                 )
                             )
             else:
@@ -1008,9 +1008,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 status = result[0]
                 records_group.extend(
                     foundation.WriteAttributesStatusRecord(
-                        status=status, attrid=attr.attrid
+                        status=status, attrid=zcl_attr.attrid
                     )
-                    for attr in attrs
+                    for zcl_attr in zcl_attrs
                 )
 
             # Finally, emit events for the group
@@ -1096,7 +1096,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             effective_manuf = self._get_effective_manufacturer_code(attr_def, None)
             reporting_by_manuf_code[effective_manuf].append((attr_def, cfg))
 
-        results = []
+        results: list[foundation.ConfigureReportingResponseRecord] = []
 
         for manufacturer_code, reporting_configs in reporting_by_manuf_code.items():
             configs = [cfg for _attr_def, cfg in reporting_configs]
