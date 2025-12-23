@@ -9,6 +9,7 @@ import typing
 from typing import Self
 
 import zigpy.types as t
+from zigpy.typing import UNDEFINED
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1124,6 +1125,10 @@ class ZCLCommandDef(t.BaseDataclassMixin):
                 self, "direction", Direction._from_is_reply(self.direction)
             )
 
+        # Use UNDEFINED for manufacturer-specific commands without explicit code
+        if self.is_manufacturer_specific and self.manufacturer_code is None:
+            object.__setattr__(self, "manufacturer_code", UNDEFINED)
+
     def with_compiled_schema(self) -> ZCLCommandDef:
         """Return a copy of the ZCL command definition object with its dictionary command
         schema converted into a `CommandSchema` subclass.
@@ -1272,6 +1277,10 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
             )
 
         ensure_valid_name(self.name)
+
+        # Use UNDEFINED for manufacturer-specific attributes without explicit code
+        if self.is_manufacturer_specific and self.manufacturer_code is None:
+            object.__setattr__(self, "manufacturer_code", UNDEFINED)
 
     def __repr__(self) -> str:
         return (

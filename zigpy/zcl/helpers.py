@@ -90,7 +90,7 @@ class AttributeCache:
     def get(self, key: int, default: Any | None = None) -> Any:
         try:
             return self[key]
-        except KeyError:
+        except (KeyError, UnsupportedAttribute):
             return default
 
     def __getitem__(self, key: int) -> Any:
@@ -105,6 +105,10 @@ class AttributeCache:
     def __setitem__(self, key: int, value: Any) -> None:
         attr_def = self._cluster.find_attribute(key)
         self.set_value(attr_def, value)
+
+    def update(self, updates: dict[int, Any]) -> None:
+        for attr_id, value in updates.items():
+            self[attr_id] = value
 
     def __contains__(self, key: int) -> bool:
         try:

@@ -203,7 +203,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
     cluster_id_range: tuple[t.uint16_t, t.uint16_t] = None
 
-    attributes_by_id: dict[int, dict[int | None, foundation.ZCLAttributeDef]] = {}
+    attributes_by_id: dict[
+        int, dict[int | UndefinedType | None, foundation.ZCLAttributeDef]
+    ] = {}
 
     # Deprecated: clusters contain attributes and both client and server commands
     attributes: dict[int, foundation.ZCLAttributeDef] = {}
@@ -393,7 +395,27 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             candidates = self.attributes_by_id[name_or_id]
 
             if manufacturer_code is not UNDEFINED:
-                return candidates[manufacturer_code]
+                # Try exact match first
+                if manufacturer_code in candidates:
+                    return candidates[manufacturer_code]
+
+                # Fall back to UNDEFINED (manufacturer-specific without explicit code)
+                if UNDEFINED in candidates:
+                    attr_def = candidates[UNDEFINED]
+                    manuf_code_str = (
+                        f"0x{manufacturer_code:04X}"
+                        if manufacturer_code is not None
+                        else "None"
+                    )
+                    warnings.warn(
+                        f"Attribute {attr_def.name!r} has `is_manufacturer_specific`"
+                        f" without an explicit `manufacturer_code`. Please set"
+                        f" `manufacturer_code={manuf_code_str}`.",
+                        DeprecationWarning,
+                        stacklevel=2,
+                    )
+                    return attr_def
+                raise KeyError(manufacturer_code)
 
             if len(candidates) > 1:
                 raise KeyError(
@@ -783,7 +805,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         """Get a cached attribute value, if it exists and is fresh enough."""
         try:
             return self._attr_cache.get_value(attr_def)
-        except KeyError:
+        except (KeyError, UnsupportedAttribute):
             if default is UNDEFINED:
                 raise
 
@@ -1397,9 +1419,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     def add_unsupported_attribute(
         self,
-        attr: int | str,
+        attr: int | str | foundation.ZCLAttributeDef,
         *,
-        manufacturer_code: int | None = None,
+        manufacturer_code: int | UndefinedType | None = UNDEFINED,
     ) -> None:
         """Adds unsupported attribute."""
         attr_def = self.find_attribute(attr, manufacturer_code=manufacturer_code)
