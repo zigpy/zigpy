@@ -409,6 +409,22 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 f" not {name_or_id!r} ({type(name_or_id)!r}"
             )
 
+    @property
+    def unsupported_attributes(self) -> set[str | int]:
+        """Return a set of unsupported attribute names and IDs."""
+        results = set()
+
+        for attr_id, manuf_code in self._attr_cache._unsupported:
+            attr_def = self.find_attribute(attr_id, manufacturer_code=manuf_code)
+            results.add(attr_def.id)
+            results.add(attr_def.name)
+
+        return results
+
+    def is_attribute_unsupported(self, attr_def: foundation.ZCLAttributeDef) -> bool:
+        """Return whether an attribute is unsupported."""
+        return self._attr_cache.is_unsupported(attr_def)
+
     @classmethod
     def from_id(
         cls, endpoint: EndpointType, cluster_id: int, is_server: bool = True
