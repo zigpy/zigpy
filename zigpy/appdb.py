@@ -1567,3 +1567,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         "old_manufacturer_code": UNMIGRATED_MANUFACTURER_CODE,
                     },
                 )
+
+        # Delete any rows that couldn't be migrated (orphaned data)
+        await self.execute(
+            "DELETE FROM attributes_cache_v14 WHERE manufacturer_code = :unmigrated",
+            {"unmigrated": UNMIGRATED_MANUFACTURER_CODE},
+        )
+        await self.execute(
+            "DELETE FROM unsupported_attributes_v14 WHERE manufacturer_code = :unmigrated",
+            {"unmigrated": UNMIGRATED_MANUFACTURER_CODE},
+        )

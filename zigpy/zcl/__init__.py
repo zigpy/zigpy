@@ -771,10 +771,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def _get_effective_manufacturer_code(
         self,
         definition: foundation.ZCLAttributeDef | foundation.ZCLCommandDef,
-        manufacturer: int | None,
+        manufacturer: int | UndefinedType | None,
     ) -> int | None:
         """Get the effective manufacturer code for an attribute or command."""
-        if manufacturer is not None:
+        if manufacturer not in (None, UNDEFINED):
             return manufacturer
 
         if definition.manufacturer_code not in (None, UNDEFINED):
