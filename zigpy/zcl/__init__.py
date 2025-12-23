@@ -20,7 +20,7 @@ from zigpy.typing import UNDEFINED, AddressingMode, EndpointType, UndefinedType
 from zigpy.zcl import foundation
 from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs, ReportingDirection
 
-from .helpers import AttributeCache, ReportingConfig, UnsupportedAttribute
+from .helpers import AttributeCache, ReportingConfig
 
 if TYPE_CHECKING:
     from zigpy.endpoint import Endpoint
@@ -809,9 +809,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     success[attribute_map[attr_def]] = cached_value
                     continue
 
-                try:
-                    self._attr_cache.get_value(attr_def)
-                except UnsupportedAttribute:
+                if self._attr_cache.is_unsupported(attr_def):
                     # If an attribute is known to be unsupported, we do not read it
                     failure[attribute_map[attr_def]] = (
                         foundation.Status.UNSUPPORTED_ATTRIBUTE

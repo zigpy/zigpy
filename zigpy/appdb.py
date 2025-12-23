@@ -21,6 +21,7 @@ import zigpy.quirks
 import zigpy.state
 import zigpy.types as t
 import zigpy.typing
+from zigpy.typing import UNDEFINED
 import zigpy.util
 from zigpy.zcl import (
     AttributeClearedEvent,
@@ -720,10 +721,27 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     continue
 
                 cluster = clusters[cluster_id]
-                attr_def = cluster.find_attribute(
-                    attr_id, manufacturer_code=manufacturer_code
-                )
-                clusters[cluster_id]._attr_cache.set_value(
+                try:
+                    attr_def = cluster.find_attribute(
+                        attr_id,
+                        manufacturer_code=(
+                            UNDEFINED
+                            if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
+                            else manufacturer_code
+                        ),
+                    )
+                except KeyError:
+                    LOGGER.debug(
+                        "Unknown attribute %r, storing in legacy cache", attr_id
+                    )
+                    cluster._attr_cache.set_legacy_value(
+                        attr_id,
+                        value,
+                        last_updated=datetime.fromtimestamp(last_updated, UTC),
+                    )
+                    continue
+
+                cluster._attr_cache.set_value(
                     attr_def,
                     value,
                     last_updated=datetime.fromtimestamp(last_updated, UTC),
@@ -783,7 +801,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     continue
 
                 cluster.add_unsupported_attribute(
-                    attr_id, manufacturer_code=manufacturer_code, inhibit_events=True
+                    attr_id,
+                    manufacturer_code=(
+                        UNDEFINED
+                        if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
+                        else manufacturer_code
+                    ),
+                    inhibit_events=True,
                 )
 
     async def _load_devices(self) -> None:
@@ -1352,10 +1376,30 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "relays_v13": "relays_v14",
                 "network_backups_v13": "network_backups_v14",
                 "clusters_v13": "clusters_v14",
-                "unsupported_attributes_v13": "unsupported_attributes_v14",
+                "unsupported_attributes_v13": None,
                 "attributes_cache_v13": None,
             }
         )
+
+        async with self.execute("SELECT * FROM unsupported_attributes_v13") as cursor:
+            async for (
+                ieee,
+                endpoint_id,
+                cluster_type,
+                cluster_id,
+                attrid,
+            ) in cursor:
+                await self.execute(
+                    "INSERT INTO unsupported_attributes_v14 VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        ieee,
+                        endpoint_id,
+                        cluster_type,
+                        cluster_id,
+                        attrid,
+                        UNMIGRATED_MANUFACTURER_CODE,
+                    ),
+                )
 
         async with self.execute("SELECT * FROM attributes_cache_v13") as cursor:
             async for (
@@ -1415,7 +1459,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 except KeyError:
                     continue
 
-                attr_def = cluster.find_attribute(attr_id)
+                try:
+                    attr_def = cluster.find_attribute(attr_id)
+                except KeyError:
+                    LOGGER.warning(
+                        "Unable to find attribute %r for data migration, skipping",
+                        attr_id,
+                    )
+                    continue
+
                 manufacturer_code = cluster._get_effective_manufacturer_code(
                     attr_def, manufacturer=None
                 )
@@ -1423,6 +1475,72 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 await self.execute(
                     """
                     UPDATE attributes_cache_v14
+                    SET manufacturer_code = :manufacturer_code
+                    WHERE
+                        ieee = :ieee
+                        AND endpoint_id = :endpoint_id
+                        AND cluster_type = :cluster_type
+                        AND cluster_id = :cluster_id
+                        AND attr_id = :attr_id
+                        AND manufacturer_code = :old_manufacturer_code
+                    """,
+                    {
+                        "manufacturer_code": manufacturer_code,
+                        "ieee": ieee,
+                        "endpoint_id": endpoint_id,
+                        "cluster_type": cluster_type,
+                        "cluster_id": cluster_id,
+                        "attr_id": attr_id,
+                        "old_manufacturer_code": UNMIGRATED_MANUFACTURER_CODE,
+                    },
+                )
+
+        async with self.execute(
+            "SELECT * FROM unsupported_attributes_v14 WHERE manufacturer_code = :unmigrated",
+            {"unmigrated": UNMIGRATED_MANUFACTURER_CODE},
+        ) as cursor:
+            async for (
+                ieee,
+                endpoint_id,
+                cluster_type,
+                cluster_id,
+                attr_id,
+                manufacturer_code,
+            ) in cursor:
+                dev = self._application.get_device(ieee)
+
+                try:
+                    ep = dev.endpoints[endpoint_id]
+                except KeyError:
+                    continue
+
+                clusters = (
+                    ep.in_clusters
+                    if cluster_type == ClusterType.Server
+                    else ep.out_clusters
+                )
+
+                try:
+                    cluster = clusters[cluster_id]
+                except KeyError:
+                    continue
+
+                try:
+                    attr_def = cluster.find_attribute(attr_id)
+                except KeyError:
+                    LOGGER.warning(
+                        "Unable to find unsupported attribute %r for data migration, skipping",
+                        attr_id,
+                    )
+                    continue
+
+                manufacturer_code = cluster._get_effective_manufacturer_code(
+                    attr_def, manufacturer=None
+                )
+
+                await self.execute(
+                    """
+                    UPDATE unsupported_attributes_v14
                     SET manufacturer_code = :manufacturer_code
                     WHERE
                         ieee = :ieee

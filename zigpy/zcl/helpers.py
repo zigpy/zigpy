@@ -29,6 +29,10 @@ class AttributeCache:
         self._cache: dict[CacheKey, CacheItem] = {}
         self._unsupported: set[CacheKey] = set()
 
+        # FIXME: Legacy cache for unknown attributes from quirks that use the attribute
+        # cache as generic data storage. Keyed by attr_id only.
+        self._legacy_cache: dict[int, CacheItem] = {}
+
     def remove(self, attr_def: ZCLAttributeDef) -> None:
         key = (attr_def.id, attr_def.manufacturer_code)
         self._cache.pop(key, None)
@@ -69,14 +73,29 @@ class AttributeCache:
             last_updated=datetime.now(UTC) if last_updated is None else last_updated,
         )
 
+    def set_legacy_value(
+        self, attr_id: int, value: Any, *, last_updated: datetime | None = None
+    ) -> None:
+        """Store a value in the legacy cache for unknown attributes."""
+        self._legacy_cache[attr_id] = CacheItem(
+            value=value,
+            last_updated=datetime.now(UTC) if last_updated is None else last_updated,
+        )
+
     def get(self, key: int, default: Any | None = None) -> Any:
         try:
-            return self.get_value(self._cluster.find_attribute(key))
+            return self[key]
         except KeyError:
             return default
 
     def __getitem__(self, key: int) -> Any:
-        return self.get_value(self._cluster.find_attribute(key))
+        try:
+            return self.get_value(self._cluster.find_attribute(key))
+        except KeyError:
+            # Fall back to legacy cache for unknown attributes
+            if key in self._legacy_cache:
+                return self._legacy_cache[key].value
+            raise
 
     def __setitem__(self, key: int, value: Any) -> None:
         attr_def = self._cluster.find_attribute(key)
