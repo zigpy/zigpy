@@ -14,7 +14,7 @@ import warnings
 
 from zigpy import util
 from zigpy.const import APS_REPLY_TIMEOUT
-from zigpy.event import EventBase
+from zigpy.event import EventBase, suppress_events
 import zigpy.types as t
 from zigpy.typing import UNDEFINED, AddressingMode, EndpointType, UndefinedType
 from zigpy.zcl import foundation
@@ -715,7 +715,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 else:
                     attr_name = attr_def.name
                     value = attr_def.type(attr.value.value)
-                    self._attr_cache.set_value(attr_def, value)
+
+                # Call _update_attribute for backwards compatibility with quirks,
+                # but suppress events since we emit AttributeReportedEvent below
+                with suppress_events():
+                    self._update_attribute(attr.attrid, value)
 
                 self.emit(
                     AttributeReportedEvent.event_type,
@@ -878,7 +882,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             value = attr_def.type(record.value.value)
                             success[attribute_map[attr_def]] = value
 
-                            self._attr_cache.set_value(attr_def, value)
+                            # Call _update_attribute for backwards compat with quirks,
+                            # but suppress events since we emit AttributeReadEvent below
+                            with suppress_events():
+                                self._update_attribute(attr_def.id, value)
+
                             self.emit(
                                 AttributeReadEvent.event_type,
                                 AttributeReadEvent(
@@ -1392,25 +1400,23 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         attr: int | str,
         *,
         manufacturer_code: int | None = None,
-        inhibit_events: bool = False,
     ) -> None:
         """Adds unsupported attribute."""
         attr_def = self.find_attribute(attr, manufacturer_code=manufacturer_code)
         self._attr_cache.mark_unsupported(attr_def)
 
-        if not inhibit_events:
-            self.emit(
-                AttributeUnsupportedEvent.event_type,
-                AttributeUnsupportedEvent(
-                    device_ieee=str(self.endpoint.device.ieee),
-                    endpoint_id=self.endpoint.endpoint_id,
-                    cluster_type=self._type,
-                    cluster_id=self.cluster_id,
-                    attribute_name=attr_def.name,
-                    attribute_id=attr_def.id,
-                    manufacturer_code=attr_def.manufacturer_code,
-                ),
-            )
+        self.emit(
+            AttributeUnsupportedEvent.event_type,
+            AttributeUnsupportedEvent(
+                device_ieee=str(self.endpoint.device.ieee),
+                endpoint_id=self.endpoint.endpoint_id,
+                cluster_type=self._type,
+                cluster_id=self.cluster_id,
+                attribute_name=attr_def.name,
+                attribute_id=attr_def.id,
+                manufacturer_code=attr_def.manufacturer_code,
+            ),
+        )
 
 
 # Import to populate the registry

@@ -14,6 +14,7 @@ import zigpy.appdb_schemas
 import zigpy.backups
 import zigpy.device
 import zigpy.endpoint
+from zigpy.event import suppress_events
 import zigpy.exceptions
 import zigpy.group
 import zigpy.profiles
@@ -800,15 +801,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 except KeyError:
                     continue
 
-                cluster.add_unsupported_attribute(
-                    attr_id,
-                    manufacturer_code=(
-                        UNDEFINED
-                        if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
-                        else manufacturer_code
-                    ),
-                    inhibit_events=True,
-                )
+                with suppress_events():
+                    cluster.add_unsupported_attribute(
+                        attr_id,
+                        manufacturer_code=(
+                            UNDEFINED
+                            if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
+                            else manufacturer_code
+                        ),
+                    )
 
     async def _load_devices(self) -> None:
         async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:
