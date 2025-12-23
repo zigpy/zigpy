@@ -9,6 +9,7 @@ import threading
 import typing
 from unittest.mock import Mock
 
+import aiosqlite
 import pytest
 
 import zigpy.application
@@ -332,7 +333,16 @@ def verify_cleanup(
             _LOGGER.warning("Lingering timer after test %r", handle)
             handle.cancel()
 
-    # Verify no threads where left behind.
+    # Verify no threads were left behind.
     threads = frozenset(threading.enumerate()) - threads_before
     for thread in threads:
-        assert isinstance(thread, threading._DummyThread)
+        if isinstance(thread, threading._DummyThread):
+            continue
+
+        # Kill lingering aiosqlite threads so pytest doesn't hang
+        if isinstance(thread, aiosqlite.Connection):
+            _LOGGER.warning("Stopping lingering aiosqlite thread %r", thread)
+            thread._stop_running()
+            thread.join(timeout=1)
+
+        pytest.fail(f"Lingering thread after test: {thread!r}")

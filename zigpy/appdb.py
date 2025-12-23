@@ -580,13 +580,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                                                          AND cluster_type = :cluster_type
                                                          AND cluster_id = :cluster_id
                                                          AND attr_id = :attr_id
-                                                         AND manufacturer_code = :manufacturer_code""",
+                                                         AND manufacturer_code IS :manufacturer_code""",
             {
                 "ieee": event.device_ieee,
                 "endpoint_id": event.endpoint_id,
                 "cluster_type": event.cluster_type,
                 "cluster_id": event.cluster_id,
-                "attribute_id": event.attribute_id,
+                "attr_id": event.attribute_id,
                 "manufacturer_code": event.manufacturer_code,
             },
         )
@@ -760,7 +760,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(
             f"SELECT * FROM unsupported_attributes{DB_V}"
         ) as cursor:
-            async for ieee, endpoint_id, cluster_type, cluster_id, attr_id in cursor:
+            async for (
+                ieee,
+                endpoint_id,
+                cluster_type,
+                cluster_id,
+                attr_id,
+                manufacturer_code,
+            ) in cursor:
                 dev = self._application.get_device(ieee)
 
                 try:
@@ -779,7 +786,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 except KeyError:
                     continue
 
-                cluster.add_unsupported_attribute(attr_id, inhibit_events=True)
+                cluster.add_unsupported_attribute(
+                    attr_id, manufacturer_code=manufacturer_code, inhibit_events=True
+                )
 
     async def _load_devices(self) -> None:
         async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:

@@ -795,11 +795,11 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     in_clus.update_attribute(5, "Model")
     app.device_initialized(dev)
 
-    in_clus.add_unsupported_attribute(0x0010)
+    in_clus.add_unsupported_attribute(Basic.AttributeDefs.location_desc.id)
     in_clus.add_unsupported_attribute("physical_env")
 
     out_clus = ep.add_output_cluster(0)
-    out_clus.add_unsupported_attribute(0x0010)
+    out_clus.add_unsupported_attribute(Basic.AttributeDefs.location_desc.id)
     await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
@@ -807,21 +807,22 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     dev = app2.get_device(ieee)
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
-    assert 0x0010 in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert 0x0010 in dev.endpoints[3].out_clusters[0].unsupported_attributes
-    assert "location_desc" in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "location_desc" in dev.endpoints[3].out_clusters[0].unsupported_attributes
-    assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert (
+        dev.endpoints[3]
+        .out_clusters[0]
+        ._attr_cache.is_unsupported(Basic.AttributeDefs.location_desc)
+    )
+    assert (
+        dev.endpoints[3]
+        .in_clusters[0]
+        ._attr_cache.is_unsupported(Basic.AttributeDefs.location_desc)
+    )
+    assert (
+        dev.endpoints[3]
+        .in_clusters[0]
+        ._attr_cache.is_unsupported(Basic.AttributeDefs.physical_env)
+    )
     await app2.shutdown()
-
-    async def mockrequest(
-        is_general_req, command, schema, args, manufacturer=None, **kwargs
-    ):
-        assert is_general_req is True
-        assert command == 0
-        rar0010 = _mk_rar(0x0010, "Not Removed", zigpy.zcl.foundation.Status.SUCCESS)
-        return [[rar0010]]
 
     # Now lets remove an unsupported attribute and make sure it is removed
     app3 = await make_app_with_db(db)
@@ -830,17 +831,17 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
 
     in_cluster = dev.endpoints[3].in_clusters[0]
-    assert 0x0010 in in_cluster.unsupported_attributes
-    in_cluster.request = mockrequest
-    await in_cluster.read_attributes([0x0010], allow_cache=False)
-    assert 0x0010 not in in_cluster.unsupported_attributes
-    assert "location_desc" not in in_cluster.unsupported_attributes
-    assert in_cluster.get(0x0010) == "Not Removed"
-    assert 0x0011 in in_cluster.unsupported_attributes
-    assert "physical_env" in in_cluster.unsupported_attributes
+
+    # `location_desc` on the in cluster flips from unsupported to unsupported
+    assert in_cluster._attr_cache.is_unsupported(Basic.AttributeDefs.location_desc)
+    in_cluster.update_attribute(Basic.AttributeDefs.location_desc, "Not Removed")
+    assert not in_cluster._attr_cache.is_unsupported(Basic.AttributeDefs.location_desc)
+
+    assert in_cluster.get(Basic.AttributeDefs.location_desc.id) == "Not Removed"
+    assert in_cluster._attr_cache.is_unsupported(Basic.AttributeDefs.physical_env)
 
     out_cluster = dev.endpoints[3].out_clusters[0]
-    out_cluster.remove_unsupported_attribute(0x0010)
+    out_cluster.update_attribute(Basic.AttributeDefs.location_desc, "test")
     await app3.shutdown()
 
     # Everything should've been saved - check that it re-loads
@@ -848,12 +849,31 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     dev = app4.get_device(ieee)
     assert dev.is_initialized == dev_init
     assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
-    assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert 0x0010 not in dev.endpoints[3].out_clusters[0].unsupported_attributes
-    assert dev.endpoints[3].in_clusters[0].get(0x0010) == "Not Removed"
-    assert "location_desc" not in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
-    assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert (
+        dev.endpoints[3].in_clusters[0].get(Basic.AttributeDefs.location_desc)
+        == "Not Removed"
+    )
+
+    assert (
+        not dev.endpoints[3]
+        .in_clusters[0]
+        ._attr_cache.is_unsupported(Basic.AttributeDefs.location_desc)
+    )
+    assert (
+        not dev.endpoints[3]
+        .out_clusters[0]
+        ._attr_cache.is_unsupported(Basic.AttributeDefs.location_desc)
+    )
+    assert (
+        not dev.endpoints[3]
+        .in_clusters[0]
+        ._attr_cache.is_unsupported(Basic.AttributeDefs.location_desc)
+    )
+    assert (
+        dev.endpoints[3]
+        .in_clusters[0]
+        ._attr_cache.is_unsupported(Basic.AttributeDefs.physical_env)
+    )
     await app4.shutdown()
 
 

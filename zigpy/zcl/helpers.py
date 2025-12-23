@@ -45,6 +45,9 @@ class AttributeCache:
     def mark_unsupported(self, attr_def: ZCLAttributeDef) -> None:
         self._unsupported.add((attr_def.id, attr_def.manufacturer_code))
 
+    def is_unsupported(self, attr_def: ZCLAttributeDef) -> bool:
+        return (attr_def.id, attr_def.manufacturer_code) in self._unsupported
+
     def get_value(self, attr_def: ZCLAttributeDef) -> Any:
         self._raise_if_unsupported(attr_def)
         return self._cache[attr_def.id, attr_def.manufacturer_code].value

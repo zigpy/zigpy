@@ -701,6 +701,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     value = attr_def.type(attr.value.value)
 
                 self.emit(
+                    AttributeReportedEvent.event_type,
                     AttributeReportedEvent(
                         device_ieee=str(self.endpoint.device.ieee),
                         endpoint_id=self.endpoint.endpoint_id,
@@ -711,7 +712,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         manufacturer_code=hdr.manufacturer,
                         raw_value=attr.value.value,
                         value=value,
-                    )
+                    ),
                 )
 
         if not hdr.frame_control.disable_default_response:
@@ -853,6 +854,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                         self._attr_cache.set_value(attr_def, value)
                         self.emit(
+                            AttributeReadEvent.event_type,
                             AttributeReadEvent(
                                 device_ieee=str(self.endpoint.device.ieee),
                                 endpoint_id=self.endpoint.endpoint_id,
@@ -863,11 +865,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                                 manufacturer_code=attr_def.manufacturer_code,
                                 raw_value=record.value.value,
                                 value=value,
-                            )
+                            ),
                         )
                     else:
                         if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
                             self.emit(
+                                AttributeUnsupportedEvent.event_type,
                                 AttributeUnsupportedEvent(
                                     device_ieee=str(self.endpoint.device.ieee),
                                     endpoint_id=self.endpoint.endpoint_id,
@@ -876,7 +879,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                                     attribute_name=attr_def.name,
                                     attribute_id=attr_def.id,
                                     manufacturer_code=manufacturer_code,
-                                )
+                                ),
                             )
 
                         failure[attribute_map[attr_def]] = record.status
@@ -893,6 +896,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         if value is None:
             self._attr_cache.remove(attr_def)
             self.emit(
+                AttributeClearedEvent.event_type,
                 AttributeClearedEvent(
                     device_ieee=str(self.endpoint.device.ieee),
                     endpoint_id=self.endpoint.endpoint_id,
@@ -901,11 +905,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     attribute_name=attr_def.name,
                     attribute_id=attr_def.id,
                     manufacturer_code=attr_def.manufacturer_code,
-                )
+                ),
             )
         else:
             self._attr_cache.set_value(attr_def, value)
             self.emit(
+                AttributeUpdatedEvent.event_type,
                 AttributeUpdatedEvent(
                     device_ieee=str(self.endpoint.device.ieee),
                     endpoint_id=self.endpoint.endpoint_id,
@@ -915,7 +920,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     attribute_id=attr_def.id,
                     manufacturer_code=attr_def.manufacturer_code,
                     value=value,
-                )
+                ),
             )
 
     async def write_attributes(
@@ -975,6 +980,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             for record in records_group:
                 attr_def = attr_defs[record.attrid]
                 self.emit(
+                    AttributeWrittenEvent.event_type,
                     AttributeWrittenEvent(
                         device_ieee=str(self.endpoint.device.ieee),
                         endpoint_id=self.endpoint.endpoint_id,
@@ -985,7 +991,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         manufacturer_code=manufacturer_code,
                         value=attribute_values[record.attrid],
                         status=record.status,
-                    )
+                    ),
                 )
 
             results.extend(records_group)
@@ -1077,6 +1083,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 if result.status == foundation.Status.SUCCESS:
                     self.emit(
+                        AttributeReportingConfiguredEvent.event_type,
                         AttributeReportingConfiguredEvent(
                             device_ieee=str(self.endpoint.device.ieee),
                             endpoint_id=self.endpoint.endpoint_id,
@@ -1088,10 +1095,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             min_interval=config[attr_def].min_interval,
                             max_interval=config[attr_def].max_interval,
                             reportable_change=config[attr_def].reportable_change,
-                        )
+                        ),
                     )
                 elif result.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
                     self.emit(
+                        AttributeUnsupportedEvent.event_type,
                         AttributeUnsupportedEvent(
                             device_ieee=str(self.endpoint.device.ieee),
                             endpoint_id=self.endpoint.endpoint_id,
@@ -1100,7 +1108,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             attribute_name=attr_def.name,
                             attribute_id=attr_def.id,
                             manufacturer_code=manufacturer_code,
-                        )
+                        ),
                     )
                 else:
                     # Is this even possible?
@@ -1285,14 +1293,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         )
 
     def add_unsupported_attribute(
-        self, attr: int | str, inhibit_events: bool = False
+        self,
+        attr: int | str,
+        *,
+        manufacturer_code: int | None = None,
+        inhibit_events: bool = False,
     ) -> None:
         """Adds unsupported attribute."""
-        attr_def = self.find_attribute(attr)
+        attr_def = self.find_attribute(attr, manufacturer_code=manufacturer_code)
         self._attr_cache.mark_unsupported(attr_def)
 
         if not inhibit_events:
             self.emit(
+                AttributeUnsupportedEvent.event_type,
                 AttributeUnsupportedEvent(
                     device_ieee=str(self.endpoint.device.ieee),
                     endpoint_id=self.endpoint.endpoint_id,
@@ -1301,7 +1314,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     attribute_name=attr_def.name,
                     attribute_id=attr_def.id,
                     manufacturer_code=attr_def.manufacturer_code,
-                )
+                ),
             )
 
 
