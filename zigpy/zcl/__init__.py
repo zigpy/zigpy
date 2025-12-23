@@ -856,25 +856,27 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     attr_def = potential_attributes[record.attrid]
 
                     if record.status == foundation.Status.SUCCESS:
-                        value = attr_def.type(record.value.value)
+                        if record.value.value is None:
+                            success[attribute_map[attr_def]] = None
+                        else:
+                            value = attr_def.type(record.value.value)
+                            success[attribute_map[attr_def]] = value
 
-                        success[attribute_map[attr_def]] = value
-
-                        self._attr_cache.set_value(attr_def, value)
-                        self.emit(
-                            AttributeReadEvent.event_type,
-                            AttributeReadEvent(
-                                device_ieee=str(self.endpoint.device.ieee),
-                                endpoint_id=self.endpoint.endpoint_id,
-                                cluster_type=self._type,
-                                cluster_id=self.cluster_id,
-                                attribute_name=attr_def.name,
-                                attribute_id=attr_def.id,
-                                manufacturer_code=attr_def.manufacturer_code,
-                                raw_value=record.value.value,
-                                value=value,
-                            ),
-                        )
+                            self._attr_cache.set_value(attr_def, value)
+                            self.emit(
+                                AttributeReadEvent.event_type,
+                                AttributeReadEvent(
+                                    device_ieee=str(self.endpoint.device.ieee),
+                                    endpoint_id=self.endpoint.endpoint_id,
+                                    cluster_type=self._type,
+                                    cluster_id=self.cluster_id,
+                                    attribute_name=attr_def.name,
+                                    attribute_id=attr_def.id,
+                                    manufacturer_code=attr_def.manufacturer_code,
+                                    raw_value=record.value.value,
+                                    value=value,
+                                ),
+                            )
                     else:
                         if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
                             self._attr_cache.mark_unsupported(attr_def)
