@@ -145,8 +145,8 @@ async def test_database(tmp_path):
     app.device_initialized(dev)
 
     in_clus.update_attribute(0, 99)
-    in_clus.update_attribute(4, bytes("Custom", "ascii"))
-    in_clus.update_attribute(5, bytes("Model", "ascii"))
+    in_clus.update_attribute(4, b"Custom")
+    in_clus.update_attribute(5, b"Model")
     in_clus.listener_event("cluster_command", 0)
     in_clus.listener_event("general_command")
 
@@ -199,11 +199,11 @@ async def test_database(tmp_path):
     dev = app2.get_device(ieee)
     assert dev.endpoints[1].device_type == profiles.zha.DeviceType.PUMP
     assert dev.endpoints[2].device_type == 0xFFFD
-    assert dev.endpoints[2].in_clusters[0]._attr_cache[0] == 99
-    assert dev.endpoints[2].in_clusters[0]._attr_cache[4] == bytes("Custom", "ascii")
-    assert dev.endpoints[2].in_clusters[0]._attr_cache[5] == bytes("Model", "ascii")
+    assert dev.endpoints[2].in_clusters[0].get(0x0000) == 99
+    assert dev.endpoints[2].in_clusters[0].get(0x0004) == b"Custom"
+    assert dev.endpoints[2].in_clusters[0].get(0x0005) == b"Model"
     assert dev.endpoints[2].out_clusters[0].cluster_id == 0x0000
-    assert dev.endpoints[2].out_clusters[0]._attr_cache[0] == 99
+    assert dev.endpoints[2].out_clusters[0].get(0) == 99
     assert dev.endpoints[2].manufacturer == "Custom"
     assert dev.endpoints[2].model == "Model"
     assert dev.endpoints[3].device_type == profiles.zll.DeviceType.COLOR_LIGHT
@@ -214,8 +214,8 @@ async def test_database(tmp_path):
     dev = app2.get_device(custom_ieee)
     # This virtual attribute is added by the quirk, there is no corresponding cluster
     # stored in the database, nor is there a corresponding endpoint 99
-    assert dev.endpoints[1].in_clusters[0x0008]._attr_cache[0x0011] == 17
-    assert dev.endpoints[99].in_clusters[0x0008]._attr_cache[0x0011] == 17
+    assert dev.endpoints[1].in_clusters[0x0008].get(0x0011) == 17
+    assert dev.endpoints[99].in_clusters[0x0008].get(0x0011) == 17
     assert dev.relays == relays_2
     assert abs(dev.last_seen - custom_dev_last_seen) < 0.01
     dev.relays = None
@@ -702,8 +702,8 @@ async def test_stopped_appdb_listener(tmp_path):
 
     with patch("zigpy.appdb.PersistingListener._save_attribute") as mock_attr_save:
         clus.update_attribute(0, 99)
-        clus.update_attribute(4, bytes("Custom", "ascii"))
-        clus.update_attribute(5, bytes("Model", "ascii"))
+        clus.update_attribute(4, b"Custom")
+        clus.update_attribute(5, b"Model")
         await app.shutdown()
         assert mock_attr_save.call_count == 3
 

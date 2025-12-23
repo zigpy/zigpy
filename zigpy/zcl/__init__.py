@@ -89,7 +89,7 @@ class AttributeWrittenEvent:
 class AttributeUpdatedEvent:
     """Event generated when an attribute has been updated externally (deprecated)."""
 
-    event_type: Final[str] = "attribute_report"
+    event_type: Final[str] = "attribute_updated"
 
     device_ieee: str
     endpoint_id: int

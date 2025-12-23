@@ -27,6 +27,7 @@ from zigpy.zcl import (
     AttributeReadEvent,
     AttributeReportedEvent,
     AttributeUnsupportedEvent,
+    AttributeUpdatedEvent,
     AttributeWrittenEvent,
     ClusterType,
 )
@@ -196,7 +197,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
             except Exception as ex:  # noqa: BLE001
                 LOGGER.error(
-                    "Unexpected error while processing %s(%s): %s", cb_name, args, ex
+                    "Unexpected error while processing %s(%s): %s",
+                    cb_name,
+                    args,
+                    ex,
+                    exc_info=True,
                 )
             self._callback_handlers.task_done()
 
@@ -220,6 +225,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def register_cluster_events(self, cluster) -> None:
         cluster.on_event(AttributeReadEvent.event_type, self.on_attribute_read)
         cluster.on_event(AttributeReportedEvent.event_type, self.on_attribute_reported)
+        cluster.on_event(AttributeUpdatedEvent.event_type, self.on_attribute_updated)
         cluster.on_event(AttributeWrittenEvent.event_type, self.on_attribute_written)
         cluster.on_event(
             AttributeUnsupportedEvent.event_type, self.on_attribute_unsupported
@@ -513,10 +519,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 attrid,
                 manufacturer_code,
                 value,
-                cluster._attr_last_updated.get(attrid, UNIX_EPOCH).timestamp(),
+                last_updated.timestamp(),
             )
             for cluster in ep.clusters
-            for (attrid, manufacturer_code), value in cluster._attr_cache.items()
+            for (attrid, manufacturer_code), (
+                value,
+                last_updated,
+            ) in cluster._attr_cache._cache.items()
         ]
         q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code)
@@ -530,14 +539,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 ep.endpoint_id,
                 cluster.cluster_type,
                 cluster.cluster_id,
-                attr,
+                attrid,
+                manufacturer_code,
             )
             for cluster in ep.clusters
-            for attr in cluster.unsupported_attributes
-            if isinstance(attr, int)
+            for (attrid, manufacturer_code) in cluster._attr_cache._unsupported
         ]
-        q = f"""INSERT INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id)
+        q = f"""INSERT INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code)
                     DO NOTHING"""
         await self._db.executemany(q, clusters)
 
@@ -547,11 +556,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def on_attribute_reported(self, event: AttributeReportedEvent) -> None:
         self.enqueue("_save_attribute", event)
 
+    def on_attribute_updated(self, event: AttributeUpdatedEvent) -> None:
+        self.enqueue("_save_attribute", event)
+
     def on_attribute_written(self, event: AttributeWrittenEvent) -> None:
         self.enqueue("_save_attribute", event)
 
     async def _save_attribute(
-        self, event: AttributeReadEvent | AttributeReportedEvent | AttributeWrittenEvent
+        self,
+        event: AttributeReadEvent
+        | AttributeReportedEvent
+        | AttributeUpdatedEvent
+        | AttributeWrittenEvent,
     ) -> None:
         if isinstance(event, AttributeWrittenEvent) and event.status != Status.SUCCESS:
             LOGGER.debug("Ignoring failed attribute write event: %s", event)
