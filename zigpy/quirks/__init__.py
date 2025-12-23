@@ -185,7 +185,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                     cluster._attr_cache = (
                         replace_device[endpoint_id]
                         .in_clusters[cluster_id]
-                        ._attr_cache.copy()
+                        ._attr_cache.clone(cluster)
                     )
 
         for c in replacement_data.get(SIG_EP_OUTPUT, []):
@@ -204,7 +204,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                     cluster._attr_cache = (
                         replace_device[endpoint_id]
                         .out_clusters[cluster_id]
-                        ._attr_cache.copy()
+                        ._attr_cache.clone(cluster)
                     )
 
 

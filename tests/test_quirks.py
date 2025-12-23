@@ -396,10 +396,14 @@ async def test_read_attributes_uncached():
     ):
         assert foundation is True
         assert command == 0x00
-        rar0 = _mk_rar(0x0000, 99)
-        rar99 = _mk_rar(0x0002, None, 1)
-        rar199 = _mk_rar(0x0003, 199)
-        return [[rar0, rar99, rar199]]
+
+        responses = {
+            0x0000: _mk_rar(0x0000, 99),
+            0x0002: _mk_rar(0x0002, None, 1),
+            0x0003: _mk_rar(0x0003, 199),
+        }
+
+        return [[responses[attr_id] for attr_id in args]]
 
     # Unknown attribute read passes through
     with pytest.raises(KeyError):
@@ -430,12 +434,10 @@ async def test_read_attributes_uncached():
     success, failure = await cluster.read_attributes([1])
     assert success[1] == 5
 
-    # test just constant attr
+    # test just constant attr on cluster2 (only has first_attribute at 0x0000)
     cluster2.request = mockrequest
-    success, failure = await cluster2.read_attributes([0, 2, 3])
+    success, failure = await cluster2.read_attributes([0])
     assert success[0x0000] == 99
-    assert failure[0x0002] == 1
-    assert success[0x0003] == 199
 
 
 async def test_read_attributes_default_response():

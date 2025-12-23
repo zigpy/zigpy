@@ -25,17 +25,17 @@ class Event:
 def test_event_base_unsubs():
     """Test event base class."""
     event = EventGenerator()
-    assert not event._listeners
+    assert not event._event_listeners
     assert not event._global_listeners
 
     callback = MagicMock()
 
     unsub = event.on_event("test", callback)
-    assert event._listeners == {
+    assert event._event_listeners == {
         "test": [EventListener(callback=callback, with_context=False)]
     }
     unsub()
-    assert event._listeners == {"test": []}
+    assert event._event_listeners == {"test": []}
 
     unsub = event.on_all_events(callback)
     assert event._global_listeners == [
@@ -45,16 +45,16 @@ def test_event_base_unsubs():
     assert not event._global_listeners
 
     unsub = event.once("test", callback)
-    assert "test" in event._listeners
-    assert len(event._listeners["test"]) == 1
+    assert "test" in event._event_listeners
+    assert len(event._event_listeners["test"]) == 1
     unsub()
-    assert event._listeners == {"test": []}
+    assert event._event_listeners == {"test": []}
 
 
 def test_event_base_emit():
     """Test event base class."""
     event = EventGenerator()
-    assert not event._listeners
+    assert not event._event_listeners
     assert not event._global_listeners
 
     callback = MagicMock()
@@ -78,15 +78,15 @@ def test_event_base_emit():
     assert callback.called
     unsub()
 
-    assert "test" in event._listeners
-    assert event._listeners == {"test": []}
+    assert "test" in event._event_listeners
+    assert event._event_listeners == {"test": []}
     assert not event._global_listeners
 
 
 def test_event_base_emit_data():
     """Test event base class."""
     event = EventGenerator()
-    assert not event._listeners
+    assert not event._event_listeners
     assert not event._global_listeners
 
     callback = MagicMock()
@@ -113,15 +113,15 @@ def test_event_base_emit_data():
     assert callback.call_args[0] == ("data",)
     unsub()
 
-    assert "test" in event._listeners
-    assert event._listeners == {"test": []}
+    assert "test" in event._event_listeners
+    assert event._event_listeners == {"test": []}
     assert not event._global_listeners
 
 
 async def test_event_base_emit_coro():
     """Test event base class."""
     event = EventGenerator()
-    assert not event._listeners
+    assert not event._event_listeners
     assert not event._global_listeners
 
     callback = AsyncMock()

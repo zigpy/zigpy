@@ -20,7 +20,7 @@ from zigpy.typing import UNDEFINED, AddressingMode, EndpointType, UndefinedType
 from zigpy.zcl import foundation
 from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs, ReportingDirection
 
-from .helpers import AttributeCache, ReportingConfig
+from .helpers import AttributeCache, ReportingConfig, UnsupportedAttribute
 
 if TYPE_CHECKING:
     from zigpy.endpoint import Endpoint
@@ -699,6 +699,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 else:
                     attr_name = attr_def.name
                     value = attr_def.type(attr.value.value)
+                    self._attr_cache.set_value(attr_def, value)
 
                 self.emit(
                     AttributeReportedEvent.event_type,
@@ -802,18 +803,18 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         for attr_def in attribute_defs:
             if allow_cache or only_cache:
-                cached_value = self._get_cached_attribute(attr_def, default=None)
-
-                if cached_value is not None:
-                    # If an attribute was in the cache, we do not read it
-                    success[attribute_map[attr_def]] = cached_value
-                    continue
-
-                if self._attr_cache.is_unsupported(attr_def):
+                try:
+                    cached_value = self._get_cached_attribute(attr_def, default=None)
+                except UnsupportedAttribute:
                     # If an attribute is known to be unsupported, we do not read it
                     failure[attribute_map[attr_def]] = (
                         foundation.Status.UNSUPPORTED_ATTRIBUTE
                     )
+                    continue
+
+                if cached_value is not None:
+                    # If an attribute was in the cache, we do not read it
+                    success[attribute_map[attr_def]] = cached_value
                     continue
 
             # Otherwise, populate the groups of attributes to read
@@ -844,8 +845,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     failure[attribute_map[attr_def]] = result[0]
             else:
                 for record in result[0]:
+                    attr_def = potential_attributes[record.attrid]
+
                     if record.status == foundation.Status.SUCCESS:
-                        attr_def = potential_attributes[record.attrid]
                         value = attr_def.type(record.value.value)
 
                         success[attribute_map[attr_def]] = value
@@ -867,6 +869,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         )
                     else:
                         if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
+                            self._attr_cache.mark_unsupported(attr_def)
                             self.emit(
                                 AttributeUnsupportedEvent.event_type,
                                 AttributeUnsupportedEvent(
@@ -945,7 +948,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             attrs = []
             attr_defs: dict[int, foundation.ZCLAttributeDef] = {}
 
-            for attr_id, value in attribute_values:
+            for attr_id, value in attribute_values.items():
                 attr_def = self.find_attribute(
                     attr_id, manufacturer_code=manufacturer_code
                 )
@@ -963,7 +966,35 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             records_group: list[foundation.WriteAttributesStatusRecord] = []
 
             if isinstance(result[0], list):
-                records_group.extend(result[0])
+                # Check for global success (status=SUCCESS, attrid=None)
+                if (
+                    len(result[0]) == 1
+                    and result[0][0].status == foundation.Status.SUCCESS
+                    and result[0][0].attrid is None
+                ):
+                    # Global success: all attributes succeeded
+                    records_group.extend(
+                        foundation.WriteAttributesStatusRecord(
+                            status=foundation.Status.SUCCESS, attrid=attr.attrid
+                        )
+                        for attr in attrs
+                    )
+                else:
+                    # Only failed writes are in the response. Attributes not
+                    # present implicitly succeeded.
+                    failed_attrids = {r.attrid for r in result[0]}
+                    for attr in attrs:
+                        if attr.attrid in failed_attrids:
+                            records_group.extend(
+                                r for r in result[0] if r.attrid == attr.attrid
+                            )
+                        else:
+                            records_group.append(
+                                foundation.WriteAttributesStatusRecord(
+                                    status=foundation.Status.SUCCESS,
+                                    attrid=attr.attrid,
+                                )
+                            )
             else:
                 # Default response: apply status to all attributes in this group
                 status = result[0]
@@ -977,6 +1008,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             # Finally, emit events for the group
             for record in records_group:
                 attr_def = attr_defs[record.attrid]
+
+                if record.status == foundation.Status.SUCCESS:
+                    self._attr_cache.set_value(
+                        attr_def, attribute_values[record.attrid]
+                    )
+
                 self.emit(
                     AttributeWrittenEvent.event_type,
                     AttributeWrittenEvent(
@@ -1009,7 +1046,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         min_interval: int,
         max_interval: int,
         reportable_change: int,
-        manufacturer: int | None = None,
     ) -> list[foundation.ConfigureReportingResponseRecord]:
         """Configure attribute reporting for a single attribute."""
         attr_def = self.find_attribute(attribute)
@@ -1029,9 +1065,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         """Configure attribute reporting for multiple attributes in the same request."""
 
         # Group attributes by effective manufacturer code
-        reporting_by_manuf_code: defaultdict[int | None, list[ReportingConfig]] = (
-            defaultdict(list)
-        )
+        reporting_by_manuf_code: defaultdict[
+            int | None,
+            list[
+                tuple[foundation.ZCLAttributeDef, foundation.AttributeReportingConfig]
+            ],
+        ] = defaultdict(list)
 
         for attr_def, reporting_config in config.items():
             cfg = foundation.AttributeReportingConfig()
@@ -1046,9 +1085,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             cfg.max_interval = reporting_config.max_interval
             cfg.reportable_change = reporting_config.reportable_change
 
-            reporting_by_manuf_code[attr_def.manufacturer_code][attr_def.id].append(
-                (attr_def, cfg)
-            )
+            reporting_by_manuf_code[attr_def.manufacturer_code].append((attr_def, cfg))
 
         results = []
 
@@ -1058,21 +1095,33 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             rsp = await self._configure_reporting(
                 configs, manufacturer=manufacturer_code
             )
-            records = rsp[0]
 
             reporting_results = []
 
-            # Single status report for all attributes
-            if len(records) == 1:
+            if isinstance(rsp[0], list):
+                records = rsp[0]
+
+                # Single status report for all attributes
+                if len(records) == 1:
+                    for attr_def, _cfg in reporting_configs:
+                        reporting_results.append(
+                            foundation.ConfigureReportingResponseRecord(
+                                status=records[0].status,
+                                attrid=attr_def.id,
+                            )
+                        )
+                else:
+                    reporting_results = records
+            else:
+                # Default response: apply status to all attributes in this group
+                status = rsp[1]
                 for attr_def, _cfg in reporting_configs:
                     reporting_results.append(
                         foundation.ConfigureReportingResponseRecord(
-                            status=records[0].status,
+                            status=status,
                             attrid=attr_def.id,
                         )
                     )
-            else:
-                reporting_results = records
 
             for result in reporting_results:
                 attr_def = self.find_attribute(
@@ -1080,6 +1129,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 )
 
                 if result.status == foundation.Status.SUCCESS:
+                    self._attr_cache.remove_unsupported(attr_def)
                     self.emit(
                         AttributeReportingConfiguredEvent.event_type,
                         AttributeReportingConfiguredEvent(
@@ -1096,6 +1146,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         ),
                     )
                 elif result.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
+                    self._attr_cache.mark_unsupported(attr_def)
                     self.emit(
                         AttributeUnsupportedEvent.event_type,
                         AttributeUnsupportedEvent(

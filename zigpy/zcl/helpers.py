@@ -1,10 +1,15 @@
 """ZCL helpers."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .foundation import ZCLAttributeDef
+
+if TYPE_CHECKING:
+    from . import Cluster
 
 type CacheKey = tuple[int, int | None]  # attribute id, manufacturer code
 
@@ -108,6 +113,14 @@ class AttributeCache:
             return False
         else:
             return True
+
+    def clone(self, cluster: Cluster) -> AttributeCache:
+        """Create a copy of this cache for a new cluster."""
+        new_cache = AttributeCache(cluster)
+        new_cache._cache = self._cache.copy()
+        new_cache._unsupported = self._unsupported.copy()
+        new_cache._legacy_cache = self._legacy_cache.copy()
+        return new_cache
 
 
 @dataclass(frozen=True)
