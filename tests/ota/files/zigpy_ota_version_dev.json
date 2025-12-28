@@ -7,6 +7,10 @@
     "z2m_v1": {
       "version": "dev",
       "url": "https://raw.githubusercontent.com/zigpy/zigpy-ota/release/files/dev/z2m_v1_ota.json"
+    },
+    "markdown_v1": {
+      "version": "dev",
+      "url": "https://raw.githubusercontent.com/zigpy/zigpy-ota/release/files/dev/markdown_v1.md"
     }
   }
 }
