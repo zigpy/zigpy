@@ -21,7 +21,7 @@ import voluptuous as vol
 
 import zigpy.config
 from zigpy.ota import json_schemas
-from zigpy.ota.image import BaseOTAImage, parse_ota_image
+from zigpy.ota.image import BaseOTAImage, TelinkOTAImage, parse_ota_image
 import zigpy.types as t
 import zigpy.util
 
@@ -90,6 +90,8 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     max_current_file_version: int | None = None
     specificity: int | None = None
 
+    telink_encryption: bool | None = None
+
     source: str = "Unknown"
 
     async def _fetch(self) -> bytes:
@@ -116,7 +118,12 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     async def fetch(self) -> BaseOTAImage:
         data = await self._fetch()
         await self._validate(data)
-
+        if self.telink_encryption:
+            try:
+                image, _ = TelinkOTAImage.deserialize(data)
+                return image
+            except Exception:
+                pass
         image, _ = parse_ota_image(data)
         return image
 
@@ -598,6 +605,7 @@ class BaseZ2MProvider(BaseOtaProvider):
                 "min_hardware_version": fw.get("hardwareVersionMin"),
                 "max_hardware_version": fw.get("hardwareVersionMax"),
                 "changelog": fw.get("releaseNotes"),  # Changelog is short
+                "telink_encryption": fw.get("telinkEncryption"),
                 "source": "",  # Set in a subclass
             }
 

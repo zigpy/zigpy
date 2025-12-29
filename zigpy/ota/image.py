@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Self
 
 import attr
+from typing_extensions import Self
 
 import zigpy.types as t
 
@@ -250,6 +250,51 @@ class HueSBLOTAImage(BaseOTAImage):
 
         return cls(header=header, data=firmware), data[header.image_size :]
 
+@attr.s
+class TelinkSubElement:
+    tag_id = attr.ib()
+    tag_length = attr.ib()
+    tag_info = attr.ib()
+    data = attr.ib()
+
+    def serialize(self) -> bytes:
+        res = self.tag_id.serialize()
+        res += t.uint32_t(self.tag_length).serialize()
+        res += t.uint16_t(self.tag_info).serialize()
+        res += self.data
+        return res
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple["TelinkSubElement", bytes]:
+        tag_id, data = ElementTagId.deserialize(data)
+        tag_length, data = t.uint32_t.deserialize(data)
+        tag_info, data = t.uint16_t.deserialize(data)
+        if len(data) < tag_length:
+            raise ValueError("Not enough data for Telink element")
+        data_bytes, data = data[:tag_length], data[tag_length:]
+        return cls(tag_id=tag_id, tag_length=tag_length, tag_info=tag_info, data=data_bytes), data
+
+@attr.s
+class TelinkOTAImage(BaseOTAImage):
+    header = attr.ib()
+    subelements = attr.ib(factory=list)
+
+    def serialize(self) -> bytes:
+        res = self.header.serialize()
+        for sub in self.subelements:
+            res += sub.serialize()
+        return res
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple["TelinkOTAImage", bytes]:
+        header, data = OTAImageHeader.deserialize(data)
+        elements_len = header.image_size - header.header_length
+        subelements = []
+        element_data, data = data[:elements_len], data[elements_len:]
+        while element_data:
+            element, element_data = TelinkSubElement.deserialize(element_data)
+            subelements.append(element)
+        return cls(header=header, subelements=subelements), data
 
 def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:
     """Attempts to extract any known OTA image type from data. Does not validate firmware."""
