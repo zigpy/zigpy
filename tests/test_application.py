@@ -1802,7 +1802,7 @@ async def test_shutdown_device_remove_fails(app, ieee, caplog):
 async def test_callback_wrapping(
     app: zigpy.application.ControllerApplication, ieee, caplog
 ) -> None:
-    # The default is True
+    """Test that exceptions are caught and logged for wrapped callbacks."""
     dev = app.add_device(ieee, 0x1234)
 
     def _callback():
@@ -1828,7 +1828,7 @@ async def test_callback_wrapping(
 async def test_callback_wrapping_async(
     app: zigpy.application.ControllerApplication, ieee, caplog
 ) -> None:
-    # The default is True
+    """Test that exceptions are caught and logged for wrapped async callbacks."""
     dev = app.add_device(ieee, 0x1234)
 
     async def _callback():

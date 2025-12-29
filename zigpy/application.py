@@ -15,7 +15,7 @@ import os
 import random
 import time
 import typing
-from typing import Any, TypeVar
+from typing import Any, ParamSpec, TypeVar
 import warnings
 
 import zigpy.appdb
@@ -49,7 +49,7 @@ TRANSIENT_CONNECTION_ERRORS = {
 
 ENERGY_SCAN_WARN_THRESHOLD = 0.75 * 255
 _R = TypeVar("_R")
-_C = TypeVar("_C", bound=typing.Callable)
+_P = ParamSpec("_P")
 
 CHANNEL_CHANGE_BROADCAST_DELAY_S = 1.0
 CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S = 1.0
@@ -98,27 +98,29 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         )
 
     def wrap_callback(
-        self, src: zigpy.device.Device | zigpy.listeners.ANY_DEVICE, callback: _C
-    ) -> _C:
+        self,
+        src: zigpy.device.Device | zigpy.listeners.ANY_DEVICE,
+        callback: typing.Callable[_P, Any],
+    ) -> typing.Callable[_P, None]:
         """Wrap a callback to log exceptions and run as task if needed."""
         if inspect.iscoroutinefunction(callback):
 
-            async def _async_callback(*args: Any, **kwargs: Any) -> Any:
+            async def _async_callback(*args: _P.args, **kwargs: _P.kwargs) -> None:
                 try:
-                    return await callback(*args, **kwargs)
+                    await callback(*args, **kwargs)
                 except Exception as exc:  # noqa: BLE001
                     LOGGER.warning(
                         "Device %r callback failed - %r", src, exc, exc_info=True
                     )
 
-            def _callback(*args: Any, **kwargs: Any) -> Any:
+            def _callback(*args: _P.args, **kwargs: _P.kwargs) -> None:
                 self.create_task(_async_callback(*args, **kwargs))
 
         else:
 
-            def _callback(*args: Any, **kwargs: Any) -> Any:
+            def _callback(*args: _P.args, **kwargs: _P.kwargs) -> None:
                 try:
-                    return callback(*args, **kwargs)
+                    callback(*args, **kwargs)
                 except Exception as exc:  # noqa: BLE001
                     LOGGER.warning(
                         "Device %r callback failed - %r", src, exc, exc_info=True
