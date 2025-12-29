@@ -1,0 +1,16 @@
+{
+  "schemas": {
+    "zigpy_v1": {
+      "version": "0.0.20",
+      "url": "https://github.com/zigpy/zigpy-ota/releases/download/0.0.20/zigpy_v1_ota.json"
+    },
+    "z2m_v1": {
+      "version": "0.0.20",
+      "url": "https://github.com/zigpy/zigpy-ota/releases/download/0.0.20/z2m_v1_ota.json"
+    },
+    "markdown_v1": {
+      "version": "0.0.20",
+      "url": "https://github.com/zigpy/zigpy-ota/releases/download/0.0.20/markdown_v1.md"
+    }
+  }
+}

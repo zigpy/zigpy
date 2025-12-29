@@ -92,6 +92,7 @@ CONF_OTA_BROADCAST_ENABLED = "broadcast_enabled"
 CONF_OTA_BROADCAST_INITIAL_DELAY = "broadcast_initial_delay"
 CONF_OTA_BROADCAST_INTERVAL = "broadcast_interval"
 CONF_OTA_PROVIDER_MANUF_IDS = "manufacturer_ids"
+CONF_OTA_PROVIDER_CHANNEL = "channel"
 CONF_SOURCE_ROUTING = "source_routing"
 CONF_STARTUP_ENERGY_SCAN = (
     "startup_energy_scan"  # Unused, kept to avoid breaking imports in dependencies
@@ -224,6 +225,13 @@ SCHEMA_OTA_PROVIDER_URL = SCHEMA_OTA_PROVIDER_BASE.extend(
 
 SCHEMA_OTA_PROVIDER_URL_REQUIRED = SCHEMA_OTA_PROVIDER_BASE.extend(
     {vol.Required(CONF_OTA_PROVIDER_URL): vol.Url()}
+)
+
+SCHEMA_OTA_PROVIDER_ZIGPY_OTA = SCHEMA_OTA_PROVIDER_BASE.extend(
+    {
+        vol.Optional(CONF_OTA_PROVIDER_URL): vol.Url(),
+        vol.Optional(CONF_OTA_PROVIDER_CHANNEL): vol.In(["stable", "beta", "dev"]),
+    }
 )
 
 SCHEMA_OTA_PROVIDER_JSON_INDEX = SCHEMA_OTA_PROVIDER_BASE.extend(
