@@ -23,9 +23,11 @@ from zigpy.device import Device, Status
 import zigpy.endpoint
 import zigpy.ota
 from zigpy.quirks import CustomDevice
+from zigpy.quirks.registry import DeviceRegistry
+from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types as t
 import zigpy.zcl
-from zigpy.zcl.clusters.general import Basic
+from zigpy.zcl.clusters.general import Basic, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
@@ -1175,3 +1177,73 @@ async def test_appdb_attribute_clear(tmp_path):
     dev3 = app3.get_device(ieee=dev.ieee)
     assert Basic.AttributeDefs.zcl_version.id not in dev3.endpoints[1].basic._attr_cache
     await app3.shutdown()
+
+
+async def test_appdb_complex_quirk_matching(tmp_path) -> None:
+    """Test quirks are given full attribute state for matching."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    # Create a simple device
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    basic.update_attribute(Basic.AttributeDefs.model.id, "Some Model")
+    basic.update_attribute(Basic.AttributeDefs.manufacturer.id, "Some Manufacturer")
+
+    ota = ep.add_output_cluster(Ota.cluster_id)
+    ota.update_attribute(Ota.AttributeDefs.current_file_version.id, 0x12345678)
+
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    # Ensure quirks have the correct information to match properly
+    registry = DeviceRegistry()
+
+    # Doesn't match
+    _quirk1 = (
+        QuirkBuilder("Some Manufacturer", "Some Model", registry=registry)
+        .firmware_version_filter(
+            min_version=0x12345678 - 1,
+            max_version=0x12345678,
+            allow_missing=False,
+        )
+        .add_to_registry()
+    )
+
+    # Matches
+    quirk2 = (
+        QuirkBuilder("Some Manufacturer", "Some Model", registry=registry)
+        .firmware_version_filter(
+            min_version=0x12345678,
+            max_version=0x12345678 + 1,
+            allow_missing=False,
+        )
+        .add_to_registry()
+    )
+
+    # Doesn't match
+    _quirk3 = (
+        QuirkBuilder("Some Manufacturer", "Some Model", registry=registry)
+        .firmware_version_filter(
+            min_version=0x12345678 + 1,
+            max_version=0x12345678 + 2,
+            allow_missing=False,
+        )
+        .add_to_registry()
+    )
+
+    with patch("zigpy.quirks.get_device", side_effect=registry.get_device):
+        app2 = await make_app_with_db(db)
+
+    # Only the second quirk should match
+    dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    assert dev2.quirk_metadata == quirk2
+
+    await app2.shutdown()
