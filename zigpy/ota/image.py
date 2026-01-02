@@ -13,6 +13,14 @@ import zigpy.types as t
 LOGGER = logging.getLogger(__name__)
 
 
+def format_bytes(data: bytes) -> str:
+    """Format bytes for representation."""
+    if len(data) > 32:
+        return f"{len(data)}:{data[:25].hex()}...{data[-7:].hex()}"
+    else:
+        return f"{len(data)}:{data.hex()}"
+
+
 class HWVersion(t.uint16_t):
     @property
     def version(self):
@@ -149,14 +157,9 @@ class SubElement(t.Struct):
     data: LVBytes32
 
     def __repr__(self) -> str:
-        if len(self.data) > 32:
-            data = self.data[:25].hex() + "..." + self.data[-7:].hex()
-        else:
-            data = self.data.hex()
-
         return (
             f"<{self.__class__.__name__}(tag_id={self.tag_id!r},"
-            f" data=[{len(self.data)}:{data}])>"
+            f" data=[{format_bytes(self.data)}])>"
         )
 
 
@@ -258,14 +261,9 @@ class TelinkEncryptedSubElement:
     data: bytes = attr.ib(default=None)
 
     def __repr__(self) -> str:
-        if len(self.data) > 32:
-            data = self.data[:25].hex() + "..." + self.data[-7:].hex()
-        else:
-            data = self.data.hex()
-
         return (
             f"<{self.__class__.__name__}(tag_id={self.tag_id!r}"
-            f", tag_info={self.tag_info!r}, data=[{len(self.data)}:{data}])>"
+            f", tag_info={self.tag_info!r}, data=[{format_bytes(self.data)}])>"
         )
 
     @classmethod
@@ -294,13 +292,12 @@ class TelinkEncryptedSubElement:
         return cls(tag_id=tag_id, tag_info=tag_info, data=tag_data), data
 
     def serialize(self) -> bytes:
-        res = self.tag_id.serialize()
-        res += t.uint32_t(len(self.data)).serialize()
-        res += self.reserved.serialize()
-        res += self.num_padding_bytes.serialize()
-        res += self.data
+        result = ElementTagId(self.tag_id).serialize()
+        result += t.uint32_t(len(self.data)).serialize()
+        result += t.uint16_t(self.tag_info).serialize()
+        result += self.data
 
-        return res
+        return result
 
 
 @attr.s
