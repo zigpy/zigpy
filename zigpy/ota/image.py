@@ -254,7 +254,7 @@ class HueSBLOTAImage(BaseOTAImage):
         return cls(header=header, data=firmware), data[header.image_size :]
 
 
-@attr.s
+@attr.s(repr=False)
 class TelinkEncryptedSubElement:
     tag_id: ElementTagId = attr.ib(default=None)  # Always 0xF000
     tag_info: t.uint16_t = attr.ib(default=None)

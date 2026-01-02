@@ -426,3 +426,51 @@ def test_encrypted_telink_container() -> None:
     assert not rest
 
     assert img.serialize() == data
+
+
+def test_telink_encrypted_subelement_repr() -> None:
+    element = firmware.TelinkEncryptedSubElement(
+        tag_id=0xF000,
+        tag_info=0x1234,
+        data=b"\xab" * 40,
+    )
+
+    assert repr(element) == (
+        "<TelinkEncryptedSubElement(tag_id=<ElementTagId.undefined_0xf000: 61440>"
+        ", tag_info=4660, data=[40:ababababababababababababababababababababababababab"
+        "...ababababababab])>"
+    )
+
+
+def test_telink_encrypted_subelement_deserialize_errors() -> None:
+    with pytest.raises(ValueError, match="Data too short to contain encrypted"):
+        firmware.TelinkEncryptedSubElement.deserialize(b"\x00" * 7)
+
+    bad_tag = (
+        t.uint16_t(0x0000).serialize()  # tag_id should be 0xF000
+        + t.uint32_t(10).serialize()
+        + b"\x00" * 12
+    )
+    with pytest.raises(ValueError, match="Not a Telink encrypted subelement"):
+        firmware.TelinkEncryptedSubElement.deserialize(bad_tag)
+
+    # Data shorter than tag_length
+    short_data = (
+        t.uint16_t(0xF000).serialize()
+        + t.uint32_t(100).serialize()
+        + t.uint16_t(0).serialize()
+        + b"\x00" * 10
+    )
+    with pytest.raises(ValueError, match="Data too short to contain Telink subelement"):
+        firmware.TelinkEncryptedSubElement.deserialize(short_data)
+
+
+def test_telink_ota_image_serialize_bad_length() -> None:
+    data = (Path(__file__).parent / "files/snzb-01m_v1.0.5.ota").read_bytes()
+    img, _ = firmware.parse_ota_image(data)
+
+    # Corrupt the header image_size
+    img.header.image_size += 1
+
+    with pytest.raises(ValueError, match="does not match actual image size"):
+        img.serialize()
