@@ -668,24 +668,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_endpoints()
         await self._load_clusters()
 
-        # Quirks require the manufacturer and model name to be populated
-        await self._load_attributes(
-            f"""
-                cluster_type={ClusterType.Server}
-            AND cluster_id={Basic.cluster_id}
-            AND (
-                   attr_id={Basic.AttributeDefs.manufacturer.id}
-                OR attr_id={Basic.AttributeDefs.model.id}
-            )
-            """
-        )
+        # Load as many attributes as we can in the first pass
+        await self._load_attributes()
+        await self._load_unsupported_attributes()
 
         for device in self._application.devices.values():
             device = zigpy.quirks.get_device(device)
             self._application.devices[device.ieee] = device
 
+        # Load them once more, to make sure virtual clusters get re-populated
         await self._load_attributes()
         await self._load_unsupported_attributes()
+
         await self._load_groups()
         await self._load_group_members()
         await self._load_relays()
@@ -694,13 +688,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_network_backups()
         await self._register_device_listeners()
 
-    async def _load_attributes(self, filter: str | None = None) -> None:
-        if filter:
-            query = f"SELECT * FROM attributes_cache{DB_V} WHERE {filter}"
-        else:
-            query = f"SELECT * FROM attributes_cache{DB_V}"
-
-        async with self.execute(query) as cursor:
+    async def _load_attributes(self) -> None:
+        async with self.execute(f"SELECT * FROM attributes_cache{DB_V}") as cursor:
             async for (
                 ieee,
                 endpoint_id,
