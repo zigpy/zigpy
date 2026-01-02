@@ -336,7 +336,10 @@ class TelinkOTAImage(BaseOTAImage):
         return image, data
 
     def serialize(self) -> bytes:
-        res = super().serialize()
+        res = self.header.serialize()
+
+        for subelement in self.subelements:
+            res += subelement.serialize()
 
         if self.header.image_size != len(res):
             raise ValueError(
