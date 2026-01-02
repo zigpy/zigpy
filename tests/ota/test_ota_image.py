@@ -7,6 +7,8 @@ import pytest
 import zigpy.ota.image as firmware
 import zigpy.types as t
 
+from .conftest import FILES_DIR
+
 MANUFACTURER_ID = mock.sentinel.manufacturer_id
 IMAGE_TYPE = mock.sentinel.image_type
 
@@ -466,7 +468,7 @@ def test_telink_encrypted_subelement_deserialize_errors() -> None:
 
 
 def test_telink_ota_image_serialize_bad_length() -> None:
-    data = (Path(__file__).parent / "files/snzb-01m_v1.0.5.ota").read_bytes()
+    data = (FILES_DIR / "external/dl/sonoff/snzb-01m_v1.0.5.ota").read_bytes()
     img, _ = firmware.parse_ota_image(data)
 
     # Corrupt the header image_size
