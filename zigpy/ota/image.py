@@ -280,10 +280,10 @@ class TelinkEncryptedSubElement:
 
         tag_length, data = t.uint32_t.deserialize(data)
 
-        if len(data) < tag_length:
+        if len(data) < tag_length + 2:
             raise ValueError(
                 f"Data too short to contain Telink subelement data: expected"
-                f" {tag_length} bytes, got {len(data)}"
+                f" {tag_length + 2} bytes, got {len(data)}"
             )
 
         tag_info, data = t.uint16_t.deserialize(data)
