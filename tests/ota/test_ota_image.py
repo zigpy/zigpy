@@ -1,5 +1,4 @@
 import hashlib
-from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -420,8 +419,7 @@ def test_thirdreality_container(image):
 
 
 def test_encrypted_telink_container() -> None:
-    data = (Path(__file__).parent / "files/snzb-01m_v1.0.5.ota").read_bytes()
-
+    data = (FILES_DIR / "external/dl/sonoff/snzb-01m_v1.0.5.ota").read_bytes()
     img, rest = firmware.parse_ota_image(data)
 
     assert isinstance(img, firmware.TelinkOTAImage)
