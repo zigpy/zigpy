@@ -22,7 +22,7 @@ from zigpy.config import (
 )
 import zigpy.state as app_state
 import zigpy.types as t
-from zigpy.zcl import Cluster
+from zigpy.zcl import Cluster, foundation
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock
@@ -342,26 +342,37 @@ def verify_cleanup(
 
 @contextmanager
 def mock_attribute_reads(
-    cluster: Cluster, mock_attributes: dict[int, typing.Any]
+    cluster: Cluster, mock_attributes: dict[str | int, typing.Any]
 ) -> typing.Generator[tuple[AsyncMock, dict[str | int, AsyncMock]], None, None]:
     """Mock attribute reads on a cluster."""
+    mock_reads = {}
+
     for key, value in mock_attributes.items():
         if not callable(value):
-            mock_attributes[key] = AsyncMock(return_value=value)
+            value = Mock(return_value=value)
 
-    async def read_attributes(attributes, *args, **kwargs):
-        success = {}
-        failure = {}
+        mock_reads[cluster.find_attribute(key)] = value
 
-        for attribute in attributes:
-            if attribute in mock_attributes:
-                success[attribute] = await mock_attributes[attribute]()
+    async def read_attributes_raw(attributes, *args, **kwargs):
+        records = []
+
+        for attrid in attributes:
+            record = foundation.ReadAttributeRecord(attrid=attrid)
+            attr_def = cluster.find_attribute(attrid)
+
+            if attr_def in mock_reads:
+                record.status = foundation.Status.SUCCESS
+                record.value = foundation.TypeValue(
+                    type=attr_def.zcl_type, value=mock_reads[attr_def]()
+                )
             else:
-                failure[attribute] = Cluster.Status.UNSUPPORTED_ATTRIBUTE
+                record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
 
-        return success, failure
+            records.append(record)
+
+        return [records]
 
     with patch.object(
-        cluster, "read_attributes", autospec=True, side_effect=read_attributes
+        cluster, "read_attributes_raw", autospec=True, side_effect=read_attributes_raw
     ) as mock_read:
         yield mock_read, mock_attributes
