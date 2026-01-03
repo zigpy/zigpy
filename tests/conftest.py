@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 import copy
 import logging
 import threading
 import typing
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -21,6 +22,7 @@ from zigpy.config import (
 )
 import zigpy.state as app_state
 import zigpy.types as t
+from zigpy.zcl import Cluster
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock
@@ -336,3 +338,30 @@ def verify_cleanup(
     threads = frozenset(threading.enumerate()) - threads_before
     for thread in threads:
         assert isinstance(thread, threading._DummyThread)
+
+
+@contextmanager
+def mock_attribute_reads(
+    cluster: Cluster, mock_attributes: dict[int, typing.Any]
+) -> typing.Generator[tuple[AsyncMock, dict[str | int, AsyncMock]], None, None]:
+    """Mock attribute reads on a cluster."""
+    for key, value in mock_attributes.items():
+        if not callable(value):
+            mock_attributes[key] = AsyncMock(return_value=value)
+
+    async def read_attributes(attributes, *args, **kwargs):
+        success = {}
+        failure = {}
+
+        for attribute in attributes:
+            if attribute in mock_attributes:
+                success[attribute] = await mock_attributes[attribute]()
+            else:
+                failure[attribute] = Cluster.Status.UNSUPPORTED_ATTRIBUTE
+
+        return success, failure
+
+    with patch.object(
+        cluster, "read_attributes", autospec=True, side_effect=read_attributes
+    ) as mock_read:
+        yield mock_read, mock_attributes
