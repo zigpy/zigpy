@@ -5,6 +5,7 @@ import logging
 import pathlib
 
 import aiohttp
+from filelock import FileLock
 import pytest
 
 _LOGGER = logging.getLogger(__name__)
@@ -20,21 +21,29 @@ async def download(url: str) -> bytes | None:
 
 
 @pytest.fixture(scope="package", autouse=True)
-def download_external_files():
-    urls = json.loads((FILES_DIR / "external/urls.json").read_text())
+def download_external_files(tmp_path_factory, worker_id: str) -> None:
+    root_tmp_dir = tmp_path_factory.getbasetemp().parent
+    lock_file = root_tmp_dir / "download.lock"
 
-    for path, obj in urls.items():
-        path = FILES_DIR / "external" / path
-        path.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(lock_file):
+        # Only download files in the master worker
+        if worker_id != "master":
+            return
 
-        if not path.is_file():
-            try:
-                data = asyncio.run(download(obj["url"]))
-            except (TimeoutError, aiohttp.ClientError) as e:
-                _LOGGER.error("Failed to download %s: %s", obj["url"], e)
-                continue
-            else:
-                path.write_bytes(data)
+        urls = json.loads((FILES_DIR / "external/urls.json").read_text())
 
-        algorithm, digest = obj["checksum"].split(":")
-        assert hashlib.new(algorithm, path.read_bytes()).hexdigest() == digest
+        for path, obj in urls.items():
+            path = FILES_DIR / "external" / path
+            path.parent.mkdir(parents=True, exist_ok=True)
+
+            if not path.is_file():
+                try:
+                    data = asyncio.run(download(obj["url"]))
+                except (TimeoutError, aiohttp.ClientError) as e:
+                    _LOGGER.error("Failed to download %s: %s", obj["url"], e)
+                    continue
+                else:
+                    path.write_bytes(data)
+
+            algorithm, digest = obj["checksum"].split(":")
+            assert hashlib.new(algorithm, path.read_bytes()).hexdigest() == digest
