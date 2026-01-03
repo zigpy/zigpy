@@ -108,6 +108,29 @@ async def test_initialize_read_ota(
     assert success[Ota.AttributeDefs.current_file_version.id] == 0x12345678
 
 
+async def test_initialize_read_ota_unsupported(
+    app: zigpy.application.ControllerApplication,
+) -> None:
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    ota = ep.add_output_cluster(Ota.cluster_id)
+
+    with (
+        mock_attribute_reads(basic, {"model": "Model", "manufacturer": "Manufacturer"}),
+        mock_attribute_reads(ota, {}),  # No attributes are supported
+    ):
+        await dev.initialize()
+
+    # Initialization succeeds
+    assert dev.model == "Model"
+    assert dev.manufacturer == "Manufacturer"
+
+
 async def test_initialize_fail(dev):
     async def mockrequest(nwk, tries=None, delay=None):
         return [1, dev.nwk, []]
