@@ -13,6 +13,14 @@ import zigpy.types as t
 LOGGER = logging.getLogger(__name__)
 
 
+def format_bytes(data: bytes) -> str:
+    """Format bytes for representation."""
+    if len(data) > 32:
+        return f"{len(data)}:{data[:25].hex()}...{data[-7:].hex()}"
+    else:
+        return f"{len(data)}:{data.hex()}"
+
+
 class HWVersion(t.uint16_t):
     @property
     def version(self):
@@ -149,14 +157,9 @@ class SubElement(t.Struct):
     data: LVBytes32
 
     def __repr__(self) -> str:
-        if len(self.data) > 32:
-            data = self.data[:25].hex() + "..." + self.data[-7:].hex()
-        else:
-            data = self.data.hex()
-
         return (
             f"<{self.__class__.__name__}(tag_id={self.tag_id!r},"
-            f" data=[{len(self.data)}:{data}])>"
+            f" data=[{format_bytes(self.data)}])>"
         )
 
 
@@ -251,6 +254,104 @@ class HueSBLOTAImage(BaseOTAImage):
         return cls(header=header, data=firmware), data[header.image_size :]
 
 
+@attr.s(repr=False)
+class TelinkEncryptedSubElement:
+    TELINK_ENCRYPTED_TAG_ID = ElementTagId(0xF000)
+
+    tag_id: ElementTagId = attr.ib(default=None, converter=ElementTagId)
+    tag_info: t.uint16_t = attr.ib(default=None)
+    data: bytes = attr.ib(default=None)
+
+    def __repr__(self) -> str:
+        return (
+            f"<{self.__class__.__name__}(tag_id={self.tag_id!r}"
+            f", tag_info={self.tag_info!r}, data=[{format_bytes(self.data)}])>"
+        )
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        if len(data) < 8:
+            raise ValueError("Data too short to contain encrypted Telink subelement")
+
+        tag_id, data = ElementTagId.deserialize(data)
+
+        if tag_id != cls.TELINK_ENCRYPTED_TAG_ID:
+            raise ValueError(
+                f"Not a Telink encrypted subelement: unexpected tag ID {tag_id!r}"
+            )
+
+        tag_length, data = t.uint32_t.deserialize(data)
+
+        if len(data) < tag_length + 2:
+            raise ValueError(
+                f"Data too short to contain Telink subelement data: expected"
+                f" {tag_length + 2} bytes, got {len(data)}"
+            )
+
+        tag_info, data = t.uint16_t.deserialize(data)
+        tag_data, data = data[:tag_length], data[tag_length:]
+
+        return cls(tag_id=tag_id, tag_info=tag_info, data=tag_data), data
+
+    def serialize(self) -> bytes:
+        result = ElementTagId(self.tag_id).serialize()
+        result += t.uint32_t(len(self.data)).serialize()
+        result += t.uint16_t(self.tag_info).serialize()
+        result += self.data
+
+        return result
+
+
+@attr.s
+class TelinkOTAImage(BaseOTAImage):
+    """Telink OTA image. Includes a proprietary "tag info" after the tag length."""
+
+    header: OTAImageHeader = attr.ib(default=None)
+    subelements: t.List[SubElement | TelinkEncryptedSubElement] = attr.ib(default=None)
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        hdr, data = OTAImageHeader.deserialize(data)
+        elements_len = hdr.image_size - hdr.header_length
+
+        if elements_len > len(data):
+            raise ValueError(
+                f"Data is too short for {cls}: expected at least {hdr.image_size} -"
+                f" {hdr.header_length} = {elements_len} bytes, got {len(data)}"
+            )
+
+        image = cls(header=hdr, subelements=[])
+        element_data, data = data[:elements_len], data[elements_len:]
+
+        while element_data:
+            tag_id, _ = ElementTagId.deserialize(element_data)
+
+            if tag_id == TelinkEncryptedSubElement.TELINK_ENCRYPTED_TAG_ID:
+                element, element_data = TelinkEncryptedSubElement.deserialize(
+                    element_data
+                )
+            else:
+                element, element_data = SubElement.deserialize(element_data)
+
+            image.subelements.append(element)
+
+        return image, data
+
+    def serialize(self) -> bytes:
+        res = self.header.serialize()
+
+        for subelement in self.subelements:
+            res += subelement.serialize()
+
+        if self.header.image_size != len(res):
+            raise ValueError(
+                f"Image size in header ({self.header.image_size} bytes)"
+                f" does not match actual image size ({len(res)} bytes)"
+            )
+
+        return res
+
+
 def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:
     """Attempts to extract any known OTA image type from data. Does not validate firmware."""
 
@@ -304,4 +405,13 @@ def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:
         # subelements after that. Try it first.
         return HueSBLOTAImage.deserialize(data)
     except ValueError:
+        pass
+
+    try:
+        # Otherwise, try parsing as a spec-compliant OTA image
         return OTAImage.deserialize(data)
+    except ValueError:
+        pass
+
+    # Finally, try the Telink proprietary format
+    return TelinkOTAImage.deserialize(data)

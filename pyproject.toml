@@ -38,6 +38,7 @@ testing = [
     "asynctest",
     "coveralls",
     "coverage[toml]",
+    "filelock",
     "pytest",
     "pytest-asyncio<1.0.0",
     "pytest-cov",
