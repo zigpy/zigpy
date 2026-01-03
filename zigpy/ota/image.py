@@ -256,6 +256,8 @@ class HueSBLOTAImage(BaseOTAImage):
 
 @attr.s(repr=False)
 class TelinkEncryptedSubElement:
+    TELINK_ENCRYPTED_TAG_ID = ElementTagId(0xF000)
+
     tag_id: ElementTagId = attr.ib(default=None, converter=ElementTagId)
     tag_info: t.uint16_t = attr.ib(default=None)
     data: bytes = attr.ib(default=None)
@@ -273,7 +275,7 @@ class TelinkEncryptedSubElement:
 
         tag_id, data = ElementTagId.deserialize(data)
 
-        if tag_id != 0xF000:
+        if tag_id != cls.TELINK_ENCRYPTED_TAG_ID:
             raise ValueError(
                 f"Not a Telink encrypted subelement: unexpected tag ID {tag_id!r}"
             )
@@ -324,7 +326,7 @@ class TelinkOTAImage(BaseOTAImage):
         while element_data:
             tag_id, _ = ElementTagId.deserialize(element_data)
 
-            if tag_id == 0xF000:
+            if tag_id == TelinkEncryptedSubElement.TELINK_ENCRYPTED_TAG_ID:
                 element, element_data = TelinkEncryptedSubElement.deserialize(
                     element_data
                 )

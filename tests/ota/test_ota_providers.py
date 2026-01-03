@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import pathlib
 from unittest.mock import Mock
 
@@ -17,8 +16,6 @@ from zigpy.ota import OtaImageWithMetadata, providers
 import zigpy.types as t
 
 from .conftest import FILES_DIR
-
-_LOGGER = logging.getLogger(__name__)
 
 
 def make_device(
