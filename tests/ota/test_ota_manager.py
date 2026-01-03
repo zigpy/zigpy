@@ -3,7 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from tests.conftest import add_initialized_device, make_app, make_node_desc
+from tests.conftest import (
+    add_initialized_device,
+    make_app,
+    make_node_desc,
+    mock_attribute_reads,
+)
 from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 import zigpy.application
 import zigpy.device
@@ -191,7 +196,10 @@ async def test_ota_manager():
     )
     cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
 
-    await dev.initialize()
+    with mock_attribute_reads(
+        cluster, {"current_file_version": FW_IMAGE.firmware.header.file_version - 10}
+    ):
+        await dev.initialize()
 
     # Stop the general cluster handler from interfering
     dev.ota_in_progress = True
@@ -364,7 +372,10 @@ async def test_ota_manager_image_page():
     )
     cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
 
-    await dev.initialize()
+    with mock_attribute_reads(
+        cluster, {"current_file_version": FW_IMAGE.firmware.header.file_version - 10}
+    ):
+        await dev.initialize()
 
     # Stop the general cluster handler from interfering
     dev.ota_in_progress = True
@@ -561,7 +572,10 @@ async def test_ota_manager_image_page_invalid_size():
     )
     cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
 
-    await dev.initialize()
+    with mock_attribute_reads(
+        cluster, {"current_file_version": FW_IMAGE.firmware.header.file_version - 10}
+    ):
+        await dev.initialize()
 
     # Stop the general cluster handler from interfering
     dev.ota_in_progress = True
@@ -631,7 +645,10 @@ async def test_ota_manager_image_page_failure():
     )
     cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
 
-    await dev.initialize()
+    with mock_attribute_reads(
+        cluster, {"current_file_version": FW_IMAGE.firmware.header.file_version - 10}
+    ):
+        await dev.initialize()
 
     # Stop the general cluster handler from interfering
     dev.ota_in_progress = True

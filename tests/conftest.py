@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 import copy
 import logging
 import threading
 import typing
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -21,6 +22,7 @@ from zigpy.config import (
 )
 import zigpy.state as app_state
 import zigpy.types as t
+from zigpy.zcl import Cluster, foundation
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock
@@ -336,3 +338,41 @@ def verify_cleanup(
     threads = frozenset(threading.enumerate()) - threads_before
     for thread in threads:
         assert isinstance(thread, threading._DummyThread)
+
+
+@contextmanager
+def mock_attribute_reads(
+    cluster: Cluster, mock_attributes: dict[str | int, typing.Any]
+) -> typing.Generator[tuple[AsyncMock, dict[str | int, AsyncMock]], None, None]:
+    """Mock attribute reads on a cluster."""
+    mock_reads = {}
+
+    for key, value in mock_attributes.items():
+        if not callable(value):
+            value = Mock(return_value=value)
+
+        mock_reads[cluster.find_attribute(key)] = value
+
+    async def read_attributes_raw(attributes, *args, **kwargs):
+        records = []
+
+        for attrid in attributes:
+            record = foundation.ReadAttributeRecord(attrid=attrid)
+            attr_def = cluster.find_attribute(attrid)
+
+            if attr_def in mock_reads:
+                record.status = foundation.Status.SUCCESS
+                record.value = foundation.TypeValue(
+                    type=attr_def.zcl_type, value=mock_reads[attr_def]()
+                )
+            else:
+                record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+
+            records.append(record)
+
+        return [records]
+
+    with patch.object(
+        cluster, "read_attributes_raw", autospec=True, side_effect=read_attributes_raw
+    ) as mock_read:
+        yield mock_read, mock_attributes
