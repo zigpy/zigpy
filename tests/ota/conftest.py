@@ -20,16 +20,12 @@ async def download(url: str) -> bytes | None:
             return await resp.read()
 
 
-@pytest.fixture(scope="package", autouse=True)
-def download_external_files(tmp_path_factory, worker_id: str) -> None:
+@pytest.fixture(scope="session", autouse=True)
+def download_external_files(tmp_path_factory) -> None:
     root_tmp_dir = tmp_path_factory.getbasetemp().parent
     lock_file = root_tmp_dir / "download.lock"
 
     with FileLock(lock_file):
-        # Only download files in the master worker
-        if worker_id != "master":
-            return
-
         urls = json.loads((FILES_DIR / "external/urls.json").read_text())
 
         for path, obj in urls.items():
