@@ -452,6 +452,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         LOGGER.info("Successfully migrated to channel %d", new_channel)
 
+        # Immediately create a backup to persist the new channel, otherwise we will
+        # get a `NetworkSettingsInconsistent` error on the next restart
+        await self.backups.create_backup()
+
     async def form_network(self, *, fast: bool = False) -> None:
         """Writes random network settings to the coordinator."""
         config = self.config[conf.CONF_NWK]
