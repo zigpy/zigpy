@@ -469,10 +469,11 @@ class OTA:
                 upgrades[img.metadata] = img
 
         # As a final pass, identify images with identical versions and specificity but
-        # differing contents
-        upgrade_collisions: defaultdict[defaultdict[list]] = defaultdict(
-            lambda: defaultdict(list)
-        )
+        # differing contents.
+        # Structure: {(version, specificity): {serialized_firmware: [images]}}
+        upgrade_collisions: defaultdict[
+            tuple[int, int], defaultdict[bytes, list[OtaImageWithMetadata]]
+        ] = defaultdict(lambda: defaultdict(list))
 
         for img in upgrades.values():
             assert img.firmware is not None
