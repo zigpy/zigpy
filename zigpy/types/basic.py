@@ -3,11 +3,9 @@ from __future__ import annotations
 import enum
 import inspect
 import struct
-import typing
-from typing import Self
+from typing import Literal, Self, TypeVar
 
-CALLABLE_T = typing.TypeVar("CALLABLE_T", bound=typing.Callable)
-T = typing.TypeVar("T")
+T = TypeVar("T")
 
 
 class Bits(list):
@@ -79,10 +77,10 @@ NOT_SET = object()
 
 
 class FixedIntType(int):
-    _signed = None
-    _bits = None
-    _size = None  # Only for backwards compatibility, not set for smaller ints
-    _byteorder = None
+    _signed: bool = None
+    _bits: int = None
+    _size: int = None  # Only for backwards compatibility, not set for smaller ints
+    _byteorder: Literal["big", "little"] = None
 
     min_value: int
     max_value: int
@@ -751,9 +749,9 @@ class bitmap64_be(
 
 
 class BaseFloat(float):
-    _exponent_bits = None
-    _fraction_bits = None
-    _size = None
+    _exponent_bits: int = None
+    _fraction_bits: int = None
+    _size: int = None
 
     def __init_subclass__(cls, exponent_bits, fraction_bits):
         size_bits = 1 + exponent_bits + fraction_bits
@@ -981,7 +979,7 @@ class List(list, metaclass=KwargTypeMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         assert cls._item_type is not None
 
         lst = cls()
@@ -1005,7 +1003,7 @@ class LVList(list, metaclass=KwargTypeMeta):
         )
 
     @classmethod
-    def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         assert cls._item_type is not None
         length, data = cls._length_type.deserialize(data)
         r = cls()
@@ -1032,7 +1030,7 @@ class FixedList(list, metaclass=KwargTypeMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         assert cls._item_type is not None
         r = cls()
         for _i in range(cls._length):
@@ -1066,7 +1064,7 @@ class CharacterString(str):
         ) + self.encode("utf8")
 
     @classmethod
-    def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         if len(data) < cls._prefix_length:
             raise ValueError("Data is too short")
 

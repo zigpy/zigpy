@@ -38,7 +38,7 @@ def create_gbl_image(tags):
     )
 
     # And end with a checksum
-    image += (b"\xfc\x04\x04\xfc" b"\x04\x00\x00\x00") + zlib.crc32(
+    image += (b"\xfc\x04\x04\xfc\x04\x00\x00\x00") + zlib.crc32(
         image + b"\xfc\x04\x04\xfc" + b"\x04\x00\x00\x00"
     ).to_bytes(4, "little")
 

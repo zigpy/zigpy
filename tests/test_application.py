@@ -1473,7 +1473,7 @@ async def test_energy_scan_not_implemented(app):
     results = await app.energy_scan(
         channels=t.Channels.ALL_CHANNELS, duration_exp=2, count=1
     )
-    assert results == {c: 0 for c in range(11, 26 + 1)}
+    assert results == dict.fromkeys(range(11, 26 + 1), 0)
 
 
 async def test_startup_broadcast_failure_due_to_interference(app, caplog):
