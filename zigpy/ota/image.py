@@ -108,7 +108,7 @@ class OTAImageHeader(t.Struct):
     )
 
     @property
-    def security_credential_version_present(self) -> bool:
+    def security_credential_version_present(self) -> bool | None:
         if self.field_control is None:
             return None
         return bool(
@@ -116,13 +116,13 @@ class OTAImageHeader(t.Struct):
         )
 
     @property
-    def device_specific_file(self) -> bool:
+    def device_specific_file(self) -> bool | None:
         if self.field_control is None:
             return None
         return bool(self.field_control & FieldControl.DEVICE_SPECIFIC_FILE_PRESENT)
 
     @property
-    def hardware_versions_present(self) -> bool:
+    def hardware_versions_present(self) -> bool | None:
         if self.field_control is None:
             return None
         return bool(self.field_control & FieldControl.HARDWARE_VERSIONS_PRESENT)

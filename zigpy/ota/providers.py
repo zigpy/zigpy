@@ -25,6 +25,9 @@ from zigpy.ota.image import BaseOTAImage, parse_ota_image
 import zigpy.types as t
 import zigpy.util
 
+if typing.TYPE_CHECKING:
+    import zigpy.device
+
 LOGGER = logging.getLogger(__name__)
 
 # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`
@@ -77,8 +80,8 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     checksum: str | None = None
     file_size: int | None = None
 
-    manufacturer_names: tuple[str] = ()
-    model_names: tuple[str] = ()
+    manufacturer_names: tuple[str, ...] = ()
+    model_names: tuple[str, ...] = ()
 
     changelog: str | None = None
     release_notes: str | None = None
@@ -188,7 +191,7 @@ class SignedIkeaRemoteOtaImageMetadata(IkeaRemoteOtaImageMetadata):
 
 class BaseOtaProvider:
     NAME: str
-    MANUFACTURER_IDS: tuple[int] = ()
+    MANUFACTURER_IDS: tuple[int, ...] = ()
     DEFAULT_URL: str | None = None
     VOL_SCHEMA: vol.Schema
     JSON_SCHEMA: dict | None = None
