@@ -1,6 +1,7 @@
 import itertools
 import math
 import struct
+from typing import Generic, TypeVar
 
 import pytest
 
@@ -489,15 +490,16 @@ def test_lvlist_types():
     )
 
     # Similar-looking classes are not compatible
-    class NewListType[T: type[t.Serializable], V: type[t.uint_t]](
-        list, metaclass=t.KwargTypeMeta
-    ):
-        _item_type: T | None
-        _length_type: V | None
+    _T = TypeVar("_T", bound=t.Serializable)
+    _V = TypeVar("_V", bound=t.uint_t)
+
+    class NewListType(list, Generic[_T, _V], metaclass=t.KwargTypeMeta):
+        _item_type: type[_T] | None
+        _length_type: type[_V] | None
 
         _getitem_kwargs = {"item_type": None, "length_type": None}
 
-        def __init_subclass__(cls, item_type: T, length_type: V) -> None:
+        def __init_subclass__(cls, item_type: type[_T], length_type: type[_V]) -> None:
             if item_type is not None:
                 cls._item_type = item_type
 

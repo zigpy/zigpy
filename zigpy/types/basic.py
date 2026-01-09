@@ -4,7 +4,7 @@ from collections.abc import Iterator
 import enum
 import inspect
 import struct
-from typing import Literal, Protocol, Self
+from typing import Generic, Literal, Protocol, Self, TypeVar
 
 
 class Serializable(Protocol):
@@ -992,11 +992,15 @@ class KwargTypeMeta(type):
         return super().__instancecheck__(subclass)
 
 
-class List[T: Serializable](list, metaclass=KwargTypeMeta):
-    _item_type: type[T] | None
+_T = TypeVar("_T", bound="Serializable")
+_V = TypeVar("_V", bound="uint_t")
+
+
+class List(list, Generic[_T], metaclass=KwargTypeMeta):
+    _item_type: type[_T] | None
     _getitem_kwargs = {"item_type": None}
 
-    def __init_subclass__(cls, item_type: type[T] | None = None) -> None:
+    def __init_subclass__(cls, item_type: type[_T] | None = None) -> None:
         if item_type is not None:
             cls._item_type = item_type
 
@@ -1016,14 +1020,14 @@ class List[T: Serializable](list, metaclass=KwargTypeMeta):
         return lst, data
 
 
-class LVList[T: Serializable, V: uint_t](list, metaclass=KwargTypeMeta):
-    _item_type: type[T] | None
-    _length_type: type[V] | None
+class LVList(list, Generic[_T, _V], metaclass=KwargTypeMeta):
+    _item_type: type[_T] | None
+    _length_type: type[_V] | None
 
     _getitem_kwargs = {"item_type": None, "length_type": None}
 
     def __init_subclass__(
-        cls, item_type: type[T] | None = None, length_type: type[V] | None = None
+        cls, item_type: type[_T] | None = None, length_type: type[_V] | None = None
     ) -> None:
         if item_type is not None:
             cls._item_type = item_type
@@ -1054,14 +1058,14 @@ class LVList[T: Serializable, V: uint_t](list, metaclass=KwargTypeMeta):
         return r, data
 
 
-class FixedList[T: Serializable, L: int](list, metaclass=KwargTypeMeta):
-    _item_type: type[T] | None
-    _length: L | None
+class FixedList(list, Generic[_T], metaclass=KwargTypeMeta):
+    _item_type: type[_T] | None
+    _length: int | None
 
     _getitem_kwargs = {"item_type": None, "length": None}
 
     def __init_subclass__(
-        cls, item_type: type[T] | None = None, length: L | None = None
+        cls, item_type: type[_T] | None = None, length: int | None = None
     ) -> None:
         if item_type is not None:
             cls._item_type = item_type

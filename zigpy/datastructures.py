@@ -14,22 +14,24 @@ import logging
 import math
 import types
 import typing
-from typing import Any, Self
+from typing import Any, Generic, Self, TypeVar
 import warnings
 
 _LOGGER = logging.getLogger(__name__)
 
+_T = TypeVar("_T", bound=contextlib.AbstractAsyncContextManager)
 
-class WrappedContextManager[T: contextlib.AbstractAsyncContextManager]:
+
+class WrappedContextManager(Generic[_T]):
     def __init__(
         self,
-        context_manager: T,
+        context_manager: _T,
         on_enter: typing.Callable[[], Coroutine[Any, Any, Any]],
     ) -> None:
         self.on_enter = on_enter
         self.context_manager = context_manager
 
-    async def __aenter__(self) -> T:
+    async def __aenter__(self) -> _T:
         await self.on_enter()
         return self.context_manager
 
