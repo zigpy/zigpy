@@ -1082,9 +1082,7 @@ class CharacterString(str):
         raw = data[cls._prefix_length : cls._prefix_length + length]
         text = raw.split(b"\x00")[0].decode("utf8", errors="replace")
 
-        # FIXME: figure out how to get this working: `T` is not behaving as expected in
-        # the classmethod when it is not bound.
-        r = cls(text)  # type:ignore[call-arg]
+        r = cls(text)
         r.raw = raw
         return r, data[cls._prefix_length + length :]
 
