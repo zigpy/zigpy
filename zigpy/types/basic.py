@@ -1018,9 +1018,9 @@ class List(list, Generic[_T], metaclass=KwargTypeMeta):
 
 class LVList(list, Generic[_T, _V], metaclass=KwargTypeMeta):
     _item_type: type[_T] | None
-    _length_type: type[_V] | None
+    _length_type: type[_V] = uint8_t
 
-    _getitem_kwargs = {"item_type": None, "length_type": None}
+    _getitem_kwargs = {"item_type": None, "length_type": uint8_t}
 
     def __init_subclass__(
         cls, item_type: type[_T] | None = None, length_type: type[_V] | None = None
