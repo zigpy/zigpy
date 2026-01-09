@@ -1498,7 +1498,10 @@ async def test_startup_broadcast_failure_other(app, caplog):
 
 @patch("zigpy.application.CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S", 0.1)
 @patch("zigpy.application.CHANNEL_CHANGE_BROADCAST_DELAY_S", 0.01)
-async def test_move_network_to_new_channel(app):
+async def test_move_network_to_new_channel():
+    # Disable periodic backups to test on-demand backup creation
+    app = make_app({conf.CONF_NWK_BACKUP_ENABLED: False})
+
     async def nwk_update(*args, **kwargs):
         async def inner():
             await asyncio.sleep(
@@ -1514,10 +1517,16 @@ async def test_move_network_to_new_channel(app):
 
     assert app.state.network_info.channel != 26
 
-    with patch.object(
-        app._device.zdo, "Mgmt_NWK_Update_req", side_effect=nwk_update
-    ) as mock_update:
+    with (
+        patch.object(
+            app._device.zdo, "Mgmt_NWK_Update_req", side_effect=nwk_update
+        ) as mock_update,
+        patch.object(app.backups, "create_backup", new=AsyncMock()) as mock_backup,
+    ):
         await app.move_network_to_channel(new_channel=26, num_broadcasts=10)
+
+        # Verify backup is created to persist the new channel
+        assert len(mock_backup.mock_calls) == 1
 
     assert app.state.network_info.channel == 26
     assert len(mock_update.mock_calls) == 1
