@@ -315,7 +315,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
                 )
                 return hdr, data
 
-            command = foundation.GENERAL_COMMANDS[hdr.command_id]
+            command_id = foundation.GeneralCommand(hdr.command_id)
+            command = foundation.GENERAL_COMMANDS[command_id]
 
         response, data = command.schema.deserialize(data)
 
@@ -958,7 +959,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     def general_command(
         self,
-        command_id: foundation.GeneralCommand | int | t.uint8_t,
+        command_id: foundation.GeneralCommand,
         *args,
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
