@@ -613,7 +613,7 @@ class DataType(DataTypeInfo, enum.Enum):
 
     @classmethod
     @functools.cache
-    def _python_type_index(cls: type[Self]) -> dict[type, Self]:  # noqa: N805
+    def _python_type_index(cls: type[Self]) -> dict[type, Self]:
         return {d.python_type: d for d in cls}
 
     @classmethod
@@ -630,7 +630,7 @@ class DataType(DataTypeInfo, enum.Enum):
 
     @classmethod
     @functools.cache
-    def _data_type_index(cls: type[Self]) -> dict[type, Self]:  # noqa: N805
+    def _data_type_index(cls: type[Self]) -> dict[DataTypeId, Self]:
         return {d.type_id: d for d in cls}
 
     @classmethod

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, Final
+from typing import Any, Final, Self
 
 import zigpy.types as t
 from zigpy.typing import AddressingMode
@@ -36,7 +36,7 @@ class PowerSource(t.enum8):
         self.battery_backup = False
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[bytes, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         val, data = t.uint8_t.deserialize(data)
         r = cls(val & 0x7F)
         r.battery_backup = bool(val & 0x80)
