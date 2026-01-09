@@ -366,7 +366,7 @@ class OTA:
     @zigpy.util.combine_concurrent_calls
     async def _load_provider_index(
         self, provider: zigpy.ota.providers.BaseOtaProvider
-    ) -> list[zigpy.ota.providers.BaseOtaImageMetadata]:
+    ) -> list[zigpy.ota.providers.BaseOtaImageMetadata] | None:
         """Load the index of a provider."""
         async with asyncio_timeout(OTA_FETCH_TIMEOUT):
             return await provider.load_index()
