@@ -1053,7 +1053,7 @@ class ZCLHeader(t.Struct):
         return super().__new__(cls, frame_control, manufacturer, tsn, command_id)
 
     @property
-    def direction(self) -> bool:
+    def direction(self) -> Direction:
         """Return direction of Frame Control."""
         return self.frame_control.direction
 

@@ -30,7 +30,7 @@ class EmptyObject:
 
 @dataclasses.dataclass(frozen=True)
 class StructField:
-    name: str | None = None
+    name: str = None
     type: type = None
 
     requires: typing.Callable[[Struct], bool] | None = dataclasses.field(

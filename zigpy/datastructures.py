@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import bisect
 import collections
+from collections.abc import Coroutine
 import contextlib
 from fractions import Fraction
 import functools
@@ -13,21 +14,22 @@ import logging
 import math
 import types
 import typing
+from typing import Any, Self
 import warnings
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class WrappedContextManager:
+class WrappedContextManager[T: contextlib.AbstractAsyncContextManager]:
     def __init__(
         self,
-        context_manager: contextlib.AbstractAsyncContextManager,
-        on_enter: typing.Callable[[], typing.Awaitable[None]],
+        context_manager: T,
+        on_enter: typing.Callable[[], Coroutine[Any, Any, Any]],
     ) -> None:
         self.on_enter = on_enter
         self.context_manager = context_manager
 
-    async def __aenter__(self) -> None:
+    async def __aenter__(self) -> T:
         await self.on_enter()
         return self.context_manager
 
@@ -48,9 +50,9 @@ class PriorityDynamicBoundedSemaphore:
         self._max_value: int = value
         self._comparison_counter: int = 0
         self._waiters: list[tuple[int, int, asyncio.Future]] = []
-        self._loop: asyncio.BaseEventLoop | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
-    def _get_loop(self) -> asyncio.BaseEventLoop:
+    def _get_loop(self) -> asyncio.AbstractEventLoop:
         loop = asyncio.get_running_loop()
 
         if self._loop is None:
@@ -170,7 +172,7 @@ class PriorityDynamicBoundedSemaphore:
         self._value += 1
         self._wake_up_next()
 
-    def __call__(self, priority: int = 0) -> WrappedContextManager:
+    def __call__(self, priority: int = 0) -> WrappedContextManager[Self]:
         """Allows specifying the priority by calling the context manager.
 
         This allows both `async with sem:` and `async with sem(priority=5):`.
@@ -268,7 +270,7 @@ class Debouncer:
         self._dedup_counter: int = 0
 
     @functools.cached_property
-    def _loop(self) -> asyncio.BaseEventLoop:
+    def _loop(self) -> asyncio.AbstractEventLoop:
         return asyncio.get_running_loop()
 
     def clean(self, now: float | None = None) -> None:
@@ -383,7 +385,7 @@ class RequestLimiter:
         self._wake_waiters()
 
     @property
-    def max_value(self) -> None:
+    def max_value(self) -> int:
         """Deprecated alias for `max_concurrency`."""
         warnings.warn(
             "`max_value` is deprecated, use `max_concurrency` instead",

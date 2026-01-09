@@ -16,7 +16,7 @@ from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.types as t
 from zigpy.typing import AddressingMode, EndpointType
 from zigpy.zcl import foundation
-from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs
+from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs, CommandSchema
 
 if TYPE_CHECKING:
     from zigpy.appdb import PersistingListener
@@ -287,7 +287,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         cluster.cluster_id = cluster_id
         return cluster
 
-    def deserialize(self, data: bytes) -> tuple[foundation.ZCLHeader, ...]:
+    def deserialize(
+        self, data: bytes
+    ) -> tuple[foundation.ZCLHeader, CommandSchema | bytes]:
         self.debug("Received ZCL frame: %r", data.hex(" "))
 
         hdr, data = foundation.ZCLHeader.deserialize(data)
@@ -332,7 +334,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         *,
         general: bool,
         command_id: foundation.GeneralCommand | int,
-        schema: type[t.Struct],
+        schema: type[CommandSchema],
         manufacturer: int | None = None,
         tsn: int | None = None,
         disable_default_response: bool,
@@ -340,8 +342,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         # Schema args and kwargs
         args: tuple[Any, ...],
         kwargs: Any,
-    ) -> tuple[foundation.ZCLHeader, bytes]:
-        request = schema(*args, **kwargs)  # type:ignore[operator]
+    ) -> tuple[foundation.ZCLHeader, CommandSchema]:
+        request = schema(*args, **kwargs)
         request.serialize()  # Throw an error before generating a new TSN
 
         if tsn is None:

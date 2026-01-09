@@ -1587,7 +1587,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         )
         await self.permit_ncp(time_s)
 
-    def get_sequence(self) -> t.uint8_t:
+    def get_sequence(self) -> int:
         self._send_sequence = (self._send_sequence + 1) % 256
         return self._send_sequence
 

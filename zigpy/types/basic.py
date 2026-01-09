@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 import enum
 import inspect
 import struct
@@ -15,9 +16,36 @@ class Serializable(Protocol):
     def deserialize(cls, data: bytes) -> tuple[Self, bytes]: ...
 
 
-class Bits(list):
+class Bits:
+    def __init__(self, bits: list[int] | None = None) -> None:
+        self._bits: list[int] = bits or []
+
+    def __len__(self) -> int:
+        return len(self._bits)
+
+    def __getitem__(self, index: slice) -> Self:
+        return type(self)(self._bits[index])
+
+    def __iter__(self) -> Iterator[int]:
+        return iter(self._bits)
+
+    def extend(self, bits: list[int]) -> None:
+        self._bits.extend(bits)
+
+    def __repr__(self) -> str:
+        return f"Bits({self._bits})"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self._bits == other._bits
+
+    def __add__(self, other: Self) -> Self:
+        return type(self)(self._bits + other._bits)
+
     @classmethod
-    def from_bitfields(cls, fields):
+    def from_bitfields(cls, fields: list[FixedIntType]) -> Self:
         instance = cls()
 
         # Little endian, so [11, 1000, 00] will be packed as 00_1000_11
@@ -35,7 +63,7 @@ class Bits(list):
         for index in range(0, len(self), 8):
             byte = 0x00
 
-            for bit in self[index : index + 8]:
+            for bit in self._bits[index : index + 8]:
                 byte <<= 1
                 byte |= bit
 
@@ -44,7 +72,7 @@ class Bits(list):
         return bytes(serialized_bytes)
 
     @classmethod
-    def deserialize(cls, data) -> tuple[Bits, bytes]:
+    def deserialize(cls, data) -> tuple[Self, bytes]:
         bits: list[int] = []
 
         for byte in data:
@@ -379,7 +407,7 @@ class AlwaysCreateEnumType(enum.EnumMeta):
         # by-value search for a matching enum member
         # see if it's in the reverse mapping (for hashable values)
         try:
-            return self._value2member_map_[value]
+            return self._value2member_map_[value]  # type: ignore[return-value]
         except KeyError:
             # Not found, no need to do long O(n) search
             pass
@@ -387,7 +415,7 @@ class AlwaysCreateEnumType(enum.EnumMeta):
             # not there, now do long search -- O(n) behavior
             for member in self._member_map_.values():
                 if member._value_ == value:
-                    return member
+                    return member  # type: ignore[return-value]
         # still not found -- try _missing_ hook
         try:
             exc = None
@@ -402,7 +430,7 @@ class AlwaysCreateEnumType(enum.EnumMeta):
                 and self._boundary_ is enum.EJECT
                 and isinstance(result, int)
             ):
-                return result
+                return result  # type: ignore[return-value]
             else:
                 ve_exc = ValueError(f"{value!r} is not a valid {self.__qualname__}")
                 if result is None and exc is None:

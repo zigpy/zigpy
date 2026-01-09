@@ -252,7 +252,6 @@ show_error_context = true
 error_summary = true
 disable_error_code = [
     # Only a few notifications left:
-    "return-value",
     "valid-type",
     "misc",
     "attr-defined",
