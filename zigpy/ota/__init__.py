@@ -372,10 +372,8 @@ class OTA:
             return await provider.load_index()
 
     @zigpy.util.combine_concurrent_calls
-    async def _fetch_image(
-        self, image: OtaImageWithMetadata
-    ) -> list[OtaImageWithMetadata]:
-        """Load the index of a provider."""
+    async def _fetch_image(self, image: OtaImageWithMetadata) -> OtaImageWithMetadata:
+        """Fetch an OTA image."""
 
         async with asyncio_timeout(OTA_FETCH_TIMEOUT):
             return await image.fetch()
