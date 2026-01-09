@@ -1526,7 +1526,7 @@ async def test_move_network_to_new_channel():
         await app.move_network_to_channel(new_channel=26, num_broadcasts=10)
 
         # Verify backup is created to persist the new channel
-        mock_backup.assert_called_once()
+        assert len(mock_backup.mock_calls) == 1
 
     assert app.state.network_info.channel == 26
     assert len(mock_update.mock_calls) == 1
