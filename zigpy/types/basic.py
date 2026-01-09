@@ -492,51 +492,51 @@ class _EnumMixin:
             return object.__format__(repr(self), format_spec)
 
 
-class enum1(_EnumMixin, uint1_t, enum.IntEnum, metaclass=_IntEnumMeta):
+class enum1(_EnumMixin, uint1_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum2(_EnumMixin, uint2_t, enum.IntEnum, metaclass=_IntEnumMeta):
+class enum2(_EnumMixin, uint2_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum3(_EnumMixin, uint3_t, enum.IntEnum, metaclass=_IntEnumMeta):
+class enum3(_EnumMixin, uint3_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum4(_EnumMixin, uint4_t, enum.IntEnum, metaclass=_IntEnumMeta):
+class enum4(_EnumMixin, uint4_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum5(_EnumMixin, uint5_t, enum.IntEnum, metaclass=_IntEnumMeta):
+class enum5(_EnumMixin, uint5_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum6(_EnumMixin, uint6_t, enum.IntEnum, metaclass=_IntEnumMeta):
+class enum6(_EnumMixin, uint6_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum7(_EnumMixin, uint7_t, enum.IntEnum, metaclass=_IntEnumMeta):
+class enum7(_EnumMixin, uint7_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum8(_EnumMixin, uint8_t, enum.IntEnum, metaclass=_IntEnumMeta):
+class enum8(_EnumMixin, uint8_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum16(_EnumMixin, uint16_t, enum.IntEnum, metaclass=_IntEnumMeta):
+class enum16(_EnumMixin, uint16_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum32(_EnumMixin, uint32_t, enum.IntEnum, metaclass=_IntEnumMeta):
+class enum32(_EnumMixin, uint32_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum16_be(_EnumMixin, uint16_t_be, enum.IntEnum, metaclass=_IntEnumMeta):
+class enum16_be(_EnumMixin, uint16_t_be, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum32_be(_EnumMixin, uint32_t_be, enum.IntEnum, metaclass=_IntEnumMeta):
+class enum32_be(_EnumMixin, uint32_t_be, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
