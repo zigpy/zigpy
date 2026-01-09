@@ -157,7 +157,7 @@ class FixedIntType(int):
         return Bits([(self >> n) & 0b1 for n in range(self._bits - 1, -1, -1)])
 
     @classmethod
-    def from_bits(cls, bits: Bits) -> tuple[FixedIntType, Bits]:
+    def from_bits(cls, bits: Bits) -> tuple[Self, Bits]:
         if len(bits) < cls._bits:
             raise ValueError(f"Not enough bits to decode {cls}: {bits}")
 
@@ -179,7 +179,7 @@ class FixedIntType(int):
         return self.to_bytes(self._bits // 8, self._byteorder, signed=self._signed)
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[FixedIntType, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         if cls._bits % 8 != 0:
             raise TypeError(f"Integer type with {cls._bits} bits is not byte aligned")
 
