@@ -25,6 +25,9 @@ from zigpy.ota.image import BaseOTAImage, parse_ota_image
 import zigpy.types as t
 import zigpy.util
 
+if typing.TYPE_CHECKING:
+    import zigpy.device
+
 LOGGER = logging.getLogger(__name__)
 
 # `openssl s_client -connect fw.ota.homesmart.ikea.com:443 -showcerts`

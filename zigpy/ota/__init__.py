@@ -39,6 +39,7 @@ from zigpy.zcl.clusters.general import Ota
 
 if typing.TYPE_CHECKING:
     import zigpy.application
+    import zigpy.device
 
     query_next_image = Ota.ServerCommandDefs.query_next_image.schema
 
