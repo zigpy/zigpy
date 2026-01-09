@@ -188,7 +188,7 @@ class SignedIkeaRemoteOtaImageMetadata(IkeaRemoteOtaImageMetadata):
 
 class BaseOtaProvider:
     NAME: str
-    MANUFACTURER_IDS: tuple[int] = ()
+    MANUFACTURER_IDS: tuple[int, ...] = ()
     DEFAULT_URL: str | None = None
     VOL_SCHEMA: vol.Schema
     JSON_SCHEMA: dict | None = None
