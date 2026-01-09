@@ -218,7 +218,7 @@ class LightLink(Cluster):
                 "inter_pan_transaction_id": t.uint32_t,
                 "num_sub_devices": t.uint8_t,
                 "start_index": t.uint8_t,
-                "device_info_records": t.LVList[DeviceInfoRecord],
+                "device_info_records": t.LVList[DeviceInfoRecord, t.uint8_t],
             },
         )
         network_start_rsp: Final = ZCLCommandDef(
@@ -263,7 +263,7 @@ class LightLink(Cluster):
             schema={
                 "total": t.uint8_t,
                 "start_index": t.uint8_t,
-                "group_info_records": t.LVList[GroupInfoRecord],
+                "group_info_records": t.LVList[GroupInfoRecord, t.uint8_t],
             },
         )
         get_endpoint_list_rsp: Final = ZCLCommandDef(
@@ -271,6 +271,6 @@ class LightLink(Cluster):
             schema={
                 "total": t.uint8_t,
                 "start_index": t.uint8_t,
-                "endpoint_info_records": t.LVList[EndpointInfoRecord],
+                "endpoint_info_records": t.LVList[EndpointInfoRecord, t.uint8_t],
             },
         )

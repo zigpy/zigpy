@@ -40,8 +40,8 @@ class SimpleDescriptor(t.Struct):
     profile: t.uint16_t
     device_type: t.uint16_t
     device_version: t.uint8_t
-    input_clusters: t.LVList[t.uint16_t]
-    output_clusters: t.LVList[t.uint16_t]
+    input_clusters: t.LVList[t.uint16_t, t.uint8_t]
+    output_clusters: t.LVList[t.uint16_t, t.uint8_t]
 
 
 class SizePrefixedSimpleDescriptor(SimpleDescriptor):
@@ -327,7 +327,7 @@ class Neighbors(t.Struct):
 
     Entries: t.uint8_t
     StartIndex: t.uint8_t
-    NeighborTableList: t.LVList[Neighbor]
+    NeighborTableList: t.LVList[Neighbor, t.uint8_t]
 
 
 class RouteStatus(t.enum3):
@@ -366,7 +366,7 @@ class Route(t.Struct):
 class Routes(t.Struct):
     Entries: t.uint8_t
     StartIndex: t.uint8_t
-    RoutingTableList: t.LVList[Route]
+    RoutingTableList: t.LVList[Route, t.uint8_t]
 
 
 CHANNEL_CHANGE_REQ = 0xFE
@@ -550,8 +550,8 @@ CLUSTERS = {
     ZDOCmd.Match_Desc_req: (
         NWKI,
         ("ProfileID", t.uint16_t),
-        ("InClusterList", t.LVList[t.uint16_t]),
-        ("OutClusterList", t.LVList[t.uint16_t]),
+        ("InClusterList", t.LVList[t.uint16_t, t.uint8_t]),
+        ("OutClusterList", t.LVList[t.uint16_t, t.uint8_t]),
     ),
     # ZDO.Complex_Desc_req: (NWKI, ),
     ZDOCmd.User_Desc_req: (NWKI,),
@@ -568,10 +568,14 @@ CLUSTERS = {
         ("NodeDescSize", t.uint8_t),
         ("PowerDescSize", t.uint8_t),
         ("ActiveEPSize", t.uint8_t),
-        ("SimpleDescSizeList", t.LVList[t.uint8_t]),
+        ("SimpleDescSizeList", t.LVList[t.uint8_t, t.uint8_t]),
     ),
     ZDOCmd.Node_Desc_store_req: (NWK, IEEE, ("NodeDescriptor", NodeDescriptor)),
-    ZDOCmd.Active_EP_store_req: (NWK, IEEE, ("ActiveEPList", t.LVList[t.uint8_t])),
+    ZDOCmd.Active_EP_store_req: (
+        NWK,
+        IEEE,
+        ("ActiveEPList", t.LVList[t.uint8_t, t.uint8_t]),
+    ),
     ZDOCmd.Simple_Desc_store_req: (
         NWK,
         IEEE,
@@ -585,15 +589,15 @@ CLUSTERS = {
         ("StartIndex", t.uint8_t),
     ),
     ZDOCmd.Extended_Active_EP_req: (NWKI, ("StartIndex", t.uint8_t)),
-    ZDOCmd.Parent_annce: (("Children", t.LVList[t.EUI64]),),
+    ZDOCmd.Parent_annce: (("Children", t.LVList[t.EUI64, t.uint8_t]),),
     #  Bind Management Server Services Responses
     ZDOCmd.End_Device_Bind_req: (
         ("BindingTarget", t.uint16_t),
         ("SrcAddress", t.EUI64),
         ("SrcEndpoint", t.uint8_t),
         ("ProfileID", t.uint8_t),
-        ("InClusterList", t.LVList[t.uint8_t]),
-        ("OutClusterList", t.LVList[t.uint8_t]),
+        ("InClusterList", t.LVList[t.uint8_t, t.uint8_t]),
+        ("OutClusterList", t.LVList[t.uint8_t, t.uint8_t]),
     ),
     ZDOCmd.Bind_req: (
         ("SrcAddress", t.EUI64),
@@ -653,8 +657,16 @@ CLUSTERS = {
         NWKI,
         ("SimpleDescriptor", t.Optional(SizePrefixedSimpleDescriptor)),
     ),
-    ZDOCmd.Active_EP_rsp: (STATUS, NWKI, ("ActiveEPList", t.LVList[t.uint8_t])),
-    ZDOCmd.Match_Desc_rsp: (STATUS, NWKI, ("MatchList", t.LVList[t.uint8_t])),
+    ZDOCmd.Active_EP_rsp: (
+        STATUS,
+        NWKI,
+        ("ActiveEPList", t.LVList[t.uint8_t, t.uint8_t]),
+    ),
+    ZDOCmd.Match_Desc_rsp: (
+        STATUS,
+        NWKI,
+        ("MatchList", t.LVList[t.uint8_t, t.uint8_t]),
+    ),
     # ZDO.Complex_Desc_rsp: (
     #     STATUS,
     #     NWKI,
@@ -693,7 +705,7 @@ CLUSTERS = {
         ("StartIndex", t.uint8_t),
         ("ActiveEPList", t.List[t.uint8_t]),
     ),
-    ZDOCmd.Parent_annce_rsp: (STATUS, ("Children", t.LVList[t.EUI64])),
+    ZDOCmd.Parent_annce_rsp: (STATUS, ("Children", t.LVList[t.EUI64, t.uint8_t])),
     #  Bind Management Server Services Responses
     ZDOCmd.End_Device_Bind_rsp: (STATUS,),
     ZDOCmd.Bind_rsp: (STATUS,),
@@ -706,7 +718,7 @@ CLUSTERS = {
         STATUS,
         ("BindingTableEntries", t.uint8_t),
         ("StartIndex", t.uint8_t),
-        ("BindingTableList", t.LVList[Binding]),
+        ("BindingTableList", t.LVList[Binding, t.uint8_t]),
     ),
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Leave_rsp: (STATUS,),
@@ -716,7 +728,7 @@ CLUSTERS = {
         ("ScannedChannels", t.Channels),
         ("TotalTransmissions", t.uint16_t),
         ("TransmissionFailures", t.uint16_t),
-        ("EnergyValues", t.LVList[t.uint8_t]),
+        ("EnergyValues", t.LVList[t.uint8_t, t.uint8_t]),
     ),
     # ... TODO optional stuff ...
 }

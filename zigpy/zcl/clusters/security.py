@@ -258,7 +258,7 @@ class IasAce(Cluster):
         bypass: Final = ZCLCommandDef(
             id=0x01,
             schema={
-                "zones_ids": t.LVList[t.uint8_t],
+                "zones_ids": t.LVList[t.uint8_t, t.uint8_t],
                 "arm_disarm_code": t.CharacterString,
             },
         )
@@ -347,17 +347,17 @@ class IasAce(Cluster):
         )
         set_bypassed_zone_list: Final = ZCLCommandDef(
             id=0x06,
-            schema={"zone_ids": t.LVList[t.uint8_t]},
+            schema={"zone_ids": t.LVList[t.uint8_t, t.uint8_t]},
         )
         bypass_response: Final = ZCLCommandDef(
             id=0x07,
-            schema={"bypass_results": t.LVList[BypassResponse]},
+            schema={"bypass_results": t.LVList[BypassResponse, t.uint8_t]},
         )
         get_zone_status_response: Final = ZCLCommandDef(
             id=0x08,
             schema={
                 "zone_status_complete": t.Bool,
-                "zone_statuses": t.LVList[ZoneStatusRsp],
+                "zone_statuses": t.LVList[ZoneStatusRsp, t.uint8_t],
             },
         )
 

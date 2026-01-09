@@ -627,7 +627,7 @@ class Groups(Cluster):
         view: Final = ZCLCommandDef(id=0x01, schema={"group_id": t.Group})
         get_membership: Final = ZCLCommandDef(
             id=0x02,
-            schema={"groups": t.LVList[t.Group]},
+            schema={"groups": t.LVList[t.Group, t.uint8_t]},
         )
         remove: Final = ZCLCommandDef(id=0x03, schema={"group_id": t.Group})
         remove_all: Final = ZCLCommandDef(id=0x04, schema={})
@@ -651,7 +651,7 @@ class Groups(Cluster):
         )
         get_membership_response: Final = ZCLCommandDef(
             id=0x02,
-            schema={"capacity": t.uint8_t, "groups": t.LVList[t.Group]},
+            schema={"capacity": t.uint8_t, "groups": t.LVList[t.Group, t.uint8_t]},
         )
         remove_response: Final = ZCLCommandDef(
             id=0x03,
@@ -795,7 +795,7 @@ class Scenes(Cluster):
                 "status": foundation.Status,
                 "capacity": t.uint8_t,
                 "group_id": t.Group,
-                "scenes?": t.LVList[t.uint8_t],
+                "scenes?": t.LVList[t.uint8_t, t.uint8_t],
             },
         )
         enhanced_add_response: Final = ZCLCommandDef(
@@ -1324,7 +1324,7 @@ class RSSILocation(Cluster):
             id=0x06,
             schema={
                 "measuring_device": t.EUI64,
-                "neighbors": t.LVList[NeighborInfo],
+                "neighbors": t.LVList[NeighborInfo, t.uint8_t],
             },
         )
         request_own_location: Final = ZCLCommandDef(
@@ -2241,14 +2241,14 @@ class PowerProfile(Cluster):
             id=0x04,
             schema={
                 "power_profile_id": t.uint8_t,
-                "scheduled_phases": t.LVList[ScheduleRecord],
+                "scheduled_phases": t.LVList[ScheduleRecord, t.uint8_t],
             },
         )
         energy_phases_schedule_response: Final = ZCLCommandDef(
             id=0x05,
             schema={
                 "power_profile_id": t.uint8_t,
-                "scheduled_phases": t.LVList[ScheduleRecord],
+                "scheduled_phases": t.LVList[ScheduleRecord, t.uint8_t],
             },
         )
         power_profile_schedule_constraints_request: Final = ZCLCommandDef(
@@ -2275,7 +2275,7 @@ class PowerProfile(Cluster):
             schema={
                 "total_profile_num": t.uint8_t,
                 "power_profile_id": t.uint8_t,
-                "transfer_phases": t.LVList[PowerProfilePhase],
+                "transfer_phases": t.LVList[PowerProfilePhase, t.uint8_t],
             },
         )
         power_profile_response: Final = ZCLCommandDef(
@@ -2283,12 +2283,12 @@ class PowerProfile(Cluster):
             schema={
                 "total_profile_num": t.uint8_t,
                 "power_profile_id": t.uint8_t,
-                "transfer_phases": t.LVList[PowerProfilePhase],
+                "transfer_phases": t.LVList[PowerProfilePhase, t.uint8_t],
             },
         )
         power_profile_state_response: Final = ZCLCommandDef(
             id=0x02,
-            schema={"power_profiles": t.LVList[PowerProfileType]},
+            schema={"power_profiles": t.LVList[PowerProfileType, t.uint8_t]},
         )
         get_power_profile_price: Final = ZCLCommandDef(
             id=0x03,
@@ -2296,7 +2296,7 @@ class PowerProfile(Cluster):
         )
         power_profile_state_notification: Final = ZCLCommandDef(
             id=0x04,
-            schema={"power_profiles": t.LVList[PowerProfileType]},
+            schema={"power_profiles": t.LVList[PowerProfileType, t.uint8_t]},
         )
         get_overall_schedule_price: Final = ZCLCommandDef(id=0x05, schema={})
         energy_phases_schedule_request: Final = ZCLCommandDef(

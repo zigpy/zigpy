@@ -457,7 +457,7 @@ def test_fixedlist():
 
 def test_lvlist_types():
     # Brackets create singleton types
-    anon_lst1 = t.LVList[t.uint16_t]
+    anon_lst1 = t.LVList[t.uint16_t, t.uint8_t]
     anon_lst2 = t.LVList[t.uint16_t, t.uint8_t]
 
     assert anon_lst1._length_type is t.uint8_t
@@ -489,11 +489,20 @@ def test_lvlist_types():
     )
 
     # Similar-looking classes are not compatible
-    class NewListType(list, metaclass=t.KwargTypeMeta):
-        _item_type = None
-        _length_type = t.uint8_t
+    class NewListType[T: type[t.Serializable], V: type[t.uint_t]](
+        list, metaclass=t.KwargTypeMeta
+    ):
+        _item_type: T | None
+        _length_type: V | None
 
-        _getitem_kwargs = {"item_type": None, "length_type": t.uint8_t}
+        _getitem_kwargs = {"item_type": None, "length_type": None}
+
+        def __init_subclass__(cls, item_type: T, length_type: V) -> None:
+            if item_type is not None:
+                cls._item_type = item_type
+
+            if length_type is not None:
+                cls._length_type = length_type
 
     class NewList(NewListType, item_type=t.uint16_t, length_type=t.uint8_t):
         pass

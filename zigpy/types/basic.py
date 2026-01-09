@@ -3,7 +3,16 @@ from __future__ import annotations
 import enum
 import inspect
 import struct
-from typing import Literal, Self
+from typing import Literal, Protocol, Self
+
+
+class Serializable(Protocol):
+    def __init__(self, *args, **kwargs) -> None: ...
+
+    def serialize(self) -> bytes: ...
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]: ...
 
 
 class Bits(list):
@@ -884,22 +893,9 @@ class KwargTypeMeta(type):
     # So things like `LVList[NWK, t.uint8_t]` are singletons
     _anonymous_classes = {}  # type:ignore[var-annotated]
 
-    def __new__(cls, name, bases, namespaces, **kwargs):
-        cls_kwarg_attrs = namespaces.get("_getitem_kwargs", {})
-
-        def __init_subclass__(cls, **kwargs):
-            filtered_kwargs = kwargs.copy()
-
-            for key in kwargs:
-                if key in cls_kwarg_attrs:
-                    setattr(cls, f"_{key}", filtered_kwargs.pop(key))
-
-            super().__init_subclass__(**filtered_kwargs)
-
-        if "__init_subclass__" not in namespaces:
-            namespaces["__init_subclass__"] = __init_subclass__
-
-        return type.__new__(cls, name, bases, namespaces, **kwargs)
+    # def __new__(cls, name, bases, namespaces, **kwargs):
+    #    cls_kwarg_attrs = namespaces.get("_getitem_kwargs", {})
+    #    return type.__new__(cls, name, bases, namespaces, **kwargs)
 
     def __getitem__(cls, key):
         # Make sure Foo[a] is the same as Foo[a,]
@@ -968,9 +964,13 @@ class KwargTypeMeta(type):
         return super().__instancecheck__(subclass)
 
 
-class List(list, metaclass=KwargTypeMeta):
-    _item_type = None
+class List[T: Serializable](list, metaclass=KwargTypeMeta):
+    _item_type: type[T] | None
     _getitem_kwargs = {"item_type": None}
+
+    def __init_subclass__(cls, item_type: type[T] | None = None) -> None:
+        if item_type is not None:
+            cls._item_type = item_type
 
     def serialize(self) -> bytes:
         assert self._item_type is not None
@@ -979,8 +979,8 @@ class List(list, metaclass=KwargTypeMeta):
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         assert cls._item_type is not None
-
         lst = cls()
+
         while data:
             item, data = cls._item_type.deserialize(data)
             lst.append(item)
@@ -988,34 +988,58 @@ class List(list, metaclass=KwargTypeMeta):
         return lst, data
 
 
-class LVList(list, metaclass=KwargTypeMeta):
-    _item_type = None
-    _length_type = uint8_t
+class LVList[T: Serializable, V: uint_t](list, metaclass=KwargTypeMeta):
+    _item_type: type[T] | None
+    _length_type: type[V] | None
 
-    _getitem_kwargs = {"item_type": None, "length_type": uint8_t}
+    _getitem_kwargs = {"item_type": None, "length_type": None}
+
+    def __init_subclass__(
+        cls, item_type: type[T] | None = None, length_type: type[V] | None = None
+    ) -> None:
+        if item_type is not None:
+            cls._item_type = item_type
+
+        if length_type is not None:
+            cls._length_type = length_type
 
     def serialize(self) -> bytes:
+        assert self._length_type is not None
         assert self._item_type is not None
+
         return self._length_type(len(self)).serialize() + b"".join(
             [self._item_type(i).serialize() for i in self]
         )
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        assert cls._length_type is not None
         assert cls._item_type is not None
+
         length, data = cls._length_type.deserialize(data)
         r = cls()
+
         for _i in range(length):
             item, data = cls._item_type.deserialize(data)
             r.append(item)
+
         return r, data
 
 
-class FixedList(list, metaclass=KwargTypeMeta):
-    _item_type = None
-    _length = None
+class FixedList[T: Serializable, L: int](list, metaclass=KwargTypeMeta):
+    _item_type: type[T] | None
+    _length: L | None
 
     _getitem_kwargs = {"item_type": None, "length": None}
+
+    def __init_subclass__(
+        cls, item_type: type[T] | None = None, length: L | None = None
+    ) -> None:
+        if item_type is not None:
+            cls._item_type = item_type
+
+        if length is not None:
+            cls._length = length
 
     def serialize(self) -> bytes:
         assert self._length is not None

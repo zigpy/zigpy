@@ -595,7 +595,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     f"Duplicate request key: {rsp_key}"
                 )
 
-            future: asyncio.Future[list[typing.Any, ...] | foundation.CommandSchema] = (
+            future: asyncio.Future[list[typing.Any] | foundation.CommandSchema] = (
                 asyncio.Future()
             )
             self._requests[rsp_key] = future
