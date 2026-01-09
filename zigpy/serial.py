@@ -78,7 +78,7 @@ async def create_serial_connection(
     exclusive: bool | None = True,
     xonxoff: bool | UndefinedType = UNDEFINED,
     rtscts: bool | UndefinedType = UNDEFINED,
-    flow_control: Literal["hardware", "software", None] | UndefinedType = UNDEFINED,
+    flow_control: Literal["hardware", "software"] | None | UndefinedType = UNDEFINED,
     **kwargs: typing.Any,
 ) -> tuple[asyncio.Transport, asyncio.Protocol]:
     """Wrapper around pyserial-asyncio that transparently substitutes a normal TCP

@@ -162,7 +162,7 @@ def recursive_dict_merge(
 
 def make_app(
     config_updates: dict[str, typing.Any],
-    app_base: zigpy.application.ControllerApplication = App,
+    app_base: type[zigpy.application.ControllerApplication] = App,
 ) -> zigpy.application.ControllerApplication:
     config = recursive_dict_merge(
         {

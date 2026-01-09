@@ -201,7 +201,7 @@ class PriorityDynamicBoundedSemaphore:
 
 
 class PriorityLock(PriorityDynamicBoundedSemaphore):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(value=1)
 
     @PriorityDynamicBoundedSemaphore.max_value.setter
@@ -260,7 +260,7 @@ class ReschedulableTimeout:
 class Debouncer:
     """Generic debouncer supporting per-invocation expiration."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._times: dict[typing.Any, float] = {}
         self._queue: list[tuple[float, int, typing.Any]] = []
 

@@ -658,6 +658,7 @@ async def test_ota_fetch_size_and_checksum_validation(
 
     fw = await meta.fetch()
     assert fw == image_with_metadata.firmware
+    assert meta.file_size is not None
 
     with pytest.raises(ValueError):
         await meta.replace(file_size=meta.file_size + 1).fetch()
