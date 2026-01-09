@@ -31,6 +31,7 @@ from zigpy.config import (
 )
 from zigpy.ota.image import BaseOTAImage
 import zigpy.ota.providers
+import zigpy.profiles.zha
 import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import foundation
