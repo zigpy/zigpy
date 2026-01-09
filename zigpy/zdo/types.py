@@ -452,11 +452,7 @@ IEEE = ("IEEEAddr", t.EUI64)
 STATUS = ("Status", Status)
 
 
-class _CommandID(t.uint16_t, repr="hex"):
-    pass
-
-
-class ZDOCmd(t.enum_factory(_CommandID)):
+class ZDOCmd(t.enum16):
     # Device and Service Discovery Server Requests
     NWK_addr_req = 0x0000
     IEEE_addr_req = 0x0001
