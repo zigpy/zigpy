@@ -3,9 +3,7 @@ from __future__ import annotations
 import enum
 import inspect
 import struct
-from typing import Literal, Self, TypeVar
-
-T = TypeVar("T")
+from typing import Literal, Self
 
 
 class Bits(list):
