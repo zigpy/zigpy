@@ -77,8 +77,8 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     checksum: str | None = None
     file_size: int | None = None
 
-    manufacturer_names: tuple[str] = ()
-    model_names: tuple[str] = ()
+    manufacturer_names: tuple[str, ...] = ()
+    model_names: tuple[str, ...] = ()
 
     changelog: str | None = None
     release_notes: str | None = None
