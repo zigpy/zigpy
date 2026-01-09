@@ -534,15 +534,8 @@ class OTA:
         # eventually check in, just not every time.
         if jitter is None:
             num_devices = len(self._application.devices)
-            jitter = int(
-                100
-                * min(
-                    max(
-                        0.0, MAX_DEVICES_CHECKING_IN_PER_BROADCAST / max(1, num_devices)
-                    ),
-                    1,
-                )
-            )
+            ratio = MAX_DEVICES_CHECKING_IN_PER_BROADCAST / max(1, num_devices)
+            jitter = int(100 * min(max(0.0, ratio), 1.0))
 
         hdr, request = Ota._create_request(
             self=None,
