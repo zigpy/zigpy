@@ -49,8 +49,8 @@ MAX_DEVICES_CHECKING_IN_PER_BROADCAST = 15
 
 @dataclasses.dataclass(frozen=True)
 class OtaImagesResult(t.BaseDataclassMixin):
-    upgrades: tuple[zigpy.ota.providers.BaseOtaImageMetadata]
-    downgrades: tuple[zigpy.ota.providers.BaseOtaImageMetadata]
+    upgrades: tuple[OtaImageWithMetadata, ...]
+    downgrades: tuple[OtaImageWithMetadata, ...]
 
 
 @dataclasses.dataclass(frozen=True)
