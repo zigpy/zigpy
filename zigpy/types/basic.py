@@ -919,11 +919,7 @@ class LongOctetString(LVBytes):
 
 class KwargTypeMeta(type):
     # So things like `LVList[NWK, t.uint8_t]` are singletons
-    _anonymous_classes = {}  # type:ignore[var-annotated]
-
-    # def __new__(cls, name, bases, namespaces, **kwargs):
-    #    cls_kwarg_attrs = namespaces.get("_getitem_kwargs", {})
-    #    return type.__new__(cls, name, bases, namespaces, **kwargs)
+    _anonymous_classes: dict[tuple[type, tuple[type, ...]], type] = {}
 
     def __getitem__(cls, key):
         # Make sure Foo[a] is the same as Foo[a,]
