@@ -158,6 +158,7 @@ def test_bigendian_ints():
 
 def test_bits():
     assert t.Bits() == t.Bits([])
+    assert t.Bits([1]) != [1]
     assert t.Bits([1] + [0] * 15).serialize() == b"\x80\x00"
     assert t.Bits.deserialize(b"\x80\x00") == (t.Bits([1] + [0] * 15), b"")
 
