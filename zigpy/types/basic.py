@@ -390,76 +390,30 @@ class uint64_t_be(uint_t_be, bits=64):
     pass
 
 
-class AlwaysCreateEnumType(enum.EnumMeta):
-    """Enum metaclass that skips the functional creation API."""
+class _AlwaysCreateEnumMeta(enum.EnumMeta):
+    """An EnumMeta that always creates a new enum member for unknown values."""
 
-    def __call__(self, value, names=None, *values) -> type[enum.Enum]:  # type: ignore[override]  # noqa: N804
-        """Custom implementation of Enum.__new__.
+    def __call__(cls, value, *args, **kwargs) -> type[enum.Enum]:  # type: ignore[override]
+        # Until zigpy stops using constructs like `t.enum8(0xFF)`, we need this check
+        if not cls._member_map_:
+            return cls._missing_(value)
 
-        From https://github.com/python/cpython/blob/v3.11.5/Lib/enum.py#L1091-L1140
-        """
-        # all enum instances are actually created during class construction
-        # without calling this method; this method is called by the metaclass'
-        # __call__ (i.e. Color(3) ), and by pickle
-        if type(value) is self:
-            # For lookups like Color(Color.RED)
-            return value
-        # by-value search for a matching enum member
-        # see if it's in the reverse mapping (for hashable values)
-        try:
-            return self._value2member_map_[value]  # type: ignore[return-value]
-        except KeyError:
-            # Not found, no need to do long O(n) search
-            pass
-        except TypeError:
-            # not there, now do long search -- O(n) behavior
-            for member in self._member_map_.values():
-                if member._value_ == value:
-                    return member  # type: ignore[return-value]
-        # still not found -- try _missing_ hook
-        try:
-            exc = None
-            result = self._missing_(value)
-        except Exception as e:  # noqa: BLE001
-            exc = e
-            result = None
-        try:
-            if isinstance(result, self) or (
-                enum.Flag is not None
-                and issubclass(self, enum.Flag)
-                and self._boundary_ is enum.EJECT
-                and isinstance(result, int)
-            ):
-                return result  # type: ignore[return-value]
-            else:
-                ve_exc = ValueError(f"{value!r} is not a valid {self.__qualname__}")
-                if result is None and exc is None:
-                    raise ve_exc
-                elif exc is None:
-                    exc = TypeError(
-                        f"error in {self.__name__}._missing_: returned {result!r} instead of None or a valid member"
-                    )
-                if not isinstance(exc, ValueError):
-                    exc.__context__ = ve_exc
-                raise exc
-        finally:
-            # ensure all variables that could hold an exception are destroyed
-            exc = None
-            ve_exc = None
+        return super().__call__(value, *args, **kwargs)
 
 
-class _IntEnumMeta(AlwaysCreateEnumType):
-    def __call__(self, value, names=None, *args, **kwargs):  # noqa: N804
+class _IntEnumMeta(_AlwaysCreateEnumMeta):
+    def __call__(cls, value, *args, **kwargs) -> type[enum.Enum]:  # type: ignore[override]
         if isinstance(value, str):
             if value.startswith("0x"):
                 value = int(value, base=16)
             elif value.isnumeric():
                 value = int(value)
-            elif value.startswith(self.__name__ + "."):
-                value = self[value[len(self.__name__) + 1 :]].value
+            elif value.startswith(cls.__name__ + "."):
+                value = cls[value[len(cls.__name__) + 1 :]].value
             else:
-                value = self[value].value
-        return super().__call__(value, names, *args, **kwargs)
+                value = cls[value].value
+
+        return super().__call__(value, *args, **kwargs)
 
     @classmethod
     def _find_data_type_(mcls, class_name, bases):  # noqa: N804
@@ -578,7 +532,7 @@ class bitmap2(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -588,7 +542,7 @@ class bitmap3(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -598,7 +552,7 @@ class bitmap4(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -608,7 +562,7 @@ class bitmap5(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -618,7 +572,7 @@ class bitmap6(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -628,7 +582,7 @@ class bitmap7(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -638,7 +592,7 @@ class bitmap8(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -648,7 +602,7 @@ class bitmap16(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -658,7 +612,7 @@ class bitmap24(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -668,7 +622,7 @@ class bitmap32(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -678,7 +632,7 @@ class bitmap40(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -688,7 +642,7 @@ class bitmap48(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -698,7 +652,7 @@ class bitmap56(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -708,7 +662,7 @@ class bitmap64(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -718,7 +672,7 @@ class bitmap16_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -728,7 +682,7 @@ class bitmap24_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -738,7 +692,7 @@ class bitmap32_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -748,7 +702,7 @@ class bitmap40_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -758,7 +712,7 @@ class bitmap48_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -768,7 +722,7 @@ class bitmap56_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -778,7 +732,7 @@ class bitmap64_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
