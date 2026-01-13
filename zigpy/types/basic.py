@@ -3,8 +3,11 @@ from __future__ import annotations
 from collections.abc import Iterator
 import enum
 import inspect
+import logging
 import struct
 from typing import Generic, Literal, Protocol, Self, TypeVar
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class Serializable(Protocol):
@@ -525,6 +528,29 @@ class enum16_be(_EnumMixin, uint16_t_be, enum.Enum, metaclass=_IntEnumMeta):
 
 class enum32_be(_EnumMixin, uint32_t_be, enum.Enum, metaclass=_IntEnumMeta):
     pass
+
+
+def enum_factory(base_type: type[FixedIntType]) -> type[enum.Enum]:
+    _LOGGER.error(
+        "enum_factory is internal to zigpy and deprecated. Use the enum types directly."
+    )
+
+    enum_mapping: dict[type[FixedIntType], type[enum.Enum]] = {
+        uint1_t: enum1,
+        uint2_t: enum2,
+        uint3_t: enum3,
+        uint4_t: enum4,
+        uint5_t: enum5,
+        uint6_t: enum6,
+        uint7_t: enum7,
+        uint8_t: enum8,
+        uint16_t: enum16,
+        uint32_t: enum32,
+        uint16_t_be: enum16_be,
+        uint32_t_be: enum32_be,
+    }
+
+    return enum_mapping[base_type]
 
 
 class bitmap2(

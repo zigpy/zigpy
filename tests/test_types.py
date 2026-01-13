@@ -1,4 +1,5 @@
 import itertools
+import logging
 import math
 import struct
 from typing import Generic, TypeVar
@@ -641,6 +642,14 @@ def test_keydata():
     assert list(key) == list(data)
     assert key.serialize() == data
     assert t.KeyData(key) == key
+
+
+def test_deprecated_enum_factory(caplog) -> None:
+    with caplog.at_level(logging.ERROR):
+        assert t.enum_factory(t.uint8_t) is t.enum8
+
+    with caplog.at_level(logging.ERROR):
+        assert t.enum_factory(t.uint16_t) is t.enum16
 
 
 def test_enum_uint():
