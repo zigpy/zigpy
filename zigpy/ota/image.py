@@ -255,7 +255,7 @@ class HueSBLOTAImage(BaseOTAImage, t.BaseDataclassMixin):
 
 
 @attrs.define(kw_only=True, repr=False)
-class TelinkEncryptedSubElement:
+class TelinkEncryptedSubElement(t.BaseDataclassMixin):
     TELINK_ENCRYPTED_TAG_ID = ElementTagId(0xF000)
 
     tag_id: ElementTagId = attrs.field(default=None, converter=ElementTagId)
