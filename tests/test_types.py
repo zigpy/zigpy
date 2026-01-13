@@ -499,7 +499,9 @@ def test_lvlist_types():
 
         _getitem_kwargs = {"item_type": None, "length_type": None}
 
-        def __init_subclass__(cls, item_type: type[_T], length_type: type[_V]) -> None:
+        def __init_subclass__(
+            cls, item_type: type[_T] | None = None, length_type: type[_V] | None = None
+        ) -> None:
             if item_type is not None:
                 cls._item_type = item_type
 
