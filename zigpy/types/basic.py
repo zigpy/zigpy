@@ -955,7 +955,7 @@ class KwargTypeMeta(type):
         for key in cls._getitem_kwargs:
             key = f"_{key}"
 
-            if getattr(cls, key) != getattr(subclass, key):
+            if getattr(cls, key, None) != getattr(subclass, key, None):
                 return False
 
         return True
