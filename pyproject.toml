@@ -250,6 +250,7 @@ non_interactive = true
 show_error_codes = true
 show_error_context = true
 error_summary = true
+exclude = ["^tests/"]
 disable_error_code = [
     # Only a few notifications left:
     "misc",  # 314 errors

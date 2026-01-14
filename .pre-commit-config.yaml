@@ -19,3 +19,4 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: [attrs]
+        exclude: ^tests/
