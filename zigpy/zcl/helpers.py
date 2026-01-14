@@ -11,7 +11,7 @@ from .foundation import ZCLAttributeDef
 if TYPE_CHECKING:
     from . import Cluster
 
-type CacheKey = tuple[int, int | None]  # attribute id, manufacturer code
+CacheKey = tuple[int, int | None]  # attribute id, manufacturer code
 
 
 @dataclass(kw_only=True, frozen=True)
