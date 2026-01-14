@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import enum
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.exceptions
 import zigpy.profiles
 import zigpy.types as t
-from zigpy.typing import DeviceType
 import zigpy.util
 import zigpy.zcl
 from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCLStatus
 from zigpy.zdo.types import Status as ZDOStatus
+
+if TYPE_CHECKING:
+    from zigpy.device import Device
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,8 +33,8 @@ class Status(enum.IntEnum):
 class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """An endpoint on a device on the network"""
 
-    def __init__(self, device: DeviceType, endpoint_id: int) -> None:
-        self._device: DeviceType = device
+    def __init__(self, device: Device, endpoint_id: int) -> None:
+        self._device: Device = device
         self._endpoint_id: int = endpoint_id
         self._listeners: dict = {}
 
@@ -72,9 +74,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.device_type = sd.device_type
 
             if self.profile_id == zigpy.profiles.zha.PROFILE_ID:
-                self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
+                self.device_type = zigpy.profiles.zha.Device(self.device_type)
             elif self.profile_id == zigpy.profiles.zll.PROFILE_ID:
-                self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
+                self.device_type = zigpy.profiles.zll.Device(self.device_type)
 
             for cluster in sd.input_clusters:
                 self.add_input_cluster(cluster)
@@ -284,7 +286,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         LOGGER.log(lvl, msg, *args, **kwargs)
 
     @property
-    def device(self) -> DeviceType:
+    def device(self) -> Device:
         return self._device
 
     @property

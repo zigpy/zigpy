@@ -13,7 +13,7 @@ import aiosqlite
 
 import zigpy.appdb_schemas
 import zigpy.backups
-import zigpy.device
+from zigpy.device import Device, Status as DeviceStatus
 import zigpy.endpoint
 import zigpy.exceptions
 import zigpy.group
@@ -227,22 +227,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for statement in sql.split(";"):
             await self.execute(statement)
 
-    def device_joined(self, device: zigpy.typing.DeviceType) -> None:
+    def device_joined(self, device: Device) -> None:
         self.enqueue("_update_device_nwk", device.ieee, device.nwk)
 
     async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
         await self.execute(f"UPDATE devices{DB_V} SET nwk=? WHERE ieee=?", (nwk, ieee))
         await self._db.commit()
 
-    def device_initialized(self, device: zigpy.typing.DeviceType) -> None:
+    def device_initialized(self, device: Device) -> None:
         pass
 
-    def device_left(self, device: zigpy.typing.DeviceType) -> None:
+    def device_left(self, device: Device) -> None:
         pass
 
-    def device_last_seen_updated(
-        self, device: zigpy.typing.DeviceType, last_seen: datetime
-    ) -> None:
+    def device_last_seen_updated(self, device: Device, last_seen: datetime) -> None:
         """Device last_seen time is updated."""
         self.enqueue("_save_device_last_seen", device.ieee, last_seen)
 
@@ -260,9 +258,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         await self._db.commit()
 
-    def device_relays_updated(
-        self, device: zigpy.typing.DeviceType, relays: t.Relays | None
-    ) -> None:
+    def device_relays_updated(self, device: Device, relays: t.Relays | None) -> None:
         """Device relay list is updated."""
         self.enqueue("_save_device_relays", device.ieee, relays)
 
@@ -439,17 +435,17 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(q, (group.group_id,))
         await self._db.commit()
 
-    def device_removed(self, device: zigpy.typing.DeviceType) -> None:
+    def device_removed(self, device: Device) -> None:
         self.enqueue("_remove_device", device)
 
-    async def _remove_device(self, device: zigpy.typing.DeviceType) -> None:
+    async def _remove_device(self, device: Device) -> None:
         await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,))
         await self._db.commit()
 
-    def raw_device_initialized(self, device: zigpy.typing.DeviceType) -> None:
+    def raw_device_initialized(self, device: Device) -> None:
         self.enqueue("_save_device", device)
 
-    async def _save_device(self, device: zigpy.typing.DeviceType) -> None:
+    async def _save_device(self, device: Device) -> None:
         q = f"""INSERT INTO devices{DB_V} (ieee, nwk, status, last_seen)
                     VALUES (?, ?, ?, ?)
                     ON CONFLICT (ieee)
@@ -481,7 +477,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self._save_unsupported_attributes(ep)
         await self._db.commit()
 
-    async def _save_endpoints(self, device: zigpy.typing.DeviceType) -> None:
+    async def _save_endpoints(self, device: Device) -> None:
         rows = [
             (
                 device.ieee,
@@ -502,7 +498,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         await self._db.executemany(q, rows)
 
-    async def _save_node_descriptor(self, device: zigpy.typing.DeviceType) -> None:
+    async def _save_node_descriptor(self, device: Device) -> None:
         q = f"""INSERT INTO node_descriptors{DB_V}
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (ieee)
@@ -772,7 +768,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:
             async for ieee, nwk, status, last_seen in cursor:
                 dev = self._application.add_device(ieee, nwk)
-                dev.status = zigpy.device.Status(status)
+                dev.status = DeviceStatus(status)
 
                 if last_seen > 0:
                     dev.last_seen = last_seen

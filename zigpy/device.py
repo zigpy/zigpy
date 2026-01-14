@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import timeout as asyncio_timeout
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -893,7 +893,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     async def update_firmware(
         self,
         image: OtaImageWithMetadata,
-        progress_callback: callable | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
         force: bool = False,
     ) -> foundation.Status | None:
         """Update device firmware."""

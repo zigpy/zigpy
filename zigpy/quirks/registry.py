@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING
 
 from zigpy.const import SIG_MANUFACTURER, SIG_MODEL, SIG_MODELS_INFO
 import zigpy.quirks
-from zigpy.typing import CustomDeviceType, DeviceType
 from zigpy.util import deprecated
 
 if TYPE_CHECKING:
+    from zigpy.device import Device
     from zigpy.quirks import CustomDevice
     from zigpy.quirks.v2 import QuirksV2RegistryEntry
 
@@ -26,9 +26,9 @@ class DeviceRegistry:
 
     def __init__(self, *args, **kwargs) -> None:
         """Initialize the registry."""
-        self._registry_v1: dict[str | None, dict[str | None, deque[CustomDevice]]] = (
-            defaultdict(lambda: defaultdict(deque))
-        )
+        self._registry_v1: dict[
+            str | None, dict[str | None, deque[type[CustomDevice]]]
+        ] = defaultdict(lambda: defaultdict(deque))
 
         self._registry_v2: dict[tuple[str, str], deque[QuirksV2RegistryEntry]] = (
             defaultdict(deque)
@@ -64,7 +64,7 @@ class DeviceRegistry:
                 _LOGGER.debug("Removing stale custom v2 quirk: %s", entry)
                 registry.remove(entry)
 
-    def add_to_registry(self, custom_device: CustomDeviceType) -> None:
+    def add_to_registry(self, custom_device: type[CustomDevice]) -> None:
         """Add a device to the registry"""
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
         if models_info:
@@ -83,7 +83,7 @@ class DeviceRegistry:
         """Add an entry to the registry."""
         self._registry_v2[(manufacturer, model)].appendleft(entry)
 
-    def remove(self, custom_device: CustomDeviceType) -> None:
+    def remove(self, custom_device: type[CustomDevice]) -> None:
         """Remove a device from the registry"""
 
         if hasattr(custom_device, "quirk_metadata"):
@@ -100,7 +100,7 @@ class DeviceRegistry:
             model = custom_device.signature.get(SIG_MODEL)
             self.registry_v1[manufacturer][model].remove(custom_device)
 
-    def get_device(self, device: DeviceType) -> CustomDeviceType | DeviceType:
+    def get_device(self, device: Device) -> CustomDevice | Device:
         """Get a CustomDevice object, if one is available"""
         if isinstance(device, zigpy.quirks.BaseCustomDevice):
             return device
@@ -142,12 +142,14 @@ class DeviceRegistry:
 
     @property
     @deprecated("The `registry` property is deprecated, use `registry_v1` instead.")
-    def registry(self) -> dict[str | None, dict[str | None, deque[CustomDevice]]]:
+    def registry(self) -> dict[str | None, dict[str | None, deque[type[CustomDevice]]]]:
         """Return the v1 registry."""
         return self._registry_v1
 
     @property
-    def registry_v1(self) -> dict[str | None, dict[str | None, deque[CustomDevice]]]:
+    def registry_v1(
+        self,
+    ) -> dict[str | None, dict[str | None, deque[type[CustomDevice]]]]:
         """Return the v1 registry."""
         return self._registry_v1
 
@@ -156,7 +158,7 @@ class DeviceRegistry:
         """Return the v2 registry."""
         return self._registry_v2
 
-    def __contains__(self, device: CustomDeviceType) -> bool:
+    def __contains__(self, device: CustomDevice) -> bool:
         """Check if a device is in the registry."""
 
         if hasattr(device, "quirk_metadata"):
