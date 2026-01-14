@@ -400,23 +400,25 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 if manufacturer_code in candidates:
                     return candidates[manufacturer_code]
 
-                # Fall back to UNDEFINED (manufacturer-specific without explicit code)
-                if UNDEFINED in candidates:
-                    attr_def = candidates[UNDEFINED]
-                    manuf_code_str = (
-                        f"0x{manufacturer_code:04X}"
-                        if manufacturer_code is not None
-                        else "None"
-                    )
-                    warnings.warn(
-                        f"Attribute {attr_def.name!r} has `is_manufacturer_specific`"
-                        f" without an explicit `manufacturer_code`. Please set"
-                        f" `manufacturer_code={manuf_code_str}`.",
-                        DeprecationWarning,
-                        stacklevel=2,
-                    )
-                    return attr_def
-                raise KeyError(manufacturer_code)
+                # If no ambiguous candidates exist, we immediately error
+                if UNDEFINED not in candidates:
+                    raise KeyError(manufacturer_code)
+
+                # Otherwise, fall back to the undefined candidate
+                attr_def = candidates[UNDEFINED]
+                manuf_code_str = (
+                    f"0x{manufacturer_code:04X}"
+                    if manufacturer_code is not None
+                    else "None"
+                )
+                warnings.warn(
+                    f"Attribute {attr_def.name!r} has `is_manufacturer_specific`"
+                    f" without an explicit `manufacturer_code`. Please set"
+                    f" `manufacturer_code={manuf_code_str}`.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                return attr_def
 
             if len(candidates) > 1:
                 raise KeyError(
