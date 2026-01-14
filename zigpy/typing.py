@@ -16,7 +16,6 @@ CustomEndpointType = "CustomEndpoint"
 DeviceType = "Device"
 EndpointType = "Endpoint"
 ZDOType = "ZDO"
-AddressingMode = "AddressingMode"
 
 
 class UndefinedType(enum.Enum):
@@ -45,9 +44,3 @@ if TYPE_CHECKING:
     DeviceType = zigpy.device.Device
     EndpointType = zigpy.endpoint.Endpoint
     ZDOType = zigpy.zdo.ZDO
-
-    AddressingMode = (
-        zigpy.types.Addressing.Group
-        | zigpy.types.Addressing.IEEE
-        | zigpy.types.Addressing.NWK
-    )
