@@ -21,7 +21,6 @@ import zigpy.device
 import zigpy.endpoint
 from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
-from zigpy.types.basic import uint16_t
 import zigpy.zcl
 from zigpy.zcl import foundation
 from zigpy.zdo import ZDO
@@ -215,7 +214,7 @@ class CustomCluster(zigpy.zcl.Cluster):
     _CONSTANT_ATTRIBUTES: dict[int, typing.Any] | None = None
 
     async def read_attributes_raw(
-        self, attributes: list[uint16_t], manufacturer: uint16_t | None = None, **kwargs
+        self, attributes: list[int], manufacturer: int | None = None, **kwargs
     ):
         if not self._CONSTANT_ATTRIBUTES:
             return await super().read_attributes_raw(

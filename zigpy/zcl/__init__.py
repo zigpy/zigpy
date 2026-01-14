@@ -807,21 +807,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         return None
 
-    def _get_cached_attribute(
-        self,
-        attr_def: foundation.ZCLAttributeDef,
-        *,
-        default: Any | UndefinedType = UNDEFINED,
-    ) -> Any | None:
-        """Get a cached attribute value, if it exists and is fresh enough."""
-        try:
-            return self._attr_cache.get_value(attr_def)
-        except (KeyError, UnsupportedAttribute):
-            if default is UNDEFINED:
-                raise
-
-            return default
-
     async def read_attributes(
         self,
         attributes: list[int | str | foundation.ZCLAttributeDef],
@@ -863,16 +848,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         for attr_def in attribute_defs:
             if allow_cache or only_cache:
-                if self._attr_cache.is_unsupported(attr_def):
+                try:
+                    cached_value = self._attr_cache.get_value(attr_def)
+                except KeyError:
+                    pass
+                except UnsupportedAttribute:
                     failure[attribute_map[attr_def]] = (
                         foundation.Status.UNSUPPORTED_ATTRIBUTE
                     )
                     continue
-
-                try:
-                    cached_value = self._get_cached_attribute(attr_def)
-                except KeyError:
-                    pass
                 else:
                     # If an attribute was in the cache, we do not read it
                     success[attribute_map[attr_def]] = cached_value
@@ -1348,7 +1332,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def get(self, key: int | str, default: Any | None = None) -> Any:
         """Get cached attribute."""
         attr_def = self.find_attribute(key)
-        return self._get_cached_attribute(attr_def, default=default)
+        try:
+            return self._attr_cache.get_value(attr_def)
+        except (KeyError, UnsupportedAttribute):
+            return default
 
     def __getitem__(self, key: int | str) -> Any:
         """Return cached value of the attr."""
