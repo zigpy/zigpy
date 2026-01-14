@@ -34,7 +34,6 @@ import zigpy.quirks
 import zigpy.state
 import zigpy.topology
 import zigpy.types as t
-import zigpy.typing
 import zigpy.util
 import zigpy.zcl
 import zigpy.zdo

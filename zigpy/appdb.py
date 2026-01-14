@@ -21,7 +21,6 @@ import zigpy.profiles
 import zigpy.quirks
 import zigpy.state
 import zigpy.types as t
-import zigpy.typing
 import zigpy.util
 from zigpy.zcl import Cluster, ClusterType
 from zigpy.zcl.clusters.general import Basic

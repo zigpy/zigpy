@@ -490,6 +490,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self,
         hdr: foundation.ZCLHeader,
         args: list[Any],
+        *,
+        # This parameter is unused and kept only for backwards compatibility
+        dst_addressing: t.AddrMode | None = None,
     ):
         self.debug(
             "No explicit handler for cluster command 0x%02x: %s",
@@ -507,6 +510,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self,
         hdr: foundation.ZCLHeader,
         args: list,
+        *,
+        # This parameter is unused and kept only for backwards compatibility
+        dst_addressing: t.AddrMode | None = None,
     ) -> None:
         if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
             records = []
