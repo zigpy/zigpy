@@ -14,7 +14,6 @@ import warnings
 from zigpy import util
 from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.types as t
-from zigpy.typing import EndpointType
 from zigpy.zcl import foundation
 from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs, CommandSchema
 
@@ -237,8 +236,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         if cls.cluster_id_range is not None:
             cls._registry_range[cls.cluster_id_range] = cls
 
-    def __init__(self, endpoint: EndpointType, is_server: bool = True) -> None:
-        self._endpoint: EndpointType = endpoint
+    def __init__(self, endpoint: Endpoint, is_server: bool = True) -> None:
+        self._endpoint: Endpoint = endpoint
         self._attr_cache: dict[int, Any] = {}
         self._attr_last_updated: dict[int, datetime] = {}
         self.unsupported_attributes: set[int | str] = set()
@@ -268,7 +267,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
 
     @classmethod
     def from_id(
-        cls, endpoint: EndpointType, cluster_id: int, is_server: bool = True
+        cls, endpoint: Endpoint, cluster_id: int, is_server: bool = True
     ) -> Cluster:
         cluster_id = t.ClusterId(cluster_id)
 

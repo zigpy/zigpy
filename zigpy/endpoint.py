@@ -294,7 +294,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self._endpoint_id
 
     @property
-    def manufacturer(self) -> str:
+    def manufacturer(self) -> str | None:
         if self._manufacturer is not None:
             return self._manufacturer
         return self.device.manufacturer
@@ -317,7 +317,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self._member_of
 
     @property
-    def model(self) -> str:
+    def model(self) -> str | None:
         if self._model is not None:
             return self._model
         return self.device.model

@@ -14,7 +14,7 @@ import aiosqlite
 import zigpy.appdb_schemas
 import zigpy.backups
 from zigpy.device import Device, Status as DeviceStatus
-import zigpy.endpoint
+from zigpy.endpoint import Endpoint, Status as EndpointStatus
 import zigpy.exceptions
 import zigpy.group
 import zigpy.profiles
@@ -396,29 +396,23 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(q, (group.group_id, group.name))
         await self._db.commit()
 
-    def group_member_added(
-        self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
-    ) -> None:
+    def group_member_added(self, group: zigpy.group.Group, ep: Endpoint) -> None:
         """Called when a group member is added."""
         self.enqueue("_group_member_added", group, ep)
 
-    async def _group_member_added(
-        self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
-    ) -> None:
+    async def _group_member_added(self, group: zigpy.group.Group, ep: Endpoint) -> None:
         q = f"""INSERT INTO group_members{DB_V} VALUES (?, ?, ?)
                     ON CONFLICT
                     DO NOTHING"""
         await self.execute(q, (group.group_id, *ep.unique_id))
         await self._db.commit()
 
-    def group_member_removed(
-        self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
-    ) -> None:
+    def group_member_removed(self, group: zigpy.group.Group, ep: Endpoint) -> None:
         """Called when a group member is removed."""
         self.enqueue("_group_member_removed", group, ep)
 
     async def _group_member_removed(
-        self, group: zigpy.group.Group, ep: zigpy.typing.EndpointType
+        self, group: zigpy.group.Group, ep: Endpoint
     ) -> None:
         q = f"""DELETE FROM group_members{DB_V} WHERE group_id=?
                                                 AND ieee=?
@@ -519,7 +513,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         await self.execute(q, (device.ieee, *device.node_desc.as_tuple()))
 
-    async def _save_clusters(self, endpoint: zigpy.typing.EndpointType) -> None:
+    async def _save_clusters(self, endpoint: Endpoint) -> None:
         clusters = [
             (
                 endpoint.device.ieee,
@@ -534,7 +528,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     DO NOTHING"""
         await self._db.executemany(q, clusters)
 
-    async def _save_attribute_cache(self, ep: zigpy.typing.EndpointType) -> None:
+    async def _save_attribute_cache(self, ep: Endpoint) -> None:
         clusters = [
             (
                 ep.device.ieee,
@@ -553,7 +547,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     DO UPDATE SET value=excluded.value, last_updated=excluded.last_updated"""
         await self._db.executemany(q, clusters)
 
-    async def _save_unsupported_attributes(self, ep: zigpy.typing.EndpointType) -> None:
+    async def _save_unsupported_attributes(self, ep: Endpoint) -> None:
         clusters = [
             (
                 ep.device.ieee,
@@ -786,7 +780,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 dev = self._application.get_device(ieee)
                 ep = dev.add_endpoint(epid)
                 ep.profile_id = profile_id
-                ep.status = zigpy.endpoint.Status(status)
+                ep.status = EndpointStatus(status)
 
                 if profile_id == zigpy.profiles.zha.PROFILE_ID:
                     ep.device_type = zigpy.profiles.zha.DeviceType(device_type)
