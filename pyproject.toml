@@ -252,7 +252,6 @@ show_error_context = true
 error_summary = true
 disable_error_code = [
     # Only a few notifications left:
-    #"valid-type",  # 78 errors
     "misc",  # 462 errors
     "attr-defined",  # 238 errors
     "assignment",  # 313 errors
