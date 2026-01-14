@@ -489,6 +489,7 @@ class Squawk(_SquawkOrWarningCommand):
     # For backwards compatibility
     Strobe: Final = Strobe
     SquawkLevel: Final = SquawkLevel
+    SquawkMode: Final = SquawkMode
 
 
 class IasWd(Cluster):
