@@ -768,9 +768,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 foundation.Status.SUCCESS,
             )
 
-    def read_attributes_raw(self, attributes, manufacturer=None, **kwargs):
-        attributes = [t.uint16_t(a) for a in attributes]
-        return self._read_attributes(attributes, manufacturer=manufacturer, **kwargs)
+    def read_attributes_raw(
+        self, attributes: list[int], manufacturer: int | None = None, **kwargs
+    ):
+        return self._read_attributes(
+            [t.uint16_t(a) for a in attributes], manufacturer=manufacturer, **kwargs
+        )
 
     def _get_effective_manufacturer_code(
         self,

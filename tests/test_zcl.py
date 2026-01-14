@@ -1471,3 +1471,124 @@ def test_find_attribute_unspecified_manufacturer_code() -> None:
     assert (
         TestCluster.find_attribute("attribute2") is TestCluster.AttributeDefs.attribute2
     )
+
+
+async def test_read_attributes_complex() -> None:
+    """Test reading attributes, complex scenario."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            attribute1 = foundation.ZCLAttributeDef(id=0x0001, type=t.uint8_t)
+            attribute2 = foundation.ZCLAttributeDef(id=0x0002, type=t.uint8_t)
+
+            # These two can be read together
+            attribute3 = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.uint8_t, manufacturer_code=0x1234
+            )
+            attribute4 = foundation.ZCLAttributeDef(
+                id=0x0002, type=t.uint8_t, manufacturer_code=0x1234
+            )
+
+            # As can these two
+            attribute5 = foundation.ZCLAttributeDef(
+                id=0x0003, type=t.uint8_t, manufacturer_code=0x5678
+            )
+            attribute6 = foundation.ZCLAttributeDef(
+                id=0x0004, type=t.uint8_t, manufacturer_code=0x5678
+            )
+
+    endpoint = AsyncMock(spec=zigpy.endpoint.Endpoint)
+    cluster = TestCluster(endpoint)
+
+    async def mock_read_attributes(
+        attribute_ids: list[int], manufacturer: int | None = None, **kwargs
+    ):
+        status_records = {
+            (None, (0x0001, 0x0002)): [
+                # One is supported
+                foundation.ReadAttributeRecord(
+                    attrid=0x0001,
+                    status=foundation.Status.SUCCESS,
+                    value=foundation.TypeValue(
+                        type=foundation.DataTypeId.uint8,
+                        value=t.uint8_t(123),
+                    ),
+                ),
+                # The other is not
+                foundation.ReadAttributeRecord(
+                    attrid=0x0002,
+                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                ),
+            ],
+            (0x1234, (0x0001, 0x0002)): [
+                # Both are supported
+                foundation.ReadAttributeRecord(
+                    attrid=0x0001,
+                    status=foundation.Status.SUCCESS,
+                    value=foundation.TypeValue(
+                        type=foundation.DataTypeId.uint8,
+                        value=t.uint8_t(12),
+                    ),
+                ),
+                foundation.ReadAttributeRecord(
+                    attrid=0x0002,
+                    status=foundation.Status.SUCCESS,
+                    value=foundation.TypeValue(
+                        type=foundation.DataTypeId.uint8,
+                        value=t.uint8_t(34),
+                    ),
+                ),
+            ],
+            (0x5678, (0x0003, 0x0004)): [
+                # Neither of these are supported
+                foundation.ReadAttributeRecord(
+                    attrid=0x0003,
+                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                ),
+                foundation.ReadAttributeRecord(
+                    attrid=0x0004,
+                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                ),
+            ],
+        }[manufacturer, tuple(attribute_ids)]
+
+        return foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Read_Attributes_rsp
+        ].schema(status_records=status_records)
+
+    with patch.object(
+        cluster, "_read_attributes", side_effect=mock_read_attributes
+    ) as mock_raw:
+        success, failure = await cluster.read_attributes(
+            [
+                # These are arranged "randomly" but will still be read in order within
+                # a particular batch
+                TestCluster.AttributeDefs.attribute1,  # Batch 1  (no code)
+                TestCluster.AttributeDefs.attribute5,  # Batch 2  (0x5678)
+                TestCluster.AttributeDefs.attribute3,  # Batch 3  (0x1234)
+                TestCluster.AttributeDefs.attribute2,  # Batch 1  (no code)
+                TestCluster.AttributeDefs.attribute4,  # Batch 2  (0x5678)
+                TestCluster.AttributeDefs.attribute6,  # Batch 3  (0x1234)
+            ]
+        )
+
+    assert success == {
+        TestCluster.AttributeDefs.attribute1: 123,
+        TestCluster.AttributeDefs.attribute3: 12,
+        TestCluster.AttributeDefs.attribute4: 34,
+    }
+
+    assert failure == {
+        TestCluster.AttributeDefs.attribute2: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+        TestCluster.AttributeDefs.attribute5: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+        TestCluster.AttributeDefs.attribute6: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+    }
+
+    assert mock_raw.mock_calls == [
+        call([0x0001, 0x0002], manufacturer=None),
+        call([0x0003, 0x0004], manufacturer=0x5678),
+        call([0x0001, 0x0002], manufacturer=0x1234),
+    ]
