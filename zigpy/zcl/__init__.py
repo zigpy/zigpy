@@ -14,7 +14,7 @@ import warnings
 from zigpy import util
 from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.types as t
-from zigpy.typing import AddressingMode, EndpointType
+from zigpy.typing import EndpointType
 from zigpy.zcl import foundation
 from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs, CommandSchema
 
@@ -476,25 +476,21 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self,
         hdr: foundation.ZCLHeader,
         args: list[Any],
-        *,
-        dst_addressing: AddressingMode | None = None,
     ) -> None:
         self.debug(
             "Received command 0x%02X (TSN %d): %s", hdr.command_id, hdr.tsn, args
         )
         if hdr.frame_control.is_cluster:
-            self.handle_cluster_request(hdr, args, dst_addressing=dst_addressing)
+            self.handle_cluster_request(hdr, args)
             self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
             return
         self.listener_event("general_command", hdr, args)
-        self.handle_cluster_general_request(hdr, args, dst_addressing=dst_addressing)
+        self.handle_cluster_general_request(hdr, args)
 
     def handle_cluster_request(
         self,
         hdr: foundation.ZCLHeader,
         args: list[Any],
-        *,
-        dst_addressing: AddressingMode | None = None,
     ):
         self.debug(
             "No explicit handler for cluster command 0x%02x: %s",
@@ -512,8 +508,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin):
         self,
         hdr: foundation.ZCLHeader,
         args: list,
-        *,
-        dst_addressing: AddressingMode | None = None,
     ) -> None:
         if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
             records = []

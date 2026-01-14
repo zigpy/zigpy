@@ -154,9 +154,7 @@ def test_handle_announce(zdo_f):
     dev._application.devices.pop(dev.ieee)
     hdr = MagicMock()
     hdr.command_id = zdo_types.ZDOCmd.Device_annce
-    zdo_f.handle_message(
-        5, 0x0013, hdr, [dev.nwk, dev.ieee, 0], dst_addressing=sentinel.dst_addr
-    )
+    zdo_f.handle_message(5, 0x0013, hdr, [dev.nwk, dev.ieee, 0])
 
     assert listener.device_announce.call_count == 1
     assert listener.device_announce.call_args[0][0] is dev

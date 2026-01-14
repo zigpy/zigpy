@@ -1279,17 +1279,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         src_ep: int,
         dst_ep: int,
         message: bytes,
-        *,
-        dst_addressing: zigpy.typing.AddressingMode | None = None,
     ):
         """Deprecated compatibility function. Use `packet_received` instead."""
 
         warnings.warn(
             "`handle_message` is deprecated, use `packet_received`", DeprecationWarning
         )
-
-        if dst_addressing is None:
-            dst_addressing = t.AddrMode.NWK
 
         self.packet_received(
             t.ZigbeePacket(
@@ -1299,11 +1294,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 dst_ep=dst_ep,
                 data=t.SerializableBytes(message),
                 src=t.AddrModeAddress(
-                    addr_mode=dst_addressing,
-                    address={
-                        t.AddrMode.NWK: sender.nwk,
-                        t.AddrMode.IEEE: sender.ieee,
-                    }[dst_addressing],
+                    addr_mode=t.AddrMode.NWK,
+                    address=sender.nwk,
                 ),
                 dst=t.AddrModeAddress(
                     addr_mode=t.AddrMode.NWK,

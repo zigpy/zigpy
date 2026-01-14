@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from typing import Any, Final, Self
 
 import zigpy.types as t
-from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
@@ -2119,13 +2118,7 @@ class Ota(Cluster):
             },
         )
 
-    def handle_cluster_request(
-        self,
-        hdr: foundation.ZCLHeader,
-        args: list[Any],
-        *,
-        dst_addressing: AddressingMode | None = None,
-    ):
+    def handle_cluster_request(self, hdr: foundation.ZCLHeader, args: list[Any]):
         # We don't want the cluster to do anything here because it would interfere with
         # the OTA manager
         device = self.endpoint.device
