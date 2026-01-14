@@ -1,6 +1,8 @@
 import itertools
+import logging
 import math
 import struct
+from typing import Generic, TypeVar
 
 import pytest
 
@@ -64,8 +66,8 @@ def test_fractional_ints_corner():
     with pytest.raises(TypeError):
         n.serialize()
 
-    assert t.uint1_t(0).bits() == [0]
-    assert t.uint1_t(1).bits() == [1]
+    assert t.uint1_t(0).bits() == t.Bits([0])
+    assert t.uint1_t(1).bits() == t.Bits([1])
 
     assert t.uint1_t.from_bits([1, 1]) == (1, [1])
     assert t.uint1_t.from_bits([0, 1]) == (1, [0])
@@ -92,9 +94,9 @@ def test_fractional_ints_larger():
     with pytest.raises(TypeError):
         n.serialize()
 
-    assert t.uint7_t(0).bits() == [0, 0, 0, 0, 0, 0, 0]
-    assert t.uint7_t(1).bits() == [0, 0, 0, 0, 0, 0, 1]
-    assert t.uint7_t(0b1011111).bits() == [1, 0, 1, 1, 1, 1, 1]
+    assert t.uint7_t(0).bits() == t.Bits([0, 0, 0, 0, 0, 0, 0])
+    assert t.uint7_t(1).bits() == t.Bits([0, 0, 0, 0, 0, 0, 1])
+    assert t.uint7_t(0b1011111).bits() == t.Bits([1, 0, 1, 1, 1, 1, 1])
 
     assert t.uint7_t.from_bits([1, 0, 1, 1, 1, 1, 0, 1, 1, 1]) == (0b1110111, [1, 0, 1])
 
@@ -126,10 +128,10 @@ def test_ints_signed():
     with pytest.raises(TypeError):
         n.serialize()
 
-    assert int7s(0).bits() == [0, 0, 0, 0, 0, 0, 0]
-    assert int7s(1).bits() == [0, 0, 0, 0, 0, 0, 1]
-    assert int7s(-1).bits() == [1, 1, 1, 1, 1, 1, 1]
-    assert int7s(2**6 - 1).bits() == [0, 1, 1, 1, 1, 1, 1]
+    assert int7s(0).bits() == t.Bits([0, 0, 0, 0, 0, 0, 0])
+    assert int7s(1).bits() == t.Bits([0, 0, 0, 0, 0, 0, 1])
+    assert int7s(-1).bits() == t.Bits([1, 1, 1, 1, 1, 1, 1])
+    assert int7s(2**6 - 1).bits() == t.Bits([0, 1, 1, 1, 1, 1, 1])
 
     assert int7s.from_bits([1, 0, 1, 0, 1, 1, 0, 1, 1, 1]) == (0b0110111, [1, 0, 1])
 
@@ -139,8 +141,8 @@ def test_ints_signed():
     t.int8s.deserialize(b"\xff")
 
     n = t.int8s(-126)
-    bits = [1, 0] + t.Bits.deserialize(n.serialize())[0]
-    assert t.int8s.from_bits(bits) == (n, [1, 0])
+    bits = t.Bits([1, 0]) + t.Bits.deserialize(n.serialize())[0]
+    assert t.int8s.from_bits(bits) == (n, t.Bits([1, 0]))
 
 
 def test_bigendian_ints():
@@ -156,9 +158,10 @@ def test_bigendian_ints():
 
 
 def test_bits():
-    assert t.Bits() == []
+    assert t.Bits() == t.Bits([])
+    assert t.Bits([1]) != [1]
     assert t.Bits([1] + [0] * 15).serialize() == b"\x80\x00"
-    assert t.Bits.deserialize(b"\x80\x00") == ([1] + [0] * 15, b"")
+    assert t.Bits.deserialize(b"\x80\x00") == (t.Bits([1] + [0] * 15), b"")
 
     bits = t.Bits([0] * 7)
 
@@ -457,7 +460,7 @@ def test_fixedlist():
 
 def test_lvlist_types():
     # Brackets create singleton types
-    anon_lst1 = t.LVList[t.uint16_t]
+    anon_lst1 = t.LVList[t.uint16_t, t.uint8_t]
     anon_lst2 = t.LVList[t.uint16_t, t.uint8_t]
 
     assert anon_lst1._length_type is t.uint8_t
@@ -489,11 +492,23 @@ def test_lvlist_types():
     )
 
     # Similar-looking classes are not compatible
-    class NewListType(list, metaclass=t.KwargTypeMeta):
-        _item_type = None
-        _length_type = t.uint8_t
+    _T = TypeVar("_T", bound=t.Serializable)
+    _V = TypeVar("_V", bound=t.uint_t)
 
-        _getitem_kwargs = {"item_type": None, "length_type": t.uint8_t}
+    class NewListType(list, Generic[_T, _V], metaclass=t.KwargTypeMeta):
+        _item_type: type[_T] | None
+        _length_type: type[_V] | None
+
+        _getitem_kwargs = {"item_type": None, "length_type": None}
+
+        def __init_subclass__(
+            cls, item_type: type[_T] | None = None, length_type: type[_V] | None = None
+        ) -> None:
+            if item_type is not None:
+                cls._item_type = item_type
+
+            if length_type is not None:
+                cls._length_type = length_type
 
     class NewList(NewListType, item_type=t.uint16_t, length_type=t.uint8_t):
         pass
@@ -627,6 +642,14 @@ def test_keydata():
     assert list(key) == list(data)
     assert key.serialize() == data
     assert t.KeyData(key) == key
+
+
+def test_deprecated_enum_factory(caplog) -> None:
+    with caplog.at_level(logging.ERROR):
+        assert t.enum_factory(t.uint8_t) is t.enum8
+
+    with caplog.at_level(logging.ERROR):
+        assert t.enum_factory(t.uint16_t) is t.enum16
 
 
 def test_enum_uint():

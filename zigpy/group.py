@@ -36,7 +36,7 @@ class Group(ListenableMixin, dict):
         if groups is not None:
             self.add_listener(groups)
 
-    def get_sequence(self) -> t.uint8_t:
+    def get_sequence(self) -> int:
         self._send_sequence = (self._send_sequence + 1) % 256
         return self._send_sequence
 

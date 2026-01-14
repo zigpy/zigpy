@@ -1,14 +1,54 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 import enum
 import inspect
+import logging
 import struct
-from typing import Literal, Self
+from typing import Generic, Literal, Protocol, Self, TypeVar
+
+_LOGGER = logging.getLogger(__name__)
 
 
-class Bits(list):
+class Serializable(Protocol):
+    def __init__(self, *args, **kwargs) -> None: ...
+
+    def serialize(self) -> bytes: ...
+
     @classmethod
-    def from_bitfields(cls, fields):
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]: ...
+
+
+class Bits:
+    def __init__(self, bits: list[int] | None = None) -> None:
+        self._bits: list[int] = bits or []
+
+    def __len__(self) -> int:
+        return len(self._bits)
+
+    def __getitem__(self, index: slice) -> Self:
+        return type(self)(self._bits[index])
+
+    def __iter__(self) -> Iterator[int]:
+        return iter(self._bits)
+
+    def extend(self, bits: list[int]) -> None:
+        self._bits.extend(bits)
+
+    def __repr__(self) -> str:
+        return f"Bits({self._bits})"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self._bits == other._bits
+
+    def __add__(self, other: Self) -> Self:
+        return type(self)(self._bits + other._bits)
+
+    @classmethod
+    def from_bitfields(cls, fields: list[FixedIntType]) -> Self:
         instance = cls()
 
         # Little endian, so [11, 1000, 00] will be packed as 00_1000_11
@@ -26,7 +66,7 @@ class Bits(list):
         for index in range(0, len(self), 8):
             byte = 0x00
 
-            for bit in self[index : index + 8]:
+            for bit in self._bits[index : index + 8]:
                 byte <<= 1
                 byte |= bit
 
@@ -35,7 +75,7 @@ class Bits(list):
         return bytes(serialized_bytes)
 
     @classmethod
-    def deserialize(cls, data) -> tuple[Bits, bytes]:
+    def deserialize(cls, data) -> tuple[Self, bytes]:
         bits: list[int] = []
 
         for byte in data:
@@ -353,76 +393,30 @@ class uint64_t_be(uint_t_be, bits=64):
     pass
 
 
-class AlwaysCreateEnumType(enum.EnumMeta):
-    """Enum metaclass that skips the functional creation API."""
+class _AlwaysCreateEnumMeta(enum.EnumMeta):
+    """An EnumMeta that always creates a new enum member for unknown values."""
 
-    def __call__(self, value, names=None, *values) -> type[enum.Enum]:  # type: ignore[override]  # noqa: N804
-        """Custom implementation of Enum.__new__.
+    def __call__(cls, value, *args, **kwargs) -> type[enum.Enum]:  # type: ignore[override]
+        # Until zigpy stops using constructs like `t.enum8(0xFF)`, we need this check
+        if not cls._member_map_:
+            return cls._missing_(value)
 
-        From https://github.com/python/cpython/blob/v3.11.5/Lib/enum.py#L1091-L1140
-        """
-        # all enum instances are actually created during class construction
-        # without calling this method; this method is called by the metaclass'
-        # __call__ (i.e. Color(3) ), and by pickle
-        if type(value) is self:
-            # For lookups like Color(Color.RED)
-            return value
-        # by-value search for a matching enum member
-        # see if it's in the reverse mapping (for hashable values)
-        try:
-            return self._value2member_map_[value]
-        except KeyError:
-            # Not found, no need to do long O(n) search
-            pass
-        except TypeError:
-            # not there, now do long search -- O(n) behavior
-            for member in self._member_map_.values():
-                if member._value_ == value:
-                    return member
-        # still not found -- try _missing_ hook
-        try:
-            exc = None
-            result = self._missing_(value)
-        except Exception as e:  # noqa: BLE001
-            exc = e
-            result = None
-        try:
-            if isinstance(result, self) or (
-                enum.Flag is not None
-                and issubclass(self, enum.Flag)
-                and self._boundary_ is enum.EJECT
-                and isinstance(result, int)
-            ):
-                return result
-            else:
-                ve_exc = ValueError(f"{value!r} is not a valid {self.__qualname__}")
-                if result is None and exc is None:
-                    raise ve_exc
-                elif exc is None:
-                    exc = TypeError(
-                        f"error in {self.__name__}._missing_: returned {result!r} instead of None or a valid member"
-                    )
-                if not isinstance(exc, ValueError):
-                    exc.__context__ = ve_exc
-                raise exc
-        finally:
-            # ensure all variables that could hold an exception are destroyed
-            exc = None
-            ve_exc = None
+        return super().__call__(value, *args, **kwargs)
 
 
-class _IntEnumMeta(AlwaysCreateEnumType):
-    def __call__(self, value, names=None, *args, **kwargs):  # noqa: N804
+class _IntEnumMeta(_AlwaysCreateEnumMeta):
+    def __call__(cls, value, *args, **kwargs) -> type[enum.Enum]:  # type: ignore[override]
         if isinstance(value, str):
             if value.startswith("0x"):
                 value = int(value, base=16)
             elif value.isnumeric():
                 value = int(value)
-            elif value.startswith(self.__name__ + "."):
-                value = self[value[len(self.__name__) + 1 :]].value
+            elif value.startswith(cls.__name__ + "."):
+                value = cls[value[len(cls.__name__) + 1 :]].value
             else:
-                value = self[value].value
-        return super().__call__(value, names, *args, **kwargs)
+                value = cls[value].value
+
+        return super().__call__(value, *args, **kwargs)
 
     @classmethod
     def _find_data_type_(mcls, class_name, bases):  # noqa: N804
@@ -536,12 +530,35 @@ class enum32_be(_EnumMixin, uint32_t_be, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
+def enum_factory(base_type: type[FixedIntType]) -> type[enum.Enum]:
+    _LOGGER.error(
+        "enum_factory is internal to zigpy and deprecated. Use the enum types directly."
+    )
+
+    enum_mapping: dict[type[FixedIntType], type[enum.Enum]] = {
+        uint1_t: enum1,
+        uint2_t: enum2,
+        uint3_t: enum3,
+        uint4_t: enum4,
+        uint5_t: enum5,
+        uint6_t: enum6,
+        uint7_t: enum7,
+        uint8_t: enum8,
+        uint16_t: enum16,
+        uint32_t: enum32,
+        uint16_t_be: enum16_be,
+        uint32_t_be: enum32_be,
+    }
+
+    return enum_mapping[base_type]
+
+
 class bitmap2(
     uint2_t,
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -551,7 +568,7 @@ class bitmap3(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -561,7 +578,7 @@ class bitmap4(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -571,7 +588,7 @@ class bitmap5(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -581,7 +598,7 @@ class bitmap6(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -591,7 +608,7 @@ class bitmap7(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -601,7 +618,7 @@ class bitmap8(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -611,7 +628,7 @@ class bitmap16(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -621,7 +638,7 @@ class bitmap24(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -631,7 +648,7 @@ class bitmap32(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -641,7 +658,7 @@ class bitmap40(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -651,7 +668,7 @@ class bitmap48(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -661,7 +678,7 @@ class bitmap56(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -671,7 +688,7 @@ class bitmap64(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -681,7 +698,7 @@ class bitmap16_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -691,7 +708,7 @@ class bitmap24_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -701,7 +718,7 @@ class bitmap32_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -711,7 +728,7 @@ class bitmap40_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -721,7 +738,7 @@ class bitmap48_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -731,7 +748,7 @@ class bitmap56_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -741,7 +758,7 @@ class bitmap64_be(
     enum.ReprEnum,
     enum.Flag,
     boundary=enum.KEEP,
-    metaclass=AlwaysCreateEnumType,
+    metaclass=_AlwaysCreateEnumMeta,
 ):
     pass
 
@@ -882,24 +899,7 @@ class LongOctetString(LVBytes):
 
 class KwargTypeMeta(type):
     # So things like `LVList[NWK, t.uint8_t]` are singletons
-    _anonymous_classes = {}  # type:ignore[var-annotated]
-
-    def __new__(cls, name, bases, namespaces, **kwargs):
-        cls_kwarg_attrs = namespaces.get("_getitem_kwargs", {})
-
-        def __init_subclass__(cls, **kwargs):
-            filtered_kwargs = kwargs.copy()
-
-            for key in kwargs:
-                if key in cls_kwarg_attrs:
-                    setattr(cls, f"_{key}", filtered_kwargs.pop(key))
-
-            super().__init_subclass__(**filtered_kwargs)
-
-        if "__init_subclass__" not in namespaces:
-            namespaces["__init_subclass__"] = __init_subclass__
-
-        return type.__new__(cls, name, bases, namespaces, **kwargs)
+    _anonymous_classes: dict[tuple[type, tuple[type, ...]], type] = {}
 
     def __getitem__(cls, key):
         # Make sure Foo[a] is the same as Foo[a,]
@@ -955,7 +955,7 @@ class KwargTypeMeta(type):
         for key in cls._getitem_kwargs:
             key = f"_{key}"
 
-            if getattr(cls, key) != getattr(subclass, key):
+            if getattr(cls, key, None) != getattr(subclass, key, None):
                 return False
 
         return True
@@ -968,9 +968,17 @@ class KwargTypeMeta(type):
         return super().__instancecheck__(subclass)
 
 
-class List(list, metaclass=KwargTypeMeta):
-    _item_type = None
+_T = TypeVar("_T", bound="Serializable")
+_V = TypeVar("_V", bound="uint_t")
+
+
+class List(list, Generic[_T], metaclass=KwargTypeMeta):
+    _item_type: type[_T] | None
     _getitem_kwargs = {"item_type": None}
+
+    def __init_subclass__(cls, item_type: type[_T] | None = None) -> None:
+        if item_type is not None:
+            cls._item_type = item_type
 
     def serialize(self) -> bytes:
         assert self._item_type is not None
@@ -979,8 +987,8 @@ class List(list, metaclass=KwargTypeMeta):
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         assert cls._item_type is not None
-
         lst = cls()
+
         while data:
             item, data = cls._item_type.deserialize(data)
             lst.append(item)
@@ -988,34 +996,58 @@ class List(list, metaclass=KwargTypeMeta):
         return lst, data
 
 
-class LVList(list, metaclass=KwargTypeMeta):
-    _item_type = None
-    _length_type = uint8_t
+class LVList(list, Generic[_T, _V], metaclass=KwargTypeMeta):
+    _item_type: type[_T] | None
+    _length_type: type[_V] = uint8_t
 
     _getitem_kwargs = {"item_type": None, "length_type": uint8_t}
 
+    def __init_subclass__(
+        cls, item_type: type[_T] | None = None, length_type: type[_V] | None = None
+    ) -> None:
+        if item_type is not None:
+            cls._item_type = item_type
+
+        if length_type is not None:
+            cls._length_type = length_type
+
     def serialize(self) -> bytes:
+        assert self._length_type is not None
         assert self._item_type is not None
+
         return self._length_type(len(self)).serialize() + b"".join(
             [self._item_type(i).serialize() for i in self]
         )
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        assert cls._length_type is not None
         assert cls._item_type is not None
+
         length, data = cls._length_type.deserialize(data)
         r = cls()
+
         for _i in range(length):
             item, data = cls._item_type.deserialize(data)
             r.append(item)
+
         return r, data
 
 
-class FixedList(list, metaclass=KwargTypeMeta):
-    _item_type = None
-    _length = None
+class FixedList(list, Generic[_T], metaclass=KwargTypeMeta):
+    _item_type: type[_T] | None
+    _length: int | None
 
     _getitem_kwargs = {"item_type": None, "length": None}
+
+    def __init_subclass__(
+        cls, item_type: type[_T] | None = None, length: int | None = None
+    ) -> None:
+        if item_type is not None:
+            cls._item_type = item_type
+
+        if length is not None:
+            cls._length = length
 
     def serialize(self) -> bytes:
         assert self._length is not None

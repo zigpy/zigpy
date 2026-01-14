@@ -198,7 +198,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
             yield
 
-    def get_sequence(self) -> t.uint8_t:
+    def get_sequence(self) -> int:
         self._send_sequence = (self._send_sequence + 1) % 256
         return self._send_sequence
 
@@ -595,7 +595,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     f"Duplicate request key: {rsp_key}"
                 )
 
-            future: asyncio.Future[list[typing.Any, ...] | foundation.CommandSchema] = (
+            future: asyncio.Future[list[typing.Any] | foundation.CommandSchema] = (
                 asyncio.Future()
             )
             self._requests[rsp_key] = future
@@ -748,8 +748,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         endpoint = self.endpoints[packet.src_ep]
 
         if packet.src_ep == zdo.ZDO_ENDPOINT:
+            assert isinstance(endpoint, zigpy.zdo.ZDO)
             return endpoint, None
         else:
+            assert isinstance(endpoint, zigpy.endpoint.Endpoint)
             try:
                 zcl_cluster = self._find_zcl_cluster(hdr, packet)
             except KeyError:
@@ -902,7 +904,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         image: OtaImageWithMetadata,
         progress_callback: callable | None = None,
         force: bool = False,
-    ) -> foundation.Status:
+    ) -> foundation.Status | None:
         """Update device firmware."""
         if self.ota_in_progress:
             self.debug("OTA already in progress")
