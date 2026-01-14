@@ -16,9 +16,9 @@ from zigpy import util
 from zigpy.const import APS_REPLY_TIMEOUT
 from zigpy.event import EventBase, suppress_events
 import zigpy.types as t
-from zigpy.typing import UNDEFINED, AddressingMode, EndpointType, UndefinedType
+from zigpy.typing import UNDEFINED, UndefinedType
 from zigpy.zcl import foundation
-from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs, ReportingDirection
+from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs, CommandSchema
 
 from .helpers import AttributeCache, ReportingConfig, UnsupportedAttribute
 
@@ -372,9 +372,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         if cls.cluster_id_range is not None:
             cls._registry_range[cls.cluster_id_range] = cls
 
-    def __init__(self, endpoint: EndpointType, is_server: bool = True) -> None:
+    def __init__(self, endpoint: Endpoint, is_server: bool = True) -> None:
         super().__init__()
-        self._endpoint: EndpointType = endpoint
+        self._endpoint: Endpoint = endpoint
         self._type: ClusterType = (
             ClusterType.Server if is_server else ClusterType.Client
         )
@@ -434,7 +434,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     @property
     def unsupported_attributes(self) -> set[str | int]:
         """Return a set of unsupported attribute names and IDs."""
-        results = set()
+        results: set[int | str] = set()
 
         for attr_id, manuf_code in self._attr_cache._unsupported:
             attr_def = self.find_attribute(attr_id, manufacturer_code=manuf_code)
@@ -449,7 +449,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     @classmethod
     def from_id(
-        cls, endpoint: EndpointType, cluster_id: int, is_server: bool = True
+        cls, endpoint: Endpoint, cluster_id: int, is_server: bool = True
     ) -> Cluster:
         cluster_id = t.ClusterId(cluster_id)
 
@@ -468,7 +468,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         cluster.cluster_id = cluster_id
         return cluster
 
-    def deserialize(self, data: bytes) -> tuple[foundation.ZCLHeader, ...]:
+    def deserialize(
+        self, data: bytes
+    ) -> tuple[foundation.ZCLHeader, CommandSchema | bytes]:
         self.debug("Received ZCL frame: %r", data.hex(" "))
 
         hdr, data = foundation.ZCLHeader.deserialize(data)
@@ -513,7 +515,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         *,
         general: bool,
         command_id: foundation.GeneralCommand | int,
-        schema: type[t.Struct],
+        schema: type[CommandSchema],
         manufacturer: int | None = None,
         tsn: int | None = None,
         disable_default_response: bool,
@@ -521,8 +523,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         # Schema args and kwargs
         args: tuple[Any, ...],
         kwargs: Any,
-    ) -> tuple[foundation.ZCLHeader, bytes]:
-        request = schema(*args, **kwargs)  # type:ignore[operator]
+    ) -> tuple[foundation.ZCLHeader, CommandSchema]:
+        request = schema(*args, **kwargs)
         request.serialize()  # Throw an error before generating a new TSN
 
         if tsn is None:
@@ -655,25 +657,24 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self,
         hdr: foundation.ZCLHeader,
         args: list[Any],
-        *,
-        dst_addressing: AddressingMode | None = None,
     ) -> None:
         self.debug(
             "Received command 0x%02X (TSN %d): %s", hdr.command_id, hdr.tsn, args
         )
         if hdr.frame_control.is_cluster:
-            self.handle_cluster_request(hdr, args, dst_addressing=dst_addressing)
+            self.handle_cluster_request(hdr, args)
             self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
             return
         self.listener_event("general_command", hdr, args)
-        self.handle_cluster_general_request(hdr, args, dst_addressing=dst_addressing)
+        self.handle_cluster_general_request(hdr, args)
 
     def handle_cluster_request(
         self,
         hdr: foundation.ZCLHeader,
         args: list[Any],
         *,
-        dst_addressing: AddressingMode | None = None,
+        # This parameter is unused and kept only for backwards compatibility
+        dst_addressing: t.AddrMode | None = None,
     ):
         self.debug(
             "No explicit handler for cluster command 0x%02x: %s",
@@ -692,7 +693,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         hdr: foundation.ZCLHeader,
         args: list,
         *,
-        dst_addressing: AddressingMode | None = None,
+        # This parameter is unused and kept only for backwards compatibility
+        dst_addressing: t.AddrMode | None = None,
     ) -> None:
         if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
             records = []
@@ -776,9 +778,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ) -> int | None:
         """Get the effective manufacturer code for an attribute or command."""
         if manufacturer not in (None, UNDEFINED):
+            assert not isinstance(manufacturer, UndefinedType)
             return manufacturer
 
         if definition.manufacturer_code not in (None, UNDEFINED):
+            assert not isinstance(definition.manufacturer_code, UndefinedType)
             return definition.manufacturer_code
 
         if 0xFC00 <= self.cluster_id <= 0xFFFF or definition.is_manufacturer_specific:
@@ -1150,7 +1154,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         for attr_def, reporting_config in config.items():
             cfg = foundation.AttributeReportingConfig()
-            cfg.direction = ReportingDirection.SendReports
+            cfg.direction = foundation.ReportingDirection.SendReports
             cfg.attrid = attr_def.id
             cfg.datatype = (
                 attr_def.zcl_type

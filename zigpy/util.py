@@ -415,19 +415,6 @@ def pick_optimal_channel(
     return optimal_channel
 
 
-class Singleton:
-    """Singleton class."""
-
-    def __init__(self, name: str) -> None:
-        self.name = name
-
-    def __repr__(self) -> str:
-        return f"<Singleton {self.name!r}>"
-
-    def __hash__(self) -> int:
-        return hash(self.name)
-
-
 def filter_relays(relays: list[int]) -> list[int]:
     """Filter out invalid relays."""
     filtered_relays = []

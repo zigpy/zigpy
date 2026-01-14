@@ -1048,7 +1048,7 @@ class ZCLHeader(t.Struct):
         return super().__new__(cls, frame_control, manufacturer, tsn, command_id)
 
     @property
-    def direction(self) -> bool:
+    def direction(self) -> Direction:
         """Return direction of Frame Control."""
         return self.frame_control.direction
 
@@ -1247,7 +1247,7 @@ ZCLAttributeAccess._names = {
 @dataclasses.dataclass(frozen=True)
 class ZCLAttributeDef(t.BaseDataclassMixin):
     id: t.uint16_t = None
-    type: type = None
+    type: typing.Any = None
     zcl_type: DataTypeId = None
     access: ZCLAttributeAccess = (
         ZCLAttributeAccess.Read | ZCLAttributeAccess.Write | ZCLAttributeAccess.Report

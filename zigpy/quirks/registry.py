@@ -7,16 +7,16 @@ import inspect
 import itertools
 import logging
 import pathlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from zigpy.const import SIG_MANUFACTURER, SIG_MODEL, SIG_MODELS_INFO
 import zigpy.quirks
-from zigpy.typing import CustomDeviceType, DeviceType
 from zigpy.util import deprecated
 
 if TYPE_CHECKING:
+    from zigpy.device import Device
     from zigpy.quirks import CustomDevice
-    from zigpy.quirks.v2 import QuirksV2RegistryEntry
+    from zigpy.quirks.v2 import CustomDeviceV2, QuirksV2RegistryEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,13 +26,13 @@ class DeviceRegistry:
 
     def __init__(self, *args, **kwargs) -> None:
         """Initialize the registry."""
-        self._registry_v1: dict[str | None, dict[str | None, deque[CustomDevice]]] = (
-            defaultdict(lambda: defaultdict(deque))
-        )
+        self._registry_v1: dict[
+            str | None, dict[str | None, deque[type[CustomDevice]]]
+        ] = defaultdict(lambda: defaultdict(deque))
 
-        self._registry_v2: dict[tuple[str, str], deque[QuirksV2RegistryEntry]] = (
-            defaultdict(deque)
-        )
+        self._registry_v2: dict[
+            tuple[str | None, str | None], deque[QuirksV2RegistryEntry]
+        ] = defaultdict(deque)
 
     def purge_custom_quirks(self, custom_quirks_root: pathlib.Path) -> None:
         # If zhaquirks aren't being used, we can't tell if a quirk is custom or not
@@ -64,7 +64,7 @@ class DeviceRegistry:
                 _LOGGER.debug("Removing stale custom v2 quirk: %s", entry)
                 registry.remove(entry)
 
-    def add_to_registry(self, custom_device: CustomDeviceType) -> None:
+    def add_to_registry(self, custom_device: type[CustomDevice]) -> None:
         """Add a device to the registry"""
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
         if models_info:
@@ -83,12 +83,13 @@ class DeviceRegistry:
         """Add an entry to the registry."""
         self._registry_v2[(manufacturer, model)].appendleft(entry)
 
-    def remove(self, custom_device: CustomDeviceType) -> None:
+    def remove(self, custom_device: type[CustomDevice] | CustomDeviceV2) -> None:
         """Remove a device from the registry"""
 
         if hasattr(custom_device, "quirk_metadata"):
-            key = (custom_device.manufacturer, custom_device.model)
-            self._registry_v2[key].remove(custom_device.quirk_metadata)
+            device = cast("CustomDeviceV2", custom_device)
+            key = (device.manufacturer, device.model)
+            self._registry_v2[key].remove(device.quirk_metadata)
             return
 
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
@@ -100,7 +101,7 @@ class DeviceRegistry:
             model = custom_device.signature.get(SIG_MODEL)
             self.registry_v1[manufacturer][model].remove(custom_device)
 
-    def get_device(self, device: DeviceType) -> CustomDeviceType | DeviceType:
+    def get_device(self, device: Device) -> CustomDevice | Device:
         """Get a CustomDevice object, if one is available"""
         if isinstance(device, zigpy.quirks.BaseCustomDevice):
             return device
@@ -142,26 +143,31 @@ class DeviceRegistry:
 
     @property
     @deprecated("The `registry` property is deprecated, use `registry_v1` instead.")
-    def registry(self) -> dict[str | None, dict[str | None, deque[CustomDevice]]]:
+    def registry(self) -> dict[str | None, dict[str | None, deque[type[CustomDevice]]]]:
         """Return the v1 registry."""
         return self._registry_v1
 
     @property
-    def registry_v1(self) -> dict[str | None, dict[str | None, deque[CustomDevice]]]:
+    def registry_v1(
+        self,
+    ) -> dict[str | None, dict[str | None, deque[type[CustomDevice]]]]:
         """Return the v1 registry."""
         return self._registry_v1
 
     @property
-    def registry_v2(self) -> dict[tuple[str, str], deque[QuirksV2RegistryEntry]]:
+    def registry_v2(
+        self,
+    ) -> dict[tuple[str | None, str | None], deque[QuirksV2RegistryEntry]]:
         """Return the v2 registry."""
         return self._registry_v2
 
-    def __contains__(self, device: CustomDeviceType) -> bool:
+    def __contains__(self, device: type[CustomDevice] | CustomDeviceV2) -> bool:
         """Check if a device is in the registry."""
 
         if hasattr(device, "quirk_metadata"):
-            manufacturer, model = device.manufacturer, device.model
-            return device.quirk_metadata in self._registry_v2[(manufacturer, model)]
+            v2_device = cast("CustomDeviceV2", device)
+            manufacturer, model = v2_device.manufacturer, v2_device.model
+            return v2_device.quirk_metadata in self._registry_v2[(manufacturer, model)]
 
         manufacturer, model = device.signature.get(
             SIG_MODELS_INFO,

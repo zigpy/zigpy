@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 import inspect
 import typing
-from typing import Self
+from typing import TYPE_CHECKING, Self, cast
 
 import zigpy.types as t
 
@@ -31,7 +31,7 @@ class EmptyObject:
 @dataclasses.dataclass(frozen=True)
 class StructField:
     name: str | None = None
-    type: type = None
+    type: type | None = None
 
     requires: typing.Callable[[Struct], bool] | None = dataclasses.field(
         default=None, repr=False
@@ -42,7 +42,7 @@ class StructField:
         default=repr, repr=False
     )
 
-    def replace(self, **kwargs) -> StructField:
+    def replace(self, **kwargs) -> Self:
         return dataclasses.replace(self, **kwargs)
 
     def _convert_type(self, value):
@@ -56,6 +56,17 @@ class StructField:
                 f"Failed to convert {self.name}={value!r} from type"
                 f" {type(value)} to {self.type}"
             ) from e
+
+
+if TYPE_CHECKING:
+
+    class ResolvedStructField(StructField):
+        """`StructField` instance with name and type resolved."""
+
+        name: str
+        type: type
+else:
+    ResolvedStructField = StructField
 
 
 class Struct:
@@ -121,7 +132,7 @@ class Struct:
         return instance
 
     @classmethod
-    def _get_fields(cls) -> list[StructField]:
+    def _get_fields(cls) -> list[ResolvedStructField]:
         fields = ListSubclass()
 
         # We need both to throw type errors in case a field is not annotated
@@ -160,12 +171,14 @@ class Struct:
             elif field.type is None:
                 raise TypeError(f"Field {name!r} has no type")
 
-            fields.append(field)
+            fields.append(cast(ResolvedStructField, field))
             setattr(fields, field.name, field)
 
         return fields
 
-    def assigned_fields(self, *, strict=False) -> list[tuple[StructField, typing.Any]]:
+    def assigned_fields(
+        self, *, strict=False
+    ) -> list[tuple[ResolvedStructField, typing.Any]]:
         assigned_fields = ListSubclass()
 
         for field in self.fields:
@@ -270,7 +283,7 @@ class Struct:
 
     @staticmethod
     def _deserialize_internal(
-        fields: list[StructField], data: bytes
+        fields: list[ResolvedStructField], data: bytes
     ) -> tuple[dict[str, typing.Any], bytes]:
         bit_length = 0
         bitfields = []

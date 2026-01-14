@@ -1,38 +1,41 @@
 from __future__ import annotations
 
 import typing
+from typing import Any, Final
 
 import zigpy.types as t
 
 
-class _PowerDescriptorEnums:
-    class CurrentPowerMode(t.enum4):
-        RxOnSyncedWithNodeDesc = 0b0000
-        RxOnPeriodically = 0b0001
-        RxOnWhenStimulated = 0b0010
+class CurrentPowerMode(t.enum4):
+    RxOnSyncedWithNodeDesc = 0b0000
+    RxOnPeriodically = 0b0001
+    RxOnWhenStimulated = 0b0010
 
-    class PowerSources(t.bitmap4):
-        MainsPower = 0b0001
-        RechargeableBattery = 0b0010
-        DisposableBattery = 0b0100
-        Reserved = 0b1000
 
-    class PowerSourceLevel(t.enum4):
-        Critical = 0b0000
-        Percent33 = 0b0100
-        Percent66 = 0b1000
-        Percent100 = 0b1100
+class PowerSources(t.bitmap4):
+    MainsPower = 0b0001
+    RechargeableBattery = 0b0010
+    DisposableBattery = 0b0100
+    Reserved = 0b1000
+
+
+class PowerSourceLevel(t.enum4):
+    Critical = 0b0000
+    Percent33 = 0b0100
+    Percent66 = 0b1000
+    Percent100 = 0b1100
 
 
 class PowerDescriptor(t.Struct):
-    CurrentPowerMode = _PowerDescriptorEnums.CurrentPowerMode
-    PowerSources = _PowerDescriptorEnums.PowerSources
-    PowerSourceLevel = _PowerDescriptorEnums.PowerSourceLevel
+    current_power_mode: CurrentPowerMode
+    available_power_sources: PowerSources
+    current_power_source: PowerSources
+    current_power_source_level: PowerSourceLevel
 
-    current_power_mode: _PowerDescriptorEnums.CurrentPowerMode
-    available_power_sources: _PowerDescriptorEnums.PowerSources
-    current_power_source: _PowerDescriptorEnums.PowerSources
-    current_power_source_level: _PowerDescriptorEnums.PowerSourceLevel
+    # Kept for backwards compatibility
+    CurrentPowerMode: Final = CurrentPowerMode
+    PowerSources: Final = PowerSources
+    PowerSourceLevel: Final = PowerSourceLevel
 
 
 class SimpleDescriptor(t.Struct):
@@ -40,8 +43,8 @@ class SimpleDescriptor(t.Struct):
     profile: t.uint16_t
     device_type: t.uint16_t
     device_version: t.uint8_t
-    input_clusters: t.LVList[t.uint16_t]
-    output_clusters: t.LVList[t.uint16_t]
+    input_clusters: t.LVList[t.uint16_t, t.uint8_t]
+    output_clusters: t.LVList[t.uint16_t, t.uint8_t]
 
 
 class SizePrefixedSimpleDescriptor(SimpleDescriptor):
@@ -62,49 +65,46 @@ class LogicalType(t.enum3):
     EndDevice = 0b010
 
 
-class _NodeDescriptorEnums:
-    class MACCapabilityFlags(t.bitmap8):
-        NONE = 0
+class MACCapabilityFlags(t.bitmap8):
+    NONE = 0
 
-        AlternatePanCoordinator = 0b00000001
-        FullFunctionDevice = 0b00000010
-        MainsPowered = 0b00000100
-        RxOnWhenIdle = 0b00001000
-        SecurityCapable = 0b01000000
-        AllocateAddress = 0b10000000
+    AlternatePanCoordinator = 0b00000001
+    FullFunctionDevice = 0b00000010
+    MainsPowered = 0b00000100
+    RxOnWhenIdle = 0b00001000
+    SecurityCapable = 0b01000000
+    AllocateAddress = 0b10000000
 
-    class FrequencyBand(t.bitmap5):
-        Freq868MHz = 0b00001
-        Freq902MHz = 0b00100
-        Freq2400MHz = 0b01000
 
-    class DescriptorCapability(t.bitmap8):
-        NONE = 0
+class FrequencyBand(t.bitmap5):
+    Freq868MHz = 0b00001
+    Freq902MHz = 0b00100
+    Freq2400MHz = 0b01000
 
-        ExtendedActiveEndpointListAvailable = 0b00000001
-        ExtendedSimpleDescriptorListAvailable = 0b00000010
+
+class DescriptorCapability(t.bitmap8):
+    NONE = 0
+
+    ExtendedActiveEndpointListAvailable = 0b00000001
+    ExtendedSimpleDescriptorListAvailable = 0b00000010
 
 
 class NodeDescriptor(t.Struct):
-    FrequencyBand = _NodeDescriptorEnums.FrequencyBand
-    MACCapabilityFlags = _NodeDescriptorEnums.MACCapabilityFlags
-    DescriptorCapability = _NodeDescriptorEnums.DescriptorCapability
-
     logical_type: LogicalType
     complex_descriptor_available: t.uint1_t
     user_descriptor_available: t.uint1_t
     reserved: t.uint3_t
 
     aps_flags: t.uint3_t
-    frequency_band: _NodeDescriptorEnums.FrequencyBand
+    frequency_band: FrequencyBand
 
-    mac_capability_flags: _NodeDescriptorEnums.MACCapabilityFlags
+    mac_capability_flags: MACCapabilityFlags
     manufacturer_code: t.uint16_t
     maximum_buffer_size: t.uint8_t
     maximum_incoming_transfer_size: t.uint16_t
     server_mask: t.uint16_t
     maximum_outgoing_transfer_size: t.uint16_t
-    descriptor_capability_field: _NodeDescriptorEnums.DescriptorCapability
+    descriptor_capability_field: DescriptorCapability
 
     def __new__(cls, *args, **kwargs):
         # Old style constructor
@@ -233,6 +233,11 @@ class NodeDescriptor(t.Struct):
 
         return bool(self.mac_capability_flags & self.MACCapabilityFlags.AllocateAddress)
 
+    # Kept for backwards compatibility
+    FrequencyBand: Final = FrequencyBand
+    MACCapabilityFlags: Final = MACCapabilityFlags
+    DescriptorCapability: Final = DescriptorCapability
+
 
 class MultiAddress(t.Struct):
     """Used for binds, represents an IEEE+endpoint or NWK address"""
@@ -258,38 +263,35 @@ class MultiAddress(t.Struct):
         return super().serialize()
 
 
-class _NeighborEnums:
-    class DeviceType(t.enum2):
-        Coordinator = 0x0
-        Router = 0x1
-        EndDevice = 0x2
-        Unknown = 0x3
+class DeviceType(t.enum2):
+    Coordinator = 0x0
+    Router = 0x1
+    EndDevice = 0x2
+    Unknown = 0x3
 
-    class RxOnWhenIdle(t.enum2):
-        Off = 0x0
-        On = 0x1
-        Unknown = 0x2
 
-    class Relationship(t.enum3):
-        Parent = 0x0
-        Child = 0x1
-        Sibling = 0x2
-        NoneOfTheAbove = 0x3
-        PreviousChild = 0x4
+class RxOnWhenIdle(t.enum2):
+    Off = 0x0
+    On = 0x1
+    Unknown = 0x2
 
-    class PermitJoins(t.enum2):
-        NotAccepting = 0x0
-        Accepting = 0x1
-        Unknown = 0x2
+
+class Relationship(t.enum3):
+    Parent = 0x0
+    Child = 0x1
+    Sibling = 0x2
+    NoneOfTheAbove = 0x3
+    PreviousChild = 0x4
+
+
+class PermitJoins(t.enum2):
+    NotAccepting = 0x0
+    Accepting = 0x1
+    Unknown = 0x2
 
 
 class Neighbor(t.Struct):
     """Neighbor Descriptor"""
-
-    PermitJoins = _NeighborEnums.PermitJoins
-    DeviceType = _NeighborEnums.DeviceType
-    RxOnWhenIdle = _NeighborEnums.RxOnWhenIdle
-    Relationship = _NeighborEnums.Relationship
 
     # Backwards-compatible alternate spelling
     RelationShip = Relationship
@@ -298,12 +300,12 @@ class Neighbor(t.Struct):
     ieee: t.EUI64
     nwk: t.NWK
 
-    device_type: _NeighborEnums.DeviceType
-    rx_on_when_idle: _NeighborEnums.RxOnWhenIdle
-    relationship: _NeighborEnums.Relationship
+    device_type: DeviceType
+    rx_on_when_idle: RxOnWhenIdle
+    relationship: Relationship
     reserved1: t.uint1_t
 
-    permit_joining: _NeighborEnums.PermitJoins
+    permit_joining: PermitJoins
     reserved2: t.uint6_t
 
     depth: t.uint8_t
@@ -321,13 +323,19 @@ class Neighbor(t.Struct):
             "reserved1": tmp_neighbor.reserved1,
         }
 
+    # Kept for backwards compatibility
+    PermitJoins: Final = PermitJoins
+    DeviceType: Final = DeviceType
+    RxOnWhenIdle: Final = RxOnWhenIdle
+    Relationship: Final = Relationship
+
 
 class Neighbors(t.Struct):
     """Mgmt_Lqi_rsp"""
 
     Entries: t.uint8_t
     StartIndex: t.uint8_t
-    NeighborTableList: t.LVList[Neighbor]
+    NeighborTableList: t.LVList[Neighbor, t.uint8_t]
 
 
 class RouteStatus(t.enum3):
@@ -366,7 +374,7 @@ class Route(t.Struct):
 class Routes(t.Struct):
     Entries: t.uint8_t
     StartIndex: t.uint8_t
-    RoutingTableList: t.LVList[Route]
+    RoutingTableList: t.LVList[Route, t.uint8_t]
 
 
 CHANNEL_CHANGE_REQ = 0xFE
@@ -531,7 +539,7 @@ class ZDOCmd(t.enum16):
     Mgmt_NWK_Update_rsp = 0x8038
 
 
-CLUSTERS = {
+CLUSTERS: dict[ZDOCmd, tuple[tuple[str, Any], ...]] = {
     # Device and Service Discovery Server Requests
     ZDOCmd.NWK_addr_req: (
         IEEE,
@@ -550,8 +558,8 @@ CLUSTERS = {
     ZDOCmd.Match_Desc_req: (
         NWKI,
         ("ProfileID", t.uint16_t),
-        ("InClusterList", t.LVList[t.uint16_t]),
-        ("OutClusterList", t.LVList[t.uint16_t]),
+        ("InClusterList", t.LVList[t.uint16_t, t.uint8_t]),
+        ("OutClusterList", t.LVList[t.uint16_t, t.uint8_t]),
     ),
     # ZDO.Complex_Desc_req: (NWKI, ),
     ZDOCmd.User_Desc_req: (NWKI,),
@@ -559,7 +567,7 @@ CLUSTERS = {
     ZDOCmd.Device_annce: (NWK, IEEE, ("Capability", t.uint8_t)),
     ZDOCmd.User_Desc_set: (
         NWKI,
-        ("UserDescriptor", t.FixedList[16, t.uint8_t]),
+        ("UserDescriptor", t.CharacterString),
     ),  # Really a string
     ZDOCmd.System_Server_Discovery_req: (("ServerMask", t.uint16_t),),
     ZDOCmd.Discovery_store_req: (
@@ -568,10 +576,14 @@ CLUSTERS = {
         ("NodeDescSize", t.uint8_t),
         ("PowerDescSize", t.uint8_t),
         ("ActiveEPSize", t.uint8_t),
-        ("SimpleDescSizeList", t.LVList[t.uint8_t]),
+        ("SimpleDescSizeList", t.LVList[t.uint8_t, t.uint8_t]),
     ),
     ZDOCmd.Node_Desc_store_req: (NWK, IEEE, ("NodeDescriptor", NodeDescriptor)),
-    ZDOCmd.Active_EP_store_req: (NWK, IEEE, ("ActiveEPList", t.LVList[t.uint8_t])),
+    ZDOCmd.Active_EP_store_req: (
+        NWK,
+        IEEE,
+        ("ActiveEPList", t.LVList[t.uint8_t, t.uint8_t]),
+    ),
     ZDOCmd.Simple_Desc_store_req: (
         NWK,
         IEEE,
@@ -585,15 +597,15 @@ CLUSTERS = {
         ("StartIndex", t.uint8_t),
     ),
     ZDOCmd.Extended_Active_EP_req: (NWKI, ("StartIndex", t.uint8_t)),
-    ZDOCmd.Parent_annce: (("Children", t.LVList[t.EUI64]),),
+    ZDOCmd.Parent_annce: (("Children", t.LVList[t.EUI64, t.uint8_t]),),
     #  Bind Management Server Services Responses
     ZDOCmd.End_Device_Bind_req: (
         ("BindingTarget", t.uint16_t),
         ("SrcAddress", t.EUI64),
         ("SrcEndpoint", t.uint8_t),
         ("ProfileID", t.uint8_t),
-        ("InClusterList", t.LVList[t.uint8_t]),
-        ("OutClusterList", t.LVList[t.uint8_t]),
+        ("InClusterList", t.LVList[t.uint8_t, t.uint8_t]),
+        ("OutClusterList", t.LVList[t.uint8_t, t.uint8_t]),
     ),
     ZDOCmd.Bind_req: (
         ("SrcAddress", t.EUI64),
@@ -653,8 +665,16 @@ CLUSTERS = {
         NWKI,
         ("SimpleDescriptor", t.Optional(SizePrefixedSimpleDescriptor)),
     ),
-    ZDOCmd.Active_EP_rsp: (STATUS, NWKI, ("ActiveEPList", t.LVList[t.uint8_t])),
-    ZDOCmd.Match_Desc_rsp: (STATUS, NWKI, ("MatchList", t.LVList[t.uint8_t])),
+    ZDOCmd.Active_EP_rsp: (
+        STATUS,
+        NWKI,
+        ("ActiveEPList", t.LVList[t.uint8_t, t.uint8_t]),
+    ),
+    ZDOCmd.Match_Desc_rsp: (
+        STATUS,
+        NWKI,
+        ("MatchList", t.LVList[t.uint8_t, t.uint8_t]),
+    ),
     # ZDO.Complex_Desc_rsp: (
     #     STATUS,
     #     NWKI,
@@ -664,8 +684,7 @@ CLUSTERS = {
     ZDOCmd.User_Desc_rsp: (
         STATUS,
         NWKI,
-        ("Length", t.uint8_t),
-        ("UserDescriptor", t.Optional(t.FixedList[16, t.uint8_t])),
+        ("UserDescriptor", t.CharacterString),
     ),
     ZDOCmd.Discovery_Cache_rsp: (STATUS,),
     ZDOCmd.User_Desc_conf: (STATUS, NWKI),
@@ -693,7 +712,7 @@ CLUSTERS = {
         ("StartIndex", t.uint8_t),
         ("ActiveEPList", t.List[t.uint8_t]),
     ),
-    ZDOCmd.Parent_annce_rsp: (STATUS, ("Children", t.LVList[t.EUI64])),
+    ZDOCmd.Parent_annce_rsp: (STATUS, ("Children", t.LVList[t.EUI64, t.uint8_t])),
     #  Bind Management Server Services Responses
     ZDOCmd.End_Device_Bind_rsp: (STATUS,),
     ZDOCmd.Bind_rsp: (STATUS,),
@@ -706,7 +725,7 @@ CLUSTERS = {
         STATUS,
         ("BindingTableEntries", t.uint8_t),
         ("StartIndex", t.uint8_t),
-        ("BindingTableList", t.LVList[Binding]),
+        ("BindingTableList", t.LVList[Binding, t.uint8_t]),
     ),
     # ... TODO optional stuff ...
     ZDOCmd.Mgmt_Leave_rsp: (STATUS,),
@@ -716,7 +735,7 @@ CLUSTERS = {
         ("ScannedChannels", t.Channels),
         ("TotalTransmissions", t.uint16_t),
         ("TransmissionFailures", t.uint16_t),
-        ("EnergyValues", t.LVList[t.uint8_t]),
+        ("EnergyValues", t.LVList[t.uint8_t, t.uint8_t]),
     ),
     # ... TODO optional stuff ...
 }
