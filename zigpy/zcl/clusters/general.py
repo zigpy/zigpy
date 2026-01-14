@@ -2120,7 +2120,14 @@ class Ota(Cluster):
             },
         )
 
-    def handle_cluster_request(self, hdr: foundation.ZCLHeader, args: list[Any]):
+    def handle_cluster_request(
+        self,
+        hdr: foundation.ZCLHeader,
+        args: list[Any],
+        *,
+        # This parameter is unused and kept only for backwards compatibility
+        dst_addressing: t.AddrMode | None = None,
+    ):
         # We don't want the cluster to do anything here because it would interfere with
         # the OTA manager
         device = self.endpoint.device
