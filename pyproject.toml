@@ -31,6 +31,7 @@ exclude = ["tests", "tests.*"]
 
 [tool.setuptools.package-data]
 "*" = ["appdb_schemas/schema_v*.sql"]
+zigpy = ["py.typed"]
 
 [project.optional-dependencies]
 testing = [
@@ -38,6 +39,7 @@ testing = [
     "asynctest",
     "coveralls",
     "coverage[toml]",
+    "filelock",
     "pytest",
     "pytest-asyncio<1.0.0",
     "pytest-cov",
@@ -253,8 +255,6 @@ disable_error_code = [
     "type-arg",
     # Only a few notifications left:
     "return-value",
-    # operator breaks in CI (zigpy.types.basic), but not locally
-    "operator",
     "valid-type",
     "misc",
     "attr-defined",

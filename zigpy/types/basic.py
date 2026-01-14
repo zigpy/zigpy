@@ -3,11 +3,7 @@ from __future__ import annotations
 import enum
 import inspect
 import struct
-import typing
-from typing import Self
-
-CALLABLE_T = typing.TypeVar("CALLABLE_T", bound=typing.Callable)
-T = typing.TypeVar("T")
+from typing import Literal, Self
 
 
 class Bits(list):
@@ -79,10 +75,10 @@ NOT_SET = object()
 
 
 class FixedIntType(int):
-    _signed = None
-    _bits = None
-    _size = None  # Only for backwards compatibility, not set for smaller ints
-    _byteorder = None
+    _signed: bool = None
+    _bits: int = None
+    _size: int = None  # Only for backwards compatibility, not set for smaller ints
+    _byteorder: Literal["big", "little"] = None
 
     min_value: int
     max_value: int
@@ -91,7 +87,7 @@ class FixedIntType(int):
         if cls._signed is None or cls._bits is None:
             raise TypeError(f"{cls} is abstract and cannot be created")
 
-        n = super().__new__(cls, *args, **kwargs)
+        n = int.__new__(cls, *args, **kwargs)
 
         # We use `n + 0` to convert `n` into an integer without calling `int()`
         if not cls.min_value <= n + 0 <= cls.max_value:
@@ -157,7 +153,7 @@ class FixedIntType(int):
         return Bits([(self >> n) & 0b1 for n in range(self._bits - 1, -1, -1)])
 
     @classmethod
-    def from_bits(cls, bits: Bits) -> tuple[FixedIntType, Bits]:
+    def from_bits(cls, bits: Bits) -> tuple[Self, Bits]:
         if len(bits) < cls._bits:
             raise ValueError(f"Not enough bits to decode {cls}: {bits}")
 
@@ -179,7 +175,7 @@ class FixedIntType(int):
         return self.to_bytes(self._bits // 8, self._byteorder, signed=self._signed)
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[FixedIntType, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         if cls._bits % 8 != 0:
             raise TypeError(f"Integer type with {cls._bits} bits is not byte aligned")
 
@@ -428,80 +424,115 @@ class _IntEnumMeta(AlwaysCreateEnumType):
                 value = self[value].value
         return super().__call__(value, names, *args, **kwargs)
 
+    @classmethod
+    def _find_data_type_(mcls, class_name, bases):  # noqa: N804
+        # a datatype has a __new__ method, or a __dataclass_fields__ attribute
+        data_types = set()
+        base_chain = set()
+        for chain in bases:
+            candidate = None
+            for base in chain.__mro__:
+                base_chain.add(base)
+                if base is object:
+                    continue
+                elif isinstance(base, enum.EnumType):
+                    if base._member_type_ is not object:
+                        data_types.add(base._member_type_)
+                        break
+                elif (
+                    "__new__" in base.__dict__
+                    or "__dataclass_fields__" in base.__dict__
+                ):
+                    data_types.add(candidate or base)
+                    break
+                else:
+                    candidate = candidate or base
 
-def enum_factory(int_type: CALLABLE_T, undefined: str = "undefined") -> CALLABLE_T:
-    """Enum factory."""
+        # Ignore chains of data types: uint8_t is a subclass of int
+        data_types = {
+            base
+            for base in data_types
+            if not any(
+                issubclass(other, base) for other in data_types if other is not base
+            )
+        }
 
-    class _NewEnum(int_type, enum.Enum, metaclass=_IntEnumMeta):
-        @classmethod
-        def _missing_(cls, value):
-            new = cls._member_type_.__new__(cls, value)
-
-            if cls._bits % 8 == 0:
-                name = f"{undefined}_{new._hex_repr().lower()}"
-            else:
-                name = f"{undefined}_{new._bin_repr()}"
-
-            new._name_ = name.format(value)
-            new._value_ = value
-            return new
-
-        def __format__(self, format_spec: str) -> str:
-            if format_spec:
-                # Allow formatting the integer enum value
-                return self._member_type_.__format__(self, format_spec)
-            else:
-                # Otherwise, format it as its string representation
-                return object.__format__(repr(self), format_spec)
-
-    return _NewEnum
+        if len(data_types) > 1:
+            raise TypeError("too many data types for %r: %r" % (class_name, data_types))  # noqa: UP031
+        elif data_types:
+            return data_types.pop()
+        else:
+            return None
 
 
-class enum1(enum_factory(uint1_t)):  # noqa: N801
+class _EnumMixin:
+    @classmethod
+    def _missing_(cls, value):
+        new = cls._member_type_.__new__(cls, value)
+
+        if cls._bits % 8 == 0:
+            name = f"undefined_{new._hex_repr().lower()}"
+        else:
+            name = f"undefined_{new._bin_repr()}"
+
+        new._name_ = name.format(value)
+        new._value_ = value
+        return new
+
+    def __format__(self, format_spec: str) -> str:
+        if format_spec:
+            # Allow formatting the integer enum value
+            return self._member_type_.__format__(self, format_spec)
+        else:
+            # Otherwise, format it as its string representation
+            return object.__format__(repr(self), format_spec)
+
+
+class enum1(_EnumMixin, uint1_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum2(enum_factory(uint2_t)):  # noqa: N801
+class enum2(_EnumMixin, uint2_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum3(enum_factory(uint3_t)):  # noqa: N801
+class enum3(_EnumMixin, uint3_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum4(enum_factory(uint4_t)):  # noqa: N801
+class enum4(_EnumMixin, uint4_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum5(enum_factory(uint5_t)):  # noqa: N801
+class enum5(_EnumMixin, uint5_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum6(enum_factory(uint6_t)):  # noqa: N801
+class enum6(_EnumMixin, uint6_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum7(enum_factory(uint7_t)):  # noqa: N801
+class enum7(_EnumMixin, uint7_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum8(enum_factory(uint8_t)):  # noqa: N801
+class enum8(_EnumMixin, uint8_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum16(enum_factory(uint16_t)):  # noqa: N801
+class enum16(_EnumMixin, uint16_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum32(enum_factory(uint32_t)):  # noqa: N801
+class enum32(_EnumMixin, uint32_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum16_be(enum_factory(uint16_t_be)):  # noqa: N801
+class enum16_be(_EnumMixin, uint16_t_be, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
-class enum32_be(enum_factory(uint32_t_be)):  # noqa: N801
+class enum32_be(_EnumMixin, uint32_t_be, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
@@ -716,9 +747,9 @@ class bitmap64_be(
 
 
 class BaseFloat(float):
-    _exponent_bits = None
-    _fraction_bits = None
-    _size = None
+    _exponent_bits: int = None
+    _fraction_bits: int = None
+    _size: int = None
 
     def __init_subclass__(cls, exponent_bits, fraction_bits):
         size_bits = 1 + exponent_bits + fraction_bits
@@ -946,7 +977,7 @@ class List(list, metaclass=KwargTypeMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         assert cls._item_type is not None
 
         lst = cls()
@@ -970,7 +1001,7 @@ class LVList(list, metaclass=KwargTypeMeta):
         )
 
     @classmethod
-    def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         assert cls._item_type is not None
         length, data = cls._length_type.deserialize(data)
         r = cls()
@@ -997,7 +1028,7 @@ class FixedList(list, metaclass=KwargTypeMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         assert cls._item_type is not None
         r = cls()
         for _i in range(cls._length):
@@ -1031,7 +1062,7 @@ class CharacterString(str):
         ) + self.encode("utf8")
 
     @classmethod
-    def deserialize(cls: type[T], data: bytes) -> tuple[T, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         if len(data) < cls._prefix_length:
             raise ValueError("Data is too short")
 
@@ -1049,9 +1080,7 @@ class CharacterString(str):
         raw = data[cls._prefix_length : cls._prefix_length + length]
         text = raw.split(b"\x00")[0].decode("utf8", errors="replace")
 
-        # FIXME: figure out how to get this working: `T` is not behaving as expected in
-        # the classmethod when it is not bound.
-        r = cls(text)  # type:ignore[call-arg]
+        r = cls(text)
         r.raw = raw
         return r, data[cls._prefix_length + length :]
 

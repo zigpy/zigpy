@@ -614,7 +614,7 @@ class DataType(DataTypeInfo, enum.Enum):
 
     @classmethod
     @functools.cache
-    def _python_type_index(cls: type[Self]) -> dict[type, Self]:  # noqa: N805
+    def _python_type_index(cls: type[Self]) -> dict[type, Self]:
         return {d.python_type: d for d in cls}
 
     @classmethod
@@ -631,7 +631,7 @@ class DataType(DataTypeInfo, enum.Enum):
 
     @classmethod
     @functools.cache
-    def _data_type_index(cls: type[Self]) -> dict[type, Self]:  # noqa: N805
+    def _data_type_index(cls: type[Self]) -> dict[DataTypeId, Self]:
         return {d.type_id: d for d in cls}
 
     @classmethod
@@ -1104,7 +1104,7 @@ class ZCLHeader(t.Struct):
 @dataclasses.dataclass(frozen=True)
 class ZCLCommandDef(t.BaseDataclassMixin):
     id: t.uint8_t = None
-    schema: CommandSchema = None
+    schema: type[CommandSchema] = None
     direction: Direction = None
     is_manufacturer_specific: bool = None
 
@@ -1219,7 +1219,7 @@ class ZCLAttributeAccess(enum.Flag):
 
     @classmethod
     @functools.lru_cache(None)
-    def from_str(cls: ZCLAttributeAccess, value: str) -> ZCLAttributeAccess:
+    def from_str(cls, value: str) -> Self:
         orig_value = value
         access = cls.NONE
 

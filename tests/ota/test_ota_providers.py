@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
-import logging
 import pathlib
 from unittest.mock import Mock
 
-import aiohttp
 from aioresponses import aioresponses
 import attrs
 import pytest
@@ -18,37 +15,7 @@ import zigpy.device
 from zigpy.ota import OtaImageWithMetadata, providers
 import zigpy.types as t
 
-FILES_DIR = pathlib.Path(__file__).parent / "files"
-_LOGGER = logging.getLogger(__name__)
-
-
-async def download(url: str) -> bytes | None:
-    async with aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(total=10)
-    ) as session:
-        async with session.get(url, ssl=False, raise_for_status=True) as resp:
-            return await resp.read()
-
-
-@pytest.fixture(scope="module", autouse=True)
-def download_external_files():
-    urls = json.loads((FILES_DIR / "external/urls.json").read_text())
-
-    for path, obj in urls.items():
-        path = FILES_DIR / "external" / path
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        if not path.is_file():
-            try:
-                data = asyncio.run(download(obj["url"]))
-            except (TimeoutError, aiohttp.ClientError) as e:
-                _LOGGER.error("Failed to download %s: %s", obj["url"], e)
-                continue
-            else:
-                path.write_bytes(data)
-
-        algorithm, digest = obj["checksum"].split(":")
-        assert hashlib.new(algorithm, path.read_bytes()).hexdigest() == digest
+from .conftest import FILES_DIR
 
 
 def make_device(
@@ -691,6 +658,7 @@ async def test_ota_fetch_size_and_checksum_validation(
 
     fw = await meta.fetch()
     assert fw == image_with_metadata.firmware
+    assert meta.file_size is not None
 
     with pytest.raises(ValueError):
         await meta.replace(file_size=meta.file_size + 1).fetch()
@@ -700,3 +668,127 @@ async def test_ota_fetch_size_and_checksum_validation(
 
     with pytest.raises(ValueError):
         await meta.replace(checksum=meta.checksum[:-1] + "c").fetch()
+
+
+async def test_zigpy_ota_provider():
+    version_json = (FILES_DIR / "zigpy_ota_version_stable.json").read_text()
+    version_obj = json.loads(version_json)  # {"schemas": {"zigpy_v1": {...}}} format
+    index_json = (FILES_DIR / "zigpy_ota_index.json").read_text()
+    index_obj = json.loads(index_json)  # {"firmwares": [...]} format
+
+    # Test with default stable channel
+    provider = providers.ZigpyOtaProvider()
+    assert provider.channel == "stable"
+
+    # Compatible with all devices
+    assert provider.compatible_with_device(make_device(manufacturer_id=4107))
+    assert provider.compatible_with_device(make_device(manufacturer_id=9999))
+
+    version_url = (
+        "https://raw.githubusercontent.com/zigpy/zigpy-ota/release/version/stable.json"
+    )
+    index_url = version_obj["schemas"]["zigpy_v1"]["url"]
+
+    with aioresponses() as mock_http:
+        mock_http.get(version_url, body=version_json, content_type="application/json")
+        mock_http.get(index_url, body=index_json, content_type="application/json")
+
+        index = await provider.load_index()
+
+    assert len(index) == len(index_obj["firmwares"])
+
+    for obj, meta in zip(index_obj["firmwares"], index, strict=True):
+        assert isinstance(meta, providers.RemoteOtaImageMetadata)
+        assert meta.url == obj.pop("binary_url")
+        assert meta.file_version == obj.pop("file_version")
+        assert meta.file_size == obj.pop("file_size")
+        assert meta.image_type == obj.pop("image_type")
+        assert meta.manufacturer_id == obj.pop("manufacturer_id")
+        assert meta.checksum == obj.pop("checksum")
+        assert meta.manufacturer_names == tuple(obj.pop("manufacturer_names", []))
+        assert meta.model_names == tuple(obj.pop("model_names", []))
+        assert meta.release_notes == obj.pop("release_notes", None)
+        assert meta.min_hardware_version == obj.pop("min_hardware_version", None)
+        assert meta.max_hardware_version == obj.pop("max_hardware_version", None)
+        assert meta.min_current_file_version == obj.pop(
+            "min_current_file_version", None
+        )
+        assert meta.max_current_file_version == obj.pop(
+            "max_current_file_version", None
+        )
+        assert meta.specificity == obj.pop("specificity", None)
+        assert meta.release_url == obj.pop("release_url", None)
+
+        # Pop any remaining fields that are in the JSON but not in metadata
+        obj.pop("source_url", None)
+
+        assert not obj
+        assert "zigpy-ota provider (stable channel)" in meta.source
+
+    # The provider should not reload immediately due to caching
+    with aioresponses() as mock_http:
+        cached_index = await provider.load_index()
+        assert cached_index is None
+        mock_http.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("channel", "version_file", "url"),
+    [
+        ("dev", "zigpy_ota_version_dev.json", None),
+        ("beta", "zigpy_ota_version_stable.json", None),
+        (
+            "custom",
+            "zigpy_ota_version_stable.json",
+            "https://example.org/custom/version.json",
+        ),
+    ],
+)
+async def test_zigpy_ota_provider_channel(
+    channel: str, version_file: str, url: str | None
+):
+    version_json = (FILES_DIR / version_file).read_text()
+    version_obj = json.loads(version_json)
+    index_json = (FILES_DIR / "zigpy_ota_index.json").read_text()
+
+    provider = providers.ZigpyOtaProvider(channel=channel, url=url)
+    assert provider.channel == channel
+
+    version_url = (
+        url
+        or f"https://raw.githubusercontent.com/zigpy/zigpy-ota/release/version/{channel}.json"
+    )
+    index_url = version_obj["schemas"]["zigpy_v1"]["url"]
+
+    with aioresponses() as mock_http:
+        mock_http.get(version_url, body=version_json, content_type="application/json")
+        mock_http.get(index_url, body=index_json, content_type="application/json")
+
+        index = await provider.load_index()
+
+    assert index is not None
+    assert len(index) == 2
+    assert all(
+        f"zigpy-ota provider ({channel} channel)" in meta.source for meta in index
+    )
+
+
+async def test_zigpy_ota_provider_invalid_channel():
+    with pytest.raises(ValueError, match="Invalid channel 'invalid'"):
+        providers.ZigpyOtaProvider(channel="invalid")
+
+
+async def test_zigpy_ota_provider_equality():
+    provider1 = providers.ZigpyOtaProvider(channel="stable")
+    provider2 = providers.ZigpyOtaProvider(channel="stable")
+    provider3 = providers.ZigpyOtaProvider(channel="dev")
+    provider4 = providers.ZigpyOtaProvider(url="https://example.org/custom.json")
+
+    assert provider1 == provider2
+    assert provider1 != provider3
+    assert provider1 != provider4
+    assert provider1 != providers.RemoteZigpyProvider("https://example.org/custom.json")
+
+    # Test __hash__ (required for combine_concurrent_calls in get_ota_images)
+    assert len({provider1, provider2}) == 1
+    assert len({provider1, provider3, provider4}) == 3

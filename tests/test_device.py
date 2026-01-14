@@ -7,6 +7,7 @@ from unittest.mock import call
 
 import pytest
 
+from tests.conftest import make_node_desc, mock_attribute_reads
 from zigpy import device, endpoint
 import zigpy.application
 from zigpy.datastructures import RequestLimiter
@@ -77,6 +78,57 @@ async def test_initialize(monkeypatch, dev):
 
     await dev.initialize()
     assert dev._application.device_initialized.call_count == 3
+
+
+async def test_initialize_read_ota(
+    app: zigpy.application.ControllerApplication,
+) -> None:
+    # We skip over endpoint and node descriptor initialization and instead focus on
+    # attribute reading
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    ota = ep.add_output_cluster(Ota.cluster_id)
+
+    with (
+        mock_attribute_reads(basic, {"model": "Model", "manufacturer": "Manufacturer"}),
+        mock_attribute_reads(ota, {"current_file_version": 0x12345678}),
+    ):
+        await dev.initialize()
+
+    assert dev.model == "Model"
+    assert dev.manufacturer == "Manufacturer"
+    success, _ = await ota.read_attributes(
+        [Ota.AttributeDefs.current_file_version.id], only_cache=True
+    )
+    assert success[Ota.AttributeDefs.current_file_version.id] == 0x12345678
+
+
+async def test_initialize_read_ota_unsupported(
+    app: zigpy.application.ControllerApplication,
+) -> None:
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    ota = ep.add_output_cluster(Ota.cluster_id)
+
+    with (
+        mock_attribute_reads(basic, {"model": "Model", "manufacturer": "Manufacturer"}),
+        mock_attribute_reads(ota, {}),  # No attributes are supported
+    ):
+        await dev.initialize()
+
+    # Initialization succeeds
+    assert dev.model == "Model"
+    assert dev.manufacturer == "Manufacturer"
 
 
 async def test_initialize_fail(dev):
@@ -442,7 +494,9 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
     dev.zdo.Active_EP_req = mockrequest
-    await dev.initialize()
+
+    with mock_attribute_reads(cluster, {"current_file_version": 0x00000001}):
+        await dev.initialize()
 
     fw_image = zigpy.ota.OtaImageWithMetadata(
         metadata=zigpy.ota.providers.BaseOtaImageMetadata(
@@ -823,7 +877,9 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
     dev.zdo.Active_EP_req = mockrequest
-    await dev.initialize()
+
+    with mock_attribute_reads(cluster, {"current_file_version": 0x00000001}):
+        await dev.initialize()
 
     fw_image = zigpy.ota.OtaImageWithMetadata(
         metadata=zigpy.ota.providers.BaseOtaImageMetadata(

@@ -679,7 +679,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             device = zigpy.quirks.get_device(device)
             self._application.devices[device.ieee] = device
 
-        # Load them again once more, to make sure virtual clusters get re-populated
+        # Load them once more, to make sure virtual clusters get re-populated
         await self._load_attributes()
         await self._load_unsupported_attributes()
 

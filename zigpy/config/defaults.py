@@ -36,6 +36,9 @@ CONF_OTA_BROADCAST_INITIAL_DELAY_DEFAULT = 3.9 * 60 * 60  # 3.9 hours
 CONF_OTA_BROADCAST_INTERVAL_DEFAULT = 3.9 * 60 * 60  # 3.9 hours
 CONF_OTA_PROVIDERS_DEFAULT = [
     {
+        CONF_OTA_PROVIDER_TYPE: "zigpy_ota",
+    },
+    {
         CONF_OTA_PROVIDER_TYPE: "ledvance",
     },
     {

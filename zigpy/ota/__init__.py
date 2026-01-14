@@ -31,6 +31,7 @@ from zigpy.config import (
 )
 from zigpy.ota.image import BaseOTAImage
 import zigpy.ota.providers
+import zigpy.profiles.zha
 import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import foundation
@@ -38,6 +39,7 @@ from zigpy.zcl.clusters.general import Ota
 
 if typing.TYPE_CHECKING:
     import zigpy.application
+    import zigpy.device
 
     query_next_image = Ota.ServerCommandDefs.query_next_image.schema
 
@@ -49,8 +51,8 @@ MAX_DEVICES_CHECKING_IN_PER_BROADCAST = 15
 
 @dataclasses.dataclass(frozen=True)
 class OtaImagesResult(t.BaseDataclassMixin):
-    upgrades: tuple[zigpy.ota.providers.BaseOtaImageMetadata]
-    downgrades: tuple[zigpy.ota.providers.BaseOtaImageMetadata]
+    upgrades: tuple[OtaImageWithMetadata, ...]
+    downgrades: tuple[OtaImageWithMetadata, ...]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -366,16 +368,14 @@ class OTA:
     @zigpy.util.combine_concurrent_calls
     async def _load_provider_index(
         self, provider: zigpy.ota.providers.BaseOtaProvider
-    ) -> list[zigpy.ota.providers.BaseOtaImageMetadata]:
+    ) -> list[zigpy.ota.providers.BaseOtaImageMetadata] | None:
         """Load the index of a provider."""
         async with asyncio_timeout(OTA_FETCH_TIMEOUT):
             return await provider.load_index()
 
     @zigpy.util.combine_concurrent_calls
-    async def _fetch_image(
-        self, image: OtaImageWithMetadata
-    ) -> list[OtaImageWithMetadata]:
-        """Load the index of a provider."""
+    async def _fetch_image(self, image: OtaImageWithMetadata) -> OtaImageWithMetadata:
+        """Fetch an OTA image."""
 
         async with asyncio_timeout(OTA_FETCH_TIMEOUT):
             return await image.fetch()
@@ -471,10 +471,11 @@ class OTA:
                 upgrades[img.metadata] = img
 
         # As a final pass, identify images with identical versions and specificity but
-        # differing contents
-        upgrade_collisions: defaultdict[defaultdict[list]] = defaultdict(
-            lambda: defaultdict(list)
-        )
+        # differing contents.
+        # Structure: {(version, specificity): {serialized_firmware: [images]}}
+        upgrade_collisions: defaultdict[
+            tuple[int, int], defaultdict[bytes, list[OtaImageWithMetadata]]
+        ] = defaultdict(lambda: defaultdict(list))
 
         for img in upgrades.values():
             assert img.firmware is not None
@@ -535,9 +536,8 @@ class OTA:
         # eventually check in, just not every time.
         if jitter is None:
             num_devices = len(self._application.devices)
-            jitter = 100 * min(
-                max(0, MAX_DEVICES_CHECKING_IN_PER_BROADCAST / max(1, num_devices)), 1
-            )
+            ratio = MAX_DEVICES_CHECKING_IN_PER_BROADCAST / max(1, num_devices)
+            jitter = int(100 * min(max(0.0, ratio), 1.0))
 
         hdr, request = Ota._create_request(
             self=None,
