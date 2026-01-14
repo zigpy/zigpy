@@ -1459,17 +1459,17 @@ def test_find_attribute_unspecified_manufacturer_code() -> None:
             attribute2 = foundation.ZCLAttributeDef(
                 id=0x0002, type=t.EUI64, is_manufacturer_specific=True
             )
+            attribute3 = foundation.ZCLAttributeDef(id=0x0002, type=t.EUI64)
+
+    assert TestCluster.find_attribute(0x0001) is TestCluster.AttributeDefs.attribute1
 
     assert (
-        TestCluster.find_attribute("attribute1") is TestCluster.AttributeDefs.attribute1
-    )
-
-    assert (
-        TestCluster.find_attribute("attribute2", manufacturer_code=0x1234)
+        TestCluster.find_attribute(0x00002, manufacturer_code=0x1234)
         is TestCluster.AttributeDefs.attribute2
     )
     assert (
-        TestCluster.find_attribute("attribute2") is TestCluster.AttributeDefs.attribute2
+        TestCluster.find_attribute(0x00002, manufacturer_code=None)
+        is TestCluster.AttributeDefs.attribute3
     )
 
 
