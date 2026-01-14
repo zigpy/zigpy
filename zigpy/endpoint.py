@@ -74,9 +74,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.device_type = sd.device_type
 
             if self.profile_id == zigpy.profiles.zha.PROFILE_ID:
-                self.device_type = zigpy.profiles.zha.Device(self.device_type)
+                self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
             elif self.profile_id == zigpy.profiles.zll.PROFILE_ID:
-                self.device_type = zigpy.profiles.zll.Device(self.device_type)
+                self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
 
             for cluster in sd.input_clusters:
                 self.add_input_cluster(cluster)

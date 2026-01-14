@@ -445,6 +445,8 @@ class WarningType(_SquawkOrWarningCommand):
 
     # For backwards compatibility
     Strobe: Final = Strobe
+    WarningMode: Final = WarningMode
+    SirenLevel: Final = SirenLevel
 
 
 class SquawkLevel(t.enum8):
@@ -486,6 +488,7 @@ class Squawk(_SquawkOrWarningCommand):
 
     # For backwards compatibility
     Strobe: Final = Strobe
+    SquawkLevel: Final = SquawkLevel
 
 
 class IasWd(Cluster):
