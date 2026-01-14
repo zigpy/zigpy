@@ -167,10 +167,6 @@ class DeviceRegistry:
         if hasattr(device, "quirk_metadata"):
             v2_device = cast("CustomDeviceV2", device)
             manufacturer, model = v2_device.manufacturer, v2_device.model
-
-            if manufacturer is None or model is None:
-                return False
-
             return v2_device.quirk_metadata in self._registry_v2[(manufacturer, model)]
 
         manufacturer, model = device.signature.get(
