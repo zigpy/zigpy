@@ -35,13 +35,11 @@ import zigpy.profiles.zha
 import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import foundation
-from zigpy.zcl.clusters.general import Ota
+from zigpy.zcl.clusters.general import Ota, QueryNextImageCommand
 
 if typing.TYPE_CHECKING:
     import zigpy.application
     import zigpy.device
-
-    query_next_image = Ota.ServerCommandDefs.query_next_image.schema
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -147,7 +145,7 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
     def check_compatibility(
         self,
         device: zigpy.device.Device,
-        query_cmd: query_next_image,
+        query_cmd: QueryNextImageCommand,
     ) -> bool:
         """Check if an OTA image and its metadata is compatible with a device."""
         if (
@@ -383,7 +381,7 @@ class OTA:
     async def get_ota_images(
         self,
         device: zigpy.device.Device,
-        query_cmd: query_next_image,
+        query_cmd: QueryNextImageCommand,
     ) -> OtaImagesResult:
         """Get OTA images compatible with the device."""
         # Only consider providers that are compatible with the device
