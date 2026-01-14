@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING
 import zigpy.datastructures
 import zigpy.types as t
 from zigpy.zcl import ClusterType, foundation
-from zigpy.zcl.clusters.general import Ota
+from zigpy.zcl.clusters.general import (
+    ImageBlockCommand,
+    ImagePageCommand,
+    Ota,
+    QueryNextImageCommand,
+)
 
 if TYPE_CHECKING:
     from typing import Self
@@ -108,7 +113,7 @@ class OTAManager:
             self._upgrade_end_future.set_result(status)
 
     async def _image_query_req(
-        self, hdr: foundation.ZCLHeader, command: Ota.QueryNextImageCommand
+        self, hdr: foundation.ZCLHeader, command: QueryNextImageCommand
     ) -> None:
         """Handle image query request."""
 
@@ -151,7 +156,7 @@ class OTAManager:
         self._finish(foundation.Status.MALFORMED_COMMAND)
 
     async def _image_block_req(
-        self, hdr: foundation.ZCLHeader, command: Ota.ImageBlockCommand
+        self, hdr: foundation.ZCLHeader, command: ImageBlockCommand
     ) -> None:
         """Handle image block request."""
         if command.manufacturer_code == 4129:
@@ -196,7 +201,7 @@ class OTAManager:
             self.device.debug("OTA image_block handler exception", exc_info=ex)
 
     async def _image_page_req(
-        self, hdr: foundation.ZCLHeader, command: Ota.ImagePageCommand
+        self, hdr: foundation.ZCLHeader, command: ImagePageCommand
     ) -> None:
         """Handle image page request."""
         offset = command.file_offset

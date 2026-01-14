@@ -76,11 +76,6 @@ class IasZone(Cluster):
     reports and supervision of the IAS network.
     """
 
-    ZoneState: Final = ZoneState
-    ZoneType: Final = ZoneType
-    ZoneStatus: Final = ZoneStatus
-    EnrollResponse: Final = EnrollResponse
-
     cluster_id: Final[t.uint16_t] = 0x0500
     name: Final = "IAS Zone"
     ep_attribute: Final = "ias_zone"
@@ -142,6 +137,12 @@ class IasZone(Cluster):
             id=0x01,
             schema={"zone_type": ZoneType, "manufacturer_code": t.uint16_t},
         )
+
+    # For backwards compatibility
+    ZoneState: Final = ZoneState
+    ZoneType: Final = ZoneType
+    ZoneStatus: Final = ZoneStatus
+    EnrollResponse: Final = EnrollResponse
 
 
 class AlarmStatus(t.enum8):
@@ -222,7 +223,7 @@ class ZoneStatusRsp(t.Struct):
     """Zone status response."""
 
     zone_id: t.uint8_t
-    zone_status: IasZone.ZoneStatus
+    zone_status: ZoneStatus
 
 
 class IasAce(Cluster):
@@ -398,27 +399,27 @@ class StrobeLevel(t.enum8):
     Very_high_level_strobe = 0x03
 
 
+class SirenLevel(t.enum8):
+    Low_level_sound = 0x00
+    Medium_level_sound = 0x01
+    High_level_sound = 0x02
+    Very_high_level_sound = 0x03
+
+
+class WarningMode(t.enum8):
+    Stop = 0x00
+    Burglar = 0x01
+    Fire = 0x02
+    Emergency = 0x03
+    Police_Panic = 0x04
+    Fire_Panic = 0x05
+    Emergency_Panic = 0x06
+
+
 class WarningType(_SquawkOrWarningCommand):
-    Strobe = Strobe
-
-    class SirenLevel(t.enum8):
-        Low_level_sound = 0x00
-        Medium_level_sound = 0x01
-        High_level_sound = 0x02
-        Very_high_level_sound = 0x03
-
-    class WarningMode(t.enum8):
-        Stop = 0x00
-        Burglar = 0x01
-        Fire = 0x02
-        Emergency = 0x03
-        Police_Panic = 0x04
-        Fire_Panic = 0x05
-        Emergency_Panic = 0x06
-
     @property
     def mode(self) -> WarningMode:
-        return self.WarningMode((self.value >> 4) & 0x0F)
+        return WarningMode((self.value >> 4) & 0x0F)
 
     @mode.setter
     def mode(self, mode: WarningMode) -> None:
@@ -426,7 +427,7 @@ class WarningType(_SquawkOrWarningCommand):
 
     @property
     def strobe(self) -> Strobe:
-        return self.Strobe((self.value >> 2) & 0x01)
+        return Strobe((self.value >> 2) & 0x01)
 
     @strobe.setter
     def strobe(self, strobe: Strobe) -> None:
@@ -436,29 +437,32 @@ class WarningType(_SquawkOrWarningCommand):
 
     @property
     def level(self) -> SirenLevel:
-        return self.SirenLevel(self.value & 0x03)
+        return SirenLevel(self.value & 0x03)
 
     @level.setter
     def level(self, level: SirenLevel) -> None:
         self.value = (self.value & 0xFC) | (level & 0x03)
 
+    # For backwards compatibility
+    Strobe: Final = Strobe
+
+
+class SquawkLevel(t.enum8):
+    Low_level_sound = 0x00
+    Medium_level_sound = 0x01
+    High_level_sound = 0x02
+    Very_high_level_sound = 0x03
+
+
+class SquawkMode(t.enum8):
+    Armed = 0x00
+    Disarmed = 0x01
+
 
 class Squawk(_SquawkOrWarningCommand):
-    Strobe = Strobe
-
-    class SquawkLevel(t.enum8):
-        Low_level_sound = 0x00
-        Medium_level_sound = 0x01
-        High_level_sound = 0x02
-        Very_high_level_sound = 0x03
-
-    class SquawkMode(t.enum8):
-        Armed = 0x00
-        Disarmed = 0x01
-
     @property
     def mode(self) -> SquawkMode:
-        return self.SquawkMode((self.value >> 4) & 0x0F)
+        return SquawkMode((self.value >> 4) & 0x0F)
 
     @mode.setter
     def mode(self, mode: SquawkMode) -> None:
@@ -466,7 +470,7 @@ class Squawk(_SquawkOrWarningCommand):
 
     @property
     def strobe(self) -> Strobe:
-        return self.Strobe((self.value >> 3) & 0x01)
+        return Strobe((self.value >> 3) & 0x01)
 
     @strobe.setter
     def strobe(self, strobe: Strobe) -> None:
@@ -474,11 +478,14 @@ class Squawk(_SquawkOrWarningCommand):
 
     @property
     def level(self) -> SquawkLevel:
-        return self.SquawkLevel(self.value & 0x03)
+        return SquawkLevel(self.value & 0x03)
 
     @level.setter
     def level(self, level: SquawkLevel) -> None:
         self.value = (self.value & 0xFC) | (level & 0x03)
+
+    # For backwards compatibility
+    Strobe: Final = Strobe
 
 
 class IasWd(Cluster):
