@@ -6,7 +6,7 @@ import functools
 import keyword
 import logging
 import typing
-from typing import Self
+from typing import Literal, Self
 
 import zigpy.types as t
 
@@ -1027,7 +1027,7 @@ class FrameControl(t.IntStruct, t.uint8_t):
 
 
 class ZCLHeader(t.Struct):
-    NO_MANUFACTURER_ID = -1  # type: typing.Literal
+    NO_MANUFACTURER_ID: Literal[-1] = -1
 
     frame_control: FrameControl
     manufacturer: t.uint16_t = t.StructField(
@@ -1249,7 +1249,7 @@ ZCLAttributeAccess._names = {
 @dataclasses.dataclass(frozen=True)
 class ZCLAttributeDef(t.BaseDataclassMixin):
     id: t.uint16_t = None
-    type: type = None
+    type: typing.Any = None
     zcl_type: DataTypeId = None
     access: ZCLAttributeAccess = (
         ZCLAttributeAccess.Read | ZCLAttributeAccess.Write | ZCLAttributeAccess.Report

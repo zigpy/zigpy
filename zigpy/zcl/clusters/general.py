@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from typing import Any, Final, Self
 
 import zigpy.types as t
-from zigpy.typing import AddressingMode
 from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
@@ -212,13 +211,6 @@ class Basic(Cluster):
     and enabling a device.
     """
 
-    PowerSource: Final = PowerSource
-    PhysicalEnvironment: Final = PhysicalEnvironment
-    AlarmMask: Final = AlarmMask
-    DisableLocalConfig: Final = DisableLocalConfig
-    GenericDeviceClass: Final = GenericDeviceClass
-    GenericLightingDeviceType: Final = GenericLightingDeviceType
-
     cluster_id: Final[t.uint16_t] = 0x0000
     ep_attribute: Final = "basic"
 
@@ -288,6 +280,14 @@ class Basic(Cluster):
 
     def handle_read_attribute_power_source(self) -> PowerSource:
         return PowerSource.DC_Source
+
+    # For backwards compatibility
+    PowerSource: Final = PowerSource
+    PhysicalEnvironment: Final = PhysicalEnvironment
+    AlarmMask: Final = AlarmMask
+    DisableLocalConfig: Final = DisableLocalConfig
+    GenericDeviceClass: Final = GenericDeviceClass
+    GenericLightingDeviceType: Final = GenericLightingDeviceType
 
 
 class MainsAlarmMask(t.bitmap8):
@@ -1106,8 +1106,6 @@ class Time(Cluster):
     to a real-time clock.
     """
 
-    TimeStatus: Final = TimeStatus
-
     cluster_id: Final[t.uint16_t] = 0x000A
     ep_attribute: Final = "time"
 
@@ -1156,6 +1154,9 @@ class Time(Cluster):
         assert tz_offset is not None
 
         return t.LocalTime((now + tz_offset - ZIGBEE_EPOCH).total_seconds())
+
+    # For backwards compatibility
+    TimeStatus: Final = TimeStatus
 
 
 class LocationMethod(t.enum8):
@@ -2124,7 +2125,8 @@ class Ota(Cluster):
         hdr: foundation.ZCLHeader,
         args: list[Any],
         *,
-        dst_addressing: AddressingMode | None = None,
+        # This parameter is unused and kept only for backwards compatibility
+        dst_addressing: t.AddrMode | None = None,
     ):
         # We don't want the cluster to do anything here because it would interfere with
         # the OTA manager

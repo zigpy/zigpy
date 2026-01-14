@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import timeout as asyncio_timeout
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -36,7 +36,6 @@ import zigpy.listeners
 from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
 import zigpy.types as t
-from zigpy.typing import AddressingMode
 import zigpy.util
 from zigpy.zcl import Cluster, ClusterType, foundation
 from zigpy.zcl.clusters.general import Ota, PollControl
@@ -616,17 +615,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         src_ep: int,
         dst_ep: int,
         message: bytes,
-        *,
-        dst_addressing: AddressingMode | None = None,
     ):
         """Deprecated compatibility function. Use `packet_received` instead."""
 
         warnings.warn(
             "`handle_message` is deprecated, use `packet_received`", DeprecationWarning
         )
-
-        if dst_addressing is None:
-            dst_addressing = t.AddrMode.NWK
 
         self.packet_received(
             t.ZigbeePacket(
@@ -636,11 +630,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 dst_ep=dst_ep,
                 data=t.SerializableBytes(message),
                 dst=t.AddrModeAddress(
-                    addr_mode=dst_addressing,
-                    address={
-                        t.AddrMode.NWK: self.nwk,
-                        t.AddrMode.IEEE: self.ieee,
-                    }[dst_addressing],
+                    addr_mode=t.AddrMode.NWK,
+                    address=self.nwk,
                 ),
             )
         )
@@ -902,7 +893,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     async def update_firmware(
         self,
         image: OtaImageWithMetadata,
-        progress_callback: callable | None = None,
+        progress_callback: Callable[[int, int, float], None] | None = None,
         force: bool = False,
     ) -> foundation.Status | None:
         """Update device firmware."""

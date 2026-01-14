@@ -250,13 +250,13 @@ non_interactive = true
 show_error_codes = true
 show_error_context = true
 error_summary = true
+exclude = ["^tests/"]
 disable_error_code = [
     # Only a few notifications left:
-    "valid-type",
-    "misc",
-    "attr-defined",
-    "assignment",
-    "arg-type"
+    "misc",  # 314 errors
+    "attr-defined",  # 137 errors
+    "assignment",  # 304 errors
+    "arg-type"  # 2714 errors
 ]
 # Only report on selected files
 follow_imports = "silent"
