@@ -444,11 +444,11 @@ async def test_item_access_attributes(cluster):
         # wrong attr name
         cluster["some_non_existent_attr"]
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         # wrong key type
         cluster[None]
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         # wrong key type
         cluster.get(None)
 
@@ -1380,3 +1380,94 @@ async def test_received_onoff_toggle_generates_default_response():
             priority=t.PacketPriority.LOW,
         )
     ]
+
+
+def test_find_attribute_simple() -> None:
+    """Test attribute finding with simple cluster definition."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            attribute1 = foundation.ZCLAttributeDef(id=0x0001, type=t.EUI64)
+            attribute2 = foundation.ZCLAttributeDef(
+                id=0x0002, type=t.EUI64, manufacturer_code=0x1234
+            )
+
+    assert (
+        TestCluster.find_attribute("attribute1") is TestCluster.AttributeDefs.attribute1
+    )
+    assert TestCluster.find_attribute(0x0001) is TestCluster.AttributeDefs.attribute1
+    assert TestCluster.find_attribute(0x0002) is TestCluster.AttributeDefs.attribute2
+    assert (
+        TestCluster.find_attribute(TestCluster.AttributeDefs.attribute2)
+        is TestCluster.AttributeDefs.attribute2
+    )
+
+    with pytest.raises(KeyError):
+        TestCluster.find_attribute(0x0003)
+
+    with pytest.raises(TypeError):
+        TestCluster.find_attribute(b"attribute1")
+
+
+def test_find_attribute_colliding_manufacturer_codes() -> None:
+    """Test attribute finding with simple cluster definition."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            attribute1 = foundation.ZCLAttributeDef(id=0x0001, type=t.EUI64)
+            attribute2 = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, manufacturer_code=0x1234
+            )
+            attribute3 = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, manufacturer_code=0x5678
+            )
+            attribute4 = foundation.ZCLAttributeDef(id=0x0002, type=t.EUI64)
+
+    assert (
+        TestCluster.find_attribute("attribute1") is TestCluster.AttributeDefs.attribute1
+    )
+
+    with pytest.raises(KeyError, match="Multiple definitions exist for attribute"):
+        TestCluster.find_attribute(0x0001)
+
+    assert (
+        TestCluster.find_attribute(0x0001, manufacturer_code=0x1234)
+        is TestCluster.AttributeDefs.attribute2
+    )
+    assert (
+        TestCluster.find_attribute(0x0001, manufacturer_code=0x5678)
+        is TestCluster.AttributeDefs.attribute3
+    )
+    assert TestCluster.find_attribute(0x0002) is TestCluster.AttributeDefs.attribute4
+
+
+def test_find_attribute_unspecified_manufacturer_code() -> None:
+    """Test attribute finding when the manufacturer code is unspecified."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            attribute1 = foundation.ZCLAttributeDef(id=0x0001, type=t.EUI64)
+            attribute2 = foundation.ZCLAttributeDef(
+                id=0x0002, type=t.EUI64, is_manufacturer_specific=True
+            )
+
+    assert (
+        TestCluster.find_attribute("attribute1") is TestCluster.AttributeDefs.attribute1
+    )
+
+    assert (
+        TestCluster.find_attribute("attribute2", manufacturer_code=0x1234)
+        is TestCluster.AttributeDefs.attribute2
+    )
+    assert (
+        TestCluster.find_attribute("attribute2") is TestCluster.AttributeDefs.attribute2
+    )

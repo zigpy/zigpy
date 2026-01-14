@@ -381,18 +381,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         self._attr_cache: AttributeCache = AttributeCache(self)
 
+    @classmethod
     def find_attribute(
-        self,
+        cls,
         name_or_id: int | str | foundation.ZCLAttributeDef,
         *,
         manufacturer_code: int | UndefinedType | None = UNDEFINED,
     ) -> foundation.ZCLAttributeDef:
         if isinstance(name_or_id, foundation.ZCLAttributeDef):
-            return self.attributes_by_name[name_or_id.name]
+            return cls.attributes_by_name[name_or_id.name]
         elif isinstance(name_or_id, str):
-            return self.attributes_by_name[name_or_id]
+            return cls.attributes_by_name[name_or_id]
         elif isinstance(name_or_id, int):
-            candidates = self.attributes_by_id[name_or_id]
+            candidates = cls.attributes_by_id[name_or_id]
 
             if manufacturer_code is not UNDEFINED:
                 # Try exact match first
@@ -419,14 +420,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
             if len(candidates) > 1:
                 raise KeyError(
-                    f"Multiple definitions exist for attribute ID {name_or_id:#04x},"
-                    f" please specify a manufacturer code"
+                    f"Multiple definitions exist for attribute ID {name_or_id:#06x},"
+                    f" please specify a manufacturer code: {candidates!r}"
                 )
 
             # Pick the only one
             return next(iter(candidates.values()))
         else:
-            raise ValueError(  # noqa: TRY004
+            raise TypeError(  # noqa: TRY004
                 f"Attribute must be a definition, string, or integer,"
                 f" not {name_or_id!r} ({type(name_or_id)!r}"
             )
