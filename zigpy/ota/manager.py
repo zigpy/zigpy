@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 import contextlib
 from typing import TYPE_CHECKING
 
@@ -306,7 +307,7 @@ class OTAManager:
 async def update_firmware(
     device: Device,
     image: OtaImageWithMetadata,
-    progress_callback: callable | None = None,
+    progress_callback: Callable[[int, int, float], None] | None = None,
     force: bool = False,
 ) -> foundation.Status:
     """Update the firmware on a Zigbee device."""

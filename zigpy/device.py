@@ -893,7 +893,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     async def update_firmware(
         self,
         image: OtaImageWithMetadata,
-        progress_callback: Callable[[int, int], None] | None = None,
+        progress_callback: Callable[[int, int, float], None] | None = None,
         force: bool = False,
     ) -> foundation.Status | None:
         """Update device firmware."""
