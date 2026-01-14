@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import types
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 
@@ -23,9 +23,12 @@ import zigpy.state
 import zigpy.types as t
 import zigpy.typing
 import zigpy.util
-from zigpy.zcl import ClusterType
+from zigpy.zcl import Cluster, ClusterType
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zdo import types as zdo_t
+
+if TYPE_CHECKING:
+    from zigpy.application import ControllerApplication
 
 LOGGER = logging.getLogger(__name__)
 
@@ -106,7 +109,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def __init__(
         self,
         connection: aiosqlite.Connection,
-        application: zigpy.typing.ControllerApplicationType,
+        application: ControllerApplication,
     ) -> None:
         _register_sqlite_adapters()
 
@@ -146,7 +149,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     @classmethod
     async def new(
-        cls, database_file: str, app: zigpy.typing.ControllerApplicationType
+        cls, database_file: str, app: ControllerApplication
     ) -> PersistingListener:
         """Create an instance of persisting listener."""
         sqlite_conn = await aiosqlite_connect(
@@ -275,7 +278,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def attribute_updated(
         self,
-        cluster: zigpy.typing.ClusterType,
+        cluster: Cluster,
         attrid: int,
         value: Any,
         timestamp: datetime,
@@ -291,7 +294,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             timestamp,
         )
 
-    def attribute_cleared(self, cluster: zigpy.typing.ClusterType, attrid: int) -> None:
+    def attribute_cleared(self, cluster: Cluster, attrid: int) -> None:
         self.enqueue(
             "_clear_attribute",
             cluster.endpoint.device.ieee,
@@ -301,9 +304,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             attrid,
         )
 
-    def unsupported_attribute_added(
-        self, cluster: zigpy.typing.ClusterType, attrid: int
-    ) -> None:
+    def unsupported_attribute_added(self, cluster: Cluster, attrid: int) -> None:
         self.enqueue(
             "_unsupported_attribute_added",
             cluster.endpoint.device.ieee,
@@ -327,9 +328,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(q, (ieee, endpoint_id, cluster_type, cluster_id, attrid))
         await self._db.commit()
 
-    def unsupported_attribute_removed(
-        self, cluster: zigpy.typing.ClusterType, attrid: int
-    ) -> None:
+    def unsupported_attribute_removed(self, cluster: Cluster, attrid: int) -> None:
         self.enqueue(
             "_unsupported_attribute_removed",
             cluster.endpoint.device.ieee,
@@ -493,6 +492,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(q, rows)
 
     async def _save_node_descriptor(self, device: Device) -> None:
+        if device.node_desc is None:
+            return
+
         q = f"""INSERT INTO node_descriptors{DB_V}
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (ieee)
