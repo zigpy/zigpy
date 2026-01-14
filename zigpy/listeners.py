@@ -2,17 +2,23 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import enum
 import logging
 import typing
 
-from zigpy.util import Singleton
 from zigpy.zcl import foundation
 import zigpy.zdo.types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
 
 
-ANY_DEVICE = Singleton("ANY_DEVICE")
+class AnyDeviceType(enum.Enum):
+    """Singleton type for "any device"."""
+
+    _singleton = 0
+
+
+ANY_DEVICE = AnyDeviceType._singleton  # noqa: SLF001
 
 
 @dataclasses.dataclass(frozen=True)

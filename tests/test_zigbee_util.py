@@ -425,17 +425,6 @@ def test_picking_optimal_channel(plot):
     assert util.pick_optimal_channel(channel_energy) == expected_channel
 
 
-def test_singleton():
-    singleton = util.Singleton("NAME")
-
-    assert str(singleton) == repr(singleton) == "<Singleton 'NAME'>"
-    assert singleton == singleton  # noqa: PLR0124
-
-    obj = {}
-    obj[singleton] = 5
-    assert obj[singleton] == 5
-
-
 @pytest.mark.parametrize(
     ("input_relays", "expected_relays"),
     [

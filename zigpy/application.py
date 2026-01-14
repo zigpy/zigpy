@@ -83,7 +83,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.topology: zigpy.topology.Topology = zigpy.topology.Topology(self)
 
         self._req_listeners: collections.defaultdict[
-            zigpy.device.Device | zigpy.listeners.Singleton,
+            zigpy.device.Device | zigpy.listeners.AnyDeviceType,
             collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
 
@@ -99,7 +99,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def wrap_callback(
         self,
-        src: zigpy.device.Device | zigpy.listeners.ANY_DEVICE,
+        src: zigpy.device.Device | zigpy.listeners.AnyDeviceType,
         callback: typing.Callable[_P, Any],
     ) -> typing.Callable[_P, None]:
         """Wrap a callback to log exceptions and run as task if needed."""
@@ -1366,7 +1366,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def register_callback_listener(
         self,
-        src: zigpy.device.Device | zigpy.listeners.ANY_DEVICE,
+        src: zigpy.device.Device | zigpy.listeners.AnyDeviceType,
         filters: list[zigpy.listeners.MatcherType],
         callback: typing.Callable[
             [
@@ -1393,7 +1393,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @contextlib.contextmanager
     def callback_for_response(
         self,
-        src: zigpy.device.Device | zigpy.listeners.ANY_DEVICE,
+        src: zigpy.device.Device | zigpy.listeners.AnyDeviceType,
         filters: list[zigpy.listeners.MatcherType],
         callback: typing.Callable[
             [
@@ -1416,7 +1416,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @contextlib.contextmanager
     def wait_for_response(
         self,
-        src: zigpy.device.Device | zigpy.listeners.ANY_DEVICE,
+        src: zigpy.device.Device | zigpy.listeners.AnyDeviceType,
         filters: list[zigpy.listeners.MatcherType],
     ) -> typing.Any:
         """Context manager to wait for a Zigbee response."""
