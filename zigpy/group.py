@@ -179,7 +179,7 @@ class GroupCluster(zigpy.zcl.Cluster):
     """Virtual cluster for group requests."""
 
     @classmethod
-    def from_id(
+    def from_id(  # type: ignore[override]
         cls, group_endpoint: GroupEndpoint, cluster_id: int, is_server=True
     ) -> zigpy.zcl.Cluster:
         """Instantiate from ZCL cluster by cluster id."""

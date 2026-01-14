@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typing
-from typing import Final
+from typing import Any, Final
 
 import zigpy.types as t
 
@@ -539,7 +539,7 @@ class ZDOCmd(t.enum16):
     Mgmt_NWK_Update_rsp = 0x8038
 
 
-CLUSTERS = {
+CLUSTERS: dict[ZDOCmd, tuple[tuple[str, Any], ...]] = {
     # Device and Service Discovery Server Requests
     ZDOCmd.NWK_addr_req: (
         IEEE,
@@ -567,7 +567,7 @@ CLUSTERS = {
     ZDOCmd.Device_annce: (NWK, IEEE, ("Capability", t.uint8_t)),
     ZDOCmd.User_Desc_set: (
         NWKI,
-        ("UserDescriptor", t.FixedList[16, t.uint8_t]),
+        ("UserDescriptor", t.CharacterString),
     ),  # Really a string
     ZDOCmd.System_Server_Discovery_req: (("ServerMask", t.uint16_t),),
     ZDOCmd.Discovery_store_req: (
@@ -684,8 +684,7 @@ CLUSTERS = {
     ZDOCmd.User_Desc_rsp: (
         STATUS,
         NWKI,
-        ("Length", t.uint8_t),
-        ("UserDescriptor", t.Optional(t.FixedList[16, t.uint8_t])),
+        ("UserDescriptor", t.CharacterString),
     ),
     ZDOCmd.Discovery_Cache_rsp: (STATUS,),
     ZDOCmd.User_Desc_conf: (STATUS, NWKI),

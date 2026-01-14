@@ -51,7 +51,7 @@ class AnalogInputRegular(Cluster):
     class AttributeDefs(BaseAttributeDefs):
         cov_increment: Final = ZCLAttributeDef(id=0x0016, type=t.Single)
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
-        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         update_interval: Final = ZCLAttributeDef(id=0x0076, type=t.uint8_t)
@@ -90,7 +90,7 @@ class AnalogOutputRegular(Cluster):
     class AttributeDefs(BaseAttributeDefs):
         cov_increment: Final = ZCLAttributeDef(id=0x0016, type=t.Single)
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
-        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         update_interval: Final = ZCLAttributeDef(id=0x0076, type=t.uint8_t)
@@ -122,7 +122,7 @@ class AnalogValueRegular(Cluster):
 
     class AttributeDefs(BaseAttributeDefs):
         cov_increment: Final = ZCLAttributeDef(id=0x0016, type=t.Single)
-        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
@@ -154,7 +154,7 @@ class BinaryInputRegular(Cluster):
         change_of_state_time: Final = ZCLAttributeDef(id=0x0010, type=DateTime)
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
         elapsed_active_time: Final = ZCLAttributeDef(id=0x0021, type=t.uint32_t)
-        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=DateTime)
@@ -188,7 +188,7 @@ class BinaryOutputRegular(Cluster):
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
         elapsed_active_time: Final = ZCLAttributeDef(id=0x0021, type=t.uint32_t)
         feed_back_value: Final = ZCLAttributeDef(id=0x0028, type=t.enum8)
-        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=DateTime)
@@ -219,7 +219,7 @@ class BinaryValueRegular(Cluster):
         change_of_state_count: Final = ZCLAttributeDef(id=0x000F, type=t.uint32_t)
         change_of_state_time: Final = ZCLAttributeDef(id=0x0010, type=DateTime)
         elapsed_active_time: Final = ZCLAttributeDef(id=0x0021, type=t.uint32_t)
-        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=DateTime)
@@ -249,7 +249,7 @@ class MultistateInputRegular(Cluster):
 
     class AttributeDefs(BaseAttributeDefs):
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
-        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
@@ -279,7 +279,7 @@ class MultistateOutputRegular(Cluster):
     class AttributeDefs(BaseAttributeDefs):
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
         feed_back_value: Final = ZCLAttributeDef(id=0x0028, type=t.enum8)
-        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
@@ -305,7 +305,7 @@ class MultistateValueRegular(Cluster):
     ep_attribute: Final = "bacnet_regular_multistate_value"
 
     class AttributeDefs(BaseAttributeDefs):
-        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.FixedList[4, t.uint8_t])
+        object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=t.enum16)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)

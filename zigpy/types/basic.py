@@ -577,7 +577,9 @@ if TYPE_CHECKING:
         def __invert__(self) -> Self:
             return super().__invert__()
 else:
-    _BitmapMixin = object
+    # Empty class at runtime to avoid MRO conflicts
+    class _BitmapMixin:
+        pass
 
 
 class bitmap2(
@@ -949,7 +951,7 @@ class KwargTypeMeta(type):
     # So things like `LVList[NWK, t.uint8_t]` are singletons
     _anonymous_classes: dict[tuple[type, tuple[type, ...]], type] = {}
 
-    def __getitem__(cls, key):
+    def __getitem__(cls, key: type | int | tuple[type | int, ...]) -> type[Self]:
         # Make sure Foo[a] is the same as Foo[a,]
         if not isinstance(key, tuple):
             key = (key,)
@@ -974,7 +976,7 @@ class KwargTypeMeta(type):
         if (cls, expanded_key) in cls._anonymous_classes:
             return cls._anonymous_classes[cls, expanded_key]
 
-        class AnonSubclass(cls, **bound.arguments):
+        class AnonSubclass(cls, **bound.arguments):  # type: ignore[valid-type]
             pass
 
         AnonSubclass.__name__ = AnonSubclass.__qualname__ = f"Anonymous{cls.__name__}"
