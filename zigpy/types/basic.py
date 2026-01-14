@@ -5,7 +5,7 @@ import enum
 import inspect
 import logging
 import struct
-from typing import Generic, Literal, Protocol, Self, TypeVar
+from typing import TYPE_CHECKING, Generic, Literal, Protocol, Self, TypeVar
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -553,7 +553,35 @@ def enum_factory(base_type: type[FixedIntType]) -> type[enum.Enum]:
     return enum_mapping[base_type]
 
 
+if TYPE_CHECKING:
+    # mypy needs help understanding that the bitwise operations return int subclasses
+    class _BitmapMixin:
+        def __or__(self, other: object) -> Self:
+            return super().__or__(other)
+
+        def __ror__(self, other: object) -> Self:
+            return super().__ror__(other)
+
+        def __and__(self, other: object) -> Self:
+            return super().__and__(other)
+
+        def __rand__(self, other: object) -> Self:
+            return super().__rand__(other)
+
+        def __xor__(self, other: object) -> Self:
+            return super().__xor__(other)
+
+        def __rxor__(self, other: object) -> Self:
+            return super().__rxor__(other)
+
+        def __invert__(self) -> Self:
+            return super().__invert__()
+else:
+    _BitmapMixin = object
+
+
 class bitmap2(
+    _BitmapMixin,
     uint2_t,
     enum.ReprEnum,
     enum.Flag,
@@ -564,6 +592,7 @@ class bitmap2(
 
 
 class bitmap3(
+    _BitmapMixin,
     uint3_t,
     enum.ReprEnum,
     enum.Flag,
@@ -574,6 +603,7 @@ class bitmap3(
 
 
 class bitmap4(
+    _BitmapMixin,
     uint4_t,
     enum.ReprEnum,
     enum.Flag,
@@ -584,6 +614,7 @@ class bitmap4(
 
 
 class bitmap5(
+    _BitmapMixin,
     uint5_t,
     enum.ReprEnum,
     enum.Flag,
@@ -594,6 +625,7 @@ class bitmap5(
 
 
 class bitmap6(
+    _BitmapMixin,
     uint6_t,
     enum.ReprEnum,
     enum.Flag,
@@ -604,6 +636,7 @@ class bitmap6(
 
 
 class bitmap7(
+    _BitmapMixin,
     uint7_t,
     enum.ReprEnum,
     enum.Flag,
@@ -614,6 +647,7 @@ class bitmap7(
 
 
 class bitmap8(
+    _BitmapMixin,
     uint8_t,
     enum.ReprEnum,
     enum.Flag,
@@ -624,6 +658,7 @@ class bitmap8(
 
 
 class bitmap16(
+    _BitmapMixin,
     uint16_t,
     enum.ReprEnum,
     enum.Flag,
@@ -634,6 +669,7 @@ class bitmap16(
 
 
 class bitmap24(
+    _BitmapMixin,
     uint24_t,
     enum.ReprEnum,
     enum.Flag,
@@ -644,6 +680,7 @@ class bitmap24(
 
 
 class bitmap32(
+    _BitmapMixin,
     uint32_t,
     enum.ReprEnum,
     enum.Flag,
@@ -654,6 +691,7 @@ class bitmap32(
 
 
 class bitmap40(
+    _BitmapMixin,
     uint40_t,
     enum.ReprEnum,
     enum.Flag,
@@ -664,6 +702,7 @@ class bitmap40(
 
 
 class bitmap48(
+    _BitmapMixin,
     uint48_t,
     enum.ReprEnum,
     enum.Flag,
@@ -674,6 +713,7 @@ class bitmap48(
 
 
 class bitmap56(
+    _BitmapMixin,
     uint56_t,
     enum.ReprEnum,
     enum.Flag,
@@ -684,6 +724,7 @@ class bitmap56(
 
 
 class bitmap64(
+    _BitmapMixin,
     uint64_t,
     enum.ReprEnum,
     enum.Flag,
@@ -694,6 +735,7 @@ class bitmap64(
 
 
 class bitmap16_be(
+    _BitmapMixin,
     uint16_t_be,
     enum.ReprEnum,
     enum.Flag,
@@ -704,6 +746,7 @@ class bitmap16_be(
 
 
 class bitmap24_be(
+    _BitmapMixin,
     uint24_t_be,
     enum.ReprEnum,
     enum.Flag,
@@ -714,6 +757,7 @@ class bitmap24_be(
 
 
 class bitmap32_be(
+    _BitmapMixin,
     uint32_t_be,
     enum.ReprEnum,
     enum.Flag,
@@ -724,6 +768,7 @@ class bitmap32_be(
 
 
 class bitmap40_be(
+    _BitmapMixin,
     uint40_t_be,
     enum.ReprEnum,
     enum.Flag,
@@ -734,6 +779,7 @@ class bitmap40_be(
 
 
 class bitmap48_be(
+    _BitmapMixin,
     uint48_t_be,
     enum.ReprEnum,
     enum.Flag,
@@ -744,6 +790,7 @@ class bitmap48_be(
 
 
 class bitmap56_be(
+    _BitmapMixin,
     uint56_t_be,
     enum.ReprEnum,
     enum.Flag,
@@ -754,6 +801,7 @@ class bitmap56_be(
 
 
 class bitmap64_be(
+    _BitmapMixin,
     uint64_t_be,
     enum.ReprEnum,
     enum.Flag,
