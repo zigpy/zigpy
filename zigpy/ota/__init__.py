@@ -140,6 +140,10 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         if self.metadata.specificity is not None:
             total += self.metadata.specificity
 
+        # Prefer images from trusted providers (e.g. zigpy-ota has richer metadata)
+        if self.metadata.trusted:
+            total += 10000
+
         return total
 
     def check_compatibility(
