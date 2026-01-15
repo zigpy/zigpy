@@ -4,6 +4,7 @@ import collections
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import enum
 import functools
 import itertools
@@ -380,12 +381,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         )
 
         # We proxy `_attr_cache` because custom quirks can overwrite it with a dict
-        self._attr_cache_priv: AttributeCache = AttributeCache(self)
+        self._attr_cache_internal: AttributeCache = AttributeCache(self)
 
     @property
     def _attr_cache(self) -> AttributeCache:
         """Attribute cache accessor."""
-        return self._attr_cache_priv
+        return self._attr_cache_internal
 
     @_attr_cache.setter
     def _attr_cache(self, new_value: dict[str, Any]) -> None:
@@ -433,7 +434,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     f" without an explicit `manufacturer_code`. Please set"
                     f" `manufacturer_code={manuf_code_str}`.",
                     DeprecationWarning,
-                    stacklevel=2,
+                    stacklevel=3,
                 )
                 return attr_def
 
@@ -979,6 +980,16 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         value=value,
                     ),
                 )
+
+                # Legacy `listener_event`, will be removed in the near future
+                self.listener_event(
+                    "attribute_updated",
+                    attrid,
+                    value,
+                    datetime.now(UTC),
+                    deprecation_message="`attribute_updated` is deprecated, please use attribute events",
+                )
+
             return
 
         if value is None:
@@ -1009,6 +1020,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     manufacturer_code=attr_def.manufacturer_code,
                     value=value,
                 ),
+            )
+
+            # Legacy `listener_event`, will be removed in the near future
+            self.listener_event(
+                "attribute_updated",
+                attrid,
+                value,
+                datetime.now(UTC),
+                deprecation_message="`attribute_updated` is deprecated, please use attribute events",
             )
 
     async def write_attributes(

@@ -9,6 +9,7 @@ import logging
 import re
 import traceback
 import typing
+from unittest.mock import Mock
 import warnings
 
 from crccheck.crc import CrcX25
@@ -64,13 +65,22 @@ class ListenableMixin:
                 del self._listeners[id_]
                 break
 
-    def listener_event(self, method_name: str, *args) -> list[typing.Any | None]:
+    def listener_event(
+        self, method_name: str, *args, deprecation_message: str | None = None
+    ) -> list[typing.Any | None]:
         result = []
         for listener, include_context in tuple(self._listeners.values()):
             method = getattr(listener, method_name, None)
 
             if method is None:
                 continue
+
+            if deprecation_message is not None and not isinstance(method, Mock):
+                warnings.warn(
+                    f"{method_name} is deprecated: {deprecation_message}",
+                    DeprecationWarning,
+                    stacklevel=3,
+                )
 
             try:
                 if include_context:
