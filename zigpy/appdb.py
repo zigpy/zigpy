@@ -678,7 +678,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_neighbors()
         await self._load_routes()
         await self._load_network_backups()
-        await self._run_data_migrations()
+
+        async with self._transaction():
+            await self._run_data_migrations()
 
         await self._register_device_listeners()
 
@@ -1469,9 +1471,3 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         "old_manufacturer_code": UNMIGRATED_MANUFACTURER_CODE,
                     },
                 )
-
-        # Delete any rows that couldn't be migrated (orphaned data)
-        await self.execute(
-            "DELETE FROM attributes_cache_v14 WHERE manufacturer_code = :unmigrated",
-            {"unmigrated": UNMIGRATED_MANUFACTURER_CODE},
-        )
