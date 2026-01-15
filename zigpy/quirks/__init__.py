@@ -181,7 +181,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                     endpoint_id in replace_device.endpoints
                     and cluster_id in replace_device.endpoints[endpoint_id].in_clusters
                 ):
-                    cluster._attr_cache = (
+                    cluster._attr_cache_internal = (
                         replace_device[endpoint_id]
                         .in_clusters[cluster_id]
                         ._attr_cache.clone(cluster)
@@ -200,7 +200,7 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                     endpoint_id in replace_device.endpoints
                     and cluster_id in replace_device.endpoints[endpoint_id].out_clusters
                 ):
-                    cluster._attr_cache = (
+                    cluster._attr_cache_internal = (
                         replace_device[endpoint_id]
                         .out_clusters[cluster_id]
                         ._attr_cache.clone(cluster)
