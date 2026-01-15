@@ -314,9 +314,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _unsupported_attribute_added(
         self, event: AttributeUnsupportedEvent
     ) -> None:
-        q = f"""INSERT INTO unsupported_attributes{DB_V} VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attribute_id, :manufacturer_code)
+        q = f"""INSERT INTO attributes_cache{DB_V} VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :status, :value, :timestamp)
                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code)
-                   DO NOTHING"""
+                   DO UPDATE SET status=excluded.status, value=excluded.value, last_updated=excluded.last_updated"""
 
         await self.execute(
             q,
@@ -325,8 +325,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "endpoint_id": event.endpoint_id,
                 "cluster_type": event.cluster_type,
                 "cluster_id": event.cluster_id,
-                "attribute_id": event.attribute_id,
+                "attr_id": event.attribute_id,
                 "manufacturer_code": event.manufacturer_code,
+                "status": Status.UNSUPPORTED_ATTRIBUTE,
+                "value": None,
+                "timestamp": datetime.now(UTC).timestamp(),
             },
         )
         await self._db.commit()
@@ -516,6 +519,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 cluster.cluster_id,
                 attrid,
                 manufacturer_code,
+                Status.SUCCESS,
                 cache_item.value,
                 cache_item.last_updated.timestamp(),
             )
@@ -525,9 +529,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 manufacturer_code,
             ), cache_item in cluster._attr_cache._cache.items()
         ]
-        q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code)
-                    DO UPDATE SET value=excluded.value, last_updated=excluded.last_updated"""
+                    DO UPDATE SET status=excluded.status, value=excluded.value, last_updated=excluded.last_updated"""
         await self._db.executemany(q, clusters)
 
     async def _save_unsupported_attributes(self, ep: Endpoint) -> None:
@@ -539,11 +543,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 cluster.cluster_id,
                 attrid,
                 manufacturer_code,
+                Status.UNSUPPORTED_ATTRIBUTE,
+                None,
+                datetime.now(UTC).timestamp(),
             )
             for cluster in ep.clusters
             for (attrid, manufacturer_code) in cluster._attr_cache._unsupported
         ]
-        q = f"""INSERT INTO unsupported_attributes{DB_V} VALUES (?, ?, ?, ?, ?, ?)
+        q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code)
                     DO NOTHING"""
         await self._db.executemany(q, clusters)
@@ -572,30 +579,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             return
 
         await self.execute(
-            f"""DELETE FROM unsupported_attributes{DB_V} WHERE ieee = :ieee
-                                                         AND endpoint_id = :endpoint_id
-                                                         AND cluster_type = :cluster_type
-                                                         AND cluster_id = :cluster_id
-                                                         AND attr_id = :attr_id
-                                                         AND manufacturer_code IS :manufacturer_code""",
-            {
-                "ieee": event.device_ieee,
-                "endpoint_id": event.endpoint_id,
-                "cluster_type": event.cluster_type,
-                "cluster_id": event.cluster_id,
-                "attr_id": event.attribute_id,
-                "manufacturer_code": event.manufacturer_code,
-            },
-        )
-
-        await self.execute(
             f"""
             INSERT INTO attributes_cache{DB_V}
-            VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :value, :timestamp)
+            VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :status, :value, :timestamp)
                 ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code) DO UPDATE
-                SET value=excluded.value, last_updated=excluded.last_updated
+                SET status=excluded.status, value=excluded.value, last_updated=excluded.last_updated
                 WHERE
                     value != excluded.value
+                    OR status != excluded.status
                     OR :timestamp - last_updated > :min_update_delta
             """,
             {
@@ -605,6 +596,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "cluster_id": event.cluster_id,
                 "attr_id": event.attribute_id,
                 "manufacturer_code": event.manufacturer_code,
+                "status": Status.SUCCESS,
                 "value": event.value,
                 "timestamp": datetime.now(UTC).timestamp(),
                 "min_update_delta": MIN_UPDATE_DELTA,
@@ -672,7 +664,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Load as many attributes as we can in the first pass
         await self._load_attributes()
-        await self._load_unsupported_attributes()
 
         for device in self._application.devices.values():
             device = zigpy.quirks.get_device(device)
@@ -680,7 +671,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Load them once more, to make sure virtual clusters get re-populated
         await self._load_attributes()
-        await self._load_unsupported_attributes()
 
         await self._load_groups()
         await self._load_group_members()
@@ -701,6 +691,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 cluster_id,
                 attr_id,
                 manufacturer_code,
+                status,
                 value,
                 last_updated,
             ) in cursor:
@@ -721,6 +712,26 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     continue
 
                 cluster = clusters[cluster_id]
+
+                # Handle unsupported attributes
+                if status != Status.SUCCESS:
+                    try:
+                        with suppress_events():
+                            cluster.add_unsupported_attribute(
+                                attr_id,
+                                manufacturer_code=(
+                                    UNDEFINED
+                                    if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
+                                    else manufacturer_code
+                                ),
+                            )
+                    except KeyError:
+                        LOGGER.warning(
+                            "Unable to find attribute %r for unsupported attribute, skipping",
+                            attr_id,
+                        )
+                    continue
+
                 try:
                     attr_def = cluster.find_attribute(
                         attr_id,
@@ -767,54 +778,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     and attr_id == Basic.AttributeDefs.model.id
                 ):
                     dev.model = decode_str_attribute(value)
-
-    async def _load_unsupported_attributes(self) -> None:
-        """Load unsupported attributes."""
-
-        async with self.execute(
-            f"SELECT * FROM unsupported_attributes{DB_V}"
-        ) as cursor:
-            async for (
-                ieee,
-                endpoint_id,
-                cluster_type,
-                cluster_id,
-                attr_id,
-                manufacturer_code,
-            ) in cursor:
-                dev = self._application.get_device(ieee)
-
-                try:
-                    ep = dev.endpoints[endpoint_id]
-                except KeyError:
-                    continue
-
-                clusters = (
-                    ep.in_clusters
-                    if cluster_type == ClusterType.Server
-                    else ep.out_clusters
-                )
-
-                try:
-                    cluster = clusters[cluster_id]
-                except KeyError:
-                    continue
-
-                try:
-                    with suppress_events():
-                        cluster.add_unsupported_attribute(
-                            attr_id,
-                            manufacturer_code=(
-                                UNDEFINED
-                                if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
-                                else manufacturer_code
-                            ),
-                        )
-                except KeyError:
-                    LOGGER.warning(
-                        "Unable to find attribute %r for unsupported attribute, skipping",
-                        attr_id,
-                    )
 
     async def _load_devices(self) -> None:
         async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:
@@ -1369,7 +1332,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
 
     async def _migrate_to_v14(self) -> None:
-        """Schema v14 adds `manufacturer_code` to the attribute cache."""
+        """Schema v14 adds `manufacturer_code` and `status` to the attribute cache."""
         await self._migrate_tables(
             {
                 "devices_v13": "devices_v14",
@@ -1387,6 +1350,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             }
         )
 
+        # Migrate unsupported attributes into the attributes cache with status
         async with self.execute("SELECT * FROM unsupported_attributes_v13") as cursor:
             async for (
                 ieee,
@@ -1396,7 +1360,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 attrid,
             ) in cursor:
                 await self.execute(
-                    "INSERT INTO unsupported_attributes_v14 VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO attributes_cache_v14 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         ieee,
                         endpoint_id,
@@ -1404,6 +1368,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         cluster_id,
                         attrid,
                         UNMIGRATED_MANUFACTURER_CODE,
+                        Status.UNSUPPORTED_ATTRIBUTE,
+                        None,
+                        datetime.fromtimestamp(0, UTC).timestamp(),
                     ),
                 )
 
@@ -1418,7 +1385,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 last_updated,
             ) in cursor:
                 await self.execute(
-                    "INSERT INTO attributes_cache_v14 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO attributes_cache_v14 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         ieee,
                         endpoint_id,
@@ -1426,6 +1393,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         cluster_id,
                         attrid,
                         UNMIGRATED_MANUFACTURER_CODE,
+                        Status.SUCCESS,
                         value,
                         last_updated,
                     ),
@@ -1444,6 +1412,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 cluster_id,
                 attr_id,
                 manufacturer_code,
+                status,
                 value,
                 last_updated,
             ) in cursor:
@@ -1501,78 +1470,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     },
                 )
 
-        async with self.execute(
-            "SELECT * FROM unsupported_attributes_v14 WHERE manufacturer_code = :unmigrated",
-            {"unmigrated": UNMIGRATED_MANUFACTURER_CODE},
-        ) as cursor:
-            async for (
-                ieee,
-                endpoint_id,
-                cluster_type,
-                cluster_id,
-                attr_id,
-                manufacturer_code,
-            ) in cursor:
-                dev = self._application.get_device(ieee)
-
-                try:
-                    ep = dev.endpoints[endpoint_id]
-                except KeyError:
-                    continue
-
-                clusters = (
-                    ep.in_clusters
-                    if cluster_type == ClusterType.Server
-                    else ep.out_clusters
-                )
-
-                try:
-                    cluster = clusters[cluster_id]
-                except KeyError:
-                    continue
-
-                try:
-                    attr_def = cluster.find_attribute(attr_id)
-                except KeyError:
-                    LOGGER.warning(
-                        "Unable to find unsupported attribute %r for data migration, skipping",
-                        attr_id,
-                    )
-                    continue
-
-                manufacturer_code = cluster._get_effective_manufacturer_code(
-                    attr_def, manufacturer=None
-                )
-
-                await self.execute(
-                    """
-                    UPDATE unsupported_attributes_v14
-                    SET manufacturer_code = :manufacturer_code
-                    WHERE
-                        ieee = :ieee
-                        AND endpoint_id = :endpoint_id
-                        AND cluster_type = :cluster_type
-                        AND cluster_id = :cluster_id
-                        AND attr_id = :attr_id
-                        AND manufacturer_code = :old_manufacturer_code
-                    """,
-                    {
-                        "manufacturer_code": manufacturer_code,
-                        "ieee": ieee,
-                        "endpoint_id": endpoint_id,
-                        "cluster_type": cluster_type,
-                        "cluster_id": cluster_id,
-                        "attr_id": attr_id,
-                        "old_manufacturer_code": UNMIGRATED_MANUFACTURER_CODE,
-                    },
-                )
-
         # Delete any rows that couldn't be migrated (orphaned data)
         await self.execute(
             "DELETE FROM attributes_cache_v14 WHERE manufacturer_code = :unmigrated",
-            {"unmigrated": UNMIGRATED_MANUFACTURER_CODE},
-        )
-        await self.execute(
-            "DELETE FROM unsupported_attributes_v14 WHERE manufacturer_code = :unmigrated",
             {"unmigrated": UNMIGRATED_MANUFACTURER_CODE},
         )

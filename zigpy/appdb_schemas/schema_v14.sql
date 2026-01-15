@@ -57,7 +57,8 @@ CREATE TABLE attributes_cache_v14 (
     cluster_id INTEGER NOT NULL,
     attr_id INTEGER NOT NULL,
     manufacturer_code INTEGER,
-    value BLOB NOT NULL,
+    status INTEGER,
+    value BLOB,
     last_updated REAL NOT NULL,
 
     -- Quirks can create "virtual" clusters and endpoints that won't be present in the
@@ -184,28 +185,6 @@ CREATE TABLE relays_v14 (
 
 CREATE UNIQUE INDEX relays_idx_v14
     ON relays_v14(ieee);
-
-
--- unsupported attributes
-DROP TABLE IF EXISTS unsupported_attributes_v14;
-CREATE TABLE unsupported_attributes_v14 (
-    ieee ieee NOT NULL,
-    endpoint_id INTEGER NOT NULL,
-    cluster_type INTEGER NOT NULL,
-    cluster_id INTEGER NOT NULL,
-    attr_id INTEGER NOT NULL,
-    manufacturer_code INTEGER,
-
-    FOREIGN KEY(ieee)
-        REFERENCES devices_v14(ieee)
-        ON DELETE CASCADE,
-    FOREIGN KEY(ieee, endpoint_id, cluster_type, cluster_id)
-        REFERENCES clusters_v14(ieee, endpoint_id, cluster_type, cluster_id)
-        ON DELETE CASCADE
-);
-
-CREATE UNIQUE INDEX unsupported_attributes_idx_v14
-    ON unsupported_attributes_v14(ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code);
 
 
 -- network backups
