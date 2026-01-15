@@ -410,6 +410,9 @@ class OTA:
             # caller will cache these images
             for meta in index:
                 if meta not in self._image_cache:
+                    # Mark metadata as trusted if it comes from a trusted provider
+                    if provider.TRUSTED and not meta.trusted:
+                        meta = meta.replace(trusted=True)
                     self._image_cache[meta] = OtaImageWithMetadata(
                         metadata=meta, firmware=None
                     )
