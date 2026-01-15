@@ -1386,8 +1386,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 value,
                 last_updated,
             ) in cursor:
+                # Use INSERT OR IGNORE because the same attribute may exist in both
+                # unsupported_attributes_v13 and attributes_cache_v13. The unsupported
+                # status (inserted first) should win over old cached values.
                 await self.execute(
-                    "INSERT INTO attributes_cache_v14 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO attributes_cache_v14 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         ieee,
                         endpoint_id,

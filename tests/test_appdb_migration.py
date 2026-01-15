@@ -505,3 +505,36 @@ async def test_last_seen_migration_v8_to_v9(test_db):
     app = await make_app_with_db(test_db_v8)
     assert int(app.get_device(nwk=0xE01E).last_seen) == 1651119830
     await app.shutdown()
+
+
+async def test_unknown_manufacturer_code_migration(test_db, caplog):
+    test_db_prod = test_db("zigbee_puddly2.db")
+
+    # Count cached rows before migration
+    with sqlite3.connect(test_db_prod) as conn:
+        cur = conn.cursor()
+
+        cur.execute("SELECT COUNT(*) FROM attributes_cache_v13")
+        before_cached = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM unsupported_attributes_v13")
+        before_unsupported = cur.fetchone()[0]
+
+        # Some rows exist in both tables
+        cur.execute(
+            "SELECT COUNT(*) FROM attributes_cache_v13 a JOIN unsupported_attributes_v13 u USING (ieee, endpoint_id, cluster_type, cluster_id, attr_id)"
+        )
+
+        before_overlap = cur.fetchone()[0]
+        before_total = before_cached + before_unsupported - before_overlap
+
+    app = await make_app_with_db(test_db_prod)
+    await app.shutdown()
+
+    # Count rows after migration
+    with sqlite3.connect(test_db_prod) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM attributes_cache_v14")
+        after_total = cur.fetchone()[0]
+
+        assert after_total == before_total
