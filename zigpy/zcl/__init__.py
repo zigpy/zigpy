@@ -298,6 +298,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         # Populate the `name` and `manufacturer_code` attribute of every definition
         for defs in (cls.ServerCommandDefs, cls.ClientCommandDefs, cls.AttributeDefs):
             for name in dir(defs):
+                if name.startswith("_") or name.endswith("_"):
+                    continue
+
                 definition = getattr(defs, name)
 
                 if isinstance(definition, foundation.ZCLCommandDef):
@@ -335,6 +338,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             f"Definition name {definition.name!r} does not match"
                             f" attribute name {name!r}"
                         )
+
+                if definition is None:
+                    delattr(defs, name)
 
         # Compile the schemas
         for defs in (cls.ServerCommandDefs, cls.ClientCommandDefs):
