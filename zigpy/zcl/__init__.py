@@ -379,7 +379,24 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             ClusterType.Server if is_server else ClusterType.Client
         )
 
-        self._attr_cache: AttributeCache = AttributeCache(self)
+        # We proxy `_attr_cache` because custom quirks can overwrite it with a dict
+        self._attr_cache_priv: AttributeCache = AttributeCache(self)
+
+    @property
+    def _attr_cache(self) -> AttributeCache:
+        """Attribute cache accessor."""
+        return self._attr_cache_priv
+
+    @_attr_cache.setter
+    def _attr_cache(self, new_value: dict[str, Any]) -> None:
+        """Deprecated accessor to update the attribute cache directly."""
+        LOGGER.warning(
+            "Updating the attribute cache directly is deprecated and will stop working in the near future. Please contribute your custom quirk to https://github.com/zigpy/zha-device-handlers/ or update your code.",
+            stacklevel=2,
+        )
+
+        for key, value in new_value.items():
+            self._update_attribute(key, value)
 
     @classmethod
     def find_attribute(
