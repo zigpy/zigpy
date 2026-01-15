@@ -7,6 +7,7 @@ from asyncio import timeout as asyncio_timeout
 from collections import defaultdict
 import contextlib
 import dataclasses
+import hashlib
 import logging
 import typing
 
@@ -442,9 +443,13 @@ class OTA:
             img.metadata: img for img in candidates if img.metadata not in upgrades
         }
 
-        # Only download upgrade images, downgrades are used just to indicate the latest
-        # version
-        undownloaded_images = [img for img in upgrades.values() if img.firmware is None]
+        # Only download upgrade images from untrusted providers; trusted providers have
+        # complete metadata so we can defer the download until install time
+        undownloaded_images = [
+            img
+            for img in upgrades.values()
+            if img.firmware is None and not img.metadata.trusted
+        ]
 
         # Fetch all the candidates that are missing from the cache
         results = await asyncio.gather(
@@ -477,18 +482,50 @@ class OTA:
 
         # As a final pass, identify images with identical versions and specificity but
         # differing contents.
-        # Structure: {(version, specificity): {serialized_firmware: [images]}}
+        # Structure: {(version, specificity): {content_hash: [images]}}
         upgrade_collisions: defaultdict[
-            tuple[int, int], defaultdict[bytes, list[OtaImageWithMetadata]]
+            tuple[int, int], defaultdict[str, list[OtaImageWithMetadata]]
         ] = defaultdict(lambda: defaultdict(list))
 
+        images_to_remove: list[zigpy.ota.providers.BaseOtaImageMetadata] = []
+
+        # Calculate content hashes for collision detection
         for img in upgrades.values():
-            assert img.firmware is not None
-            upgrade_collisions[img.version, img.specificity][
-                img.firmware.serialize()
-            ].append(img)
+            # Ignore untrusted image without firmware, should not occur
+            if img.firmware is None and not img.metadata.trusted:
+                _LOGGER.warning(
+                    "Untrusted image %s has no firmware downloaded, ignoring", img
+                )
+                images_to_remove.append(img.metadata)
+                continue
+
+            # Ignore trusted image without SHA3-256 checksum
+            if img.firmware is None and (
+                img.metadata.checksum is None
+                or not img.metadata.checksum.startswith("sha3-256:")
+            ):
+                _LOGGER.warning(
+                    "Trusted image %s does not have SHA3-256 checksum, ignoring", img
+                )
+                images_to_remove.append(img.metadata)
+                continue
+
+            # Calculate content hash from firmware if available, otherwise use metadata
+            if img.firmware is not None:
+                content_hash = (
+                    "sha3-256:" + hashlib.sha3_256(img.firmware.serialize()).hexdigest()
+                )
+            else:
+                assert img.metadata.checksum is not None  # Checked above
+                content_hash = img.metadata.checksum
+
+            upgrade_collisions[img.version, img.specificity][content_hash].append(img)
+
+        for meta in images_to_remove:
+            upgrades.pop(meta)
 
         for (version, specificity), buckets in upgrade_collisions.items():
+            # If there are multiple unique hashes, we have a collision
             if len(buckets) < 2:
                 continue
 

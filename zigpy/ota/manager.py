@@ -311,6 +311,10 @@ async def update_firmware(
     force: bool = False,
 ) -> foundation.Status:
     """Update the firmware on a Zigbee device."""
+    # Fetch firmware if not already downloaded (deferred download for trusted providers)
+    if image.firmware is None:
+        image = await image.fetch()
+
     if force:
         # Force it to send the image even if it's the same version
         image = image.replace(
