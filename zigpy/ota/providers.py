@@ -683,6 +683,7 @@ class ZigpyOtaProvider(BaseZigpyProvider):
 
     NAME = "zigpy_ota"
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_ZIGPY_OTA
+    TRUSTED = True
 
     DEFAULT_CHANNEL = "stable"
     SUPPORTED_CHANNELS = {"stable", "beta", "dev"}
