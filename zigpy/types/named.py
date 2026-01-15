@@ -15,6 +15,8 @@ if typing.TYPE_CHECKING:
 
 
 class Bytes(bytes):
+    """A serializable type to consume all remaining bytes."""
+
     def serialize(self) -> Bytes:
         return self
 
