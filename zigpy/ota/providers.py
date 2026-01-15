@@ -196,6 +196,7 @@ class BaseOtaProvider:
     VOL_SCHEMA: vol.Schema
     JSON_SCHEMA: dict | None = None
     INDEX_EXPIRATION_TIME = datetime.timedelta(hours=24)
+    TRUSTED: bool = False
 
     def __init__(
         self,
