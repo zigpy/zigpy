@@ -762,6 +762,23 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     attr_name = attr_def.name
                     value = attr_def.type(attr.value.value)
 
+                if attr_name is not None:
+                    try:
+                        override_func = getattr(
+                            self, f"report_attribute_override_{attr_name}"
+                        )
+                    except AttributeError:
+                        pass
+                    else:
+                        result = override_func(value)
+
+                        if result is None:
+                            LOGGER.debug(
+                                "Attribute report override for %s returned None, skipping update",
+                                attr_name,
+                            )
+                            continue
+
                 # Call _update_attribute for backwards compatibility with quirks,
                 # but suppress events since we emit AttributeReportedEvent below
                 with suppress_events():
