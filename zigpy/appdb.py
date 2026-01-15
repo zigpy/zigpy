@@ -679,6 +679,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_routes()
         await self._load_network_backups()
 
+        await self._db.commit()
+
         async with self._transaction():
             await self._run_data_migrations()
 
