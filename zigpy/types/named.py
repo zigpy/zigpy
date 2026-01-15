@@ -14,6 +14,15 @@ if typing.TYPE_CHECKING:
     from typing import Self
 
 
+class Bytes(bytes):
+    def serialize(self) -> Bytes:
+        return self
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        return cls(data), b""
+
+
 class BaseDataclassMixin:
     def replace(self, **kwargs: typing.Any) -> Self:
         if dataclasses.is_dataclass(self):
