@@ -713,6 +713,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
 
                 if cluster_id not in clusters:
+                    LOGGER.debug(
+                        "Unable to find cluster %r for attribute %r=%r on endpoint %r for %r for data migration, skipping",
+                        cluster_id,
+                        attr_id,
+                        value,
+                        ep,
+                        dev,
+                    )
                     continue
 
                 cluster = clusters[cluster_id]
@@ -730,9 +738,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                                 ),
                             )
                     except KeyError:
-                        LOGGER.warning(
-                            "Unable to find attribute %r for unsupported attribute, skipping",
+                        LOGGER.debug(
+                            "Unable to find attribute %r=%r on cluster %r for %r for unsupported attribute, skipping",
                             attr_id,
+                            value,
+                            cluster,
+                            dev,
                         )
                     continue
 
@@ -747,7 +758,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     )
                 except KeyError:
                     LOGGER.debug(
-                        "Unknown attribute %r, storing in legacy cache", attr_id
+                        "Unknown ZCL attribute %r=%r on cluster %r for %r, storing in legacy cache",
+                        attr_id,
+                        value,
+                        cluster,
+                        dev,
                     )
                     cluster._attr_cache.set_legacy_value(
                         attr_id,
@@ -1439,14 +1454,25 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 try:
                     cluster = clusters[cluster_id]
                 except KeyError:
+                    LOGGER.debug(
+                        "Unable to find cluster %r for attribute %r=%r on endpoint %r for %r for data migration, skipping",
+                        cluster_id,
+                        attr_id,
+                        value,
+                        ep,
+                        dev,
+                    )
                     continue
 
                 try:
                     attr_def = cluster.find_attribute(attr_id)
                 except KeyError:
-                    LOGGER.warning(
-                        "Unable to find attribute %r for data migration, skipping",
+                    LOGGER.debug(
+                        "Unable to find attribute %r=%r on cluster %r for %r for data migration, skipping",
                         attr_id,
+                        value,
+                        cluster,
+                        dev,
                     )
                     continue
 
