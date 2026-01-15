@@ -518,7 +518,19 @@ class enum16(_EnumMixin, uint16_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
+class enum24(_EnumMixin, uint24_t, enum.Enum, metaclass=_IntEnumMeta):
+    pass
+
+
 class enum32(_EnumMixin, uint32_t, enum.Enum, metaclass=_IntEnumMeta):
+    pass
+
+
+class enum40(_EnumMixin, uint40_t, enum.Enum, metaclass=_IntEnumMeta):
+    pass
+
+
+class enum64(_EnumMixin, uint64_t, enum.Enum, metaclass=_IntEnumMeta):
     pass
 
 
@@ -545,7 +557,10 @@ def enum_factory(base_type: type[FixedIntType]) -> type[enum.Enum]:
         uint7_t: enum7,
         uint8_t: enum8,
         uint16_t: enum16,
+        uint24_t: enum24,
         uint32_t: enum32,
+        uint40_t: enum40,
+        uint64_t: enum64,
         uint16_t_be: enum16_be,
         uint32_t_be: enum32_be,
     }
