@@ -6,7 +6,7 @@ import functools
 import keyword
 import logging
 import typing
-from typing import Self
+from typing import Final, Self
 
 import zigpy.types as t
 from zigpy.typing import UNDEFINED
@@ -1028,6 +1028,9 @@ class FrameControl(t.IntStruct, t.uint8_t):
 
 
 class ZCLHeader(t.Struct):
+    # Kept for backwards compatibility
+    NO_MANUFACTURER_ID: Final = None
+
     frame_control: FrameControl
     manufacturer: t.uint16_t = t.StructField(
         requires=lambda hdr: hdr.frame_control.is_manufacturer_specific
