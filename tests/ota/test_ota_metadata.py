@@ -191,3 +191,26 @@ async def test_metadata_fetch(image_with_metadata: OtaImageWithMetadata) -> None
     # New image is identical
     new_img = await image_without_firmware.fetch()
     assert new_img == image_with_metadata
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected_trusted", "specificity_boost"),
+    [
+        ({}, False, 0),
+        ({"trusted": False}, False, 0),
+        ({"trusted": True}, True, 10000),
+    ],
+)
+def test_metadata_trusted_specificity(
+    image_with_metadata: OtaImageWithMetadata,
+    kwargs: dict,
+    expected_trusted: bool,
+    specificity_boost: int,
+) -> None:
+    """Test trusted field and its effect on specificity."""
+    img = image_with_metadata.replace(
+        metadata=image_with_metadata.metadata.replace(**kwargs)
+    )
+
+    assert img.metadata.trusted is expected_trusted
+    assert img.specificity == image_with_metadata.specificity + specificity_boost
