@@ -94,6 +94,7 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     specificity: int | None = None
 
     source: str = "Unknown"
+    trusted: bool = False
 
     async def _fetch(self) -> bytes:
         raise NotImplementedError
