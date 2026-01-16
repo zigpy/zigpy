@@ -285,6 +285,8 @@ class ElectricalMeasurement(Cluster):
             id=0x0405, type=t.int8s, access="rp"
         )
         # AC (Single Phase or Phase A) Measurements
+        # Note: 0x0500 and 0x0504 are not formally defined in ZCL R8 Table 4-35,
+        # but are referenced in the ACVoltageMultiplier/ACPowerMultiplier descriptions.
         instantaneous_voltage: Final = ZCLAttributeDef(
             id=0x0500, type=t.int16s, access="rp"
         )
