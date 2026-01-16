@@ -853,3 +853,13 @@ def test_serializable_bytes():
 
     with pytest.raises(ValueError):
         t.SerializableBytes([1, 2, 3])
+
+
+def test_bytes() -> None:
+    data = b"example data"
+
+    obj, rest = t.Bytes.deserialize(data)
+    assert obj == t.Bytes(data)
+    assert obj == data
+    assert rest == b""
+    assert obj.serialize() == data
