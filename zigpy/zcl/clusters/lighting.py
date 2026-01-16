@@ -304,8 +304,8 @@ class Color(Cluster):
         move_color: Final = ZCLCommandDef(
             id=0x08,
             schema={
-                "rate_x": t.uint16_t,
-                "rate_y": t.uint16_t,
+                "rate_x": t.int16s,
+                "rate_y": t.int16s,
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
@@ -313,9 +313,9 @@ class Color(Cluster):
         step_color: Final = ZCLCommandDef(
             id=0x09,
             schema={
-                "step_x": t.uint16_t,
-                "step_y": t.uint16_t,
-                "duration": t.uint16_t,
+                "step_x": t.int16s,
+                "step_y": t.int16s,
+                "transition_time": t.uint16_t,
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
