@@ -1196,7 +1196,7 @@ class RSSILocation(Cluster):
     class AttributeDefs(BaseAttributeDefs):
         # Location Information
         type: Final = ZCLAttributeDef(
-            id=0x0000, type=t.uint8_t, access="rw", mandatory=True
+            id=0x0000, type=t.data8, access="rw", mandatory=True
         )
         method: Final = ZCLAttributeDef(
             id=0x0001, type=LocationMethod, access="rw", mandatory=True
@@ -1308,13 +1308,13 @@ class RSSILocation(Cluster):
             id=0x01,
             schema={
                 "status": foundation.Status,
-                "location_type?": t.uint8_t,
+                "location_type?": t.data8,
                 "coordinate1?": t.int16s,
                 "coordinate2?": t.int16s,
                 "coordinate3?": t.int16s,
-                "power?": t.uint16_t,
-                "path_loss_exponent?": t.uint8_t,
-                "location_method?": t.uint8_t,
+                "power?": t.int16s,
+                "path_loss_exponent?": t.uint16_t,
+                "location_method?": LocationMethod,
                 "quality_measure?": t.uint8_t,
                 "location_age?": t.uint16_t,
             },
@@ -1323,7 +1323,7 @@ class RSSILocation(Cluster):
         compact_location_data_notification: Final = ZCLCommandDef(id=0x03, schema={})
         rssi_ping: Final = ZCLCommandDef(
             id=0x04,
-            schema={"location_type": t.uint8_t},
+            schema={"location_type": t.data8},
         )
         rssi_req: Final = ZCLCommandDef(id=0x05, schema={})
         report_rssi_measurements: Final = ZCLCommandDef(
@@ -1563,13 +1563,13 @@ class BinaryValue(Cluster):
             id=0x0051, type=t.Bool, access="r*w", mandatory=True
         )
         present_value: Final = ZCLAttributeDef(
-            id=0x0055, type=t.Single, access="r*w", mandatory=True
+            id=0x0055, type=t.Bool, access="r*w", mandatory=True
         )
         # 0x0057: ZCLAttributeDef('priority_array', type=TODO.array),  # Array of 16 structures of (boolean,
-        # single precision)
+        # boolean)
         reliability: Final = ZCLAttributeDef(id=0x0067, type=t.enum8, access="r*w")
         relinquish_default: Final = ZCLAttributeDef(
-            id=0x0068, type=t.Single, access="r*w"
+            id=0x0068, type=t.Bool, access="r*w"
         )
         status_flags: Final = ZCLAttributeDef(
             id=0x006F, type=t.bitmap8, access="r", mandatory=True
