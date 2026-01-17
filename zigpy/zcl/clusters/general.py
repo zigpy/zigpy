@@ -1005,7 +1005,7 @@ class LevelControl(Cluster):
         )
         min_frequency: Final = ZCLAttributeDef(id=0x0005, type=t.uint16_t, access="r")
         max_frequency: Final = ZCLAttributeDef(id=0x0006, type=t.uint16_t, access="r")
-        options: Final = ZCLAttributeDef(id=0x000F, type=t.bitmap8, access="rw")
+        options: Final = ZCLAttributeDef(id=0x000F, type=Options, access="rw")
         on_off_transition_time: Final = ZCLAttributeDef(
             id=0x0010, type=t.uint16_t, access="rw"
         )
@@ -1370,21 +1370,251 @@ class RSSILocation(Cluster):
 
 
 class Reliability(t.enum8):
-    No_fault_detected = 0
-    No_sensor = 1
-    Over_range = 2
-    Under_range = 3
-    Open_loop = 4
-    Shorted_loop = 5
-    No_output = 6
-    Unreliable_other = 7
-    Process_error = 8
-    Multi_state_fault = 9
-    Configuration_error = 10
+    No_fault_detected = 0x00
+    No_sensor = 0x01
+    Over_range = 0x02
+    Under_range = 0x03
+    Open_loop = 0x04
+    Shorted_loop = 0x05
+    No_output = 0x06
+    Unreliable_other = 0x07
+    Process_error = 0x08
+    Multi_state_fault = 0x09
+    Configuration_error = 0x0A
+
+
+class StatusFlags(t.bitmap8):
+    """Status flags for Input/Output/Value clusters."""
+
+    In_Alarm = 0b0001
+    Fault = 0b0010
+    Overridden = 0b0100
+    Out_Of_Service = 0b1000
+
+
+class Polarity(t.enum8):
+    """Polarity for Binary Input/Output clusters."""
+
+    Normal = 0x00
+    Reverse = 0x01
+
+
+class BACnetEngineeringUnits(t.enum16):
+    """BACnet Engineering Units per ASHRAE 135-2004."""
+
+    Square_Meters = 0
+    Square_Feet = 1
+    Milliamperes = 2
+    Amperes = 3
+    Ohms = 4
+    Volts = 5
+    Kilovolts = 6
+    Megavolts = 7
+    Volt_Amperes = 8
+    Kilovolt_Amperes = 9
+    Megavolt_Amperes = 10
+    Volt_Amperes_Reactive = 11
+    Kilovolt_Amperes_Reactive = 12
+    Megavolt_Amperes_Reactive = 13
+    Degrees_Phase = 14
+    Power_Factor = 15
+    Joules = 16
+    Kilojoules = 17
+    Watt_Hours = 18
+    Kilowatt_Hours = 19
+    Btus = 20
+    Therms = 21
+    Ton_Hours = 22
+    Joules_Per_Kilogram_Dry_Air = 23
+    Btus_Per_Pound_Dry_Air = 24
+    Cycles_Per_Hour = 25
+    Cycles_Per_Minute = 26
+    Hertz = 27
+    Grams_Of_Water_Per_Kilogram_Dry_Air = 28
+    Percent_Relative_Humidity = 29
+    Millimeters = 30
+    Meters = 31
+    Inches = 32
+    Feet = 33
+    Watts_Per_Square_Foot = 34
+    Watts_Per_Square_Meter = 35
+    Lumens = 36
+    Luxes = 37
+    Foot_Candles = 38
+    Kilograms = 39
+    Pounds_Mass = 40
+    Tons = 41
+    Kilograms_Per_Second = 42
+    Kilograms_Per_Minute = 43
+    Kilograms_Per_Hour = 44
+    Pounds_Mass_Per_Minute = 45
+    Pounds_Mass_Per_Hour = 46
+    Watts = 47
+    Kilowatts = 48
+    Megawatts = 49
+    Btus_Per_Hour = 50
+    Horsepower = 51
+    Tons_Refrigeration = 52
+    Pascals = 53
+    Kilopascals = 54
+    Bars = 55
+    Pounds_Force_Per_Square_Inch = 56
+    Centimeters_Of_Water = 57
+    Inches_Of_Water = 58
+    Millimeters_Of_Mercury = 59
+    Centimeters_Of_Mercury = 60
+    Inches_Of_Mercury = 61
+    Degrees_Celsius = 62
+    Degrees_Kelvin = 63
+    Degrees_Fahrenheit = 64
+    Degree_Days_Celsius = 65
+    Degree_Days_Fahrenheit = 66
+    Years = 67
+    Months = 68
+    Weeks = 69
+    Days = 70
+    Hours = 71
+    Minutes = 72
+    Seconds = 73
+    Meters_Per_Second = 74
+    Kilometers_Per_Hour = 75
+    Feet_Per_Second = 76
+    Feet_Per_Minute = 77
+    Miles_Per_Hour = 78
+    Cubic_Feet = 79
+    Cubic_Meters = 80
+    Imperial_Gallons = 81
+    Liters = 82
+    Us_Gallons = 83
+    Cubic_Feet_Per_Minute = 84
+    Cubic_Meters_Per_Second = 85
+    Imperial_Gallons_Per_Minute = 86
+    Liters_Per_Second = 87
+    Liters_Per_Minute = 88
+    Us_Gallons_Per_Minute = 89
+    Degrees_Angular = 90
+    Degrees_Celsius_Per_Hour = 91
+    Degrees_Celsius_Per_Minute = 92
+    Degrees_Fahrenheit_Per_Hour = 93
+    Degrees_Fahrenheit_Per_Minute = 94
+    No_Units = 95
+    Parts_Per_Million = 96
+    Parts_Per_Billion = 97
+    Percent = 98
+    Percent_Per_Second = 99
+    Per_Minute = 100
+    Per_Second = 101
+    Psi_Per_Degree_Fahrenheit = 102
+    Radians = 103
+    Revolutions_Per_Minute = 104
+    Currency1 = 105
+    Currency2 = 106
+    Currency3 = 107
+    Currency4 = 108
+    Currency5 = 109
+    Currency6 = 110
+    Currency7 = 111
+    Currency8 = 112
+    Currency9 = 113
+    Currency10 = 114
+    Square_Inches = 115
+    Square_Centimeters = 116
+    Btus_Per_Pound = 117
+    Centimeters = 118
+    Pounds_Mass_Per_Second = 119
+    Delta_Degrees_Fahrenheit = 120
+    Delta_Degrees_Kelvin = 121
+    Kilohms = 122
+    Megohms = 123
+    Millivolts = 124
+    Kilojoules_Per_Kilogram = 125
+    Megajoules = 126
+    Joules_Per_Degree_Kelvin = 127
+    Joules_Per_Kilogram_Degree_Kelvin = 128
+    Kilohertz = 129
+    Megahertz = 130
+    Per_Hour = 131
+    Milliwatts = 132
+    Hectopascals = 133
+    Millibars = 134
+    Cubic_Meters_Per_Hour = 135
+    Liters_Per_Hour = 136
+    Kw_Hours_Per_Square_Meter = 137
+    Kw_Hours_Per_Square_Foot = 138
+    Megajoules_Per_Square_Meter = 139
+    Megajoules_Per_Square_Foot = 140
+    Watts_Per_Square_Meter_Degree_Kelvin = 141
+    Cubic_Feet_Per_Second = 142
+    Percent_Obscuration_Per_Foot = 143
+    Percent_Obscuration_Per_Meter = 144
+    Milliohms = 145
+    Megawatt_Hours = 146
+    Kilo_Btus = 147
+    Mega_Btus = 148
+    Kilojoules_Per_Kilogram_Dry_Air = 149
+    Megajoules_Per_Kilogram_Dry_Air = 150
+    Kilojoules_Per_Degree_Kelvin = 151
+    Megajoules_Per_Degree_Kelvin = 152
+    Newton = 153
+    Grams_Per_Second = 154
+    Grams_Per_Minute = 155
+    Tons_Per_Hour = 156
+    Kilo_Btus_Per_Hour = 157
+    Hundredths_Seconds = 158
+    Milliseconds = 159
+    Newton_Meters = 160
+    Millimeters_Per_Second = 161
+    Millimeters_Per_Minute = 162
+    Meters_Per_Minute = 163
+    Meters_Per_Hour = 164
+    Cubic_Meters_Per_Minute = 165
+    Meters_Per_Second_Per_Second = 166
+    Amperes_Per_Meter = 167
+    Amperes_Per_Square_Meter = 168
+    Ampere_Square_Meters = 169
+    Farads = 170
+    Henrys = 171
+    Ohm_Meters = 172
+    Siemens = 173
+    Siemens_Per_Meter = 174
+    Teslas = 175
+    Volts_Per_Degree_Kelvin = 176
+    Volts_Per_Meter = 177
+    Webers = 178
+    Candelas = 179
+    Candelas_Per_Square_Meter = 180
+    Degrees_Kelvin_Per_Hour = 181
+    Degrees_Kelvin_Per_Minute = 182
+    Joule_Seconds = 183
+    Radians_Per_Second = 184
+    Square_Meters_Per_Newton = 185
+    Kilograms_Per_Cubic_Meter = 186
+    Newton_Seconds = 187
+    Newtons_Per_Meter = 188
+    Watts_Per_Meter_Per_Degree_Kelvin = 189
+    Microsiemens = 190
+    Cubic_Feet_Per_Hour = 191
+    Us_Gallons_Per_Hour = 192
+    Kilometers = 193
+    Micrometers = 194
+    Grams = 195
+    Milligrams = 196
+    Milliliters = 197
+    Milliliters_Per_Second = 198
+    Decibels = 199
+    Decibels_Millivolt = 200
+    Decibels_Volt = 201
+    Millisiemens = 202
+    Watt_Hours_Reactive = 203
+    Kilowatt_Hours_Reactive = 204
+    Megawatt_Hours_Reactive = 205
+    Millimeters_Of_Water = 206
+    Other = 0x00FF
 
 
 class AnalogInput(Cluster):
     Reliability: Final = Reliability
+    StatusFlags: Final = StatusFlags
 
     cluster_id: Final[t.uint16_t] = 0x000C
     ep_attribute: Final = "analog_input"
@@ -1408,10 +1638,10 @@ class AnalogInput(Cluster):
         reliability: Final = ZCLAttributeDef(id=0x0067, type=Reliability, access="r*w")
         resolution: Final = ZCLAttributeDef(id=0x006A, type=t.Single, access="r*w")
         status_flags: Final = ZCLAttributeDef(
-            id=0x006F, type=t.bitmap8, access="rp", mandatory=True
+            id=0x006F, type=StatusFlags, access="rp", mandatory=True
         )
         engineering_units: Final = ZCLAttributeDef(
-            id=0x0075, type=t.enum16, access="r*w"
+            id=0x0075, type=BACnetEngineeringUnits, access="r*w"
         )
         application_type: Final = ZCLAttributeDef(
             id=0x0100, type=t.uint32_t, access="r"
@@ -1442,16 +1672,16 @@ class AnalogOutput(Cluster):
         )
         # 0x0057: ZCLAttributeDef('priority_array', type=TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        reliability: Final = ZCLAttributeDef(id=0x0067, type=t.enum8, access="r*w")
+        reliability: Final = ZCLAttributeDef(id=0x0067, type=Reliability, access="r*w")
         relinquish_default: Final = ZCLAttributeDef(
             id=0x0068, type=t.Single, access="r*w"
         )
         resolution: Final = ZCLAttributeDef(id=0x006A, type=t.Single, access="r*w")
         status_flags: Final = ZCLAttributeDef(
-            id=0x006F, type=t.bitmap8, access="rp", mandatory=True
+            id=0x006F, type=StatusFlags, access="rp", mandatory=True
         )
         engineering_units: Final = ZCLAttributeDef(
-            id=0x0075, type=t.enum16, access="r*w"
+            id=0x0075, type=BACnetEngineeringUnits, access="r*w"
         )
         application_type: Final = ZCLAttributeDef(
             id=0x0100, type=t.uint32_t, access="r"
@@ -1476,15 +1706,15 @@ class AnalogValue(Cluster):
         )
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        reliability: Final = ZCLAttributeDef(id=0x0067, type=t.enum8, access="r*w")
+        reliability: Final = ZCLAttributeDef(id=0x0067, type=Reliability, access="r*w")
         relinquish_default: Final = ZCLAttributeDef(
             id=0x0068, type=t.Single, access="r*w"
         )
         status_flags: Final = ZCLAttributeDef(
-            id=0x006F, type=t.bitmap8, access="r", mandatory=True
+            id=0x006F, type=StatusFlags, access="r", mandatory=True
         )
         engineering_units: Final = ZCLAttributeDef(
-            id=0x0075, type=t.enum16, access="r*w"
+            id=0x0075, type=BACnetEngineeringUnits, access="r*w"
         )
         application_type: Final = ZCLAttributeDef(
             id=0x0100, type=t.uint32_t, access="r"
@@ -1511,13 +1741,13 @@ class BinaryInput(Cluster):
         out_of_service: Final = ZCLAttributeDef(
             id=0x0051, type=t.Bool, access="r*w", mandatory=True
         )
-        polarity: Final = ZCLAttributeDef(id=0x0054, type=t.enum8, access="r")
+        polarity: Final = ZCLAttributeDef(id=0x0054, type=Polarity, access="r")
         present_value: Final = ZCLAttributeDef(
             id=0x0055, type=t.Bool, access="r*w", mandatory=True
         )
-        reliability: Final = ZCLAttributeDef(id=0x0067, type=t.enum8, access="r*w")
+        reliability: Final = ZCLAttributeDef(id=0x0067, type=Reliability, access="r*w")
         status_flags: Final = ZCLAttributeDef(
-            id=0x006F, type=t.bitmap8, access="r", mandatory=True
+            id=0x006F, type=StatusFlags, access="r", mandatory=True
         )
         application_type: Final = ZCLAttributeDef(
             id=0x0100, type=t.uint32_t, access="r"
@@ -1549,18 +1779,18 @@ class BinaryOutput(Cluster):
         out_of_service: Final = ZCLAttributeDef(
             id=0x0051, type=t.Bool, access="r*w", mandatory=True
         )
-        polarity: Final = ZCLAttributeDef(id=0x0054, type=t.enum8, access="r")
+        polarity: Final = ZCLAttributeDef(id=0x0054, type=Polarity, access="r")
         present_value: Final = ZCLAttributeDef(
             id=0x0055, type=t.Bool, access="r*w", mandatory=True
         )
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        reliability: Final = ZCLAttributeDef(id=0x0067, type=t.enum8, access="r*w")
+        reliability: Final = ZCLAttributeDef(id=0x0067, type=Reliability, access="r*w")
         relinquish_default: Final = ZCLAttributeDef(
             id=0x0068, type=t.Bool, access="r*w"
         )
         status_flags: Final = ZCLAttributeDef(
-            id=0x006F, type=t.bitmap8, access="r", mandatory=True
+            id=0x006F, type=StatusFlags, access="r", mandatory=True
         )
         application_type: Final = ZCLAttributeDef(
             id=0x0100, type=t.uint32_t, access="r"
@@ -1597,12 +1827,12 @@ class BinaryValue(Cluster):
         )
         # 0x0057: ZCLAttributeDef('priority_array', type=TODO.array),  # Array of 16 structures of (boolean,
         # boolean)
-        reliability: Final = ZCLAttributeDef(id=0x0067, type=t.enum8, access="r*w")
+        reliability: Final = ZCLAttributeDef(id=0x0067, type=Reliability, access="r*w")
         relinquish_default: Final = ZCLAttributeDef(
             id=0x0068, type=t.Bool, access="r*w"
         )
         status_flags: Final = ZCLAttributeDef(
-            id=0x006F, type=t.bitmap8, access="r", mandatory=True
+            id=0x006F, type=StatusFlags, access="r", mandatory=True
         )
         application_type: Final = ZCLAttributeDef(
             id=0x0100, type=t.uint32_t, access="r"
@@ -1633,9 +1863,9 @@ class MultistateInput(Cluster):
         )
         # 0x0057: ('priority_array', TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        reliability: Final = ZCLAttributeDef(id=0x0067, type=t.enum8, access="r*w")
+        reliability: Final = ZCLAttributeDef(id=0x0067, type=Reliability, access="r*w")
         status_flags: Final = ZCLAttributeDef(
-            id=0x006F, type=t.bitmap8, access="r", mandatory=True
+            id=0x006F, type=StatusFlags, access="r", mandatory=True
         )
         application_type: Final = ZCLAttributeDef(
             id=0x0100, type=t.uint32_t, access="r"
@@ -1666,12 +1896,12 @@ class MultistateOutput(Cluster):
         )
         # 0x0057: ZCLAttributeDef('priority_array', type=TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        reliability: Final = ZCLAttributeDef(id=0x0067, type=t.enum8, access="r*w")
+        reliability: Final = ZCLAttributeDef(id=0x0067, type=Reliability, access="r*w")
         relinquish_default: Final = ZCLAttributeDef(
             id=0x0068, type=t.uint16_t, access="r*w"
         )
         status_flags: Final = ZCLAttributeDef(
-            id=0x006F, type=t.bitmap8, access="r", mandatory=True
+            id=0x006F, type=StatusFlags, access="r", mandatory=True
         )
         application_type: Final = ZCLAttributeDef(
             id=0x0100, type=t.uint32_t, access="r"
@@ -1702,12 +1932,12 @@ class MultistateValue(Cluster):
         )
         # 0x0057: ZCLAttributeDef('priority_array', type=TODO.array),  # Array of 16 structures of (boolean,
         # single precision)
-        reliability: Final = ZCLAttributeDef(id=0x0067, type=t.enum8, access="r*w")
+        reliability: Final = ZCLAttributeDef(id=0x0067, type=Reliability, access="r*w")
         relinquish_default: Final = ZCLAttributeDef(
             id=0x0068, type=t.uint16_t, access="r*w"
         )
         status_flags: Final = ZCLAttributeDef(
-            id=0x006F, type=t.bitmap8, access="r", mandatory=True
+            id=0x006F, type=StatusFlags, access="r", mandatory=True
         )
         application_type: Final = ZCLAttributeDef(
             id=0x0100, type=t.uint32_t, access="r"
@@ -2237,10 +2467,27 @@ class PowerProfileType(t.Struct):
     power_profile_state: t.uint8_t
 
 
+class EnergyFormatting(t.bitmap8):
+    """Energy formatting bitmap for PowerProfile cluster."""
+
+    # Bits 0-2: Number of Digits to the right of the Decimal Point
+    # Bits 3-6: Number of Digits to the left of the Decimal Point
+    Suppress_Leading_Zeros = 0b10000000
+
+
+class ScheduleMode(t.bitmap8):
+    """Schedule mode bitmap for PowerProfile cluster."""
+
+    Cheapest = 0b00000001
+    Greenest = 0b00000010
+
+
 class PowerProfile(Cluster):
     ScheduleRecord: Final = ScheduleRecord
     PowerProfilePhase: Final = PowerProfilePhase
     PowerProfile: Final = PowerProfileType
+    EnergyFormatting: Final = EnergyFormatting
+    ScheduleMode: Final = ScheduleMode
 
     cluster_id: Final[t.uint16_t] = 0x001A
     ep_attribute: Final = "power_profile"
@@ -2253,13 +2500,13 @@ class PowerProfile(Cluster):
             id=0x0001, type=t.Bool, access="r", mandatory=True
         )
         energy_formatting: Final = ZCLAttributeDef(
-            id=0x0002, type=t.bitmap8, access="r", mandatory=True
+            id=0x0002, type=EnergyFormatting, access="r", mandatory=True
         )
         energy_remote: Final = ZCLAttributeDef(
             id=0x0003, type=t.Bool, access="r", mandatory=True
         )
         schedule_mode: Final = ZCLAttributeDef(
-            id=0x0004, type=t.bitmap8, access="rwp", mandatory=True
+            id=0x0004, type=ScheduleMode, access="rwp", mandatory=True
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR

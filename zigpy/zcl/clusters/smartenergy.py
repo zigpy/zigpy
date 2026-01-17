@@ -135,11 +135,264 @@ class MeteringStatus(t.bitmap8):
     Reserved = 0b10000000
 
 
+class CurrentBlock(t.enum8):
+    """Block enumeration for CurrentBlock attribute."""
+
+    No_Blocks_In_Use = 0x00
+    Block1 = 0x01
+    Block2 = 0x02
+    Block3 = 0x03
+    Block4 = 0x04
+    Block5 = 0x05
+    Block6 = 0x06
+    Block7 = 0x07
+    Block8 = 0x08
+    Block9 = 0x09
+    Block10 = 0x0A
+    Block11 = 0x0B
+    Block12 = 0x0C
+    Block13 = 0x0D
+    Block14 = 0x0E
+    Block15 = 0x0F
+    Block16 = 0x10
+
+
+class ProfileIntervalPeriod(t.enum8):
+    """Profile interval period timeframes."""
+
+    Daily = 0x00
+    Minutes_60 = 0x01
+    Minutes_30 = 0x02
+    Minutes_15 = 0x03
+    Minutes_10 = 0x04
+    Minutes_7_5 = 0x05
+    Minutes_5 = 0x06
+    Minutes_2_5 = 0x07
+    Minutes_1 = 0x08
+
+
+class SupplyStatus(t.enum8):
+    """Supply status at customer premises."""
+
+    Supply_Off = 0x00
+    Supply_Off_Armed = 0x01
+    Supply_On = 0x02
+
+
+class AmbientConsumptionIndicator(t.enum8):
+    """Ambient consumption indicator - low/medium/high."""
+
+    Low_Energy_Usage = 0x00
+    Medium_Energy_Usage = 0x01
+    High_Energy_Usage = 0x02
+
+
+class GenericAlarmMask(t.bitmap16):
+    """Generic alarm mask - bits correspond to alarm codes 0x00-0x0F."""
+
+    Check_Meter = 0x0001
+    Low_Battery = 0x0002
+    Tamper_Detect = 0x0004
+    Power_Failure = 0x0008
+    Power_Quality = 0x0010
+    Leak_Detect = 0x0020
+    Service_Disconnect = 0x0040
+    Reserved_0x07 = 0x0080
+    Meter_Cover_Removed = 0x0100
+    Meter_Cover_Closed = 0x0200
+    Strong_Magnetic_Field = 0x0400
+    No_Strong_Magnetic_Field = 0x0800
+    Battery_Failure = 0x1000
+    Program_Memory_Error = 0x2000
+    RAM_Error = 0x4000
+    NV_Memory_Error = 0x8000
+
+
+class ElectricityAlarmMask(t.bitmap32):
+    """Electricity alarm mask - bits correspond to alarm codes 0x10-0x2F."""
+
+    Low_Voltage_L1 = 0x00000001
+    High_Voltage_L1 = 0x00000002
+    Low_Voltage_L2 = 0x00000004
+    High_Voltage_L2 = 0x00000008
+    Low_Voltage_L3 = 0x00000010
+    High_Voltage_L3 = 0x00000020
+    Over_Current_L1 = 0x00000040
+    Over_Current_L2 = 0x00000080
+    Over_Current_L3 = 0x00000100
+    Frequency_Too_Low_L1 = 0x00000200
+    Frequency_Too_High_L1 = 0x00000400
+    Frequency_Too_Low_L2 = 0x00000800
+    Frequency_Too_High_L2 = 0x00001000
+    Frequency_Too_Low_L3 = 0x00002000
+    Frequency_Too_High_L3 = 0x00004000
+    Ground_Fault = 0x00008000
+    Electric_Tamper_Detect = 0x00010000
+    Incorrect_Polarity = 0x00020000
+    Current_No_Voltage = 0x00040000
+    Under_Voltage = 0x00080000
+    Over_Voltage = 0x00100000
+    Normal_Voltage = 0x00200000
+    PF_Below_Threshold = 0x00400000
+    PF_Above_Threshold = 0x00800000
+    Terminal_Cover_Removed = 0x01000000
+    Terminal_Cover_Closed = 0x02000000
+
+
+class GenericFlowPressureAlarmMask(t.bitmap16):
+    """Generic flow/pressure alarm mask - bits correspond to alarm codes 0x30-0x3F."""
+
+    Burst_Detect = 0x0001
+    Pressure_Too_Low = 0x0002
+    Pressure_Too_High = 0x0004
+    Flow_Sensor_Communication_Error = 0x0008
+    Flow_Sensor_Measurement_Fault = 0x0010
+    Flow_Sensor_Reverse_Flow = 0x0020
+    Flow_Sensor_Air_Detect = 0x0040
+    Pipe_Empty = 0x0080
+
+
+class WaterSpecificAlarmMask(t.bitmap16):
+    """Water specific alarm mask - bits correspond to alarm codes 0x40-0x4F."""
+
+    Water_Pipe_Empty = 0x0001
+    Water_Valve_Fraud = 0x0002
+    Water_Valve_Moving = 0x0004
+
+
+class HeatCoolingSpecificAlarmMask(t.bitmap16):
+    """Heat and cooling specific alarm mask - bits correspond to alarm codes 0x50-0x5F."""
+
+    Inlet_Temperature_Sensor_Fault = 0x0001
+    Outlet_Temperature_Sensor_Fault = 0x0002
+
+
+class GasSpecificAlarmMask(t.bitmap16):
+    """Gas specific alarm mask - bits correspond to alarm codes 0x60-0x6F."""
+
+    Tilt_Tamper = 0x0001
+    Battery_Cover_Removed = 0x0002
+    Battery_Cover_Closed = 0x0004
+    Excess_Flow = 0x0008
+    Tilt_Tamper_Ended = 0x0010
+
+
+class ExtendedStatus(t.bitmap64):
+    """Extended status bitmap for Metering cluster."""
+
+    # General flags (bits 0-13)
+    Meter_Cover_Removed = 0x0000000000000001
+    Strong_Magnetic_Field_Detected = 0x0000000000000002
+    Battery_Failure = 0x0000000000000004
+    Program_Memory_Error = 0x0000000000000008
+    RAM_Error = 0x0000000000000010
+    NV_Memory_Error = 0x0000000000000020
+    Measurement_System_Error = 0x0000000000000040
+    Watchdog_Error = 0x0000000000000080
+    Supply_Disconnect_Failure = 0x0000000000000100
+    Supply_Connect_Failure = 0x0000000000000200
+    Measurement_SW_Changed_Tampered = 0x0000000000000400
+    Clock_Invalid = 0x0000000000000800
+    Temperature_Exceeded = 0x0000000000001000
+    Moisture_Detected = 0x0000000000002000
+    # bits 14-23 Reserved
+    # Electricity-meter specific flags (bits 24-29)
+    Terminal_Cover_Removed = 0x0000000001000000
+    Incorrect_Polarity = 0x0000000002000000
+    Current_With_No_Voltage = 0x0000000004000000
+    Limit_Threshold_Exceeded = 0x0000000008000000
+    Under_Voltage = 0x0000000010000000
+    Over_Voltage = 0x0000000020000000
+    # Gas-meter specific flags (bits 24-26) - shared bit positions with electricity
+    # Battery_Cover_Removed_Gas = 0x0000000001000000  # Same as Terminal_Cover_Removed
+    # Tilt_Tamper_Gas = 0x0000000002000000  # Same as Incorrect_Polarity
+    # Excess_Flow_Gas = 0x0000000004000000  # Same as Current_With_No_Voltage
+
+
+class ExtendedGenericAlarmMask(t.bitmap48):
+    """Extended generic alarm mask - bits for alarm codes 0x70-0x9F.
+
+    Note: Table D-34 defines the Extended Generic Alarm Group range as 0x70-0xAF
+    (64 codes), but the attribute type in Table D-33 is a 48-bit bitmap which can
+    only represent codes 0x70-0x9F. Codes 0xA0-0xAF cannot be represented.
+    """
+
+    Measurement_System_Error = 0x000000000001  # 0x70
+    Watchdog_Error = 0x000000000002  # 0x71
+    Supply_Disconnect_Failure = 0x000000000004  # 0x72
+    Supply_Connect_Failure = 0x000000000008  # 0x73
+    Measurement_Software_Changed = 0x000000000010  # 0x74
+    DST_Enabled = 0x000000000020  # 0x75
+    DST_Disabled = 0x000000000040  # 0x76
+    Clock_Adj_Backward = 0x000000000080  # 0x77
+    Clock_Adj_Forward = 0x000000000100  # 0x78
+    Clock_Invalid = 0x000000000200  # 0x79
+    Communication_Error_HAN = 0x000000000400  # 0x7A
+    Communication_OK_HAN = 0x000000000800  # 0x7B
+    Meter_Fraud_Attempt = 0x000000001000  # 0x7C
+    Power_Loss = 0x000000002000  # 0x7D
+    Unusual_HAN_Traffic = 0x000000004000  # 0x7E
+    Unexpected_Clock_Change = 0x000000008000  # 0x7F
+    Comms_Using_Unauthenticated_Component = 0x000000010000  # 0x80
+    Error_Reg_Clear = 0x000000020000  # 0x81
+    Alarm_Reg_Clear = 0x000000040000  # 0x82
+    Unexpected_HW_Reset = 0x000000080000  # 0x83
+    Unexpected_Program_Execution = 0x000000100000  # 0x84
+    EventLog_Cleared = 0x000000200000  # 0x85
+    Limit_Threshold_Exceeded = 0x000000400000  # 0x86
+    Limit_Threshold_OK = 0x000000800000  # 0x87
+    Limit_Threshold_Changed = 0x000001000000  # 0x88
+    Maximum_Demand_Exceeded = 0x000002000000  # 0x89
+    Profile_Cleared = 0x000004000000  # 0x8A
+    Sampling_Buffer_Cleared = 0x000008000000  # 0x8B
+    Battery_Warning = 0x000010000000  # 0x8C
+    Wrong_Signature = 0x000020000000  # 0x8D
+    No_Signature = 0x000040000000  # 0x8E
+    Unauthorized_Action_From_HAN = 0x000080000000  # 0x8F
+    Fast_Polling_Start = 0x000100000000  # 0x90
+    Fast_Polling_End = 0x000200000000  # 0x91
+    Meter_Reporting_Interval_Changed = 0x000400000000  # 0x92
+    Disconnect_Due_To_Load_Limit = 0x000800000000  # 0x93
+    Meter_Supply_Status_Register_Changed = 0x001000000000  # 0x94
+    Meter_Alarm_Status_Register_Changed = 0x002000000000  # 0x95
+    Extended_Meter_Alarm_Status_Register_Changed = 0x004000000000  # 0x96
+    # 0x97-0x9F Reserved (bits 39-47)
+
+
+class ManufacturerAlarmMask(t.bitmap16):
+    """Manufacturer specific alarm mask - bits for alarm codes 0xB0-0xBF."""
+
+    Manufacturer_Specific_A = 0x0001  # 0xB0
+    Manufacturer_Specific_B = 0x0002  # 0xB1
+    Manufacturer_Specific_C = 0x0004  # 0xB2
+    Manufacturer_Specific_D = 0x0008  # 0xB3
+    Manufacturer_Specific_E = 0x0010  # 0xB4
+    Manufacturer_Specific_F = 0x0020  # 0xB5
+    Manufacturer_Specific_G = 0x0040  # 0xB6
+    Manufacturer_Specific_H = 0x0080  # 0xB7
+    Manufacturer_Specific_I = 0x0100  # 0xB8
+    # 0xB9-0xBF Reserved (bits 9-15)
+
+
 class Metering(Cluster):
     RegisteredTier: Final = RegisteredTier
     MeteringDeviceType: Final = MeteringDeviceType
     MeteringUnitofMeasure: Final = MeteringUnitofMeasure
     NumberFormatting: Final = NumberFormatting
+    MeteringStatus: Final = MeteringStatus
+    CurrentBlock: Final = CurrentBlock
+    ProfileIntervalPeriod: Final = ProfileIntervalPeriod
+    SupplyStatus: Final = SupplyStatus
+    AmbientConsumptionIndicator: Final = AmbientConsumptionIndicator
+    GenericAlarmMask: Final = GenericAlarmMask
+    ElectricityAlarmMask: Final = ElectricityAlarmMask
+    GenericFlowPressureAlarmMask: Final = GenericFlowPressureAlarmMask
+    WaterSpecificAlarmMask: Final = WaterSpecificAlarmMask
+    HeatCoolingSpecificAlarmMask: Final = HeatCoolingSpecificAlarmMask
+    GasSpecificAlarmMask: Final = GasSpecificAlarmMask
+    ExtendedStatus: Final = ExtendedStatus
+    ExtendedGenericAlarmMask: Final = ExtendedGenericAlarmMask
+    ManufacturerAlarmMask: Final = ManufacturerAlarmMask
 
     cluster_id: Final[t.uint16_t] = 0x0702
     ep_attribute: Final = "smartenergy_metering"
@@ -183,9 +436,9 @@ class Metering(Cluster):
         daily_consumption_target: Final = ZCLAttributeDef(
             id=0x000D, type=t.uint24_t, access="r"
         )
-        current_block: Final = ZCLAttributeDef(id=0x000E, type=t.enum8, access="r")
+        current_block: Final = ZCLAttributeDef(id=0x000E, type=CurrentBlock, access="r")
         profile_interval_period: Final = ZCLAttributeDef(
-            id=0x000F, type=t.enum8, access="r"
+            id=0x000F, type=ProfileIntervalPeriod, access="r"
         )
         # 0x0010: ('interval_read_reporting_period', UNKNOWN), # Deprecated
         preset_reading_time: Final = ZCLAttributeDef(
@@ -195,7 +448,7 @@ class Metering(Cluster):
             id=0x0012, type=t.uint16_t, access="r"
         )
         flow_restriction: Final = ZCLAttributeDef(id=0x0013, type=t.uint8_t, access="r")
-        supply_status: Final = ZCLAttributeDef(id=0x0014, type=t.enum8, access="r")
+        supply_status: Final = ZCLAttributeDef(id=0x0014, type=SupplyStatus, access="r")
         current_in_energy_carrier_summ: Final = ZCLAttributeDef(
             id=0x0015, type=t.uint48_t, access="r"
         )
@@ -332,13 +585,15 @@ class Metering(Cluster):
             id=0x0202, type=t.uint24_t, access="r"
         )
         hours_in_fault: Final = ZCLAttributeDef(id=0x0203, type=t.uint24_t, access="r")
-        extended_status: Final = ZCLAttributeDef(id=0x0204, type=t.bitmap64, access="r")
+        extended_status: Final = ZCLAttributeDef(
+            id=0x0204, type=ExtendedStatus, access="r"
+        )
         remaining_battery_life_days: Final = ZCLAttributeDef(
             id=0x0205, type=t.uint16_t, access="r"
         )
         current_meter_id: Final = ZCLAttributeDef(id=0x0206, type=t.LVBytes, access="r")
         iambient_consumption_indicator: Final = ZCLAttributeDef(
-            id=0x0207, type=t.enum8, access="r"
+            id=0x0207, type=AmbientConsumptionIndicator, access="r"
         )
         unit_of_measure: Final = ZCLAttributeDef(
             id=0x0300, type=MeteringUnitofMeasure, access="r"
@@ -550,28 +805,28 @@ class Metering(Cluster):
             id=0x0604, type=t.uint16_t, access="r"
         )
         generic_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0800, type=t.bitmap16, access="r"
+            id=0x0800, type=GenericAlarmMask, access="r"
         )
         electricity_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0801, type=t.bitmap32, access="r"
+            id=0x0801, type=ElectricityAlarmMask, access="r"
         )
         gen_flow_pressure_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0802, type=t.bitmap16, access="r"
+            id=0x0802, type=GenericFlowPressureAlarmMask, access="r"
         )
         water_specific_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0803, type=t.bitmap16, access="r"
+            id=0x0803, type=WaterSpecificAlarmMask, access="r"
         )
         heat_cool_specific_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0804, type=t.bitmap16, access="r"
+            id=0x0804, type=HeatCoolingSpecificAlarmMask, access="r"
         )
         gas_specific_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0805, type=t.bitmap16, access="r"
+            id=0x0805, type=GasSpecificAlarmMask, access="r"
         )
         extended_generic_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0806, type=t.bitmap48, access="r"
+            id=0x0806, type=ExtendedGenericAlarmMask, access="r"
         )
         manufacture_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0807, type=t.bitmap16, access="r"
+            id=0x0807, type=ManufacturerAlarmMask, access="r"
         )
         bill_to_date: Final = ZCLAttributeDef(id=0x0A00, type=t.uint32_t, access="r")
         bill_to_date_time_stamp: Final = ZCLAttributeDef(
