@@ -75,8 +75,8 @@ class DriftCompensation(t.enum8):
     NONE = 0x00
     Other_or_unknown = 0x01
     Temperature_monitoring = 0x02
-    Luminance_monitoring = 0x03
-    Color_monitoring = 0x03
+    Optical_luminance_monitoring_and_feedback = 0x03
+    Optical_color_monitoring_and_feedback = 0x04
 
 
 class OptionsMask(t.bitmap8):

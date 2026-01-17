@@ -645,7 +645,7 @@ class KeypadLockout(t.enum8):
 
 class ScheduleProgrammingVisibility(t.enum8):
     Enabled = 0x00
-    Disabled = 0x02
+    Disabled = 0x01
 
 
 class UserInterface(Cluster):

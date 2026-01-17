@@ -23,7 +23,7 @@ class ShadeStatus(t.bitmap8):
 
 class ShadeMode(t.enum8):
     Normal = 0x00
-    Configure = 0x00
+    Configure = 0x01
     Unknown = 0xFF
 
 

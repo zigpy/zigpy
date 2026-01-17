@@ -105,6 +105,7 @@ class PhysicalEnvironment(t.enum8):
     Workshop = 0x30
     Guest_Bedroom = 0x31
     Guest_Bath = 0x32
+    Powder_Room = 0x33
     Back_Yard = 0x34
     Front_Yard = 0x35
     Patio = 0x36
@@ -309,6 +310,33 @@ class BatterySize(t.enum8):
     Unknown = 0xFF
 
 
+class BatteryAlarmMask(t.bitmap8):
+    Battery_Voltage_Too_Low = 0b00000001
+    Battery_Alarm_1 = 0b00000010
+    Battery_Alarm_2 = 0b00000100
+    Battery_Alarm_3 = 0b00001000
+
+
+class BatteryAlarmState(t.bitmap32):
+    # Battery Source 1
+    Battery_1_Min_Threshold = 0x00000001
+    Battery_1_Threshold_1 = 0x00000002
+    Battery_1_Threshold_2 = 0x00000004
+    Battery_1_Threshold_3 = 0x00000008
+    # Battery Source 2
+    Battery_2_Min_Threshold = 0x00000400
+    Battery_2_Threshold_1 = 0x00000800
+    Battery_2_Threshold_2 = 0x00001000
+    Battery_2_Threshold_3 = 0x00002000
+    # Battery Source 3
+    Battery_3_Min_Threshold = 0x00100000
+    Battery_3_Threshold_1 = 0x00200000
+    Battery_3_Threshold_2 = 0x00400000
+    Battery_3_Threshold_3 = 0x00800000
+    # Mains power supply
+    Mains_Power_Supply_Lost = 0x04000000
+
+
 class PowerConfiguration(Cluster):
     """Attributes for determining more detailed information
     about a device’s power source(s), and for configuring
@@ -317,6 +345,8 @@ class PowerConfiguration(Cluster):
 
     MainsAlarmMask: Final = MainsAlarmMask
     BatterySize: Final = BatterySize
+    BatteryAlarmMask: Final = BatteryAlarmMask
+    BatteryAlarmState: Final = BatteryAlarmState
 
     cluster_id: Final[t.uint16_t] = 0x0001
     name: Final = "Power Configuration"
@@ -361,19 +391,19 @@ class PowerConfiguration(Cluster):
         )
         # measured in units of 100mV
         battery_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0035, type=t.bitmap8, access="rw"
+            id=0x0035, type=BatteryAlarmMask, access="rw"
         )
         battery_volt_min_thres: Final = ZCLAttributeDef(
             id=0x0036, type=t.uint8_t, access="rw"
         )
         battery_volt_thres1: Final = ZCLAttributeDef(
-            id=0x0037, type=t.uint16_t, access="r*w"
+            id=0x0037, type=t.uint8_t, access="r*w"
         )
         battery_volt_thres2: Final = ZCLAttributeDef(
-            id=0x0038, type=t.uint16_t, access="r*w"
+            id=0x0038, type=t.uint8_t, access="r*w"
         )
         battery_volt_thres3: Final = ZCLAttributeDef(
-            id=0x0039, type=t.uint16_t, access="r*w"
+            id=0x0039, type=t.uint8_t, access="r*w"
         )
         battery_percent_min_thres: Final = ZCLAttributeDef(
             id=0x003A, type=t.uint8_t, access="r*w"
@@ -388,7 +418,7 @@ class PowerConfiguration(Cluster):
             id=0x003D, type=t.uint8_t, access="r*w"
         )
         battery_alarm_state: Final = ZCLAttributeDef(
-            id=0x003E, type=t.bitmap32, access="rp"
+            id=0x003E, type=BatteryAlarmState, access="rp"
         )
         # Battery 2 Information
         battery_2_voltage: Final = ZCLAttributeDef(
@@ -414,19 +444,19 @@ class PowerConfiguration(Cluster):
             id=0x0054, type=t.uint8_t, access="rw"
         )
         battery_2_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0055, type=t.bitmap8, access="rw"
+            id=0x0055, type=BatteryAlarmMask, access="rw"
         )
         battery_2_volt_min_thres: Final = ZCLAttributeDef(
             id=0x0056, type=t.uint8_t, access="rw"
         )
         battery_2_volt_thres1: Final = ZCLAttributeDef(
-            id=0x0057, type=t.uint16_t, access="r*w"
+            id=0x0057, type=t.uint8_t, access="r*w"
         )
         battery_2_volt_thres2: Final = ZCLAttributeDef(
-            id=0x0058, type=t.uint16_t, access="r*w"
+            id=0x0058, type=t.uint8_t, access="r*w"
         )
         battery_2_volt_thres3: Final = ZCLAttributeDef(
-            id=0x0059, type=t.uint16_t, access="r*w"
+            id=0x0059, type=t.uint8_t, access="r*w"
         )
         battery_2_percent_min_thres: Final = ZCLAttributeDef(
             id=0x005A, type=t.uint8_t, access="r*w"
@@ -441,7 +471,7 @@ class PowerConfiguration(Cluster):
             id=0x005D, type=t.uint8_t, access="r*w"
         )
         battery_2_alarm_state: Final = ZCLAttributeDef(
-            id=0x005E, type=t.bitmap32, access="rp"
+            id=0x005E, type=BatteryAlarmState, access="rp"
         )
         # Battery 3 Information
         battery_3_voltage: Final = ZCLAttributeDef(
@@ -467,19 +497,19 @@ class PowerConfiguration(Cluster):
             id=0x0074, type=t.uint8_t, access="rw"
         )
         battery_3_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0075, type=t.bitmap8, access="rw"
+            id=0x0075, type=BatteryAlarmMask, access="rw"
         )
         battery_3_volt_min_thres: Final = ZCLAttributeDef(
             id=0x0076, type=t.uint8_t, access="rw"
         )
         battery_3_volt_thres1: Final = ZCLAttributeDef(
-            id=0x0077, type=t.uint16_t, access="r*w"
+            id=0x0077, type=t.uint8_t, access="r*w"
         )
         battery_3_volt_thres2: Final = ZCLAttributeDef(
-            id=0x0078, type=t.uint16_t, access="r*w"
+            id=0x0078, type=t.uint8_t, access="r*w"
         )
         battery_3_volt_thres3: Final = ZCLAttributeDef(
-            id=0x0079, type=t.uint16_t, access="r*w"
+            id=0x0079, type=t.uint8_t, access="r*w"
         )
         battery_3_percent_min_thres: Final = ZCLAttributeDef(
             id=0x007A, type=t.uint8_t, access="r*w"
@@ -494,7 +524,7 @@ class PowerConfiguration(Cluster):
             id=0x007D, type=t.uint8_t, access="r*w"
         )
         battery_3_alarm_state: Final = ZCLAttributeDef(
-            id=0x007E, type=t.bitmap32, access="rp"
+            id=0x007E, type=BatteryAlarmState, access="rp"
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
