@@ -1115,6 +1115,7 @@ class ZCLCommandDef(t.BaseDataclassMixin):
     schema: type[CommandSchema] = None
     direction: Direction = None
     is_manufacturer_specific: bool = None
+    response_command_ids: tuple[t.uint8_t, ...] | None = None
 
     # set later
     name: str = None
@@ -1176,13 +1177,20 @@ class ZCLCommandDef(t.BaseDataclassMixin):
 
     def __repr__(self) -> str:
         return (
-            f"{self.__class__.__name__}("
-            f"id=0x{self.id:02X}, "
-            f"name={self.name!r}, "
-            f"direction={self.direction}, "
-            f"schema={self.schema}, "
-            f"is_manufacturer_specific={self.is_manufacturer_specific}"
-            f")"
+            (
+                f"{self.__class__.__name__}("
+                f"id=0x{self.id:02X}, "
+                f"name={self.name!r}, "
+                f"direction={self.direction}, "
+                f"schema={self.schema}, "
+                f"is_manufacturer_specific={self.is_manufacturer_specific}"
+            )
+            + (
+                f"response_command_ids={self.response_command_ids}"
+                if self.response_command_ids is not None
+                else ""
+            )
+            + ")"
         )
 
 
@@ -1340,16 +1348,30 @@ GENERAL_COMMANDS = COMMANDS = {
     GeneralCommand.Read_Attributes: ZCLCommandDef(
         schema={"attribute_ids": t.List[t.uint16_t]},
         direction=Direction.Client_to_Server,
+        response_command_ids=(
+            GeneralCommand.Read_Attributes_rsp,
+            GeneralCommand.Default_Response,
+        ),
     ),
     GeneralCommand.Read_Attributes_rsp: ZCLCommandDef(
         schema={"status_records": t.List[ReadAttributeRecord]},
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Write_Attributes: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, direction=Direction.Client_to_Server
+        schema={"attributes": t.List[Attribute]},
+        direction=Direction.Client_to_Server,
+        response_command_ids=(
+            GeneralCommand.Write_Attributes_rsp,
+            GeneralCommand.Default_Response,
+        ),
     ),
     GeneralCommand.Write_Attributes_Undivided: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, direction=Direction.Client_to_Server
+        schema={"attributes": t.List[Attribute]},
+        direction=Direction.Client_to_Server,
+        response_command_ids=(
+            GeneralCommand.Write_Attributes_rsp,
+            GeneralCommand.Default_Response,
+        ),
     ),
     GeneralCommand.Write_Attributes_rsp: ZCLCommandDef(
         schema={"status_records": WriteAttributesResponse},
@@ -1361,6 +1383,10 @@ GENERAL_COMMANDS = COMMANDS = {
     GeneralCommand.Configure_Reporting: ZCLCommandDef(
         schema={"config_records": t.List[AttributeReportingConfig]},
         direction=Direction.Client_to_Server,
+        response_command_ids=(
+            GeneralCommand.Configure_Reporting_rsp,
+            GeneralCommand.Default_Response,
+        ),
     ),
     GeneralCommand.Configure_Reporting_rsp: ZCLCommandDef(
         schema={"status_records": ConfigureReportingResponse},
@@ -1369,6 +1395,10 @@ GENERAL_COMMANDS = COMMANDS = {
     GeneralCommand.Read_Reporting_Configuration: ZCLCommandDef(
         schema={"attribute_records": t.List[ReadReportingConfigRecord]},
         direction=Direction.Client_to_Server,
+        response_command_ids=(
+            GeneralCommand.Read_Reporting_Configuration_rsp,
+            GeneralCommand.Default_Response,
+        ),
     ),
     GeneralCommand.Read_Reporting_Configuration_rsp: ZCLCommandDef(
         schema={"attribute_configs": t.List[AttributeReportingConfigWithStatus]},
@@ -1385,6 +1415,10 @@ GENERAL_COMMANDS = COMMANDS = {
     GeneralCommand.Discover_Attributes: ZCLCommandDef(
         schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
         direction=Direction.Client_to_Server,
+        response_command_ids=(
+            GeneralCommand.Discover_Attributes_rsp,
+            GeneralCommand.Default_Response,
+        ),
     ),
     GeneralCommand.Discover_Attributes_rsp: ZCLCommandDef(
         schema={
@@ -1399,6 +1433,10 @@ GENERAL_COMMANDS = COMMANDS = {
     GeneralCommand.Discover_Commands_Received: ZCLCommandDef(
         schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
         direction=Direction.Client_to_Server,
+        response_command_ids=(
+            GeneralCommand.Discover_Commands_Received_rsp,
+            GeneralCommand.Default_Response,
+        ),
     ),
     GeneralCommand.Discover_Commands_Received_rsp: ZCLCommandDef(
         schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
@@ -1407,6 +1445,10 @@ GENERAL_COMMANDS = COMMANDS = {
     GeneralCommand.Discover_Commands_Generated: ZCLCommandDef(
         schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
         direction=Direction.Client_to_Server,
+        response_command_ids=(
+            GeneralCommand.Discover_Commands_Generated_rsp,
+            GeneralCommand.Default_Response,
+        ),
     ),
     GeneralCommand.Discover_Commands_Generated_rsp: ZCLCommandDef(
         schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
@@ -1415,6 +1457,10 @@ GENERAL_COMMANDS = COMMANDS = {
     GeneralCommand.Discover_Attribute_Extended: ZCLCommandDef(
         schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
         direction=Direction.Client_to_Server,
+        response_command_ids=(
+            GeneralCommand.Discover_Attribute_Extended_rsp,
+            GeneralCommand.Default_Response,
+        ),
     ),
     GeneralCommand.Discover_Attribute_Extended_rsp: ZCLCommandDef(
         schema={
