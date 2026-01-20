@@ -113,6 +113,8 @@ class AttributeCache:
     def __contains__(self, key: int) -> bool:
         try:
             self[key]
+        except UnsupportedAttribute:
+            return False
         except KeyError:
             return False
         else:
