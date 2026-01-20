@@ -1373,6 +1373,21 @@ async def test_attribute_reads_persist(tmp_path) -> None:
 async def test_attribute_reports_persist(tmp_path) -> None:
     """Test that attribute reports are persisted to the database."""
 
+    class CustomBasicCluster(CustomCluster, Basic):
+        class AttributeDefs(Basic.AttributeDefs):
+            # This attribute intentionally collides with `model`
+            custom_attr = ZCLAttributeDef(
+                id=0x0004, type=t.uint8_t, manufacturer_code=0x1234
+            )
+
+    (
+        QuirkBuilder(
+            "some manufacturer", "some model", registry=zigpy.quirks.DEVICE_REGISTRY
+        )
+        .replaces(CustomBasicCluster, endpoint_id=1)
+        .add_to_registry()
+    )
+
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
 
@@ -1385,14 +1400,22 @@ async def test_attribute_reports_persist(tmp_path) -> None:
     ep.device_type = profiles.zha.DeviceType.PUMP
 
     basic = ep.add_input_cluster(Basic.cluster_id)
-    app.device_initialized(dev)
+    basic.update_attribute(Basic.AttributeDefs.model, "some model")
+    basic.update_attribute(Basic.AttributeDefs.manufacturer, "some manufacturer")
+
+    await dev.initialize()
+
+    dev = app.get_device(ieee=dev.ieee)
+    assert isinstance(dev.endpoints[1].basic, CustomBasicCluster)
 
     await mock_attribute_report(
-        basic,
-        {
-            Basic.AttributeDefs.model: "some model",
-            Basic.AttributeDefs.manufacturer: "some manufacturer",
-        },
+        dev.endpoints[1].basic,
+        {CustomBasicCluster.AttributeDefs.product_label: "some label"},
+    )
+
+    await mock_attribute_report(
+        dev.endpoints[1].basic,
+        {CustomBasicCluster.AttributeDefs.custom_attr: 0xAB},
     )
 
     await app.shutdown()
@@ -1402,19 +1425,40 @@ async def test_attribute_reports_persist(tmp_path) -> None:
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
 
     assert (
-        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.model)
-        == "some model"
+        dev2.endpoints[1].basic.get_cached_value(
+            CustomBasicCluster.AttributeDefs.product_label
+        )
+        == "some label"
     )
+
     assert (
-        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.manufacturer)
-        == "some manufacturer"
+        dev2.endpoints[1].basic.get_cached_value(
+            CustomBasicCluster.AttributeDefs.custom_attr
+        )
+        == 0xAB
     )
 
     await app2.shutdown()
 
 
+@patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_attribute_writes_persist(tmp_path) -> None:
-    """Test that attribute reports are persisted to the database."""
+    """Test that attribute writes are persisted to the database."""
+
+    class CustomBasicCluster(CustomCluster, Basic):
+        class AttributeDefs(Basic.AttributeDefs):
+            # This attribute intentionally collides with `model`
+            custom_attr = ZCLAttributeDef(
+                id=0x0004, type=t.uint8_t, manufacturer_code=0x1234
+            )
+
+    (
+        QuirkBuilder(
+            "some manufacturer", "some model", registry=zigpy.quirks.DEVICE_REGISTRY
+        )
+        .replaces(CustomBasicCluster, endpoint_id=1)
+        .add_to_registry()
+    )
 
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
@@ -1428,21 +1472,27 @@ async def test_attribute_writes_persist(tmp_path) -> None:
     ep.device_type = profiles.zha.DeviceType.PUMP
 
     basic = ep.add_input_cluster(Basic.cluster_id)
-    app.device_initialized(dev)
+    basic.update_attribute(Basic.AttributeDefs.model, "some model")
+    basic.update_attribute(Basic.AttributeDefs.manufacturer, "some manufacturer")
+
+    await dev.initialize()
+
+    dev = app.get_device(ieee=dev.ieee)
+    assert isinstance(dev.endpoints[1].basic, CustomBasicCluster)
 
     with mock_attribute_writes(
-        basic,
+        dev.endpoints[1].basic,
         {
-            Basic.AttributeDefs.model: ZCLStatus.SUCCESS,
-            Basic.AttributeDefs.manufacturer: ZCLStatus.SUCCESS,
-            Basic.AttributeDefs.serial_number: ZCLStatus.UNSUPPORTED_ATTRIBUTE,
+            CustomBasicCluster.AttributeDefs.product_label: ZCLStatus.SUCCESS,
+            CustomBasicCluster.AttributeDefs.serial_number: ZCLStatus.UNSUPPORTED_ATTRIBUTE,
+            CustomBasicCluster.AttributeDefs.custom_attr: ZCLStatus.SUCCESS,
         },
     ):
-        await basic.write_attributes(
+        await dev.endpoints[1].basic.write_attributes(
             {
-                Basic.AttributeDefs.model: "some model",
-                Basic.AttributeDefs.manufacturer: "some manufacturer",
-                Basic.AttributeDefs.serial_number: "some serial",
+                CustomBasicCluster.AttributeDefs.product_label: "some label",
+                CustomBasicCluster.AttributeDefs.serial_number: "some serial",
+                CustomBasicCluster.AttributeDefs.custom_attr: 0xAB,
             }
         )
 
@@ -1453,15 +1503,22 @@ async def test_attribute_writes_persist(tmp_path) -> None:
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
 
     assert (
-        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.model)
-        == "some model"
-    )
-    assert (
-        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.manufacturer)
-        == "some manufacturer"
+        dev2.endpoints[1].basic.get_cached_value(
+            CustomBasicCluster.AttributeDefs.product_label
+        )
+        == "some label"
     )
 
     with pytest.raises(UnsupportedAttribute):
-        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.serial_number)
+        dev2.endpoints[1].basic.get_cached_value(
+            CustomBasicCluster.AttributeDefs.serial_number
+        )
+
+    assert (
+        dev2.endpoints[1].basic.get_cached_value(
+            CustomBasicCluster.AttributeDefs.custom_attr
+        )
+        == 0xAB
+    )
 
     await app2.shutdown()
