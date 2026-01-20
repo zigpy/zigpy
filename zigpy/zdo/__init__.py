@@ -19,13 +19,6 @@ ZDO_ENDPOINT = 0
 class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
     """The ZDO endpoint of a device"""
 
-    class LeaveOptions(t.bitmap8):
-        """ZDO Mgmt_Leave_req Options."""
-
-        NONE = 0
-        RemoveChildren = 1 << 6
-        Rejoin = 1 << 7
-
     def __init__(self, device):
         self._device = device
         self._listeners = {}

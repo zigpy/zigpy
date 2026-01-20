@@ -19,6 +19,7 @@ import warnings
 from cryptography.exceptions import InvalidTag
 
 from zigpy import zdo
+from zigpy.zdo.commands import NodeDescRsp, NodeDescReq
 from zigpy.const import (
     APS_REPLY_TIMEOUT,
     APS_REPLY_TIMEOUT_EXTENDED,
@@ -1059,14 +1060,17 @@ class ZigbeeDevice(BaseDevice):
     async def get_node_descriptor(self) -> zdo_t.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
 
-        status, _, node_desc = await self.zdo.Node_Desc_req(self.nwk)
+        rsp = await self.send_zdo_command(
+            NodeDescReq(nwk_addr_of_interest=self.nwk),
+            response_type=NodeDescRsp,
+        )
 
-        if status != zdo_t.Status.SUCCESS:
+        if rsp.status != zdo_t.Status.SUCCESS:
             raise zigpy.exceptions.InvalidResponse(
-                f"Requesting Node Descriptor failed: {status}"
+                f"Requesting Node Descriptor failed: {rsp.status}"
             )
 
-        self.node_desc = node_desc
+        self.node_desc = rsp.node_descriptor
         self.info("Got Node Descriptor: %s", node_desc)
 
         return node_desc
@@ -1203,16 +1207,19 @@ class ZigbeeDevice(BaseDevice):
         else:
             self.info("Discovering endpoints")
 
-            status, _, endpoints = await self.zdo.Active_EP_req(self.nwk)
+            rsp = await self.send_zdo_command(
+                ActiveEpReq(nwk_addr_of_interest=self.nwk),
+                response_type=ActiveEpRsp,
+            )
 
-            if status != zdo_t.Status.SUCCESS:
+            if rsp.status != zdo_t.Status.SUCCESS:
                 raise zigpy.exceptions.InvalidResponse(
-                    f"Endpoint request failed: {status}"
+                    f"Endpoint request failed: {rsp.status}"
                 )
 
-            self.info("Discovered endpoints: %s", endpoints)
+            self.info("Discovered endpoints: %s", rsp.active_ep_list)
 
-            for endpoint_id in endpoints:
+            for endpoint_id in rsp.active_ep_list:
                 if endpoint_id != 0:
                     self.add_endpoint(endpoint_id)
 
@@ -1314,6 +1321,23 @@ class ZigbeeDevice(BaseDevice):
     async def remove_from_group(self, grp_id: int) -> None:
         for ep in self.non_zdo_endpoints:
             await ep.remove_from_group(grp_id)
+
+    async def send_zdo_command[
+        T: ZDOCommand
+    ](self, command: ZDOCommand, response_type: type[T], **kwargs) -> T:
+        """Send a ZDO command and wait for its response."""
+        tsn = self.get_sequence()
+        response = await self.request(
+            profile=0x0000,
+            cluster=command.command_id,
+            src_ep=zdo.ZDO_ENDPOINT,
+            dst_ep=zdo.ZDO_ENDPOINT,
+            sequence=tsn,
+            data=t.uint8_t(tsn).serialize() + command.serialize(),
+            **kwargs,
+        )
+
+        return response
 
     async def request(
         self,
