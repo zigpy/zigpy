@@ -26,7 +26,7 @@ from zigpy.const import (
     SIG_SKIP_CONFIG,
 )
 import zigpy.profiles.zha
-from zigpy.quirks import _DEVICE_REGISTRY, BaseCustomDevice, CustomCluster, FilterType
+from zigpy.quirks import DEVICE_REGISTRY, BaseCustomDevice, CustomCluster, FilterType
 from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2.homeassistant import EntityPlatform, EntityType
 from zigpy.quirks.v2.homeassistant.binary_sensor import BinarySensorDeviceClass
@@ -606,7 +606,7 @@ class QuirkBuilder:
         self,
         manufacturer: str | None = None,
         model: str | None = None,
-        registry: DeviceRegistry = _DEVICE_REGISTRY,
+        registry: DeviceRegistry | None = None,
     ) -> None:
         """Initialize the quirk builder."""
         if manufacturer and not model or model and not manufacturer:
@@ -614,7 +614,9 @@ class QuirkBuilder:
                 "manufacturer and model must be provided together or completely omitted."
             )
 
-        self.registry: DeviceRegistry = registry
+        self.registry: DeviceRegistry = (
+            registry if registry is not None else DEVICE_REGISTRY
+        )
         self.manufacturer_model_metadata: list[ManufacturerModelMetadata] = []
         self.friendly_name_metadata: FriendlyNameMetadata | None = None
         self.exposes_features: list[ExposesFeatureMetadata] = []
@@ -1367,7 +1369,7 @@ class QuirkBuilder:
 
 
 def add_to_registry_v2(
-    manufacturer: str, model: str, registry: DeviceRegistry = _DEVICE_REGISTRY
+    manufacturer: str, model: str, registry: DeviceRegistry = DEVICE_REGISTRY
 ) -> QuirkBuilder:
     """Add an entry to the registry."""
     _LOGGER.error(

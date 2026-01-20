@@ -30,7 +30,7 @@ if typing.TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-DEVICE_REGISTRY = _DEVICE_REGISTRY = DeviceRegistry()
+DEVICE_REGISTRY = DeviceRegistry()
 _uninitialized_device_message_handlers = []
 
 
@@ -39,7 +39,7 @@ def get_device(
 ) -> zigpy.device.Device:
     """Get a CustomDevice object, if one is available"""
     if registry is None:
-        return _DEVICE_REGISTRY.get_device(device)
+        return DEVICE_REGISTRY.get_device(device)
 
     return registry.get_device(device)
 
@@ -49,7 +49,7 @@ def get_quirk_list(
 ):
     """Get the Quirk list for a given manufacturer and model."""
     if registry is None:
-        return _DEVICE_REGISTRY.registry_v1[manufacturer][model]
+        return DEVICE_REGISTRY.registry_v1[manufacturer][model]
 
     return registry.registry_v1[manufacturer][model]
 
@@ -143,7 +143,7 @@ class CustomDevice(BaseCustomDevice):
 
     def __init_subclass__(cls) -> None:
         if getattr(cls, "signature", None) is not None:
-            _DEVICE_REGISTRY.add_to_registry(cls)
+            DEVICE_REGISTRY.add_to_registry(cls)
 
 
 class CustomEndpoint(zigpy.endpoint.Endpoint):

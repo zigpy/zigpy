@@ -29,14 +29,15 @@ from zigpy.const import SIG_ENDPOINTS, SIG_MANUFACTURER, SIG_MODEL
 from zigpy.device import Device, Status
 import zigpy.endpoint
 import zigpy.ota
-from zigpy.quirks import CustomDevice
+import zigpy.quirks
+from zigpy.quirks import CustomCluster, CustomDevice
 from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types as t
 import zigpy.zcl
 from zigpy.zcl import UnsupportedAttribute
 from zigpy.zcl.clusters.general import Basic, Ota
-from zigpy.zcl.foundation import Status as ZCLStatus
+from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
 
 
@@ -1285,8 +1286,24 @@ async def test_appdb_complex_quirk_matching(tmp_path) -> None:
     await app2.shutdown()
 
 
+@patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_attribute_reads_persist(tmp_path) -> None:
     """Test that attribute reads are persisted to the database."""
+
+    class CustomBasicCluster(CustomCluster, Basic):
+        class AttributeDefs(Basic.AttributeDefs):
+            # This attribute intentionally collides with `model`
+            custom_attr = ZCLAttributeDef(
+                id=0x0004, type=t.uint8_t, manufacturer_code=0x1234
+            )
+
+    (
+        QuirkBuilder(
+            "some manufacturer", "some model", registry=zigpy.quirks.DEVICE_REGISTRY
+        )
+        .replaces(CustomBasicCluster, endpoint_id=1)
+        .add_to_registry()
+    )
 
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
@@ -1300,21 +1317,27 @@ async def test_attribute_reads_persist(tmp_path) -> None:
     ep.device_type = profiles.zha.DeviceType.PUMP
 
     basic = ep.add_input_cluster(Basic.cluster_id)
-    app.device_initialized(dev)
+    basic.update_attribute(Basic.AttributeDefs.model, "some model")
+    basic.update_attribute(Basic.AttributeDefs.manufacturer, "some manufacturer")
+
+    await dev.initialize()
+
+    dev = app.get_device(ieee=dev.ieee)
+    assert isinstance(dev.endpoints[1].basic, CustomBasicCluster)
 
     with mock_attribute_reads(
-        basic,
+        dev.endpoints[1].basic,
         {
-            Basic.AttributeDefs.model: "some model",
-            Basic.AttributeDefs.manufacturer: "some manufacturer",
-            Basic.AttributeDefs.serial_number: ZCLStatus.UNSUPPORTED_ATTRIBUTE,
+            CustomBasicCluster.AttributeDefs.product_label: "some label",
+            CustomBasicCluster.AttributeDefs.serial_number: ZCLStatus.UNSUPPORTED_ATTRIBUTE,
+            CustomBasicCluster.AttributeDefs.custom_attr: 0xAB,
         },
     ):
-        await basic.read_attributes(
+        await dev.endpoints[1].basic.read_attributes(
             [
-                Basic.AttributeDefs.model,
-                Basic.AttributeDefs.manufacturer,
-                Basic.AttributeDefs.serial_number,
+                CustomBasicCluster.AttributeDefs.product_label,
+                CustomBasicCluster.AttributeDefs.serial_number,
+                CustomBasicCluster.AttributeDefs.custom_attr,
             ]
         )
 
@@ -1325,20 +1348,28 @@ async def test_attribute_reads_persist(tmp_path) -> None:
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
 
     assert (
-        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.model)
-        == "some model"
-    )
-    assert (
-        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.manufacturer)
-        == "some manufacturer"
+        dev2.endpoints[1].basic.get_cached_value(
+            CustomBasicCluster.AttributeDefs.product_label
+        )
+        == "some label"
     )
 
     with pytest.raises(UnsupportedAttribute):
-        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.serial_number)
+        dev2.endpoints[1].basic.get_cached_value(
+            CustomBasicCluster.AttributeDefs.serial_number
+        )
+
+    assert (
+        dev2.endpoints[1].basic.get_cached_value(
+            CustomBasicCluster.AttributeDefs.custom_attr
+        )
+        == 0xAB
+    )
 
     await app2.shutdown()
 
 
+@patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_attribute_reports_persist(tmp_path) -> None:
     """Test that attribute reports are persisted to the database."""
 

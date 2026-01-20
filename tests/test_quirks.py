@@ -43,9 +43,9 @@ def test_registry():
     class TestDevice(zigpy.quirks.CustomDevice):
         signature = {SIG_MODEL: "model"}
 
-    assert TestDevice in zigpy.quirks._DEVICE_REGISTRY
-    assert zigpy.quirks._DEVICE_REGISTRY.remove(TestDevice) is None  # :-/
-    assert TestDevice not in zigpy.quirks._DEVICE_REGISTRY
+    assert TestDevice in zigpy.quirks.DEVICE_REGISTRY
+    assert zigpy.quirks.DEVICE_REGISTRY.remove(TestDevice) is None  # :-/
+    assert TestDevice not in zigpy.quirks.DEVICE_REGISTRY
 
 
 @pytest.fixture
@@ -182,7 +182,7 @@ def test_custom_devices():
         return False
 
     # Validate that all CustomDevices look sane
-    reg = zigpy.quirks._DEVICE_REGISTRY.registry_v1
+    reg = zigpy.quirks.DEVICE_REGISTRY.registry_v1
     candidates = list(
         itertools.chain(*itertools.chain(*[m.values() for m in reg.values()]))
     )
@@ -298,8 +298,8 @@ def test_custom_device(app_mock):
     test_device.add_endpoint(3)
     assert isinstance(test_device[3], zigpy.endpoint.Endpoint)
 
-    assert zigpy.quirks._DEVICE_REGISTRY.remove(Device) is None  # :-/
-    assert Device not in zigpy.quirks._DEVICE_REGISTRY
+    assert zigpy.quirks.DEVICE_REGISTRY.remove(Device) is None  # :-/
+    assert Device not in zigpy.quirks.DEVICE_REGISTRY
 
 
 def test_custom_cluster_idx():

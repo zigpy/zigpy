@@ -789,12 +789,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 # Populate the device's manufacturer and model attributes
                 if (
                     cluster_id == Basic.cluster_id
-                    and attr_id == Basic.AttributeDefs.manufacturer.id
+                    and attr_def == Basic.AttributeDefs.manufacturer
                 ):
                     dev.manufacturer = decode_str_attribute(value)
                 elif (
                     cluster_id == Basic.cluster_id
-                    and attr_id == Basic.AttributeDefs.model.id
+                    and attr_def == Basic.AttributeDefs.model
                 ):
                     dev.model = decode_str_attribute(value)
 
