@@ -1303,8 +1303,14 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
 class IterableMemberMeta(type):
     def __iter__(cls) -> typing.Iterator[typing.Any]:
         for name in dir(cls):
-            if not name.startswith("_"):
-                yield getattr(cls, name)
+            if name.startswith("_"):
+                continue
+
+            value = getattr(cls, name)
+            if value is None:
+                continue
+
+            yield value
 
 
 class BaseCommandDefs(metaclass=IterableMemberMeta):

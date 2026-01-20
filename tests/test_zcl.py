@@ -1006,19 +1006,14 @@ async def test_configure_reporting_multiple_both_unsupp(cluster):
 
 def test_unsupported_attr_add(cluster):
     """Test adding unsupported attributes."""
-    from zigpy.zcl.clusters.general import Basic
+    assert not cluster.is_attribute_unsupported(Basic.AttributeDefs.manufacturer)
+    assert not cluster.is_attribute_unsupported(Basic.AttributeDefs.model)
 
-    manufacturer = Basic.AttributeDefs.manufacturer
-    model = Basic.AttributeDefs.model
+    cluster.add_unsupported_attribute(Basic.AttributeDefs.model.id)
+    assert cluster.is_attribute_unsupported(Basic.AttributeDefs.model)
 
-    assert not cluster._attr_cache.is_unsupported(manufacturer)
-    assert not cluster._attr_cache.is_unsupported(model)
-
-    cluster.add_unsupported_attribute(manufacturer.id)
-    assert cluster._attr_cache.is_unsupported(manufacturer)
-
-    cluster.add_unsupported_attribute("model")
-    assert cluster._attr_cache.is_unsupported(model)
+    cluster.add_unsupported_attribute("manufacturer")
+    assert cluster.is_attribute_unsupported(Basic.AttributeDefs.manufacturer)
 
 
 def test_unsupported_attr_add_unknown_attribute(cluster):
@@ -1029,6 +1024,47 @@ def test_unsupported_attr_add_unknown_attribute(cluster):
 
     with pytest.raises(KeyError):
         cluster.add_unsupported_attribute(0xDEED)
+
+
+def test_attr_cache_deprecated_setter(cluster, caplog):
+    """Test deprecated _attr_cache setter logs warning and updates values."""
+    cluster._attr_cache = {0x0004: "test_manufacturer", 0x0005: "test_model"}
+
+    assert "Updating the attribute cache directly is deprecated" in caplog.text
+    assert cluster.get(Basic.AttributeDefs.manufacturer) == "test_manufacturer"
+    assert cluster.get(Basic.AttributeDefs.model) == "test_model"
+
+
+def test_attribute_def_removal():
+    """Test that setting an attribute definition to None removes it."""
+
+    class ParentCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "parent"
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            attr1 = foundation.ZCLAttributeDef(id=0x0001, type=t.uint8_t)
+            attr2 = foundation.ZCLAttributeDef(id=0x0002, type=t.uint8_t)
+
+    class ChildCluster(ParentCluster):
+        class AttributeDefs(ParentCluster.AttributeDefs):
+            attr1 = None  # Remove attr1
+
+    assert ParentCluster.AttributeDefs.attr1 is not None
+    assert ParentCluster.AttributeDefs.attr2 is not None
+    assert ChildCluster.AttributeDefs.attr1 is None
+    assert ChildCluster.AttributeDefs.attr2 is not None
+
+
+async def test_read_attributes_duplicate(cluster):
+    """Test that reading the same attribute twice raises ValueError."""
+    with pytest.raises(ValueError, match="Cannot read the same attribute twice"):
+        await cluster.read_attributes(
+            [
+                Basic.AttributeDefs.manufacturer,
+                Basic.AttributeDefs.manufacturer,
+            ]
+        )
 
 
 def test_zcl_command_duplicate_name_prevention():
@@ -1598,3 +1634,22 @@ async def test_read_attributes_complex() -> None:
         call([0x0003, 0x0004], manufacturer=0x5678),
         call([0x0001, 0x0002], manufacturer=0x1234),
     ]
+
+
+async def test_command_explicit_manufacturer():
+    """Test that explicit manufacturer= overrides command definition's manufacturer_code."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+
+        class ServerCommandDefs(zcl.foundation.BaseCommandDefs):
+            test_cmd = foundation.ZCLCommandDef(id=0x00, schema={})
+
+    endpoint = MagicMock(spec=zigpy.endpoint.Endpoint)
+    cluster = TestCluster(endpoint)
+
+    with patch.object(cluster, "request", autospec=True) as mock_request:
+        await cluster.command(0x00, manufacturer=0x9999)
+
+    assert mock_request.mock_calls[0].kwargs["manufacturer"] == 0x9999

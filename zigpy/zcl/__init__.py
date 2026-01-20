@@ -339,9 +339,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             f" attribute name {name!r}"
                         )
 
-                if definition is None:
-                    delattr(defs, name)
-
         # Compile the schemas
         for defs in (cls.ServerCommandDefs, cls.ClientCommandDefs):
             for name in dir(defs):
@@ -398,7 +395,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def _attr_cache(self, new_value: dict[str, Any]) -> None:
         """Deprecated accessor to update the attribute cache directly."""
         LOGGER.warning(
-            "Updating the attribute cache directly is deprecated and will stop working in the near future. Please contribute your custom quirk to https://github.com/zigpy/zha-device-handlers/ or update your code.",
+            "Updating the attribute cache directly is deprecated and will stop working"
+            " in the near future. Please contribute your custom quirk to"
+            " https://github.com/zigpy/zha-device-handlers/ or update your code.",
             stacklevel=2,
         )
 
@@ -458,20 +457,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 f" not {name_or_id!r} ({type(name_or_id)!r}"
             )
 
-    @property
-    def unsupported_attributes(self) -> set[str | int]:
-        """Return a set of unsupported attribute names and IDs."""
-        results: set[int | str] = set()
-
-        for attr_id, manuf_code in self._attr_cache._unsupported:
-            attr_def = self.find_attribute(attr_id, manufacturer_code=manuf_code)
-            results.add(attr_def.id)
-            results.add(attr_def.name)
-
-        return results
-
-    def is_attribute_unsupported(self, attr_def: foundation.ZCLAttributeDef) -> bool:
+    def is_attribute_unsupported(
+        self, attr: int | str | foundation.ZCLAttributeDef
+    ) -> bool:
         """Return whether an attribute is unsupported."""
+        attr_def = self.find_attribute(attr)
         return self._attr_cache.is_unsupported(attr_def)
 
     @classmethod
@@ -918,31 +908,28 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     attr_def = potential_attributes[record.attrid]
 
                     if record.status == foundation.Status.SUCCESS:
-                        if record.value.value is None:
-                            success[attribute_map[attr_def]] = None
-                        else:
-                            value = attr_def.type(record.value.value)
-                            success[attribute_map[attr_def]] = value
+                        value = attr_def.type(record.value.value)
+                        success[attribute_map[attr_def]] = value
 
-                            # Call _update_attribute for backwards compat with quirks,
-                            # but suppress events since we emit AttributeReadEvent below
-                            with suppress_events():
-                                self._update_attribute(attr_def.id, value)
+                        # Call _update_attribute for backwards compat with quirks,
+                        # but suppress events since we emit AttributeReadEvent below
+                        with suppress_events():
+                            self._update_attribute(attr_def.id, value)
 
-                            self.emit(
-                                AttributeReadEvent.event_type,
-                                AttributeReadEvent(
-                                    device_ieee=str(self.endpoint.device.ieee),
-                                    endpoint_id=self.endpoint.endpoint_id,
-                                    cluster_type=self._type,
-                                    cluster_id=self.cluster_id,
-                                    attribute_name=attr_def.name,
-                                    attribute_id=attr_def.id,
-                                    manufacturer_code=attr_def.manufacturer_code,
-                                    raw_value=record.value.value,
-                                    value=value,
-                                ),
-                            )
+                        self.emit(
+                            AttributeReadEvent.event_type,
+                            AttributeReadEvent(
+                                device_ieee=str(self.endpoint.device.ieee),
+                                endpoint_id=self.endpoint.endpoint_id,
+                                cluster_type=self._type,
+                                cluster_id=self.cluster_id,
+                                attribute_name=attr_def.name,
+                                attribute_id=attr_def.id,
+                                manufacturer_code=attr_def.manufacturer_code,
+                                raw_value=record.value.value,
+                                value=value,
+                            ),
+                        )
                     else:
                         if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
                             self._attr_cache.mark_unsupported(attr_def)
@@ -989,11 +976,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 # Legacy `listener_event`, will be removed in the near future
                 self.listener_event(
-                    "attribute_updated",
-                    attrid,
-                    value,
-                    datetime.now(UTC),
-                    deprecation_message="`attribute_updated` is deprecated, please use attribute events",
+                    "attribute_updated", attrid, value, datetime.now(UTC)
                 )
 
             return
@@ -1029,13 +1012,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             )
 
             # Legacy `listener_event`, will be removed in the near future
-            self.listener_event(
-                "attribute_updated",
-                attrid,
-                value,
-                datetime.now(UTC),
-                deprecation_message="`attribute_updated` is deprecated, please use attribute events",
-            )
+            self.listener_event("attribute_updated", attrid, value, datetime.now(UTC))
 
     async def write_attributes(
         self,
