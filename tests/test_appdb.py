@@ -12,7 +12,14 @@ import freezegun
 import pytest
 
 from tests.async_mock import AsyncMock, MagicMock, call, patch
-from tests.conftest import make_app, make_ieee, make_node_desc
+from tests.conftest import (
+    make_app,
+    make_ieee,
+    make_node_desc,
+    mock_attribute_reads,
+    mock_attribute_report,
+    mock_attribute_writes,
+)
 from tests.test_backups import backup_factory  # noqa: F401
 from zigpy import profiles
 import zigpy.appdb
@@ -27,6 +34,7 @@ from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types as t
 import zigpy.zcl
+from zigpy.zcl import UnsupportedAttribute
 from zigpy.zcl.clusters.general import Basic, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
@@ -1273,5 +1281,156 @@ async def test_appdb_complex_quirk_matching(tmp_path) -> None:
     # Only the second quirk should match
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
     assert dev2.quirk_metadata == quirk2
+
+    await app2.shutdown()
+
+
+async def test_attribute_reads_persist(tmp_path) -> None:
+    """Test that attribute reads are persisted to the database."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    app.device_initialized(dev)
+
+    with mock_attribute_reads(
+        basic,
+        {
+            Basic.AttributeDefs.model: "some model",
+            Basic.AttributeDefs.manufacturer: "some manufacturer",
+            Basic.AttributeDefs.serial_number: ZCLStatus.UNSUPPORTED_ATTRIBUTE,
+        },
+    ):
+        await basic.read_attributes(
+            [
+                Basic.AttributeDefs.model,
+                Basic.AttributeDefs.manufacturer,
+                Basic.AttributeDefs.serial_number,
+            ]
+        )
+
+    await app.shutdown()
+
+    # Load it back from disk
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+
+    assert (
+        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.model)
+        == "some model"
+    )
+    assert (
+        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.manufacturer)
+        == "some manufacturer"
+    )
+
+    with pytest.raises(UnsupportedAttribute):
+        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.serial_number)
+
+    await app2.shutdown()
+
+
+async def test_attribute_reports_persist(tmp_path) -> None:
+    """Test that attribute reports are persisted to the database."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    app.device_initialized(dev)
+
+    await mock_attribute_report(
+        basic,
+        {
+            Basic.AttributeDefs.model: "some model",
+            Basic.AttributeDefs.manufacturer: "some manufacturer",
+        },
+    )
+
+    await app.shutdown()
+
+    # Load it back from disk
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+
+    assert (
+        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.model)
+        == "some model"
+    )
+    assert (
+        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.manufacturer)
+        == "some manufacturer"
+    )
+
+    await app2.shutdown()
+
+
+async def test_attribute_writes_persist(tmp_path) -> None:
+    """Test that attribute reports are persisted to the database."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    app.device_initialized(dev)
+
+    with mock_attribute_writes(
+        basic,
+        {
+            Basic.AttributeDefs.model: ZCLStatus.SUCCESS,
+            Basic.AttributeDefs.manufacturer: ZCLStatus.SUCCESS,
+            Basic.AttributeDefs.serial_number: ZCLStatus.UNSUPPORTED_ATTRIBUTE,
+        },
+    ):
+        await basic.write_attributes(
+            {
+                Basic.AttributeDefs.model: "some model",
+                Basic.AttributeDefs.manufacturer: "some manufacturer",
+                Basic.AttributeDefs.serial_number: "some serial",
+            }
+        )
+
+    await app.shutdown()
+
+    # Load it back from disk
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+
+    assert (
+        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.model)
+        == "some model"
+    )
+    assert (
+        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.manufacturer)
+        == "some manufacturer"
+    )
+
+    with pytest.raises(UnsupportedAttribute):
+        dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.serial_number)
 
     await app2.shutdown()

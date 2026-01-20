@@ -1126,6 +1126,20 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     self._attr_cache.set_value(
                         attr_def, attribute_values[record.attrid]
                     )
+                elif record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
+                    self._attr_cache.mark_unsupported(attr_def)
+                    self.emit(
+                        AttributeUnsupportedEvent.event_type,
+                        AttributeUnsupportedEvent(
+                            device_ieee=str(self.endpoint.device.ieee),
+                            endpoint_id=self.endpoint.endpoint_id,
+                            cluster_type=self._type,
+                            cluster_id=self.cluster_id,
+                            attribute_name=attr_def.name,
+                            attribute_id=attr_def.id,
+                            manufacturer_code=manufacturer_code,
+                        ),
+                    )
 
                 self.emit(
                     AttributeWrittenEvent.event_type,
@@ -1371,6 +1385,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             return functools.partial(self.command, cmd.id)
 
         raise AttributeError(f"No such command name: {name}")
+
+    def get_cached_value(self, key: int | str | foundation.ZCLAttributeDef) -> Any:
+        """Get cached attribute."""
+        attr_def = self.find_attribute(key)
+        return self._attr_cache.get_value(attr_def)
 
     def get(self, key: int | str, default: Any | None = None) -> Any:
         """Get cached attribute."""
