@@ -908,7 +908,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     attr_def = potential_attributes[record.attrid]
 
                     if record.status == foundation.Status.SUCCESS:
-                        value = attr_def.type(record.value.value)
+                        if record.value.value is None:
+                            # TODO: remove this workaround when `LocalDataCluster` and
+                            # `_VALID_ATTRIBUTES` are removed from quirks. There is no
+                            # way for `value` to actually be `None` when read from a
+                            # real device.
+                            value = record.value.value
+                        else:
+                            value = attr_def.type(record.value.value)
+
                         success[attribute_map[attr_def]] = value
 
                         # Call _update_attribute for backwards compat with quirks,
