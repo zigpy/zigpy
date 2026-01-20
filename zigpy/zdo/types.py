@@ -330,14 +330,6 @@ class Neighbor(t.Struct):
     Relationship: Final = Relationship
 
 
-class Neighbors(t.Struct):
-    """Mgmt_Lqi_rsp"""
-
-    Entries: t.uint8_t
-    StartIndex: t.uint8_t
-    NeighborTableList: t.LVList[Neighbor, t.uint8_t]
-
-
 class RouteStatus(t.enum3):
     """Route descriptor route status."""
 
@@ -371,30 +363,8 @@ class Route(t.Struct):
     NextHop: t.NWK
 
 
-class Routes(t.Struct):
-    Entries: t.uint8_t
-    StartIndex: t.uint8_t
-    RoutingTableList: t.LVList[Route, t.uint8_t]
-
-
 CHANNEL_CHANGE_REQ = 0xFE
 CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ = 0xFF
-
-
-class NwkUpdate(t.Struct):
-    CHANNEL_CHANGE_REQ = CHANNEL_CHANGE_REQ
-    CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ = CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ
-
-    ScanChannels: t.Channels
-    ScanDuration: t.uint8_t
-    ScanCount: t.uint8_t = t.StructField(requires=lambda s: s.ScanDuration <= 0x05)
-    nwkUpdateId: t.uint8_t = t.StructField(  # noqa: N815
-        requires=lambda s: s.ScanDuration
-        in (CHANNEL_CHANGE_REQ, CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ)
-    )
-    nwkManagerAddr: t.NWK = t.StructField(  # noqa: N815
-        requires=lambda s: s.ScanDuration == CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ
-    )
 
 
 class Binding(t.Struct):
