@@ -57,6 +57,9 @@ CREATE TABLE attributes_cache_v14 (
     cluster_id INTEGER NOT NULL,
     attr_id INTEGER NOT NULL,
     manufacturer_code INTEGER,
+    -- NULL is not considered equal to itself in unique indexes, so we need a non-NULL
+    -- column to use in the unique index
+    manufacturer_code_idx INTEGER NOT NULL GENERATED ALWAYS AS (IFNULL(manufacturer_code, -2)) STORED,
     status INTEGER,
     value BLOB,
     last_updated REAL NOT NULL,
@@ -69,7 +72,7 @@ CREATE TABLE attributes_cache_v14 (
 );
 
 CREATE UNIQUE INDEX attributes_cache_idx_v14
-    ON attributes_cache_v14(ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code);
+    ON attributes_cache_v14(ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx);
 
 
 -- neighbors

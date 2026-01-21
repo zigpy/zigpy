@@ -1522,3 +1522,43 @@ async def test_attribute_writes_persist(tmp_path) -> None:
     )
 
     await app2.shutdown()
+
+
+async def test_attribute_cache_null_manufacturer_code_uniqueness(tmp_path):
+    """Test that NULL manufacturer_code is treated as unique in the attribute cache."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    dev = app.add_device(ieee=ieee, nwk=0x1234)
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = profiles.zha.PROFILE_ID
+    ep.device_type = profiles.zha.DeviceType.ON_OFF_SWITCH
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    app.device_initialized(dev)
+
+    # Write an attribute with NULL manufacturer_code twice
+    basic.update_attribute(Basic.AttributeDefs.model, "Model 1")
+    basic.update_attribute(Basic.AttributeDefs.model, "Model 2")
+
+    await app.shutdown()
+
+    # Verify there is only one row in the database
+    async with aiosqlite.connect(db) as conn:
+        cursor = await conn.execute(
+            f"SELECT COUNT(*) FROM attributes_cache{zigpy.appdb.DB_V} WHERE attr_id = :attr_id AND manufacturer_code IS NULL",
+            {"attr_id": Basic.AttributeDefs.model.id},
+        )
+        row = await cursor.fetchone()
+        assert row[0] == 1
+
+        # And the value is the latest one
+        cursor = await conn.execute(
+            f"SELECT value FROM attributes_cache{zigpy.appdb.DB_V} WHERE attr_id = :attr_id AND manufacturer_code IS NULL",
+            {"attr_id": Basic.AttributeDefs.model.id},
+        )
+        row = await cursor.fetchone()
+        assert row[0] == "Model 2"

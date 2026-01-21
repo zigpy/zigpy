@@ -314,8 +314,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _unsupported_attribute_added(
         self, event: AttributeUnsupportedEvent
     ) -> None:
-        q = f"""INSERT INTO attributes_cache{DB_V} VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :status, :value, :timestamp)
-                   ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code)
+        q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
+                   VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :status, :value, :timestamp)
+                   ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
                    DO UPDATE SET status=excluded.status, value=excluded.value, last_updated=excluded.last_updated"""
 
         await self.execute(
@@ -529,8 +530,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 manufacturer_code,
             ), cache_item in cluster._attr_cache._cache.items()
         ]
-        q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code)
+        q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
                     DO UPDATE SET status=excluded.status, value=excluded.value, last_updated=excluded.last_updated"""
         await self._db.executemany(q, clusters)
 
@@ -550,8 +552,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             for cluster in ep.clusters
             for (attrid, manufacturer_code) in cluster._attr_cache._unsupported
         ]
-        q = f"""INSERT INTO attributes_cache{DB_V} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code)
+        q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
                     DO NOTHING"""
         await self._db.executemany(q, clusters)
 
@@ -580,9 +583,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         await self.execute(
             f"""
-            INSERT INTO attributes_cache{DB_V}
+            INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
             VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :status, :value, :timestamp)
-                ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code) DO UPDATE
+                ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx) DO UPDATE
                 SET status=excluded.status, value=excluded.value, last_updated=excluded.last_updated
                 WHERE
                     value != excluded.value
@@ -1379,7 +1382,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 attrid,
             ) in cursor:
                 await self.execute(
-                    "INSERT INTO attributes_cache_v14 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO attributes_cache_v14 (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         ieee,
                         endpoint_id,
@@ -1407,7 +1410,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 # unsupported_attributes_v13 and attributes_cache_v13. The unsupported
                 # status (inserted first) should win over old cached values.
                 await self.execute(
-                    "INSERT OR IGNORE INTO attributes_cache_v14 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO attributes_cache_v14 (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         ieee,
                         endpoint_id,
