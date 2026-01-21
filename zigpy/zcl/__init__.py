@@ -758,8 +758,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     attr_name = attr_def.name
                     value = attr_def.type(attr.value.value)
 
-                # Call _update_attribute for backwards compatibility with quirks,
-                # but suppress events since we emit AttributeReportedEvent below
+                # We suppress events because we want to emit `AttributeReportedEvent`
+                # directly. `_update_attribute` will update the attribute cache but is
+                # structured to be called directly from quirks and will emit an
+                # `AttributeUpdatedEvent by default.
                 with suppress_events():
                     self._update_attribute(attr.attrid, value)
 
@@ -919,8 +921,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                         success[attribute_map[attr_def]] = value
 
-                        # Call _update_attribute for backwards compat with quirks,
-                        # but suppress events since we emit AttributeReadEvent below
+                        # We suppress events because we want to emit
+                        # `AttributeReadEvent` directly. `_update_attribute` will
+                        # update the attribute cache but is structured to be called
+                        # directly from quirks and will emit an `AttributeUpdatedEvent
                         with suppress_events():
                             self._update_attribute(attr_def.id, value)
 
