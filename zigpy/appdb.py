@@ -710,12 +710,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 dev = self._application.get_device(ieee)
 
                 LOGGER.debug(
-                    "%r Loading attribute ep=%d cluster_id=0x%04X attr_id=0x%04X value=%r",
-                    dev,
+                    "[0x%04x:%s:0x%04x] Loading attribute %s=%r status=%r mfg_code=%r",
+                    dev.nwk,
                     endpoint_id,
                     cluster_id,
-                    attr_id,
+                    (attr_id if isinstance(attr_id, str) else f"0x{attr_id:04x}"),
                     value,
+                    status,
+                    manufacturer_code,
                 )
 
                 # Some quirks create endpoints and clusters that do not exist
