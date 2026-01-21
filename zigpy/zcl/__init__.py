@@ -454,7 +454,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         else:
             raise TypeError(  # noqa: TRY004
                 f"Attribute must be a definition, string, or integer,"
-                f" not {name_or_id!r} ({type(name_or_id)!r}"
+                f" not {name_or_id!r} ({type(name_or_id)!r})"
             )
 
     def is_attribute_unsupported(
