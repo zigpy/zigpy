@@ -620,7 +620,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 AND cluster_type = :cluster_type
                 AND cluster_id = :cluster_id
                 AND attr_id = :attr_id
-                AND manufacturer_code IS :manufacturer_code
+                AND manufacturer_code IS NOT DISTINCT FROM :manufacturer_code
             """
 
         await self.execute(
