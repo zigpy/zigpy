@@ -235,7 +235,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         cluster.on_event(
             AttributeUnsupportedEvent.event_type, self.on_attribute_unsupported
         )
-        # cluster.on_event(AttributeReportingConfiguredEvent.event_type, self.on_attribute_reporting_configured)
         cluster.on_event(AttributeClearedEvent.event_type, self.on_attribute_cleared)
 
     def enqueue(self, cb_name: str, *args) -> None:
@@ -306,33 +305,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         DO UPDATE SET relays=excluded.relays WHERE relays != :relays"""
             await self.execute(q, {"ieee": ieee, "relays": relays.serialize()})
 
-        await self._db.commit()
-
-    def on_attribute_unsupported(self, event: AttributeUnsupportedEvent) -> None:
-        self.enqueue("_unsupported_attribute_added", event)
-
-    async def _unsupported_attribute_added(
-        self, event: AttributeUnsupportedEvent
-    ) -> None:
-        q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
-                   VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :status, :value, :timestamp)
-                   ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
-                   DO UPDATE SET status=excluded.status, value=excluded.value, last_updated=excluded.last_updated"""
-
-        await self.execute(
-            q,
-            {
-                "ieee": event.device_ieee,
-                "endpoint_id": event.endpoint_id,
-                "cluster_type": event.cluster_type,
-                "cluster_id": event.cluster_id,
-                "attr_id": event.attribute_id,
-                "manufacturer_code": event.manufacturer_code,
-                "status": Status.UNSUPPORTED_ATTRIBUTE,
-                "value": None,
-                "timestamp": datetime.now(UTC).timestamp(),
-            },
-        )
         await self._db.commit()
 
     def neighbors_updated(self, ieee: t.EUI64, neighbors: list[zdo_t.Neighbor]) -> None:
@@ -636,6 +608,33 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         await self._db.commit()
 
+    def on_attribute_unsupported(self, event: AttributeUnsupportedEvent) -> None:
+        self.enqueue("_unsupported_attribute_added", event)
+
+    async def _unsupported_attribute_added(
+        self, event: AttributeUnsupportedEvent
+    ) -> None:
+        q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
+                   VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :status, :value, :timestamp)
+                   ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
+                   DO UPDATE SET status=excluded.status, value=excluded.value, last_updated=excluded.last_updated"""
+
+        await self.execute(
+            q,
+            {
+                "ieee": event.device_ieee,
+                "endpoint_id": event.endpoint_id,
+                "cluster_type": event.cluster_type,
+                "cluster_id": event.cluster_id,
+                "attr_id": event.attribute_id,
+                "manufacturer_code": event.manufacturer_code,
+                "status": Status.UNSUPPORTED_ATTRIBUTE,
+                "value": None,
+                "timestamp": datetime.now(UTC).timestamp(),
+            },
+        )
+        await self._db.commit()
+
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
         self.enqueue("_network_backup_created", json.dumps(backup.as_dict()))
 
@@ -710,6 +709,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             ) in cursor:
                 dev = self._application.get_device(ieee)
 
+                LOGGER.debug(
+                    "%r Loading attribute ep=%d cluster_id=0x%04X attr_id=0x%04X value=%r",
+                    dev,
+                    endpoint_id,
+                    cluster_id,
+                    attr_id,
+                    value,
+                )
+
                 # Some quirks create endpoints and clusters that do not exist
                 if endpoint_id not in dev.endpoints:
                     continue
@@ -722,14 +730,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
 
                 if cluster_id not in clusters:
-                    LOGGER.debug(
-                        "Unable to find cluster %r for attribute %r=%r on endpoint %r for %r for data migration, skipping",
-                        cluster_id,
-                        attr_id,
-                        value,
-                        ep,
-                        dev,
-                    )
+                    LOGGER.debug("Unknown ZCL cluster, skipping")
                     continue
 
                 cluster = clusters[cluster_id]
@@ -747,13 +748,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                                 ),
                             )
                     except KeyError:
-                        LOGGER.debug(
-                            "Unable to find attribute %r=%r on cluster %r for %r for unsupported attribute, skipping",
-                            attr_id,
-                            value,
-                            cluster,
-                            dev,
-                        )
+                        LOGGER.debug("Unknown ZCL attribute, skipping")
                     continue
 
                 try:
@@ -766,13 +761,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         ),
                     )
                 except KeyError:
-                    LOGGER.debug(
-                        "Unknown ZCL attribute %r=%r on cluster %r for %r, storing in legacy cache",
-                        attr_id,
-                        value,
-                        cluster,
-                        dev,
-                    )
+                    LOGGER.debug("Unknown ZCL attribute, skipping")
                     cluster._attr_cache.set_legacy_value(
                         attr_id,
                         value,
@@ -784,15 +773,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     attr_def,
                     value,
                     last_updated=datetime.fromtimestamp(last_updated, UTC),
-                )
-
-                LOGGER.debug(
-                    "[0x%04x:%s:0x%04x] Attribute id: %s value: %s",
-                    dev.nwk,
-                    endpoint_id,
-                    cluster_id,
-                    attr_id,
-                    value,
                 )
 
                 # Populate the device's manufacturer and model attributes

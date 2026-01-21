@@ -913,7 +913,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             # `_VALID_ATTRIBUTES` are removed from quirks. There is no
                             # way for `value` to actually be `None` when read from a
                             # real device.
-                            value = record.value.value
+                            value = None
                         else:
                             value = attr_def.type(record.value.value)
 
