@@ -690,7 +690,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._register_device_listeners()
 
     async def _load_attributes(self) -> None:
-        async with self.execute(f"SELECT * FROM attributes_cache{DB_V}") as cursor:
+        async with self.execute(
+            f"""
+            SELECT ieee, endpoint_id, cluster_type, cluster_id, attr_id,
+                   manufacturer_code, status, value, last_updated
+            FROM attributes_cache{DB_V}
+            """
+        ) as cursor:
             async for (
                 ieee,
                 endpoint_id,
@@ -1427,7 +1433,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _run_data_migrations(self) -> None:
         """Run any data migrations needed after loading the database."""
         async with self.execute(
-            "SELECT * FROM attributes_cache_v14 WHERE manufacturer_code = :unmigrated",
+            """
+            SELECT ieee, endpoint_id, cluster_type, cluster_id, attr_id,
+                   manufacturer_code, status, value, last_updated
+            FROM attributes_cache_v14
+            WHERE manufacturer_code = :unmigrated
+            """,
             {"unmigrated": UNMIGRATED_MANUFACTURER_CODE},
         ) as cursor:
             async for (
