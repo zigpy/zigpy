@@ -807,14 +807,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             assert not isinstance(definition.manufacturer_code, UndefinedType)
             return definition.manufacturer_code
 
+        # In the future, we should migrate to explicit `manufacturer_code` for every
+        # attribute and command
         if 0xFC00 <= self.cluster_id <= 0xFFFF or definition.is_manufacturer_specific:
-            LOGGER.warning(
-                "Cluster %s uses deprecated is_manufacturer_specific without "
-                "explicit manufacturer_code. Please update to use "
-                "manufacturer_code=0x%04X in the definition.",
-                type(self).__name__,
-                self.endpoint.device.manufacturer_id or 0,
-            )
             return (
                 self.manufacturer_id_override
                 if self.manufacturer_id_override is not UNDEFINED
