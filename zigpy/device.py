@@ -92,6 +92,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.nwk: t.NWK = t.NWK(nwk)
         self.zdo: zdo.ZDO = zdo.ZDO(self)
         self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
+
+        # Persist the original signature for the device, before quirks are applied
+        self._original_signature: dict[str, Any] | None = None
+
         self.lqi: int | None = None
         self.rssi: int | None = None
         self.ota_in_progress: bool = False
@@ -134,10 +138,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 callback=self.poll_control_checkin_callback,
             )
         )
-
-        # Persist the original signature information for the device, before quirks are
-        # applied
-        self._original_signature: dict[str, Any] | None = None
 
     def create_task(
         self, target: Coroutine[Any, Any, _R], name: str | None = None
