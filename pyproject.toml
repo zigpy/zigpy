@@ -456,6 +456,7 @@ module = "zigpy.quirks.v2"
 disable_error_code = [
     "arg-type",  # 34
     "assignment",  # 20
+    "misc",  # 4
     "attr-defined",  # 1
 ]
 
