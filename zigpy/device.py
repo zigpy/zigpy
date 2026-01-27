@@ -988,7 +988,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self._original_signature
 
     @original_signature.setter
-    def original_signature(self, value: str | None) -> None:
+    def original_signature(self, value: dict[str, Any] | None) -> None:
         if self._original_signature is not None:
             return
 
