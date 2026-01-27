@@ -716,9 +716,9 @@ class QuirkBuilder:
 
         The custom device class must be a subclass of CustomDeviceV2.
         """
-        assert issubclass(
-            custom_device_class, CustomDeviceV2
-        ), f"{custom_device_class} is not a subclass of CustomDeviceV2"
+        assert issubclass(custom_device_class, CustomDeviceV2), (
+            f"{custom_device_class} is not a subclass of CustomDeviceV2"
+        )
         self.custom_device_class = custom_device_class
         return self
 

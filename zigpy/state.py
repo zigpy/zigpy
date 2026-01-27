@@ -189,7 +189,7 @@ class NetworkInfo(t.BaseDataclassMixin):
 
 
 @dataclasses.dataclass
-class Counter(t.BaseDataclassMixin):
+class Counter(t.BaseDataclassMixin):  # noqa: PLW1641
     """Ever increasing Counter."""
 
     name: str

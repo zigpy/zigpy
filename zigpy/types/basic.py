@@ -19,7 +19,7 @@ class Serializable(Protocol):
     def deserialize(cls, data: bytes) -> tuple[Self, bytes]: ...
 
 
-class Bits:
+class Bits:  # noqa: PLW1641
     def __init__(self, bits: list[int] | None = None) -> None:
         self._bits: list[int] = bits or []
 

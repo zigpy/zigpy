@@ -112,7 +112,7 @@ def cv_folder(value: str) -> pathlib.Path:
 
 def cv_ota_provider_name(name: str | None) -> type[zigpy.ota.providers.BaseOtaProvider]:
     """Validate OTA provider name."""
-    import zigpy.ota.providers
+    import zigpy.ota.providers  # noqa: PLC0415
 
     if name not in zigpy.ota.providers.OTA_PROVIDER_TYPES:
         raise vol.Invalid(f"Unknown OTA provider: {name!r}")

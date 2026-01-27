@@ -65,10 +65,10 @@ UNMIGRATED_MANUFACTURER_CODE = -1
 def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.ModuleType:
     """Loads an SQLite module with a library version matching the provided constraint."""
 
-    import sqlite3
+    import sqlite3  # noqa: PLC0415
 
     try:
-        import pysqlite3
+        import pysqlite3  # noqa: PLC0415
     except ImportError:
         pysqlite3 = None
 

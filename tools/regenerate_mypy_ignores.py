@@ -36,8 +36,7 @@ def parse_errors(lines: list[str]) -> dict[str, dict[str, int]]:
         if match:
             filepath, error_code = match.groups()
             module = filepath.replace("/", ".").replace(".py", "")
-            if module.endswith(".__init__"):
-                module = module[:-9]
+            module = module.removesuffix(".__init__")
             errors_by_module[module][error_code] += 1
 
     return dict(errors_by_module)
