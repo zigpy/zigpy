@@ -135,6 +135,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
         )
 
+        self._signature: dict[str, Any] | None = None
+
     def create_task(
         self, target: Coroutine[Any, Any, _R], name: str | None = None
     ) -> asyncio.Task[_R]:
@@ -978,6 +980,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def model(self, value) -> None:
         if isinstance(value, str):
             self._model = value
+
+    @property
+    def signature(self) -> dict[str, Any] | None:
+        return self._signature
+
+    @signature.setter
+    def signature(self, value: str | None) -> None:
+        if self._signature is not None:
+            raise AttributeError("Signature is already set and cannot be modified")
+
+        self._signature = value
 
     @property
     def skip_configuration(self) -> bool:
