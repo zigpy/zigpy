@@ -990,7 +990,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @original_signature.setter
     def original_signature(self, value: str | None) -> None:
         if self._original_signature is not None:
-            raise AttributeError("Signature is already set and cannot be modified")
+            return
 
         self._original_signature = value
 

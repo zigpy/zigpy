@@ -1576,6 +1576,46 @@ async def test_attribute_cache_null_manufacturer_code_uniqueness(tmp_path):
 @patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_device_signature_ignores_quirks(tmp_path) -> None:
     """Test that `device.original_signature` is populated before quirks modify the device."""
+
+    (
+        QuirkBuilder(
+            "some manufacturer", "some model", registry=zigpy.quirks.DEVICE_REGISTRY
+        )
+        .adds_endpoint(99)
+        .adds(Basic.cluster_id, endpoint_id=99)
+        .adds(Identify.cluster_id, endpoint_id=1)
+        .removes(OnOff.cluster_id, cluster_type=ClusterType.Client, endpoint_id=1)
+        .add_to_registry()
+    )
+
+    expected_signature = {
+        SIG_MANUFACTURER: "some manufacturer",
+        SIG_MODEL: "some model",
+        SIG_NODE_DESC: {
+            "logical_type": zdo_t.LogicalType.Router,
+            "complex_descriptor_available": 0,
+            "user_descriptor_available": 0,
+            "reserved": 0,
+            "aps_flags": 0,
+            "frequency_band": zdo_t.NodeDescriptor.FrequencyBand.Freq2400MHz,
+            "mac_capability_flags": zdo_t.NodeDescriptor.MACCapabilityFlags.AllocateAddress,
+            "manufacturer_code": 4174,
+            "maximum_buffer_size": 82,
+            "maximum_incoming_transfer_size": 82,
+            "server_mask": 0,
+            "maximum_outgoing_transfer_size": 82,
+            "descriptor_capability_field": zdo_t.NodeDescriptor.DescriptorCapability.NONE,
+        },
+        SIG_ENDPOINTS: {
+            1: {
+                SIG_EP_PROFILE: 260,
+                SIG_EP_TYPE: profiles.zha.DeviceType.PUMP,
+                SIG_EP_INPUT: [Basic.cluster_id],
+                SIG_EP_OUTPUT: [OnOff.cluster_id],
+            },
+        },
+    }
+
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
 
@@ -1596,25 +1636,21 @@ async def test_device_signature_ignores_quirks(tmp_path) -> None:
     dev.model = "some model"
     dev.manufacturer = "some manufacturer"
 
+    # When a device joins at runtime, `device_initialized` applies quirks
     app.device_initialized(dev)
+    dev = app.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
 
-    # Capture the original signature
-    original_signature = dev.get_signature()
+    # The quirk modified the device object
+    assert 99 in dev.endpoints
+    assert Identify.cluster_id in dev.endpoints[1].in_clusters
+    assert OnOff.cluster_id not in dev.endpoints[1].out_clusters
+
+    # But the original signature was captured before quirks were applied
+    assert dev.original_signature == expected_signature
 
     await app.shutdown()
 
-    # Create a quirk that modifies the device structure
-    (
-        QuirkBuilder(
-            "some manufacturer", "some model", registry=zigpy.quirks.DEVICE_REGISTRY
-        )
-        .adds_endpoint(99)
-        .adds(Basic.cluster_id, endpoint_id=99)
-        .adds(Identify.cluster_id, endpoint_id=1)
-        .removes(OnOff.cluster_id, cluster_type=ClusterType.Client, endpoint_id=1)
-        .add_to_registry()
-    )
-
+    # Also verify loading from the database preserves the original signature
     app2 = await make_app_with_db(db)
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
 
@@ -1623,37 +1659,7 @@ async def test_device_signature_ignores_quirks(tmp_path) -> None:
     assert Identify.cluster_id in dev2.endpoints[1].in_clusters
     assert OnOff.cluster_id not in dev2.endpoints[1].out_clusters
 
-    # But the signature remained the same
-    assert (
-        dev2.original_signature
-        == original_signature
-        == {
-            SIG_MANUFACTURER: "some manufacturer",
-            SIG_MODEL: "some model",
-            SIG_NODE_DESC: {
-                "logical_type": zdo_t.LogicalType.Router,
-                "complex_descriptor_available": 0,
-                "user_descriptor_available": 0,
-                "reserved": 0,
-                "aps_flags": 0,
-                "frequency_band": zdo_t.NodeDescriptor.FrequencyBand.Freq2400MHz,
-                "mac_capability_flags": zdo_t.NodeDescriptor.MACCapabilityFlags.AllocateAddress,
-                "manufacturer_code": 4174,
-                "maximum_buffer_size": 82,
-                "maximum_incoming_transfer_size": 82,
-                "server_mask": 0,
-                "maximum_outgoing_transfer_size": 82,
-                "descriptor_capability_field": zdo_t.NodeDescriptor.DescriptorCapability.NONE,
-            },
-            SIG_ENDPOINTS: {
-                1: {
-                    SIG_EP_PROFILE: 260,
-                    SIG_EP_TYPE: profiles.zha.DeviceType.PUMP,
-                    SIG_EP_INPUT: [Basic.cluster_id],
-                    SIG_EP_OUTPUT: [OnOff.cluster_id],
-                },
-            },
-        }
-    )
+    # The original signature is still preserved
+    assert dev2.original_signature == expected_signature
 
     await app2.shutdown()
