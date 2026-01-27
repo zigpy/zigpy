@@ -33,19 +33,28 @@ exclude = ["tests", "tests.*"]
 "*" = ["appdb_schemas/schema_v*.sql"]
 zigpy = ["py.typed"]
 
-[project.optional-dependencies]
+[dependency-groups]
 testing = [
+    "codespell==2.4.1",
     "tomli",
     "asynctest",
     "coveralls",
     "coverage[toml]",
     "filelock",
+    "mypy==1.19.1",
+    "pre-commit",
     "pytest",
     "pytest-asyncio<1.0.0",
     "pytest-cov",
     "pytest-timeout",
     "freezegun",
+    "ruff==0.6.2",
     'pysqlite3-binary>=0.5.4.post2; platform_system=="Linux" and python_version<"3.12"',
+]
+ci = [
+    {include-group = "testing"},
+    "pytest-github-actions-annotate-failures",
+    "pytest-xdist",
 ]
 
 [tool.setuptools-git-versioning]
