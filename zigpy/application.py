@@ -599,6 +599,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def device_initialized(self, device: zigpy.device.Device) -> None:
         """Used by a device to signal that it is initialized"""
         LOGGER.debug("Device is initialized %s", device)
+        device.original_signature = device.get_signature()
 
         self.listener_event("raw_device_initialized", device)
         device = zigpy.quirks.get_device(device)

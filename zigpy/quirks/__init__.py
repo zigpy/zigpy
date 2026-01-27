@@ -79,14 +79,17 @@ class BaseCustomDevice(zigpy.device.Device):
     ) -> None:
         super().__init__(application, ieee, nwk)
 
+        self.lqi = replaces.lqi
+        self.rssi = replaces.rssi
+        self.last_seen = replaces.last_seen
+        self.relays = replaces.relays
+        self.original_signature = replaces.original_signature
+
         def set_device_attr(attr):
             if attr in self.replacement:
                 setattr(self, attr, self.replacement[attr])
             else:
                 setattr(self, attr, getattr(replaces, attr))
-
-        for attr in ("lqi", "rssi", "last_seen", "relays"):
-            setattr(self, attr, getattr(replaces, attr))
 
         set_device_attr("status")
         set_device_attr(SIG_NODE_DESC)

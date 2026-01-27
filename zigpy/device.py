@@ -92,6 +92,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.nwk: t.NWK = t.NWK(nwk)
         self.zdo: zdo.ZDO = zdo.ZDO(self)
         self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
+
+        # Persist the original signature for the device, before quirks are applied
+        self._original_signature: dict[str, Any] | None = None
+
         self.lqi: int | None = None
         self.rssi: int | None = None
         self.ota_in_progress: bool = False
@@ -978,6 +982,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def model(self, value) -> None:
         if isinstance(value, str):
             self._model = value
+
+    @property
+    def original_signature(self) -> dict[str, Any] | None:
+        return self._original_signature
+
+    @original_signature.setter
+    def original_signature(self, value: dict[str, Any] | None) -> None:
+        if self._original_signature is not None:
+            return
+
+        self._original_signature = value
 
     @property
     def skip_configuration(self) -> bool:
