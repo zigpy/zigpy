@@ -1187,7 +1187,7 @@ class ZCLCommandDef(t.BaseDataclassMixin):
         )
 
 
-class CommandSchema(t.Struct, tuple):  # noqa: SLOT001
+class CommandSchema(t.Struct, tuple):  # noqa: SLOT001, PLW1641
     """Struct subclass that behaves more like a tuple."""
 
     command: ZCLCommandDef = None

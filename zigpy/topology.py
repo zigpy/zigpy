@@ -80,7 +80,7 @@ class Topology(zigpy.util.ListenableMixin):
                 # We explicitly catch a cancellation here to ensure the scan loop will
                 # not be interrupted if a manual scan is initiated
                 LOGGER.debug("Topology scan cancelled")
-            except (Exception, asyncio.CancelledError):
+            except (Exception, asyncio.CancelledError):  # noqa: BLE001
                 LOGGER.debug("Topology scan failed", exc_info=True)
 
     async def scan(

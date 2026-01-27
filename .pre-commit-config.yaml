@@ -1,22 +1,24 @@
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.2
+  - repo: local
     hooks:
       - id: ruff
-        args: ["--fix", "--exit-non-zero-on-fix", "--config", "pyproject.toml"]
+        name: ruff
+        entry: script/run-in-env.sh ruff check --fix --exit-non-zero-on-fix --config pyproject.toml
+        language: script
+        types_or: [python, pyi]
       - id: ruff-format
-        args: ["--config", "pyproject.toml"]
-
-  - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
-    hooks:
+        name: ruff-format
+        entry: script/run-in-env.sh ruff format --config pyproject.toml
+        language: script
+        types_or: [python, pyi]
       - id: codespell
-        additional_dependencies: [tomli]
-        args: ["--toml", "pyproject.toml"]
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.19.1
-    hooks:
+        name: codespell
+        entry: script/run-in-env.sh codespell --toml pyproject.toml
+        language: script
+        types: [text]
       - id: mypy
-        additional_dependencies: [attrs]
+        name: mypy
+        entry: script/run-in-env.sh mypy
+        language: script
+        types_or: [python, pyi]
         exclude: ^tests/

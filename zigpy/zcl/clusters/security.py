@@ -368,7 +368,7 @@ class Strobe(t.enum8):
     Strobe = 0x01
 
 
-class _SquawkOrWarningCommand:
+class _SquawkOrWarningCommand:  # noqa: PLW1641
     def __init__(self, value: int = 0) -> None:
         self.value = t.uint8_t(value)
 

@@ -299,7 +299,7 @@ class CatchingTaskMixin(LocalLogMixin):
             return await target
         except exceptions:
             pass
-        except (Exception, asyncio.CancelledError):  # pylint: disable=broad-except
+        except (Exception, asyncio.CancelledError):  # noqa: BLE001
             # Do not print the wrapper in the traceback
             frames = len(inspect.trace()) - 1
             exc_msg = traceback.format_exc(-frames)
