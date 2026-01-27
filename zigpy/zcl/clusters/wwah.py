@@ -420,7 +420,6 @@ class WorksWithAllHubs(Cluster):
         )
 
     class ClientCommandDefs(BaseCommandDefs):
-        # Server-to-Client commands (sent by server, received by client)
         aps_link_key_authorization_query_response: Final = ZCLCommandDef(
             id=0x00,
             schema={"cluster_id": t.ClusterId, "aps_link_key_auth_status": t.Bool},
@@ -476,7 +475,6 @@ class WorksWithAllHubs(Cluster):
             manufacturer_code=0x1217,
         )
 
-        # OPAQUE
         debug_report_query_response: Final = ZCLCommandDef(
             id=0x07,
             schema={
@@ -498,7 +496,9 @@ class WorksWithAllHubs(Cluster):
             manufacturer_code=0x1217,
         )
 
-        # This extra command's integration into the spec is being discussed. Do not remove if updating XML
+        # Whether this command exists on real devices or not is uncertain, the Silicon
+        # Labs SDK XML made it sound like it was either not yet added or is being
+        # removed
         use_trust_center_for_cluster_server_response: Final = ZCLCommandDef(
             id=0x9E,
             schema={
