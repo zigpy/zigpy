@@ -35,20 +35,21 @@ zigpy = ["py.typed"]
 
 [dependency-groups]
 testing = [
-    "codespell==2.4.1",
-    "tomli",
+    "aioresponses",
     "asynctest",
-    "coveralls",
+    "codespell==2.4.1",
     "coverage[toml]",
+    "coveralls",
     "filelock",
+    "freezegun",
     "mypy==1.19.1",
     "pre-commit",
     "pytest",
     "pytest-asyncio<1.0.0",
     "pytest-cov",
     "pytest-timeout",
-    "freezegun",
     "ruff==0.14.14",
+    "tomli",
     'pysqlite3-binary>=0.5.4.post2; platform_system=="Linux" and python_version<"3.12"',
 ]
 ci = [
