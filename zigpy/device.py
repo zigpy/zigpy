@@ -135,7 +135,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
         )
 
-        self._signature: dict[str, Any] | None = None
+        # Persist the original signature information for the device, before quirks are
+        # applied
+        self._original_signature: dict[str, Any] | None = None
 
     def create_task(
         self, target: Coroutine[Any, Any, _R], name: str | None = None
@@ -982,15 +984,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._model = value
 
     @property
-    def signature(self) -> dict[str, Any] | None:
-        return self._signature
+    def original_signature(self) -> dict[str, Any] | None:
+        return self._original_signature
 
-    @signature.setter
-    def signature(self, value: str | None) -> None:
-        if self._signature is not None:
+    @original_signature.setter
+    def original_signature(self, value: str | None) -> None:
+        if self._original_signature is not None:
             raise AttributeError("Signature is already set and cannot be modified")
 
-        self._signature = value
+        self._original_signature = value
 
     @property
     def skip_configuration(self) -> bool:

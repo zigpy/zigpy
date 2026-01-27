@@ -670,7 +670,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for device in self._application.devices.values():
             # Populate the device signature before we apply any quirks, which can modify
             # the device structure (for now)
-            device.signature = device.get_signature()
+            device.original_signature = device.get_signature()
 
             device = zigpy.quirks.get_device(device)
             self._application.devices[device.ieee] = device

@@ -25,7 +25,16 @@ from zigpy import profiles
 import zigpy.appdb
 import zigpy.application
 import zigpy.config as conf
-from zigpy.const import SIG_ENDPOINTS, SIG_MANUFACTURER, SIG_MODEL
+from zigpy.const import (
+    SIG_ENDPOINTS,
+    SIG_EP_INPUT,
+    SIG_EP_OUTPUT,
+    SIG_EP_PROFILE,
+    SIG_EP_TYPE,
+    SIG_MANUFACTURER,
+    SIG_MODEL,
+    SIG_NODE_DESC,
+)
 from zigpy.device import Device, Status
 import zigpy.endpoint
 import zigpy.ota
@@ -35,8 +44,8 @@ from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types as t
 import zigpy.zcl
-from zigpy.zcl import UnsupportedAttribute
-from zigpy.zcl.clusters.general import Basic, Ota
+from zigpy.zcl import ClusterType, UnsupportedAttribute
+from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
 
@@ -1562,3 +1571,89 @@ async def test_attribute_cache_null_manufacturer_code_uniqueness(tmp_path):
         )
         row = await cursor.fetchone()
         assert row[0] == "Model 2"
+
+
+@patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
+async def test_device_signature_ignores_quirks(tmp_path) -> None:
+    """Test that `device.original_signature` is populated before quirks modify the device."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    ep.add_output_cluster(OnOff.cluster_id)
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    basic.update_attribute(Basic.AttributeDefs.model, "some model")
+    basic.update_attribute(Basic.AttributeDefs.manufacturer, "some manufacturer")
+
+    dev.model = "some model"
+    dev.manufacturer = "some manufacturer"
+
+    app.device_initialized(dev)
+
+    # Capture the original signature
+    original_signature = dev.get_signature()
+
+    await app.shutdown()
+
+    # Create a quirk that modifies the device structure
+    (
+        QuirkBuilder(
+            "some manufacturer", "some model", registry=zigpy.quirks.DEVICE_REGISTRY
+        )
+        .adds_endpoint(99)
+        .adds(Basic.cluster_id, endpoint_id=99)
+        .adds(Identify.cluster_id, endpoint_id=1)
+        .removes(OnOff.cluster_id, cluster_type=ClusterType.Client, endpoint_id=1)
+        .add_to_registry()
+    )
+
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+
+    # The quirk modified the device object
+    assert 99 in dev2.endpoints
+    assert Identify.cluster_id in dev2.endpoints[1].in_clusters
+    assert OnOff.cluster_id not in dev2.endpoints[1].out_clusters
+
+    # But the signature remained the same
+    assert (
+        dev2.original_signature
+        == original_signature
+        == {
+            SIG_MANUFACTURER: "some manufacturer",
+            SIG_MODEL: "some model",
+            SIG_NODE_DESC: {
+                "logical_type": zdo_t.LogicalType.Router,
+                "complex_descriptor_available": 0,
+                "user_descriptor_available": 0,
+                "reserved": 0,
+                "aps_flags": 0,
+                "frequency_band": zdo_t.NodeDescriptor.FrequencyBand.Freq2400MHz,
+                "mac_capability_flags": zdo_t.NodeDescriptor.MACCapabilityFlags.AllocateAddress,
+                "manufacturer_code": 4174,
+                "maximum_buffer_size": 82,
+                "maximum_incoming_transfer_size": 82,
+                "server_mask": 0,
+                "maximum_outgoing_transfer_size": 82,
+                "descriptor_capability_field": zdo_t.NodeDescriptor.DescriptorCapability.NONE,
+            },
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 260,
+                    SIG_EP_TYPE: profiles.zha.DeviceType.PUMP,
+                    SIG_EP_INPUT: [Basic.cluster_id],
+                    SIG_EP_OUTPUT: [OnOff.cluster_id],
+                },
+            },
+        }
+    )
+
+    await app2.shutdown()
