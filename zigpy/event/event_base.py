@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+import contextlib
+from contextvars import ContextVar
 import dataclasses
 from inspect import iscoroutinefunction
 import logging
@@ -11,6 +13,19 @@ import sys
 from typing import Any
 
 _LOGGER = logging.getLogger(__package__)
+
+_suppress_events: ContextVar[bool] = ContextVar("suppress_events", default=False)
+
+
+@contextlib.contextmanager
+def suppress_events() -> Generator[None, None, None]:
+    """Context manager to suppress event emission."""
+    token = _suppress_events.set(True)
+
+    try:
+        yield
+    finally:
+        _suppress_events.reset(token)
 
 
 @dataclasses.dataclass(
@@ -29,7 +44,7 @@ class EventBase:
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize event base."""
         super().__init__(*args, **kwargs)
-        self._listeners: dict[str, list[EventListener]] = {}
+        self._event_listeners: dict[str, list[EventListener]] = {}
         self._event_tasks: list[asyncio.Task] = []
         self._global_listeners: list[EventListener] = []
 
@@ -39,7 +54,7 @@ class EventBase:
         """Register an event callback."""
         listener = EventListener(callback=callback, with_context=with_context)
 
-        listeners: list = self._listeners.setdefault(event_name, [])
+        listeners: list = self._event_listeners.setdefault(event_name, [])
         listeners.append(listener)
 
         def unsubscribe() -> None:
@@ -89,7 +104,13 @@ class EventBase:
 
     def emit(self, event_name: str, data=None) -> None:
         """Run all callbacks for an event."""
-        listeners = [*self._listeners.get(event_name, []), *self._global_listeners]
+        if _suppress_events.get():
+            return
+
+        listeners = [
+            *self._event_listeners.get(event_name, []),
+            *self._global_listeners,
+        ]
         _LOGGER.debug(
             "Emitting event %s with data %r (%d listeners)",
             event_name,

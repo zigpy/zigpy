@@ -10,6 +10,7 @@ import threading
 import typing
 from unittest.mock import Mock, patch
 
+import aiosqlite
 import pytest
 
 import zigpy.application
@@ -22,6 +23,7 @@ from zigpy.config import (
 )
 import zigpy.state as app_state
 import zigpy.types as t
+from zigpy.typing import UNDEFINED, UndefinedType
 from zigpy.zcl import Cluster, foundation
 import zigpy.zdo.types as zdo_t
 
@@ -334,16 +336,30 @@ def verify_cleanup(
             _LOGGER.warning("Lingering timer after test %r", handle)
             handle.cancel()
 
-    # Verify no threads where left behind.
+    # Verify no threads were left behind.
     threads = frozenset(threading.enumerate()) - threads_before
     for thread in threads:
-        assert isinstance(thread, threading._DummyThread)
+        if isinstance(thread, threading._DummyThread):
+            continue
+
+        # Kill lingering aiosqlite threads so pytest doesn't hang
+        if isinstance(thread, aiosqlite.Connection):
+            _LOGGER.warning("Stopping lingering aiosqlite thread %r", thread)
+            thread._stop_running()
+            thread.join(timeout=1)
+
+        pytest.fail(f"Lingering thread after test: {thread!r}")
 
 
 @contextmanager
 def mock_attribute_reads(
-    cluster: Cluster, mock_attributes: dict[str | int, typing.Any]
-) -> typing.Generator[tuple[AsyncMock, dict[str | int, AsyncMock]], None, None]:
+    cluster: Cluster,
+    mock_attributes: dict[str | int | foundation.ZCLAttributeDef, typing.Any],
+) -> typing.Generator[
+    tuple[AsyncMock, dict[str | int | foundation.ZCLAttributeDef, AsyncMock]],
+    None,
+    None,
+]:
     """Mock attribute reads on a cluster."""
     mock_reads = {}
 
@@ -353,26 +369,149 @@ def mock_attribute_reads(
 
         mock_reads[cluster.find_attribute(key)] = value
 
-    async def read_attributes_raw(attributes, *args, **kwargs):
-        records = []
+    async def read_attributes_raw(
+        attributes,
+        *args,
+        manufacturer: int | UndefinedType | None = UNDEFINED,
+        **kwargs,
+    ):
+        status_records = []
 
         for attrid in attributes:
             record = foundation.ReadAttributeRecord(attrid=attrid)
-            attr_def = cluster.find_attribute(attrid)
+            attr_def = cluster.find_attribute(attrid, manufacturer_code=manufacturer)
 
             if attr_def in mock_reads:
-                record.status = foundation.Status.SUCCESS
-                record.value = foundation.TypeValue(
-                    type=attr_def.zcl_type, value=mock_reads[attr_def]()
-                )
+                value = mock_reads[attr_def]()
+
+                if isinstance(value, foundation.Status):
+                    record.status = value
+                else:
+                    record.status = foundation.Status.SUCCESS
+                    record.value = foundation.TypeValue(
+                        type=attr_def.zcl_type, value=value
+                    )
             else:
                 record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
 
-            records.append(record)
+            status_records.append(record)
 
-        return [records]
+        return foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Read_Attributes_rsp
+        ].schema(status_records=status_records)
 
     with patch.object(
         cluster, "read_attributes_raw", autospec=True, side_effect=read_attributes_raw
     ) as mock_read:
         yield mock_read, mock_attributes
+
+
+@contextmanager
+def mock_attribute_writes(
+    cluster: Cluster,
+    mock_attributes: dict[str | int | foundation.ZCLAttributeDef, typing.Any],
+) -> typing.Generator[
+    tuple[AsyncMock, dict[str | int | foundation.ZCLAttributeDef, AsyncMock]],
+    None,
+    None,
+]:
+    """Mock attribute writes on a cluster."""
+    mock_writes = {}
+
+    for key, value in mock_attributes.items():
+        if not callable(value):
+            value = Mock(return_value=value)
+
+        mock_writes[cluster.find_attribute(key)] = value
+
+    async def write_attributes_raw(
+        attributes,
+        *args,
+        manufacturer: int | UndefinedType | None = UNDEFINED,
+        **kwargs,
+    ):
+        records = []
+
+        for attr in attributes:
+            attr_def = cluster.find_attribute(
+                attr.attrid, manufacturer_code=manufacturer
+            )
+            record = foundation.WriteAttributesStatusRecord(attrid=attr_def.id)
+
+            if attr_def in mock_writes:
+                value = mock_writes[attr_def](attr.value)
+
+                if isinstance(value, foundation.Status):
+                    record.status = value
+                else:
+                    record.status = foundation.Status.SUCCESS
+            else:
+                record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+
+            records.append(record)
+
+        return foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Write_Attributes_rsp
+        ].schema(status_records=foundation.WriteAttributesResponse(records))
+
+    with patch.object(
+        cluster, "_write_attributes", autospec=True, side_effect=write_attributes_raw
+    ) as mock_write:
+        yield mock_write, mock_attributes
+
+
+async def mock_attribute_report(
+    cluster: Cluster,
+    attributes: dict[str | int | foundation.ZCLAttributeDef, typing.Any],
+    *,
+    tsn: int | None = None,
+) -> None:
+    """Mock attribute reports on a cluster."""
+    reports = []
+    manufacturer_codes: set[int | None] = set()
+
+    for attr, value in attributes.items():
+        attr_def = cluster.find_attribute(attr)
+        manufacturer_codes.add(cluster._get_effective_manufacturer_code(attr_def, None))
+
+        reports.append(
+            foundation.Attribute(
+                attrid=attr_def.id,
+                value=foundation.TypeValue(type=attr_def.zcl_type, value=value),
+            )
+        )
+
+    if len(manufacturer_codes) != 1:
+        raise ValueError(
+            f"All attributes must have the same manufacturer code, got {manufacturer_codes}"
+        )
+
+    if tsn is None:
+        tsn = cluster.endpoint.device.get_sequence()
+
+    manufacturer: int | None = manufacturer_codes.pop()
+
+    frame_control = foundation.FrameControl(
+        frame_type=foundation.FrameType.GLOBAL_COMMAND,
+        is_manufacturer_specific=(manufacturer is not None),
+        direction=(
+            foundation.Direction.Client_to_Server
+            if cluster.is_client
+            else foundation.Direction.Server_to_Client
+        ),
+        disable_default_response=False,
+        reserved=0b000,
+    )
+
+    hdr = foundation.ZCLHeader(
+        frame_control=frame_control,
+        manufacturer=manufacturer,
+        tsn=tsn,
+        command_id=foundation.GeneralCommand.Report_Attributes,
+    )
+
+    command = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Report_Attributes
+    ].schema(attribute_reports=reports)
+
+    cluster.handle_cluster_general_request(hdr, command)

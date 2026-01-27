@@ -21,7 +21,6 @@ import zigpy.device
 import zigpy.endpoint
 from zigpy.quirks.registry import DeviceRegistry
 import zigpy.types as t
-from zigpy.types.basic import uint16_t
 import zigpy.zcl
 from zigpy.zcl import foundation
 from zigpy.zdo import ZDO
@@ -31,7 +30,7 @@ if typing.TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-DEVICE_REGISTRY = _DEVICE_REGISTRY = DeviceRegistry()
+DEVICE_REGISTRY = DeviceRegistry()
 _uninitialized_device_message_handlers = []
 
 
@@ -40,7 +39,7 @@ def get_device(
 ) -> zigpy.device.Device:
     """Get a CustomDevice object, if one is available"""
     if registry is None:
-        return _DEVICE_REGISTRY.get_device(device)
+        return DEVICE_REGISTRY.get_device(device)
 
     return registry.get_device(device)
 
@@ -50,7 +49,7 @@ def get_quirk_list(
 ):
     """Get the Quirk list for a given manufacturer and model."""
     if registry is None:
-        return _DEVICE_REGISTRY.registry_v1[manufacturer][model]
+        return DEVICE_REGISTRY.registry_v1[manufacturer][model]
 
     return registry.registry_v1[manufacturer][model]
 
@@ -144,7 +143,7 @@ class CustomDevice(BaseCustomDevice):
 
     def __init_subclass__(cls) -> None:
         if getattr(cls, "signature", None) is not None:
-            _DEVICE_REGISTRY.add_to_registry(cls)
+            DEVICE_REGISTRY.add_to_registry(cls)
 
 
 class CustomEndpoint(zigpy.endpoint.Endpoint):
@@ -182,10 +181,10 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                     endpoint_id in replace_device.endpoints
                     and cluster_id in replace_device.endpoints[endpoint_id].in_clusters
                 ):
-                    cluster._attr_cache = (
+                    cluster._attr_cache_internal = (
                         replace_device[endpoint_id]
                         .in_clusters[cluster_id]
-                        ._attr_cache.copy()
+                        ._attr_cache.clone(cluster)
                     )
 
         for c in replacement_data.get(SIG_EP_OUTPUT, []):
@@ -201,10 +200,10 @@ class CustomEndpoint(zigpy.endpoint.Endpoint):
                     endpoint_id in replace_device.endpoints
                     and cluster_id in replace_device.endpoints[endpoint_id].out_clusters
                 ):
-                    cluster._attr_cache = (
+                    cluster._attr_cache_internal = (
                         replace_device[endpoint_id]
                         .out_clusters[cluster_id]
-                        ._attr_cache.copy()
+                        ._attr_cache.clone(cluster)
                     )
 
 
@@ -214,90 +213,8 @@ class CustomCluster(zigpy.zcl.Cluster):
     _skip_registry = True
     _CONSTANT_ATTRIBUTES: dict[int, typing.Any] | None = None
 
-    manufacturer_id_override: t.uint16_t | None = None
-
-    @property
-    def _is_manuf_specific(self) -> bool:
-        """Return True if cluster_id is within manufacturer specific range."""
-        return 0xFC00 <= self.cluster_id <= 0xFFFF
-
-    def _has_manuf_attr(self, attrs_to_process: typing.Iterable | list | dict) -> bool:
-        """Return True if contains a manufacturer specific attribute."""
-        if self._is_manuf_specific:
-            return True
-
-        for attr_id in attrs_to_process:
-            if (
-                attr_id in self.attributes
-                and self.attributes[attr_id].is_manufacturer_specific
-            ):
-                return True
-
-        return False
-
-    @property
-    def _manufacturer_id(self) -> int | None:
-        """Return manufacturer id, accounting for local overrides."""
-        return (
-            self.manufacturer_id_override
-            if self.manufacturer_id_override is not None
-            else self.endpoint.manufacturer_id
-        )
-
-    async def command(
-        self,
-        command_id: foundation.GeneralCommand | int | t.uint8_t,
-        *args,
-        manufacturer: int | t.uint16_t | None = None,
-        expect_reply: bool = True,
-        tsn: int | t.uint8_t | None = None,
-        **kwargs: typing.Any,
-    ) -> typing.Coroutine:
-        command = self.server_commands[command_id]
-
-        if manufacturer is None and (
-            self._is_manuf_specific or command.is_manufacturer_specific
-        ):
-            manufacturer = self._manufacturer_id
-
-        return await self.request(
-            False,
-            command.id,
-            command.schema,
-            *args,
-            manufacturer=manufacturer,
-            expect_reply=expect_reply,
-            tsn=tsn,
-            **kwargs,
-        )
-
-    async def client_command(
-        self,
-        command_id: foundation.GeneralCommand | int | t.uint8_t,
-        *args,
-        manufacturer: int | t.uint16_t | None = None,
-        tsn: int | t.uint8_t | None = None,
-        **kwargs: typing.Any,
-    ):
-        command = self.client_commands[command_id]
-
-        if manufacturer is None and (
-            self._is_manuf_specific or command.is_manufacturer_specific
-        ):
-            manufacturer = self._manufacturer_id
-
-        return await self.reply(
-            False,
-            command.id,
-            command.schema,
-            *args,
-            manufacturer=manufacturer,
-            tsn=tsn,
-            **kwargs,
-        )
-
     async def read_attributes_raw(
-        self, attributes: list[uint16_t], manufacturer: uint16_t | None = None, **kwargs
+        self, attributes: list[int], manufacturer: int | None = None, **kwargs
     ):
         if not self._CONSTANT_ATTRIBUTES:
             return await super().read_attributes_raw(
@@ -339,71 +256,6 @@ class CustomCluster(zigpy.zcl.Cluster):
         else:
             succeeded.extend(results[0])
         return [succeeded]
-
-    async def _configure_reporting(  # type:ignore[override]
-        self,
-        config_records: list[foundation.AttributeReportingConfig],
-        *args,
-        manufacturer: int | t.uint16_t | None = None,
-        **kwargs,
-    ):
-        """Configure reporting ZCL foundation command."""
-        if manufacturer is None and self._has_manuf_attr(
-            [a.attrid for a in config_records]
-        ):
-            manufacturer = self._manufacturer_id
-        return await super()._configure_reporting(
-            config_records,
-            *args,
-            manufacturer=manufacturer,
-            **kwargs,
-        )
-
-    async def _read_attributes(  # type:ignore[override]
-        self,
-        attribute_ids: list[t.uint16_t],
-        *args,
-        manufacturer: int | t.uint16_t | None = None,
-        **kwargs,
-    ):
-        """Read attributes ZCL foundation command."""
-        if manufacturer is None and self._has_manuf_attr(attribute_ids):
-            manufacturer = self._manufacturer_id
-        return await super()._read_attributes(
-            attribute_ids, *args, manufacturer=manufacturer, **kwargs
-        )
-
-    async def _write_attributes(  # type:ignore[override]
-        self,
-        attributes: list[foundation.Attribute],
-        *args,
-        manufacturer: int | t.uint16_t | None = None,
-        **kwargs,
-    ):
-        """Write attribute ZCL foundation command."""
-        if manufacturer is None and self._has_manuf_attr(
-            [a.attrid for a in attributes]
-        ):
-            manufacturer = self._manufacturer_id
-        return await super()._write_attributes(
-            attributes, *args, manufacturer=manufacturer, **kwargs
-        )
-
-    async def _write_attributes_undivided(  # type:ignore[override]
-        self,
-        attributes: list[foundation.Attribute],
-        *args,
-        manufacturer: int | t.uint16_t | None = None,
-        **kwargs,
-    ):
-        """Write attribute undivided ZCL foundation command."""
-        if manufacturer is None and self._has_manuf_attr(
-            [a.attrid for a in attributes]
-        ):
-            manufacturer = self._manufacturer_id
-        return await super()._write_attributes_undivided(
-            attributes, *args, manufacturer=manufacturer, **kwargs
-        )
 
     def get(self, key: int | str, default: typing.Any | None = None) -> typing.Any:
         """Get cached attribute."""
