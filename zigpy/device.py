@@ -223,7 +223,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self._last_seen.timestamp() if self._last_seen is not None else None
 
     @last_seen.setter
-    def last_seen(self, value: datetime | float):
+    def last_seen(self, value: datetime | float | None):
         if isinstance(value, int | float):
             value = datetime.fromtimestamp(value, UTC)
 
