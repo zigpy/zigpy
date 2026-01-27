@@ -311,10 +311,14 @@ def make_route(
 
 # Taken from Home Assistant's `conftest.py`
 @pytest.fixture(autouse=True)
-def verify_cleanup(
-    event_loop: asyncio.AbstractEventLoop,
-) -> typing.Generator[None, None, None]:
+def verify_cleanup() -> typing.Generator[None, None, None]:
     """Verify that the test has cleaned up resources correctly."""
+
+    try:
+        event_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        yield
+        return
 
     threads_before = frozenset(threading.enumerate())
     tasks_before = asyncio.all_tasks(event_loop)
