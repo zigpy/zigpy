@@ -200,14 +200,14 @@ class WorksWithAllHubs(Cluster):
         # Enable enforcement of APS-level security for all cluster commands.
         enable_aps_link_key_authorization: Final = ZCLCommandDef(
             id=0x00,
-            schema={"cluster_id": t.LVList[t.ClusterId]},
+            schema={"cluster_id": t.LVList[t.ClusterId, t.uint8_t]},
             manufacturer_code=0x1217,
         )
 
         # Disable enforcement of APS-level security for all cluster commands.
         disable_aps_link_key_authorization: Final = ZCLCommandDef(
             id=0x01,
-            schema={"cluster_id": t.LVList[t.ClusterId]},
+            schema={"cluster_id": t.LVList[t.ClusterId, t.uint8_t]},
             manufacturer_code=0x1217,
         )
 
@@ -310,7 +310,7 @@ class WorksWithAllHubs(Cluster):
         # Require all unicast commands to have APS ACKs enabled.
         require_aps_acks_on_unicasts: Final = ZCLCommandDef(
             id=0x0F,
-            schema={"cluster_id": t.LVList[t.ClusterId]},
+            schema={"cluster_id": t.LVList[t.ClusterId, t.uint8_t]},
             manufacturer_code=0x1217,
         )
 
@@ -408,7 +408,7 @@ class WorksWithAllHubs(Cluster):
         # Use only the Trust Center as cluster server for the set of clusters specified.
         use_trust_center_for_cluster_server: Final = ZCLCommandDef(
             id=0x1E,
-            schema={"cluster_id": t.LVList[t.ClusterId]},
+            schema={"cluster_id": t.LVList[t.ClusterId, t.uint8_t]},
             manufacturer_code=0x1217,
         )
 
@@ -432,7 +432,7 @@ class WorksWithAllHubs(Cluster):
             schema={
                 "power_notification_reason": WwahPowerNotificationReason,
                 "manufacturer_id": t.uint16_t,
-                "manufacturer_reason": t.LVList[t.uint8_t],
+                "manufacturer_reason": t.LVList[t.uint8_t, t.uint8_t],
             },
             manufacturer_code=0x1217,
         )
@@ -442,7 +442,7 @@ class WorksWithAllHubs(Cluster):
             schema={
                 "power_notification_reason": WwahPowerNotificationReason,
                 "manufacturer_id": t.uint16_t,
-                "manufacturer_reason": t.LVList[t.uint8_t],
+                "manufacturer_reason": t.LVList[t.uint8_t, t.uint8_t],
             },
             manufacturer_code=0x1217,
         )
@@ -455,7 +455,7 @@ class WorksWithAllHubs(Cluster):
 
         aps_ack_enablement_query_response: Final = ZCLCommandDef(
             id=0x04,
-            schema={"cluster_id": t.LVList[t.ClusterId]},
+            schema={"cluster_id": t.LVList[t.ClusterId, t.uint8_t]},
             manufacturer_code=0x1217,
         )
 
@@ -481,20 +481,20 @@ class WorksWithAllHubs(Cluster):
             id=0x07,
             schema={
                 "debug_report_id": t.uint8_t,
-                "debug_report_data": t.LVList[t.uint8_t],
+                "debug_report_data": t.LVList[t.uint8_t, t.uint8_t],
             },
             manufacturer_code=0x1217,
         )
 
         trust_center_for_cluster_server_query_response: Final = ZCLCommandDef(
             id=0x08,
-            schema={"cluster_id": t.LVList[t.ClusterId]},
+            schema={"cluster_id": t.LVList[t.ClusterId, t.uint8_t]},
             manufacturer_code=0x1217,
         )
 
         survey_beacons_response: Final = ZCLCommandDef(
             id=0x09,
-            schema={"beacon": t.LVList[WwahBeaconSurvey]},
+            schema={"beacon": t.LVList[WwahBeaconSurvey, t.uint8_t]},
             manufacturer_code=0x1217,
         )
 
@@ -503,7 +503,7 @@ class WorksWithAllHubs(Cluster):
             id=0x9E,
             schema={
                 "status": Status,
-                "cluster_status": t.LVList[WwahClusterStatusToUseTC],
+                "cluster_status": t.LVList[WwahClusterStatusToUseTC, t.uint8_t],
             },
             manufacturer_code=0x1217,
         )
