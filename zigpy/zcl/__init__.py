@@ -775,10 +775,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         attr.attrid, manufacturer_code=hdr.manufacturer
                     )
                 except KeyError:
-                    attr_name = None
+                    attr_def = None
                     value = attr.value.value
                 else:
-                    attr_name = attr_def.name
                     value = attr_def.type(attr.value.value)
 
                 # Emit the reported event with the raw value from the device
@@ -789,7 +788,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         endpoint_id=self.endpoint.endpoint_id,
                         cluster_type=self._type,
                         cluster_id=self.cluster_id,
-                        attribute_name=attr_name,
+                        attribute_name=attr_def.name if attr_def else None,
                         attribute_id=attr.attrid,
                         manufacturer_code=hdr.manufacturer,
                         raw_value=attr.value.value,
@@ -804,7 +803,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     self._update_attribute(attr.attrid, value)
 
                 # If a quirk transformed the value, emit AttributeUpdatedEvent
-                cached_value = self._attr_cache.get(attr.attrid)
+                if attr_def is None:
+                    continue
+
+                try:
+                    cached_value = self._attr_cache.get_value(attr_def)
+                except KeyError:
+                    continue
+
                 if cached_value != value:
                     self.emit(
                         AttributeUpdatedEvent.event_type,
@@ -813,9 +819,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             endpoint_id=self.endpoint.endpoint_id,
                             cluster_type=self._type,
                             cluster_id=self.cluster_id,
-                            attribute_name=attr_name,
-                            attribute_id=attr.attrid,
-                            manufacturer_code=hdr.manufacturer,
+                            attribute_name=attr_def.name,
+                            attribute_id=attr_def.id,
+                            manufacturer_code=attr_def.manufacturer_code,
                             value=cached_value,
                         ),
                     )
