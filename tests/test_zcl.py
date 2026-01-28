@@ -1683,6 +1683,9 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             other_attr = foundation.ZCLAttributeDef(
                 id=0x0002, type=t.uint8_t, access="r"
             )
+            passthrough_attr = foundation.ZCLAttributeDef(
+                id=0x0003, type=t.uint8_t, access="r"
+            )
 
         def _update_attribute(self, attrid, value):
             if attrid == self.AttributeDefs.test_attr.id:
@@ -1690,12 +1693,14 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
                 value = value * 2
                 super()._update_attribute(attrid, value)
 
-            # Also update a different attribute
-            if attrid == self.AttributeDefs.test_attr.id:
+                # Also update a different attribute
                 super()._update_attribute(self.AttributeDefs.other_attr.id, 123)
 
-            # Update an attribute that doesn't have a definition
-            super()._update_attribute(0xABCD, 45)
+                # Update an attribute that doesn't have a definition
+                super()._update_attribute(0xABCD, 45)
+            else:
+                # Pass through unchanged
+                super()._update_attribute(attrid, value)
 
     dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
     cluster = DoublingCluster(dev.endpoints[1])
@@ -1707,11 +1712,15 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
     cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
 
     await mock_attribute_report(
-        cluster, {DoublingCluster.AttributeDefs.test_attr: t.uint8_t(50)}
+        cluster,
+        {
+            DoublingCluster.AttributeDefs.test_attr: t.uint8_t(50),
+            DoublingCluster.AttributeDefs.passthrough_attr: t.uint8_t(99),
+        },
     )
 
     assert events == [
-        # AttributeReportedEvent with raw value (50)
+        # AttributeReportedEvent for test_attr with raw value (50)
         AttributeReportedEvent(
             device_ieee=str(dev.ieee),
             endpoint_id=1,
@@ -1741,7 +1750,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             cluster_type=zcl.ClusterType.Server,
             cluster_id=DoublingCluster.cluster_id,
             attribute_name=None,
-            attribute_id=43981,
+            attribute_id=0xABCD,
             manufacturer_code=None,
             value=45,
         ),
@@ -1756,18 +1765,40 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             manufacturer_code=None,
             value=100,
         ),
+        # AttributeReportedEvent for passthrough_attr (no transformation)
+        AttributeReportedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="passthrough_attr",
+            attribute_id=DoublingCluster.AttributeDefs.passthrough_attr.id,
+            manufacturer_code=None,
+            raw_value=99,
+            value=99,
+        ),
+        # No AttributeUpdatedEvent for passthrough_attr since value wasn't transformed
     ]
 
     # Now test the read path
     events.clear()
 
     with mock_attribute_reads(
-        cluster, {DoublingCluster.AttributeDefs.test_attr: t.uint8_t(25)}
+        cluster,
+        {
+            DoublingCluster.AttributeDefs.test_attr: t.uint8_t(25),
+            DoublingCluster.AttributeDefs.passthrough_attr: t.uint8_t(77),
+        },
     ):
-        await cluster.read_attributes([DoublingCluster.AttributeDefs.test_attr])
+        await cluster.read_attributes(
+            [
+                DoublingCluster.AttributeDefs.test_attr,
+                DoublingCluster.AttributeDefs.passthrough_attr,
+            ]
+        )
 
     assert events == [
-        # AttributeReadEvent with raw value (25)
+        # AttributeReadEvent for test_attr with raw value (25)
         AttributeReadEvent(
             device_ieee=str(dev.ieee),
             endpoint_id=1,
@@ -1812,4 +1843,17 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             manufacturer_code=None,
             value=50,  # Doubled from 25
         ),
+        # AttributeReadEvent for passthrough_attr (no transformation)
+        AttributeReadEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="passthrough_attr",
+            attribute_id=DoublingCluster.AttributeDefs.passthrough_attr.id,
+            manufacturer_code=None,
+            raw_value=77,
+            value=77,
+        ),
+        # No AttributeUpdatedEvent for passthrough_attr since value wasn't transformed
     ]
