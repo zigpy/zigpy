@@ -17,7 +17,7 @@ import warnings
 
 from zigpy import util
 from zigpy.const import APS_REPLY_TIMEOUT
-from zigpy.event import EventBase, suppress_events
+from zigpy.event import EventBase
 import zigpy.types as t
 from zigpy.typing import UNDEFINED, UndefinedType
 from zigpy.zcl import foundation
@@ -40,7 +40,7 @@ _suppressed_attribute_updates: ContextVar[frozenset[tuple[int, int]]] = ContextV
 
 
 @contextlib.contextmanager
-def _suppress_attribute_update(
+def _suppress_attribute_update_event(
     cluster_id: int, attrid: int
 ) -> Generator[None, None, None]:
     """Suppress AttributeUpdatedEvent for a specific (cluster, attribute) pair."""
@@ -799,7 +799,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 # Suppress only this specific attribute's events during update.
                 # This allows quirks that update other clusters or other attributes
                 # on this cluster to emit their own AttributeUpdatedEvent.
-                with _suppress_attribute_update(self.cluster_id, attr.attrid):
+                with _suppress_attribute_update_event(self.cluster_id, attr.attrid):
                     self._update_attribute(attr.attrid, value)
 
                 # If a quirk transformed the value, emit AttributeUpdatedEvent
@@ -962,13 +962,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                         success[attribute_map[attr_def]] = value
 
-                        # We suppress events because we want to emit
-                        # `AttributeReadEvent` directly. `_update_attribute` will
-                        # update the attribute cache but is structured to be called
-                        # directly from quirks and will emit an `AttributeUpdatedEvent
-                        with suppress_events():
-                            self._update_attribute(attr_def.id, value)
-
                         self.emit(
                             AttributeReadEvent.event_type,
                             AttributeReadEvent(
@@ -983,6 +976,35 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                                 value=value,
                             ),
                         )
+
+                        # Suppress only this specific attribute's events during
+                        # update. This allows quirks that update other clusters or
+                        # other attributes to emit their own AttributeUpdatedEvent.
+                        with _suppress_attribute_update_event(
+                            self.cluster_id, attr_def.id
+                        ):
+                            self._update_attribute(attr_def.id, value)
+
+                        try:
+                            cached_value = self._attr_cache.get_value(attr_def)
+                        except KeyError:
+                            cached_value = None
+
+                        # If a quirk transformed the value, emit AttributeUpdatedEvent
+                        if cached_value != value:
+                            self.emit(
+                                AttributeUpdatedEvent.event_type,
+                                AttributeUpdatedEvent(
+                                    device_ieee=str(self.endpoint.device.ieee),
+                                    endpoint_id=self.endpoint.endpoint_id,
+                                    cluster_type=self._type,
+                                    cluster_id=self.cluster_id,
+                                    attribute_name=attr_def.name,
+                                    attribute_id=attr_def.id,
+                                    manufacturer_code=attr_def.manufacturer_code,
+                                    value=cached_value,
+                                ),
+                            )
                     else:
                         if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
                             self._attr_cache.mark_unsupported(attr_def)
