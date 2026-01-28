@@ -7,13 +7,23 @@ from unittest.mock import AsyncMock, MagicMock, call, patch, sentinel
 
 import pytest
 
-from tests.conftest import add_initialized_device, make_app
+from tests.conftest import (
+    add_initialized_device,
+    make_app,
+    make_ieee,
+    mock_attribute_report,
+)
 from zigpy import zcl
 import zigpy.device
 import zigpy.endpoint
 import zigpy.profiles.zha
 import zigpy.types as t
-from zigpy.zcl import AttributeWrittenEvent, foundation
+from zigpy.zcl import (
+    AttributeReportedEvent,
+    AttributeUpdatedEvent,
+    AttributeWrittenEvent,
+    foundation,
+)
 from zigpy.zcl.clusters.general import Basic, OnOff, Ota
 from zigpy.zcl.helpers import ReportingConfig
 
@@ -1653,3 +1663,80 @@ async def test_command_explicit_manufacturer():
         await cluster.command(0x00, manufacturer=0x9999)
 
     assert mock_request.mock_calls[0].kwargs["manufacturer"] == 0x9999
+
+
+async def test_report_attributes_quirk_transforms_value(app_mock):
+    """Test that quirks transforming values emit both reported and updated events."""
+
+    class DoublingCluster(zcl.Cluster):
+        """A quirk cluster that doubles reported values."""
+
+        cluster_id = 0xABCD
+        ep_attribute = "doubling"
+
+        class AttributeDefs(zcl.foundation.BaseAttributeDefs):
+            test_attr = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.uint8_t, access="r"
+            )
+            other_attr = foundation.ZCLAttributeDef(
+                id=0x0002, type=t.uint8_t, access="r"
+            )
+
+        def _update_attribute(self, attrid, value):
+            if attrid == self.AttributeDefs.test_attr.id:
+                # Double the value
+                value = value * 2
+                super()._update_attribute(attrid, value)
+
+            # Also update a different attribute
+            if attrid == self.AttributeDefs.test_attr.id:
+                super()._update_attribute(self.AttributeDefs.other_attr.id, 123)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = DoublingCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(DoublingCluster.cluster_id, cluster)
+
+    events = []
+    cluster.on_event(AttributeReportedEvent.event_type, events.append)
+    cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
+
+    await mock_attribute_report(
+        cluster, {DoublingCluster.AttributeDefs.test_attr: t.uint8_t(50)}
+    )
+
+    assert events == [
+        # First: AttributeReportedEvent with raw value (50)
+        AttributeReportedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="test_attr",
+            attribute_id=DoublingCluster.AttributeDefs.test_attr.id,
+            manufacturer_code=None,
+            raw_value=50,
+            value=50,
+        ),
+        # Second: AttributeUpdatedEvent for other_attr (quirk side-effect)
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="other_attr",
+            attribute_id=DoublingCluster.AttributeDefs.other_attr.id,
+            manufacturer_code=None,
+            value=123,
+        ),
+        # Third: AttributeUpdatedEvent for test_attr with transformed value (doubled)
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="test_attr",
+            attribute_id=DoublingCluster.AttributeDefs.test_attr.id,
+            manufacturer_code=None,
+            value=100,
+        ),
+    ]
