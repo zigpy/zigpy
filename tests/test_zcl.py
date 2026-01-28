@@ -11,6 +11,7 @@ from tests.conftest import (
     add_initialized_device,
     make_app,
     make_ieee,
+    mock_attribute_reads,
     mock_attribute_report,
 )
 from zigpy import zcl
@@ -19,6 +20,7 @@ import zigpy.endpoint
 import zigpy.profiles.zha
 import zigpy.types as t
 from zigpy.zcl import (
+    AttributeReadEvent,
     AttributeReportedEvent,
     AttributeUpdatedEvent,
     AttributeWrittenEvent,
@@ -1692,11 +1694,15 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             if attrid == self.AttributeDefs.test_attr.id:
                 super()._update_attribute(self.AttributeDefs.other_attr.id, 123)
 
+            # Update an attribute that doesn't have a definition
+            super()._update_attribute(0xABCD, 45)
+
     dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
     cluster = DoublingCluster(dev.endpoints[1])
     dev.endpoints[1].add_input_cluster(DoublingCluster.cluster_id, cluster)
 
     events = []
+    cluster.on_event(AttributeReadEvent.event_type, events.append)
     cluster.on_event(AttributeReportedEvent.event_type, events.append)
     cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
 
@@ -1705,7 +1711,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
     )
 
     assert events == [
-        # First: AttributeReportedEvent with raw value (50)
+        # AttributeReportedEvent with raw value (50)
         AttributeReportedEvent(
             device_ieee=str(dev.ieee),
             endpoint_id=1,
@@ -1717,7 +1723,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             raw_value=50,
             value=50,
         ),
-        # Second: AttributeUpdatedEvent for other_attr (quirk side-effect)
+        # AttributeUpdatedEvent for other_attr (quirk side-effect)
         AttributeUpdatedEvent(
             device_ieee=str(dev.ieee),
             endpoint_id=1,
@@ -1728,7 +1734,18 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             manufacturer_code=None,
             value=123,
         ),
-        # Third: AttributeUpdatedEvent for test_attr with transformed value (doubled)
+        # AttributeUpdatedEvent for unknown attribute
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name=None,
+            attribute_id=43981,
+            manufacturer_code=None,
+            value=45,
+        ),
+        # AttributeUpdatedEvent for test_attr with transformed value (doubled)
         AttributeUpdatedEvent(
             device_ieee=str(dev.ieee),
             endpoint_id=1,
@@ -1738,5 +1755,61 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             attribute_id=DoublingCluster.AttributeDefs.test_attr.id,
             manufacturer_code=None,
             value=100,
+        ),
+    ]
+
+    # Now test the read path
+    events.clear()
+
+    with mock_attribute_reads(
+        cluster, {DoublingCluster.AttributeDefs.test_attr: t.uint8_t(25)}
+    ):
+        await cluster.read_attributes([DoublingCluster.AttributeDefs.test_attr])
+
+    assert events == [
+        # AttributeReadEvent with raw value (25)
+        AttributeReadEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="test_attr",
+            attribute_id=DoublingCluster.AttributeDefs.test_attr.id,
+            manufacturer_code=None,
+            raw_value=25,
+            value=25,
+        ),
+        # AttributeUpdatedEvent for other_attr (quirk side-effect)
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="other_attr",
+            attribute_id=DoublingCluster.AttributeDefs.other_attr.id,
+            manufacturer_code=None,
+            value=123,
+        ),
+        # AttributeUpdatedEvent for unknown attribute
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name=None,
+            attribute_id=0xABCD,
+            manufacturer_code=None,
+            value=45,
+        ),
+        # AttributeUpdatedEvent for test_attr with transformed value (doubled)
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="test_attr",
+            attribute_id=DoublingCluster.AttributeDefs.test_attr.id,
+            manufacturer_code=None,
+            value=50,  # Doubled from 25
         ),
     ]
