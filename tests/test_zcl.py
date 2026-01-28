@@ -1669,6 +1669,9 @@ async def test_command_explicit_manufacturer():
 
 async def test_report_attributes_quirk_transforms_value(app_mock):
     """Test that quirks transforming values emit both reported and updated events."""
+    from zigpy.zcl.clusters.measurement import OccupancySensing
+
+    MOTION_ATTRIBUTE = 0x0112  # Unknown attribute that triggers motion
 
     class DoublingCluster(zcl.Cluster):
         """A quirk cluster that doubles reported values."""
@@ -1698,24 +1701,36 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
 
                 # Update an attribute that doesn't have a definition
                 super()._update_attribute(0xABCD, 45)
+            elif attrid == MOTION_ATTRIBUTE:
+                # Unknown attribute that updates a different cluster (like motion sensors)
+                super()._update_attribute(attrid, value)
+                self.endpoint.occupancy.update_attribute(
+                    OccupancySensing.AttributeDefs.occupancy.id,
+                    OccupancySensing.Occupancy.Occupied,
+                )
             else:
                 # Pass through unchanged
                 super()._update_attribute(attrid, value)
 
     dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
     cluster = DoublingCluster(dev.endpoints[1])
+    occupancy_cluster = OccupancySensing(dev.endpoints[1])
     dev.endpoints[1].add_input_cluster(DoublingCluster.cluster_id, cluster)
+    dev.endpoints[1].add_input_cluster(OccupancySensing.cluster_id, occupancy_cluster)
 
     events = []
     cluster.on_event(AttributeReadEvent.event_type, events.append)
     cluster.on_event(AttributeReportedEvent.event_type, events.append)
     cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
+    occupancy_cluster.on_event(AttributeReportedEvent.event_type, events.append)
+    occupancy_cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
 
     await mock_attribute_report(
         cluster,
         {
             DoublingCluster.AttributeDefs.test_attr: t.uint8_t(50),
             DoublingCluster.AttributeDefs.passthrough_attr: t.uint8_t(99),
+            MOTION_ATTRIBUTE: t.uint8_t(1),  # Unknown attribute (raw ID)
         },
     )
 
@@ -1767,6 +1782,29 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             value=99,
         ),
         # No AttributeUpdatedEvent for passthrough_attr since value wasn't transformed
+        # AttributeUpdatedEvent for occupancy (quirk updates different cluster)
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=OccupancySensing.cluster_id,
+            attribute_name="occupancy",
+            attribute_id=OccupancySensing.AttributeDefs.occupancy.id,
+            manufacturer_code=None,
+            value=OccupancySensing.Occupancy.Occupied,
+        ),
+        # AttributeReportedEvent for unknown MOTION_ATTRIBUTE (no transformation)
+        AttributeReportedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name=None,
+            attribute_id=MOTION_ATTRIBUTE,
+            manufacturer_code=None,
+            raw_value=1,
+            value=1,
+        ),
     ]
 
     # Now test the read path

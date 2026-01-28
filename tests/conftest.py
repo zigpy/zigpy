@@ -475,15 +475,30 @@ async def mock_attribute_report(
     manufacturer_codes: set[int | None] = set()
 
     for attr, value in attributes.items():
-        attr_def = cluster.find_attribute(attr)
-        manufacturer_codes.add(cluster._get_effective_manufacturer_code(attr_def, None))
-
-        reports.append(
-            foundation.Attribute(
-                attrid=attr_def.id,
-                value=foundation.TypeValue(type=attr_def.zcl_type, value=value),
+        if isinstance(attr, int):
+            # Raw attribute ID for unknown attributes
+            manufacturer_codes.add(None)
+            reports.append(
+                foundation.Attribute(
+                    attrid=attr,
+                    value=foundation.TypeValue(
+                        type=foundation.DataType.from_python_type(type(value)).type_id,
+                        value=value,
+                    ),
+                )
             )
-        )
+        else:
+            attr_def = cluster.find_attribute(attr)
+            manufacturer_codes.add(
+                cluster._get_effective_manufacturer_code(attr_def, None)
+            )
+
+            reports.append(
+                foundation.Attribute(
+                    attrid=attr_def.id,
+                    value=foundation.TypeValue(type=attr_def.zcl_type, value=value),
+                )
+            )
 
     if len(manufacturer_codes) != 1:
         raise ValueError(
