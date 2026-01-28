@@ -1823,16 +1823,19 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
         {
             DoublingCluster.AttributeDefs.test_attr: t.uint8_t(25),
             DoublingCluster.AttributeDefs.passthrough_attr: t.uint8_t(77),
+            DoublingCluster.AttributeDefs.swallowed_attr: t.uint8_t(99),
         },
     ):
         await cluster.read_attributes(
             [
                 DoublingCluster.AttributeDefs.test_attr,
                 DoublingCluster.AttributeDefs.passthrough_attr,
+                DoublingCluster.AttributeDefs.swallowed_attr,
             ]
         )
 
     assert events == [
+        # No event for swallowed_attr since quirk swallows it entirely
         # No AttributeReadEvent for test_attr since the value was transformed
         # AttributeUpdatedEvent for other_attr (quirk side-effect)
         AttributeUpdatedEvent(
